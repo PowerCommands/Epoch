@@ -1,0 +1,224 @@
+import Phaser from 'phaser';
+import { TileMap } from './TileMap';
+import { CameraController } from './CameraController';
+import { CityManager } from './CityManager';
+import { UnitManager } from './UnitManager';
+import { Selectable } from '../types/selection';
+
+type SelectionCallback = (selection: Selectable | null) => void;
+type SelectionTargetCallback = (
+  target: Selectable | null,
+  currentSelection: Selectable | null,
+) => boolean | void;
+
+/**
+ * SelectionManager hanterar hover- och selection-state för alla valbara
+ * objekt på kartan (units, städer och tiles).
+ *
+ * Prioritet vid samma tile: unit → stad → tile.
+ *
+ * Visuella highlights renderas som separata Graphics-lager. De ritas bara
+ * om vid faktisk state-ändring, inte varje frame.
+ */
+export class SelectionManager {
+  private readonly scene: Phaser.Scene;
+  private readonly tileMap: TileMap;
+  private readonly cameraController: CameraController;
+  private readonly cityManager: CityManager;
+  private readonly unitManager: UnitManager;
+
+  private hovered: Selectable | null = null;
+  private selected: Selectable | null = null;
+
+  private readonly hoverGfx: Phaser.GameObjects.Graphics;
+  private readonly selectionGfx: Phaser.GameObjects.Graphics;
+
+  private readonly selectionCallbacks: SelectionCallback[] = [];
+  private readonly targetCallbacks: SelectionTargetCallback[] = [];
+
+  constructor(
+    scene: Phaser.Scene,
+    tileMap: TileMap,
+    cameraController: CameraController,
+    cityManager: CityManager,
+    unitManager: UnitManager,
+  ) {
+    this.scene = scene;
+    this.tileMap = tileMap;
+    this.cameraController = cameraController;
+    this.cityManager = cityManager;
+    this.unitManager = unitManager;
+
+    // Depth 20/21 — ovanpå cities (15) men under HUD (100)
+    this.hoverGfx = scene.add.graphics().setDepth(20);
+    this.selectionGfx = scene.add.graphics().setDepth(21);
+
+    this.registerEvents();
+
+    this.unitManager.onUnitChanged(() => {
+      this.drawHover();
+      this.drawSelection();
+    });
+  }
+
+  onSelectionChanged(callback: SelectionCallback): void {
+    this.selectionCallbacks.push(callback);
+  }
+
+  onSelectionTarget(callback: SelectionTargetCallback): void {
+    this.targetCallbacks.push(callback);
+  }
+
+  getSelected(): Selectable | null {
+    return this.selected;
+  }
+
+  // ─── Privata metoder ───────────────────────────────────────────────────────
+
+  /**
+   * Avgör vad som finns under en världskoordinat.
+   * Unit har prioritet framför stad, som har prioritet framför tile.
+   */
+  private resolve(worldX: number, worldY: number): Selectable | null {
+    const tile = this.tileMap.worldToTile(worldX, worldY);
+    if (tile === null) return null;
+
+    const unit = this.unitManager.getUnitAt(tile.x, tile.y);
+    if (unit !== undefined) return { kind: 'unit', unit };
+
+    const city = this.cityManager.getCityAt(tile.x, tile.y);
+    if (city !== undefined) return { kind: 'city', city };
+
+    return { kind: 'tile', tile };
+  }
+
+  private registerEvents(): void {
+    this.scene.input.on(
+      Phaser.Input.Events.POINTER_MOVE,
+      (pointer: Phaser.Input.Pointer) => {
+        const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        this.setHover(this.resolve(wp.x, wp.y));
+      },
+    );
+
+    this.scene.input.on(
+      Phaser.Input.Events.POINTER_UP,
+      (pointer: Phaser.Input.Pointer) => {
+        if (pointer.button !== 0) return;
+        if (this.cameraController.wasDragging()) return;
+
+        const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        const target = this.resolve(wp.x, wp.y);
+
+        if (this.notifySelectionTarget(target)) return;
+
+        if (target === null) {
+          this.setSelection(null);
+        } else if (this.sameSelectable(this.selected, target)) {
+          // Toggle — klick på redan vald → avmarkera
+          this.setSelection(null);
+        } else {
+          this.setSelection(target);
+        }
+      },
+    );
+  }
+
+  private setHover(next: Selectable | null): void {
+    if (this.sameSelectable(this.hovered, next)) return;
+    this.hovered = next;
+    this.drawHover();
+  }
+
+  private setSelection(next: Selectable | null): void {
+    if (this.sameSelectable(this.selected, next)) return;
+    this.selected = next;
+    this.drawSelection();
+    for (const cb of this.selectionCallbacks) {
+      cb(this.selected);
+    }
+  }
+
+  private notifySelectionTarget(target: Selectable | null): boolean {
+    for (const cb of this.targetCallbacks) {
+      if (cb(target, this.selected) === true) return true;
+    }
+    return false;
+  }
+
+  private sameSelectable(a: Selectable | null, b: Selectable | null): boolean {
+    if (a === null && b === null) return true;
+    if (a === null || b === null) return false;
+    if (a.kind !== b.kind) return false;
+    if (a.kind === 'tile' && b.kind === 'tile') {
+      return a.tile.x === b.tile.x && a.tile.y === b.tile.y;
+    }
+    if (a.kind === 'city' && b.kind === 'city') {
+      return a.city.id === b.city.id;
+    }
+    if (a.kind === 'unit' && b.kind === 'unit') {
+      return a.unit.id === b.unit.id;
+    }
+    return false;
+  }
+
+  // ─── Highlight-rendering ───────────────────────────────────────────────────
+
+  private drawHover(): void {
+    this.hoverGfx.clear();
+    if (this.hovered === null) return;
+
+    if (this.hovered.kind === 'tile') {
+      const { x, y } = this.tileMap.tileToWorld(this.hovered.tile.x, this.hovered.tile.y);
+      const half = this.tileMap.getTileSize() / 2;
+      this.hoverGfx.lineStyle(2, 0xffffff, 0.6);
+      this.hoverGfx.strokeRect(x - half, y - half, half * 2, half * 2);
+    } else if (this.hovered.kind === 'city') {
+      // Stad — vit ring strax utanför stadssymbolen
+      const { x, y } = this.tileMap.tileToWorld(
+        this.hovered.city.tileX,
+        this.hovered.city.tileY,
+      );
+      this.hoverGfx.lineStyle(2, 0xffffff, 0.6);
+      this.hoverGfx.strokeCircle(x, y, 20);
+    } else {
+      // Unit — vit ring strax utanför enhetssymbolen
+      const { x, y } = this.tileMap.tileToWorld(
+        this.hovered.unit.tileX,
+        this.hovered.unit.tileY,
+      );
+      this.hoverGfx.lineStyle(2, 0xffffff, 0.8);
+      this.hoverGfx.strokeCircle(x, y, 17);
+    }
+  }
+
+  private drawSelection(): void {
+    this.selectionGfx.clear();
+    if (this.selected === null) return;
+
+    if (this.selected.kind === 'tile') {
+      const { x, y } = this.tileMap.tileToWorld(this.selected.tile.x, this.selected.tile.y);
+      const half = this.tileMap.getTileSize() / 2;
+      this.selectionGfx.fillStyle(0xffdd44, 0.15);
+      this.selectionGfx.fillRect(x - half, y - half, half * 2, half * 2);
+      this.selectionGfx.lineStyle(3, 0xffdd44, 0.9);
+      this.selectionGfx.strokeRect(x - half, y - half, half * 2, half * 2);
+    } else if (this.selected.kind === 'city') {
+      // Stad — gul ring runt stadssymbolen
+      const { x, y } = this.tileMap.tileToWorld(
+        this.selected.city.tileX,
+        this.selected.city.tileY,
+      );
+      this.selectionGfx.lineStyle(3, 0xffdd44, 0.9);
+      this.selectionGfx.strokeCircle(x, y, 22);
+    } else {
+      // Unit — gul ring runt enhetssymbolen
+      const { x, y } = this.tileMap.tileToWorld(
+        this.selected.unit.tileX,
+        this.selected.unit.tileY,
+      );
+      this.selectionGfx.lineStyle(3, 0xffdd44, 0.95);
+      this.selectionGfx.strokeCircle(x, y, 19);
+    }
+  }
+}

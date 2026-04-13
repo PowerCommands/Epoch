@@ -301,6 +301,18 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# Vite build output and cache
+dist/
+.vite/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env.local
+.env.*.local
+
 # Visual Studio 6 build log
 *.plg
 
