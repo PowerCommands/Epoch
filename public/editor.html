@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map Editor — europeScenario</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-family: monospace; overflow: hidden; }
+
+#app { display: flex; height: 100vh; }
+
+#toolbar {
+  width: 220px; flex-shrink: 0; background: #1a1a1a; padding: 12px;
+  overflow-y: auto; border-right: 1px solid #333;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+#toolbar h2 { font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+
+.section { background: #222; border: 1px solid #333; border-radius: 4px; padding: 8px; }
+.section-title { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+
+.palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.palette-btn {
+  border: 2px solid transparent; border-radius: 3px; padding: 4px 6px;
+  font: inherit; font-size: 11px; color: #ddd; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 6px;
+}
+.palette-btn:hover { border-color: #666; }
+.palette-btn.active { border-color: #fff; background: #333; }
+.palette-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+
+.tool-btns { display: flex; flex-direction: column; gap: 4px; }
+.tool-btn {
+  border: 2px solid transparent; border-radius: 3px; padding: 6px 8px;
+  font: inherit; font-size: 12px; color: #ddd; cursor: pointer;
+  background: #2a2a2a; text-align: left;
+}
+.tool-btn:hover { border-color: #666; }
+.tool-btn.active { border-color: #fff; background: #333; }
+
+.entity-list { display: flex; flex-direction: column; gap: 3px; }
+.entity-row {
+  font-size: 11px; padding: 3px 6px; border-radius: 3px; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+}
+.entity-row:hover { background: #2a2a2a; }
+.entity-row.selected { background: #333; outline: 1px solid #888; }
+.entity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+#save-btn {
+  padding: 10px; border: 1px solid #4a9; border-radius: 4px; background: #1a3a2a;
+  color: #4a9; font: inherit; font-size: 13px; cursor: pointer; font-weight: bold;
+}
+#save-btn:hover { background: #2a4a3a; }
+
+#viewport { flex: 1; position: relative; overflow: hidden; cursor: crosshair; }
+#canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
+
+#status {
+  position: fixed; bottom: 0; left: 220px; right: 0; height: 24px;
+  background: #1a1a1a; border-top: 1px solid #333; padding: 0 12px;
+  font-size: 11px; color: #888; display: flex; align-items: center; gap: 16px;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <h2>Map Editor</h2>
+
+    <div class="section">
+      <div class="section-title">Tool</div>
+      <div class="tool-btns" id="tool-btns">
+        <button class="tool-btn active" data-tool="paint">Paint Terrain</button>
+        <button class="tool-btn" data-tool="move">Move City / Unit</button>
+      </div>
+    </div>
+
+    <div class="section" id="palette-section">
+      <div class="section-title">Terrain Palette</div>
+      <div class="palette-grid" id="palette"></div>
+    </div>
+
+    <div class="section" id="entities-section" style="display:none">
+      <div class="section-title">Cities</div>
+      <div class="entity-list" id="city-list"></div>
+      <div class="section-title" style="margin-top:8px">Units</div>
+      <div class="entity-list" id="unit-list"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Brush</div>
+      <label style="font-size:12px; display:flex; align-items:center; gap:6px;">
+        Size: <input type="range" id="brush-size" min="1" max="5" value="1" style="flex:1">
+        <span id="brush-size-label">1</span>
+      </label>
+    </div>
+
+    <button id="save-btn">Download europeScenario.json</button>
+  </div>
+
+  <div id="viewport">
+    <canvas id="canvas"></canvas>
+  </div>
+</div>
+<div id="status">
+  <span id="status-pos">—</span>
+  <span id="status-tile">—</span>
+  <span id="status-info">Loading...</span>
+</div>
+
+<script>
+const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert'];
+const TILE_COLORS = {
+  ocean:    '#1e3a5f',
+  coast:    '#4a7ba6',
+  plains:   '#6b8e4e',
+  forest:   '#3d5a2e',
+  mountain: '#6b6b6b',
+  ice:      '#d8e8f0',
+  jungle:   '#2a6e2a',
+  desert:   '#d4b06a',
+};
+
+let scenario = null;
+let tiles = null; // 2D array [y][x] of type strings
+let mapW = 0, mapH = 0, tileSize = 0;
+
+// View state
+let camX = 0, camY = 0, zoom = 1;
+const MIN_ZOOM = 0.08, MAX_ZOOM = 4;
+
+// Tool state
+let currentTool = 'paint';
+let currentTerrain = 'plains';
+let brushSize = 1;
+let selectedEntity = null; // { kind: 'city'|'unit', index: number }
+let isPainting = false;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const viewport = document.getElementById('viewport');
+
+// ─── Load scenario ──────────────────────────────────────────────────────────
+
+async function init() {
+  const res = await fetch('/europeScenario.json');
+  scenario = await res.json();
+
+  mapW = scenario.map.width;
+  mapH = scenario.map.height;
+  tileSize = scenario.map.tileSize;
+
+  // Build 2D tile array
+  tiles = [];
+  for (let y = 0; y < mapH; y++) {
+    const row = [];
+    for (let x = 0; x < mapW; x++) row.push('ocean');
+    tiles.push(row);
+  }
+  for (const t of scenario.map.tiles) {
+    if (tiles[t.y]) tiles[t.y][t.x] = t.type;
+  }
+
+  // Center camera
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  zoom = Math.min(vw / (mapW * tileSize), vh / (mapH * tileSize));
+  camX = (mapW * tileSize) / 2 - vw / (2 * zoom);
+  camY = (mapH * tileSize) / 2 - vh / (2 * zoom);
+
+  buildPalette();
+  buildEntityLists();
+  resizeCanvas();
+  render();
+  document.getElementById('status-info').textContent = `${mapW}x${mapH} loaded`;
+}
+
+// ─── Palette ────────────────────────────────────────────────────────────────
+
+function buildPalette() {
+  const grid = document.getElementById('palette');
+  grid.innerHTML = '';
+  for (const type of TILE_TYPES) {
+    const btn = document.createElement('button');
+    btn.className = 'palette-btn' + (type === currentTerrain ? ' active' : '');
+    btn.dataset.type = type;
+    btn.innerHTML = `<span class="palette-swatch" style="background:${TILE_COLORS[type]}"></span>${type}`;
+    btn.addEventListener('click', () => {
+      currentTerrain = type;
+      grid.querySelectorAll('.palette-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+    });
+    grid.appendChild(btn);
+  }
+}
+
+// ─── Entity lists ───────────────────────────────────────────────────────────
+
+function buildEntityLists() {
+  const cityList = document.getElementById('city-list');
+  const unitList = document.getElementById('unit-list');
+  cityList.innerHTML = '';
+  unitList.innerHTML = '';
+
+  scenario.cities.forEach((city, i) => {
+    const nation = scenario.nations.find(n => n.id === city.nationId);
+    const row = document.createElement('div');
+    row.className = 'entity-row';
+    row.innerHTML = `<span class="entity-dot" style="background:${nation?.color || '#888'}"></span>
+      <span>${city.name} (${city.tileX},${city.tileY})</span>`;
+    row.addEventListener('click', () => selectEntity('city', i));
+    cityList.appendChild(row);
+  });
+
+  scenario.units.forEach((unit, i) => {
+    const nation = scenario.nations.find(n => n.id === unit.nationId);
+    const row = document.createElement('div');
+    row.className = 'entity-row';
+    row.innerHTML = `<span class="entity-dot" style="background:${nation?.color || '#888'}"></span>
+      <span>${unit.unitTypeId} (${unit.tileX},${unit.tileY})</span>`;
+    row.addEventListener('click', () => selectEntity('unit', i));
+    unitList.appendChild(row);
+  });
+}
+
+function selectEntity(kind, index) {
+  if (selectedEntity && selectedEntity.kind === kind && selectedEntity.index === index) {
+    selectedEntity = null;
+  } else {
+    selectedEntity = { kind, index };
+  }
+  updateEntityHighlights();
+  render();
+}
+
+function updateEntityHighlights() {
+  document.querySelectorAll('#city-list .entity-row').forEach((row, i) => {
+    row.classList.toggle('selected', selectedEntity?.kind === 'city' && selectedEntity.index === i);
+  });
+  document.querySelectorAll('#unit-list .entity-row').forEach((row, i) => {
+    row.classList.toggle('selected', selectedEntity?.kind === 'unit' && selectedEntity.index === i);
+  });
+}
+
+// ─── Tool switching ─────────────────────────────────────────────────────────
+
+document.getElementById('tool-btns').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tool-btn');
+  if (!btn) return;
+  currentTool = btn.dataset.tool;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b === btn));
+  document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
+  document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
+  selectedEntity = null;
+  updateEntityHighlights();
+  viewport.style.cursor = currentTool === 'paint' ? 'crosshair' : 'default';
+  render();
+});
+
+// Brush size
+const brushInput = document.getElementById('brush-size');
+const brushLabel = document.getElementById('brush-size-label');
+brushInput.addEventListener('input', () => {
+  brushSize = parseInt(brushInput.value);
+  brushLabel.textContent = brushSize;
+});
+
+// ─── Coordinate helpers ─────────────────────────────────────────────────────
+
+function screenToWorld(sx, sy) {
+  const rect = viewport.getBoundingClientRect();
+  const wx = (sx - rect.left) / zoom + camX;
+  const wy = (sy - rect.top) / zoom + camY;
+  return { wx, wy };
+}
+
+function worldToTile(wx, wy) {
+  const tx = Math.floor(wx / tileSize);
+  const ty = Math.floor(wy / tileSize);
+  if (tx < 0 || ty < 0 || tx >= mapW || ty >= mapH) return null;
+  return { tx, ty };
+}
+
+function screenToTile(sx, sy) {
+  const { wx, wy } = screenToWorld(sx, sy);
+  return worldToTile(wx, wy);
+}
+
+// ─── Painting ───────────────────────────────────────────────────────────────
+
+function paintAt(tx, ty) {
+  const half = Math.floor(brushSize / 2);
+  let changed = false;
+  for (let dy = -half; dy <= half; dy++) {
+    for (let dx = -half; dx <= half; dx++) {
+      const px = tx + dx, py = ty + dy;
+      if (px < 0 || py < 0 || px >= mapW || py >= mapH) continue;
+      if (tiles[py][px] !== currentTerrain) {
+        tiles[py][px] = currentTerrain;
+        changed = true;
+      }
+    }
+  }
+  if (changed) render();
+}
+
+// ─── Moving entities ────────────────────────────────────────────────────────
+
+function moveEntityTo(tx, ty) {
+  if (!selectedEntity) return;
+  if (selectedEntity.kind === 'city') {
+    const city = scenario.cities[selectedEntity.index];
+    city.tileX = tx;
+    city.tileY = ty;
+    // Also update nation startTerritoryCenter if this is a capital
+    if (city.isCapital) {
+      const nation = scenario.nations.find(n => n.id === city.nationId);
+      if (nation) {
+        nation.startTerritoryCenter = { x: tx, y: ty };
+      }
+    }
+  } else {
+    const unit = scenario.units[selectedEntity.index];
+    unit.tileX = tx;
+    unit.tileY = ty;
+  }
+  buildEntityLists();
+  if (selectedEntity) updateEntityHighlights();
+  render();
+}
+
+// ─── Mouse events on viewport ───────────────────────────────────────────────
+
+let isPanning = false;
+let panStartX = 0, panStartY = 0, panCamStartX = 0, panCamStartY = 0;
+
+viewport.addEventListener('mousedown', (e) => {
+  // Middle mouse or right mouse → pan
+  if (e.button === 1 || e.button === 2) {
+    isPanning = true;
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panCamStartX = camX;
+    panCamStartY = camY;
+    e.preventDefault();
+    return;
+  }
+
+  if (e.button !== 0) return;
+
+  const pos = screenToTile(e.clientX, e.clientY);
+  if (!pos) return;
+
+  if (currentTool === 'paint') {
+    isPainting = true;
+    paintAt(pos.tx, pos.ty);
+  } else if (currentTool === 'move') {
+    if (selectedEntity) {
+      // Move selected entity to clicked tile
+      moveEntityTo(pos.tx, pos.ty);
+    } else {
+      // Try to select entity at clicked tile
+      const cityIdx = scenario.cities.findIndex(c => c.tileX === pos.tx && c.tileY === pos.ty);
+      if (cityIdx >= 0) { selectEntity('city', cityIdx); return; }
+      const unitIdx = scenario.units.findIndex(u => u.tileX === pos.tx && u.tileY === pos.ty);
+      if (unitIdx >= 0) { selectEntity('unit', unitIdx); return; }
+    }
+  }
+});
+
+viewport.addEventListener('mousemove', (e) => {
+  if (isPanning) {
+    const dx = (e.clientX - panStartX) / zoom;
+    const dy = (e.clientY - panStartY) / zoom;
+    camX = panCamStartX - dx;
+    camY = panCamStartY - dy;
+    render();
+    return;
+  }
+
+  const pos = screenToTile(e.clientX, e.clientY);
+  if (pos) {
+    document.getElementById('status-pos').textContent = `(${pos.tx}, ${pos.ty})`;
+    document.getElementById('status-tile').textContent = tiles[pos.ty][pos.tx];
+  }
+
+  if (isPainting && currentTool === 'paint' && pos) {
+    paintAt(pos.tx, pos.ty);
+  }
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 1 || e.button === 2) isPanning = false;
+  if (e.button === 0) isPainting = false;
+});
+
+viewport.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Zoom with scroll wheel
+viewport.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const rect = viewport.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  // World point under cursor before zoom
+  const wxBefore = mx / zoom + camX;
+  const wyBefore = my / zoom + camY;
+
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
+
+  // Adjust cam so same world point stays under cursor
+  camX = wxBefore - mx / zoom;
+  camY = wyBefore - my / zoom;
+
+  render();
+}, { passive: false });
+
+// ─── Rendering ──────────────────────────────────────────────────────────────
+
+function resizeCanvas() {
+  canvas.width = viewport.clientWidth;
+  canvas.height = viewport.clientHeight;
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); render(); });
+
+function render() {
+  if (!tiles) return;
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Determine visible tile range
+  const startTX = Math.max(0, Math.floor(camX / tileSize));
+  const startTY = Math.max(0, Math.floor(camY / tileSize));
+  const endTX = Math.min(mapW - 1, Math.floor((camX + w / zoom) / tileSize));
+  const endTY = Math.min(mapH - 1, Math.floor((camY + h / zoom) / tileSize));
+
+  // Draw tiles
+  for (let ty = startTY; ty <= endTY; ty++) {
+    for (let tx = startTX; tx <= endTX; tx++) {
+      const sx = (tx * tileSize - camX) * zoom;
+      const sy = (ty * tileSize - camY) * zoom;
+      const sw = tileSize * zoom;
+      const sh = tileSize * zoom;
+
+      ctx.fillStyle = TILE_COLORS[tiles[ty][tx]] || '#ff00ff';
+      ctx.fillRect(sx, sy, sw + 0.5, sh + 0.5); // +0.5 to avoid gaps
+    }
+  }
+
+  // Grid lines (only if zoomed in enough)
+  if (zoom > 0.3) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    for (let ty = startTY; ty <= endTY + 1; ty++) {
+      const sy = (ty * tileSize - camY) * zoom;
+      ctx.beginPath();
+      ctx.moveTo(0, sy);
+      ctx.lineTo(w, sy);
+      ctx.stroke();
+    }
+    for (let tx = startTX; tx <= endTX + 1; tx++) {
+      const sx = (tx * tileSize - camX) * zoom;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx, h);
+      ctx.stroke();
+    }
+  }
+
+  // Draw cities
+  for (let i = 0; i < scenario.cities.length; i++) {
+    const city = scenario.cities[i];
+    const nation = scenario.nations.find(n => n.id === city.nationId);
+    const sx = ((city.tileX + 0.5) * tileSize - camX) * zoom;
+    const sy = ((city.tileY + 0.5) * tileSize - camY) * zoom;
+    const r = Math.max(4, tileSize * zoom * 0.35);
+
+    const isSelected = selectedEntity?.kind === 'city' && selectedEntity.index === i;
+
+    // City circle
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = nation?.color || '#888';
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#fff' : '#000';
+    ctx.lineWidth = isSelected ? 3 : 1.5;
+    ctx.stroke();
+
+    // Capital star marker
+    if (city.isCapital) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `${Math.max(10, r)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('\u2605', sx, sy + 1);
+    }
+
+    // Label
+    if (zoom > 0.2) {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.font = `bold ${Math.max(9, 11 * zoom)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.strokeText(city.name, sx, sy + r + 2);
+      ctx.fillText(city.name, sx, sy + r + 2);
+    }
+  }
+
+  // Draw units
+  for (let i = 0; i < scenario.units.length; i++) {
+    const unit = scenario.units[i];
+    const nation = scenario.nations.find(n => n.id === unit.nationId);
+    const sx = ((unit.tileX + 0.5) * tileSize - camX) * zoom;
+    const sy = ((unit.tileY + 0.5) * tileSize - camY) * zoom;
+    const s = Math.max(4, tileSize * zoom * 0.25);
+
+    const isSelected = selectedEntity?.kind === 'unit' && selectedEntity.index === i;
+
+    // Unit diamond
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - s);
+    ctx.lineTo(sx + s, sy);
+    ctx.lineTo(sx, sy + s);
+    ctx.lineTo(sx - s, sy);
+    ctx.closePath();
+    ctx.fillStyle = nation?.color || '#888';
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#fff' : '#000';
+    ctx.lineWidth = isSelected ? 3 : 1.5;
+    ctx.stroke();
+
+    // Label
+    if (zoom > 0.3) {
+      ctx.fillStyle = '#ccc';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.font = `${Math.max(8, 9 * zoom)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.strokeText(unit.unitTypeId, sx, sy + s + 2);
+      ctx.fillText(unit.unitTypeId, sx, sy + s + 2);
+    }
+  }
+}
+
+// ─── Save / Download ────────────────────────────────────────────────────────
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  // Rebuild flat tiles array from 2D
+  const flatTiles = [];
+  for (let y = 0; y < mapH; y++) {
+    for (let x = 0; x < mapW; x++) {
+      flatTiles.push({ x, y, type: tiles[y][x] });
+    }
+  }
+
+  const output = {
+    meta: scenario.meta,
+    map: { width: mapW, height: mapH, tileSize, tiles: flatTiles },
+    nations: scenario.nations,
+    cities: scenario.cities,
+    units: scenario.units,
+  };
+
+  const blob = new Blob([JSON.stringify(output)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'europeScenario.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ─── Keyboard shortcuts ─────────────────────────────────────────────────────
+
+window.addEventListener('keydown', (e) => {
+  // Number keys 1-8 select terrain type
+  const num = parseInt(e.key);
+  if (num >= 1 && num <= TILE_TYPES.length) {
+    currentTerrain = TILE_TYPES[num - 1];
+    currentTool = 'paint';
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
+    document.getElementById('palette-section').style.display = '';
+    document.getElementById('entities-section').style.display = 'none';
+    document.querySelectorAll('.palette-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTerrain));
+    viewport.style.cursor = 'crosshair';
+  }
+
+  // Escape deselects entity
+  if (e.key === 'Escape') {
+    selectedEntity = null;
+    updateEntityHighlights();
+    render();
+  }
+
+  // +/- for brush size
+  if (e.key === '+' || e.key === '=') {
+    brushSize = Math.min(5, brushSize + 1);
+    brushInput.value = brushSize;
+    brushLabel.textContent = brushSize;
+  }
+  if (e.key === '-') {
+    brushSize = Math.max(1, brushSize - 1);
+    brushInput.value = brushSize;
+    brushLabel.textContent = brushSize;
+  }
+});
+
+// ─── Start ──────────────────────────────────────────────────────────────────
+
+init();
+</script>
+</body>
+</html>

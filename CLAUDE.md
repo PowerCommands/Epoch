@@ -7,17 +7,21 @@ The long-term goal is a simpler Civilization-style game played on a **real map o
 ## Current architecture
 The project is being built step by step with a clean and extensible structure.
 
-Implemented so far (through step 18):
+Implemented so far:
 - Basic Phaser + TypeScript + Vite project setup
-- Scene flow: `BootScene` (preloads europeMap.json) → `MainMenuScene` → `GameScene`
-- Europe map loaded from `public/europeMap.json` (`200×120`, `48px` tiles, 9600×5760px world)
+- **Scenario-driven data loading**: all game data (map, nations, cities, units) loaded from `public/europeScenario.json`
+- Scene flow: `BootScene` (preloads `europeScenario.json`) → `MainMenuScene` → `GameScene`
+- `ScenarioLoader` parses scenario JSON into `MapData`, nations, cities, and units (Phaser-free)
+- Europe map loaded from scenario (`200×120`, `48px` tiles, 9600×5760px world)
+- **8 tile types**: Ocean, Coast, Plains, Forest, Mountain, Ice, Jungle, Desert
 - Camera pan/zoom with debug HUD, dynamic overview zoom based on the actual Phaser canvas/container size, max 2.0
 - Tile hover and selection system
 - Selection support for tiles, cities, and units, with priority `unit → city → tile`
-- Six historical nations (England, France, HRE, Sweden, Ottoman Empire, Spain) with territory overlays
+- Six historical nations with territory overlays, loaded from scenario data
+- `Nation.isHuman` flag from scenario determines human vs AI control (no hardcoded nation IDs)
 - Capital cities at historical locations with spiral fallback for ocean tiles (marked `isCapital`)
-- One starting unit per nation
-- Unit movement between adjacent non-ocean tiles
+- Starting units per nation, loaded from scenario with `unitTypeId` → `UnitType` mapping
+- Unit movement between adjacent non-ocean tiles with **variable tile cost** (Jungle costs 2, others cost 1)
 - Movement points reset on the owning nation's turn start
 - Deterministic adjacent unit-vs-unit and unit-vs-city combat
 - Ranged combat (Archer): attacks at Chebyshev distance 2, no counter-attack, cannot capture cities
@@ -46,6 +50,24 @@ Implemented so far (through step 18):
 - "Found City" button in RightPanel for human settlers on valid tiles
 - **Victory system**: last nation holding all 6 starting capitals wins
 - Victory overlay with nation name/color, game stops on victory
+- **Standalone map editor** at `public/editor.html` (Canvas2D, no Phaser)
+
+## Scenario system
+All game setup data lives in `public/europeScenario.json`:
+```json
+{
+  "meta": { "name": "Europe 1400", "version": 1 },
+  "map": { "width": 200, "height": 120, "tileSize": 48, "tiles": [{"x":0,"y":0,"type":"ocean"}, ...] },
+  "nations": [{ "id": "nation_england", "name": "England", "color": "#4a90d9", "isHuman": true, "startTerritoryCenter": {"x":22,"y":59} }, ...],
+  "cities": [{ "id": "city_london", "name": "London", "nationId": "nation_england", "tileX": 22, "tileY": 59, "isCapital": true }, ...],
+  "units": [{ "nationId": "nation_england", "unitTypeId": "warrior", "tileX": 23, "tileY": 59 }, ...]
+}
+```
+- `ScenarioLoader.parse()` converts raw JSON → `MapData` + typed arrays
+- `NationManager.loadFromScenario()` creates nations, claims 5×5 territory per `startTerritoryCenter`
+- `CityManager.loadFromScenario()` creates cities with spiral fallback for ocean tiles
+- `UnitManager.loadFromScenario()` maps `unitTypeId` → `UnitType` from `data/units.ts`
+- No hardcoded nation IDs anywhere — `nation.isHuman` drives human/AI distinction
 
 ## Important design rules
 - Keep **data models Phaser-free** where possible
@@ -63,13 +85,12 @@ Implemented so far (through step 18):
 - Use **event-driven systems**
   - New systems should react to events such as `turnStart`, `turnEnd`, `roundStart`, `roundEnd`
 - Keep APIs clean and extensible
-  - The placeholder map will later be replaced by a real Europe map, possibly based on geodata
 - Do **not** add unnecessary gameplay mechanics before the foundation is ready
 
 ## File structure overview
 
 ### Entities (`src/entities/`)
-- `Nation.ts` — nation data (id, name, color)
+- `Nation.ts` — nation data (id, name, color, isHuman)
 - `City.ts` — city data (id, name, ownerId [mutable], tileX/Y, isCapital, health, lastTurnAttacked)
 - `Unit.ts` — unit data (id, name, ownerId [readonly], tileX/Y, health, movementPoints, unitType)
 - `UnitType.ts` — unit type interface (id, name, productionCost, movementPoints, baseHealth, baseStrength, canFound?, range?)
@@ -78,15 +99,25 @@ Implemented so far (through step 18):
 - `CityBuildings.ts` — per-city building list
 
 ### Data (`src/data/`)
-- `units.ts` — `WARRIOR` (cost 6, move 2, HP 100, str 20), `ARCHER` (cost 12, move 2, HP 75, str 18, range 2), `CAVALRY` (cost 18, move 4, HP 80, str 28), `SETTLER` (cost 20, move 2, HP 50, str 0, canFound)
+- `units.ts` — `WARRIOR` (cost 6, move 2, HP 100, str 20), `ARCHER` (cost 12, move 2, HP 75, str 18, range 2), `CAVALRY` (cost 18, move 4, HP 80, str 28), `SETTLER` (cost 20, move 2, HP 50, str 0, canFound). Exports `ALL_UNIT_TYPES` and `getUnitTypeById()`.
 - `buildings.ts` — `GRANARY`, `WORKSHOP`, `MARKET` definitions
 - `cities.ts` — city combat constants (`CITY_BASE_HEALTH=200`, `CITY_BASE_DEFENSE=25`, `CITY_HEAL_PER_TURN=10`, `CITY_CAPTURE_HEALTH_FRACTION=0.25`)
 
+### Types (`src/types/`)
+- `map.ts` — `TileType` enum (Ocean, Coast, Plains, Forest, Mountain, Ice, Jungle, Desert), `Tile` interface (ownerId is mutable), `MapData`
+- `scenario.ts` — `ScenarioData`, `ScenarioMeta`, `ScenarioMap`, `ScenarioNation`, `ScenarioCity`, `ScenarioUnit` interfaces
+- `selection.ts` — `Selectable` discriminated union (tile | city | unit)
+- `events.ts` — turn/round event interfaces
+- `resources.ts` — resource-related types
+- `producible.ts` — `Producible` union (unit | building)
+- `index.ts` — re-exports all types
+
 ### Systems (`src/systems/`)
-- `TileMap.ts` — map data + rendering, `loadEuropeMap()`, `generatePlaceholder()`, `tileToWorld()`, `worldToTile()`, `getTileAt()`
-- `NationManager.ts` — nation CRUD, `createDefault()` creates 6 historical nations with territory, spiral land-tile fallback
-- `CityManager.ts` — city CRUD, resources, buildings, `transferOwnership()`, `getCityAt()`, `getCitiesByOwner()`
-- `UnitManager.ts` — unit CRUD, movement, damage notifications, `getUnitAt()`, `getUnitsByOwner()`
+- `ScenarioLoader.ts` — Phaser-free utility: `parse(json: ScenarioData)` → `{ mapData, nations, cities, units }`. Case-insensitive tile type mapping.
+- `TileMap.ts` — map data + rendering, `generatePlaceholder()`, `tileToWorld()`, `worldToTile()`, `getTileAt()`
+- `NationManager.ts` — nation CRUD, `loadFromScenario()` creates nations from scenario + claims 5×5 territory, `getHumanNationId()`, spiral land-tile fallback
+- `CityManager.ts` — city CRUD, resources, buildings, `loadFromScenario()`, `transferOwnership()`, `getCityAt()`, `getCitiesByOwner()`
+- `UnitManager.ts` — unit CRUD, movement, damage notifications, `loadFromScenario()`, `getUnitAt()`, `getUnitsByOwner()`
 - `TurnManager.ts` — turn order, round tracking, event pub/sub (`turnStart/End`, `roundStart/End`)
 - `ResourceSystem.ts` — gold/food/production generation on turnStart
 - `ProductionSystem.ts` — per-city production queue, `setProduction()`, `clearProduction()`, `onCompleted()`
@@ -95,41 +126,36 @@ Implemented so far (through step 18):
 - `CityCombat.ts` — `captureCity()` helper: transfers ownership, changes tile, resets HP to 25%, moves attacker in
 - `HealingSystem.ts` — heals units (+10 HP) and cities (+10 HP if not attacked last round) on turnStart
 - `VictorySystem.ts` — checks win condition on turnEnd: one nation owning all starting capitals. Emits `onVictory()`.
-- `AISystem.ts` — AI for non-human nations: settlers → combat (melee+ranged) → movement → production, 3-military-unit cap
-- `FoundCitySystem.ts` — settler city founding: validation, city creation, 3×3 territory claim, rendering refresh
+- `AISystem.ts` — AI for non-human nations (uses `nation.isHuman`): settlers → combat (melee+ranged) → movement → production, 3-military-unit cap
+- `FoundCitySystem.ts` — settler city founding: validation, city creation, 3×3 territory claim, rendering refresh. Claimable/foundable: Plains, Forest, Mountain, Jungle, Desert.
 - `SelectionManager.ts` — hover/selection state, priority unit→city→tile, `onSelectionTarget()` for action routing
-- `MovementSystem.ts` — unit movement validation and execution
+- `MovementSystem.ts` — unit movement validation and execution. Exports `getTileMovementCost(tile)`: Jungle=2, all others=1. Checks unit has enough movement points for tile cost.
 - `CameraController.ts` — pan/zoom
 - `TerritoryRenderer.ts` — territory color overlay, `render()` redraws all
 - `CityRenderer.ts` — city symbols + HP bars, `refreshCity()` redraws symbol and HP bar
 - `UnitRenderer.ts` — unit symbols + HP bars, `refreshUnitPosition()`, `removeUnit()`
 
 ### UI (`src/ui/`)
-- `LeftPanel.ts` — fixed HTML panel in unused left-side black space. Shows round/current turn, England summary, England city list, and all-nations scoreboard.
-- `RightPanel.ts` — fixed HTML panel in unused right-side black space. Shows selected tile/city/unit details, player city production menu, AI city production readout, and settler founding action.
+- `LeftPanel.ts` — fixed HTML panel. Shows round/current turn, human player summary, human city list, and all-nations scoreboard. Takes `humanNationId` parameter.
+- `RightPanel.ts` — fixed HTML panel. Shows selected tile/city/unit details, player city production menu, AI city production readout, and settler founding action. Takes `humanNationId` parameter.
 - `CombatLog.ts` — last 3 combat events with fade. Handles unit combat, city combat, and capture events.
 - `EndTurnButton.ts` — end turn button
 - `DebugHUD.ts` — camera debug info
 
-### Types (`src/types/`)
-- `map.ts` — `TileType` enum, `Tile` interface (ownerId is mutable), `MapData`
-- `selection.ts` — `Selectable` discriminated union (tile | city | unit)
-- `events.ts` — turn/round event interfaces
-- `resources.ts` — resource-related types
-- `producible.ts` — `Producible` union (unit | building)
-- `index.ts` — re-exports all types
-
 ### Scenes (`src/scenes/`)
-- `BootScene.ts` — asset loading
+- `BootScene.ts` — preloads `europeScenario.json` as `'scenario'` cache key
 - `MainMenuScene.ts` — start menu
 - `GameScene.ts` — main game orchestration
 
+### Tools (`public/`)
+- `editor.html` — standalone map editor (Canvas2D, no Phaser). Paint terrain (8 types, brush size 1-5, click+drag), move cities/units, download modified `europeScenario.json`. Pan with right/middle mouse, zoom with scroll wheel. Keyboard: `1`-`8` select terrain, `+`/`-` brush size, `Escape` deselect.
+
 ## Current gameplay model
-- The world is a 200×120 tile Europe map loaded from `public/europeMap.json`.
-- Tiles can be `Ocean`, `Coast`, `Plains`, `Forest`, or `Mountain`.
-- Only land-like tiles (`Plains`, `Forest`, `Mountain`) are claimable by nations.
-- Six historical nations:
-  - `England` (`nation_england`) — capital London (col 22, row 59) — **human player**
+- The world is a 200×120 tile Europe map loaded from `public/europeScenario.json`.
+- Tiles can be `Ocean`, `Coast`, `Plains`, `Forest`, `Mountain`, `Ice`, `Jungle`, `Desert`.
+- Claimable tiles (territory, city founding): Plains, Forest, Mountain, Jungle, Desert. Ice is not claimable.
+- Six historical nations defined in scenario:
+  - `England` (`nation_england`) — capital London (col 22, row 59) — **human player** (`isHuman: true`)
   - `France` (`nation_france`) — capital Paris (col 26, row 66)
   - `Holy Roman Empire` (`nation_hre`) — capital Vienna (col 83, row 68)
   - `Sweden` (`nation_sweden`) — capital Stockholm (col 86, row 37)
@@ -137,7 +163,7 @@ Implemented so far (through step 18):
   - `Spain` (`nation_spain`) — capital Toledo (col 15, row 91)
 - Each nation starts with a 5×5 claimed territory area (ocean/already-claimed tiles skipped).
 - Capital placement uses spiral fallback if target tile is ocean (max radius 5).
-- Each nation starts with one capital city and one Warrior near it.
+- Each nation starts with units defined in scenario (default: one Warrior near capital).
 - Selection supports tiles, cities, and units.
 - Selecting a tile, city, or unit updates the right HTML info panel.
 - Selecting a unit and then clicking an adjacent valid tile moves the unit.
@@ -146,6 +172,7 @@ Implemented so far (through step 18):
 - If an enemy unit stands on a city tile (garrison), the unit is attacked first, not the city.
 - Units cannot move into ocean tiles or onto occupied tiles.
 - Units have movement points and can only move during their owner's active turn.
+- **Movement cost**: Jungle tiles cost 2 movement points, all other passable tiles cost 1.
 - Units have HP and strength. Cities have HP (200) and defense (25).
 - Unit-vs-unit combat is deterministic and damages both attacker and defender.
 - Unit-vs-city combat: attacker deals `baseStrength * hpRatio` to city, city deals `defense * 0.5` back.
@@ -212,7 +239,7 @@ Current building modifiers:
 
 ## Settler / city founding model
 - Settler unit: HP 50, strength 0 (cannot attack), movement 2, production cost 20, `canFound: true`.
-- `FoundCitySystem.canFound(unit)` validates: unit has `canFound`, owner matches active nation, tile is Plains/Forest/Mountain, no city already on tile.
+- `FoundCitySystem.canFound(unit)` validates: unit has `canFound`, owner matches active nation, tile is Plains/Forest/Mountain/Jungle/Desert, no city already on tile.
 - `FoundCitySystem.foundCity(unit)` creates city, claims 3×3 territory (claimable tiles only), removes settler, refreshes rendering.
 - City names picked from predefined list (Novum, Ardena, Calvis, etc.), fallback to `City {n}`.
 - RightPanel shows "Found City" button for settlers on valid tiles during owner's turn.
@@ -228,7 +255,7 @@ Current building modifiers:
 - On victory: `TurnManager.stop()` called, overlay shown with nation name + color, "Refresh to play again".
 
 ## AI model
-- `AISystem` runs on `turnStart` for non-human nations (all except `nation_england`).
+- `AISystem` runs on `turnStart` for non-human nations (determined by `nation.isHuman === false`).
 - AI turn executes instantly (synchronous), no animations or delays.
 - Priority order per turn:
   1. **Settlers**: found city if on valid tile ≥5 Manhattan from all cities, else move toward best founding site. Settlers use all movement toward site.
@@ -240,12 +267,12 @@ Current building modifiers:
 
 ## Current scene setup order
 `GameScene` currently wires the game in this order:
-1. Load Europe map data from `public/europeMap.json`.
-2. Create default nations and claim start territories.
+1. Parse scenario from Phaser cache (`this.cache.json.get('scenario')`) via `ScenarioLoader.parse()`.
+2. Create nations via `NationManager.loadFromScenario()` and claim start territories.
 3. Render terrain.
 4. Render territory overlays.
-5. Create default cities.
-6. Create default units.
+5. Create cities via `CityManager.loadFromScenario()`.
+6. Create units via `UnitManager.loadFromScenario()`.
 7. Measure the actual Phaser canvas/container viewport, create camera controller, and set overview cover zoom.
 8. Render cities and units.
 9. Create turn and resource systems.
@@ -254,16 +281,18 @@ Current building modifiers:
 12. Create combat system (takes unitManager, turnManager, cityManager, productionSystem, mapData).
 13. Create movement system.
 14. Create healing system.
-15. Create FoundCitySystem.
-16. Create AI system (with FoundCitySystem) and wire turnStart handler for non-human nations.
-17. Register production completion handling for buildings and units.
-18. Wire city combat events (refresh city renderer, territory overlay, and HTML panels).
-19. Wire healing events (refresh city renderer on city heal).
-20. Create fixed HTML panels (`LeftPanel`, `RightPanel`) beside the Phaser canvas, plus canvas UI (`EndTurnButton`, `CombatLog`, `DebugHUD`).
-21. Connect selection changes to `RightPanel`, turn/resource/production/unit changes to `LeftPanel`, and production/unit changes to current `RightPanel` view.
-22. Wire `focusCity` DOM event from `LeftPanel` city names to camera centering, city selection, and `RightPanel.showCity()`.
-23. Wire RightPanel settler "Found City" button to `FoundCitySystem`.
-24. Start the turn manager.
+15. Create VictorySystem.
+16. Create FoundCitySystem.
+17. Create AI system and wire turnStart handler for non-human nations (uses `nation.isHuman`).
+18. Register production completion handling for buildings and units.
+19. Wire city combat events (refresh city renderer, territory overlay, and HTML panels).
+20. Wire healing events (refresh city renderer on city heal).
+21. Create fixed HTML panels (`LeftPanel`, `RightPanel` with `humanNationId`) beside the Phaser canvas, plus canvas UI (`EndTurnButton`, `CombatLog`, `DebugHUD`).
+22. Connect selection changes to `RightPanel`, turn/resource/production/unit changes to `LeftPanel`, and production/unit changes to current `RightPanel` view.
+23. Wire `focusCity` DOM event from `LeftPanel` city names to camera centering, city selection, and `RightPanel.showCity()`.
+24. Wire RightPanel settler "Found City" button to `FoundCitySystem`.
+25. Wire victory overlay.
+26. Start the turn manager.
 
 ## How to run locally
 Normal local development:
@@ -272,7 +301,8 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173/`.
+Open `http://localhost:5173/` for the game.  
+Open `http://localhost:5173/editor.html` for the map editor.
 
 If local Node/WSL has issues, the app can be run through Docker:
 ```bash
