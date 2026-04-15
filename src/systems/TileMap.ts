@@ -8,6 +8,9 @@ const TILE_COLORS: Record<TileType, number> = {
   [TileType.Plains]:   0x6b8e4e,
   [TileType.Forest]:   0x3d5a2e,
   [TileType.Mountain]: 0x6b6b6b,
+  [TileType.Ice]:      0xd8e8f0,
+  [TileType.Jungle]:   0x2a6e2a,
+  [TileType.Desert]:   0xd4b06a,
 };
 
 /**

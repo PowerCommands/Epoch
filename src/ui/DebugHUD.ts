@@ -18,8 +18,7 @@ export class DebugHUD {
   private readonly label: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene) {
-    // Placerad under ResourceBar (som tar ~50px i höjd)
-    const offsetY = 60;
+    const offsetY = 10;
 
     // Bakgrundsruta — bredden justeras dynamiskt i update()
     this.bg = scene.add.rectangle(

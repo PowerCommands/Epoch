@@ -4,6 +4,7 @@ import { CameraController } from './CameraController';
 import { CityManager } from './CityManager';
 import { UnitManager } from './UnitManager';
 import { Selectable } from '../types/selection';
+import type { City } from '../entities/City';
 
 type SelectionCallback = (selection: Selectable | null) => void;
 type SelectionTargetCallback = (
@@ -73,6 +74,10 @@ export class SelectionManager {
     return this.selected;
   }
 
+  selectCity(city: City): void {
+    this.setSelection({ kind: 'city', city });
+  }
+
   // ─── Privata metoder ───────────────────────────────────────────────────────
 
   /**
@@ -106,6 +111,15 @@ export class SelectionManager {
       (pointer: Phaser.Input.Pointer) => {
         if (pointer.button !== 0) return;
         if (this.cameraController.wasDragging()) return;
+
+        // Skip map selection when pointer is over an interactive UI element
+        // (scrollFactor 0 = fixed to screen, not part of the game world)
+        const hitObjects = this.scene.input.hitTestPointer(pointer);
+        const hitsUI = hitObjects.some((obj) => {
+          const go = obj as unknown as Phaser.GameObjects.Components.ScrollFactor;
+          return go.scrollFactorX === 0 && go.scrollFactorY === 0;
+        });
+        if (hitsUI) return;
 
         const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
         const target = this.resolve(wp.x, wp.y);

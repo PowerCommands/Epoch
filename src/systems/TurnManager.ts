@@ -25,6 +25,7 @@ export class TurnManager {
   private currentRound = 1;
   private readonly turnOrder: Nation[];
   private currentTurnIndex = 0;
+  private stopped = false;
 
   private readonly listeners = {
     turnStart:  [] as ((e: TurnStartEvent) => void)[],
@@ -49,8 +50,14 @@ export class TurnManager {
     });
   }
 
+  /** Stop accepting turn changes. */
+  stop(): void {
+    this.stopped = true;
+  }
+
   /** Avsluta nuvarande nations tur och avancera. */
   endCurrentTurn(): void {
+    if (this.stopped) return;
     const endedNation = this.getCurrentNation();
 
     // 1. Avsluta nuvarande tur

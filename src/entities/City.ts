@@ -1,23 +1,28 @@
+import { CITY_BASE_HEALTH } from '../data/cities';
+
 export interface CityConfig {
   id: string;
   name: string;
   ownerId: string; // referens till Nation.id
   tileX: number;   // grid-koordinat
   tileY: number;   // grid-koordinat
+  isCapital?: boolean;
 }
 
 /**
  * City representerar en stad i spelvärlden.
  *
  * Ren data utan Phaser-beroenden. All rendering sköts av CityRenderer.
- * Framtida egenskaper (befolkning, produktion, byggnader) läggs till här.
  */
 export class City {
   readonly id: string;
   readonly name: string;
-  readonly ownerId: string;
+  ownerId: string;
   readonly tileX: number;
   readonly tileY: number;
+  readonly isCapital: boolean;
+  health: number;
+  lastTurnAttacked: number | null = null;
 
   constructor(config: CityConfig) {
     this.id = config.id;
@@ -25,5 +30,11 @@ export class City {
     this.ownerId = config.ownerId;
     this.tileX = config.tileX;
     this.tileY = config.tileY;
+    this.isCapital = config.isCapital ?? false;
+    this.health = CITY_BASE_HEALTH;
+  }
+
+  get isDamaged(): boolean {
+    return this.health < CITY_BASE_HEALTH;
   }
 }

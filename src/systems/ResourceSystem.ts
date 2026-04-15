@@ -8,10 +8,6 @@ import type { ResourceChangedEvent, ResourceListener } from '../types/resources'
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
  * aktiva nationen och dess städer.
- *
- * Detta är det första "system som lyssnar på events och muterar tillstånd"-
- * mönstret i spelet. Framtida system (produktion, rörelse, AI) följer
- * samma mönster.
  */
 export class ResourceSystem {
   private readonly nationManager: NationManager;
@@ -41,10 +37,31 @@ export class ResourceSystem {
     this.listeners.push(callback);
   }
 
+  /**
+   * Räkna om per-turn-värden för en specifik nation och dess städer.
+   * Anropas när en byggnad blir klar så att UI uppdateras direkt.
+   */
+  recalculateForNation(nationId: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return;
+
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    const nationRes = this.nationManager.getResources(nationId);
+    const lookup = (cityId: string) => this.cityManager.getBuildings(cityId);
+
+    nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(nation, cities, lookup);
+
+    for (const city of cities) {
+      const cityRes = this.cityManager.getResources(city.id);
+      const buildings = this.cityManager.getBuildings(city.id);
+      cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city, buildings);
+      cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city, buildings);
+    }
+
+    this.notify({ nationId });
+  }
+
   private handleTurnStart(e: TurnStartEvent): void {
-    // TurnManager.start() emits the first turnStart so UI can initialize.
-    // Resource accumulation begins on the next turnStart, matching the
-    // "0 (+X/turn)" opening state for the first active nation.
     if (!this.hasSkippedInitialTurnStart) {
       this.hasSkippedInitialTurnStart = true;
       return;
@@ -57,15 +74,17 @@ export class ResourceSystem {
     const nation = e.nation;
     const cities = this.cityManager.getCitiesByOwner(nation.id);
     const nationRes = this.nationManager.getResources(nation.id);
+    const lookup = (cityId: string) => this.cityManager.getBuildings(cityId);
 
     // Räkna om per-turn (kan ändras om städer förstörts/skapats)
-    nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(nation, cities);
+    nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(nation, cities, lookup);
     nationRes.gold += nationRes.goldPerTurn;
 
     for (const city of cities) {
       const cityRes = this.cityManager.getResources(city.id);
-      cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city);
-      cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city);
+      const buildings = this.cityManager.getBuildings(city.id);
+      cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city, buildings);
+      cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city, buildings);
       cityRes.food += cityRes.foodPerTurn;
       cityRes.production += cityRes.productionPerTurn;
     }
@@ -73,21 +92,19 @@ export class ResourceSystem {
     this.notify({ nationId: nation.id });
   }
 
-  /**
-   * Räkna ut per-turn-värden för alla nationer och städer.
-   * Anropas en gång vid skapande så att UI kan visa "+X/turn" innan
-   * första turen faktiskt genererats.
-   */
   private recalculatePerTurnForAll(): void {
     for (const nation of this.nationManager.getAllNations()) {
       const cities = this.cityManager.getCitiesByOwner(nation.id);
       const nationRes = this.nationManager.getResources(nation.id);
-      nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(nation, cities);
+      const lookup = (cityId: string) => this.cityManager.getBuildings(cityId);
+
+      nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(nation, cities, lookup);
 
       for (const city of cities) {
         const cityRes = this.cityManager.getResources(city.id);
-        cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city);
-        cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city);
+        const buildings = this.cityManager.getBuildings(city.id);
+        cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city, buildings);
+        cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city, buildings);
       }
     }
   }

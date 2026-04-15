@@ -7,7 +7,11 @@ import { TurnManager } from './TurnManager';
 import { UnitManager } from './UnitManager';
 import { UnitRenderer } from './UnitRenderer';
 
-const MOVE_COST = 1;
+/** Return movement cost for entering a tile. */
+export function getTileMovementCost(tile: Tile): number {
+  if (tile.type === TileType.Jungle) return 2;
+  return 1;
+}
 
 /**
  * MovementSystem äger rörelsereglerna för enheter.
@@ -46,6 +50,9 @@ export class MovementSystem {
     if (targetTile === null) return false;
     if (targetTile.type === TileType.Ocean) return false;
 
+    const cost = getTileMovementCost(targetTile);
+    if (unit.movementPoints < cost) return false;
+
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
     if (occupyingUnit !== undefined && occupyingUnit.id !== unit.id) return false;
 
@@ -64,11 +71,12 @@ export class MovementSystem {
     const unit = currentSelection.unit;
     if (!this.canMoveUnitTo(unit, targetTile.x, targetTile.y)) return false;
 
+    const cost = getTileMovementCost(targetTile);
     const didMove = this.unitManager.moveUnit(
       unit.id,
       targetTile.x,
       targetTile.y,
-      MOVE_COST,
+      cost,
     );
     if (!didMove) return false;
 

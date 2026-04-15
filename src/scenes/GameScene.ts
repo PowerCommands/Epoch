@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TileMap } from '../systems/TileMap';
+import { ScenarioLoader } from '../systems/ScenarioLoader';
 import { CameraController } from '../systems/CameraController';
 import { SelectionManager } from '../systems/SelectionManager';
 import { NationManager } from '../systems/NationManager';
@@ -8,22 +9,30 @@ import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { FlatResourceGenerator } from '../systems/ResourceGenerator';
+import { ProductionSystem } from '../systems/ProductionSystem';
+import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
 import { CityRenderer } from '../systems/CityRenderer';
 import { UnitRenderer } from '../systems/UnitRenderer';
 import { MovementSystem } from '../systems/MovementSystem';
+import { CombatSystem } from '../systems/CombatSystem';
+import { AISystem } from '../systems/AISystem';
+import { FoundCitySystem } from '../systems/FoundCitySystem';
+import { VictorySystem } from '../systems/VictorySystem';
 import { DebugHUD } from '../ui/DebugHUD';
-import { TileInfoPanel } from '../ui/TileInfoPanel';
-import { CityInfoPanel } from '../ui/CityInfoPanel';
-import { UnitInfoPanel } from '../ui/UnitInfoPanel';
-import { NationsPanel } from '../ui/NationsPanel';
-import { TurnHUD } from '../ui/TurnHUD';
 import { EndTurnButton } from '../ui/EndTurnButton';
-import { ResourceBar } from '../ui/ResourceBar';
+import { CombatLog } from '../ui/CombatLog';
+import { LeftPanel } from '../ui/LeftPanel';
+import { RightPanel } from '../ui/RightPanel';
+import { TileType } from '../types/map';
+import type { ScenarioData } from '../types/scenario';
+import type { City } from '../entities/City';
+import type { Selectable } from '../types/selection';
 
 /**
  * GameScene — huvudspelscenen.
  * Orkestrerar karta, nationer, städer, enheter, turordning, resurser,
+ * produktion, byggnader, strid, läkning, AI, stadsgrundning,
  * kamerakontroll, selection och HUD.
  */
 export class GameScene extends Phaser.Scene {
@@ -37,36 +46,40 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     // ─── Data & system ───────────────────────────────────────────────────────
 
-    // 1. Generera kartdata (40×25 tiles, 48px/tile)
-    const mapData = TileMap.generatePlaceholder(40, 25, 48);
+    // 1. Parse scenario (preloaded by BootScene)
+    const scenarioJson = this.cache.json.get('scenario') as ScenarioData;
+    const scenario = ScenarioLoader.parse(scenarioJson);
+    const mapData = scenario.mapData;
 
-    // 2. Skapa nationer och tilldela startterritorier (muterar mapData.tiles)
-    const nationManager = NationManager.createDefault(mapData);
+    // 2. Create nations and claim start territories (mutates mapData.tiles)
+    const nationManager = NationManager.loadFromScenario(scenario.nations, mapData);
 
-    // 3. Rendera terräng (depth 0)
+    // 3. Render terrain (depth 0)
     const tileMap = new TileMap(this, mapData);
 
-    // 4. Rendera territory-overlay (depth 5)
+    // 4. Render territory overlay (depth 5)
     const territoryRenderer = new TerritoryRenderer(this, tileMap, nationManager, mapData);
     territoryRenderer.render();
 
-    // 5. Skapa städer baserat på nationer
-    const cityManager = CityManager.createDefault(nationManager, mapData);
+    // 5. Create cities from scenario
+    const cityManager = CityManager.loadFromScenario(scenario.cities, mapData);
 
-    // 6. Skapa startenheter baserat på nationer och huvudstäder
-    const unitManager = UnitManager.createDefault(nationManager, cityManager, mapData);
+    // 6. Create units from scenario
+    const unitManager = UnitManager.loadFromScenario(scenario.units, mapData);
 
     // 7. Kamerakontroll
     const { width: worldWidth, height: worldHeight } = tileMap.getWorldBounds();
-    this.cameraController = new CameraController(this, worldWidth, worldHeight);
+    const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
+    this.cameraController = new CameraController(this, worldWidth, worldHeight, overviewZoom);
 
     // 8. Rendera städer (depth 15)
-    new CityRenderer(this, tileMap, cityManager, nationManager);
+    const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
 
     // 9. Rendera enheter (depth 18)
     const unitRenderer = new UnitRenderer(this, tileMap, unitManager, nationManager);
 
-    // 10. Centrera kameran på kartans mitt
+    // 10. Starta i en overview som täcker hela canvasen.
+    this.cameras.main.setZoom(overviewZoom);
     this.cameras.main.centerOn(worldWidth / 2, worldHeight / 2);
 
     // 11. Turordning och resurssystem
@@ -80,58 +93,271 @@ export class GameScene extends Phaser.Scene {
       this, tileMap, this.cameraController, cityManager, unitManager,
     );
 
-    // 13. Rörelseregler för enheter
-    new MovementSystem(tileMap, unitManager, unitRenderer, turnManager, selectionManager);
+    // 13. Produktionssystem
+    const productionSystem = new ProductionSystem(cityManager, turnManager);
+    let leftPanel: LeftPanel | null = null;
+    let rightPanel: RightPanel | null = null;
 
-    // ─── UI ──────────────────────────────────────────────────────────────────
+    // 14. Stridssystem
+    const combatSystem = new CombatSystem(unitManager, turnManager, cityManager, productionSystem, mapData);
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (currentSelection?.kind !== 'unit') return false;
 
-    // 14. Resursbar och debug HUD (övre vänstra)
-    new ResourceBar(this, nationManager, turnManager, resourceSystem);
-    this.debugHUD = new DebugHUD(this);
+      const targetTile = this.getTileForSelectable(tileMap, target);
+      if (targetTile === null) return false;
 
-    // 15. Turn-UI
-    new TurnHUD(this, turnManager);
-    new EndTurnButton(this, turnManager);
+      // Try attack against unit or city at target tile
+      return combatSystem.tryAttack(currentSelection.unit, targetTile.x, targetTile.y);
+    });
 
-    // 16. Info-paneler
-    const tileInfoPanel = new TileInfoPanel(this, nationManager);
-    const cityInfoPanel = new CityInfoPanel(this, nationManager, cityManager, resourceSystem);
-    const unitInfoPanel = new UnitInfoPanel(this, nationManager, unitManager);
+    // 15. Rörelseregler för enheter
+    const movementSystem = new MovementSystem(tileMap, unitManager, unitRenderer, turnManager, selectionManager);
 
-    // 17. Nations-panel (övre högra)
-    new NationsPanel(this, nationManager, mapData, resourceSystem);
+    // 16. Läkningssystem
+    const healingSystem = new HealingSystem(unitManager, cityManager, turnManager);
 
-    // 18. Koppla selection → rätt panel
-    selectionManager.onSelectionChanged((selection) => {
-      if (selection?.kind === 'tile') {
-        tileInfoPanel.update(selection.tile);
-        cityInfoPanel.update(null);
-        unitInfoPanel.update(null);
-      } else if (selection?.kind === 'city') {
-        cityInfoPanel.update(selection.city);
-        tileInfoPanel.update(null);
-        unitInfoPanel.update(null);
-      } else if (selection?.kind === 'unit') {
-        unitInfoPanel.update(selection.unit);
-        tileInfoPanel.update(null);
-        cityInfoPanel.update(null);
-      } else {
-        tileInfoPanel.update(null);
-        cityInfoPanel.update(null);
-        unitInfoPanel.update(null);
+    // 17. Victory system
+    const victorySystem = new VictorySystem(cityManager, nationManager, turnManager);
+
+    // 18. Stadsgrundningssystem
+    const foundCitySystem = new FoundCitySystem(
+      unitManager, cityManager, nationManager, turnManager,
+      territoryRenderer, cityRenderer, resourceSystem, mapData,
+    );
+
+    // 18. AI-system för icke-mänskliga nationer
+    const aiSystem = new AISystem(
+      unitManager, cityManager, nationManager, turnManager,
+      movementSystem, combatSystem, productionSystem, foundCitySystem, mapData,
+    );
+
+    turnManager.on('turnStart', (e) => {
+      if (!e.nation.isHuman) {
+        aiSystem.runTurn(e.nation.id);
+        turnManager.endCurrentTurn();
       }
     });
 
-    // 19. Starta turordningen — sist, efter att alla lyssnare kopplats
+    // Hantera färdig produktion
+    productionSystem.onCompleted((cityId, item) => {
+      const city = cityManager.getCity(cityId);
+      if (!city) return false;
+
+      if (item.kind === 'building') {
+        const buildings = cityManager.getBuildings(cityId);
+        buildings.add(item.buildingType);
+        resourceSystem.recalculateForNation(city.ownerId);
+        return true;
+      }
+
+      const placement = this.findUnitPlacementTile(tileMap, unitManager, city);
+      if (placement === null) return false;
+
+      unitManager.createUnit({
+        type: item.unitType,
+        ownerId: city.ownerId,
+        tileX: placement.x,
+        tileY: placement.y,
+        movementPoints: 0,
+      });
+
+      return true;
+    });
+
+    // ─── City combat events ─────────────────────────────────────────────────
+
+    combatSystem.onCityCombat((e) => {
+      // Uppdatera stadsrendering (HP-bar)
+      cityRenderer.refreshCity(e.city);
+      leftPanel?.refresh();
+
+      // Om attackeraren dog
+      if (e.result.attackerDied) {
+        unitRenderer.removeUnit(e.attacker.id);
+      } else {
+        // Uppdatera attackerarens HP-bar
+        unitRenderer.refreshUnitPosition(e.attacker.id);
+      }
+
+      // Om staden erövrades
+      if (e.captured) {
+        // Den erövrande enheten flyttades in på stadens tile
+        unitRenderer.refreshUnitPosition(e.attacker.id);
+        // Territory overlay behöver ritas om
+        territoryRenderer.render();
+        leftPanel?.refresh();
+        // Recalculate resources for both old and new owner
+        resourceSystem.recalculateForNation(e.attacker.ownerId);
+      }
+
+      rightPanel?.refreshCurrent();
+    });
+
+    // ─── Healing events ─────────────────────────────────────────────────────
+
+    healingSystem.onCityHealed((e) => {
+      const city = cityManager.getCity(e.cityId);
+      if (city) {
+        cityRenderer.refreshCity(city);
+        leftPanel?.refresh();
+        rightPanel?.refreshCurrent();
+      }
+    });
+
+    // ─── UI ──────────────────────────────────────────────────────────────────
+
+    this.debugHUD = new DebugHUD(this);
+
+    new EndTurnButton(this, turnManager);
+
+    const humanNationId = nationManager.getHumanNationId();
+    leftPanel = new LeftPanel(
+      nationManager, cityManager, unitManager, turnManager, productionSystem, humanNationId,
+    );
+    rightPanel = new RightPanel(productionSystem, cityManager, unitManager, nationManager, humanNationId);
+    rightPanel.setFoundCityHandler(
+      (unit) => foundCitySystem.canFound(unit),
+      (unit) => {
+        const city = foundCitySystem.foundCity(unit);
+        if (!city) return;
+        leftPanel?.refresh();
+        rightPanel?.clear();
+      },
+    );
+
+    new CombatLog(this, combatSystem, nationManager);
+
+    turnManager.on('turnStart', () => leftPanel?.refresh());
+    turnManager.on('roundStart', () => leftPanel?.refresh());
+    resourceSystem.on(() => leftPanel?.refresh());
+    unitManager.onUnitChanged(() => {
+      leftPanel?.refresh();
+      rightPanel?.refreshCurrent();
+    });
+    productionSystem.onChanged(() => {
+      leftPanel?.refresh();
+      rightPanel?.refreshCurrent();
+    });
+
+    // Koppla selection → rätt panel
+    selectionManager.onSelectionChanged((selection) => {
+      if (selection?.kind === 'tile') {
+        rightPanel?.showTile(selection.tile);
+      } else if (selection?.kind === 'city') {
+        rightPanel?.showCity(selection.city);
+      } else if (selection?.kind === 'unit') {
+        rightPanel?.showUnit(selection.unit);
+      } else {
+        rightPanel?.clear();
+      }
+    });
+
+    const onFocusCity = (event: Event) => {
+      const cityId = (event as CustomEvent<{ cityId: string }>).detail.cityId;
+      const city = cityManager.getCity(cityId);
+      if (!city) return;
+
+      const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
+      this.cameras.main.centerOn(x, y);
+      selectionManager.selectCity(city);
+      rightPanel?.showCity(city);
+    };
+    window.addEventListener('focusCity', onFocusCity);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('focusCity', onFocusCity);
+    });
+
+    // Victory overlay
+    victorySystem.onVictory((nationId) => {
+      turnManager.stop();
+
+      const nation = nationManager.getNation(nationId);
+      const nationName = nation?.name ?? 'Unknown';
+      const nationColor = nation ? `#${nation.color.toString(16).padStart(6, '0')}` : '#ffffff';
+
+      const { width, height } = this.scale;
+
+      const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7)
+        .setScrollFactor(0)
+        .setDepth(200);
+
+      this.add.text(width / 2, height / 2 - 30,
+        `${nationName} has conquered all capitals!\nVICTORY`, {
+          fontSize: '32px',
+          fontStyle: 'bold',
+          color: nationColor,
+          align: 'center',
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(201);
+
+      this.add.text(width / 2, height / 2 + 40, 'Refresh to play again', {
+        fontSize: '16px',
+        color: '#aaaaaa',
+        align: 'center',
+      })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(201);
+
+      // Block further input on the overlay
+      overlay.setInteractive();
+    });
+
+    // Starta turordningen — sist, efter att alla lyssnare kopplats
     turnManager.start();
   }
 
   update(_time: number, delta: number): void {
+    if (!this.cameraController) return;
     this.cameraController.update(delta);
     this.debugHUD.update(
       this.cameraController.zoom,
       this.cameraController.scrollX,
       this.cameraController.scrollY,
     );
+  }
+
+  private findUnitPlacementTile(
+    tileMap: TileMap,
+    unitManager: UnitManager,
+    city: City,
+  ): { x: number; y: number } | null {
+    const candidates = [
+      { x: city.tileX, y: city.tileY },
+      { x: city.tileX, y: city.tileY - 1 },
+      { x: city.tileX + 1, y: city.tileY },
+      { x: city.tileX, y: city.tileY + 1 },
+      { x: city.tileX - 1, y: city.tileY },
+    ];
+
+    for (const candidate of candidates) {
+      const tile = tileMap.getTileAt(candidate.x, candidate.y);
+      if (tile === null) continue;
+      if (tile.type === TileType.Ocean) continue;
+      if (unitManager.getUnitAt(candidate.x, candidate.y) !== undefined) continue;
+      return candidate;
+    }
+
+    return null;
+  }
+
+  private getMapCoverZoom(worldWidth: number, worldHeight: number): number {
+    const canvasWidth = this.cameras.main.width;
+    const canvasHeight = this.cameras.main.height;
+    return Math.max(canvasWidth / worldWidth, canvasHeight / worldHeight);
+  }
+
+  private getTileForSelectable(
+    tileMap: TileMap,
+    selectable: Selectable | null,
+  ): { x: number; y: number } | null {
+    if (selectable === null) return null;
+    if (selectable.kind === 'tile') return selectable.tile;
+    if (selectable.kind === 'city') {
+      return tileMap.getTileAt(selectable.city.tileX, selectable.city.tileY);
+    }
+    return tileMap.getTileAt(selectable.unit.tileX, selectable.unit.tileY);
   }
 }

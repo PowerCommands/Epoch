@@ -2,8 +2,8 @@ import Phaser from 'phaser';
 
 const PAN_SPEED = 400;  // pixlar/sekund vid zoom 1.0
 const ZOOM_STEP = 0.1;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3.0;
+const DEFAULT_ZOOM_MIN = 0.15;
+const ZOOM_MAX = 2.0;
 
 /**
  * CameraController hanterar all kamerainput: panorering med mus och
@@ -14,6 +14,7 @@ const ZOOM_MAX = 3.0;
  */
 export class CameraController {
   private readonly cam: Phaser.Cameras.Scene2D.Camera;
+  private readonly minZoom: number;
   private readonly keys: {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
@@ -41,8 +42,10 @@ export class CameraController {
     scene: Phaser.Scene,
     worldWidth: number,
     worldHeight: number,
+    minZoom = DEFAULT_ZOOM_MIN,
   ) {
     this.cam = scene.cameras.main;
+    this.minZoom = minZoom;
     this.cam.setBounds(0, 0, worldWidth, worldHeight);
 
     // Registrera tangenter
@@ -156,7 +159,7 @@ export class CameraController {
         const oldZoom = this.cam.zoom;
         const newZoom = Phaser.Math.Clamp(
           oldZoom - Math.sign(dy) * ZOOM_STEP,
-          ZOOM_MIN,
+          this.minZoom,
           ZOOM_MAX,
         );
 

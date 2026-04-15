@@ -2,13 +2,15 @@ import Phaser from 'phaser';
 
 /**
  * BootScene — körs först vid start.
- * Ansvarar för att ladda in minimala assets innan spelet börjar.
- * I detta tidiga skede finns inga riktiga assets att ladda,
- * så vi går direkt vidare till MainMenuScene.
+ * Ansvarar för att ladda in assets innan spelet börjar.
  */
 export class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: 'BootScene' });
+  }
+
+  preload(): void {
+    this.load.json('scenario', '/europeScenario.json');
   }
 
   create(): void {

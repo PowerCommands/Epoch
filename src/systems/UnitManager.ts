@@ -1,9 +1,12 @@
 import { Unit } from '../entities/Unit';
+import type { UnitType } from '../entities/UnitType';
+import { WARRIOR, getUnitTypeById } from '../data/units';
 import { MapData, TileType } from '../types/map';
+import type { ScenarioUnit } from '../types/scenario';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 
-export type UnitChangedReason = 'moved' | 'movementReset';
+export type UnitChangedReason = 'created' | 'moved' | 'movementReset' | 'damaged' | 'removed';
 
 export interface UnitChangedEvent {
   unit: Unit;
@@ -12,13 +15,15 @@ export interface UnitChangedEvent {
 
 type UnitChangedListener = (event: UnitChangedEvent) => void;
 
-const DEFAULT_MOVEMENT_POINTS = 2;
+const PRODUCED_UNIT_ID_PREFIX = 'unit_produced';
 
 const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
-  nation_red: '1st Legion',
-  nation_blue: 'Coast Guard',
-  nation_green: 'Rangers',
-  nation_yellow: 'Sun Guard',
+  nation_england: 'Royal Guard',
+  nation_france: 'Garde Royale',
+  nation_hre: 'Reichsgarde',
+  nation_sweden: 'Livgardet',
+  nation_ottoman: 'Janissary',
+  nation_spain: 'Tercio',
 };
 
 /**
@@ -28,9 +33,39 @@ const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
 export class UnitManager {
   private readonly units = new Map<string, Unit>();
   private readonly listeners: UnitChangedListener[] = [];
+  private nextProducedUnitId = 1;
 
   addUnit(unit: Unit): void {
     this.units.set(unit.id, unit);
+  }
+
+  createUnit(config: {
+    type: UnitType;
+    ownerId: string;
+    tileX: number;
+    tileY: number;
+    movementPoints?: number;
+  }): Unit {
+    const unit = new Unit({
+      id: this.createProducedUnitId(config.type.id, config.ownerId),
+      name: config.type.name,
+      ownerId: config.ownerId,
+      tileX: config.tileX,
+      tileY: config.tileY,
+      unitType: config.type,
+      movementPoints: config.movementPoints,
+    });
+
+    this.units.set(unit.id, unit);
+    this.notify({ unit, reason: 'created' });
+    return unit;
+  }
+
+  removeUnit(unitId: string): void {
+    const unit = this.units.get(unitId);
+    if (!unit) return;
+    this.units.delete(unitId);
+    this.notify({ unit, reason: 'removed' });
   }
 
   getUnit(id: string): Unit | undefined {
@@ -72,16 +107,16 @@ export class UnitManager {
     }
   }
 
+  notifyDamaged(unit: Unit): void {
+    this.notify({ unit, reason: 'damaged' });
+  }
+
   onUnitChanged(listener: UnitChangedListener): void {
     this.listeners.push(listener);
   }
 
   /**
    * Skapa en UnitManager med en startenhet per nation.
-   *
-   * Enheten placeras intill huvudstaden i ordningen höger, vänster, ned, upp.
-   * Om alla fyra rutor är blockerade används först ägd landruta utan enhet
-   * som robust fallback så att varje nation fortfarande får exakt en enhet.
    */
   static createDefault(
     nationManager: NationManager,
@@ -108,7 +143,42 @@ export class UnitManager {
           ownerId: nation.id,
           tileX: position.x,
           tileY: position.y,
-          maxMovementPoints: DEFAULT_MOVEMENT_POINTS,
+          unitType: WARRIOR,
+        }),
+      );
+    }
+
+    return manager;
+  }
+
+  /**
+   * Create a UnitManager from scenario data.
+   * Maps unitTypeId string → UnitType object from data/units.ts.
+   * Skips units on ocean tiles.
+   */
+  static loadFromScenario(units: ScenarioUnit[], mapData: MapData): UnitManager {
+    const manager = new UnitManager();
+    let idx = 0;
+
+    for (const cfg of units) {
+      const unitType = getUnitTypeById(cfg.unitTypeId);
+      if (!unitType) {
+        console.warn(`[UnitManager] Unknown unitTypeId: ${cfg.unitTypeId}`);
+        continue;
+      }
+
+      const tile = mapData.tiles[cfg.tileY]?.[cfg.tileX];
+      if (!tile || tile.type === TileType.Ocean) continue;
+
+      idx++;
+      manager.addUnit(
+        new Unit({
+          id: `unit_${cfg.nationId}_start_${idx}`,
+          name: unitType.name,
+          ownerId: cfg.nationId,
+          tileX: cfg.tileX,
+          tileY: cfg.tileY,
+          unitType,
         }),
       );
     }
@@ -118,6 +188,12 @@ export class UnitManager {
 
   private notify(event: UnitChangedEvent): void {
     for (const listener of this.listeners) listener(event);
+  }
+
+  private createProducedUnitId(unitTypeId: string, ownerId: string): string {
+    const id = `${PRODUCED_UNIT_ID_PREFIX}_${ownerId}_${unitTypeId}_${this.nextProducedUnitId}`;
+    this.nextProducedUnitId += 1;
+    return id;
   }
 
   private static findAdjacentLandPosition(

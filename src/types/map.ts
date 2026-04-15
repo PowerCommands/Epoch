@@ -4,6 +4,9 @@ export enum TileType {
   Forest = 'forest',
   Mountain = 'mountain',
   Coast = 'coast',
+  Ice = 'ice',
+  Jungle = 'jungle',
+  Desert = 'desert',
 }
 
 export interface Tile {
