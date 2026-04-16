@@ -3,8 +3,7 @@ import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
 import type { MapData } from '../types/map';
 import { TileType } from '../types/map';
-import { WARRIOR, ARCHER, CAVALRY } from '../data/units';
-import { SETTLER } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, CAVALRY, SETTLER } from '../data/units';
 import { GRANARY, WORKSHOP, MARKET } from '../data/buildings';
 import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
@@ -18,6 +17,9 @@ import { FoundCitySystem } from './FoundCitySystem';
 const MAX_MILITARY = 3;
 const MAX_AI_CITIES = 3;
 const SETTLER_MIN_CITY_DISTANCE = 5;
+const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
+  unitType.baseStrength > 0 && !unitType.isNaval
+));
 
 const ADJACENT_OFFSETS = [
   { dx: 0, dy: -1 }, // N
@@ -198,6 +200,7 @@ export class AISystem {
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
+      if (unit.unitType.isNaval) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
@@ -253,7 +256,7 @@ export class AISystem {
   private isValidMoveTile(unit: Unit, tileX: number, tileY: number): boolean {
     const tile = this.mapData.tiles[tileY]?.[tileX];
     if (!tile) return false;
-    if (tile.type === TileType.Ocean) return false;
+    if (tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
 
     const occupant = this.unitManager.getUnitAt(tileX, tileY);
     if (occupant !== undefined && occupant.id !== unit.id) return false;
@@ -307,15 +310,15 @@ export class AISystem {
 
   private pickMilitaryUnit(nationId: string): UnitType {
     const units = this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.baseStrength > 0);
+      .filter((u) => u.unitType.baseStrength > 0 && !u.unitType.isNaval);
 
     const hasArcher = units.some((u) => u.unitType.id === 'archer');
     const hasCavalry = units.some((u) => u.unitType.id === 'cavalry');
 
     // Prioritize variety: warrior first (cheap), then archer, then cavalry
-    if (!hasArcher) return ARCHER;
-    if (!hasCavalry) return CAVALRY;
-    return WARRIOR;
+    if (!hasArcher) return MILITARY_OPTIONS.find((u) => u.id === ARCHER.id) ?? WARRIOR;
+    if (!hasCavalry) return MILITARY_OPTIONS.find((u) => u.id === CAVALRY.id) ?? WARRIOR;
+    return MILITARY_OPTIONS.find((u) => u.id === WARRIOR.id) ?? WARRIOR;
   }
 
   private needsDefender(city: City, nationId: string): boolean {

@@ -38,7 +38,34 @@ export const SETTLER: UnitType = {
   canFound: true,
 };
 
-export const ALL_UNIT_TYPES: UnitType[] = [WARRIOR, ARCHER, CAVALRY, SETTLER];
+export const FISHING_BOAT: UnitType = {
+  id: 'fishing_boat',
+  name: 'Fishing Boat',
+  productionCost: 8,
+  movementPoints: 2,
+  baseHealth: 40,
+  baseStrength: 0,
+  isNaval: true,
+};
+
+export const TRANSPORT_SHIP: UnitType = {
+  id: 'transport_ship',
+  name: 'Transport Ship',
+  productionCost: 14,
+  movementPoints: 3,
+  baseHealth: 80,
+  baseStrength: 0,
+  isNaval: true,
+};
+
+export const ALL_UNIT_TYPES: UnitType[] = [
+  WARRIOR,
+  ARCHER,
+  CAVALRY,
+  SETTLER,
+  FISHING_BOAT,
+  TRANSPORT_SHIP,
+];
 
 export function getUnitTypeById(id: string): UnitType | undefined {
   return ALL_UNIT_TYPES.find((unitType) => unitType.id === id);

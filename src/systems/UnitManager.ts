@@ -82,20 +82,73 @@ export class UnitManager {
 
   getUnitAt(tileX: number, tileY: number): Unit | undefined {
     for (const unit of this.units.values()) {
+      if (unit.transportId !== undefined) continue;
       if (unit.tileX === tileX && unit.tileY === tileY) return unit;
     }
     return undefined;
+  }
+
+  getUnitsAt(tileX: number, tileY: number): Unit[] {
+    const units = Array.from(this.units.values())
+      .filter((unit) => unit.tileX === tileX && unit.tileY === tileY);
+    return [
+      ...units.filter((unit) => unit.transportId === undefined),
+      ...units.filter((unit) => unit.transportId !== undefined),
+    ];
+  }
+
+  getTransportForUnit(unit: Unit): Unit | undefined {
+    if (unit.transportId === undefined) return undefined;
+    return this.units.get(unit.transportId);
+  }
+
+  getCargoForTransport(transport: Unit): Unit | undefined {
+    for (const unit of this.units.values()) {
+      if (unit.transportId === transport.id) return unit;
+    }
+    return undefined;
+  }
+
+  canBoardUnit(unit: Unit, transport: Unit): boolean {
+    if (unit.ownerId !== transport.ownerId) return false;
+    if (unit.unitType.isNaval || !transport.unitType.isNaval) return false;
+    if (unit.transportId !== undefined || transport.transportId !== undefined) return false;
+    return this.getCargoForTransport(transport) === undefined;
+  }
+
+  boardUnit(unitId: string, transportId: string, movementCost = 1): boolean {
+    const unit = this.units.get(unitId);
+    const transport = this.units.get(transportId);
+    if (unit === undefined || transport === undefined) return false;
+    if (!this.canBoardUnit(unit, transport)) return false;
+
+    unit.transportId = transport.id;
+    unit.tileX = transport.tileX;
+    unit.tileY = transport.tileY;
+    unit.movementPoints = Math.max(0, unit.movementPoints - movementCost);
+
+    this.notify({ unit, reason: 'moved' });
+    return true;
   }
 
   moveUnit(unitId: string, tileX: number, tileY: number, movementCost = 0): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
 
+    unit.transportId = undefined;
     unit.tileX = tileX;
     unit.tileY = tileY;
     unit.movementPoints = Math.max(0, unit.movementPoints - movementCost);
 
     this.notify({ unit, reason: 'moved' });
+
+    const cargo = this.getCargoForTransport(unit);
+    if (cargo !== undefined) {
+      cargo.tileX = tileX;
+      cargo.tileY = tileY;
+      this.notify({ unit: cargo, reason: 'moved' });
+    }
+
     return true;
   }
 
@@ -154,7 +207,7 @@ export class UnitManager {
   /**
    * Create a UnitManager from scenario data.
    * Maps unitTypeId string → UnitType object from data/units.ts.
-   * Skips units on ocean tiles.
+   * Skips land units on water tiles and naval units on land tiles.
    */
   static loadFromScenario(units: ScenarioUnit[], mapData: MapData): UnitManager {
     const manager = new UnitManager();
@@ -168,7 +221,12 @@ export class UnitManager {
       }
 
       const tile = mapData.tiles[cfg.tileY]?.[cfg.tileX];
-      if (!tile || tile.type === TileType.Ocean) continue;
+      if (!tile) continue;
+      if (unitType.isNaval) {
+        if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
+      } else if (tile.type === TileType.Ocean || tile.type === TileType.Coast) {
+        continue;
+      }
 
       idx++;
       manager.addUnit(
@@ -256,7 +314,7 @@ export class UnitManager {
   ): boolean {
     const tile = mapData.tiles[tileY]?.[tileX];
     if (tile === undefined) return false;
-    if (tile.type === TileType.Ocean) return false;
+    if (tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
     return manager.getUnitAt(tileX, tileY) === undefined;
   }
 }

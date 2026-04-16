@@ -1,27 +1,17 @@
-import { CITY_BASE_HEALTH } from '../data/cities';
-import type { City } from '../entities/City';
-import { CityManager } from '../systems/CityManager';
 import { NationManager } from '../systems/NationManager';
-import { ProductionSystem } from '../systems/ProductionSystem';
 import { TurnManager } from '../systems/TurnManager';
-import { UnitManager } from '../systems/UnitManager';
-import type { Producible } from '../types/producible';
 
 export class LeftPanel {
   private readonly root: HTMLElement;
   private readonly nationManager: NationManager;
-  private readonly cityManager: CityManager;
-  private readonly unitManager: UnitManager;
   private readonly turnManager: TurnManager;
-  private readonly productionSystem: ProductionSystem;
   private readonly humanNationId: string | undefined;
+  private endTurnCallback: (() => void) | null = null;
+  private selectedNationId: string | null = null;
 
   constructor(
     nationManager: NationManager,
-    cityManager: CityManager,
-    unitManager: UnitManager,
     turnManager: TurnManager,
-    productionSystem: ProductionSystem,
     humanNationId?: string,
   ) {
     const root = document.getElementById('panel-left');
@@ -29,10 +19,7 @@ export class LeftPanel {
 
     this.root = root;
     this.nationManager = nationManager;
-    this.cityManager = cityManager;
-    this.unitManager = unitManager;
     this.turnManager = turnManager;
-    this.productionSystem = productionSystem;
     this.humanNationId = humanNationId;
 
     this.refresh();
@@ -44,11 +31,37 @@ export class LeftPanel {
 
     this.root.append(
       this.renderTurnInfo(),
-      this.renderPlayerSummary(),
-      this.renderCityList(),
-      this.createSeparator(),
-      this.renderScoreboard(),
+      this.renderNationList(),
+      this.renderEndTurnButton(),
     );
+  }
+
+  setEndTurnCallback(cb: () => void): void {
+    this.endTurnCallback = cb;
+  }
+
+  setEndTurnEnabled(enabled: boolean): void {
+    const btn = document.getElementById('end-turn-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.textContent = enabled ? 'End Turn' : 'AI thinking...';
+    btn.style.opacity = enabled ? '1' : '0.4';
+    btn.style.pointerEvents = enabled ? 'auto' : 'none';
+  }
+
+  setSelectedNation(nationId: string | null): void {
+    this.selectedNationId = nationId;
+    const rows = this.root.querySelectorAll('.nation-row');
+    rows.forEach(row => {
+      const el = row as HTMLElement;
+      el.classList.toggle('nation-row-selected', el.dataset.nationId === nationId);
+    });
+  }
+
+  clearSelectedNation(): void {
+    this.selectedNationId = null;
+    const rows = this.root.querySelectorAll('.nation-row');
+    rows.forEach(row => (row as HTMLElement).classList.remove('nation-row-selected'));
   }
 
   private renderTurnInfo(): HTMLElement {
@@ -63,121 +76,73 @@ export class LeftPanel {
     return section;
   }
 
-  private renderPlayerSummary(): HTMLElement {
-    if (!this.humanNationId) return document.createElement('div');
-    const nation = this.nationManager.getNation(this.humanNationId);
-    if (!nation) return document.createElement('div');
-    const section = this.createSection(nation.name);
-
-    const resources = this.nationManager.getResources(this.humanNationId);
-    const cities = this.cityManager.getCitiesByOwner(this.humanNationId);
-    const units = this.unitManager.getUnitsByOwner(this.humanNationId);
-
-    section.append(
-      this.createNationNameRow(nation.name, nation.color),
-      this.createDiv('', `Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
-      this.createDiv('', `Cities: ${cities.length}`),
-      this.createDiv('', `Units: ${units.length}`),
-    );
-
-    return section;
-  }
-
-  private renderCityList(): HTMLElement {
-    if (!this.humanNationId) return document.createElement('div');
-    const nation = this.nationManager.getNation(this.humanNationId);
-    const section = this.createSection(`${nation?.name ?? 'Player'}'s Cities`);
-    const cities = this.cityManager.getCitiesByOwner(this.humanNationId);
-
-    if (cities.length === 0) {
-      section.append(this.createDiv('panel-muted', 'No cities'));
-      return section;
-    }
-
-    for (const city of cities) {
-      section.append(this.renderCityEntry(city));
-    }
-
-    return section;
-  }
-
-  private renderCityEntry(city: City): HTMLElement {
-    const wrapper = this.createDiv('');
-    wrapper.style.marginBottom = '10px';
-
-    const button = document.createElement('button');
-    button.className = 'panel-city-button';
-    button.type = 'button';
-    button.textContent = city.name;
-    button.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('focusCity', { detail: { cityId: city.id } }));
-    });
-
-    wrapper.append(
-      button,
-      createHpBar(city.health, CITY_BASE_HEALTH),
-      this.createDiv('panel-muted', this.getProductionText(city)),
-    );
-
-    return wrapper;
-  }
-
-  private renderScoreboard(): HTMLElement {
+  private renderNationList(): HTMLElement {
     const section = this.createSection('Nations');
 
     for (const nation of this.nationManager.getAllNations()) {
-      const cityCount = this.cityManager.getCitiesByOwner(nation.id).length;
-      const unitCount = this.unitManager.getUnitsByOwner(nation.id).length;
-      const row = this.createDiv(`panel-row${cityCount === 0 ? ' score-dead' : ''}`);
-      const dot = this.createDot(nation.color);
-      const text = document.createElement('span');
-      text.textContent = `${nation.name} | Cities ${cityCount} | Units ${unitCount}`;
-      row.append(dot, text);
+      const row = document.createElement('div');
+      row.className = 'nation-row';
+      if (this.selectedNationId === nation.id) {
+        row.classList.add('nation-row-selected');
+      }
+      row.dataset.nationId = nation.id;
+
+      const swatch = document.createElement('span');
+      swatch.className = 'nation-swatch';
+      swatch.style.background = toCssColor(nation.color);
+
+      const name = document.createElement('span');
+      name.className = 'nation-name';
+      name.textContent = nation.name;
+      if (nation.id === this.humanNationId) {
+        name.textContent += ' (You)';
+      }
+
+      row.append(swatch, name);
+      row.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('nationSelected', { detail: { nationId: nation.id } }));
+      });
+
       section.append(row);
     }
 
     return section;
   }
 
-  private getProductionText(city: City): string {
-    const production = this.productionSystem.getProduction(city.id);
-    if (!production) return 'Producing: none';
+  private renderEndTurnButton(): HTMLElement {
+    const btn = document.createElement('button');
+    btn.id = 'end-turn-btn';
+    btn.textContent = 'End Turn';
+    btn.style.cssText = `
+      width: 100%;
+      padding: 10px;
+      background: #8b0000;
+      color: white;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    `;
+    btn.addEventListener('mouseenter', () => {
+      if (!btn.disabled) btn.style.background = '#a00000';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = '#8b0000';
+    });
+    btn.addEventListener('click', () => {
+      if (this.endTurnCallback) this.endTurnCallback();
+    });
 
-    return `Producing: ${this.getProducibleName(production.item)} (${production.accumulated}/${this.getProducibleCost(production.item)})`;
-  }
-
-  private getProducibleName(item: Producible): string {
-    return item.kind === 'unit' ? item.unitType.name : item.buildingType.name;
-  }
-
-  private getProducibleCost(item: Producible): number {
-    return item.kind === 'unit' ? item.unitType.productionCost : item.buildingType.productionCost;
+    const wrapper = document.createElement('div');
+    wrapper.style.marginTop = 'auto';
+    wrapper.append(btn);
+    return wrapper;
   }
 
   private createSection(title: string): HTMLElement {
     const section = this.createDiv('panel-section');
     section.append(this.createDiv('panel-heading', title));
     return section;
-  }
-
-  private createNationNameRow(name: string, color: number): HTMLElement {
-    const row = this.createDiv('panel-row');
-    const label = document.createElement('strong');
-    label.textContent = name;
-    row.append(this.createDot(color), label);
-    return row;
-  }
-
-  private createDot(color: number): HTMLElement {
-    const dot = this.createDiv('panel-dot');
-    dot.style.background = toCssColor(color);
-    return dot;
-  }
-
-  private createSeparator(): HTMLElement {
-    const separator = document.createElement('hr');
-    separator.className = 'panel-separator';
-    return separator;
   }
 
   private createDiv(className: string, text?: string, color?: number): HTMLDivElement {
@@ -187,20 +152,6 @@ export class LeftPanel {
     if (color !== undefined) div.style.color = toCssColor(color);
     return div;
   }
-}
-
-function createHpBar(current: number, max: number): HTMLElement {
-  const outer = document.createElement('div');
-  outer.className = 'hp-bar';
-
-  const inner = document.createElement('div');
-  inner.className = 'hp-fill';
-  const percent = Math.max(0, Math.min(100, (current / max) * 100));
-  inner.style.width = `${percent}%`;
-  inner.style.background = percent < 25 ? '#a44' : percent < 50 ? '#ca4' : '#4a9';
-
-  outer.append(inner);
-  return outer;
 }
 
 function toCssColor(color: number): string {

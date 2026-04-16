@@ -88,8 +88,17 @@ export class SelectionManager {
     const tile = this.tileMap.worldToTile(worldX, worldY);
     if (tile === null) return null;
 
-    const unit = this.unitManager.getUnitAt(tile.x, tile.y);
-    if (unit !== undefined) return { kind: 'unit', unit };
+    const units = this.unitManager.getUnitsAt(tile.x, tile.y);
+    if (units.length > 0) {
+      if (this.selected?.kind === 'unit') {
+        const selectedUnitId = this.selected.unit.id;
+        const selectedIndex = units.findIndex((unit) => unit.id === selectedUnitId);
+        if (selectedIndex >= 0) {
+          return { kind: 'unit', unit: units[(selectedIndex + 1) % units.length] };
+        }
+      }
+      return { kind: 'unit', unit: units[0] };
+    }
 
     const city = this.cityManager.getCityAt(tile.x, tile.y);
     if (city !== undefined) return { kind: 'city', city };

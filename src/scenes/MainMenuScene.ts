@@ -1,46 +1,380 @@
 import Phaser from 'phaser';
+import { AVAILABLE_MAPS } from '../data/maps';
+import type { ScenarioData, ScenarioNation } from '../types/scenario';
+import type { GameConfig } from '../types/gameConfig';
 
 /**
- * MainMenuScene — spelets startskärm.
- * Visar spelets titel och en knapp för att starta spelet.
+ * MainMenuScene — game start screen.
+ * HTML overlay for map/nation/opponent selection.
  */
 export class MainMenuScene extends Phaser.Scene {
+  private overlay: HTMLDivElement | null = null;
+
   constructor() {
     super({ key: 'MainMenuScene' });
   }
 
   create(): void {
-    const { width, height } = this.scale;
+    this.overlay = document.createElement('div');
+    this.overlay.id = 'main-menu-overlay';
+    this.overlay.innerHTML = this.buildHTML();
+    document.body.appendChild(this.overlay);
+    this.injectStyles();
+    this.wireEvents();
 
-    // Titel
-    this.add
-      .text(width / 2, height / 2 - 60, 'Strategy Game', {
-        fontSize: '64px',
-        color: '#e8e8e8',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
+  }
 
-    // Klickbar "Start Game"-knapp
-    const startButton = this.add
-      .text(width / 2, height / 2 + 60, 'Start Game', {
-        fontSize: '32px',
-        color: '#a0c4ff',
-      })
-      .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true });
+  private cleanup(): void {
+    this.overlay?.remove();
+    this.overlay = null;
+    const style = document.getElementById('main-menu-styles');
+    style?.remove();
+  }
 
-    // Hover-effekter för att ge visuell återkoppling
-    startButton.on('pointerover', () => {
-      startButton.setStyle({ color: '#ffffff' });
+  private buildHTML(): string {
+    const mapOptions = AVAILABLE_MAPS
+      .map(m => `<option value="${m.key}">${m.label}</option>`)
+      .join('');
+
+    return `
+      <div class="mm-container">
+        <div class="mm-header">
+          <h1 class="mm-title">EPOCH</h1>
+          <p class="mm-subtitle">Turn-Based Strategy</p>
+        </div>
+
+        <div class="mm-section">
+          <label class="mm-label">SELECT MAP</label>
+          <select id="mm-map-select" class="mm-select">
+            ${mapOptions}
+          </select>
+        </div>
+
+        <div class="mm-section" id="mm-nation-section">
+          <label class="mm-label">CHOOSE YOUR NATION</label>
+          <div id="mm-nation-list" class="mm-nation-list"></div>
+        </div>
+
+        <div class="mm-section" id="mm-opponent-section" style="display:none">
+          <label class="mm-label">OPPONENTS</label>
+          <div id="mm-opponent-list" class="mm-opponent-list"></div>
+        </div>
+
+        <button id="mm-start-btn" class="mm-start-btn" disabled>START GAME</button>
+      </div>
+    `;
+  }
+
+  private wireEvents(): void {
+    const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement;
+    mapSelect.addEventListener('change', () => this.onMapChanged(mapSelect.value));
+    // Trigger initial load
+    this.onMapChanged(mapSelect.value);
+
+    document.getElementById('mm-start-btn')!.addEventListener('click', () => {
+      this.startGame();
+    });
+  }
+
+  private currentMapKey = '';
+  private nations: ScenarioNation[] = [];
+  private selectedNationId: string | null = null;
+  private selectedOpponentIds = new Set<string>();
+
+  private onMapChanged(mapKey: string): void {
+    this.currentMapKey = mapKey;
+    this.selectedNationId = null;
+    this.selectedOpponentIds.clear();
+
+    const json = this.cache.json.get(mapKey) as ScenarioData;
+    this.nations = json.nations;
+
+    this.renderNationList();
+    this.renderOpponentList();
+    this.updateStartButton();
+  }
+
+  private renderNationList(): void {
+    const container = document.getElementById('mm-nation-list')!;
+    container.innerHTML = '';
+
+    for (const nation of this.nations) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'mm-nation-card';
+      card.dataset.nationId = nation.id;
+
+      const dot = document.createElement('span');
+      dot.className = 'mm-nation-dot';
+      dot.style.background = nation.color;
+
+      const name = document.createElement('span');
+      name.textContent = nation.name;
+
+      card.append(dot, name);
+      card.addEventListener('click', () => this.selectNation(nation.id));
+      container.appendChild(card);
+    }
+  }
+
+  private selectNation(nationId: string): void {
+    this.selectedNationId = nationId;
+
+    // Update highlight
+    const cards = document.querySelectorAll('.mm-nation-card');
+    cards.forEach(card => {
+      const el = card as HTMLElement;
+      el.classList.toggle('selected', el.dataset.nationId === nationId);
     });
 
-    startButton.on('pointerout', () => {
-      startButton.setStyle({ color: '#a0c4ff' });
-    });
+    // Rebuild opponent list (exclude selected nation)
+    this.selectedOpponentIds.clear();
+    for (const n of this.nations) {
+      if (n.id !== nationId) this.selectedOpponentIds.add(n.id);
+    }
+    this.renderOpponentList();
+    this.updateStartButton();
+  }
 
-    startButton.on('pointerdown', () => {
-      this.scene.start('GameScene');
-    });
+  private renderOpponentList(): void {
+    const section = document.getElementById('mm-opponent-section')!;
+    const container = document.getElementById('mm-opponent-list')!;
+    container.innerHTML = '';
+
+    if (!this.selectedNationId) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+
+    for (const nation of this.nations) {
+      if (nation.id === this.selectedNationId) continue;
+
+      const row = document.createElement('label');
+      row.className = 'mm-opponent-row';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = this.selectedOpponentIds.has(nation.id);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          this.selectedOpponentIds.add(nation.id);
+        } else {
+          // Enforce at least 1 opponent
+          if (this.selectedOpponentIds.size <= 1) {
+            checkbox.checked = true;
+            return;
+          }
+          this.selectedOpponentIds.delete(nation.id);
+        }
+        this.updateStartButton();
+      });
+
+      const dot = document.createElement('span');
+      dot.className = 'mm-nation-dot';
+      dot.style.background = nation.color;
+
+      const name = document.createElement('span');
+      name.textContent = nation.name;
+
+      row.append(checkbox, dot, name);
+      container.appendChild(row);
+    }
+  }
+
+  private updateStartButton(): void {
+    const btn = document.getElementById('mm-start-btn') as HTMLButtonElement;
+    btn.disabled = !this.selectedNationId || this.selectedOpponentIds.size === 0;
+  }
+
+  private startGame(): void {
+    if (!this.selectedNationId) return;
+
+    const config: GameConfig = {
+      mapKey: this.currentMapKey,
+      humanNationId: this.selectedNationId,
+      activeNationIds: [this.selectedNationId, ...this.selectedOpponentIds],
+    };
+
+    this.cleanup();
+    this.scene.start('GameScene', config);
+  }
+
+  private injectStyles(): void {
+    if (document.getElementById('main-menu-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'main-menu-styles';
+    style.textContent = `
+      #main-menu-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        background: #0a0e14;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: 'Georgia', 'Times New Roman', serif;
+        color: #c8c8c8;
+      }
+
+      .mm-container {
+        width: 420px;
+        max-height: 90vh;
+        overflow-y: auto;
+        padding: 40px 30px;
+        text-align: center;
+      }
+
+      .mm-header {
+        margin-bottom: 36px;
+      }
+
+      .mm-title {
+        font-size: 72px;
+        font-weight: 700;
+        letter-spacing: 16px;
+        color: #d4a857;
+        margin: 0;
+        text-shadow: 0 2px 8px rgba(212, 168, 87, 0.3);
+      }
+
+      .mm-subtitle {
+        font-size: 14px;
+        letter-spacing: 4px;
+        color: #666;
+        margin: 8px 0 0;
+        text-transform: uppercase;
+      }
+
+      .mm-section {
+        margin-bottom: 24px;
+        text-align: left;
+      }
+
+      .mm-label {
+        display: block;
+        font-size: 11px;
+        letter-spacing: 2px;
+        color: #888;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .mm-select {
+        width: 100%;
+        padding: 10px 12px;
+        background: #151a22;
+        border: 1px solid #2a3040;
+        border-radius: 4px;
+        color: #c8c8c8;
+        font-size: 14px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      .mm-select:focus {
+        outline: none;
+        border-color: #d4a857;
+      }
+
+      .mm-nation-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .mm-nation-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: #151a22;
+        border: 1px solid #2a3040;
+        border-radius: 4px;
+        color: #c8c8c8;
+        font-size: 14px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+      }
+
+      .mm-nation-card:hover {
+        background: #1a2030;
+        border-color: #3a4a60;
+      }
+
+      .mm-nation-card.selected {
+        background: #1a2520;
+        border-color: #d4a857;
+        color: #fff;
+      }
+
+      .mm-nation-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+
+      .mm-opponent-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .mm-opponent-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        background: #151a22;
+        border: 1px solid #2a3040;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.15s;
+      }
+
+      .mm-opponent-row:hover {
+        background: #1a2030;
+      }
+
+      .mm-opponent-row input[type="checkbox"] {
+        accent-color: #d4a857;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+      }
+
+      .mm-start-btn {
+        display: block;
+        width: 100%;
+        padding: 14px;
+        margin-top: 28px;
+        background: #8b0000;
+        border: none;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+        font-family: inherit;
+        letter-spacing: 4px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      .mm-start-btn:hover:not(:disabled) {
+        background: #a50000;
+      }
+
+      .mm-start-btn:disabled {
+        background: #333;
+        color: #666;
+        cursor: not-allowed;
+      }
+    `;
+    document.head.appendChild(style);
   }
 }

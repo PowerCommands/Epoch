@@ -26,6 +26,7 @@ export class Unit {
   readonly maxMovementPoints: number;
   movementPoints: number;
   health: number;
+  transportId?: string;
 
   constructor(config: UnitConfig) {
     this.id = config.id;

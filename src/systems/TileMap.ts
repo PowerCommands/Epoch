@@ -1,17 +1,19 @@
 import Phaser from 'phaser';
 import { MapData, Tile, TileType } from '../types/map';
 
-/** Hex-färger per tile-typ, utan #-prefix (Phaser använder 0x-notation). */
-const TILE_COLORS: Record<TileType, number> = {
-  [TileType.Ocean]:    0x1e3a5f,
-  [TileType.Coast]:    0x4a7ba6,
-  [TileType.Plains]:   0x6b8e4e,
-  [TileType.Forest]:   0x3d5a2e,
-  [TileType.Mountain]: 0x6b6b6b,
-  [TileType.Ice]:      0xd8e8f0,
-  [TileType.Jungle]:   0x2a6e2a,
-  [TileType.Desert]:   0xd4b06a,
+/** Map TileType enum to terrain sprite texture key. */
+const TILE_TEXTURES: Record<TileType, string> = {
+  [TileType.Ocean]:    'terrain_ocean',
+  [TileType.Coast]:    'terrain_coast',
+  [TileType.Plains]:   'terrain_plains',
+  [TileType.Forest]:   'terrain_forest',
+  [TileType.Mountain]: 'terrain_mountain',
+  [TileType.Ice]:      'terrain_ice',
+  [TileType.Jungle]:   'terrain_jungle',
+  [TileType.Desert]:   'terrain_desert',
 };
+
+const TERRAIN_DEPTH = 0;
 
 /**
  * TileMap ansvarar för att hålla kartdata och rendera den till scenen.
@@ -120,13 +122,11 @@ export class TileMap {
   }
 
   /**
-   * Renderar kartan med ett enda Graphics-objekt.
-   * Ett Graphics-objekt är mer effektivt än tusentals enskilda rektanglar
-   * eftersom det bara kräver ett enda draw-call.
+   * Renders the map using one sprite per tile.
+   * Sprites are placed at top-left origin and set to lowest depth.
    */
   private render(scene: Phaser.Scene): void {
     const { width, height, tileSize, tiles } = this.data;
-    const gfx = scene.add.graphics();
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -134,25 +134,10 @@ export class TileMap {
         const px = x * tileSize;
         const py = y * tileSize;
 
-        // Fyll tile med rätt färg
-        gfx.fillStyle(TILE_COLORS[tile.type], 1);
-        gfx.fillRect(px, py, tileSize, tileSize);
+        const img = scene.add.image(px, py, TILE_TEXTURES[tile.type]);
+        img.setOrigin(0, 0);
+        img.setDepth(TERRAIN_DEPTH);
       }
-    }
-
-    // Rita grid-linjer i ett separat pass så de alltid syns ovanpå fyllningarna
-    gfx.lineStyle(1, 0x000000, 0.25);
-    for (let y = 0; y <= height; y++) {
-      gfx.beginPath();
-      gfx.moveTo(0, y * tileSize);
-      gfx.lineTo(width * tileSize, y * tileSize);
-      gfx.strokePath();
-    }
-    for (let x = 0; x <= width; x++) {
-      gfx.beginPath();
-      gfx.moveTo(x * tileSize, 0);
-      gfx.lineTo(x * tileSize, height * tileSize);
-      gfx.strokePath();
     }
   }
 }

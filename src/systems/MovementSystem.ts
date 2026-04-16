@@ -13,6 +13,16 @@ export function getTileMovementCost(tile: Tile): number {
   return 1;
 }
 
+const BOARDING_MOVEMENT_COST = 1;
+
+function isValidTileForUnit(tile: Tile, unit: Unit): boolean {
+  const naval = unit.unitType.isNaval === true;
+  if (naval) {
+    return tile.type === TileType.Ocean || tile.type === TileType.Coast;
+  }
+  return tile.type !== TileType.Ocean && tile.type !== TileType.Coast;
+}
+
 /**
  * MovementSystem äger rörelsereglerna för enheter.
  *
@@ -48,7 +58,13 @@ export class MovementSystem {
 
     const targetTile = this.tileMap.getTileAt(tileX, tileY);
     if (targetTile === null) return false;
-    if (targetTile.type === TileType.Ocean) return false;
+
+    const boardingTransport = this.getBoardingTransport(unit, tileX, tileY);
+    if (boardingTransport !== undefined) {
+      return unit.movementPoints >= BOARDING_MOVEMENT_COST;
+    }
+
+    if (!isValidTileForUnit(targetTile, unit)) return false;
 
     const cost = getTileMovementCost(targetTile);
     if (unit.movementPoints < cost) return false;
@@ -71,6 +87,15 @@ export class MovementSystem {
     const unit = currentSelection.unit;
     if (!this.canMoveUnitTo(unit, targetTile.x, targetTile.y)) return false;
 
+    const boardingTransport = this.getBoardingTransport(unit, targetTile.x, targetTile.y);
+    if (boardingTransport !== undefined) {
+      return this.unitManager.boardUnit(
+        unit.id,
+        boardingTransport.id,
+        BOARDING_MOVEMENT_COST,
+      );
+    }
+
     const cost = getTileMovementCost(targetTile);
     const didMove = this.unitManager.moveUnit(
       unit.id,
@@ -90,6 +115,14 @@ export class MovementSystem {
       return this.tileMap.getTileAt(selectable.city.tileX, selectable.city.tileY);
     }
     return this.tileMap.getTileAt(selectable.unit.tileX, selectable.unit.tileY);
+  }
+
+  private getBoardingTransport(unit: Unit, tileX: number, tileY: number): Unit | undefined {
+    if (unit.unitType.isNaval || unit.transportId !== undefined) return undefined;
+    const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
+    if (occupyingUnit === undefined) return undefined;
+    if (!this.unitManager.canBoardUnit(unit, occupyingUnit)) return undefined;
+    return occupyingUnit;
   }
 
   private isAdjacent(fromX: number, fromY: number, toX: number, toY: number): boolean {

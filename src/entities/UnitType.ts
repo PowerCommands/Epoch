@@ -7,4 +7,5 @@ export interface UnitType {
   readonly baseStrength: number;
   readonly canFound?: boolean;
   readonly range?: number;
+  readonly isNaval?: boolean;
 }

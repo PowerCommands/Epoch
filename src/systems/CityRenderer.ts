@@ -6,25 +6,19 @@ import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
 
 const CITY_DEPTH = 15;
-const OUTER_RADIUS = 14;
-const RING_THICKNESS = 4;
-const INNER_DOT_RADIUS = 4;
 
 const HP_BAR_WIDTH = 40;
 const HP_BAR_HEIGHT = 4;
-const HP_BAR_OFFSET_Y = OUTER_RADIUS + 6;
+const HP_BAR_OFFSET_Y = 20;
 const HP_BAR_BG_COLOR = 0x400000;
 
+const HIT_RADIUS = 20;
+
 /**
- * CityRenderer ritar en symbol för varje stad på kartan.
+ * CityRenderer draws a sprite for each city on the map.
  *
- * Varje stad representeras av en Phaser Container som innehåller:
- *   1. Vit fylld cirkel (bas)
- *   2. Ring i nationens färg
- *   3. Svart prick i mitten (kontrast)
- *
- * Containern lever i världskoordinater och skalar/flyttas automatiskt
- * med kameran.
+ * Uses `city_default` texture with nation color tint.
+ * Capital cities rendered at 1.2x scale.
  */
 export class CityRenderer {
   private readonly scene: Phaser.Scene;
@@ -55,20 +49,16 @@ export class CityRenderer {
   }
 
   /**
-   * Rita om en stads symbol (t.ex. efter ägarbyte) och HP-bar.
+   * Re-render city symbol (e.g. after ownership change) and HP bar.
    */
   refreshCity(city: City): void {
-    // Destroy old container
     const oldContainer = this.containers.get(city.id);
     if (oldContainer) {
       oldContainer.destroy();
       this.containers.delete(city.id);
     }
 
-    // Rerender with current owner color
     this.renderCity(city);
-
-    // Refresh HP bar
     this.refreshHpBar(city);
   }
 
@@ -77,15 +67,28 @@ export class CityRenderer {
     if (!nation) return;
 
     const { x: worldX, y: worldY } = this.tileMap.tileToWorld(city.tileX, city.tileY);
-    const container = this.createCitySymbol(nation.color);
-    container.setPosition(worldX, worldY);
+
+    const sprite = this.scene.add.image(0, 0, 'city_default');
+    sprite.setTint(nation.color);
+
+    if (city.isCapital) {
+      sprite.setScale(1.2);
+    }
+
+    const container = this.scene.add.container(worldX, worldY, [sprite]);
     container.setDepth(CITY_DEPTH);
+
+    // Interactive hit area — circle matching old behavior
+    container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);
+    container.setInteractive(
+      new Phaser.Geom.Circle(0, 0, HIT_RADIUS),
+      Phaser.Geom.Circle.Contains,
+    );
 
     this.containers.set(city.id, container);
   }
 
-  private refreshHpBar(city: City): void {
-    // Only show if damaged
+  refreshHpBar(city: City): void {
     if (city.health >= CITY_BASE_HEALTH) {
       const existing = this.hpBars.get(city.id);
       if (existing) {
@@ -110,11 +113,9 @@ export class CityRenderer {
     const barX = -HP_BAR_WIDTH / 2;
     const barY = HP_BAR_OFFSET_Y;
 
-    // Background
     gfx.fillStyle(HP_BAR_BG_COLOR, 0.8);
     gfx.fillRect(barX, barY, HP_BAR_WIDTH, HP_BAR_HEIGHT);
 
-    // Foreground — color based on HP ratio
     let color: number;
     if (hpRatio > 0.66) {
       color = 0x40c040;
@@ -126,34 +127,5 @@ export class CityRenderer {
 
     gfx.fillStyle(color, 1);
     gfx.fillRect(barX, barY, HP_BAR_WIDTH * hpRatio, HP_BAR_HEIGHT);
-  }
-
-  private createCitySymbol(
-    nationColor: number,
-  ): Phaser.GameObjects.Container {
-    const gfx = this.scene.add.graphics();
-
-    // 1. Vit fylld cirkel
-    gfx.fillStyle(0xffffff, 1);
-    gfx.fillCircle(0, 0, OUTER_RADIUS);
-
-    // 2. Ring i nationens färg
-    gfx.lineStyle(RING_THICKNESS, nationColor, 1);
-    gfx.strokeCircle(0, 0, OUTER_RADIUS);
-
-    // 3. Svart prick i mitten
-    gfx.fillStyle(0x000000, 1);
-    gfx.fillCircle(0, 0, INNER_DOT_RADIUS);
-
-    const container = this.scene.add.container(0, 0, [gfx]);
-
-    // Cirkulär hit area för klick/hover
-    container.setSize(OUTER_RADIUS * 2, OUTER_RADIUS * 2);
-    container.setInteractive(
-      new Phaser.Geom.Circle(0, 0, OUTER_RADIUS + RING_THICKNESS / 2),
-      Phaser.Geom.Circle.Contains,
-    );
-
-    return container;
   }
 }

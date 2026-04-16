@@ -15,7 +15,7 @@ export class Nation {
   readonly id: string;
   readonly name: string;
   readonly color: number;
-  readonly isHuman: boolean;
+  isHuman: boolean;
 
   constructor(config: NationConfig) {
     this.id = config.id;

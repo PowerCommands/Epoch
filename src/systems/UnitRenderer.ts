@@ -4,18 +4,27 @@ import { UnitManager } from './UnitManager';
 import { NationManager } from './NationManager';
 
 const UNIT_DEPTH = 18;
-const UNIT_RADIUS = 11;
-const OUTLINE_THICKNESS = 3;
-const CENTER_RADIUS = 4;
 
 const HP_BAR_WIDTH = 32;
 const HP_BAR_HEIGHT = 4;
-const HP_BAR_OFFSET_Y = UNIT_RADIUS + 6;
+const HP_BAR_OFFSET_Y = 20;
 const HP_BAR_BG_COLOR = 0x400000;
 
+const HIT_RADIUS = 16;
+
+const TEXTURE_MAP: Record<string, string> = {
+  warrior: 'unit_warrior',
+  archer: 'unit_archer',
+  cavalry: 'unit_cavalry',
+  settler: 'unit_settler',
+  fishing_boat: 'unit_fishing_boat',
+  transport_ship: 'unit_transport_ship',
+};
+
 /**
- * UnitRenderer ritar kartans enheter, HP-bars, och håller en stabil
- * unitId -> container-map.
+ * UnitRenderer draws sprites for units on the map.
+ *
+ * Uses per-unit-type textures with nation color tint.
  */
 export class UnitRenderer {
   private readonly scene: Phaser.Scene;
@@ -62,10 +71,11 @@ export class UnitRenderer {
     const container = this.containers.get(unitId);
     if (unit === undefined || container === undefined) return;
 
-    const { x, y } = this.tileMap.tileToWorld(unit.tileX, unit.tileY);
+    const { x, y } = this.getUnitWorldPosition(unitId);
     container.setPosition(x, y);
+    container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
+    container.setScale(unit.transportId ? 0.75 : 1);
 
-    // Move HP bar too
     const hpBar = this.hpBars.get(unitId);
     if (hpBar) {
       hpBar.setPosition(x, y);
@@ -95,10 +105,21 @@ export class UnitRenderer {
     const nation = this.nationManager.getNation(unit.ownerId);
     if (nation === undefined) return;
 
-    const container = this.createUnitSymbol(nation.color);
-    const { x, y } = this.tileMap.tileToWorld(unit.tileX, unit.tileY);
+    const textureKey = TEXTURE_MAP[unit.unitType.id] ?? 'unit_warrior';
+    const sprite = this.scene.add.image(0, 0, textureKey);
+    sprite.setTint(nation.color);
+
+    const container = this.scene.add.container(0, 0, [sprite]);
+    container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);
+    container.setInteractive(
+      new Phaser.Geom.Circle(0, 0, HIT_RADIUS),
+      Phaser.Geom.Circle.Contains,
+    );
+
+    const { x, y } = this.getUnitWorldPosition(unit.id);
     container.setPosition(x, y);
-    container.setDepth(UNIT_DEPTH);
+    container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
+    container.setScale(unit.transportId ? 0.75 : 1);
 
     this.containers.set(unit.id, container);
   }
@@ -107,7 +128,6 @@ export class UnitRenderer {
     const unit = this.unitManager.getUnit(unitId);
     if (!unit) return;
 
-    // Only show HP bar if damaged
     if (unit.health >= unit.unitType.baseHealth) {
       const existing = this.hpBars.get(unitId);
       if (existing) {
@@ -117,7 +137,7 @@ export class UnitRenderer {
       return;
     }
 
-    const { x, y } = this.tileMap.tileToWorld(unit.tileX, unit.tileY);
+    const { x, y } = this.getUnitWorldPosition(unitId);
     let gfx = this.hpBars.get(unitId);
     if (!gfx) {
       gfx = this.scene.add.graphics();
@@ -132,11 +152,9 @@ export class UnitRenderer {
     const barX = -HP_BAR_WIDTH / 2;
     const barY = HP_BAR_OFFSET_Y;
 
-    // Background
     gfx.fillStyle(HP_BAR_BG_COLOR, 0.8);
     gfx.fillRect(barX, barY, HP_BAR_WIDTH, HP_BAR_HEIGHT);
 
-    // Foreground — color based on HP ratio
     let color: number;
     if (hpRatio > 0.66) {
       color = 0x40c040;
@@ -150,25 +168,12 @@ export class UnitRenderer {
     gfx.fillRect(barX, barY, HP_BAR_WIDTH * hpRatio, HP_BAR_HEIGHT);
   }
 
-  private createUnitSymbol(nationColor: number): Phaser.GameObjects.Container {
-    const gfx = this.scene.add.graphics();
+  private getUnitWorldPosition(unitId: string): { x: number; y: number } {
+    const unit = this.unitManager.getUnit(unitId);
+    if (!unit) return { x: 0, y: 0 };
 
-    gfx.fillStyle(nationColor, 1);
-    gfx.fillCircle(0, 0, UNIT_RADIUS);
-
-    gfx.lineStyle(OUTLINE_THICKNESS, 0xffffff, 1);
-    gfx.strokeCircle(0, 0, UNIT_RADIUS);
-
-    gfx.fillStyle(0x000000, 1);
-    gfx.fillCircle(0, 0, CENTER_RADIUS);
-
-    const container = this.scene.add.container(0, 0, [gfx]);
-    container.setSize(UNIT_RADIUS * 2, UNIT_RADIUS * 2);
-    container.setInteractive(
-      new Phaser.Geom.Circle(0, 0, UNIT_RADIUS + OUTLINE_THICKNESS),
-      Phaser.Geom.Circle.Contains,
-    );
-
-    return container;
+    const base = this.tileMap.tileToWorld(unit.tileX, unit.tileY);
+    if (unit.transportId === undefined) return base;
+    return { x: base.x + 12, y: base.y - 12 };
   }
 }

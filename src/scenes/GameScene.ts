@@ -20,14 +20,15 @@ import { AISystem } from '../systems/AISystem';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
 import { DebugHUD } from '../ui/DebugHUD';
-import { EndTurnButton } from '../ui/EndTurnButton';
 import { CombatLog } from '../ui/CombatLog';
 import { LeftPanel } from '../ui/LeftPanel';
 import { RightPanel } from '../ui/RightPanel';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
+import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
+import type { GameConfig } from '../types/gameConfig';
 
 /**
  * GameScene — huvudspelscenen.
@@ -43,29 +44,40 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
-  create(): void {
+  create(data: GameConfig): void {
     // ─── Data & system ───────────────────────────────────────────────────────
 
-    // 1. Parse scenario (preloaded by BootScene)
-    const scenarioJson = this.cache.json.get('scenario') as ScenarioData;
+    // 1. Parse scenario using map key from config
+    const scenarioJson = this.cache.json.get(data.mapKey) as ScenarioData;
     const scenario = ScenarioLoader.parse(scenarioJson);
     const mapData = scenario.mapData;
 
-    // 2. Create nations and claim start territories (mutates mapData.tiles)
-    const nationManager = NationManager.loadFromScenario(scenario.nations, mapData);
+    // 2. Filter to active nations only, set isHuman from config
+    const activeSet = new Set(data.activeNationIds);
+    const activeNations = scenario.nations.filter(n => activeSet.has(n.id));
+    const activeCities = scenario.cities.filter(c => activeSet.has(c.nationId));
+    const activeUnits = scenario.units.filter(u => activeSet.has(u.nationId));
 
-    // 3. Render terrain (depth 0)
+    // 3. Create nations and claim start territories (mutates mapData.tiles)
+    const nationManager = NationManager.loadFromScenario(activeNations, mapData);
+
+    // Override isHuman from config (ignore JSON values)
+    for (const nation of nationManager.getAllNations()) {
+      nation.isHuman = nation.id === data.humanNationId;
+    }
+
+    // 4. Render terrain (depth 0)
     const tileMap = new TileMap(this, mapData);
 
-    // 4. Render territory overlay (depth 5)
+    // 5. Render territory overlay (depth 5)
     const territoryRenderer = new TerritoryRenderer(this, tileMap, nationManager, mapData);
     territoryRenderer.render();
 
-    // 5. Create cities from scenario
-    const cityManager = CityManager.loadFromScenario(scenario.cities, mapData);
+    // 6. Create cities from scenario (filtered)
+    const cityManager = CityManager.loadFromScenario(activeCities, mapData);
 
-    // 6. Create units from scenario
-    const unitManager = UnitManager.loadFromScenario(scenario.units, mapData);
+    // 7. Create units from scenario (filtered)
+    const unitManager = UnitManager.loadFromScenario(activeUnits, mapData);
 
     // 7. Kamerakontroll
     const { width: worldWidth, height: worldHeight } = tileMap.getWorldBounds();
@@ -150,7 +162,7 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
 
-      const placement = this.findUnitPlacementTile(tileMap, unitManager, city);
+      const placement = this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType);
       if (placement === null) return false;
 
       unitManager.createUnit({
@@ -208,13 +220,18 @@ export class GameScene extends Phaser.Scene {
 
     this.debugHUD = new DebugHUD(this);
 
-    new EndTurnButton(this, turnManager);
-
     const humanNationId = nationManager.getHumanNationId();
-    leftPanel = new LeftPanel(
-      nationManager, cityManager, unitManager, turnManager, productionSystem, humanNationId,
+    leftPanel = new LeftPanel(nationManager, turnManager, humanNationId);
+    leftPanel.setEndTurnCallback(() => turnManager.endCurrentTurn());
+
+    rightPanel = new RightPanel(
+      productionSystem,
+      cityManager,
+      unitManager,
+      nationManager,
+      mapData,
+      humanNationId,
     );
-    rightPanel = new RightPanel(productionSystem, cityManager, unitManager, nationManager, humanNationId);
     rightPanel.setFoundCityHandler(
       (unit) => foundCitySystem.canFound(unit),
       (unit) => {
@@ -227,7 +244,17 @@ export class GameScene extends Phaser.Scene {
 
     new CombatLog(this, combatSystem, nationManager);
 
-    turnManager.on('turnStart', () => leftPanel?.refresh());
+    turnManager.on('turnStart', () => {
+      leftPanel?.refresh();
+      const activeNation = turnManager.getCurrentNation();
+      leftPanel?.setEndTurnEnabled(activeNation.isHuman);
+      if (rightPanel?.getCurrentCity()) {
+        rightPanel.refreshProductionQueue(rightPanel.getCurrentCity()!.id);
+      }
+      if (rightPanel?.getView() === 'nation') {
+        rightPanel.refreshNationView();
+      }
+    });
     turnManager.on('roundStart', () => leftPanel?.refresh());
     resourceSystem.on(() => leftPanel?.refresh());
     unitManager.onUnitChanged(() => {
@@ -239,8 +266,9 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.refreshCurrent();
     });
 
-    // Koppla selection → rätt panel
+    // Map selection → right panel (clears nation highlight)
     selectionManager.onSelectionChanged((selection) => {
+      leftPanel?.clearSelectedNation();
       if (selection?.kind === 'tile') {
         rightPanel?.showTile(selection.tile);
       } else if (selection?.kind === 'city') {
@@ -251,6 +279,14 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.clear();
       }
     });
+
+    // Nation selected from LeftPanel list
+    const onNationSelected = (event: Event) => {
+      const { nationId } = (event as CustomEvent<{ nationId: string }>).detail;
+      rightPanel?.showNation(nationId);
+      leftPanel?.setSelectedNation(nationId);
+    };
+    document.addEventListener('nationSelected', onNationSelected);
 
     const onFocusCity = (event: Event) => {
       const cityId = (event as CustomEvent<{ cityId: string }>).detail.cityId;
@@ -265,6 +301,7 @@ export class GameScene extends Phaser.Scene {
     window.addEventListener('focusCity', onFocusCity);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener('focusCity', onFocusCity);
+      document.removeEventListener('nationSelected', onNationSelected);
     });
 
     // Victory overlay
@@ -323,19 +360,26 @@ export class GameScene extends Phaser.Scene {
     tileMap: TileMap,
     unitManager: UnitManager,
     city: City,
+    unitType: UnitType,
   ): { x: number; y: number } | null {
-    const candidates = [
-      { x: city.tileX, y: city.tileY },
+    const adjacentCandidates = [
       { x: city.tileX, y: city.tileY - 1 },
       { x: city.tileX + 1, y: city.tileY },
       { x: city.tileX, y: city.tileY + 1 },
       { x: city.tileX - 1, y: city.tileY },
     ];
+    const candidates = unitType.isNaval
+      ? adjacentCandidates
+      : [{ x: city.tileX, y: city.tileY }, ...adjacentCandidates];
 
     for (const candidate of candidates) {
       const tile = tileMap.getTileAt(candidate.x, candidate.y);
       if (tile === null) continue;
-      if (tile.type === TileType.Ocean) continue;
+      if (unitType.isNaval) {
+        if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
+      } else if (tile.type === TileType.Ocean || tile.type === TileType.Coast) {
+        continue;
+      }
       if (unitManager.getUnitAt(candidate.x, candidate.y) !== undefined) continue;
       return candidate;
     }

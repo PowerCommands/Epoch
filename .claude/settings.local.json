@@ -9,7 +9,11 @@
       "Bash(npx tsc:*)",
       "Bash(node -e \"const j=require\\('./public/europeScenario.json'\\); console.log\\('meta:', JSON.stringify\\(j.meta\\)\\); console.log\\('map keys:', Object.keys\\(j.map\\)\\); console.log\\('map dims:', j.map.width, j.map.height, j.map.tileSize\\); console.log\\('nations:', j.nations.length, JSON.stringify\\(j.nations[0]\\)\\); console.log\\('cities:', j.cities.length, JSON.stringify\\(j.cities[0]\\)\\); console.log\\('units:', j.units.length, JSON.stringify\\(j.units[0]\\)\\);\")",
       "Bash(npx tsx *)",
-      "Bash(pkill -f \"vite\")"
+      "Bash(pkill -f \"vite\")",
+      "Bash(docker stop *)",
+      "Bash(docker start *)",
+      "Bash(docker run *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

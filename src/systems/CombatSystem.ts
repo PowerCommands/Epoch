@@ -125,6 +125,11 @@ export class CombatSystem {
   }
 
   private executeUnitCombat(attacker: Unit, target: Unit, isRanged = false): boolean {
+    if (!isRanged && !attacker.unitType.isNaval && target.unitType.isNaval) {
+      this.notifyRejected(attacker, target, 'Land units cannot melee attack naval units');
+      return false;
+    }
+
     const result = isRanged
       ? resolveRangedCombat(attacker, target)
       : resolveCombat(attacker, target);
