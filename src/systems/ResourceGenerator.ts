@@ -1,7 +1,8 @@
 import type { Nation } from '../entities/Nation';
 import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
-import { getBuildingById } from '../data/buildings';
+import type { MapData } from '../types/map';
+import { calculateCityEconomy } from './CityEconomy';
 
 /**
  * Interface for resource generation. Pluggable — swap implementation
@@ -12,50 +13,40 @@ export interface IResourceGenerator {
     nation: Nation,
     cities: City[],
     buildingsLookup: (cityId: string) => CityBuildings,
+    mapData: MapData,
   ): number;
-  calculateCityFoodPerTurn(city: City, buildings: CityBuildings): number;
-  calculateCityProductionPerTurn(city: City, buildings: CityBuildings): number;
+  calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number;
+  calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number;
+  calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number;
 }
 
 /**
- * Simple implementation: flat amount per city + building modifiers.
+ * Simple map-driven implementation: city output comes from worked local tiles
+ * plus building modifiers.
  */
-export class FlatResourceGenerator implements IResourceGenerator {
-  static readonly GOLD_PER_CITY = 3;
-  static readonly FOOD_PER_CITY = 2;
-  static readonly PRODUCTION_PER_CITY = 2;
-
+export class TileResourceGenerator implements IResourceGenerator {
   calculateNationGoldPerTurn(
     _nation: Nation,
     cities: City[],
     buildingsLookup: (cityId: string) => CityBuildings,
+    mapData: MapData,
   ): number {
-    let total = cities.length * FlatResourceGenerator.GOLD_PER_CITY;
+    let total = 0;
     for (const city of cities) {
-      const b = buildingsLookup(city.id);
-      for (const id of b.getAll()) {
-        const def = getBuildingById(id);
-        if (def?.modifiers.goldPerTurn) total += def.modifiers.goldPerTurn;
-      }
+      total += this.calculateCityGoldPerTurn(city, buildingsLookup(city.id), mapData);
     }
     return total;
   }
 
-  calculateCityFoodPerTurn(_city: City, buildings: CityBuildings): number {
-    let base = FlatResourceGenerator.FOOD_PER_CITY;
-    for (const id of buildings.getAll()) {
-      const b = getBuildingById(id);
-      if (b?.modifiers.foodPerTurn) base += b.modifiers.foodPerTurn;
-    }
-    return base;
+  calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number {
+    return calculateCityEconomy(city, mapData, buildings).food;
   }
 
-  calculateCityProductionPerTurn(_city: City, buildings: CityBuildings): number {
-    let base = FlatResourceGenerator.PRODUCTION_PER_CITY;
-    for (const id of buildings.getAll()) {
-      const b = getBuildingById(id);
-      if (b?.modifiers.productionPerTurn) base += b.modifiers.productionPerTurn;
-    }
-    return base;
+  calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number {
+    return calculateCityEconomy(city, mapData, buildings).production;
+  }
+
+  calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number {
+    return calculateCityEconomy(city, mapData, buildings).gold;
   }
 }

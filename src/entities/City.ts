@@ -22,6 +22,8 @@ export class City {
   readonly tileY: number;
   readonly isCapital: boolean;
   health: number;
+  population: number;
+  foodStorage: number;
   lastTurnAttacked: number | null = null;
 
   constructor(config: CityConfig) {
@@ -32,6 +34,8 @@ export class City {
     this.tileY = config.tileY;
     this.isCapital = config.isCapital ?? false;
     this.health = CITY_BASE_HEALTH;
+    this.population = 1;
+    this.foodStorage = 0;
   }
 
   get isDamaged(): boolean {

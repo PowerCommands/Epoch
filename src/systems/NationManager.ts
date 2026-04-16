@@ -1,46 +1,10 @@
 import { Nation } from '../entities/Nation';
 import { NationResources } from '../entities/NationResources';
-import { MapData, TileType } from '../types/map';
+import { MapData } from '../types/map';
+import { DEFAULT_AI_PROFILE } from '../types/ai';
 import type { ScenarioNation } from '../types/scenario';
 
-/** Tile-typer som kan ägas av en nation. */
-const CLAIMABLE_TYPES = new Set<TileType>([
-  TileType.Plains,
-  TileType.Forest,
-  TileType.Mountain,
-  TileType.Jungle,
-  TileType.Desert,
-]);
-
-/**
- * Search outward in expanding rings for nearest non-ocean tile.
- * Returns null if none found within maxRadius.
- */
-function findNearestLandTile(
-  col: number,
-  row: number,
-  mapData: MapData,
-  maxRadius: number,
-): { x: number; y: number } | null {
-  // Check center first
-  const center = mapData.tiles[row]?.[col];
-  if (center && center.type !== TileType.Ocean) return { x: col, y: row };
-
-  for (let r = 1; r <= maxRadius; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        // Only check tiles on the ring perimeter
-        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
-        const tx = col + dx;
-        const ty = row + dy;
-        const tile = mapData.tiles[ty]?.[tx];
-        if (tile && tile.type !== TileType.Ocean) return { x: tx, y: ty };
-      }
-    }
-  }
-
-  return null;
-}
+const INITIAL_CLAIM_SIZE = 3;
 
 /**
  * NationManager är "single source of truth" för all nationsdata.
@@ -90,7 +54,7 @@ export class NationManager {
 
   /**
    * Skapa en NationManager med 6 historical nations on the Europe map.
-   * Each nation gets a 5×5 claimed territory centered on their capital.
+   * Each nation gets a 3×3 claimed territory centered on their capital.
    */
   static createDefault(mapData: MapData): NationManager {
     const manager = new NationManager();
@@ -105,16 +69,8 @@ export class NationManager {
     ];
 
     for (const cfg of configs) {
-      const land = findNearestLandTile(cfg.cx, cfg.cy, mapData, 5);
-      const actualX = land?.x ?? cfg.cx;
-      const actualY = land?.y ?? cfg.cy;
-
-      console.log(
-        `[NationManager] ${cfg.name}: target (${cfg.cx},${cfg.cy}) → actual (${actualX},${actualY})`,
-      );
-
       manager.addNation(new Nation({ id: cfg.id, name: cfg.name, color: cfg.color }));
-      NationManager.claimArea(mapData, cfg.id, actualX, actualY, 5);
+      NationManager.claimArea(mapData, cfg.id, cfg.cx, cfg.cy, INITIAL_CLAIM_SIZE);
     }
 
     return manager;
@@ -122,19 +78,27 @@ export class NationManager {
 
   /**
    * Create a NationManager from scenario data.
-   * Each nation gets a 5×5 claimed territory centered on startTerritoryCenter.
+   * Each nation gets a 3×3 claimed territory centered on startTerritoryCenter.
    */
   static loadFromScenario(nations: ScenarioNation[], mapData: MapData): NationManager {
     const manager = new NationManager();
 
     for (const cfg of nations) {
       const color = parseInt(cfg.color.replace('#', ''), 16);
-      const land = findNearestLandTile(cfg.startTerritoryCenter.x, cfg.startTerritoryCenter.y, mapData, 5);
-      const actualX = land?.x ?? cfg.startTerritoryCenter.x;
-      const actualY = land?.y ?? cfg.startTerritoryCenter.y;
-
-      manager.addNation(new Nation({ id: cfg.id, name: cfg.name, color, isHuman: cfg.isHuman }));
-      NationManager.claimArea(mapData, cfg.id, actualX, actualY, 5);
+      manager.addNation(new Nation({
+        id: cfg.id,
+        name: cfg.name,
+        color,
+        isHuman: cfg.isHuman,
+        aiProfile: cfg.isHuman ? undefined : DEFAULT_AI_PROFILE,
+      }));
+      NationManager.claimArea(
+        mapData,
+        cfg.id,
+        cfg.startTerritoryCenter.x,
+        cfg.startTerritoryCenter.y,
+        INITIAL_CLAIM_SIZE,
+      );
     }
 
     return manager;
@@ -142,7 +106,7 @@ export class NationManager {
 
   /**
    * Tilldela en fyrkant av tiles till en nation.
-   * Bara tiles med claimable terrängtyp (Plains/Forest/Mountain) påverkas.
+   * Alla terrängtyper, inklusive Ocean och Coast, kan ägas.
    * Tiles already claimed by another nation are skipped.
    */
   private static claimArea(
@@ -162,7 +126,7 @@ export class NationManager {
         if (tx < 0 || ty < 0 || tx >= mapData.width || ty >= mapData.height) continue;
 
         const tile = mapData.tiles[ty][tx];
-        if (CLAIMABLE_TYPES.has(tile.type) && !tile.ownerId) {
+        if (!tile.ownerId) {
           tile.ownerId = nationId;
         }
       }

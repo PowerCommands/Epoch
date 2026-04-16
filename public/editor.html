@@ -55,6 +55,25 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 }
 #save-btn:hover { background: #2a4a3a; }
 
+.field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; font-size: 11px; color: #aaa; }
+.field input, .field select {
+  width: 100%; background: #151515; border: 1px solid #444; border-radius: 3px;
+  color: #ddd; font: inherit; font-size: 12px; padding: 5px;
+}
+.inline-field { display: flex; align-items: center; gap: 6px; }
+.inline-field input[type="color"] { width: 34px; height: 28px; padding: 1px; }
+.small-btn {
+  width: 100%; border: 1px solid #555; border-radius: 3px; padding: 6px 8px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px; cursor: pointer;
+}
+.small-btn:hover { border-color: #888; background: #333; }
+.hint { font-size: 10px; color: #777; line-height: 1.35; margin-top: 5px; }
+.warning-box {
+  display: none; white-space: pre-wrap; font-size: 10px; line-height: 1.35;
+  color: #f3ca72; background: #302615; border: 1px solid #6c5420;
+  border-radius: 3px; padding: 6px; margin-top: 8px;
+}
+
 #viewport { flex: 1; position: relative; overflow: hidden; cursor: crosshair; }
 #canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
 
@@ -75,7 +94,33 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div class="tool-btns" id="tool-btns">
         <button class="tool-btn active" data-tool="paint">Paint Terrain</button>
         <button class="tool-btn" data-tool="move">Move City / Unit</button>
+        <button class="tool-btn" data-tool="setStart">Set Start Position</button>
+        <button class="tool-btn" data-tool="addCity">Add City</button>
+        <button class="tool-btn" data-tool="addUnit">Add Unit</button>
       </div>
+    </div>
+
+    <div class="section" id="nation-section">
+      <div class="section-title">Nations</div>
+      <div class="entity-list" id="nation-list"></div>
+      <div class="section-title" style="margin-top:8px">Create Nation</div>
+      <label class="field">
+        Nation Name
+        <input id="nation-name-input" type="text" placeholder="Morocco">
+      </label>
+      <label class="field">
+        Nation ID
+        <input id="nation-id-input" type="text" placeholder="nation_morocco">
+      </label>
+      <label class="field">
+        Color
+        <span class="inline-field">
+          <input id="nation-color-input" type="color" value="#8e44ad">
+          <input id="nation-color-hex-input" type="text" value="#8e44ad" maxlength="7">
+        </span>
+      </label>
+      <button class="small-btn" id="add-nation-btn">Add Nation</button>
+      <div class="hint" id="selected-nation-info">No nation selected.</div>
     </div>
 
     <div class="section" id="palette-section">
@@ -90,6 +135,21 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div class="entity-list" id="unit-list"></div>
     </div>
 
+    <div class="section" id="unit-tool-section" style="display:none">
+      <div class="section-title">Unit Type</div>
+      <label class="field">
+        Type
+        <select id="unit-type-select">
+          <option value="warrior">warrior</option>
+          <option value="archer">archer</option>
+          <option value="cavalry">cavalry</option>
+          <option value="settler">settler</option>
+          <option value="fishing_boat">fishing_boat</option>
+          <option value="transport_ship">transport_ship</option>
+        </select>
+      </label>
+    </div>
+
     <div class="section">
       <div class="section-title">Brush</div>
       <label style="font-size:12px; display:flex; align-items:center; gap:6px;">
@@ -99,6 +159,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     </div>
 
     <button id="save-btn">Download europeScenario.json</button>
+    <div id="validation-warning" class="warning-box"></div>
   </div>
 
   <div id="viewport">
@@ -137,6 +198,7 @@ let currentTool = 'paint';
 let currentTerrain = 'plains';
 let brushSize = 1;
 let selectedEntity = null; // { kind: 'city'|'unit', index: number }
+let selectedNationId = null;
 let isPainting = false;
 
 const canvas = document.getElementById('canvas');
@@ -172,7 +234,10 @@ async function init() {
   camY = (mapH * tileSize) / 2 - vh / (2 * zoom);
 
   buildPalette();
+  selectedNationId = scenario.nations[0]?.id ?? null;
+  buildNationList();
   buildEntityLists();
+  updateToolPanels();
   resizeCanvas();
   render();
   document.getElementById('status-info').textContent = `${mapW}x${mapH} loaded`;
@@ -225,12 +290,123 @@ function buildEntityLists() {
   });
 }
 
+// ─── Nation editing ─────────────────────────────────────────────────────────
+
+function buildNationList() {
+  const nationList = document.getElementById('nation-list');
+  nationList.innerHTML = '';
+
+  scenario.nations.forEach((nation) => {
+    const capital = scenario.cities.find(c => c.nationId === nation.id && c.isCapital);
+    const row = document.createElement('div');
+    row.className = 'entity-row' + (nation.id === selectedNationId ? ' selected' : '');
+    row.innerHTML = `<span class="entity-dot" style="background:${nation.color || '#888'}"></span>
+      <span>${nation.name}${capital ? ` (${capital.tileX},${capital.tileY})` : ''}</span>`;
+    row.addEventListener('click', () => selectNation(nation.id));
+    nationList.appendChild(row);
+  });
+
+  updateSelectedNationInfo();
+}
+
+function selectNation(nationId) {
+  selectedNationId = nationId;
+  buildNationList();
+  render();
+}
+
+function getSelectedNation() {
+  return scenario.nations.find(n => n.id === selectedNationId) || null;
+}
+
+function updateSelectedNationInfo() {
+  const el = document.getElementById('selected-nation-info');
+  const nation = getSelectedNation();
+  if (!nation) {
+    el.textContent = 'No nation selected.';
+    return;
+  }
+
+  const center = nation.startTerritoryCenter;
+  el.textContent = `Selected: ${nation.name} (${nation.id})` +
+    (center ? ` • start ${center.x},${center.y}` : ' • no start set');
+}
+
+function slugifyNationName(name) {
+  return name.trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function syncNationIdFromName() {
+  const name = document.getElementById('nation-name-input').value;
+  const slug = slugifyNationName(name);
+  document.getElementById('nation-id-input').value = slug ? `nation_${slug}` : '';
+}
+
+function normalizeHexColor(value) {
+  const trimmed = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+  return null;
+}
+
+document.getElementById('nation-name-input').addEventListener('input', syncNationIdFromName);
+document.getElementById('nation-color-input').addEventListener('input', (e) => {
+  document.getElementById('nation-color-hex-input').value = e.target.value;
+});
+document.getElementById('nation-color-hex-input').addEventListener('input', (e) => {
+  const color = normalizeHexColor(e.target.value);
+  if (color) document.getElementById('nation-color-input').value = color;
+});
+document.getElementById('add-nation-btn').addEventListener('click', () => {
+  const nameInput = document.getElementById('nation-name-input');
+  const idInput = document.getElementById('nation-id-input');
+  const colorInput = document.getElementById('nation-color-hex-input');
+  const name = nameInput.value.trim();
+  const id = idInput.value.trim();
+  const color = normalizeHexColor(colorInput.value);
+
+  if (!name) {
+    setStatusInfo('Nation name is required');
+    return;
+  }
+  if (!/^nation_[a-z0-9_]+$/.test(id)) {
+    setStatusInfo('Nation ID must look like nation_morocco');
+    return;
+  }
+  if (scenario.nations.some(n => n.id === id)) {
+    setStatusInfo(`Nation ID already exists: ${id}`);
+    return;
+  }
+  if (!color) {
+    setStatusInfo('Color must be #rrggbb');
+    return;
+  }
+
+  scenario.nations.push({
+    id,
+    name,
+    color,
+    startTerritoryCenter: { x: 0, y: 0 },
+  });
+  selectedNationId = id;
+  nameInput.value = '';
+  idInput.value = '';
+  setStatusInfo(`Added nation ${name}. Use Set Start Position next.`);
+  buildNationList();
+  buildEntityLists();
+  render();
+});
+
 function selectEntity(kind, index) {
   if (selectedEntity && selectedEntity.kind === kind && selectedEntity.index === index) {
     selectedEntity = null;
   } else {
     selectedEntity = { kind, index };
+    const entity = kind === 'city' ? scenario.cities[index] : scenario.units[index];
+    if (entity?.nationId) selectedNationId = entity.nationId;
   }
+  buildNationList();
   updateEntityHighlights();
   render();
 }
@@ -251,13 +427,18 @@ document.getElementById('tool-btns').addEventListener('click', (e) => {
   if (!btn) return;
   currentTool = btn.dataset.tool;
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b === btn));
-  document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
-  document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
+  updateToolPanels();
   selectedEntity = null;
   updateEntityHighlights();
-  viewport.style.cursor = currentTool === 'paint' ? 'crosshair' : 'default';
+  viewport.style.cursor = currentTool === 'move' ? 'default' : 'crosshair';
   render();
 });
+
+function updateToolPanels() {
+  document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
+  document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
+  document.getElementById('unit-tool-section').style.display = currentTool === 'addUnit' ? '' : 'none';
+}
 
 // Brush size
 const brushInput = document.getElementById('brush-size');
@@ -331,6 +512,86 @@ function moveEntityTo(tx, ty) {
   render();
 }
 
+function setStartPosition(tx, ty) {
+  const nation = getSelectedNation();
+  if (!nation) {
+    setStatusInfo('Select a nation before setting start position');
+    return;
+  }
+
+  nation.startTerritoryCenter = { x: tx, y: ty };
+  setStatusInfo(`${nation.name} start territory center set to (${tx},${ty})`);
+  buildNationList();
+  render();
+}
+
+function makeUniqueId(prefix, base, existingIds) {
+  const slug = slugifyNationName(base) || prefix;
+  let id = `${prefix}_${slug}`;
+  let i = 2;
+  while (existingIds.has(id)) {
+    id = `${prefix}_${slug}_${i}`;
+    i++;
+  }
+  return id;
+}
+
+function makeDefaultCityName(nation) {
+  const base = nation.name ? `${nation.name} City` : 'New City';
+  const ownedCount = scenario.cities.filter(c => c.nationId === nation.id).length;
+  return ownedCount === 0 ? base : `${base} ${ownedCount + 1}`;
+}
+
+function addCityAt(tx, ty) {
+  const nation = getSelectedNation();
+  if (!nation) {
+    setStatusInfo('Select a nation before adding a city');
+    return;
+  }
+
+  const existingIds = new Set(scenario.cities.map(c => c.id));
+  const nationCities = scenario.cities.filter(c => c.nationId === nation.id);
+  const name = makeDefaultCityName(nation);
+  const city = {
+    id: makeUniqueId('city', name, existingIds),
+    name,
+    nationId: nation.id,
+    tileX: tx,
+    tileY: ty,
+    isCapital: nationCities.length === 0,
+  };
+
+  scenario.cities.push(city);
+  if (city.isCapital) nation.startTerritoryCenter = { x: tx, y: ty };
+  selectedEntity = { kind: 'city', index: scenario.cities.length - 1 };
+  setStatusInfo(`Added ${city.isCapital ? 'capital' : 'city'} ${city.name}`);
+  buildNationList();
+  buildEntityLists();
+  updateEntityHighlights();
+  render();
+}
+
+function addUnitAt(tx, ty) {
+  const nation = getSelectedNation();
+  if (!nation) {
+    setStatusInfo('Select a nation before adding a unit');
+    return;
+  }
+
+  const unitTypeId = document.getElementById('unit-type-select').value;
+  scenario.units.push({
+    nationId: nation.id,
+    unitTypeId,
+    tileX: tx,
+    tileY: ty,
+  });
+  selectedEntity = { kind: 'unit', index: scenario.units.length - 1 };
+  setStatusInfo(`Added ${unitTypeId} for ${nation.name}`);
+  buildEntityLists();
+  updateEntityHighlights();
+  render();
+}
+
 // ─── Mouse events on viewport ───────────────────────────────────────────────
 
 let isPanning = false;
@@ -367,6 +628,12 @@ viewport.addEventListener('mousedown', (e) => {
       const unitIdx = scenario.units.findIndex(u => u.tileX === pos.tx && u.tileY === pos.ty);
       if (unitIdx >= 0) { selectEntity('unit', unitIdx); return; }
     }
+  } else if (currentTool === 'setStart') {
+    setStartPosition(pos.tx, pos.ty);
+  } else if (currentTool === 'addCity') {
+    addCityAt(pos.tx, pos.ty);
+  } else if (currentTool === 'addUnit') {
+    addUnitAt(pos.tx, pos.ty);
   }
 });
 
@@ -513,6 +780,30 @@ function render() {
     }
   }
 
+  // Draw selected nation start territory center
+  const selectedNation = getSelectedNation();
+  if (selectedNation?.startTerritoryCenter) {
+    const sx = ((selectedNation.startTerritoryCenter.x + 0.5) * tileSize - camX) * zoom;
+    const sy = ((selectedNation.startTerritoryCenter.y + 0.5) * tileSize - camY) * zoom;
+    const r = Math.max(6, tileSize * zoom * 0.28);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sx - r, sy);
+    ctx.lineTo(sx + r, sy);
+    ctx.moveTo(sx, sy - r);
+    ctx.lineTo(sx, sy + r);
+    ctx.stroke();
+    ctx.strokeStyle = selectedNation.color || '#fff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(
+      (selectedNation.startTerritoryCenter.x * tileSize - camX) * zoom,
+      (selectedNation.startTerritoryCenter.y * tileSize - camY) * zoom,
+      tileSize * zoom,
+      tileSize * zoom,
+    );
+  }
+
   // Draw units
   for (let i = 0; i < scenario.units.length; i++) {
     const unit = scenario.units[i];
@@ -552,7 +843,33 @@ function render() {
 
 // ─── Save / Download ────────────────────────────────────────────────────────
 
+function validateScenario() {
+  const warnings = [];
+  for (const nation of scenario.nations) {
+    const cities = scenario.cities.filter(c => c.nationId === nation.id);
+    const capitals = cities.filter(c => c.isCapital);
+    if (cities.length === 0) warnings.push(`${nation.name} has no city`);
+    if (capitals.length === 0) warnings.push(`${nation.name} has no capital`);
+    if (capitals.length > 1) warnings.push(`${nation.name} has ${capitals.length} capitals`);
+  }
+  return warnings;
+}
+
+function showValidationWarnings(warnings) {
+  const box = document.getElementById('validation-warning');
+  if (warnings.length === 0) {
+    box.style.display = 'none';
+    box.textContent = '';
+    return;
+  }
+
+  box.style.display = '';
+  box.textContent = `Soft validation warnings:\n- ${warnings.join('\n- ')}\n\nExport is still allowed.`;
+}
+
 document.getElementById('save-btn').addEventListener('click', () => {
+  showValidationWarnings(validateScenario());
+
   // Rebuild flat tiles array from 2D
   const flatTiles = [];
   for (let y = 0; y < mapH; y++) {
@@ -587,8 +904,7 @@ window.addEventListener('keydown', (e) => {
     currentTerrain = TILE_TYPES[num - 1];
     currentTool = 'paint';
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
-    document.getElementById('palette-section').style.display = '';
-    document.getElementById('entities-section').style.display = 'none';
+    updateToolPanels();
     document.querySelectorAll('.palette-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTerrain));
     viewport.style.cursor = 'crosshair';
   }
@@ -612,6 +928,10 @@ window.addEventListener('keydown', (e) => {
     brushLabel.textContent = brushSize;
   }
 });
+
+function setStatusInfo(message) {
+  document.getElementById('status-info').textContent = message;
+}
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 

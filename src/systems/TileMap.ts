@@ -1,17 +1,6 @@
 import Phaser from 'phaser';
 import { MapData, Tile, TileType } from '../types/map';
-
-/** Map TileType enum to terrain sprite texture key. */
-const TILE_TEXTURES: Record<TileType, string> = {
-  [TileType.Ocean]:    'terrain_ocean',
-  [TileType.Coast]:    'terrain_coast',
-  [TileType.Plains]:   'terrain_plains',
-  [TileType.Forest]:   'terrain_forest',
-  [TileType.Mountain]: 'terrain_mountain',
-  [TileType.Ice]:      'terrain_ice',
-  [TileType.Jungle]:   'terrain_jungle',
-  [TileType.Desert]:   'terrain_desert',
-};
+import { TerrainAutoTileResolver } from './TerrainAutoTileResolver';
 
 const TERRAIN_DEPTH = 0;
 
@@ -134,7 +123,8 @@ export class TileMap {
         const px = x * tileSize;
         const py = y * tileSize;
 
-        const img = scene.add.image(px, py, TILE_TEXTURES[tile.type]);
+        const textureKey = TerrainAutoTileResolver.getTerrainSpriteKey(this.data, x, y);
+        const img = scene.add.image(px, py, textureKey);
         img.setOrigin(0, 0);
         img.setDepth(TERRAIN_DEPTH);
       }

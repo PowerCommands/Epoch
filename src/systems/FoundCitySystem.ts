@@ -10,14 +10,6 @@ import { TerritoryRenderer } from './TerritoryRenderer';
 import { CityRenderer } from './CityRenderer';
 import { ResourceSystem } from './ResourceSystem';
 
-const CLAIMABLE_TYPES = new Set<TileType>([
-  TileType.Plains,
-  TileType.Forest,
-  TileType.Mountain,
-  TileType.Jungle,
-  TileType.Desert,
-]);
-
 const FOUNDABLE_TYPES = new Set<TileType>([
   TileType.Plains,
   TileType.Forest,
@@ -121,10 +113,7 @@ export class FoundCitySystem {
         const ty = cy + dy;
         if (tx < 0 || ty < 0 || tx >= this.mapData.width || ty >= this.mapData.height) continue;
 
-        const tile = this.mapData.tiles[ty][tx];
-        if (CLAIMABLE_TYPES.has(tile.type)) {
-          tile.ownerId = nationId;
-        }
+        this.mapData.tiles[ty][tx].ownerId = nationId;
       }
     }
   }

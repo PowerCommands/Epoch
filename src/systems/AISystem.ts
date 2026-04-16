@@ -1,7 +1,7 @@
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
-import type { MapData } from '../types/map';
+import type { MapData, Tile } from '../types/map';
 import { TileType } from '../types/map';
 import { ALL_UNIT_TYPES, WARRIOR, ARCHER, CAVALRY, SETTLER } from '../data/units';
 import { GRANARY, WORKSHOP, MARKET } from '../data/buildings';
@@ -9,10 +9,12 @@ import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import { TurnManager } from './TurnManager';
-import { MovementSystem } from './MovementSystem';
+import { getTileMovementCost, MovementSystem } from './MovementSystem';
 import { CombatSystem } from './CombatSystem';
 import { ProductionSystem } from './ProductionSystem';
 import { FoundCitySystem } from './FoundCitySystem';
+import { PathfindingSystem } from './PathfindingSystem';
+import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
 
 const MAX_MILITARY = 3;
 const MAX_AI_CITIES = 3;
@@ -43,6 +45,7 @@ export class AISystem {
   private readonly nationManager: NationManager;
   private readonly turnManager: TurnManager;
   private readonly movementSystem: MovementSystem;
+  private readonly pathfindingSystem: PathfindingSystem;
   private readonly combatSystem: CombatSystem;
   private readonly productionSystem: ProductionSystem;
   private readonly foundCitySystem: FoundCitySystem;
@@ -54,6 +57,7 @@ export class AISystem {
     nationManager: NationManager,
     turnManager: TurnManager,
     movementSystem: MovementSystem,
+    pathfindingSystem: PathfindingSystem,
     combatSystem: CombatSystem,
     productionSystem: ProductionSystem,
     foundCitySystem: FoundCitySystem,
@@ -64,6 +68,7 @@ export class AISystem {
     this.nationManager = nationManager;
     this.turnManager = turnManager;
     this.movementSystem = movementSystem;
+    this.pathfindingSystem = pathfindingSystem;
     this.combatSystem = combatSystem;
     this.productionSystem = productionSystem;
     this.foundCitySystem = foundCitySystem;
@@ -110,18 +115,16 @@ export class AISystem {
     const target = this.findFoundingSite(settler, nationId);
     if (!target) return;
 
-    // Move one step toward target while settler has movement
-    while (settler.movementPoints > 0) {
-      const best = this.bestStepToward(settler, target.x, target.y);
-      if (!best) break;
-      this.unitManager.moveUnit(settler.id, best.x, best.y, 1);
+    const path = this.pathfindingSystem.findPath(settler, target.x, target.y, {
+      respectMovementPoints: false,
+    });
+    if (path === null) return;
 
-      // Check if we arrived and can found
-      if (settler.tileX === target.x && settler.tileY === target.y) {
-        if (this.foundCitySystem.canFound(settler)) {
-          this.foundCitySystem.foundCity(settler);
-        }
-        break;
+    this.movementSystem.moveAlongPath(settler, path);
+
+    if (settler.tileX === target.x && settler.tileY === target.y) {
+      if (this.foundCitySystem.canFound(settler)) {
+        this.foundCitySystem.foundCity(settler);
       }
     }
   }
@@ -166,10 +169,12 @@ export class AISystem {
 
   private runCombat(nationId: string): void {
     const units = this.unitManager.getUnitsByOwner(nationId);
+    const profile = this.getProfile(nationId);
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.baseStrength <= 0) continue; // settlers can't attack
+      if (!this.canTakeAggressiveAction(unit, profile)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
       this.tryAttackInRange(unit);
@@ -197,71 +202,141 @@ export class AISystem {
 
   private runMovement(nationId: string): void {
     const units = this.unitManager.getUnitsByOwner(nationId);
+    const profile = this.getProfile(nationId);
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.isNaval) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
+      if (!this.canTakeAggressiveAction(unit, profile)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
-      this.moveTowardNearestEnemyCity(unit, nationId);
+      this.moveTowardNearestEnemyCity(unit, nationId, profile);
     }
   }
 
-  private moveTowardNearestEnemyCity(unit: Unit, nationId: string): void {
-    const enemyCities = this.cityManager.getAllCities()
-      .filter((c) => c.ownerId !== nationId);
+  private moveTowardNearestEnemyCity(
+    unit: Unit,
+    nationId: string,
+    profile: AIBehaviorProfile,
+  ): void {
+    const target = this.pickEnemyCityTarget(unit, nationId, profile);
+    if (target === null) return;
 
-    if (enemyCities.length === 0) return;
-
-    let nearest: City | null = null;
-    let nearestDist = Infinity;
-    for (const city of enemyCities) {
-      const dist = Math.abs(city.tileX - unit.tileX) + Math.abs(city.tileY - unit.tileY);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearest = city;
-      }
-    }
-
-    if (nearest === null) return;
-
-    const best = this.bestStepToward(unit, nearest.tileX, nearest.tileY);
-    if (best) {
-      this.unitManager.moveUnit(unit.id, best.x, best.y, 1);
-    }
+    this.movementSystem.moveAlongPath(unit, target.path);
   }
 
-  private bestStepToward(unit: Unit, targetX: number, targetY: number): { x: number; y: number } | null {
-    const currentDist = Math.abs(targetX - unit.tileX) + Math.abs(targetY - unit.tileY);
-    let bestTile: { x: number; y: number } | null = null;
-    let bestDist = currentDist;
+  private pickEnemyCityTarget(
+    unit: Unit,
+    nationId: string,
+    profile: AIBehaviorProfile,
+  ): { city: City; path: Tile[]; cost: number; distance: number } | null {
+    const targets = this.cityManager.getAllCities()
+      .filter((city) => city.ownerId !== nationId)
+      .map((city) => {
+        const path = this.findBestApproachPath(unit, city);
+        return {
+          city,
+          path,
+          cost: path === null ? Infinity : this.getPathCost(path),
+          distance: Math.abs(city.tileX - unit.tileX) + Math.abs(city.tileY - unit.tileY),
+        };
+      });
+
+    const sameContinentTargets = targets.filter((target) => target.path !== null);
+    const availableTargets =
+      profile.preferSameContinent && sameContinentTargets.length > 0
+        ? sameContinentTargets
+        : targets;
+
+    const engagedTargets = availableTargets.filter((target) => (
+      target.distance <= profile.engageDistance
+    ));
+    const candidates = engagedTargets.length > 0 ? engagedTargets : availableTargets;
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => {
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      if (a.cost !== b.cost) return a.cost - b.cost;
+      if (a.city.tileY !== b.city.tileY) return a.city.tileY - b.city.tileY;
+      return a.city.tileX - b.city.tileX;
+    });
+
+    if (candidates.length > 1 && Math.random() < profile.randomnessFactor) {
+      const alternateIndex = 1 + Math.floor(Math.random() * (candidates.length - 1));
+      const target = candidates[alternateIndex];
+      return target.path === null ? null : { ...target, path: target.path };
+    }
+
+    const target = candidates[0];
+    return target.path === null ? null : { ...target, path: target.path };
+  }
+
+  private findBestApproachPath(unit: Unit, city: City): Tile[] | null {
+    let bestPath: Tile[] | null = null;
+    let bestCost = Infinity;
+    let bestDistance = Infinity;
 
     for (const offset of ADJACENT_OFFSETS) {
-      const tx = unit.tileX + offset.dx;
-      const ty = unit.tileY + offset.dy;
+      const tx = city.tileX + offset.dx;
+      const ty = city.tileY + offset.dy;
+      const path = this.pathfindingSystem.findPath(unit, tx, ty, {
+        respectMovementPoints: false,
+      });
+      if (path === null) continue;
 
-      if (!this.isValidMoveTile(unit, tx, ty)) continue;
-
-      const dist = Math.abs(targetX - tx) + Math.abs(targetY - ty);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestTile = { x: tx, y: ty };
+      const cost = this.getPathCost(path);
+      const distance = Math.abs(city.tileX - tx) + Math.abs(city.tileY - ty);
+      if (
+        cost < bestCost ||
+        (cost === bestCost && distance < bestDistance) ||
+        (cost === bestCost && distance === bestDistance && this.comparePathTargets(path, bestPath) < 0)
+      ) {
+        bestPath = path;
+        bestCost = cost;
+        bestDistance = distance;
       }
     }
 
-    return bestTile;
+    return bestPath;
   }
 
-  private isValidMoveTile(unit: Unit, tileX: number, tileY: number): boolean {
-    const tile = this.mapData.tiles[tileY]?.[tileX];
-    if (!tile) return false;
-    if (tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
+  private getPathCost(path: Tile[]): number {
+    let cost = 0;
+    for (let i = 1; i < path.length; i++) {
+      cost += getTileMovementCost(path[i]);
+    }
+    return cost;
+  }
 
-    const occupant = this.unitManager.getUnitAt(tileX, tileY);
-    if (occupant !== undefined && occupant.id !== unit.id) return false;
+  private comparePathTargets(a: Tile[], b: Tile[] | null): number {
+    if (b === null) return -1;
+    const aTarget = a[a.length - 1];
+    const bTarget = b[b.length - 1];
+    if (aTarget.y !== bTarget.y) return aTarget.y - bTarget.y;
+    return aTarget.x - bTarget.x;
+  }
 
-    return true;
+  private getProfile(nationId: string): AIBehaviorProfile {
+    return this.nationManager.getNation(nationId)?.aiProfile ?? DEFAULT_AI_PROFILE;
+  }
+
+  private canTakeAggressiveAction(unit: Unit, profile: AIBehaviorProfile): boolean {
+    const healthRatio = unit.health / unit.unitType.baseHealth;
+    if (healthRatio < profile.minAttackHealthRatio) return false;
+    if (this.hasFriendlySupport(unit, profile.groupingDistance)) return true;
+    return healthRatio >= Math.min(1, profile.minAttackHealthRatio + 0.15);
+  }
+
+  private hasFriendlySupport(unit: Unit, distance: number): boolean {
+    return this.unitManager.getUnitsByOwner(unit.ownerId)
+      .some((other) => {
+        if (other.id === unit.id) return false;
+        if (other.unitType.baseStrength <= 0) return false;
+        if (other.unitType.isNaval) return false;
+        const dist = Math.abs(other.tileX - unit.tileX) + Math.abs(other.tileY - unit.tileY);
+        return dist <= distance;
+      });
   }
 
   // ─── Production ──────────────────────────────────────────────────────────────

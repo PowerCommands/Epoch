@@ -8,13 +8,15 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
-import { FlatResourceGenerator } from '../systems/ResourceGenerator';
+import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
 import { CityRenderer } from '../systems/CityRenderer';
 import { UnitRenderer } from '../systems/UnitRenderer';
 import { MovementSystem } from '../systems/MovementSystem';
+import { PathfindingSystem } from '../systems/PathfindingSystem';
+import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
 import { CombatSystem } from '../systems/CombatSystem';
 import { AISystem } from '../systems/AISystem';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
@@ -97,13 +99,16 @@ export class GameScene extends Phaser.Scene {
     // 11. Turordning och resurssystem
     const turnManager = new TurnManager(nationManager);
     const resourceSystem = new ResourceSystem(
-      nationManager, cityManager, turnManager, new FlatResourceGenerator(),
+      nationManager, cityManager, turnManager, new TileResourceGenerator(), mapData,
     );
 
     // 12. Selection-system (hover depth 20, selection depth 21)
     const selectionManager = new SelectionManager(
       this, tileMap, this.cameraController, cityManager, unitManager,
     );
+    const pathfindingSystem = new PathfindingSystem(mapData, unitManager);
+    const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
+    let reachableTiles = new Set<string>();
 
     // 13. Produktionssystem
     const productionSystem = new ProductionSystem(cityManager, turnManager);
@@ -124,6 +129,22 @@ export class GameScene extends Phaser.Scene {
 
     // 15. Rörelseregler för enheter
     const movementSystem = new MovementSystem(tileMap, unitManager, unitRenderer, turnManager, selectionManager);
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (currentSelection?.kind !== 'unit') return false;
+
+      const unit = currentSelection.unit;
+      const targetTile = this.getTileForSelectable(tileMap, target);
+      if (targetTile === null) return false;
+      if (!reachableTiles.has(`${targetTile.x},${targetTile.y}`)) return false;
+
+      const path = pathfindingSystem.findPath(unit, targetTile.x, targetTile.y);
+      if (path === null) return false;
+
+      movementSystem.moveAlongPath(unit, path);
+      reachableTiles = new Set<string>();
+      pathPreviewRenderer.clear();
+      return true;
+    });
 
     // 16. Läkningssystem
     const healingSystem = new HealingSystem(unitManager, cityManager, turnManager);
@@ -140,7 +161,7 @@ export class GameScene extends Phaser.Scene {
     // 18. AI-system för icke-mänskliga nationer
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
-      movementSystem, combatSystem, productionSystem, foundCitySystem, mapData,
+      movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
     );
 
     turnManager.on('turnStart', (e) => {
@@ -222,7 +243,17 @@ export class GameScene extends Phaser.Scene {
 
     const humanNationId = nationManager.getHumanNationId();
     leftPanel = new LeftPanel(nationManager, turnManager, humanNationId);
-    leftPanel.setEndTurnCallback(() => turnManager.endCurrentTurn());
+    const endHumanTurn = () => {
+      if (!turnManager.getCurrentNation().isHuman) return;
+      turnManager.endCurrentTurn();
+    };
+    leftPanel.setEndTurnCallback(endHumanTurn);
+
+    const onEnterEndTurn = () => endHumanTurn();
+    this.input.keyboard?.on('keydown-ENTER', onEnterEndTurn);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-ENTER', onEnterEndTurn);
+    });
 
     rightPanel = new RightPanel(
       productionSystem,
@@ -260,6 +291,7 @@ export class GameScene extends Phaser.Scene {
     unitManager.onUnitChanged(() => {
       leftPanel?.refresh();
       rightPanel?.refreshCurrent();
+      refreshMovePreview();
     });
     productionSystem.onChanged(() => {
       leftPanel?.refresh();
@@ -278,6 +310,29 @@ export class GameScene extends Phaser.Scene {
       } else {
         rightPanel?.clear();
       }
+      refreshMovePreview();
+    });
+
+    selectionManager.onHoverChanged((hovered) => {
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'unit') {
+        pathPreviewRenderer.clearPath();
+        return;
+      }
+
+      const hoverTile = this.getTileForSelectable(tileMap, hovered);
+      if (hoverTile === null || !reachableTiles.has(`${hoverTile.x},${hoverTile.y}`)) {
+        pathPreviewRenderer.clearPath();
+        return;
+      }
+
+      const path = pathfindingSystem.findPath(selected.unit, hoverTile.x, hoverTile.y);
+      if (path === null) {
+        pathPreviewRenderer.clearPath();
+        return;
+      }
+
+      pathPreviewRenderer.showPath(path);
     });
 
     // Nation selected from LeftPanel list
@@ -288,6 +343,13 @@ export class GameScene extends Phaser.Scene {
     };
     document.addEventListener('nationSelected', onNationSelected);
 
+    const onLeaderSelected = (event: Event) => {
+      const { nationId, leaderId } = (event as CustomEvent<{ nationId: string; leaderId?: string }>).detail;
+      rightPanel?.showLeader(leaderId ?? nationId);
+      leftPanel?.setSelectedNation(nationId);
+    };
+    document.addEventListener('leaderSelected', onLeaderSelected);
+
     const onFocusCity = (event: Event) => {
       const cityId = (event as CustomEvent<{ cityId: string }>).detail.cityId;
       const city = cityManager.getCity(cityId);
@@ -297,11 +359,13 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.centerOn(x, y);
       selectionManager.selectCity(city);
       rightPanel?.showCity(city);
+      refreshMovePreview();
     };
     window.addEventListener('focusCity', onFocusCity);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener('focusCity', onFocusCity);
       document.removeEventListener('nationSelected', onNationSelected);
+      document.removeEventListener('leaderSelected', onLeaderSelected);
     });
 
     // Victory overlay
@@ -344,6 +408,27 @@ export class GameScene extends Phaser.Scene {
 
     // Starta turordningen — sist, efter att alla lyssnare kopplats
     turnManager.start();
+
+    function refreshMovePreview(): void {
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'unit') {
+        reachableTiles = new Set<string>();
+        pathPreviewRenderer.clear();
+        return;
+      }
+
+      const unit = selected.unit;
+      const activeNation = turnManager.getCurrentNation();
+      if (!activeNation.isHuman || unit.ownerId !== activeNation.id || unit.movementPoints <= 0) {
+        reachableTiles = new Set<string>();
+        pathPreviewRenderer.clear();
+        return;
+      }
+
+      reachableTiles = pathfindingSystem.getReachableTiles(unit);
+      pathPreviewRenderer.showReachableTiles(reachableTiles);
+      pathPreviewRenderer.clearPath();
+    }
   }
 
   update(_time: number, delta: number): void {

@@ -1,16 +1,19 @@
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
+import { getLeaderById, getLeaderByNationId } from '../data/leaders';
 import { ALL_UNIT_TYPES } from '../data/units';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
+import { calculateCityEconomy } from '../systems/CityEconomy';
 import { CityManager } from '../systems/CityManager';
 import { NationManager } from '../systems/NationManager';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { UnitManager } from '../systems/UnitManager';
 import { TileType, type MapData, type Tile } from '../types/map';
 import type { Producible } from '../types/producible';
+import type { LeaderDefinition } from '../types/leader';
 
-type ViewType = 'tile' | 'city' | 'unit' | 'nation' | null;
+type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 
 export class RightPanel {
   private readonly root: HTMLElement;
@@ -23,6 +26,7 @@ export class RightPanel {
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
   private currentNationId: string | null = null;
+  private currentLeaderId: string | null = null;
   private currentView: ViewType = null;
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
@@ -65,6 +69,11 @@ export class RightPanel {
   refreshCurrent(): void {
     if (this.currentView === 'nation' && this.currentNationId) {
       this.showNation(this.currentNationId);
+      return;
+    }
+
+    if (this.currentView === 'leader' && this.currentLeaderId) {
+      this.showLeader(this.currentLeaderId);
       return;
     }
 
@@ -112,6 +121,7 @@ export class RightPanel {
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = null;
+    this.currentLeaderId = null;
     this.currentView = 'tile';
     this.reset();
 
@@ -128,6 +138,7 @@ export class RightPanel {
     this.currentCity = city;
     this.currentUnit = null;
     this.currentNationId = null;
+    this.currentLeaderId = null;
     this.currentView = 'city';
     this.reset();
 
@@ -136,6 +147,7 @@ export class RightPanel {
     const resources = this.cityManager.getResources(city.id);
     const garrison = this.unitManager.getUnitAt(city.tileX, city.tileY);
     const buildings = this.cityManager.getBuildings(city.id).getAll();
+    const economy = calculateCityEconomy(city, this.mapData, this.cityManager.getBuildings(city.id));
     const isHuman = city.ownerId === this.humanNationId;
 
     const section = this.createSection('City');
@@ -146,8 +158,12 @@ export class RightPanel {
       createHpBar(city.health, CITY_BASE_HEALTH),
       this.createDiv('', `Defense: ${CITY_BASE_DEFENSE}`),
       this.createDiv('', `Garrison: ${garrison?.name ?? 'none'}`),
-      this.createDiv('', `Food: ${resources.food} (+${resources.foodPerTurn}/turn)`),
-      this.createDiv('', `Production: ${resources.production} (+${resources.productionPerTurn}/turn)`),
+      this.createDiv('', `Population: ${city.population}`),
+      this.createDiv('', `Food storage: ${city.foodStorage}/${economy.foodToGrow}`),
+      this.createDiv('', `Food: ${economy.food} income, ${economy.foodConsumption} consumed (${formatSigned(economy.netFood)}/turn)`),
+      this.createDiv('', `Production: ${resources.production} stored (+${resources.productionPerTurn}/turn)`),
+      this.createDiv('', `Gold: +${resources.goldPerTurn}/turn`),
+      this.createDiv('', `Worked tiles: ${economy.workedTileCount}/${economy.maxWorkableTiles}`),
       this.createDiv('', `Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
     );
 
@@ -166,6 +182,7 @@ export class RightPanel {
     this.currentCity = null;
     this.currentUnit = unit;
     this.currentNationId = null;
+    this.currentLeaderId = null;
     this.currentView = 'unit';
     this.reset();
 
@@ -208,6 +225,7 @@ export class RightPanel {
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = nationId;
+    this.currentLeaderId = null;
     this.currentView = 'nation';
     this.reset();
 
@@ -282,10 +300,45 @@ export class RightPanel {
     this.root.append(milSection);
   }
 
+  showLeader(leaderIdOrNationId: string): void {
+    this.currentCity = null;
+    this.currentUnit = null;
+    this.currentNationId = null;
+    this.currentView = 'leader';
+    this.reset();
+
+    const leader = getLeaderById(leaderIdOrNationId) ?? getLeaderByNationId(leaderIdOrNationId);
+    if (!leader) {
+      this.currentLeaderId = null;
+      this.root.append(this.createDiv('panel-muted', 'Leader not found.'));
+      return;
+    }
+
+    this.currentLeaderId = leader.id;
+    const nation = this.nationManager.getNation(leader.nationId);
+    const section = this.createSection('Leader');
+    const portrait = this.createLeaderPortrait(leader);
+    const name = this.createDiv('panel-large', leader.name, nation?.color);
+    section.append(
+      portrait,
+      name,
+      this.createNationRow(nation?.name ?? 'Unknown nation', nation?.color ?? 0xffffff),
+    );
+    if (leader.title) section.append(this.createDiv('', leader.title));
+    if (leader.description) section.append(this.createDiv('panel-muted', leader.description));
+
+    this.root.append(section);
+
+    if (nation) {
+      this.root.append(this.renderLeaderNationSection(leader.nationId));
+    }
+  }
+
   clear(): void {
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = null;
+    this.currentLeaderId = null;
     this.currentView = null;
     this.reset();
     this.root.append(this.createDiv('panel-muted', 'Select a tile, city, unit, or nation.'));
@@ -422,6 +475,53 @@ export class RightPanel {
     return row;
   }
 
+  private createLeaderPortrait(leader: LeaderDefinition): HTMLElement {
+    const fallback = this.createDiv('leader-detail-fallback', '?');
+    const img = document.createElement('img');
+    img.className = 'leader-detail-portrait';
+    img.src = leader.image;
+    img.alt = leader.name;
+    img.addEventListener('error', () => {
+      img.replaceWith(fallback);
+    }, { once: true });
+    return img;
+  }
+
+  private renderLeaderNationSection(nationId: string): HTMLElement {
+    const nation = this.nationManager.getNation(nationId);
+    const section = this.createSection('Nation');
+    if (!nation) {
+      section.append(this.createDiv('panel-muted', 'Nation not found.'));
+      return section;
+    }
+
+    const isHuman = nationId === this.humanNationId;
+    const resources = this.nationManager.getResources(nationId);
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    const units = this.unitManager.getUnitsByOwner(nationId);
+    const capital = cities.find((city) => city.isCapital);
+    const territoryTiles = this.nationManager.getTileCount(nationId, this.mapData);
+
+    const header = this.createDiv('panel-row');
+    const dot = this.createDiv('panel-dot');
+    dot.style.background = toCssColor(nation.color);
+    const name = document.createElement('strong');
+    name.textContent = nation.name + (isHuman ? ' (You)' : '');
+    name.style.color = toCssColor(nation.color);
+    header.append(dot, name);
+
+    section.append(
+      header,
+      this.createDiv('', `Capital: ${capital?.name ?? 'none'}`),
+      this.createDiv('', `Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
+      this.createDiv('', `Cities: ${cities.length}`),
+      this.createDiv('', `Units: ${units.length}`),
+      this.createDiv('', `Territory: ${territoryTiles} tiles`),
+    );
+
+    return section;
+  }
+
   private createDiv(className: string, text?: string, color?: number): HTMLDivElement {
     const div = document.createElement('div');
     div.className = className;
@@ -462,4 +562,8 @@ function cityHasCoastalAccess(city: City, mapData: MapData): boolean {
 
 function toCssColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
+}
+
+function formatSigned(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`;
 }

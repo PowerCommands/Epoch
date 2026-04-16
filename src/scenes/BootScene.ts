@@ -26,7 +26,31 @@ export class BootScene extends Phaser.Scene {
     this.load.image('unit_transport_ship', 'assets/sprites/unit_transport_ship.png');
 
     // Terrain sprites
-    const terrainTypes = ['ocean', 'coast', 'plains', 'forest', 'mountain', 'ice', 'jungle', 'desert'];
+    const terrainTypes = [
+      'ocean',
+      'coast',
+      'coast_n',
+      'coast_e',
+      'coast_s',
+      'coast_w',
+      'coast_ne',
+      'coast_ns',
+      'coast_nw',
+      'coast_es',
+      'coast_ew',
+      'coast_sw',
+      'coast_nes',
+      'coast_new',
+      'coast_nsw',
+      'coast_esw',
+      'coast_nesw',
+      'plains',
+      'forest',
+      'mountain',
+      'ice',
+      'jungle',
+      'desert',
+    ];
     for (const t of terrainTypes) {
       this.load.image(`terrain_${t}`, `assets/sprites/terrain/${t}.png`);
     }

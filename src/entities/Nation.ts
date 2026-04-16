@@ -1,8 +1,11 @@
+import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
+
 export interface NationConfig {
   id: string;
   name: string;
   color: number; // hex-färg, t.ex. 0xff4444
   isHuman?: boolean;
+  aiProfile?: AIBehaviorProfile;
 }
 
 /**
@@ -16,11 +19,13 @@ export class Nation {
   readonly name: string;
   readonly color: number;
   isHuman: boolean;
+  aiProfile: AIBehaviorProfile;
 
   constructor(config: NationConfig) {
     this.id = config.id;
     this.name = config.name;
     this.color = config.color;
     this.isHuman = config.isHuman ?? false;
+    this.aiProfile = { ...(config.aiProfile ?? DEFAULT_AI_PROFILE) };
   }
 }

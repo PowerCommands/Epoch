@@ -11,6 +11,7 @@ type SelectionTargetCallback = (
   target: Selectable | null,
   currentSelection: Selectable | null,
 ) => boolean | void;
+type HoverCallback = (hovered: Selectable | null) => void;
 
 /**
  * SelectionManager hanterar hover- och selection-state för alla valbara
@@ -36,6 +37,7 @@ export class SelectionManager {
 
   private readonly selectionCallbacks: SelectionCallback[] = [];
   private readonly targetCallbacks: SelectionTargetCallback[] = [];
+  private readonly hoverCallbacks: HoverCallback[] = [];
 
   constructor(
     scene: Phaser.Scene,
@@ -68,6 +70,10 @@ export class SelectionManager {
 
   onSelectionTarget(callback: SelectionTargetCallback): void {
     this.targetCallbacks.push(callback);
+  }
+
+  onHoverChanged(callback: HoverCallback): void {
+    this.hoverCallbacks.push(callback);
   }
 
   getSelected(): Selectable | null {
@@ -151,6 +157,9 @@ export class SelectionManager {
     if (this.sameSelectable(this.hovered, next)) return;
     this.hovered = next;
     this.drawHover();
+    for (const cb of this.hoverCallbacks) {
+      cb(this.hovered);
+    }
   }
 
   private setSelection(next: Selectable | null): void {

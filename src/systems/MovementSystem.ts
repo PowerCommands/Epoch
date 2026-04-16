@@ -15,7 +15,7 @@ export function getTileMovementCost(tile: Tile): number {
 
 const BOARDING_MOVEMENT_COST = 1;
 
-function isValidTileForUnit(tile: Tile, unit: Unit): boolean {
+export function canUnitEnterTile(unit: Unit, tile: Tile): boolean {
   const naval = unit.unitType.isNaval === true;
   if (naval) {
     return tile.type === TileType.Ocean || tile.type === TileType.Coast;
@@ -64,7 +64,7 @@ export class MovementSystem {
       return unit.movementPoints >= BOARDING_MOVEMENT_COST;
     }
 
-    if (!isValidTileForUnit(targetTile, unit)) return false;
+    if (!canUnitEnterTile(unit, targetTile)) return false;
 
     const cost = getTileMovementCost(targetTile);
     if (unit.movementPoints < cost) return false;
@@ -107,6 +107,22 @@ export class MovementSystem {
 
     this.unitRenderer.refreshUnitPosition(unit.id);
     return true;
+  }
+
+  moveAlongPath(unit: Unit, path: Tile[]): void {
+    if (path.length === 0) return;
+
+    for (const tile of path) {
+      if (tile.x === unit.tileX && tile.y === unit.tileY) continue;
+      if (!this.canMoveUnitTo(unit, tile.x, tile.y)) break;
+
+      const cost = getTileMovementCost(tile);
+      const didMove = this.unitManager.moveUnit(unit.id, tile.x, tile.y, cost);
+      if (!didMove) break;
+
+      this.unitRenderer.refreshUnitPosition(unit.id);
+      if (unit.movementPoints <= 0) break;
+    }
   }
 
   private getTileForSelectable(selectable: Selectable): Tile | null {

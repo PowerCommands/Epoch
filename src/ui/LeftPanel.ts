@@ -1,11 +1,12 @@
+import { getLeaderByNationId } from '../data/leaders';
 import { NationManager } from '../systems/NationManager';
 import { TurnManager } from '../systems/TurnManager';
+import type { LeaderDefinition } from '../types/leader';
 
 export class LeftPanel {
   private readonly root: HTMLElement;
   private readonly nationManager: NationManager;
   private readonly turnManager: TurnManager;
-  private readonly humanNationId: string | undefined;
   private endTurnCallback: (() => void) | null = null;
   private selectedNationId: string | null = null;
 
@@ -20,7 +21,7 @@ export class LeftPanel {
     this.root = root;
     this.nationManager = nationManager;
     this.turnManager = turnManager;
-    this.humanNationId = humanNationId;
+    void humanNationId;
 
     this.refresh();
   }
@@ -31,7 +32,7 @@ export class LeftPanel {
 
     this.root.append(
       this.renderTurnInfo(),
-      this.renderNationList(),
+      this.renderLeaderStrip(),
       this.renderEndTurnButton(),
     );
   }
@@ -76,37 +77,55 @@ export class LeftPanel {
     return section;
   }
 
-  private renderNationList(): HTMLElement {
-    const section = this.createSection('Nations');
+  private renderLeaderStrip(): HTMLElement {
+    const section = this.createSection('Leaders');
 
     for (const nation of this.nationManager.getAllNations()) {
-      const row = document.createElement('div');
-      row.className = 'nation-row';
-      if (this.selectedNationId === nation.id) {
-        row.classList.add('nation-row-selected');
-      }
+      const leader = getLeaderByNationId(nation.id);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'leader-portrait-button';
       row.dataset.nationId = nation.id;
 
-      const swatch = document.createElement('span');
-      swatch.className = 'nation-swatch';
-      swatch.style.background = toCssColor(nation.color);
+      const nationName = document.createElement('div');
+      nationName.className = 'leader-nation-name';
+      nationName.textContent = nation.name;
+      nationName.style.color = toCssColor(nation.color);
 
-      const name = document.createElement('span');
-      name.className = 'nation-name';
-      name.textContent = nation.name;
-      if (nation.id === this.humanNationId) {
-        name.textContent += ' (You)';
-      }
+      const portrait = this.createLeaderPortrait(leader);
 
-      row.append(swatch, name);
+      const leaderName = document.createElement('div');
+      leaderName.className = 'leader-name';
+      leaderName.textContent = leader?.name ?? 'Unknown leader';
+
+      row.append(nationName, portrait, leaderName);
       row.addEventListener('click', () => {
-        document.dispatchEvent(new CustomEvent('nationSelected', { detail: { nationId: nation.id } }));
+        document.dispatchEvent(new CustomEvent('leaderSelected', {
+          detail: { nationId: nation.id, leaderId: leader?.id },
+        }));
       });
 
       section.append(row);
     }
 
     return section;
+  }
+
+  private createLeaderPortrait(leader: LeaderDefinition | undefined): HTMLElement {
+    const fallback = document.createElement('span');
+    fallback.className = 'leader-portrait-fallback';
+    fallback.textContent = '?';
+
+    if (!leader) return fallback;
+
+    const img = document.createElement('img');
+    img.className = 'leader-portrait';
+    img.src = leader.image;
+    img.alt = leader.name;
+    img.addEventListener('error', () => {
+      img.replaceWith(fallback);
+    }, { once: true });
+    return img;
   }
 
   private renderEndTurnButton(): HTMLElement {

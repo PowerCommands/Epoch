@@ -11,20 +11,20 @@ Implemented so far:
 - Basic Phaser + TypeScript + Vite project setup
 - **Scenario-driven data loading**: all game data (map, nations, cities, units) loaded from `public/europeScenario.json`
 - Scene flow: `BootScene` (preloads all maps + sprites) → `MainMenuScene` (nation/map selection) → `GameScene`
-- **Main menu**: "EPOCH" styled start screen with map dropdown, nation selection cards, opponent toggles. Builds `GameConfig` and passes to `GameScene`.
+- **Main menu**: "EPOCH" styled start screen with map dropdown, nation selection cards, opponent toggles, EDITOR button. Builds `GameConfig` and passes to `GameScene`.
 - `GameConfig` type (`src/types/gameConfig.ts`): `mapKey`, `humanNationId`, `activeNationIds` — drives which nations/cities/units are active in a game session
 - `ScenarioLoader` parses scenario JSON into `MapData`, nations, cities, and units (Phaser-free)
 - **GameScene receives `GameConfig`**: filters nations/cities/units to active set, overrides `isHuman` from config (ignores JSON value)
 - Europe map loaded from scenario (`200×120`, `48px` tiles, 9600×5760px world)
 - **8 tile types**: Ocean, Coast, Plains, Forest, Mountain, Ice, Jungle, Desert
 - **PNG sprite rendering**: terrain tiles, cities, and units all use generated PNG sprites (48×48px)
-- **Terrain sprites** in `public/assets/sprites/terrain/` — one per tile type, rendered via `scene.add.image()` at depth 0
+- **Terrain sprites** in `public/assets/sprites/terrain/` — one sprite per land/ocean tile type, plus coast shoreline variants selected at render time
 - **City sprites** (`public/assets/sprites/city_default.png`) — white sprite with nation color tint, capitals at 1.2x scale
 - **Unit sprites** (`public/assets/sprites/unit_*.png`) — per-type greyscale sprites with nation color tint
 - Camera pan/zoom with debug HUD, dynamic overview zoom based on the actual Phaser canvas/container size, max 2.0
 - Tile hover and selection system
 - Selection support for tiles, cities, units, and nations, with priority `unit → city → tile`
-- Six historical nations with territory overlays, loaded from scenario data
+- Eight historical nations with territory overlays, loaded from scenario data
 - `Nation.isHuman` is mutable — set by GameScene from `GameConfig`, not from JSON
 - Capital cities at historical locations with spiral fallback for ocean tiles (marked `isCapital`)
 - Starting units per nation, loaded from scenario with `unitTypeId` → `UnitType` mapping
@@ -40,8 +40,8 @@ Implemented so far:
 - Combat log showing unit combat, city combat, and city capture events
 - Turn system with rounds, active nation display in HTML left panel, and End Turn button in left panel
 - Nation-level resources: **gold** and **gold per turn**
-- City-level resources: **food**, **production**, and per-turn values
-- Resource generation on turn start, using a pluggable `IResourceGenerator`
+- City-level economy: **population**, food storage/growth, worked local tiles, production, and per-turn values
+- Resource generation on turn start uses terrain yields through a pluggable `IResourceGenerator`
 - Building definitions for `Granary`, `Workshop`, and `Market`
 - Unit definitions for `Warrior`, `Archer`, `Cavalry`, `Settler`, `Fishing Boat`, and `Transport Ship`
 - Per-city building storage
@@ -60,7 +60,8 @@ Implemented so far:
 - "Found City" button in RightPanel for human settlers on valid tiles
 - **Victory system**: last nation holding all starting capitals wins
 - Victory overlay with nation name/color, game stops on victory
-- **Standalone map editor** at `public/editor.html` (Canvas2D, no Phaser)
+- **Standalone map editor** at `public/editor.html` (Canvas2D, no Phaser), accessible from main menu via EDITOR button
+- Editor features: paint terrain (8 types, brush 1-5), create/manage nations (name, color), add/move cities, add/move units (warrior, archer, cavalry, settler, fishing_boat, transport_ship), set nation start positions, validation warnings on save, download modified scenario JSON
 
 ## Scenario system
 All game setup data lives in `public/europeScenario.json`:
@@ -74,7 +75,7 @@ All game setup data lives in `public/europeScenario.json`:
 }
 ```
 - `ScenarioLoader.parse()` converts raw JSON → `MapData` + typed arrays
-- `NationManager.loadFromScenario()` creates nations, claims 5×5 territory per `startTerritoryCenter`
+- `NationManager.loadFromScenario()` creates nations, claims 3×3 territory per `startTerritoryCenter`
 - `CityManager.loadFromScenario()` creates cities with spiral fallback for ocean tiles
 - `UnitManager.loadFromScenario()` maps `unitTypeId` → `UnitType` from `data/units.ts`, allowing naval units only on Ocean/Coast tiles
 - `isHuman` in JSON is ignored at runtime — `GameScene` overrides from `GameConfig`
@@ -102,16 +103,17 @@ All game setup data lives in `public/europeScenario.json`:
 
 ### Entities (`src/entities/`)
 - `Nation.ts` — nation data (id, name, color, isHuman [mutable])
-- `City.ts` — city data (id, name, ownerId [mutable], tileX/Y, isCapital, health, lastTurnAttacked)
+- `City.ts` — city data (id, name, ownerId [mutable], tileX/Y, isCapital, health, population, foodStorage, lastTurnAttacked)
 - `Unit.ts` — unit data (id, name, ownerId [readonly], tileX/Y, health, movementPoints, unitType)
 - `UnitType.ts` — unit type interface (id, name, productionCost, movementPoints, baseHealth, baseStrength, canFound?, range?, isNaval?)
 - `Building.ts` — building type interface (id, name, productionCost, modifiers)
-- `CityResources.ts` — per-city food/production storage
+- `CityResources.ts` — per-city production storage plus food/production/gold per-turn mirrors. Actual growth food storage lives on `City.foodStorage`.
 - `CityBuildings.ts` — per-city building list
 
 ### Data (`src/data/`)
 - `units.ts` — `WARRIOR` (cost 6, move 2, HP 100, str 20), `ARCHER` (cost 12, move 2, HP 75, str 18, range 2), `CAVALRY` (cost 18, move 4, HP 80, str 28), `SETTLER` (cost 20, move 2, HP 50, str 0, canFound), `FISHING_BOAT` (cost 8, move 2, HP 40, str 0, isNaval), `TRANSPORT_SHIP` (cost 14, move 3, HP 80, str 0, isNaval). Exports `ALL_UNIT_TYPES` and `getUnitTypeById()`.
 - `buildings.ts` — `GRANARY`, `WORKSHOP`, `MARKET` definitions
+- `terrainYields.ts` — terrain yield table for city worked tiles: food, production, gold per terrain type
 - `cities.ts` — city combat constants (`CITY_BASE_HEALTH=200`, `CITY_BASE_DEFENSE=25`, `CITY_HEAL_PER_TURN=10`, `CITY_CAPTURE_HEALTH_FRACTION=0.25`)
 - `maps.ts` — `AVAILABLE_MAPS` registry (`key`, `label`, `file`). Currently one entry: `map_europe` → `europeScenario.json`.
 
@@ -123,46 +125,50 @@ All game setup data lives in `public/europeScenario.json`:
 - `events.ts` — turn/round event interfaces
 - `resources.ts` — resource-related types
 - `producible.ts` — `Producible` union (unit | building)
+- `ai.ts` — `AIBehaviorProfile` and `DEFAULT_AI_PROFILE` (`minAttackHealthRatio`, `groupingDistance`, `engageDistance`, `preferSameContinent`, `randomnessFactor`)
 - `index.ts` — re-exports all types
 
 ### Systems (`src/systems/`)
 - `ScenarioLoader.ts` — Phaser-free utility: `parse(json: ScenarioData)` → `{ mapData, nations, cities, units }`. Case-insensitive tile type mapping.
-- `TileMap.ts` — map data + sprite-based terrain rendering (one `scene.add.image()` per tile at depth 0). `generatePlaceholder()`, `tileToWorld()`, `worldToTile()`, `getTileAt()`
-- `NationManager.ts` — nation CRUD, `loadFromScenario()` creates nations from scenario + claims 5×5 territory, `getHumanNationId()`, spiral land-tile fallback
+- `TileMap.ts` — map data + sprite-based terrain rendering (one `scene.add.image()` per tile at depth 0). Uses `TerrainAutoTileResolver` for coast sprite variants. `generatePlaceholder()`, `tileToWorld()`, `worldToTile()`, `getTileAt()`
+- `TerrainAutoTileResolver.ts` — rendering-only coast auto-tiling. Coast tiles inspect N/E/S/W neighbors; Plains/Forest/Mountain/Ice/Jungle/Desert count as land and Ocean/Coast count as water. Returns `terrain_coast` fallback or `terrain_coast_<directions>` keys such as `terrain_coast_nw`.
+- `NationManager.ts` — nation CRUD, `loadFromScenario()` creates nations from scenario + claims 3×3 territory, including Ocean/Coast ownership, `getHumanNationId()`
 - `CityManager.ts` — city CRUD, resources, buildings, `loadFromScenario()`, `transferOwnership()`, `getCityAt()`, `getCitiesByOwner()`
 - `UnitManager.ts` — unit CRUD, movement, damage notifications, `loadFromScenario()` with land/naval spawn tile validation, `getUnitAt()`, `getUnitsByOwner()`
 - `TurnManager.ts` — turn order, round tracking, event pub/sub (`turnStart/End`, `roundStart/End`)
-- `ResourceSystem.ts` — gold/food/production generation on turnStart
+- `CityEconomy.ts` — map-driven city economy helper. Selects worked tiles from the city's 3×3 area, applies terrain yields and building modifiers, and calculates food surplus/growth threshold.
+- `ResourceSystem.ts` — tile-driven gold/food/production generation on turnStart; applies food surplus to `City.foodStorage` and grows population when threshold is reached.
 - `ProductionSystem.ts` — per-city build queue (array of `QueueEntry`). `enqueue()`, `removeFromQueue()`, `getQueue()` (returns `QueueEntryView[]` with `turnsRemaining`). Legacy: `setProduction()` (clears+enqueues), `getProduction()` (queue[0]), `clearProduction()`. `onCompleted()` fires when queue[0] finishes, then shifts to next.
 - `CombatResolver.ts` — pure functions: `resolveCombat()`, `resolveRangedCombat()`, `resolveUnitVsCity()`, `resolveRangedVsCity()`
 - `CombatSystem.ts` — validates and executes combat (melee + ranged), emits `on()` (unit) and `onCityCombat()` events. Garrison rule: enemy unit on city tile is attacked first, city only if no garrison. Ranged attacks use Chebyshev distance and cannot capture cities. Land melee attacks cannot target naval units, but ranged attacks can.
 - `CityCombat.ts` — `captureCity()` helper: transfers ownership, changes tile, resets HP to 25%, moves attacker in
 - `HealingSystem.ts` — heals units (+10 HP) and cities (+10 HP if not attacked last round) on turnStart
 - `VictorySystem.ts` — checks win condition on turnEnd: one nation owning all starting capitals. Emits `onVictory()`.
-- `AISystem.ts` — AI for non-human nations (uses `nation.isHuman`): settlers → combat (melee+ranged) → movement → production, 3-military-unit cap. Naval units are skipped for AI movement/production.
-- `FoundCitySystem.ts` — settler city founding: validation, city creation, 3×3 territory claim, rendering refresh. Claimable/foundable: Plains, Forest, Mountain, Jungle, Desert.
+- `AISystem.ts` — AI for non-human nations (uses `nation.isHuman`): settlers → combat (melee+ranged) → movement → production, 3-military-unit cap. Reads `Nation.aiProfile` for aggression/target tuning. Land movement uses `PathfindingSystem` paths executed by `MovementSystem.moveAlongPath()`; naval units are skipped for AI movement/production.
+- `FoundCitySystem.ts` — settler city founding: validation, city creation, 3×3 territory claim, rendering refresh. Cities can be founded on Plains, Forest, Mountain, Jungle, Desert; their territory claim can include water tiles.
 - `SelectionManager.ts` — hover/selection state, priority unit→city→tile, `onSelectionTarget()` for action routing
 - `MovementSystem.ts` — unit movement validation and execution. Land units can enter non-Ocean/non-Coast tiles; naval units can enter only Ocean/Coast. Exports `getTileMovementCost(tile)`: Jungle=2, all others=1. Checks unit has enough movement points for tile cost.
+- `PathfindingSystem.ts` — Phaser-free A* pathfinding over 4-directional movement. Default `findPath()` respects current movement points for player previews/clicks; AI can request longer same-rule paths and let `MovementSystem.moveAlongPath()` stop when movement runs out.
 - `CameraController.ts` — pan/zoom
-- `TerritoryRenderer.ts` — territory color overlay, `render()` redraws all
+- `TerritoryRenderer.ts` — territory color overlay plus dark outer border segments. `render()` redraws all; borders are drawn only where N/E/S/W neighbor is out of bounds, unowned, or owned by another nation.
 - `CityRenderer.ts` — city sprites with nation color tint + HP bars. `refreshCity()` destroys and recreates sprite (handles ownership change).
 - `UnitRenderer.ts` — per-unit-type sprites with nation color tint + HP bars, including naval sprites. `refreshUnitPosition()`, `removeUnit()`. Listens to `onUnitChanged` for create/remove/damage/move events.
 
 ### UI (`src/ui/`)
 - `LeftPanel.ts` — fixed HTML panel. Shows round/current turn, clickable nation list (color swatch + name, "(You)" suffix for human), End Turn button at bottom. Dispatches `nationSelected` DOM event on click. `setSelectedNation()`/`clearSelectedNation()` for highlight state.
-- `RightPanel.ts` — fixed HTML panel. Shows 4 view types: tile, city, unit, nation. City view includes build queue UI (queue display + add-to-queue); naval units appear only for cities on or adjacent to Ocean/Coast. Nation view shows economy, cities with HP + click-to-focus, military unit counts. `showNation(nationId)`, `refreshNationView()`, `getView()` for current view type.
+- `RightPanel.ts` — fixed HTML panel. Shows tile, city, unit, nation, and leader views. City view includes population, food storage, growth income/consumption, worked tile count, and build queue UI; naval units appear only for cities on or adjacent to Ocean/Coast. Nation view shows economy, cities with HP + click-to-focus, military unit counts. `showNation(nationId)`, `refreshNationView()`, `getView()` for current view type.
 - `CombatLog.ts` — last 3 combat events with fade. Handles unit combat, city combat, and capture events.
 - `EndTurnButton.ts` — legacy Phaser canvas button (unused, replaced by LeftPanel HTML button)
 - `DebugHUD.ts` — camera debug info
 
 ### Scenes (`src/scenes/`)
 - `BootScene.ts` — preloads all maps from `AVAILABLE_MAPS` with unique cache keys, plus sprite assets (city, unit, terrain)
-- `MainMenuScene.ts` — HTML overlay start screen. "EPOCH" title, map dropdown, nation selection cards, opponent toggles (min 1), START button. Builds `GameConfig` and passes to GameScene.
+- `MainMenuScene.ts` — HTML overlay start screen. "EPOCH" title, map dropdown, nation selection cards, opponent toggles (min 1), START button, EDITOR button (navigates to `/editor.html`). Builds `GameConfig` and passes to GameScene.
 - `GameScene.ts` — main game orchestration. Receives `GameConfig` via scene data. Filters nations/cities/units to active set, overrides `isHuman`.
 
 ### Scripts (`scripts/`)
 - `generateSprites.ts` — generates city + unit PNG sprites (48×48, greyscale for tinting), including naval unit sprites, using `canvas` npm package
-- `generateTerrainSprites.ts` — generates 8 terrain tile PNGs (48×48, full fill) using `canvas` npm package
+- `generateTerrainSprites.ts` — generates terrain tile PNGs (48×48, full fill) using `canvas`, including coast shoreline variants for 4-directional auto-tiling
 - `generateMap.ts` — map generation script
 
 ### Assets (`public/assets/sprites/`)
@@ -173,24 +179,26 @@ All game setup data lives in `public/europeScenario.json`:
 - `unit_settler.png` — grey circle + backpack with strap
 - `unit_fishing_boat.png` — grey circle + small hull, mast, and sail
 - `unit_transport_ship.png` — grey circle + wider hull, two masts, and sails
-- `terrain/*.png` — 8 terrain tiles (ocean, coast, plains, forest, mountain, ice, jungle, desert)
+- `terrain/*.png` — terrain tiles (ocean, coast fallback, coast shoreline variants, plains, forest, mountain, ice, jungle, desert)
 
 ### Tools (`public/`)
-- `editor.html` — standalone map editor (Canvas2D, no Phaser). Paint terrain (8 types, brush size 1-5, click+drag), move cities/units, download modified `europeScenario.json`. Pan with right/middle mouse, zoom with scroll wheel. Keyboard: `1`-`8` select terrain, `+`/`-` brush size, `Escape` deselect.
+- `editor.html` — standalone map editor (Canvas2D, no Phaser), linked from main menu EDITOR button. Tools: paint terrain (8 types, brush 1-5, click+drag), create/manage nations (name, id, color), add/move cities, add/move units (6 types), set nation start positions. Validation warnings on save. Download modified `europeScenario.json`. Pan with right/middle mouse, zoom with scroll wheel. Keyboard: `1`-`8` select terrain, `+`/`-` brush size, `Escape` deselect.
 
 ## Current gameplay model
 - The world is a 200×120 tile Europe map loaded from `public/europeScenario.json`.
 - Tiles can be `Ocean`, `Coast`, `Plains`, `Forest`, `Mountain`, `Ice`, `Jungle`, `Desert`.
-- Claimable tiles (territory, city founding): Plains, Forest, Mountain, Jungle, Desert. Ice is not claimable.
-- Six historical nations defined in scenario (player chooses which to play in main menu):
+- Territory ownership can apply to all tile types, including Ocean and Coast. City founding itself is still limited to Plains, Forest, Mountain, Jungle, and Desert.
+- Eight historical nations defined in scenario (player chooses which to play in main menu):
   - `England` (`nation_england`) — capital London (col 43, row 56)
   - `France` (`nation_france`) — capital Paris (col 47, row 68)
   - `Holy Roman Empire` (`nation_hre`) — capital Vienna (col 83, row 68)
-  - `Sweden` (`nation_sweden`) — capital Stockholm (col 108, row 34)
+  - `Sweden` (`nation_sweden`) — capital Stockholm (col 111, row 34)
+  - `Lithuania` (`nation_lithuania`) — capital Vilnius (col 90, row 55)
+  - `Novgorod` (`nation_novgorod`) — capital Novgorod (col 114, row 40)
   - `Ottoman Empire` (`nation_ottoman`) — capital Constantinople (col 124, row 85)
   - `Spain` (`nation_spain`) — capital Toledo (col 15, row 91)
 - Player selects human nation and opponents in MainMenuScene. Excluded nations have no presence in game.
-- Each nation starts with a 5×5 claimed territory area (ocean/already-claimed tiles skipped).
+- Each nation starts with a 3×3 claimed territory area around `startTerritoryCenter`; already-claimed tiles are skipped, but water tiles can be claimed.
 - Capital placement uses spiral fallback if target tile is ocean (max radius 5).
 - Each nation starts with units defined in scenario (default: one Warrior near capital).
 - Selection supports tiles, cities, units, and nations (via LeftPanel click).
@@ -219,20 +227,34 @@ All game setup data lives in `public/europeScenario.json`:
 ## Resource model
 The current resource model uses standard strategy-game resources:
 - **Gold**: stored per nation
-- **Food**: stored per city
+- **Food storage**: stored per city on `City.foodStorage`
 - **Production**: stored per city
 
-Resource generation is currently simple and deterministic:
-- Each city provides base gold to its owning nation.
-- Each city generates base food and production for itself.
+Resource generation is map-driven and deterministic:
+- Each city has `population` starting at 1 and `foodStorage` starting at 0.
+- Each city can work tiles in its local 3×3 area centered on the city tile.
+- Worked tile count equals population, capped by valid tiles in that 3×3 area.
+- Worked tiles are auto-selected by highest food first, then production, then gold, with stable coordinate tie-breaks.
+- Each city gets base food `+2` before worked tile yields.
 - Per-turn values are recalculated so UI can show current `+X/turn` values.
 - The first `turnStart` after game initialization is skipped for generation, so resources do not advance immediately at game start.
-- Building modifiers are included in per-turn calculations.
+- Building modifiers are included on top of terrain output.
 
-Current flat yields:
-- Gold: `+3` per city to the owning nation
-- Food: `+2` per city
-- Production: `+2` per city
+Terrain yields:
+- Plains: `2 food`, `1 production`, `0 gold`
+- Forest: `1 food`, `2 production`, `0 gold`
+- Mountain: `0 food`, `1 production`, `0 gold`
+- Ice: `0 food`, `0 production`, `0 gold`
+- Jungle: `1 food`, `1 production`, `0 gold`
+- Desert: `0 food`, `0 production`, `0 gold`
+- Coast: `2 food`, `1 production`, `1 gold`
+- Ocean: `1 food`, `0 production`, `0 gold`
+
+Growth:
+- Food consumption is `population * 2`.
+- Net food above 0 is added to `foodStorage`; net food 0 or below causes no growth and no starvation.
+- Growth threshold is `15 + population * 10`.
+- When `foodStorage >= threshold`, population increases by 1 and `foodStorage` resets to 0.
 
 Current building modifiers:
 - `Granary`: `+2 Food per turn`, production cost `8`
@@ -277,7 +299,7 @@ Current building modifiers:
 ## Settler / city founding model
 - Settler unit: HP 50, strength 0 (cannot attack), movement 2, production cost 20, `canFound: true`.
 - `FoundCitySystem.canFound(unit)` validates: unit has `canFound`, owner matches active nation, tile is Plains/Forest/Mountain/Jungle/Desert, no city already on tile.
-- `FoundCitySystem.foundCity(unit)` creates city, claims 3×3 territory (claimable tiles only), removes settler, refreshes rendering.
+- `FoundCitySystem.foundCity(unit)` creates city, claims 3×3 territory including water tiles, removes settler, refreshes rendering.
 - City names picked from predefined list (Novum, Ardena, Calvis, etc.), fallback to `City {n}`.
 - RightPanel shows "Found City" button for settlers on valid tiles during owner's turn.
 
@@ -293,11 +315,12 @@ Current building modifiers:
 
 ## AI model
 - `AISystem` runs on `turnStart` for non-human nations (determined by `nation.isHuman === false`).
+- All AI nations currently use `DEFAULT_AI_PROFILE`: low-health units avoid aggressive actions, slightly damaged unsupported units are more cautious, target selection prefers path-reachable land targets, close targets are prioritized within `engageDistance`, and `randomnessFactor` can occasionally pick a non-closest valid target.
 - AI turn executes instantly (synchronous), no animations or delays.
 - Priority order per turn:
-  1. **Settlers**: found city if on valid tile ≥5 Manhattan from all cities, else move toward best founding site. Settlers use all movement toward site.
+  1. **Settlers**: found city if on valid tile ≥5 Manhattan from all cities, else pathfind toward best founding site. Settlers move as far as current movement allows.
   2. **Combat**: each combat-capable unit (baseStrength > 0) scans within unit's range (Chebyshev) for enemy targets. First valid attack per unit.
-  3. **Movement**: each non-settler unit with remaining movement moves one step toward nearest enemy city (Manhattan distance). Must be valid tile (not ocean, not occupied).
+  3. **Movement**: each non-settler land unit with remaining movement pathfinds toward an adjacent approach tile for the nearest reachable enemy city. Movement uses shared terrain costs/blocking rules. Naval units are skipped.
   4. **Production**: max 3 military units per nation (Warriors + Archers + Cavalry). Priority: defend city → settler (if <3 cities and under cap) → buildings (Granary/Workshop/Market) → military unit (rotates Archer/Cavalry/Warrior for variety) → nothing.
 - After AI turn completes, `turnManager.endCurrentTurn()` is called automatically.
 - AI nations chain: when human ends turn, all AI nations play instantly before human's next turn starts.
@@ -308,13 +331,13 @@ Current building modifiers:
 2. Filter nations/cities/units to `config.activeNationIds`. Override `isHuman` from config.
 3. Create nations via `NationManager.loadFromScenario()` and claim start territories.
 4. Render terrain (sprite-based, depth 0).
-5. Render territory overlays (depth 5).
+5. Render territory overlays (fill depth 5, border depth 6).
 6. Create cities via `CityManager.loadFromScenario()` (filtered).
 7. Create units via `UnitManager.loadFromScenario()` (filtered).
 8. Measure the actual Phaser canvas/container viewport, create camera controller, and set overview cover zoom.
 9. Render city sprites (depth 15) and unit sprites (depth 18).
 10. Create turn and resource systems.
-11. Create selection system.
+11. Create selection system, pathfinding system, and path preview renderer.
 12. Create production system.
 13. Create combat system (takes unitManager, turnManager, cityManager, productionSystem, mapData).
 14. Create movement system.
@@ -372,3 +395,5 @@ Respond like smart caveman. Cut all filler, keep technical substance.
 - No hedging. Fragments fine. Short synonyms.
 - Technical terms stay exact. Code blocks unchanged.
 - Pattern: [thing] [action] [reason]. [next step].
+
+After every finished iteration, stop the running container, rebuild it and start the container so it always ready for test.
