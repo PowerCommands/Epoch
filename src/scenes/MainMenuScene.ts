@@ -5,11 +5,16 @@ import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { GameConfig } from '../types/gameConfig';
 
 /**
- * MainMenuScene — game start screen.
- * HTML overlay for map/nation/opponent selection.
+ * MainMenuScene — HTML/CSS start screen for map, nation, and opponent setup.
  */
 export class MainMenuScene extends Phaser.Scene {
   private overlay: HTMLDivElement | null = null;
+  private currentMapKey = '';
+  private nations: ScenarioNation[] = [];
+  private selectedNationId: string | null = null;
+  private selectedOpponentIds = new Set<string>();
+  private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
+  private resizeHandler: (() => void) | null = null;
 
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -21,16 +26,37 @@ export class MainMenuScene extends Phaser.Scene {
     this.overlay.innerHTML = this.buildHTML();
     document.body.appendChild(this.overlay);
     this.injectStyles();
-    this.wireEvents();
+    this.syncOverlayBounds();
 
+    this.resizeHandler = () => this.syncOverlayBounds();
+    window.addEventListener('resize', this.resizeHandler);
+
+    this.wireEvents();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
   }
 
   private cleanup(): void {
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler);
+      this.resizeHandler = null;
+    }
+
     this.overlay?.remove();
     this.overlay = null;
     const style = document.getElementById('main-menu-styles');
     style?.remove();
+  }
+
+  private syncOverlayBounds(): void {
+    if (!this.overlay) return;
+
+    const gameContainer = document.getElementById('game-container');
+    const rect = gameContainer?.getBoundingClientRect();
+    const width = Math.max(860, Math.floor(rect?.width ?? window.innerWidth));
+    const left = Math.floor(rect?.left ?? 0);
+
+    this.overlay.style.setProperty('--mm-shell-width', `${width}px`);
+    this.overlay.style.setProperty('--mm-shell-left', `${left}px`);
   }
 
   private buildHTML(): string {
@@ -40,30 +66,75 @@ export class MainMenuScene extends Phaser.Scene {
 
     return `
       <div class="mm-container">
-        <div class="mm-header">
-          <h1 class="mm-title">EPOCH</h1>
-          <p class="mm-subtitle">Turn-Based Strategy</p>
-        </div>
+        <header class="mm-header">
+          <h1 class="mm-title">Epochs of Time</h1>
+          <p class="mm-subtitle">Lead your people through the ages, from humble beginnings to world dominance.</p>
+        </header>
 
-        <div class="mm-section">
-          <label class="mm-label">SELECT MAP</label>
-          <select id="mm-map-select" class="mm-select">
-            ${mapOptions}
-          </select>
-        </div>
+        <section class="mm-victory-row" aria-label="Victory conditions">
+          <button class="mm-victory-card active" type="button" data-victory="domination">
+            <span class="mm-victory-check" aria-hidden="true"></span>
+            <span class="mm-victory-title">Domination</span>
+            <span class="mm-victory-copy">Conquer rival capitals.</span>
+          </button>
+          <button class="mm-victory-card active" type="button" data-victory="diplomatic">
+            <span class="mm-victory-check" aria-hidden="true"></span>
+            <span class="mm-victory-title">Diplomatic</span>
+            <span class="mm-victory-copy">Shape the world council.</span>
+          </button>
+          <button class="mm-victory-card active" type="button" data-victory="science">
+            <span class="mm-victory-check" aria-hidden="true"></span>
+            <span class="mm-victory-title">Science</span>
+            <span class="mm-victory-copy">Outpace every age.</span>
+          </button>
+          <button class="mm-victory-card active" type="button" data-victory="cultural">
+            <span class="mm-victory-check" aria-hidden="true"></span>
+            <span class="mm-victory-title">Cultural</span>
+            <span class="mm-victory-copy">Become history's voice.</span>
+          </button>
+        </section>
 
-        <div class="mm-section" id="mm-chosen-section" style="display:none">
-          <label class="mm-label">CHOSEN NATION</label>
-          <div id="mm-chosen-display"></div>
-        </div>
+        <main class="mm-main">
+          <section class="mm-nations-panel">
+            <div class="mm-panel-heading">
+              <div>
+                <span class="mm-eyebrow">Civilizations</span>
+                <h2>Choose your nation</h2>
+              </div>
+              <p id="mm-nation-status" class="mm-status">First pick becomes your nation.</p>
+            </div>
+            <div id="mm-nation-list" class="mm-nation-grid"></div>
+          </section>
 
-        <div class="mm-section" id="mm-nation-section">
-          <label class="mm-label" id="mm-nation-label">CHOOSE YOUR NATION</label>
-          <div id="mm-nation-list" class="mm-nation-list"></div>
-        </div>
+          <aside class="mm-setup-panel">
+            <div class="mm-panel-heading stacked">
+              <span class="mm-eyebrow">Game setup</span>
+              <h2>Selected</h2>
+            </div>
 
-        <button id="mm-start-btn" class="mm-start-btn" disabled>START GAME</button>
-        <button id="mm-editor-btn" class="mm-editor-btn">Editor</button>
+            <div id="mm-selected-display" class="mm-selected-display"></div>
+
+            <label class="mm-field-label" for="mm-map-select">Map</label>
+            <select id="mm-map-select" class="mm-select">
+              ${mapOptions}
+            </select>
+
+            <div class="mm-opponent-summary">
+              <span class="mm-field-label">Opponents</span>
+              <strong id="mm-opponent-count">0 enabled</strong>
+              <p id="mm-opponent-hint">Choose a nation to prepare the rival field.</p>
+            </div>
+
+            <div id="mm-opponent-list" class="mm-opponent-list"></div>
+
+            <button id="mm-change-nation-btn" class="mm-change-nation-btn" type="button" disabled>Change player nation</button>
+          </aside>
+        </main>
+
+        <footer class="mm-actions">
+          <button id="mm-start-btn" class="mm-start-btn" type="button" disabled>Start Game</button>
+          <button id="mm-editor-btn" class="mm-editor-btn" type="button">Editor</button>
+        </footer>
       </div>
     `;
   }
@@ -71,8 +142,26 @@ export class MainMenuScene extends Phaser.Scene {
   private wireEvents(): void {
     const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement;
     mapSelect.addEventListener('change', () => this.onMapChanged(mapSelect.value));
-    // Trigger initial load
-    this.onMapChanged(mapSelect.value);
+
+    document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
+      const victoryId = button.dataset.victory;
+      if (!victoryId) return;
+
+      button.addEventListener('click', () => {
+        if (this.enabledVictoryIds.has(victoryId)) {
+          this.enabledVictoryIds.delete(victoryId);
+          button.classList.remove('active');
+          button.classList.add('inactive');
+          button.setAttribute('aria-pressed', 'false');
+        } else {
+          this.enabledVictoryIds.add(victoryId);
+          button.classList.add('active');
+          button.classList.remove('inactive');
+          button.setAttribute('aria-pressed', 'true');
+        }
+      });
+      button.setAttribute('aria-pressed', 'true');
+    });
 
     document.getElementById('mm-start-btn')!.addEventListener('click', () => {
       this.startGame();
@@ -81,135 +170,187 @@ export class MainMenuScene extends Phaser.Scene {
     document.getElementById('mm-editor-btn')!.addEventListener('click', () => {
       window.location.href = '/editor.html';
     });
-  }
 
-  private currentMapKey = '';
-  private nations: ScenarioNation[] = [];
-  private selectedNationId: string | null = null;
-  private selectedOpponentIds = new Set<string>();
+    document.getElementById('mm-change-nation-btn')!.addEventListener('click', () => {
+      this.clearPlayerNation();
+    });
+
+    this.onMapChanged(mapSelect.value);
+  }
 
   private onMapChanged(mapKey: string): void {
     this.currentMapKey = mapKey;
     this.selectedNationId = null;
-    this.selectedOpponentIds.clear();
 
     const json = this.cache.json.get(mapKey) as ScenarioData;
     this.nations = json.nations;
+    this.selectedOpponentIds = new Set(this.nations.map(n => n.id));
 
     this.renderNationList();
+    this.updateSetupPanel();
     this.updateStartButton();
   }
 
   private renderNationList(): void {
     const container = document.getElementById('mm-nation-list')!;
-    const label = document.getElementById('mm-nation-label')!;
-    const chosenSection = document.getElementById('mm-chosen-section')!;
-    const chosenDisplay = document.getElementById('mm-chosen-display')!;
+    const status = document.getElementById('mm-nation-status')!;
     container.innerHTML = '';
 
-    if (this.selectedNationId) {
-      // Show chosen nation at top
-      const chosen = this.nations.find(n => n.id === this.selectedNationId)!;
-      chosenSection.style.display = '';
-      chosenDisplay.innerHTML = '';
+    for (const nation of this.nations) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'mm-nation-card';
+      card.dataset.nationId = nation.id;
 
-      const chosenCard = document.createElement('button');
-      chosenCard.type = 'button';
-      chosenCard.className = 'mm-nation-card selected';
-      const chosenLeader = getLeaderByNationId(chosen.id);
-      chosenCard.append(this.createLeaderPortrait(chosen.id, 'mm-leader-thumb'));
+      const isSelectedPlayer = nation.id === this.selectedNationId;
+      const isOpponent = this.selectedOpponentIds.has(nation.id);
 
-      const chosenDot = document.createElement('span');
-      chosenDot.className = 'mm-nation-dot';
-      chosenDot.style.background = chosen.color;
+      if (isSelectedPlayer) card.classList.add('selected-player');
+      if (!isSelectedPlayer && isOpponent) card.classList.add('opponent-enabled');
+      if (!isSelectedPlayer && !isOpponent) card.classList.add('opponent-disabled');
 
-      const chosenName = document.createElement('span');
-      chosenName.textContent = chosen.name;
+      const dot = document.createElement('span');
+      dot.className = 'mm-nation-dot';
+      dot.style.background = nation.color;
 
-      const changeHint = document.createElement('span');
-      changeHint.className = 'mm-change-hint';
-      changeHint.textContent = 'change';
+      const leader = getLeaderByNationId(nation.id);
+      const portrait = this.createLeaderPortrait(nation.id, 'mm-card-portrait');
+      const copy = document.createElement('span');
+      copy.className = 'mm-nation-copy';
 
-      chosenCard.append(chosenDot, chosenName);
-      if (chosenLeader) {
-        const leaderName = document.createElement('span');
-        leaderName.className = 'mm-card-leader-name';
-        leaderName.textContent = chosenLeader.name;
-        chosenCard.append(leaderName);
-      }
-      chosenCard.append(changeHint);
-      chosenCard.addEventListener('click', () => this.deselectNation());
-      chosenDisplay.appendChild(chosenCard);
+      const name = document.createElement('strong');
+      name.textContent = nation.name;
 
-      // Remaining nations as opponent checkboxes
-      label.textContent = 'OPPONENTS';
-      for (const nation of this.nations) {
-        if (nation.id === this.selectedNationId) continue;
+      const leaderName = document.createElement('span');
+      leaderName.className = 'mm-card-leader';
+      leaderName.textContent = leader?.name ?? 'Unknown leader';
 
-        const row = document.createElement('label');
-        row.className = 'mm-opponent-row';
+      const description = document.createElement('span');
+      description.className = 'mm-card-description';
+      description.textContent = leader?.description ?? 'A capable ruler ready to shape the age.';
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = this.selectedOpponentIds.has(nation.id);
-        checkbox.addEventListener('change', () => {
-          if (checkbox.checked) {
-            this.selectedOpponentIds.add(nation.id);
-          } else {
-            if (this.selectedOpponentIds.size <= 1) {
-              checkbox.checked = true;
-              return;
-            }
-            this.selectedOpponentIds.delete(nation.id);
-          }
-          this.updateStartButton();
-        });
+      const state = document.createElement('span');
+      state.className = 'mm-card-state';
+      state.textContent = isSelectedPlayer ? 'Player' : isOpponent ? 'Opponent' : 'Excluded';
 
-        const dot = document.createElement('span');
-        dot.className = 'mm-nation-dot';
-        dot.style.background = nation.color;
-
-        const portrait = this.createLeaderPortrait(nation.id, 'mm-leader-thumb small');
-        const leader = getLeaderByNationId(nation.id);
-
-        const name = document.createElement('span');
-        name.textContent = nation.name;
-        const leaderName = document.createElement('span');
-        leaderName.className = 'mm-card-leader-name';
-        leaderName.textContent = leader?.name ?? 'Unknown leader';
-
-        row.append(checkbox, portrait, dot, name, leaderName);
-        container.appendChild(row);
-      }
-    } else {
-      // No selection — show all nations as clickable cards
-      chosenSection.style.display = 'none';
-      label.textContent = 'CHOOSE YOUR NATION';
-
-      for (const nation of this.nations) {
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'mm-nation-card';
-        card.dataset.nationId = nation.id;
-
-        const dot = document.createElement('span');
-        dot.className = 'mm-nation-dot';
-        dot.style.background = nation.color;
-
-        const portrait = this.createLeaderPortrait(nation.id, 'mm-leader-thumb');
-        const leader = getLeaderByNationId(nation.id);
-
-        const name = document.createElement('span');
-        name.textContent = nation.name;
-        const leaderName = document.createElement('span');
-        leaderName.className = 'mm-card-leader-name';
-        leaderName.textContent = leader?.name ?? 'Unknown leader';
-
-        card.append(portrait, dot, name, leaderName);
-        card.addEventListener('click', () => this.selectNation(nation.id));
-        container.appendChild(card);
-      }
+      copy.append(name, leaderName, description);
+      card.append(portrait, dot, copy, state);
+      card.addEventListener('click', () => this.handleNationCardClick(nation.id));
+      container.appendChild(card);
     }
+
+    const opponents = this.getEnabledOpponentIds().length;
+    status.textContent = this.selectedNationId
+      ? `${opponents} opponent${opponents === 1 ? '' : 's'} enabled · click rivals to toggle`
+      : 'First pick becomes your nation. Rivals are enabled by default.';
+  }
+
+  private handleNationCardClick(nationId: string): void {
+    if (!this.selectedNationId) {
+      this.selectPlayerNation(nationId);
+      return;
+    }
+
+    if (nationId === this.selectedNationId) return;
+
+    if (this.selectedOpponentIds.has(nationId)) {
+      if (this.getEnabledOpponentIds().length <= 1) return;
+      this.selectedOpponentIds.delete(nationId);
+    } else {
+      this.selectedOpponentIds.add(nationId);
+    }
+
+    this.renderNationList();
+    this.updateSetupPanel();
+    this.updateStartButton();
+  }
+
+  private selectPlayerNation(nationId: string): void {
+    this.selectedNationId = nationId;
+    this.selectedOpponentIds = new Set(this.nations.map(n => n.id).filter(id => id !== nationId));
+    this.renderNationList();
+    this.updateSetupPanel();
+    this.updateStartButton();
+  }
+
+  private clearPlayerNation(): void {
+    this.selectedNationId = null;
+    this.selectedOpponentIds = new Set(this.nations.map(n => n.id));
+    this.renderNationList();
+    this.updateSetupPanel();
+    this.updateStartButton();
+  }
+
+  private updateSetupPanel(): void {
+    const selectedDisplay = document.getElementById('mm-selected-display')!;
+    const opponentCount = document.getElementById('mm-opponent-count')!;
+    const opponentHint = document.getElementById('mm-opponent-hint')!;
+    const opponentList = document.getElementById('mm-opponent-list')!;
+    const changeButton = document.getElementById('mm-change-nation-btn') as HTMLButtonElement;
+    selectedDisplay.innerHTML = '';
+    opponentList.innerHTML = '';
+
+    const selectedNation = this.nations.find(n => n.id === this.selectedNationId);
+    if (!selectedNation) {
+      const empty = document.createElement('p');
+      empty.className = 'mm-empty-selection';
+      empty.textContent = 'Choose a civilization from the grid.';
+      selectedDisplay.appendChild(empty);
+      changeButton.disabled = true;
+    } else {
+      const leader = getLeaderByNationId(selectedNation.id);
+      selectedDisplay.append(
+        this.createLeaderPortrait(selectedNation.id, 'mm-leader-portrait'),
+        this.createSelectedNationCopy(selectedNation, leader?.name ?? 'Unknown leader'),
+      );
+      changeButton.disabled = false;
+    }
+
+    const enabledOpponents = this.getEnabledOpponentIds()
+      .map(id => this.nations.find(n => n.id === id))
+      .filter((nation): nation is ScenarioNation => Boolean(nation));
+
+    opponentCount.textContent = `${enabledOpponents.length} enabled`;
+    opponentHint.textContent = selectedNation
+      ? 'Cards in the grid toggle rival participation.'
+      : 'All civilizations are available until your first pick.';
+
+    for (const opponent of enabledOpponents) {
+      const item = document.createElement('span');
+      item.className = 'mm-opponent-chip';
+
+      const dot = document.createElement('span');
+      dot.className = 'mm-nation-dot mini';
+      dot.style.background = opponent.color;
+
+      const name = document.createElement('span');
+      name.textContent = opponent.name;
+
+      item.append(dot, name);
+      opponentList.appendChild(item);
+    }
+  }
+
+  private createSelectedNationCopy(nation: ScenarioNation, leaderName: string): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'mm-selected-copy';
+
+    const dot = document.createElement('span');
+    dot.className = 'mm-nation-dot';
+    dot.style.background = nation.color;
+
+    const name = document.createElement('strong');
+    name.textContent = nation.name;
+
+    const leader = document.createElement('span');
+    leader.textContent = `Leader: ${leaderName}`;
+
+    wrapper.append(dot, name, leader);
+    return wrapper;
+  }
+
+  private getEnabledOpponentIds(): string[] {
+    return [...this.selectedOpponentIds].filter(id => id !== this.selectedNationId);
   }
 
   private createLeaderPortrait(nationId: string, className: string): HTMLElement {
@@ -230,26 +371,9 @@ export class MainMenuScene extends Phaser.Scene {
     return img;
   }
 
-  private selectNation(nationId: string): void {
-    this.selectedNationId = nationId;
-    this.selectedOpponentIds.clear();
-    for (const n of this.nations) {
-      if (n.id !== nationId) this.selectedOpponentIds.add(n.id);
-    }
-    this.renderNationList();
-    this.updateStartButton();
-  }
-
-  private deselectNation(): void {
-    this.selectedNationId = null;
-    this.selectedOpponentIds.clear();
-    this.renderNationList();
-    this.updateStartButton();
-  }
-
   private updateStartButton(): void {
     const btn = document.getElementById('mm-start-btn') as HTMLButtonElement;
-    btn.disabled = !this.selectedNationId || this.selectedOpponentIds.size === 0;
+    btn.disabled = !this.selectedNationId || this.getEnabledOpponentIds().length === 0;
   }
 
   private startGame(): void {
@@ -258,7 +382,7 @@ export class MainMenuScene extends Phaser.Scene {
     const config: GameConfig = {
       mapKey: this.currentMapKey,
       humanNationId: this.selectedNationId,
-      activeNationIds: [this.selectedNationId, ...this.selectedOpponentIds],
+      activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
     };
 
     this.cleanup();
@@ -272,232 +396,606 @@ export class MainMenuScene extends Phaser.Scene {
     style.id = 'main-menu-styles';
     style.textContent = `
       #main-menu-overlay {
+        --mm-shell-width: 1180px;
+        --mm-shell-left: 0px;
         position: fixed;
         inset: 0;
         z-index: 1000;
-        background: #0a0e14;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-family: 'Georgia', 'Times New Roman', serif;
-        color: #c8c8c8;
+        overflow: hidden;
+        font-family: Georgia, 'Times New Roman', serif;
+        color: #241a12;
+      }
+
+      #main-menu-overlay::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: url('/assets/background.svg'), url('/assets/background.png');
+        background-size: cover;
+        background-position: center;
+        transform: scale(1.02);
+      }
+
+      #main-menu-overlay::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(34, 24, 15, 0.54), rgba(255, 246, 224, 0.3) 45%, rgba(31, 22, 15, 0.52)),
+          linear-gradient(180deg, rgba(255, 248, 229, 0.52), rgba(42, 31, 21, 0.36));
       }
 
       .mm-container {
-        width: 420px;
-        max-height: 90vh;
-        overflow-y: auto;
-        padding: 40px 30px;
-        text-align: center;
+        position: relative;
+        z-index: 1;
+        width: min(var(--mm-shell-width), calc(100vw - 32px));
+        height: calc(100vh - 32px);
+        margin-left: max(16px, var(--mm-shell-left));
+        margin-top: 16px;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr) auto;
+        gap: 18px;
+        padding: 18px 28px 20px;
+        box-sizing: border-box;
+        background: rgba(239, 232, 215, 0.78);
+        border: 1px solid rgba(116, 82, 44, 0.28);
+        border-radius: 8px;
+        box-shadow: 0 24px 60px rgba(34, 24, 15, 0.26);
+        backdrop-filter: blur(2px);
       }
 
       .mm-header {
-        margin-bottom: 36px;
+        text-align: center;
+        max-width: 980px;
+        justify-self: center;
+        padding-top: 2px;
       }
 
       .mm-title {
-        font-size: 72px;
-        font-weight: 700;
-        letter-spacing: 16px;
-        color: #d4a857;
         margin: 0;
-        text-shadow: 0 2px 8px rgba(212, 168, 87, 0.3);
+        font-size: 64px;
+        line-height: 0.98;
+        font-weight: 700;
+        letter-spacing: 0;
+        color: #a75d17;
+        text-shadow: 0 2px 0 rgba(255, 245, 217, 0.72), 0 12px 28px rgba(75, 45, 18, 0.24);
       }
 
       .mm-subtitle {
-        font-size: 14px;
-        letter-spacing: 4px;
-        color: #666;
-        margin: 8px 0 0;
-        text-transform: uppercase;
+        max-width: 760px;
+        margin: 10px auto 0;
+        color: rgba(34, 24, 15, 0.76);
+        font-size: 20px;
+        line-height: 1.35;
+        letter-spacing: 0;
       }
 
-      .mm-section {
-        margin-bottom: 24px;
-        text-align: left;
+      .mm-victory-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
       }
 
-      .mm-label {
-        display: block;
-        font-size: 11px;
-        letter-spacing: 2px;
-        color: #888;
-        text-transform: uppercase;
-        margin-bottom: 8px;
-      }
-
-      .mm-select {
-        width: 100%;
-        padding: 10px 12px;
-        background: #151a22;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
-        color: #c8c8c8;
-        font-size: 14px;
+      .mm-victory-card,
+      .mm-nation-card,
+      .mm-start-btn,
+      .mm-editor-btn,
+      .mm-change-nation-btn {
         font-family: inherit;
+      }
+
+      .mm-victory-card {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto;
+        column-gap: 11px;
+        row-gap: 2px;
+        align-items: center;
+        min-height: 72px;
+        padding: 11px 14px;
+        text-align: left;
+        color: #2d2117;
+        background: rgba(252, 248, 237, 0.78);
+        border: 1px solid rgba(125, 88, 49, 0.34);
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(55, 38, 20, 0.12);
         cursor: pointer;
+        transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
       }
 
-      .mm-select:focus {
-        outline: none;
-        border-color: #d4a857;
+      .mm-victory-card:hover {
+        transform: translateY(-1px);
+        border-color: rgba(176, 101, 24, 0.72);
       }
 
-      .mm-nation-list {
+      .mm-victory-card.inactive {
+        opacity: 0.48;
+        background: rgba(219, 218, 210, 0.66);
+      }
+
+      .mm-victory-check {
+        grid-row: 1 / span 2;
+        position: relative;
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 2px solid rgba(116, 82, 44, 0.48);
+        background: rgba(255, 252, 243, 0.82);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 2px 5px rgba(57, 36, 18, 0.16);
+      }
+
+      .mm-victory-card.active .mm-victory-check {
+        border-color: #9d5a1a;
+        background: linear-gradient(180deg, #cf852f, #9b5618);
+      }
+
+      .mm-victory-card.active .mm-victory-check::after {
+        content: '';
+        width: 7px;
+        height: 12px;
+        border: solid #fff9e9;
+        border-width: 0 3px 3px 0;
+        transform: rotate(42deg) translateY(-1px);
+      }
+
+      .mm-victory-card.inactive .mm-victory-check {
+        background: rgba(236, 234, 226, 0.84);
+        border-color: rgba(87, 74, 60, 0.42);
+      }
+
+      .mm-victory-title {
+        font-size: 19px;
+        font-weight: 700;
+      }
+
+      .mm-victory-copy {
+        font-size: 14px;
+        color: rgba(45, 33, 23, 0.68);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-main {
+        display: grid;
+        grid-template-columns: minmax(0, 7fr) minmax(310px, 3fr);
+        gap: 18px;
+        min-height: 0;
+      }
+
+      .mm-nations-panel,
+      .mm-setup-panel {
+        min-height: 0;
+        background: rgba(248, 245, 235, 0.84);
+        border: 1px solid rgba(118, 84, 49, 0.32);
+        border-radius: 8px;
+        box-shadow: 0 14px 32px rgba(40, 30, 18, 0.12);
+      }
+
+      .mm-nations-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        padding: 20px;
+      }
+
+      .mm-setup-panel {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        padding: 20px;
+        overflow: hidden;
+      }
+
+      .mm-panel-heading {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: end;
+        margin-bottom: 16px;
+      }
+
+      .mm-panel-heading.stacked {
+        display: block;
+      }
+
+      .mm-eyebrow,
+      .mm-field-label {
+        display: block;
+        color: #7f4c15;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .mm-panel-heading h2 {
+        margin: 2px 0 0;
+        color: #1f160f;
+        font-size: 25px;
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      .mm-status {
+        max-width: 460px;
+        margin: 0;
+        color: rgba(36, 26, 18, 0.64);
+        font-size: 13px;
+        line-height: 1.25;
+        text-align: right;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-nation-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+        grid-auto-rows: minmax(112px, auto);
+        gap: 10px;
+        min-height: 0;
+        overflow: auto;
+        padding-right: 4px;
       }
 
       .mm-nation-card {
-        display: flex;
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        gap: 9px;
         align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        background: #151a22;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
-        color: #c8c8c8;
-        font-size: 14px;
-        font-family: inherit;
+        min-width: 0;
+        padding: 10px 11px;
+        text-align: left;
+        color: #261a10;
+        background: rgba(255, 252, 243, 0.76);
+        border: 1px solid rgba(117, 86, 56, 0.36);
+        border-radius: 8px;
+        box-shadow: 0 6px 16px rgba(50, 36, 19, 0.08);
         cursor: pointer;
-        transition: border-color 0.15s, background 0.15s;
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, opacity 0.14s ease;
       }
 
       .mm-nation-card:hover {
-        background: #1a2030;
-        border-color: #3a4a60;
+        transform: translateY(-1px);
+        border-color: rgba(176, 101, 24, 0.78);
+        background: rgba(255, 251, 235, 0.92);
       }
 
-      .mm-nation-card.selected {
-        background: #1a2520;
-        border-color: #d4a857;
-        color: #fff;
+      .mm-nation-card.selected-player {
+        border-color: #b06518;
+        background: linear-gradient(180deg, rgba(255, 247, 222, 0.95), rgba(238, 214, 170, 0.9));
+        box-shadow: inset 0 0 0 2px rgba(176, 101, 24, 0.2), 0 10px 22px rgba(94, 54, 18, 0.16);
+      }
+
+      .mm-nation-card.opponent-disabled {
+        opacity: 0.5;
+        background: rgba(222, 221, 213, 0.7);
       }
 
       .mm-nation-dot {
         width: 14px;
         height: 14px;
-        border-radius: 3px;
+        border-radius: 7px;
+        border: 2px solid rgba(255, 255, 255, 0.75);
+        box-shadow: 0 0 0 1px rgba(50, 31, 16, 0.32);
         flex-shrink: 0;
       }
 
-      .mm-leader-thumb {
-        width: 42px;
-        height: 52px;
-        border-radius: 50% / 44%;
+      .mm-nation-dot.mini {
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+      }
+
+      .mm-nation-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .mm-nation-copy strong {
+        font-size: 18px;
+        line-height: 1.05;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-nation-copy span {
+        color: rgba(38, 26, 16, 0.7);
+        font-size: 13px;
+      }
+
+      .mm-card-leader {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-card-description {
+        display: -webkit-box;
+        min-height: 34px;
+        line-height: 1.25;
+        white-space: normal;
+        overflow: hidden;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .mm-card-portrait {
+        width: 48px;
+        height: 58px;
+        border-radius: 8px;
         object-fit: cover;
-        flex-shrink: 0;
-        border: 1px solid #3a3040;
-        background: #111722;
-        color: #777;
+        border: 1px solid rgba(117, 86, 56, 0.42);
+        background: rgba(62, 45, 27, 0.2);
+        color: rgba(36, 26, 18, 0.58);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         font-size: 18px;
+        box-shadow: 0 4px 10px rgba(48, 33, 18, 0.14);
       }
 
-      .mm-leader-thumb.small {
-        width: 30px;
-        height: 38px;
-      }
-
-      .mm-card-leader-name {
-        margin-left: auto;
-        color: #777;
-        font-size: 12px;
-        font-style: italic;
-      }
-
-      .mm-change-hint {
-        margin-left: 8px;
+      .mm-card-state {
+        align-self: start;
+        padding: 4px 6px;
+        border-radius: 8px;
+        background: rgba(56, 86, 70, 0.14);
+        color: #355642;
         font-size: 11px;
-        color: #666;
-        font-weight: 400;
+        font-weight: 700;
       }
 
-      .mm-nation-card:hover .mm-change-hint {
-        color: #d4a857;
+      .mm-nation-card.selected-player .mm-card-state {
+        color: #fff7e7;
+        background: #a75d17;
+      }
+
+      .mm-nation-card.opponent-disabled .mm-card-state {
+        color: rgba(38, 26, 16, 0.54);
+        background: rgba(38, 26, 16, 0.08);
+      }
+
+      .mm-selected-display {
+        min-height: 92px;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 14px;
+        align-items: center;
+        padding: 0 0 18px;
+        border-bottom: 1px solid rgba(117, 86, 56, 0.26);
+      }
+
+      .mm-empty-selection {
+        grid-column: 1 / -1;
+        margin: 0;
+        color: rgba(36, 26, 18, 0.62);
+        font-size: 16px;
+      }
+
+      .mm-leader-portrait {
+        width: 64px;
+        height: 78px;
+        border-radius: 8px;
+        object-fit: cover;
+        border: 1px solid rgba(117, 86, 56, 0.38);
+        background: rgba(62, 45, 27, 0.2);
+        color: rgba(36, 26, 18, 0.58);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+      }
+
+      .mm-selected-copy {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 4px 10px;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .mm-selected-copy strong {
+        font-size: 26px;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-selected-copy span:last-child {
+        grid-column: 1 / -1;
+        color: rgba(36, 26, 18, 0.72);
+        font-size: 15px;
+      }
+
+      .mm-field-label {
+        margin: 16px 0 7px;
+      }
+
+      .mm-select {
+        width: 100%;
+        padding: 11px 12px;
+        color: #261a10;
+        background: rgba(255, 252, 244, 0.88);
+        border: 1px solid rgba(117, 86, 56, 0.42);
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 16px;
+        cursor: pointer;
+      }
+
+      .mm-select:focus {
+        outline: 2px solid rgba(176, 101, 24, 0.38);
+        outline-offset: 2px;
+      }
+
+      .mm-opponent-summary {
+        margin-top: 4px;
+      }
+
+      .mm-opponent-summary strong {
+        display: block;
+        color: #1f160f;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+
+      .mm-opponent-summary p {
+        margin: 6px 0 0;
+        color: rgba(36, 26, 18, 0.65);
+        font-size: 14px;
+        line-height: 1.25;
       }
 
       .mm-opponent-list {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
+        flex-wrap: wrap;
+        gap: 7px;
+        align-content: start;
+        min-height: 0;
+        overflow: auto;
+        margin-top: 13px;
+        padding-right: 2px;
       }
 
-      .mm-opponent-row {
-        display: flex;
+      .mm-opponent-chip {
+        display: inline-flex;
         align-items: center;
-        gap: 10px;
-        padding: 8px 12px;
-        background: #151a22;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: background 0.15s;
+        gap: 6px;
+        max-width: 100%;
+        padding: 5px 8px;
+        border-radius: 8px;
+        color: #2b2017;
+        background: rgba(255, 252, 243, 0.66);
+        border: 1px solid rgba(117, 86, 56, 0.24);
+        font-size: 13px;
       }
 
-      .mm-opponent-row:hover {
-        background: #1a2030;
+      .mm-change-nation-btn {
+        margin-top: auto;
+        padding: 10px 12px;
+        color: #6d4215;
+        background: transparent;
+        border: 1px solid rgba(117, 86, 56, 0.36);
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
       }
 
-      .mm-opponent-row input[type="checkbox"] {
-        accent-color: #d4a857;
-        width: 16px;
-        height: 16px;
+      .mm-change-nation-btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+      }
+
+      .mm-change-nation-btn:hover:not(:disabled) {
+        background: rgba(255, 247, 225, 0.72);
+        border-color: rgba(176, 101, 24, 0.68);
+      }
+
+      .mm-actions {
+        display: grid;
+        grid-template-columns: minmax(280px, 520px) 170px;
+        gap: 14px;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .mm-start-btn,
+      .mm-editor-btn {
+        border-radius: 8px;
+        font-weight: 700;
         cursor: pointer;
+        transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
       }
 
       .mm-start-btn {
-        display: block;
-        width: 100%;
-        padding: 14px;
-        margin-top: 28px;
-        background: #8b0000;
-        border: none;
-        border-radius: 4px;
-        color: #fff;
-        font-size: 18px;
-        font-weight: 700;
-        font-family: inherit;
-        letter-spacing: 4px;
-        cursor: pointer;
-        transition: background 0.15s;
+        min-height: 58px;
+        color: #fff7e7;
+        background: linear-gradient(180deg, #c27821, #9a5415);
+        border: 1px solid rgba(84, 45, 15, 0.38);
+        box-shadow: 0 14px 30px rgba(78, 43, 16, 0.22);
+        font-size: 23px;
       }
 
-      .mm-start-btn:hover:not(:disabled) {
-        background: #a50000;
+      .mm-start-btn:hover:not(:disabled),
+      .mm-editor-btn:hover {
+        transform: translateY(-1px);
       }
 
       .mm-start-btn:disabled {
-        background: #333;
-        color: #666;
+        opacity: 0.46;
         cursor: not-allowed;
       }
 
       .mm-editor-btn {
-        display: block;
-        width: 100%;
-        padding: 10px;
-        margin-top: 12px;
-        background: transparent;
-        border: 1px solid #2a3040;
-        border-radius: 4px;
-        color: #888;
-        font-size: 13px;
-        font-weight: 700;
-        font-family: inherit;
-        letter-spacing: 3px;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s, color 0.15s;
+        min-height: 48px;
+        color: #5f3c16;
+        background: rgba(255, 252, 244, 0.74);
+        border: 1px solid rgba(117, 86, 56, 0.38);
+        font-size: 17px;
       }
 
       .mm-editor-btn:hover {
-        background: #151a22;
-        border-color: #d4a857;
-        color: #c8c8c8;
+        background: rgba(255, 248, 229, 0.9);
+        border-color: rgba(176, 101, 24, 0.7);
+      }
+
+      @media (max-width: 1180px) {
+        .mm-container {
+          width: calc(100vw - 24px);
+          height: calc(100vh - 24px);
+          margin: 12px;
+          padding: 16px 18px 18px;
+        }
+
+        .mm-title {
+          font-size: 52px;
+        }
+
+        .mm-subtitle {
+          font-size: 18px;
+        }
+
+        .mm-main {
+          grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+        }
+      }
+
+      @media (max-width: 900px) {
+        #main-menu-overlay {
+          overflow: auto;
+        }
+
+        .mm-container {
+          height: auto;
+          min-height: calc(100vh - 24px);
+          grid-template-rows: auto;
+          overflow: visible;
+        }
+
+        .mm-title {
+          font-size: 42px;
+        }
+
+        .mm-subtitle {
+          font-size: 16px;
+        }
+
+        .mm-victory-row,
+        .mm-main,
+        .mm-actions {
+          grid-template-columns: 1fr;
+        }
+
+        .mm-status {
+          text-align: left;
+          white-space: normal;
+        }
       }
     `;
     document.head.appendChild(style);

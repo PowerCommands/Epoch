@@ -70,6 +70,12 @@ export class CameraController {
     this.handleKeyboardPan(delta);
   }
 
+  /** Centrera kameran på en världsposition och sätt ett specifikt zoom-värde. */
+  focusOn(worldX: number, worldY: number, zoom: number): void {
+    this.cam.zoom = Phaser.Math.Clamp(zoom, this.minZoom, ZOOM_MAX);
+    this.cam.centerOn(worldX, worldY);
+  }
+
   get zoom(): number {
     return this.cam.zoom;
   }

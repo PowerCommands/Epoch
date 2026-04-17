@@ -28,7 +28,7 @@ const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
  * AISystem kör grundläggande AI för icke-mänskliga nationer.
  *
  * Prioritetsordning per tur:
- * 0. Settlers — found cities or move toward founding sites
+ * 0. Settlers — found the first city immediately, then expand toward spaced sites
  * 1. Strid — attackera angränsande fiender (skip 0-strength units)
  * 2. Rörelse — gå mot närmaste fiendestad
  * 3. Produktion — respektera 2-warrior cap, settler-villkor
@@ -91,7 +91,16 @@ export class AISystem {
     for (const settler of settlers) {
       if (this.unitManager.getUnit(settler.id) === undefined) continue;
 
-      // Try founding at current position
+      const ownsNoCities = this.cityManager.getCitiesByOwner(nationId).length === 0;
+      const isOpeningRound = this.turnManager.getCurrentRound() === 1;
+
+      // Opening-round rule: every AI founds its capital immediately if possible.
+      if (isOpeningRound && ownsNoCities && this.foundCitySystem.canFound(settler)) {
+        this.foundCitySystem.foundCity(settler);
+        continue; // settler consumed
+      }
+
+      // Later settlers respect spacing from all existing cities.
       if (this.foundCitySystem.canFound(settler)) {
         const allCities = this.cityManager.getAllCities();
         const minDist = this.minDistanceToCities(settler.tileX, settler.tileY, allCities);

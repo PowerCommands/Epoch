@@ -10,6 +10,7 @@ import { TerritoryRenderer } from './TerritoryRenderer';
 import { CityRenderer } from './CityRenderer';
 import { ResourceSystem } from './ResourceSystem';
 import type { IGridSystem } from './grid/IGridSystem';
+import cityNamePoolsJson from '../data/cityNames.json';
 
 const FOUNDABLE_TYPES = new Set<TileType>([
   TileType.Plains,
@@ -19,7 +20,8 @@ const FOUNDABLE_TYPES = new Set<TileType>([
   TileType.Desert,
 ]);
 
-const CITY_NAMES = [
+const CITY_NAME_POOLS: Record<string, string[]> = cityNamePoolsJson;
+const FALLBACK_CITY_NAMES = [
   'Novum', 'Ardena', 'Calvis', 'Durnheim', 'Erwick',
   'Falmere', 'Galdor', 'Havenmoor', 'Iskara', 'Jorvik',
 ];
@@ -39,6 +41,7 @@ export class FoundCitySystem {
   private readonly cityRenderer: CityRenderer;
   private readonly resourceSystem: ResourceSystem;
   private readonly mapData: MapData;
+  private readonly foundedListeners: ((city: City) => void)[] = [];
   private nextCityNumber = 1;
 
   constructor(
@@ -78,7 +81,8 @@ export class FoundCitySystem {
   foundCity(unit: Unit): City | null {
     if (!this.canFound(unit)) return null;
 
-    const name = this.pickCityName();
+    const isCapital = this.cityManager.getCitiesByOwner(unit.ownerId).length === 0;
+    const name = this.pickCityName(unit.ownerId);
     const cityId = `city_${unit.ownerId}_founded_${this.nextCityNumber}`;
     this.nextCityNumber++;
 
@@ -88,6 +92,7 @@ export class FoundCitySystem {
       ownerId: unit.ownerId,
       tileX: unit.tileX,
       tileY: unit.tileY,
+      isCapital,
     });
 
     this.cityManager.addCity(city);
@@ -105,7 +110,13 @@ export class FoundCitySystem {
     // Recalculate resources for nation (new city adds income)
     this.resourceSystem.recalculateForNation(unit.ownerId);
 
+    for (const cb of this.foundedListeners) cb(city);
+
     return city;
+  }
+
+  onCityFounded(cb: (city: City) => void): void {
+    this.foundedListeners.push(cb);
   }
 
   private claimTerritory(nationId: string, cx: number, cy: number): void {
@@ -121,10 +132,15 @@ export class FoundCitySystem {
     }
   }
 
-  private pickCityName(): string {
+  private pickCityName(nationId: string): string {
     const usedNames = new Set(this.cityManager.getAllCities().map((c) => c.name));
+    const preferredNames = CITY_NAME_POOLS[nationId] ?? FALLBACK_CITY_NAMES;
 
-    for (const name of CITY_NAMES) {
+    for (const name of preferredNames) {
+      if (!usedNames.has(name)) return name;
+    }
+
+    for (const name of FALLBACK_CITY_NAMES) {
       if (!usedNames.has(name)) return name;
     }
 

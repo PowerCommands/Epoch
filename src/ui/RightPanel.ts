@@ -13,12 +13,17 @@ import { TileType, type MapData, type Tile } from '../types/map';
 import type { Producible } from '../types/producible';
 import type { LeaderDefinition } from '../types/leader';
 import type { DiplomacyManager } from '../systems/DiplomacyManager';
+import type { DiscoverySystem } from '../systems/DiscoverySystem';
+import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 
 export class RightPanel {
   private readonly root: HTMLElement;
+  private readonly contentEl: HTMLElement;
+  private readonly logEl: HTMLElement;
+  private readonly logListEl: HTMLElement;
   private readonly productionSystem: ProductionSystem;
   private readonly cityManager: CityManager;
   private readonly unitManager: UnitManager;
@@ -26,6 +31,8 @@ export class RightPanel {
   private readonly mapData: MapData;
   private readonly humanNationId: string | undefined;
   private diplomacyManager: DiplomacyManager | null = null;
+  private discoverySystem: DiscoverySystem | null = null;
+  private eventLog: EventLogSystem | null = null;
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
   private currentNationId: string | null = null;
@@ -47,6 +54,23 @@ export class RightPanel {
     if (!root) throw new Error('Missing #panel-right');
 
     this.root = root;
+    this.root.className = 'html-panel';
+    this.root.replaceChildren();
+
+    this.contentEl = document.createElement('div');
+    this.contentEl.className = 'panel-content';
+
+    this.logEl = document.createElement('div');
+    this.logEl.className = 'panel-section event-log';
+    const logHeading = document.createElement('div');
+    logHeading.className = 'panel-heading';
+    logHeading.textContent = 'Event Log';
+    this.logListEl = document.createElement('div');
+    this.logListEl.className = 'event-log-list';
+    this.logEl.append(logHeading, this.logListEl);
+
+    this.root.append(this.contentEl, this.logEl);
+
     this.productionSystem = productionSystem;
     this.cityManager = cityManager;
     this.unitManager = unitManager;
@@ -54,6 +78,7 @@ export class RightPanel {
     this.mapData = mapData;
     this.humanNationId = humanNationId;
 
+    this.renderEventLog();
     this.clear();
   }
 
@@ -63,6 +88,16 @@ export class RightPanel {
 
   setDiplomacyManager(dm: DiplomacyManager): void {
     this.diplomacyManager = dm;
+  }
+
+  setDiscoverySystem(ds: DiscoverySystem): void {
+    this.discoverySystem = ds;
+  }
+
+  setEventLog(log: EventLogSystem): void {
+    this.eventLog = log;
+    log.onChanged(() => this.renderEventLog());
+    this.renderEventLog();
   }
 
   setFoundCityHandler(canFoundCity: (unit: Unit) => boolean, foundCity: (unit: Unit) => void): void {
@@ -139,7 +174,7 @@ export class RightPanel {
       this.createDiv('panel-large', tile.type),
       this.createDiv('', `Owner: ${owner?.name ?? 'Unclaimed'}`),
     );
-    this.root.append(section);
+    this.contentEl.append(section);
   }
 
   showCity(city: City): void {
@@ -207,7 +242,7 @@ export class RightPanel {
       prodContainer.append(this.renderAddToQueue(city, nationColor));
     }
 
-    this.root.append(section, growthSection, outputSection, prodContainer);
+    this.contentEl.append(section, growthSection, outputSection, prodContainer);
   }
 
   showUnit(unit: Unit): void {
@@ -249,7 +284,7 @@ export class RightPanel {
       section.append(button);
     }
 
-    this.root.append(section);
+    this.contentEl.append(section);
   }
 
   // TODO: filter based on fog of war discovery when implemented
@@ -279,14 +314,14 @@ export class RightPanel {
     nameText.style.color = toCssColor(nation.color);
     nameRow.append(dot, nameText);
     header.append(nameRow);
-    this.root.append(header);
+    this.contentEl.append(header);
 
     // Economy
     const econ = this.createSection('Economy');
     econ.append(
       this.createDiv('', `Gold: ${resources.gold}  (+${resources.goldPerTurn}/turn)`),
     );
-    this.root.append(econ);
+    this.contentEl.append(econ);
 
     // Cities
     const citySection = this.createSection(`Cities (${cities.length})`);
@@ -312,7 +347,7 @@ export class RightPanel {
         citySection.append(row);
       }
     }
-    this.root.append(citySection);
+    this.contentEl.append(citySection);
 
     // Military
     const unitCounts = new Map<string, number>();
@@ -329,11 +364,11 @@ export class RightPanel {
         milSection.append(this.createDiv('', `${count}\u00d7 ${typeName}`));
       }
     }
-    this.root.append(milSection);
+    this.contentEl.append(milSection);
 
-    // Diplomacy button (only for foreign nations)
-    if (!isHuman && this.diplomacyManager && this.humanNationId) {
-      this.root.append(this.renderDiplomacySection(nationId));
+    // Diplomacy button (only for foreign nations that we have met)
+    if (!isHuman && this.diplomacyManager && this.humanNationId && this.isNationKnown(nationId)) {
+      this.contentEl.append(this.renderDiplomacySection(nationId));
     }
   }
 
@@ -347,7 +382,7 @@ export class RightPanel {
     const leader = getLeaderById(leaderIdOrNationId) ?? getLeaderByNationId(leaderIdOrNationId);
     if (!leader) {
       this.currentLeaderId = null;
-      this.root.append(this.createDiv('panel-muted', 'Leader not found.'));
+      this.contentEl.append(this.createDiv('panel-muted', 'Leader not found.'));
       return;
     }
 
@@ -364,13 +399,13 @@ export class RightPanel {
     if (leader.title) section.append(this.createDiv('', leader.title));
     if (leader.description) section.append(this.createDiv('panel-muted', leader.description));
 
-    this.root.append(section);
+    this.contentEl.append(section);
 
     if (nation) {
-      this.root.append(this.renderLeaderNationSection(leader.nationId));
+      this.contentEl.append(this.renderLeaderNationSection(leader.nationId));
       const isHuman = leader.nationId === this.humanNationId;
-      if (!isHuman && this.diplomacyManager && this.humanNationId) {
-        this.root.append(this.renderDiplomacySection(leader.nationId));
+      if (!isHuman && this.diplomacyManager && this.humanNationId && this.isNationKnown(leader.nationId)) {
+        this.contentEl.append(this.renderDiplomacySection(leader.nationId));
       }
     }
   }
@@ -382,7 +417,7 @@ export class RightPanel {
     this.currentLeaderId = null;
     this.currentView = null;
     this.reset();
-    this.root.append(this.createDiv('panel-muted', 'Select a tile, city, unit, or nation.'));
+    this.contentEl.append(this.createDiv('panel-muted', 'Select a tile, city, unit, or nation.'));
   }
 
   // ─── Production Queue ────────────────────────────────────────────────────
@@ -496,8 +531,38 @@ export class RightPanel {
   }
 
   private reset(): void {
-    this.root.replaceChildren();
-    this.root.className = 'html-panel';
+    this.contentEl.replaceChildren();
+  }
+
+  private isNationKnown(nationId: string): boolean {
+    if (!this.discoverySystem || !this.humanNationId) return true;
+    return this.discoverySystem.hasMet(this.humanNationId, nationId);
+  }
+
+  private renderEventLog(): void {
+    this.logListEl.replaceChildren();
+    if (!this.eventLog) return;
+    const entries = this.eventLog.getVisibleEntries();
+    if (entries.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'panel-muted event-log-empty';
+      empty.textContent = 'No events yet.';
+      this.logListEl.append(empty);
+      return;
+    }
+    for (const entry of entries) {
+      const row = document.createElement('div');
+      row.className = 'event-log-row';
+      const turn = document.createElement('span');
+      turn.className = 'event-log-turn';
+      turn.textContent = `T${entry.round}`;
+      const text = document.createElement('span');
+      text.className = 'event-log-text';
+      text.textContent = entry.text;
+      row.append(turn, text);
+      this.logListEl.append(row);
+    }
+    this.logListEl.scrollTop = this.logListEl.scrollHeight;
   }
 
   private createSection(title: string): HTMLElement {

@@ -97,6 +97,38 @@
         line-height: 1.15;
       }
 
+      .end-turn-button {
+        width: 100%;
+        min-height: 42px;
+        padding: 10px 12px;
+        margin: 2px 0 8px;
+        border: 1px solid rgba(84, 45, 15, 0.7);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #c27821, #9a5415);
+        color: #fff7e7;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        transition: transform 0.14s ease, opacity 0.14s ease, filter 0.14s ease;
+      }
+
+      .end-turn-button:hover:not(:disabled) {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+      }
+
+      .end-turn-button:disabled {
+        cursor: not-allowed;
+      }
+
+      .turn-active-nation {
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+
       .panel-muted {
         color: var(--text-muted);
       }
@@ -391,6 +423,57 @@
       .queue-add-btn:hover {
         background: #3a5a3a;
         color: #afa;
+      }
+
+      .panel-content {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        min-height: 0;
+      }
+
+      .event-log {
+        flex: 0 0 auto;
+        margin-top: 8px;
+        margin-bottom: 0;
+        max-height: 32vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .event-log-list {
+        overflow-y: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .event-log-row {
+        display: flex;
+        gap: 6px;
+        padding: 3px 2px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      }
+
+      .event-log-row:last-child {
+        border-bottom: 0;
+        background: rgba(212, 168, 87, 0.08);
+      }
+
+      .event-log-turn {
+        color: var(--text-muted);
+        flex-shrink: 0;
+        width: 28px;
+      }
+
+      .event-log-text {
+        color: var(--text-primary);
+        word-break: break-word;
+      }
+
+      .event-log-empty {
+        font-size: 11px;
+        font-style: italic;
       }
     </style>
   </head>

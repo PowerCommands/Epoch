@@ -1,12 +1,15 @@
 import { getLeaderByNationId } from '../data/leaders';
 import { NationManager } from '../systems/NationManager';
 import { TurnManager } from '../systems/TurnManager';
+import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { LeaderDefinition } from '../types/leader';
 
 export class LeftPanel {
   private readonly root: HTMLElement;
   private readonly nationManager: NationManager;
   private readonly turnManager: TurnManager;
+  private readonly humanNationId: string | undefined;
+  private readonly discoverySystem: DiscoverySystem | null;
   private endTurnCallback: (() => void) | null = null;
   private selectedNationId: string | null = null;
 
@@ -14,6 +17,7 @@ export class LeftPanel {
     nationManager: NationManager,
     turnManager: TurnManager,
     humanNationId?: string,
+    discoverySystem?: DiscoverySystem,
   ) {
     const root = document.getElementById('panel-left');
     if (!root) throw new Error('Missing #panel-left');
@@ -21,7 +25,8 @@ export class LeftPanel {
     this.root = root;
     this.nationManager = nationManager;
     this.turnManager = turnManager;
-    void humanNationId;
+    this.humanNationId = humanNationId;
+    this.discoverySystem = discoverySystem ?? null;
 
     this.refresh();
   }
@@ -33,7 +38,6 @@ export class LeftPanel {
     this.root.append(
       this.renderTurnInfo(),
       this.renderLeaderStrip(),
-      this.renderEndTurnButton(),
     );
   }
 
@@ -66,12 +70,12 @@ export class LeftPanel {
   }
 
   private renderTurnInfo(): HTMLElement {
-    const section = this.createSection('Turn');
+    const section = this.createSection(`Turn ${this.turnManager.getCurrentRound()}`);
     const currentNation = this.turnManager.getCurrentNation();
 
     section.append(
-      this.createDiv('panel-large', `Round ${this.turnManager.getCurrentRound()}`),
-      this.createDiv('', `${currentNation.name}'s Turn`, currentNation.color),
+      this.renderEndTurnButton(),
+      this.createDiv('turn-active-nation', `${currentNation.name}'s Turn`, currentNation.color),
     );
 
     return section;
@@ -79,8 +83,9 @@ export class LeftPanel {
 
   private renderLeaderStrip(): HTMLElement {
     const section = this.createSection('Leaders');
+    const visible = this.getVisibleNations();
 
-    for (const nation of this.nationManager.getAllNations()) {
+    for (const nation of visible) {
       const leader = getLeaderByNationId(nation.id);
       const row = document.createElement('button');
       row.type = 'button';
@@ -111,6 +116,13 @@ export class LeftPanel {
     return section;
   }
 
+  private getVisibleNations() {
+    const all = this.nationManager.getAllNations();
+    if (!this.discoverySystem || !this.humanNationId) return all;
+    const humanId = this.humanNationId;
+    return all.filter((n) => this.discoverySystem!.hasMet(humanId, n.id));
+  }
+
   private createLeaderPortrait(leader: LeaderDefinition | undefined): HTMLElement {
     const fallback = document.createElement('span');
     fallback.className = 'leader-portrait-fallback';
@@ -131,31 +143,13 @@ export class LeftPanel {
   private renderEndTurnButton(): HTMLElement {
     const btn = document.createElement('button');
     btn.id = 'end-turn-btn';
+    btn.className = 'end-turn-button';
     btn.textContent = 'End Turn';
-    btn.style.cssText = `
-      width: 100%;
-      padding: 10px;
-      background: #8b0000;
-      color: white;
-      font-weight: bold;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-    `;
-    btn.addEventListener('mouseenter', () => {
-      if (!btn.disabled) btn.style.background = '#a00000';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = '#8b0000';
-    });
     btn.addEventListener('click', () => {
       if (this.endTurnCallback) this.endTurnCallback();
     });
 
-    const wrapper = document.createElement('div');
-    wrapper.style.marginTop = 'auto';
-    wrapper.append(btn);
-    return wrapper;
+    return btn;
   }
 
   private createSection(title: string): HTMLElement {

@@ -6,7 +6,7 @@ type VictoryListener = (nationId: string) => void;
 
 /**
  * VictorySystem checks for win condition after each turn end.
- * Victory: one nation owns all starting capitals.
+ * Domination victory: one nation owns every active nation's capital.
  */
 export class VictorySystem {
   private readonly cityManager: CityManager;
@@ -33,8 +33,11 @@ export class VictorySystem {
   }
 
   checkVictory(): string | null {
+    const activeNations = this.nationManager.getAllNations();
+    if (activeNations.length < 2) return null;
+
     const capitals = this.cityManager.getAllCities().filter((c) => c.isCapital);
-    if (capitals.length === 0) return null;
+    if (capitals.length < activeNations.length) return null;
 
     const owners = new Set(capitals.map((c) => c.ownerId));
     if (owners.size === 1) return capitals[0].ownerId;

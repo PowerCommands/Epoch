@@ -110,7 +110,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       </label>
       <label class="field">
         Nation ID
-        <input id="nation-id-input" type="text" placeholder="nation_morocco">
+        <input id="nation-id-input" type="text" placeholder="nation_morocco_empire">
       </label>
       <label class="field">
         Color
@@ -376,7 +376,7 @@ document.getElementById('add-nation-btn').addEventListener('click', () => {
     return;
   }
   if (!/^nation_[a-z0-9_]+$/.test(id)) {
-    setStatusInfo('Nation ID must look like nation_morocco');
+    setStatusInfo('Nation ID must look like nation_morocco_empire');
     return;
   }
   if (scenario.nations.some(n => n.id === id)) {
@@ -948,8 +948,9 @@ function validateScenario() {
   for (const nation of scenario.nations) {
     const cities = scenario.cities.filter(c => c.nationId === nation.id);
     const capitals = cities.filter(c => c.isCapital);
-    if (cities.length === 0) warnings.push(`${nation.name} has no city`);
-    if (capitals.length === 0) warnings.push(`${nation.name} has no capital`);
+    const settlers = scenario.units.filter(u => u.nationId === nation.id && u.unitTypeId === 'settler');
+    if (cities.length === 0 && settlers.length === 0) warnings.push(`${nation.name} has no city or settler`);
+    if (cities.length > 0 && capitals.length === 0) warnings.push(`${nation.name} has no capital`);
     if (capitals.length > 1) warnings.push(`${nation.name} has ${capitals.length} capitals`);
   }
   return warnings;

@@ -11,7 +11,7 @@ Implemented so far:
 - Basic Phaser + TypeScript + Vite project setup
 - **Scenario-driven data loading**: all game data (map, nations, cities, units) loaded from `public/europeScenario.json`
 - Scene flow: `BootScene` (preloads all maps + sprites) → `MainMenuScene` (nation/map selection) → `GameScene`
-- **Main menu**: "EPOCH" styled start screen with map dropdown, nation selection cards, opponent toggles, EDITOR button. Builds `GameConfig` and passes to `GameScene`.
+- **Main menu**: wide HTML/CSS strategy-game start screen over `public/assets/background.svg`/`.png`. Uses a full-width Civ-inspired layout with title/subtitle, polished checkbox-style victory-condition toggles, a nation grid with leader portraits/descriptions, setup panel with map dropdown, inferred opponents, START button, and EDITOR button. Builds `GameConfig` and passes to `GameScene`.
 - `GameConfig` type (`src/types/gameConfig.ts`): `mapKey`, `humanNationId`, `activeNationIds` — drives which nations/cities/units are active in a game session
 - `ScenarioLoader` parses scenario JSON into `MapData`, nations, cities, and units (Phaser-free)
 - **GameScene receives `GameConfig`**: filters nations/cities/units to active set, overrides `isHuman` from config (ignores JSON value)
@@ -23,10 +23,10 @@ Implemented so far:
 - Camera pan/zoom with debug HUD, dynamic overview zoom based on the actual Phaser canvas/container size, max 2.0
 - Tile hover and selection system
 - Selection support for tiles, cities, units, and nations, with priority `unit → city → tile`
-- Eight historical nations with territory overlays, loaded from scenario data
+- Nine historical nations with territory overlays, loaded from scenario data
 - `Nation.isHuman` is mutable — set by GameScene from `GameConfig`, not from JSON
-- Capital cities at historical locations with axial-hex ring fallback for ocean tiles (marked `isCapital`)
-- Starting units per nation, loaded from scenario with `unitTypeId` → `UnitType` mapping
+- Nations start city-free with one Settler on their `startTerritoryCenter`; first founded city becomes the capital.
+- Starting units are loaded from scenario with `unitTypeId` → `UnitType` mapping.
 - Land unit movement between adjacent non-ocean/non-coast tiles with **variable tile cost** (Jungle costs 2, others cost 1)
 - Naval unit movement for Fishing Boats and Transport Ships on Ocean/Coast tiles only
 - Transport boarding/disembarking uses normal movement: select a land unit to board an adjacent friendly naval unit with empty cargo, then select the onboard unit to move to an adjacent valid land tile.
@@ -54,12 +54,15 @@ Implemented so far:
 - AI fairness: 3-military-unit cap, 0-strength units cannot attack
 - AI produces diverse land military units (Warrior, Archer, Cavalry) and does not produce or move naval units yet
 - Settler unit that founds new cities (consumed on use, claims active-grid city territory)
-- AI settler behavior: founds cities ≥5 tiles from existing cities, max 3 cities per AI nation
+- AI settler behavior: during round 1 only, if an AI nation has no city and its settler is on a valid founding tile, it founds its capital immediately; later settlers use normal spacing rules, max 3 cities per AI nation.
 - FoundCitySystem with validation, territory claiming, and rendering refresh
 - "Found City" button in RightPanel for human settlers on valid tiles
-- **Victory system**: last nation holding all starting capitals wins
+- **Victory system**: Domination victory requires one nation to own every active nation's capital; no victory is possible until all active nations have founded their capital.
 - Victory overlay with nation name/color, game stops on victory
 - **Diplomacy system**: default state is PEACE; human must declare war before attacking (confirmation modal); RightPanel shows "Declare War"/"Propose Peace" buttons; AI proposes peace when losing all units
+- **Discovery system**: nations become "met" when any unit is within hex radius 9 of a foreign city; symmetric; LeftPanel and diplomacy UI are gated on discovery state
+- **Event log**: RightPanel bottom holds a persistent scrollable log of city founded, nation-met, war-declared, and peace-made events; entries are filtered so the player only sees events whose involved nations are all known
+- **Turn-start capital focus**: camera auto-centers on the human capital at zoom 1.5 at the start of each human turn (falls back to first owned city, then to the human's starting settler/unit on game start before any city exists, otherwise no-op)
 - **Standalone map editor** at `public/editor.html` (Canvas2D, no Phaser), accessible from main menu via EDITOR button
 - Editor features: native q/r hex rendering and picking, paint terrain (8 types, hex-radius brush 1-5 where size 1 is one hex), create/manage nations (name, color), add/move cities, add/move units (warrior, archer, cavalry, settler, fishing_boat, transport_ship), set nation start positions, validation warnings on save, download modified q/r scenario JSON
 
@@ -70,16 +73,17 @@ All game setup data lives in `public/europeScenario.json`:
   "meta": { "name": "Europe 1400", "version": 2 },
   "map": { "width": 316, "height": 166, "tileSize": 48, "tiles": [{"q":0,"r":0,"type":"ocean"}, ...] },
   "nations": [{ "id": "nation_england", "name": "England", "color": "#4a90d9", "isHuman": true, "startTerritoryCenter": {"q":94,"r":78} }, ...],
-  "cities": [{ "id": "city_london", "name": "London", "nationId": "nation_england", "q": 94, "r": 78, "isCapital": true }, ...],
-  "units": [{ "nationId": "nation_england", "unitTypeId": "warrior", "q": 94, "r": 79 }, ...]
+  "cities": [],
+  "units": [{ "nationId": "nation_england", "unitTypeId": "settler", "q": 94, "r": 78 }, ...]
 }
 ```
 - `ScenarioLoader.parse()` converts raw JSON → `MapData` + typed arrays
 - `NationManager.loadFromScenario()` creates nations, claims active-grid territory per `startTerritoryCenter`
-- `CityManager.loadFromScenario()` creates cities with axial-hex ring fallback for ocean tiles
+- `CityManager.loadFromScenario()` creates any preauthored cities with axial-hex ring fallback for ocean tiles; the current Europe scenario starts with no cities.
 - `UnitManager.loadFromScenario()` maps `unitTypeId` → `UnitType` from `data/units.ts`, allowing naval units only on Ocean/Coast tiles
 - `isHuman` in JSON is ignored at runtime — `GameScene` overrides from `GameConfig`
 - Nations/cities/units filtered to `GameConfig.activeNationIds` before loading
+- `src/data/cityNames.json` defines 20 ordered city names per nation. Entry 0 is the capital name used by that nation's first founded city.
 
 ## Important design rules
 - Keep **data models Phaser-free** where possible
@@ -150,30 +154,32 @@ All game setup data lives in `public/europeScenario.json`:
 - `CombatSystem.ts` — validates and executes combat (melee + ranged), emits `on()` (unit) and `onCityCombat()` events. Garrison rule: enemy unit on city tile is attacked first, city only if no garrison. Uses `IGridSystem` for melee adjacency and ranged distance. Land melee attacks cannot target naval units, but ranged attacks can.
 - `CityCombat.ts` — `captureCity()` helper: transfers ownership, changes tile, resets HP to 25%, moves attacker in
 - `HealingSystem.ts` — heals units (+10 HP) and cities (+10 HP if not attacked last round) on turnStart
-- `VictorySystem.ts` — checks win condition on turnEnd: one nation owning all starting capitals. Emits `onVictory()`.
+- `VictorySystem.ts` — checks Domination on turnEnd: one nation owning every active nation's capital. Emits `onVictory()`; returns no winner until each active nation has founded a capital.
 - `DiplomacyManager.ts` — runtime diplomacy service created by `GameScene`, passed into `CombatSystem`, and attached to `RightPanel`. Tracks diplomatic state (`WAR`/`PEACE`) per nation-pair using symmetric key. Manages peace proposals and responses. `CombatSystem` calls `canAttack()` before unit/city attacks and emits war-required events when blocked. `RightPanel` reads state for foreign nation/leader diplomacy actions. Events: `onPeaceProposed`, `onPeaceAccepted`, `onPeaceDeclined`, `onWarDeclared`.
-- `AISystem.ts` — AI for non-human nations (uses `nation.isHuman`): settlers → combat (melee+ranged) → movement → production, 3-military-unit cap. Reads `Nation.aiProfile` for aggression/target tuning. Uses `IGridSystem` for distances, combat scan ranges, support checks, and city approach tiles. Land movement uses `PathfindingSystem` paths executed by `MovementSystem.moveAlongPath()`; naval units are skipped.
-- `FoundCitySystem.ts` — settler city founding: validation, city creation, grid-provided territory claim, rendering refresh. Cities can be founded on Plains, Forest, Mountain, Jungle, Desert; active hex territory claim can include water tiles.
+- `DiscoverySystem.ts` — Phaser-free. Tracks which nations have met. Each nation always knows itself. `scan()` walks every unit against every foreign city and records symmetric meetings when hex distance ≤ `DISCOVERY_RADIUS` (9). `hasMet(a, b)`, `getMetNations()`, `onNationsMet()`. Called from `GameScene` on turn start, unit moved/created, city founded, and city captured.
+- `EventLogSystem.ts` — Phaser-free persistent strategic event log. `log(text, nationIds, round)` appends an entry. `getVisibleEntries()` filters so the human player only sees entries whose involved nation IDs are all known via `DiscoverySystem`. `onChanged()` for UI refresh. Caps at 100 entries (drops oldest).
+- `AISystem.ts` — AI for non-human nations (uses `nation.isHuman`): settlers → combat (melee+ranged) → movement → production, 3-military-unit cap. During round 1, first settler founds the capital immediately when on a valid tile; later settlers respect city spacing. Reads `Nation.aiProfile` for aggression/target tuning. Uses `IGridSystem` for distances, combat scan ranges, support checks, and city approach tiles. Land movement uses `PathfindingSystem` paths executed by `MovementSystem.moveAlongPath()`; naval units are skipped.
+- `FoundCitySystem.ts` — settler city founding: validation, nation-specific city-name selection from `src/data/cityNames.json`, first-city capital assignment, grid-provided territory claim, rendering refresh. Cities can be founded on Plains, Forest, Mountain, Jungle, Desert; active hex territory claim can include water tiles. Emits `onCityFounded(city)` after a successful founding (subscribed by `GameScene` for event log + discovery rescan).
 - `SelectionManager.ts` — hover/selection state, priority unit→city→tile, `onSelectionTarget()` for action routing. Tile hover/selection highlights use `TileMap.getTileOutlinePoints()` so selected tile overlays are hex polygons.
 - `MovementSystem.ts` — unit movement validation and execution. Uses `IGridSystem` for adjacency. Land units can enter non-Ocean/non-Coast tiles; naval units can enter only Ocean/Coast. Exports `getTileMovementCost(tile)`: Jungle=2, all others=1. Checks unit has enough movement points for tile cost.
 - `PathfindingSystem.ts` — Phaser-free A* pathfinding over grid-provided neighbors. Default `findPath()` respects current movement points for player previews/clicks; AI can request longer same-rule paths and let `MovementSystem.moveAlongPath()` stop when movement runs out.
 - `PathPreviewRenderer.ts` — reachable and path previews use inset hex polygons from `TileMap.getTileOutlinePoints()`, plus center-to-center path lines.
-- `CameraController.ts` — pan/zoom
+- `CameraController.ts` — pan/zoom. Exposes `focusOn(worldX, worldY, zoom)` for deterministic recenter (used by turn-start capital focus).
 - `TerritoryRenderer.ts` — territory color overlay plus dark outer border segments. `render()` redraws all; overlays use `TileMap.getTileOutlinePoints()` hex polygon fills. Borders use active-grid six-neighbor hex adjacency and map each axial neighbor delta to the matching hex edge; borders draw only against out-of-bounds, unowned, or differently owned neighbor hexes.
 - `CityWorkTileRenderer.ts` — runtime Phaser overlay created by `GameScene` after path preview setup. Highlights workable/worked tiles when city selected. Worked tiles: green overlay (depth 4). Non-worked workable: faint white. Uses `CityEconomy` helpers with active `IGridSystem` and `TileMap.getTileOutlinePoints()` for projection, so active hex radius-1 highlights match economy. `GameScene` calls `show()` on city selection, turnStart while city panel is open, and `focusCity`; calls `clear()` when selecting tiles/units/empty selections.
 - `CityRenderer.ts` — city sprites with nation color tint + HP bars. `refreshCity()` destroys and recreates sprite (handles ownership change).
 - `UnitRenderer.ts` — per-unit-type sprites with nation color tint + HP bars, including naval sprites. `refreshUnitPosition()`, `removeUnit()`. Listens to `onUnitChanged` for create/remove/damage/move events.
 
 ### UI (`src/ui/`)
-- `LeftPanel.ts` — fixed HTML panel. Shows round/current turn, clickable nation list (color swatch + name, "(You)" suffix for human), End Turn button at bottom. Dispatches `nationSelected` DOM event on click. `setSelectedNation()`/`clearSelectedNation()` for highlight state.
-- `RightPanel.ts` — fixed HTML panel. Shows tile, city, unit, nation, and leader views. City view has three sections: City (name, HP, defense, garrison), Growth (population, worked tiles count/max, food income breakdown, consumption, net food, food storage bar, turns until growth), Output (production, gold, buildings), plus build queue UI; naval units appear only for cities on or adjacent to Ocean/Coast. Nation view shows economy, cities with HP + click-to-focus, military unit counts, diplomacy section for foreign nations. `showNation(nationId)`, `refreshNationView()`, `getView()` for current view type.
+- `LeftPanel.ts` — fixed HTML panel. Top widget heading shows `Turn {round}`, then the styled End Turn button, then the active nation text. Below it is the clickable leader/nation list. Dispatches `nationSelected` DOM event on click. `setSelectedNation()`/`clearSelectedNation()` for highlight state. When a `DiscoverySystem` is injected, the leader/nation list is filtered to the human nation plus those the human has met.
+- `RightPanel.ts` — fixed HTML panel, split into a scrollable content region and a persistent `event-log` section at the bottom. Shows tile, city, unit, nation, and leader views in the content region while the event log remains visible. City view has three sections: City (name, HP, defense, garrison), Growth (population, worked tiles count/max, food income breakdown, consumption, net food, food storage bar, turns until growth), Output (production, gold, buildings), plus build queue UI; naval units appear only for cities on or adjacent to Ocean/Coast. Nation/leader view shows economy, cities with HP + click-to-focus, military unit counts, and a diplomacy section — the diplomacy section only renders when the human has met that nation. `showNation(nationId)`, `refreshNationView()`, `getView()`, `setDiscoverySystem()`, `setEventLog()`.
 - `CombatLog.ts` — last 3 combat events with fade. Handles unit combat, city combat, and capture events.
 - `EndTurnButton.ts` — legacy Phaser canvas button (unused, replaced by LeftPanel HTML button)
 - `DebugHUD.ts` — camera debug info
 
 ### Scenes (`src/scenes/`)
 - `BootScene.ts` — preloads all maps from `AVAILABLE_MAPS` with unique cache keys, plus city/unit sprite assets. Terrain is drawn as hex polygons.
-- `MainMenuScene.ts` — HTML overlay start screen. "EPOCH" title, map dropdown, nation selection cards, opponent toggles (min 1), START button, EDITOR button (navigates to `/editor.html`). Builds `GameConfig` and passes to GameScene.
+- `MainMenuScene.ts` — HTML overlay start screen. "Epochs of Time" title, background art from `public/assets`, four checkbox-style victory-condition toggles, wide nation grid with leader portrait/name/short description cards, setup panel with selected nation/map/opponent summary, START button, and EDITOR button (navigates to `/editor.html`). First nation click selects the player; remaining nation cards toggle opponent inclusion with a minimum of one opponent. Builds `GameConfig` and passes to GameScene.
 - `GameScene.ts` — main game orchestration. Receives `GameConfig` via scene data. Filters nations/cities/units to active set, overrides `isHuman`.
 
 ### Scripts (`scripts/`)
@@ -195,19 +201,19 @@ All game setup data lives in `public/europeScenario.json`:
 - The world is a 316×166 native axial hex Europe map loaded from `public/europeScenario.json`.
 - Tiles can be `Ocean`, `Coast`, `Plains`, `Forest`, `Mountain`, `Ice`, `Jungle`, `Desert`.
 - Territory ownership can apply to all tile types, including Ocean and Coast. City founding itself is still limited to Plains, Forest, Mountain, Jungle, and Desert.
-- Eight historical nations defined in scenario (player chooses which to play in main menu):
-  - `England` (`nation_england`) — capital London (`q=94`, `r=78`)
-  - `France` (`nation_france`) — capital Paris (`q=91`, `r=94`)
-  - `Holy Roman Empire` (`nation_hre`) — capital Vienna (`q=132`, `r=94`)
-  - `Sweden` (`nation_sweden`) — capital Stockholm (`q=188`, `r=48`)
-  - `Lithuania` (`nation_lithuania`) — capital Vilnius (`q=193`, `r=67`)
-  - `Novgorod` (`nation_novgorod`) — capital Novgorod (`q=242`, `r=70`)
-  - `Ottoman Empire` (`nation_ottoman`) — capital Constantinople (`q=169`, `r=116`)
-  - `Spain` (`nation_spain`) — capital Toledo (`q=39`, `r=124`)
+- Nine historical nations defined in scenario (player chooses which to play in main menu):
+  - `England` (`nation_england`) — start (`q=94`, `r=78`), first city name London
+  - `France` (`nation_france`) — start (`q=91`, `r=94`), first city name Paris
+  - `Holy Roman Empire` (`nation_hre`) — start (`q=132`, `r=94`), first city name Vienna
+  - `Sweden` (`nation_sweden`) — start (`q=188`, `r=48`), first city name Stockholm
+  - `Lithuania` (`nation_lithuania`) — start (`q=193`, `r=67`), first city name Vilnius
+  - `Novgorod` (`nation_novgorod`) — start (`q=242`, `r=70`), first city name Novgorod
+  - `Ottoman Empire` (`nation_ottoman`) — start (`q=169`, `r=116`), first city name Constantinople
+  - `Spain` (`nation_spain`) — start (`q=39`, `r=124`), first city name Toledo
+  - `Morocco` (`nation_morocco_empire`) — start (`q=107`, `r=137`), first city name Fez
 - Player selects human nation and opponents in MainMenuScene. Excluded nations have no presence in game.
 - Each nation starts with active-grid claimed territory around `startTerritoryCenter`; already-claimed tiles are skipped, but water tiles can be claimed.
-- Capital placement uses axial-hex ring fallback if target tile is ocean (max radius 5).
-- Each nation starts with units defined in scenario (default: one Warrior near capital).
+- Each nation starts with no city and one Settler on `startTerritoryCenter`; the first city founded by a nation becomes its capital.
 - Selection supports tiles, cities, units, and nations (via LeftPanel click).
 - Selecting a tile, city, or unit updates the right HTML info panel.
 - Clicking a nation in LeftPanel shows nation detail (economy, cities, military) in RightPanel.
@@ -325,8 +331,8 @@ Current building modifiers:
 ## Settler / city founding model
 - Settler unit: HP 50, strength 0 (cannot attack), movement 2, production cost 20, `canFound: true`.
 - `FoundCitySystem.canFound(unit)` validates: unit has `canFound`, owner matches active nation, tile is Plains/Forest/Mountain/Jungle/Desert, no city already on tile.
-- `FoundCitySystem.foundCity(unit)` creates city, claims grid-provided city territory including water tiles, removes settler, refreshes rendering. Active hex claim is radius 1.
-- City names picked from predefined list (Novum, Ardena, Calvis, etc.), fallback to `City {n}`.
+- `FoundCitySystem.foundCity(unit)` creates city, marks it capital if it is the owner's first city, claims grid-provided city territory including water tiles, removes settler, refreshes rendering. Active hex claim is radius 1.
+- City names are picked from `src/data/cityNames.json` by `nationId`; each nation has 20 ordered names with the capital name first. If exhausted, fallback names are used, then `City {n}`.
 - RightPanel shows "Found City" button for settlers on valid tiles during owner's turn.
 
 ## Healing model
@@ -336,7 +342,7 @@ Current building modifiers:
 
 ## Victory model
 - `VictorySystem` subscribes to `turnEnd`.
-- Win condition: all starting capitals (`isCapital === true`) owned by same nation.
+- Domination win condition: all active nations must have an existing capital (`isCapital === true` count must be at least active nation count), then one nation must own all of those capitals. Owning only your own capital can never trigger victory.
 - On victory: `TurnManager.stop()` called, overlay shown with nation name + color, "Refresh to play again".
 
 ## Diplomacy model
@@ -356,7 +362,7 @@ Current building modifiers:
 - All AI nations currently use `DEFAULT_AI_PROFILE`: low-health units avoid aggressive actions, slightly damaged unsupported units are more cautious, target selection prefers path-reachable land targets, close targets are prioritized within `engageDistance`, and `randomnessFactor` can occasionally pick a non-closest valid target.
 - AI turn executes instantly (synchronous), no animations or delays.
 - Priority order per turn:
-  1. **Settlers**: found city if on valid tile at least 5 active-grid movement-distance from all cities, else pathfind toward best founding site. Settlers move as far as current movement allows.
+  1. **Settlers**: during round 1 only, if the AI owns no city and the settler is on a valid founding tile, found the capital immediately. Later settlers found if on a valid tile at least 5 active-grid movement-distance from all cities, else pathfind toward best founding site. Settlers move as far as current movement allows.
   2. **Combat**: each combat-capable unit (baseStrength > 0) scans within unit's active-grid range for enemy targets. First valid attack per unit.
   3. **Movement**: each non-settler land unit with remaining movement pathfinds toward an adjacent approach tile for the nearest reachable enemy city. Movement uses shared terrain costs/blocking rules. Naval units are skipped.
   4. **Production**: max 3 military units per nation (Warriors + Archers + Cavalry). Priority: defend city → settler (if <3 cities and under cap) → buildings (Granary/Workshop/Market) → military unit (rotates Archer/Cavalry/Warrior for variety) → nothing.
@@ -381,18 +387,18 @@ Current building modifiers:
 12. Create turn and resource systems.
 13. Create selection system, pathfinding system, path preview renderer, and `CityWorkTileRenderer`.
 14. Create production system.
-15. Create DiplomacyManager.
+15. Create DiplomacyManager, DiscoverySystem (initial `scan()`), and EventLogSystem (reads discovery for visibility filtering).
 16. Create combat system (takes unitManager, turnManager, cityManager, productionSystem, mapData, diplomacyManager, active grid system).
 17. Create movement system.
 18. Create healing system.
 19. Create VictorySystem.
 20. Create FoundCitySystem.
-21. Create AI system and wire turnStart handler for non-human nations (uses `nation.isHuman`).
+21. Create AI system and wire turnStart handler for non-human nations (uses `nation.isHuman`). `turnStart` also triggers `discoverySystem.scan()`; on human turns the camera focuses on the human capital at zoom 1.5 (fallback: capital → first owned city → first owned unit/settler → no-op). `unitManager.onUnitChanged` triggers rescans on `moved`/`created`. `foundCitySystem.onCityFounded` logs the event and rescans. `combatSystem.onCityCombat` triggers rescan after city capture.
 22. Register production completion handling for buildings and units.
 23. Wire city combat events (refresh city renderer, territory overlay, and HTML panels).
 24. Wire healing events (refresh city renderer on city heal).
-25. Wire diplomacy events: war-required modal, unit death → AI peace proposal when all units lost, peace proposal modal, accept/decline handlers, and RightPanel diplomacy actions.
-26. Create fixed HTML panels (`LeftPanel` with nation list, `RightPanel` with `humanNationId`) beside the Phaser canvas, attach `DiplomacyManager` to `RightPanel`, plus canvas UI (`CombatLog`, `DebugHUD`).
+25. Wire diplomacy events: war-required modal, unit death → AI peace proposal when all units lost, peace proposal modal, accept/decline handlers, and RightPanel diplomacy actions. `onWarDeclared` and `onPeaceAccepted` also append entries to the `EventLogSystem` and refresh visible panels.
+26. Create fixed HTML panels (`LeftPanel` with nation list + `DiscoverySystem` for visibility filtering, `RightPanel` with `humanNationId`) beside the Phaser canvas, attach `DiplomacyManager`, `DiscoverySystem`, and `EventLogSystem` to `RightPanel`, plus canvas UI (`CombatLog`, `DebugHUD`). `discoverySystem.onNationsMet` logs the meeting via `EventLogSystem.log()` and refreshes `LeftPanel`; the log call itself notifies listeners so previously hidden entries that become visible appear immediately.
 27. Connect selection changes to `RightPanel` (clears nation highlight in LeftPanel), turn/resource/production/unit changes to `LeftPanel`, and city workable tile overlay show/clear.
 28. Wire `nationSelected` DOM event to `RightPanel.showNation()` + `LeftPanel.setSelectedNation()`.
 29. Wire `focusCity` DOM event to camera centering, city selection, `RightPanel.showCity()`, and `CityWorkTileRenderer.show()`.

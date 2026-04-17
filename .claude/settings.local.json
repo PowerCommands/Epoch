@@ -13,7 +13,8 @@
       "Bash(docker stop *)",
       "Bash(docker start *)",
       "Bash(docker run *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }

@@ -22,6 +22,8 @@ import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
 import { CombatSystem } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { DiplomacyManager } from '../systems/DiplomacyManager';
+import { DiscoverySystem } from '../systems/DiscoverySystem';
+import { EventLogSystem } from '../systems/EventLogSystem';
 import { AISystem } from '../systems/AISystem';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
@@ -136,6 +138,15 @@ export class GameScene extends Phaser.Scene {
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager();
 
+    // 13c. Discovery system — tracks which nations have met each other
+    const discoverySystem = new DiscoverySystem(
+      nationManager, cityManager, unitManager, gridSystem,
+    );
+    discoverySystem.scan();
+
+    // 13d. Event log — strategic history filtered by discovery
+    const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
+
     // 14. Stridssystem
     const combatSystem = new CombatSystem(
       unitManager,
@@ -195,6 +206,13 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
     );
 
+    // Log city founded and re-scan discovery (new city may trigger encounters).
+    foundCitySystem.onCityFounded((city) => {
+      const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
+      eventLog.log(`${city.name} was founded by ${nationName}.`, [city.ownerId], turnManager.getCurrentRound());
+      discoverySystem.scan();
+    });
+
     // 18. AI-system för icke-mänskliga nationer
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
@@ -203,10 +221,53 @@ export class GameScene extends Phaser.Scene {
     );
 
     turnManager.on('turnStart', (e) => {
+      // Scan for new discoveries at the start of every turn
+      discoverySystem.scan();
+
       if (!e.nation.isHuman) {
         aiSystem.runTurn(e.nation.id);
         turnManager.endCurrentTurn();
       }
+    });
+
+    // Focus the camera on the human capital at the start of each human turn.
+    const humanIdForFocus = data.humanNationId;
+    const focusHumanCapital = () => {
+      if (!humanIdForFocus) return;
+      const ownedCities = cityManager.getCitiesByOwner(humanIdForFocus);
+      if (ownedCities.length > 0) {
+        const target = ownedCities.find((c) => c.isCapital) ?? ownedCities[0];
+        const { x, y } = tileMap.tileToWorld(target.tileX, target.tileY);
+        this.cameraController.focusOn(x, y, 1.5);
+        return;
+      }
+      const ownedUnits = unitManager.getUnitsByOwner(humanIdForFocus);
+      if (ownedUnits.length === 0) return;
+      const settler = ownedUnits.find((u) => u.unitType.canFound) ?? ownedUnits[0];
+      const { x, y } = tileMap.tileToWorld(settler.tileX, settler.tileY);
+      this.cameraController.focusOn(x, y, 1.5);
+    };
+    turnManager.on('turnStart', (e) => {
+      if (e.nation.isHuman) focusHumanCapital();
+    });
+
+    // Re-scan after a unit moves or is created (new positions may meet a city).
+    unitManager.onUnitChanged((event) => {
+      if (event.reason === 'moved' || event.reason === 'created') {
+        discoverySystem.scan();
+      }
+    });
+
+    // Log city founded events — covers both human and AI via FoundCitySystem.
+    // Wired after foundCitySystem is constructed; see below.
+
+    // Log discovery events, and refresh UI when a new nation becomes visible.
+    discoverySystem.onNationsMet((a, b) => {
+      const nameA = nationManager.getNation(a)?.name ?? a;
+      const nameB = nationManager.getNation(b)?.name ?? b;
+      eventLog.log(`${nameA} has met ${nameB}.`, [a, b], turnManager.getCurrentRound());
+      // New nation may now be visible in the left panel.
+      leftPanel?.refresh();
     });
 
     // Hantera färdig produktion
@@ -259,6 +320,8 @@ export class GameScene extends Phaser.Scene {
         leftPanel?.refresh();
         // Recalculate resources for both old and new owner
         resourceSystem.recalculateForNation(e.attacker.ownerId);
+        // A conquered city may introduce new encounters
+        discoverySystem.scan();
       }
 
       rightPanel?.refreshCurrent();
@@ -405,12 +468,26 @@ export class GameScene extends Phaser.Scene {
       const nameA = nationManager.getNation(nationA)?.name ?? nationA;
       const nameB = nationManager.getNation(nationB)?.name ?? nationB;
       console.log(`[Diplomacy] Peace established: ${nameA} / ${nameB}`);
+      eventLog.log(
+        `Peace was made between ${nameA} and ${nameB}.`,
+        [nationA, nationB],
+        turnManager.getCurrentRound(),
+      );
+      leftPanel?.refresh();
+      rightPanel?.refreshCurrent();
     });
 
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       const nameA = nationManager.getNation(aggressorId)?.name ?? aggressorId;
       const nameB = nationManager.getNation(targetId)?.name ?? targetId;
       console.log(`[Diplomacy] War declared: ${nameA} → ${nameB}`);
+      eventLog.log(
+        `${nameA} declared war on ${nameB}.`,
+        [aggressorId, targetId],
+        turnManager.getCurrentRound(),
+      );
+      leftPanel?.refresh();
+      rightPanel?.refreshCurrent();
     });
 
     // Diplomacy actions from RightPanel buttons
@@ -457,7 +534,7 @@ export class GameScene extends Phaser.Scene {
     this.debugHUD = new DebugHUD(this);
 
     const humanNationId = nationManager.getHumanNationId();
-    leftPanel = new LeftPanel(nationManager, turnManager, humanNationId);
+    leftPanel = new LeftPanel(nationManager, turnManager, humanNationId, discoverySystem);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       turnManager.endCurrentTurn();
@@ -480,6 +557,8 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
     );
     rightPanel.setDiplomacyManager(diplomacyManager);
+    rightPanel.setDiscoverySystem(discoverySystem);
+    rightPanel.setEventLog(eventLog);
     rightPanel.setFoundCityHandler(
       (unit) => foundCitySystem.canFound(unit),
       (unit) => {
