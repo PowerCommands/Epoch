@@ -12,6 +12,8 @@ import { UnitManager } from '../systems/UnitManager';
 import { TileType, type MapData, type Tile } from '../types/map';
 import type { Producible } from '../types/producible';
 import type { LeaderDefinition } from '../types/leader';
+import type { DiplomacyManager } from '../systems/DiplomacyManager';
+import type { IGridSystem } from '../systems/grid/IGridSystem';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 
@@ -23,6 +25,7 @@ export class RightPanel {
   private readonly nationManager: NationManager;
   private readonly mapData: MapData;
   private readonly humanNationId: string | undefined;
+  private diplomacyManager: DiplomacyManager | null = null;
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
   private currentNationId: string | null = null;
@@ -37,7 +40,8 @@ export class RightPanel {
     unitManager: UnitManager,
     nationManager: NationManager,
     mapData: MapData,
-    humanNationId?: string,
+    humanNationId: string | undefined,
+    private readonly gridSystem: IGridSystem,
   ) {
     const root = document.getElementById('panel-right');
     if (!root) throw new Error('Missing #panel-right');
@@ -55,6 +59,10 @@ export class RightPanel {
 
   getCurrentCity(): City | null {
     return this.currentCity;
+  }
+
+  setDiplomacyManager(dm: DiplomacyManager): void {
+    this.diplomacyManager = dm;
   }
 
   setFoundCityHandler(canFoundCity: (unit: Unit) => boolean, foundCity: (unit: Unit) => void): void {
@@ -147,8 +155,18 @@ export class RightPanel {
     const resources = this.cityManager.getResources(city.id);
     const garrison = this.unitManager.getUnitAt(city.tileX, city.tileY);
     const buildings = this.cityManager.getBuildings(city.id).getAll();
-    const economy = calculateCityEconomy(city, this.mapData, this.cityManager.getBuildings(city.id));
+    const economy = calculateCityEconomy(
+      city,
+      this.mapData,
+      this.cityManager.getBuildings(city.id),
+      this.gridSystem,
+    );
     const isHuman = city.ownerId === this.humanNationId;
+
+    const turnsUntilGrowth = economy.netFood > 0
+      ? Math.ceil((economy.foodToGrow - city.foodStorage) / economy.netFood)
+      : null;
+    const growthText = turnsUntilGrowth !== null ? `${turnsUntilGrowth} turn${turnsUntilGrowth !== 1 ? 's' : ''}` : '\u2014';
 
     const section = this.createSection('City');
     section.append(
@@ -158,12 +176,26 @@ export class RightPanel {
       createHpBar(city.health, CITY_BASE_HEALTH),
       this.createDiv('', `Defense: ${CITY_BASE_DEFENSE}`),
       this.createDiv('', `Garrison: ${garrison?.name ?? 'none'}`),
+    );
+
+    // Growth section
+    const growthSection = this.createSection('Growth');
+    growthSection.append(
       this.createDiv('', `Population: ${city.population}`),
-      this.createDiv('', `Food storage: ${city.foodStorage}/${economy.foodToGrow}`),
-      this.createDiv('', `Food: ${economy.food} income, ${economy.foodConsumption} consumed (${formatSigned(economy.netFood)}/turn)`),
+      this.createDiv('', `Worked tiles: ${economy.workedTileCount} / ${economy.maxWorkableTiles}`),
+      this.createDiv('', `Food: ${formatSigned(economy.food)}/turn (base ${economy.baseFood} + ${economy.food - economy.baseFood} tiles/buildings)`),
+      this.createDiv('', `Consumption: -${economy.foodConsumption}/turn (${city.population} pop \u00d7 2)`),
+      this.createDiv('', `Net food: ${formatSigned(economy.netFood)}/turn`),
+      this.createDiv('', `Food storage: ${city.foodStorage} / ${economy.foodToGrow}`),
+      createHpBar(city.foodStorage, economy.foodToGrow),
+      this.createDiv('', `Growth in: ${growthText}`),
+    );
+
+    // Output section
+    const outputSection = this.createSection('Output');
+    outputSection.append(
       this.createDiv('', `Production: ${resources.production} stored (+${resources.productionPerTurn}/turn)`),
       this.createDiv('', `Gold: +${resources.goldPerTurn}/turn`),
-      this.createDiv('', `Worked tiles: ${economy.workedTileCount}/${economy.maxWorkableTiles}`),
       this.createDiv('', `Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
     );
 
@@ -175,7 +207,7 @@ export class RightPanel {
       prodContainer.append(this.renderAddToQueue(city, nationColor));
     }
 
-    this.root.append(section, prodContainer);
+    this.root.append(section, growthSection, outputSection, prodContainer);
   }
 
   showUnit(unit: Unit): void {
@@ -298,6 +330,11 @@ export class RightPanel {
       }
     }
     this.root.append(milSection);
+
+    // Diplomacy button (only for foreign nations)
+    if (!isHuman && this.diplomacyManager && this.humanNationId) {
+      this.root.append(this.renderDiplomacySection(nationId));
+    }
   }
 
   showLeader(leaderIdOrNationId: string): void {
@@ -331,6 +368,10 @@ export class RightPanel {
 
     if (nation) {
       this.root.append(this.renderLeaderNationSection(leader.nationId));
+      const isHuman = leader.nationId === this.humanNationId;
+      if (!isHuman && this.diplomacyManager && this.humanNationId) {
+        this.root.append(this.renderDiplomacySection(leader.nationId));
+      }
     }
   }
 
@@ -405,7 +446,7 @@ export class RightPanel {
 
   private renderAddToQueue(city: City, nationColor: number): HTMLElement {
     const section = this.createSection('Add to Queue');
-    const hasCoastalAccess = cityHasCoastalAccess(city, this.mapData);
+    const hasCoastalAccess = cityHasCoastalAccess(city, this.mapData, this.gridSystem);
 
     for (const unitType of ALL_UNIT_TYPES) {
       if (unitType.isNaval && !hasCoastalAccess) continue;
@@ -522,6 +563,51 @@ export class RightPanel {
     return section;
   }
 
+  private renderDiplomacySection(nationId: string): HTMLElement {
+    const section = this.createSection('Diplomacy');
+    const dm = this.diplomacyManager!;
+    const humanId = this.humanNationId!;
+    const state = dm.getState(humanId, nationId);
+    const nation = this.nationManager.getNation(nationId);
+    const nationColor = nation?.color ?? 0xffffff;
+
+    const statusDiv = this.createDiv('', `Status: ${state === 'WAR' ? 'At War' : 'At Peace'}`);
+    statusDiv.style.marginBottom = '8px';
+    section.append(statusDiv);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = `
+      padding: 6px 16px; font-size: 13px; cursor: pointer;
+      border-radius: 4px; width: 100%;
+    `;
+
+    if (state === 'PEACE') {
+      btn.textContent = 'Declare War';
+      btn.style.background = '#8b2020';
+      btn.style.color = '#fff';
+      btn.style.border = '1px solid #c44';
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'declareWar', targetNationId: nationId },
+        }));
+      });
+    } else {
+      btn.textContent = 'Propose Peace';
+      btn.style.background = 'transparent';
+      btn.style.color = toCssColor(nationColor);
+      btn.style.border = `1px solid ${toCssColor(nationColor)}`;
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'proposePeace', targetNationId: nationId },
+        }));
+      });
+    }
+
+    section.append(btn);
+    return section;
+  }
+
   private createDiv(className: string, text?: string, color?: number): HTMLDivElement {
     const div = document.createElement('div');
     div.className = className;
@@ -545,13 +631,10 @@ function createHpBar(current: number, max: number): HTMLElement {
   return outer;
 }
 
-function cityHasCoastalAccess(city: City, mapData: MapData): boolean {
+function cityHasCoastalAccess(city: City, mapData: MapData, gridSystem: IGridSystem): boolean {
   const positions = [
     { x: city.tileX, y: city.tileY },
-    { x: city.tileX, y: city.tileY - 1 },
-    { x: city.tileX + 1, y: city.tileY },
-    { x: city.tileX, y: city.tileY + 1 },
-    { x: city.tileX - 1, y: city.tileY },
+    ...gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY }),
   ];
 
   return positions.some(({ x, y }) => {

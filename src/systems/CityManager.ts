@@ -6,23 +6,26 @@ import { MapData, TileType } from '../types/map';
 import type { ScenarioCity } from '../types/scenario';
 
 /**
- * Search outward in expanding rings for nearest non-ocean tile.
+ * Search outward in expanding axial-hex rings for nearest non-ocean tile.
  */
 function findNearestLandTile(
-  col: number,
-  row: number,
+  q: number,
+  r: number,
   mapData: MapData,
   maxRadius: number,
 ): { x: number; y: number } | null {
-  const center = mapData.tiles[row]?.[col];
-  if (center && center.type !== TileType.Ocean) return { x: col, y: row };
+  const center = mapData.tiles[r]?.[q];
+  if (center && center.type !== TileType.Ocean) return { x: q, y: r };
 
-  for (let r = 1; r <= maxRadius; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
-        const tx = col + dx;
-        const ty = row + dy;
+  for (let radius = 1; radius <= maxRadius; radius++) {
+    for (let dq = -radius; dq <= radius; dq++) {
+      const minDr = Math.max(-radius, -dq - radius);
+      const maxDr = Math.min(radius, -dq + radius);
+
+      for (let dr = minDr; dr <= maxDr; dr++) {
+        if ((Math.abs(dq) + Math.abs(dr) + Math.abs(-dq - dr)) / 2 !== radius) continue;
+        const tx = q + dq;
+        const ty = r + dr;
         const tile = mapData.tiles[ty]?.[tx];
         if (tile && tile.type !== TileType.Ocean) return { x: tx, y: ty };
       }
@@ -94,7 +97,7 @@ export class CityManager {
 
   /**
    * Create a CityManager with one capital per nation.
-   * Uses spiral fallback if target tile is ocean.
+   * Uses axial-hex ring fallback if target tile is ocean.
    */
   static createDefault(nationManager: NationManager, mapData: MapData): CityManager {
     const manager = new CityManager();
@@ -137,15 +140,15 @@ export class CityManager {
 
   /**
    * Create a CityManager from scenario data.
-   * Uses spiral fallback if target tile is ocean.
+   * Uses axial-hex ring fallback if target tile is ocean.
    */
   static loadFromScenario(cities: ScenarioCity[], mapData: MapData): CityManager {
     const manager = new CityManager();
 
     for (const cfg of cities) {
-      const land = findNearestLandTile(cfg.tileX, cfg.tileY, mapData, 5);
-      const tileX = land?.x ?? cfg.tileX;
-      const tileY = land?.y ?? cfg.tileY;
+      const land = findNearestLandTile(cfg.q, cfg.r, mapData, 5);
+      const tileX = land?.x ?? cfg.q;
+      const tileY = land?.y ?? cfg.r;
 
       manager.addCity(
         new City({

@@ -9,6 +9,7 @@ import { TurnManager } from './TurnManager';
 import { TerritoryRenderer } from './TerritoryRenderer';
 import { CityRenderer } from './CityRenderer';
 import { ResourceSystem } from './ResourceSystem';
+import type { IGridSystem } from './grid/IGridSystem';
 
 const FOUNDABLE_TYPES = new Set<TileType>([
   TileType.Plains,
@@ -26,7 +27,7 @@ const CITY_NAMES = [
 /**
  * FoundCitySystem hanterar grundande av nya städer via Settler-enheter.
  *
- * Validerar att en enhet kan grunda, skapar staden, claimar 3×3 territorium,
+ * Validerar att en enhet kan grunda, skapar staden, claimar aktivt grid-territorium,
  * konsumerar Settler-enheten, och uppdaterar rendering.
  */
 export class FoundCitySystem {
@@ -49,6 +50,7 @@ export class FoundCitySystem {
     cityRenderer: CityRenderer,
     resourceSystem: ResourceSystem,
     mapData: MapData,
+    private readonly gridSystem: IGridSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -90,7 +92,7 @@ export class FoundCitySystem {
 
     this.cityManager.addCity(city);
 
-    // Claim 3×3 territory
+    // Claim the active grid's city territory.
     this.claimTerritory(unit.ownerId, unit.tileX, unit.tileY);
 
     // Consume settler
@@ -107,14 +109,15 @@ export class FoundCitySystem {
   }
 
   private claimTerritory(nationId: string, cx: number, cy: number): void {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const tx = cx + dx;
-        const ty = cy + dy;
-        if (tx < 0 || ty < 0 || tx >= this.mapData.width || ty >= this.mapData.height) continue;
+    const tiles = this.gridSystem.getTilesInRange(
+      { x: cx, y: cy },
+      1,
+      this.mapData,
+      { includeCenter: true },
+    );
 
-        this.mapData.tiles[ty][tx].ownerId = nationId;
-      }
+    for (const tile of tiles) {
+      tile.ownerId = nationId;
     }
   }
 

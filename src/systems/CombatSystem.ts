@@ -14,6 +14,8 @@ import { TurnManager } from './TurnManager';
 import { CityManager } from './CityManager';
 import { ProductionSystem } from './ProductionSystem';
 import type { MapData } from '../types/map';
+import type { DiplomacyManager } from './DiplomacyManager';
+import type { IGridSystem } from './grid/IGridSystem';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -34,9 +36,18 @@ export interface CombatRejectedEvent {
   reason: string;
 }
 
+export interface WarRequiredEvent {
+  attackerId: string;
+  targetNationId: string;
+  attacker: Unit;
+  tileX: number;
+  tileY: number;
+}
+
 type CombatListener = (e: CombatEvent) => void;
 type CityCombatListener = (e: CityCombatEvent) => void;
 type CombatRejectedListener = (e: CombatRejectedEvent) => void;
+type WarRequiredListener = (e: WarRequiredEvent) => void;
 
 /**
  * CombatSystem hanterar strid mellan enheter och mot städer.
@@ -50,9 +61,11 @@ export class CombatSystem {
   private readonly cityManager: CityManager;
   private readonly productionSystem: ProductionSystem;
   private readonly mapData: MapData;
+  private readonly diplomacyManager: DiplomacyManager | null;
   private readonly listeners: CombatListener[] = [];
   private readonly cityCombatListeners: CityCombatListener[] = [];
   private readonly rejectedListeners: CombatRejectedListener[] = [];
+  private readonly warRequiredListeners: WarRequiredListener[] = [];
 
   constructor(
     unitManager: UnitManager,
@@ -60,12 +73,15 @@ export class CombatSystem {
     cityManager: CityManager,
     productionSystem: ProductionSystem,
     mapData: MapData,
+    diplomacyManager: DiplomacyManager | undefined,
+    private readonly gridSystem: IGridSystem,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
     this.cityManager = cityManager;
     this.productionSystem = productionSystem;
     this.mapData = mapData;
+    this.diplomacyManager = diplomacyManager ?? null;
   }
 
   on(callback: CombatListener): void {
@@ -78,6 +94,10 @@ export class CombatSystem {
 
   onRejected(callback: CombatRejectedListener): void {
     this.rejectedListeners.push(callback);
+  }
+
+  onWarRequired(callback: WarRequiredListener): void {
+    this.warRequiredListeners.push(callback);
   }
 
   tryAttack(attacker: Unit, tileX: number, tileY: number): boolean {
@@ -96,14 +116,16 @@ export class CombatSystem {
       return false;
     }
 
-    // 4. Must be within range (Chebyshev distance)
+    // 4. Must be within active grid range
     const range = attacker.unitType.range ?? 1;
-    const dist = this.chebyshevDistance(attacker.tileX, attacker.tileY, tileX, tileY);
+    const attackerCoord = { x: attacker.tileX, y: attacker.tileY };
+    const targetCoord = { x: tileX, y: tileY };
+    const dist = this.gridSystem.getDistance(attackerCoord, targetCoord);
     if (range === 1) {
-      // Melee: Manhattan adjacent only
-      if (!this.isAdjacent(attacker.tileX, attacker.tileY, tileX, tileY)) return false;
+      // Melee: active-grid adjacent only
+      if (!this.gridSystem.isAdjacent(attackerCoord, targetCoord)) return false;
     } else {
-      // Ranged: Chebyshev distance within range
+      // Ranged: active-grid range distance
       if (dist < 1 || dist > range) return false;
     }
 
@@ -114,10 +136,18 @@ export class CombatSystem {
     const targetCity = this.cityManager.getCityAt(tileX, tileY);
 
     if (targetUnit && targetUnit.ownerId !== attacker.ownerId) {
+      if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
+        this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY);
+        return false;
+      }
       return this.executeUnitCombat(attacker, targetUnit, isRanged);
     }
 
     if (targetCity && targetCity.ownerId !== attacker.ownerId) {
+      if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetCity.ownerId)) {
+        this.notifyWarRequired(attacker, targetCity.ownerId, tileX, tileY);
+        return false;
+      }
       return this.executeCityCombat(attacker, targetCity, isRanged);
     }
 
@@ -188,11 +218,9 @@ export class CombatSystem {
     for (const cb of this.rejectedListeners) cb({ attacker, target, reason });
   }
 
-  private isAdjacent(x1: number, y1: number, x2: number, y2: number): boolean {
-    return Math.abs(x1 - x2) + Math.abs(y1 - y2) === 1;
-  }
-
-  private chebyshevDistance(x1: number, y1: number, x2: number, y2: number): number {
-    return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+  private notifyWarRequired(attacker: Unit, targetNationId: string, tileX: number, tileY: number): void {
+    for (const cb of this.warRequiredListeners) {
+      cb({ attackerId: attacker.ownerId, targetNationId, attacker, tileX, tileY });
+    }
   }
 }

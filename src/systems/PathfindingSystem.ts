@@ -2,13 +2,7 @@ import type { Unit } from '../entities/Unit';
 import type { MapData, Tile } from '../types/map';
 import { canUnitEnterTile, getTileMovementCost } from './MovementSystem';
 import { UnitManager } from './UnitManager';
-
-const ADJACENT_OFFSETS = [
-  { dx: 0, dy: -1 },
-  { dx: 1, dy: 0 },
-  { dx: 0, dy: 1 },
-  { dx: -1, dy: 0 },
-];
+import type { IGridSystem } from './grid/IGridSystem';
 
 interface FindPathOptions {
   respectMovementPoints?: boolean;
@@ -18,6 +12,7 @@ export class PathfindingSystem {
   constructor(
     private readonly mapData: MapData,
     private readonly unitManager: UnitManager,
+    private readonly gridSystem: IGridSystem,
   ) {}
 
   findPath(
@@ -39,7 +34,7 @@ export class PathfindingSystem {
     const cameFrom = new Map<string, string>();
     const gScore = new Map<string, number>([[startKey, 0]]);
     const fScore = new Map<string, number>([
-      [startKey, this.manhattan(start.x, start.y, target.x, target.y)],
+      [startKey, this.gridSystem.getDistance(start, target)],
     ]);
 
     while (open.size > 0) {
@@ -52,7 +47,7 @@ export class PathfindingSystem {
       const current = this.tileFromKey(currentKey);
       if (!current) continue;
 
-      for (const neighbor of this.getNeighbors(current.x, current.y)) {
+      for (const neighbor of this.gridSystem.getNeighbors(current, this.mapData)) {
         if (!this.canEnter(unit, neighbor)) continue;
 
         const neighborKey = this.key(neighbor.x, neighbor.y);
@@ -64,7 +59,7 @@ export class PathfindingSystem {
         gScore.set(neighborKey, tentativeG);
         fScore.set(
           neighborKey,
-          tentativeG + this.manhattan(neighbor.x, neighbor.y, target.x, target.y),
+          tentativeG + this.gridSystem.getDistance(neighbor, target),
         );
         open.add(neighborKey);
       }
@@ -87,7 +82,7 @@ export class PathfindingSystem {
       const currentKey = this.key(current.x, current.y);
       const currentCost = costs.get(currentKey) ?? 0;
 
-      for (const neighbor of this.getNeighbors(current.x, current.y)) {
+      for (const neighbor of this.gridSystem.getNeighbors(current, this.mapData)) {
         if (!this.canEnter(unit, neighbor)) continue;
 
         const nextCost = currentCost + getTileMovementCost(neighbor);
@@ -112,15 +107,6 @@ export class PathfindingSystem {
     if (occupant !== undefined && occupant.id !== unit.id) return false;
 
     return true;
-  }
-
-  private getNeighbors(tileX: number, tileY: number): Tile[] {
-    const neighbors: Tile[] = [];
-    for (const offset of ADJACENT_OFFSETS) {
-      const tile = this.getTile(tileX + offset.dx, tileY + offset.dy);
-      if (tile) neighbors.push(tile);
-    }
-    return neighbors;
   }
 
   private reconstructPath(cameFrom: Map<string, string>, currentKey: string): Tile[] | null {
@@ -163,9 +149,5 @@ export class PathfindingSystem {
 
   private key(tileX: number, tileY: number): string {
     return `${tileX},${tileY}`;
-  }
-
-  private manhattan(x1: number, y1: number, x2: number, y2: number): number {
-    return Math.abs(x1 - x2) + Math.abs(y1 - y2);
   }
 }

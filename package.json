@@ -6,9 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "generate-map": "tsx scripts/generateMap.ts",
     "generate-sprites": "tsx scripts/generateSprites.ts",
-    "generate-terrain": "tsx scripts/generateTerrainSprites.ts",
     "preview": "vite preview"
   },
   "dependencies": {

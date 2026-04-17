@@ -19,6 +19,6 @@ export interface Tile {
 export interface MapData {
   width: number;   // antal tiles horisontellt
   height: number;  // antal tiles vertikalt
-  tileSize: number; // pixlar per tile (kvadratisk)
+  tileSize: number; // legacy scenario scale; hex layout treats this as hex diameter
   tiles: Tile[][]; // indexerat [y][x]
 }

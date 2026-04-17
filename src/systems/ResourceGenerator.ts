@@ -3,6 +3,7 @@ import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
 import type { MapData } from '../types/map';
 import { calculateCityEconomy } from './CityEconomy';
+import type { IGridSystem } from './grid/IGridSystem';
 
 /**
  * Interface for resource generation. Pluggable — swap implementation
@@ -14,10 +15,11 @@ export interface IResourceGenerator {
     cities: City[],
     buildingsLookup: (cityId: string) => CityBuildings,
     mapData: MapData,
+    gridSystem: IGridSystem,
   ): number;
-  calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number;
-  calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number;
-  calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number;
+  calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
+  calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
+  calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
 }
 
 /**
@@ -30,23 +32,24 @@ export class TileResourceGenerator implements IResourceGenerator {
     cities: City[],
     buildingsLookup: (cityId: string) => CityBuildings,
     mapData: MapData,
+    gridSystem: IGridSystem,
   ): number {
     let total = 0;
     for (const city of cities) {
-      total += this.calculateCityGoldPerTurn(city, buildingsLookup(city.id), mapData);
+      total += this.calculateCityGoldPerTurn(city, buildingsLookup(city.id), mapData, gridSystem);
     }
     return total;
   }
 
-  calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number {
-    return calculateCityEconomy(city, mapData, buildings).food;
+  calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
+    return calculateCityEconomy(city, mapData, buildings, gridSystem).food;
   }
 
-  calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number {
-    return calculateCityEconomy(city, mapData, buildings).production;
+  calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
+    return calculateCityEconomy(city, mapData, buildings, gridSystem).production;
   }
 
-  calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData): number {
-    return calculateCityEconomy(city, mapData, buildings).gold;
+  calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
+    return calculateCityEconomy(city, mapData, buildings, gridSystem).gold;
   }
 }

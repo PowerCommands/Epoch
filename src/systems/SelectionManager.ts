@@ -201,10 +201,9 @@ export class SelectionManager {
     if (this.hovered === null) return;
 
     if (this.hovered.kind === 'tile') {
-      const { x, y } = this.tileMap.tileToWorld(this.hovered.tile.x, this.hovered.tile.y);
-      const half = this.tileMap.getTileSize() / 2;
+      const outline = this.tileMap.getTileOutlinePoints(this.hovered.tile.x, this.hovered.tile.y);
       this.hoverGfx.lineStyle(2, 0xffffff, 0.6);
-      this.hoverGfx.strokeRect(x - half, y - half, half * 2, half * 2);
+      this.strokePolygon(this.hoverGfx, outline);
     } else if (this.hovered.kind === 'city') {
       // Stad — vit ring strax utanför stadssymbolen
       const { x, y } = this.tileMap.tileToWorld(
@@ -229,12 +228,11 @@ export class SelectionManager {
     if (this.selected === null) return;
 
     if (this.selected.kind === 'tile') {
-      const { x, y } = this.tileMap.tileToWorld(this.selected.tile.x, this.selected.tile.y);
-      const half = this.tileMap.getTileSize() / 2;
+      const outline = this.tileMap.getTileOutlinePoints(this.selected.tile.x, this.selected.tile.y);
       this.selectionGfx.fillStyle(0xffdd44, 0.15);
-      this.selectionGfx.fillRect(x - half, y - half, half * 2, half * 2);
+      this.fillPolygon(this.selectionGfx, outline);
       this.selectionGfx.lineStyle(3, 0xffdd44, 0.9);
-      this.selectionGfx.strokeRect(x - half, y - half, half * 2, half * 2);
+      this.strokePolygon(this.selectionGfx, outline);
     } else if (this.selected.kind === 'city') {
       // Stad — gul ring runt stadssymbolen
       const { x, y } = this.tileMap.tileToWorld(
@@ -252,5 +250,27 @@ export class SelectionManager {
       this.selectionGfx.lineStyle(3, 0xffdd44, 0.95);
       this.selectionGfx.strokeCircle(x, y, 19);
     }
+  }
+
+  private fillPolygon(gfx: Phaser.GameObjects.Graphics, points: { x: number; y: number }[]): void {
+    if (points.length === 0) return;
+    gfx.beginPath();
+    gfx.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) {
+      gfx.lineTo(point.x, point.y);
+    }
+    gfx.closePath();
+    gfx.fillPath();
+  }
+
+  private strokePolygon(gfx: Phaser.GameObjects.Graphics, points: { x: number; y: number }[]): void {
+    if (points.length === 0) return;
+    gfx.beginPath();
+    gfx.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) {
+      gfx.lineTo(point.x, point.y);
+    }
+    gfx.closePath();
+    gfx.strokePath();
   }
 }

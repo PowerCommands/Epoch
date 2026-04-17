@@ -15,6 +15,7 @@ import { ProductionSystem } from './ProductionSystem';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
+import type { IGridSystem } from './grid/IGridSystem';
 
 const MAX_MILITARY = 3;
 const MAX_AI_CITIES = 3;
@@ -22,13 +23,6 @@ const SETTLER_MIN_CITY_DISTANCE = 5;
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.baseStrength > 0 && !unitType.isNaval
 ));
-
-const ADJACENT_OFFSETS = [
-  { dx: 0, dy: -1 }, // N
-  { dx: 1, dy: 0 },  // E
-  { dx: 0, dy: 1 },  // S
-  { dx: -1, dy: 0 }, // W
-];
 
 /**
  * AISystem kör grundläggande AI för icke-mänskliga nationer.
@@ -62,6 +56,7 @@ export class AISystem {
     productionSystem: ProductionSystem,
     foundCitySystem: FoundCitySystem,
     mapData: MapData,
+    private readonly gridSystem: IGridSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -144,7 +139,10 @@ export class AISystem {
         const cityDist = this.minDistanceToCities(x, y, allCities);
         if (cityDist < SETTLER_MIN_CITY_DISTANCE) continue;
 
-        const settlerDist = Math.abs(x - settler.tileX) + Math.abs(y - settler.tileY);
+        const settlerDist = this.gridSystem.getDistance(
+          { x: settler.tileX, y: settler.tileY },
+          { x, y },
+        );
         if (settlerDist < bestDist) {
           bestDist = settlerDist;
           bestTile = { x, y };
@@ -159,7 +157,10 @@ export class AISystem {
     if (cities.length === 0) return Infinity;
     let min = Infinity;
     for (const city of cities) {
-      const d = Math.abs(city.tileX - tileX) + Math.abs(city.tileY - tileY);
+      const d = this.gridSystem.getDistance(
+        { x: city.tileX, y: city.tileY },
+        { x: tileX, y: tileY },
+      );
       if (d < min) min = d;
     }
     return min;
@@ -184,15 +185,16 @@ export class AISystem {
   private tryAttackInRange(unit: Unit): boolean {
     const range = unit.unitType.range ?? 1;
 
-    for (let dy = -range; dy <= range; dy++) {
-      for (let dx = -range; dx <= range; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        const tx = unit.tileX + dx;
-        const ty = unit.tileY + dy;
+    const tiles = this.gridSystem.getTilesInRange(
+      { x: unit.tileX, y: unit.tileY },
+      range,
+      this.mapData,
+      { includeCenter: false },
+    );
 
-        if (this.combatSystem.tryAttack(unit, tx, ty)) {
-          return true;
-        }
+    for (const tile of tiles) {
+      if (this.combatSystem.tryAttack(unit, tile.x, tile.y)) {
+        return true;
       }
     }
     return false;
@@ -239,7 +241,10 @@ export class AISystem {
           city,
           path,
           cost: path === null ? Infinity : this.getPathCost(path),
-          distance: Math.abs(city.tileX - unit.tileX) + Math.abs(city.tileY - unit.tileY),
+          distance: this.gridSystem.getDistance(
+            { x: city.tileX, y: city.tileY },
+            { x: unit.tileX, y: unit.tileY },
+          ),
         };
       });
 
@@ -277,16 +282,19 @@ export class AISystem {
     let bestCost = Infinity;
     let bestDistance = Infinity;
 
-    for (const offset of ADJACENT_OFFSETS) {
-      const tx = city.tileX + offset.dx;
-      const ty = city.tileY + offset.dy;
+    for (const coord of this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY })) {
+      const tx = coord.x;
+      const ty = coord.y;
       const path = this.pathfindingSystem.findPath(unit, tx, ty, {
         respectMovementPoints: false,
       });
       if (path === null) continue;
 
       const cost = this.getPathCost(path);
-      const distance = Math.abs(city.tileX - tx) + Math.abs(city.tileY - ty);
+      const distance = this.gridSystem.getDistance(
+        { x: city.tileX, y: city.tileY },
+        { x: tx, y: ty },
+      );
       if (
         cost < bestCost ||
         (cost === bestCost && distance < bestDistance) ||
@@ -334,7 +342,10 @@ export class AISystem {
         if (other.id === unit.id) return false;
         if (other.unitType.baseStrength <= 0) return false;
         if (other.unitType.isNaval) return false;
-        const dist = Math.abs(other.tileX - unit.tileX) + Math.abs(other.tileY - unit.tileY);
+        const dist = this.gridSystem.getDistance(
+          { x: other.tileX, y: other.tileY },
+          { x: unit.tileX, y: unit.tileY },
+        );
         return dist <= distance;
       });
   }
@@ -399,7 +410,7 @@ export class AISystem {
   private needsDefender(city: City, nationId: string): boolean {
     const tilesToCheck = [
       { x: city.tileX, y: city.tileY },
-      ...ADJACENT_OFFSETS.map((o) => ({ x: city.tileX + o.dx, y: city.tileY + o.dy })),
+      ...this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY }),
     ];
 
     for (const pos of tilesToCheck) {

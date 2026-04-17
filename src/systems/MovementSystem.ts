@@ -6,6 +6,7 @@ import { TileMap } from './TileMap';
 import { TurnManager } from './TurnManager';
 import { UnitManager } from './UnitManager';
 import { UnitRenderer } from './UnitRenderer';
+import type { IGridSystem } from './grid/IGridSystem';
 
 /** Return movement cost for entering a tile. */
 export function getTileMovementCost(tile: Tile): number {
@@ -38,6 +39,7 @@ export class MovementSystem {
     private readonly unitRenderer: UnitRenderer,
     turnManager: TurnManager,
     selectionManager: SelectionManager,
+    private readonly gridSystem: IGridSystem,
   ) {
     this.activeNationId = turnManager.getCurrentNation().id;
 
@@ -54,7 +56,10 @@ export class MovementSystem {
   canMoveUnitTo(unit: Unit, tileX: number, tileY: number): boolean {
     if (unit.ownerId !== this.activeNationId) return false;
     if (unit.movementPoints <= 0) return false;
-    if (!this.isAdjacent(unit.tileX, unit.tileY, tileX, tileY)) return false;
+    if (!this.gridSystem.isAdjacent(
+      { x: unit.tileX, y: unit.tileY },
+      { x: tileX, y: tileY },
+    )) return false;
 
     const targetTile = this.tileMap.getTileAt(tileX, tileY);
     if (targetTile === null) return false;
@@ -139,9 +144,5 @@ export class MovementSystem {
     if (occupyingUnit === undefined) return undefined;
     if (!this.unitManager.canBoardUnit(unit, occupyingUnit)) return undefined;
     return occupyingUnit;
-  }
-
-  private isAdjacent(fromX: number, fromY: number, toX: number, toY: number): boolean {
-    return Math.abs(fromX - toX) + Math.abs(fromY - toY) === 1;
   }
 }

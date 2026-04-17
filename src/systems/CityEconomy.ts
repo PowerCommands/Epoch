@@ -3,6 +3,7 @@ import type { CityBuildings } from '../entities/CityBuildings';
 import { getBuildingById } from '../data/buildings';
 import { getTerrainYield, type TileYield } from '../data/terrainYields';
 import type { MapData, Tile } from '../types/map';
+import type { IGridSystem } from './grid/IGridSystem';
 
 export const BASE_CITY_FOOD = 2;
 
@@ -24,16 +25,17 @@ export interface CityEconomySummary {
 }
 
 export function getFoodToGrow(population: number): number {
-  return 15 + population * 10;
+  return 10 + population * 8;
 }
 
 export function calculateCityEconomy(
   city: City,
   mapData: MapData,
   buildings: CityBuildings,
+  gridSystem: IGridSystem,
 ): CityEconomySummary {
-  const workableTiles = getWorkableTiles(city, mapData);
-  const workedTiles = getWorkedTiles(city, mapData);
+  const workableTiles = getWorkableTiles(city, mapData, gridSystem);
+  const workedTiles = getWorkedTiles(city, mapData, gridSystem);
   let food = BASE_CITY_FOOD;
   let production = 0;
   let gold = 0;
@@ -51,6 +53,9 @@ export function calculateCityEconomy(
     gold += building?.modifiers.goldPerTurn ?? 0;
   }
 
+  // Population production bonus: +1 per pop
+  production += city.population;
+
   const foodConsumption = city.population * 2;
 
   return {
@@ -67,23 +72,20 @@ export function calculateCityEconomy(
   };
 }
 
-export function getWorkableTiles(city: City, mapData: MapData): Tile[] {
-  const tiles: Tile[] = [];
-
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const x = city.tileX + dx;
-      const y = city.tileY + dy;
-      const tile = mapData.tiles[y]?.[x];
-      if (tile) tiles.push(tile);
-    }
-  }
-
-  return tiles;
+export function getWorkableTiles(
+  city: City,
+  mapData: MapData,
+  gridSystem: IGridSystem,
+): Tile[] {
+  return gridSystem.getWorkableCityTiles(city, mapData);
 }
 
-export function getWorkedTiles(city: City, mapData: MapData): WorkedTileYield[] {
-  return getWorkableTiles(city, mapData)
+export function getWorkedTiles(
+  city: City,
+  mapData: MapData,
+  gridSystem: IGridSystem,
+): WorkedTileYield[] {
+  return getWorkableTiles(city, mapData, gridSystem)
     .map((tile) => ({ tile, ...getTerrainYield(tile.type) }))
     .sort((a, b) => {
       if (a.food !== b.food) return b.food - a.food;

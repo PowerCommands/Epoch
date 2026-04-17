@@ -175,19 +175,22 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 <script>
 const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert'];
 const TILE_COLORS = {
-  ocean:    '#1e3a5f',
-  coast:    '#4a7ba6',
-  plains:   '#6b8e4e',
-  forest:   '#3d5a2e',
-  mountain: '#6b6b6b',
-  ice:      '#d8e8f0',
-  jungle:   '#2a6e2a',
-  desert:   '#d4b06a',
+  ocean:    '#1a557d',
+  coast:    '#4f8da7',
+  plains:   '#83b865',
+  forest:   '#2f7440',
+  mountain: '#777b7b',
+  ice:      '#c8e6e8',
+  jungle:   '#236f50',
+  desert:   '#cdb65e',
 };
 
 let scenario = null;
-let tiles = null; // 2D array [y][x] of type strings
+let tiles = null; // 2D array [r][q] of type strings
 let mapW = 0, mapH = 0, tileSize = 0;
+let hexSize = 0;
+let worldBounds = { width: 0, height: 0 };
+const SQRT_3 = Math.sqrt(3);
 
 // View state
 let camX = 0, camY = 0, zoom = 1;
@@ -214,24 +217,26 @@ async function init() {
   mapW = scenario.map.width;
   mapH = scenario.map.height;
   tileSize = scenario.map.tileSize;
+  hexSize = tileSize / 2;
 
-  // Build 2D tile array
+  // Build 2D q/r tile array
   tiles = [];
-  for (let y = 0; y < mapH; y++) {
+  for (let r = 0; r < mapH; r++) {
     const row = [];
-    for (let x = 0; x < mapW; x++) row.push('ocean');
+    for (let q = 0; q < mapW; q++) row.push('ocean');
     tiles.push(row);
   }
   for (const t of scenario.map.tiles) {
-    if (tiles[t.y]) tiles[t.y][t.x] = t.type;
+    if (tiles[t.r]) tiles[t.r][t.q] = t.type;
   }
 
   // Center camera
+  worldBounds = getWorldBounds();
   const vw = viewport.clientWidth;
   const vh = viewport.clientHeight;
-  zoom = Math.min(vw / (mapW * tileSize), vh / (mapH * tileSize));
-  camX = (mapW * tileSize) / 2 - vw / (2 * zoom);
-  camY = (mapH * tileSize) / 2 - vh / (2 * zoom);
+  zoom = Math.min(vw / worldBounds.width, vh / worldBounds.height);
+  camX = worldBounds.width / 2 - vw / (2 * zoom);
+  camY = worldBounds.height / 2 - vh / (2 * zoom);
 
   buildPalette();
   selectedNationId = scenario.nations[0]?.id ?? null;
@@ -240,7 +245,7 @@ async function init() {
   updateToolPanels();
   resizeCanvas();
   render();
-  document.getElementById('status-info').textContent = `${mapW}x${mapH} loaded`;
+  document.getElementById('status-info').textContent = `${mapW}x${mapH} q/r hexes loaded`;
 }
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -274,7 +279,7 @@ function buildEntityLists() {
     const row = document.createElement('div');
     row.className = 'entity-row';
     row.innerHTML = `<span class="entity-dot" style="background:${nation?.color || '#888'}"></span>
-      <span>${city.name} (${city.tileX},${city.tileY})</span>`;
+      <span>${city.name} (${city.q},${city.r})</span>`;
     row.addEventListener('click', () => selectEntity('city', i));
     cityList.appendChild(row);
   });
@@ -284,7 +289,7 @@ function buildEntityLists() {
     const row = document.createElement('div');
     row.className = 'entity-row';
     row.innerHTML = `<span class="entity-dot" style="background:${nation?.color || '#888'}"></span>
-      <span>${unit.unitTypeId} (${unit.tileX},${unit.tileY})</span>`;
+      <span>${unit.unitTypeId} (${unit.q},${unit.r})</span>`;
     row.addEventListener('click', () => selectEntity('unit', i));
     unitList.appendChild(row);
   });
@@ -301,7 +306,7 @@ function buildNationList() {
     const row = document.createElement('div');
     row.className = 'entity-row' + (nation.id === selectedNationId ? ' selected' : '');
     row.innerHTML = `<span class="entity-dot" style="background:${nation.color || '#888'}"></span>
-      <span>${nation.name}${capital ? ` (${capital.tileX},${capital.tileY})` : ''}</span>`;
+      <span>${nation.name}${capital ? ` (${capital.q},${capital.r})` : ''}</span>`;
     row.addEventListener('click', () => selectNation(nation.id));
     nationList.appendChild(row);
   });
@@ -329,7 +334,7 @@ function updateSelectedNationInfo() {
 
   const center = nation.startTerritoryCenter;
   el.textContent = `Selected: ${nation.name} (${nation.id})` +
-    (center ? ` • start ${center.x},${center.y}` : ' • no start set');
+    (center ? ` • start ${center.q},${center.r}` : ' • no start set');
 }
 
 function slugifyNationName(name) {
@@ -387,7 +392,8 @@ document.getElementById('add-nation-btn').addEventListener('click', () => {
     id,
     name,
     color,
-    startTerritoryCenter: { x: 0, y: 0 },
+    isHuman: false,
+    startTerritoryCenter: { q: 0, r: 0 },
   });
   selectedNationId = id;
   nameInput.value = '';
@@ -457,11 +463,22 @@ function screenToWorld(sx, sy) {
   return { wx, wy };
 }
 
+function tileToWorld(q, r) {
+  return {
+    x: hexSize * SQRT_3 * (q + r / 2) + hexSize,
+    y: hexSize * 1.5 * r + hexSize,
+  };
+}
+
 function worldToTile(wx, wy) {
-  const tx = Math.floor(wx / tileSize);
-  const ty = Math.floor(wy / tileSize);
-  if (tx < 0 || ty < 0 || tx >= mapW || ty >= mapH) return null;
-  return { tx, ty };
+  const localX = wx - hexSize;
+  const localY = wy - hexSize;
+  const q = (SQRT_3 / 3 * localX - 1 / 3 * localY) / hexSize;
+  const r = (2 / 3 * localY) / hexSize;
+  const rounded = roundAxial(q, r);
+
+  if (rounded.q < 0 || rounded.r < 0 || rounded.q >= mapW || rounded.r >= mapH) return null;
+  return rounded;
 }
 
 function screenToTile(sx, sy) {
@@ -469,17 +486,79 @@ function screenToTile(sx, sy) {
   return worldToTile(wx, wy);
 }
 
+function roundAxial(q, r) {
+  let rq = Math.round(q);
+  let rr = Math.round(r);
+  let rs = Math.round(-q - r);
+
+  const qDiff = Math.abs(rq - q);
+  const rDiff = Math.abs(rr - r);
+  const sDiff = Math.abs(rs + q + r);
+
+  if (qDiff > rDiff && qDiff > sDiff) {
+    rq = -rr - rs;
+  } else if (rDiff > sDiff) {
+    rr = -rq - rs;
+  }
+
+  return { q: rq, r: rr };
+}
+
+function hexCorners(q, r) {
+  const center = tileToWorld(q, r);
+  return Array.from({ length: 6 }, (_, i) => {
+    const angle = Math.PI / 180 * (60 * i - 30);
+    return {
+      x: center.x + hexSize * Math.cos(angle),
+      y: center.y + hexSize * Math.sin(angle),
+    };
+  });
+}
+
+function hexRect(q, r) {
+  const center = tileToWorld(q, r);
+  const width = SQRT_3 * hexSize;
+  const height = 2 * hexSize;
+  return {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width,
+    height,
+  };
+}
+
+function getWorldBounds() {
+  if (mapW <= 0 || mapH <= 0) return { width: 0, height: 0 };
+  let maxX = 0;
+  let maxY = 0;
+
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const rect = hexRect(q, r);
+      maxX = Math.max(maxX, rect.x + rect.width);
+      maxY = Math.max(maxY, rect.y + rect.height);
+    }
+  }
+
+  return { width: maxX, height: maxY };
+}
+
 // ─── Painting ───────────────────────────────────────────────────────────────
 
-function paintAt(tx, ty) {
-  const half = Math.floor(brushSize / 2);
+function paintAt(q, r) {
+  const radius = brushSize - 1;
   let changed = false;
-  for (let dy = -half; dy <= half; dy++) {
-    for (let dx = -half; dx <= half; dx++) {
-      const px = tx + dx, py = ty + dy;
-      if (px < 0 || py < 0 || px >= mapW || py >= mapH) continue;
-      if (tiles[py][px] !== currentTerrain) {
-        tiles[py][px] = currentTerrain;
+
+  for (let dq = -radius; dq <= radius; dq++) {
+    const minDr = Math.max(-radius, -dq - radius);
+    const maxDr = Math.min(radius, -dq + radius);
+
+    for (let dr = minDr; dr <= maxDr; dr++) {
+      const pq = q + dq;
+      const pr = r + dr;
+      if (pq < 0 || pr < 0 || pq >= mapW || pr >= mapH) continue;
+      if (tiles[pr][pq] !== currentTerrain) {
+        tiles[pr][pq] = currentTerrain;
         changed = true;
       }
     }
@@ -489,38 +568,38 @@ function paintAt(tx, ty) {
 
 // ─── Moving entities ────────────────────────────────────────────────────────
 
-function moveEntityTo(tx, ty) {
+function moveEntityTo(q, r) {
   if (!selectedEntity) return;
   if (selectedEntity.kind === 'city') {
     const city = scenario.cities[selectedEntity.index];
-    city.tileX = tx;
-    city.tileY = ty;
+    city.q = q;
+    city.r = r;
     // Also update nation startTerritoryCenter if this is a capital
     if (city.isCapital) {
       const nation = scenario.nations.find(n => n.id === city.nationId);
       if (nation) {
-        nation.startTerritoryCenter = { x: tx, y: ty };
+        nation.startTerritoryCenter = { q, r };
       }
     }
   } else {
     const unit = scenario.units[selectedEntity.index];
-    unit.tileX = tx;
-    unit.tileY = ty;
+    unit.q = q;
+    unit.r = r;
   }
   buildEntityLists();
   if (selectedEntity) updateEntityHighlights();
   render();
 }
 
-function setStartPosition(tx, ty) {
+function setStartPosition(q, r) {
   const nation = getSelectedNation();
   if (!nation) {
     setStatusInfo('Select a nation before setting start position');
     return;
   }
 
-  nation.startTerritoryCenter = { x: tx, y: ty };
-  setStatusInfo(`${nation.name} start territory center set to (${tx},${ty})`);
+  nation.startTerritoryCenter = { q, r };
+  setStatusInfo(`${nation.name} start territory center set to (${q},${r})`);
   buildNationList();
   render();
 }
@@ -542,7 +621,7 @@ function makeDefaultCityName(nation) {
   return ownedCount === 0 ? base : `${base} ${ownedCount + 1}`;
 }
 
-function addCityAt(tx, ty) {
+function addCityAt(q, r) {
   const nation = getSelectedNation();
   if (!nation) {
     setStatusInfo('Select a nation before adding a city');
@@ -556,13 +635,13 @@ function addCityAt(tx, ty) {
     id: makeUniqueId('city', name, existingIds),
     name,
     nationId: nation.id,
-    tileX: tx,
-    tileY: ty,
+    q,
+    r,
     isCapital: nationCities.length === 0,
   };
 
   scenario.cities.push(city);
-  if (city.isCapital) nation.startTerritoryCenter = { x: tx, y: ty };
+  if (city.isCapital) nation.startTerritoryCenter = { q, r };
   selectedEntity = { kind: 'city', index: scenario.cities.length - 1 };
   setStatusInfo(`Added ${city.isCapital ? 'capital' : 'city'} ${city.name}`);
   buildNationList();
@@ -571,7 +650,7 @@ function addCityAt(tx, ty) {
   render();
 }
 
-function addUnitAt(tx, ty) {
+function addUnitAt(q, r) {
   const nation = getSelectedNation();
   if (!nation) {
     setStatusInfo('Select a nation before adding a unit');
@@ -582,8 +661,8 @@ function addUnitAt(tx, ty) {
   scenario.units.push({
     nationId: nation.id,
     unitTypeId,
-    tileX: tx,
-    tileY: ty,
+    q,
+    r,
   });
   selectedEntity = { kind: 'unit', index: scenario.units.length - 1 };
   setStatusInfo(`Added ${unitTypeId} for ${nation.name}`);
@@ -616,24 +695,24 @@ viewport.addEventListener('mousedown', (e) => {
 
   if (currentTool === 'paint') {
     isPainting = true;
-    paintAt(pos.tx, pos.ty);
+    paintAt(pos.q, pos.r);
   } else if (currentTool === 'move') {
     if (selectedEntity) {
       // Move selected entity to clicked tile
-      moveEntityTo(pos.tx, pos.ty);
+      moveEntityTo(pos.q, pos.r);
     } else {
       // Try to select entity at clicked tile
-      const cityIdx = scenario.cities.findIndex(c => c.tileX === pos.tx && c.tileY === pos.ty);
+      const cityIdx = scenario.cities.findIndex(c => c.q === pos.q && c.r === pos.r);
       if (cityIdx >= 0) { selectEntity('city', cityIdx); return; }
-      const unitIdx = scenario.units.findIndex(u => u.tileX === pos.tx && u.tileY === pos.ty);
+      const unitIdx = scenario.units.findIndex(u => u.q === pos.q && u.r === pos.r);
       if (unitIdx >= 0) { selectEntity('unit', unitIdx); return; }
     }
   } else if (currentTool === 'setStart') {
-    setStartPosition(pos.tx, pos.ty);
+    setStartPosition(pos.q, pos.r);
   } else if (currentTool === 'addCity') {
-    addCityAt(pos.tx, pos.ty);
+    addCityAt(pos.q, pos.r);
   } else if (currentTool === 'addUnit') {
-    addUnitAt(pos.tx, pos.ty);
+    addUnitAt(pos.q, pos.r);
   }
 });
 
@@ -649,12 +728,12 @@ viewport.addEventListener('mousemove', (e) => {
 
   const pos = screenToTile(e.clientX, e.clientY);
   if (pos) {
-    document.getElementById('status-pos').textContent = `(${pos.tx}, ${pos.ty})`;
-    document.getElementById('status-tile').textContent = tiles[pos.ty][pos.tx];
+    document.getElementById('status-pos').textContent = `q/r (${pos.q}, ${pos.r})`;
+    document.getElementById('status-tile').textContent = tiles[pos.r][pos.q];
   }
 
   if (isPainting && currentTool === 'paint' && pos) {
-    paintAt(pos.tx, pos.ty);
+    paintAt(pos.q, pos.r);
   }
 });
 
@@ -700,22 +779,20 @@ function render() {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  // Determine visible tile range
-  const startTX = Math.max(0, Math.floor(camX / tileSize));
-  const startTY = Math.max(0, Math.floor(camY / tileSize));
-  const endTX = Math.min(mapW - 1, Math.floor((camX + w / zoom) / tileSize));
-  const endTY = Math.min(mapH - 1, Math.floor((camY + h / zoom) / tileSize));
+  const viewLeft = camX;
+  const viewTop = camY;
+  const viewRight = camX + w / zoom;
+  const viewBottom = camY + h / zoom;
 
   // Draw tiles
-  for (let ty = startTY; ty <= endTY; ty++) {
-    for (let tx = startTX; tx <= endTX; tx++) {
-      const sx = (tx * tileSize - camX) * zoom;
-      const sy = (ty * tileSize - camY) * zoom;
-      const sw = tileSize * zoom;
-      const sh = tileSize * zoom;
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const rect = hexRect(q, r);
+      if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) {
+        continue;
+      }
 
-      ctx.fillStyle = TILE_COLORS[tiles[ty][tx]] || '#ff00ff';
-      ctx.fillRect(sx, sy, sw + 0.5, sh + 0.5); // +0.5 to avoid gaps
+      drawHex(q, r, TILE_COLORS[tiles[r][q]] || '#ff00ff');
     }
   }
 
@@ -723,19 +800,15 @@ function render() {
   if (zoom > 0.3) {
     ctx.strokeStyle = 'rgba(0,0,0,0.2)';
     ctx.lineWidth = 1;
-    for (let ty = startTY; ty <= endTY + 1; ty++) {
-      const sy = (ty * tileSize - camY) * zoom;
-      ctx.beginPath();
-      ctx.moveTo(0, sy);
-      ctx.lineTo(w, sy);
-      ctx.stroke();
-    }
-    for (let tx = startTX; tx <= endTX + 1; tx++) {
-      const sx = (tx * tileSize - camX) * zoom;
-      ctx.beginPath();
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, h);
-      ctx.stroke();
+    for (let r = 0; r < mapH; r++) {
+      for (let q = 0; q < mapW; q++) {
+        const rect = hexRect(q, r);
+        if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) {
+          continue;
+        }
+
+        strokeHex(q, r, 'rgba(0,0,0,0.2)', 1);
+      }
     }
   }
 
@@ -743,8 +816,9 @@ function render() {
   for (let i = 0; i < scenario.cities.length; i++) {
     const city = scenario.cities[i];
     const nation = scenario.nations.find(n => n.id === city.nationId);
-    const sx = ((city.tileX + 0.5) * tileSize - camX) * zoom;
-    const sy = ((city.tileY + 0.5) * tileSize - camY) * zoom;
+    const world = tileToWorld(city.q, city.r);
+    const sx = (world.x - camX) * zoom;
+    const sy = (world.y - camY) * zoom;
     const r = Math.max(4, tileSize * zoom * 0.35);
 
     const isSelected = selectedEntity?.kind === 'city' && selectedEntity.index === i;
@@ -783,8 +857,10 @@ function render() {
   // Draw selected nation start territory center
   const selectedNation = getSelectedNation();
   if (selectedNation?.startTerritoryCenter) {
-    const sx = ((selectedNation.startTerritoryCenter.x + 0.5) * tileSize - camX) * zoom;
-    const sy = ((selectedNation.startTerritoryCenter.y + 0.5) * tileSize - camY) * zoom;
+    const center = selectedNation.startTerritoryCenter;
+    const world = tileToWorld(center.q, center.r);
+    const sx = (world.x - camX) * zoom;
+    const sy = (world.y - camY) * zoom;
     const r = Math.max(6, tileSize * zoom * 0.28);
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
@@ -796,20 +872,16 @@ function render() {
     ctx.stroke();
     ctx.strokeStyle = selectedNation.color || '#fff';
     ctx.lineWidth = 4;
-    ctx.strokeRect(
-      (selectedNation.startTerritoryCenter.x * tileSize - camX) * zoom,
-      (selectedNation.startTerritoryCenter.y * tileSize - camY) * zoom,
-      tileSize * zoom,
-      tileSize * zoom,
-    );
+    strokeHex(center.q, center.r, selectedNation.color || '#fff', 4);
   }
 
   // Draw units
   for (let i = 0; i < scenario.units.length; i++) {
     const unit = scenario.units[i];
     const nation = scenario.nations.find(n => n.id === unit.nationId);
-    const sx = ((unit.tileX + 0.5) * tileSize - camX) * zoom;
-    const sy = ((unit.tileY + 0.5) * tileSize - camY) * zoom;
+    const world = tileToWorld(unit.q, unit.r);
+    const sx = (world.x - camX) * zoom;
+    const sy = (world.y - camY) * zoom;
     const s = Math.max(4, tileSize * zoom * 0.25);
 
     const isSelected = selectedEntity?.kind === 'unit' && selectedEntity.index === i;
@@ -841,6 +913,34 @@ function render() {
   }
 }
 
+function drawHex(q, r, fillStyle) {
+  const points = hexCorners(q, r).map(worldToScreen);
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+}
+
+function strokeHex(q, r, strokeStyle, lineWidth) {
+  const points = hexCorners(q, r).map(worldToScreen);
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+}
+
+function worldToScreen(point) {
+  return {
+    x: (point.x - camX) * zoom,
+    y: (point.y - camY) * zoom,
+  };
+}
+
 // ─── Save / Download ────────────────────────────────────────────────────────
 
 function validateScenario() {
@@ -870,11 +970,11 @@ function showValidationWarnings(warnings) {
 document.getElementById('save-btn').addEventListener('click', () => {
   showValidationWarnings(validateScenario());
 
-  // Rebuild flat tiles array from 2D
+  // Rebuild flat q/r tiles array from 2D
   const flatTiles = [];
-  for (let y = 0; y < mapH; y++) {
-    for (let x = 0; x < mapW; x++) {
-      flatTiles.push({ x, y, type: tiles[y][x] });
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      flatTiles.push({ q, r, type: tiles[r][q] });
     }
   }
 

@@ -20,7 +20,6 @@ export class PathPreviewRenderer {
 
   showReachableTiles(tiles: Set<string>): void {
     this.reachableGfx.clear();
-    const tileSize = this.tileMap.getTileSize();
     const inset = 4;
 
     this.reachableGfx.fillStyle(REACHABLE_COLOR, 0.16);
@@ -28,20 +27,9 @@ export class PathPreviewRenderer {
 
     for (const key of tiles) {
       const [x, y] = key.split(',').map(Number);
-      const world = this.tileMap.tileToWorld(x, y);
-      const half = tileSize / 2;
-      this.reachableGfx.fillRect(
-        world.x - half + inset,
-        world.y - half + inset,
-        tileSize - inset * 2,
-        tileSize - inset * 2,
-      );
-      this.reachableGfx.strokeRect(
-        world.x - half + inset,
-        world.y - half + inset,
-        tileSize - inset * 2,
-        tileSize - inset * 2,
-      );
+      const outline = this.insetOutline(x, y, inset);
+      this.fillPolygon(this.reachableGfx, outline);
+      this.strokePolygon(this.reachableGfx, outline);
     }
   }
 
@@ -49,21 +37,13 @@ export class PathPreviewRenderer {
     this.pathGfx.clear();
     if (path.length === 0) return;
 
-    const tileSize = this.tileMap.getTileSize();
     const inset = 10;
 
     this.pathGfx.fillStyle(PATH_COLOR, 0.28);
     this.pathGfx.lineStyle(4, PATH_COLOR, 0.95);
 
     for (const tile of path) {
-      const world = this.tileMap.tileToWorld(tile.x, tile.y);
-      const half = tileSize / 2;
-      this.pathGfx.fillRect(
-        world.x - half + inset,
-        world.y - half + inset,
-        tileSize - inset * 2,
-        tileSize - inset * 2,
-      );
+      this.fillPolygon(this.pathGfx, this.insetOutline(tile.x, tile.y, inset));
     }
 
     if (path.length < 2) return;
@@ -85,5 +65,42 @@ export class PathPreviewRenderer {
 
   clearPath(): void {
     this.pathGfx.clear();
+  }
+
+  private insetOutline(tileX: number, tileY: number, inset: number): { x: number; y: number }[] {
+    const center = this.tileMap.tileToWorld(tileX, tileY);
+    return this.tileMap.getTileOutlinePoints(tileX, tileY).map((point) => {
+      const dx = point.x - center.x;
+      const dy = point.y - center.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length <= inset) return center;
+      const scale = (length - inset) / length;
+      return {
+        x: center.x + dx * scale,
+        y: center.y + dy * scale,
+      };
+    });
+  }
+
+  private fillPolygon(gfx: Phaser.GameObjects.Graphics, points: { x: number; y: number }[]): void {
+    if (points.length === 0) return;
+    gfx.beginPath();
+    gfx.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) {
+      gfx.lineTo(point.x, point.y);
+    }
+    gfx.closePath();
+    gfx.fillPath();
+  }
+
+  private strokePolygon(gfx: Phaser.GameObjects.Graphics, points: { x: number; y: number }[]): void {
+    if (points.length === 0) return;
+    gfx.beginPath();
+    gfx.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) {
+      gfx.lineTo(point.x, point.y);
+    }
+    gfx.closePath();
+    gfx.strokePath();
   }
 }

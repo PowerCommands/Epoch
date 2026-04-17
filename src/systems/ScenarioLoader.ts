@@ -42,9 +42,9 @@ export class ScenarioLoader {
       tiles.push(row);
     }
 
-    // Fill from flat array (case-insensitive lookup)
+    // Fill from q/r-authored flat array (case-insensitive lookup)
     for (const entry of json.map.tiles) {
-      const tile = tiles[entry.y]?.[entry.x];
+      const tile = tiles[entry.r]?.[entry.q];
       if (tile) {
         tile.type = TYPE_MAP[entry.type.toLowerCase()] ?? TileType.Ocean;
       }

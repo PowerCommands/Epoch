@@ -7,7 +7,7 @@ export interface ScenarioMap {
   width: number;
   height: number;
   tileSize: number;
-  tiles: { x: number; y: number; type: string }[];
+  tiles: { q: number; r: number; type: string }[];
 }
 
 export interface ScenarioNation {
@@ -15,23 +15,23 @@ export interface ScenarioNation {
   name: string;
   color: string;
   isHuman: boolean;
-  startTerritoryCenter: { x: number; y: number };
+  startTerritoryCenter: { q: number; r: number };
 }
 
 export interface ScenarioCity {
   id: string;
   name: string;
   nationId: string;
-  tileX: number;
-  tileY: number;
+  q: number;
+  r: number;
   isCapital: boolean;
 }
 
 export interface ScenarioUnit {
   nationId: string;
   unitTypeId: string;
-  tileX: number;
-  tileY: number;
+  q: number;
+  r: number;
 }
 
 export interface ScenarioData {

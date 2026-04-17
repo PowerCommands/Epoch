@@ -220,7 +220,7 @@ export class UnitManager {
         continue;
       }
 
-      const tile = mapData.tiles[cfg.tileY]?.[cfg.tileX];
+      const tile = mapData.tiles[cfg.r]?.[cfg.q];
       if (!tile) continue;
       if (unitType.isNaval) {
         if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
@@ -234,8 +234,8 @@ export class UnitManager {
           id: `unit_${cfg.nationId}_start_${idx}`,
           name: unitType.name,
           ownerId: cfg.nationId,
-          tileX: cfg.tileX,
-          tileY: cfg.tileY,
+          tileX: cfg.q,
+          tileY: cfg.r,
           unitType,
         }),
       );
@@ -261,15 +261,17 @@ export class UnitManager {
     tileY: number,
   ): { x: number; y: number } | null {
     const offsets = [
-      { dx: 1, dy: 0 },
-      { dx: -1, dy: 0 },
-      { dx: 0, dy: 1 },
-      { dx: 0, dy: -1 },
+      { dq: 1, dr: 0 },
+      { dq: 1, dr: -1 },
+      { dq: 0, dr: -1 },
+      { dq: -1, dr: 0 },
+      { dq: -1, dr: 1 },
+      { dq: 0, dr: 1 },
     ];
 
     for (const offset of offsets) {
-      const x = tileX + offset.dx;
-      const y = tileY + offset.dy;
+      const x = tileX + offset.dq;
+      const y = tileY + offset.dr;
       if (UnitManager.canPlaceAt(mapData, manager, x, y)) return { x, y };
     }
 

@@ -3,6 +3,7 @@ import { NationResources } from '../entities/NationResources';
 import { MapData } from '../types/map';
 import { DEFAULT_AI_PROFILE } from '../types/ai';
 import type { ScenarioNation } from '../types/scenario';
+import type { IGridSystem } from './grid/IGridSystem';
 
 const INITIAL_CLAIM_SIZE = 3;
 
@@ -54,9 +55,9 @@ export class NationManager {
 
   /**
    * Skapa en NationManager med 6 historical nations on the Europe map.
-   * Each nation gets a 3×3 claimed territory centered on their capital.
+   * Each nation gets an active-grid claimed territory centered on their capital.
    */
-  static createDefault(mapData: MapData): NationManager {
+  static createDefault(mapData: MapData, gridSystem: IGridSystem): NationManager {
     const manager = new NationManager();
 
     const configs: { id: string; name: string; color: number; cx: number; cy: number }[] = [
@@ -70,7 +71,7 @@ export class NationManager {
 
     for (const cfg of configs) {
       manager.addNation(new Nation({ id: cfg.id, name: cfg.name, color: cfg.color }));
-      NationManager.claimArea(mapData, cfg.id, cfg.cx, cfg.cy, INITIAL_CLAIM_SIZE);
+      NationManager.claimArea(mapData, cfg.id, cfg.cx, cfg.cy, INITIAL_CLAIM_SIZE, gridSystem);
     }
 
     return manager;
@@ -78,9 +79,13 @@ export class NationManager {
 
   /**
    * Create a NationManager from scenario data.
-   * Each nation gets a 3×3 claimed territory centered on startTerritoryCenter.
+   * Each nation gets an active-grid claimed territory centered on startTerritoryCenter.
    */
-  static loadFromScenario(nations: ScenarioNation[], mapData: MapData): NationManager {
+  static loadFromScenario(
+    nations: ScenarioNation[],
+    mapData: MapData,
+    gridSystem: IGridSystem,
+  ): NationManager {
     const manager = new NationManager();
 
     for (const cfg of nations) {
@@ -95,9 +100,10 @@ export class NationManager {
       NationManager.claimArea(
         mapData,
         cfg.id,
-        cfg.startTerritoryCenter.x,
-        cfg.startTerritoryCenter.y,
+        cfg.startTerritoryCenter.q,
+        cfg.startTerritoryCenter.r,
         INITIAL_CLAIM_SIZE,
+        gridSystem,
       );
     }
 
@@ -115,20 +121,19 @@ export class NationManager {
     centerX: number,
     centerY: number,
     size: number,
+    gridSystem: IGridSystem,
   ): void {
-    const half = Math.floor(size / 2);
+    const range = Math.floor(size / 2);
+    const tiles = gridSystem.getTilesInRange(
+      { x: centerX, y: centerY },
+      range,
+      mapData,
+      { includeCenter: true },
+    );
 
-    for (let dy = -half; dy <= half; dy++) {
-      for (let dx = -half; dx <= half; dx++) {
-        const tx = centerX + dx;
-        const ty = centerY + dy;
-
-        if (tx < 0 || ty < 0 || tx >= mapData.width || ty >= mapData.height) continue;
-
-        const tile = mapData.tiles[ty][tx];
-        if (!tile.ownerId) {
-          tile.ownerId = nationId;
-        }
+    for (const tile of tiles) {
+      if (!tile.ownerId) {
+        tile.ownerId = nationId;
       }
     }
   }

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import { NationManager } from './NationManager';
 import { MapData } from '../types/map';
+import type { IGridSystem } from './grid/IGridSystem';
 
 const OVERLAY_ALPHA = 0.35;
 const OVERLAY_DEPTH = 5;
@@ -9,6 +10,20 @@ const BORDER_DEPTH = 6;
 const BORDER_ALPHA = 0.72;
 const BORDER_COLOR = 0x111111;
 const BORDER_WIDTH = 2;
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+const HEX_EDGE_INDEX_BY_DELTA = new Map<string, number>([
+  ['1,0', 0],
+  ['0,1', 1],
+  ['-1,1', 2],
+  ['-1,0', 3],
+  ['0,-1', 4],
+  ['1,-1', 5],
+]);
 
 /**
  * TerritoryRenderer ritar en semi-transparent färgad overlay ovanpå
@@ -31,6 +46,7 @@ export class TerritoryRenderer {
     tileMap: TileMap,
     nationManager: NationManager,
     mapData: MapData,
+    private readonly gridSystem: IGridSystem,
   ) {
     this.scene = scene;
     this.tileMap = tileMap;
@@ -45,8 +61,6 @@ export class TerritoryRenderer {
     this.overlayGfx.clear();
     this.borderGfx.clear();
 
-    const tileSize = this.tileMap.getTileSize();
-
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (tile.ownerId === undefined) continue;
@@ -54,11 +68,10 @@ export class TerritoryRenderer {
         const nation = this.nationManager.getNation(tile.ownerId);
         if (nation === undefined) continue;
 
-        const px = tile.x * tileSize;
-        const py = tile.y * tileSize;
+        const outline = this.tileMap.getTileOutlinePoints(tile.x, tile.y);
 
         this.overlayGfx.fillStyle(nation.color, OVERLAY_ALPHA);
-        this.overlayGfx.fillRect(px, py, tileSize, tileSize);
+        this.fillPolygon(outline);
       }
     }
 
@@ -71,22 +84,14 @@ export class TerritoryRenderer {
 
         const x = tile.x;
         const y = tile.y;
-        const px = x * tileSize;
-        const py = y * tileSize;
-        const right = px + tileSize;
-        const bottom = py + tileSize;
+        const outline = this.tileMap.getTileOutlinePoints(x, y);
+        const adjacent = this.gridSystem.getAdjacentCoords({ x, y });
 
-        if (this.shouldDrawBorder(tile.ownerId, x, y - 1)) {
-          borderSegments.add(`${px},${py},${right},${py}`);
-        }
-        if (this.shouldDrawBorder(tile.ownerId, x + 1, y)) {
-          borderSegments.add(`${right},${py},${right},${bottom}`);
-        }
-        if (this.shouldDrawBorder(tile.ownerId, x, y + 1)) {
-          borderSegments.add(`${px},${bottom},${right},${bottom}`);
-        }
-        if (this.shouldDrawBorder(tile.ownerId, x - 1, y)) {
-          borderSegments.add(`${px},${py},${px},${bottom}`);
+        for (const neighbor of adjacent) {
+          if (!this.shouldDrawBorder(tile.ownerId, neighbor.x, neighbor.y)) continue;
+
+          const edge = this.getHexEdgePoints(outline, x, y, neighbor);
+          borderSegments.add(this.segmentKey(edge[0], edge[1]));
         }
       }
     }
@@ -103,5 +108,40 @@ export class TerritoryRenderer {
     }
 
     return this.mapData.tiles[y][x].ownerId !== ownerId;
+  }
+
+  private segmentKey(a: Point, b: Point): string {
+    const first = this.pointKey(a);
+    const second = this.pointKey(b);
+    return first < second ? `${first},${second}` : `${second},${first}`;
+  }
+
+  private pointKey(point: Point): string {
+    return `${point.x.toFixed(3)},${point.y.toFixed(3)}`;
+  }
+
+  private getHexEdgePoints(outline: Point[], x: number, y: number, neighbor: Point): [Point, Point] {
+    if (outline.length !== 6) {
+      throw new Error(`TerritoryRenderer expected hex outline with 6 points, got ${outline.length}`);
+    }
+
+    const deltaKey = `${neighbor.x - x},${neighbor.y - y}`;
+    const edgeIndex = HEX_EDGE_INDEX_BY_DELTA.get(deltaKey);
+    if (edgeIndex === undefined) {
+      throw new Error(`TerritoryRenderer received non-hex neighbor delta ${deltaKey}`);
+    }
+
+    return [outline[edgeIndex], outline[(edgeIndex + 1) % outline.length]];
+  }
+
+  private fillPolygon(points: Point[]): void {
+    if (points.length === 0) return;
+    this.overlayGfx.beginPath();
+    this.overlayGfx.moveTo(points[0].x, points[0].y);
+    for (const point of points.slice(1)) {
+      this.overlayGfx.lineTo(point.x, point.y);
+    }
+    this.overlayGfx.closePath();
+    this.overlayGfx.fillPath();
   }
 }
