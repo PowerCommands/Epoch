@@ -19,6 +19,7 @@ import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
+import { RafScheduler } from '../utils/RafScheduler';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
@@ -46,6 +47,7 @@ export class RightPanel {
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
+  private readonly scheduler = new RafScheduler();
 
   constructor(
     productionSystem: ProductionSystem,
@@ -154,6 +156,24 @@ export class RightPanel {
     if (this.currentView === 'nation' && this.currentNationId) {
       this.showNation(this.currentNationId);
     }
+  }
+
+  /** Coalesce repeated event-driven refreshes into one per animation frame. */
+  requestRefresh(): void {
+    this.scheduler.schedule('refreshCurrent', () => this.refreshCurrent());
+  }
+
+  isShowingCity(cityId?: string): boolean {
+    if (!cityId) return false;
+    return this.currentView === 'city' && this.currentCity?.id === cityId;
+  }
+
+  isShowingUnit(unit: Unit): boolean {
+    return this.currentView === 'unit' && this.currentUnit?.id === unit.id;
+  }
+
+  shutdown(): void {
+    this.scheduler.cancel();
   }
 
   /** Re-render only the production queue section for the given city. */

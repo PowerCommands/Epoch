@@ -4,6 +4,7 @@ import { TurnManager } from '../systems/TurnManager';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
 import type { LeaderDefinition } from '../types/leader';
+import { RafScheduler } from '../utils/RafScheduler';
 
 export class LeftPanel {
   private readonly root: HTMLElement;
@@ -14,6 +15,7 @@ export class LeftPanel {
   private researchSystem: ResearchSystem | null = null;
   private endTurnCallback: (() => void) | null = null;
   private selectedNationId: string | null = null;
+  private readonly scheduler = new RafScheduler();
 
   constructor(
     nationManager: NationManager,
@@ -42,6 +44,15 @@ export class LeftPanel {
       this.renderResearchSection(),
       this.renderLeaderStrip(),
     );
+  }
+
+  /** Coalesce repeated event-driven refreshes into one per animation frame. */
+  requestRefresh(): void {
+    this.scheduler.schedule('refresh', () => this.refresh());
+  }
+
+  shutdown(): void {
+    this.scheduler.cancel();
   }
 
   setResearchSystem(researchSystem: ResearchSystem): void {

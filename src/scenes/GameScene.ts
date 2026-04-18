@@ -104,6 +104,8 @@ export class GameScene extends Phaser.Scene {
 
     // 7. Create units from scenario (filtered)
     const unitManager = UnitManager.loadFromScenario(activeUnits, mapData);
+    // Enrich unit events with cityId (used by RightPanel to gate refreshes).
+    unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
 
     // 7. Kamerakontroll
     const { width: worldWidth, height: worldHeight } = tileMap.getWorldBounds();
@@ -338,7 +340,7 @@ export class GameScene extends Phaser.Scene {
       const nameB = nationManager.getNation(b)?.name ?? b;
       eventLog.log(`${nameA} has met ${nameB}.`, [a, b], turnManager.getCurrentRound());
       // New nation may now be visible in the left panel.
-      leftPanel?.refresh();
+      leftPanel?.requestRefresh();
     });
 
     // Hantera färdig produktion
@@ -372,7 +374,7 @@ export class GameScene extends Phaser.Scene {
     combatSystem.onCityCombat((e) => {
       // Uppdatera stadsrendering (HP-bar)
       cityRenderer.refreshCity(e.city);
-      leftPanel?.refresh();
+      leftPanel?.requestRefresh();
 
       // Om attackeraren dog
       if (e.result.attackerDied) {
@@ -388,14 +390,14 @@ export class GameScene extends Phaser.Scene {
         unitRenderer.refreshUnitPosition(e.attacker.id);
         // Territory overlay behöver ritas om
         territoryRenderer.render();
-        leftPanel?.refresh();
+        leftPanel?.requestRefresh();
         // Recalculate resources for both old and new owner
         resourceSystem.recalculateForNation(e.attacker.ownerId);
         // A conquered city may introduce new encounters
         discoverySystem.scan();
       }
 
-      rightPanel?.refreshCurrent();
+      rightPanel?.requestRefresh();
     });
 
     // ─── Healing events ─────────────────────────────────────────────────────
@@ -404,8 +406,8 @@ export class GameScene extends Phaser.Scene {
       const city = cityManager.getCity(e.cityId);
       if (city) {
         cityRenderer.refreshCity(city);
-        leftPanel?.refresh();
-        rightPanel?.refreshCurrent();
+        leftPanel?.requestRefresh();
+        rightPanel?.requestRefresh();
       }
     });
 
@@ -544,8 +546,8 @@ export class GameScene extends Phaser.Scene {
         [nationA, nationB],
         turnManager.getCurrentRound(),
       );
-      leftPanel?.refresh();
-      rightPanel?.refreshCurrent();
+      leftPanel?.requestRefresh();
+      rightPanel?.requestRefresh();
     });
 
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
@@ -557,8 +559,8 @@ export class GameScene extends Phaser.Scene {
         [aggressorId, targetId],
         turnManager.getCurrentRound(),
       );
-      leftPanel?.refresh();
-      rightPanel?.refreshCurrent();
+      leftPanel?.requestRefresh();
+      rightPanel?.requestRefresh();
     });
 
     // Diplomacy actions from RightPanel buttons
@@ -645,8 +647,8 @@ export class GameScene extends Phaser.Scene {
       },
     );
     researchSystem.onChanged(() => {
-      leftPanel?.refresh();
-      rightPanel?.refreshCurrent();
+      leftPanel?.requestRefresh();
+      rightPanel?.requestRefresh();
     });
 
     new CombatLog(this, combatSystem, nationManager);
@@ -664,16 +666,21 @@ export class GameScene extends Phaser.Scene {
         rightPanel.refreshNationView();
       }
     });
-    turnManager.on('roundStart', () => leftPanel?.refresh());
-    resourceSystem.on(() => leftPanel?.refresh());
-    unitManager.onUnitChanged(() => {
-      leftPanel?.refresh();
-      rightPanel?.refreshCurrent();
+    turnManager.on('roundStart', () => leftPanel?.requestRefresh());
+    resourceSystem.on(() => leftPanel?.requestRefresh());
+    unitManager.onUnitChanged((event) => {
+      leftPanel?.requestRefresh();
+      if (
+        rightPanel &&
+        (rightPanel.isShowingCity(event.cityId) || rightPanel.isShowingUnit(event.unit))
+      ) {
+        rightPanel.requestRefresh();
+      }
       refreshMovePreview();
     });
     productionSystem.onChanged(() => {
-      leftPanel?.refresh();
-      rightPanel?.refreshCurrent();
+      leftPanel?.requestRefresh();
+      rightPanel?.requestRefresh();
     });
 
     // Map selection → right panel (clears nation highlight)
@@ -752,6 +759,8 @@ export class GameScene extends Phaser.Scene {
       document.removeEventListener('nationSelected', onNationSelected);
       document.removeEventListener('leaderSelected', onLeaderSelected);
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
+      leftPanel?.shutdown();
+      rightPanel?.shutdown();
     });
 
     // Victory overlay

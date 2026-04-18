@@ -11,9 +11,12 @@ export type UnitChangedReason = 'created' | 'moved' | 'movementReset' | 'damaged
 export interface UnitChangedEvent {
   unit: Unit;
   reason: UnitChangedReason;
+  tileKey?: string;
+  cityId?: string;
 }
 
 type UnitChangedListener = (event: UnitChangedEvent) => void;
+type CityLocator = (tileX: number, tileY: number) => string | undefined;
 
 const PRODUCED_UNIT_ID_PREFIX = 'unit_produced';
 
@@ -33,7 +36,12 @@ const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
 export class UnitManager {
   private readonly units = new Map<string, Unit>();
   private readonly listeners: UnitChangedListener[] = [];
+  private cityLocator: CityLocator | null = null;
   private nextProducedUnitId = 1;
+
+  setCityLocator(locator: CityLocator | null): void {
+    this.cityLocator = locator;
+  }
 
   addUnit(unit: Unit): void {
     this.units.set(unit.id, unit);
@@ -254,6 +262,12 @@ export class UnitManager {
   }
 
   private notify(event: UnitChangedEvent): void {
+    if (event.tileKey === undefined) {
+      event.tileKey = `${event.unit.tileX},${event.unit.tileY}`;
+    }
+    if (event.cityId === undefined && this.cityLocator) {
+      event.cityId = this.cityLocator(event.unit.tileX, event.unit.tileY);
+    }
     for (const listener of this.listeners) listener(event);
   }
 
