@@ -177,7 +177,9 @@ export class GameScene extends Phaser.Scene {
       if (targetTile === null) return false;
 
       // Try attack against unit or city at target tile
-      return combatSystem.tryAttack(currentSelection.unit, targetTile.x, targetTile.y);
+      return combatSystem.tryAttack(currentSelection.unit, targetTile.x, targetTile.y, {
+        source: 'human-ui',
+      });
     });
 
     // Builder actions run before movement: valid build wins, otherwise normal move can proceed.
@@ -481,6 +483,9 @@ export class GameScene extends Phaser.Scene {
 
     // War declaration modal when human tries to attack a nation at peace
     combatSystem.onWarRequired((e) => {
+      if (e.source !== 'human-ui') return;
+      if (e.attacker.ownerId !== humanNationIdForDiplomacy) return;
+
       const targetNation = nationManager.getNation(e.targetNationId);
       if (!targetNation) return;
       const color = `#${targetNation.color.toString(16).padStart(6, '0')}`;
@@ -494,7 +499,7 @@ export class GameScene extends Phaser.Scene {
         onConfirm: () => {
           diplomacyManager.declareWar(humanNationIdForDiplomacy, e.targetNationId);
           // Re-attempt attack now that war is declared
-          combatSystem.tryAttack(e.attacker, e.tileX, e.tileY);
+          combatSystem.tryAttack(e.attacker, e.tileX, e.tileY, { source: 'human-ui' });
           rightPanel?.refreshCurrent();
         },
         onCancel: () => {},
@@ -856,7 +861,7 @@ export class GameScene extends Phaser.Scene {
       } else if (tile.type === TileType.Ocean || tile.type === TileType.Coast) {
         continue;
       }
-      if (unitManager.getUnitAt(candidate.x, candidate.y) !== undefined) continue;
+      if (unitManager.getUnitAt(candidate.x, candidate.y) !== null) continue;
       return candidate;
     }
 

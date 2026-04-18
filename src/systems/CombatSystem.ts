@@ -42,6 +42,13 @@ export interface WarRequiredEvent {
   attacker: Unit;
   tileX: number;
   tileY: number;
+  source: CombatActionSource;
+}
+
+export type CombatActionSource = 'human-ui' | 'system';
+
+interface CombatActionOptions {
+  source?: CombatActionSource;
 }
 
 type CombatListener = (e: CombatEvent) => void;
@@ -100,7 +107,12 @@ export class CombatSystem {
     this.warRequiredListeners.push(callback);
   }
 
-  tryAttack(attacker: Unit, tileX: number, tileY: number): boolean {
+  tryAttack(
+    attacker: Unit,
+    tileX: number,
+    tileY: number,
+    options: CombatActionOptions = {},
+  ): boolean {
     // 1. Must be attacker's nation's turn
     if (this.turnManager.getCurrentNation().id !== attacker.ownerId) {
       return false;
@@ -137,7 +149,7 @@ export class CombatSystem {
 
     if (targetUnit && targetUnit.ownerId !== attacker.ownerId) {
       if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
-        this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY);
+        this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY, options.source ?? 'system');
         return false;
       }
       return this.executeUnitCombat(attacker, targetUnit, isRanged);
@@ -145,7 +157,7 @@ export class CombatSystem {
 
     if (targetCity && targetCity.ownerId !== attacker.ownerId) {
       if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetCity.ownerId)) {
-        this.notifyWarRequired(attacker, targetCity.ownerId, tileX, tileY);
+        this.notifyWarRequired(attacker, targetCity.ownerId, tileX, tileY, options.source ?? 'system');
         return false;
       }
       return this.executeCityCombat(attacker, targetCity, isRanged);
@@ -203,7 +215,7 @@ export class CombatSystem {
 
     let captured = false;
     if (!isRanged && result.cityFell && !result.attackerDied) {
-      captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem);
+      captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem, this.unitManager);
       captured = true;
     }
 
@@ -218,9 +230,15 @@ export class CombatSystem {
     for (const cb of this.rejectedListeners) cb({ attacker, target, reason });
   }
 
-  private notifyWarRequired(attacker: Unit, targetNationId: string, tileX: number, tileY: number): void {
+  private notifyWarRequired(
+    attacker: Unit,
+    targetNationId: string,
+    tileX: number,
+    tileY: number,
+    source: CombatActionSource,
+  ): void {
     for (const cb of this.warRequiredListeners) {
-      cb({ attackerId: attacker.ownerId, targetNationId, attacker, tileX, tileY });
+      cb({ attackerId: attacker.ownerId, targetNationId, attacker, tileX, tileY, source });
     }
   }
 }

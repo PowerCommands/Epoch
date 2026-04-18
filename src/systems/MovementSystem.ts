@@ -75,7 +75,7 @@ export class MovementSystem {
     if (unit.movementPoints < cost) return false;
 
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
-    if (occupyingUnit !== undefined && occupyingUnit.id !== unit.id) return false;
+    if (occupyingUnit !== null && occupyingUnit.id !== unit.id) return false;
 
     return true;
   }
@@ -141,7 +141,7 @@ export class MovementSystem {
   private getBoardingTransport(unit: Unit, tileX: number, tileY: number): Unit | undefined {
     if (unit.unitType.isNaval || unit.transportId !== undefined) return undefined;
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
-    if (occupyingUnit === undefined) return undefined;
+    if (occupyingUnit === null) return undefined;
     if (!this.unitManager.canBoardUnit(unit, occupyingUnit)) return undefined;
     return occupyingUnit;
   }

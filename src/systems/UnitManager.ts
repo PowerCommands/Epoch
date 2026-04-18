@@ -35,9 +35,17 @@ const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
  */
 export class UnitManager {
   private readonly units = new Map<string, Unit>();
+  private readonly unitGrid: (Unit | null)[];
   private readonly listeners: UnitChangedListener[] = [];
   private cityLocator: CityLocator | null = null;
   private nextProducedUnitId = 1;
+
+  constructor(
+    private readonly mapWidth: number,
+    private readonly mapHeight: number,
+  ) {
+    this.unitGrid = new Array<Unit | null>(mapWidth * mapHeight).fill(null);
+  }
 
   setCityLocator(locator: CityLocator | null): void {
     this.cityLocator = locator;
@@ -45,6 +53,7 @@ export class UnitManager {
 
   addUnit(unit: Unit): void {
     this.units.set(unit.id, unit);
+    this.placeOnGrid(unit);
   }
 
   createUnit(config: {
@@ -65,6 +74,7 @@ export class UnitManager {
     });
 
     this.units.set(unit.id, unit);
+    this.placeOnGrid(unit);
     this.notify({ unit, reason: 'created' });
     return unit;
   }
@@ -72,6 +82,7 @@ export class UnitManager {
   removeUnit(unitId: string): void {
     const unit = this.units.get(unitId);
     if (!unit) return;
+    this.clearFromGrid(unit);
     this.units.delete(unitId);
     this.notify({ unit, reason: 'removed' });
   }
@@ -88,12 +99,10 @@ export class UnitManager {
     return this.getAllUnits().filter((unit) => unit.ownerId === ownerId);
   }
 
-  getUnitAt(tileX: number, tileY: number): Unit | undefined {
-    for (const unit of this.units.values()) {
-      if (unit.transportId !== undefined) continue;
-      if (unit.tileX === tileX && unit.tileY === tileY) return unit;
-    }
-    return undefined;
+  getUnitAt(tileX: number, tileY: number): Unit | null {
+    const key = this.gridKey(tileX, tileY);
+    if (key === null) return null;
+    return this.unitGrid[key];
   }
 
   getUnitsAt(tileX: number, tileY: number): Unit[] {
@@ -130,6 +139,7 @@ export class UnitManager {
     if (unit === undefined || transport === undefined) return false;
     if (!this.canBoardUnit(unit, transport)) return false;
 
+    this.clearFromGrid(unit);
     unit.transportId = transport.id;
     unit.tileX = transport.tileX;
     unit.tileY = transport.tileY;
@@ -143,10 +153,12 @@ export class UnitManager {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
 
+    this.clearFromGrid(unit);
     unit.transportId = undefined;
     unit.tileX = tileX;
     unit.tileY = tileY;
     unit.movementPoints = Math.max(0, unit.movementPoints - movementCost);
+    this.placeOnGrid(unit);
 
     this.notify({ unit, reason: 'moved' });
 
@@ -193,7 +205,7 @@ export class UnitManager {
     cityManager: CityManager,
     mapData: MapData,
   ): UnitManager {
-    const manager = new UnitManager();
+    const manager = new UnitManager(mapData.width, mapData.height);
 
     for (const nation of nationManager.getAllNations()) {
       const capital = cityManager.getCitiesByOwner(nation.id)[0];
@@ -227,7 +239,7 @@ export class UnitManager {
    * Skips land units on water tiles and naval units on land tiles.
    */
   static loadFromScenario(units: ScenarioUnit[], mapData: MapData): UnitManager {
-    const manager = new UnitManager();
+    const manager = new UnitManager(mapData.width, mapData.height);
     let idx = 0;
 
     for (const cfg of units) {
@@ -275,6 +287,28 @@ export class UnitManager {
     const id = `${PRODUCED_UNIT_ID_PREFIX}_${ownerId}_${unitTypeId}_${this.nextProducedUnitId}`;
     this.nextProducedUnitId += 1;
     return id;
+  }
+
+  private placeOnGrid(unit: Unit): void {
+    if (unit.transportId !== undefined) return;
+    const key = this.gridKey(unit.tileX, unit.tileY);
+    if (key === null) return;
+    this.unitGrid[key] = unit;
+  }
+
+  private clearFromGrid(unit: Unit): void {
+    const key = this.gridKey(unit.tileX, unit.tileY);
+    if (key === null) return;
+    if (this.unitGrid[key]?.id === unit.id) {
+      this.unitGrid[key] = null;
+    }
+  }
+
+  private gridKey(tileX: number, tileY: number): number | null {
+    if (tileX < 0 || tileY < 0 || tileX >= this.mapWidth || tileY >= this.mapHeight) {
+      return null;
+    }
+    return tileY * this.mapWidth + tileX;
   }
 
   private static findAdjacentLandPosition(
@@ -340,6 +374,6 @@ export class UnitManager {
     const tile = mapData.tiles[tileY]?.[tileX];
     if (tile === undefined) return false;
     if (tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
-    return manager.getUnitAt(tileX, tileY) === undefined;
+    return manager.getUnitAt(tileX, tileY) === null;
   }
 }

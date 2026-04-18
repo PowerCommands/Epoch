@@ -290,35 +290,10 @@ export class AISystem {
   }
 
   private findBestApproachPath(unit: Unit, city: City): Tile[] | null {
-    let bestPath: Tile[] | null = null;
-    let bestCost = Infinity;
-    let bestDistance = Infinity;
-
-    for (const coord of this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY })) {
-      const tx = coord.x;
-      const ty = coord.y;
-      const path = this.pathfindingSystem.findPath(unit, tx, ty, {
-        respectMovementPoints: false,
-      });
-      if (path === null) continue;
-
-      const cost = this.getPathCost(path);
-      const distance = this.gridSystem.getDistance(
-        { x: city.tileX, y: city.tileY },
-        { x: tx, y: ty },
-      );
-      if (
-        cost < bestCost ||
-        (cost === bestCost && distance < bestDistance) ||
-        (cost === bestCost && distance === bestDistance && this.comparePathTargets(path, bestPath) < 0)
-      ) {
-        bestPath = path;
-        bestCost = cost;
-        bestDistance = distance;
-      }
-    }
-
-    return bestPath;
+    const targets = this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY });
+    return this.pathfindingSystem.findBestPathToAnyTarget(unit, targets, {
+      respectMovementPoints: false,
+    });
   }
 
   private getPathCost(path: Tile[]): number {
@@ -327,14 +302,6 @@ export class AISystem {
       cost += getTileMovementCost(path[i]);
     }
     return cost;
-  }
-
-  private comparePathTargets(a: Tile[], b: Tile[] | null): number {
-    if (b === null) return -1;
-    const aTarget = a[a.length - 1];
-    const bTarget = b[b.length - 1];
-    if (aTarget.y !== bTarget.y) return aTarget.y - bTarget.y;
-    return aTarget.x - bTarget.x;
   }
 
   private getProfile(nationId: string): AIBehaviorProfile {

@@ -4,6 +4,7 @@ import type { CityManager } from './CityManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { MapData } from '../types/map';
 import { CITY_BASE_HEALTH, CITY_CAPTURE_HEALTH_FRACTION } from '../data/cities';
+import type { UnitManager } from './UnitManager';
 
 /**
  * Intern hjälpmodul för stadserövring.
@@ -15,6 +16,7 @@ export function captureCity(
   cityManager: CityManager,
   mapData: MapData,
   productionSystem: ProductionSystem,
+  unitManager: UnitManager,
 ): void {
   const newOwnerId = attacker.ownerId;
 
@@ -29,6 +31,5 @@ export function captureCity(
   city.health = Math.round(CITY_BASE_HEALTH * CITY_CAPTURE_HEALTH_FRACTION);
 
   // Erövrande enheten flyttas in på stadens tile
-  attacker.tileX = city.tileX;
-  attacker.tileY = city.tileY;
+  unitManager.moveUnit(attacker.id, city.tileX, city.tileY);
 }
