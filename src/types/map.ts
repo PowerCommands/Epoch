@@ -14,6 +14,7 @@ export interface Tile {
   y: number; // grid-koordinat (rad)
   type: TileType;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
+  improvementId?: string; // optional tile improvement; undefined = none
 }
 
 export interface MapData {

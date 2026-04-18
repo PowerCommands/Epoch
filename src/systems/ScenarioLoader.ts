@@ -47,6 +47,7 @@ export class ScenarioLoader {
       const tile = tiles[entry.r]?.[entry.q];
       if (tile) {
         tile.type = TYPE_MAP[entry.type.toLowerCase()] ?? TileType.Ocean;
+        tile.improvementId = entry.improvementId;
       }
     }
 

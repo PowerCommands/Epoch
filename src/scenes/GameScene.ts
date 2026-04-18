@@ -8,6 +8,7 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { HealingSystem } from '../systems/HealingSystem';
@@ -27,6 +28,7 @@ import { EventLogSystem } from '../systems/EventLogSystem';
 import { AISystem } from '../systems/AISystem';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
+import { BuilderSystem } from '../systems/BuilderSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
@@ -37,6 +39,7 @@ import { RightPanel } from '../ui/RightPanel';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
+import type { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
@@ -67,11 +70,13 @@ export class GameScene extends Phaser.Scene {
 
     // 2. Filter to active nations only, set isHuman from config
     const activeSet = new Set(data.activeNationIds);
-    const activeNations = scenario.nations.filter(n => activeSet.has(n.id));
+    const activeNations = scenario.nations
+      .filter(n => activeSet.has(n.id))
+      .map(n => ({ ...n, isHuman: n.id === data.humanNationId }));
     const activeCities = scenario.cities.filter(c => activeSet.has(c.nationId));
     const activeUnits = scenario.units.filter(u => activeSet.has(u.nationId));
 
-    // 3. Create nations and claim start territories (mutates mapData.tiles)
+    // 3. Create nations and claim AI start territories (mutates mapData.tiles)
     const nationManager = NationManager.loadFromScenario(activeNations, mapData, gridSystem);
 
     // Override isHuman from config (ignore JSON values)
@@ -146,6 +151,12 @@ export class GameScene extends Phaser.Scene {
 
     // 13d. Event log — strategic history filtered by discovery
     const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
+    const researchSystem = new ResearchSystem(
+      nationManager,
+      cityManager,
+      eventLog,
+      () => turnManager.getCurrentRound(),
+    );
 
     // 14. Stridssystem
     const combatSystem = new CombatSystem(
@@ -165,6 +176,41 @@ export class GameScene extends Phaser.Scene {
 
       // Try attack against unit or city at target tile
       return combatSystem.tryAttack(currentSelection.unit, targetTile.x, targetTile.y);
+    });
+
+    // Builder actions run before movement: valid build wins, otherwise normal move can proceed.
+    const builderSystem = new BuilderSystem(
+      unitManager,
+      cityManager,
+      turnManager,
+      mapData,
+      gridSystem,
+      researchSystem,
+    );
+    let selectedBuilderForHints: Unit | null = null;
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (currentSelection?.kind !== 'unit') return false;
+
+      const targetTile = this.getTileForSelectable(tileMap, target);
+      if (targetTile === null) return false;
+
+      const tile = tileMap.getTileAt(targetTile.x, targetTile.y);
+      if (tile === null) return false;
+
+      const result = builderSystem.build(currentSelection.unit, tile);
+      if (result === null) return false;
+
+      resourceSystem.recalculateForNation(result.unit.ownerId);
+      const nationName = nationManager.getNation(result.unit.ownerId)?.name ?? result.unit.ownerId;
+      eventLog.log(
+        `${nationName} built ${result.improvement.name} near ${result.city.name}.`,
+        [result.unit.ownerId],
+        turnManager.getCurrentRound(),
+      );
+      reachableTiles = new Set<string>();
+      pathPreviewRenderer.clear();
+      rightPanel?.showTile(result.tile);
+      return true;
     });
 
     // 15. Rörelseregler för enheter
@@ -190,6 +236,20 @@ export class GameScene extends Phaser.Scene {
       movementSystem.moveAlongPath(unit, path);
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
+      return true;
+    });
+
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (currentSelection?.kind !== 'unit') return false;
+      if (!currentSelection.unit.unitType.canBuildImprovements) return false;
+
+      const targetTile = this.getTileForSelectable(tileMap, target);
+      if (targetTile === null) return false;
+
+      const tile = tileMap.getTileAt(targetTile.x, targetTile.y);
+      if (tile === null) return false;
+
+      rightPanel?.showTile(tile);
       return true;
     });
 
@@ -219,6 +279,17 @@ export class GameScene extends Phaser.Scene {
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
       gridSystem,
     );
+
+    let hasSkippedInitialResearchTurnStart = false;
+    turnManager.on('turnStart', (e) => {
+      if (!hasSkippedInitialResearchTurnStart) {
+        hasSkippedInitialResearchTurnStart = true;
+        researchSystem.ensureResearchSelected(e.nation.id);
+        return;
+      }
+
+      researchSystem.advanceResearchForNation(e.nation.id);
+    });
 
     turnManager.on('turnStart', (e) => {
       // Scan for new discoveries at the start of every turn
@@ -535,6 +606,7 @@ export class GameScene extends Phaser.Scene {
 
     const humanNationId = nationManager.getHumanNationId();
     leftPanel = new LeftPanel(nationManager, turnManager, humanNationId, discoverySystem);
+    leftPanel.setResearchSystem(researchSystem);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       turnManager.endCurrentTurn();
@@ -559,6 +631,10 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
+    rightPanel.setBuilderHintProvider((tile) => {
+      if (!selectedBuilderForHints) return null;
+      return builderSystem.getBuildPreview(selectedBuilderForHints, tile);
+    });
     rightPanel.setFoundCityHandler(
       (unit) => foundCitySystem.canFound(unit),
       (unit) => {
@@ -568,6 +644,10 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.clear();
       },
     );
+    researchSystem.onChanged(() => {
+      leftPanel?.refresh();
+      rightPanel?.refreshCurrent();
+    });
 
     new CombatLog(this, combatSystem, nationManager);
 
@@ -606,9 +686,11 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.showCity(selection.city);
         cityWorkTileRenderer.show(selection.city);
       } else if (selection?.kind === 'unit') {
+        selectedBuilderForHints = selection.unit.unitType.canBuildImprovements ? selection.unit : null;
         rightPanel?.showUnit(selection.unit);
         cityWorkTileRenderer.clear();
       } else {
+        selectedBuilderForHints = null;
         rightPanel?.clear();
         cityWorkTileRenderer.clear();
       }

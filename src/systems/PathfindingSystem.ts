@@ -1,11 +1,17 @@
 import type { Unit } from '../entities/Unit';
 import type { MapData, Tile } from '../types/map';
+import { MinHeap } from '../utils/MinHeap';
 import { canUnitEnterTile, getTileMovementCost } from './MovementSystem';
 import { UnitManager } from './UnitManager';
 import type { IGridSystem } from './grid/IGridSystem';
 
 interface FindPathOptions {
   respectMovementPoints?: boolean;
+}
+
+interface OpenEntry {
+  key: string;
+  f: number;
 }
 
 export class PathfindingSystem {
@@ -30,20 +36,30 @@ export class PathfindingSystem {
 
     const startKey = this.key(start.x, start.y);
     const targetKey = this.key(target.x, target.y);
-    const open = new Set<string>([startKey]);
+    const startF = this.gridSystem.getDistance(start, target);
     const cameFrom = new Map<string, string>();
     const gScore = new Map<string, number>([[startKey, 0]]);
-    const fScore = new Map<string, number>([
-      [startKey, this.gridSystem.getDistance(start, target)],
-    ]);
+    const fScore = new Map<string, number>([[startKey, startF]]);
+    // Lazy-deletion heap: when a node's g-score improves we push a fresh
+    // entry instead of updating in place. Stale entries are detected at pop
+    // by comparing the entry's f against the latest fScore and skipped.
+    const open = new MinHeap<OpenEntry>((a, b) => {
+      if (a.f !== b.f) return a.f - b.f;
+      if (a.key < b.key) return -1;
+      if (a.key > b.key) return 1;
+      return 0;
+    });
+    open.push({ key: startKey, f: startF });
 
     while (open.size > 0) {
-      const currentKey = this.lowestScore(open, fScore);
+      const currentEntry = open.pop()!;
+      const currentKey = currentEntry.key;
+      if (currentEntry.f > (fScore.get(currentKey) ?? Infinity)) continue;
+
       if (currentKey === targetKey) {
         return this.reconstructPath(cameFrom, currentKey);
       }
 
-      open.delete(currentKey);
       const current = this.tileFromKey(currentKey);
       if (!current) continue;
 
@@ -57,11 +73,9 @@ export class PathfindingSystem {
 
         cameFrom.set(neighborKey, currentKey);
         gScore.set(neighborKey, tentativeG);
-        fScore.set(
-          neighborKey,
-          tentativeG + this.gridSystem.getDistance(neighbor, target),
-        );
-        open.add(neighborKey);
+        const neighborF = tentativeG + this.gridSystem.getDistance(neighbor, target);
+        fScore.set(neighborKey, neighborF);
+        open.push({ key: neighborKey, f: neighborF });
       }
     }
 
@@ -121,21 +135,6 @@ export class PathfindingSystem {
     }
 
     return path;
-  }
-
-  private lowestScore(open: Set<string>, fScore: Map<string, number>): string {
-    let bestKey = '';
-    let bestScore = Infinity;
-
-    for (const key of open) {
-      const score = fScore.get(key) ?? Infinity;
-      if (score < bestScore || (score === bestScore && key < bestKey)) {
-        bestKey = key;
-        bestScore = score;
-      }
-    }
-
-    return bestKey;
   }
 
   private getTile(tileX: number, tileY: number): Tile | null {

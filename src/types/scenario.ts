@@ -7,7 +7,7 @@ export interface ScenarioMap {
   width: number;
   height: number;
   tileSize: number;
-  tiles: { q: number; r: number; type: string }[];
+  tiles: { q: number; r: number; type: string; improvementId?: string }[];
 }
 
 export interface ScenarioNation {
@@ -16,6 +16,9 @@ export interface ScenarioNation {
   color: string;
   isHuman: boolean;
   startTerritoryCenter: { q: number; r: number };
+  researchedTechIds?: string[];
+  currentResearchTechId?: string;
+  researchProgress?: number;
 }
 
 export interface ScenarioCity {

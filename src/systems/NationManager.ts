@@ -79,7 +79,9 @@ export class NationManager {
 
   /**
    * Create a NationManager from scenario data.
-   * Each nation gets an active-grid claimed territory centered on startTerritoryCenter.
+   * AI nations get active-grid claimed territory centered on startTerritoryCenter.
+   * Human nations wait until they found their first city so moving the starting settler
+   * does not leave behind an initial territory claim.
    */
   static loadFromScenario(
     nations: ScenarioNation[],
@@ -96,15 +98,20 @@ export class NationManager {
         color,
         isHuman: cfg.isHuman,
         aiProfile: cfg.isHuman ? undefined : DEFAULT_AI_PROFILE,
+        researchedTechIds: cfg.researchedTechIds,
+        currentResearchTechId: cfg.currentResearchTechId,
+        researchProgress: cfg.researchProgress,
       }));
-      NationManager.claimArea(
-        mapData,
-        cfg.id,
-        cfg.startTerritoryCenter.q,
-        cfg.startTerritoryCenter.r,
-        INITIAL_CLAIM_SIZE,
-        gridSystem,
-      );
+      if (!cfg.isHuman) {
+        NationManager.claimArea(
+          mapData,
+          cfg.id,
+          cfg.startTerritoryCenter.q,
+          cfg.startTerritoryCenter.r,
+          INITIAL_CLAIM_SIZE,
+          gridSystem,
+        );
+      }
     }
 
     return manager;

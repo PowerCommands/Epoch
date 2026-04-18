@@ -2,8 +2,9 @@ import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
 import type { MapData, Tile } from '../types/map';
+import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, CAVALRY, SETTLER } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER } from '../data/units';
 import { GRANARY, WORKSHOP, MARKET } from '../data/buildings';
 import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
@@ -14,12 +15,14 @@ import { CombatSystem } from './CombatSystem';
 import { ProductionSystem } from './ProductionSystem';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
+import { calculateCityEconomy } from './CityEconomy';
 import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
 import type { IGridSystem } from './grid/IGridSystem';
 
 const MAX_MILITARY = 3;
-const MAX_AI_CITIES = 3;
 const SETTLER_MIN_CITY_DISTANCE = 5;
+const LOW_NET_FOOD_THRESHOLD = 1;
+const LOW_PRODUCTION_THRESHOLD = 2;
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.baseStrength > 0 && !unitType.isNaval
 ));
@@ -363,37 +366,18 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
-    const militaryCount = this.countMilitary(nationId);
-    const cityCount = cities.length;
-    const hasSettler = this.unitManager.getUnitsByOwner(nationId)
-      .some((u) => u.unitType.canFound);
+    let plannedMilitaryCount = this.countMilitary(nationId);
 
     for (const city of cities) {
       if (this.productionSystem.getProduction(city.id)) continue;
 
-      // Priority 1: defend city with military unit if needed and under cap
-      if (this.needsDefender(city, nationId) && militaryCount < MAX_MILITARY) {
-        this.productionSystem.setProduction(city.id, { kind: 'unit', unitType: WARRIOR });
-        continue;
+      const choice = this.chooseCityProduction(city, nationId, plannedMilitaryCount);
+      if (!choice) continue;
+
+      this.productionSystem.setProduction(city.id, choice);
+      if (choice.kind === 'unit' && choice.unitType.baseStrength > 0) {
+        plannedMilitaryCount++;
       }
-
-      // Priority 2: settler if fewer than 3 cities, under military cap, no existing settler
-      if (cityCount < MAX_AI_CITIES && militaryCount < MAX_MILITARY && !hasSettler) {
-        this.productionSystem.setProduction(city.id, { kind: 'unit', unitType: SETTLER });
-        continue;
-      }
-
-      // Priority 3: buildings
-      if (this.tryQueueBuilding(city)) continue;
-
-      // Priority 4: military unit if under cap — rotate types
-      if (militaryCount < MAX_MILITARY) {
-        const unitType = this.pickMilitaryUnit(nationId);
-        this.productionSystem.setProduction(city.id, { kind: 'unit', unitType });
-        continue;
-      }
-
-      // All buildings built and at military cap — queue nothing
     }
   }
 
@@ -403,16 +387,41 @@ export class AISystem {
       .length;
   }
 
-  private pickMilitaryUnit(nationId: string): UnitType {
-    const units = this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.baseStrength > 0 && !u.unitType.isNaval);
+  private chooseCityProduction(
+    city: City,
+    nationId: string,
+    plannedMilitaryCount: number,
+  ): Producible | undefined {
+    const buildings = this.cityManager.getBuildings(city.id);
+    const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem);
+    const canBuildMilitary = plannedMilitaryCount < MAX_MILITARY;
 
-    const hasArcher = units.some((u) => u.unitType.id === 'archer');
-    const hasCavalry = units.some((u) => u.unitType.id === 'cavalry');
+    if (canBuildMilitary && this.needsDefender(city, nationId)) {
+      return { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) };
+    }
 
-    // Prioritize variety: warrior first (cheap), then archer, then cavalry
-    if (!hasArcher) return MILITARY_OPTIONS.find((u) => u.id === ARCHER.id) ?? WARRIOR;
-    if (!hasCavalry) return MILITARY_OPTIONS.find((u) => u.id === CAVALRY.id) ?? WARRIOR;
+    if (economy.netFood <= LOW_NET_FOOD_THRESHOLD && !buildings.has(GRANARY.id)) {
+      return { kind: 'building', buildingType: GRANARY };
+    }
+
+    if (economy.production <= LOW_PRODUCTION_THRESHOLD && !buildings.has(WORKSHOP.id)) {
+      return { kind: 'building', buildingType: WORKSHOP };
+    }
+
+    if (!buildings.has(MARKET.id)) {
+      return { kind: 'building', buildingType: MARKET };
+    }
+
+    if (canBuildMilitary) {
+      return { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) };
+    }
+
+    return undefined;
+  }
+
+  private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
+    const archer = MILITARY_OPTIONS.find((u) => u.id === ARCHER.id);
+    if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
     return MILITARY_OPTIONS.find((u) => u.id === WARRIOR.id) ?? WARRIOR;
   }
 
@@ -430,13 +439,21 @@ export class AISystem {
     return true;
   }
 
-  private tryQueueBuilding(city: City): boolean {
-    const buildings = this.cityManager.getBuildings(city.id);
-    const candidates = [GRANARY, WORKSHOP, MARKET];
+  private hasFriendlyRangedUnitNearby(city: City, nationId: string): boolean {
+    const tilesToCheck = [
+      { x: city.tileX, y: city.tileY },
+      ...this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY }),
+    ];
 
-    for (const building of candidates) {
-      if (!buildings.has(building.id)) {
-        this.productionSystem.setProduction(city.id, { kind: 'building', buildingType: building });
+    for (const pos of tilesToCheck) {
+      const unit = this.unitManager.getUnitAt(pos.x, pos.y);
+      if (
+        unit &&
+        unit.ownerId === nationId &&
+        unit.unitType.baseStrength > 0 &&
+        !unit.unitType.isNaval &&
+        (unit.unitType.range ?? 1) > 1
+      ) {
         return true;
       }
     }

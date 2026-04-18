@@ -38,6 +38,16 @@ export const SETTLER: UnitType = {
   canFound: true,
 };
 
+export const BUILDER: UnitType = {
+  id: 'builder',
+  name: 'Builder',
+  productionCost: 10,
+  movementPoints: 2,
+  baseHealth: 50,
+  baseStrength: 0,
+  canBuildImprovements: true,
+};
+
 export const FISHING_BOAT: UnitType = {
   id: 'fishing_boat',
   name: 'Fishing Boat',
@@ -63,6 +73,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   ARCHER,
   CAVALRY,
   SETTLER,
+  BUILDER,
   FISHING_BOAT,
   TRANSPORT_SHIP,
 ];

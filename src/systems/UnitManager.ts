@@ -152,6 +152,15 @@ export class UnitManager {
     return true;
   }
 
+  consumeAllMovement(unitId: string): boolean {
+    const unit = this.units.get(unitId);
+    if (unit === undefined) return false;
+
+    unit.movementPoints = 0;
+    this.notify({ unit, reason: 'moved' });
+    return true;
+  }
+
   resetMovementForOwner(ownerId: string): void {
     for (const unit of this.units.values()) {
       if (unit.ownerId !== ownerId) continue;

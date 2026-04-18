@@ -6,6 +6,9 @@ export interface NationConfig {
   color: number; // hex-färg, t.ex. 0xff4444
   isHuman?: boolean;
   aiProfile?: AIBehaviorProfile;
+  researchedTechIds?: string[];
+  currentResearchTechId?: string;
+  researchProgress?: number;
 }
 
 /**
@@ -20,6 +23,9 @@ export class Nation {
   readonly color: number;
   isHuman: boolean;
   aiProfile: AIBehaviorProfile;
+  researchedTechIds: string[];
+  currentResearchTechId?: string;
+  researchProgress: number;
 
   constructor(config: NationConfig) {
     this.id = config.id;
@@ -27,5 +33,8 @@ export class Nation {
     this.color = config.color;
     this.isHuman = config.isHuman ?? false;
     this.aiProfile = { ...(config.aiProfile ?? DEFAULT_AI_PROFILE) };
+    this.researchedTechIds = [...(config.researchedTechIds ?? [])];
+    this.currentResearchTechId = config.currentResearchTechId;
+    this.researchProgress = config.researchProgress ?? 0;
   }
 }

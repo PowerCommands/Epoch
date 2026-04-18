@@ -2,6 +2,7 @@ import { getLeaderByNationId } from '../data/leaders';
 import { NationManager } from '../systems/NationManager';
 import { TurnManager } from '../systems/TurnManager';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
+import type { ResearchSystem } from '../systems/ResearchSystem';
 import type { LeaderDefinition } from '../types/leader';
 
 export class LeftPanel {
@@ -10,6 +11,7 @@ export class LeftPanel {
   private readonly turnManager: TurnManager;
   private readonly humanNationId: string | undefined;
   private readonly discoverySystem: DiscoverySystem | null;
+  private researchSystem: ResearchSystem | null = null;
   private endTurnCallback: (() => void) | null = null;
   private selectedNationId: string | null = null;
 
@@ -37,8 +39,14 @@ export class LeftPanel {
 
     this.root.append(
       this.renderTurnInfo(),
+      this.renderResearchSection(),
       this.renderLeaderStrip(),
     );
+  }
+
+  setResearchSystem(researchSystem: ResearchSystem): void {
+    this.researchSystem = researchSystem;
+    this.refresh();
   }
 
   setEndTurnCallback(cb: () => void): void {
@@ -112,6 +120,57 @@ export class LeftPanel {
 
       section.append(row);
     }
+
+    return section;
+  }
+
+  private renderResearchSection(): HTMLElement {
+    const section = this.createSection('Research');
+    const humanNationId = this.humanNationId;
+    const researchSystem = this.researchSystem;
+
+    if (!humanNationId || !researchSystem) {
+      section.append(this.createDiv('panel-muted', 'Research unavailable'));
+      return section;
+    }
+
+    const current = researchSystem.getCurrentResearch(humanNationId);
+    const progress = researchSystem.getResearchProgress(humanNationId);
+    const available = researchSystem.getAvailableTechnologies(humanNationId);
+    const researched = researchSystem.getResearchedTechnologies(humanNationId);
+
+    section.append(
+      this.createDiv('', `Current Research: ${current?.name ?? 'None'}`),
+      this.createDiv('', `Progress: ${progress} / ${current?.cost ?? 0}`),
+      this.createDiv('panel-muted', `Science: +${researchSystem.getResearchPerTurn(humanNationId)}/turn`),
+    );
+
+    const availableHeading = this.createDiv('research-subheading', 'Available');
+    section.append(availableHeading);
+    if (available.length === 0) {
+      section.append(this.createDiv('panel-muted', 'No available technologies'));
+    } else {
+      for (const technology of available) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'research-tech-button';
+        button.textContent = `${technology.name} (${technology.cost})`;
+        button.addEventListener('click', () => {
+          if (researchSystem.startResearch(humanNationId, technology.id)) {
+            this.refresh();
+          }
+        });
+        section.append(button);
+      }
+    }
+
+    const researchedText = researched.length > 0
+      ? researched.map((technology) => technology.name).join(', ')
+      : 'None';
+    section.append(
+      this.createDiv('research-subheading', 'Researched'),
+      this.createDiv('panel-muted', researchedText),
+    );
 
     return section;
   }

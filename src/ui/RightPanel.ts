@@ -1,5 +1,7 @@
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
+import { getImprovementById } from '../data/improvements';
+import type { TileYield } from '../data/terrainYields';
 import { getLeaderById, getLeaderByNationId } from '../data/leaders';
 import { ALL_UNIT_TYPES } from '../data/units';
 import type { City } from '../entities/City';
@@ -16,8 +18,10 @@ import type { DiplomacyManager } from '../systems/DiplomacyManager';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
+import type { BuildImprovementPreview } from '../systems/BuilderSystem';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
+type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
 
 export class RightPanel {
   private readonly root: HTMLElement;
@@ -33,6 +37,7 @@ export class RightPanel {
   private diplomacyManager: DiplomacyManager | null = null;
   private discoverySystem: DiscoverySystem | null = null;
   private eventLog: EventLogSystem | null = null;
+  private currentTile: Tile | null = null;
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
   private currentNationId: string | null = null;
@@ -40,6 +45,7 @@ export class RightPanel {
   private currentView: ViewType = null;
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
+  private builderHintProvider: BuilderHintProvider | null = null;
 
   constructor(
     productionSystem: ProductionSystem,
@@ -100,6 +106,10 @@ export class RightPanel {
     this.renderEventLog();
   }
 
+  setBuilderHintProvider(provider: BuilderHintProvider): void {
+    this.builderHintProvider = provider;
+  }
+
   setFoundCityHandler(canFoundCity: (unit: Unit) => boolean, foundCity: (unit: Unit) => void): void {
     this.canFoundCity = canFoundCity;
     this.foundCity = foundCity;
@@ -117,6 +127,11 @@ export class RightPanel {
 
     if (this.currentView === 'leader' && this.currentLeaderId) {
       this.showLeader(this.currentLeaderId);
+      return;
+    }
+
+    if (this.currentView === 'tile' && this.currentTile) {
+      this.showTile(this.currentTile);
       return;
     }
 
@@ -161,6 +176,7 @@ export class RightPanel {
   }
 
   showTile(tile: Tile): void {
+    this.currentTile = tile;
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = null;
@@ -169,15 +185,28 @@ export class RightPanel {
     this.reset();
 
     const owner = tile.ownerId ? this.nationManager.getNation(tile.ownerId) : undefined;
+    const improvement = tile.improvementId ? getImprovementById(tile.improvementId) : undefined;
+    const builderHint = this.builderHintProvider?.(tile) ?? null;
     const section = this.createSection('Tile');
     section.append(
       this.createDiv('panel-large', tile.type),
       this.createDiv('', `Owner: ${owner?.name ?? 'Unclaimed'}`),
+      this.createDiv('', `Improvement: ${improvement?.name ?? 'None'}`),
     );
+    if (improvement) {
+      section.append(this.createDiv('', `Bonus: ${formatYieldBonus(improvement.yieldBonus)}`));
+    }
+    if (builderHint) {
+      const text = builderHint.canBuild && builderHint.improvement
+        ? `Builder can construct ${builderHint.improvement.name} here`
+        : `Builder cannot improve this tile${builderHint.reason ? `: ${builderHint.reason}` : ''}`;
+      section.append(this.createDiv('panel-muted', text));
+    }
     this.contentEl.append(section);
   }
 
   showCity(city: City): void {
+    this.currentTile = null;
     this.currentCity = city;
     this.currentUnit = null;
     this.currentNationId = null;
@@ -225,6 +254,9 @@ export class RightPanel {
       createHpBar(city.foodStorage, economy.foodToGrow),
       this.createDiv('', `Growth in: ${growthText}`),
     );
+    if (economy.workedTiles.some((worked) => worked.tile.improvementId !== undefined)) {
+      growthSection.append(this.createDiv('panel-muted', 'Worked tile yields include improvements.'));
+    }
 
     // Output section
     const outputSection = this.createSection('Output');
@@ -246,6 +278,7 @@ export class RightPanel {
   }
 
   showUnit(unit: Unit): void {
+    this.currentTile = null;
     this.currentCity = null;
     this.currentUnit = unit;
     this.currentNationId = null;
@@ -289,6 +322,7 @@ export class RightPanel {
 
   // TODO: filter based on fog of war discovery when implemented
   showNation(nationId: string): void {
+    this.currentTile = null;
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = nationId;
@@ -373,6 +407,7 @@ export class RightPanel {
   }
 
   showLeader(leaderIdOrNationId: string): void {
+    this.currentTile = null;
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = null;
@@ -411,6 +446,7 @@ export class RightPanel {
   }
 
   clear(): void {
+    this.currentTile = null;
     this.currentCity = null;
     this.currentUnit = null;
     this.currentNationId = null;
@@ -714,4 +750,16 @@ function toCssColor(color: number): string {
 
 function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+function formatYieldBonus(yieldBonus: TileYield): string {
+  const parts = [
+    { label: 'Food', value: yieldBonus.food },
+    { label: 'Production', value: yieldBonus.production },
+    { label: 'Gold', value: yieldBonus.gold },
+  ]
+    .filter((part) => part.value !== 0)
+    .map((part) => `${formatSigned(part.value)} ${part.label}`);
+
+  return parts.length > 0 ? parts.join(', ') : '+0';
 }
