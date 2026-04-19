@@ -123,13 +123,16 @@ export class CombatSystem {
       return false;
     }
 
-    // 3. Must have combat strength
-    if (attacker.unitType.baseStrength <= 0) {
+    // 3. Must have combat strength for the chosen path
+    const range = attacker.unitType.range ?? 1;
+    const isRanged = range >= 2;
+    const meleeStrength = attacker.unitType.baseStrength;
+    const rangedStrength = attacker.unitType.rangedStrength ?? 0;
+    if (isRanged ? rangedStrength <= 0 : meleeStrength <= 0) {
       return false;
     }
 
     // 4. Must be within active grid range
-    const range = attacker.unitType.range ?? 1;
     const attackerCoord = { x: attacker.tileX, y: attacker.tileY };
     const targetCoord = { x: tileX, y: tileY };
     const dist = this.gridSystem.getDistance(attackerCoord, targetCoord);
@@ -140,8 +143,6 @@ export class CombatSystem {
       // Ranged: active-grid range distance
       if (dist < 1 || dist > range) return false;
     }
-
-    const isRanged = range >= 2;
 
     // 5. Find target: garrison unit first, then city
     const targetUnit = this.unitManager.getUnitAt(tileX, tileY);

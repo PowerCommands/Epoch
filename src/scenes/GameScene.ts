@@ -20,6 +20,8 @@ import { UnitRenderer } from '../systems/UnitRenderer';
 import { MovementSystem } from '../systems/MovementSystem';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
 import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
+import { RangedPreviewRenderer } from '../systems/RangedPreviewRenderer';
+import { TurnOrderSystem } from '../systems/TurnOrderSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
@@ -41,6 +43,7 @@ import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
 import { LeftPanel } from '../ui/LeftPanel';
 import { RightPanel } from '../ui/RightPanel';
+import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
@@ -88,6 +91,7 @@ export class GameScene extends Phaser.Scene {
     for (const nation of nationManager.getAllNations()) {
       nation.isHuman = nation.id === data.humanNationId;
     }
+    const humanNationId = nationManager.getHumanNationId();
 
     // 4. Render terrain (depth 0)
     const tileMap = new TileMap(this, mapData, gridLayout);
@@ -139,6 +143,8 @@ export class GameScene extends Phaser.Scene {
     );
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
+    const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
+    let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
     const cultureClaimTileRenderer = new CultureClaimTileRenderer(
       this,
@@ -148,6 +154,8 @@ export class GameScene extends Phaser.Scene {
       data.humanNationId,
     );
     let reachableTiles = new Set<string>();
+    const unitActionToolbox = new UnitActionToolbox(humanNationId);
+    let suppressPromote = false;
 
     // 13. Produktionssystem
     const productionSystem = new ProductionSystem(cityManager, turnManager);
@@ -189,19 +197,7 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       gridSystem,
     );
-    selectionManager.onSelectionTarget((target, currentSelection) => {
-      if (currentSelection?.kind !== 'unit') return false;
-
-      const targetTile = this.getTileForSelectable(tileMap, target);
-      if (targetTile === null) return false;
-
-      // Try attack against unit or city at target tile
-      return combatSystem.tryAttack(currentSelection.unit, targetTile.x, targetTile.y, {
-        source: 'human-ui',
-      });
-    });
-
-    // Builder actions run before movement: valid build wins, otherwise normal move can proceed.
+    // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
       unitManager,
       cityManager,
@@ -210,18 +206,30 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       researchSystem,
     );
+    let foundCitySystem: FoundCitySystem;
+    let movementSystem: MovementSystem;
     let selectedBuilderForHints: Unit | null = null;
-    selectionManager.onSelectionTarget((target, currentSelection) => {
-      if (currentSelection?.kind !== 'unit') return false;
+    const performFoundCityAction = (unit: Unit): boolean => {
+      const city = foundCitySystem.foundCity(unit);
+      if (!city) return false;
 
-      const targetTile = this.getTileForSelectable(tileMap, target);
-      if (targetTile === null) return false;
+      selectedBuilderForHints = null;
+      unitActionToolbox.setSelectedUnit(null);
+      reachableTiles = new Set<string>();
+      pathPreviewRenderer.clear();
+      leftPanel?.refresh();
+      rightPanel?.clear();
+      return true;
+    };
+    const performBuildImprovementAction = (unit: Unit): boolean => {
+      const tile = mapData.tiles[unit.tileY]?.[unit.tileX];
+      if (!tile) return false;
 
-      const tile = tileMap.getTileAt(targetTile.x, targetTile.y);
-      if (tile === null) return false;
-
-      const result = builderSystem.build(currentSelection.unit, tile);
-      if (result === null) return false;
+      const result = builderSystem.build(unit, tile, {
+        consumeMovement: true,
+        requireMovement: false,
+      });
+      if (!result) return false;
 
       resourceSystem.recalculateForNation(result.unit.ownerId);
       const nationName = nationManager.getNation(result.unit.ownerId)?.name ?? result.unit.ownerId;
@@ -234,10 +242,94 @@ export class GameScene extends Phaser.Scene {
       pathPreviewRenderer.clear();
       rightPanel?.showTile(result.tile);
       return true;
+    };
+    const tryActionAttack = (unit: Unit, targetTile: { x: number; y: number }): boolean => {
+      const targetUnit = unitManager.getUnitAt(targetTile.x, targetTile.y);
+      const targetCity = cityManager.getCityAt(targetTile.x, targetTile.y);
+      const hasEnemyTarget =
+        (targetUnit !== null && targetUnit.ownerId !== unit.ownerId) ||
+        (targetCity !== undefined && targetCity.ownerId !== unit.ownerId);
+      if (!hasEnemyTarget) return false;
+
+      if (combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' })) {
+        return true;
+      }
+
+      if (unit.movementPoints <= 0) return false;
+
+      const range = unit.unitType.range ?? 1;
+      const targetPositions = range <= 1
+        ? gridSystem.getAdjacentCoords(targetTile)
+        : gridSystem.getTilesInRange(targetTile, range, mapData, { includeCenter: false });
+
+      const path = pathfindingSystem.findBestPathToAnyTarget(unit, targetPositions, {
+        respectMovementPoints: false,
+      });
+      if (path === null) return false;
+
+      movementSystem.moveAlongPath(unit, path);
+      reachableTiles = new Set<string>();
+      pathPreviewRenderer.clear();
+
+      combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' });
+      return true;
+    };
+
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (currentSelection?.kind !== 'unit') return false;
+
+      const targetTile = this.getTileForSelectable(tileMap, target);
+      if (targetTile === null) return false;
+
+      const tile = tileMap.getTileAt(targetTile.x, targetTile.y);
+      if (tile === null) return false;
+
+      const unit = currentSelection.unit;
+      if (unit.ownerId !== humanNationId) return false;
+
+      const mode = unitActionToolbox.getMode();
+      if (unit.isSleeping) unit.isSleeping = false;
+      if (mode === 'move') {
+        if (unit.unitType.baseStrength <= 0) return false;
+        return tryActionAttack(unit, tile);
+      }
+
+      try {
+        if (mode === 'found') {
+          performFoundCityAction(unit);
+          return true;
+        }
+
+        if (mode === 'attack') {
+          tryActionAttack(unit, tile);
+          return true;
+        }
+
+        if (mode === 'ranged') {
+          const range = unit.unitType.range ?? 1;
+          if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return true;
+          const key = `${tile.x},${tile.y}`;
+          if (!rangedTargets.has(key)) return true;
+          if (unit.isSleeping) unit.isSleeping = false;
+          combatSystem.tryAttack(unit, tile.x, tile.y, { source: 'human-ui' });
+          rangedTargets = new Set<string>();
+          rangedPreviewRenderer.clear();
+          return true;
+        }
+
+        if (mode === 'build') {
+          performBuildImprovementAction(unit);
+          return true;
+        }
+
+        return false;
+      } finally {
+        unitActionToolbox.resetMode();
+      }
     });
 
     // 15. Rörelseregler för enheter
-    const movementSystem = new MovementSystem(
+    movementSystem = new MovementSystem(
       tileMap,
       unitManager,
       unitRenderer,
@@ -245,6 +337,12 @@ export class GameScene extends Phaser.Scene {
       selectionManager,
       gridSystem,
     );
+
+    // Turn order: built AFTER MovementSystem so MovementSystem's turnStart
+    // reset fires before TurnOrderSystem auto-selects the active unit.
+    // Otherwise the freshly-selected unit would still have 0 MP and the
+    // movement-preview matrix would stay hidden until the first move.
+    const turnOrderSystem = new TurnOrderSystem(unitManager, turnManager, humanNationId);
     selectionManager.onSelectionTarget((target, currentSelection) => {
       if (currentSelection?.kind !== 'unit') return false;
 
@@ -256,23 +354,10 @@ export class GameScene extends Phaser.Scene {
       const path = pathfindingSystem.findPath(unit, targetTile.x, targetTile.y);
       if (path === null) return false;
 
+      if (unit.isSleeping) unit.isSleeping = false;
       movementSystem.moveAlongPath(unit, path);
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
-      return true;
-    });
-
-    selectionManager.onSelectionTarget((target, currentSelection) => {
-      if (currentSelection?.kind !== 'unit') return false;
-      if (!currentSelection.unit.unitType.canBuildImprovements) return false;
-
-      const targetTile = this.getTileForSelectable(tileMap, target);
-      if (targetTile === null) return false;
-
-      const tile = tileMap.getTileAt(targetTile.x, targetTile.y);
-      if (tile === null) return false;
-
-      rightPanel?.showTile(tile);
       return true;
     });
 
@@ -307,7 +392,7 @@ export class GameScene extends Phaser.Scene {
     const victorySystem = new VictorySystem(cityManager, nationManager, turnManager);
 
     // 18. Stadsgrundningssystem
-    const foundCitySystem = new FoundCitySystem(
+    foundCitySystem = new FoundCitySystem(
       unitManager, cityManager, nationManager, turnManager,
       territoryRenderer, cityRenderer, resourceSystem, mapData,
       gridSystem,
@@ -328,14 +413,12 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
     );
 
-    let hasSkippedInitialResearchTurnStart = false;
+    // Humans pick their own initial research via the LeftPanel UI.
+    // AI nations keep the deterministic auto-pick so they never stall.
     turnManager.on('turnStart', (e) => {
-      if (!hasSkippedInitialResearchTurnStart) {
-        hasSkippedInitialResearchTurnStart = true;
+      if (!e.nation.isHuman) {
         researchSystem.ensureResearchSelected(e.nation.id);
-        return;
       }
-
       researchSystem.advanceResearchForNation(e.nation.id);
     });
 
@@ -368,7 +451,55 @@ export class GameScene extends Phaser.Scene {
       this.cameraController.focusOn(x, y, 1.5);
     };
     turnManager.on('turnStart', (e) => {
-      if (e.nation.isHuman) focusHumanCapital();
+      if (e.nation.isHuman) {
+        focusHumanCapital();
+        turnOrderSystem.refreshActive();
+      }
+    });
+
+    // Auto-select the active unit and focus the camera on it.
+    turnOrderSystem.onActiveUnitChanged((unit) => {
+      if (!unit) return;
+      if (!turnManager.getCurrentNation().isHuman) return;
+      suppressPromote = true;
+      try {
+        selectionManager.selectUnit(unit);
+      } finally {
+        suppressPromote = false;
+      }
+      const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
+      this.cameraController.focusOn(x, y, 1.5);
+    });
+
+    // Space skips the active unit.
+    const onSpaceSkip = () => {
+      if (!turnManager.getCurrentNation().isHuman) return;
+      turnOrderSystem.skipActive();
+    };
+    this.input.keyboard?.on('keydown-SPACE', onSpaceSkip);
+
+    // Keyboard shortcuts for unit actions on the selected human unit.
+    const activateActionIfHumanTurn = (mode: 'move' | 'attack' | 'ranged' | 'sleep') => {
+      if (!turnManager.getCurrentNation().isHuman) return;
+      const selection = selectionManager.getSelected();
+      if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) return;
+      unitActionToolbox.tryActivate(mode);
+    };
+    const onKeyMove = () => activateActionIfHumanTurn('move');
+    const onKeyAttack = () => activateActionIfHumanTurn('attack');
+    const onKeyRanged = () => activateActionIfHumanTurn('ranged');
+    const onKeySleep = () => activateActionIfHumanTurn('sleep');
+    this.input.keyboard?.on('keydown-M', onKeyMove);
+    this.input.keyboard?.on('keydown-A', onKeyAttack);
+    this.input.keyboard?.on('keydown-R', onKeyRanged);
+    this.input.keyboard?.on('keydown-S', onKeySleep);
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-SPACE', onSpaceSkip);
+      this.input.keyboard?.off('keydown-M', onKeyMove);
+      this.input.keyboard?.off('keydown-A', onKeyAttack);
+      this.input.keyboard?.off('keydown-R', onKeyRanged);
+      this.input.keyboard?.off('keydown-S', onKeySleep);
     });
 
     // Re-scan after a unit moves or is created (new positions may meet a city).
@@ -656,9 +787,9 @@ export class GameScene extends Phaser.Scene {
 
     this.debugHUD = new DebugHUD(this);
 
-    const humanNationId = nationManager.getHumanNationId();
     leftPanel = new LeftPanel(nationManager, turnManager, humanNationId, discoverySystem);
     leftPanel.setResearchSystem(researchSystem);
+    leftPanel.setUnitActionToolbox(unitActionToolbox);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       turnManager.endCurrentTurn();
@@ -688,15 +819,87 @@ export class GameScene extends Phaser.Scene {
       if (!selectedBuilderForHints) return null;
       return builderSystem.getBuildPreview(selectedBuilderForHints, tile);
     });
-    rightPanel.setFoundCityHandler(
-      (unit) => foundCitySystem.canFound(unit),
-      (unit) => {
-        const city = foundCitySystem.foundCity(unit);
-        if (!city) return;
-        leftPanel?.refresh();
-        rightPanel?.clear();
-      },
-    );
+    const computeRangedTargets = (unit: Unit): Set<string> => {
+      const range = unit.unitType.range ?? 1;
+      if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();
+      const tiles = gridSystem.getTilesInRange(
+        { x: unit.tileX, y: unit.tileY }, range, mapData, { includeCenter: false },
+      );
+      const keys = new Set<string>();
+      for (const tile of tiles) {
+        const targetUnit = unitManager.getUnitAt(tile.x, tile.y);
+        const targetCity = cityManager.getCityAt(tile.x, tile.y);
+        const hasEnemyUnit = targetUnit !== null && targetUnit.ownerId !== unit.ownerId;
+        const hasEnemyCity = targetCity !== undefined && targetCity.ownerId !== unit.ownerId;
+        if (hasEnemyUnit || hasEnemyCity) keys.add(`${tile.x},${tile.y}`);
+      }
+      return keys;
+    };
+    const showKillConfirmation = (unit: Unit) => {
+      showDiplomacyModal({
+        title: 'Disband Unit',
+        message: `Disband ${unit.name}?`,
+        accentColor: '#c44',
+        confirmLabel: 'Kill',
+        cancelLabel: 'Cancel',
+        onConfirm: () => {
+          unitManager.removeUnit(unit.id);
+        },
+        onCancel: () => {},
+      });
+    };
+    unitActionToolbox.onModeChanged((mode) => {
+      rangedTargets = new Set();
+      rangedPreviewRenderer.clear();
+
+      if (mode === 'found' || mode === 'build') {
+        try {
+          const selection = selectionManager.getSelected();
+          if (selection?.kind !== 'unit') return;
+
+          if (mode === 'found') {
+            performFoundCityAction(selection.unit);
+            return;
+          }
+
+          performBuildImprovementAction(selection.unit);
+        } finally {
+          unitActionToolbox.resetMode();
+        }
+        return;
+      }
+
+      if (mode === 'ranged') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit') return;
+        rangedTargets = computeRangedTargets(selection.unit);
+        rangedPreviewRenderer.showTargets(rangedTargets);
+        return;
+      }
+
+      if (mode === 'sleep') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit') return;
+        selection.unit.isSleeping = !selection.unit.isSleeping;
+        unitActionToolbox.refresh();
+        turnOrderSystem.refreshActive();
+        leftPanel?.requestRefresh();
+        rightPanel?.requestRefresh();
+        unitActionToolbox.resetMode();
+        return;
+      }
+
+      if (mode === 'kill') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit') {
+          unitActionToolbox.resetMode();
+          return;
+        }
+        showKillConfirmation(selection.unit);
+        unitActionToolbox.resetMode();
+        return;
+      }
+    });
     researchSystem.onChanged(() => {
       leftPanel?.requestRefresh();
       rightPanel?.requestRefresh();
@@ -707,6 +910,10 @@ export class GameScene extends Phaser.Scene {
       humanNationId,
       researchSystem,
       resourceSystem,
+      productionSystem,
+      cityManager,
+      selectionManager,
+      unitManager,
     }));
 
     turnManager.on('turnStart', () => {
@@ -747,21 +954,38 @@ export class GameScene extends Phaser.Scene {
     // Map selection → right panel (clears nation highlight)
     selectionManager.onSelectionChanged((selection) => {
       leftPanel?.clearSelectedNation();
+      rangedTargets = new Set();
+      rangedPreviewRenderer.clear();
+
+      if (selection?.kind === 'unit'
+        && selection.unit.ownerId === humanNationId
+        && !suppressPromote
+        && turnManager.getCurrentNation().isHuman
+      ) {
+        turnOrderSystem.promoteTo(selection.unit.id);
+      }
+
       if (selection?.kind === 'tile') {
+        selectedBuilderForHints = null;
+        unitActionToolbox.setSelectedUnit(null);
         rightPanel?.showTile(selection.tile);
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
       } else if (selection?.kind === 'city') {
+        selectedBuilderForHints = null;
+        unitActionToolbox.setSelectedUnit(null);
         rightPanel?.showCity(selection.city);
         cityWorkTileRenderer.show(selection.city);
         cultureClaimTileRenderer.show(selection.city);
       } else if (selection?.kind === 'unit') {
         selectedBuilderForHints = selection.unit.unitType.canBuildImprovements ? selection.unit : null;
+        unitActionToolbox.setSelectedUnit(selection.unit);
         rightPanel?.showUnit(selection.unit);
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
       } else {
         selectedBuilderForHints = null;
+        unitActionToolbox.setSelectedUnit(null);
         rightPanel?.clear();
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
@@ -773,10 +997,26 @@ export class GameScene extends Phaser.Scene {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'unit') {
         pathPreviewRenderer.clearPath();
+        rangedPreviewRenderer.clearCurve();
         return;
       }
 
       const hoverTile = this.getTileForSelectable(tileMap, hovered);
+      if (unitActionToolbox.getMode() === 'ranged') {
+        pathPreviewRenderer.clearPath();
+        if (hoverTile === null || !rangedTargets.has(`${hoverTile.x},${hoverTile.y}`)) {
+          rangedPreviewRenderer.clearCurve();
+          return;
+        }
+        rangedPreviewRenderer.showCurve(
+          { x: selected.unit.tileX, y: selected.unit.tileY },
+          hoverTile,
+        );
+        return;
+      }
+
+      rangedPreviewRenderer.clearCurve();
+
       if (hoverTile === null || !reachableTiles.has(`${hoverTile.x},${hoverTile.y}`)) {
         pathPreviewRenderer.clearPath();
         return;

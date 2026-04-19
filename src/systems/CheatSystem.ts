@@ -1,10 +1,19 @@
+import type { CityManager } from './CityManager';
+import type { ProductionSystem } from './ProductionSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceSystem } from './ResourceSystem';
+import type { SelectionManager } from './SelectionManager';
+import type { UnitManager } from './UnitManager';
+import type { Producible } from '../types/producible';
 
 export interface GameContext {
   humanNationId: string | undefined;
   researchSystem: ResearchSystem;
   resourceSystem: ResourceSystem;
+  productionSystem: ProductionSystem;
+  cityManager: CityManager;
+  selectionManager: SelectionManager;
+  unitManager: UnitManager;
 }
 
 export interface CheatCommand {
@@ -53,6 +62,66 @@ export class CheatSystem {
         if (!technology) return 'No active research';
 
         return `Research complete: ${technology.name}`;
+      },
+    });
+
+    this.register({
+      name: 'production complete',
+      description: 'Complete current production in the selected human city. Use "production complete --all" to finish it in every human city.',
+      execute: (args, context) => {
+        if (!context.humanNationId) return 'No human player';
+
+        if (args.length === 1 && args[0] === '--all') {
+          const cities = context.cityManager.getCitiesByOwner(context.humanNationId);
+          if (cities.length === 0) return 'No human cities';
+
+          const lines: string[] = [];
+          for (const city of cities) {
+            const result = context.productionSystem.completeCurrentProduction(city.id);
+            if (result.kind === 'empty') continue;
+            if (result.kind === 'blocked') {
+              lines.push(`${city.name}: blocked — ${result.reason}`);
+            } else {
+              lines.push(`${city.name}: completed ${producibleName(result.item)}`);
+            }
+          }
+
+          if (lines.length === 0) return 'No production in any human city';
+          return lines.join('\n');
+        }
+
+        if (args.length !== 0) return 'Usage: production complete [--all]';
+
+        const selection = context.selectionManager.getSelected();
+        if (!selection || selection.kind !== 'city' || selection.city.ownerId !== context.humanNationId) {
+          return 'No human city selected';
+        }
+
+        const result = context.productionSystem.completeCurrentProduction(selection.city.id);
+        if (result.kind === 'empty') return `No production in ${selection.city.name}`;
+        if (result.kind === 'blocked') return `${selection.city.name}: blocked — ${result.reason}`;
+        return `${selection.city.name}: completed ${producibleName(result.item)}`;
+      },
+    });
+
+    this.register({
+      name: 'kill',
+      description: 'Kill the unit standing on the currently selected tile.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: kill';
+
+        const selection = context.selectionManager.getSelected();
+        if (!selection) return 'No tile selected';
+
+        const position = selectionTilePosition(selection);
+        if (!position) return 'No tile selected';
+
+        const unit = context.unitManager.getUnitAt(position.x, position.y);
+        if (!unit) return 'No unit on selected tile';
+
+        const label = unit.name;
+        context.unitManager.removeUnit(unit.id);
+        return `Killed ${label}`;
       },
     });
 
@@ -143,4 +212,26 @@ function normalizeCommand(input: string): string {
 function parseInteger(value: string | undefined): number | null {
   if (value === undefined || !/^-?\d+$/.test(value)) return null;
   return Number.parseInt(value, 10);
+}
+
+function producibleName(item: Producible): string {
+  switch (item.kind) {
+    case 'unit':
+      return item.unitType.name;
+    case 'building':
+      return item.buildingType.name;
+  }
+}
+
+function selectionTilePosition(
+  selection: NonNullable<ReturnType<SelectionManager['getSelected']>>,
+): { x: number; y: number } | null {
+  switch (selection.kind) {
+    case 'tile':
+      return { x: selection.tile.x, y: selection.tile.y };
+    case 'unit':
+      return { x: selection.unit.tileX, y: selection.unit.tileY };
+    case 'city':
+      return { x: selection.city.tileX, y: selection.city.tileY };
+  }
 }

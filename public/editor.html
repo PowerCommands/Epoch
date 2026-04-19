@@ -211,7 +211,7 @@ const viewport = document.getElementById('viewport');
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  const res = await fetch('/europeScenario.json');
+  const res = await fetch('/assets/maps/europeScenario.json');
   scenario = await res.json();
 
   mapW = scenario.map.width;

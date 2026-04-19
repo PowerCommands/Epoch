@@ -129,6 +129,55 @@
         line-height: 1.25;
       }
 
+      .unit-action-toolbox {
+        margin: 2px 0 8px;
+      }
+
+      .unit-action-toolbox-hidden {
+        display: none;
+      }
+
+      .unit-action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+
+      .unit-action-button {
+        min-height: 30px;
+        padding: 5px 7px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: #171717;
+        color: var(--text-primary);
+        cursor: pointer;
+        flex: 1 1 calc(50% - 4px);
+        font: inherit;
+        font-size: 11px;
+        line-height: 1.1;
+      }
+
+      .unit-action-button:hover {
+        background: var(--bg-hover);
+        border-color: #5d5d5d;
+      }
+
+      .unit-action-button-active {
+        background: #1a2a1a;
+        border-color: #d4a857;
+        color: #fff7e7;
+      }
+
+      .unit-action-button-danger {
+        border-color: #6a2a2a;
+        color: #f0a898;
+      }
+
+      .unit-action-button-danger:hover {
+        background: #2a1414;
+        border-color: #b54747;
+      }
+
       .panel-muted {
         color: var(--text-muted);
       }
@@ -427,28 +476,23 @@
         border-color: #a00;
       }
 
-      .add-queue-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 3px 0;
-        font-size: 12px;
-      }
-
       .queue-add-btn {
-        background: #2a3a2a;
+        width: 100%;
+        margin-top: 4px;
+        padding: 5px 6px;
         border: 1px solid #4a6a4a;
-        color: #8c8;
-        font-size: 11px;
-        padding: 2px 8px;
+        border-radius: 4px;
+        background: #1f2f1f;
+        color: #b7dfb7;
         cursor: pointer;
-        border-radius: 3px;
-        flex-shrink: 0;
+        font: inherit;
+        font-size: 11px;
+        text-align: left;
       }
 
       .queue-add-btn:hover {
-        background: #3a5a3a;
-        color: #afa;
+        background: #2b442b;
+        color: #e1ffe1;
       }
 
       .panel-content {

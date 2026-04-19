@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "tsc && vite build",
     "generate-sprites": "tsx scripts/generateSprites.ts",
     "preview": "vite preview"

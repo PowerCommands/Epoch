@@ -35,6 +35,11 @@ export interface CityProduction {
 export type ProductionCompletedListener = (cityId: string, item: Producible) => boolean | void;
 export type ProductionChangedListener = (cityId: string) => void;
 
+export type CompleteCurrentProductionResult =
+  | { kind: 'completed'; item: Producible }
+  | { kind: 'blocked'; item: Producible; reason: string }
+  | { kind: 'empty' };
+
 /**
  * ProductionSystem manages per-city build queues.
  *
@@ -116,6 +121,29 @@ export class ProductionSystem {
   clearProduction(cityId: string): void {
     this.queues.delete(cityId);
     this.notifyChanged(cityId);
+  }
+
+  /** Force-complete queue[0] immediately, firing completion listeners. */
+  completeCurrentProduction(cityId: string): CompleteCurrentProductionResult {
+    const queue = this.queues.get(cityId);
+    if (!queue || queue.length === 0) return { kind: 'empty' };
+
+    const entry = queue[0];
+    entry.accumulated = this.getCost(entry.item);
+
+    const completed = this.tryComplete(cityId, entry);
+    if (completed) {
+      queue.shift();
+      if (queue.length === 0) {
+        this.queues.delete(cityId);
+      }
+      this.notifyChanged(cityId);
+      return { kind: 'completed', item: entry.item };
+    }
+
+    const reason = entry.blockedReason ?? this.getBlockedReason(entry.item) ?? 'Production blocked';
+    this.notifyChanged(cityId);
+    return { kind: 'blocked', item: entry.item, reason };
   }
 
   onCompleted(listener: ProductionCompletedListener): void {

@@ -45,10 +45,12 @@ export function resolveCombat(attacker: Unit, defender: Unit): CombatResult {
 
 /**
  * Ranged unit vs unit: attacker deals damage, no counter-attack.
+ * Uses rangedStrength when set, falling back to baseStrength.
  */
 export function resolveRangedCombat(attacker: Unit, defender: Unit): CombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
-  const damageToDefender = Math.round(attacker.unitType.baseStrength * attackerHpRatio);
+  const rangedStr = attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength;
+  const damageToDefender = Math.round(rangedStr * attackerHpRatio);
   const newDefenderHp = Math.max(0, defender.health - damageToDefender);
 
   return {
@@ -61,10 +63,12 @@ export function resolveRangedCombat(attacker: Unit, defender: Unit): CombatResul
 
 /**
  * Ranged unit vs city: attacker deals damage, no counter-attack.
+ * Uses rangedStrength when set, falling back to baseStrength.
  */
 export function resolveRangedVsCity(attacker: Unit, city: City): CityCombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
-  const damageToCity = Math.round(attacker.unitType.baseStrength * attackerHpRatio);
+  const rangedStr = attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength;
+  const damageToCity = Math.round(rangedStr * attackerHpRatio);
   const newCityHp = Math.max(0, city.health - damageToCity);
 
   return {

@@ -5,6 +5,7 @@ import { CityManager } from './CityManager';
 import { UnitManager } from './UnitManager';
 import { Selectable } from '../types/selection';
 import type { City } from '../entities/City';
+import type { Unit } from '../entities/Unit';
 
 type SelectionCallback = (selection: Selectable | null) => void;
 type SelectionTargetCallback = (
@@ -82,6 +83,14 @@ export class SelectionManager {
 
   selectCity(city: City): void {
     this.setSelection({ kind: 'city', city });
+  }
+
+  selectUnit(unit: Unit): void {
+    this.setSelection({ kind: 'unit', unit });
+  }
+
+  clearSelection(): void {
+    this.setSelection(null);
   }
 
   // ─── Privata metoder ───────────────────────────────────────────────────────

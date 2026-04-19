@@ -27,6 +27,7 @@ export class Unit {
   movementPoints: number;
   health: number;
   transportId?: string;
+  isSleeping: boolean;
 
   constructor(config: UnitConfig) {
     this.id = config.id;
@@ -38,6 +39,7 @@ export class Unit {
     this.maxMovementPoints = config.unitType.movementPoints;
     this.movementPoints = config.movementPoints ?? config.unitType.movementPoints;
     this.health = config.unitType.baseHealth;
+    this.isSleeping = false;
   }
 
   resetMovement(): void {

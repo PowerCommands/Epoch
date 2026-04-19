@@ -41,7 +41,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Pottery',
     era: 'ancient',
     cost: 35,
-    prerequisites: ['agriculture'],
+    prerequisites: [],
     leadsTo: ['sailing', 'calendar', 'writing'],
     unlocks: [{ kind: 'building', id: 'granary' }, { kind: 'building', id: 'shrine' }],
   },
@@ -50,7 +50,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Animal Husbandry',
     era: 'ancient',
     cost: 35,
-    prerequisites: ['agriculture'],
+    prerequisites: [],
     leadsTo: ['trapping', 'the_wheel'],
     unlocks: [{ kind: 'unit', id: 'caravan' }],
     // TODO: reveals Horses, unlocks Pasture improvement.
@@ -60,7 +60,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Archery',
     era: 'ancient',
     cost: 35,
-    prerequisites: ['agriculture'],
+    prerequisites: [],
     leadsTo: ['mathematics'],
     unlocks: [{ kind: 'unit', id: 'archer' }],
     // TODO: unlocks Temple of Artemis wonder.
@@ -70,7 +70,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Mining',
     era: 'ancient',
     cost: 35,
-    prerequisites: ['agriculture'],
+    prerequisites: [],
     leadsTo: ['masonry', 'bronze_working'],
     unlocks: [{ kind: 'improvement', id: 'mine' }],
     // TODO: unlocks forest chopping.

@@ -35,7 +35,7 @@ function unit(input: UnitDefinitionInput): UnitType {
 }
 
 export const WARRIOR = unit({ id: 'warrior', name: 'Warrior', era: 'ancient', cost: 40, combatStrength: 8, movement: 2, category: 'melee' });
-export const SCOUT = unit({ id: 'scout', name: 'Scout', era: 'ancient', cost: 25, combatStrength: 5, movement: 2, category: 'recon' });
+export const SCOUT = unit({ id: 'scout', name: 'Scout', era: 'ancient', cost: 25, combatStrength: 0, movement: 4, category: 'recon' });
 export const ARCHER = unit({ id: 'archer', name: 'Archer', era: 'ancient', cost: 40, combatStrength: 5, rangedStrength: 7, range: 2, movement: 2, category: 'ranged' });
 export const SPEARMAN = unit({ id: 'spearman', name: 'Spearman', era: 'ancient', cost: 56, combatStrength: 11, movement: 2, category: 'melee' });
 export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer', era: 'ancient', cost: 56, combatStrength: 6, rangedStrength: 10, range: 2, movement: 4, category: 'mounted' });
@@ -105,7 +105,6 @@ export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant De
 export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 80, rangedStrength: 100, range: 3, movement: 7, category: 'naval_ranged', isNaval: true });
 
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true });
-export const BUILDER = unit({ id: 'builder', name: 'Builder', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true });
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
 
 export const FISHING_BOAT = unit({ id: 'fishing_boat', name: 'Fishing Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
@@ -122,7 +121,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   NUCLEAR_SUBMARINE, ATOMIC_BOMB, HELICOPTER_GUNSHIP, BAZOOKA,
   MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
-  WORKER, BUILDER, SETTLER, FISHING_BOAT, TRANSPORT_SHIP,
+  WORKER, SETTLER, FISHING_BOAT, TRANSPORT_SHIP,
 ];
 
 export function getUnitTypeById(id: string): UnitType | undefined {

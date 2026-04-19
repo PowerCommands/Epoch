@@ -22,6 +22,11 @@ export interface BuildImprovementPreview {
   reason?: string;
 }
 
+interface BuildImprovementOptions {
+  consumeMovement?: boolean;
+  requireMovement?: boolean;
+}
+
 export class BuilderSystem {
   constructor(
     private readonly unitManager: UnitManager,
@@ -40,15 +45,17 @@ export class BuilderSystem {
     return this.evaluateBuild(unit, tile);
   }
 
-  build(unit: Unit, tile: Tile): BuildImprovementResult | null {
-    const preview = this.evaluateBuild(unit, tile);
+  build(unit: Unit, tile: Tile, options: BuildImprovementOptions = {}): BuildImprovementResult | null {
+    const preview = this.evaluateBuild(unit, tile, options);
     if (!preview.canBuild || preview.improvement === undefined) return null;
 
     const city = this.getFriendlyCityForWorkableTile(unit.ownerId, tile);
     if (city === undefined) return null;
 
     tile.improvementId = preview.improvement.id;
-    this.unitManager.consumeAllMovement(unit.id);
+    if (options.consumeMovement ?? true) {
+      this.unitManager.consumeAllMovement(unit.id);
+    }
 
     return { unit, tile, improvement: preview.improvement, city };
   }
@@ -56,12 +63,13 @@ export class BuilderSystem {
   private evaluateBuild(
     unit: Unit,
     tile: Tile,
+    options: BuildImprovementOptions = {},
   ): BuildImprovementPreview {
     if (!unit.unitType.canBuildImprovements) return { canBuild: false, reason: 'Unit cannot build improvements' };
     if (this.turnManager.getCurrentNation().id !== unit.ownerId) return { canBuild: false, reason: 'Not this unit\'s turn' };
-    if (!this.isCurrentOrAdjacent(unit, tile)) return { canBuild: false, reason: 'Tile is not adjacent to the Builder' };
+    if (!this.isCurrentOrAdjacent(unit, tile)) return { canBuild: false, reason: 'Tile is not adjacent to the Worker' };
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already has an improvement' };
-    if (unit.movementPoints <= 0) return { canBuild: false, reason: 'Builder has no movement remaining' };
+    if ((options.requireMovement ?? true) && unit.movementPoints <= 0) return { canBuild: false, reason: 'Worker has no movement remaining' };
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'Cannot improve a city tile' };
     if (!canUnitEnterTile(unit, tile)) return { canBuild: false, reason: 'Tile is not valid land for this unit' };
     if (this.getFriendlyCityForWorkableTile(unit.ownerId, tile) === undefined) {

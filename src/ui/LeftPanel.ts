@@ -4,6 +4,7 @@ import { TurnManager } from '../systems/TurnManager';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
 import type { LeaderDefinition } from '../types/leader';
+import type { UnitActionToolbox } from './UnitActionToolbox';
 import { RafScheduler } from '../utils/RafScheduler';
 
 export class LeftPanel {
@@ -13,6 +14,7 @@ export class LeftPanel {
   private readonly humanNationId: string | undefined;
   private readonly discoverySystem: DiscoverySystem | null;
   private researchSystem: ResearchSystem | null = null;
+  private unitActionToolbox: UnitActionToolbox | null = null;
   private endTurnCallback: (() => void) | null = null;
   private selectedNationId: string | null = null;
   private readonly scheduler = new RafScheduler();
@@ -60,6 +62,11 @@ export class LeftPanel {
     this.refresh();
   }
 
+  setUnitActionToolbox(unitActionToolbox: UnitActionToolbox): void {
+    this.unitActionToolbox = unitActionToolbox;
+    this.refresh();
+  }
+
   setEndTurnCallback(cb: () => void): void {
     this.endTurnCallback = cb;
   }
@@ -93,6 +100,7 @@ export class LeftPanel {
     const currentNation = this.turnManager.getCurrentNation();
 
     section.append(
+      this.unitActionToolbox?.render() ?? document.createElement('div'),
       this.renderEndTurnButton(),
       this.createDiv('turn-active-nation', `${currentNation.name}'s Turn`, currentNation.color),
     );

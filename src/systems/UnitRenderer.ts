@@ -17,7 +17,6 @@ const TEXTURE_MAP: Record<string, string> = {
   archer: 'unit_archer',
   cavalry: 'unit_cavalry',
   settler: 'unit_settler',
-  builder: 'unit_settler',
   fishing_boat: 'unit_fishing_boat',
   transport_ship: 'unit_transport_ship',
 };

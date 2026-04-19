@@ -58,8 +58,6 @@ export class ResearchSystem {
   }
 
   advanceResearchForNation(nationId: string): void {
-    this.ensureResearchSelected(nationId);
-
     const nation = this.nationManager.getNation(nationId);
     if (!nation?.currentResearchTechId) return;
 

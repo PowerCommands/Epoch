@@ -225,8 +225,8 @@ export class RightPanel {
     }
     if (builderHint) {
       const text = builderHint.canBuild && builderHint.improvement
-        ? `Builder can construct ${builderHint.improvement.name} here`
-        : `Builder cannot improve this tile${builderHint.reason ? `: ${builderHint.reason}` : ''}`;
+        ? `Worker can construct ${builderHint.improvement.name} here`
+        : `Worker cannot improve this tile${builderHint.reason ? `: ${builderHint.reason}` : ''}`;
       section.append(this.createDiv('panel-muted', text));
     }
     this.contentEl.append(section);
@@ -572,23 +572,15 @@ export class RightPanel {
   }
 
   private createAddRow(item: Producible, city: City, _nationColor: number): HTMLElement {
-    const row = document.createElement('div');
-    row.className = 'add-queue-row';
-
-    const label = document.createElement('span');
-    label.innerHTML = `${this.getProducibleName(item)} <span class="panel-muted">(${this.getProducibleCost(item)})</span>`;
-
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'queue-add-btn';
-    addBtn.textContent = 'Add';
-    addBtn.addEventListener('click', () => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'queue-add-btn';
+    button.innerHTML = `${this.getProducibleName(item)} <span class="panel-muted">(${this.getProducibleCost(item)})</span>`;
+    button.addEventListener('click', () => {
       this.productionSystem.enqueue(city.id, item);
       this.refreshProductionQueue(city.id);
     });
-
-    row.append(label, addBtn);
-    return row;
+    return button;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
