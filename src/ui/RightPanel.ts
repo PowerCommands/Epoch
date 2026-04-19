@@ -19,6 +19,7 @@ import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
+import type { ResearchSystem } from '../systems/ResearchSystem';
 import { RafScheduler } from '../utils/RafScheduler';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
@@ -38,6 +39,7 @@ export class RightPanel {
   private diplomacyManager: DiplomacyManager | null = null;
   private discoverySystem: DiscoverySystem | null = null;
   private eventLog: EventLogSystem | null = null;
+  private researchSystem: ResearchSystem | null = null;
   private currentTile: Tile | null = null;
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
@@ -96,6 +98,10 @@ export class RightPanel {
 
   setDiplomacyManager(dm: DiplomacyManager): void {
     this.diplomacyManager = dm;
+  }
+
+  setResearchSystem(researchSystem: ResearchSystem): void {
+    this.researchSystem = researchSystem;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -283,6 +289,9 @@ export class RightPanel {
     outputSection.append(
       this.createDiv('', `Production: ${resources.production} stored (+${resources.productionPerTurn}/turn)`),
       this.createDiv('', `Gold: +${resources.goldPerTurn}/turn`),
+      this.createDiv('', `Science: +${resources.sciencePerTurn}/turn`),
+      this.createDiv('', `Culture: +${resources.culturePerTurn}/turn`),
+      this.createDiv('', `Happiness: +${resources.happinessPerTurn}/turn`),
       this.createDiv('', `Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
     );
 
@@ -538,9 +547,11 @@ export class RightPanel {
   private renderAddToQueue(city: City, nationColor: number): HTMLElement {
     const section = this.createSection('Add to Queue');
     const hasCoastalAccess = cityHasCoastalAccess(city, this.mapData, this.gridSystem);
+    const researchSystem = this.researchSystem;
 
     for (const unitType of ALL_UNIT_TYPES) {
       if (unitType.isNaval && !hasCoastalAccess) continue;
+      if (researchSystem && !researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
       section.append(this.createAddRow({ kind: 'unit', unitType }, city, nationColor));
     }
 
@@ -550,6 +561,7 @@ export class RightPanel {
 
     for (const buildingType of ALL_BUILDINGS) {
       if (this.cityManager.getBuildings(city.id).has(buildingType.id)) continue;
+      if (researchSystem && !researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;
       section.append(this.createAddRow({ kind: 'building', buildingType }, city, nationColor));
     }
 

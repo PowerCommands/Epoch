@@ -18,6 +18,7 @@ import { PathfindingSystem } from './PathfindingSystem';
 import { calculateCityEconomy } from './CityEconomy';
 import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { ResearchSystem } from './ResearchSystem';
 
 const MAX_MILITARY = 3;
 const SETTLER_MIN_CITY_DISTANCE = 5;
@@ -60,6 +61,7 @@ export class AISystem {
     foundCitySystem: FoundCitySystem,
     mapData: MapData,
     private readonly gridSystem: IGridSystem,
+    private readonly researchSystem?: ResearchSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -367,15 +369,23 @@ export class AISystem {
       return { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) };
     }
 
-    if (economy.netFood <= LOW_NET_FOOD_THRESHOLD && !buildings.has(GRANARY.id)) {
+    if (
+      economy.netFood <= LOW_NET_FOOD_THRESHOLD &&
+      !buildings.has(GRANARY.id) &&
+      this.canBuildBuilding(nationId, GRANARY.id)
+    ) {
       return { kind: 'building', buildingType: GRANARY };
     }
 
-    if (economy.production <= LOW_PRODUCTION_THRESHOLD && !buildings.has(WORKSHOP.id)) {
+    if (
+      economy.production <= LOW_PRODUCTION_THRESHOLD &&
+      !buildings.has(WORKSHOP.id) &&
+      this.canBuildBuilding(nationId, WORKSHOP.id)
+    ) {
       return { kind: 'building', buildingType: WORKSHOP };
     }
 
-    if (!buildings.has(MARKET.id)) {
+    if (!buildings.has(MARKET.id) && this.canBuildBuilding(nationId, MARKET.id)) {
       return { kind: 'building', buildingType: MARKET };
     }
 
@@ -387,9 +397,18 @@ export class AISystem {
   }
 
   private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
-    const archer = MILITARY_OPTIONS.find((u) => u.id === ARCHER.id);
+    const available = MILITARY_OPTIONS.filter((u) => this.canBuildUnit(nationId, u.id));
+    const archer = available.find((u) => u.id === ARCHER.id);
     if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
-    return MILITARY_OPTIONS.find((u) => u.id === WARRIOR.id) ?? WARRIOR;
+    return available.find((u) => u.id === WARRIOR.id) ?? WARRIOR;
+  }
+
+  private canBuildUnit(nationId: string, unitId: string): boolean {
+    return this.researchSystem?.isUnitUnlocked(nationId, unitId) ?? true;
+  }
+
+  private canBuildBuilding(nationId: string, buildingId: string): boolean {
+    return this.researchSystem?.isBuildingUnlocked(nationId, buildingId) ?? true;
   }
 
   private needsDefender(city: City, nationId: string): boolean {

@@ -8,6 +8,9 @@ export class CityResources {
   production = 0;
   productionPerTurn = 0;
   goldPerTurn = 0;
+  sciencePerTurn = 0;
+  culturePerTurn = 0;
+  happinessPerTurn = 0;
 
   constructor(cityId: string) {
     this.cityId = cityId;

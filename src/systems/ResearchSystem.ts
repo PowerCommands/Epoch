@@ -6,6 +6,7 @@ import type { NationManager } from './NationManager';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
+type ScienceProvider = (nationId: string) => number;
 
 /**
  * Centralized national research rules.
@@ -21,6 +22,7 @@ export class ResearchSystem {
     private readonly cityManager: CityManager,
     private readonly eventLog: EventLogSystem,
     private readonly getCurrentRound: () => number,
+    private readonly getBuildingSciencePerTurn: ScienceProvider = () => 0,
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -90,6 +92,34 @@ export class ResearchSystem {
     this.notifyChanged();
   }
 
+  completeCurrentResearch(nationId: string): Technology | null {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation?.currentResearchTechId) return null;
+
+    const technology = getTechnologyById(nation.currentResearchTechId);
+    if (!technology) {
+      nation.currentResearchTechId = undefined;
+      nation.researchProgress = 0;
+      this.notifyChanged();
+      return null;
+    }
+
+    if (!nation.researchedTechIds.includes(technology.id)) {
+      nation.researchedTechIds.push(technology.id);
+    }
+    nation.currentResearchTechId = undefined;
+    nation.researchProgress = 0;
+
+    this.eventLog.log(
+      `${nation.name} discovered ${technology.name}.`,
+      [nation.id],
+      this.getCurrentRound(),
+    );
+    this.notifyChanged();
+
+    return technology;
+  }
+
   ensureResearchSelected(nationId: string): boolean {
     const nation = this.nationManager.getNation(nationId);
     if (!nation || nation.currentResearchTechId) return false;
@@ -111,8 +141,32 @@ export class ResearchSystem {
     );
   }
 
+  getRequiredTechnologyForUnit(unitId: string): Technology | undefined {
+    return ALL_TECHNOLOGIES.find((technology) =>
+      technology.unlocks.some((unlock) => unlock.kind === 'unit' && unlock.id === unitId),
+    );
+  }
+
+  getRequiredTechnologyForBuilding(buildingId: string): Technology | undefined {
+    return ALL_TECHNOLOGIES.find((technology) =>
+      technology.unlocks.some((unlock) => unlock.kind === 'building' && unlock.id === buildingId),
+    );
+  }
+
   isImprovementUnlocked(nationId: string, improvementId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForImprovement(improvementId);
+    if (!requiredTechnology) return true;
+    return this.isResearched(nationId, requiredTechnology.id);
+  }
+
+  isUnitUnlocked(nationId: string, unitId: string): boolean {
+    const requiredTechnology = this.getRequiredTechnologyForUnit(unitId);
+    if (!requiredTechnology) return true;
+    return this.isResearched(nationId, requiredTechnology.id);
+  }
+
+  isBuildingUnlocked(nationId: string, buildingId: string): boolean {
+    const requiredTechnology = this.getRequiredTechnologyForBuilding(buildingId);
     if (!requiredTechnology) return true;
     return this.isResearched(nationId, requiredTechnology.id);
   }
@@ -148,7 +202,7 @@ export class ResearchSystem {
   }
 
   private calculateResearchPerTurn(nationId: string): number {
-    return 1 + this.cityManager.getCitiesByOwner(nationId).length;
+    return 1 + this.cityManager.getCitiesByOwner(nationId).length + this.getBuildingSciencePerTurn(nationId);
   }
 
   private notifyChanged(): void {

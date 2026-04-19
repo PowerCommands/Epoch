@@ -15,7 +15,8 @@
       "Bash(docker run *)",
       "Bash(node -e ' *)",
       "Bash(echo \"exit=$?\")",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

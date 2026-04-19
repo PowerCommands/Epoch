@@ -22,6 +22,9 @@ export interface CityEconomySummary {
   food: number;
   production: number;
   gold: number;
+  science: number;
+  culture: number;
+  happiness: number;
   foodConsumption: number;
   netFood: number;
   foodToGrow: number;
@@ -42,6 +45,9 @@ export function calculateCityEconomy(
   let food = BASE_CITY_FOOD;
   let production = 0;
   let gold = 0;
+  let science = 0;
+  let culture = 0;
+  let happiness = 0;
 
   for (const worked of workedTiles) {
     food += worked.food;
@@ -54,10 +60,23 @@ export function calculateCityEconomy(
     food += building?.modifiers.foodPerTurn ?? 0;
     production += building?.modifiers.productionPerTurn ?? 0;
     gold += building?.modifiers.goldPerTurn ?? 0;
+    science += building?.modifiers.sciencePerTurn ?? 0;
+    culture += building?.modifiers.culturePerTurn ?? 0;
+    happiness += building?.modifiers.happinessPerTurn ?? 0;
   }
 
   // Population production bonus: +1 per pop
   production += city.population;
+
+  for (const id of buildings.getAll()) {
+    const building = getBuildingById(id);
+    if (!building) continue;
+    food = applyPercent(food, building.modifiers.foodPercent);
+    production = applyPercent(production, building.modifiers.productionPercent);
+    gold = applyPercent(gold, building.modifiers.goldPercent);
+    science = applyPercent(science, building.modifiers.sciencePercent);
+    culture = applyPercent(culture, building.modifiers.culturePercent);
+  }
 
   const foodConsumption = city.population * 2;
 
@@ -69,10 +88,18 @@ export function calculateCityEconomy(
     food,
     production,
     gold,
+    science,
+    culture,
+    happiness,
     foodConsumption,
     netFood: food - foodConsumption,
     foodToGrow: getFoodToGrow(city.population),
   };
+}
+
+function applyPercent(value: number, percent: number | undefined): number {
+  if (percent === undefined) return value;
+  return Math.floor(value * (1 + percent / 100));
 }
 
 export function getWorkableTiles(

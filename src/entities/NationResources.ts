@@ -5,6 +5,9 @@ export class NationResources {
   readonly nationId: string;
   gold = 0;
   goldPerTurn = 0;
+  culture = 0;
+  culturePerTurn = 0;
+  happinessPerTurn = 0;
 
   constructor(nationId: string) {
     this.nationId = nationId;

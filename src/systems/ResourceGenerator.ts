@@ -20,6 +20,9 @@ export interface IResourceGenerator {
   calculateCityFoodPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
   calculateCityProductionPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
   calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
+  calculateCitySciencePerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
+  calculateCityCulturePerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
+  calculateCityHappinessPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number;
 }
 
 /**
@@ -51,5 +54,17 @@ export class TileResourceGenerator implements IResourceGenerator {
 
   calculateCityGoldPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
     return calculateCityEconomy(city, mapData, buildings, gridSystem).gold;
+  }
+
+  calculateCitySciencePerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
+    return calculateCityEconomy(city, mapData, buildings, gridSystem).science;
+  }
+
+  calculateCityCulturePerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
+    return calculateCityEconomy(city, mapData, buildings, gridSystem).culture;
+  }
+
+  calculateCityHappinessPerTurn(city: City, buildings: CityBuildings, mapData: MapData, gridSystem: IGridSystem): number {
+    return calculateCityEconomy(city, mapData, buildings, gridSystem).happiness;
   }
 }

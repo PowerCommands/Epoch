@@ -29,11 +29,14 @@ import { AISystem } from '../systems/AISystem';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
+import { CheatSystem } from '../systems/CheatSystem';
+import { calculateCityEconomy } from '../systems/CityEconomy';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
 import { DebugHUD } from '../ui/DebugHUD';
 import { CombatLog } from '../ui/CombatLog';
+import { CheatConsole } from '../ui/CheatConsole';
 import { LeftPanel } from '../ui/LeftPanel';
 import { RightPanel } from '../ui/RightPanel';
 import { TileType } from '../types/map';
@@ -158,6 +161,13 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       eventLog,
       () => turnManager.getCurrentRound(),
+      (nationId) => cityManager.getCitiesByOwner(nationId)
+        .reduce((sum, city) => sum + calculateCityEconomy(
+          city,
+          mapData,
+          cityManager.getBuildings(city.id),
+          gridSystem,
+        ).science, 0),
     );
 
     // 14. Stridssystem
@@ -282,6 +292,7 @@ export class GameScene extends Phaser.Scene {
       unitManager, cityManager, nationManager, turnManager,
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
       gridSystem,
+      researchSystem,
     );
 
     let hasSkippedInitialResearchTurnStart = false;
@@ -636,6 +647,7 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
     );
     rightPanel.setDiplomacyManager(diplomacyManager);
+    rightPanel.setResearchSystem(researchSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
     rightPanel.setBuilderHintProvider((tile) => {
@@ -657,6 +669,11 @@ export class GameScene extends Phaser.Scene {
     });
 
     new CombatLog(this, combatSystem, nationManager);
+    const cheatConsole = new CheatConsole(new CheatSystem({
+      humanNationId,
+      researchSystem,
+      resourceSystem,
+    }));
 
     turnManager.on('turnStart', () => {
       leftPanel?.refresh();
@@ -672,7 +689,10 @@ export class GameScene extends Phaser.Scene {
       }
     });
     turnManager.on('roundStart', () => leftPanel?.requestRefresh());
-    resourceSystem.on(() => leftPanel?.requestRefresh());
+    resourceSystem.on(() => {
+      leftPanel?.requestRefresh();
+      rightPanel?.requestRefresh();
+    });
     unitManager.onUnitChanged((event) => {
       leftPanel?.requestRefresh();
       if (
@@ -766,6 +786,7 @@ export class GameScene extends Phaser.Scene {
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
       leftPanel?.shutdown();
       rightPanel?.shutdown();
+      cheatConsole.shutdown();
     });
 
     // Victory overlay
