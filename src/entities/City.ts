@@ -24,6 +24,7 @@ export class City {
   health: number;
   population: number;
   foodStorage: number;
+  culture: number;
   lastTurnAttacked: number | null = null;
 
   constructor(config: CityConfig) {
@@ -36,6 +37,7 @@ export class City {
     this.health = CITY_BASE_HEALTH;
     this.population = 1;
     this.foodStorage = 0;
+    this.culture = 0;
   }
 
   get isDamaged(): boolean {

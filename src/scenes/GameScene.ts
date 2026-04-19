@@ -22,6 +22,8 @@ import { PathfindingSystem } from '../systems/PathfindingSystem';
 import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
 import { CombatSystem } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
+import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
+import { claimTile, getClaimableTiles, getClaimCost } from '../systems/CultureExpansion';
 import { DiplomacyManager } from '../systems/DiplomacyManager';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
@@ -138,6 +140,13 @@ export class GameScene extends Phaser.Scene {
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
+    const cultureClaimTileRenderer = new CultureClaimTileRenderer(
+      this,
+      tileMap,
+      nationManager,
+      mapData,
+      data.humanNationId,
+    );
     let reachableTiles = new Set<string>();
 
     // 13. Produktionssystem
@@ -267,6 +276,30 @@ export class GameScene extends Phaser.Scene {
       return true;
     });
 
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (currentSelection?.kind !== 'city') return false;
+      if (currentSelection.city.ownerId !== data.humanNationId) return false;
+      if (target?.kind !== 'tile') return false;
+
+      const city = currentSelection.city;
+      const tiles = mapData.tiles.flat();
+      const cost = getClaimCost(city, tiles);
+      if (city.culture < cost) return false;
+
+      const claimableTiles = getClaimableTiles(city, tiles);
+      if (!claimableTiles.includes(target.tile)) return false;
+
+      if (!claimTile(city, target.tile)) return false;
+
+      territoryRenderer.render();
+      cityWorkTileRenderer.show(city);
+      cultureClaimTileRenderer.show(city);
+      leftPanel?.requestRefresh();
+      rightPanel?.requestRefresh();
+      discoverySystem.scan();
+      return true;
+    });
+
     // 16. Läkningssystem
     const healingSystem = new HealingSystem(unitManager, cityManager, turnManager);
 
@@ -312,6 +345,7 @@ export class GameScene extends Phaser.Scene {
 
       if (!e.nation.isHuman) {
         aiSystem.runTurn(e.nation.id);
+        territoryRenderer.render();
         turnManager.endCurrentTurn();
       }
     });
@@ -683,6 +717,7 @@ export class GameScene extends Phaser.Scene {
       if (selectedCity) {
         rightPanel!.refreshProductionQueue(selectedCity.id);
         cityWorkTileRenderer.show(selectedCity);
+        cultureClaimTileRenderer.show(selectedCity);
       }
       if (rightPanel?.getView() === 'nation') {
         rightPanel.refreshNationView();
@@ -692,6 +727,7 @@ export class GameScene extends Phaser.Scene {
     resourceSystem.on(() => {
       leftPanel?.requestRefresh();
       rightPanel?.requestRefresh();
+      refreshSelectedCityOverlays();
     });
     unitManager.onUnitChanged((event) => {
       leftPanel?.requestRefresh();
@@ -714,17 +750,21 @@ export class GameScene extends Phaser.Scene {
       if (selection?.kind === 'tile') {
         rightPanel?.showTile(selection.tile);
         cityWorkTileRenderer.clear();
+        cultureClaimTileRenderer.clear();
       } else if (selection?.kind === 'city') {
         rightPanel?.showCity(selection.city);
         cityWorkTileRenderer.show(selection.city);
+        cultureClaimTileRenderer.show(selection.city);
       } else if (selection?.kind === 'unit') {
         selectedBuilderForHints = selection.unit.unitType.canBuildImprovements ? selection.unit : null;
         rightPanel?.showUnit(selection.unit);
         cityWorkTileRenderer.clear();
+        cultureClaimTileRenderer.clear();
       } else {
         selectedBuilderForHints = null;
         rightPanel?.clear();
         cityWorkTileRenderer.clear();
+        cultureClaimTileRenderer.clear();
       }
       refreshMovePreview();
     });
@@ -776,6 +816,7 @@ export class GameScene extends Phaser.Scene {
       selectionManager.selectCity(city);
       rightPanel?.showCity(city);
       cityWorkTileRenderer.show(city);
+      cultureClaimTileRenderer.show(city);
       refreshMovePreview();
     };
     window.addEventListener('focusCity', onFocusCity);
@@ -849,6 +890,13 @@ export class GameScene extends Phaser.Scene {
       reachableTiles = pathfindingSystem.getReachableTiles(unit);
       pathPreviewRenderer.showReachableTiles(reachableTiles);
       pathPreviewRenderer.clearPath();
+    }
+
+    function refreshSelectedCityOverlays(): void {
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'city') return;
+      cityWorkTileRenderer.show(selected.city);
+      cultureClaimTileRenderer.show(selected.city);
     }
   }
 

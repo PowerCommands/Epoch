@@ -20,6 +20,7 @@ import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
+import { getClaimableTiles, getClaimCost } from '../systems/CultureExpansion';
 import { RafScheduler } from '../utils/RafScheduler';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
@@ -290,7 +291,9 @@ export class RightPanel {
       this.createDiv('', `Production: ${resources.production} stored (+${resources.productionPerTurn}/turn)`),
       this.createDiv('', `Gold: +${resources.goldPerTurn}/turn`),
       this.createDiv('', `Science: +${resources.sciencePerTurn}/turn`),
-      this.createDiv('', `Culture: +${resources.culturePerTurn}/turn`),
+      this.createDiv('', `Culture: ${city.culture}`),
+      this.renderCultureClaimInfo(city, isHuman),
+      this.createDiv('', `Culture per turn: +${resources.culturePerTurn}/turn`),
       this.createDiv('', `Happiness: +${resources.happinessPerTurn}/turn`),
       this.createDiv('', `Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
     );
@@ -739,6 +742,33 @@ export class RightPanel {
 
     section.append(btn);
     return section;
+  }
+
+  private renderCultureClaimInfo(city: City, isHuman: boolean): HTMLElement {
+    const tiles = this.mapData.tiles.flat();
+    const cost = getClaimCost(city, tiles);
+    const claimableTiles = getClaimableTiles(city, tiles);
+    const isReady = city.culture >= cost;
+    const container = this.createDiv('');
+
+    const label = this.createDiv('', `Next tile: ${cost} culture`);
+    container.append(label);
+
+    const progress = this.createDiv('panel-muted', `${city.culture} / ${cost}`);
+    container.append(progress);
+
+    const bar = createHpBar(city.culture, cost);
+    container.append(bar);
+
+    if (isHuman && isReady && claimableTiles.length > 0) {
+      const ready = this.createDiv('', 'READY: Select a tile');
+      ready.style.color = '#66d17a';
+      container.append(ready);
+    } else if (isReady && claimableTiles.length === 0) {
+      container.append(this.createDiv('panel-muted', 'No claimable tiles available'));
+    }
+
+    return container;
   }
 
   private createDiv(className: string, text?: string, color?: number): HTMLDivElement {

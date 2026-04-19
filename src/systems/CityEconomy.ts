@@ -46,7 +46,7 @@ export function calculateCityEconomy(
   let production = 0;
   let gold = 0;
   let science = 0;
-  let culture = 0;
+  let culture = 1;
   let happiness = 0;
 
   for (const worked of workedTiles) {

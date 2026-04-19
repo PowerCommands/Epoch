@@ -143,6 +143,7 @@ export class ResourceSystem {
       cityRes.sciencePerTurn = displayEconomy.science;
       cityRes.culturePerTurn = displayEconomy.culture;
       cityRes.happinessPerTurn = displayEconomy.happiness;
+      city.culture += cityRes.culturePerTurn;
       nationRes.culturePerTurn += displayEconomy.culture;
       nationRes.happinessPerTurn += displayEconomy.happiness;
       cityRes.food = city.foodStorage;
