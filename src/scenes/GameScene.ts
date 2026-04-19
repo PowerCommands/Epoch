@@ -454,13 +454,20 @@ export class GameScene extends Phaser.Scene {
       if (e.nation.isHuman) {
         focusHumanCapital();
         turnOrderSystem.refreshActive();
+        if (!turnOrderSystem.getActive()) {
+          selectionManager.clearSelection();
+        }
       }
     });
 
     // Auto-select the active unit and focus the camera on it.
     turnOrderSystem.onActiveUnitChanged((unit) => {
-      if (!unit) return;
       if (!turnManager.getCurrentNation().isHuman) return;
+      if (!unit) {
+        selectionManager.clearSelection();
+        focusHumanCapital();
+        return;
+      }
       suppressPromote = true;
       try {
         selectionManager.selectUnit(unit);
