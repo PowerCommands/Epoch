@@ -272,10 +272,9 @@ export class GameScene extends Phaser.Scene {
       });
       if (path === null) return false;
 
-      movementSystem.moveAlongPath(unit, path);
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
-
+      movementSystem.moveAlongPath(unit, path);
       combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' });
       return true;
     };
@@ -360,9 +359,9 @@ export class GameScene extends Phaser.Scene {
       if (path === null) return false;
 
       if (unit.isSleeping) unit.isSleeping = false;
-      movementSystem.moveAlongPath(unit, path);
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
+      movementSystem.moveAlongPath(unit, path);
       return true;
     });
 
@@ -465,6 +464,10 @@ export class GameScene extends Phaser.Scene {
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
       this.cameraController.focusOn(x, y, 1.5);
     };
+    const activateFocusedUnitMove = () => {
+      unitActionToolbox.resetMode();
+      refreshMovePreview();
+    };
 
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) return;
@@ -481,7 +484,7 @@ export class GameScene extends Phaser.Scene {
       // SelectionManager no-ops on same-unit re-select, so onSelectionChanged
       // listeners (including move-preview) don't fire. Refresh explicitly so
       // reachableTiles reflects the unit's just-reset movement points.
-      refreshMovePreview();
+      activateFocusedUnitMove();
     });
 
     // Mid-turn queue progression (markDone, skipActive, promoteTo, sleep toggle).
@@ -493,6 +496,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       focusUnit(unit);
+      activateFocusedUnitMove();
     });
 
     // Space skips the active unit.

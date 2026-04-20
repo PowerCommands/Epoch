@@ -75,6 +75,46 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/abu-al-hasan.png`,
     description: 'A Maghrebi ruler anchoring Moroccan power across western trade routes.',
   },
+  {
+    id: 'leader_george-washington',
+    name: 'George Washinton',
+    nationId: 'nation_north_america',
+    title: 'President George Washington',
+    image: `${LEADER_IMAGE_BASE}/george-washington.png`,
+    description: 'A visionary founding father focused on liberty, stability, and national unity.',
+  },
+  {
+    id: 'leader_mahatma-gandhi',
+    name: 'Gandhi',
+    nationId: 'nation_india',
+    title: 'Mahatma Gandhi',
+    image: `${LEADER_IMAGE_BASE}/mahatma-gandhi.png`,
+    description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
+  },
+  {
+    id: 'leader_qin-shi-huang',
+    name: 'Qin Shi Huang',
+    nationId: 'nation_china',
+    title: 'Emperor Qin Shi Huang',
+    image: `${LEADER_IMAGE_BASE}/qin-shi-huang.png`,
+    description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
+  },
+  {
+    id: 'leader_dom-pedro-ii',
+    name: 'Dom Pedro',
+    nationId: 'nation_south_america',
+    title: 'Emperor Dom Pedro II',
+    image: `${LEADER_IMAGE_BASE}/dom-pedro-ii.png`,
+    description: 'An enlightened monarch focused on scientific progress, cultural growth, and diplomatic stability.',
+  },
+  {
+    id: 'leader_mansa-musa',
+    name: 'Mansa Musa',
+    nationId: 'nation_mali_empire',
+    title: 'Emperor Mansa Musa',
+    image: `${LEADER_IMAGE_BASE}/mansa-musa.png`,
+    description: 'A legendary sovereign focused on immense wealth, trans-Saharan trade, and intellectual enlightenment.',
+  },
 ];
 
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {
