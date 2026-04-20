@@ -85,6 +85,19 @@ export class TurnManager {
     return this.currentRound;
   }
 
+  getCurrentTurnIndex(): number {
+    return this.currentTurnIndex;
+  }
+
+  /**
+   * Directly set the round/turn cursor without firing events.
+   * Used exclusively by save-load restoration.
+   */
+  restoreTurnState(currentRound: number, currentTurnIndex: number): void {
+    this.currentRound = currentRound;
+    this.currentTurnIndex = Math.max(0, Math.min(currentTurnIndex, this.turnOrder.length - 1));
+  }
+
   getCurrentNation(): Nation {
     return this.turnOrder[this.currentTurnIndex];
   }

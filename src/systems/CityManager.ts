@@ -96,6 +96,53 @@ export class CityManager {
   }
 
   /**
+   * Remove every city silently. Used by save-load restoration before
+   * re-adding the saved cities.
+   */
+  clearAllSilently(): void {
+    this.cities.clear();
+    this.resources.clear();
+    this.buildings.clear();
+  }
+
+  /**
+   * Re-create a city with explicit runtime state. Used by save-load
+   * restoration. Caller is responsible for refreshing renderers.
+   */
+  restoreCity(config: {
+    id: string;
+    name: string;
+    ownerId: string;
+    tileX: number;
+    tileY: number;
+    isCapital: boolean;
+    health: number;
+    population: number;
+    foodStorage: number;
+    culture: number;
+    lastTurnAttacked: number | null;
+  }): City {
+    const city = new City({
+      id: config.id,
+      name: config.name,
+      ownerId: config.ownerId,
+      tileX: config.tileX,
+      tileY: config.tileY,
+      isCapital: config.isCapital,
+    });
+    city.health = config.health;
+    city.population = config.population;
+    city.foodStorage = config.foodStorage;
+    city.culture = config.culture;
+    city.lastTurnAttacked = config.lastTurnAttacked;
+
+    this.cities.set(city.id, city);
+    this.resources.set(city.id, new CityResources(city.id));
+    this.buildings.set(city.id, new CityBuildings(city.id));
+    return city;
+  }
+
+  /**
    * Create a CityManager with one capital per nation.
    * Uses axial-hex ring fallback if target tile is ocean.
    */

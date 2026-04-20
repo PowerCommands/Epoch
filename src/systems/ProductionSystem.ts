@@ -146,6 +146,40 @@ export class ProductionSystem {
     return { kind: 'blocked', item: entry.item, reason };
   }
 
+  /**
+   * Clear every queue. Used by save-load restoration before applying
+   * saved queues.
+   */
+  clearAllQueues(): void {
+    this.queues.clear();
+  }
+
+  /**
+   * Restore a city's queue without firing listeners. Used by save-load
+   * restoration. Caller is responsible for UI refresh.
+   */
+  restoreQueue(cityId: string, entries: QueueEntry[]): void {
+    if (entries.length === 0) {
+      this.queues.delete(cityId);
+      return;
+    }
+    this.queues.set(cityId, entries.map((entry) => ({
+      item: entry.item,
+      accumulated: entry.accumulated,
+      blockedReason: entry.blockedReason,
+    })));
+  }
+
+  /**
+   * Force the "initial turnStart has been skipped" latch to true.
+   * Used by save-load restoration so the first turnStart after load
+   * actually advances production (the first post-load turnStart is a
+   * real turn, not the synthetic startup one).
+   */
+  markInitialTurnStartSkipped(): void {
+    this.hasSkippedInitialTurnStart = true;
+  }
+
   onCompleted(listener: ProductionCompletedListener): void {
     this.completedListeners.push(listener);
   }

@@ -49,6 +49,23 @@ export class CityRenderer {
   }
 
   /**
+   * Destroy every rendered container + HP bar and re-render from the
+   * live CityManager. Used after a save is loaded, when the city set
+   * has been replaced wholesale.
+   */
+  rebuildAll(): void {
+    for (const container of this.containers.values()) container.destroy();
+    this.containers.clear();
+    for (const gfx of this.hpBars.values()) gfx.destroy();
+    this.hpBars.clear();
+
+    for (const city of this.cityManager.getAllCities()) {
+      this.renderCity(city);
+      this.refreshHpBar(city);
+    }
+  }
+
+  /**
    * Re-render city symbol (e.g. after ownership change) and HP bar.
    */
   refreshCity(city: City): void {

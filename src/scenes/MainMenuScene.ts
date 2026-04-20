@@ -3,6 +3,8 @@ import { AVAILABLE_MAPS } from '../data/maps';
 import { getLeaderByNationId } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { GameConfig } from '../types/gameConfig';
+import { SetupMusicManager } from '../systems/SetupMusicManager';
+import { SaveLoadService } from '../systems/SaveLoadService';
 
 /**
  * MainMenuScene — HTML/CSS start screen for map, nation, and opponent setup.
@@ -15,6 +17,7 @@ export class MainMenuScene extends Phaser.Scene {
   private selectedOpponentIds = new Set<string>();
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
+  private music: SetupMusicManager | null = null;
 
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -31,6 +34,9 @@ export class MainMenuScene extends Phaser.Scene {
     this.resizeHandler = () => this.syncOverlayBounds();
     window.addEventListener('resize', this.resizeHandler);
 
+    this.music = new SetupMusicManager();
+    this.music.playPlaylist('start');
+
     this.wireEvents();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
   }
@@ -40,6 +46,10 @@ export class MainMenuScene extends Phaser.Scene {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
+
+    // Release the local reference but do NOT dispose — the current nation
+    // playlist must keep looping after the scene transitions to GameScene.
+    this.music = null;
 
     this.overlay?.remove();
     this.overlay = null;
@@ -127,13 +137,28 @@ export class MainMenuScene extends Phaser.Scene {
 
             <div id="mm-opponent-list" class="mm-opponent-list"></div>
 
+            <div class="mm-audio-group">
+              <span class="mm-field-label">Audio</span>
+              <label class="mm-audio-toggle">
+                <input id="mm-music-toggle" type="checkbox" />
+                <span>Music</span>
+              </label>
+              <div class="mm-volume-row">
+                <span class="mm-audio-sublabel">Volume</span>
+                <input id="mm-music-volume" class="mm-audio-slider" type="range" min="0" max="1" step="0.05" />
+                <span id="mm-music-volume-value" class="mm-audio-value"></span>
+              </div>
+            </div>
+
             <button id="mm-change-nation-btn" class="mm-change-nation-btn" type="button" disabled>Change player nation</button>
           </aside>
         </main>
 
         <footer class="mm-actions">
           <button id="mm-start-btn" class="mm-start-btn" type="button" disabled>Start Game</button>
+          <button id="mm-load-btn" class="mm-load-btn" type="button">Load Game</button>
           <button id="mm-editor-btn" class="mm-editor-btn" type="button">Editor</button>
+          <input id="mm-load-input" type="file" accept="application/json,.json" hidden>
         </footer>
       </div>
     `;
@@ -167,6 +192,17 @@ export class MainMenuScene extends Phaser.Scene {
       this.startGame();
     });
 
+    const loadInput = document.getElementById('mm-load-input') as HTMLInputElement;
+    document.getElementById('mm-load-btn')!.addEventListener('click', () => {
+      loadInput.value = '';
+      loadInput.click();
+    });
+    loadInput.addEventListener('change', () => {
+      const file = loadInput.files?.[0];
+      if (!file) return;
+      this.loadGame(file);
+    });
+
     document.getElementById('mm-editor-btn')!.addEventListener('click', () => {
       window.location.href = '/editor.html';
     });
@@ -175,7 +211,37 @@ export class MainMenuScene extends Phaser.Scene {
       this.clearPlayerNation();
     });
 
+    this.wireMusicControls();
+
     this.onMapChanged(mapSelect.value);
+  }
+
+  private wireMusicControls(): void {
+    if (!this.music) return;
+
+    const toggle = document.getElementById('mm-music-toggle') as HTMLInputElement;
+    const slider = document.getElementById('mm-music-volume') as HTMLInputElement;
+    const valueLabel = document.getElementById('mm-music-volume-value') as HTMLSpanElement;
+
+    const formatVolume = (v: number) => `${Math.round(v * 100)}%`;
+
+    toggle.checked = this.music.isEnabled();
+    slider.value = String(this.music.getVolume());
+    slider.disabled = !this.music.isEnabled();
+    valueLabel.textContent = formatVolume(this.music.getVolume());
+
+    toggle.addEventListener('change', () => {
+      if (!this.music) return;
+      this.music.setEnabled(toggle.checked);
+      slider.disabled = !toggle.checked;
+    });
+
+    slider.addEventListener('input', () => {
+      if (!this.music) return;
+      const v = Number(slider.value);
+      this.music.setVolume(v);
+      valueLabel.textContent = formatVolume(v);
+    });
   }
 
   private onMapChanged(mapKey: string): void {
@@ -189,6 +255,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.renderNationList();
     this.updateSetupPanel();
     this.updateStartButton();
+    this.music?.playPlaylist('start');
   }
 
   private renderNationList(): void {
@@ -271,6 +338,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.renderNationList();
     this.updateSetupPanel();
     this.updateStartButton();
+    this.music?.playPlaylist(nationId);
   }
 
   private clearPlayerNation(): void {
@@ -279,6 +347,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.renderNationList();
     this.updateSetupPanel();
     this.updateStartButton();
+    this.music?.playPlaylist('start');
   }
 
   private updateSetupPanel(): void {
@@ -389,6 +458,27 @@ export class MainMenuScene extends Phaser.Scene {
     this.scene.start('GameScene', config);
   }
 
+  private loadGame(file: File): void {
+    file.text().then((text) => {
+      const result = SaveLoadService.parse(text);
+      if (!result.ok) {
+        window.alert(`Could not load save file: ${result.error}`);
+        return;
+      }
+
+      const savedState = result.state;
+      this.cleanup();
+      this.scene.start('GameScene', {
+        mapKey: savedState.mapKey,
+        humanNationId: savedState.humanNationId,
+        activeNationIds: savedState.activeNationIds,
+        savedState,
+      } satisfies GameConfig);
+    }).catch((err: unknown) => {
+      window.alert(`Could not read save file: ${(err as Error).message}`);
+    });
+  }
+
   private injectStyles(): void {
     if (document.getElementById('main-menu-styles')) return;
 
@@ -479,6 +569,7 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-victory-card,
       .mm-nation-card,
       .mm-start-btn,
+      .mm-load-btn,
       .mm-editor-btn,
       .mm-change-nation-btn {
         font-family: inherit;
@@ -875,6 +966,63 @@ export class MainMenuScene extends Phaser.Scene {
         font-size: 13px;
       }
 
+      .mm-audio-group {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border: 1px solid rgba(117, 86, 56, 0.24);
+        border-radius: 8px;
+        background: rgba(255, 252, 244, 0.58);
+        display: grid;
+        gap: 8px;
+      }
+
+      .mm-audio-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #2b2017;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .mm-audio-toggle input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #a75d17;
+        cursor: pointer;
+      }
+
+      .mm-volume-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .mm-audio-sublabel {
+        font-size: 13px;
+        color: rgba(36, 26, 18, 0.7);
+      }
+
+      .mm-audio-slider {
+        width: 100%;
+        accent-color: #a75d17;
+        cursor: pointer;
+      }
+
+      .mm-audio-slider:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .mm-audio-value {
+        font-size: 13px;
+        color: rgba(36, 26, 18, 0.72);
+        min-width: 34px;
+        text-align: right;
+      }
+
       .mm-change-nation-btn {
         margin-top: auto;
         padding: 10px 12px;
@@ -899,13 +1047,14 @@ export class MainMenuScene extends Phaser.Scene {
 
       .mm-actions {
         display: grid;
-        grid-template-columns: minmax(280px, 520px) 170px;
+        grid-template-columns: minmax(280px, 420px) 170px 170px;
         gap: 14px;
         justify-content: center;
         align-items: center;
       }
 
       .mm-start-btn,
+      .mm-load-btn,
       .mm-editor-btn {
         border-radius: 8px;
         font-weight: 700;
@@ -923,6 +1072,7 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       .mm-start-btn:hover:not(:disabled),
+      .mm-load-btn:hover,
       .mm-editor-btn:hover {
         transform: translateY(-1px);
       }
@@ -932,6 +1082,7 @@ export class MainMenuScene extends Phaser.Scene {
         cursor: not-allowed;
       }
 
+      .mm-load-btn,
       .mm-editor-btn {
         min-height: 48px;
         color: #5f3c16;
@@ -940,6 +1091,7 @@ export class MainMenuScene extends Phaser.Scene {
         font-size: 17px;
       }
 
+      .mm-load-btn:hover,
       .mm-editor-btn:hover {
         background: rgba(255, 248, 229, 0.9);
         border-color: rgba(176, 101, 24, 0.7);

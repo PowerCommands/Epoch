@@ -1,0 +1,64 @@
+{
+  "playlists": {
+    "nation_china": [
+      "/assets/sounds/nation_china/nation_china-theme-01.mp3",
+      "/assets/sounds/nation_china/nation_china-theme-02.mp3"
+    ],
+    "nation_england": [
+      "/assets/sounds/nation_england/nation-england-theme-01.mp3",
+      "/assets/sounds/nation_england/nation-england-theme-02.mp3"
+    ],
+    "nation_france": [
+      "/assets/sounds/nation_france/nation_france-theme-01.mp3",
+      "/assets/sounds/nation_france/nation_france-theme-02.mp3"
+    ],
+    "nation_hre": [
+      "/assets/sounds/nation_hre/nation_hre-theme-01.mp3",
+      "/assets/sounds/nation_hre/nation_hre-theme-02.mp3"
+    ],
+    "nation_india": [
+      "/assets/sounds/nation_india/nation_india-theme-01.mp3",
+      "/assets/sounds/nation_india/nation_india-theme-02.mp3"
+    ],
+    "nation_lithuania": [
+      "/assets/sounds/nation_lithuania/nation_lithuania-theme-01.mp3",
+      "/assets/sounds/nation_lithuania/nation_lithuania-theme-02.mp3"
+    ],
+    "nation_mali-empire": [
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
+      "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"
+    ],
+    "nation_morocco_empire": [
+      "/assets/sounds/nation_morocco_empire/nation_morocco_empire-theme-01.mp3",
+      "/assets/sounds/nation_morocco_empire/nation_morocco_empire-theme-02.mp3"
+    ],
+    "nation_north_america": [
+      "/assets/sounds/nation_north_america/nation_north_america-theme-01.mp3",
+      "/assets/sounds/nation_north_america/nation_north_america-theme-02.mp3"
+    ],
+    "nation_novgorod": [
+      "/assets/sounds/nation_novgorod/nation_novgorod-theme-01.mp3",
+      "/assets/sounds/nation_novgorod/nation_novgorod-theme-02.mp3"
+    ],
+    "nation_ottoman": [
+      "/assets/sounds/nation_ottoman/nation_ottoman-theme-01.mp3",
+      "/assets/sounds/nation_ottoman/nation_ottoman-theme-02.mp3"
+    ],
+    "nation_south_america": [
+      "/assets/sounds/nation_south_america/nation_south_america-theme-01.mp3",
+      "/assets/sounds/nation_south_america/nation_south_america-theme-02.mp3"
+    ],
+    "nation_spain": [
+      "/assets/sounds/nation_spain/nation_spain-theme-01.mp3",
+      "/assets/sounds/nation_spain/nation_spain-theme-02.mp3"
+    ],
+    "nation_sweden": [
+      "/assets/sounds/nation_sweden/nation_sweden-theme-01.mp3",
+      "/assets/sounds/nation_sweden/nation_sweden-theme-02.mp3"
+    ],
+    "start": [
+      "/assets/sounds/start/theme-01.mp3",
+      "/assets/sounds/start/theme-02.mp3"
+    ]
+  }
+}

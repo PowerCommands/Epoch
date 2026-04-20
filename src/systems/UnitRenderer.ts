@@ -66,6 +66,23 @@ export class UnitRenderer {
     return this.containers.get(unitId);
   }
 
+  /**
+   * Destroy every rendered container + HP bar and re-render from the
+   * live UnitManager. Used after a save is loaded, when the unit set
+   * has been replaced wholesale.
+   */
+  rebuildAll(): void {
+    for (const container of this.containers.values()) container.destroy();
+    this.containers.clear();
+    for (const gfx of this.hpBars.values()) gfx.destroy();
+    this.hpBars.clear();
+
+    for (const unit of this.unitManager.getAllUnits()) {
+      this.renderUnit(unit.id);
+      this.refreshHpBar(unit.id);
+    }
+  }
+
   refreshUnitPosition(unitId: string): void {
     const unit = this.unitManager.getUnit(unitId);
     const container = this.containers.get(unitId);

@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "description": "Webbläsarbaserat turordningsbaserat strategispel byggt med Phaser 3 + TypeScript + Vite.",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "tsx scripts/generateSoundsManifest.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc && vite build",
+    "prebuild": "tsx scripts/generateSoundsManifest.ts",
     "generate-sprites": "tsx scripts/generateSprites.ts",
+    "generate-sounds-manifest": "tsx scripts/generateSoundsManifest.ts",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -45,6 +45,9 @@ import { LeftPanel } from '../ui/LeftPanel';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
+import { EscapeMenu } from '../ui/EscapeMenu';
+import { SaveLoadService } from '../systems/SaveLoadService';
+import type { SavedGameState } from '../types/saveGame';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
@@ -499,6 +502,18 @@ export class GameScene extends Phaser.Scene {
     };
     this.input.keyboard?.on('keydown-SPACE', onSpaceSkip);
 
+    // C centers the camera on the active unit, or on the human capital
+    // if no active unit is available. Reuses the turn-flow focus helpers.
+    const onKeyCenter = () => {
+      const active = turnOrderSystem.getActive();
+      if (active) {
+        focusUnit(active);
+        return;
+      }
+      focusHumanCapital();
+    };
+    this.input.keyboard?.on('keydown-C', onKeyCenter);
+
     // Keyboard shortcuts for unit actions on the selected human unit.
     const activateActionIfHumanTurn = (mode: 'move' | 'attack' | 'ranged' | 'sleep') => {
       if (!turnManager.getCurrentNation().isHuman) return;
@@ -517,6 +532,7 @@ export class GameScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-SPACE', onSpaceSkip);
+      this.input.keyboard?.off('keydown-C', onKeyCenter);
       this.input.keyboard?.off('keydown-M', onKeyMove);
       this.input.keyboard?.off('keydown-A', onKeyAttack);
       this.input.keyboard?.off('keydown-R', onKeyRanged);
@@ -1148,6 +1164,86 @@ export class GameScene extends Phaser.Scene {
       overlay.setInteractive();
     });
 
+    // Apply a saved snapshot (if loading) before the turn manager starts
+    // so UI refreshes triggered by the initial turnStart reflect the
+    // restored session.
+    if (data.savedState) {
+      SaveLoadService.apply(data.savedState, {
+        mapKey: data.mapKey,
+        humanNationId: data.humanNationId,
+        activeNationIds: data.activeNationIds,
+        mapData,
+        nationManager,
+        cityManager,
+        unitManager,
+        productionSystem,
+        diplomacyManager,
+        discoverySystem,
+        turnManager,
+      });
+
+      // Rebuild renderers that depend on replaced entities.
+      cityRenderer.rebuildAll();
+      unitRenderer.rebuildAll();
+      territoryRenderer.render();
+      leaderStrip?.rebuild();
+      for (const nation of nationManager.getAllNations()) {
+        resourceSystem.recalculateForNation(nation.id);
+      }
+    }
+
+    // ─── Escape menu ─────────────────────────────────────────────────────────
+
+    const escapeMenu = new EscapeMenu({
+      onSave: () => {
+        const state = SaveLoadService.serialize({
+          mapKey: data.mapKey,
+          humanNationId: data.humanNationId,
+          activeNationIds: data.activeNationIds,
+          mapData,
+          nationManager,
+          cityManager,
+          unitManager,
+          productionSystem,
+          diplomacyManager,
+          discoverySystem,
+          turnManager,
+        });
+        downloadSaveFile(state);
+        escapeMenu.close();
+      },
+      onLoad: (file) => {
+        file.text().then((text) => {
+          const result = SaveLoadService.parse(text);
+          if (!result.ok) {
+            escapeMenu.setError(result.error);
+            return;
+          }
+          const savedState = result.state;
+          escapeMenu.close();
+          this.scene.start('GameScene', {
+            mapKey: savedState.mapKey,
+            humanNationId: savedState.humanNationId,
+            activeNationIds: savedState.activeNationIds,
+            savedState,
+          });
+        }).catch((err: unknown) => {
+          escapeMenu.setError(`Failed to read file: ${(err as Error).message}`);
+        });
+      },
+      onQuit: () => {
+        escapeMenu.close();
+        this.scene.start('MainMenuScene');
+      },
+    });
+
+    const onKeyEscape = () => escapeMenu.toggle();
+    this.input.keyboard?.on('keydown-ESC', onKeyEscape);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-ESC', onKeyEscape);
+      escapeMenu.shutdown();
+    });
+
     // Starta turordningen — sist, efter att alla lyssnare kopplats
     turnManager.start();
 
@@ -1234,4 +1330,20 @@ export class GameScene extends Phaser.Scene {
     }
     return tileMap.getTileAt(selectable.unit.tileX, selectable.unit.tileY);
   }
+}
+
+function downloadSaveFile(state: SavedGameState): void {
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `epoch-save-${state.mapKey}-${ts}.json`;
+
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

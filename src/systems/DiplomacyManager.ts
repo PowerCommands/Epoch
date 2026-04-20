@@ -80,4 +80,32 @@ export class DiplomacyManager {
   onWarDeclared(callback: WarDeclaredListener): void {
     this.warDeclaredListeners.push(callback);
   }
+
+  /**
+   * Return every nation-pair whose diplomatic state differs from the
+   * default PEACE. Used by save-load serialization.
+   */
+  getAllStates(): { keys: [string, string]; state: DiplomacyState }[] {
+    const out: { keys: [string, string]; state: DiplomacyState }[] = [];
+    for (const [key, state] of this.states) {
+      const [a, b] = key.split('_');
+      if (a === undefined || b === undefined) continue;
+      out.push({ keys: [a, b], state });
+    }
+    return out;
+  }
+
+  /**
+   * Silently overwrite the state between two nations. Does not fire
+   * listeners. Used by save-load restoration.
+   */
+  restoreState(a: string, b: string, state: DiplomacyState): void {
+    this.states.set(this.pairKey(a, b), state);
+  }
+
+  /** Reset all diplomacy state. Used before applying a loaded save. */
+  resetAll(): void {
+    this.states.clear();
+    this.pendingProposals.clear();
+  }
 }

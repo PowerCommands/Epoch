@@ -273,6 +273,56 @@ export class UnitManager {
     return manager;
   }
 
+  /**
+   * Remove every unit silently (no listener notifications). Used by
+   * save-load restoration before re-adding the saved units.
+   */
+  clearAllSilently(): void {
+    this.units.clear();
+    this.unitGrid.fill(null);
+  }
+
+  /**
+   * Re-create a unit with a specific id, position, and runtime state.
+   * Does not fire the 'created' notification — callers fire it
+   * themselves after restoration so renderers and turn-order systems
+   * can refresh in a controlled order.
+   */
+  restoreUnit(config: {
+    id: string;
+    name: string;
+    ownerId: string;
+    tileX: number;
+    tileY: number;
+    unitType: UnitType;
+    health: number;
+    movementPoints: number;
+    transportId?: string;
+    isSleeping: boolean;
+  }): Unit {
+    const unit = new Unit({
+      id: config.id,
+      name: config.name,
+      ownerId: config.ownerId,
+      tileX: config.tileX,
+      tileY: config.tileY,
+      unitType: config.unitType,
+      movementPoints: config.movementPoints,
+    });
+    unit.health = config.health;
+    unit.transportId = config.transportId;
+    unit.isSleeping = config.isSleeping;
+
+    this.units.set(unit.id, unit);
+    this.placeOnGrid(unit);
+    return unit;
+  }
+
+  /** Emit a 'created' event for a unit already placed via restoreUnit. */
+  notifyCreated(unit: Unit): void {
+    this.notify({ unit, reason: 'created' });
+  }
+
   private notify(event: UnitChangedEvent): void {
     if (event.tileKey === undefined) {
       event.tileKey = `${event.unit.tileX},${event.unit.tileY}`;

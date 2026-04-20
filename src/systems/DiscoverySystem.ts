@@ -72,6 +72,35 @@ export class DiscoverySystem {
     }
   }
 
+  /**
+   * Return every directional met-pair recorded so far. The returned
+   * list contains each undirected pair once (a < b lexicographically).
+   */
+  getAllMetPairs(): Array<[string, string]> {
+    const seen = new Set<string>();
+    const out: Array<[string, string]> = [];
+    for (const [a, set] of this.met) {
+      for (const b of set) {
+        if (a === b) continue;
+        const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(a < b ? [a, b] : [b, a]);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Silently record a met-pair without firing listeners. Used by
+   * save-load restoration.
+   */
+  restoreMet(a: string, b: string): void {
+    if (a === b) return;
+    this.getOrCreate(a).add(b);
+    this.getOrCreate(b).add(a);
+  }
+
   private recordMet(a: string, b: string): void {
     const setA = this.getOrCreate(a);
     const setB = this.getOrCreate(b);

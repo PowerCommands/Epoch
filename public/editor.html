@@ -30,6 +30,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .palette-btn:hover { border-color: #666; }
 .palette-btn.active { border-color: #fff; background: #333; }
 .palette-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+.mode-btn {
+  width: 100%; margin-bottom: 6px; border: 2px solid transparent; border-radius: 3px;
+  padding: 6px 8px; background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px;
+  cursor: pointer; display: flex; align-items: center; gap: 7px; text-align: left;
+}
+.mode-btn:hover { border-color: #666; }
+.mode-btn.active { border-color: #fff; background: #333; }
+.mode-icon { font-size: 14px; line-height: 1; }
 
 .tool-btns { display: flex; flex-direction: column; gap: 4px; }
 .tool-btn {
@@ -49,11 +57,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .entity-row.selected { background: #333; outline: 1px solid #888; }
 .entity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
-#save-btn {
+.toolbar-actions { display: flex; flex-direction: column; gap: 8px; }
+#save-btn, #exit-btn {
   padding: 10px; border: 1px solid #4a9; border-radius: 4px; background: #1a3a2a;
   color: #4a9; font: inherit; font-size: 13px; cursor: pointer; font-weight: bold;
 }
 #save-btn:hover { background: #2a4a3a; }
+#exit-btn { border-color: #777; background: #242424; color: #ddd; }
+#exit-btn:hover { background: #303030; border-color: #aaa; }
 
 .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; font-size: 11px; color: #aaa; }
 .field input, .field select {
@@ -125,6 +136,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 
     <div class="section" id="palette-section">
       <div class="section-title">Terrain Palette</div>
+      <button class="mode-btn" id="pan-mode-btn" type="button" aria-pressed="false">
+        <span class="mode-icon" aria-hidden="true">&#9995;</span>
+        <span>Pan Camera</span>
+      </button>
       <div class="palette-grid" id="palette"></div>
     </div>
 
@@ -158,7 +173,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       </label>
     </div>
 
-    <button id="save-btn">Download europeScenario.json</button>
+    <div class="toolbar-actions">
+      <button id="save-btn">Download europeScenario.json</button>
+      <button id="exit-btn">Exit to Start</button>
+    </div>
     <div id="validation-warning" class="warning-box"></div>
   </div>
 
@@ -195,10 +213,13 @@ const SQRT_3 = Math.sqrt(3);
 // View state
 let camX = 0, camY = 0, zoom = 1;
 const MIN_ZOOM = 0.08, MAX_ZOOM = 4;
+const PAN_SPEED = 400;
+const DRAG_THRESHOLD = 4;
 
 // Tool state
 let currentTool = 'paint';
 let currentTerrain = 'plains';
+let interactionMode = 'paint';
 let brushSize = 1;
 let selectedEntity = null; // { kind: 'city'|'unit', index: number }
 let selectedNationId = null;
@@ -237,6 +258,7 @@ async function init() {
   zoom = Math.min(vw / worldBounds.width, vh / worldBounds.height);
   camX = worldBounds.width / 2 - vw / (2 * zoom);
   camY = worldBounds.height / 2 - vh / (2 * zoom);
+  clampCamera();
 
   buildPalette();
   selectedNationId = scenario.nations[0]?.id ?? null;
@@ -260,11 +282,21 @@ function buildPalette() {
     btn.innerHTML = `<span class="palette-swatch" style="background:${TILE_COLORS[type]}"></span>${type}`;
     btn.addEventListener('click', () => {
       currentTerrain = type;
+      currentTool = 'paint';
+      document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
+      updateToolPanels();
+      setInteractionMode('paint');
       grid.querySelectorAll('.palette-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+      render();
     });
     grid.appendChild(btn);
   }
+  updateInteractionModeUI();
 }
+
+document.getElementById('pan-mode-btn').addEventListener('click', () => {
+  setInteractionMode('pan');
+});
 
 // ─── Entity lists ───────────────────────────────────────────────────────────
 
@@ -432,11 +464,12 @@ document.getElementById('tool-btns').addEventListener('click', (e) => {
   const btn = e.target.closest('.tool-btn');
   if (!btn) return;
   currentTool = btn.dataset.tool;
+  if (currentTool === 'paint') setInteractionMode('paint');
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b === btn));
   updateToolPanels();
   selectedEntity = null;
   updateEntityHighlights();
-  viewport.style.cursor = currentTool === 'move' ? 'default' : 'crosshair';
+  updateViewportCursor();
   render();
 });
 
@@ -444,6 +477,33 @@ function updateToolPanels() {
   document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
   document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
   document.getElementById('unit-tool-section').style.display = currentTool === 'addUnit' ? '' : 'none';
+  updateInteractionModeUI();
+}
+
+function setInteractionMode(mode) {
+  interactionMode = mode;
+  updateInteractionModeUI();
+  updateViewportCursor();
+}
+
+function updateInteractionModeUI() {
+  const panModeBtn = document.getElementById('pan-mode-btn');
+  if (!panModeBtn) return;
+  const isPanMode = currentTool === 'paint' && interactionMode === 'pan';
+  panModeBtn.classList.toggle('active', isPanMode);
+  panModeBtn.setAttribute('aria-pressed', isPanMode ? 'true' : 'false');
+}
+
+function updateViewportCursor() {
+  if (isPanning) {
+    viewport.style.cursor = 'grabbing';
+  } else if (currentTool === 'move') {
+    viewport.style.cursor = 'default';
+  } else if (currentTool === 'paint' && interactionMode === 'pan') {
+    viewport.style.cursor = 'grab';
+  } else {
+    viewport.style.cursor = 'crosshair';
+  }
 }
 
 // Brush size
@@ -484,6 +544,13 @@ function worldToTile(wx, wy) {
 function screenToTile(sx, sy) {
   const { wx, wy } = screenToWorld(sx, sy);
   return worldToTile(wx, wy);
+}
+
+function clampCamera() {
+  const vw = viewport.clientWidth / zoom;
+  const vh = viewport.clientHeight / zoom;
+  camX = Math.max(0, Math.min(Math.max(0, worldBounds.width - vw), camX));
+  camY = Math.max(0, Math.min(Math.max(0, worldBounds.height - vh), camY));
 }
 
 function roundAxial(q, r) {
@@ -675,57 +742,88 @@ function addUnitAt(q, r) {
 
 let isPanning = false;
 let panStartX = 0, panStartY = 0, panCamStartX = 0, panCamStartY = 0;
+let leftPointerDown = false;
+let leftPointerDragged = false;
+
+function startPanning(clientX, clientY) {
+  isPanning = true;
+  panStartX = clientX;
+  panStartY = clientY;
+  panCamStartX = camX;
+  panCamStartY = camY;
+  updateViewportCursor();
+}
 
 viewport.addEventListener('mousedown', (e) => {
-  // Middle mouse or right mouse → pan
+  // Middle mouse or right mouse can still pan without changing editor mode.
   if (e.button === 1 || e.button === 2) {
-    isPanning = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    panCamStartX = camX;
-    panCamStartY = camY;
+    startPanning(e.clientX, e.clientY);
     e.preventDefault();
     return;
   }
 
   if (e.button !== 0) return;
 
-  const pos = screenToTile(e.clientX, e.clientY);
-  if (!pos) return;
-
-  if (currentTool === 'paint') {
-    isPainting = true;
-    paintAt(pos.q, pos.r);
-  } else if (currentTool === 'move') {
-    if (selectedEntity) {
-      // Move selected entity to clicked tile
-      moveEntityTo(pos.q, pos.r);
-    } else {
-      // Try to select entity at clicked tile
-      const cityIdx = scenario.cities.findIndex(c => c.q === pos.q && c.r === pos.r);
-      if (cityIdx >= 0) { selectEntity('city', cityIdx); return; }
-      const unitIdx = scenario.units.findIndex(u => u.q === pos.q && u.r === pos.r);
-      if (unitIdx >= 0) { selectEntity('unit', unitIdx); return; }
+  if (currentTool === 'paint' && interactionMode === 'paint') {
+    const pos = screenToTile(e.clientX, e.clientY);
+    if (pos) {
+      isPainting = true;
+      paintAt(pos.q, pos.r);
     }
-  } else if (currentTool === 'setStart') {
-    setStartPosition(pos.q, pos.r);
-  } else if (currentTool === 'addCity') {
-    addCityAt(pos.q, pos.r);
-  } else if (currentTool === 'addUnit') {
-    addUnitAt(pos.q, pos.r);
-  }
-});
-
-viewport.addEventListener('mousemove', (e) => {
-  if (isPanning) {
-    const dx = (e.clientX - panStartX) / zoom;
-    const dy = (e.clientY - panStartY) / zoom;
-    camX = panCamStartX - dx;
-    camY = panCamStartY - dy;
-    render();
+    e.preventDefault();
     return;
   }
 
+  leftPointerDown = true;
+  leftPointerDragged = false;
+  isPanning = false;
+  panStartX = e.clientX;
+  panStartY = e.clientY;
+  panCamStartX = camX;
+  panCamStartY = camY;
+  e.preventDefault();
+});
+
+function applyToolAtClientPoint(clientX, clientY) {
+  const pos = screenToTile(clientX, clientY);
+  if (!pos) return;
+
+  applyToolAt(pos.q, pos.r);
+}
+
+function applyToolAt(q, r) {
+  if (currentTool === 'paint') {
+    paintAt(q, r);
+  } else if (currentTool === 'move') {
+    if (selectedEntity) {
+      // Move selected entity to clicked tile
+      moveEntityTo(q, r);
+    } else {
+      // Try to select entity at clicked tile
+      const cityIdx = scenario.cities.findIndex(c => c.q === q && c.r === r);
+      if (cityIdx >= 0) { selectEntity('city', cityIdx); return; }
+      const unitIdx = scenario.units.findIndex(u => u.q === q && u.r === r);
+      if (unitIdx >= 0) { selectEntity('unit', unitIdx); return; }
+    }
+  } else if (currentTool === 'setStart') {
+    setStartPosition(q, r);
+  } else if (currentTool === 'addCity') {
+    addCityAt(q, r);
+  } else if (currentTool === 'addUnit') {
+    addUnitAt(q, r);
+  }
+}
+
+function panToPointer(clientX, clientY) {
+  const dx = (clientX - panStartX) / zoom;
+  const dy = (clientY - panStartY) / zoom;
+  camX = panCamStartX - dx;
+  camY = panCamStartY - dy;
+  clampCamera();
+  render();
+}
+
+viewport.addEventListener('mousemove', (e) => {
   const pos = screenToTile(e.clientX, e.clientY);
   if (pos) {
     document.getElementById('status-pos').textContent = `q/r (${pos.q}, ${pos.r})`;
@@ -734,12 +832,46 @@ viewport.addEventListener('mousemove', (e) => {
 
   if (isPainting && currentTool === 'paint' && pos) {
     paintAt(pos.q, pos.r);
+    return;
+  }
+
+  if (leftPointerDown) {
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    if (!leftPointerDragged && Math.sqrt(dx * dx + dy * dy) >= DRAG_THRESHOLD) {
+      leftPointerDragged = true;
+      if (currentTool === 'paint' && interactionMode === 'pan') {
+        isPanning = true;
+        updateViewportCursor();
+      }
+    }
+  }
+
+  if (isPanning) {
+    panToPointer(e.clientX, e.clientY);
   }
 });
 
 window.addEventListener('mouseup', (e) => {
-  if (e.button === 1 || e.button === 2) isPanning = false;
-  if (e.button === 0) isPainting = false;
+  if (e.button === 0 && isPainting) {
+    isPainting = false;
+    return;
+  }
+
+  if (e.button === 0 && leftPointerDown) {
+    if (!leftPointerDragged && !(currentTool === 'paint' && interactionMode === 'pan')) {
+      applyToolAtClientPoint(e.clientX, e.clientY);
+    }
+    leftPointerDown = false;
+    leftPointerDragged = false;
+    isPanning = false;
+    updateViewportCursor();
+  }
+
+  if (e.button === 1 || e.button === 2) {
+    isPanning = false;
+    updateViewportCursor();
+  }
 });
 
 viewport.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -761,6 +893,7 @@ viewport.addEventListener('wheel', (e) => {
   // Adjust cam so same world point stays under cursor
   camX = wxBefore - mx / zoom;
   camY = wyBefore - my / zoom;
+  clampCamera();
 
   render();
 }, { passive: false });
@@ -770,6 +903,7 @@ viewport.addEventListener('wheel', (e) => {
 function resizeCanvas() {
   canvas.width = viewport.clientWidth;
   canvas.height = viewport.clientHeight;
+  clampCamera();
 }
 
 window.addEventListener('resize', () => { resizeCanvas(); render(); });
@@ -996,9 +1130,26 @@ document.getElementById('save-btn').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
+document.getElementById('exit-btn').addEventListener('click', () => {
+  window.location.href = '/';
+});
+
 // ─── Keyboard shortcuts ─────────────────────────────────────────────────────
 
+const heldKeys = new Set();
+
+function isTypingTarget(target) {
+  return target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement;
+}
+
 window.addEventListener('keydown', (e) => {
+  if (isTypingTarget(e.target)) return;
+
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
+    heldKeys.add(e.key.toLowerCase());
+    e.preventDefault();
+  }
+
   // Number keys 1-8 select terrain type
   const num = parseInt(e.key);
   if (num >= 1 && num <= TILE_TYPES.length) {
@@ -1006,8 +1157,9 @@ window.addEventListener('keydown', (e) => {
     currentTool = 'paint';
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
     updateToolPanels();
+    setInteractionMode('paint');
     document.querySelectorAll('.palette-btn').forEach(b => b.classList.toggle('active', b.dataset.type === currentTerrain));
-    viewport.style.cursor = 'crosshair';
+    render();
   }
 
   // Escape deselects entity
@@ -1030,6 +1182,33 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+window.addEventListener('keyup', (e) => {
+  heldKeys.delete(e.key.toLowerCase());
+});
+
+let lastFrameTime = performance.now();
+function updateCameraFrame(now) {
+  const delta = now - lastFrameTime;
+  lastFrameTime = now;
+
+  const speed = (PAN_SPEED / zoom) * (delta / 1000);
+  const moveLeft = heldKeys.has('arrowleft') || heldKeys.has('a');
+  const moveRight = heldKeys.has('arrowright') || heldKeys.has('d');
+  const moveUp = heldKeys.has('arrowup') || heldKeys.has('w');
+  const moveDown = heldKeys.has('arrowdown') || heldKeys.has('s');
+
+  if (moveLeft || moveRight || moveUp || moveDown) {
+    if (moveLeft) camX -= speed;
+    if (moveRight) camX += speed;
+    if (moveUp) camY -= speed;
+    if (moveDown) camY += speed;
+    clampCamera();
+    render();
+  }
+
+  requestAnimationFrame(updateCameraFrame);
+}
+
 function setStatusInfo(message) {
   document.getElementById('status-info').textContent = message;
 }
@@ -1037,6 +1216,7 @@ function setStatusInfo(message) {
 // ─── Start ──────────────────────────────────────────────────────────────────
 
 init();
+requestAnimationFrame(updateCameraFrame);
 </script>
 </body>
 </html>
