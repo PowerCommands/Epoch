@@ -35,6 +35,7 @@ import { VictorySystem } from '../systems/VictorySystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { CheatSystem } from '../systems/CheatSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
+import { SetupMusicManager } from '../systems/SetupMusicManager';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
@@ -1198,48 +1199,51 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Escape menu ─────────────────────────────────────────────────────────
 
-    const escapeMenu = new EscapeMenu({
-      onSave: () => {
-        const state = SaveLoadService.serialize({
-          mapKey: data.mapKey,
-          humanNationId: data.humanNationId,
-          activeNationIds: data.activeNationIds,
-          mapData,
-          nationManager,
-          cityManager,
-          unitManager,
-          productionSystem,
-          diplomacyManager,
-          discoverySystem,
-          turnManager,
-        });
-        downloadSaveFile(state);
-        escapeMenu.close();
-      },
-      onLoad: (file) => {
-        file.text().then((text) => {
-          const result = SaveLoadService.parse(text);
-          if (!result.ok) {
-            escapeMenu.setError(result.error);
-            return;
-          }
-          const savedState = result.state;
-          escapeMenu.close();
-          this.scene.start('GameScene', {
-            mapKey: savedState.mapKey,
-            humanNationId: savedState.humanNationId,
-            activeNationIds: savedState.activeNationIds,
-            savedState,
+    const escapeMenu = new EscapeMenu(
+      {
+        onSave: () => {
+          const state = SaveLoadService.serialize({
+            mapKey: data.mapKey,
+            humanNationId: data.humanNationId,
+            activeNationIds: data.activeNationIds,
+            mapData,
+            nationManager,
+            cityManager,
+            unitManager,
+            productionSystem,
+            diplomacyManager,
+            discoverySystem,
+            turnManager,
           });
-        }).catch((err: unknown) => {
-          escapeMenu.setError(`Failed to read file: ${(err as Error).message}`);
-        });
+          downloadSaveFile(state);
+          escapeMenu.close();
+        },
+        onLoad: (file) => {
+          file.text().then((text) => {
+            const result = SaveLoadService.parse(text);
+            if (!result.ok) {
+              escapeMenu.setError(result.error);
+              return;
+            }
+            const savedState = result.state;
+            escapeMenu.close();
+            this.scene.start('GameScene', {
+              mapKey: savedState.mapKey,
+              humanNationId: savedState.humanNationId,
+              activeNationIds: savedState.activeNationIds,
+              savedState,
+            });
+          }).catch((err: unknown) => {
+            escapeMenu.setError(`Failed to read file: ${(err as Error).message}`);
+          });
+        },
+        onQuit: () => {
+          escapeMenu.close();
+          this.scene.start('MainMenuScene');
+        },
       },
-      onQuit: () => {
-        escapeMenu.close();
-        this.scene.start('MainMenuScene');
-      },
-    });
+      { music: SetupMusicManager.getShared() },
+    );
 
     const onKeyEscape = () => escapeMenu.toggle();
     this.input.keyboard?.on('keydown-ESC', onKeyEscape);

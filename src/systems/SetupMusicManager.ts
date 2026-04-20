@@ -20,11 +20,21 @@ export const MUSIC_VOLUME_STORAGE_KEY = 'epoch.music.volume';
 const DEFAULT_VOLUME = 0.5;
 const MANIFEST_URL = '/assets/sounds/manifest.json';
 const START_PLAYLIST_KEY = 'start';
+type SettingsChangedListener = () => void;
 
 export class SetupMusicManager {
+  private static shared: SetupMusicManager | null = null;
+
+  static getShared(): SetupMusicManager {
+    if (!SetupMusicManager.shared) SetupMusicManager.shared = new SetupMusicManager();
+    return SetupMusicManager.shared;
+  }
+
   private manifest: SoundsManifest = { playlists: {} };
   private manifestReady: Promise<void>;
+  private manifestLoaded = false;
   private audio: HTMLAudioElement | null = null;
+  private readonly settingsChangedListeners = new Set<SettingsChangedListener>();
 
   private enabled = true;
   private volume = DEFAULT_VOLUME;
@@ -57,33 +67,51 @@ export class SetupMusicManager {
   /** Switch to a playlist by key. Falls back to the start playlist if missing/empty. */
   playPlaylist(key: string): void {
     this.requestedKey = key;
-    void this.manifestReady.then(() => this.applyRequestedPlaylist());
+    if (this.manifestLoaded) {
+      this.applyRequestedPlaylist();
+    } else {
+      void this.manifestReady.then(() => this.applyRequestedPlaylist());
+    }
   }
 
   setEnabled(enabled: boolean): void {
     if (this.enabled === enabled) return;
     this.enabled = enabled;
     this.saveSettings();
+    this.notifySettingsChanged();
 
     if (!enabled) {
       this.stopPlayback();
       return;
     }
 
-    void this.manifestReady.then(() => this.applyRequestedPlaylist(true));
+    if (this.manifestLoaded) {
+      this.applyRequestedPlaylist(true);
+    } else {
+      void this.manifestReady.then(() => this.applyRequestedPlaylist(true));
+    }
   }
 
   setVolume(volume: number): void {
     const clamped = Math.max(0, Math.min(1, volume));
+    if (this.volume === clamped) return;
     this.volume = clamped;
     this.saveSettings();
     if (this.audio) this.audio.volume = clamped;
+    this.notifySettingsChanged();
+  }
+
+  onSettingsChanged(listener: SettingsChangedListener): () => void {
+    this.settingsChangedListeners.add(listener);
+    return () => this.settingsChangedListeners.delete(listener);
   }
 
   /** Stop playback and release listeners. Call on scene shutdown. */
   dispose(): void {
     this.stopPlayback();
     this.detachUserGestureListener();
+    this.settingsChangedListeners.clear();
+    if (SetupMusicManager.shared === this) SetupMusicManager.shared = null;
   }
 
   private loadSettings(): void {
@@ -110,6 +138,10 @@ export class SetupMusicManager {
     }
   }
 
+  private notifySettingsChanged(): void {
+    for (const listener of this.settingsChangedListeners) listener();
+  }
+
   private async loadManifest(): Promise<void> {
     try {
       const res = await fetch(MANIFEST_URL, { cache: 'no-cache' });
@@ -121,6 +153,7 @@ export class SetupMusicManager {
     } catch (err) {
       console.warn('SetupMusicManager: failed to load sound manifest', err);
     }
+    this.manifestLoaded = true;
     this.applyRequestedPlaylist();
   }
 

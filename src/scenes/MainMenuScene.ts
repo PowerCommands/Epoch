@@ -5,6 +5,7 @@ import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { GameConfig } from '../types/gameConfig';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
+import { bindMusicControls } from '../ui/MusicControls';
 
 /**
  * MainMenuScene — HTML/CSS start screen for map, nation, and opponent setup.
@@ -18,6 +19,7 @@ export class MainMenuScene extends Phaser.Scene {
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
   private music: SetupMusicManager | null = null;
+  private unbindMusicControls: (() => void) | null = null;
 
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -34,7 +36,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.resizeHandler = () => this.syncOverlayBounds();
     window.addEventListener('resize', this.resizeHandler);
 
-    this.music = new SetupMusicManager();
+    this.music = SetupMusicManager.getShared();
     this.music.playPlaylist('start');
 
     this.wireEvents();
@@ -49,6 +51,8 @@ export class MainMenuScene extends Phaser.Scene {
 
     // Release the local reference but do NOT dispose — the current nation
     // playlist must keep looping after the scene transitions to GameScene.
+    this.unbindMusicControls?.();
+    this.unbindMusicControls = null;
     this.music = null;
 
     this.overlay?.remove();
@@ -223,25 +227,7 @@ export class MainMenuScene extends Phaser.Scene {
     const slider = document.getElementById('mm-music-volume') as HTMLInputElement;
     const valueLabel = document.getElementById('mm-music-volume-value') as HTMLSpanElement;
 
-    const formatVolume = (v: number) => `${Math.round(v * 100)}%`;
-
-    toggle.checked = this.music.isEnabled();
-    slider.value = String(this.music.getVolume());
-    slider.disabled = !this.music.isEnabled();
-    valueLabel.textContent = formatVolume(this.music.getVolume());
-
-    toggle.addEventListener('change', () => {
-      if (!this.music) return;
-      this.music.setEnabled(toggle.checked);
-      slider.disabled = !toggle.checked;
-    });
-
-    slider.addEventListener('input', () => {
-      if (!this.music) return;
-      const v = Number(slider.value);
-      this.music.setVolume(v);
-      valueLabel.textContent = formatVolume(v);
-    });
+    this.unbindMusicControls = bindMusicControls(this.music, { toggle, slider, valueLabel });
   }
 
   private onMapChanged(mapKey: string): void {

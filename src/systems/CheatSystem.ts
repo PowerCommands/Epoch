@@ -53,8 +53,8 @@ export class CheatSystem {
     });
 
     this.register({
-      name: 'research complete',
-      description: 'Complete the current research for the player nation.',
+      name: 'research done',
+      description: 'Finish the current research for the player nation.',
       execute: (_args, context) => {
         if (!context.humanNationId) return 'No active research';
 
@@ -66,8 +66,8 @@ export class CheatSystem {
     });
 
     this.register({
-      name: 'production complete',
-      description: 'Complete current production in the selected human city. Use "production complete --all" to finish it in every human city.',
+      name: 'production done',
+      description: 'Finish current production in the selected human city. Use "production done --all" to finish it in every human city.',
       execute: (args, context) => {
         if (!context.humanNationId) return 'No human player';
 
@@ -90,7 +90,7 @@ export class CheatSystem {
           return lines.join('\n');
         }
 
-        if (args.length !== 0) return 'Usage: production complete [--all]';
+        if (args.length !== 0) return 'Usage: production done [--all]';
 
         const selection = context.selectionManager.getSelected();
         if (!selection || selection.kind !== 'city' || selection.city.ownerId !== context.humanNationId) {
