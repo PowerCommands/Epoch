@@ -450,24 +450,7 @@ export class GameScene extends Phaser.Scene {
       const { x, y } = tileMap.tileToWorld(settler.tileX, settler.tileY);
       this.cameraController.focusOn(x, y, 1.5);
     };
-    turnManager.on('turnStart', (e) => {
-      if (e.nation.isHuman) {
-        focusHumanCapital();
-        turnOrderSystem.refreshActive();
-        if (!turnOrderSystem.getActive()) {
-          selectionManager.clearSelection();
-        }
-      }
-    });
-
-    // Auto-select the active unit and focus the camera on it.
-    turnOrderSystem.onActiveUnitChanged((unit) => {
-      if (!turnManager.getCurrentNation().isHuman) return;
-      if (!unit) {
-        selectionManager.clearSelection();
-        focusHumanCapital();
-        return;
-      }
+    const focusUnit = (unit: Unit) => {
       suppressPromote = true;
       try {
         selectionManager.selectUnit(unit);
@@ -476,6 +459,35 @@ export class GameScene extends Phaser.Scene {
       }
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
       this.cameraController.focusOn(x, y, 1.5);
+    };
+
+    turnManager.on('turnStart', (e) => {
+      if (!e.nation.isHuman) return;
+      turnOrderSystem.refreshActive();
+      const active = turnOrderSystem.getActive();
+      if (!active) {
+        selectionManager.clearSelection();
+        focusHumanCapital();
+        return;
+      }
+      // Force-focus even if the active id is unchanged since last turn —
+      // refreshActive() skips the listener in that case.
+      focusUnit(active);
+      // SelectionManager no-ops on same-unit re-select, so onSelectionChanged
+      // listeners (including move-preview) don't fire. Refresh explicitly so
+      // reachableTiles reflects the unit's just-reset movement points.
+      refreshMovePreview();
+    });
+
+    // Mid-turn queue progression (markDone, skipActive, promoteTo, sleep toggle).
+    // Do NOT pan to the capital here — capital focus is a turn-start rule only.
+    turnOrderSystem.onActiveUnitChanged((unit) => {
+      if (!turnManager.getCurrentNation().isHuman) return;
+      if (!unit) {
+        selectionManager.clearSelection();
+        return;
+      }
+      focusUnit(unit);
     });
 
     // Space skips the active unit.
@@ -1067,8 +1079,19 @@ export class GameScene extends Phaser.Scene {
       refreshMovePreview();
     };
     window.addEventListener('focusCity', onFocusCity);
+
+    const onFocusUnit = (event: Event) => {
+      const unitId = (event as CustomEvent<{ unitId: string }>).detail.unitId;
+      const unit = unitManager.getUnit(unitId);
+      if (!unit) return;
+
+      const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
+      this.cameras.main.centerOn(x, y);
+    };
+    window.addEventListener('focusUnit', onFocusUnit);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener('focusCity', onFocusCity);
+      window.removeEventListener('focusUnit', onFocusUnit);
       document.removeEventListener('nationSelected', onNationSelected);
       document.removeEventListener('leaderSelected', onLeaderSelected);
       document.removeEventListener('diplomacyAction', onDiplomacyAction);

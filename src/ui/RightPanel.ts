@@ -469,8 +469,9 @@ export class RightPanel {
     this.contentEl.append(section);
 
     if (nation) {
-      this.contentEl.append(this.renderLeaderNationSection(leader.nationId));
       const isHuman = leader.nationId === this.humanNationId;
+      this.contentEl.append(this.renderLeaderNationSection(leader.nationId));
+      this.contentEl.append(this.renderLeaderUnitsSection(leader.nationId, isHuman));
       if (!isHuman && this.diplomacyManager && this.humanNationId && this.isNationKnown(leader.nationId)) {
         this.contentEl.append(this.renderDiplomacySection(leader.nationId));
       }
@@ -687,6 +688,38 @@ export class RightPanel {
       this.createDiv('', `Units: ${units.length}`),
       this.createDiv('', `Territory: ${territoryTiles} tiles`),
     );
+
+    return section;
+  }
+
+  private renderLeaderUnitsSection(nationId: string, isHuman: boolean): HTMLElement {
+    const units = this.unitManager.getUnitsByOwner(nationId);
+    const section = this.createSection(`Units (${units.length})`);
+
+    if (units.length === 0) {
+      section.append(this.createDiv('panel-muted', 'No units'));
+      return section;
+    }
+
+    for (const unit of units) {
+      const row = document.createElement('div');
+      row.className = 'nation-city-row';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'panel-city-button';
+      const sleepSuffix = isHuman && unit.isSleeping ? ' (sleeping)' : '';
+      btn.textContent = `${unit.unitType.name}${sleepSuffix}`;
+      btn.addEventListener('click', () => {
+        window.dispatchEvent(new CustomEvent('focusUnit', { detail: { unitId: unit.id } }));
+      });
+
+      const hp = this.createDiv('panel-muted', `HP ${unit.health}/${unit.unitType.baseHealth}`);
+      hp.style.fontSize = '11px';
+
+      row.append(btn, hp);
+      section.append(row);
+    }
 
     return section;
   }
