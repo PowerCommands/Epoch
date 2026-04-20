@@ -48,7 +48,8 @@ Implemented so far:
 - Per-city building storage
 - **Build queue**: each city has a multi-item production queue. Only index 0 is active. Queue UI with turns remaining, [Add] and [×] buttons.
 - HTML side-panel layout around the Phaser canvas: left panel for turn/nation list, right panel for selection details and production
-- **LeftPanel**: shows round, current turn, End Turn button, compact research status/selection for the human nation, and the clickable discovered leader/nation list.
+- **LeftPanel**: shows round, current turn, End Turn button, and compact research status/selection for the human nation. Leader/nation portraits have moved to a dedicated Phaser overlay (`LeaderPortraitStrip`).
+- **LeaderPortraitStrip**: Phaser-side UI layer that renders visible/discovered leader portraits as a horizontally-centered strip fixed to the camera viewport. Hover shows a tooltip with leader name + nation name; click dispatches the existing `leaderSelected` CustomEvent. Selection highlight mirrors the nation selection state. Rebuilt on `DiscoverySystem.onNationsMet`.
 - **RightPanel**: shows selected tile/city/unit/nation details. Tile view shows improvement name/bonus and Builder target hints when a Builder is selected. Nation view shows economy, cities with HP, military unit counts. City view shows build queue.
 - City conquest: cities can be attacked, damaged, and captured by enemy units
 - Healing system: units and cities regenerate HP each turn

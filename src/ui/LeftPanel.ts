@@ -1,9 +1,7 @@
-import { getLeaderByNationId } from '../data/leaders';
 import { NationManager } from '../systems/NationManager';
 import { TurnManager } from '../systems/TurnManager';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
-import type { LeaderDefinition } from '../types/leader';
 import type { UnitActionToolbox } from './UnitActionToolbox';
 import { RafScheduler } from '../utils/RafScheduler';
 
@@ -12,6 +10,8 @@ export class LeftPanel {
   private readonly nationManager: NationManager;
   private readonly turnManager: TurnManager;
   private readonly humanNationId: string | undefined;
+  // Kept for potential future nation-level filtering in this panel even
+  // though portrait rendering moved to Phaser (LeaderPortraitStrip).
   private readonly discoverySystem: DiscoverySystem | null;
   private researchSystem: ResearchSystem | null = null;
   private unitActionToolbox: UnitActionToolbox | null = null;
@@ -44,7 +44,6 @@ export class LeftPanel {
     this.root.append(
       this.renderTurnInfo(),
       this.renderResearchSection(),
-      this.renderLeaderStrip(),
     );
   }
 
@@ -108,41 +107,6 @@ export class LeftPanel {
     return section;
   }
 
-  private renderLeaderStrip(): HTMLElement {
-    const section = this.createSection('Leaders');
-    const visible = this.getVisibleNations();
-
-    for (const nation of visible) {
-      const leader = getLeaderByNationId(nation.id);
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'leader-portrait-button';
-      row.dataset.nationId = nation.id;
-
-      const nationName = document.createElement('div');
-      nationName.className = 'leader-nation-name';
-      nationName.textContent = nation.name;
-      nationName.style.color = toCssColor(nation.color);
-
-      const portrait = this.createLeaderPortrait(leader);
-
-      const leaderName = document.createElement('div');
-      leaderName.className = 'leader-name';
-      leaderName.textContent = leader?.name ?? 'Unknown leader';
-
-      row.append(nationName, portrait, leaderName);
-      row.addEventListener('click', () => {
-        document.dispatchEvent(new CustomEvent('leaderSelected', {
-          detail: { nationId: nation.id, leaderId: leader?.id },
-        }));
-      });
-
-      section.append(row);
-    }
-
-    return section;
-  }
-
   private renderResearchSection(): HTMLElement {
     const section = this.createSection('Research');
     const humanNationId = this.humanNationId;
@@ -192,30 +156,6 @@ export class LeftPanel {
     );
 
     return section;
-  }
-
-  private getVisibleNations() {
-    const all = this.nationManager.getAllNations();
-    if (!this.discoverySystem || !this.humanNationId) return all;
-    const humanId = this.humanNationId;
-    return all.filter((n) => this.discoverySystem!.hasMet(humanId, n.id));
-  }
-
-  private createLeaderPortrait(leader: LeaderDefinition | undefined): HTMLElement {
-    const fallback = document.createElement('span');
-    fallback.className = 'leader-portrait-fallback';
-    fallback.textContent = '?';
-
-    if (!leader) return fallback;
-
-    const img = document.createElement('img');
-    img.className = 'leader-portrait';
-    img.src = leader.image;
-    img.alt = leader.name;
-    img.addEventListener('error', () => {
-      img.replaceWith(fallback);
-    }, { once: true });
-    return img;
   }
 
   private renderEndTurnButton(): HTMLElement {

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AVAILABLE_MAPS } from '../data/maps';
+import { ALL_LEADERS } from '../data/leaders';
 
 /**
  * BootScene — runs first at startup.
@@ -24,6 +25,11 @@ export class BootScene extends Phaser.Scene {
     this.load.image('unit_settler', 'assets/sprites/unit_settler.png');
     this.load.image('unit_fishing_boat', 'assets/sprites/unit_fishing_boat.png');
     this.load.image('unit_transport_ship', 'assets/sprites/unit_transport_ship.png');
+
+    // Leader portraits (used by the Phaser-side leader strip in GameScene)
+    for (const leader of ALL_LEADERS) {
+      this.load.image(`leader_${leader.id}`, leader.image);
+    }
   }
 
   create(): void {

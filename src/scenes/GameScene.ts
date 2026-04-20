@@ -42,6 +42,7 @@ import { DebugHUD } from '../ui/DebugHUD';
 import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
 import { LeftPanel } from '../ui/LeftPanel';
+import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { TileType } from '../types/map';
@@ -161,6 +162,7 @@ export class GameScene extends Phaser.Scene {
     const productionSystem = new ProductionSystem(cityManager, turnManager);
     let leftPanel: LeftPanel | null = null;
     let rightPanel: RightPanel | null = null;
+    let leaderStrip: LeaderPortraitStrip | null = null;
 
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager();
@@ -536,8 +538,9 @@ export class GameScene extends Phaser.Scene {
       const nameA = nationManager.getNation(a)?.name ?? a;
       const nameB = nationManager.getNation(b)?.name ?? b;
       eventLog.log(`${nameA} has met ${nameB}.`, [a, b], turnManager.getCurrentRound());
-      // New nation may now be visible in the left panel.
+      // New nation may now be visible in the UI.
       leftPanel?.requestRefresh();
+      leaderStrip?.rebuild();
     });
 
     // Hantera färdig produktion
@@ -838,6 +841,9 @@ export class GameScene extends Phaser.Scene {
       if (!selectedBuilderForHints) return null;
       return builderSystem.getBuildPreview(selectedBuilderForHints, tile);
     });
+
+    // Phaser-side leader portrait strip (replaces the old left-panel leader list)
+    leaderStrip = new LeaderPortraitStrip(this, nationManager, discoverySystem, humanNationId);
     const computeRangedTargets = (unit: Unit): Set<string> => {
       const range = unit.unitType.range ?? 1;
       if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();
@@ -973,6 +979,7 @@ export class GameScene extends Phaser.Scene {
     // Map selection → right panel (clears nation highlight)
     selectionManager.onSelectionChanged((selection) => {
       leftPanel?.clearSelectedNation();
+      leaderStrip?.setSelectedNation(null);
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
 
@@ -1055,6 +1062,7 @@ export class GameScene extends Phaser.Scene {
       const { nationId } = (event as CustomEvent<{ nationId: string }>).detail;
       rightPanel?.showNation(nationId);
       leftPanel?.setSelectedNation(nationId);
+      leaderStrip?.setSelectedNation(nationId);
     };
     document.addEventListener('nationSelected', onNationSelected);
 
@@ -1062,6 +1070,7 @@ export class GameScene extends Phaser.Scene {
       const { nationId, leaderId } = (event as CustomEvent<{ nationId: string; leaderId?: string }>).detail;
       rightPanel?.showLeader(leaderId ?? nationId);
       leftPanel?.setSelectedNation(nationId);
+      leaderStrip?.setSelectedNation(nationId);
     };
     document.addEventListener('leaderSelected', onLeaderSelected);
 
@@ -1097,6 +1106,7 @@ export class GameScene extends Phaser.Scene {
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
       leftPanel?.shutdown();
       rightPanel?.shutdown();
+      leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });
 
