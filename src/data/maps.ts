@@ -4,7 +4,28 @@ export interface MapDefinition {
   file: string;
 }
 
-export const AVAILABLE_MAPS: MapDefinition[] = [
-  { key: 'map_europe', label: 'Europe 1400', file: 'assets/maps/europeScenario.json' },
-  { key: 'map_simple_grassland_12x12', label: 'Simple grassland 12x12', file: 'assets/maps/simpleGrassland12x12.json' },
-];
+export interface MapManifest {
+  maps: MapDefinition[];
+}
+
+export const MAP_MANIFEST_CACHE_KEY = 'map_manifest';
+export const MAP_MANIFEST_URL = 'assets/maps/manifest.json';
+
+export function parseMapManifest(value: unknown): MapManifest {
+  if (!isRecord(value) || !Array.isArray(value.maps)) return { maps: [] };
+
+  return {
+    maps: value.maps.filter(isMapDefinition),
+  };
+}
+
+function isMapDefinition(value: unknown): value is MapDefinition {
+  if (!isRecord(value)) return false;
+  return typeof value.key === 'string'
+    && typeof value.label === 'string'
+    && typeof value.file === 'string';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}

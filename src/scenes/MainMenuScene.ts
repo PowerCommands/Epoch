@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { AVAILABLE_MAPS } from '../data/maps';
+import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
+import type { MapDefinition } from '../data/maps';
 import { getLeaderByNationId } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { GameConfig } from '../types/gameConfig';
@@ -12,6 +13,7 @@ import { bindMusicControls } from '../ui/MusicControls';
  */
 export class MainMenuScene extends Phaser.Scene {
   private overlay: HTMLDivElement | null = null;
+  private maps: MapDefinition[] = [];
   private currentMapKey = '';
   private nations: ScenarioNation[] = [];
   private selectedNationId: string | null = null;
@@ -26,6 +28,7 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.maps = parseMapManifest(this.cache.json.get(MAP_MANIFEST_CACHE_KEY)).maps;
     this.overlay = document.createElement('div');
     this.overlay.id = 'main-menu-overlay';
     this.overlay.innerHTML = this.buildHTML();
@@ -74,7 +77,7 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private buildHTML(): string {
-    const mapOptions = AVAILABLE_MAPS
+    const mapOptions = this.maps
       .map(m => `<option value="${m.key}">${m.label}</option>`)
       .join('');
 
@@ -208,7 +211,9 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     document.getElementById('mm-editor-btn')!.addEventListener('click', () => {
-      window.location.href = '/editor.html';
+      const mapKey = this.currentMapKey || this.maps[0]?.key;
+      const query = mapKey ? `?map=${encodeURIComponent(mapKey)}` : '';
+      window.location.href = `/editor.html${query}`;
     });
 
     document.getElementById('mm-change-nation-btn')!.addEventListener('click', () => {
@@ -234,7 +239,15 @@ export class MainMenuScene extends Phaser.Scene {
     this.currentMapKey = mapKey;
     this.selectedNationId = null;
 
-    const json = this.cache.json.get(mapKey) as ScenarioData;
+    const json = this.cache.json.get(mapKey) as ScenarioData | undefined;
+    if (!json) {
+      this.nations = [];
+      this.selectedOpponentIds = new Set();
+      this.renderNationList();
+      this.updateSetupPanel();
+      this.updateStartButton();
+      return;
+    }
     this.nations = json.nations;
     this.selectedOpponentIds = new Set(this.nations.map(n => n.id));
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { AVAILABLE_MAPS } from '../data/maps';
+import { MAP_MANIFEST_CACHE_KEY, MAP_MANIFEST_URL, parseMapManifest } from '../data/maps';
 import { ALL_LEADERS } from '../data/leaders';
 
 /**
@@ -12,10 +12,14 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Load all available map scenarios
-    for (const map of AVAILABLE_MAPS) {
-      this.load.json(map.key, map.file);
-    }
+    // Load generated map manifest first, then enqueue every listed scenario.
+    this.load.json(MAP_MANIFEST_CACHE_KEY, MAP_MANIFEST_URL);
+    this.load.once(`filecomplete-json-${MAP_MANIFEST_CACHE_KEY}`, () => {
+      const manifest = parseMapManifest(this.cache.json.get(MAP_MANIFEST_CACHE_KEY));
+      for (const map of manifest.maps) {
+        this.load.json(map.key, map.file);
+      }
+    });
 
     // Sprite assets
     this.load.image('city_default', 'assets/sprites/city_default.png');

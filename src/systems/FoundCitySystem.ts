@@ -10,6 +10,7 @@ import { TerritoryRenderer } from './TerritoryRenderer';
 import { CityRenderer } from './CityRenderer';
 import { ResourceSystem } from './ResourceSystem';
 import type { IGridSystem } from './grid/IGridSystem';
+import { CityTerritorySystem } from './CityTerritorySystem';
 import cityNamePoolsJson from '../data/cityNames.json';
 
 const FOUNDABLE_TYPES = new Set<TileType>([
@@ -41,6 +42,7 @@ export class FoundCitySystem {
   private readonly cityRenderer: CityRenderer;
   private readonly resourceSystem: ResourceSystem;
   private readonly mapData: MapData;
+  private readonly cityTerritorySystem = new CityTerritorySystem();
   private readonly foundedListeners: ((city: City) => void)[] = [];
   private nextCityNumber = 1;
 
@@ -94,6 +96,8 @@ export class FoundCitySystem {
       tileY: unit.tileY,
       isCapital,
     });
+
+    this.cityTerritorySystem.initializeOwnedTiles(city, this.mapData, this.gridSystem);
 
     this.cityManager.addCity(city);
 

@@ -2,6 +2,7 @@ import type { CityManager } from './CityManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceSystem } from './ResourceSystem';
+import type { DiagnosticSystem } from './DiagnosticSystem';
 import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
 import type { Producible } from '../types/producible';
@@ -10,6 +11,7 @@ export interface GameContext {
   humanNationId: string | undefined;
   researchSystem: ResearchSystem;
   resourceSystem: ResourceSystem;
+  diagnosticSystem: DiagnosticSystem;
   productionSystem: ProductionSystem;
   cityManager: CityManager;
   selectionManager: SelectionManager;
@@ -122,6 +124,18 @@ export class CheatSystem {
         const label = unit.name;
         context.unitManager.removeUnit(unit.id);
         return `Killed ${label}`;
+      },
+    });
+
+    this.register({
+      name: 'diagnostic',
+      description: 'Toggle the runtime diagnostics dialog.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: diagnostic';
+        context.diagnosticSystem.toggle();
+        return context.diagnosticSystem.isOpen()
+          ? 'Diagnostics opened.'
+          : 'Diagnostics closed.';
       },
     });
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Map Editor — europeScenario</title>
+<title>Map Editor</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-family: monospace; overflow: hidden; }
@@ -56,6 +56,13 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .entity-row:hover { background: #2a2a2a; }
 .entity-row.selected { background: #333; outline: 1px solid #888; }
 .entity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.nation-row { align-items: flex-start; }
+.nation-row-copy { display: grid; gap: 2px; min-width: 0; }
+.nation-row-copy strong { font-size: 11px; color: #ddd; }
+.nation-row-copy span { font-size: 10px; color: #888; overflow-wrap: anywhere; }
+.nation-portrait { width: 28px; height: 34px; border-radius: 3px; object-fit: cover; background: #333; flex-shrink: 0; }
+.nation-select-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 8px; align-items: center; }
+.nation-select-row img { width: 36px; height: 44px; border-radius: 3px; object-fit: cover; background: #333; }
 
 .toolbar-actions { display: flex; flex-direction: column; gap: 8px; }
 #save-btn, #exit-btn {
@@ -114,23 +121,16 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     <div class="section" id="nation-section">
       <div class="section-title">Nations</div>
       <div class="entity-list" id="nation-list"></div>
-      <div class="section-title" style="margin-top:8px">Create Nation</div>
+      <div class="section-title" style="margin-top:8px">Add Nation</div>
       <label class="field">
-        Nation Name
-        <input id="nation-name-input" type="text" placeholder="Morocco">
-      </label>
-      <label class="field">
-        Nation ID
-        <input id="nation-id-input" type="text" placeholder="nation_morocco_empire">
-      </label>
-      <label class="field">
-        Color
-        <span class="inline-field">
-          <input id="nation-color-input" type="color" value="#8e44ad">
-          <input id="nation-color-hex-input" type="text" value="#8e44ad" maxlength="7">
+        Registry Nation
+        <span class="nation-select-row">
+          <img id="nation-registry-portrait" alt="">
+          <select id="nation-registry-select"></select>
         </span>
       </label>
       <button class="small-btn" id="add-nation-btn">Add Nation</button>
+      <button class="small-btn" id="remove-nation-btn" style="margin-top:4px">Remove Selected Nation</button>
       <div class="hint" id="selected-nation-info">No nation selected.</div>
     </div>
 
@@ -174,7 +174,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     </div>
 
     <div class="toolbar-actions">
-      <button id="save-btn">Download europeScenario.json</button>
+      <button id="save-btn">Download scenario JSON</button>
       <button id="exit-btn">Exit to Start</button>
     </div>
     <div id="validation-warning" class="warning-box"></div>
@@ -204,6 +204,9 @@ const TILE_COLORS = {
 };
 
 let scenario = null;
+let mapManifest = { maps: [] };
+let currentMap = null;
+let nationRegistry = { nations: [] };
 let tiles = null; // 2D array [r][q] of type strings
 let mapW = 0, mapH = 0, tileSize = 0;
 let hexSize = 0;
@@ -232,8 +235,17 @@ const viewport = document.getElementById('viewport');
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  const res = await fetch('/assets/maps/europeScenario.json');
+  [mapManifest, nationRegistry] = await Promise.all([loadMapManifest(), loadNationRegistry()]);
+  currentMap = resolveRequestedMap(mapManifest);
+  if (!currentMap) {
+    document.getElementById('status-info').textContent = 'No maps available. Regenerate assets/maps/manifest.json.';
+    return;
+  }
+
+  const res = await fetch(`/${currentMap.file}`);
   scenario = await res.json();
+  document.title = `Map Editor — ${currentMap.label}`;
+  document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
 
   mapW = scenario.map.width;
   mapH = scenario.map.height;
@@ -262,12 +274,67 @@ async function init() {
 
   buildPalette();
   selectedNationId = scenario.nations[0]?.id ?? null;
+  buildNationRegistrySelect();
   buildNationList();
   buildEntityLists();
   updateToolPanels();
   resizeCanvas();
   render();
-  document.getElementById('status-info').textContent = `${mapW}x${mapH} q/r hexes loaded`;
+  document.getElementById('status-info').textContent = `${currentMap.label}: ${mapW}x${mapH} q/r hexes loaded`;
+}
+
+async function loadMapManifest() {
+  try {
+    const res = await fetch('/assets/maps/manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.maps) && manifest.maps.length > 0) {
+      return {
+        maps: manifest.maps.filter(map =>
+          map && typeof map.key === 'string' && typeof map.label === 'string' && typeof map.file === 'string'
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load map manifest.', err);
+  }
+
+  return { maps: [] };
+}
+
+async function loadNationRegistry() {
+  try {
+    const res = await fetch('/assets/data/nations-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`nation registry fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.nations)) {
+      return {
+        nations: manifest.nations.filter(nation =>
+          nation
+          && typeof nation.nationId === 'string'
+          && typeof nation.nationName === 'string'
+          && typeof nation.color === 'string'
+          && typeof nation.leaderId === 'string'
+          && typeof nation.leaderName === 'string'
+          && typeof nation.leaderTitle === 'string'
+          && typeof nation.leaderImage === 'string'
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load nation registry.', err);
+  }
+
+  return { nations: [] };
+}
+
+function resolveRequestedMap(manifest) {
+  const requestedKey = new URLSearchParams(window.location.search).get('map');
+  return manifest.maps.find(map => map.key === requestedKey) ?? manifest.maps[0];
+}
+
+function getMapFilename(map) {
+  return map.file.split('/').pop() || 'scenario.json';
 }
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -307,20 +374,18 @@ function buildEntityLists() {
   unitList.innerHTML = '';
 
   scenario.cities.forEach((city, i) => {
-    const nation = scenario.nations.find(n => n.id === city.nationId);
     const row = document.createElement('div');
     row.className = 'entity-row';
-    row.innerHTML = `<span class="entity-dot" style="background:${nation?.color || '#888'}"></span>
+    row.innerHTML = `<span class="entity-dot" style="background:${getNationColor(city.nationId)}"></span>
       <span>${city.name} (${city.q},${city.r})</span>`;
     row.addEventListener('click', () => selectEntity('city', i));
     cityList.appendChild(row);
   });
 
   scenario.units.forEach((unit, i) => {
-    const nation = scenario.nations.find(n => n.id === unit.nationId);
     const row = document.createElement('div');
     row.className = 'entity-row';
-    row.innerHTML = `<span class="entity-dot" style="background:${nation?.color || '#888'}"></span>
+    row.innerHTML = `<span class="entity-dot" style="background:${getNationColor(unit.nationId)}"></span>
       <span>${unit.unitTypeId} (${unit.q},${unit.r})</span>`;
     row.addEventListener('click', () => selectEntity('unit', i));
     unitList.appendChild(row);
@@ -329,21 +394,72 @@ function buildEntityLists() {
 
 // ─── Nation editing ─────────────────────────────────────────────────────────
 
+function getRegistryNation(nationId) {
+  return nationRegistry.nations.find(nation => nation.nationId === nationId) || null;
+}
+
+function getNationDisplayName(nation) {
+  return getRegistryNation(nation.id)?.nationName ?? nation.name;
+}
+
+function getNationColor(nationId) {
+  const scenarioNation = scenario.nations.find(n => n.id === nationId);
+  return scenarioNation?.color || getRegistryNation(nationId)?.color || '#888';
+}
+
+function getAvailableRegistryNations() {
+  const activeIds = new Set(scenario.nations.map(nation => nation.id));
+  return nationRegistry.nations.filter(nation => !activeIds.has(nation.nationId));
+}
+
+function buildNationRegistrySelect() {
+  const select = document.getElementById('nation-registry-select');
+  const available = getAvailableRegistryNations();
+  select.innerHTML = '';
+
+  for (const nation of available) {
+    const option = document.createElement('option');
+    option.value = nation.nationId;
+    option.textContent = `${nation.nationName} — ${nation.leaderName}`;
+    select.appendChild(option);
+  }
+
+  select.disabled = available.length === 0;
+  document.getElementById('add-nation-btn').disabled = available.length === 0;
+  updateRegistryNationPreview();
+}
+
+function updateRegistryNationPreview() {
+  const select = document.getElementById('nation-registry-select');
+  const portrait = document.getElementById('nation-registry-portrait');
+  const nation = getRegistryNation(select.value);
+  portrait.src = nation?.leaderImage || '';
+  portrait.alt = nation ? nation.leaderName : '';
+  portrait.style.visibility = nation ? 'visible' : 'hidden';
+}
+
+document.getElementById('nation-registry-select').addEventListener('change', updateRegistryNationPreview);
+
 function buildNationList() {
   const nationList = document.getElementById('nation-list');
   nationList.innerHTML = '';
 
   scenario.nations.forEach((nation) => {
     const capital = scenario.cities.find(c => c.nationId === nation.id && c.isCapital);
+    const registryNation = getRegistryNation(nation.id);
     const row = document.createElement('div');
-    row.className = 'entity-row' + (nation.id === selectedNationId ? ' selected' : '');
-    row.innerHTML = `<span class="entity-dot" style="background:${nation.color || '#888'}"></span>
-      <span>${nation.name}${capital ? ` (${capital.q},${capital.r})` : ''}</span>`;
+    row.className = 'entity-row nation-row' + (nation.id === selectedNationId ? ' selected' : '');
+    row.innerHTML = `${registryNation ? `<img class="nation-portrait" src="${registryNation.leaderImage}" alt="">` : `<span class="entity-dot" style="background:${nation.color || '#888'}"></span>`}
+      <span class="nation-row-copy">
+        <strong>${getNationDisplayName(nation)}${capital ? ` (${capital.q},${capital.r})` : ''}</strong>
+        <span>${registryNation ? registryNation.leaderName : `Unknown nation: ${nation.id}`}</span>
+      </span>`;
     row.addEventListener('click', () => selectNation(nation.id));
     nationList.appendChild(row);
   });
 
   updateSelectedNationInfo();
+  buildNationRegistrySelect();
 }
 
 function selectNation(nationId) {
@@ -358,83 +474,73 @@ function getSelectedNation() {
 
 function updateSelectedNationInfo() {
   const el = document.getElementById('selected-nation-info');
+  const removeBtn = document.getElementById('remove-nation-btn');
   const nation = getSelectedNation();
   if (!nation) {
     el.textContent = 'No nation selected.';
+    removeBtn.disabled = true;
     return;
   }
 
   const center = nation.startTerritoryCenter;
-  el.textContent = `Selected: ${nation.name} (${nation.id})` +
+  const registryNation = getRegistryNation(nation.id);
+  el.textContent = `Selected: ${getNationDisplayName(nation)} (${nation.id})` +
+    (registryNation ? ` • leader ${registryNation.leaderName}` : ' • not in registry') +
     (center ? ` • start ${center.q},${center.r}` : ' • no start set');
+  removeBtn.disabled = false;
 }
 
-function slugifyNationName(name) {
-  return name.trim().toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
-function syncNationIdFromName() {
-  const name = document.getElementById('nation-name-input').value;
-  const slug = slugifyNationName(name);
-  document.getElementById('nation-id-input').value = slug ? `nation_${slug}` : '';
-}
-
-function normalizeHexColor(value) {
-  const trimmed = value.trim();
-  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
-  return null;
-}
-
-document.getElementById('nation-name-input').addEventListener('input', syncNationIdFromName);
-document.getElementById('nation-color-input').addEventListener('input', (e) => {
-  document.getElementById('nation-color-hex-input').value = e.target.value;
-});
-document.getElementById('nation-color-hex-input').addEventListener('input', (e) => {
-  const color = normalizeHexColor(e.target.value);
-  if (color) document.getElementById('nation-color-input').value = color;
-});
 document.getElementById('add-nation-btn').addEventListener('click', () => {
-  const nameInput = document.getElementById('nation-name-input');
-  const idInput = document.getElementById('nation-id-input');
-  const colorInput = document.getElementById('nation-color-hex-input');
-  const name = nameInput.value.trim();
-  const id = idInput.value.trim();
-  const color = normalizeHexColor(colorInput.value);
-
-  if (!name) {
-    setStatusInfo('Nation name is required');
-    return;
-  }
-  if (!/^nation_[a-z0-9_]+$/.test(id)) {
-    setStatusInfo('Nation ID must look like nation_morocco_empire');
-    return;
-  }
-  if (scenario.nations.some(n => n.id === id)) {
-    setStatusInfo(`Nation ID already exists: ${id}`);
-    return;
-  }
-  if (!color) {
-    setStatusInfo('Color must be #rrggbb');
+  const select = document.getElementById('nation-registry-select');
+  const registryNation = getRegistryNation(select.value);
+  if (!registryNation) {
+    setStatusInfo('No registry nation available to add');
     return;
   }
 
   scenario.nations.push({
-    id,
-    name,
-    color,
+    id: registryNation.nationId,
+    name: registryNation.nationName,
+    color: registryNation.color,
     isHuman: false,
     startTerritoryCenter: { q: 0, r: 0 },
   });
-  selectedNationId = id;
-  nameInput.value = '';
-  idInput.value = '';
-  setStatusInfo(`Added nation ${name}. Use Set Start Position next.`);
+  selectedNationId = registryNation.nationId;
+  setStatusInfo(`Added nation ${registryNation.nationName}. Use Set Start Position next.`);
   buildNationList();
   buildEntityLists();
   render();
 });
+
+document.getElementById('remove-nation-btn').addEventListener('click', () => {
+  if (!selectedNationId) {
+    setStatusInfo('Select a nation to remove');
+    return;
+  }
+
+  removeNation(selectedNationId);
+});
+
+function removeNation(nationId) {
+  const nation = scenario.nations.find(n => n.id === nationId);
+  if (!nation) return;
+
+  scenario.nations = scenario.nations.filter(n => n.id !== nationId);
+  scenario.cities = scenario.cities.filter(c => c.nationId !== nationId);
+  scenario.units = scenario.units.filter(u => u.nationId !== nationId);
+
+  if (selectedEntity) {
+    selectedEntity = null;
+    updateEntityHighlights();
+  }
+  if (selectedNationId === nationId) selectedNationId = scenario.nations[0]?.id ?? null;
+
+  setStatusInfo(`Removed ${getNationDisplayName(nation)} and its cities/units.`);
+  buildNationList();
+  buildEntityLists();
+  updateSelectedNationInfo();
+  render();
+}
 
 function selectEntity(kind, index) {
   if (selectedEntity && selectedEntity.kind === kind && selectedEntity.index === index) {
@@ -672,7 +778,7 @@ function setStartPosition(q, r) {
 }
 
 function makeUniqueId(prefix, base, existingIds) {
-  const slug = slugifyNationName(base) || prefix;
+  const slug = slugifyLabel(base) || prefix;
   let id = `${prefix}_${slug}`;
   let i = 2;
   while (existingIds.has(id)) {
@@ -680,6 +786,12 @@ function makeUniqueId(prefix, base, existingIds) {
     i++;
   }
   return id;
+}
+
+function slugifyLabel(label) {
+  return label.trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 function makeDefaultCityName(nation) {
@@ -960,7 +1072,7 @@ function render() {
     // City circle
     ctx.beginPath();
     ctx.arc(sx, sy, r, 0, Math.PI * 2);
-    ctx.fillStyle = nation?.color || '#888';
+    ctx.fillStyle = nation?.color || getRegistryNation(city.nationId)?.color || '#888';
     ctx.fill();
     ctx.strokeStyle = isSelected ? '#fff' : '#000';
     ctx.lineWidth = isSelected ? 3 : 1.5;
@@ -1027,7 +1139,7 @@ function render() {
     ctx.lineTo(sx, sy + s);
     ctx.lineTo(sx - s, sy);
     ctx.closePath();
-    ctx.fillStyle = nation?.color || '#888';
+    ctx.fillStyle = nation?.color || getRegistryNation(unit.nationId)?.color || '#888';
     ctx.fill();
     ctx.strokeStyle = isSelected ? '#fff' : '#000';
     ctx.lineWidth = isSelected ? 3 : 1.5;
@@ -1079,7 +1191,11 @@ function worldToScreen(point) {
 
 function validateScenario() {
   const warnings = [];
+  const registryIds = new Set(nationRegistry.nations.map(nation => nation.nationId));
+  const activeIds = new Set(scenario.nations.map(nation => nation.id));
+
   for (const nation of scenario.nations) {
+    if (!registryIds.has(nation.id)) warnings.push(`${nation.name} has unknown nation ID ${nation.id}`);
     const cities = scenario.cities.filter(c => c.nationId === nation.id);
     const capitals = cities.filter(c => c.isCapital);
     const settlers = scenario.units.filter(u => u.nationId === nation.id && u.unitTypeId === 'settler');
@@ -1087,6 +1203,15 @@ function validateScenario() {
     if (cities.length > 0 && capitals.length === 0) warnings.push(`${nation.name} has no capital`);
     if (capitals.length > 1) warnings.push(`${nation.name} has ${capitals.length} capitals`);
   }
+
+  for (const city of scenario.cities) {
+    if (!activeIds.has(city.nationId)) warnings.push(`${city.name} references inactive or unknown nation ${city.nationId}`);
+  }
+
+  for (const unit of scenario.units) {
+    if (!activeIds.has(unit.nationId)) warnings.push(`${unit.unitTypeId} at (${unit.q},${unit.r}) references inactive or unknown nation ${unit.nationId}`);
+  }
+
   return warnings;
 }
 
@@ -1125,7 +1250,7 @@ document.getElementById('save-btn').addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'europeScenario.json';
+  a.download = currentMap ? getMapFilename(currentMap) : 'scenario.json';
   a.click();
   URL.revokeObjectURL(url);
 });

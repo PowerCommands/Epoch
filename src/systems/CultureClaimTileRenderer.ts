@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { City } from '../entities/City';
 import type { MapData } from '../types/map';
-import { getClaimableTiles, getClaimCost } from './CultureExpansion';
+import type { CityTerritorySystem } from './CityTerritorySystem';
 import { NationManager } from './NationManager';
 import { TileMap } from './TileMap';
 
@@ -26,6 +26,7 @@ export class CultureClaimTileRenderer {
     private readonly tileMap: TileMap,
     private readonly nationManager: NationManager,
     private readonly mapData: MapData,
+    private readonly cityTerritorySystem: CityTerritorySystem,
     private readonly humanNationId: string | undefined,
   ) {
     this.gfx = scene.add.graphics().setDepth(CLAIM_DEPTH);
@@ -50,11 +51,12 @@ export class CultureClaimTileRenderer {
     const city = this.selectedCity;
     if (!city || city.ownerId !== this.humanNationId) return;
 
-    const tiles = this.mapData.tiles.flat();
-    const cost = getClaimCost(city, tiles);
+    const cost = this.cityTerritorySystem.getClaimCost(city, this.mapData);
     if (city.culture < cost) return;
 
-    const claimableTiles = getClaimableTiles(city, tiles);
+    const claimableTiles = this.cityTerritorySystem.getClaimableTiles(city, this.mapData)
+      .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
+      .filter((tile): tile is NonNullable<typeof tile> => tile !== undefined);
     if (claimableTiles.length === 0) return;
 
     const nationColor = this.nationManager.getNation(city.ownerId)?.color ?? CLAIM_OUTLINE_COLOR;

@@ -6,7 +6,6 @@ import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
 import { ALL_UNIT_TYPES, WARRIOR, ARCHER } from '../data/units';
 import { GRANARY, WORKSHOP, MARKET } from '../data/buildings';
-import { getTerrainYield } from '../data/terrainYields';
 import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
@@ -17,7 +16,6 @@ import { ProductionSystem } from './ProductionSystem';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import { calculateCityEconomy } from './CityEconomy';
-import { claimTile, getClaimableTiles, getClaimCost } from './CultureExpansion';
 import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { ResearchSystem } from './ResearchSystem';
@@ -84,43 +82,9 @@ export class AISystem {
 
   runTurn(nationId: string): void {
     this.runSettlers(nationId);
-    this.runCultureExpansion(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runProduction(nationId);
-  }
-
-  private runCultureExpansion(nationId: string): void {
-    const tiles = this.getAllTiles();
-    const cities = this.cityManager.getCitiesByOwner(nationId);
-
-    for (const city of cities) {
-      const cost = getClaimCost(city, tiles);
-      if (city.culture < cost) continue;
-
-      const claimable = getClaimableTiles(city, tiles);
-      if (claimable.length === 0) continue;
-
-      const tile = this.pickBestCultureClaim(claimable);
-      claimTile(city, tile);
-    }
-  }
-
-  private pickBestCultureClaim(tiles: Tile[]): Tile {
-    return [...tiles].sort((a, b) => {
-      const yieldA = getTerrainYield(a.type);
-      const yieldB = getTerrainYield(b.type);
-      const valueA = yieldA.food + yieldA.production + yieldA.gold;
-      const valueB = yieldB.food + yieldB.production + yieldB.gold;
-
-      if (valueA !== valueB) return valueB - valueA;
-      if (a.y !== b.y) return a.y - b.y;
-      return a.x - b.x;
-    })[0];
-  }
-
-  private getAllTiles(): Tile[] {
-    return this.mapData.tiles.flat();
   }
 
   // ─── Settlers ────────────────────────────────────────────────────────────────

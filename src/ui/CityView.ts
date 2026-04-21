@@ -1,0 +1,166 @@
+import type { City } from '../entities/City';
+import type { CityViewTileBreakdown } from '../systems/CityViewData';
+
+type CloseCallback = () => void;
+
+export class CityView {
+  private readonly root: HTMLDivElement;
+  private readonly titleEl: HTMLDivElement;
+  private readonly statsEl: HTMLDivElement;
+  private readonly nextTileEl: HTMLDivElement;
+  private readonly tooltipEl: HTMLDivElement;
+  private readonly closeCallbacks: CloseCallback[] = [];
+  private currentCityId: string | null = null;
+  private open = false;
+
+  constructor() {
+    const mount = document.getElementById('app-layout');
+    if (!mount) throw new Error('Missing #app-layout');
+
+    this.root = document.createElement('div');
+    this.root.className = 'city-view-overlay';
+    this.root.style.display = 'none';
+
+    const panel = document.createElement('div');
+    panel.className = 'city-view-panel';
+
+    const header = document.createElement('div');
+    header.className = 'city-view-header';
+
+    this.titleEl = document.createElement('div');
+    this.titleEl.className = 'city-view-title';
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'city-view-close';
+    closeButton.textContent = 'Close';
+    closeButton.addEventListener('click', () => {
+      for (const callback of this.closeCallbacks) callback();
+    });
+
+    header.append(this.titleEl, closeButton);
+
+    this.statsEl = document.createElement('div');
+    this.statsEl.className = 'city-view-stats';
+
+    this.nextTileEl = document.createElement('div');
+    this.nextTileEl.className = 'city-view-next';
+
+    const hint = document.createElement('div');
+    hint.className = 'city-view-hint';
+    hint.textContent = 'Drag the planned expansion tile onto a pink claimable tile to retarget culture growth.';
+
+    panel.append(header, this.statsEl, this.nextTileEl, hint);
+    this.root.append(panel);
+    mount.append(this.root);
+
+    this.tooltipEl = document.createElement('div');
+    this.tooltipEl.className = 'city-view-tooltip';
+    this.tooltipEl.style.cssText = `
+      position: fixed;
+      z-index: 1300;
+      display: none;
+      min-width: 220px;
+      max-width: 300px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      background: rgba(10, 12, 16, 0.96);
+      color: #eef3fb;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      pointer-events: none;
+      white-space: normal;
+    `;
+    document.body.append(this.tooltipEl);
+  }
+
+  onCloseRequested(callback: CloseCallback): void {
+    this.closeCallbacks.push(callback);
+  }
+
+  isOpenForCity(cityId: string): boolean {
+    return this.open && this.currentCityId === cityId;
+  }
+
+  show(city: City): void {
+    this.currentCityId = city.id;
+    this.open = true;
+    this.root.style.display = 'block';
+    this.render(city);
+  }
+
+  refresh(city: City): void {
+    if (!this.isOpenForCity(city.id)) return;
+    this.render(city);
+  }
+
+  close(): void {
+    this.open = false;
+    this.currentCityId = null;
+    this.root.style.display = 'none';
+    this.hideTooltip();
+  }
+
+  shutdown(): void {
+    this.root.remove();
+    this.tooltipEl.remove();
+  }
+
+  showTooltip(
+    breakdown: CityViewTileBreakdown,
+    screenX: number,
+    screenY: number,
+  ): void {
+    const rows = [
+      `<div><strong>Tile</strong> (${breakdown.coord.x}, ${breakdown.coord.y})</div>`,
+      `<div><strong>Terrain</strong> ${breakdown.terrainType}</div>`,
+      `<div><strong>Improvement</strong> ${breakdown.improvementName ?? 'None'}</div>`,
+      `<div><strong>Status</strong> ${breakdown.notes.length > 0 ? breakdown.notes.join(', ') : 'None'}</div>`,
+      '<div style="margin-top:6px;"><strong>Yields</strong></div>',
+      `<div>Food: ${breakdown.yields.food}</div>`,
+      `<div>Production: ${breakdown.yields.production}</div>`,
+      `<div>Gold: ${breakdown.yields.gold}</div>`,
+      `<div>Science: ${breakdown.yields.science}</div>`,
+      `<div>Culture: ${breakdown.yields.culture}</div>`,
+      `<div>Happiness: ${breakdown.yields.happiness}</div>`,
+    ];
+    this.tooltipEl.innerHTML = rows.join('');
+    this.tooltipEl.style.display = 'block';
+
+    const width = this.tooltipEl.offsetWidth || 240;
+    const height = this.tooltipEl.offsetHeight || 180;
+    const left = Math.min(window.innerWidth - width - 12, screenX + 16);
+    const top = Math.min(window.innerHeight - height - 12, screenY + 16);
+    this.tooltipEl.style.left = `${Math.max(12, left)}px`;
+    this.tooltipEl.style.top = `${Math.max(12, top)}px`;
+  }
+
+  hideTooltip(): void {
+    this.tooltipEl.style.display = 'none';
+  }
+
+  private render(city: City): void {
+    this.titleEl.textContent = city.name;
+
+    const statRows = [
+      `Population: ${city.population}`,
+      `Culture: ${city.culture}`,
+      `Owned tiles: ${city.ownedTileCoords.length}`,
+      `Worked tiles: ${city.workedTileCoords.length}`,
+    ];
+
+    this.statsEl.replaceChildren(...statRows.map((text) => {
+      const row = document.createElement('div');
+      row.className = 'city-view-stat';
+      row.textContent = text;
+      return row;
+    }));
+
+    this.nextTileEl.textContent = city.nextExpansionTileCoord
+      ? `Planned next expansion: (${city.nextExpansionTileCoord.x}, ${city.nextExpansionTileCoord.y})`
+      : 'Planned next expansion: none';
+  }
+}

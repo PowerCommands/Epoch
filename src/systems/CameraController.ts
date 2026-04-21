@@ -30,6 +30,7 @@ export class CameraController {
   private pointerIsDown = false;
   private didDrag = false;
   private dragEnded = false;
+  private pointerPanEnabled = true;
   private dragStartX = 0;
   private dragStartY = 0;
   private camStartScrollX = 0;
@@ -88,6 +89,10 @@ export class CameraController {
     return this.cam.scrollY;
   }
 
+  setPointerPanEnabled(enabled: boolean): void {
+    this.pointerPanEnabled = enabled;
+  }
+
   /**
    * Returnerar true om den senaste pointer-up avslutade en drag-panorering.
    * Värdet nollställs efter avläsning (consume-semantik), så att
@@ -120,6 +125,7 @@ export class CameraController {
   private registerPointerEvents(scene: Phaser.Scene): void {
     scene.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       // Bara vänster musknapp
+      if (!this.pointerPanEnabled) return;
       if (!pointer.leftButtonDown()) return;
       this.pointerIsDown = true;
       this.didDrag = false;
@@ -130,6 +136,7 @@ export class CameraController {
     });
 
     scene.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {
+      if (!this.pointerPanEnabled) return;
       if (!this.pointerIsDown) return;
 
       const dx = pointer.x - this.dragStartX;

@@ -37,13 +37,39 @@ Never mix responsibilities.
 * HTML/CSS → panels and interaction
 * Communication via explicit events
 
+### UI
+
+* `CityView` is an HTML/CSS overlay for human-owned city inspection
+* It opens when a human-owned city is selected
+* It shows a compact city summary and detailed city-tile visualization
+* It uses zoom `2.0`, emphasizes the city focus area, and de-emphasizes the surrounding map
+* It shows compact worked-tile icons and a hover tooltip with full tile breakdown
+* It supports drag-drop retargeting of the planned expansion tile
+* `DiagnosticDialog` is an HTML/CSS floating dialog opened through the `diagnostic` cheat command
+* It is draggable, resizable, closable, and live-updating
+
 ---
 
 ### Data model
 
-* All data comes from `europeScenario.json`
+* Scenario data comes from JSON files discovered via `public/assets/maps/manifest.json`
+* `scripts/generateMapManifest.ts` scans `public/assets/maps/*.json` and writes the manifest used by BootScene, MainMenuScene, and the standalone editor
+* Leader → nation mapping remains canonical in `src/data/leaders.ts`
+* Browser/editor nation choices come from generated `public/assets/data/nations-manifest.json`; the standalone editor does not read TypeScript source directly
+* Scenario files contain only the active nation subset for that map/session
 * Runtime controlled via `GameConfig`
 * `isHuman` set at runtime only
+
+### Entities
+
+#### City
+
+* Cities now explicitly track `ownedTileCoords` for city territory
+* Cities now explicitly track `workedTileCoords` for the yield-producing subset
+* Cities now explicitly track `nextExpansionTileCoord` for planned culture growth
+* `ownedTileCoords` is the authoritative city territory
+* `workedTileCoords` is the explicit subset currently producing yields
+* `nextExpansionTileCoord` is the stored next culture-expansion target
 
 ---
 
@@ -51,7 +77,7 @@ Never mix responsibilities.
 
 ### Map & tiles
 
-* Fixed Europe map
+* Map availability is manifest-driven; adding a scenario JSON to `public/assets/maps` makes it selectable after manifest generation
 * Predefined tile types
 * Territory allowed on land + water
 * Cities only on land
@@ -78,9 +104,72 @@ Never mix responsibilities.
 
 * Population + food + production
 * 3x3 workable tiles
+* Cities explicitly track `ownedTileCoords` as authoritative territory
+* Cities store `workedTileCoords` as the per-turn worked subset
+* Cities store `nextExpansionTileCoord` as planned culture expansion
 * Deterministic growth
 * Buildings modify yields
 * Production queue
+
+### CityTerritorySystem
+
+* Initializes city-owned tiles
+* Assigns worked tiles per city based on population and yields
+* Determines claimable tiles from centralized culture-expansion rules
+* Chooses and stores the next planned expansion tile
+* Lets the human set a valid planned next expansion tile
+* Performs city tile claims and refreshes explicit territory state
+
+### CityViewRenderer
+
+* Renders city center, owned tiles, worked tiles, claimable tiles, and next expansion tile
+* Handles Phaser visualization only
+* Adds focus-region emphasis and de-emphasizes the outer map area
+* Renders compact in-tile yield icons
+* Renders planned expansion progress with centered percent
+* Highlights valid drag-drop targets in pink during retargeting
+
+### TerritoryRenderer
+
+* Territory borders still use the same outer-edge computation as before
+* Borders now use nation color instead of a hardcoded black stroke
+* Borders render thicker for readability and support a City View emphasis mode
+
+### DiagnosticSystem
+
+* Centralizes runtime diagnostic data and diagnostic dialog state
+* First version exposes zoom and camera position
+* Designed for future expansion beyond camera values
+
+### Resource model
+
+* Worked tiles are no longer computed ad-hoc only from radius rules
+* They are stored explicitly on the city and refreshed by system logic
+
+### Gameplay / culture expansion
+
+* Claimable tiles are determined in one centralized system
+* Cities maintain a stored planned next expansion tile
+* Human players can inspect city territory in City View
+* Human players can choose the planned next expansion tile from valid claimable tiles
+* The planned next expansion tile shows real claim progress visually
+* Human players retarget planned expansion via drag-drop between valid claimable tiles
+* Claim progress is based on real city culture and current claim cost
+* Actual tile claiming still happens only when culture expansion triggers
+* This model prepares the future City View and later human override
+
+### Gameplay visualization
+
+* Worked tile symbols use:
+* `🌾` Food
+* `⚙️` Production
+* `🔬` Science
+* `💰` Gold
+* `⭐` Culture
+* `😀` Happiness
+* The primary in-map representation is compact icons
+* Detailed numeric breakdown is shown in City View tooltip
+* Only implemented real values should be shown
 
 ### AI
 
@@ -101,6 +190,11 @@ Never mix responsibilities.
 ### Victory
 
 * All capitals owned by one nation
+
+### Cheat / debug tooling
+
+* The old on-map debug HUD has been removed
+* Cheat command `diagnostic` toggles the runtime diagnostics dialog
 
 ---
 

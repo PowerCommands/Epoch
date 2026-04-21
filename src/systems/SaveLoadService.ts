@@ -21,6 +21,8 @@ import type { ProductionSystem } from './ProductionSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { QueueEntry } from './ProductionSystem';
+import type { IGridSystem } from './grid/IGridSystem';
+import { CityTerritorySystem } from './CityTerritorySystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -34,6 +36,7 @@ export interface SaveLoadContext {
   diplomacyManager: DiplomacyManager;
   discoverySystem: DiscoverySystem;
   turnManager: TurnManager;
+  gridSystem: IGridSystem;
 }
 
 /**
@@ -102,6 +105,11 @@ export class SaveLoadService {
         population: city.population,
         foodStorage: city.foodStorage,
         culture: city.culture,
+        ownedTileCoords: city.ownedTileCoords.map((coord) => ({ ...coord })),
+        workedTileCoords: city.workedTileCoords.map((coord) => ({ ...coord })),
+        nextExpansionTileCoord: city.nextExpansionTileCoord
+          ? { ...city.nextExpansionTileCoord }
+          : undefined,
         lastTurnAttacked: city.lastTurnAttacked,
         buildings,
         productionQueue,
@@ -223,6 +231,8 @@ export class SaveLoadService {
       state.cities,
       context.cityManager,
       context.productionSystem,
+      context.mapData,
+      context.gridSystem,
     );
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
@@ -266,12 +276,15 @@ export class SaveLoadService {
     cities: SavedCity[],
     cityManager: CityManager,
     productionSystem: ProductionSystem,
+    mapData: MapData,
+    gridSystem: IGridSystem,
   ): void {
     cityManager.clearAllSilently();
     productionSystem.clearAllQueues();
+    const cityTerritorySystem = new CityTerritorySystem();
 
     for (const saved of cities) {
-      cityManager.restoreCity({
+      const city = cityManager.restoreCity({
         id: saved.id,
         name: saved.name,
         ownerId: saved.ownerId,
@@ -284,6 +297,23 @@ export class SaveLoadService {
         culture: saved.culture,
         lastTurnAttacked: saved.lastTurnAttacked,
       });
+
+      if (saved.ownedTileCoords && saved.ownedTileCoords.length > 0) {
+        city.ownedTileCoords = saved.ownedTileCoords.map((coord) => ({ ...coord }));
+      } else {
+        cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
+      }
+
+      if (saved.workedTileCoords && saved.workedTileCoords.length > 0) {
+        city.workedTileCoords = saved.workedTileCoords.map((coord) => ({ ...coord }));
+      } else {
+        cityTerritorySystem.updateWorkedTiles(city, mapData);
+      }
+
+      if (saved.nextExpansionTileCoord) {
+        city.nextExpansionTileCoord = { ...saved.nextExpansionTileCoord };
+      }
+      cityTerritorySystem.refreshNextExpansionTile(city, mapData);
 
       const buildings = cityManager.getBuildings(saved.id);
       for (const id of saved.buildings) {

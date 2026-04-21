@@ -3,7 +3,7 @@ import type { City } from '../entities/City';
 import type { CityManager } from './CityManager';
 import type { MapData } from '../types/map';
 import { TileMap } from './TileMap';
-import { getWorkableTiles, getWorkedTiles } from './CityEconomy';
+import { getOwnedTiles, getStoredWorkedTiles } from './CityEconomy';
 import type { IGridSystem } from './grid/IGridSystem';
 
 /**
@@ -35,8 +35,8 @@ export class CityWorkTileRenderer {
   show(city: City): void {
     this.gfx.clear();
 
-    const workable = getWorkableTiles(city, this.mapData, this.gridSystem);
-    const worked = getWorkedTiles(city, this.mapData, this.gridSystem);
+    const workable = getOwnedTiles(city, this.mapData, this.gridSystem);
+    const worked = getStoredWorkedTiles(city, this.mapData, this.gridSystem);
     const workedSet = new Set(worked.map((w) => `${w.tile.x},${w.tile.y}`));
 
     // Draw non-worked workable tiles (weaker)

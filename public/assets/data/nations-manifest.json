@@ -1,0 +1,130 @@
+{
+  "nations": [
+    {
+      "nationId": "nation_china",
+      "nationName": "China",
+      "color": "#d64541",
+      "leaderId": "leader_qin-shi-huang",
+      "leaderName": "Qin Shi Huang",
+      "leaderTitle": "Emperor Qin Shi Huang",
+      "leaderImage": "/assets/sprites/leaders/qin-shi-huang.png"
+    },
+    {
+      "nationId": "nation_england",
+      "nationName": "England",
+      "color": "#4a90d9",
+      "leaderId": "leader_henry_v",
+      "leaderName": "Henry V",
+      "leaderTitle": "King of England",
+      "leaderImage": "/assets/sprites/leaders/henry-v.png"
+    },
+    {
+      "nationId": "nation_france",
+      "nationName": "France",
+      "color": "#7bc67e",
+      "leaderId": "leader_charles_vii",
+      "leaderName": "Charles VII",
+      "leaderTitle": "King of France",
+      "leaderImage": "/assets/sprites/leaders/charles-vi.png"
+    },
+    {
+      "nationId": "nation_hre",
+      "nationName": "Holy Roman Empire",
+      "color": "#e8c84a",
+      "leaderId": "leader_sigismund",
+      "leaderName": "Sigismund",
+      "leaderTitle": "Holy Roman Emperor",
+      "leaderImage": "/assets/sprites/leaders/sigismund.png"
+    },
+    {
+      "nationId": "nation_india",
+      "nationName": "India",
+      "color": "#27ae60",
+      "leaderId": "leader_mahatma-gandhi",
+      "leaderName": "Gandhi",
+      "leaderTitle": "Mahatma Gandhi",
+      "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png"
+    },
+    {
+      "nationId": "nation_lithuania",
+      "nationName": "Lithuania",
+      "color": "#c0392b",
+      "leaderId": "leader_vytautas",
+      "leaderName": "Vytautas the Great",
+      "leaderTitle": "Grand Duke of Lithuania",
+      "leaderImage": "/assets/sprites/leaders/vytautas-the-great.png"
+    },
+    {
+      "nationId": "nation_mali_empire",
+      "nationName": "Mali Empire",
+      "color": "#b7950b",
+      "leaderId": "leader_mansa-musa",
+      "leaderName": "Mansa Musa",
+      "leaderTitle": "Emperor Mansa Musa",
+      "leaderImage": "/assets/sprites/leaders/mansa-musa.png"
+    },
+    {
+      "nationId": "nation_morocco_empire",
+      "nationName": "Morocco",
+      "color": "#9b5f4b",
+      "leaderId": "leader_abu_said_uthman_ii",
+      "leaderName": "Abu Said Uthman II",
+      "leaderTitle": "Sultan of Morocco",
+      "leaderImage": "/assets/sprites/leaders/abu-al-hasan.png"
+    },
+    {
+      "nationId": "nation_north_america",
+      "nationName": "North America",
+      "color": "#2f80ed",
+      "leaderId": "leader_george-washington",
+      "leaderName": "George Washinton",
+      "leaderTitle": "President George Washington",
+      "leaderImage": "/assets/sprites/leaders/george-washington.png"
+    },
+    {
+      "nationId": "nation_novgorod",
+      "nationName": "Novgorod",
+      "color": "#16a085",
+      "leaderId": "leader_marfa_boretskaya",
+      "leaderName": "Marfa Boretskaya",
+      "leaderTitle": "Posadnitsa of Novgorod",
+      "leaderImage": "/assets/sprites/leaders/marfa-boretskaya.png"
+    },
+    {
+      "nationId": "nation_ottoman",
+      "nationName": "Ottoman Empire",
+      "color": "#c44ae8",
+      "leaderId": "leader_mehmed_ii",
+      "leaderName": "Mehmed II",
+      "leaderTitle": "Sultan of the Ottoman Empire",
+      "leaderImage": "/assets/sprites/leaders/mehmed-i.png"
+    },
+    {
+      "nationId": "nation_south_america",
+      "nationName": "South America",
+      "color": "#f2994a",
+      "leaderId": "leader_dom-pedro-ii",
+      "leaderName": "Dom Pedro",
+      "leaderTitle": "Emperor Dom Pedro II",
+      "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png"
+    },
+    {
+      "nationId": "nation_spain",
+      "nationName": "Spain",
+      "color": "#e84a4a",
+      "leaderId": "leader_isabella_i",
+      "leaderName": "Isabella I",
+      "leaderTitle": "Queen of Castile",
+      "leaderImage": "/assets/sprites/leaders/isabella.png"
+    },
+    {
+      "nationId": "nation_sweden",
+      "nationName": "Sweden",
+      "color": "#e87c4a",
+      "leaderId": "leader_gustav_vasa",
+      "leaderName": "Gustav Vasa",
+      "leaderTitle": "King of Sweden",
+      "leaderImage": "/assets/sprites/leaders/gustaf-vasa.png"
+    }
+  ]
+}

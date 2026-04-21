@@ -7,9 +7,10 @@ import type { IGridSystem } from './grid/IGridSystem';
 const OVERLAY_ALPHA = 0.35;
 const OVERLAY_DEPTH = 5;
 const BORDER_DEPTH = 6;
-const BORDER_ALPHA = 0.72;
-const BORDER_COLOR = 0x111111;
-const BORDER_WIDTH = 2;
+const NORMAL_BORDER_ALPHA = 0.84;
+const NORMAL_BORDER_WIDTH = 3;
+const CITY_VIEW_BORDER_ALPHA = 0.96;
+const CITY_VIEW_BORDER_WIDTH = 4;
 
 interface Point {
   x: number;
@@ -40,6 +41,7 @@ export class TerritoryRenderer {
   private readonly mapData: MapData;
   private readonly overlayGfx: Phaser.GameObjects.Graphics;
   private readonly borderGfx: Phaser.GameObjects.Graphics;
+  private mode: 'normal' | 'cityView' = 'normal';
 
   constructor(
     scene: Phaser.Scene,
@@ -75,8 +77,7 @@ export class TerritoryRenderer {
       }
     }
 
-    this.borderGfx.lineStyle(BORDER_WIDTH, BORDER_COLOR, BORDER_ALPHA);
-    const borderSegments = new Set<string>();
+    const borderSegments = new Map<string, { ownerId: string; start: Point; end: Point }>();
 
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
@@ -91,15 +92,25 @@ export class TerritoryRenderer {
           if (!this.shouldDrawBorder(tile.ownerId, neighbor.x, neighbor.y)) continue;
 
           const edge = this.getHexEdgePoints(outline, x, y, neighbor);
-          borderSegments.add(this.segmentKey(edge[0], edge[1]));
+          const key = this.segmentKey(edge[0], edge[1]);
+          if (!borderSegments.has(key)) {
+            borderSegments.set(key, { ownerId: tile.ownerId, start: edge[0], end: edge[1] });
+          }
         }
       }
     }
 
-    for (const segment of borderSegments) {
-      const [x1, y1, x2, y2] = segment.split(',').map(Number);
-      this.borderGfx.lineBetween(x1, y1, x2, y2);
+    for (const segment of borderSegments.values()) {
+      const nationColor = this.nationManager.getNation(segment.ownerId)?.color ?? 0x111111;
+      this.borderGfx.lineStyle(this.getBorderWidth(), nationColor, this.getBorderAlpha());
+      this.borderGfx.lineBetween(segment.start.x, segment.start.y, segment.end.x, segment.end.y);
     }
+  }
+
+  setMode(mode: 'normal' | 'cityView'): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.render();
   }
 
   private shouldDrawBorder(ownerId: string, x: number, y: number): boolean {
@@ -143,5 +154,13 @@ export class TerritoryRenderer {
     }
     this.overlayGfx.closePath();
     this.overlayGfx.fillPath();
+  }
+
+  private getBorderAlpha(): number {
+    return this.mode === 'cityView' ? CITY_VIEW_BORDER_ALPHA : NORMAL_BORDER_ALPHA;
+  }
+
+  private getBorderWidth(): number {
+    return this.mode === 'cityView' ? CITY_VIEW_BORDER_WIDTH : NORMAL_BORDER_WIDTH;
   }
 }

@@ -545,6 +545,84 @@
         font-size: 11px;
         font-style: italic;
       }
+
+      .city-view-overlay {
+        position: fixed;
+        left: 12vw;
+        top: 18px;
+        z-index: 1200;
+        width: min(360px, 34vw);
+        pointer-events: none;
+      }
+
+      .city-view-panel {
+        background: linear-gradient(180deg, rgba(18, 24, 20, 0.96), rgba(10, 14, 12, 0.94));
+        border: 1px solid rgba(172, 196, 162, 0.35);
+        border-radius: 10px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+        color: #e6ecd9;
+        font-family: monospace;
+        padding: 14px 16px;
+        pointer-events: auto;
+      }
+
+      .city-view-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .city-view-title {
+        font-size: 20px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+
+      .city-view-close {
+        border: 1px solid rgba(224, 231, 213, 0.3);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        color: #f2f5ea;
+        cursor: pointer;
+        font: inherit;
+        padding: 6px 10px;
+      }
+
+      .city-view-close:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .city-view-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 12px;
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+
+      .city-view-stat {
+        padding: 6px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .city-view-next,
+      .city-view-hint {
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .city-view-next {
+        color: #ffe08f;
+        margin-bottom: 8px;
+      }
+
+      .city-view-hint {
+        color: #aab5a0;
+      }
     </style>
   </head>
   <body>

@@ -20,7 +20,7 @@ import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
-import { getClaimableTiles, getClaimCost } from '../systems/CultureExpansion';
+import type { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import { RafScheduler } from '../utils/RafScheduler';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
@@ -59,6 +59,7 @@ export class RightPanel {
     nationManager: NationManager,
     mapData: MapData,
     humanNationId: string | undefined,
+    private readonly cityTerritorySystem: CityTerritorySystem,
     private readonly gridSystem: IGridSystem,
   ) {
     const root = document.getElementById('panel-right');
@@ -770,9 +771,8 @@ export class RightPanel {
   }
 
   private renderCultureClaimInfo(city: City, isHuman: boolean): HTMLElement {
-    const tiles = this.mapData.tiles.flat();
-    const cost = getClaimCost(city, tiles);
-    const claimableTiles = getClaimableTiles(city, tiles);
+    const cost = this.cityTerritorySystem.getClaimCost(city, this.mapData);
+    const claimableTiles = this.cityTerritorySystem.getClaimableTiles(city, this.mapData);
     const isReady = city.culture >= cost;
     const container = this.createDiv('');
 

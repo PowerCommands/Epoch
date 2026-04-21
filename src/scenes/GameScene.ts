@@ -25,7 +25,10 @@ import { TurnOrderSystem } from '../systems/TurnOrderSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
-import { claimTile, getClaimableTiles, getClaimCost } from '../systems/CultureExpansion';
+import { CityTerritorySystem } from '../systems/CityTerritorySystem';
+import { CityViewInteractionController } from '../systems/CityViewInteractionController';
+import { getCityViewTileBreakdown } from '../systems/CityViewData';
+import { CityViewRenderer } from '../systems/CityViewRenderer';
 import { DiplomacyManager } from '../systems/DiplomacyManager';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
@@ -34,19 +37,21 @@ import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { CheatSystem } from '../systems/CheatSystem';
+import { DiagnosticSystem } from '../systems/DiagnosticSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
-import { DebugHUD } from '../ui/DebugHUD';
 import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
+import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeftPanel } from '../ui/LeftPanel';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
+import { CityView } from '../ui/CityView';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import type { SavedGameState } from '../types/saveGame';
 import { TileType } from '../types/map';
@@ -65,7 +70,7 @@ import type { GameConfig } from '../types/gameConfig';
  */
 export class GameScene extends Phaser.Scene {
   private cameraController!: CameraController;
-  private debugHUD!: DebugHUD;
+  private diagnosticSystem!: DiagnosticSystem;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -88,6 +93,7 @@ export class GameScene extends Phaser.Scene {
       .map(n => ({ ...n, isHuman: n.id === data.humanNationId }));
     const activeCities = scenario.cities.filter(c => activeSet.has(c.nationId));
     const activeUnits = scenario.units.filter(u => activeSet.has(u.nationId));
+    const cityTerritorySystem = new CityTerritorySystem();
 
     // 3. Create nations and claim AI start territories (mutates mapData.tiles)
     const nationManager = NationManager.loadFromScenario(activeNations, mapData, gridSystem);
@@ -115,6 +121,9 @@ export class GameScene extends Phaser.Scene {
 
     // 6. Create cities from scenario (filtered)
     const cityManager = CityManager.loadFromScenario(activeCities, mapData);
+    for (const city of cityManager.getAllCities()) {
+      cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
+    }
 
     // 7. Create units from scenario (filtered)
     const unitManager = UnitManager.loadFromScenario(activeUnits, mapData);
@@ -151,11 +160,20 @@ export class GameScene extends Phaser.Scene {
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
+    const cityViewRenderer = new CityViewRenderer(
+      this,
+      tileMap,
+      mapData,
+      cityTerritorySystem,
+      gridSystem,
+    );
+    const cityViewInteraction = new CityViewInteractionController(cityTerritorySystem);
     const cultureClaimTileRenderer = new CultureClaimTileRenderer(
       this,
       tileMap,
       nationManager,
       mapData,
+      cityTerritorySystem,
       data.humanNationId,
     );
     let reachableTiles = new Set<string>();
@@ -167,6 +185,8 @@ export class GameScene extends Phaser.Scene {
     let leftPanel: LeftPanel | null = null;
     let rightPanel: RightPanel | null = null;
     let leaderStrip: LeaderPortraitStrip | null = null;
+    const cityView = new CityView();
+    let cityViewDismissedCityId: string | null = null;
 
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager();
@@ -370,24 +390,7 @@ export class GameScene extends Phaser.Scene {
       if (currentSelection?.kind !== 'city') return false;
       if (currentSelection.city.ownerId !== data.humanNationId) return false;
       if (target?.kind !== 'tile') return false;
-
-      const city = currentSelection.city;
-      const tiles = mapData.tiles.flat();
-      const cost = getClaimCost(city, tiles);
-      if (city.culture < cost) return false;
-
-      const claimableTiles = getClaimableTiles(city, tiles);
-      if (!claimableTiles.includes(target.tile)) return false;
-
-      if (!claimTile(city, target.tile)) return false;
-
-      territoryRenderer.render();
-      cityWorkTileRenderer.show(city);
-      cultureClaimTileRenderer.show(city);
-      leftPanel?.requestRefresh();
-      rightPanel?.requestRefresh();
-      discoverySystem.scan();
-      return true;
+      return cityView.isOpenForCity(currentSelection.city.id);
     });
 
     // 16. Läkningssystem
@@ -828,7 +831,13 @@ export class GameScene extends Phaser.Scene {
 
     // ─── UI ──────────────────────────────────────────────────────────────────
 
-    this.debugHUD = new DebugHUD(this);
+    this.diagnosticSystem = new DiagnosticSystem();
+    this.diagnosticSystem.setCameraProvider(() => ({
+      zoom: this.cameraController.zoom,
+      scrollX: this.cameraController.scrollX,
+      scrollY: this.cameraController.scrollY,
+    }));
+    const diagnosticDialog = new DiagnosticDialog(this.diagnosticSystem);
 
     leftPanel = new LeftPanel(nationManager, turnManager, humanNationId, discoverySystem);
     leftPanel.setResearchSystem(researchSystem);
@@ -852,6 +861,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       mapData,
       humanNationId,
+      cityTerritorySystem,
       gridSystem,
     );
     rightPanel.setDiplomacyManager(diplomacyManager);
@@ -862,6 +872,98 @@ export class GameScene extends Phaser.Scene {
       if (!selectedBuilderForHints) return null;
       return builderSystem.getBuildPreview(selectedBuilderForHints, tile);
     });
+    const getOpenCityViewCity = (): City | null => {
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'city') return null;
+      if (!cityView.isOpenForCity(selected.city.id)) return null;
+      if (selected.city.ownerId !== humanNationId) return null;
+      return selected.city;
+    };
+    const clearCityViewInteraction = (): void => {
+      cityViewInteraction.clear();
+      cityView.hideTooltip();
+      this.cameraController.setPointerPanEnabled(true);
+    };
+    cityView.onCloseRequested(() => {
+      const selected = selectionManager.getSelected();
+      clearCityViewInteraction();
+      if (selected?.kind === 'city' && selected.city.ownerId === humanNationId) {
+        cityViewDismissedCityId = selected.city.id;
+        cityView.close();
+        cityViewRenderer.clear();
+        territoryRenderer.setMode('normal');
+        cityWorkTileRenderer.show(selected.city);
+        cultureClaimTileRenderer.show(selected.city);
+        rightPanel?.requestRefresh();
+        return;
+      }
+
+      cityViewDismissedCityId = null;
+      cityView.close();
+      cityViewRenderer.clear();
+      territoryRenderer.setMode('normal');
+    });
+
+    const onCityViewPointerDown = (pointer: Phaser.Input.Pointer): void => {
+      if (pointer.button !== 0) return;
+      const city = getOpenCityViewCity();
+      if (!city) return;
+
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const tile = tileMap.worldToTile(world.x, world.y);
+      const coord = tile ? { x: tile.x, y: tile.y } : null;
+      if (!cityViewInteraction.beginDrag(city, coord, mapData)) return;
+
+      this.cameraController.setPointerPanEnabled(false);
+      cityView.hideTooltip();
+      cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+    };
+
+    const onCityViewPointerMove = (pointer: Phaser.Input.Pointer): void => {
+      const city = getOpenCityViewCity();
+      if (!city) {
+        cityView.hideTooltip();
+        return;
+      }
+
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const tile = tileMap.worldToTile(world.x, world.y);
+      const coord = tile ? { x: tile.x, y: tile.y } : null;
+      cityViewInteraction.updateHover(city, coord, mapData);
+
+      const hovered = cityViewInteraction.getHoveredCoord();
+      const breakdown = hovered
+        ? getCityViewTileBreakdown(city, hovered, mapData, gridSystem, cityTerritorySystem)
+        : null;
+      if (breakdown) cityView.showTooltip(breakdown, pointer.x, pointer.y);
+      else cityView.hideTooltip();
+
+      if (cityViewInteraction.isDragging()) {
+        cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+      }
+    };
+
+    const onCityViewPointerUp = (pointer: Phaser.Input.Pointer): void => {
+      const city = getOpenCityViewCity();
+      if (!city || !cityViewInteraction.isDragging()) return;
+
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const tile = tileMap.worldToTile(world.x, world.y);
+      const coord = tile ? { x: tile.x, y: tile.y } : null;
+      const changed = cityViewInteraction.handleDrop(city, coord, mapData);
+      this.cameraController.setPointerPanEnabled(true);
+      cityView.hideTooltip();
+      cityView.refresh(city);
+      cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+      if (changed) {
+        rightPanel?.requestRefresh();
+      }
+    };
+
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, onCityViewPointerDown);
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, onCityViewPointerMove);
+    this.input.on(Phaser.Input.Events.POINTER_UP, onCityViewPointerUp);
+    this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, onCityViewPointerUp);
 
     // Phaser-side leader portrait strip (replaces the old left-panel leader list)
     leaderStrip = new LeaderPortraitStrip(this, nationManager, discoverySystem, humanNationId);
@@ -956,6 +1058,7 @@ export class GameScene extends Phaser.Scene {
       humanNationId,
       researchSystem,
       resourceSystem,
+      diagnosticSystem: this.diagnosticSystem,
       productionSystem,
       cityManager,
       selectionManager,
@@ -978,9 +1081,11 @@ export class GameScene extends Phaser.Scene {
     });
     turnManager.on('roundStart', () => leftPanel?.requestRefresh());
     resourceSystem.on(() => {
+      territoryRenderer.render();
       leftPanel?.requestRefresh();
       rightPanel?.requestRefresh();
       refreshSelectedCityOverlays();
+      refreshOpenCityView();
     });
     unitManager.onUnitChanged((event) => {
       leftPanel?.requestRefresh();
@@ -1003,6 +1108,9 @@ export class GameScene extends Phaser.Scene {
       leaderStrip?.setSelectedNation(null);
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
+      if (selection?.kind !== 'city' || selection.city.id !== cityViewDismissedCityId) {
+        cityViewDismissedCityId = null;
+      }
 
       if (selection?.kind === 'unit'
         && selection.unit.ownerId === humanNationId
@@ -1013,29 +1121,52 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (selection?.kind === 'tile') {
+        clearCityViewInteraction();
         selectedBuilderForHints = null;
         unitActionToolbox.setSelectedUnit(null);
         rightPanel?.showTile(selection.tile);
+        territoryRenderer.setMode('normal');
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
+        cityView.close();
+        cityViewRenderer.clear();
       } else if (selection?.kind === 'city') {
+        clearCityViewInteraction();
         selectedBuilderForHints = null;
         unitActionToolbox.setSelectedUnit(null);
         rightPanel?.showCity(selection.city);
-        cityWorkTileRenderer.show(selection.city);
-        cultureClaimTileRenderer.show(selection.city);
+        if (selection.city.ownerId === humanNationId && cityViewDismissedCityId !== selection.city.id) {
+          territoryRenderer.setMode('cityView');
+          openCityView(selection.city);
+          cityWorkTileRenderer.clear();
+          cultureClaimTileRenderer.clear();
+        } else {
+          territoryRenderer.setMode('normal');
+          cityView.close();
+          cityViewRenderer.clear();
+          cityWorkTileRenderer.show(selection.city);
+          cultureClaimTileRenderer.show(selection.city);
+        }
       } else if (selection?.kind === 'unit') {
+        clearCityViewInteraction();
         selectedBuilderForHints = selection.unit.unitType.canBuildImprovements ? selection.unit : null;
         unitActionToolbox.setSelectedUnit(selection.unit);
         rightPanel?.showUnit(selection.unit);
+        territoryRenderer.setMode('normal');
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
+        cityView.close();
+        cityViewRenderer.clear();
       } else {
+        clearCityViewInteraction();
         selectedBuilderForHints = null;
         unitActionToolbox.setSelectedUnit(null);
         rightPanel?.clear();
+        territoryRenderer.setMode('normal');
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
+        cityView.close();
+        cityViewRenderer.clear();
       }
       refreshMovePreview();
     });
@@ -1104,8 +1235,6 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.centerOn(x, y);
       selectionManager.selectCity(city);
       rightPanel?.showCity(city);
-      cityWorkTileRenderer.show(city);
-      cultureClaimTileRenderer.show(city);
       refreshMovePreview();
     };
     window.addEventListener('focusCity', onFocusCity);
@@ -1120,6 +1249,11 @@ export class GameScene extends Phaser.Scene {
     };
     window.addEventListener('focusUnit', onFocusUnit);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      clearCityViewInteraction();
+      this.input.off(Phaser.Input.Events.POINTER_DOWN, onCityViewPointerDown);
+      this.input.off(Phaser.Input.Events.POINTER_MOVE, onCityViewPointerMove);
+      this.input.off(Phaser.Input.Events.POINTER_UP, onCityViewPointerUp);
+      this.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, onCityViewPointerUp);
       window.removeEventListener('focusCity', onFocusCity);
       window.removeEventListener('focusUnit', onFocusUnit);
       document.removeEventListener('nationSelected', onNationSelected);
@@ -1127,6 +1261,9 @@ export class GameScene extends Phaser.Scene {
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
       leftPanel?.shutdown();
       rightPanel?.shutdown();
+      diagnosticDialog.shutdown();
+      this.diagnosticSystem.shutdown();
+      cityView.shutdown();
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });
@@ -1185,6 +1322,7 @@ export class GameScene extends Phaser.Scene {
         diplomacyManager,
         discoverySystem,
         turnManager,
+        gridSystem,
       });
 
       // Rebuild renderers that depend on replaced entities.
@@ -1195,6 +1333,7 @@ export class GameScene extends Phaser.Scene {
       for (const nation of nationManager.getAllNations()) {
         resourceSystem.recalculateForNation(nation.id);
       }
+      refreshOpenCityView();
     }
 
     // ─── Escape menu ─────────────────────────────────────────────────────────
@@ -1214,6 +1353,7 @@ export class GameScene extends Phaser.Scene {
             diplomacyManager,
             discoverySystem,
             turnManager,
+            gridSystem,
           });
           downloadSaveFile(state);
           escapeMenu.close();
@@ -1279,19 +1419,36 @@ export class GameScene extends Phaser.Scene {
     function refreshSelectedCityOverlays(): void {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'city') return;
+      if (cityView.isOpenForCity(selected.city.id)) {
+        territoryRenderer.setMode('cityView');
+        cityViewRenderer.showWithInteraction(selected.city, cityViewInteraction.getRenderState());
+        return;
+      }
+      territoryRenderer.setMode('normal');
       cityWorkTileRenderer.show(selected.city);
       cultureClaimTileRenderer.show(selected.city);
     }
+
+    function refreshOpenCityView(): void {
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'city') return;
+      if (!cityView.isOpenForCity(selected.city.id)) return;
+      cityView.refresh(selected.city);
+      cityViewRenderer.showWithInteraction(selected.city, cityViewInteraction.getRenderState());
+    }
+
+    const openCityView = (city: City): void => {
+      cityView.show(city);
+      cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+      const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
+      this.cameraController.focusOn(x, y, 2.0);
+    };
   }
 
   update(_time: number, delta: number): void {
     if (!this.cameraController) return;
     this.cameraController.update(delta);
-    this.debugHUD.update(
-      this.cameraController.zoom,
-      this.cameraController.scrollX,
-      this.cameraController.scrollY,
-    );
+    this.diagnosticSystem.update();
   }
 
   private findUnitPlacementTile(

@@ -12,6 +12,13 @@ export interface WorkedTileYield extends TileYield {
   tile: Tile;
 }
 
+export interface WorkedTileYieldBreakdown extends TileYield {
+  coord: { x: number; y: number };
+  science: number;
+  culture: number;
+  happiness: number;
+}
+
 const ZERO_TILE_YIELD: TileYield = { food: 0, production: 0, gold: 0 };
 
 export interface CityEconomySummary {
@@ -40,8 +47,8 @@ export function calculateCityEconomy(
   buildings: CityBuildings,
   gridSystem: IGridSystem,
 ): CityEconomySummary {
-  const workableTiles = getWorkableTiles(city, mapData, gridSystem);
-  const workedTiles = getWorkedTiles(city, mapData, gridSystem);
+  const workableTiles = getOwnedTiles(city, mapData, gridSystem);
+  const workedTiles = getStoredWorkedTiles(city, mapData, gridSystem);
   let food = BASE_CITY_FOOD;
   let production = 0;
   let gold = 0;
@@ -134,6 +141,60 @@ export function getWorkedTiles(
         gold: worked.gold + improvementYield.gold,
       };
     });
+}
+
+export function getOwnedTiles(
+  city: City,
+  mapData: MapData,
+  gridSystem: IGridSystem,
+): Tile[] {
+  if (city.ownedTileCoords.length === 0) {
+    return getWorkableTiles(city, mapData, gridSystem);
+  }
+
+  return city.ownedTileCoords
+    .map(({ x, y }) => mapData.tiles[y]?.[x])
+    .filter((tile): tile is Tile => tile !== undefined);
+}
+
+export function getStoredWorkedTiles(
+  city: City,
+  mapData: MapData,
+  gridSystem: IGridSystem,
+): WorkedTileYield[] {
+  if (city.workedTileCoords.length === 0) {
+    return getWorkedTiles(city, mapData, gridSystem);
+  }
+
+  return city.workedTileCoords
+    .map(({ x, y }) => mapData.tiles[y]?.[x])
+    .filter((tile): tile is Tile => tile !== undefined)
+    .map((tile) => {
+      const terrainYield = getTerrainYield(tile.type);
+      const improvementYield = getTileImprovementYield(tile);
+      return {
+        tile,
+        food: terrainYield.food + improvementYield.food,
+        production: terrainYield.production + improvementYield.production,
+        gold: terrainYield.gold + improvementYield.gold,
+      };
+    });
+}
+
+export function getWorkedTileYieldBreakdown(
+  city: City,
+  mapData: MapData,
+  gridSystem: IGridSystem,
+): WorkedTileYieldBreakdown[] {
+  return getStoredWorkedTiles(city, mapData, gridSystem).map((worked) => ({
+    coord: { x: worked.tile.x, y: worked.tile.y },
+    food: worked.food,
+    production: worked.production,
+    gold: worked.gold,
+    science: 0,
+    culture: 0,
+    happiness: 0,
+  }));
 }
 
 export function getTileImprovementYield(tile: Tile): TileYield {

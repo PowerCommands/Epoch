@@ -25,6 +25,9 @@ export class City {
   population: number;
   foodStorage: number;
   culture: number;
+  ownedTileCoords: Array<{ x: number; y: number }>;
+  workedTileCoords: Array<{ x: number; y: number }>;
+  nextExpansionTileCoord: { x: number; y: number } | undefined;
   lastTurnAttacked: number | null = null;
 
   constructor(config: CityConfig) {
@@ -38,6 +41,9 @@ export class City {
     this.population = 1;
     this.foodStorage = 0;
     this.culture = 0;
+    this.ownedTileCoords = [];
+    this.workedTileCoords = [];
+    this.nextExpansionTileCoord = undefined;
   }
 
   get isDamaged(): boolean {
