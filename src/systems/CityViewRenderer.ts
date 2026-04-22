@@ -156,15 +156,15 @@ export class CityViewRenderer {
         entries.join(' '),
         {
           fontFamily: 'Arial, sans-serif',
-          fontSize: '14px',
+          fontSize: '7px',
           color: '#fffde8',
           align: 'center',
           stroke: '#132018',
-          strokeThickness: 4,
+          strokeThickness: 2,
         },
       );
       label.setOrigin(0.5, 0.5);
-      label.setShadow(0, 2, '#000000', 3, false, true);
+      label.setShadow(0, 1, '#000000', 2, false, true);
       this.labelLayer.add(label);
     }
   }

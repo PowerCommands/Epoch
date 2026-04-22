@@ -2,9 +2,10 @@ import type { CityManager } from '../../systems/CityManager';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { NationManager } from '../../systems/NationManager';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
+import type { TurnManager } from '../../systems/TurnManager';
 
 export interface HudResourceEntry {
-  key: 'happiness' | 'production' | 'culture' | 'gold';
+  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold';
   icon: string;
   value: number;
   delta: number;
@@ -35,6 +36,7 @@ export class NationHudDataProvider {
     private readonly cityManager: CityManager,
     private readonly happinessSystem: HappinessSystem,
     private readonly researchSystem: ResearchSystem,
+    private readonly turnManager: TurnManager,
   ) {}
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
@@ -43,6 +45,12 @@ export class NationHudDataProvider {
       .reduce((sum, city) => sum + this.cityManager.getResources(city.id).productionPerTurn, 0);
 
     return [
+      {
+        key: 'turn',
+        icon: '',
+        value: this.turnManager.getCurrentRound(),
+        delta: 0,
+      },
       {
         key: 'happiness',
         icon: '😀',

@@ -39,6 +39,7 @@ export class HudLayer {
     this.uiCamera = scene.cameras.add(0, 0, scene.scale.width, scene.scale.height);
     this.uiCamera.setScroll(0, 0);
     this.uiCamera.setZoom(1);
+    this.uiCamera.roundPixels = true;
     this.uiCamera.ignore(scene.children.list);
 
     this.onAddedToScene = (go) => {

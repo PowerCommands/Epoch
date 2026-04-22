@@ -4,6 +4,7 @@ import type { CityViewTileBreakdown } from '../systems/CityViewData';
 type CloseCallback = () => void;
 type PlacementRequestCallback = (buildingId: string) => void;
 type PlacementCancelCallback = () => void;
+type BuyTileRequestCallback = () => void;
 
 export interface CityViewBuildingOption {
   id: string;
@@ -20,8 +21,16 @@ export interface CityViewPlacementPanelState {
   underConstructionLabel?: string;
 }
 
+export interface CityViewTilePurchaseState {
+  visible: boolean;
+  enabled: boolean;
+  buttonLabel: string;
+  detailText?: string;
+}
+
 export class CityView {
   private readonly root: HTMLDivElement;
+  private readonly headerEl: HTMLDivElement;
   private readonly titleEl: HTMLDivElement;
   private readonly statsEl: HTMLDivElement;
   private readonly nextTileEl: HTMLDivElement;
@@ -31,8 +40,12 @@ export class CityView {
   private readonly closeCallbacks: CloseCallback[] = [];
   private readonly placementRequestCallbacks: PlacementRequestCallback[] = [];
   private readonly placementCancelCallbacks: PlacementCancelCallback[] = [];
+  private readonly buyTileRequestCallbacks: BuyTileRequestCallback[] = [];
   private currentCityId: string | null = null;
   private open = false;
+  private dragging = false;
+  private dragOffsetX = 0;
+  private dragOffsetY = 0;
 
   constructor() {
     const mount = document.getElementById('app-layout');
@@ -45,8 +58,8 @@ export class CityView {
     const panel = document.createElement('div');
     panel.className = 'city-view-panel';
 
-    const header = document.createElement('div');
-    header.className = 'city-view-header';
+    this.headerEl = document.createElement('div');
+    this.headerEl.className = 'city-view-header';
 
     this.titleEl = document.createElement('div');
     this.titleEl.className = 'city-view-title';
@@ -59,7 +72,7 @@ export class CityView {
       for (const callback of this.closeCallbacks) callback();
     });
 
-    header.append(this.titleEl, closeButton);
+    this.headerEl.append(this.titleEl, closeButton);
 
     this.statsEl = document.createElement('div');
     this.statsEl.className = 'city-view-stats';
@@ -82,7 +95,7 @@ export class CityView {
     hint.className = 'city-view-hint';
     hint.textContent = 'Drag the planned expansion tile to retarget culture growth, or choose a building below to place it on a cyan tile.';
 
-    panel.append(header, this.statsEl, this.nextTileEl, placementSection, hint);
+    panel.append(this.headerEl, this.statsEl, this.nextTileEl, placementSection, hint);
     this.root.append(panel);
     mount.append(this.root);
 
@@ -107,6 +120,10 @@ export class CityView {
       white-space: normal;
     `;
     document.body.append(this.tooltipEl);
+
+    this.headerEl.addEventListener('mousedown', this.handleHeaderMouseDown);
+    document.addEventListener('mousemove', this.handleDocumentMouseMove);
+    document.addEventListener('mouseup', this.handleDocumentMouseUp);
   }
 
   onCloseRequested(callback: CloseCallback): void {
@@ -121,6 +138,10 @@ export class CityView {
     this.placementCancelCallbacks.push(callback);
   }
 
+  onBuyTileRequested(callback: BuyTileRequestCallback): void {
+    this.buyTileRequestCallbacks.push(callback);
+  }
+
   isOpenForCity(cityId: string): boolean {
     return this.open && this.currentCityId === cityId;
   }
@@ -129,30 +150,36 @@ export class CityView {
     city: City,
     buildingOptions: CityViewBuildingOption[],
     placementState: CityViewPlacementPanelState,
+    tilePurchaseState: CityViewTilePurchaseState,
   ): void {
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
-    this.render(city, buildingOptions, placementState);
+    this.render(city, buildingOptions, placementState, tilePurchaseState);
   }
 
   refresh(
     city: City,
     buildingOptions: CityViewBuildingOption[],
     placementState: CityViewPlacementPanelState,
+    tilePurchaseState: CityViewTilePurchaseState,
   ): void {
     if (!this.isOpenForCity(city.id)) return;
-    this.render(city, buildingOptions, placementState);
+    this.render(city, buildingOptions, placementState, tilePurchaseState);
   }
 
   close(): void {
     this.open = false;
     this.currentCityId = null;
     this.root.style.display = 'none';
+    this.dragging = false;
     this.hideTooltip();
   }
 
   shutdown(): void {
+    this.headerEl.removeEventListener('mousedown', this.handleHeaderMouseDown);
+    document.removeEventListener('mousemove', this.handleDocumentMouseMove);
+    document.removeEventListener('mouseup', this.handleDocumentMouseUp);
     this.root.remove();
     this.tooltipEl.remove();
   }
@@ -192,10 +219,35 @@ export class CityView {
     this.tooltipEl.style.display = 'none';
   }
 
+  private readonly handleHeaderMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest('button')) return;
+
+    const rect = this.root.getBoundingClientRect();
+    this.dragging = true;
+    this.dragOffsetX = event.clientX - rect.left;
+    this.dragOffsetY = event.clientY - rect.top;
+    event.preventDefault();
+  };
+
+  private readonly handleDocumentMouseMove = (event: MouseEvent): void => {
+    if (!this.dragging || !this.open) return;
+
+    const left = clamp(event.clientX - this.dragOffsetX, 0, Math.max(0, window.innerWidth - this.root.offsetWidth));
+    const top = clamp(event.clientY - this.dragOffsetY, 0, Math.max(0, window.innerHeight - this.root.offsetHeight));
+    this.root.style.left = `${left}px`;
+    this.root.style.top = `${top}px`;
+  };
+
+  private readonly handleDocumentMouseUp = (): void => {
+    this.dragging = false;
+  };
+
   private render(
     city: City,
     buildingOptions: CityViewBuildingOption[],
     placementState: CityViewPlacementPanelState,
+    tilePurchaseState: CityViewTilePurchaseState,
   ): void {
     this.titleEl.textContent = city.name;
 
@@ -213,11 +265,37 @@ export class CityView {
       return row;
     }));
 
-    this.nextTileEl.textContent = city.nextExpansionTileCoord
-      ? `Planned next expansion: (${city.nextExpansionTileCoord.x}, ${city.nextExpansionTileCoord.y})`
-      : 'Planned next expansion: none';
+    this.renderTilePurchase(tilePurchaseState);
 
     this.renderPlacementOptions(buildingOptions, placementState);
+  }
+
+  private renderTilePurchase(tilePurchaseState: CityViewTilePurchaseState): void {
+    this.nextTileEl.replaceChildren();
+    this.nextTileEl.style.display = tilePurchaseState.visible ? 'block' : 'none';
+    if (!tilePurchaseState.visible) return;
+
+    const row = document.createElement('div');
+    row.className = 'city-view-placement-status-row';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'city-view-placement-button';
+    button.textContent = tilePurchaseState.buttonLabel;
+    button.disabled = !tilePurchaseState.enabled;
+    button.addEventListener('click', () => {
+      for (const callback of this.buyTileRequestCallbacks) callback();
+    });
+    row.append(button);
+    this.nextTileEl.append(row);
+
+    if (tilePurchaseState.detailText) {
+      const detail = document.createElement('div');
+      detail.className = tilePurchaseState.enabled ? 'city-view-hint' : 'city-view-placement-empty';
+      detail.textContent = tilePurchaseState.detailText;
+      detail.style.marginTop = '10px';
+      this.nextTileEl.append(detail);
+    }
   }
 
   private renderPlacementOptions(
@@ -274,4 +352,8 @@ export class CityView {
       this.placementButtonsEl.append(button);
     }
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

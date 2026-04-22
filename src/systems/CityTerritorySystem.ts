@@ -168,15 +168,7 @@ export class CityTerritorySystem {
     if (city.culture < cost) return false;
 
     city.culture -= cost;
-    tile.ownerId = city.ownerId;
-    city.ownedTileCoords = this.normalizeCoords([
-      ...city.ownedTileCoords,
-      { x: tile.x, y: tile.y },
-    ]);
-    this.updateWorkedTiles(city, mapData);
-    this.refreshNextExpansionTile(city, mapData);
-
-    return true;
+    return this.applyClaimedTile(city, tile, mapData);
   }
 
   tryClaimNextExpansionTile(city: City, mapData: MapData): boolean {
@@ -186,10 +178,37 @@ export class CityTerritorySystem {
     return this.claimTile(city, target, mapData);
   }
 
+  claimNextExpansionTileImmediately(city: City, mapData: MapData): boolean {
+    this.refreshNextExpansionTile(city, mapData);
+    const target = city.nextExpansionTileCoord;
+    if (!target) return false;
+
+    const tile = this.getTile(mapData, target.x, target.y);
+    if (!tile) return false;
+
+    const claimableSet = new Set(
+      this.getClaimableTiles(city, mapData).map((candidate) => this.getCoordKey(candidate.x, candidate.y)),
+    );
+    if (!claimableSet.has(this.getCoordKey(target.x, target.y))) return false;
+
+    return this.applyClaimedTile(city, tile, mapData);
+  }
+
   private getOwnedTiles(city: City, mapData: MapData): Tile[] {
     return city.ownedTileCoords
       .map(({ x, y }) => this.getTile(mapData, x, y))
       .filter((tile): tile is Tile => tile !== undefined);
+  }
+
+  private applyClaimedTile(city: City, tile: Tile, mapData: MapData): boolean {
+    tile.ownerId = city.ownerId;
+    city.ownedTileCoords = this.normalizeCoords([
+      ...city.ownedTileCoords,
+      { x: tile.x, y: tile.y },
+    ]);
+    this.updateWorkedTiles(city, mapData);
+    this.refreshNextExpansionTile(city, mapData);
+    return true;
   }
 
   private normalizeCoords(coords: CityTileCoord[]): CityTileCoord[] {

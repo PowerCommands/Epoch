@@ -7,6 +7,7 @@ const DEPTH = 140;
 const EDGE_MARGIN = 16;
 const ENTRY_GAP = 8;
 const ENTRY_HEIGHT = 34;
+const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
 interface ResourceEntryView {
   background: Phaser.GameObjects.Rectangle;
@@ -21,7 +22,7 @@ export class TopResourceBar {
     private readonly scene: Phaser.Scene,
     addOwned: AddOwned,
   ) {
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       const background = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, ENTRY_HEIGHT, 0x0b1118, 0.84))
         .setOrigin(0, 0)
         .setDepth(DEPTH)
@@ -35,7 +36,8 @@ export class TopResourceBar {
       }))
         .setOrigin(0, 0.5)
         .setDepth(DEPTH + 1)
-        .setScrollFactor(0);
+        .setScrollFactor(0)
+        .setResolution(HUD_TEXT_RESOLUTION);
 
       this.entries.push({ background, text });
     }
@@ -55,7 +57,7 @@ export class TopResourceBar {
 
       view.background.setVisible(true);
       view.text.setVisible(true);
-      view.text.setText(`${value.icon} ${value.value} (${formatSigned(value.delta)})`);
+      view.text.setText(formatEntryText(value));
     }
   }
 
@@ -71,8 +73,8 @@ export class TopResourceBar {
       const textWidth = Math.ceil(view.text.width);
       const width = textWidth + 24;
 
-      view.background.setPosition(x, y).setDisplaySize(width, ENTRY_HEIGHT);
-      view.text.setPosition(x + 12, y + ENTRY_HEIGHT / 2);
+      view.background.setPosition(Math.round(x), Math.round(y)).setDisplaySize(width, ENTRY_HEIGHT);
+      view.text.setPosition(Math.round(x + 12), Math.round(y + (ENTRY_HEIGHT / 2)));
 
       x += width + ENTRY_GAP;
     }
@@ -88,4 +90,17 @@ export class TopResourceBar {
 
 function formatSigned(value: number): string {
   return value >= 0 ? `+${value}` : `${value}`;
+}
+
+function formatEntryText(value: HudResourceEntry): string {
+  if (value.key === 'turn') {
+    return `Turn: ${value.value}`;
+  }
+
+  return `${value.icon} ${value.value} (${formatSigned(value.delta)})`;
+}
+
+function getHudTextResolution(): number {
+  if (typeof window === 'undefined') return 2;
+  return Math.max(2, Math.ceil(window.devicePixelRatio || 1));
 }

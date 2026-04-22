@@ -55,6 +55,7 @@ import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
 import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState } from '../ui/CityView';
+import type { CityViewTilePurchaseState } from '../ui/CityView';
 import { HudLayer } from '../ui/hud/HudLayer';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { SaveLoadService } from '../systems/SaveLoadService';
@@ -254,8 +255,13 @@ export class GameScene extends Phaser.Scene {
       unitActionToolbox.setSelectedUnit(null);
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
+      if (city.ownerId === humanNationId) {
+        cityViewDismissedCityId = null;
+        selectionManager.selectCity(city);
+      } else {
+        rightPanel?.clear();
+      }
       hudLayer?.refresh();
-      rightPanel?.clear();
       return true;
     };
     const performBuildImprovementAction = (unit: Unit): boolean => {
@@ -868,6 +874,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       happinessSystem,
       researchSystem,
+      turnManager,
     );
     hudLayer = new HudLayer(this, {
       humanNationId,
@@ -973,6 +980,34 @@ export class GameScene extends Phaser.Scene {
           : undefined,
       };
     };
+    const getCityViewTilePurchaseState = (city: City): CityViewTilePurchaseState => {
+      if (city.ownerId !== humanNationId) {
+        return { visible: false, enabled: false, buttonLabel: 'Buy Tile' };
+      }
+
+      cityTerritorySystem.refreshNextExpansionTile(city, mapData);
+      const nextTile = city.nextExpansionTileCoord;
+      if (!nextTile) {
+        return {
+          visible: true,
+          enabled: false,
+          buttonLabel: 'Buy Tile',
+          detailText: 'No planned expansion tile is available to buy.',
+        };
+      }
+
+      const cost = cityTerritorySystem.getClaimCost(city, mapData);
+      const availableGold = nationManager.getResources(city.ownerId).gold;
+      const missingGold = Math.max(0, cost - availableGold);
+      return {
+        visible: true,
+        enabled: availableGold >= cost,
+        buttonLabel: `Buy Tile (${cost} gold)`,
+        detailText: availableGold >= cost
+          ? `Claim the currently planned expansion tile immediately.`
+          : `Need ${missingGold} more gold to buy the planned tile.`,
+      };
+    };
     rightPanel.setBuildingPlacementRequestHandler((city, buildingId) => {
       if (city.ownerId !== humanNationId) {
         return { ok: false, message: 'Only a human-owned selected city can place buildings.' };
@@ -1049,6 +1084,35 @@ export class GameScene extends Phaser.Scene {
     });
     cityView.onPlacementCancelled(() => {
       buildingPlacementSystem.cancelPlacement();
+      refreshOpenCityView();
+    });
+    cityView.onBuyTileRequested(() => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+
+      cityTerritorySystem.refreshNextExpansionTile(city, mapData);
+      if (!city.nextExpansionTileCoord) {
+        refreshOpenCityView();
+        return;
+      }
+
+      const cost = cityTerritorySystem.getClaimCost(city, mapData);
+      const nationResources = nationManager.getResources(city.ownerId);
+      if (nationResources.gold < cost) {
+        refreshOpenCityView();
+        return;
+      }
+
+      resourceSystem.addGold(city.ownerId, -cost);
+      const claimed = cityTerritorySystem.claimNextExpansionTileImmediately(city, mapData);
+      if (!claimed) {
+        resourceSystem.addGold(city.ownerId, cost);
+        refreshOpenCityView();
+        return;
+      }
+
+      resourceSystem.recalculateForNation(city.ownerId);
+      rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
 
@@ -1219,6 +1283,7 @@ export class GameScene extends Phaser.Scene {
         city,
         getCityViewBuildingOptions(city),
         getCityViewPlacementPanelState(city),
+        getCityViewTilePurchaseState(city),
       );
       cityViewRenderer.showWithState(
         city,
@@ -1717,6 +1782,7 @@ export class GameScene extends Phaser.Scene {
         selected.city,
         getCityViewBuildingOptions(selected.city),
         getCityViewPlacementPanelState(selected.city),
+        getCityViewTilePurchaseState(selected.city),
       );
       cityViewRenderer.showWithState(
         selected.city,
@@ -1730,6 +1796,7 @@ export class GameScene extends Phaser.Scene {
         city,
         getCityViewBuildingOptions(city),
         getCityViewPlacementPanelState(city),
+        getCityViewTilePurchaseState(city),
       );
       cityViewRenderer.showWithState(
         city,
