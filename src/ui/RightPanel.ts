@@ -29,6 +29,8 @@ type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
 type BuildingPlacementRequestResult = { ok: boolean; message?: string };
 type BuildingPlacementRequestHandler = (city: City, buildingId: string) => BuildingPlacementRequestResult;
 
+// LEGACY: still active at runtime for now, but planned for removal as the
+// gameplay UI migrates fully to Phaser screen-space HUD/widgets.
 export class RightPanel {
   private readonly root: HTMLElement;
   private readonly contentEl: HTMLElement;

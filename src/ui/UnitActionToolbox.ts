@@ -60,6 +60,9 @@ type ChangedListener = () => void;
 
 const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'sleep', 'build', 'found'];
 
+// LEGACY: this class still owns shared action state/mode rules, but its HTML
+// rendering path is no longer mounted in active gameplay. Phaser HUD is the
+// authoritative interaction layer.
 export class UnitActionToolbox {
   private selectedUnit: Unit | null = null;
   private mode: UnitActionMode = 'move';

@@ -24,7 +24,7 @@ Goal: simplified Civilization-style gameplay on a real Europe map.
 * Entities → pure TypeScript (no Phaser)
 * Systems → game rules only
 * Renderers → visuals only
-* UI → HTML panels only
+* UI → Phaser HUD for gameplay, HTML only for temporary legacy panels
 * GameScene → orchestration only
 
 Never mix responsibilities.
@@ -33,9 +33,29 @@ Never mix responsibilities.
 
 ### UI model
 
-* Phaser → world rendering only
-* HTML/CSS → panels and interaction
-* Communication via explicit events
+* Phaser → game world AND in-game HUD (units, map, actions, turn button)
+* HTML/CSS → temporary panels only (`RightPanel`), planned for removal
+* Long-term goal → Phaser-only UI for gameplay
+
+### UI Direction (Important)
+
+* The project is moving toward fully Phaser-driven UI (no HTML overlays for gameplay)
+* Reason:
+  * Consistent input handling
+  * No click-through bugs between HUD and world
+  * Better control over rendering, depth, and layering
+* Rule:
+  * No new gameplay UI should be implemented in HTML
+* HTML UI is no longer part of the core gameplay loop
+* Phaser screen-space UI is the authoritative interaction layer
+* All gameplay input handling must go through Phaser UI and respect pointer consumption
+
+### Input handling
+
+* Phaser UI elements MUST consume pointer events on `pointerdown`
+* Phaser UI elements MUST consume pointer events on `pointerup`
+* `SelectionManager` and `CameraController` must respect consumed pointers / claimed HUD pointer sequences
+* Shared gating between HUD input and world input is a core architectural rule
 
 ### UI
 
@@ -48,6 +68,7 @@ Never mix responsibilities.
 * Building selection in the `RightPanel` can start tile-building placement for the selected human city
 * `DiagnosticDialog` is an HTML/CSS floating dialog opened through the `diagnostic` cheat command
 * It is draggable, resizable, closable, and live-updating
+* `RightPanel` is still active at runtime but is legacy UI planned for removal after the Phaser HUD migration
 
 ---
 

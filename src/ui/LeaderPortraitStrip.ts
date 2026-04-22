@@ -4,12 +4,14 @@ import type { Nation } from '../entities/Nation';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
 import type { NationManager } from '../systems/NationManager';
 import type { LeaderDefinition } from '../types/leader';
+import { consumePointerEvent } from '../utils/phaserScreenSpaceUi';
 
 // Match the previous HTML portrait proportions:
 //   width 64px, height 82px, border-radius 50% / 43%  →  tall cameo oval.
-const PORTRAIT_WIDTH = 64;
-const PORTRAIT_HEIGHT = 82;
-const PORTRAIT_SPACING = 10;
+const PORTRAIT_SCALE = 1.2;
+const PORTRAIT_WIDTH = Math.round(64 * PORTRAIT_SCALE);
+const PORTRAIT_HEIGHT = Math.round(82 * PORTRAIT_SCALE);
+const PORTRAIT_SPACING = Math.round(10 * PORTRAIT_SCALE);
 const STRIP_TOP_OFFSET = 16;
 const STRIP_DEPTH = 100;
 const BG_COLOR = 0x151515;
@@ -229,13 +231,43 @@ export class LeaderPortraitStrip {
       .setScrollFactor(0)
       .setStrokeStyle(2, nation.color, 0.95);
 
-    hit.on(Phaser.Input.Events.POINTER_OVER, () => this.showTooltip(hit, nation, leader));
-    hit.on(Phaser.Input.Events.POINTER_OUT, () => this.hideTooltip());
+    hit.on(Phaser.Input.Events.POINTER_OVER, (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.showTooltip(hit, nation, leader);
+    });
+    hit.on(Phaser.Input.Events.POINTER_OUT, (
+      _pointer: Phaser.Input.Pointer,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.hideTooltip();
+    });
 
-    hit.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer) => {
+    hit.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
       if (pointer.button !== 0) return;
+      event.stopPropagation();
+      consumePointerEvent(pointer);
+    });
 
-      pointer.event.stopPropagation();
+    hit.on(Phaser.Input.Events.POINTER_UP, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      if (pointer.button !== 0) return;
+      event.stopPropagation();
+      consumePointerEvent(pointer);
 
       document.dispatchEvent(new CustomEvent('leaderSelected', {
         detail: { nationId: nation.id, leaderId: leader?.id },

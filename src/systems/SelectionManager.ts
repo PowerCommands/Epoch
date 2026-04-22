@@ -5,7 +5,7 @@ import { CityManager } from './CityManager';
 import { UnitManager } from './UnitManager';
 import type { WorldInputGate } from './input/WorldInputGate';
 import { Selectable } from '../types/selection';
-import { isPointerEventConsumed, isPointerOverScreenSpaceUi } from '../utils/phaserScreenSpaceUi';
+import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
 
@@ -143,10 +143,6 @@ export class SelectionManager {
         if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
         if (isPointerEventConsumed(pointer)) return;
         if (this.cameraController.wasDragging()) return;
-
-        // Skip map selection when pointer is over an interactive UI element
-        // (scrollFactor 0 = fixed to screen, not part of the game world)
-        if (isPointerOverScreenSpaceUi(this.scene, pointer)) return;
 
         const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
         const target = this.resolve(wp.x, wp.y);

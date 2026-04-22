@@ -58,6 +58,8 @@
         box-sizing: border-box;
       }
 
+      /* LEGACY: left HTML panel is no longer part of the active gameplay UI.
+         Kept as an inert placeholder while cleanup continues. */
       #panel-left {
         left: 0;
         width: 0;
@@ -135,6 +137,8 @@
         line-height: 1.25;
       }
 
+      /* LEGACY: old HTML action toolbox styles retained only until the
+         remaining legacy HTML classes are removed completely. */
       .unit-action-toolbox {
         margin: 2px 0 8px;
       }
@@ -695,6 +699,7 @@
     <div id="app-layout">
       <div id="panel-left"></div>
       <div id="game-container"></div>
+      <!-- LEGACY: RightPanel is still active temporarily, but planned for removal. -->
       <div id="panel-right"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

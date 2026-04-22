@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { TurnManager } from '../systems/TurnManager';
 
+// LEGACY: superseded by src/ui/hud/EndTurnHudButton.ts in the active gameplay HUD.
 const BTN_WIDTH = 200;
 const BTN_HEIGHT = 60;
 const BG_COLOR_IDLE = 0x333333;

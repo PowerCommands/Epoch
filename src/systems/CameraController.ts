@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from './input/WorldInputGate';
-import { isPointerEventConsumed, isPointerOverScreenSpaceUi } from '../utils/phaserScreenSpaceUi';
+import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 
 const PAN_SPEED = 400;  // pixlar/sekund vid zoom 1.0
 const ZOOM_STEP = 0.1;
@@ -134,7 +134,6 @@ export class CameraController {
       // prevents world systems from processing pointer sequences claimed by HUD controls.
       if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
       if (isPointerEventConsumed(pointer)) return;
-      if (isPointerOverScreenSpaceUi(scene, pointer)) return;
       this.pointerIsDown = true;
       this.didDrag = false;
       this.dragStartX = pointer.x;

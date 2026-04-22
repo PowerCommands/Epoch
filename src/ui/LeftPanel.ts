@@ -6,6 +6,8 @@ import type { ResearchSystem } from '../systems/ResearchSystem';
 import type { UnitActionToolbox } from './UnitActionToolbox';
 import { RafScheduler } from '../utils/RafScheduler';
 
+// LEGACY: HTML gameplay panel kept only as a temporary fallback/reference.
+// The active in-game path uses Phaser HUD widgets via HudLayer.
 export class LeftPanel {
   private readonly root: HTMLElement;
   private readonly nationManager: NationManager;
