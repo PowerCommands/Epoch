@@ -132,12 +132,21 @@ export class SaveLoadService {
     const tiles: SavedTile[] = [];
     for (const row of mapData.tiles) {
       for (const tile of row) {
-        if (tile.ownerId === undefined && tile.improvementId === undefined) continue;
+        if (
+          tile.ownerId === undefined
+          && tile.improvementId === undefined
+          && tile.buildingId === undefined
+          && tile.buildingConstruction === undefined
+        ) continue;
         tiles.push({
           q: tile.x,
           r: tile.y,
           ownerId: tile.ownerId,
           improvementId: tile.improvementId,
+          buildingId: tile.buildingId,
+          buildingConstruction: tile.buildingConstruction
+            ? { ...tile.buildingConstruction }
+            : undefined,
         });
       }
     }
@@ -248,6 +257,8 @@ export class SaveLoadService {
       for (const tile of row) {
         tile.ownerId = undefined;
         tile.improvementId = undefined;
+        tile.buildingId = undefined;
+        tile.buildingConstruction = undefined;
       }
     }
     for (const saved of tiles) {
@@ -255,6 +266,10 @@ export class SaveLoadService {
       if (!tile) continue;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
+      if (saved.buildingId !== undefined) tile.buildingId = saved.buildingId;
+      if (saved.buildingConstruction !== undefined) {
+        tile.buildingConstruction = { ...saved.buildingConstruction };
+      }
     }
   }
 

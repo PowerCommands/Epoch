@@ -45,6 +45,7 @@ Never mix responsibilities.
 * It uses zoom `2.0`, emphasizes the city focus area, and de-emphasizes the surrounding map
 * It shows compact worked-tile icons and a hover tooltip with full tile breakdown
 * It supports drag-drop retargeting of the planned expansion tile
+* Building selection in the `RightPanel` can start tile-building placement for the selected human city
 * `DiagnosticDialog` is an HTML/CSS floating dialog opened through the `diagnostic` cheat command
 * It is draggable, resizable, closable, and live-updating
 
@@ -70,6 +71,14 @@ Never mix responsibilities.
 * `ownedTileCoords` is the authoritative city territory
 * `workedTileCoords` is the explicit subset currently producing yields
 * `nextExpansionTileCoord` is the stored next culture-expansion target
+
+#### Tile
+
+* Tiles may store `buildingId`
+* Tiles may store `buildingConstruction`
+* Only one tile building may exist per tile
+* `buildingId` means a finished tile building
+* `buildingConstruction` means a reserved/under-construction tile building site
 
 ---
 
@@ -110,6 +119,10 @@ Never mix responsibilities.
 * Deterministic growth
 * Buildings modify yields
 * Production queue
+* Tile-based building placement is additive and does not replace existing city building logic
+* RightPanel building selection starts placement mode instead of immediately queueing a building
+* Successful placement reserves a construction site on a tile
+* The building only becomes finished when production completes
 
 ### CityTerritorySystem
 
@@ -120,6 +133,13 @@ Never mix responsibilities.
 * Lets the human set a valid planned next expansion tile
 * Performs city tile claims and refreshes explicit territory state
 
+### BuildingPlacementSystem
+
+* Centralizes valid tile-building placement rules
+* Computes valid placement tiles directly from `city.ownedTileCoords`
+* Handles placement mode state and improvement-replacement confirmation flow
+* Reserves placement by writing `tile.buildingConstruction`
+
 ### CityViewRenderer
 
 * Renders city center, owned tiles, worked tiles, claimable tiles, and next expansion tile
@@ -128,6 +148,15 @@ Never mix responsibilities.
 * Renders compact in-tile yield icons
 * Renders planned expansion progress with centered percent
 * Highlights valid drag-drop targets in pink during retargeting
+* Highlights valid tile-building placement targets in cyan while placement mode is active
+* Shows under-construction tile sites and their production progress in City View
+
+### TileBuildingRenderer
+
+* Renders tile-bound building sprites from `assets/sprites/buildings/{buildingId}.png`
+* Renders reserved construction sites separately from finished buildings
+* Shows real centered construction progress from the city production queue
+* Stays visual-only and rebuilds from explicit tile state
 
 ### TerritoryRenderer
 
@@ -170,6 +199,7 @@ Never mix responsibilities.
 * The primary in-map representation is compact icons
 * Detailed numeric breakdown is shown in City View tooltip
 * Only implemented real values should be shown
+* Cyan tile highlights indicate valid building placement targets in City View
 
 ### AI
 

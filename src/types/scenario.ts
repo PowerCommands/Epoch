@@ -7,7 +7,7 @@ export interface ScenarioMap {
   width: number;
   height: number;
   tileSize: number;
-  tiles: { q: number; r: number; type: string; improvementId?: string }[];
+  tiles: { q: number; r: number; type: string; improvementId?: string; buildingId?: string }[];
 }
 
 export interface ScenarioNation {

@@ -9,12 +9,19 @@ export enum TileType {
   Desert = 'desert',
 }
 
+export interface TileBuildingConstruction {
+  buildingId: string;
+  cityId: string;
+}
+
 export interface Tile {
   x: number; // grid-koordinat (kolumn)
   y: number; // grid-koordinat (rad)
   type: TileType;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
   improvementId?: string; // optional tile improvement; undefined = none
+  buildingId?: string; // finished tile building; undefined = none
+  buildingConstruction?: TileBuildingConstruction; // reserved/under-construction tile building
 }
 
 export interface MapData {

@@ -2,14 +2,35 @@ import type { City } from '../entities/City';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
 
 type CloseCallback = () => void;
+type PlacementRequestCallback = (buildingId: string) => void;
+type PlacementCancelCallback = () => void;
+
+export interface CityViewBuildingOption {
+  id: string;
+  name: string;
+  placement: 'land' | 'water';
+  disabled?: boolean;
+  reason?: string;
+}
+
+export interface CityViewPlacementPanelState {
+  active: boolean;
+  buildingId?: string;
+  buildingName?: string;
+  underConstructionLabel?: string;
+}
 
 export class CityView {
   private readonly root: HTMLDivElement;
   private readonly titleEl: HTMLDivElement;
   private readonly statsEl: HTMLDivElement;
   private readonly nextTileEl: HTMLDivElement;
+  private readonly placementStatusEl: HTMLDivElement;
+  private readonly placementButtonsEl: HTMLDivElement;
   private readonly tooltipEl: HTMLDivElement;
   private readonly closeCallbacks: CloseCallback[] = [];
+  private readonly placementRequestCallbacks: PlacementRequestCallback[] = [];
+  private readonly placementCancelCallbacks: PlacementCancelCallback[] = [];
   private currentCityId: string | null = null;
   private open = false;
 
@@ -46,11 +67,22 @@ export class CityView {
     this.nextTileEl = document.createElement('div');
     this.nextTileEl.className = 'city-view-next';
 
+    const placementSection = document.createElement('div');
+    placementSection.className = 'city-view-placement';
+
+    this.placementStatusEl = document.createElement('div');
+    this.placementStatusEl.className = 'city-view-placement-status';
+
+    this.placementButtonsEl = document.createElement('div');
+    this.placementButtonsEl.className = 'city-view-placement-buttons';
+
+    placementSection.append(this.placementStatusEl, this.placementButtonsEl);
+
     const hint = document.createElement('div');
     hint.className = 'city-view-hint';
-    hint.textContent = 'Drag the planned expansion tile onto a pink claimable tile to retarget culture growth.';
+    hint.textContent = 'Drag the planned expansion tile to retarget culture growth, or choose a building below to place it on a cyan tile.';
 
-    panel.append(header, this.statsEl, this.nextTileEl, hint);
+    panel.append(header, this.statsEl, this.nextTileEl, placementSection, hint);
     this.root.append(panel);
     mount.append(this.root);
 
@@ -81,20 +113,36 @@ export class CityView {
     this.closeCallbacks.push(callback);
   }
 
+  onPlacementRequested(callback: PlacementRequestCallback): void {
+    this.placementRequestCallbacks.push(callback);
+  }
+
+  onPlacementCancelled(callback: PlacementCancelCallback): void {
+    this.placementCancelCallbacks.push(callback);
+  }
+
   isOpenForCity(cityId: string): boolean {
     return this.open && this.currentCityId === cityId;
   }
 
-  show(city: City): void {
+  show(
+    city: City,
+    buildingOptions: CityViewBuildingOption[],
+    placementState: CityViewPlacementPanelState,
+  ): void {
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
-    this.render(city);
+    this.render(city, buildingOptions, placementState);
   }
 
-  refresh(city: City): void {
+  refresh(
+    city: City,
+    buildingOptions: CityViewBuildingOption[],
+    placementState: CityViewPlacementPanelState,
+  ): void {
     if (!this.isOpenForCity(city.id)) return;
-    this.render(city);
+    this.render(city, buildingOptions, placementState);
   }
 
   close(): void {
@@ -118,6 +166,8 @@ export class CityView {
       `<div><strong>Tile</strong> (${breakdown.coord.x}, ${breakdown.coord.y})</div>`,
       `<div><strong>Terrain</strong> ${breakdown.terrainType}</div>`,
       `<div><strong>Improvement</strong> ${breakdown.improvementName ?? 'None'}</div>`,
+      `<div><strong>Building</strong> ${breakdown.buildingName ?? 'None'}</div>`,
+      `<div><strong>Construction</strong> ${breakdown.buildingConstructionName ?? 'None'}</div>`,
       `<div><strong>Status</strong> ${breakdown.notes.length > 0 ? breakdown.notes.join(', ') : 'None'}</div>`,
       '<div style="margin-top:6px;"><strong>Yields</strong></div>',
       `<div>Food: ${breakdown.yields.food}</div>`,
@@ -142,7 +192,11 @@ export class CityView {
     this.tooltipEl.style.display = 'none';
   }
 
-  private render(city: City): void {
+  private render(
+    city: City,
+    buildingOptions: CityViewBuildingOption[],
+    placementState: CityViewPlacementPanelState,
+  ): void {
     this.titleEl.textContent = city.name;
 
     const statRows = [
@@ -162,5 +216,62 @@ export class CityView {
     this.nextTileEl.textContent = city.nextExpansionTileCoord
       ? `Planned next expansion: (${city.nextExpansionTileCoord.x}, ${city.nextExpansionTileCoord.y})`
       : 'Planned next expansion: none';
+
+    this.renderPlacementOptions(buildingOptions, placementState);
+  }
+
+  private renderPlacementOptions(
+    buildingOptions: CityViewBuildingOption[],
+    placementState: CityViewPlacementPanelState,
+  ): void {
+    this.placementButtonsEl.replaceChildren();
+
+    const statusRow = document.createElement('div');
+    statusRow.className = 'city-view-placement-status-row';
+
+    const statusText = document.createElement('div');
+    statusText.textContent = placementState.active && placementState.buildingName
+      ? `Placing ${placementState.buildingName}: click a cyan tile`
+      : placementState.underConstructionLabel
+        ? `Under construction: ${placementState.underConstructionLabel}`
+        : 'Building placement: choose a building to highlight valid tiles';
+    statusRow.append(statusText);
+
+    if (placementState.active) {
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'city-view-placement-cancel';
+      cancelButton.textContent = 'Cancel';
+      cancelButton.addEventListener('click', () => {
+        for (const callback of this.placementCancelCallbacks) callback();
+      });
+      statusRow.append(cancelButton);
+    }
+
+    this.placementStatusEl.replaceChildren(statusRow);
+
+    if (buildingOptions.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'city-view-placement-empty';
+      empty.textContent = 'No building placements available for this city.';
+      this.placementButtonsEl.append(empty);
+      return;
+    }
+
+    for (const option of buildingOptions) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'city-view-placement-button';
+      if (placementState.active && placementState.buildingId === option.id) {
+        button.classList.add('city-view-placement-button-active');
+      }
+      button.disabled = option.disabled ?? false;
+      button.textContent = `${option.name} (${option.placement})`;
+      if (option.reason) button.title = option.reason;
+      button.addEventListener('click', () => {
+        for (const callback of this.placementRequestCallbacks) callback(option.id);
+      });
+      this.placementButtonsEl.append(button);
+    }
   }
 }

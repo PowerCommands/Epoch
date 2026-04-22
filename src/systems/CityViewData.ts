@@ -1,3 +1,4 @@
+import { getBuildingById } from '../data/buildings';
 import { getImprovementById } from '../data/improvements';
 import type { City } from '../entities/City';
 import type { MapData } from '../types/map';
@@ -14,6 +15,10 @@ export interface CityViewTileBreakdown {
   terrainType: string;
   improvementId?: string;
   improvementName?: string;
+  buildingId?: string;
+  buildingName?: string;
+  buildingConstructionId?: string;
+  buildingConstructionName?: string;
   yields: {
     food: number;
     production: number;
@@ -68,6 +73,8 @@ export function getCityViewTileBreakdown(
   if (isWorked) notes.push('Currently worked');
   if (isClaimable) notes.push('Claimable now');
   if (isNextExpansion) notes.push('Planned next expansion');
+  if (tile.buildingConstruction) notes.push('Building under construction');
+  if (tile.buildingId) notes.push('Finished building');
 
   return {
     coord,
@@ -78,6 +85,12 @@ export function getCityViewTileBreakdown(
     terrainType: tile.type,
     improvementId: tile.improvementId,
     improvementName: tile.improvementId ? getImprovementById(tile.improvementId)?.name : undefined,
+    buildingId: tile.buildingId,
+    buildingName: tile.buildingId ? getBuildingById(tile.buildingId)?.name : undefined,
+    buildingConstructionId: tile.buildingConstruction?.buildingId,
+    buildingConstructionName: tile.buildingConstruction?.buildingId
+      ? getBuildingById(tile.buildingConstruction.buildingId)?.name
+      : undefined,
     yields: {
       food: yields.food,
       production: yields.production,

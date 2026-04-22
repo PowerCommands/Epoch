@@ -48,6 +48,7 @@ export class ScenarioLoader {
       if (tile) {
         tile.type = TYPE_MAP[entry.type.toLowerCase()] ?? TileType.Ocean;
         tile.improvementId = entry.improvementId;
+        tile.buildingId = entry.buildingId;
       }
     }
 

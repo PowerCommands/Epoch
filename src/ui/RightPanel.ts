@@ -25,6 +25,8 @@ import { RafScheduler } from '../utils/RafScheduler';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
+type BuildingPlacementRequestResult = { ok: boolean; message?: string };
+type BuildingPlacementRequestHandler = (city: City, buildingId: string) => BuildingPlacementRequestResult;
 
 export class RightPanel {
   private readonly root: HTMLElement;
@@ -50,6 +52,7 @@ export class RightPanel {
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
+  private buildingPlacementRequestHandler: BuildingPlacementRequestHandler | null = null;
   private readonly scheduler = new RafScheduler();
 
   constructor(
@@ -118,6 +121,10 @@ export class RightPanel {
 
   setBuilderHintProvider(provider: BuilderHintProvider): void {
     this.builderHintProvider = provider;
+  }
+
+  setBuildingPlacementRequestHandler(handler: BuildingPlacementRequestHandler): void {
+    this.buildingPlacementRequestHandler = handler;
   }
 
   setFoundCityHandler(canFoundCity: (unit: Unit) => boolean, foundCity: (unit: Unit) => void): void {
@@ -553,6 +560,11 @@ export class RightPanel {
     const section = this.createSection('Add to Queue');
     const hasCoastalAccess = cityHasCoastalAccess(city, this.mapData, this.gridSystem);
     const researchSystem = this.researchSystem;
+    const reservedBuildingIds = new Set(
+      city.ownedTileCoords
+        .map((coord) => this.mapData.tiles[coord.y]?.[coord.x]?.buildingConstruction?.buildingId)
+        .filter((buildingId): buildingId is string => buildingId !== undefined),
+    );
 
     for (const unitType of ALL_UNIT_TYPES) {
       if (unitType.isNaval && !hasCoastalAccess) continue;
@@ -566,6 +578,7 @@ export class RightPanel {
 
     for (const buildingType of ALL_BUILDINGS) {
       if (this.cityManager.getBuildings(city.id).has(buildingType.id)) continue;
+      if (reservedBuildingIds.has(buildingType.id)) continue;
       if (researchSystem && !researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;
       section.append(this.createAddRow({ kind: 'building', buildingType }, city, nationColor));
     }
@@ -579,6 +592,14 @@ export class RightPanel {
     button.className = 'queue-add-btn';
     button.innerHTML = `${this.getProducibleName(item)} <span class="panel-muted">(${this.getProducibleCost(item)})</span>`;
     button.addEventListener('click', () => {
+      if (item.kind === 'building' && this.buildingPlacementRequestHandler) {
+        const result = this.buildingPlacementRequestHandler(city, item.buildingType.id);
+        if (!result.ok && result.message) {
+          window.alert(result.message);
+        }
+        return;
+      }
+
       this.productionSystem.enqueue(city.id, item);
       this.refreshProductionQueue(city.id);
     });

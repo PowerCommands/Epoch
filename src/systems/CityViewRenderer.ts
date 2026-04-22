@@ -6,9 +6,15 @@ import { TileMap } from './TileMap';
 import { getWorkedTileYieldBreakdown } from './CityEconomy';
 import type { CityViewInteractionState } from './CityViewInteractionController';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { ProductionSystem } from './ProductionSystem';
 
 const CITY_VIEW_DEPTH = 17;
 const CITY_VIEW_TEXT_DEPTH = 17.5;
+
+export interface CityViewPlacementRenderState {
+  active: boolean;
+  validCoords: Array<{ x: number; y: number }>;
+}
 
 export class CityViewRenderer {
   private readonly gfx: Phaser.GameObjects.Graphics;
@@ -20,16 +26,25 @@ export class CityViewRenderer {
     private readonly mapData: MapData,
     private readonly cityTerritorySystem: CityTerritorySystem,
     private readonly gridSystem: IGridSystem,
+    private readonly productionSystem: ProductionSystem,
   ) {
     this.gfx = scene.add.graphics().setDepth(CITY_VIEW_DEPTH);
     this.labelLayer = scene.add.container(0, 0).setDepth(CITY_VIEW_TEXT_DEPTH);
   }
 
   show(city: City): void {
-    this.showWithInteraction(city, { dragActive: false, validDropCoords: [] });
+    this.showWithState(city, { dragActive: false, validDropCoords: [] }, { active: false, validCoords: [] });
   }
 
   showWithInteraction(city: City, interaction: CityViewInteractionState): void {
+    this.showWithState(city, interaction, { active: false, validCoords: [] });
+  }
+
+  showWithState(
+    city: City,
+    interaction: CityViewInteractionState,
+    placement: CityViewPlacementRenderState,
+  ): void {
     this.gfx.clear();
     this.labelLayer.removeAll(true);
 
@@ -44,6 +59,12 @@ export class CityViewRenderer {
     const workedBreakdown = getWorkedTileYieldBreakdown(city, this.mapData, this.gridSystem);
     const expansionProgress = this.cityTerritorySystem.getExpansionProgress(city, this.mapData);
     const validDropSet = new Set(interaction.validDropCoords.map((coord) => `${coord.x},${coord.y}`));
+    const validPlacementSet = new Set(placement.validCoords.map((coord) => `${coord.x},${coord.y}`));
+    const constructionTiles = city.ownedTileCoords
+      .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
+      .filter((tile): tile is NonNullable<typeof tile> => (
+        tile !== undefined && tile.buildingConstruction?.cityId === city.id
+      ));
 
     this.drawOuterDim(focusSet);
 
@@ -66,9 +87,20 @@ export class CityViewRenderer {
       }
     }
 
+    if (placement.active) {
+      for (const key of validPlacementSet) {
+        const [x, y] = key.split(',').map(Number);
+        this.drawTile(x, y, 0x2ef0ff, 0.2, 0xa5fcff, 0.88, 2.5);
+      }
+    }
+
     if (nextKey) {
       const [x, y] = nextKey.split(',').map(Number);
       this.drawExpansionProgressTile(x, y, expansionProgress?.progressPercent ?? 0);
+    }
+
+    for (const tile of constructionTiles) {
+      this.drawConstructionProgressTile(tile.x, tile.y, tile.buildingConstruction!.buildingId, city.id);
     }
 
     this.drawWorkedTileMarkers(workedBreakdown);
@@ -200,6 +232,42 @@ export class CityViewRenderer {
         color: '#fff7fb',
         align: 'center',
         stroke: '#5d1237',
+        strokeThickness: 4,
+      },
+    );
+    label.setOrigin(0.5, 0.5);
+    label.setShadow(0, 2, '#000000', 3, false, true);
+    this.labelLayer.add(label);
+  }
+
+  private drawConstructionProgressTile(tileX: number, tileY: number, buildingId: string, cityId: string): void {
+    const outline = this.tileMap.getTileOutlinePoints(tileX, tileY);
+    if (outline.length === 0) return;
+
+    this.gfx.fillStyle(0x6b86a1, 0.16);
+    this.fillPolygon(outline);
+    this.gfx.lineStyle(2.5, 0xd4ecff, 0.95);
+    this.strokePolygon(outline);
+
+    const entry = this.productionSystem.getQueue(cityId)
+      .find((queueEntry) => (
+        queueEntry.item.kind === 'building' && queueEntry.item.buildingType.id === buildingId
+      ));
+    const progressPercent = !entry || entry.cost <= 0
+      ? 0
+      : Math.max(0, Math.min(100, Math.floor((entry.progress / entry.cost) * 100)));
+    const center = this.tileMap.tileToWorld(tileX, tileY);
+    const label = this.labelLayer.scene.add.text(
+      center.x,
+      center.y,
+      `${progressPercent}%`,
+      {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '15px',
+        fontStyle: 'bold',
+        color: '#f4fbff',
+        align: 'center',
+        stroke: '#173146',
         strokeThickness: 4,
       },
     );

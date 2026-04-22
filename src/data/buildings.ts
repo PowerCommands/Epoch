@@ -1,10 +1,11 @@
-import type { BuildingModifiers, BuildingType } from '../entities/Building';
+import type { BuildingModifiers, BuildingPlacement, BuildingType } from '../entities/Building';
 import type { Era } from './technologies';
 
 interface BuildingInput {
   id: string;
   name: string;
   era: Era;
+  placement?: BuildingPlacement;
   cost: number;
   maintenance: number;
   modifiers?: BuildingModifiers;
@@ -17,6 +18,7 @@ function building(input: BuildingInput): BuildingType {
     name: input.name,
     era: input.era,
     description: input.description ?? describeModifiers(input.modifiers ?? {}),
+    placement: input.placement ?? 'land',
     maintenance: input.maintenance,
     productionCost: input.cost,
     modifiers: input.modifiers ?? {},
@@ -56,7 +58,7 @@ export const CIRCUS = building({ id: 'circus', name: 'Circus', era: 'classical',
 export const COLOSSEUM = building({ id: 'colosseum', name: 'Colosseum', era: 'classical', cost: 100, maintenance: 1, modifiers: { happinessPerTurn: 2 } });
 export const COURTHOUSE = building({ id: 'courthouse', name: 'Courthouse', era: 'classical', cost: 100, maintenance: 4, description: 'Occupied-city unhappiness omitted' });
 export const TEMPLE = building({ id: 'temple', name: 'Temple', era: 'classical', cost: 100, maintenance: 2, modifiers: { culturePerTurn: 3, happinessPerTurn: 1 }, description: 'Civ V culture plus simplified religion happiness hook' });
-export const LIGHTHOUSE = building({ id: 'lighthouse', name: 'Lighthouse', era: 'classical', cost: 75, maintenance: 1, modifiers: { foodPerTurn: 1 }, description: 'Sea-tile food approximated as +1 food' });
+export const LIGHTHOUSE = building({ id: 'lighthouse', name: 'Lighthouse', era: 'classical', placement: 'water', cost: 75, maintenance: 1, modifiers: { foodPerTurn: 1 }, description: 'Sea-tile food approximated as +1 food' });
 export const STABLE = building({ id: 'stable', name: 'Stable', era: 'classical', cost: 100, maintenance: 1, modifiers: { productionPercent: 5 }, description: 'Mounted-unit and pasture bonuses approximated as +5% production' });
 
 export const CASTLE = building({ id: 'castle', name: 'Castle', era: 'medieval', cost: 160, maintenance: 0, description: 'City defense omitted until building defense is modeled' });
@@ -68,14 +70,14 @@ export const GARDEN = building({ id: 'garden', name: 'Garden', era: 'medieval', 
 export const UNIVERSITY = building({ id: 'university', name: 'University', era: 'medieval', cost: 160, maintenance: 2, modifiers: { sciencePercent: 33 }, description: 'Jungle science omitted; keeps +33% science' });
 export const WORKSHOP = building({ id: 'workshop', name: 'Workshop', era: 'medieval', cost: 120, maintenance: 2, modifiers: { productionPerTurn: 2, productionPercent: 10 } });
 export const AQUEDUCT = building({ id: 'aqueduct', name: 'Aqueduct', era: 'medieval', cost: 100, maintenance: 1, description: 'Food carryover omitted until growth modifiers exist' });
-export const HARBOR = building({ id: 'harbor', name: 'Harbor', era: 'medieval', cost: 120, maintenance: 3, modifiers: { productionPerTurn: 1 }, description: 'Sea trade route omitted; sea resource production approximated as +1 production' });
+export const HARBOR = building({ id: 'harbor', name: 'Harbor', era: 'medieval', placement: 'water', cost: 120, maintenance: 3, modifiers: { productionPerTurn: 1 }, description: 'Sea trade route omitted; sea resource production approximated as +1 production' });
 export const OBSERVATORY = building({ id: 'observatory', name: 'Observatory', era: 'medieval', cost: 200, maintenance: 0, modifiers: { sciencePercent: 50 }, description: 'Mountain requirement omitted' });
 
 export const OPERA_HOUSE = building({ id: 'opera_house', name: 'Opera House', era: 'renaissance', cost: 200, maintenance: 2, modifiers: { culturePerTurn: 4 } });
 export const BANK = building({ id: 'bank', name: 'Bank', era: 'renaissance', cost: 200, maintenance: 0, modifiers: { goldPercent: 25 } });
 export const MUSEUM = building({ id: 'museum', name: 'Museum', era: 'renaissance', cost: 300, maintenance: 3, modifiers: { culturePerTurn: 5 } });
 export const PUBLIC_SCHOOL = building({ id: 'public_school', name: 'Public School', era: 'renaissance', cost: 300, maintenance: 3, modifiers: { sciencePerTurn: 3, sciencePercent: 50 }, description: 'Per-citizen science approximated with +50% science and +3 flat science' });
-export const SEAPORT = building({ id: 'seaport', name: 'Seaport', era: 'renaissance', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 1, goldPerTurn: 1, productionPercent: 5 }, description: 'Sea-resource and naval production effects approximated' });
+export const SEAPORT = building({ id: 'seaport', name: 'Seaport', era: 'renaissance', placement: 'water', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 1, goldPerTurn: 1, productionPercent: 5 }, description: 'Sea-resource and naval production effects approximated' });
 export const WINDMILL = building({ id: 'windmill', name: 'Windmill', era: 'renaissance', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 2, productionPercent: 10 }, description: 'Flatland requirement omitted' });
 export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 200, maintenance: 2, modifiers: { happinessPerTurn: 3 } });
 

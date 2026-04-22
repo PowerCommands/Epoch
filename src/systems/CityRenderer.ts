@@ -4,8 +4,11 @@ import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
+import { HexTileMaskHelper } from './HexTileMaskHelper';
 
 const CITY_DEPTH = 15;
+const CITY_TILE_FILL_SCALE = 0.9;
+const CAPITAL_SCALE_MULTIPLIER = 1.2;
 
 const HP_BAR_WIDTH = 40;
 const HP_BAR_HEIGHT = 4;
@@ -27,6 +30,7 @@ export class CityRenderer {
   private readonly nationManager: NationManager;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hpBars = new Map<string, Phaser.GameObjects.Graphics>();
+  private readonly hexTileMaskHelper: HexTileMaskHelper;
 
   constructor(
     scene: Phaser.Scene,
@@ -38,6 +42,7 @@ export class CityRenderer {
     this.tileMap = tileMap;
     this.cityManager = cityManager;
     this.nationManager = nationManager;
+    this.hexTileMaskHelper = new HexTileMaskHelper(scene, tileMap);
 
     for (const city of cityManager.getAllCities()) {
       this.renderCity(city);
@@ -65,6 +70,18 @@ export class CityRenderer {
     }
   }
 
+  shutdown(): void {
+    for (const container of this.containers.values()) {
+      container.destroy();
+    }
+    this.containers.clear();
+    for (const gfx of this.hpBars.values()) {
+      gfx.destroy();
+    }
+    this.hpBars.clear();
+    this.hexTileMaskHelper.destroy();
+  }
+
   /**
    * Re-render city symbol (e.g. after ownership change) and HP bar.
    */
@@ -84,13 +101,15 @@ export class CityRenderer {
     if (!nation) return;
 
     const { x: worldX, y: worldY } = this.tileMap.tileToWorld(city.tileX, city.tileY);
+    const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
 
     const sprite = this.scene.add.image(0, 0, 'city_default');
-    sprite.setTint(nation.color);
-
-    if (city.isCapital) {
-      sprite.setScale(1.2);
-    }
+    const scaleMultiplier = city.isCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
+    sprite.setDisplaySize(
+      rect.width * CITY_TILE_FILL_SCALE * scaleMultiplier,
+      rect.height * CITY_TILE_FILL_SCALE * scaleMultiplier,
+    );
+    this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
 
     const container = this.scene.add.container(worldX, worldY, [sprite]);
     container.setDepth(CITY_DEPTH);

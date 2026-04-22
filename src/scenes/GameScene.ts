@@ -25,10 +25,11 @@ import { TurnOrderSystem } from '../systems/TurnOrderSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
+import { BuildingPlacementSystem } from '../systems/BuildingPlacementSystem';
 import { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
-import { CityViewRenderer } from '../systems/CityViewRenderer';
+import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
 import { DiplomacyManager } from '../systems/DiplomacyManager';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
@@ -40,6 +41,7 @@ import { CheatSystem } from '../systems/CheatSystem';
 import { DiagnosticSystem } from '../systems/DiagnosticSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
+import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
@@ -51,9 +53,10 @@ import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
-import { CityView } from '../ui/CityView';
+import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState } from '../ui/CityView';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import type { SavedGameState } from '../types/saveGame';
+import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
@@ -158,14 +161,17 @@ export class GameScene extends Phaser.Scene {
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
+    const productionSystem = new ProductionSystem(cityManager, turnManager);
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
+    const buildingPlacementSystem = new BuildingPlacementSystem();
     const cityViewRenderer = new CityViewRenderer(
       this,
       tileMap,
       mapData,
       cityTerritorySystem,
       gridSystem,
+      productionSystem,
     );
     const cityViewInteraction = new CityViewInteractionController(cityTerritorySystem);
     const cultureClaimTileRenderer = new CultureClaimTileRenderer(
@@ -181,7 +187,7 @@ export class GameScene extends Phaser.Scene {
     let suppressPromote = false;
 
     // 13. Produktionssystem
-    const productionSystem = new ProductionSystem(cityManager, turnManager);
+    const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem);
     let leftPanel: LeftPanel | null = null;
     let rightPanel: RightPanel | null = null;
     let leaderStrip: LeaderPortraitStrip | null = null;
@@ -573,9 +579,16 @@ export class GameScene extends Phaser.Scene {
       if (!city) return false;
 
       if (item.kind === 'building') {
-        const buildings = cityManager.getBuildings(cityId);
-        buildings.add(item.buildingType);
+        const completedTile = buildingPlacementSystem.finalizeReservedBuilding(cityId, item.buildingType.id, mapData);
+        if (!completedTile) {
+          console.warn(`[BuildingPlacement] Completed ${item.buildingType.id} for ${cityId} without a reserved tile.`);
+          return false;
+        }
+
+        cityManager.getBuildings(cityId).add(item.buildingType);
         resourceSystem.recalculateForNation(city.ownerId);
+        tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
+        refreshOpenCityView();
         return true;
       }
 
@@ -872,6 +885,99 @@ export class GameScene extends Phaser.Scene {
       if (!selectedBuilderForHints) return null;
       return builderSystem.getBuildPreview(selectedBuilderForHints, tile);
     });
+    const getReservedBuildingIds = (city: City): Set<string> => new Set(
+      city.ownedTileCoords
+        .map((coord) => mapData.tiles[coord.y]?.[coord.x]?.buildingConstruction?.buildingId)
+        .filter((buildingId): buildingId is string => buildingId !== undefined),
+    );
+    const getOccupiedBuildingIds = (city: City): Set<string> => new Set(
+      city.ownedTileCoords
+        .flatMap((coord) => {
+          const tile = mapData.tiles[coord.y]?.[coord.x];
+          if (!tile) return [];
+          return [tile.buildingId, tile.buildingConstruction?.buildingId];
+        })
+        .filter((buildingId): buildingId is string => buildingId !== undefined),
+    );
+    const isBuildingQueued = (cityId: string, buildingId: string): boolean => productionSystem.getQueue(cityId)
+      .some((entry) => entry.item.kind === 'building' && entry.item.buildingType.id === buildingId);
+    const getCityViewBuildingOptions = (city: City): CityViewBuildingOption[] => {
+      const occupiedBuildingIds = getOccupiedBuildingIds(city);
+      return ALL_BUILDINGS
+        .filter((building) => !cityManager.getBuildings(city.id).has(building.id))
+        .filter((building) => !occupiedBuildingIds.has(building.id))
+        .filter((building) => researchSystem ? researchSystem.isBuildingUnlocked(city.ownerId, building.id) : true)
+        .map((building) => {
+          const validCoords = buildingPlacementSystem.getValidPlacementCoords(city, building, mapData);
+          return {
+            id: building.id,
+            name: building.name,
+            placement: building.placement,
+            disabled: validCoords.length === 0,
+            reason: validCoords.length === 0 ? 'No valid owned tile matches this building placement.' : undefined,
+          };
+        });
+    };
+    const getCityViewPlacementRenderState = (city: City): CityViewPlacementRenderState => {
+      const placementState = buildingPlacementSystem.getState();
+      if (!placementState || placementState.cityId !== city.id) {
+        return { active: false, validCoords: [] };
+      }
+      return {
+        active: true,
+        validCoords: placementState.validCoords,
+      };
+    };
+    const getCityViewPlacementPanelState = (city: City): CityViewPlacementPanelState => {
+      const placementState = buildingPlacementSystem.getState();
+      const building = placementState && placementState.cityId === city.id
+        ? getBuildingById(placementState.buildingId)
+        : undefined;
+      const reservedBuildingIds = [...getReservedBuildingIds(city)];
+      const reservedBuildingId = reservedBuildingIds[0];
+      const reservedBuilding = reservedBuildingId ? getBuildingById(reservedBuildingId) : undefined;
+      const reservedProgress = reservedBuildingId
+        ? productionSystem.getQueue(city.id).find((entry) => (
+          entry.item.kind === 'building' && entry.item.buildingType.id === reservedBuildingId
+        ))
+        : undefined;
+      return {
+        active: Boolean(placementState && placementState.cityId === city.id),
+        buildingId: building?.id,
+        buildingName: building?.name,
+        underConstructionLabel: reservedBuilding
+          ? `${reservedBuilding.name} (${Math.max(0, Math.min(100, Math.floor(((reservedProgress?.progress ?? 0) / (reservedProgress?.cost ?? 1)) * 100)))}%)`
+          : undefined,
+      };
+    };
+    rightPanel.setBuildingPlacementRequestHandler((city, buildingId) => {
+      if (city.ownerId !== humanNationId) {
+        return { ok: false, message: 'Only a human-owned selected city can place buildings.' };
+      }
+
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'city' || selected.city.id !== city.id) {
+        return { ok: false, message: 'Select the city before starting building placement.' };
+      }
+
+      if (cityManager.getBuildings(city.id).has(buildingId) || getOccupiedBuildingIds(city).has(buildingId)) {
+        return { ok: false, message: 'That building is already built or under construction in this city.' };
+      }
+
+      if (!buildingPlacementSystem.startPlacement(city, buildingId, mapData)) {
+        return { ok: false, message: 'No building placements available for this city.' };
+      }
+
+      cityViewDismissedCityId = null;
+      territoryRenderer.setMode('cityView');
+      if (!cityView.isOpenForCity(city.id)) {
+        openCityView(city);
+      } else {
+        refreshOpenCityView();
+      }
+
+      return { ok: true };
+    });
     const getOpenCityViewCity = (): City | null => {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'city') return null;
@@ -881,6 +987,8 @@ export class GameScene extends Phaser.Scene {
     };
     const clearCityViewInteraction = (): void => {
       cityViewInteraction.clear();
+      buildingPlacementSystem.cancelPlacement();
+      document.getElementById('building-placement-modal')?.remove();
       cityView.hideTooltip();
       this.cameraController.setPointerPanEnabled(true);
     };
@@ -903,6 +1011,88 @@ export class GameScene extends Phaser.Scene {
       cityViewRenderer.clear();
       territoryRenderer.setMode('normal');
     });
+    cityView.onPlacementRequested((buildingId) => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+
+      const state = buildingPlacementSystem.getState();
+      if (state?.cityId === city.id && state.buildingId === buildingId) {
+        buildingPlacementSystem.cancelPlacement();
+      } else {
+        buildingPlacementSystem.startPlacement(city, buildingId, mapData);
+      }
+
+      refreshOpenCityView();
+    });
+    cityView.onPlacementCancelled(() => {
+      buildingPlacementSystem.cancelPlacement();
+      refreshOpenCityView();
+    });
+
+    const showBuildingPlacementConfirm = (onConfirm: () => void, onCancel: () => void): void => {
+      const existing = document.getElementById('building-placement-modal');
+      if (existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'building-placement-modal';
+      overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 9998;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.68);
+      `;
+
+      const box = document.createElement('div');
+      box.style.cssText = `
+        width: min(420px, calc(100vw - 32px));
+        padding: 24px 28px;
+        border-radius: 10px;
+        border: 1px solid rgba(180, 224, 235, 0.36);
+        background: linear-gradient(180deg, rgba(11, 18, 24, 0.98), rgba(7, 12, 18, 0.96));
+        color: #edf8fb;
+        font-family: monospace;
+        box-shadow: 0 18px 40px rgba(0,0,0,0.42);
+      `;
+
+      const title = document.createElement('div');
+      title.textContent = 'Confirm placement';
+      title.style.cssText = 'font-size: 18px; font-weight: 700; margin-bottom: 12px;';
+
+      const message = document.createElement('div');
+      message.textContent = 'This will remove the existing improvement. Continue?';
+      message.style.cssText = 'font-size: 13px; line-height: 1.5; margin-bottom: 18px;';
+
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
+
+      const makeButton = (label: string, primary: boolean, handler: () => void) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.style.cssText = `
+          border-radius: 6px;
+          border: 1px solid ${primary ? 'rgba(132, 243, 255, 0.55)' : 'rgba(255,255,255,0.16)'};
+          background: ${primary ? 'rgba(46, 240, 255, 0.18)' : 'rgba(255,255,255,0.05)'};
+          color: #eff9fb;
+          cursor: pointer;
+          font: inherit;
+          padding: 8px 12px;
+        `;
+        button.addEventListener('click', () => {
+          handler();
+          overlay.remove();
+        });
+        return button;
+      };
+
+      actions.append(
+        makeButton('Cancel', false, onCancel),
+        makeButton('Continue', true, onConfirm),
+      );
+
+      box.append(title, message, actions);
+      overlay.append(box);
+      document.body.append(overlay);
+    };
 
     const onCityViewPointerDown = (pointer: Phaser.Input.Pointer): void => {
       if (pointer.button !== 0) return;
@@ -912,11 +1102,56 @@ export class GameScene extends Phaser.Scene {
       const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const tile = tileMap.worldToTile(world.x, world.y);
       const coord = tile ? { x: tile.x, y: tile.y } : null;
+      if (buildingPlacementSystem.isActiveForCity(city.id)) {
+        const result = buildingPlacementSystem.selectTile(city, coord, mapData);
+        if (result.status === 'reserved') {
+          const buildingDef = getBuildingById(result.buildingId);
+          if (buildingDef && !isBuildingQueued(city.id, result.buildingId)) {
+            productionSystem.enqueue(city.id, { kind: 'building', buildingType: buildingDef });
+          }
+          cityTerritorySystem.updateWorkedTiles(city, mapData);
+          resourceSystem.recalculateForNation(city.ownerId);
+          tileBuildingRenderer.refreshTile(result.coord.x, result.coord.y);
+          cityView.hideTooltip();
+          refreshOpenCityView();
+          rightPanel?.requestRefresh();
+          return;
+        }
+        if (result.status === 'needs_confirmation') {
+          cityView.hideTooltip();
+          showBuildingPlacementConfirm(
+            () => {
+              const placedCoord = buildingPlacementSystem.confirmPendingPlacement(mapData);
+              if (placedCoord) {
+                const buildingDef = getBuildingById(placedCoord.buildingId);
+                if (buildingDef && !isBuildingQueued(city.id, placedCoord.buildingId)) {
+                  productionSystem.enqueue(city.id, { kind: 'building', buildingType: buildingDef });
+                }
+                cityTerritorySystem.updateWorkedTiles(city, mapData);
+                resourceSystem.recalculateForNation(city.ownerId);
+                tileBuildingRenderer.refreshTile(placedCoord.x, placedCoord.y);
+              }
+              refreshOpenCityView();
+              rightPanel?.requestRefresh();
+            },
+            () => {
+              buildingPlacementSystem.clearPendingConfirmation();
+              refreshOpenCityView();
+            },
+          );
+          return;
+        }
+        if (result.status === 'invalid') return;
+      }
       if (!cityViewInteraction.beginDrag(city, coord, mapData)) return;
 
       this.cameraController.setPointerPanEnabled(false);
       cityView.hideTooltip();
-      cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+      cityViewRenderer.showWithState(
+        city,
+        cityViewInteraction.getRenderState(),
+        getCityViewPlacementRenderState(city),
+      );
     };
 
     const onCityViewPointerMove = (pointer: Phaser.Input.Pointer): void => {
@@ -939,7 +1174,11 @@ export class GameScene extends Phaser.Scene {
       else cityView.hideTooltip();
 
       if (cityViewInteraction.isDragging()) {
-        cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+        cityViewRenderer.showWithState(
+          city,
+          cityViewInteraction.getRenderState(),
+          getCityViewPlacementRenderState(city),
+        );
       }
     };
 
@@ -953,8 +1192,16 @@ export class GameScene extends Phaser.Scene {
       const changed = cityViewInteraction.handleDrop(city, coord, mapData);
       this.cameraController.setPointerPanEnabled(true);
       cityView.hideTooltip();
-      cityView.refresh(city);
-      cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+      cityView.refresh(
+        city,
+        getCityViewBuildingOptions(city),
+        getCityViewPlacementPanelState(city),
+      );
+      cityViewRenderer.showWithState(
+        city,
+        cityViewInteraction.getRenderState(),
+        getCityViewPlacementRenderState(city),
+      );
       if (changed) {
         rightPanel?.requestRefresh();
       }
@@ -1100,6 +1347,8 @@ export class GameScene extends Phaser.Scene {
     productionSystem.onChanged(() => {
       leftPanel?.requestRefresh();
       rightPanel?.requestRefresh();
+      tileBuildingRenderer.rebuildAll();
+      refreshOpenCityView();
     });
 
     // Map selection → right panel (clears nation highlight)
@@ -1264,6 +1513,8 @@ export class GameScene extends Phaser.Scene {
       diagnosticDialog.shutdown();
       this.diagnosticSystem.shutdown();
       cityView.shutdown();
+      cityRenderer.shutdown();
+      tileBuildingRenderer.shutdown();
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });
@@ -1327,6 +1578,7 @@ export class GameScene extends Phaser.Scene {
 
       // Rebuild renderers that depend on replaced entities.
       cityRenderer.rebuildAll();
+      tileBuildingRenderer.rebuildAll();
       unitRenderer.rebuildAll();
       territoryRenderer.render();
       leaderStrip?.rebuild();
@@ -1433,13 +1685,29 @@ export class GameScene extends Phaser.Scene {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'city') return;
       if (!cityView.isOpenForCity(selected.city.id)) return;
-      cityView.refresh(selected.city);
-      cityViewRenderer.showWithInteraction(selected.city, cityViewInteraction.getRenderState());
+      cityView.refresh(
+        selected.city,
+        getCityViewBuildingOptions(selected.city),
+        getCityViewPlacementPanelState(selected.city),
+      );
+      cityViewRenderer.showWithState(
+        selected.city,
+        cityViewInteraction.getRenderState(),
+        getCityViewPlacementRenderState(selected.city),
+      );
     }
 
     const openCityView = (city: City): void => {
-      cityView.show(city);
-      cityViewRenderer.showWithInteraction(city, cityViewInteraction.getRenderState());
+      cityView.show(
+        city,
+        getCityViewBuildingOptions(city),
+        getCityViewPlacementPanelState(city),
+      );
+      cityViewRenderer.showWithState(
+        city,
+        cityViewInteraction.getRenderState(),
+        getCityViewPlacementRenderState(city),
+      );
       const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
       this.cameraController.focusOn(x, y, 2.0);
     };

@@ -66,6 +66,11 @@ export interface SavedTile {
   r: number;
   ownerId?: string;
   improvementId?: string;
+  buildingId?: string;
+  buildingConstruction?: {
+    buildingId: string;
+    cityId: string;
+  };
 }
 
 export interface SavedDiplomacyEntry {
