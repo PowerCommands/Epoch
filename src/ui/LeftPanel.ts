@@ -1,6 +1,7 @@
 import { NationManager } from '../systems/NationManager';
 import { TurnManager } from '../systems/TurnManager';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
+import type { HappinessSystem } from '../systems/HappinessSystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
 import type { UnitActionToolbox } from './UnitActionToolbox';
 import { RafScheduler } from '../utils/RafScheduler';
@@ -10,6 +11,7 @@ export class LeftPanel {
   private readonly nationManager: NationManager;
   private readonly turnManager: TurnManager;
   private readonly humanNationId: string | undefined;
+  private readonly happinessSystem: HappinessSystem | null;
   // Kept for potential future nation-level filtering in this panel even
   // though portrait rendering moved to Phaser (LeaderPortraitStrip).
   private readonly discoverySystem: DiscoverySystem | null;
@@ -24,6 +26,7 @@ export class LeftPanel {
     turnManager: TurnManager,
     humanNationId?: string,
     discoverySystem?: DiscoverySystem,
+    happinessSystem?: HappinessSystem,
   ) {
     const root = document.getElementById('panel-left');
     if (!root) throw new Error('Missing #panel-left');
@@ -33,6 +36,7 @@ export class LeftPanel {
     this.turnManager = turnManager;
     this.humanNationId = humanNationId;
     this.discoverySystem = discoverySystem ?? null;
+    this.happinessSystem = happinessSystem ?? null;
 
     this.refresh();
   }
@@ -43,6 +47,7 @@ export class LeftPanel {
 
     this.root.append(
       this.renderTurnInfo(),
+      this.renderHappinessSection(),
       this.renderResearchSection(),
     );
   }
@@ -158,6 +163,20 @@ export class LeftPanel {
     return section;
   }
 
+  private renderHappinessSection(): HTMLElement {
+    const section = this.createSection('Nation');
+    const humanNationId = this.humanNationId;
+
+    if (!humanNationId || !this.happinessSystem) {
+      section.append(this.createDiv('panel-muted', 'Happiness unavailable'));
+      return section;
+    }
+
+    const netHappiness = this.happinessSystem.getNetHappiness(humanNationId);
+    section.append(this.createDiv('', `Happiness: ${formatSigned(netHappiness)}`));
+    return section;
+  }
+
   private renderEndTurnButton(): HTMLElement {
     const btn = document.createElement('button');
     btn.id = 'end-turn-btn';
@@ -187,4 +206,8 @@ export class LeftPanel {
 
 function toCssColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
+}
+
+function formatSigned(value: number): string {
+  return value >= 0 ? `+${value}` : `${value}`;
 }

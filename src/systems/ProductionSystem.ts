@@ -1,5 +1,6 @@
 import { CityManager } from './CityManager';
 import { TurnManager } from './TurnManager';
+import { HappinessSystem } from './HappinessSystem';
 import type { Producible } from '../types/producible';
 import type { TurnStartEvent } from '../types/events';
 
@@ -53,7 +54,11 @@ export class ProductionSystem {
   private readonly changedListeners: ProductionChangedListener[] = [];
   private hasSkippedInitialTurnStart = false;
 
-  constructor(cityManager: CityManager, turnManager: TurnManager) {
+  constructor(
+    cityManager: CityManager,
+    turnManager: TurnManager,
+    private readonly happinessSystem: HappinessSystem,
+  ) {
     this.cityManager = cityManager;
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
   }
@@ -85,8 +90,7 @@ export class ProductionSystem {
     const queue = this.queues.get(cityId);
     if (!queue || queue.length === 0) return [];
 
-    const cityRes = this.cityManager.getResources(cityId);
-    const ppt = Math.max(1, cityRes.productionPerTurn);
+    const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId));
 
     return queue.map((entry, i) => {
       const cost = this.getCost(entry.item);
@@ -203,8 +207,7 @@ export class ProductionSystem {
       const cost = this.getCost(entry.item);
 
       if (entry.accumulated < cost) {
-        const cityRes = this.cityManager.getResources(city.id);
-        entry.accumulated = Math.min(cost, entry.accumulated + cityRes.productionPerTurn);
+        entry.accumulated = Math.min(cost, entry.accumulated + this.getEffectiveProductionPerTurn(city.id));
         entry.blockedReason = undefined;
       }
 
@@ -253,6 +256,15 @@ export class ProductionSystem {
       case 'building':
         return undefined;
     }
+  }
+
+  private getEffectiveProductionPerTurn(cityId: string): number {
+    const city = this.cityManager.getCity(cityId);
+    if (!city) return 0;
+
+    const cityRes = this.cityManager.getResources(cityId);
+    const modifier = this.happinessSystem.getProductionModifier(city.ownerId);
+    return Math.floor(cityRes.productionPerTurn * modifier);
   }
 
   private notifyChanged(cityId: string): void {

@@ -3,7 +3,9 @@ import { TileMap } from './TileMap';
 import { CameraController } from './CameraController';
 import { CityManager } from './CityManager';
 import { UnitManager } from './UnitManager';
+import type { WorldInputGate } from './input/WorldInputGate';
 import { Selectable } from '../types/selection';
+import { isPointerEventConsumed, isPointerOverScreenSpaceUi } from '../utils/phaserScreenSpaceUi';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
 
@@ -46,6 +48,7 @@ export class SelectionManager {
     cameraController: CameraController,
     cityManager: CityManager,
     unitManager: UnitManager,
+    private readonly worldInputGate: WorldInputGate,
   ) {
     this.scene = scene;
     this.tileMap = tileMap;
@@ -125,6 +128,9 @@ export class SelectionManager {
     this.scene.input.on(
       Phaser.Input.Events.POINTER_MOVE,
       (pointer: Phaser.Input.Pointer) => {
+        // HUD and world both listen inside the same Phaser scene. This gate
+        // prevents world systems from processing pointer sequences claimed by HUD controls.
+        if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
         const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
         this.setHover(this.resolve(wp.x, wp.y));
       },
@@ -134,16 +140,13 @@ export class SelectionManager {
       Phaser.Input.Events.POINTER_UP,
       (pointer: Phaser.Input.Pointer) => {
         if (pointer.button !== 0) return;
+        if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
+        if (isPointerEventConsumed(pointer)) return;
         if (this.cameraController.wasDragging()) return;
 
         // Skip map selection when pointer is over an interactive UI element
         // (scrollFactor 0 = fixed to screen, not part of the game world)
-        const hitObjects = this.scene.input.hitTestPointer(pointer);
-        const hitsUI = hitObjects.some((obj) => {
-          const go = obj as unknown as Phaser.GameObjects.Components.ScrollFactor;
-          return go.scrollFactorX === 0 && go.scrollFactorY === 0;
-        });
-        if (hitsUI) return;
+        if (isPointerOverScreenSpaceUi(this.scene, pointer)) return;
 
         const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
         const target = this.resolve(wp.x, wp.y);

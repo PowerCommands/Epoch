@@ -118,6 +118,9 @@ Never mix responsibilities.
 * Cities store `nextExpansionTileCoord` as planned culture expansion
 * Deterministic growth
 * Buildings modify yields
+* Nation happiness is a global nation-level mechanic, not a per-city citizen mood model
+* City count, population, and finished building happiness all feed the global nation happiness state
+* Happiness penalties affect real growth and production through existing economy systems
 * Production queue
 * Tile-based building placement is additive and does not replace existing city building logic
 * RightPanel building selection starts placement mode instead of immediately queueing a building

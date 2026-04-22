@@ -21,6 +21,7 @@ import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
 import type { CityTerritorySystem } from '../systems/CityTerritorySystem';
+import type { HappinessSystem } from '../systems/HappinessSystem';
 import { RafScheduler } from '../utils/RafScheduler';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
@@ -64,6 +65,7 @@ export class RightPanel {
     humanNationId: string | undefined,
     private readonly cityTerritorySystem: CityTerritorySystem,
     private readonly gridSystem: IGridSystem,
+    private readonly happinessSystem: HappinessSystem,
   ) {
     const root = document.getElementById('panel-right');
     if (!root) throw new Error('Missing #panel-right');
@@ -262,8 +264,12 @@ export class RightPanel {
     );
     const isHuman = city.ownerId === this.humanNationId;
 
-    const turnsUntilGrowth = economy.netFood > 0
-      ? Math.ceil((economy.foodToGrow - city.foodStorage) / economy.netFood)
+    const growthModifier = this.happinessSystem.getGrowthModifier(city.ownerId);
+    const effectiveGrowthPerTurn = economy.netFood > 0
+      ? Math.floor(economy.netFood * growthModifier)
+      : economy.netFood;
+    const turnsUntilGrowth = effectiveGrowthPerTurn > 0
+      ? Math.ceil((economy.foodToGrow - city.foodStorage) / effectiveGrowthPerTurn)
       : null;
     const growthText = turnsUntilGrowth !== null ? `${turnsUntilGrowth} turn${turnsUntilGrowth !== 1 ? 's' : ''}` : '\u2014';
 
@@ -284,11 +290,14 @@ export class RightPanel {
       this.createDiv('', `Worked tiles: ${economy.workedTileCount} / ${economy.maxWorkableTiles}`),
       this.createDiv('', `Food: ${formatSigned(economy.food)}/turn (base ${economy.baseFood} + ${economy.food - economy.baseFood} tiles/buildings)`),
       this.createDiv('', `Consumption: -${economy.foodConsumption}/turn (${city.population} pop \u00d7 2)`),
-      this.createDiv('', `Net food: ${formatSigned(economy.netFood)}/turn`),
+      this.createDiv('', `Net food: ${formatSigned(effectiveGrowthPerTurn)}/turn`),
       this.createDiv('', `Food storage: ${city.foodStorage} / ${economy.foodToGrow}`),
       createHpBar(city.foodStorage, economy.foodToGrow),
       this.createDiv('', `Growth in: ${growthText}`),
     );
+    if (growthModifier < 1.0) {
+      growthSection.append(this.createDiv('panel-muted', `Global happiness growth modifier: x${growthModifier.toFixed(2)}`));
+    }
     if (economy.workedTiles.some((worked) => worked.tile.improvementId !== undefined)) {
       growthSection.append(this.createDiv('panel-muted', 'Worked tile yields include improvements.'));
     }
@@ -377,6 +386,7 @@ export class RightPanel {
     const resources = this.nationManager.getResources(nationId);
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const units = this.unitManager.getUnitsByOwner(nationId);
+    const happiness = this.happinessSystem.getNationState(nationId);
 
     // Header
     const header = this.createSection('Nation');
@@ -394,8 +404,23 @@ export class RightPanel {
     const econ = this.createSection('Economy');
     econ.append(
       this.createDiv('', `Gold: ${resources.gold}  (+${resources.goldPerTurn}/turn)`),
+      this.createDiv('', `Happiness: ${formatSigned(happiness.netHappiness)}`),
     );
     this.contentEl.append(econ);
+
+    const happinessSection = this.createSection('Happiness');
+    happinessSection.append(
+      this.createDiv('', `Total Happiness: ${happiness.totalHappiness}`),
+      this.createDiv('', `Total Unhappiness: ${happiness.totalUnhappiness}`),
+      this.createDiv('', `Net Happiness: ${formatSigned(happiness.netHappiness)}`),
+      this.createDiv('', `Base Happiness: ${happiness.breakdown.baseHappiness}`),
+      this.createDiv('', `Building Happiness: ${happiness.breakdown.buildingHappiness}`),
+      this.createDiv('', `City Unhappiness: ${happiness.breakdown.cityUnhappiness}`),
+      this.createDiv('', `Population Unhappiness: ${happiness.breakdown.populationUnhappiness}`),
+      this.createDiv('', `Growth penalty: x${happiness.growthModifier.toFixed(2)}`),
+      this.createDiv('', `Production penalty: x${happiness.productionModifier.toFixed(2)}`),
+    );
+    this.contentEl.append(happinessSection);
 
     // Cities
     const citySection = this.createSection(`Cities (${cities.length})`);

@@ -8,7 +8,7 @@ export function getGameContainerSize(): { width: number; height: number } {
   const rect = container?.getBoundingClientRect();
 
   return {
-    width: Math.round(rect?.width ?? window.innerWidth * 0.8),
+    width: Math.round(rect?.width ?? window.innerWidth * 0.9),
     height: Math.round(rect?.height ?? window.innerHeight),
   };
 }

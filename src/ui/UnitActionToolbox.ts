@@ -2,14 +2,21 @@ import type { Unit } from '../entities/Unit';
 
 export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'sleep' | 'kill';
 
-interface UnitActionDefinition {
+export interface UnitActionDefinition {
   mode: UnitActionMode;
   label: string;
   isAvailable(unit: Unit): boolean;
   isToggledOn?(unit: Unit): boolean;
 }
 
-const ACTIONS: readonly UnitActionDefinition[] = [
+export interface UnitActionViewState {
+  mode: UnitActionMode;
+  label: string;
+  isAvailable: boolean;
+  isActive: boolean;
+}
+
+export const ACTIONS: readonly UnitActionDefinition[] = [
   {
     mode: 'move',
     label: 'Move',
@@ -49,12 +56,16 @@ const ACTIONS: readonly UnitActionDefinition[] = [
 ];
 
 type ModeChangedListener = (mode: UnitActionMode) => void;
+type ChangedListener = () => void;
+
+const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'sleep', 'build', 'found'];
 
 export class UnitActionToolbox {
   private selectedUnit: Unit | null = null;
   private mode: UnitActionMode = 'move';
   private root: HTMLElement | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
+  private readonly changedListeners: ChangedListener[] = [];
 
   constructor(private readonly humanNationId: string | undefined) {}
 
@@ -114,6 +125,36 @@ export class UnitActionToolbox {
     this.modeChangedListeners.push(listener);
   }
 
+  onChanged(listener: ChangedListener): void {
+    this.changedListeners.push(listener);
+  }
+
+  getHudActions(): UnitActionViewState[] {
+    const unit = this.selectedUnit;
+    return HUD_ACTION_ORDER.map((mode) => {
+      const action = ACTIONS.find((candidate) => candidate.mode === mode);
+      if (!action) {
+        return { mode, label: mode, isAvailable: false, isActive: false };
+      }
+
+      const isAvailable = unit !== null && action.isAvailable(unit);
+      const isActive = unit !== null && isAvailable && (
+        this.mode === action.mode || action.isToggledOn?.(unit) === true
+      );
+
+      return {
+        mode,
+        label: action.label,
+        isAvailable,
+        isActive,
+      };
+    });
+  }
+
+  hasSelectedUnit(): boolean {
+    return this.selectedUnit !== null;
+  }
+
   render(): HTMLElement {
     this.root = document.createElement('div');
     this.root.className = 'unit-action-toolbox';
@@ -122,12 +163,16 @@ export class UnitActionToolbox {
   }
 
   refresh(): void {
-    if (!this.root) return;
+    if (!this.root) {
+      this.notifyChanged();
+      return;
+    }
 
     this.root.replaceChildren();
     const unit = this.selectedUnit;
     if (!unit) {
       this.root.classList.add('unit-action-toolbox-hidden');
+      this.notifyChanged();
       return;
     }
 
@@ -158,9 +203,14 @@ export class UnitActionToolbox {
     }
 
     this.root.append(row);
+    this.notifyChanged();
   }
 
   private notifyModeChanged(): void {
     for (const listener of this.modeChangedListeners) listener(this.mode);
+  }
+
+  private notifyChanged(): void {
+    for (const listener of this.changedListeners) listener();
   }
 }

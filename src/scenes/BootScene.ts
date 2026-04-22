@@ -29,6 +29,13 @@ export class BootScene extends Phaser.Scene {
     this.load.image('unit_settler', 'assets/sprites/unit_settler.png');
     this.load.image('unit_fishing_boat', 'assets/sprites/unit_fishing_boat.png');
     this.load.image('unit_transport_ship', 'assets/sprites/unit_transport_ship.png');
+    this.load.image('end_turn', 'assets/sprites/end_turn.png');
+    this.load.image('action_move', 'assets/sprites/actions/move.png');
+    this.load.image('action_attack', 'assets/sprites/actions/attack.png');
+    this.load.image('action_ranged_attack', 'assets/sprites/actions/ranged-attack.png');
+    this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
+    this.load.image('action_improve', 'assets/sprites/actions/improve.png');
+    this.load.image('action_found_city', 'assets/sprites/actions/found-city.png');
 
     // Leader portraits (used by the Phaser-side leader strip in GameScene)
     for (const leader of ALL_LEADERS) {

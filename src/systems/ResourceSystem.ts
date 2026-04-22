@@ -8,6 +8,7 @@ import { calculateCityEconomy } from './CityEconomy';
 import type { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
+import { HappinessSystem } from './HappinessSystem';
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -18,6 +19,7 @@ export class ResourceSystem {
   private readonly cityManager: CityManager;
   private readonly generator: IResourceGenerator;
   private readonly mapData: MapData;
+  private readonly happinessSystem: HappinessSystem;
   private readonly listeners: ResourceListener[] = [];
   private hasSkippedInitialTurnStart = false;
   private readonly cityTerritorySystem = new CityTerritorySystem();
@@ -29,11 +31,13 @@ export class ResourceSystem {
     generator: IResourceGenerator,
     mapData: MapData,
     private readonly gridSystem: IGridSystem,
+    happinessSystem: HappinessSystem,
   ) {
     this.nationManager = nationManager;
     this.cityManager = cityManager;
     this.generator = generator;
     this.mapData = mapData;
+    this.happinessSystem = happinessSystem;
 
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
 
@@ -100,6 +104,7 @@ export class ResourceSystem {
       cityRes.food = city.foodStorage;
     }
 
+    this.happinessSystem.recalculateNation(nationId);
     this.notify({ nationId });
   }
 
@@ -119,6 +124,7 @@ export class ResourceSystem {
     const lookup = (cityId: string) => this.cityManager.getBuildings(cityId);
 
     this.updateWorkedTiles(cities);
+    this.happinessSystem.recalculateNation(nation.id);
 
     // Räkna om per-turn (kan ändras om städer förstörts/skapats)
     nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(nation, cities, lookup, this.mapData, this.gridSystem);
@@ -130,17 +136,20 @@ export class ResourceSystem {
       const cityRes = this.cityManager.getResources(city.id);
       const buildings = this.cityManager.getBuildings(city.id);
       const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem);
+      const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
       let displayEconomy = economy;
       cityRes.production += economy.production;
 
-      if (economy.netFood > 0) {
-        city.foodStorage += economy.netFood;
+      if (economy.netFood > 0 && growthModifier > 0) {
+        const adjustedGrowth = Math.floor(economy.netFood * growthModifier);
+        city.foodStorage += adjustedGrowth;
         if (city.foodStorage >= economy.foodToGrow) {
           city.population += 1;
           city.foodStorage = 0;
           this.cityTerritorySystem.updateWorkedTiles(city, this.mapData);
           this.cityTerritorySystem.refreshNextExpansionTile(city, this.mapData);
+          this.happinessSystem.recalculateNation(city.ownerId);
           displayEconomy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem);
         }
       }
@@ -159,6 +168,7 @@ export class ResourceSystem {
     }
     nationRes.culture += nationRes.culturePerTurn;
 
+    this.happinessSystem.recalculateNation(nation.id);
     this.notify({ nationId: nation.id });
   }
 
@@ -187,6 +197,8 @@ export class ResourceSystem {
         nationRes.happinessPerTurn += cityRes.happinessPerTurn;
         cityRes.food = city.foodStorage;
       }
+
+      this.happinessSystem.recalculateNation(nation.id);
     }
   }
 

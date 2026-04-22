@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import type { WorldInputGate } from './input/WorldInputGate';
+import { isPointerEventConsumed, isPointerOverScreenSpaceUi } from '../utils/phaserScreenSpaceUi';
 
 const PAN_SPEED = 400;  // pixlar/sekund vid zoom 1.0
 const ZOOM_STEP = 0.1;
@@ -43,6 +45,7 @@ export class CameraController {
     scene: Phaser.Scene,
     worldWidth: number,
     worldHeight: number,
+    private readonly worldInputGate: WorldInputGate,
     minZoom = DEFAULT_ZOOM_MIN,
   ) {
     this.cam = scene.cameras.main;
@@ -127,6 +130,11 @@ export class CameraController {
       // Bara vänster musknapp
       if (!this.pointerPanEnabled) return;
       if (!pointer.leftButtonDown()) return;
+      // HUD and world both listen inside the same Phaser scene. This gate
+      // prevents world systems from processing pointer sequences claimed by HUD controls.
+      if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
+      if (isPointerEventConsumed(pointer)) return;
+      if (isPointerOverScreenSpaceUi(scene, pointer)) return;
       this.pointerIsDown = true;
       this.didDrag = false;
       this.dragStartX = pointer.x;
@@ -137,6 +145,7 @@ export class CameraController {
 
     scene.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {
       if (!this.pointerPanEnabled) return;
+      if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
       if (!this.pointerIsDown) return;
 
       const dx = pointer.x - this.dragStartX;

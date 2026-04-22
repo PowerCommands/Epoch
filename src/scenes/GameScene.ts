@@ -8,6 +8,7 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import { HappinessSystem } from '../systems/HappinessSystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
@@ -45,15 +46,17 @@ import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
+import { WorldInputGate } from '../systems/input/WorldInputGate';
 import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
 import { DiagnosticDialog } from '../ui/DiagnosticDialog';
-import { LeftPanel } from '../ui/LeftPanel';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
 import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState } from '../ui/CityView';
+import { HudLayer } from '../ui/hud/HudLayer';
+import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import type { SavedGameState } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
@@ -136,7 +139,8 @@ export class GameScene extends Phaser.Scene {
     // 7. Kamerakontroll
     const { width: worldWidth, height: worldHeight } = tileMap.getWorldBounds();
     const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
-    this.cameraController = new CameraController(this, worldWidth, worldHeight, overviewZoom);
+    const worldInputGate = new WorldInputGate();
+    this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
 
     // 8. Rendera städer (depth 15)
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
@@ -150,18 +154,19 @@ export class GameScene extends Phaser.Scene {
 
     // 11. Turordning och resurssystem
     const turnManager = new TurnManager(nationManager);
+    const happinessSystem = new HappinessSystem(nationManager, cityManager);
     const resourceSystem = new ResourceSystem(
-      nationManager, cityManager, turnManager, new TileResourceGenerator(), mapData, gridSystem,
+      nationManager, cityManager, turnManager, new TileResourceGenerator(), mapData, gridSystem, happinessSystem,
     );
 
     // 12. Selection-system (hover depth 20, selection depth 21)
     const selectionManager = new SelectionManager(
-      this, tileMap, this.cameraController, cityManager, unitManager,
+      this, tileMap, this.cameraController, cityManager, unitManager, worldInputGate,
     );
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
-    const productionSystem = new ProductionSystem(cityManager, turnManager);
+    const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem);
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
     const buildingPlacementSystem = new BuildingPlacementSystem();
@@ -188,7 +193,7 @@ export class GameScene extends Phaser.Scene {
 
     // 13. Produktionssystem
     const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem);
-    let leftPanel: LeftPanel | null = null;
+    let hudLayer: HudLayer | null = null;
     let rightPanel: RightPanel | null = null;
     let leaderStrip: LeaderPortraitStrip | null = null;
     const cityView = new CityView();
@@ -249,7 +254,7 @@ export class GameScene extends Phaser.Scene {
       unitActionToolbox.setSelectedUnit(null);
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
-      leftPanel?.refresh();
+      hudLayer?.refresh();
       rightPanel?.clear();
       return true;
     };
@@ -427,7 +432,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
     );
 
-    // Humans pick their own initial research via the LeftPanel UI.
+    // Humans pick their own initial research via the HUD research panel.
     // AI nations keep the deterministic auto-pick so they never stall.
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) {
@@ -569,7 +574,7 @@ export class GameScene extends Phaser.Scene {
       const nameB = nationManager.getNation(b)?.name ?? b;
       eventLog.log(`${nameA} has met ${nameB}.`, [a, b], turnManager.getCurrentRound());
       // New nation may now be visible in the UI.
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       leaderStrip?.rebuild();
     });
 
@@ -611,7 +616,7 @@ export class GameScene extends Phaser.Scene {
     combatSystem.onCityCombat((e) => {
       // Uppdatera stadsrendering (HP-bar)
       cityRenderer.refreshCity(e.city);
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
 
       // Om attackeraren dog
       if (e.result.attackerDied) {
@@ -627,9 +632,12 @@ export class GameScene extends Phaser.Scene {
         unitRenderer.refreshUnitPosition(e.attacker.id);
         // Territory overlay behöver ritas om
         territoryRenderer.render();
-        leftPanel?.requestRefresh();
+        hudLayer?.refresh();
         // Recalculate resources for both old and new owner
         resourceSystem.recalculateForNation(e.attacker.ownerId);
+        if (e.previousOwnerId) {
+          resourceSystem.recalculateForNation(e.previousOwnerId);
+        }
         // A conquered city may introduce new encounters
         discoverySystem.scan();
       }
@@ -643,7 +651,7 @@ export class GameScene extends Phaser.Scene {
       const city = cityManager.getCity(e.cityId);
       if (city) {
         cityRenderer.refreshCity(city);
-        leftPanel?.requestRefresh();
+        hudLayer?.refresh();
         rightPanel?.requestRefresh();
       }
     });
@@ -786,7 +794,7 @@ export class GameScene extends Phaser.Scene {
         [nationA, nationB],
         turnManager.getCurrentRound(),
       );
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
 
@@ -799,7 +807,7 @@ export class GameScene extends Phaser.Scene {
         [aggressorId, targetId],
         turnManager.getCurrentRound(),
       );
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
 
@@ -851,15 +859,29 @@ export class GameScene extends Phaser.Scene {
       scrollY: this.cameraController.scrollY,
     }));
     const diagnosticDialog = new DiagnosticDialog(this.diagnosticSystem);
-
-    leftPanel = new LeftPanel(nationManager, turnManager, humanNationId, discoverySystem);
-    leftPanel.setResearchSystem(researchSystem);
-    leftPanel.setUnitActionToolbox(unitActionToolbox);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       turnManager.endCurrentTurn();
     };
-    leftPanel.setEndTurnCallback(endHumanTurn);
+    const hudDataProvider = new NationHudDataProvider(
+      nationManager,
+      cityManager,
+      happinessSystem,
+      researchSystem,
+    );
+    hudLayer = new HudLayer(this, {
+      humanNationId,
+      dataProvider: hudDataProvider,
+      unitActionToolbox,
+      worldInputGate,
+      onEndTurn: endHumanTurn,
+      onSelectResearch: (technologyId) => {
+        if (!humanNationId) return;
+        researchSystem.startResearch(humanNationId, technologyId);
+      },
+    });
+    hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
+    hudLayer.refresh();
 
     const onEnterEndTurn = () => endHumanTurn();
     this.input.keyboard?.on('keydown-ENTER', onEnterEndTurn);
@@ -876,6 +898,7 @@ export class GameScene extends Phaser.Scene {
       humanNationId,
       cityTerritorySystem,
       gridSystem,
+      happinessSystem,
     );
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setResearchSystem(researchSystem);
@@ -1244,6 +1267,7 @@ export class GameScene extends Phaser.Scene {
       });
     };
     unitActionToolbox.onModeChanged((mode) => {
+      hudLayer?.refresh();
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
 
@@ -1278,7 +1302,7 @@ export class GameScene extends Phaser.Scene {
         selection.unit.isSleeping = !selection.unit.isSleeping;
         unitActionToolbox.refresh();
         turnOrderSystem.refreshActive();
-        leftPanel?.requestRefresh();
+        hudLayer?.refresh();
         rightPanel?.requestRefresh();
         unitActionToolbox.resetMode();
         return;
@@ -1295,9 +1319,15 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     });
+    unitActionToolbox.onChanged(() => hudLayer?.refresh());
     researchSystem.onChanged(() => {
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       rightPanel?.requestRefresh();
+    });
+    happinessSystem.onChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
     });
 
     new CombatLog(this, combatSystem, nationManager);
@@ -1313,9 +1343,9 @@ export class GameScene extends Phaser.Scene {
     }));
 
     turnManager.on('turnStart', () => {
-      leftPanel?.refresh();
+      hudLayer?.refresh();
       const activeNation = turnManager.getCurrentNation();
-      leftPanel?.setEndTurnEnabled(activeNation.isHuman);
+      hudLayer?.setEndTurnEnabled(activeNation.isHuman);
       const selectedCity = rightPanel?.getCurrentCity();
       if (selectedCity) {
         rightPanel!.refreshProductionQueue(selectedCity.id);
@@ -1326,16 +1356,16 @@ export class GameScene extends Phaser.Scene {
         rightPanel.refreshNationView();
       }
     });
-    turnManager.on('roundStart', () => leftPanel?.requestRefresh());
+    turnManager.on('roundStart', () => hudLayer?.refresh());
     resourceSystem.on(() => {
       territoryRenderer.render();
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshSelectedCityOverlays();
       refreshOpenCityView();
     });
     unitManager.onUnitChanged((event) => {
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       if (
         rightPanel &&
         (rightPanel.isShowingCity(event.cityId) || rightPanel.isShowingUnit(event.unit))
@@ -1345,7 +1375,7 @@ export class GameScene extends Phaser.Scene {
       refreshMovePreview();
     });
     productionSystem.onChanged(() => {
-      leftPanel?.requestRefresh();
+      hudLayer?.refresh();
       rightPanel?.requestRefresh();
       tileBuildingRenderer.rebuildAll();
       refreshOpenCityView();
@@ -1353,7 +1383,6 @@ export class GameScene extends Phaser.Scene {
 
     // Map selection → right panel (clears nation highlight)
     selectionManager.onSelectionChanged((selection) => {
-      leftPanel?.clearSelectedNation();
       leaderStrip?.setSelectedNation(null);
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
@@ -1458,11 +1487,10 @@ export class GameScene extends Phaser.Scene {
       pathPreviewRenderer.showPath(path);
     });
 
-    // Nation selected from LeftPanel list
+    // Nation selected from legacy HTML events
     const onNationSelected = (event: Event) => {
       const { nationId } = (event as CustomEvent<{ nationId: string }>).detail;
       rightPanel?.showNation(nationId);
-      leftPanel?.setSelectedNation(nationId);
       leaderStrip?.setSelectedNation(nationId);
     };
     document.addEventListener('nationSelected', onNationSelected);
@@ -1470,7 +1498,6 @@ export class GameScene extends Phaser.Scene {
     const onLeaderSelected = (event: Event) => {
       const { nationId, leaderId } = (event as CustomEvent<{ nationId: string; leaderId?: string }>).detail;
       rightPanel?.showLeader(leaderId ?? nationId);
-      leftPanel?.setSelectedNation(nationId);
       leaderStrip?.setSelectedNation(nationId);
     };
     document.addEventListener('leaderSelected', onLeaderSelected);
@@ -1508,7 +1535,7 @@ export class GameScene extends Phaser.Scene {
       document.removeEventListener('nationSelected', onNationSelected);
       document.removeEventListener('leaderSelected', onLeaderSelected);
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
-      leftPanel?.shutdown();
+      hudLayer?.shutdown();
       rightPanel?.shutdown();
       diagnosticDialog.shutdown();
       this.diagnosticSystem.shutdown();
@@ -1585,6 +1612,7 @@ export class GameScene extends Phaser.Scene {
       for (const nation of nationManager.getAllNations()) {
         resourceSystem.recalculateForNation(nation.id);
       }
+      happinessSystem.recalculateAll();
       refreshOpenCityView();
     }
 

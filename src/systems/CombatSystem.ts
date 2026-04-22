@@ -28,6 +28,7 @@ export interface CityCombatEvent {
   city: City;
   result: CityCombatResult;
   captured: boolean;
+  previousOwnerId?: string;
 }
 
 export interface CombatRejectedEvent {
@@ -215,13 +216,15 @@ export class CombatSystem {
     }
 
     let captured = false;
+    let previousOwnerId: string | undefined;
     if (!isRanged && result.cityFell && !result.attackerDied) {
+      previousOwnerId = city.ownerId;
       captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem, this.unitManager);
       captured = true;
     }
 
     for (const cb of this.cityCombatListeners) {
-      cb({ attacker, city, result, captured });
+      cb({ attacker, city, result, captured, previousOwnerId });
     }
 
     return true;
