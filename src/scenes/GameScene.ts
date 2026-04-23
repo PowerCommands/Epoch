@@ -174,6 +174,11 @@ export class GameScene extends Phaser.Scene {
       eventLog,
       () => turnManager.getCurrentRound(),
     );
+    const humanNeedsPolicySelection = (): boolean => {
+      if (!humanNationId) return false;
+      return !policySystem.getCurrentPolicy(humanNationId)
+        && policySystem.getAvailablePolicies(humanNationId).length > 0;
+    };
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
@@ -576,7 +581,6 @@ export class GameScene extends Phaser.Scene {
       if (!turnManager.getCurrentNation().isHuman) return;
       turnOrderSystem.skipActive();
     };
-    this.input.keyboard?.on('keydown-SPACE', onSpaceSkip);
 
     // C centers the camera on the active unit, or on the human capital
     // if no active unit is available. Reuses the turn-flow focus helpers.
@@ -601,18 +605,29 @@ export class GameScene extends Phaser.Scene {
     const onKeyAttack = () => activateActionIfHumanTurn('attack');
     const onKeyRanged = () => activateActionIfHumanTurn('ranged');
     const onKeySleep = () => activateActionIfHumanTurn('sleep');
-    this.input.keyboard?.on('keydown-M', onKeyMove);
-    this.input.keyboard?.on('keydown-A', onKeyAttack);
-    this.input.keyboard?.on('keydown-R', onKeyRanged);
-    this.input.keyboard?.on('keydown-S', onKeySleep);
-
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    const onEnterEndTurn = () => endHumanTurn();
+    const bindGameplayHotkeys = (): void => {
+      this.input.keyboard?.on('keydown-SPACE', onSpaceSkip);
+      this.input.keyboard?.on('keydown-C', onKeyCenter);
+      this.input.keyboard?.on('keydown-M', onKeyMove);
+      this.input.keyboard?.on('keydown-A', onKeyAttack);
+      this.input.keyboard?.on('keydown-R', onKeyRanged);
+      this.input.keyboard?.on('keydown-S', onKeySleep);
+      this.input.keyboard?.on('keydown-ENTER', onEnterEndTurn);
+    };
+    const unbindGameplayHotkeys = (): void => {
       this.input.keyboard?.off('keydown-SPACE', onSpaceSkip);
       this.input.keyboard?.off('keydown-C', onKeyCenter);
       this.input.keyboard?.off('keydown-M', onKeyMove);
       this.input.keyboard?.off('keydown-A', onKeyAttack);
       this.input.keyboard?.off('keydown-R', onKeyRanged);
       this.input.keyboard?.off('keydown-S', onKeySleep);
+      this.input.keyboard?.off('keydown-ENTER', onEnterEndTurn);
+    };
+    bindGameplayHotkeys();
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      unbindGameplayHotkeys();
     });
 
     // Re-scan after a unit moves or is created (new positions may meet a city).
@@ -939,7 +954,12 @@ export class GameScene extends Phaser.Scene {
       onEndTurn: endHumanTurn,
       onSelectResearch: (technologyId) => {
         if (!humanNationId) return false;
-        return researchSystem.startResearch(humanNationId, technologyId);
+        const started = researchSystem.startResearch(humanNationId, technologyId);
+        if (!started) return false;
+        if (humanNeedsPolicySelection()) {
+          hudLayer?.openCulturePanel();
+        }
+        return true;
       },
       onSelectPolicy: (policyId) => {
         if (!humanNationId) return false;
@@ -948,12 +968,6 @@ export class GameScene extends Phaser.Scene {
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
-
-    const onEnterEndTurn = () => endHumanTurn();
-    this.input.keyboard?.on('keydown-ENTER', onEnterEndTurn);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.keyboard?.off('keydown-ENTER', onEnterEndTurn);
-    });
 
     rightPanel = new RightPanel(
       productionSystem,
@@ -1116,6 +1130,7 @@ export class GameScene extends Phaser.Scene {
         return false;
       }
 
+      bindGameplayHotkeys();
       clearCityViewInteraction();
       if (selected?.kind === 'city' && selected.city.ownerId === humanNationId) {
         cityViewDismissedCityId = selected.city.id;
@@ -1483,6 +1498,7 @@ export class GameScene extends Phaser.Scene {
     const cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
+      policySystem,
       resourceSystem,
       diagnosticSystem: this.diagnosticSystem,
       productionSystem,
@@ -1883,6 +1899,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const openCityView = (city: City): void => {
+      unbindGameplayHotkeys();
       cityView.show(
         city,
         getCityViewBuildingOptions(city),

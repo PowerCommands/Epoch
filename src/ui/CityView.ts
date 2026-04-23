@@ -310,6 +310,8 @@ export class CityView {
   };
 
   private readonly handleTitleInputKeyDown = (event: KeyboardEvent): void => {
+    event.stopPropagation();
+
     if (event.key === 'Enter') {
       event.preventDefault();
       this.commitTitleEdit();

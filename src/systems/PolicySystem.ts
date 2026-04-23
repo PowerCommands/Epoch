@@ -97,6 +97,29 @@ export class PolicySystem {
     return unlockedPolicy;
   }
 
+  completeCurrentPolicy(nationId: string): PolicyDefinition | null {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation?.currentPolicyId) return null;
+
+    const policy = getPolicyById(nation.currentPolicyId);
+    if (!policy) {
+      nation.currentPolicyId = undefined;
+      nation.policyProgress = 0;
+      this.notifyChanged();
+      return null;
+    }
+
+    if (this.getMissingPrerequisiteIds(nationId, policy.id).length > 0 || this.isUnlocked(nationId, policy.id)) {
+      nation.currentPolicyId = undefined;
+      nation.policyProgress = 0;
+      this.notifyChanged();
+      return null;
+    }
+
+    nation.policyProgress = this.getEffectiveCost(nationId, policy.id);
+    return this.tryUnlockCurrentPolicy(nationId);
+  }
+
   ensurePolicySelected(nationId: string): boolean {
     const nation = this.nationManager.getNation(nationId);
     if (!nation || nation.currentPolicyId) return false;
