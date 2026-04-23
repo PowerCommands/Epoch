@@ -18,6 +18,7 @@ import { PathfindingSystem } from './PathfindingSystem';
 import { calculateCityEconomy } from './CityEconomy';
 import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { PolicySystem } from './PolicySystem';
 import type { ResearchSystem } from './ResearchSystem';
 
 const MAX_MILITARY = 3;
@@ -62,6 +63,7 @@ export class AISystem {
     mapData: MapData,
     private readonly gridSystem: IGridSystem,
     private readonly researchSystem?: ResearchSystem,
+    private readonly policySystem?: PolicySystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -362,7 +364,13 @@ export class AISystem {
     plannedMilitaryCount: number,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
-    const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem);
+    const economy = calculateCityEconomy(
+      city,
+      this.mapData,
+      buildings,
+      this.gridSystem,
+      this.policySystem?.getCombinedModifiers(nationId),
+    );
     const canBuildMilitary = plannedMilitaryCount < MAX_MILITARY;
 
     if (canBuildMilitary && this.needsDefender(city, nationId)) {

@@ -1,5 +1,6 @@
 import { getBuildingById } from '../data/buildings';
 import { NationHappiness, type HappinessBreakdown } from '../entities/NationHappiness';
+import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 
@@ -23,6 +24,7 @@ export class HappinessSystem {
   constructor(
     private readonly nationManager: NationManager,
     private readonly cityManager: CityManager,
+    private readonly getNationModifiers: (nationId: string) => Readonly<ModifierSet> = () => EMPTY_MODIFIERS,
   ) {
     this.recalculateAll();
   }
@@ -36,20 +38,23 @@ export class HappinessSystem {
     const previous = snapshotState(state);
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const totalPopulation = cities.reduce((sum, city) => sum + city.population, 0);
+    const nationModifiers = this.getNationModifiers(nationId);
     const buildingHappiness = cities.reduce((sum, city) => (
       sum + this.cityManager.getBuildings(city.id).getAll()
         .reduce((buildingSum, buildingId) => (
           buildingSum + (getBuildingById(buildingId)?.modifiers.happinessPerTurn ?? 0)
         ), 0)
     ), 0);
+    const policyHappiness = nationModifiers.happinessPerTurn ?? 0;
 
     const breakdown: HappinessBreakdown = {
       baseHappiness: BASE_HAPPINESS,
       buildingHappiness,
+      policyHappiness,
       cityUnhappiness: cities.length * CITY_UNHAPPINESS,
       populationUnhappiness: totalPopulation * POPULATION_UNHAPPINESS,
     };
-    const totalHappiness = breakdown.baseHappiness + breakdown.buildingHappiness;
+    const totalHappiness = breakdown.baseHappiness + breakdown.buildingHappiness + breakdown.policyHappiness;
     const totalUnhappiness = breakdown.cityUnhappiness + breakdown.populationUnhappiness;
     const netHappiness = totalHappiness - totalUnhappiness;
 
@@ -141,6 +146,7 @@ function statesEqual(
     && previous.productionModifier === next.productionModifier
     && previous.breakdown.baseHappiness === next.breakdown.baseHappiness
     && previous.breakdown.buildingHappiness === next.breakdown.buildingHappiness
+    && previous.breakdown.policyHappiness === next.breakdown.policyHappiness
     && previous.breakdown.cityUnhappiness === next.breakdown.cityUnhappiness
     && previous.breakdown.populationUnhappiness === next.breakdown.populationUnhappiness;
 }

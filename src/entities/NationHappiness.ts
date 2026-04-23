@@ -1,6 +1,7 @@
 export interface HappinessBreakdown {
   baseHappiness: number;
   buildingHappiness: number;
+  policyHappiness: number;
   cityUnhappiness: number;
   populationUnhappiness: number;
 }
@@ -22,6 +23,7 @@ export class NationHappiness {
     this.breakdown = {
       baseHappiness: 0,
       buildingHappiness: 0,
+      policyHappiness: 0,
       cityUnhappiness: 0,
       populationUnhappiness: 0,
     };

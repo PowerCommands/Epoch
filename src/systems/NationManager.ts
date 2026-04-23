@@ -101,6 +101,9 @@ export class NationManager {
         researchedTechIds: cfg.researchedTechIds,
         currentResearchTechId: cfg.currentResearchTechId,
         researchProgress: cfg.researchProgress,
+        unlockedPolicyIds: cfg.unlockedPolicyIds,
+        currentPolicyId: cfg.currentPolicyId,
+        policyProgress: cfg.policyProgress,
       }));
       if (!cfg.isHuman) {
         NationManager.claimArea(

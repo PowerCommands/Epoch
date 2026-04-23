@@ -1,20 +1,9 @@
 import type { Era } from '../data/technologies';
+import type { ModifierSet } from '../types/modifiers';
 
 export type BuildingPlacement = 'land' | 'water';
 
-export interface BuildingModifiers {
-  foodPerTurn?: number;
-  productionPerTurn?: number;
-  goldPerTurn?: number;
-  sciencePerTurn?: number;
-  culturePerTurn?: number;
-  happinessPerTurn?: number;
-  foodPercent?: number;
-  productionPercent?: number;
-  goldPercent?: number;
-  sciencePercent?: number;
-  culturePercent?: number;
-}
+export type BuildingModifiers = ModifierSet;
 
 export interface BuildingType {
   readonly id: string;

@@ -1,61 +1,65 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
-import type { HudResearchState } from './NationHudDataProvider';
+import type { HudPolicyEntry, HudPolicyState } from './NationHudDataProvider';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
 const DEPTH = 140;
 const EDGE_MARGIN = 16;
-const TOGGLE_SIZE = 62;
 const TOGGLE_GAP = 12;
+const TOGGLE_SIZE = 62;
 const TOGGLE_BASE_Y = EDGE_MARGIN + 46;
 const CULTURE_TOGGLE_Y = TOGGLE_BASE_Y + TOGGLE_SIZE + TOGGLE_GAP;
 const SHARED_PANEL_Y = CULTURE_TOGGLE_Y + TOGGLE_SIZE + 12;
 const PANEL_WIDTH = 560;
 const PANEL_INNER_PADDING = 20;
 const PANEL_MASK_PADDING = 10;
-const PANEL_MIN_HEIGHT = 180;
-const PANEL_BOTTOM_PADDING = 20;
+const PANEL_MIN_HEIGHT = 200;
+const PANEL_BOTTOM_PADDING = 24;
 const PANEL_SCROLLBAR_WIDTH = 10;
 const PANEL_SCROLLBAR_GAP = 12;
 const PANEL_CONTENT_WIDTH = PANEL_WIDTH - (PANEL_INNER_PADDING * 2) - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP;
 const LINE_HEIGHT = 29;
-const BUTTON_HEIGHT = 34;
-const BUTTON_GAP = 7;
-const SECTION_GAP = 17;
+const BUTTON_HEIGHT = 72;
+const BUTTON_GAP = 8;
+const SECTION_GAP = 16;
 const SCROLL_STEP = 56;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
-interface TechButtonView {
+interface PolicyButtonView {
   id: string;
   background: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  detail: Phaser.GameObjects.Text;
+  prerequisite: Phaser.GameObjects.Text;
+  isSelectable: boolean;
+  baseFillColor: number;
+  baseFillAlpha: number;
   hovered: boolean;
   pressed: boolean;
 }
 
-export class ResearchHudPanel {
-  private readonly wheelBlockerId = `research-panel-wheel-${Math.random().toString(36).slice(2)}`;
+export class CultureHudPanel {
+  private readonly wheelBlockerId = `culture-panel-wheel-${Math.random().toString(36).slice(2)}`;
   private readonly addOwned: AddOwned;
   private readonly blocker: Phaser.GameObjects.Zone;
   private readonly toggleBackground: Phaser.GameObjects.Rectangle;
   private readonly toggleIcon: Phaser.GameObjects.Text;
   private readonly toggleHitArea: Phaser.GameObjects.Zone;
   private readonly panelBackground: Phaser.GameObjects.Rectangle;
+  private readonly toggleProgressText: Phaser.GameObjects.Text;
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
   private readonly contentMask: Phaser.Display.Masks.GeometryMask;
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly titleText: Phaser.GameObjects.Text;
-  private readonly toggleProgressText: Phaser.GameObjects.Text;
   private readonly currentText: Phaser.GameObjects.Text;
   private readonly progressText: Phaser.GameObjects.Text;
-  private readonly scienceText: Phaser.GameObjects.Text;
-  private readonly availableHeading: Phaser.GameObjects.Text;
-  private readonly researchedHeading: Phaser.GameObjects.Text;
-  private readonly researchedText: Phaser.GameObjects.Text;
+  private readonly cultureText: Phaser.GameObjects.Text;
+  private readonly treeTitleTexts: Phaser.GameObjects.Text[] = [];
+  private readonly treeDescriptionTexts: Phaser.GameObjects.Text[] = [];
   private readonly handleWheel: (
     pointer: Phaser.Input.Pointer,
     gameObjects: Phaser.GameObjects.GameObject[],
@@ -65,7 +69,7 @@ export class ResearchHudPanel {
     event: WheelEvent,
   ) => void;
 
-  private readonly techButtons: TechButtonView[] = [];
+  private readonly policyButtons: PolicyButtonView[] = [];
   private collapsed = true;
   private hoveredToggle = false;
   private togglePressed = false;
@@ -76,17 +80,16 @@ export class ResearchHudPanel {
   private scrollOffset = 0;
   private maxScroll = 0;
   private panelBounds = new Phaser.Geom.Rectangle();
-  private state: HudResearchState = {
-    currentName: 'None',
+  private onSelectPolicy: ((policyId: string) => boolean) | null = null;
+  private onToggle: ((collapsed: boolean) => void) | null = null;
+  private state: HudPolicyState = {
+    currentName: 'None selected',
     progress: 0,
     cost: 0,
     progressPercent: 0,
-    sciencePerTurn: 0,
-    available: [],
-    researchedNames: [],
+    culturePerTurn: 0,
+    trees: [],
   };
-  private onSelectTechnology: ((techId: string) => boolean) | null = null;
-  private onToggle: ((collapsed: boolean) => void) | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -98,17 +101,19 @@ export class ResearchHudPanel {
       this.wheelBlockerId,
       (screenX, screenY) => !this.collapsed && this.panelBounds.contains(screenX, screenY),
     );
+
     this.blocker = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, scene.scale.width, scene.scale.height))
       .setOrigin(0, 0)
       .setDepth(DEPTH - 1)
       .setScrollFactor(0)
       .setInteractive();
+
     this.toggleBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, TOGGLE_SIZE, TOGGLE_SIZE, 0x0c141d, 0.92))
       .setOrigin(0, 0)
       .setDepth(DEPTH)
       .setScrollFactor(0)
       .setStrokeStyle(2, 0x68a9d5, 0.72);
-    this.toggleIcon = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '🔬', {
+    this.toggleIcon = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '⭐', {
       fontFamily: 'sans-serif',
       fontSize: '31px',
       color: '#eef7ff',
@@ -128,6 +133,17 @@ export class ResearchHudPanel {
       .setDepth(DEPTH)
       .setScrollFactor(0)
       .setStrokeStyle(1, 0x7fb4d5, 0.45);
+    this.toggleProgressText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      color: '#eef7ff',
+      fontStyle: 'bold',
+    }))
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH + 1)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setVisible(false);
     this.scrollbarTrack = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_SCROLLBAR_WIDTH, 10, 0x15222d, 0.9))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
@@ -142,24 +158,10 @@ export class ResearchHudPanel {
     this.contentMaskGraphics = new Phaser.GameObjects.Graphics(scene);
     this.contentMask = this.contentMaskGraphics.createGeometryMask();
 
-    this.titleText = this.createMaskedText('Research', 24, '#f2f7fb', 'bold');
-    this.toggleProgressText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
-      fontFamily: 'sans-serif',
-      fontSize: '14px',
-      color: '#eef7ff',
-      fontStyle: 'bold',
-    }))
-      .setOrigin(0.5, 1)
-      .setDepth(DEPTH + 1)
-      .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setVisible(false);
+    this.titleText = this.createMaskedText('Culture', 24, '#f2f7fb', 'bold');
     this.currentText = this.createMaskedText('', 18, '#f2f7fb', 'normal', PANEL_CONTENT_WIDTH);
     this.progressText = this.createMaskedText('', 17, '#c7d6e5');
-    this.scienceText = this.createMaskedText('', 17, '#8fd0ff');
-    this.availableHeading = this.createMaskedText('Available', 16, '#88a6bd', 'bold');
-    this.researchedHeading = this.createMaskedText('Researched', 16, '#88a6bd', 'bold');
-    this.researchedText = this.createMaskedText('', 16, '#d5dde5', 'normal', PANEL_CONTENT_WIDTH);
+    this.cultureText = this.createMaskedText('', 17, '#8fd0ff');
 
     this.blocker.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
@@ -279,20 +281,24 @@ export class ResearchHudPanel {
     scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
 
     this.refreshToggleState();
+    this.layout(scene.scale.width, scene.scale.height);
   }
 
-  setState(state: HudResearchState): void {
+  setState(state: HudPolicyState): void {
     this.state = state;
     this.currentText.setText(`Current: ${state.currentName}`);
-    this.progressText.setText(`Progress: ${state.progress} / ${state.cost}`);
-    this.scienceText.setText(`Science: +${state.sciencePerTurn}/turn`);
-    this.researchedText.setText(state.researchedNames.length > 0 ? state.researchedNames.join(', ') : 'None');
-    this.rebuildTechButtons();
+    this.progressText.setText(
+      state.cost > 0
+        ? `Progress: ${state.progress} / ${state.cost}`
+        : `Stored Progress: ${state.progress}`,
+    );
+    this.cultureText.setText(`Culture: +${state.culturePerTurn}/turn`);
+    this.rebuildPolicyButtons();
     this.layout(this.scene.scale.width, this.scene.scale.height);
   }
 
-  setOnSelectTechnology(handler: (techId: string) => boolean): void {
-    this.onSelectTechnology = handler;
+  setOnSelectPolicy(handler: (policyId: string) => boolean): void {
+    this.onSelectPolicy = handler;
   }
 
   setOnToggle(handler: (collapsed: boolean) => void): void {
@@ -308,7 +314,7 @@ export class ResearchHudPanel {
 
   layout(viewportWidth: number, viewportHeight: number): void {
     const toggleX = EDGE_MARGIN;
-    const toggleY = TOGGLE_BASE_Y;
+    const toggleY = CULTURE_TOGGLE_Y;
     this.toggleBackground.setPosition(Math.round(toggleX), Math.round(toggleY));
     this.toggleIcon.setPosition(Math.round(toggleX + (TOGGLE_SIZE / 2)), Math.round(toggleY + (TOGGLE_SIZE / 2)));
     this.toggleProgressText.setPosition(Math.round(toggleX + (TOGGLE_SIZE / 2)), Math.round(toggleY - 4));
@@ -324,46 +330,57 @@ export class ResearchHudPanel {
     this.panelBounds.setTo(panelX, panelY, PANEL_WIDTH, availableHeight);
 
     const innerX = panelX + PANEL_INNER_PADDING;
-    const contentX = innerX;
     const baseY = panelY + 18 - this.scrollOffset;
     let contentCursor = 0;
 
-    this.titleText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
+    this.titleText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
     contentCursor += LINE_HEIGHT + 5;
 
-    this.currentText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
+    this.currentText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
     contentCursor += this.currentText.height + 8;
 
-    this.progressText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
+    this.progressText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
     contentCursor += LINE_HEIGHT;
 
-    this.scienceText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
+    this.cultureText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
     contentCursor += LINE_HEIGHT + SECTION_GAP;
 
-    this.availableHeading.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
-    contentCursor += LINE_HEIGHT;
+    let treeIndex = 0;
+    let buttonIndex = 0;
+    for (const tree of this.state.trees) {
+      const treeTitle = this.treeTitleTexts[treeIndex];
+      const treeDescription = this.treeDescriptionTexts[treeIndex];
 
-    for (const button of this.techButtons) {
-      button.background.setVisible(panelVisible)
-        .setPosition(Math.round(contentX), Math.round(baseY + contentCursor))
-        .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
-      button.label.setVisible(panelVisible)
-        .setPosition(Math.round(contentX + 12), Math.round(baseY + contentCursor + (BUTTON_HEIGHT / 2)));
-      contentCursor += BUTTON_HEIGHT + BUTTON_GAP;
+      treeTitle.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
+      contentCursor += LINE_HEIGHT - 2;
+
+      if (tree.description) {
+        treeDescription
+          .setVisible(panelVisible)
+          .setPosition(Math.round(innerX), Math.round(baseY + contentCursor))
+          .setText(tree.description);
+        contentCursor += treeDescription.height + 6;
+      } else {
+        treeDescription.setVisible(false);
+      }
+
+      for (const _policy of tree.policies) {
+        const button = this.policyButtons[buttonIndex];
+        button.background.setVisible(panelVisible)
+          .setPosition(Math.round(innerX), Math.round(baseY + contentCursor))
+          .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
+        button.label.setVisible(panelVisible).setPosition(Math.round(innerX + 12), Math.round(baseY + contentCursor + 12));
+        button.detail.setVisible(panelVisible).setPosition(Math.round(innerX + 12), Math.round(baseY + contentCursor + 33));
+        button.prerequisite.setVisible(panelVisible).setPosition(Math.round(innerX + 12), Math.round(baseY + contentCursor + 52));
+        contentCursor += BUTTON_HEIGHT + BUTTON_GAP;
+        buttonIndex += 1;
+      }
+
+      contentCursor += SECTION_GAP - BUTTON_GAP;
+      treeIndex += 1;
     }
 
-    if (this.techButtons.length === 0) {
-      contentCursor += 4;
-    }
-
-    contentCursor += SECTION_GAP - BUTTON_GAP;
-    this.researchedHeading.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
-    contentCursor += LINE_HEIGHT;
-
-    this.researchedText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
-    contentCursor += this.researchedText.height + PANEL_BOTTOM_PADDING;
-
-    const fullContentHeight = contentCursor + 18;
+    const fullContentHeight = contentCursor + PANEL_BOTTOM_PADDING;
     const panelHeight = Math.min(Math.max(PANEL_MIN_HEIGHT, fullContentHeight), availableHeight);
     this.panelBounds.height = panelHeight;
     this.panelBackground.setPosition(Math.round(panelX), Math.round(panelY)).setDisplaySize(PANEL_WIDTH, Math.round(panelHeight));
@@ -383,20 +400,19 @@ export class ResearchHudPanel {
     this.blocker.destroy();
     this.toggleBackground.destroy();
     this.toggleIcon.destroy();
+    this.toggleProgressText.destroy();
     this.toggleHitArea.destroy();
     this.panelBackground.destroy();
     this.scrollbarTrack.destroy();
     this.scrollbarThumb.destroy();
     this.contentMaskGraphics.destroy();
     this.titleText.destroy();
-    this.toggleProgressText.destroy();
     this.currentText.destroy();
     this.progressText.destroy();
-    this.scienceText.destroy();
-    this.availableHeading.destroy();
-    this.researchedHeading.destroy();
-    this.researchedText.destroy();
-    this.destroyTechButtons();
+    this.cultureText.destroy();
+    this.destroyPolicyButtons();
+    for (const text of this.treeTitleTexts) text.destroy();
+    for (const text of this.treeDescriptionTexts) text.destroy();
   }
 
   private createMaskedText(
@@ -422,97 +438,162 @@ export class ResearchHudPanel {
     return object;
   }
 
-  private rebuildTechButtons(): void {
-    this.destroyTechButtons();
-    for (const tech of this.state.available) {
-      const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, BUTTON_HEIGHT, 0x153343, 0.96))
-        .setOrigin(0, 0)
-        .setDepth(DEPTH + 1)
-        .setScrollFactor(0)
-        .setStrokeStyle(1, 0x6fb2d4, 0.5)
-        .setInteractive({ useHandCursor: true })
-        .setMask(this.contentMask);
-      const label = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${tech.name} (${tech.cost})`, {
-        fontFamily: 'sans-serif',
-        fontSize: '16px',
-        color: '#ddf2ff',
-      }))
-        .setOrigin(0, 0.5)
-        .setDepth(DEPTH + 2)
-        .setScrollFactor(0)
-        .setResolution(HUD_TEXT_RESOLUTION)
-        .setMask(this.contentMask);
+  private rebuildPolicyButtons(): void {
+    this.destroyPolicyButtons();
+    for (const text of this.treeTitleTexts) {
+      const index = this.contentObjects.indexOf(text);
+      if (index >= 0) this.contentObjects.splice(index, 1);
+      text.destroy();
+    }
+    for (const text of this.treeDescriptionTexts) {
+      const index = this.contentObjects.indexOf(text);
+      if (index >= 0) this.contentObjects.splice(index, 1);
+      text.destroy();
+    }
+    this.treeTitleTexts.length = 0;
+    this.treeDescriptionTexts.length = 0;
 
-      this.contentObjects.push(background, label);
-      const button: TechButtonView = { id: tech.id, background, label, hovered: false, pressed: false };
+    for (const tree of this.state.trees) {
+      const title = this.createMaskedText(tree.name, 16, '#88a6bd', 'bold');
+      const description = this.createMaskedText(tree.description ?? '', 15, '#9fb2c3', 'normal', PANEL_CONTENT_WIDTH);
+      this.treeTitleTexts.push(title);
+      this.treeDescriptionTexts.push(description);
 
-      background.on(Phaser.Input.Events.POINTER_OVER, (
-        _pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: Phaser.Types.Input.EventData,
-      ) => {
-        event.stopPropagation();
-        button.hovered = true;
-        this.refreshTechButtonVisual(button);
-      });
-      background.on(Phaser.Input.Events.POINTER_OUT, (
-        _pointer: Phaser.Input.Pointer,
-        event: Phaser.Types.Input.EventData,
-      ) => {
-        event.stopPropagation();
-        button.hovered = false;
-        button.pressed = false;
-        this.refreshTechButtonVisual(button);
-      });
-      background.on(Phaser.Input.Events.POINTER_DOWN, (
-        pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: Phaser.Types.Input.EventData,
-      ) => {
-        event.stopPropagation();
-        if (pointer.button !== 0) return;
-        this.worldInputGate.claimPointer(pointer.id);
-        button.pressed = true;
-        consumePointerEvent(pointer);
-        this.refreshTechButtonVisual(button);
-      });
-      background.on(Phaser.Input.Events.POINTER_UP, (
-        pointer: Phaser.Input.Pointer,
-        _localX: number,
-        _localY: number,
-        event: Phaser.Types.Input.EventData,
-      ) => {
-        event.stopPropagation();
-        if (pointer.button !== 0) return;
-        consumePointerEvent(pointer);
-        const shouldSelect = button.pressed;
-        button.pressed = false;
-        this.worldInputGate.releasePointer(pointer.id);
-        if (shouldSelect) {
-          if (this.onSelectTechnology?.(tech.id)) {
-            this.setCollapsed(true);
-          }
-        }
-        this.refreshTechButtonVisual(button);
-      });
-
-      this.refreshTechButtonVisual(button);
-      this.techButtons.push(button);
+      for (const entry of tree.policies) {
+        this.policyButtons.push(this.createPolicyButton(entry));
+      }
     }
   }
 
-  private destroyTechButtons(): void {
-    for (const button of this.techButtons) {
-      const backgroundIndex = this.contentObjects.indexOf(button.background);
-      if (backgroundIndex >= 0) this.contentObjects.splice(backgroundIndex, 1);
-      const labelIndex = this.contentObjects.indexOf(button.label);
-      if (labelIndex >= 0) this.contentObjects.splice(labelIndex, 1);
+  private createPolicyButton(entry: HudPolicyEntry): PolicyButtonView {
+    const style = getPolicyVisualState(entry);
+    const background = this.addOwned(
+      new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, BUTTON_HEIGHT, style.fillColor, style.fillAlpha),
+    )
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 1)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, style.strokeColor, 0.58)
+      .setInteractive({ useHandCursor: style.isSelectable })
+      .setMask(this.contentMask);
+    const label = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${entry.name} (${entry.effectiveCost})`, {
+      fontFamily: 'sans-serif',
+      fontSize: '16px',
+      color: style.labelColor,
+      fontStyle: entry.isActive ? 'bold' : 'normal',
+      wordWrap: { width: PANEL_CONTENT_WIDTH - 24, useAdvancedWrap: true },
+    }))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setMask(this.contentMask);
+    const detail = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getDetailText(entry), {
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      color: style.detailColor,
+      wordWrap: { width: PANEL_CONTENT_WIDTH - 24, useAdvancedWrap: true },
+    }))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setMask(this.contentMask);
+    const prerequisite = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getPrerequisiteText(entry), {
+      fontFamily: 'sans-serif',
+      fontSize: '13px',
+      color: style.prerequisiteColor,
+      wordWrap: { width: PANEL_CONTENT_WIDTH - 24, useAdvancedWrap: true },
+    }))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setMask(this.contentMask);
+
+    this.contentObjects.push(background, label, detail, prerequisite);
+    const button: PolicyButtonView = {
+      id: entry.id,
+      background,
+      label,
+      detail,
+      prerequisite,
+      isSelectable: style.isSelectable,
+      baseFillColor: style.fillColor,
+      baseFillAlpha: style.fillAlpha,
+      hovered: false,
+      pressed: false,
+    };
+
+    background.on(Phaser.Input.Events.POINTER_OVER, (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (!button.isSelectable) return;
+      button.hovered = true;
+      refreshPolicyButtonVisual(button);
+    });
+    background.on(Phaser.Input.Events.POINTER_OUT, (
+      _pointer: Phaser.Input.Pointer,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      button.hovered = false;
+      button.pressed = false;
+      refreshPolicyButtonVisual(button);
+    });
+    background.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (!button.isSelectable || pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      button.pressed = true;
+      consumePointerEvent(pointer);
+      refreshPolicyButtonVisual(button);
+    });
+    background.on(Phaser.Input.Events.POINTER_UP, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      const shouldSelect = button.isSelectable && button.pressed;
+      button.pressed = false;
+      this.worldInputGate.releasePointer(pointer.id);
+      if (shouldSelect) {
+        if (this.onSelectPolicy?.(button.id)) {
+          this.setCollapsed(true);
+        }
+      }
+      refreshPolicyButtonVisual(button);
+    });
+
+    refreshPolicyButtonVisual(button);
+    return button;
+  }
+
+  private destroyPolicyButtons(): void {
+    for (const button of this.policyButtons) {
+      for (const object of [button.background, button.label, button.detail, button.prerequisite]) {
+        const index = this.contentObjects.indexOf(object);
+        if (index >= 0) this.contentObjects.splice(index, 1);
+      }
       button.background.destroy();
       button.label.destroy();
+      button.detail.destroy();
+      button.prerequisite.destroy();
     }
-    this.techButtons.length = 0;
+    this.policyButtons.length = 0;
   }
 
   private applyScroll(delta: number): void {
@@ -588,21 +669,102 @@ export class ResearchHudPanel {
   }
 
   private refreshToggleState(): void {
+    const fill = this.togglePressed
+      ? 0x16394b
+      : this.hoveredToggle
+        ? 0x15303f
+        : 0x0c141d;
     this.toggleBackground
-      .setFillStyle(this.togglePressed ? 0x16394b : this.hoveredToggle ? 0x15303f : 0x0c141d, 0.94)
+      .setFillStyle(fill, 0.94)
       .setStrokeStyle(2, this.collapsed ? 0x68a9d5 : 0x9ed7ff, this.hoveredToggle ? 0.95 : 0.72);
   }
+}
 
-  private refreshTechButtonVisual(button: TechButtonView): void {
-    if (button.pressed) {
-      button.background.setFillStyle(0x1f4b62, 0.98).setScale(0.985);
-      return;
-    }
-    if (button.hovered) {
-      button.background.setFillStyle(0x1d495e, 1).setScale(1.01);
-      return;
-    }
-    button.background.setFillStyle(0x153343, 0.96).setScale(1);
+function getPolicyVisualState(entry: HudPolicyEntry): {
+  fillColor: number;
+  fillAlpha: number;
+  strokeColor: number;
+  labelColor: string;
+  detailColor: string;
+  prerequisiteColor: string;
+  isSelectable: boolean;
+} {
+  if (entry.isUnlocked) {
+    return {
+      fillColor: 0x183226,
+      fillAlpha: 0.92,
+      strokeColor: 0x73b58e,
+      labelColor: '#e1f4e7',
+      detailColor: '#b8d8c0',
+      prerequisiteColor: '#8fb19d',
+      isSelectable: false,
+    };
+  }
+  if (entry.isActive) {
+    return {
+      fillColor: 0x2a2141,
+      fillAlpha: 0.94,
+      strokeColor: 0xb39cff,
+      labelColor: '#f0ebff',
+      detailColor: '#d5cfff',
+      prerequisiteColor: '#b7aadf',
+      isSelectable: false,
+    };
+  }
+  if (entry.isAvailable) {
+    return {
+      fillColor: 0x153343,
+      fillAlpha: 0.96,
+      strokeColor: 0x6fb2d4,
+      labelColor: '#ddf2ff',
+      detailColor: '#c5dbeb',
+      prerequisiteColor: '#9fc0d5',
+      isSelectable: true,
+    };
+  }
+  return {
+    fillColor: 0x1a1d24,
+    fillAlpha: 0.9,
+    strokeColor: 0x59606c,
+    labelColor: '#c3c7ce',
+    detailColor: '#a6adb8',
+    prerequisiteColor: '#d8a3a3',
+    isSelectable: false,
+  };
+}
+
+function getDetailText(entry: HudPolicyEntry): string {
+  if (entry.isUnlocked) return `Unlocked - ${entry.description}`;
+  if (entry.isActive) return `Active - ${entry.description}`;
+  if (entry.isAvailable) return `Available - ${entry.description}`;
+  return `Locked - ${entry.description}`;
+}
+
+function getPrerequisiteText(entry: HudPolicyEntry): string {
+  if (entry.prerequisiteNames.length === 0) {
+    return 'Prerequisites: none';
+  }
+  if (entry.missingPrerequisiteNames.length === 0) {
+    return `Prerequisites: ${entry.prerequisiteNames.join(', ')}`;
+  }
+  return `Missing: ${entry.missingPrerequisiteNames.join(', ')}`;
+}
+
+function refreshPolicyButtonVisual(button: PolicyButtonView): void {
+  const scale = button.pressed ? 0.985 : button.hovered && button.isSelectable ? 1.01 : 1;
+  button.background.setScale(scale);
+
+  if (!button.isSelectable) {
+    button.background.setFillStyle(button.baseFillColor, button.baseFillAlpha);
+    return;
+  }
+
+  if (button.pressed) {
+    button.background.setFillStyle(0x1f4b62, 0.98);
+  } else if (button.hovered) {
+    button.background.setFillStyle(0x1d495e, 1);
+  } else {
+    button.background.setFillStyle(0x153343, 0.96);
   }
 }
 

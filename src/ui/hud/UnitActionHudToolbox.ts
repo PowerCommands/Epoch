@@ -8,6 +8,7 @@ type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 const DEPTH = 140;
 const ACTION_SIZE = 64;
 const ACTION_RADIUS = ACTION_SIZE / 2;
+const ACTION_HIT_SIZE = 96;
 const ACTION_SPACING = 10;
 const CLUSTER_GAP = 12;
 
@@ -26,7 +27,7 @@ interface ToolboxButtonView {
   background: Phaser.GameObjects.Arc;
   ring: Phaser.GameObjects.Arc;
   icon: Phaser.GameObjects.Image;
-  hitArea: Phaser.GameObjects.Arc;
+  hitArea: Phaser.GameObjects.Zone;
   iconMask: Phaser.GameObjects.Graphics;
   hovered: boolean;
   pressed: boolean;
@@ -62,12 +63,12 @@ export class UnitActionHudToolbox {
       const iconMask = new Phaser.GameObjects.Graphics(scene);
       icon.setMask(iconMask.createGeometryMask());
 
-      const hitArea = addOwned(new Phaser.GameObjects.Arc(scene, 0, 0, ACTION_RADIUS, 0, 360, false, 0x000000, 0.001))
+      const hitArea = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, ACTION_HIT_SIZE, ACTION_HIT_SIZE))
         .setOrigin(0.5)
         .setDepth(DEPTH + 4)
         .setScrollFactor(0)
         .setVisible(false)
-        .setInteractive(new Phaser.Geom.Circle(0, 0, ACTION_RADIUS), Phaser.Geom.Circle.Contains);
+        .setInteractive({ useHandCursor: state.isAvailable });
 
       const button: ToolboxButtonView = {
         state,
@@ -150,7 +151,7 @@ export class UnitActionHudToolbox {
       button.pressed = isVisible ? button.pressed : false;
       button.hitArea.disableInteractive();
       if (isVisible) {
-        button.hitArea.setInteractive(new Phaser.Geom.Circle(0, 0, ACTION_RADIUS), Phaser.Geom.Circle.Contains, true);
+        button.hitArea.setInteractive({ useHandCursor: button.state.isAvailable });
         button.hitArea.input!.cursor = button.state.isAvailable ? 'pointer' : 'default';
       }
       this.refreshButtonVisual(button);
@@ -167,7 +168,7 @@ export class UnitActionHudToolbox {
       button.background.setPosition(centerX, centerY).setRadius(ACTION_RADIUS);
       button.ring.setPosition(centerX, centerY).setRadius(ACTION_RADIUS + 3);
       button.icon.setPosition(centerX, centerY).setDisplaySize(ACTION_SIZE, ACTION_SIZE);
-      button.hitArea.setPosition(centerX, centerY).setRadius(ACTION_RADIUS);
+      button.hitArea.setPosition(centerX, centerY).setSize(ACTION_HIT_SIZE, ACTION_HIT_SIZE);
       button.iconMask.clear();
       button.iconMask.fillStyle(0xffffff, 1);
       button.iconMask.fillCircle(centerX, centerY, ACTION_RADIUS);

@@ -23,9 +23,9 @@ Goal: simplified Civilization-style gameplay on a real Europe map.
 
 * Entities → pure TypeScript (no Phaser)
 * Systems → game rules only
-* Renderers → visuals only
-* UI → Phaser HUD for gameplay, HTML only for temporary legacy panels
-* GameScene → orchestration only
+* Renderers → visuals only (world + UI rendering primitives)
+* UI → Phaser screen-space layers for runtime interaction/display; HTML/CSS only for optional editor, debug tools, or temporary transitional UI
+* GameScene → orchestration only; creates systems, wires dependencies, creates UI layers, and connects UI callbacks/events to systems
 
 Never mix responsibilities.
 
@@ -33,22 +33,22 @@ Never mix responsibilities.
 
 ### UI model
 
-* Phaser → game world AND in-game HUD (units, map, actions, turn button)
-* HTML/CSS → temporary panels only (`RightPanel`), planned for removal
-* Long-term goal → Phaser-only UI for gameplay
+* Phaser → game world AND screen-space runtime UI (HUD, overlays, panels)
+* HTML/CSS → optional only (editor, debug tools, or temporary transitional UI)
+* UI must remain separate from game logic
+* Communication between UI and gameplay code must happen through explicit events, callbacks, or state updates
 
 ### UI Direction (Important)
 
-* The project is moving toward fully Phaser-driven UI (no HTML overlays for gameplay)
+* The project is transitioning from HTML-based UI to Phaser-based screen-space UI. All new runtime UI should be implemented in Phaser unless explicitly stated otherwise.
 * Reason:
   * Consistent input handling
   * No click-through bugs between HUD and world
   * Better control over rendering, depth, and layering
-* Rule:
-  * No new gameplay UI should be implemented in HTML
-* HTML UI is no longer part of the core gameplay loop
+* HTML UI is no longer the primary runtime UI path
 * Phaser screen-space UI is the authoritative interaction layer
 * All gameplay input handling must go through Phaser UI and respect pointer consumption
+* Existing HTML UI may remain temporarily where already in use, but it is not the default direction
 
 ### Input handling
 
@@ -57,18 +57,27 @@ Never mix responsibilities.
 * `SelectionManager` and `CameraController` must respect consumed pointers / claimed HUD pointer sequences
 * Shared gating between HUD input and world input is a core architectural rule
 
+### Phaser UI pattern
+
+* Build runtime UI as dedicated screen-space UI layers (for example `HudLayer` and overlays attached to the scene)
+* UI elements must consume pointer events so map interaction does not leak through
+* UI elements must be resolution-aware and respond to viewport changes
+* UI elements must not contain gameplay logic
+* UI communicates with systems via callbacks, events, or explicit state updates only
+
 ### UI
 
-* `CityView` is an HTML/CSS overlay for human-owned city inspection
+* `CityView` is currently an HTML/CSS overlay for human-owned city inspection
 * It opens when a human-owned city is selected
 * It shows a compact city summary and detailed city-tile visualization
 * It uses zoom `2.0`, emphasizes the city focus area, and de-emphasizes the surrounding map
 * It shows compact worked-tile icons and a hover tooltip with full tile breakdown
 * It supports drag-drop retargeting of the planned expansion tile
 * Building selection in the `RightPanel` can start tile-building placement for the selected human city
-* `DiagnosticDialog` is an HTML/CSS floating dialog opened through the `diagnostic` cheat command
+* `DiagnosticDialog` is currently an HTML/CSS floating dialog opened through the `diagnostic` cheat command
 * It is draggable, resizable, closable, and live-updating
-* `RightPanel` is still active at runtime but is legacy UI planned for removal after the Phaser HUD migration
+* `RightPanel` is still active at runtime but is legacy transitional UI planned for removal after the Phaser HUD migration
+* Runtime UI direction remains Phaser-first even while these transitional HTML pieces exist
 
 ---
 
@@ -415,7 +424,9 @@ GameScene:
 
 * Creates systems
 * Wires dependencies
-* No gameplay logic
+* Creates UI layers (`HudLayer`, overlays, portrait strips, and similar scene-owned runtime UI)
+* Connects UI callbacks/events to systems
+* Does NOT contain gameplay logic
 
 ---
 
@@ -423,7 +434,7 @@ GameScene:
 
 * entities/ → data models
 * systems/ → logic
-* ui/ → HTML UI
+* ui/ → runtime UI components (Phaser screen-space UI plus any remaining legacy/transitional HTML UI)
 * scenes/ → Phaser scenes
 * data/ → definitions
 * types/ → interfaces

@@ -1,8 +1,10 @@
 import type { CityManager } from '../../systems/CityManager';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { NationManager } from '../../systems/NationManager';
+import type { PolicySystem } from '../../systems/PolicySystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { TurnManager } from '../../systems/TurnManager';
+import { getPolicyById } from '../../data/policies';
 
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold';
@@ -21,9 +23,38 @@ export interface HudResearchState {
   currentName: string;
   progress: number;
   cost: number;
+  progressPercent: number;
   sciencePerTurn: number;
   available: HudResearchOption[];
   researchedNames: string[];
+}
+
+export interface HudPolicyEntry {
+  id: string;
+  name: string;
+  description: string;
+  effectiveCost: number;
+  isUnlocked: boolean;
+  isActive: boolean;
+  isAvailable: boolean;
+  prerequisiteNames: string[];
+  missingPrerequisiteNames: string[];
+}
+
+export interface HudPolicyTreeState {
+  id: string;
+  name: string;
+  description?: string;
+  policies: HudPolicyEntry[];
+}
+
+export interface HudPolicyState {
+  currentName: string;
+  progress: number;
+  cost: number;
+  progressPercent: number;
+  culturePerTurn: number;
+  trees: HudPolicyTreeState[];
 }
 
 /**
@@ -36,6 +67,7 @@ export class NationHudDataProvider {
     private readonly cityManager: CityManager,
     private readonly happinessSystem: HappinessSystem,
     private readonly researchSystem: ResearchSystem,
+    private readonly policySystem: PolicySystem,
     private readonly turnManager: TurnManager,
   ) {}
 
@@ -84,6 +116,7 @@ export class NationHudDataProvider {
       currentName: current?.name ?? 'None',
       progress: this.researchSystem.getResearchProgress(nationId),
       cost: current?.cost ?? 0,
+      progressPercent: current?.cost ? Math.max(0, Math.min(100, Math.round((this.researchSystem.getResearchProgress(nationId) / current.cost) * 100))) : 0,
       sciencePerTurn: this.researchSystem.getResearchPerTurn(nationId),
       available: this.researchSystem.getAvailableTechnologies(nationId).map((technology) => ({
         id: technology.id,
@@ -91,6 +124,49 @@ export class NationHudDataProvider {
         cost: technology.cost,
       })),
       researchedNames: this.researchSystem.getResearchedTechnologies(nationId).map((technology) => technology.name),
+    };
+  }
+
+  getPolicyState(nationId: string): HudPolicyState {
+    const current = this.policySystem.getCurrentPolicy(nationId);
+    const viewState = this.policySystem.getPolicyViewState(nationId);
+    const trees = new Map<string, HudPolicyTreeState>();
+
+    for (const entry of viewState) {
+      const existingTree = trees.get(entry.tree.id);
+      const treeState = existingTree ?? {
+        id: entry.tree.id,
+        name: entry.tree.name,
+        description: entry.tree.description,
+        policies: [],
+      };
+
+      treeState.policies.push({
+        id: entry.policy.id,
+        name: entry.policy.name,
+        description: entry.policy.description,
+        effectiveCost: entry.effectiveCost,
+        isUnlocked: entry.isUnlocked,
+        isActive: entry.isActive,
+        isAvailable: entry.isAvailable,
+        prerequisiteNames: entry.policy.prerequisites.map((id) => getPolicyById(id)?.name ?? id),
+        missingPrerequisiteNames: entry.missingPrerequisiteIds.map((id) => getPolicyById(id)?.name ?? id),
+      });
+
+      if (!existingTree) {
+        trees.set(entry.tree.id, treeState);
+      }
+    }
+
+    return {
+      currentName: current?.name ?? 'None selected',
+      progress: this.policySystem.getPolicyProgress(nationId),
+      cost: current ? this.policySystem.getEffectiveCost(nationId, current.id) : 0,
+      progressPercent: current
+        ? Math.max(0, Math.min(100, Math.round((this.policySystem.getPolicyProgress(nationId) / this.policySystem.getEffectiveCost(nationId, current.id)) * 100)))
+        : 0,
+      culturePerTurn: this.policySystem.getPolicyCulturePerTurn(nationId),
+      trees: Array.from(trees.values()),
     };
   }
 }

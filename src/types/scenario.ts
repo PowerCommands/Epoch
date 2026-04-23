@@ -19,6 +19,9 @@ export interface ScenarioNation {
   researchedTechIds?: string[];
   currentResearchTechId?: string;
   researchProgress?: number;
+  unlockedPolicyIds?: string[];
+  currentPolicyId?: string;
+  policyProgress?: number;
 }
 
 export interface ScenarioCity {

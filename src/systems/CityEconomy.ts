@@ -3,6 +3,7 @@ import type { CityBuildings } from '../entities/CityBuildings';
 import { getBuildingById } from '../data/buildings';
 import { getImprovementById } from '../data/improvements';
 import { getTerrainYield, type TileYield } from '../data/terrainYields';
+import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import type { MapData, Tile } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 
@@ -46,6 +47,7 @@ export function calculateCityEconomy(
   mapData: MapData,
   buildings: CityBuildings,
   gridSystem: IGridSystem,
+  modifiers: Readonly<ModifierSet> = EMPTY_MODIFIERS,
 ): CityEconomySummary {
   const workableTiles = getOwnedTiles(city, mapData, gridSystem);
   const workedTiles = getStoredWorkedTiles(city, mapData, gridSystem);
@@ -72,6 +74,13 @@ export function calculateCityEconomy(
     happiness += building?.modifiers.happinessPerTurn ?? 0;
   }
 
+  food += modifiers.foodPerTurn ?? 0;
+  production += modifiers.productionPerTurn ?? 0;
+  gold += modifiers.goldPerTurn ?? 0;
+  science += modifiers.sciencePerTurn ?? 0;
+  culture += modifiers.culturePerTurn ?? 0;
+  happiness += modifiers.happinessPerTurn ?? 0;
+
   // Population production bonus: +1 per pop
   production += city.population;
 
@@ -84,6 +93,12 @@ export function calculateCityEconomy(
     science = applyPercent(science, building.modifiers.sciencePercent);
     culture = applyPercent(culture, building.modifiers.culturePercent);
   }
+
+  food = applyPercent(food, modifiers.foodPercent);
+  production = applyPercent(production, modifiers.productionPercent);
+  gold = applyPercent(gold, modifiers.goldPercent);
+  science = applyPercent(science, modifiers.sciencePercent);
+  culture = applyPercent(culture, modifiers.culturePercent);
 
   const foodConsumption = city.population * 2;
 

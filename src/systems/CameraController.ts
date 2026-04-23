@@ -177,6 +177,9 @@ export class CameraController {
     scene.input.on(
       Phaser.Input.Events.POINTER_WHEEL,
       (pointer: Phaser.Input.Pointer, _gameObjects: unknown, _dx: number, dy: number) => {
+        if (this.worldInputGate.isWheelBlocked(pointer.x, pointer.y)) return;
+        if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
+        if (isPointerEventConsumed(pointer)) return;
         const oldZoom = this.cam.zoom;
         const newZoom = Phaser.Math.Clamp(
           oldZoom - Math.sign(dy) * ZOOM_STEP,

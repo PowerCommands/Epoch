@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { RafScheduler } from '../../utils/RafScheduler';
 import type { UnitActionToolbox } from '../UnitActionToolbox';
+import { CultureHudPanel } from './CultureHudPanel';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import type { NationHudDataProvider } from './NationHudDataProvider';
 import { ResearchHudPanel } from './ResearchHudPanel';
@@ -14,7 +15,8 @@ interface HudLayerConfig {
   unitActionToolbox: UnitActionToolbox;
   worldInputGate: WorldInputGate;
   onEndTurn: () => void;
-  onSelectResearch: (technologyId: string) => void;
+  onSelectResearch: (technologyId: string) => boolean;
+  onSelectPolicy: (policyId: string) => boolean;
 }
 
 export class HudLayer {
@@ -26,6 +28,7 @@ export class HudLayer {
   private readonly endTurnButton: EndTurnHudButton;
   private readonly topResourceBar: TopResourceBar;
   private readonly researchPanel: ResearchHudPanel;
+  private readonly culturePanel: CultureHudPanel;
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
   private readonly handlePointerRelease = (pointer: Phaser.Input.Pointer): void => {
     this.config.worldInputGate.releasePointer(pointer.id);
@@ -56,8 +59,21 @@ export class HudLayer {
 
     this.topResourceBar = new TopResourceBar(scene, (object) => this.addOwned(object));
 
-    this.researchPanel = new ResearchHudPanel(scene, (object) => this.addOwned(object));
+    this.researchPanel = new ResearchHudPanel(scene, (object) => this.addOwned(object), this.config.worldInputGate);
     this.researchPanel.setOnSelectTechnology((technologyId) => this.config.onSelectResearch(technologyId));
+    this.researchPanel.setOnToggle((collapsed) => {
+      if (!collapsed) {
+        this.culturePanel.setCollapsed(true);
+      }
+    });
+
+    this.culturePanel = new CultureHudPanel(scene, (object) => this.addOwned(object), this.config.worldInputGate);
+    this.culturePanel.setOnSelectPolicy((policyId) => this.config.onSelectPolicy(policyId));
+    this.culturePanel.setOnToggle((collapsed) => {
+      if (!collapsed) {
+        this.researchPanel.setCollapsed(true);
+      }
+    });
 
     this.unitActionHudToolbox = new UnitActionHudToolbox(
       scene,
@@ -82,6 +98,18 @@ export class HudLayer {
     this.endTurnButton.setEnabled(enabled);
   }
 
+  openResearchPanel(): void {
+    this.culturePanel.setCollapsed(true);
+    this.researchPanel.setCollapsed(false);
+    this.layout();
+  }
+
+  openCulturePanel(): void {
+    this.researchPanel.setCollapsed(true);
+    this.culturePanel.setCollapsed(false);
+    this.layout();
+  }
+
   refresh(): void {
     this.scheduler.schedule('refresh', () => this.refreshNow());
   }
@@ -95,6 +123,7 @@ export class HudLayer {
     this.endTurnButton.destroy();
     this.topResourceBar.destroy();
     this.researchPanel.destroy();
+    this.culturePanel.destroy();
     this.unitActionHudToolbox.destroy();
     this.config.worldInputGate.clearAll();
     this.owned.clear();
@@ -107,6 +136,7 @@ export class HudLayer {
 
     this.topResourceBar.setEntries(this.config.dataProvider.getResourceEntries(nationId));
     this.researchPanel.setState(this.config.dataProvider.getResearchState(nationId));
+    this.culturePanel.setState(this.config.dataProvider.getPolicyState(nationId));
     this.unitActionHudToolbox.refresh();
     this.endTurnButton.setEnabled(this.endTurnEnabled);
     this.layout();
@@ -116,6 +146,7 @@ export class HudLayer {
     const { width, height } = this.scene.scale;
     this.topResourceBar.layout();
     this.researchPanel.layout(width, height);
+    this.culturePanel.layout(width, height);
     this.endTurnButton.layout(width, height);
     const endTurnLayout = this.endTurnButton.getLayout();
     this.unitActionHudToolbox.layout(endTurnLayout.centerX, endTurnLayout.centerY, endTurnLayout.radius);

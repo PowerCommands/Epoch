@@ -1,4 +1,5 @@
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { ALL_POLICY_TREES, getPolicyById } from '../data/policies';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
 import { getImprovementById } from '../data/improvements';
 import type { TileYield } from '../data/terrainYields';
@@ -20,6 +21,7 @@ import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
+import type { PolicySystem } from '../systems/PolicySystem';
 import type { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import type { HappinessSystem } from '../systems/HappinessSystem';
 import { RafScheduler } from '../utils/RafScheduler';
@@ -46,6 +48,7 @@ export class RightPanel {
   private discoverySystem: DiscoverySystem | null = null;
   private eventLog: EventLogSystem | null = null;
   private researchSystem: ResearchSystem | null = null;
+  private policySystem: PolicySystem | null = null;
   private currentTile: Tile | null = null;
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
@@ -111,6 +114,10 @@ export class RightPanel {
 
   setResearchSystem(researchSystem: ResearchSystem): void {
     this.researchSystem = researchSystem;
+  }
+
+  setPolicySystem(policySystem: PolicySystem): void {
+    this.policySystem = policySystem;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -263,6 +270,7 @@ export class RightPanel {
       this.mapData,
       this.cityManager.getBuildings(city.id),
       this.gridSystem,
+      this.policySystem?.getCombinedModifiers(city.ownerId),
     );
     const isHuman = city.ownerId === this.humanNationId;
 
@@ -406,6 +414,7 @@ export class RightPanel {
     const econ = this.createSection('Economy');
     econ.append(
       this.createDiv('', `Gold: ${resources.gold}  (+${resources.goldPerTurn}/turn)`),
+      this.createDiv('', `Culture: ${resources.culture}  (+${resources.culturePerTurn}/turn)`),
       this.createDiv('', `Happiness: ${formatSigned(happiness.netHappiness)}`),
     );
     this.contentEl.append(econ);
@@ -423,6 +432,8 @@ export class RightPanel {
       this.createDiv('', `Production penalty: x${happiness.productionModifier.toFixed(2)}`),
     );
     this.contentEl.append(happinessSection);
+
+    this.contentEl.append(this.renderPolicySection(nationId, isHuman));
 
     // Cities
     const citySection = this.createSection(`Cities (${cities.length})`);
@@ -842,6 +853,94 @@ export class RightPanel {
     }
 
     return container;
+  }
+
+  private renderPolicySection(nationId: string, isHuman: boolean): HTMLElement {
+    const section = this.createSection('Culture Policies');
+    const policySystem = this.policySystem;
+
+    if (!policySystem) {
+      section.append(this.createDiv('panel-muted', 'Policy system unavailable.'));
+      return section;
+    }
+
+    const current = policySystem.getCurrentPolicy(nationId);
+    const progress = policySystem.getPolicyProgress(nationId);
+    const culturePerTurn = policySystem.getPolicyCulturePerTurn(nationId);
+    const unlockedPolicies = policySystem.getUnlockedPolicies(nationId);
+
+    section.append(
+      this.createDiv('', `Active Policy: ${current?.name ?? 'None selected'}`),
+      this.createDiv(
+        '',
+        current
+          ? `Progress: ${progress} / ${policySystem.getEffectiveCost(nationId, current.id)}`
+          : `Stored Progress: ${progress}`,
+      ),
+      this.createDiv('panel-muted', `Culture applied each turn: +${culturePerTurn}`),
+      this.createDiv('panel-muted', `Unlocked policies: ${unlockedPolicies.length}`),
+    );
+
+    for (const tree of ALL_POLICY_TREES) {
+      const treeSection = this.createDiv('policy-tree');
+      const treeTitle = this.createDiv('research-subheading', tree.name);
+      treeSection.append(treeTitle);
+      if (tree.description) {
+        treeSection.append(this.createDiv('panel-muted', tree.description));
+      }
+
+      const policies = policySystem.getPolicyViewState(nationId)
+        .filter((entry) => entry.tree.id === tree.id);
+
+      for (const entry of policies) {
+        const card = document.createElement('div');
+        card.className = 'policy-card';
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'queue-add-btn';
+
+        let stateText = 'Locked';
+        if (entry.isUnlocked) stateText = 'Unlocked';
+        else if (entry.isActive) stateText = 'Active';
+        else if (entry.isAvailable) stateText = 'Available';
+
+        button.textContent = `${entry.policy.name} (${entry.effectiveCost})`;
+        button.disabled = !isHuman || !entry.isAvailable;
+        if (entry.isUnlocked) button.disabled = true;
+        if (entry.isActive) {
+          button.disabled = true;
+          button.textContent = `${entry.policy.name} (${entry.effectiveCost}) [Active]`;
+        }
+        if (entry.isUnlocked) {
+          button.textContent = `${entry.policy.name} (${entry.effectiveCost}) [Unlocked]`;
+        }
+        button.addEventListener('click', () => {
+          if (!isHuman) return;
+          if (policySystem.selectPolicy(nationId, entry.policy.id)) {
+            this.refreshNationView();
+          }
+        });
+
+        const detail = this.createDiv('panel-muted', `${stateText} - ${entry.policy.description}`);
+        const prereqText = entry.policy.prerequisites.length === 0
+          ? 'Prerequisites: none'
+          : `Prerequisites: ${entry.policy.prerequisites.map((id) => getPolicyById(id)?.name ?? id).join(', ')}`;
+        const prereq = this.createDiv(
+          'panel-muted',
+          entry.missingPrerequisiteIds.length > 0
+            ? `${prereqText} | Missing: ${entry.missingPrerequisiteIds.map((id) => getPolicyById(id)?.name ?? id).join(', ')}`
+            : prereqText,
+        );
+
+        card.append(button, detail, prereq);
+        treeSection.append(card);
+      }
+
+      section.append(treeSection);
+    }
+
+    return section;
   }
 
   private createDiv(className: string, text?: string, color?: number): HTMLDivElement {

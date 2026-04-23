@@ -79,6 +79,9 @@ export class SaveLoadService {
         researchedTechIds: [...nation.researchedTechIds],
         currentResearchTechId: nation.currentResearchTechId,
         researchProgress: nation.researchProgress,
+        unlockedPolicyIds: [...nation.unlockedPolicyIds],
+        currentPolicyId: nation.currentPolicyId,
+        policyProgress: nation.policyProgress,
         gold: res.gold,
         culture: res.culture,
       };
@@ -280,6 +283,9 @@ export class SaveLoadService {
       nation.researchedTechIds = [...saved.researchedTechIds];
       nation.currentResearchTechId = saved.currentResearchTechId;
       nation.researchProgress = saved.researchProgress;
+      nation.unlockedPolicyIds = [...saved.unlockedPolicyIds];
+      nation.currentPolicyId = saved.currentPolicyId;
+      nation.policyProgress = saved.policyProgress;
 
       const res = nationManager.getResources(saved.id);
       res.gold = saved.gold;

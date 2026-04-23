@@ -6,7 +6,7 @@
  * so future changes can be detected and rejected cleanly.
  */
 
-export const SAVED_GAME_VERSION = 1 as const;
+export const SAVED_GAME_VERSION = 2 as const;
 
 export interface SavedProducible {
   kind: 'unit' | 'building';
@@ -25,6 +25,9 @@ export interface SavedNation {
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;
+  unlockedPolicyIds: string[];
+  currentPolicyId?: string;
+  policyProgress: number;
   gold: number;
   culture: number;
 }

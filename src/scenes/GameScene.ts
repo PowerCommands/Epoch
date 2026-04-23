@@ -9,6 +9,7 @@ import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { HappinessSystem } from '../systems/HappinessSystem';
+import { PolicySystem } from '../systems/PolicySystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
@@ -153,11 +154,36 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(overviewZoom);
     this.cameras.main.centerOn(worldWidth / 2, worldHeight / 2);
 
-    // 11. Turordning och resurssystem
+    // 11. Turordning
     const turnManager = new TurnManager(nationManager);
-    const happinessSystem = new HappinessSystem(nationManager, cityManager);
+
+    // 11b. Discovery system — tracks which nations have met each other
+    const discoverySystem = new DiscoverySystem(
+      nationManager, cityManager, unitManager, gridSystem,
+    );
+    discoverySystem.scan();
+
+    // 11c. Event log — strategic history filtered by discovery
+    const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
+    const policySystem = new PolicySystem(
+      nationManager,
+      eventLog,
+      () => turnManager.getCurrentRound(),
+    );
+    const happinessSystem = new HappinessSystem(
+      nationManager,
+      cityManager,
+      (nationId) => policySystem.getCombinedModifiers(nationId),
+    );
     const resourceSystem = new ResourceSystem(
-      nationManager, cityManager, turnManager, new TileResourceGenerator(), mapData, gridSystem, happinessSystem,
+      nationManager,
+      cityManager,
+      turnManager,
+      new TileResourceGenerator(),
+      mapData,
+      gridSystem,
+      happinessSystem,
+      (nationId) => policySystem.getCombinedModifiers(nationId),
     );
 
     // 12. Selection-system (hover depth 20, selection depth 21)
@@ -202,15 +228,6 @@ export class GameScene extends Phaser.Scene {
 
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager();
-
-    // 13c. Discovery system — tracks which nations have met each other
-    const discoverySystem = new DiscoverySystem(
-      nationManager, cityManager, unitManager, gridSystem,
-    );
-    discoverySystem.scan();
-
-    // 13d. Event log — strategic history filtered by discovery
-    const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
     const researchSystem = new ResearchSystem(
       nationManager,
       cityManager,
@@ -222,6 +239,7 @@ export class GameScene extends Phaser.Scene {
           mapData,
           cityManager.getBuildings(city.id),
           gridSystem,
+          policySystem.getCombinedModifiers(nationId),
         ).science, 0),
     );
 
@@ -436,6 +454,7 @@ export class GameScene extends Phaser.Scene {
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
       gridSystem,
       researchSystem,
+      policySystem,
     );
 
     // Humans pick their own initial research via the HUD research panel.
@@ -443,8 +462,27 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) {
         researchSystem.ensureResearchSelected(e.nation.id);
+        policySystem.ensurePolicySelected(e.nation.id);
       }
       researchSystem.advanceResearchForNation(e.nation.id);
+      const unlockedPolicy = policySystem.advancePolicyForNation(e.nation.id);
+      if (unlockedPolicy) {
+        resourceSystem.recalculateForNation(e.nation.id);
+        happinessSystem.recalculateNation(e.nation.id);
+      }
+
+      if (e.nation.isHuman) {
+        const needsResearchSelection = !researchSystem.getCurrentResearch(e.nation.id)
+          && researchSystem.getAvailableTechnologies(e.nation.id).length > 0;
+        const needsPolicySelection = !policySystem.getCurrentPolicy(e.nation.id)
+          && policySystem.getAvailablePolicies(e.nation.id).length > 0;
+
+        if (needsResearchSelection) {
+          hudLayer?.openResearchPanel();
+        } else if (needsPolicySelection) {
+          hudLayer?.openCulturePanel();
+        }
+      }
     });
 
     turnManager.on('turnStart', (e) => {
@@ -874,6 +912,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       happinessSystem,
       researchSystem,
+      policySystem,
       turnManager,
     );
     hudLayer = new HudLayer(this, {
@@ -883,8 +922,12 @@ export class GameScene extends Phaser.Scene {
       worldInputGate,
       onEndTurn: endHumanTurn,
       onSelectResearch: (technologyId) => {
-        if (!humanNationId) return;
-        researchSystem.startResearch(humanNationId, technologyId);
+        if (!humanNationId) return false;
+        return researchSystem.startResearch(humanNationId, technologyId);
+      },
+      onSelectPolicy: (policyId) => {
+        if (!humanNationId) return false;
+        return policySystem.selectPolicy(humanNationId, policyId);
       },
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
@@ -909,6 +952,7 @@ export class GameScene extends Phaser.Scene {
     );
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setResearchSystem(researchSystem);
+    rightPanel.setPolicySystem(policySystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
     rightPanel.setBuilderHintProvider((tile) => {
@@ -1050,8 +1094,12 @@ export class GameScene extends Phaser.Scene {
       cityView.hideTooltip();
       this.cameraController.setPointerPanEnabled(true);
     };
-    cityView.onCloseRequested(() => {
+    const closeOpenCityView = (): boolean => {
       const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'city' || !cityView.isOpenForCity(selected.city.id)) {
+        return false;
+      }
+
       clearCityViewInteraction();
       if (selected?.kind === 'city' && selected.city.ownerId === humanNationId) {
         cityViewDismissedCityId = selected.city.id;
@@ -1061,13 +1109,17 @@ export class GameScene extends Phaser.Scene {
         cityWorkTileRenderer.show(selected.city);
         cultureClaimTileRenderer.show(selected.city);
         rightPanel?.requestRefresh();
-        return;
+        return true;
       }
 
       cityViewDismissedCityId = null;
       cityView.close();
       cityViewRenderer.clear();
       territoryRenderer.setMode('normal');
+      return true;
+    };
+    cityView.onCloseRequested(() => {
+      closeOpenCityView();
     });
     cityView.onPlacementRequested((buildingId) => {
       const city = getOpenCityViewCity();
@@ -1388,6 +1440,11 @@ export class GameScene extends Phaser.Scene {
     researchSystem.onChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
+    });
+    policySystem.onChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
     });
     happinessSystem.onChanged(() => {
       hudLayer?.refresh();
@@ -1730,7 +1787,10 @@ export class GameScene extends Phaser.Scene {
       { music: SetupMusicManager.getShared() },
     );
 
-    const onKeyEscape = () => escapeMenu.toggle();
+    const onKeyEscape = () => {
+      if (closeOpenCityView()) return;
+      escapeMenu.toggle();
+    };
     this.input.keyboard?.on('keydown-ESC', onKeyEscape);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', onKeyEscape);

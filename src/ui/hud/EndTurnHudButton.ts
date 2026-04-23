@@ -7,13 +7,14 @@ type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 const DEPTH = 140;
 const END_TURN_SIZE = 128;
 const END_TURN_RADIUS = END_TURN_SIZE / 2;
+const END_TURN_HIT_SIZE = 168;
 const HUD_MARGIN = 20;
 
 export class EndTurnHudButton {
   private readonly background: Phaser.GameObjects.Arc;
   private readonly rim: Phaser.GameObjects.Arc;
   private readonly sprite: Phaser.GameObjects.Image;
-  private readonly hitArea: Phaser.GameObjects.Arc;
+  private readonly hitArea: Phaser.GameObjects.Zone;
   private readonly spriteMask: Phaser.GameObjects.Graphics;
 
   private enabled = true;
@@ -43,11 +44,11 @@ export class EndTurnHudButton {
     this.spriteMask = new Phaser.GameObjects.Graphics(scene);
     this.sprite.setMask(this.spriteMask.createGeometryMask());
 
-    this.hitArea = addOwned(new Phaser.GameObjects.Arc(scene, 0, 0, END_TURN_RADIUS, 0, 360, false, 0x000000, 0.001))
+    this.hitArea = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, END_TURN_HIT_SIZE, END_TURN_HIT_SIZE))
       .setDepth(DEPTH + 3)
       .setScrollFactor(0)
-      .setInteractive(new Phaser.Geom.Circle(0, 0, END_TURN_RADIUS), Phaser.Geom.Circle.Contains)
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
 
     this.hitArea.on(Phaser.Input.Events.POINTER_OVER, (
       _pointer: Phaser.Input.Pointer,
@@ -112,7 +113,7 @@ export class EndTurnHudButton {
     }
     this.hitArea.disableInteractive();
     if (enabled) {
-      this.hitArea.setInteractive(new Phaser.Geom.Circle(0, 0, END_TURN_RADIUS), Phaser.Geom.Circle.Contains, true);
+      this.hitArea.setInteractive({ useHandCursor: true });
       this.hitArea.input!.cursor = 'pointer';
     }
     this.refreshVisualState();
@@ -131,7 +132,7 @@ export class EndTurnHudButton {
     this.background.setPosition(x, y).setRadius(END_TURN_RADIUS);
     this.rim.setPosition(x, y).setRadius(END_TURN_RADIUS + 4);
     this.sprite.setPosition(x, y).setDisplaySize(END_TURN_SIZE, END_TURN_SIZE);
-    this.hitArea.setPosition(x, y).setRadius(END_TURN_RADIUS);
+    this.hitArea.setPosition(x, y).setSize(END_TURN_HIT_SIZE, END_TURN_HIT_SIZE);
     this.spriteMask.clear();
     this.spriteMask.fillStyle(0xffffff, 1);
     this.spriteMask.fillCircle(x, y, END_TURN_RADIUS);
