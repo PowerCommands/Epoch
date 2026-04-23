@@ -94,7 +94,7 @@ function formatSigned(value: number): string {
 
 function formatEntryText(value: HudResourceEntry): string {
   if (value.key === 'turn') {
-    return `Turn: ${value.value}`;
+    return `${value.value}`;
   }
 
   return `${value.icon} ${value.value} (${formatSigned(value.delta)})`;

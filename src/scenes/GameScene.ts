@@ -42,8 +42,10 @@ import { BuilderSystem } from '../systems/BuilderSystem';
 import { CheatSystem } from '../systems/CheatSystem';
 import { DiagnosticSystem } from '../systems/DiagnosticSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
+import { CityBannerRenderer } from '../systems/CityBannerRenderer';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
+import { TimeSystem } from '../systems/TimeSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
@@ -79,6 +81,7 @@ import type { GameConfig } from '../types/gameConfig';
 export class GameScene extends Phaser.Scene {
   private cameraController!: CameraController;
   private diagnosticSystem!: DiagnosticSystem;
+  private timeSystem!: TimeSystem;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -143,6 +146,7 @@ export class GameScene extends Phaser.Scene {
     const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
     const worldInputGate = new WorldInputGate();
     this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
+    this.timeSystem = new TimeSystem();
 
     // 8. Rendera städer (depth 15)
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
@@ -194,6 +198,13 @@ export class GameScene extends Phaser.Scene {
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem);
+    const cityBannerRenderer = new CityBannerRenderer(
+      this,
+      tileMap,
+      cityManager,
+      nationManager,
+      productionSystem,
+    );
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
     const buildingPlacementSystem = new BuildingPlacementSystem();
@@ -279,6 +290,7 @@ export class GameScene extends Phaser.Scene {
       } else {
         rightPanel?.clear();
       }
+      cityBannerRenderer.refreshCity(city);
       hudLayer?.refresh();
       return true;
     };
@@ -445,6 +457,7 @@ export class GameScene extends Phaser.Scene {
     foundCitySystem.onCityFounded((city) => {
       const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
       eventLog.log(`${city.name} was founded by ${nationName}.`, [city.ownerId], turnManager.getCurrentRound());
+      cityBannerRenderer.refreshCity(city);
       discoverySystem.scan();
     });
 
@@ -658,8 +671,9 @@ export class GameScene extends Phaser.Scene {
     // ─── City combat events ─────────────────────────────────────────────────
 
     combatSystem.onCityCombat((e) => {
-      // Uppdatera stadsrendering (HP-bar)
+      // Uppdatera stadsrendering
       cityRenderer.refreshCity(e.city);
+      cityBannerRenderer.refreshCity(e.city);
       hudLayer?.refresh();
 
       // Om attackeraren dog
@@ -695,6 +709,7 @@ export class GameScene extends Phaser.Scene {
       const city = cityManager.getCity(e.cityId);
       if (city) {
         cityRenderer.refreshCity(city);
+        cityBannerRenderer.refreshCity(city);
         hudLayer?.refresh();
         rightPanel?.requestRefresh();
       }
@@ -914,6 +929,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       policySystem,
       turnManager,
+      (turn) => this.timeSystem.getLabelForTurn(turn),
     );
     hudLayer = new HudLayer(this, {
       humanNationId,
@@ -1481,6 +1497,7 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', () => hudLayer?.refresh());
     resourceSystem.on(() => {
       territoryRenderer.render();
+      cityBannerRenderer.rebuildAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshSelectedCityOverlays();
@@ -1499,6 +1516,7 @@ export class GameScene extends Phaser.Scene {
     productionSystem.onChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
+      cityBannerRenderer.rebuildAll();
       tileBuildingRenderer.rebuildAll();
       refreshOpenCityView();
     });
@@ -1662,6 +1680,7 @@ export class GameScene extends Phaser.Scene {
       diagnosticDialog.shutdown();
       this.diagnosticSystem.shutdown();
       cityView.shutdown();
+      cityBannerRenderer.shutdown();
       cityRenderer.shutdown();
       tileBuildingRenderer.shutdown();
       leaderStrip?.shutdown();
@@ -1727,6 +1746,7 @@ export class GameScene extends Phaser.Scene {
 
       // Rebuild renderers that depend on replaced entities.
       cityRenderer.rebuildAll();
+      cityBannerRenderer.rebuildAll();
       tileBuildingRenderer.rebuildAll();
       unitRenderer.rebuildAll();
       territoryRenderer.render();

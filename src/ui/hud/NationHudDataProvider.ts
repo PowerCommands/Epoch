@@ -9,7 +9,7 @@ import { getPolicyById } from '../../data/policies';
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold';
   icon: string;
-  value: number;
+  value: number | string;
   delta: number;
 }
 
@@ -69,6 +69,7 @@ export class NationHudDataProvider {
     private readonly researchSystem: ResearchSystem,
     private readonly policySystem: PolicySystem,
     private readonly turnManager: TurnManager,
+    private readonly getTurnLabel: (turn: number) => string,
   ) {}
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
@@ -80,7 +81,7 @@ export class NationHudDataProvider {
       {
         key: 'turn',
         icon: '',
-        value: this.turnManager.getCurrentRound(),
+        value: this.getTurnLabel(this.turnManager.getCurrentRound()),
         delta: 0,
       },
       {

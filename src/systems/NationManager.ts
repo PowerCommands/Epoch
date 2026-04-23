@@ -1,4 +1,5 @@
 import { Nation } from '../entities/Nation';
+import { getNationDefinitionById } from '../data/nations';
 import { NationResources } from '../entities/NationResources';
 import { MapData } from '../types/map';
 import { DEFAULT_AI_PROFILE } from '../types/ai';
@@ -60,17 +61,29 @@ export class NationManager {
   static createDefault(mapData: MapData, gridSystem: IGridSystem): NationManager {
     const manager = new NationManager();
 
-    const configs: { id: string; name: string; color: number; cx: number; cy: number }[] = [
-      { id: 'nation_england', name: 'England',            color: 0xC8102E, cx: 22,  cy: 59 },
-      { id: 'nation_france',  name: 'France',             color: 0x002395, cx: 26,  cy: 66 },
-      { id: 'nation_hre',     name: 'Holy Roman Empire',  color: 0xFFD700, cx: 83,  cy: 68 },
-      { id: 'nation_sweden',  name: 'Sweden',             color: 0x006AA7, cx: 86,  cy: 37 },
-      { id: 'nation_ottoman', name: 'Ottoman Empire',     color: 0xE30A17, cx: 112, cy: 88 },
-      { id: 'nation_spain',   name: 'Spain',              color: 0xAA151B, cx: 15,  cy: 91 },
+    const configs: {
+      id: string;
+      name: string;
+      color: number;
+      secondaryColor: number;
+      cx: number;
+      cy: number;
+    }[] = [
+      { id: 'nation_england', name: 'England',            color: 0xC8102E, secondaryColor: 0xF3C75F, cx: 22,  cy: 59 },
+      { id: 'nation_france',  name: 'France',             color: 0x002395, secondaryColor: 0xF2F2ED, cx: 26,  cy: 66 },
+      { id: 'nation_hre',     name: 'Holy Roman Empire',  color: 0xFFD700, secondaryColor: 0x3E3426, cx: 83,  cy: 68 },
+      { id: 'nation_sweden',  name: 'Sweden',             color: 0x006AA7, secondaryColor: 0xF3D36B, cx: 86,  cy: 37 },
+      { id: 'nation_ottoman', name: 'Ottoman Empire',     color: 0xE30A17, secondaryColor: 0xE8D9B5, cx: 112, cy: 88 },
+      { id: 'nation_spain',   name: 'Spain',              color: 0xAA151B, secondaryColor: 0xF1C94B, cx: 15,  cy: 91 },
     ];
 
     for (const cfg of configs) {
-      manager.addNation(new Nation({ id: cfg.id, name: cfg.name, color: cfg.color }));
+      manager.addNation(new Nation({
+        id: cfg.id,
+        name: cfg.name,
+        color: cfg.color,
+        secondaryColor: cfg.secondaryColor,
+      }));
       NationManager.claimArea(mapData, cfg.id, cfg.cx, cfg.cy, INITIAL_CLAIM_SIZE, gridSystem);
     }
 
@@ -91,11 +104,17 @@ export class NationManager {
     const manager = new NationManager();
 
     for (const cfg of nations) {
+      const definition = getNationDefinitionById(cfg.id);
       const color = parseInt(cfg.color.replace('#', ''), 16);
+      const secondaryColor = parseInt(
+        (cfg.secondaryColor ?? definition?.secondaryColor ?? cfg.color).replace('#', ''),
+        16,
+      );
       manager.addNation(new Nation({
         id: cfg.id,
         name: cfg.name,
         color,
+        secondaryColor,
         isHuman: cfg.isHuman,
         aiProfile: cfg.isHuman ? undefined : DEFAULT_AI_PROFILE,
         researchedTechIds: cfg.researchedTechIds,

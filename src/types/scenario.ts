@@ -14,6 +14,7 @@ export interface ScenarioNation {
   id: string;
   name: string;
   color: string;
+  secondaryColor?: string;
   isHuman: boolean;
   startTerritoryCenter: { q: number; r: number };
   researchedTechIds?: string[];

@@ -2,18 +2,12 @@ import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
-import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
 import { HexTileMaskHelper } from './HexTileMaskHelper';
 
 const CITY_DEPTH = 15;
 const CITY_TILE_FILL_SCALE = 0.9;
 const CAPITAL_SCALE_MULTIPLIER = 1.2;
-
-const HP_BAR_WIDTH = 40;
-const HP_BAR_HEIGHT = 4;
-const HP_BAR_OFFSET_Y = 20;
-const HP_BAR_BG_COLOR = 0x400000;
 
 const HIT_RADIUS = 20;
 
@@ -29,7 +23,6 @@ export class CityRenderer {
   private readonly cityManager: CityManager;
   private readonly nationManager: NationManager;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
-  private readonly hpBars = new Map<string, Phaser.GameObjects.Graphics>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
 
   constructor(
@@ -54,19 +47,16 @@ export class CityRenderer {
   }
 
   /**
-   * Destroy every rendered container + HP bar and re-render from the
+   * Destroy every rendered container and re-render from the
    * live CityManager. Used after a save is loaded, when the city set
    * has been replaced wholesale.
    */
   rebuildAll(): void {
     for (const container of this.containers.values()) container.destroy();
     this.containers.clear();
-    for (const gfx of this.hpBars.values()) gfx.destroy();
-    this.hpBars.clear();
 
     for (const city of this.cityManager.getAllCities()) {
       this.renderCity(city);
-      this.refreshHpBar(city);
     }
   }
 
@@ -75,15 +65,11 @@ export class CityRenderer {
       container.destroy();
     }
     this.containers.clear();
-    for (const gfx of this.hpBars.values()) {
-      gfx.destroy();
-    }
-    this.hpBars.clear();
     this.hexTileMaskHelper.destroy();
   }
 
   /**
-   * Re-render city symbol (e.g. after ownership change) and HP bar.
+   * Re-render city symbol (e.g. after ownership change).
    */
   refreshCity(city: City): void {
     const oldContainer = this.containers.get(city.id);
@@ -93,7 +79,6 @@ export class CityRenderer {
     }
 
     this.renderCity(city);
-    this.refreshHpBar(city);
   }
 
   private renderCity(city: City): void {
@@ -122,46 +107,5 @@ export class CityRenderer {
     );
 
     this.containers.set(city.id, container);
-  }
-
-  refreshHpBar(city: City): void {
-    if (city.health >= CITY_BASE_HEALTH) {
-      const existing = this.hpBars.get(city.id);
-      if (existing) {
-        existing.destroy();
-        this.hpBars.delete(city.id);
-      }
-      return;
-    }
-
-    const { x, y } = this.tileMap.tileToWorld(city.tileX, city.tileY);
-    let gfx = this.hpBars.get(city.id);
-    if (!gfx) {
-      gfx = this.scene.add.graphics();
-      gfx.setDepth(CITY_DEPTH + 1);
-      this.hpBars.set(city.id, gfx);
-    }
-
-    gfx.clear();
-    gfx.setPosition(x, y);
-
-    const hpRatio = city.health / CITY_BASE_HEALTH;
-    const barX = -HP_BAR_WIDTH / 2;
-    const barY = HP_BAR_OFFSET_Y;
-
-    gfx.fillStyle(HP_BAR_BG_COLOR, 0.8);
-    gfx.fillRect(barX, barY, HP_BAR_WIDTH, HP_BAR_HEIGHT);
-
-    let color: number;
-    if (hpRatio > 0.66) {
-      color = 0x40c040;
-    } else if (hpRatio > 0.33) {
-      color = 0xd0c040;
-    } else {
-      color = 0xd04040;
-    }
-
-    gfx.fillStyle(color, 1);
-    gfx.fillRect(barX, barY, HP_BAR_WIDTH * hpRatio, HP_BAR_HEIGHT);
   }
 }

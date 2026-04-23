@@ -61,6 +61,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .nation-row-copy strong { font-size: 11px; color: #ddd; }
 .nation-row-copy span { font-size: 10px; color: #888; overflow-wrap: anywhere; }
 .nation-portrait { width: 28px; height: 34px; border-radius: 3px; object-fit: cover; background: #333; flex-shrink: 0; }
+.nation-color-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .nation-select-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 8px; align-items: center; }
 .nation-select-row img { width: 36px; height: 44px; border-radius: 3px; object-fit: cover; background: #333; }
 
@@ -78,6 +79,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   width: 100%; background: #151515; border: 1px solid #444; border-radius: 3px;
   color: #ddd; font: inherit; font-size: 12px; padding: 5px;
 }
+.field input[type="color"] { height: 34px; padding: 2px; }
 .inline-field { display: flex; align-items: center; gap: 6px; }
 .inline-field input[type="color"] { width: 34px; height: 28px; padding: 1px; }
 .small-btn {
@@ -121,6 +123,17 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     <div class="section" id="nation-section">
       <div class="section-title">Nations</div>
       <div class="entity-list" id="nation-list"></div>
+      <div class="section-title" style="margin-top:8px">Selected Nation Colors</div>
+      <div class="nation-color-grid">
+        <label class="field">
+          Primary
+          <input id="nation-primary-color" type="color">
+        </label>
+        <label class="field">
+          Secondary
+          <input id="nation-secondary-color" type="color">
+        </label>
+      </div>
       <div class="section-title" style="margin-top:8px">Add Nation</div>
       <label class="field">
         Registry Nation
@@ -244,6 +257,7 @@ async function init() {
 
   const res = await fetch(`/${currentMap.file}`);
   scenario = await res.json();
+  normalizeNationColors();
   document.title = `Map Editor — ${currentMap.label}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
 
@@ -314,6 +328,7 @@ async function loadNationRegistry() {
           && typeof nation.nationId === 'string'
           && typeof nation.nationName === 'string'
           && typeof nation.color === 'string'
+          && typeof nation.secondaryColor === 'string'
           && typeof nation.leaderId === 'string'
           && typeof nation.leaderName === 'string'
           && typeof nation.leaderTitle === 'string'
@@ -402,9 +417,32 @@ function getNationDisplayName(nation) {
   return getRegistryNation(nation.id)?.nationName ?? nation.name;
 }
 
+function getNationSecondaryColor(nationId) {
+  const scenarioNation = scenario.nations.find(n => n.id === nationId);
+  return scenarioNation?.secondaryColor || getRegistryNation(nationId)?.secondaryColor || getNationColor(nationId);
+}
+
 function getNationColor(nationId) {
   const scenarioNation = scenario.nations.find(n => n.id === nationId);
   return scenarioNation?.color || getRegistryNation(nationId)?.color || '#888';
+}
+
+function getNationSwatchStyle(primaryColor, secondaryColor) {
+  const secondary = secondaryColor || primaryColor;
+  return `linear-gradient(135deg, ${primaryColor} 0 50%, ${secondary} 50% 100%)`;
+}
+
+function normalizeNationColors() {
+  if (!scenario || !Array.isArray(scenario.nations)) return;
+  scenario.nations = scenario.nations.map((nation) => {
+    const registryNation = getRegistryNation(nation.id);
+    const primaryColor = nation.color || registryNation?.color || '#888888';
+    return {
+      ...nation,
+      color: primaryColor,
+      secondaryColor: nation.secondaryColor || registryNation?.secondaryColor || primaryColor,
+    };
+  });
 }
 
 function getAvailableRegistryNations() {
@@ -449,7 +487,7 @@ function buildNationList() {
     const registryNation = getRegistryNation(nation.id);
     const row = document.createElement('div');
     row.className = 'entity-row nation-row' + (nation.id === selectedNationId ? ' selected' : '');
-    row.innerHTML = `${registryNation ? `<img class="nation-portrait" src="${registryNation.leaderImage}" alt="">` : `<span class="entity-dot" style="background:${nation.color || '#888'}"></span>`}
+    row.innerHTML = `${registryNation ? `<img class="nation-portrait" src="${registryNation.leaderImage}" alt="">` : `<span class="entity-dot" style="background:${getNationSwatchStyle(nation.color || '#888', nation.secondaryColor || nation.color || '#888')}"></span>`}
       <span class="nation-row-copy">
         <strong>${getNationDisplayName(nation)}${capital ? ` (${capital.q},${capital.r})` : ''}</strong>
         <span>${registryNation ? registryNation.leaderName : `Unknown nation: ${nation.id}`}</span>
@@ -475,10 +513,16 @@ function getSelectedNation() {
 function updateSelectedNationInfo() {
   const el = document.getElementById('selected-nation-info');
   const removeBtn = document.getElementById('remove-nation-btn');
+  const primaryInput = document.getElementById('nation-primary-color');
+  const secondaryInput = document.getElementById('nation-secondary-color');
   const nation = getSelectedNation();
   if (!nation) {
     el.textContent = 'No nation selected.';
     removeBtn.disabled = true;
+    primaryInput.disabled = true;
+    secondaryInput.disabled = true;
+    primaryInput.value = '#888888';
+    secondaryInput.value = '#888888';
     return;
   }
 
@@ -488,7 +532,28 @@ function updateSelectedNationInfo() {
     (registryNation ? ` • leader ${registryNation.leaderName}` : ' • not in registry') +
     (center ? ` • start ${center.q},${center.r}` : ' • no start set');
   removeBtn.disabled = false;
+  primaryInput.disabled = false;
+  secondaryInput.disabled = false;
+  primaryInput.value = nation.color;
+  secondaryInput.value = nation.secondaryColor || nation.color;
 }
+
+document.getElementById('nation-primary-color').addEventListener('input', (event) => {
+  const nation = getSelectedNation();
+  if (!nation) return;
+  nation.color = event.target.value;
+  buildNationList();
+  buildEntityLists();
+  render();
+});
+
+document.getElementById('nation-secondary-color').addEventListener('input', (event) => {
+  const nation = getSelectedNation();
+  if (!nation) return;
+  nation.secondaryColor = event.target.value;
+  buildNationList();
+  render();
+});
 
 document.getElementById('add-nation-btn').addEventListener('click', () => {
   const select = document.getElementById('nation-registry-select');
@@ -502,6 +567,7 @@ document.getElementById('add-nation-btn').addEventListener('click', () => {
     id: registryNation.nationId,
     name: registryNation.nationName,
     color: registryNation.color,
+    secondaryColor: registryNation.secondaryColor,
     isHuman: false,
     startTerritoryCenter: { q: 0, r: 0 },
   });
