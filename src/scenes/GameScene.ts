@@ -1183,6 +1183,17 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
+    cityView.onRenameRequested((cityId, name) => {
+      const city = cityManager.renameCity(cityId, name);
+      if (!city) {
+        refreshOpenCityView();
+        return;
+      }
+
+      cityBannerRenderer.refreshCity(city);
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
 
     const showBuildingPlacementConfirm = (onConfirm: () => void, onCancel: () => void): void => {
       const existing = document.getElementById('building-placement-modal');

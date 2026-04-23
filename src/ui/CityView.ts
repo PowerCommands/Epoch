@@ -5,6 +5,7 @@ type CloseCallback = () => void;
 type PlacementRequestCallback = (buildingId: string) => void;
 type PlacementCancelCallback = () => void;
 type BuyTileRequestCallback = () => void;
+type RenameRequestCallback = (cityId: string, name: string) => void;
 
 export interface CityViewBuildingOption {
   id: string;
@@ -32,6 +33,8 @@ export class CityView {
   private readonly root: HTMLDivElement;
   private readonly headerEl: HTMLDivElement;
   private readonly titleEl: HTMLDivElement;
+  private readonly titleInputEl: HTMLInputElement;
+  private readonly renameButton: HTMLButtonElement;
   private readonly statsEl: HTMLDivElement;
   private readonly nextTileEl: HTMLDivElement;
   private readonly placementStatusEl: HTMLDivElement;
@@ -41,11 +44,13 @@ export class CityView {
   private readonly placementRequestCallbacks: PlacementRequestCallback[] = [];
   private readonly placementCancelCallbacks: PlacementCancelCallback[] = [];
   private readonly buyTileRequestCallbacks: BuyTileRequestCallback[] = [];
+  private readonly renameRequestCallbacks: RenameRequestCallback[] = [];
   private currentCityId: string | null = null;
   private open = false;
   private dragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private editingTitleCityId: string | null = null;
 
   constructor() {
     const mount = document.getElementById('app-layout');
@@ -64,6 +69,54 @@ export class CityView {
     this.titleEl = document.createElement('div');
     this.titleEl.className = 'city-view-title';
 
+    this.titleInputEl = document.createElement('input');
+    this.titleInputEl.type = 'text';
+    this.titleInputEl.maxLength = 40;
+    this.titleInputEl.spellcheck = false;
+    this.titleInputEl.style.cssText = `
+      display: none;
+      min-width: 220px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(8, 12, 18, 0.92);
+      color: #eef3fb;
+      font: inherit;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      outline: none;
+    `;
+    this.titleInputEl.addEventListener('keydown', this.handleTitleInputKeyDown);
+    this.titleInputEl.addEventListener('blur', this.handleTitleInputBlur);
+
+    this.renameButton = document.createElement('button');
+    this.renameButton.type = 'button';
+    this.renameButton.textContent = '✎';
+    this.renameButton.title = 'Rename city';
+    this.renameButton.setAttribute('aria-label', 'Rename city');
+    this.renameButton.style.cssText = `
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+      color: #eef3fb;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    `;
+    this.renameButton.addEventListener('click', this.handleRenameButtonClick);
+
+    const titleRow = document.createElement('div');
+    titleRow.style.cssText = 'display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto;';
+    titleRow.append(this.titleEl, this.titleInputEl, this.renameButton);
+
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.className = 'city-view-close';
@@ -72,7 +125,7 @@ export class CityView {
       for (const callback of this.closeCallbacks) callback();
     });
 
-    this.headerEl.append(this.titleEl, closeButton);
+    this.headerEl.append(titleRow, closeButton);
 
     this.statsEl = document.createElement('div');
     this.statsEl.className = 'city-view-stats';
@@ -142,6 +195,10 @@ export class CityView {
     this.buyTileRequestCallbacks.push(callback);
   }
 
+  onRenameRequested(callback: RenameRequestCallback): void {
+    this.renameRequestCallbacks.push(callback);
+  }
+
   isOpenForCity(cityId: string): boolean {
     return this.open && this.currentCityId === cityId;
   }
@@ -171,6 +228,7 @@ export class CityView {
   close(): void {
     this.open = false;
     this.currentCityId = null;
+    this.stopTitleEditing(false);
     this.root.style.display = 'none';
     this.dragging = false;
     this.hideTooltip();
@@ -180,6 +238,9 @@ export class CityView {
     this.headerEl.removeEventListener('mousedown', this.handleHeaderMouseDown);
     document.removeEventListener('mousemove', this.handleDocumentMouseMove);
     document.removeEventListener('mouseup', this.handleDocumentMouseUp);
+    this.titleInputEl.removeEventListener('keydown', this.handleTitleInputKeyDown);
+    this.titleInputEl.removeEventListener('blur', this.handleTitleInputBlur);
+    this.renameButton.removeEventListener('click', this.handleRenameButtonClick);
     this.root.remove();
     this.tooltipEl.remove();
   }
@@ -221,7 +282,7 @@ export class CityView {
 
   private readonly handleHeaderMouseDown = (event: MouseEvent): void => {
     if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest('button')) return;
+    if ((event.target as HTMLElement).closest('button, input')) return;
 
     const rect = this.root.getBoundingClientRect();
     this.dragging = true;
@@ -243,13 +304,40 @@ export class CityView {
     this.dragging = false;
   };
 
+  private readonly handleRenameButtonClick = (): void => {
+    if (!this.currentCityId) return;
+    this.startTitleEditing();
+  };
+
+  private readonly handleTitleInputKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      this.commitTitleEdit();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.stopTitleEditing(false);
+    }
+  };
+
+  private readonly handleTitleInputBlur = (): void => {
+    if (!this.editingTitleCityId) return;
+    this.stopTitleEditing(false);
+  };
+
   private render(
     city: City,
     buildingOptions: CityViewBuildingOption[],
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
   ): void {
-    this.titleEl.textContent = city.name;
+    const isEditingCurrentCity = this.editingTitleCityId === city.id;
+    if (!isEditingCurrentCity) {
+      this.titleEl.textContent = city.name;
+      this.titleInputEl.value = city.name;
+    }
+    this.syncTitleEditingState(isEditingCurrentCity);
 
     const statRows = [
       `Population: ${city.population}`,
@@ -351,6 +439,42 @@ export class CityView {
       });
       this.placementButtonsEl.append(button);
     }
+  }
+
+  private startTitleEditing(): void {
+    if (!this.currentCityId) return;
+    this.editingTitleCityId = this.currentCityId;
+    this.syncTitleEditingState(true);
+    this.titleInputEl.focus();
+    this.titleInputEl.select();
+  }
+
+  private commitTitleEdit(): void {
+    if (!this.editingTitleCityId) return;
+
+    const nextName = this.titleInputEl.value.trim().replace(/\s+/g, ' ');
+    if (nextName.length === 0) {
+      this.stopTitleEditing(false);
+      return;
+    }
+
+    const cityId = this.editingTitleCityId;
+    this.stopTitleEditing(false);
+    for (const callback of this.renameRequestCallbacks) callback(cityId, nextName);
+  }
+
+  private stopTitleEditing(keepInputValue: boolean): void {
+    if (!keepInputValue) {
+      this.titleInputEl.value = this.titleEl.textContent ?? '';
+    }
+    this.editingTitleCityId = null;
+    this.syncTitleEditingState(false);
+  }
+
+  private syncTitleEditingState(isEditing: boolean): void {
+    this.titleEl.style.display = isEditing ? 'none' : '';
+    this.titleInputEl.style.display = isEditing ? 'block' : 'none';
+    this.renameButton.style.display = isEditing ? 'none' : 'inline-flex';
   }
 }
 

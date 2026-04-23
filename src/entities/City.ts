@@ -16,7 +16,7 @@ export interface CityConfig {
  */
 export class City {
   readonly id: string;
-  readonly name: string;
+  name: string;
   ownerId: string;
   readonly tileX: number;
   readonly tileY: number;
@@ -48,5 +48,9 @@ export class City {
 
   get isDamaged(): boolean {
     return this.health < CITY_BASE_HEALTH;
+  }
+
+  rename(name: string): void {
+    this.name = name;
   }
 }

@@ -77,6 +77,17 @@ export class CityManager {
     return this.buildings.get(cityId)!;
   }
 
+  renameCity(cityId: string, name: string): City | undefined {
+    const city = this.cities.get(cityId);
+    if (!city) return undefined;
+
+    const normalizedName = name.trim().replace(/\s+/g, ' ');
+    if (normalizedName.length === 0) return undefined;
+
+    city.rename(normalizedName);
+    return city;
+  }
+
   /**
    * Överför stad till ny ägare. Rensa produktion, behåll byggnader.
    */
