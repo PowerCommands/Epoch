@@ -1,5 +1,5 @@
 import type { CityManager } from './CityManager';
-import type { PolicySystem } from './PolicySystem';
+import type { CultureSystem } from './culture/CultureSystem';
 import type { ProductionSystem } from './ProductionSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceSystem } from './ResourceSystem';
@@ -11,7 +11,7 @@ import type { Producible } from '../types/producible';
 export interface GameContext {
   humanNationId: string | undefined;
   researchSystem: ResearchSystem;
-  policySystem: PolicySystem;
+  cultureSystem: CultureSystem;
   resourceSystem: ResourceSystem;
   diagnosticSystem: DiagnosticSystem;
   productionSystem: ProductionSystem;
@@ -71,14 +71,14 @@ export class CheatSystem {
 
     this.register({
       name: 'culture done',
-      description: 'Finish the current culture policy for the player nation.',
+      description: 'Finish the current civic for the player nation.',
       execute: (_args, context) => {
         if (!context.humanNationId) return 'No active culture';
 
-        const policy = context.policySystem.completeCurrentPolicy(context.humanNationId);
-        if (!policy) return 'No active culture';
+        const node = context.cultureSystem.completeCurrentCultureNode(context.humanNationId);
+        if (!node) return 'No active culture';
 
-        return `Culture complete: ${policy.name}`;
+        return `Culture complete: ${node.name}`;
       },
     });
 

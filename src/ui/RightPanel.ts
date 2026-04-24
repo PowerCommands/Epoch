@@ -1,5 +1,5 @@
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
-import { ALL_POLICY_TREES, getPolicyById } from '../data/policies';
+import { CULTURE_TREE, getCultureNodeById } from '../data/cultureTree';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
 import { getImprovementById } from '../data/improvements';
 import type { TileYield } from '../data/terrainYields';
@@ -23,10 +23,11 @@ import type { EventLogSystem } from '../systems/EventLogSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import type { BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { ResearchSystem } from '../systems/ResearchSystem';
-import type { PolicySystem } from '../systems/PolicySystem';
+import type { CultureSystem } from '../systems/culture/CultureSystem';
 import type { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import type { HappinessSystem } from '../systems/HappinessSystem';
 import { RafScheduler } from '../utils/RafScheduler';
+import { EMPTY_MODIFIERS } from '../types/modifiers';
 
 type ViewType = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
@@ -50,7 +51,7 @@ export class RightPanel {
   private discoverySystem: DiscoverySystem | null = null;
   private eventLog: EventLogSystem | null = null;
   private researchSystem: ResearchSystem | null = null;
-  private policySystem: PolicySystem | null = null;
+  private cultureSystem: CultureSystem | null = null;
   private currentTile: Tile | null = null;
   private currentCity: City | null = null;
   private currentUnit: Unit | null = null;
@@ -118,8 +119,8 @@ export class RightPanel {
     this.researchSystem = researchSystem;
   }
 
-  setPolicySystem(policySystem: PolicySystem): void {
-    this.policySystem = policySystem;
+  setCultureSystem(cultureSystem: CultureSystem): void {
+    this.cultureSystem = cultureSystem;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -277,7 +278,7 @@ export class RightPanel {
       this.mapData,
       this.cityManager.getBuildings(city.id),
       this.gridSystem,
-      this.policySystem?.getCombinedModifiers(city.ownerId),
+      EMPTY_MODIFIERS,
     );
     const isHuman = city.ownerId === this.humanNationId;
 
@@ -440,7 +441,7 @@ export class RightPanel {
     );
     this.contentEl.append(happinessSection);
 
-    this.contentEl.append(this.renderPolicySection(nationId, isHuman));
+    this.contentEl.append(this.renderCultureSection(nationId, isHuman));
 
     // Cities
     const citySection = this.createSection(`Cities (${cities.length})`);
@@ -795,13 +796,20 @@ export class RightPanel {
     const section = this.createSection('Diplomacy');
     const dm = this.diplomacyManager!;
     const humanId = this.humanNationId!;
-    const state = dm.getState(humanId, nationId);
+    const relation = dm.getRelation(humanId, nationId);
+    const state = relation.state;
     const nation = this.nationManager.getNation(nationId);
     const nationColor = nation?.color ?? 0xffffff;
 
     const statusDiv = this.createDiv('', `Status: ${state === 'WAR' ? 'At War' : 'At Peace'}`);
     statusDiv.style.marginBottom = '8px';
     section.append(statusDiv);
+
+    if (state === 'PEACE') {
+      const bordersDiv = this.createDiv('', `Borders: ${relation.openBorders ? 'Open' : 'Closed'}`);
+      bordersDiv.style.marginBottom = '8px';
+      section.append(bordersDiv);
+    }
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -833,6 +841,26 @@ export class RightPanel {
     }
 
     section.append(btn);
+
+    if (state === 'PEACE') {
+      const borderBtn = document.createElement('button');
+      borderBtn.type = 'button';
+      borderBtn.textContent = relation.openBorders ? 'Cancel Open Borders' : 'Open Borders';
+      borderBtn.style.cssText = `
+        margin-top: 8px; padding: 6px 16px; font-size: 13px; cursor: pointer;
+        border-radius: 4px; width: 100%;
+        background: transparent;
+        color: ${toCssColor(nationColor)};
+        border: 1px solid ${toCssColor(nationColor)};
+      `;
+      borderBtn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'toggleOpenBorders', targetNationId: nationId },
+        }));
+      });
+      section.append(borderBtn);
+    }
+
     return section;
   }
 
@@ -862,46 +890,44 @@ export class RightPanel {
     return container;
   }
 
-  private renderPolicySection(nationId: string, isHuman: boolean): HTMLElement {
-    const section = this.createSection('Culture Policies');
-    const policySystem = this.policySystem;
+  private renderCultureSection(nationId: string, isHuman: boolean): HTMLElement {
+    const section = this.createSection('Civics');
+    const cultureSystem = this.cultureSystem;
 
-    if (!policySystem) {
-      section.append(this.createDiv('panel-muted', 'Policy system unavailable.'));
+    if (!cultureSystem) {
+      section.append(this.createDiv('panel-muted', 'Culture system unavailable.'));
       return section;
     }
 
-    const current = policySystem.getCurrentPolicy(nationId);
-    const progress = policySystem.getPolicyProgress(nationId);
-    const culturePerTurn = policySystem.getPolicyCulturePerTurn(nationId);
-    const unlockedPolicies = policySystem.getUnlockedPolicies(nationId);
+    const current = cultureSystem.getCurrentCultureNode(nationId);
+    const progress = cultureSystem.getCultureProgress(nationId);
+    const culturePerTurn = cultureSystem.getCulturePerTurn(nationId);
+    const unlockedNodes = cultureSystem.getUnlockedCultureNodes(nationId);
 
     section.append(
-      this.createDiv('', `Active Policy: ${current?.name ?? 'None selected'}`),
+      this.createDiv('', `Active Civic: ${current?.name ?? 'None selected'}`),
       this.createDiv(
         '',
         current
-          ? `Progress: ${progress} / ${policySystem.getEffectiveCost(nationId, current.id)}`
+          ? `Progress: ${progress} / ${cultureSystem.getEffectiveCost(current.id)}`
           : `Stored Progress: ${progress}`,
       ),
       this.createDiv('panel-muted', `Culture applied each turn: +${culturePerTurn}`),
-      this.createDiv('panel-muted', `Unlocked policies: ${unlockedPolicies.length}`),
+      this.createDiv('panel-muted', `Completed civics: ${unlockedNodes.length}`),
     );
 
-    for (const tree of ALL_POLICY_TREES) {
-      const treeSection = this.createDiv('policy-tree');
-      const treeTitle = this.createDiv('research-subheading', tree.name);
+    const eraIds = [...new Set(CULTURE_TREE.map((node) => node.era))];
+    for (const eraId of eraIds) {
+      const treeSection = this.createDiv('civic-tree');
+      const treeTitle = this.createDiv('research-subheading', formatEraName(eraId));
       treeSection.append(treeTitle);
-      if (tree.description) {
-        treeSection.append(this.createDiv('panel-muted', tree.description));
-      }
 
-      const policies = policySystem.getPolicyViewState(nationId)
-        .filter((entry) => entry.tree.id === tree.id);
+      const nodes = cultureSystem.getCultureViewState(nationId)
+        .filter((entry) => entry.node.era === eraId);
 
-      for (const entry of policies) {
+      for (const entry of nodes) {
         const card = document.createElement('div');
-        card.className = 'policy-card';
+        card.className = 'civic-card';
 
         const button = document.createElement('button');
         button.type = 'button';
@@ -912,31 +938,35 @@ export class RightPanel {
         else if (entry.isActive) stateText = 'Active';
         else if (entry.isAvailable) stateText = 'Available';
 
-        button.textContent = `${entry.policy.name} (${entry.effectiveCost})`;
+        button.textContent = `${entry.node.name} (${entry.effectiveCost})`;
         button.disabled = !isHuman || !entry.isAvailable;
         if (entry.isUnlocked) button.disabled = true;
         if (entry.isActive) {
           button.disabled = true;
-          button.textContent = `${entry.policy.name} (${entry.effectiveCost}) [Active]`;
+          button.textContent = `${entry.node.name} (${entry.effectiveCost}) [Active]`;
         }
         if (entry.isUnlocked) {
-          button.textContent = `${entry.policy.name} (${entry.effectiveCost}) [Unlocked]`;
+          button.textContent = `${entry.node.name} (${entry.effectiveCost}) [Unlocked]`;
         }
         button.addEventListener('click', () => {
           if (!isHuman) return;
-          if (policySystem.selectPolicy(nationId, entry.policy.id)) {
+          if (cultureSystem.startCultureNode(nationId, entry.node.id)) {
             this.refreshNationView();
           }
         });
 
-        const detail = this.createDiv('panel-muted', `${stateText} - ${entry.policy.description}`);
-        const prereqText = entry.policy.prerequisites.length === 0
+        const unlockText = entry.node.unlocks.length === 0
+          ? 'Unlocks: none'
+          : `Unlocks: ${entry.node.unlocks.map((unlock) => `${unlock.type}: ${unlock.value}`).join(', ')}`;
+        const detail = this.createDiv('panel-muted', `${stateText} - ${unlockText}`);
+        const prerequisites = entry.node.prerequisites ?? [];
+        const prereqText = prerequisites.length === 0
           ? 'Prerequisites: none'
-          : `Prerequisites: ${entry.policy.prerequisites.map((id) => getPolicyById(id)?.name ?? id).join(', ')}`;
+          : `Prerequisites: ${prerequisites.map((id) => getCultureNodeById(id)?.name ?? id).join(', ')}`;
         const prereq = this.createDiv(
           'panel-muted',
           entry.missingPrerequisiteIds.length > 0
-            ? `${prereqText} | Missing: ${entry.missingPrerequisiteIds.map((id) => getPolicyById(id)?.name ?? id).join(', ')}`
+            ? `${prereqText} | Missing: ${entry.missingPrerequisiteIds.map((id) => getCultureNodeById(id)?.name ?? id).join(', ')}`
             : prereqText,
         );
 
@@ -987,6 +1017,10 @@ function cityHasCoastalAccess(city: City, mapData: MapData, gridSystem: IGridSys
 
 function toCssColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
+}
+
+function formatEraName(era: string): string {
+  return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatSigned(value: number): string {

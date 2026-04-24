@@ -6,6 +6,7 @@ import { TileMap } from './TileMap';
 import { TurnManager } from './TurnManager';
 import { UnitManager } from './UnitManager';
 import { UnitRenderer } from './UnitRenderer';
+import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
 
 /** Return movement cost for entering a tile. */
@@ -15,6 +16,23 @@ export function getTileMovementCost(tile: Tile): number {
 }
 
 const BOARDING_MOVEMENT_COST = 1;
+
+export type MovementActionSource = 'human-ui' | 'system';
+
+export interface MovementWarRequiredEvent {
+  attackerId: string;
+  targetNationId: string;
+  unit: Unit;
+  tileX: number;
+  tileY: number;
+  source: MovementActionSource;
+}
+
+interface MovementActionOptions {
+  source?: MovementActionSource;
+}
+
+type MovementWarRequiredListener = (event: MovementWarRequiredEvent) => void;
 
 export function canUnitEnterTile(unit: Unit, tile: Tile): boolean {
   const naval = unit.unitType.isNaval === true;
@@ -32,6 +50,7 @@ export function canUnitEnterTile(unit: Unit, tile: Tile): boolean {
  */
 export class MovementSystem {
   private activeNationId: string;
+  private readonly warRequiredListeners: MovementWarRequiredListener[] = [];
 
   constructor(
     private readonly tileMap: TileMap,
@@ -40,6 +59,7 @@ export class MovementSystem {
     turnManager: TurnManager,
     selectionManager: SelectionManager,
     private readonly gridSystem: IGridSystem,
+    private readonly diplomacyManager?: DiplomacyManager,
   ) {
     this.activeNationId = turnManager.getCurrentNation().id;
 
@@ -54,6 +74,14 @@ export class MovementSystem {
   }
 
   canMoveUnitTo(unit: Unit, tileX: number, tileY: number): boolean {
+    return this.canMoveUnitToInternal(unit, tileX, tileY, true);
+  }
+
+  onWarRequired(listener: MovementWarRequiredListener): void {
+    this.warRequiredListeners.push(listener);
+  }
+
+  private canMoveUnitToInternal(unit: Unit, tileX: number, tileY: number, respectDiplomacy: boolean): boolean {
     if (unit.ownerId !== this.activeNationId) return false;
     if (unit.movementPoints <= 0) return false;
     if (!this.gridSystem.isAdjacent(
@@ -63,6 +91,7 @@ export class MovementSystem {
 
     const targetTile = this.tileMap.getTileAt(tileX, tileY);
     if (targetTile === null) return false;
+    if (respectDiplomacy && this.getClosedBorderOwner(unit, targetTile) !== null) return false;
 
     const boardingTransport = this.getBoardingTransport(unit, tileX, tileY);
     if (boardingTransport !== undefined) {
@@ -90,7 +119,12 @@ export class MovementSystem {
     if (targetTile === null) return false;
 
     const unit = currentSelection.unit;
-    if (!this.canMoveUnitTo(unit, targetTile.x, targetTile.y)) return false;
+    if (!this.canMoveUnitToInternal(unit, targetTile.x, targetTile.y, false)) return false;
+    const closedBorderOwner = this.getClosedBorderOwner(unit, targetTile);
+    if (closedBorderOwner !== null) {
+      this.notifyWarRequired(unit, closedBorderOwner, targetTile.x, targetTile.y, 'human-ui');
+      return true;
+    }
 
     const boardingTransport = this.getBoardingTransport(unit, targetTile.x, targetTile.y);
     if (boardingTransport !== undefined) {
@@ -114,12 +148,17 @@ export class MovementSystem {
     return true;
   }
 
-  moveAlongPath(unit: Unit, path: Tile[]): void {
+  moveAlongPath(unit: Unit, path: Tile[], options: MovementActionOptions = {}): void {
     if (path.length === 0) return;
 
     for (const tile of path) {
       if (tile.x === unit.tileX && tile.y === unit.tileY) continue;
-      if (!this.canMoveUnitTo(unit, tile.x, tile.y)) break;
+      if (!this.canMoveUnitToInternal(unit, tile.x, tile.y, false)) break;
+      const closedBorderOwner = this.getClosedBorderOwner(unit, tile);
+      if (closedBorderOwner !== null) {
+        this.notifyWarRequired(unit, closedBorderOwner, tile.x, tile.y, options.source ?? 'system');
+        break;
+      }
 
       const cost = getTileMovementCost(tile);
       const didMove = this.unitManager.moveUnit(unit.id, tile.x, tile.y, cost);
@@ -144,5 +183,26 @@ export class MovementSystem {
     if (occupyingUnit === null) return undefined;
     if (!this.unitManager.canBoardUnit(unit, occupyingUnit)) return undefined;
     return occupyingUnit;
+  }
+
+  private getClosedBorderOwner(unit: Unit, tile: Tile): string | null {
+    if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
+    if (this.diplomacyManager === undefined) return null;
+
+    const relation = this.diplomacyManager.getRelation(unit.ownerId, tile.ownerId);
+    if (relation.state === 'WAR' || relation.openBorders) return null;
+    return tile.ownerId;
+  }
+
+  private notifyWarRequired(
+    unit: Unit,
+    targetNationId: string,
+    tileX: number,
+    tileY: number,
+    source: MovementActionSource,
+  ): void {
+    for (const listener of this.warRequiredListeners) {
+      listener({ attackerId: unit.ownerId, targetNationId, unit, tileX, tileY, source });
+    }
   }
 }

@@ -20,9 +20,9 @@ export interface ScenarioNation {
   researchedTechIds?: string[];
   currentResearchTechId?: string;
   researchProgress?: number;
-  unlockedPolicyIds?: string[];
-  currentPolicyId?: string;
-  policyProgress?: number;
+  unlockedCultureNodeIds?: string[];
+  currentCultureNodeId?: string;
+  cultureProgress?: number;
 }
 
 export interface ScenarioCity {

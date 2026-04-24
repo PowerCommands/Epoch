@@ -11,7 +11,7 @@ import { ResourceSystem } from '../systems/ResourceSystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
-import { PolicySystem } from '../systems/PolicySystem';
+import { CultureSystem } from '../systems/culture/CultureSystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
@@ -75,6 +75,7 @@ import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
+import { EMPTY_MODIFIERS } from '../types/modifiers';
 
 /**
  * GameScene — huvudspelscenen.
@@ -190,22 +191,22 @@ export class GameScene extends Phaser.Scene {
 
     // 11c. Event log — strategic history filtered by discovery
     const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
-    const policySystem = new PolicySystem(
+    const cultureSystem = new CultureSystem(
       nationManager,
       eventLog,
       () => turnManager.getCurrentRound(),
       undefined,
       gameSpeed,
     );
-    const humanNeedsPolicySelection = (): boolean => {
+    const humanNeedsCultureSelection = (): boolean => {
       if (!humanNationId) return false;
-      return !policySystem.getCurrentPolicy(humanNationId)
-        && policySystem.getAvailablePolicies(humanNationId).length > 0;
+      return !cultureSystem.getCurrentCultureNode(humanNationId)
+        && cultureSystem.getAvailableCultureNodes(humanNationId).length > 0;
     };
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
-      (nationId) => policySystem.getCombinedModifiers(nationId),
+      () => EMPTY_MODIFIERS,
     );
     const resourceSystem = new ResourceSystem(
       nationManager,
@@ -215,7 +216,7 @@ export class GameScene extends Phaser.Scene {
       mapData,
       gridSystem,
       happinessSystem,
-      (nationId) => policySystem.getCombinedModifiers(nationId),
+      () => EMPTY_MODIFIERS,
       gameSpeed,
     );
 
@@ -279,7 +280,7 @@ export class GameScene extends Phaser.Scene {
           mapData,
           cityManager.getBuildings(city.id),
           gridSystem,
-          policySystem.getCombinedModifiers(nationId),
+          EMPTY_MODIFIERS,
         ).science, 0),
       gameSpeed,
     );
@@ -372,7 +373,7 @@ export class GameScene extends Phaser.Scene {
 
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
-      movementSystem.moveAlongPath(unit, path);
+      movementSystem.moveAlongPath(unit, path, { source: 'human-ui' });
       combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' });
       return true;
     };
@@ -438,6 +439,7 @@ export class GameScene extends Phaser.Scene {
       turnManager,
       selectionManager,
       gridSystem,
+      diplomacyManager,
     );
 
     // Turn order: built AFTER MovementSystem so MovementSystem's turnStart
@@ -459,7 +461,7 @@ export class GameScene extends Phaser.Scene {
       if (unit.isSleeping) unit.isSleeping = false;
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
-      movementSystem.moveAlongPath(unit, path);
+      movementSystem.moveAlongPath(unit, path, { source: 'human-ui' });
       return true;
     });
 
@@ -497,7 +499,6 @@ export class GameScene extends Phaser.Scene {
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
       gridSystem,
       researchSystem,
-      policySystem,
     );
 
     // Humans pick their own initial research via the HUD research panel.
@@ -505,24 +506,20 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) {
         researchSystem.ensureResearchSelected(e.nation.id);
-        policySystem.ensurePolicySelected(e.nation.id);
+        cultureSystem.ensureCultureNodeSelected(e.nation.id);
       }
       researchSystem.advanceResearchForNation(e.nation.id);
-      const unlockedPolicy = policySystem.advancePolicyForNation(e.nation.id);
-      if (unlockedPolicy) {
-        resourceSystem.recalculateForNation(e.nation.id);
-        happinessSystem.recalculateNation(e.nation.id);
-      }
+      cultureSystem.advanceCultureForNation(e.nation.id);
 
       if (e.nation.isHuman) {
         const needsResearchSelection = !researchSystem.getCurrentResearch(e.nation.id)
           && researchSystem.getAvailableTechnologies(e.nation.id).length > 0;
-        const needsPolicySelection = !policySystem.getCurrentPolicy(e.nation.id)
-          && policySystem.getAvailablePolicies(e.nation.id).length > 0;
+        const needsCultureSelection = !cultureSystem.getCurrentCultureNode(e.nation.id)
+          && cultureSystem.getAvailableCultureNodes(e.nation.id).length > 0;
 
         if (needsResearchSelection) {
           hudLayer?.openResearchPanel();
-        } else if (needsPolicySelection) {
+        } else if (needsCultureSelection) {
           hudLayer?.openCulturePanel();
         }
       }
@@ -728,8 +725,11 @@ export class GameScene extends Phaser.Scene {
       if (e.captured) {
         // Den erövrande enheten flyttades in på stadens tile
         unitRenderer.refreshUnitPosition(e.attacker.id);
-        // Territory overlay behöver ritas om
+        cityRenderer.refreshCity(e.city);
+        cityBannerRenderer.refreshCity(e.city);
+        // Territory borders och minimap behöver ritas om efter ownerId-transfer.
         territoryRenderer.render();
+        this.minimapHud?.rebuild();
         hudLayer?.refresh();
         // Recalculate resources for both old and new owner
         resourceSystem.recalculateForNation(e.attacker.ownerId);
@@ -848,6 +848,31 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    movementSystem.onWarRequired((e) => {
+      if (e.source !== 'human-ui') return;
+      if (e.unit.ownerId !== humanNationIdForDiplomacy) return;
+
+      const targetNation = nationManager.getNation(e.targetNationId);
+      if (!targetNation) return;
+
+      showDiplomacyModal({
+        title: 'Declare War',
+        message: `Declare war on ${targetNation.name} to enter their territory?`,
+        accentColor: '#c44',
+        confirmLabel: 'Declare War!',
+        cancelLabel: 'Cancel',
+        onConfirm: () => {
+          diplomacyManager.declareWar(humanNationIdForDiplomacy, e.targetNationId);
+          const targetTile = tileMap.getTileAt(e.tileX, e.tileY);
+          if (targetTile !== null) {
+            movementSystem.moveAlongPath(e.unit, [targetTile], { source: 'human-ui' });
+          }
+          rightPanel?.refreshCurrent();
+        },
+        onCancel: () => {},
+      });
+    });
+
     // AI proposes peace when all units lost
     unitManager.onUnitChanged((event) => {
       if (event.reason !== 'removed') return;
@@ -909,6 +934,10 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
+    diplomacyManager.onDiplomacyChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
 
     // Diplomacy actions from RightPanel buttons
     const onDiplomacyAction = (event: Event) => {
@@ -945,6 +974,9 @@ export class GameScene extends Phaser.Scene {
           },
           onCancel: () => {},
         });
+      } else if (action === 'toggleOpenBorders') {
+        diplomacyManager.toggleOpenBorders(humanNationIdForDiplomacy, targetNationId);
+        rightPanel?.refreshCurrent();
       }
     };
     document.addEventListener('diplomacyAction', onDiplomacyAction);
@@ -967,7 +999,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       happinessSystem,
       researchSystem,
-      policySystem,
+      cultureSystem,
       turnManager,
       (turn) => this.timeSystem.getLabelForTurn(turn),
     );
@@ -981,14 +1013,14 @@ export class GameScene extends Phaser.Scene {
         if (!humanNationId) return false;
         const started = researchSystem.startResearch(humanNationId, technologyId);
         if (!started) return false;
-        if (humanNeedsPolicySelection()) {
+        if (humanNeedsCultureSelection()) {
           hudLayer?.openCulturePanel();
         }
         return true;
       },
-      onSelectPolicy: (policyId) => {
+      onSelectCultureNode: (nodeId) => {
         if (!humanNationId) return false;
-        return policySystem.selectPolicy(humanNationId, policyId);
+        return cultureSystem.startCultureNode(humanNationId, nodeId);
       },
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
@@ -997,7 +1029,7 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
-    policySystem.onChanged(() => {
+    cultureSystem.onChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -1023,7 +1055,7 @@ export class GameScene extends Phaser.Scene {
     );
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setResearchSystem(researchSystem);
-    rightPanel.setPolicySystem(policySystem);
+    rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
     rightPanel.setBuilderHintProvider((tile) => {
@@ -1524,7 +1556,7 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
-    policySystem.onChanged(() => {
+    cultureSystem.onChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
@@ -1539,7 +1571,7 @@ export class GameScene extends Phaser.Scene {
     const cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
-      policySystem,
+      cultureSystem,
       resourceSystem,
       diagnosticSystem: this.diagnosticSystem,
       productionSystem,
@@ -1988,6 +2020,7 @@ export class GameScene extends Phaser.Scene {
     for (const candidate of candidates) {
       const tile = tileMap.getTileAt(candidate.x, candidate.y);
       if (tile === null) continue;
+      if (tile.ownerId !== city.ownerId) continue;
       if (unitType.isNaval) {
         if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
       } else if (tile.type === TileType.Ocean || tile.type === TileType.Coast) {

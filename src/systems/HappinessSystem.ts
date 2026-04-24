@@ -45,16 +45,16 @@ export class HappinessSystem {
           buildingSum + (getBuildingById(buildingId)?.modifiers.happinessPerTurn ?? 0)
         ), 0)
     ), 0);
-    const policyHappiness = nationModifiers.happinessPerTurn ?? 0;
+    const modifierHappiness = nationModifiers.happinessPerTurn ?? 0;
 
     const breakdown: HappinessBreakdown = {
       baseHappiness: BASE_HAPPINESS,
       buildingHappiness,
-      policyHappiness,
+      modifierHappiness,
       cityUnhappiness: cities.length * CITY_UNHAPPINESS,
       populationUnhappiness: totalPopulation * POPULATION_UNHAPPINESS,
     };
-    const totalHappiness = breakdown.baseHappiness + breakdown.buildingHappiness + breakdown.policyHappiness;
+    const totalHappiness = breakdown.baseHappiness + breakdown.buildingHappiness + breakdown.modifierHappiness;
     const totalUnhappiness = breakdown.cityUnhappiness + breakdown.populationUnhappiness;
     const netHappiness = totalHappiness - totalUnhappiness;
 
@@ -146,7 +146,7 @@ function statesEqual(
     && previous.productionModifier === next.productionModifier
     && previous.breakdown.baseHappiness === next.breakdown.baseHappiness
     && previous.breakdown.buildingHappiness === next.breakdown.buildingHappiness
-    && previous.breakdown.policyHappiness === next.breakdown.policyHappiness
+    && previous.breakdown.modifierHappiness === next.breakdown.modifierHappiness
     && previous.breakdown.cityUnhappiness === next.breakdown.cityUnhappiness
     && previous.breakdown.populationUnhappiness === next.breakdown.populationUnhappiness;
 }

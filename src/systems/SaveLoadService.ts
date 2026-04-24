@@ -82,9 +82,9 @@ export class SaveLoadService {
         researchedTechIds: [...nation.researchedTechIds],
         currentResearchTechId: nation.currentResearchTechId,
         researchProgress: nation.researchProgress,
-        unlockedPolicyIds: [...nation.unlockedPolicyIds],
-        currentPolicyId: nation.currentPolicyId,
-        policyProgress: nation.policyProgress,
+        unlockedCultureNodeIds: [...nation.unlockedCultureNodeIds],
+        currentCultureNodeId: nation.currentCultureNodeId,
+        cultureProgress: nation.cultureProgress,
         gold: res.gold,
         culture: res.culture,
         influence: res.influence,
@@ -163,7 +163,8 @@ export class SaveLoadService {
     const diplomacy: SavedDiplomacyEntry[] = diplomacyManager.getAllStates().map((entry) => ({
       nationA: entry.keys[0],
       nationB: entry.keys[1],
-      state: entry.state,
+      state: entry.relation.state,
+      openBorders: entry.relation.openBorders,
     }));
 
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
@@ -293,9 +294,9 @@ export class SaveLoadService {
       nation.researchedTechIds = [...saved.researchedTechIds];
       nation.currentResearchTechId = saved.currentResearchTechId;
       nation.researchProgress = saved.researchProgress;
-      nation.unlockedPolicyIds = [...saved.unlockedPolicyIds];
-      nation.currentPolicyId = saved.currentPolicyId;
-      nation.policyProgress = saved.policyProgress;
+      nation.unlockedCultureNodeIds = [...(saved.unlockedCultureNodeIds ?? [])];
+      nation.currentCultureNodeId = saved.currentCultureNodeId;
+      nation.cultureProgress = saved.cultureProgress ?? 0;
 
       const res = nationManager.getResources(saved.id);
       res.gold = saved.gold;
@@ -398,7 +399,7 @@ export class SaveLoadService {
   ): void {
     diplomacyManager.resetAll();
     for (const entry of entries) {
-      diplomacyManager.restoreState(entry.nationA, entry.nationB, entry.state);
+      diplomacyManager.restoreState(entry.nationA, entry.nationB, entry.state, entry.openBorders ?? false);
     }
   }
 

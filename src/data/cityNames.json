@@ -67,7 +67,9 @@
   ],
   "nation_sweden": [
     "Stockholm",
+    "Malmö",
     "Uppsala",
+    "Göteborg",
     "Kalmar",
     "Visby",
     "Linkoping",
@@ -76,7 +78,7 @@
     "Orebro",
     "Arboga",
     "Nykoping",
-    "Abo",
+    "Eskilstuna",
     "Viborg",
     "Vadstena",
     "Jonkoping",
@@ -85,7 +87,8 @@
     "Enkoping",
     "Koping",
     "Falun",
-    "Lodose"
+    "Lodose",
+    "Abo"
   ],
   "nation_lithuania": [
     "Vilnius",

@@ -146,6 +146,19 @@ export class CityTerritorySystem {
     return true;
   }
 
+  transferCityTerritory(city: City, newOwnerId: string, mapData: MapData): void {
+    city.ownedTileCoords = this.normalizeCoords([
+      ...city.ownedTileCoords,
+      { x: city.tileX, y: city.tileY },
+    ]);
+
+    for (const coord of city.ownedTileCoords) {
+      const tile = this.getTile(mapData, coord.x, coord.y);
+      if (!tile) continue;
+      tile.ownerId = newOwnerId;
+    }
+  }
+
   getExpansionProgress(city: City, mapData: MapData): {
     currentCulture: number;
     requiredCulture: number;

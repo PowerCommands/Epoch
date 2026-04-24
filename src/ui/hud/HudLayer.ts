@@ -16,7 +16,7 @@ interface HudLayerConfig {
   worldInputGate: WorldInputGate;
   onEndTurn: () => void;
   onSelectResearch: (technologyId: string) => boolean;
-  onSelectPolicy: (policyId: string) => boolean;
+  onSelectCultureNode: (nodeId: string) => boolean;
 }
 
 export class HudLayer {
@@ -68,7 +68,7 @@ export class HudLayer {
     });
 
     this.culturePanel = new CultureHudPanel(scene, (object) => this.addOwned(object), this.config.worldInputGate);
-    this.culturePanel.setOnSelectPolicy((policyId) => this.config.onSelectPolicy(policyId));
+    this.culturePanel.setOnSelectCultureNode((nodeId) => this.config.onSelectCultureNode(nodeId));
     this.culturePanel.setOnToggle((collapsed) => {
       if (!collapsed) {
         this.researchPanel.setCollapsed(true);
@@ -136,7 +136,7 @@ export class HudLayer {
 
     this.topResourceBar.setEntries(this.config.dataProvider.getResourceEntries(nationId));
     this.researchPanel.setState(this.config.dataProvider.getResearchState(nationId));
-    this.culturePanel.setState(this.config.dataProvider.getPolicyState(nationId));
+    this.culturePanel.setState(this.config.dataProvider.getCultureState(nationId));
     this.unitActionHudToolbox.refresh();
     this.endTurnButton.setEnabled(this.endTurnEnabled);
     this.layout();

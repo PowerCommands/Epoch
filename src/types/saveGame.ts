@@ -27,9 +27,9 @@ export interface SavedNation {
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;
-  unlockedPolicyIds: string[];
-  currentPolicyId?: string;
-  policyProgress: number;
+  unlockedCultureNodeIds?: string[];
+  currentCultureNodeId?: string;
+  cultureProgress?: number;
   gold: number;
   culture: number;
   influence?: number;
@@ -84,6 +84,7 @@ export interface SavedDiplomacyEntry {
   nationA: string;
   nationB: string;
   state: 'WAR' | 'PEACE';
+  openBorders?: boolean;
 }
 
 export interface SavedDiscoveryEntry {

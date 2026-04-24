@@ -120,9 +120,9 @@ export class NationManager {
         researchedTechIds: cfg.researchedTechIds,
         currentResearchTechId: cfg.currentResearchTechId,
         researchProgress: cfg.researchProgress,
-        unlockedPolicyIds: cfg.unlockedPolicyIds,
-        currentPolicyId: cfg.currentPolicyId,
-        policyProgress: cfg.policyProgress,
+        unlockedCultureNodeIds: cfg.unlockedCultureNodeIds,
+        currentCultureNodeId: cfg.currentCultureNodeId,
+        cultureProgress: cfg.cultureProgress,
       }));
       if (!cfg.isHuman) {
         NationManager.claimArea(

@@ -10,9 +10,9 @@ export interface NationConfig {
   researchedTechIds?: string[];
   currentResearchTechId?: string;
   researchProgress?: number;
-  unlockedPolicyIds?: string[];
-  currentPolicyId?: string;
-  policyProgress?: number;
+  unlockedCultureNodeIds?: string[];
+  currentCultureNodeId?: string;
+  cultureProgress?: number;
 }
 
 /**
@@ -31,9 +31,9 @@ export class Nation {
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;
-  unlockedPolicyIds: string[];
-  currentPolicyId?: string;
-  policyProgress: number;
+  unlockedCultureNodeIds: string[];
+  currentCultureNodeId?: string;
+  cultureProgress: number;
 
   constructor(config: NationConfig) {
     this.id = config.id;
@@ -45,8 +45,8 @@ export class Nation {
     this.researchedTechIds = [...(config.researchedTechIds ?? [])];
     this.currentResearchTechId = config.currentResearchTechId;
     this.researchProgress = config.researchProgress ?? 0;
-    this.unlockedPolicyIds = [...(config.unlockedPolicyIds ?? [])];
-    this.currentPolicyId = config.currentPolicyId;
-    this.policyProgress = config.policyProgress ?? 0;
+    this.unlockedCultureNodeIds = [...(config.unlockedCultureNodeIds ?? [])];
+    this.currentCultureNodeId = config.currentCultureNodeId;
+    this.cultureProgress = config.cultureProgress ?? 0;
   }
 }

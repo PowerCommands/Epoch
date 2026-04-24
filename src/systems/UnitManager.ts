@@ -216,9 +216,9 @@ export class UnitManager {
       if (capital === undefined) continue;
 
       const position =
-        UnitManager.findAdjacentLandPosition(mapData, manager, capital.tileX, capital.tileY) ??
+        UnitManager.findAdjacentLandPosition(mapData, manager, capital.tileX, capital.tileY, nation.id) ??
         UnitManager.findOwnedLandPosition(mapData, manager, nation.id) ??
-        UnitManager.findAnyLandPosition(mapData, manager);
+        UnitManager.findAnyLandPosition(mapData, manager, nation.id);
 
       if (position === null) continue;
 
@@ -381,6 +381,7 @@ export class UnitManager {
     manager: UnitManager,
     tileX: number,
     tileY: number,
+    ownerId?: string,
   ): { x: number; y: number } | null {
     const offsets = [
       { dq: 1, dr: 0 },
@@ -394,7 +395,7 @@ export class UnitManager {
     for (const offset of offsets) {
       const x = tileX + offset.dq;
       const y = tileY + offset.dr;
-      if (UnitManager.canPlaceAt(mapData, manager, x, y)) return { x, y };
+      if (UnitManager.canPlaceAt(mapData, manager, x, y, ownerId)) return { x, y };
     }
 
     return null;
@@ -419,10 +420,11 @@ export class UnitManager {
   private static findAnyLandPosition(
     mapData: MapData,
     manager: UnitManager,
+    ownerId?: string,
   ): { x: number; y: number } | null {
     for (const row of mapData.tiles) {
       for (const tile of row) {
-        if (UnitManager.canPlaceAt(mapData, manager, tile.x, tile.y)) {
+        if (UnitManager.canPlaceAt(mapData, manager, tile.x, tile.y, ownerId)) {
           return { x: tile.x, y: tile.y };
         }
       }
@@ -435,9 +437,11 @@ export class UnitManager {
     manager: UnitManager,
     tileX: number,
     tileY: number,
+    ownerId?: string,
   ): boolean {
     const tile = mapData.tiles[tileY]?.[tileX];
     if (tile === undefined) return false;
+    if (ownerId !== undefined && tile.ownerId !== undefined && tile.ownerId !== ownerId) return false;
     if (tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
     return manager.getUnitAt(tileX, tileY) === null;
   }

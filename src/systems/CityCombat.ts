@@ -5,6 +5,7 @@ import type { ProductionSystem } from './ProductionSystem';
 import type { MapData } from '../types/map';
 import { CITY_BASE_HEALTH, CITY_CAPTURE_HEALTH_FRACTION } from '../data/cities';
 import type { UnitManager } from './UnitManager';
+import { CityTerritorySystem } from './CityTerritorySystem';
 
 /**
  * Intern hjälpmodul för stadserövring.
@@ -23,9 +24,8 @@ export function captureCity(
   // Byt stadsägare och rensa produktion
   cityManager.transferOwnership(city.id, newOwnerId, productionSystem);
 
-  // Tile byter ägare
-  const tile = mapData.tiles[city.tileY]?.[city.tileX];
-  if (tile) tile.ownerId = newOwnerId;
+  // Stadens hela territorium byter ägare så renderers och save/load ser samma state.
+  new CityTerritorySystem().transferCityTerritory(city, newOwnerId, mapData);
 
   // HP återställs till 25% av max
   city.health = Math.round(CITY_BASE_HEALTH * CITY_CAPTURE_HEALTH_FRACTION);

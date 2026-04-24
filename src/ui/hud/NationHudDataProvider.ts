@@ -1,10 +1,10 @@
 import type { CityManager } from '../../systems/CityManager';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { NationManager } from '../../systems/NationManager';
-import type { PolicySystem } from '../../systems/PolicySystem';
+import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { TurnManager } from '../../systems/TurnManager';
-import { getPolicyById } from '../../data/policies';
+import { getCultureNodeById } from '../../data/cultureTree';
 
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence';
@@ -30,10 +30,11 @@ export interface HudResearchState {
   researchedNames: string[];
 }
 
-export interface HudPolicyEntry {
+export interface HudCultureEntry {
   id: string;
   name: string;
-  description: string;
+  era: string;
+  unlocks: string[];
   effectiveCost: number;
   isUnlocked: boolean;
   isActive: boolean;
@@ -42,20 +43,19 @@ export interface HudPolicyEntry {
   missingPrerequisiteNames: string[];
 }
 
-export interface HudPolicyTreeState {
+export interface HudCultureEraState {
   id: string;
   name: string;
-  description?: string;
-  policies: HudPolicyEntry[];
+  nodes: HudCultureEntry[];
 }
 
-export interface HudPolicyState {
+export interface HudCultureState {
   currentName: string;
   progress: number;
   cost: number;
   progressPercent: number;
   culturePerTurn: number;
-  trees: HudPolicyTreeState[];
+  eras: HudCultureEraState[];
 }
 
 /**
@@ -68,7 +68,7 @@ export class NationHudDataProvider {
     private readonly cityManager: CityManager,
     private readonly happinessSystem: HappinessSystem,
     private readonly researchSystem: ResearchSystem,
-    private readonly policySystem: PolicySystem,
+    private readonly cultureSystem: CultureSystem,
     private readonly turnManager: TurnManager,
     private readonly getTurnLabel: (turn: number) => string,
   ) {}
@@ -145,46 +145,51 @@ export class NationHudDataProvider {
     };
   }
 
-  getPolicyState(nationId: string): HudPolicyState {
-    const current = this.policySystem.getCurrentPolicy(nationId);
-    const viewState = this.policySystem.getPolicyViewState(nationId);
-    const trees = new Map<string, HudPolicyTreeState>();
+  getCultureState(nationId: string): HudCultureState {
+    const current = this.cultureSystem.getCurrentCultureNode(nationId);
+    const viewState = this.cultureSystem.getCultureViewState(nationId)
+      .filter((entry) => entry.isAvailable || entry.isActive);
+    const eras = new Map<string, HudCultureEraState>();
 
     for (const entry of viewState) {
-      const existingTree = trees.get(entry.tree.id);
-      const treeState = existingTree ?? {
-        id: entry.tree.id,
-        name: entry.tree.name,
-        description: entry.tree.description,
-        policies: [],
+      const existingEra = eras.get(entry.node.era);
+      const eraState = existingEra ?? {
+        id: entry.node.era,
+        name: formatEraName(entry.node.era),
+        nodes: [],
       };
 
-      treeState.policies.push({
-        id: entry.policy.id,
-        name: entry.policy.name,
-        description: entry.policy.description,
+      eraState.nodes.push({
+        id: entry.node.id,
+        name: entry.node.name,
+        era: entry.node.era,
+        unlocks: entry.node.unlocks.map((unlock) => `${unlock.type}: ${unlock.value}`),
         effectiveCost: entry.effectiveCost,
         isUnlocked: entry.isUnlocked,
         isActive: entry.isActive,
         isAvailable: entry.isAvailable,
-        prerequisiteNames: entry.policy.prerequisites.map((id) => getPolicyById(id)?.name ?? id),
-        missingPrerequisiteNames: entry.missingPrerequisiteIds.map((id) => getPolicyById(id)?.name ?? id),
+        prerequisiteNames: (entry.node.prerequisites ?? []).map((id) => getCultureNodeById(id)?.name ?? id),
+        missingPrerequisiteNames: entry.missingPrerequisiteIds.map((id) => getCultureNodeById(id)?.name ?? id),
       });
 
-      if (!existingTree) {
-        trees.set(entry.tree.id, treeState);
+      if (!existingEra) {
+        eras.set(entry.node.era, eraState);
       }
     }
 
     return {
       currentName: current?.name ?? 'None selected',
-      progress: this.policySystem.getPolicyProgress(nationId),
-      cost: current ? this.policySystem.getEffectiveCost(nationId, current.id) : 0,
+      progress: this.cultureSystem.getCultureProgress(nationId),
+      cost: current ? this.cultureSystem.getEffectiveCost(current.id) : 0,
       progressPercent: current
-        ? Math.max(0, Math.min(100, Math.round((this.policySystem.getPolicyProgress(nationId) / this.policySystem.getEffectiveCost(nationId, current.id)) * 100)))
+        ? Math.max(0, Math.min(100, Math.round((this.cultureSystem.getCultureProgress(nationId) / this.cultureSystem.getEffectiveCost(current.id)) * 100)))
         : 0,
-      culturePerTurn: this.policySystem.getPolicyCulturePerTurn(nationId),
-      trees: Array.from(trees.values()),
+      culturePerTurn: this.cultureSystem.getCulturePerTurn(nationId),
+      eras: Array.from(eras.values()),
     };
   }
+}
+
+function formatEraName(era: string): string {
+  return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }

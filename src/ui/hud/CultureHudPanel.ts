@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 import { CircularHudProgressButton } from './CircularHudProgressButton';
-import type { HudPolicyEntry, HudPolicyState } from './NationHudDataProvider';
+import type { HudCultureEntry, HudCultureState } from './NationHudDataProvider';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
@@ -29,7 +29,7 @@ const SECTION_GAP = 16;
 const SCROLL_STEP = 56;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
-interface PolicyButtonView {
+interface CultureButtonView {
   id: string;
   background: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
@@ -57,8 +57,7 @@ export class CultureHudPanel {
   private readonly currentText: Phaser.GameObjects.Text;
   private readonly progressText: Phaser.GameObjects.Text;
   private readonly cultureText: Phaser.GameObjects.Text;
-  private readonly treeTitleTexts: Phaser.GameObjects.Text[] = [];
-  private readonly treeDescriptionTexts: Phaser.GameObjects.Text[] = [];
+  private readonly eraTitleTexts: Phaser.GameObjects.Text[] = [];
   private readonly handleWheel: (
     pointer: Phaser.Input.Pointer,
     gameObjects: Phaser.GameObjects.GameObject[],
@@ -68,7 +67,7 @@ export class CultureHudPanel {
     event: WheelEvent,
   ) => void;
 
-  private readonly policyButtons: PolicyButtonView[] = [];
+  private readonly cultureButtons: CultureButtonView[] = [];
   private collapsed = true;
   private draggingScrollbar = false;
   private dragPointerId: number | null = null;
@@ -77,15 +76,15 @@ export class CultureHudPanel {
   private scrollOffset = 0;
   private maxScroll = 0;
   private panelBounds = new Phaser.Geom.Rectangle();
-  private onSelectPolicy: ((policyId: string) => boolean) | null = null;
+  private onSelectCultureNode: ((nodeId: string) => boolean) | null = null;
   private onToggle: ((collapsed: boolean) => void) | null = null;
-  private state: HudPolicyState = {
+  private state: HudCultureState = {
     currentName: 'None selected',
     progress: 0,
     cost: 0,
     progressPercent: 0,
     culturePerTurn: 0,
-    trees: [],
+    eras: [],
   };
 
   constructor(
@@ -138,7 +137,7 @@ export class CultureHudPanel {
     this.contentMaskGraphics = new Phaser.GameObjects.Graphics(scene);
     this.contentMask = this.contentMaskGraphics.createGeometryMask();
 
-    this.titleText = this.createMaskedText('Culture', 24, '#f2f7fb', 'bold');
+    this.titleText = this.createMaskedText('Civics', 24, '#f2f7fb', 'bold');
     this.currentText = this.createMaskedText('', 18, '#f2f7fb', 'normal', PANEL_CONTENT_WIDTH);
     this.progressText = this.createMaskedText('', 17, '#c7d6e5');
     this.cultureText = this.createMaskedText('', 17, '#8fd0ff');
@@ -221,7 +220,7 @@ export class CultureHudPanel {
     this.layout(scene.scale.width, scene.scale.height);
   }
 
-  setState(state: HudPolicyState): void {
+  setState(state: HudCultureState): void {
     this.state = state;
     this.currentText.setText(`Current: ${state.currentName}`);
     this.progressText.setText(
@@ -231,12 +230,12 @@ export class CultureHudPanel {
     );
     this.cultureText.setText(`Culture: +${state.culturePerTurn}/turn`);
     this.toggleButton.setProgress(state.cost > 0 ? state.progress / state.cost : 0);
-    this.rebuildPolicyButtons();
+    this.rebuildCultureButtons();
     this.layout(this.scene.scale.width, this.scene.scale.height);
   }
 
-  setOnSelectPolicy(handler: (policyId: string) => boolean): void {
-    this.onSelectPolicy = handler;
+  setOnSelectCultureNode(handler: (nodeId: string) => boolean): void {
+    this.onSelectCultureNode = handler;
   }
 
   setOnToggle(handler: (collapsed: boolean) => void): void {
@@ -280,27 +279,16 @@ export class CultureHudPanel {
     this.cultureText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
     contentCursor += LINE_HEIGHT + SECTION_GAP;
 
-    let treeIndex = 0;
+    let eraIndex = 0;
     let buttonIndex = 0;
-    for (const tree of this.state.trees) {
-      const treeTitle = this.treeTitleTexts[treeIndex];
-      const treeDescription = this.treeDescriptionTexts[treeIndex];
+    for (const era of this.state.eras) {
+      const eraTitle = this.eraTitleTexts[eraIndex];
 
-      treeTitle.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
+      eraTitle.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
       contentCursor += LINE_HEIGHT - 2;
 
-      if (tree.description) {
-        treeDescription
-          .setVisible(panelVisible)
-          .setPosition(Math.round(innerX), Math.round(baseY + contentCursor))
-          .setText(tree.description);
-        contentCursor += treeDescription.height + 6;
-      } else {
-        treeDescription.setVisible(false);
-      }
-
-      for (const _policy of tree.policies) {
-        const button = this.policyButtons[buttonIndex];
+      for (const _node of era.nodes) {
+        const button = this.cultureButtons[buttonIndex];
         button.background.setVisible(panelVisible)
           .setPosition(Math.round(innerX), Math.round(baseY + contentCursor))
           .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
@@ -312,7 +300,7 @@ export class CultureHudPanel {
       }
 
       contentCursor += SECTION_GAP - BUTTON_GAP;
-      treeIndex += 1;
+      eraIndex += 1;
     }
 
     const fullContentHeight = contentCursor + PANEL_BOTTOM_PADDING;
@@ -342,9 +330,8 @@ export class CultureHudPanel {
     this.currentText.destroy();
     this.progressText.destroy();
     this.cultureText.destroy();
-    this.destroyPolicyButtons();
-    for (const text of this.treeTitleTexts) text.destroy();
-    for (const text of this.treeDescriptionTexts) text.destroy();
+    this.destroyCultureButtons();
+    for (const text of this.eraTitleTexts) text.destroy();
   }
 
   private createMaskedText(
@@ -370,35 +357,27 @@ export class CultureHudPanel {
     return object;
   }
 
-  private rebuildPolicyButtons(): void {
-    this.destroyPolicyButtons();
-    for (const text of this.treeTitleTexts) {
+  private rebuildCultureButtons(): void {
+    this.destroyCultureButtons();
+    for (const text of this.eraTitleTexts) {
       const index = this.contentObjects.indexOf(text);
       if (index >= 0) this.contentObjects.splice(index, 1);
       text.destroy();
     }
-    for (const text of this.treeDescriptionTexts) {
-      const index = this.contentObjects.indexOf(text);
-      if (index >= 0) this.contentObjects.splice(index, 1);
-      text.destroy();
-    }
-    this.treeTitleTexts.length = 0;
-    this.treeDescriptionTexts.length = 0;
+    this.eraTitleTexts.length = 0;
 
-    for (const tree of this.state.trees) {
-      const title = this.createMaskedText(tree.name, 16, '#88a6bd', 'bold');
-      const description = this.createMaskedText(tree.description ?? '', 15, '#9fb2c3', 'normal', PANEL_CONTENT_WIDTH);
-      this.treeTitleTexts.push(title);
-      this.treeDescriptionTexts.push(description);
+    for (const era of this.state.eras) {
+      const title = this.createMaskedText(era.name, 16, '#88a6bd', 'bold');
+      this.eraTitleTexts.push(title);
 
-      for (const entry of tree.policies) {
-        this.policyButtons.push(this.createPolicyButton(entry));
+      for (const entry of era.nodes) {
+        this.cultureButtons.push(this.createCultureButton(entry));
       }
     }
   }
 
-  private createPolicyButton(entry: HudPolicyEntry): PolicyButtonView {
-    const style = getPolicyVisualState(entry);
+  private createCultureButton(entry: HudCultureEntry): CultureButtonView {
+    const style = getCultureNodeVisualState(entry);
     const background = this.addOwned(
       new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, BUTTON_HEIGHT, style.fillColor, style.fillAlpha),
     )
@@ -444,7 +423,7 @@ export class CultureHudPanel {
       .setMask(this.contentMask);
 
     this.contentObjects.push(background, label, detail, prerequisite);
-    const button: PolicyButtonView = {
+    const button: CultureButtonView = {
       id: entry.id,
       background,
       label,
@@ -466,7 +445,7 @@ export class CultureHudPanel {
       event.stopPropagation();
       if (!button.isSelectable) return;
       button.hovered = true;
-      refreshPolicyButtonVisual(button);
+      refreshCultureButtonVisual(button);
     });
     background.on(Phaser.Input.Events.POINTER_OUT, (
       _pointer: Phaser.Input.Pointer,
@@ -475,7 +454,7 @@ export class CultureHudPanel {
       event.stopPropagation();
       button.hovered = false;
       button.pressed = false;
-      refreshPolicyButtonVisual(button);
+      refreshCultureButtonVisual(button);
     });
     background.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
@@ -488,7 +467,7 @@ export class CultureHudPanel {
       this.worldInputGate.claimPointer(pointer.id);
       button.pressed = true;
       consumePointerEvent(pointer);
-      refreshPolicyButtonVisual(button);
+      refreshCultureButtonVisual(button);
     });
     background.on(Phaser.Input.Events.POINTER_UP, (
       pointer: Phaser.Input.Pointer,
@@ -503,19 +482,19 @@ export class CultureHudPanel {
       button.pressed = false;
       this.worldInputGate.releasePointer(pointer.id);
       if (shouldSelect) {
-        if (this.onSelectPolicy?.(button.id)) {
+        if (this.onSelectCultureNode?.(button.id)) {
           this.setCollapsed(true);
         }
       }
-      refreshPolicyButtonVisual(button);
+      refreshCultureButtonVisual(button);
     });
 
-    refreshPolicyButtonVisual(button);
+    refreshCultureButtonVisual(button);
     return button;
   }
 
-  private destroyPolicyButtons(): void {
-    for (const button of this.policyButtons) {
+  private destroyCultureButtons(): void {
+    for (const button of this.cultureButtons) {
       for (const object of [button.background, button.label, button.detail, button.prerequisite]) {
         const index = this.contentObjects.indexOf(object);
         if (index >= 0) this.contentObjects.splice(index, 1);
@@ -525,7 +504,7 @@ export class CultureHudPanel {
       button.detail.destroy();
       button.prerequisite.destroy();
     }
-    this.policyButtons.length = 0;
+    this.cultureButtons.length = 0;
   }
 
   private applyScroll(delta: number): void {
@@ -605,7 +584,7 @@ export class CultureHudPanel {
   }
 }
 
-function getPolicyVisualState(entry: HudPolicyEntry): {
+function getCultureNodeVisualState(entry: HudCultureEntry): {
   fillColor: number;
   fillAlpha: number;
   strokeColor: number;
@@ -658,14 +637,15 @@ function getPolicyVisualState(entry: HudPolicyEntry): {
   };
 }
 
-function getDetailText(entry: HudPolicyEntry): string {
-  if (entry.isUnlocked) return `Unlocked - ${entry.description}`;
-  if (entry.isActive) return `Active - ${entry.description}`;
-  if (entry.isAvailable) return `Available - ${entry.description}`;
-  return `Locked - ${entry.description}`;
+function getDetailText(entry: HudCultureEntry): string {
+  const unlocks = entry.unlocks.length > 0 ? entry.unlocks.join(', ') : 'No direct unlocks';
+  if (entry.isUnlocked) return `Unlocked - ${unlocks}`;
+  if (entry.isActive) return `Active - ${unlocks}`;
+  if (entry.isAvailable) return `Available - ${unlocks}`;
+  return `Locked - ${unlocks}`;
 }
 
-function getPrerequisiteText(entry: HudPolicyEntry): string {
+function getPrerequisiteText(entry: HudCultureEntry): string {
   if (entry.prerequisiteNames.length === 0) {
     return 'Prerequisites: none';
   }
@@ -675,7 +655,7 @@ function getPrerequisiteText(entry: HudPolicyEntry): string {
   return `Missing: ${entry.missingPrerequisiteNames.join(', ')}`;
 }
 
-function refreshPolicyButtonVisual(button: PolicyButtonView): void {
+function refreshCultureButtonVisual(button: CultureButtonView): void {
   const scale = button.pressed ? 0.985 : button.hovered && button.isSelectable ? 1.01 : 1;
   button.background.setScale(scale);
 
