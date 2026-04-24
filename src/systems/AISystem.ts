@@ -13,6 +13,7 @@ import { TurnManager } from './TurnManager';
 import { getTileMovementCost, MovementSystem } from './MovementSystem';
 import { CombatSystem } from './CombatSystem';
 import { ProductionSystem } from './ProductionSystem';
+import { canCityProduceUnit } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import { calculateCityEconomy } from './CityEconomy';
@@ -26,7 +27,7 @@ const SETTLER_MIN_CITY_DISTANCE = 5;
 const LOW_NET_FOOD_THRESHOLD = 1;
 const LOW_PRODUCTION_THRESHOLD = 2;
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
-  unitType.baseStrength > 0 && !unitType.isNaval
+  unitType.baseStrength > 0
 ));
 
 /**
@@ -404,7 +405,10 @@ export class AISystem {
   }
 
   private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
-    const available = MILITARY_OPTIONS.filter((u) => this.canBuildUnit(nationId, u.id));
+    const available = MILITARY_OPTIONS.filter((u) => (
+      this.canBuildUnit(nationId, u.id) &&
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem)
+    ));
     const archer = available.find((u) => u.id === ARCHER.id);
     if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
     return available.find((u) => u.id === WARRIOR.id) ?? WARRIOR;

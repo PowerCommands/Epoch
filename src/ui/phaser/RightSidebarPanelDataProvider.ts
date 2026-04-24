@@ -15,12 +15,13 @@ import type { EventLogSystem } from '../../systems/EventLogSystem';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
 import type { NationManager } from '../../systems/NationManager';
+import { canCityProduceUnit } from '../../systems/ProductionRules';
 import type { ProductionSystem } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { Producible } from '../../types/producible';
-import { TileType, type MapData, type Tile } from '../../types/map';
+import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
 import type {
   RightSidebarContent,
@@ -496,7 +497,6 @@ export class RightSidebarPanelDataProvider {
   }
 
   private getAddToQueueSection(city: City): RightSidebarSection {
-    const hasCoastalAccess = cityHasCoastalAccess(city, this.mapData, this.gridSystem);
     const reservedBuildingIds = new Set(
       city.ownedTileCoords
         .map((coord) => this.mapData.tiles[coord.y]?.[coord.x]?.buildingConstruction?.buildingId)
@@ -504,7 +504,7 @@ export class RightSidebarPanelDataProvider {
     );
     const rows: RightSidebarRow[] = [];
     for (const unitType of ALL_UNIT_TYPES) {
-      if (unitType.isNaval && !hasCoastalAccess) continue;
+      if (!canCityProduceUnit(city, unitType, this.mapData, this.gridSystem)) continue;
       if (this.researchSystem && !this.researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
       const item: Producible = { kind: 'unit', unitType };
       rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})`, () => {
@@ -705,17 +705,6 @@ function progressRow(label: string, current: number, max: number): RightSidebarR
 
 function getProducibleName(item: Producible): string {
   return item.kind === 'unit' ? item.unitType.name : item.buildingType.name;
-}
-
-function cityHasCoastalAccess(city: City, mapData: MapData, gridSystem: IGridSystem): boolean {
-  const positions = [
-    { x: city.tileX, y: city.tileY },
-    ...gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY }),
-  ];
-  return positions.some(({ x, y }) => {
-    const tile = mapData.tiles[y]?.[x];
-    return tile?.type === TileType.Coast || tile?.type === TileType.Ocean;
-  });
 }
 
 function formatSigned(value: number): string {
