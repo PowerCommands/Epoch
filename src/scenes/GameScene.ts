@@ -676,6 +676,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Hantera färdig produktion
+    // TODO wonder: when Producible gains a 'wonder' variant, add handling here.
     productionSystem.onCompleted((cityId, item) => {
       const city = cityManager.getCity(cityId);
       if (!city) return false;
@@ -1185,6 +1186,25 @@ export class GameScene extends Phaser.Scene {
       }
 
       return { ok: true };
+    });
+    rightPanel.setBuyProductionRequestHandler((city, index) => {
+      if (city.ownerId !== humanNationId) return;
+      const cost = productionSystem.getBuyCost(city.id, index);
+      if (cost === null) return;
+      const nationResources = nationManager.getResources(city.ownerId);
+      if (nationResources.gold < cost) {
+        rightPanel?.requestRefresh();
+        return;
+      }
+
+      resourceSystem.addGold(city.ownerId, -cost);
+      const result = productionSystem.completeQueueEntry(city.id, index);
+      if (!result.ok) {
+        resourceSystem.addGold(city.ownerId, cost);
+        rightPanel?.requestRefresh();
+        return;
+      }
+      resourceSystem.recalculateForNation(city.ownerId);
     });
     const getOpenCityViewCity = (): City | null => {
       const selected = selectionManager.getSelected();

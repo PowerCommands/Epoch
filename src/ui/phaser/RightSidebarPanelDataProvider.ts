@@ -38,6 +38,7 @@ type ChangedListener = () => void;
 type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
 type BuildingPlacementRequestResult = { ok: boolean; message?: string };
 type BuildingPlacementRequestHandler = (city: City, buildingId: string) => BuildingPlacementRequestResult;
+type BuyProductionRequestHandler = (city: City, index: number) => void;
 
 interface LeaderboardEntry {
   nationId: string;
@@ -59,6 +60,7 @@ export class RightSidebarPanelDataProvider {
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
   private buildingPlacementRequestHandler: BuildingPlacementRequestHandler | null = null;
+  private buyProductionRequestHandler: BuyProductionRequestHandler | null = null;
   private current: RightSidebarDetailsState = {
     view: null,
     tile: null,
@@ -111,6 +113,10 @@ export class RightSidebarPanelDataProvider {
 
   setBuildingPlacementRequestHandler(handler: BuildingPlacementRequestHandler): void {
     this.buildingPlacementRequestHandler = handler;
+  }
+
+  setBuyProductionRequestHandler(handler: BuyProductionRequestHandler): void {
+    this.buyProductionRequestHandler = handler;
   }
 
   setFoundCityHandler(canFoundCity: (unit: Unit) => boolean, foundCity: (unit: Unit) => void): void {
@@ -480,6 +486,7 @@ export class RightSidebarPanelDataProvider {
     const queue = this.productionSystem.getQueue(city.id);
     if (queue.length === 0) return { title: 'Production Queue', rows: [textRow('No production queued', true)] };
     const rows: RightSidebarRow[] = [];
+    const availableGold = isHuman ? this.nationManager.getResources(city.ownerId).gold : 0;
     queue.forEach((entry, index) => {
       const name = getProducibleName(entry.item);
       const turnsText = entry.blockedReason ? 'blocked' : `${entry.turnsRemaining} turn${entry.turnsRemaining !== 1 ? 's' : ''}`;
@@ -490,6 +497,25 @@ export class RightSidebarPanelDataProvider {
           this.requestRefresh();
         }, 0xb86767, '🗑️')
         : textRow(label));
+      if (isHuman) {
+        const buyCost = this.productionSystem.getBuyCost(city.id, index);
+        if (buyCost !== null) {
+          const canBuy = availableGold >= buyCost;
+          const buyLabel = canBuy
+            ? `💰 Buy for ${buyCost} gold`
+            : `💰 Need ${buyCost - availableGold} more gold`;
+          rows.push({
+            kind: 'button',
+            text: buyLabel,
+            disabled: !canBuy,
+            accentColor: 0xe0c060,
+            onClick: () => {
+              if (!canBuy) return;
+              this.buyProductionRequestHandler?.(city, index);
+            },
+          });
+        }
+      }
       if (index === 0 && !entry.blockedReason) rows.push(progressRow('Progress', entry.progress, entry.cost));
       if (entry.blockedReason) rows.push(textRow(entry.blockedReason, true));
     });

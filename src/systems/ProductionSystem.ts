@@ -42,6 +42,12 @@ export type CompleteCurrentProductionResult =
   | { kind: 'blocked'; item: Producible; reason: string }
   | { kind: 'empty' };
 
+export type CompleteQueueEntryResult =
+  | { ok: true; item: Producible }
+  | { ok: false; reason: string };
+
+const BUY_COST_PER_TURN = 100;
+
 /**
  * ProductionSystem manages per-city build queues.
  *
@@ -153,6 +159,48 @@ export class ProductionSystem {
   }
 
   /**
+   * Cost in gold to buy the queue entry at `index`.
+   * Scales with turnsRemaining so buying far-back entries or high-cost
+   * items is proportionally more expensive. Returns null if the entry
+   * doesn't exist.
+   */
+  getBuyCost(cityId: string, index: number): number | null {
+    const entries = this.getQueue(cityId);
+    if (index < 0 || index >= entries.length) return null;
+    return entries[index].turnsRemaining * BUY_COST_PER_TURN;
+  }
+
+  /**
+   * Force-complete a specific queue entry via the normal completion
+   * pipeline. Used by the buy flow so building/unit/wonder completion
+   * goes through the same onCompleted listeners as turn-based production.
+   *
+   * The entry is removed only if completion succeeds. If a listener
+   * blocks completion (e.g. no placement tile for a unit), the queue
+   * is left intact so callers can refund and retry.
+   */
+  completeQueueEntry(cityId: string, index: number): CompleteQueueEntryResult {
+    const queue = this.queues.get(cityId);
+    if (!queue || index < 0 || index >= queue.length) {
+      return { ok: false, reason: 'Queue entry not found' };
+    }
+    const entry = queue[index];
+    const completed = this.tryComplete(cityId, entry);
+    if (!completed) {
+      const reason = entry.blockedReason ?? this.getBlockedReason(entry.item) ?? 'Production blocked';
+      if (index !== 0) entry.blockedReason = undefined;
+      this.notifyChanged(cityId);
+      return { ok: false, reason };
+    }
+    queue.splice(index, 1);
+    if (queue.length === 0) {
+      this.queues.delete(cityId);
+    }
+    this.notifyChanged(cityId);
+    return { ok: true, item: entry.item };
+  }
+
+  /**
    * Clear every queue. Used by save-load restoration before applying
    * saved queues.
    */
@@ -247,6 +295,8 @@ export class ProductionSystem {
   }
 
   private getBaseCost(item: Producible): number {
+    // TODO wonder: add case 'wonder' returning item.wonderType.productionCost
+    // once Producible gains a wonder variant.
     switch (item.kind) {
       case 'unit':
         return item.unitType.productionCost;
@@ -256,6 +306,7 @@ export class ProductionSystem {
   }
 
   private getBlockedReason(item: Producible): string | undefined {
+    // TODO wonder: add case 'wonder' once Producible gains a wonder variant.
     switch (item.kind) {
       case 'unit':
         return 'Production blocked: no space for unit';

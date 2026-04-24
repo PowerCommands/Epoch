@@ -10,8 +10,12 @@ type NationsMetListener = (nationA: string, nationB: string) => void;
 /**
  * DiscoverySystem — tracks which nations have "met" each other.
  *
- * A nation is considered to have met another when any of its units is
- * within hex radius {@link DISCOVERY_RADIUS} of any city of the other nation.
+ * A nation is considered to have met another when:
+ * - any of its units is within hex radius {@link DISCOVERY_RADIUS} of
+ *   any city of the other nation, OR
+ * - any of its units is within hex radius {@link DISCOVERY_RADIUS} of
+ *   any unit of the other nation.
+ *
  * Detection is symmetric: if A meets B, then B has also met A.
  *
  * Each nation always knows itself from game start.
@@ -47,10 +51,16 @@ export class DiscoverySystem {
   }
 
   /**
-   * Scan every unit against every foreign city and record any new encounters.
-   * Safe to call repeatedly — already-met pairs are skipped without side effects.
+   * Scan every unit against every foreign city and every foreign unit
+   * and record any new encounters. Safe to call repeatedly —
+   * already-met pairs are skipped without side effects.
    */
   scan(): void {
+    this.scanUnitsAgainstCities();
+    this.scanUnitEncounters();
+  }
+
+  private scanUnitsAgainstCities(): void {
     const cities = this.cityManager.getAllCities();
     if (cities.length === 0) return;
 
@@ -67,6 +77,26 @@ export class DiscoverySystem {
         );
         if (dist <= DISCOVERY_RADIUS) {
           this.recordMet(ownerId, cityOwner);
+        }
+      }
+    }
+  }
+
+  private scanUnitEncounters(): void {
+    const units = this.unitManager.getAllUnits();
+    for (let i = 0; i < units.length - 1; i++) {
+      const a = units[i];
+      for (let j = i + 1; j < units.length; j++) {
+        const b = units[j];
+        if (a.ownerId === b.ownerId) continue;
+        if (this.hasMet(a.ownerId, b.ownerId)) continue;
+
+        const dist = this.gridSystem.getDistance(
+          { x: a.tileX, y: a.tileY },
+          { x: b.tileX, y: b.tileY },
+        );
+        if (dist <= DISCOVERY_RADIUS) {
+          this.recordMet(a.ownerId, b.ownerId);
         }
       }
     }
