@@ -137,6 +137,7 @@ export class SaveLoadService {
       for (const tile of row) {
         if (
           tile.ownerId === undefined
+          && tile.resourceId === undefined
           && tile.improvementId === undefined
           && tile.buildingId === undefined
           && tile.buildingConstruction === undefined
@@ -145,6 +146,7 @@ export class SaveLoadService {
           q: tile.x,
           r: tile.y,
           ownerId: tile.ownerId,
+          resourceId: tile.resourceId,
           improvementId: tile.improvementId,
           buildingId: tile.buildingId,
           buildingConstruction: tile.buildingConstruction
@@ -259,6 +261,7 @@ export class SaveLoadService {
     for (const row of mapData.tiles) {
       for (const tile of row) {
         tile.ownerId = undefined;
+        tile.resourceId = undefined;
         tile.improvementId = undefined;
         tile.buildingId = undefined;
         tile.buildingConstruction = undefined;
@@ -268,6 +271,7 @@ export class SaveLoadService {
       const tile = mapData.tiles[saved.r]?.[saved.q];
       if (!tile) continue;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
+      if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
       if (saved.buildingId !== undefined) tile.buildingId = saved.buildingId;
       if (saved.buildingConstruction !== undefined) {

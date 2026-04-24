@@ -3,7 +3,7 @@ import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
 import { getLeaderByNationId } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
-import type { GameConfig } from '../types/gameConfig';
+import type { GameConfig, ResourceAbundance } from '../types/gameConfig';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { bindMusicControls } from '../ui/MusicControls';
@@ -18,6 +18,7 @@ export class MainMenuScene extends Phaser.Scene {
   private nations: ScenarioNation[] = [];
   private selectedNationId: string | null = null;
   private selectedOpponentIds = new Set<string>();
+  private selectedResourceAbundance: ResourceAbundance = 'normal';
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
   private music: SetupMusicManager | null = null;
@@ -136,6 +137,13 @@ export class MainMenuScene extends Phaser.Scene {
               ${mapOptions}
             </select>
 
+            <label class="mm-field-label" for="mm-resource-abundance-select">Resource Abundance</label>
+            <select id="mm-resource-abundance-select" class="mm-select">
+              <option value="scarce">Scarce</option>
+              <option value="normal" selected>Normal</option>
+              <option value="abundant">Abundant</option>
+            </select>
+
             <div class="mm-opponent-summary">
               <span class="mm-field-label">Opponents</span>
               <strong id="mm-opponent-count">0 enabled</strong>
@@ -174,6 +182,10 @@ export class MainMenuScene extends Phaser.Scene {
   private wireEvents(): void {
     const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement;
     mapSelect.addEventListener('change', () => this.onMapChanged(mapSelect.value));
+    const resourceAbundanceSelect = document.getElementById('mm-resource-abundance-select') as HTMLSelectElement;
+    resourceAbundanceSelect.addEventListener('change', () => {
+      this.selectedResourceAbundance = toResourceAbundance(resourceAbundanceSelect.value);
+    });
 
     document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
       const victoryId = button.dataset.victory;
@@ -451,6 +463,7 @@ export class MainMenuScene extends Phaser.Scene {
       mapKey: this.currentMapKey,
       humanNationId: this.selectedNationId,
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
+      resourceAbundance: this.selectedResourceAbundance,
     };
 
     this.cleanup();
@@ -471,6 +484,7 @@ export class MainMenuScene extends Phaser.Scene {
         mapKey: savedState.mapKey,
         humanNationId: savedState.humanNationId,
         activeNationIds: savedState.activeNationIds,
+        resourceAbundance: 'normal',
         savedState,
       } satisfies GameConfig);
     }).catch((err: unknown) => {
@@ -1151,4 +1165,9 @@ export class MainMenuScene extends Phaser.Scene {
     `;
     document.head.appendChild(style);
   }
+}
+
+function toResourceAbundance(value: string): ResourceAbundance {
+  if (value === 'scarce' || value === 'abundant') return value;
+  return 'normal';
 }

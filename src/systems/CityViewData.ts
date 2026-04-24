@@ -1,5 +1,7 @@
 import { getBuildingById } from '../data/buildings';
 import { getImprovementById } from '../data/improvements';
+import { getNaturalResourceById } from '../data/naturalResources';
+import type { NaturalResourceYield } from '../types/naturalResources';
 import type { City } from '../entities/City';
 import type { MapData } from '../types/map';
 import { getWorkedTileYieldBreakdown } from './CityEconomy';
@@ -15,6 +17,9 @@ export interface CityViewTileBreakdown {
   terrainType: string;
   improvementId?: string;
   improvementName?: string;
+  resourceId?: string;
+  resourceName?: string;
+  resourceYieldBonus?: NaturalResourceYield;
   buildingId?: string;
   buildingName?: string;
   buildingConstructionId?: string;
@@ -75,6 +80,9 @@ export function getCityViewTileBreakdown(
   if (isNextExpansion) notes.push('Planned next expansion');
   if (tile.buildingConstruction) notes.push('Building under construction');
   if (tile.buildingId) notes.push('Finished building');
+  if (tile.resourceId) notes.push('Natural resource');
+
+  const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
 
   return {
     coord,
@@ -85,6 +93,9 @@ export function getCityViewTileBreakdown(
     terrainType: tile.type,
     improvementId: tile.improvementId,
     improvementName: tile.improvementId ? getImprovementById(tile.improvementId)?.name : undefined,
+    resourceId: tile.resourceId,
+    resourceName: resource?.name,
+    resourceYieldBonus: resource?.yieldBonus,
     buildingId: tile.buildingId,
     buildingName: tile.buildingId ? getBuildingById(tile.buildingId)?.name : undefined,
     buildingConstructionId: tile.buildingConstruction?.buildingId,

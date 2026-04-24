@@ -3,6 +3,8 @@ import { ALL_POLICY_TREES, getPolicyById } from '../data/policies';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
 import { getImprovementById } from '../data/improvements';
 import type { TileYield } from '../data/terrainYields';
+import { getNaturalResourceById } from '../data/naturalResources';
+import type { NaturalResourceYield } from '../types/naturalResources';
 import { getLeaderById, getLeaderByNationId } from '../data/leaders';
 import { ALL_UNIT_TYPES } from '../data/units';
 import type { City } from '../entities/City';
@@ -232,13 +234,18 @@ export class RightPanel {
 
     const owner = tile.ownerId ? this.nationManager.getNation(tile.ownerId) : undefined;
     const improvement = tile.improvementId ? getImprovementById(tile.improvementId) : undefined;
+    const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
     const builderHint = this.builderHintProvider?.(tile) ?? null;
     const section = this.createSection('Tile');
     section.append(
       this.createDiv('panel-large', tile.type),
       this.createDiv('', `Owner: ${owner?.name ?? 'Unclaimed'}`),
+      this.createDiv('', `Resource: ${resource?.name ?? 'None'}`),
       this.createDiv('', `Improvement: ${improvement?.name ?? 'None'}`),
     );
+    if (resource) {
+      section.append(this.createDiv('', `Resource bonus: ${formatYieldBonus(resource.yieldBonus)}`));
+    }
     if (improvement) {
       section.append(this.createDiv('', `Bonus: ${formatYieldBonus(improvement.yieldBonus)}`));
     }
@@ -986,11 +993,14 @@ function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
 }
 
-function formatYieldBonus(yieldBonus: TileYield): string {
+function formatYieldBonus(yieldBonus: TileYield | NaturalResourceYield): string {
   const parts = [
     { label: 'Food', value: yieldBonus.food },
     { label: 'Production', value: yieldBonus.production },
     { label: 'Gold', value: yieldBonus.gold },
+    { label: 'Science', value: 'science' in yieldBonus ? yieldBonus.science : 0 },
+    { label: 'Culture', value: 'culture' in yieldBonus ? yieldBonus.culture : 0 },
+    { label: 'Happiness', value: 'happiness' in yieldBonus ? yieldBonus.happiness : 0 },
   ]
     .filter((part) => part.value !== 0)
     .map((part) => `${formatSigned(part.value)} ${part.label}`);

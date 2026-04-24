@@ -253,6 +253,7 @@ export class CityView {
     const rows = [
       `<div><strong>Tile</strong> (${breakdown.coord.x}, ${breakdown.coord.y})</div>`,
       `<div><strong>Terrain</strong> ${breakdown.terrainType}</div>`,
+      `<div><strong>Resource</strong> ${breakdown.resourceName ?? 'None'}</div>`,
       `<div><strong>Improvement</strong> ${breakdown.improvementName ?? 'None'}</div>`,
       `<div><strong>Building</strong> ${breakdown.buildingName ?? 'None'}</div>`,
       `<div><strong>Construction</strong> ${breakdown.buildingConstructionName ?? 'None'}</div>`,
@@ -265,6 +266,9 @@ export class CityView {
       `<div>Culture: ${breakdown.yields.culture}</div>`,
       `<div>Happiness: ${breakdown.yields.happiness}</div>`,
     ];
+    if (breakdown.resourceYieldBonus) {
+      rows.splice(6, 0, `<div><strong>Resource bonus</strong> ${formatResourceYieldBonus(breakdown.resourceYieldBonus)}</div>`);
+    }
     this.tooltipEl.innerHTML = rows.join('');
     this.tooltipEl.style.display = 'block';
 
@@ -478,6 +482,28 @@ export class CityView {
     this.titleInputEl.style.display = isEditing ? 'block' : 'none';
     this.renameButton.style.display = isEditing ? 'none' : 'inline-flex';
   }
+}
+
+function formatResourceYieldBonus(yieldBonus: {
+  food: number;
+  production: number;
+  gold: number;
+  science: number;
+  culture: number;
+  happiness: number;
+}): string {
+  const parts = [
+    { label: 'Food', value: yieldBonus.food },
+    { label: 'Production', value: yieldBonus.production },
+    { label: 'Gold', value: yieldBonus.gold },
+    { label: 'Science', value: yieldBonus.science },
+    { label: 'Culture', value: yieldBonus.culture },
+    { label: 'Happiness', value: yieldBonus.happiness },
+  ]
+    .filter((part) => part.value !== 0)
+    .map((part) => `${part.value > 0 ? '+' : ''}${part.value} ${part.label}`);
+
+  return parts.length > 0 ? parts.join(', ') : '+0';
 }
 
 function clamp(value: number, min: number, max: number): number {

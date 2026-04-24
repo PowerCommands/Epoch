@@ -8,6 +8,8 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
+import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
 import { PolicySystem } from '../systems/PolicySystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
@@ -96,6 +98,7 @@ export class GameScene extends Phaser.Scene {
     const mapData = scenario.mapData;
     const gridSystem = new HexGridSystem();
     const gridLayout = new HexGridLayout();
+    const resourceAbundance = data.resourceAbundance ?? 'normal';
 
     // 2. Filter to active nations only, set isHuman from config
     const activeSet = new Set(data.activeNationIds);
@@ -105,6 +108,16 @@ export class GameScene extends Phaser.Scene {
     const activeCities = scenario.cities.filter(c => activeSet.has(c.nationId));
     const activeUnits = scenario.units.filter(u => activeSet.has(u.nationId));
     const cityTerritorySystem = new CityTerritorySystem();
+
+    if (!data.savedState) {
+      new NaturalResourceSystem().generate(mapData, {
+        mapKey: data.mapKey,
+        activeNationIds: data.activeNationIds,
+        humanNationId: data.humanNationId,
+        resourceAbundance,
+        cityCoords: activeCities.map((city) => ({ x: city.q, y: city.r })),
+      });
+    }
 
     // 3. Create nations and claim AI start territories (mutates mapData.tiles)
     const nationManager = NationManager.loadFromScenario(activeNations, mapData, gridSystem);
@@ -126,7 +139,10 @@ export class GameScene extends Phaser.Scene {
     // plains and mountain ridge against surrounding non-mountain land.
     new HexEdgeOverlayRenderer(this, tileMap, mapData, { depth: 3, passes: BIOME_EDGE_PASSES });
 
-    // 5. Render territory overlay (depth 5)
+    // 4d. Render natural resources above terrain and below borders/units.
+    const naturalResourceRenderer = new NaturalResourceRenderer(this, tileMap, mapData);
+
+    // 5. Render border-only territory visualization.
     const territoryRenderer = new TerritoryRenderer(this, tileMap, nationManager, mapData, gridSystem);
     territoryRenderer.render();
 
@@ -1709,6 +1725,7 @@ export class GameScene extends Phaser.Scene {
       cityView.shutdown();
       cityBannerRenderer.shutdown();
       cityRenderer.shutdown();
+      naturalResourceRenderer.shutdown();
       tileBuildingRenderer.shutdown();
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
@@ -1774,6 +1791,7 @@ export class GameScene extends Phaser.Scene {
       // Rebuild renderers that depend on replaced entities.
       cityRenderer.rebuildAll();
       cityBannerRenderer.rebuildAll();
+      naturalResourceRenderer.rebuildAll();
       tileBuildingRenderer.rebuildAll();
       unitRenderer.rebuildAll();
       territoryRenderer.render();
@@ -1820,6 +1838,7 @@ export class GameScene extends Phaser.Scene {
               mapKey: savedState.mapKey,
               humanNationId: savedState.humanNationId,
               activeNationIds: savedState.activeNationIds,
+              resourceAbundance: 'normal',
               savedState,
             });
           }).catch((err: unknown) => {

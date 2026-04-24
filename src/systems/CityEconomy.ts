@@ -2,6 +2,7 @@ import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
 import { getBuildingById } from '../data/buildings';
 import { getImprovementById } from '../data/improvements';
+import { getNaturalResourceById } from '../data/naturalResources';
 import { getTerrainYield, type TileYield } from '../data/terrainYields';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import type { MapData, Tile } from '../types/map';
@@ -11,6 +12,9 @@ export const BASE_CITY_FOOD = 2;
 
 export interface WorkedTileYield extends TileYield {
   tile: Tile;
+  science: number;
+  culture: number;
+  happiness: number;
 }
 
 export interface WorkedTileYieldBreakdown extends TileYield {
@@ -62,6 +66,9 @@ export function calculateCityEconomy(
     food += worked.food;
     production += worked.production;
     gold += worked.gold;
+    science += worked.science;
+    culture += worked.culture;
+    happiness += worked.happiness;
   }
 
   for (const id of buildings.getAll()) {
@@ -138,24 +145,17 @@ export function getWorkedTiles(
   gridSystem: IGridSystem,
 ): WorkedTileYield[] {
   return getWorkableTiles(city, mapData, gridSystem)
-    .map((tile) => ({ tile, ...getTerrainYield(tile.type) }))
+    .map((tile) => ({ tile, ...getTileYield(tile) }))
     .sort((a, b) => {
       if (a.food !== b.food) return b.food - a.food;
       if (a.production !== b.production) return b.production - a.production;
       if (a.gold !== b.gold) return b.gold - a.gold;
+      if (a.science !== b.science) return b.science - a.science;
+      if (a.culture !== b.culture) return b.culture - a.culture;
       if (a.tile.y !== b.tile.y) return a.tile.y - b.tile.y;
       return a.tile.x - b.tile.x;
     })
-    .slice(0, city.population)
-    .map((worked) => {
-      const improvementYield = getTileImprovementYield(worked.tile);
-      return {
-        ...worked,
-        food: worked.food + improvementYield.food,
-        production: worked.production + improvementYield.production,
-        gold: worked.gold + improvementYield.gold,
-      };
-    });
+    .slice(0, city.population);
 }
 
 export function getOwnedTiles(
@@ -184,16 +184,7 @@ export function getStoredWorkedTiles(
   return city.workedTileCoords
     .map(({ x, y }) => mapData.tiles[y]?.[x])
     .filter((tile): tile is Tile => tile !== undefined)
-    .map((tile) => {
-      const terrainYield = getTerrainYield(tile.type);
-      const improvementYield = getTileImprovementYield(tile);
-      return {
-        tile,
-        food: terrainYield.food + improvementYield.food,
-        production: terrainYield.production + improvementYield.production,
-        gold: terrainYield.gold + improvementYield.gold,
-      };
-    });
+    .map((tile) => ({ tile, ...getTileYield(tile) }));
 }
 
 export function getWorkedTileYieldBreakdown(
@@ -206,13 +197,40 @@ export function getWorkedTileYieldBreakdown(
     food: worked.food,
     production: worked.production,
     gold: worked.gold,
-    science: 0,
-    culture: 0,
-    happiness: 0,
+    science: worked.science,
+    culture: worked.culture,
+    happiness: worked.happiness,
   }));
+}
+
+export function getTileYield(tile: Tile): Omit<WorkedTileYield, 'tile'> {
+  const terrainYield = getTerrainYield(tile.type);
+  const improvementYield = getTileImprovementYield(tile);
+  const resourceYield = getTileNaturalResourceYield(tile);
+  return {
+    food: terrainYield.food + improvementYield.food + resourceYield.food,
+    production: terrainYield.production + improvementYield.production + resourceYield.production,
+    gold: terrainYield.gold + improvementYield.gold + resourceYield.gold,
+    science: resourceYield.science,
+    culture: resourceYield.culture,
+    happiness: resourceYield.happiness,
+  };
 }
 
 export function getTileImprovementYield(tile: Tile): TileYield {
   if (!tile.improvementId) return ZERO_TILE_YIELD;
   return getImprovementById(tile.improvementId)?.yieldBonus ?? ZERO_TILE_YIELD;
+}
+
+export function getTileNaturalResourceYield(tile: Tile): Omit<WorkedTileYield, 'tile'> {
+  const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
+  if (!resource) {
+    return {
+      ...ZERO_TILE_YIELD,
+      science: 0,
+      culture: 0,
+      happiness: 0,
+    };
+  }
+  return resource.yieldBonus;
 }

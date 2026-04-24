@@ -70,11 +70,11 @@ export class CityViewRenderer {
 
     for (const coord of city.ownedTileCoords) {
       if (workedSet.has(`${coord.x},${coord.y}`)) continue;
-      this.drawTile(coord.x, coord.y, 0xf4efe3, 0.12, 0xf0d7a6, 0.32, 1);
+      this.drawTile(coord.x, coord.y, 0xf4efe3, 0, 0xf0d7a6, 0.32, 1);
     }
 
     for (const coord of city.workedTileCoords) {
-      this.drawTile(coord.x, coord.y, 0x56d78a, 0.28, 0x79f0aa, 0.92, 2);
+      this.drawTile(coord.x, coord.y, 0x56d78a, 0, 0x79f0aa, 0.92, 2);
     }
 
     for (const key of claimableSet) {
@@ -104,7 +104,7 @@ export class CityViewRenderer {
     }
 
     this.drawWorkedTileMarkers(workedBreakdown);
-    this.drawTile(city.tileX, city.tileY, 0xfff3b0, 0.34, 0xffffff, 1, 3);
+    this.drawTile(city.tileX, city.tileY, 0xfff3b0, 0, 0xffffff, 1, 3);
   }
 
   clear(): void {
@@ -124,8 +124,10 @@ export class CityViewRenderer {
     const outline = this.tileMap.getTileOutlinePoints(tileX, tileY);
     if (outline.length === 0) return;
 
-    this.gfx.fillStyle(fillColor, fillAlpha);
-    this.fillPolygon(outline);
+    if (fillAlpha > 0) {
+      this.gfx.fillStyle(fillColor, fillAlpha);
+      this.fillPolygon(outline);
+    }
     this.gfx.lineStyle(strokeWidth, strokeColor, strokeAlpha);
     this.strokePolygon(outline);
   }

@@ -1,8 +1,7 @@
 import type { City } from '../entities/City';
-import { getTerrainYield } from '../data/terrainYields';
 import type { MapData, Tile } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
-import { getTileImprovementYield } from './CityEconomy';
+import { getTileYield } from './CityEconomy';
 
 export interface CityTileCoord {
   x: number;
@@ -30,20 +29,23 @@ export class CityTerritorySystem {
 
     city.workedTileCoords = ownedTiles
       .map((tile) => {
-        const terrainYield = getTerrainYield(tile.type);
-        const improvementYield = getTileImprovementYield(tile);
+        const tileYield = getTileYield(tile);
         return {
           x: tile.x,
           y: tile.y,
-          food: terrainYield.food + improvementYield.food,
-          production: terrainYield.production + improvementYield.production,
-          gold: terrainYield.gold + improvementYield.gold,
+          food: tileYield.food,
+          production: tileYield.production,
+          gold: tileYield.gold,
+          science: tileYield.science,
+          culture: tileYield.culture,
         };
       })
       .sort((a, b) => {
         if (a.food !== b.food) return b.food - a.food;
         if (a.production !== b.production) return b.production - a.production;
         if (a.gold !== b.gold) return b.gold - a.gold;
+        if (a.science !== b.science) return b.science - a.science;
+        if (a.culture !== b.culture) return b.culture - a.culture;
         if (a.y !== b.y) return a.y - b.y;
         return a.x - b.x;
       })
@@ -96,15 +98,17 @@ export class CityTerritorySystem {
       const tileB = this.getTile(mapData, b.x, b.y);
       if (!tileA || !tileB) return 0;
 
-      const yieldA = getTerrainYield(tileA.type);
-      const yieldB = getTerrainYield(tileB.type);
-      const scoreA = yieldA.food + yieldA.production + yieldA.gold;
-      const scoreB = yieldB.food + yieldB.production + yieldB.gold;
+      const yieldA = getTileYield(tileA);
+      const yieldB = getTileYield(tileB);
+      const scoreA = yieldA.food + yieldA.production + yieldA.gold + yieldA.science + yieldA.culture;
+      const scoreB = yieldB.food + yieldB.production + yieldB.gold + yieldB.science + yieldB.culture;
 
       if (scoreA !== scoreB) return scoreB - scoreA;
       if (yieldA.food !== yieldB.food) return yieldB.food - yieldA.food;
       if (yieldA.production !== yieldB.production) return yieldB.production - yieldA.production;
       if (yieldA.gold !== yieldB.gold) return yieldB.gold - yieldA.gold;
+      if (yieldA.science !== yieldB.science) return yieldB.science - yieldA.science;
+      if (yieldA.culture !== yieldB.culture) return yieldB.culture - yieldA.culture;
       if (a.y !== b.y) return a.y - b.y;
       return a.x - b.x;
     })[0];

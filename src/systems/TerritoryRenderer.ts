@@ -4,13 +4,11 @@ import { NationManager } from './NationManager';
 import { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 
-const OVERLAY_ALPHA = 0.35;
-const OVERLAY_DEPTH = 5;
 const BORDER_DEPTH = 6;
 const NORMAL_BORDER_ALPHA = 0.84;
-const NORMAL_BORDER_WIDTH = 3;
+const NORMAL_BORDER_WIDTH = 5;
 const CITY_VIEW_BORDER_ALPHA = 0.96;
-const CITY_VIEW_BORDER_WIDTH = 4;
+const CITY_VIEW_BORDER_WIDTH = 6;
 
 interface Point {
   x: number;
@@ -27,19 +25,16 @@ const HEX_EDGE_INDEX_BY_DELTA = new Map<string, number>([
 ]);
 
 /**
- * TerritoryRenderer ritar en semi-transparent färgad overlay ovanpå
- * varje tile som ägs av en nation.
+ * TerritoryRenderer draws nation-colored borders around owned territory.
  *
- * Overlayen ligger ovanpå terrängen (depth 0) men under hover/selection-
- * highlights. Borders ritas bara på exponerade ytterkanter där grannen
- * saknar samma ownerId.
+ * Borders are drawn on exposed edges where a neighbor lacks the same
+ * ownerId, leaving terrain fully visible without owned-tile tinting.
  */
 export class TerritoryRenderer {
   private readonly scene: Phaser.Scene;
   private readonly tileMap: TileMap;
   private readonly nationManager: NationManager;
   private readonly mapData: MapData;
-  private readonly overlayGfx: Phaser.GameObjects.Graphics;
   private readonly borderGfx: Phaser.GameObjects.Graphics;
   private mode: 'normal' | 'cityView' = 'normal';
 
@@ -54,28 +49,12 @@ export class TerritoryRenderer {
     this.tileMap = tileMap;
     this.nationManager = nationManager;
     this.mapData = mapData;
-    this.overlayGfx = scene.add.graphics().setDepth(OVERLAY_DEPTH);
     this.borderGfx = scene.add.graphics().setDepth(BORDER_DEPTH);
   }
 
-  /** Rita om hela territory-overlayen. */
+  /** Redraw all territory borders. */
   render(): void {
-    this.overlayGfx.clear();
     this.borderGfx.clear();
-
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        if (tile.ownerId === undefined) continue;
-
-        const nation = this.nationManager.getNation(tile.ownerId);
-        if (nation === undefined) continue;
-
-        const outline = this.tileMap.getTileOutlinePoints(tile.x, tile.y);
-
-        this.overlayGfx.fillStyle(nation.color, OVERLAY_ALPHA);
-        this.fillPolygon(outline);
-      }
-    }
 
     const borderSegments = new Map<string, { ownerId: string; start: Point; end: Point }>();
 
@@ -143,17 +122,6 @@ export class TerritoryRenderer {
     }
 
     return [outline[edgeIndex], outline[(edgeIndex + 1) % outline.length]];
-  }
-
-  private fillPolygon(points: Point[]): void {
-    if (points.length === 0) return;
-    this.overlayGfx.beginPath();
-    this.overlayGfx.moveTo(points[0].x, points[0].y);
-    for (const point of points.slice(1)) {
-      this.overlayGfx.lineTo(point.x, point.y);
-    }
-    this.overlayGfx.closePath();
-    this.overlayGfx.fillPath();
   }
 
   private getBorderAlpha(): number {

@@ -19,6 +19,7 @@ export interface Tile {
   y: number; // grid-koordinat (rad)
   type: TileType;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
+  resourceId?: string; // optional natural resource; undefined = none
   improvementId?: string; // optional tile improvement; undefined = none
   buildingId?: string; // finished tile building; undefined = none
   buildingConstruction?: TileBuildingConstruction; // reserved/under-construction tile building

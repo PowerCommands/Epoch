@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, MAP_MANIFEST_URL, parseMapManifest } from '../data/maps';
 import { ALL_LEADERS } from '../data/leaders';
+import { NATURAL_RESOURCES } from '../data/naturalResources';
 
 /**
  * BootScene — runs first at startup.
@@ -36,6 +37,9 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
     this.load.image('action_improve', 'assets/sprites/actions/improve.png');
     this.load.image('action_found_city', 'assets/sprites/actions/found-city.png');
+    for (const resource of NATURAL_RESOURCES) {
+      this.load.image(resource.iconKey, `assets/sprites/resources/${resource.id}.png`);
+    }
 
     // Leader portraits (used by the Phaser-side leader strip in GameScene)
     for (const leader of ALL_LEADERS) {

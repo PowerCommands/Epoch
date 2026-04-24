@@ -68,6 +68,7 @@ export interface SavedTile {
   q: number;
   r: number;
   ownerId?: string;
+  resourceId?: string;
   improvementId?: string;
   buildingId?: string;
   buildingConstruction?: {
