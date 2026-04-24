@@ -56,7 +56,6 @@ import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
 import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
-import { RightPanel } from '../ui/RightPanel';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
 import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState } from '../ui/CityView';
@@ -64,6 +63,8 @@ import type { CityViewTilePurchaseState } from '../ui/CityView';
 import { HudLayer } from '../ui/hud/HudLayer';
 import { MinimapHud } from '../ui/hud/MinimapHud';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
+import { RightSidebarPanel } from '../ui/phaser/RightSidebarPanel';
+import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDataProvider';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import type { SavedGameState } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
@@ -88,6 +89,7 @@ export class GameScene extends Phaser.Scene {
   private diagnosticSystem!: DiagnosticSystem;
   private timeSystem!: TimeSystem;
   private minimapHud: MinimapHud | null = null;
+  private rightSidebarPanel: RightSidebarPanel | null = null;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -95,6 +97,7 @@ export class GameScene extends Phaser.Scene {
 
   create(data: GameConfig): void {
     this.minimapHud = null;
+    this.rightSidebarPanel = null;
     // ─── Data & system ───────────────────────────────────────────────────────
 
     // 1. Parse scenario using map key from config
@@ -160,7 +163,7 @@ export class GameScene extends Phaser.Scene {
 
     // 7. Create units from scenario (filtered)
     const unitManager = UnitManager.loadFromScenario(activeUnits, mapData, gameSpeed);
-    // Enrich unit events with cityId (used by RightPanel to gate refreshes).
+    // Enrich unit events with cityId (used by right-side details refreshes).
     unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
 
     // 7. Kamerakontroll
@@ -262,7 +265,7 @@ export class GameScene extends Phaser.Scene {
     // 13. Produktionssystem
     const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem);
     let hudLayer: HudLayer | null = null;
-    let rightPanel: RightPanel | null = null;
+    let rightPanel: RightSidebarPanelDataProvider | null = null;
     let leaderStrip: LeaderPortraitStrip | null = null;
     const cityView = new CityView();
     let cityViewDismissedCityId: string | null = null;
@@ -939,7 +942,7 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
 
-    // Diplomacy actions from RightPanel buttons
+    // Diplomacy actions from right-side details buttons
     const onDiplomacyAction = (event: Event) => {
       const { action, targetNationId } = (event as CustomEvent<{ action: string; targetNationId: string }>).detail;
       const targetNation = nationManager.getNation(targetNationId);
@@ -1041,8 +1044,7 @@ export class GameScene extends Phaser.Scene {
       this.cameraController,
       worldInputGate,
     );
-
-    rightPanel = new RightPanel(
+    rightPanel = new RightSidebarPanelDataProvider(
       productionSystem,
       cityManager,
       unitManager,
@@ -1053,6 +1055,7 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       happinessSystem,
     );
+    this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setResearchSystem(researchSystem);
     rightPanel.setCultureSystem(cultureSystem);
@@ -1739,6 +1742,7 @@ export class GameScene extends Phaser.Scene {
     const onLeaderSelected = (event: Event) => {
       const { nationId, leaderId } = (event as CustomEvent<{ nationId: string; leaderId?: string }>).detail;
       rightPanel?.showLeader(leaderId ?? nationId);
+      this.rightSidebarPanel?.showDetails();
       leaderStrip?.setSelectedNation(nationId);
     };
     document.addEventListener('leaderSelected', onLeaderSelected);
@@ -1787,6 +1791,8 @@ export class GameScene extends Phaser.Scene {
       tileBuildingRenderer.shutdown();
       this.minimapHud?.shutdown();
       this.minimapHud = null;
+      this.rightSidebarPanel?.shutdown();
+      this.rightSidebarPanel = null;
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });
