@@ -1,3 +1,5 @@
+import type { GameSpeedId } from '../data/gameSpeeds';
+
 /**
  * Explicit JSON shape used to save/restore a running game.
  *
@@ -30,6 +32,7 @@ export interface SavedNation {
   policyProgress: number;
   gold: number;
   culture: number;
+  influence?: number;
 }
 
 export interface SavedCity {
@@ -94,6 +97,7 @@ export interface SavedGameState {
   mapKey: string;
   humanNationId: string;
   activeNationIds: string[];
+  gameSpeedId?: GameSpeedId;
   turn: {
     currentRound: number;
     currentTurnIndex: number;

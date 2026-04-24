@@ -5,6 +5,7 @@ import {
   type PolicyDefinition,
   type PolicyTreeDefinition,
 } from '../data/policies';
+import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import { EMPTY_MODIFIERS, addModifiers, type ModifierSet } from '../types/modifiers';
 import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
@@ -32,6 +33,7 @@ export class PolicySystem {
     private readonly getCulturePerTurn: CultureProvider = (nationId) => (
       this.nationManager.getResources(nationId).culturePerTurn
     ),
+    private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
   ) {}
 
   canSelectPolicy(nationId: string, policyId: string): boolean {
@@ -153,7 +155,8 @@ export class PolicySystem {
     const policy = getPolicyById(policyId);
     if (!nation || !policy) return 0;
     const unlockedPolicyCount = nation.unlockedPolicyIds.length;
-    return Math.round(policy.cost * (1 + unlockedPolicyCount * 0.15));
+    const scaledBaseCost = scaleGameSpeedCost(policy.cost, this.gameSpeed);
+    return Math.max(1, Math.round(scaledBaseCost * (1 + unlockedPolicyCount * 0.15)));
   }
 
   getMissingPrerequisiteIds(nationId: string, policyId: string): string[] {

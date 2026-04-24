@@ -4,6 +4,7 @@ import type { MapDefinition } from '../data/maps';
 import { getLeaderByNationId } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { GameConfig, ResourceAbundance } from '../types/gameConfig';
+import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, type GameSpeedId } from '../data/gameSpeeds';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { bindMusicControls } from '../ui/MusicControls';
@@ -19,6 +20,7 @@ export class MainMenuScene extends Phaser.Scene {
   private selectedNationId: string | null = null;
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
+  private selectedGameSpeedId: GameSpeedId = DEFAULT_GAME_SPEED_ID;
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
   private music: SetupMusicManager | null = null;
@@ -80,6 +82,9 @@ export class MainMenuScene extends Phaser.Scene {
   private buildHTML(): string {
     const mapOptions = this.maps
       .map(m => `<option value="${m.key}">${m.label}</option>`)
+      .join('');
+    const gameSpeedOptions = GAME_SPEEDS
+      .map(speed => `<option value="${speed.id}"${speed.id === DEFAULT_GAME_SPEED_ID ? ' selected' : ''}>${speed.name}</option>`)
       .join('');
 
     return `
@@ -144,6 +149,11 @@ export class MainMenuScene extends Phaser.Scene {
               <option value="abundant">Abundant</option>
             </select>
 
+            <label class="mm-field-label" for="mm-game-speed-select">Game Speed</label>
+            <select id="mm-game-speed-select" class="mm-select">
+              ${gameSpeedOptions}
+            </select>
+
             <div class="mm-opponent-summary">
               <span class="mm-field-label">Opponents</span>
               <strong id="mm-opponent-count">0 enabled</strong>
@@ -185,6 +195,10 @@ export class MainMenuScene extends Phaser.Scene {
     const resourceAbundanceSelect = document.getElementById('mm-resource-abundance-select') as HTMLSelectElement;
     resourceAbundanceSelect.addEventListener('change', () => {
       this.selectedResourceAbundance = toResourceAbundance(resourceAbundanceSelect.value);
+    });
+    const gameSpeedSelect = document.getElementById('mm-game-speed-select') as HTMLSelectElement;
+    gameSpeedSelect.addEventListener('change', () => {
+      this.selectedGameSpeedId = toGameSpeedId(gameSpeedSelect.value);
     });
 
     document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
@@ -464,6 +478,7 @@ export class MainMenuScene extends Phaser.Scene {
       humanNationId: this.selectedNationId,
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
       resourceAbundance: this.selectedResourceAbundance,
+      gameSpeedId: this.selectedGameSpeedId,
     };
 
     this.cleanup();
@@ -485,6 +500,7 @@ export class MainMenuScene extends Phaser.Scene {
         humanNationId: savedState.humanNationId,
         activeNationIds: savedState.activeNationIds,
         resourceAbundance: 'normal',
+        gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
         savedState,
       } satisfies GameConfig);
     }).catch((err: unknown) => {
@@ -1170,4 +1186,9 @@ export class MainMenuScene extends Phaser.Scene {
 function toResourceAbundance(value: string): ResourceAbundance {
   if (value === 'scarce' || value === 'abundant') return value;
   return 'normal';
+}
+
+function toGameSpeedId(value: string): GameSpeedId {
+  if (value === 'quick' || value === 'standard' || value === 'epic' || value === 'marathon') return value;
+  return DEFAULT_GAME_SPEED_ID;
 }

@@ -3,6 +3,7 @@ import { TurnManager } from './TurnManager';
 import { HappinessSystem } from './HappinessSystem';
 import type { Producible } from '../types/producible';
 import type { TurnStartEvent } from '../types/events';
+import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 
 /**
  * A single entry in a city's production queue.
@@ -58,6 +59,7 @@ export class ProductionSystem {
     cityManager: CityManager,
     turnManager: TurnManager,
     private readonly happinessSystem: HappinessSystem,
+    private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
   ) {
     this.cityManager = cityManager;
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
@@ -240,7 +242,11 @@ export class ProductionSystem {
     return !didBlock;
   }
 
-  private getCost(item: Producible): number {
+  getCost(item: Producible): number {
+    return scaleGameSpeedCost(this.getBaseCost(item), this.gameSpeed);
+  }
+
+  private getBaseCost(item: Producible): number {
     switch (item.kind) {
       case 'unit':
         return item.unitType.productionCost;

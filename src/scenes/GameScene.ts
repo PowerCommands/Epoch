@@ -74,6 +74,7 @@ import type { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
+import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 
 /**
  * GameScene — huvudspelscenen.
@@ -102,6 +103,7 @@ export class GameScene extends Phaser.Scene {
     const gridSystem = new HexGridSystem();
     const gridLayout = new HexGridLayout();
     const resourceAbundance = data.resourceAbundance ?? 'normal';
+    const gameSpeed = getGameSpeedById(data.savedState?.gameSpeedId ?? data.gameSpeedId ?? DEFAULT_GAME_SPEED_ID);
 
     // 2. Filter to active nations only, set isHuman from config
     const activeSet = new Set(data.activeNationIds);
@@ -110,7 +112,7 @@ export class GameScene extends Phaser.Scene {
       .map(n => ({ ...n, isHuman: n.id === data.humanNationId }));
     const activeCities = scenario.cities.filter(c => activeSet.has(c.nationId));
     const activeUnits = scenario.units.filter(u => activeSet.has(u.nationId));
-    const cityTerritorySystem = new CityTerritorySystem();
+    const cityTerritorySystem = new CityTerritorySystem(gameSpeed, gridSystem);
 
     if (!data.savedState) {
       new NaturalResourceSystem().generate(mapData, {
@@ -156,7 +158,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 7. Create units from scenario (filtered)
-    const unitManager = UnitManager.loadFromScenario(activeUnits, mapData);
+    const unitManager = UnitManager.loadFromScenario(activeUnits, mapData, gameSpeed);
     // Enrich unit events with cityId (used by RightPanel to gate refreshes).
     unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
 
@@ -165,7 +167,7 @@ export class GameScene extends Phaser.Scene {
     const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
     const worldInputGate = new WorldInputGate();
     this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
-    this.timeSystem = new TimeSystem();
+    this.timeSystem = new TimeSystem(gameSpeed);
 
     // 8. Rendera städer (depth 15)
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
@@ -192,6 +194,8 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       eventLog,
       () => turnManager.getCurrentRound(),
+      undefined,
+      gameSpeed,
     );
     const humanNeedsPolicySelection = (): boolean => {
       if (!humanNationId) return false;
@@ -212,6 +216,7 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       happinessSystem,
       (nationId) => policySystem.getCombinedModifiers(nationId),
+      gameSpeed,
     );
 
     // 12. Selection-system (hover depth 20, selection depth 21)
@@ -221,7 +226,7 @@ export class GameScene extends Phaser.Scene {
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
-    const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem);
+    const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed);
     const cityBannerRenderer = new CityBannerRenderer(
       this,
       tileMap,
@@ -276,6 +281,7 @@ export class GameScene extends Phaser.Scene {
           gridSystem,
           policySystem.getCombinedModifiers(nationId),
         ).science, 0),
+      gameSpeed,
     );
 
     // 14. Stridssystem
@@ -987,6 +993,14 @@ export class GameScene extends Phaser.Scene {
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
+    researchSystem.onChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    policySystem.onChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
     this.minimapHud = new MinimapHud(
       this,
       tileMap,
@@ -1551,6 +1565,7 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', () => hudLayer?.refresh());
     resourceSystem.on(() => {
       territoryRenderer.render();
+      this.minimapHud?.rebuild();
       cityBannerRenderer.rebuildAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -1790,6 +1805,7 @@ export class GameScene extends Phaser.Scene {
         mapKey: data.mapKey,
         humanNationId: data.humanNationId,
         activeNationIds: data.activeNationIds,
+        gameSpeedId: gameSpeed.id,
         mapData,
         nationManager,
         cityManager,
@@ -1825,6 +1841,7 @@ export class GameScene extends Phaser.Scene {
             mapKey: data.mapKey,
             humanNationId: data.humanNationId,
             activeNationIds: data.activeNationIds,
+            gameSpeedId: gameSpeed.id,
             mapData,
             nationManager,
             cityManager,
@@ -1852,6 +1869,7 @@ export class GameScene extends Phaser.Scene {
               humanNationId: savedState.humanNationId,
               activeNationIds: savedState.activeNationIds,
               resourceAbundance: 'normal',
+              gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
               savedState,
             });
           }).catch((err: unknown) => {

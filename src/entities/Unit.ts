@@ -7,6 +7,7 @@ export interface UnitConfig {
   tileX: number;
   tileY: number;
   unitType: UnitType;
+  maxMovementPoints?: number;
   movementPoints?: number;
 }
 
@@ -36,8 +37,8 @@ export class Unit {
     this.unitType = config.unitType;
     this.tileX = config.tileX;
     this.tileY = config.tileY;
-    this.maxMovementPoints = config.unitType.movementPoints;
-    this.movementPoints = config.movementPoints ?? config.unitType.movementPoints;
+    this.maxMovementPoints = config.maxMovementPoints ?? config.unitType.movementPoints;
+    this.movementPoints = config.movementPoints ?? this.maxMovementPoints;
     this.health = config.unitType.baseHealth;
     this.isSleeping = false;
   }

@@ -5,6 +5,7 @@ import { MapData, TileType } from '../types/map';
 import type { ScenarioUnit } from '../types/scenario';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
+import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 
 export type UnitChangedReason = 'created' | 'moved' | 'movementReset' | 'damaged' | 'removed';
 
@@ -43,6 +44,7 @@ export class UnitManager {
   constructor(
     private readonly mapWidth: number,
     private readonly mapHeight: number,
+    private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
   ) {
     this.unitGrid = new Array<Unit | null>(mapWidth * mapHeight).fill(null);
   }
@@ -70,6 +72,7 @@ export class UnitManager {
       tileX: config.tileX,
       tileY: config.tileY,
       unitType: config.type,
+      maxMovementPoints: this.getEffectiveMovementPoints(config.type),
       movementPoints: config.movementPoints,
     });
 
@@ -184,7 +187,7 @@ export class UnitManager {
   resetMovementForOwner(ownerId: string): void {
     for (const unit of this.units.values()) {
       if (unit.ownerId !== ownerId) continue;
-      unit.resetMovement();
+      unit.movementPoints = this.getEffectiveMovementPoints(unit.unitType);
       this.notify({ unit, reason: 'movementReset' });
     }
   }
@@ -204,8 +207,9 @@ export class UnitManager {
     nationManager: NationManager,
     cityManager: CityManager,
     mapData: MapData,
+    gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
   ): UnitManager {
-    const manager = new UnitManager(mapData.width, mapData.height);
+    const manager = new UnitManager(mapData.width, mapData.height, gameSpeed);
 
     for (const nation of nationManager.getAllNations()) {
       const capital = cityManager.getCitiesByOwner(nation.id)[0];
@@ -226,6 +230,7 @@ export class UnitManager {
           tileX: position.x,
           tileY: position.y,
           unitType: WARRIOR,
+          maxMovementPoints: manager.getEffectiveMovementPoints(WARRIOR),
         }),
       );
     }
@@ -238,8 +243,12 @@ export class UnitManager {
    * Maps unitTypeId string → UnitType object from data/units.ts.
    * Skips land units on water tiles and naval units on land tiles.
    */
-  static loadFromScenario(units: ScenarioUnit[], mapData: MapData): UnitManager {
-    const manager = new UnitManager(mapData.width, mapData.height);
+  static loadFromScenario(
+    units: ScenarioUnit[],
+    mapData: MapData,
+    gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+  ): UnitManager {
+    const manager = new UnitManager(mapData.width, mapData.height, gameSpeed);
     let idx = 0;
 
     for (const cfg of units) {
@@ -266,6 +275,7 @@ export class UnitManager {
           tileX: cfg.q,
           tileY: cfg.r,
           unitType,
+          maxMovementPoints: manager.getEffectiveMovementPoints(unitType),
         }),
       );
     }
@@ -307,6 +317,7 @@ export class UnitManager {
       tileX: config.tileX,
       tileY: config.tileY,
       unitType: config.unitType,
+      maxMovementPoints: this.getEffectiveMovementPoints(config.unitType),
       movementPoints: config.movementPoints,
     });
     unit.health = config.health;
@@ -337,6 +348,10 @@ export class UnitManager {
     const id = `${PRODUCED_UNIT_ID_PREFIX}_${ownerId}_${unitTypeId}_${this.nextProducedUnitId}`;
     this.nextProducedUnitId += 1;
     return id;
+  }
+
+  private getEffectiveMovementPoints(unitType: UnitType): number {
+    return unitType.movementPoints + this.gameSpeed.movementBonus;
   }
 
   private placeOnGrid(unit: Unit): void {

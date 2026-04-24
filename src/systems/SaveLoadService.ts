@@ -23,11 +23,13 @@ import type { UnitManager } from './UnitManager';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
+import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 
 export interface SaveLoadContext {
   mapKey: string;
   humanNationId: string;
   activeNationIds: string[];
+  gameSpeedId: GameSpeedId;
   mapData: MapData;
   nationManager: NationManager;
   cityManager: CityManager;
@@ -61,6 +63,7 @@ export class SaveLoadService {
       mapKey,
       humanNationId,
       activeNationIds,
+      gameSpeedId,
       mapData,
       nationManager,
       cityManager,
@@ -84,6 +87,7 @@ export class SaveLoadService {
         policyProgress: nation.policyProgress,
         gold: res.gold,
         culture: res.culture,
+        influence: res.influence,
       };
     });
 
@@ -173,6 +177,7 @@ export class SaveLoadService {
       mapKey,
       humanNationId,
       activeNationIds: [...activeNationIds],
+      gameSpeedId,
       turn: {
         currentRound: turnManager.getCurrentRound(),
         currentTurnIndex: turnManager.getCurrentTurnIndex(),
@@ -247,6 +252,7 @@ export class SaveLoadService {
       context.productionSystem,
       context.mapData,
       context.gridSystem,
+      state.gameSpeedId ?? context.gameSpeedId,
     );
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
@@ -294,6 +300,7 @@ export class SaveLoadService {
       const res = nationManager.getResources(saved.id);
       res.gold = saved.gold;
       res.culture = saved.culture;
+      res.influence = saved.influence ?? 0;
     }
   }
 
@@ -303,10 +310,11 @@ export class SaveLoadService {
     productionSystem: ProductionSystem,
     mapData: MapData,
     gridSystem: IGridSystem,
+    gameSpeedId: GameSpeedId,
   ): void {
     cityManager.clearAllSilently();
     productionSystem.clearAllQueues();
-    const cityTerritorySystem = new CityTerritorySystem();
+    const cityTerritorySystem = new CityTerritorySystem(getGameSpeedById(gameSpeedId), gridSystem);
 
     for (const saved of cities) {
       const city = cityManager.restoreCity({

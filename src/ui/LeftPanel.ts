@@ -131,7 +131,7 @@ export class LeftPanel {
 
     section.append(
       this.createDiv('', `Current Research: ${current?.name ?? 'None'}`),
-      this.createDiv('', `Progress: ${progress} / ${current?.cost ?? 0}`),
+      this.createDiv('', `Progress: ${progress} / ${current ? researchSystem.getEffectiveCost(current.id) : 0}`),
       this.createDiv('panel-muted', `Science: +${researchSystem.getResearchPerTurn(humanNationId)}/turn`),
     );
 
@@ -144,7 +144,7 @@ export class LeftPanel {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'research-tech-button';
-        button.textContent = `${technology.name} (${technology.cost})`;
+        button.textContent = `${technology.name} (${researchSystem.getEffectiveCost(technology.id)})`;
         button.addEventListener('click', () => {
           if (researchSystem.startResearch(humanNationId, technology.id)) {
             this.refresh();

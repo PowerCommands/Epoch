@@ -658,7 +658,7 @@ export class RightPanel {
   }
 
   private getProducibleCost(item: Producible): number {
-    return item.kind === 'unit' ? item.unitType.productionCost : item.buildingType.productionCost;
+    return this.productionSystem.getCost(item);
   }
 
   private reset(): void {

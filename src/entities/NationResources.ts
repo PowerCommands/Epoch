@@ -7,6 +7,8 @@ export class NationResources {
   goldPerTurn = 0;
   culture = 0;
   culturePerTurn = 0;
+  influence = 0;
+  influencePerTurn = 0;
   happinessPerTurn = 0;
 
   constructor(nationId: string) {

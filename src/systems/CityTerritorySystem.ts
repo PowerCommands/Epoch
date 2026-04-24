@@ -1,5 +1,6 @@
 import type { City } from '../entities/City';
-import type { MapData, Tile } from '../types/map';
+import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
+import { TileType, type MapData, type Tile } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { getTileYield } from './CityEconomy';
 
@@ -13,7 +14,13 @@ const CLAIM_BASE_COST = 10;
 const CLAIM_COST_PER_OWNED_TILE = 5;
 
 export class CityTerritorySystem {
+  constructor(
+    private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+    private gridSystem?: IGridSystem,
+  ) {}
+
   initializeOwnedTiles(city: City, mapData: MapData, gridSystem: IGridSystem): void {
+    this.gridSystem = gridSystem;
     const ownedTiles = [
       this.getTile(mapData, city.tileX, city.tileY),
       ...gridSystem.getWorkableCityTiles(city, mapData),
@@ -58,19 +65,14 @@ export class CityTerritorySystem {
       .flat()
       .filter((tile) => (
         tile.ownerId === city.ownerId &&
-        this.getHexDistance({ x: city.tileX, y: city.tileY }, tile) <= CLAIM_RANGE
+        this.getExpansionRingDistance(city, tile) <= CLAIM_RANGE
       )).length;
 
-    return CLAIM_BASE_COST + ownedNearbyCount * CLAIM_COST_PER_OWNED_TILE;
+    return scaleGameSpeedCost(CLAIM_BASE_COST + ownedNearbyCount * CLAIM_COST_PER_OWNED_TILE, this.gameSpeed);
   }
 
   getClaimableTiles(city: City, mapData: MapData): CityTileCoord[] {
     const ownedSet = new Set(city.ownedTileCoords.map((coord) => this.getCoordKey(coord.x, coord.y)));
-    const frontierSet = new Set(
-      this.getOwnedTiles(city, mapData).flatMap((tile) => (
-        this.getNeighborCoords(tile.x, tile.y).map((coord) => this.getCoordKey(coord.x, coord.y))
-      )),
-    );
 
     return mapData.tiles
       .flat()
@@ -78,40 +80,46 @@ export class CityTerritorySystem {
         const key = this.getCoordKey(tile.x, tile.y);
         if (ownedSet.has(key)) return false;
         if (tile.ownerId !== undefined) return false;
-        if (this.getHexDistance({ x: city.tileX, y: city.tileY }, tile) > CLAIM_RANGE) return false;
-        if (!frontierSet.has(key)) return false;
+        const distance = this.getExpansionRingDistance(city, tile);
+        if (distance < 2) return false;
+        if (distance > CLAIM_RANGE) return false;
         return true;
       })
       .map((tile) => ({ x: tile.x, y: tile.y }))
-      .sort((a, b) => {
-        if (a.y !== b.y) return a.y - b.y;
-        return a.x - b.x;
-      });
+      .sort((a, b) => this.compareCoords(a, b));
   }
 
   chooseNextExpansionTile(city: City, mapData: MapData): CityTileCoord | undefined {
-    const claimable = this.getClaimableTiles(city, mapData);
-    if (claimable.length === 0) return undefined;
+    const candidatesByRing = this.getExpansionCandidatesByRing(city, mapData);
+    const nearestRing = [...candidatesByRing.keys()].sort((a, b) => a - b)[0];
+    if (nearestRing === undefined) return undefined;
 
-    return [...claimable].sort((a, b) => {
-      const tileA = this.getTile(mapData, a.x, a.y);
-      const tileB = this.getTile(mapData, b.x, b.y);
-      if (!tileA || !tileB) return 0;
+    return candidatesByRing.get(nearestRing)
+      ?.sort((a, b) => this.compareExpansionCandidatesWithinRing(a, b))[0];
+  }
 
-      const yieldA = getTileYield(tileA);
-      const yieldB = getTileYield(tileB);
-      const scoreA = yieldA.food + yieldA.production + yieldA.gold + yieldA.science + yieldA.culture;
-      const scoreB = yieldB.food + yieldB.production + yieldB.gold + yieldB.science + yieldB.culture;
+  getExpansionRingDistance(city: City, coord: CityTileCoord): number {
+    const cityCenter = { x: city.tileX, y: city.tileY };
+    return this.gridSystem?.getDistance(cityCenter, coord) ?? this.getHexDistance(cityCenter, coord);
+  }
 
-      if (scoreA !== scoreB) return scoreB - scoreA;
-      if (yieldA.food !== yieldB.food) return yieldB.food - yieldA.food;
-      if (yieldA.production !== yieldB.production) return yieldB.production - yieldA.production;
-      if (yieldA.gold !== yieldB.gold) return yieldB.gold - yieldA.gold;
-      if (yieldA.science !== yieldB.science) return yieldB.science - yieldA.science;
-      if (yieldA.culture !== yieldB.culture) return yieldB.culture - yieldA.culture;
-      if (a.y !== b.y) return a.y - b.y;
-      return a.x - b.x;
-    })[0];
+  getExpansionCandidatesByRing(city: City, mapData: MapData): Map<number, Tile[]> {
+    const candidatesByRing = new Map<number, Tile[]>();
+    const claimableSet = new Set(this.getClaimableTiles(city, mapData).map((coord) => this.getCoordKey(coord.x, coord.y)));
+
+    for (const tile of mapData.tiles.flat()) {
+      if (!claimableSet.has(this.getCoordKey(tile.x, tile.y))) continue;
+      const distance = this.getExpansionRingDistance(city, tile);
+      const ringCandidates = candidatesByRing.get(distance) ?? [];
+      ringCandidates.push(tile);
+      candidatesByRing.set(distance, ringCandidates);
+    }
+
+    for (const candidates of candidatesByRing.values()) {
+      candidates.sort((a, b) => this.compareExpansionCandidatesWithinRing(a, b));
+    }
+
+    return candidatesByRing;
   }
 
   refreshNextExpansionTile(city: City, mapData: MapData): void {
@@ -218,25 +226,46 @@ export class CityTerritorySystem {
   private normalizeCoords(coords: CityTileCoord[]): CityTileCoord[] {
     return [...new Map(
       coords.map((coord) => [this.getCoordKey(coord.x, coord.y), { x: coord.x, y: coord.y }]),
-    ).values()].sort((a, b) => {
-      if (a.y !== b.y) return a.y - b.y;
-      return a.x - b.x;
-    });
-  }
-
-  private getNeighborCoords(x: number, y: number): CityTileCoord[] {
-    return [
-      { x: x + 1, y },
-      { x: x + 1, y: y - 1 },
-      { x, y: y - 1 },
-      { x: x - 1, y },
-      { x: x - 1, y: y + 1 },
-      { x, y: y + 1 },
-    ];
+    ).values()].sort((a, b) => this.compareCoords(a, b));
   }
 
   private getTile(mapData: MapData, x: number, y: number): Tile | undefined {
     return mapData.tiles[y]?.[x];
+  }
+
+  private compareExpansionCandidatesWithinRing(a: Tile, b: Tile): number {
+    const aHasResource = a.resourceId !== undefined;
+    const bHasResource = b.resourceId !== undefined;
+    if (aHasResource || bHasResource) {
+      if (aHasResource !== bHasResource) return aHasResource ? -1 : 1;
+      return this.compareCoords(a, b);
+    }
+
+    const aIsLowPriorityTerrain = this.isLowPriorityExpansionTerrain(a);
+    const bIsLowPriorityTerrain = this.isLowPriorityExpansionTerrain(b);
+    if (aIsLowPriorityTerrain !== bIsLowPriorityTerrain) return aIsLowPriorityTerrain ? 1 : -1;
+
+    const yieldA = getTileYield(a);
+    const yieldB = getTileYield(b);
+    const scoreA = yieldA.food + yieldA.production + yieldA.gold + yieldA.science + yieldA.culture;
+    const scoreB = yieldB.food + yieldB.production + yieldB.gold + yieldB.science + yieldB.culture;
+
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    if (yieldA.food !== yieldB.food) return yieldB.food - yieldA.food;
+    if (yieldA.production !== yieldB.production) return yieldB.production - yieldA.production;
+    if (yieldA.gold !== yieldB.gold) return yieldB.gold - yieldA.gold;
+    if (yieldA.science !== yieldB.science) return yieldB.science - yieldA.science;
+    if (yieldA.culture !== yieldB.culture) return yieldB.culture - yieldA.culture;
+    return this.compareCoords(a, b);
+  }
+
+  private isLowPriorityExpansionTerrain(tile: Tile): boolean {
+    return tile.type === TileType.Ice || tile.type === TileType.Desert;
+  }
+
+  private compareCoords(a: CityTileCoord, b: CityTileCoord): number {
+    if (a.y !== b.y) return a.y - b.y;
+    return a.x - b.x;
   }
 
   private getHexDistance(a: CityTileCoord, b: CityTileCoord): number {

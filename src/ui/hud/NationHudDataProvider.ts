@@ -7,7 +7,7 @@ import type { TurnManager } from '../../systems/TurnManager';
 import { getPolicyById } from '../../data/policies';
 
 export interface HudResourceEntry {
-  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science';
+  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence';
   icon: string;
   value: number | string;
   delta: number;
@@ -118,21 +118,28 @@ export class NationHudDataProvider {
         value: nationResources.gold,
         delta: nationResources.goldPerTurn,
       },
+      {
+        key: 'influence',
+        icon: '🕊️',
+        value: nationResources.influence,
+        delta: nationResources.influencePerTurn,
+      },
     ];
   }
 
   getResearchState(nationId: string): HudResearchState {
     const current = this.researchSystem.getCurrentResearch(nationId);
+    const currentCost = current ? this.researchSystem.getEffectiveCost(current.id) : 0;
     return {
       currentName: current?.name ?? 'None',
       progress: this.researchSystem.getResearchProgress(nationId),
-      cost: current?.cost ?? 0,
-      progressPercent: current?.cost ? Math.max(0, Math.min(100, Math.round((this.researchSystem.getResearchProgress(nationId) / current.cost) * 100))) : 0,
+      cost: currentCost,
+      progressPercent: currentCost > 0 ? Math.max(0, Math.min(100, Math.round((this.researchSystem.getResearchProgress(nationId) / currentCost) * 100))) : 0,
       sciencePerTurn: this.researchSystem.getResearchPerTurn(nationId),
       available: this.researchSystem.getAvailableTechnologies(nationId).map((technology) => ({
         id: technology.id,
         name: technology.name,
-        cost: technology.cost,
+        cost: this.researchSystem.getEffectiveCost(technology.id),
       })),
       researchedNames: this.researchSystem.getResearchedTechnologies(nationId).map((technology) => technology.name),
     };

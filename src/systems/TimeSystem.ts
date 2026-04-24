@@ -1,6 +1,10 @@
+import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
+
 export class TimeSystem {
+  constructor(private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined)) {}
+
   getYearForTurn(turn: number): number {
-    return -4000 + (turn * 25);
+    return -4000 + Math.round(turn * 25 * this.gameSpeed.yearProgressionMultiplier);
   }
 
   getLabelForTurn(turn: number): string {

@@ -10,6 +10,7 @@ import type { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { HappinessSystem } from './HappinessSystem';
+import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -23,7 +24,7 @@ export class ResourceSystem {
   private readonly happinessSystem: HappinessSystem;
   private readonly listeners: ResourceListener[] = [];
   private hasSkippedInitialTurnStart = false;
-  private readonly cityTerritorySystem = new CityTerritorySystem();
+  private readonly cityTerritorySystem: CityTerritorySystem;
 
   constructor(
     nationManager: NationManager,
@@ -34,12 +35,14 @@ export class ResourceSystem {
     private readonly gridSystem: IGridSystem,
     happinessSystem: HappinessSystem,
     private readonly getNationModifiers: (nationId: string) => Readonly<ModifierSet> = () => EMPTY_MODIFIERS,
+    gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
   ) {
     this.nationManager = nationManager;
     this.cityManager = cityManager;
     this.generator = generator;
     this.mapData = mapData;
     this.happinessSystem = happinessSystem;
+    this.cityTerritorySystem = new CityTerritorySystem(gameSpeed, gridSystem);
 
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
 
@@ -97,6 +100,7 @@ export class ResourceSystem {
       this.gridSystem,
       nationModifiers,
     );
+    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
@@ -147,6 +151,8 @@ export class ResourceSystem {
       nationModifiers,
     );
     nationRes.gold += nationRes.goldPerTurn;
+    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
+    nationRes.influence += nationRes.influencePerTurn;
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
@@ -184,6 +190,7 @@ export class ResourceSystem {
       nationRes.happinessPerTurn += displayEconomy.happiness;
       cityRes.food = city.foodStorage;
     }
+    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
     nationRes.culture += nationRes.culturePerTurn;
 
     this.happinessSystem.recalculateNation(nation.id);
@@ -207,6 +214,7 @@ export class ResourceSystem {
         this.gridSystem,
         nationModifiers,
       );
+      nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
       nationRes.culturePerTurn = 0;
       nationRes.happinessPerTurn = 0;
 
@@ -237,5 +245,9 @@ export class ResourceSystem {
       this.cityTerritorySystem.updateWorkedTiles(city, this.mapData);
       this.cityTerritorySystem.refreshNextExpansionTile(city, this.mapData);
     }
+  }
+
+  private calculateNationInfluencePerTurn(cities: ReturnType<CityManager['getCitiesByOwner']>): number {
+    return cities.reduce((sum, city) => sum + city.population, 0);
   }
 }

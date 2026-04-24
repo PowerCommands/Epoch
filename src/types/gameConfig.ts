@@ -1,4 +1,5 @@
 import type { SavedGameState } from './saveGame';
+import type { GameSpeedId } from '../data/gameSpeeds';
 
 export type ResourceAbundance = 'scarce' | 'normal' | 'abundant';
 
@@ -7,6 +8,7 @@ export interface GameConfig {
   humanNationId: string;
   activeNationIds: string[];
   resourceAbundance: ResourceAbundance;
+  gameSpeedId: GameSpeedId;
   /**
    * When present, {@link GameScene} applies this snapshot after its
    * normal scenario-based initialization, yielding a fully-restored

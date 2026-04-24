@@ -7,7 +7,7 @@ const DEPTH = 140;
 const EDGE_MARGIN = 16;
 const ENTRY_GAP = 8;
 const ENTRY_HEIGHT = 34;
-const ENTRY_COUNT = 6;
+const ENTRY_COUNT = 7;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
 interface ResourceEntryView {

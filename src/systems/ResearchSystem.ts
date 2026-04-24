@@ -1,5 +1,6 @@
 import type { TechnologyDefinition } from '../data/technologies';
 import { ALL_TECHNOLOGIES, getTechnologyById } from '../data/technologies';
+import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { CityManager } from './CityManager';
 import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
@@ -23,6 +24,7 @@ export class ResearchSystem {
     private readonly eventLog: EventLogSystem,
     private readonly getCurrentRound: () => number,
     private readonly getBuildingSciencePerTurn: ScienceProvider = () => 0,
+    private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -71,7 +73,7 @@ export class ResearchSystem {
 
     nation.researchProgress += this.calculateResearchPerTurn(nationId);
 
-    if (nation.researchProgress < technology.cost) {
+    if (nation.researchProgress < this.getEffectiveCost(technology.id)) {
       this.notifyChanged();
       return;
     }
@@ -193,6 +195,11 @@ export class ResearchSystem {
 
   getResearchPerTurn(nationId: string): number {
     return this.calculateResearchPerTurn(nationId);
+  }
+
+  getEffectiveCost(techId: string): number {
+    const technology = getTechnologyById(techId);
+    return technology ? scaleGameSpeedCost(technology.cost, this.gameSpeed) : 0;
   }
 
   onChanged(cb: ChangedListener): void {

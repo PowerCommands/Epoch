@@ -12,6 +12,7 @@ const PANEL_HEIGHT = 220;
 const EDGE_MARGIN = 16;
 const PANEL_PADDING = 8;
 const WHEEL_BLOCKER_ID = 'minimap-hud';
+const OWNED_TILE_ALPHA = 0.95;
 
 const TERRAIN_COLORS: Record<TileType, number> = {
   [TileType.Ocean]: 0x1a557d,
@@ -140,16 +141,11 @@ export class MinimapHud {
         const outline = this.tileMap.getTileOutlinePoints(tile.x, tile.y)
           .map((point) => this.worldToMini(point.x, point.y));
         if (outline.length < 3) continue;
-        this.mapGfx.fillStyle(TERRAIN_COLORS[tile.type], 1);
+        const nationColor = tile.ownerId !== undefined
+          ? this.nationManager.getNation(tile.ownerId)?.color
+          : undefined;
+        this.mapGfx.fillStyle(nationColor ?? TERRAIN_COLORS[tile.type], nationColor !== undefined ? OWNED_TILE_ALPHA : 1);
         this.fillPolygon(this.mapGfx, outline);
-
-        if (tile.ownerId !== undefined) {
-          const nationColor = this.nationManager.getNation(tile.ownerId)?.color;
-          if (nationColor !== undefined) {
-            this.mapGfx.lineStyle(1, nationColor, 0.42);
-            this.strokePolygon(this.mapGfx, outline);
-          }
-        }
       }
     }
   }
@@ -254,13 +250,4 @@ export class MinimapHud {
     graphics.fillPath();
   }
 
-  private strokePolygon(graphics: Phaser.GameObjects.Graphics, points: Array<{ x: number; y: number }>): void {
-    graphics.beginPath();
-    graphics.moveTo(points[0].x, points[0].y);
-    for (const point of points.slice(1)) {
-      graphics.lineTo(point.x, point.y);
-    }
-    graphics.closePath();
-    graphics.strokePath();
-  }
 }

@@ -1,14 +1,16 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
+import { CircularHudProgressButton } from './CircularHudProgressButton';
 import type { HudPolicyEntry, HudPolicyState } from './NationHudDataProvider';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
 const DEPTH = 140;
 const EDGE_MARGIN = 16;
-const TOGGLE_GAP = 12;
-const TOGGLE_SIZE = 62;
+const TOGGLE_GAP = 14;
+const TOGGLE_SIZE = 102;
+const TOGGLE_HIT_SIZE = 122;
 const TOGGLE_BASE_Y = EDGE_MARGIN + 46;
 const CULTURE_TOGGLE_Y = TOGGLE_BASE_Y + TOGGLE_SIZE + TOGGLE_GAP;
 const SHARED_PANEL_Y = CULTURE_TOGGLE_Y + TOGGLE_SIZE + 12;
@@ -44,11 +46,8 @@ export class CultureHudPanel {
   private readonly wheelBlockerId = `culture-panel-wheel-${Math.random().toString(36).slice(2)}`;
   private readonly addOwned: AddOwned;
   private readonly blocker: Phaser.GameObjects.Zone;
-  private readonly toggleBackground: Phaser.GameObjects.Rectangle;
-  private readonly toggleIcon: Phaser.GameObjects.Text;
-  private readonly toggleHitArea: Phaser.GameObjects.Zone;
+  private readonly toggleButton: CircularHudProgressButton;
   private readonly panelBackground: Phaser.GameObjects.Rectangle;
-  private readonly toggleProgressText: Phaser.GameObjects.Text;
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
@@ -71,8 +70,6 @@ export class CultureHudPanel {
 
   private readonly policyButtons: PolicyButtonView[] = [];
   private collapsed = true;
-  private hoveredToggle = false;
-  private togglePressed = false;
   private draggingScrollbar = false;
   private dragPointerId: number | null = null;
   private dragStartPointerY = 0;
@@ -108,42 +105,25 @@ export class CultureHudPanel {
       .setScrollFactor(0)
       .setInteractive();
 
-    this.toggleBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, TOGGLE_SIZE, TOGGLE_SIZE, 0x0c141d, 0.92))
-      .setOrigin(0, 0)
-      .setDepth(DEPTH)
-      .setScrollFactor(0)
-      .setStrokeStyle(2, 0x68a9d5, 0.72);
-    this.toggleIcon = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '⭐', {
-      fontFamily: 'sans-serif',
-      fontSize: '31px',
-      color: '#eef7ff',
-    }))
-      .setOrigin(0.5)
-      .setDepth(DEPTH + 1)
-      .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION);
-    this.toggleHitArea = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, TOGGLE_SIZE, TOGGLE_SIZE))
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 2)
-      .setScrollFactor(0)
-      .setInteractive({ useHandCursor: true });
+    this.toggleButton = new CircularHudProgressButton(scene, addOwned, worldInputGate, {
+      depth: DEPTH,
+      diameter: TOGGLE_SIZE,
+      hitDiameter: TOGGLE_HIT_SIZE,
+      icon: '⭐',
+      iconSize: 39,
+      progressColor: 0xb56cff,
+      accentColor: 0xb39cff,
+    });
+    this.toggleButton.setOnClick(() => {
+      this.setCollapsed(!this.collapsed);
+      this.onToggle?.(this.collapsed);
+    });
 
     this.panelBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_WIDTH, 100, 0x071017, 0.88))
       .setOrigin(0, 0)
       .setDepth(DEPTH)
       .setScrollFactor(0)
       .setStrokeStyle(1, 0x7fb4d5, 0.45);
-    this.toggleProgressText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
-      fontFamily: 'sans-serif',
-      fontSize: '14px',
-      color: '#eef7ff',
-      fontStyle: 'bold',
-    }))
-      .setOrigin(0.5, 1)
-      .setDepth(DEPTH + 1)
-      .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setVisible(false);
     this.scrollbarTrack = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_SCROLLBAR_WIDTH, 10, 0x15222d, 0.9))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
@@ -184,49 +164,6 @@ export class CultureHudPanel {
       if (this.collapsed || pointer.button !== 0) return;
       consumePointerEvent(pointer);
       this.worldInputGate.releasePointer(pointer.id);
-    });
-
-    this.toggleHitArea.on(Phaser.Input.Events.POINTER_OVER, () => {
-      this.hoveredToggle = true;
-      this.toggleProgressText.setText(`${this.state.progressPercent}%`).setVisible(true);
-      this.refreshToggleState();
-    });
-    this.toggleHitArea.on(Phaser.Input.Events.POINTER_OUT, () => {
-      this.hoveredToggle = false;
-      this.togglePressed = false;
-      this.toggleProgressText.setVisible(false);
-      this.refreshToggleState();
-    });
-    this.toggleHitArea.on(Phaser.Input.Events.POINTER_DOWN, (
-      pointer: Phaser.Input.Pointer,
-      _localX: number,
-      _localY: number,
-      event: Phaser.Types.Input.EventData,
-    ) => {
-      event.stopPropagation();
-      if (pointer.button !== 0) return;
-      this.worldInputGate.claimPointer(pointer.id);
-      this.togglePressed = true;
-      consumePointerEvent(pointer);
-      this.refreshToggleState();
-    });
-    this.toggleHitArea.on(Phaser.Input.Events.POINTER_UP, (
-      pointer: Phaser.Input.Pointer,
-      _localX: number,
-      _localY: number,
-      event: Phaser.Types.Input.EventData,
-    ) => {
-      event.stopPropagation();
-      if (pointer.button !== 0) return;
-      consumePointerEvent(pointer);
-      const shouldToggle = this.togglePressed;
-      this.togglePressed = false;
-      this.worldInputGate.releasePointer(pointer.id);
-      if (shouldToggle) {
-        this.setCollapsed(!this.collapsed);
-        this.onToggle?.(this.collapsed);
-      }
-      this.refreshToggleState();
     });
 
     this.handleWheel = (pointer, _gameObjects, _deltaX, deltaY, _deltaZ, event) => {
@@ -293,6 +230,7 @@ export class CultureHudPanel {
         : `Stored Progress: ${state.progress}`,
     );
     this.cultureText.setText(`Culture: +${state.culturePerTurn}/turn`);
+    this.toggleButton.setProgress(state.cost > 0 ? state.progress / state.cost : 0);
     this.rebuildPolicyButtons();
     this.layout(this.scene.scale.width, this.scene.scale.height);
   }
@@ -315,10 +253,7 @@ export class CultureHudPanel {
   layout(viewportWidth: number, viewportHeight: number): void {
     const toggleX = EDGE_MARGIN;
     const toggleY = CULTURE_TOGGLE_Y;
-    this.toggleBackground.setPosition(Math.round(toggleX), Math.round(toggleY));
-    this.toggleIcon.setPosition(Math.round(toggleX + (TOGGLE_SIZE / 2)), Math.round(toggleY + (TOGGLE_SIZE / 2)));
-    this.toggleProgressText.setPosition(Math.round(toggleX + (TOGGLE_SIZE / 2)), Math.round(toggleY - 4));
-    this.toggleHitArea.setPosition(Math.round(toggleX), Math.round(toggleY)).setSize(TOGGLE_SIZE, TOGGLE_SIZE);
+    this.toggleButton.layout(toggleX, toggleY);
 
     const panelVisible = !this.collapsed;
     this.blocker.setVisible(panelVisible).setPosition(0, 0).setSize(viewportWidth, viewportHeight);
@@ -398,10 +333,7 @@ export class CultureHudPanel {
     this.scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
     this.worldInputGate.unregisterWheelBlocker(this.wheelBlockerId);
     this.blocker.destroy();
-    this.toggleBackground.destroy();
-    this.toggleIcon.destroy();
-    this.toggleProgressText.destroy();
-    this.toggleHitArea.destroy();
+    this.toggleButton.destroy();
     this.panelBackground.destroy();
     this.scrollbarTrack.destroy();
     this.scrollbarThumb.destroy();
@@ -669,14 +601,7 @@ export class CultureHudPanel {
   }
 
   private refreshToggleState(): void {
-    const fill = this.togglePressed
-      ? 0x16394b
-      : this.hoveredToggle
-        ? 0x15303f
-        : 0x0c141d;
-    this.toggleBackground
-      .setFillStyle(fill, 0.94)
-      .setStrokeStyle(2, this.collapsed ? 0x68a9d5 : 0x9ed7ff, this.hoveredToggle ? 0.95 : 0.72);
+    this.toggleButton.setActive(!this.collapsed);
   }
 }
 
