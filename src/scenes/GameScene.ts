@@ -62,6 +62,7 @@ import { EscapeMenu } from '../ui/EscapeMenu';
 import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import { HudLayer } from '../ui/hud/HudLayer';
+import { MinimapHud } from '../ui/hud/MinimapHud';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import type { SavedGameState } from '../types/saveGame';
@@ -84,12 +85,14 @@ export class GameScene extends Phaser.Scene {
   private cameraController!: CameraController;
   private diagnosticSystem!: DiagnosticSystem;
   private timeSystem!: TimeSystem;
+  private minimapHud: MinimapHud | null = null;
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
   create(data: GameConfig): void {
+    this.minimapHud = null;
     // ─── Data & system ───────────────────────────────────────────────────────
 
     // 1. Parse scenario using map key from config
@@ -984,6 +987,14 @@ export class GameScene extends Phaser.Scene {
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
+    this.minimapHud = new MinimapHud(
+      this,
+      tileMap,
+      mapData,
+      nationManager,
+      this.cameraController,
+      worldInputGate,
+    );
 
     rightPanel = new RightPanel(
       productionSystem,
@@ -1727,6 +1738,8 @@ export class GameScene extends Phaser.Scene {
       cityRenderer.shutdown();
       naturalResourceRenderer.shutdown();
       tileBuildingRenderer.shutdown();
+      this.minimapHud?.shutdown();
+      this.minimapHud = null;
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });
@@ -1938,6 +1951,7 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.cameraController) return;
     this.cameraController.update(delta);
+    this.minimapHud?.update();
     this.diagnosticSystem.update();
   }
 
