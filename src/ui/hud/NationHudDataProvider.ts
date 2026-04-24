@@ -7,10 +7,11 @@ import type { TurnManager } from '../../systems/TurnManager';
 import { getPolicyById } from '../../data/policies';
 
 export interface HudResourceEntry {
-  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold';
+  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science';
   icon: string;
   value: number | string;
   delta: number;
+  displayMode?: 'valueAndDelta' | 'deltaOnly';
 }
 
 export interface HudResearchOption {
@@ -76,6 +77,8 @@ export class NationHudDataProvider {
     const nationResources = this.nationManager.getResources(nationId);
     const productionPerTurn = this.cityManager.getCitiesByOwner(nationId)
       .reduce((sum, city) => sum + this.cityManager.getResources(city.id).productionPerTurn, 0);
+    const researchProgress = this.researchSystem.getResearchProgress(nationId);
+    const researchPerTurn = this.researchSystem.getResearchPerTurn(nationId);
 
     return [
       {
@@ -95,6 +98,13 @@ export class NationHudDataProvider {
         icon: '⚙️',
         value: 0,
         delta: productionPerTurn,
+        displayMode: 'deltaOnly',
+      },
+      {
+        key: 'science',
+        icon: '🔬',
+        value: researchProgress,
+        delta: researchPerTurn,
       },
       {
         key: 'culture',

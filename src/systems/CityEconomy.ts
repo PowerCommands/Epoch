@@ -53,7 +53,7 @@ export function calculateCityEconomy(
   const workedTiles = getStoredWorkedTiles(city, mapData, gridSystem);
   let food = BASE_CITY_FOOD;
   let production = 0;
-  let gold = 0;
+  let gold = city.population;
   let science = 0;
   let culture = 1;
   let happiness = 0;

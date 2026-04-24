@@ -7,6 +7,7 @@ const DEPTH = 140;
 const EDGE_MARGIN = 16;
 const ENTRY_GAP = 8;
 const ENTRY_HEIGHT = 34;
+const ENTRY_COUNT = 6;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
 interface ResourceEntryView {
@@ -22,7 +23,7 @@ export class TopResourceBar {
     private readonly scene: Phaser.Scene,
     addOwned: AddOwned,
   ) {
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < ENTRY_COUNT; index += 1) {
       const background = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, ENTRY_HEIGHT, 0x0b1118, 0.84))
         .setOrigin(0, 0)
         .setDepth(DEPTH)
@@ -95,6 +96,10 @@ function formatSigned(value: number): string {
 function formatEntryText(value: HudResourceEntry): string {
   if (value.key === 'turn') {
     return `${value.value}`;
+  }
+
+  if (value.displayMode === 'deltaOnly') {
+    return `${value.icon} ${formatSigned(value.delta)}/turn`;
   }
 
   return `${value.icon} ${value.value} (${formatSigned(value.delta)})`;
