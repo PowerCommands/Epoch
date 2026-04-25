@@ -335,6 +335,10 @@ export class CityBannerRenderer {
       };
     }
 
+    if (production.kind === 'wonder') {
+      return { fallbackLabel: getAbbreviation(production.wonderType.name) };
+    }
+
     const textureKey = this.ensureBuildingTexture(production.buildingType.id);
     return {
       textureKey,

@@ -8,17 +8,30 @@ import type { GameSpeedId } from '../data/gameSpeeds';
  * so future changes can be detected and rejected cleanly.
  */
 
-export const SAVED_GAME_VERSION = 2 as const;
+export const SAVED_GAME_VERSION = 3 as const;
 
 export interface SavedProducible {
-  kind: 'unit' | 'building';
+  kind: 'unit' | 'building' | 'wonder';
   id: string;
+}
+
+export interface SavedWonder {
+  wonderId: string;
+  cityId: string;
+  ownerId: string;
+  tileX?: number;
+  tileY?: number;
+  completedTurn: number;
 }
 
 export interface SavedQueueEntry {
   item: SavedProducible;
   accumulated: number;
   blockedReason?: string;
+  placement?: {
+    tileX: number;
+    tileY: number;
+  };
 }
 
 export interface SavedNation {
@@ -78,6 +91,11 @@ export interface SavedTile {
     buildingId: string;
     cityId: string;
   };
+  wonderId?: string;
+  wonderConstruction?: {
+    wonderId: string;
+    cityId: string;
+  };
 }
 
 export interface SavedDiplomacyEntry {
@@ -109,4 +127,5 @@ export interface SavedGameState {
   units: SavedUnit[];
   diplomacy: SavedDiplomacyEntry[];
   discovery: SavedDiscoveryEntry[];
+  wonders: SavedWonder[];
 }

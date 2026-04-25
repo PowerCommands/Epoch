@@ -176,6 +176,8 @@ export class BuildingPlacementSystem {
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
     if (tile.buildingId !== undefined) return false;
     if (tile.buildingConstruction !== undefined) return false;
+    if (tile.wonderId !== undefined) return false;
+    if (tile.wonderConstruction !== undefined) return false;
 
     if (building.placement === 'water') {
       return tile.type === TileType.Ocean || tile.type === TileType.Coast;

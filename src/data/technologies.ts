@@ -9,7 +9,7 @@ export type Era =
   | 'information'
   | 'future';
 
-export type TechnologyUnlockKind = 'unit' | 'building' | 'improvement';
+export type TechnologyUnlockKind = 'unit' | 'building' | 'improvement' | 'wonder';
 
 export interface TechnologyUnlock {
   kind: TechnologyUnlockKind;
@@ -82,8 +82,14 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 55,
     prerequisites: ['pottery'],
     leadsTo: ['optics'],
-    unlocks: [{ kind: 'unit', id: 'work_boat' }, { kind: 'unit', id: 'fishing_boat' }, { kind: 'unit', id: 'trireme' }, { kind: 'unit', id: 'cargo_ship' }],
-    // TODO: unlocks Great Lighthouse wonder and Fishing Boat improvement.
+    unlocks: [
+      { kind: 'unit', id: 'work_boat' },
+      { kind: 'unit', id: 'fishing_boat' },
+      { kind: 'unit', id: 'trireme' },
+      { kind: 'unit', id: 'cargo_ship' },
+      { kind: 'wonder', id: 'great_lighthouse' },
+    ],
+    // TODO: unlocks Fishing Boat improvement.
   },
   {
     id: 'calendar',
@@ -132,8 +138,8 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 55,
     prerequisites: ['mining'],
     leadsTo: ['construction'],
-    unlocks: [{ kind: 'building', id: 'walls' }],
-    // TODO: unlocks Pyramids and Mausoleum of Halicarnassus wonders, Quarry improvement, marsh removal.
+    unlocks: [{ kind: 'building', id: 'walls' }, { kind: 'wonder', id: 'pyramids' }],
+    // TODO: unlocks Mausoleum of Halicarnassus wonder, Quarry improvement, marsh removal.
   },
   {
     id: 'bronze_working',
@@ -142,8 +148,12 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 55,
     prerequisites: ['mining'],
     leadsTo: ['iron_working'],
-    unlocks: [{ kind: 'unit', id: 'spearman' }, { kind: 'building', id: 'barracks' }],
-    // TODO: unlocks Colossus and Statue of Zeus wonders, jungle chopping.
+    unlocks: [
+      { kind: 'unit', id: 'spearman' },
+      { kind: 'building', id: 'barracks' },
+      { kind: 'wonder', id: 'colossus' },
+    ],
+    // TODO: unlocks Statue of Zeus wonder, jungle chopping.
   },
   {
     id: 'optics',
@@ -162,8 +172,8 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 105,
     prerequisites: ['calendar', 'writing'],
     leadsTo: ['theology'],
-    unlocks: [{ kind: 'building', id: 'temple' }],
-    // TODO: unlocks National College, National Epic, Oracle, research agreements.
+    unlocks: [{ kind: 'building', id: 'temple' }, { kind: 'wonder', id: 'oracle' }],
+    // TODO: unlocks National College, National Epic, research agreements.
   },
   {
     id: 'drama_and_poetry',
@@ -191,8 +201,11 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 105,
     prerequisites: ['the_wheel', 'archery'],
     leadsTo: ['currency', 'engineering'],
-    unlocks: [{ kind: 'unit', id: 'catapult' }, { kind: 'building', id: 'courthouse' }],
-    // TODO: unlocks Hanging Gardens wonder.
+    unlocks: [
+      { kind: 'unit', id: 'catapult' },
+      { kind: 'building', id: 'courthouse' },
+      { kind: 'wonder', id: 'hanging_gardens' },
+    ],
   },
   {
     id: 'construction',
@@ -201,8 +214,13 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 105,
     prerequisites: ['masonry'],
     leadsTo: ['engineering'],
-    unlocks: [{ kind: 'unit', id: 'composite_bowman' }, { kind: 'building', id: 'colosseum' }, { kind: 'improvement', id: 'lumber_mill' }],
-    // TODO: unlocks Circus Maximus and Great Wall wonders.
+    unlocks: [
+      { kind: 'unit', id: 'composite_bowman' },
+      { kind: 'building', id: 'colosseum' },
+      { kind: 'improvement', id: 'lumber_mill' },
+      { kind: 'wonder', id: 'great_wall' },
+    ],
+    // TODO: unlocks Circus Maximus wonder.
   },
   {
     id: 'iron_working',

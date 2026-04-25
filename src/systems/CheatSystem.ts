@@ -249,6 +249,8 @@ function producibleName(item: Producible): string {
       return item.unitType.name;
     case 'building':
       return item.buildingType.name;
+    case 'wonder':
+      return item.wonderType.name;
   }
 }
 

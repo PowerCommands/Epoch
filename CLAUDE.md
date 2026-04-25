@@ -342,6 +342,7 @@ Remove when:
 * R → ranged attack
 * M → move
 * A → attack
+* Enter / Return → end current human turn
 * Escape → menu
 
 ---

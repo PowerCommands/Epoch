@@ -13,6 +13,7 @@ export interface RightSidebarTextRow {
   muted?: boolean;
   large?: boolean;
   color?: number;
+  spritePath?: string;
 }
 
 export interface RightSidebarButtonRow {
@@ -20,6 +21,7 @@ export interface RightSidebarButtonRow {
   text: string;
   disabled?: boolean;
   accentColor?: number;
+  spritePath?: string;
   trailingIcon?: string;
   onClick: () => void;
 }

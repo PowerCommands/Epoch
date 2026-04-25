@@ -14,6 +14,11 @@ export interface TileBuildingConstruction {
   cityId: string;
 }
 
+export interface TileWonderConstruction {
+  wonderId: string;
+  cityId: string;
+}
+
 export interface Tile {
   x: number; // grid-koordinat (kolumn)
   y: number; // grid-koordinat (rad)
@@ -23,6 +28,8 @@ export interface Tile {
   improvementId?: string; // optional tile improvement; undefined = none
   buildingId?: string; // finished tile building; undefined = none
   buildingConstruction?: TileBuildingConstruction; // reserved/under-construction tile building
+  wonderId?: string; // finished wonder; undefined = none
+  wonderConstruction?: TileWonderConstruction; // reserved/under-construction wonder
 }
 
 export interface MapData {

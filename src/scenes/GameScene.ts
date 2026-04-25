@@ -30,6 +30,7 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
 import { BuildingPlacementSystem } from '../systems/BuildingPlacementSystem';
+import { WonderPlacementSystem } from '../systems/WonderPlacementSystem';
 import { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
@@ -48,6 +49,8 @@ import { CityBannerRenderer } from '../systems/CityBannerRenderer';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import { TimeSystem } from '../systems/TimeSystem';
+import { WonderSystem } from '../systems/WonderSystem';
+import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
 import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
@@ -58,8 +61,10 @@ import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
-import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState } from '../ui/CityView';
+import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
+import { ALL_WONDERS, getWonderById } from '../data/wonders';
+import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
 import { MinimapHud } from '../ui/hud/MinimapHud';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
@@ -68,6 +73,8 @@ import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDat
 import { SaveLoadService } from '../systems/SaveLoadService';
 import type { SavedGameState } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { ALL_UNIT_TYPES } from '../data/units';
+import { canCityProduceUnit } from '../systems/ProductionRules';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
@@ -76,7 +83,6 @@ import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
-import { EMPTY_MODIFIERS } from '../types/modifiers';
 
 /**
  * GameScene — huvudspelscenen.
@@ -206,10 +212,12 @@ export class GameScene extends Phaser.Scene {
       return !cultureSystem.getCurrentCultureNode(humanNationId)
         && cultureSystem.getAvailableCultureNodes(humanNationId).length > 0;
     };
+    const wonderSystem = new WonderSystem();
+    const territoryExpansionBonusSystem = new TerritoryExpansionBonusSystem(gridSystem, cityTerritorySystem);
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
-      () => EMPTY_MODIFIERS,
+      (nationId) => wonderSystem.getNationModifiers(nationId),
     );
     const resourceSystem = new ResourceSystem(
       nationManager,
@@ -219,7 +227,7 @@ export class GameScene extends Phaser.Scene {
       mapData,
       gridSystem,
       happinessSystem,
-      () => EMPTY_MODIFIERS,
+      (nationId) => wonderSystem.getNationModifiers(nationId),
       gameSpeed,
     );
 
@@ -241,6 +249,7 @@ export class GameScene extends Phaser.Scene {
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
     const buildingPlacementSystem = new BuildingPlacementSystem();
+    const wonderPlacementSystem = new WonderPlacementSystem();
     const cityViewRenderer = new CityViewRenderer(
       this,
       tileMap,
@@ -283,7 +292,7 @@ export class GameScene extends Phaser.Scene {
           mapData,
           cityManager.getBuildings(city.id),
           gridSystem,
-          EMPTY_MODIFIERS,
+          wonderSystem.getNationModifiers(nationId),
         ).science, 0),
       gameSpeed,
     );
@@ -617,9 +626,8 @@ export class GameScene extends Phaser.Scene {
       }
       focusHumanCapital();
     };
-    this.input.keyboard?.on('keydown-C', onKeyCenter);
 
-    // Keyboard shortcuts for unit actions on the selected human unit.
+    // Unit/action gameplay hotkeys for the selected human unit.
     const activateActionIfHumanTurn = (mode: 'move' | 'attack' | 'ranged' | 'sleep') => {
       if (!turnManager.getCurrentNation().isHuman) return;
       const selection = selectionManager.getSelected();
@@ -630,7 +638,6 @@ export class GameScene extends Phaser.Scene {
     const onKeyAttack = () => activateActionIfHumanTurn('attack');
     const onKeyRanged = () => activateActionIfHumanTurn('ranged');
     const onKeySleep = () => activateActionIfHumanTurn('sleep');
-    const onEnterEndTurn = () => endHumanTurn();
     const bindGameplayHotkeys = (): void => {
       this.input.keyboard?.on('keydown-SPACE', onSpaceSkip);
       this.input.keyboard?.on('keydown-C', onKeyCenter);
@@ -638,7 +645,6 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.on('keydown-A', onKeyAttack);
       this.input.keyboard?.on('keydown-R', onKeyRanged);
       this.input.keyboard?.on('keydown-S', onKeySleep);
-      this.input.keyboard?.on('keydown-ENTER', onEnterEndTurn);
     };
     const unbindGameplayHotkeys = (): void => {
       this.input.keyboard?.off('keydown-SPACE', onSpaceSkip);
@@ -647,7 +653,6 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-A', onKeyAttack);
       this.input.keyboard?.off('keydown-R', onKeyRanged);
       this.input.keyboard?.off('keydown-S', onKeySleep);
-      this.input.keyboard?.off('keydown-ENTER', onEnterEndTurn);
     };
     bindGameplayHotkeys();
 
@@ -676,8 +681,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Hantera färdig produktion
-    // TODO wonder: when Producible gains a 'wonder' variant, add handling here.
-    productionSystem.onCompleted((cityId, item) => {
+    productionSystem.onCompleted((cityId, item, entry) => {
       const city = cityManager.getCity(cityId);
       if (!city) return false;
 
@@ -695,6 +699,64 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
 
+      if (item.kind === 'wonder') {
+        const placement = entry.placement;
+        if (!placement) return false;
+        if (wonderSystem.isWonderBuilt(item.wonderType.id)) return false;
+
+        const completedTile = wonderPlacementSystem.finalizeReservedWonder(cityId, item.wonderType.id, mapData);
+        if (!completedTile || completedTile.x !== placement.tileX || completedTile.y !== placement.tileY) {
+          console.warn(`[WonderPlacement] Completed ${item.wonderType.id} for ${cityId} without its reserved tile.`);
+          return false;
+        }
+
+        const registered = wonderSystem.completeWonder(
+          city,
+          item.wonderType,
+          turnManager.getCurrentRound(),
+          placement,
+        );
+        if (!registered) return false;
+
+        productionSystem.removeWonderFromAllQueues(item.wonderType.id);
+        wonderPlacementSystem.releaseWonderReservations(item.wonderType.id, mapData);
+
+        const wonderState = wonderSystem.getCompletedWonder(item.wonderType.id);
+        if (wonderState?.tileX === undefined || wonderState.tileY === undefined) return false;
+        const origin = { x: wonderState.tileX, y: wonderState.tileY };
+        const expansion = territoryExpansionBonusSystem.apply({
+          city,
+          ownerId: city.ownerId,
+          origin,
+          radius: 1,
+          source: 'wonder',
+          reason: item.wonderType.id,
+        }, mapData);
+
+        for (const nation of nationManager.getAllNations()) {
+          resourceSystem.recalculateForNation(nation.id);
+        }
+        if (expansion.claimedCoords.length > 0) {
+          territoryRenderer.render();
+          this.minimapHud?.rebuild();
+        }
+        const ownerName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
+        eventLog.log(
+          `${ownerName} completed the ${item.wonderType.name} in ${city.name}.`,
+          [city.ownerId],
+          turnManager.getCurrentRound(),
+        );
+        if (expansion.claimedCoords.length > 0) {
+          eventLog.log(
+            `${item.wonderType.name} expanded ${city.name}'s territory.`,
+            [city.ownerId],
+            turnManager.getCurrentRound(),
+          );
+        }
+        refreshOpenCityView();
+        return true;
+      }
+
       const placement = this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
       if (placement === null) return false;
 
@@ -707,6 +769,10 @@ export class GameScene extends Phaser.Scene {
       });
 
       return true;
+    });
+    productionSystem.onRemoved((cityId, entry) => {
+      if (entry.item.kind !== 'wonder') return;
+      wonderPlacementSystem.releaseCityWonderReservation(cityId, entry.item.wonderType.id, mapData);
     });
 
     // ─── City combat events ─────────────────────────────────────────────────
@@ -998,6 +1064,36 @@ export class GameScene extends Phaser.Scene {
       if (!turnManager.getCurrentNation().isHuman) return;
       turnManager.endCurrentTurn();
     };
+    const isFocusedElementEditingText = (): boolean => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return false;
+      if (active.isContentEditable) return true;
+      return Boolean(active.closest('input, textarea, select, [contenteditable="true"]'));
+    };
+    const isVisibleModalOverlayActive = (): boolean => {
+      const modalIds = ['diplomacy-modal', 'building-placement-modal', 'escape-menu'];
+      return modalIds.some((id) => {
+        const element = document.getElementById(id);
+        if (!(element instanceof HTMLElement)) return false;
+        const style = window.getComputedStyle(element);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
+    };
+    const shouldIgnoreGlobalTurnHotkey = (): boolean => (
+      isFocusedElementEditingText() || isVisibleModalOverlayActive()
+    );
+    // Global turn hotkeys stay bound across CityView and other UI states.
+    const onEnterEndTurn = (event?: KeyboardEvent) => {
+      if (shouldIgnoreGlobalTurnHotkey()) return;
+      event?.preventDefault();
+      endHumanTurn();
+    };
+    this.input.keyboard?.on('keydown-ENTER', onEnterEndTurn);
+    this.input.keyboard?.on('keydown-NUMPAD_ENTER', onEnterEndTurn);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-ENTER', onEnterEndTurn);
+      this.input.keyboard?.off('keydown-NUMPAD_ENTER', onEnterEndTurn);
+    });
     const hudDataProvider = new NationHudDataProvider(
       nationManager,
       cityManager,
@@ -1060,6 +1156,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setResearchSystem(researchSystem);
     rightPanel.setCultureSystem(cultureSystem);
+    rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
     rightPanel.setBuilderHintProvider((tile) => {
@@ -1099,20 +1196,68 @@ export class GameScene extends Phaser.Scene {
           };
         });
     };
+    const getCityViewUnitOptions = (city: City): CityViewUnitOption[] => (
+      ALL_UNIT_TYPES
+        .filter((unitType) => canCityProduceUnit(city, unitType, mapData, gridSystem))
+        .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
+        .map((unitType) => ({
+          id: unitType.id,
+          name: unitType.name,
+          cost: productionSystem.getCost({ kind: 'unit', unitType }),
+        }))
+    );
+    const getCityViewWonderOptions = (city: City): CityViewWonderOption[] => {
+      const isQueuedHere = (wonderId: string): boolean => productionSystem.getQueue(city.id)
+        .some((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId);
+
+      return ALL_WONDERS
+        .filter((wonderType) => researchSystem.isWonderUnlocked(city.ownerId, wonderType.id))
+        .map((wonderType) => {
+          const built = wonderSystem.isWonderBuilt(wonderType.id);
+          const queuedHere = isQueuedHere(wonderType.id);
+          const cityCanBuild = wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem });
+          const validCoords = wonderPlacementSystem.getValidPlacementCoords(city, wonderType, mapData);
+          let disabled = false;
+          let reason: string | undefined;
+          if (built) { disabled = true; reason = 'Already completed'; }
+          else if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
+          else if (!cityCanBuild) { disabled = true; reason = 'This city cannot build it'; }
+          else if (validCoords.length === 0) { disabled = true; reason = 'No valid owned tile matches this wonder placement.'; }
+          return {
+            id: wonderType.id,
+            name: wonderType.name,
+            cost: productionSystem.getCost({ kind: 'wonder', wonderType }),
+            description: wonderType.description,
+            disabled,
+            reason,
+          };
+        });
+    };
     const getCityViewPlacementRenderState = (city: City): CityViewPlacementRenderState => {
       const placementState = buildingPlacementSystem.getState();
-      if (!placementState || placementState.cityId !== city.id) {
-        return { active: false, validCoords: [] };
+      if (placementState?.cityId === city.id) {
+        return {
+          active: true,
+          validCoords: placementState.validCoords,
+        };
       }
-      return {
-        active: true,
-        validCoords: placementState.validCoords,
-      };
+      const wonderPlacementState = wonderPlacementSystem.getState();
+      if (wonderPlacementState?.cityId === city.id) {
+        return {
+          active: true,
+          validCoords: wonderPlacementState.validCoords,
+        };
+      }
+      return { active: false, validCoords: [] };
     };
     const getCityViewPlacementPanelState = (city: City): CityViewPlacementPanelState => {
       const placementState = buildingPlacementSystem.getState();
       const building = placementState && placementState.cityId === city.id
         ? getBuildingById(placementState.buildingId)
+        : undefined;
+      const wonderPlacementState = wonderPlacementSystem.getState();
+      const wonder = wonderPlacementState && wonderPlacementState.cityId === city.id
+        ? getWonderById(wonderPlacementState.wonderId)
         : undefined;
       const reservedBuildingIds = [...getReservedBuildingIds(city)];
       const reservedBuildingId = reservedBuildingIds[0];
@@ -1123,9 +1268,12 @@ export class GameScene extends Phaser.Scene {
         ))
         : undefined;
       return {
-        active: Boolean(placementState && placementState.cityId === city.id),
+        active: Boolean((placementState && placementState.cityId === city.id) || wonder),
+        mode: wonder ? 'wonder' : building ? 'building' : undefined,
         buildingId: building?.id,
         buildingName: building?.name,
+        wonderId: wonder?.id,
+        wonderName: wonder?.name,
         underConstructionLabel: reservedBuilding
           ? `${reservedBuilding.name} (${Math.max(0, Math.min(100, Math.floor(((reservedProgress?.progress ?? 0) / (reservedProgress?.cost ?? 1)) * 100)))}%)`
           : undefined,
@@ -1176,6 +1324,7 @@ export class GameScene extends Phaser.Scene {
       if (!buildingPlacementSystem.startPlacement(city, buildingId, mapData)) {
         return { ok: false, message: 'No building placements available for this city.' };
       }
+      wonderPlacementSystem.cancelPlacement();
 
       cityViewDismissedCityId = null;
       territoryRenderer.setMode('cityView');
@@ -1184,6 +1333,46 @@ export class GameScene extends Phaser.Scene {
       } else {
         refreshOpenCityView();
       }
+      rightPanel?.requestRefresh();
+
+      return { ok: true };
+    });
+    rightPanel.setWonderPlacementAvailabilityProvider((city, wonderId) => (
+      wonderPlacementSystem.getValidPlacementCoords(city, wonderId, mapData).length > 0
+    ));
+    rightPanel.setWonderPlacementRequestHandler((city, wonderId) => {
+      if (city.ownerId !== humanNationId) {
+        return { ok: false, message: 'Only a human-owned selected city can place wonders.' };
+      }
+
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'city' || selected.city.id !== city.id) {
+        return { ok: false, message: 'Select the city before starting wonder placement.' };
+      }
+
+      const wonderType = getWonderById(wonderId);
+      if (!wonderType) return { ok: false, message: 'Unknown wonder.' };
+      if (!wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem })) {
+        return { ok: false, message: 'This city cannot build that wonder.' };
+      }
+      const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
+        entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId
+      ));
+      if (alreadyQueued) return { ok: false, message: 'That wonder is already in this city queue.' };
+
+      if (!wonderPlacementSystem.startPlacement(city, wonderId, mapData)) {
+        return { ok: false, message: 'No wonder placements available for this city.' };
+      }
+      buildingPlacementSystem.cancelPlacement();
+
+      cityViewDismissedCityId = null;
+      territoryRenderer.setMode('cityView');
+      if (!cityView.isOpenForCity(city.id)) {
+        openCityView(city);
+      } else {
+        refreshOpenCityView();
+      }
+      rightPanel?.requestRefresh();
 
       return { ok: true };
     });
@@ -1216,6 +1405,7 @@ export class GameScene extends Phaser.Scene {
     const clearCityViewInteraction = (): void => {
       cityViewInteraction.clear();
       buildingPlacementSystem.cancelPlacement();
+      wonderPlacementSystem.cancelPlacement();
       document.getElementById('building-placement-modal')?.remove();
       cityView.hideTooltip();
       this.cameraController.setPointerPanEnabled(true);
@@ -1257,12 +1447,14 @@ export class GameScene extends Phaser.Scene {
         buildingPlacementSystem.cancelPlacement();
       } else {
         buildingPlacementSystem.startPlacement(city, buildingId, mapData);
+        wonderPlacementSystem.cancelPlacement();
       }
 
       refreshOpenCityView();
     });
     cityView.onPlacementCancelled(() => {
       buildingPlacementSystem.cancelPlacement();
+      wonderPlacementSystem.cancelPlacement();
       refreshOpenCityView();
     });
     cityView.onBuyTileRequested(() => {
@@ -1302,6 +1494,48 @@ export class GameScene extends Phaser.Scene {
       }
 
       cityBannerRenderer.refreshCity(city);
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
+    cityView.onUnitRequested((unitId) => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+      const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId);
+      if (!unitType) return;
+      if (!canCityProduceUnit(city, unitType, mapData, gridSystem)) return;
+      if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
+      productionSystem.enqueue(city.id, { kind: 'unit', unitType });
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
+    cityView.onProductionRequested(() => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+      rightPanel?.showCity(city);
+      this.rightSidebarPanel?.showProductionTab();
+    });
+    cityView.onWonderRequested((wonderId) => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+      const wonderType = getWonderById(wonderId);
+      if (!wonderType) return;
+      if (!wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem })) {
+        refreshOpenCityView();
+        return;
+      }
+      const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
+        entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId
+      ));
+      if (alreadyQueued) {
+        refreshOpenCityView();
+        return;
+      }
+      const state = wonderPlacementSystem.getState();
+      if (state?.cityId === city.id && state.wonderId === wonderId) {
+        wonderPlacementSystem.cancelPlacement();
+      } else if (wonderPlacementSystem.startPlacement(city, wonderId, mapData)) {
+        buildingPlacementSystem.cancelPlacement();
+      }
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
@@ -1379,6 +1613,29 @@ export class GameScene extends Phaser.Scene {
       const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const tile = tileMap.worldToTile(world.x, world.y);
       const coord = tile ? { x: tile.x, y: tile.y } : null;
+      if (wonderPlacementSystem.isActiveForCity(city.id)) {
+        const result = wonderPlacementSystem.selectTile(city, coord, mapData);
+        if (result.status === 'reserved') {
+          const wonderType = getWonderById(result.wonderId);
+          if (wonderType) {
+            const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
+              entry.item.kind === 'wonder' && entry.item.wonderType.id === result.wonderId
+            ));
+            if (!alreadyQueued) {
+              productionSystem.enqueue(
+                city.id,
+                { kind: 'wonder', wonderType },
+                { placement: { tileX: result.coord.x, tileY: result.coord.y } },
+              );
+            }
+          }
+          cityView.hideTooltip();
+          refreshOpenCityView();
+          rightPanel?.requestRefresh();
+          return;
+        }
+        if (result.status === 'invalid') return;
+      }
       if (buildingPlacementSystem.isActiveForCity(city.id)) {
         const result = buildingPlacementSystem.selectTile(city, coord, mapData);
         if (result.status === 'reserved') {
@@ -1471,9 +1728,11 @@ export class GameScene extends Phaser.Scene {
       cityView.hideTooltip();
       cityView.refresh(
         city,
+        getCityViewUnitOptions(city),
         getCityViewBuildingOptions(city),
         getCityViewPlacementPanelState(city),
         getCityViewTilePurchaseState(city),
+        getCityViewWonderOptions(city),
       );
       cityViewRenderer.showWithState(
         city,
@@ -1873,6 +2132,7 @@ export class GameScene extends Phaser.Scene {
         discoverySystem,
         turnManager,
         gridSystem,
+        wonderSystem,
       });
 
       // Rebuild renderers that depend on replaced entities.
@@ -1909,6 +2169,7 @@ export class GameScene extends Phaser.Scene {
             discoverySystem,
             turnManager,
             gridSystem,
+            wonderSystem,
           });
           downloadSaveFile(state);
           escapeMenu.close();
@@ -1995,9 +2256,11 @@ export class GameScene extends Phaser.Scene {
       if (!cityView.isOpenForCity(selected.city.id)) return;
       cityView.refresh(
         selected.city,
+        getCityViewUnitOptions(selected.city),
         getCityViewBuildingOptions(selected.city),
         getCityViewPlacementPanelState(selected.city),
         getCityViewTilePurchaseState(selected.city),
+        getCityViewWonderOptions(selected.city),
       );
       cityViewRenderer.showWithState(
         selected.city,
@@ -2010,9 +2273,11 @@ export class GameScene extends Phaser.Scene {
       unbindGameplayHotkeys();
       cityView.show(
         city,
+        getCityViewUnitOptions(city),
         getCityViewBuildingOptions(city),
         getCityViewPlacementPanelState(city),
         getCityViewTilePurchaseState(city),
+        getCityViewWonderOptions(city),
       );
       cityViewRenderer.showWithState(
         city,

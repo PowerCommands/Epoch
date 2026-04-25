@@ -8,10 +8,12 @@ import type {
   SavedQueueEntry,
   SavedTile,
   SavedUnit,
+  SavedWonder,
 } from '../types/saveGame';
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { getUnitTypeById } from '../data/units';
+import { getWonderById } from '../data/wonders';
 import type { Producible } from '../types/producible';
 import type { CityManager } from './CityManager';
 import type { DiplomacyManager } from './DiplomacyManager';
@@ -20,6 +22,7 @@ import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
+import type { WonderSystem } from './WonderSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -39,6 +42,7 @@ export interface SaveLoadContext {
   discoverySystem: DiscoverySystem;
   turnManager: TurnManager;
   gridSystem: IGridSystem;
+  wonderSystem: WonderSystem;
 }
 
 /**
@@ -72,6 +76,7 @@ export class SaveLoadService {
       diplomacyManager,
       discoverySystem,
       turnManager,
+      wonderSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -99,6 +104,7 @@ export class SaveLoadService {
         item: toSavedProducible(view.item),
         accumulated: view.progress,
         blockedReason: view.blockedReason,
+        placement: view.placement ? { ...view.placement } : undefined,
       }));
 
       return {
@@ -145,6 +151,8 @@ export class SaveLoadService {
           && tile.improvementId === undefined
           && tile.buildingId === undefined
           && tile.buildingConstruction === undefined
+          && tile.wonderId === undefined
+          && tile.wonderConstruction === undefined
         ) continue;
         tiles.push({
           q: tile.x,
@@ -155,6 +163,10 @@ export class SaveLoadService {
           buildingId: tile.buildingId,
           buildingConstruction: tile.buildingConstruction
             ? { ...tile.buildingConstruction }
+            : undefined,
+          wonderId: tile.wonderId,
+          wonderConstruction: tile.wonderConstruction
+            ? { ...tile.wonderConstruction }
             : undefined,
         });
       }
@@ -170,6 +182,15 @@ export class SaveLoadService {
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
       nationA: a,
       nationB: b,
+    }));
+
+    const wonders: SavedWonder[] = wonderSystem.getCompletedWonders().map((state) => ({
+      wonderId: state.wonderId,
+      cityId: state.cityId,
+      ownerId: state.ownerId,
+      tileX: state.tileX,
+      tileY: state.tileY,
+      completedTurn: state.completedTurn,
     }));
 
     return {
@@ -189,6 +210,7 @@ export class SaveLoadService {
       units,
       diplomacy,
       discovery,
+      wonders,
     };
   }
 
@@ -228,6 +250,7 @@ export class SaveLoadService {
       'units',
       'diplomacy',
       'discovery',
+      'wonders',
     ];
     for (const key of required) {
       if (!(key in obj)) {
@@ -247,6 +270,7 @@ export class SaveLoadService {
   static apply(state: SavedGameState, context: SaveLoadContext): void {
     SaveLoadService.applyTiles(state.tiles, context.mapData);
     SaveLoadService.applyNations(state.nations, context.nationManager);
+    SaveLoadService.applyWonders(state.wonders ?? [], context.wonderSystem);
     SaveLoadService.applyCitiesAndProduction(
       state.cities,
       context.cityManager,
@@ -255,6 +279,7 @@ export class SaveLoadService {
       context.gridSystem,
       state.gameSpeedId ?? context.gameSpeedId,
     );
+    SaveLoadService.applyCompletedWonderTiles(state.wonders ?? [], context.mapData);
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
@@ -262,6 +287,20 @@ export class SaveLoadService {
       state.turn.currentRound,
       state.turn.currentTurnIndex,
     );
+  }
+
+  private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {
+    wonderSystem.clearAll();
+    for (const saved of wonders) {
+      wonderSystem.restoreCompletedWonder({
+        wonderId: saved.wonderId,
+        cityId: saved.cityId,
+        ownerId: saved.ownerId,
+        tileX: saved.tileX,
+        tileY: saved.tileY,
+        completedTurn: saved.completedTurn,
+      });
+    }
   }
 
   private static applyTiles(tiles: SavedTile[], mapData: MapData): void {
@@ -272,6 +311,8 @@ export class SaveLoadService {
         tile.improvementId = undefined;
         tile.buildingId = undefined;
         tile.buildingConstruction = undefined;
+        tile.wonderId = undefined;
+        tile.wonderConstruction = undefined;
       }
     }
     for (const saved of tiles) {
@@ -284,6 +325,18 @@ export class SaveLoadService {
       if (saved.buildingConstruction !== undefined) {
         tile.buildingConstruction = { ...saved.buildingConstruction };
       }
+      if (saved.wonderId !== undefined) tile.wonderId = saved.wonderId;
+      if (saved.wonderConstruction !== undefined) {
+        tile.wonderConstruction = { ...saved.wonderConstruction };
+      }
+    }
+  }
+
+  private static applyCompletedWonderTiles(wonders: SavedWonder[], mapData: MapData): void {
+    for (const saved of wonders) {
+      if (saved.tileX === undefined || saved.tileY === undefined) continue;
+      const tile = mapData.tiles[saved.tileY]?.[saved.tileX];
+      if (tile) tile.wonderId = saved.wonderId;
     }
   }
 
@@ -363,7 +416,17 @@ export class SaveLoadService {
           item: producible,
           accumulated: entry.accumulated,
           blockedReason: entry.blockedReason,
+          placement: entry.placement ? { ...entry.placement } : undefined,
         });
+        if (producible.kind === 'wonder' && entry.placement) {
+          const tile = mapData.tiles[entry.placement.tileY]?.[entry.placement.tileX];
+          if (tile && tile.wonderId === undefined) {
+            tile.wonderConstruction = {
+              wonderId: producible.wonderType.id,
+              cityId: saved.id,
+            };
+          }
+        }
       }
       productionSystem.restoreQueue(saved.id, queueEntries);
     }
@@ -413,16 +476,29 @@ export class SaveLoadService {
   }
 }
 
-function toSavedProducible(item: Producible): { kind: 'unit' | 'building'; id: string } {
-  return item.kind === 'unit'
-    ? { kind: 'unit', id: item.unitType.id }
-    : { kind: 'building', id: item.buildingType.id };
+function toSavedProducible(item: Producible): { kind: 'unit' | 'building' | 'wonder'; id: string } {
+  switch (item.kind) {
+    case 'unit':
+      return { kind: 'unit', id: item.unitType.id };
+    case 'building':
+      return { kind: 'building', id: item.buildingType.id };
+    case 'wonder':
+      return { kind: 'wonder', id: item.wonderType.id };
+  }
 }
 
-function fromSavedProducible(item: { kind: 'unit' | 'building'; id: string }): Producible | null {
+function fromSavedProducible(item: { kind: 'unit' | 'building' | 'wonder'; id: string }): Producible | null {
   if (item.kind === 'unit') {
     const type = getUnitTypeById(item.id);
     return type ? { kind: 'unit', unitType: type } : null;
+  }
+  if (item.kind === 'wonder') {
+    const def = getWonderById(item.id);
+    if (!def) {
+      console.warn(`[SaveLoadService] Unknown wonder id during restore: ${item.id}`);
+      return null;
+    }
+    return { kind: 'wonder', wonderType: def };
   }
   const def = getBuildingById(item.id);
   return def ? { kind: 'building', buildingType: def } : null;

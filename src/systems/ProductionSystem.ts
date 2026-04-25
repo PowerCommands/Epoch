@@ -8,10 +8,16 @@ import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '
 /**
  * A single entry in a city's production queue.
  */
+export interface ProductionPlacement {
+  tileX: number;
+  tileY: number;
+}
+
 export interface QueueEntry {
   item: Producible;
   accumulated: number;
   blockedReason?: string;
+  placement?: ProductionPlacement;
 }
 
 /**
@@ -23,6 +29,7 @@ export interface QueueEntryView {
   cost: number;
   turnsRemaining: number;
   blockedReason?: string;
+  placement?: ProductionPlacement;
 }
 
 /**
@@ -32,10 +39,12 @@ export interface CityProduction {
   item: Producible;
   accumulated: number;
   blockedReason?: string;
+  placement?: ProductionPlacement;
 }
 
-export type ProductionCompletedListener = (cityId: string, item: Producible) => boolean | void;
+export type ProductionCompletedListener = (cityId: string, item: Producible, entry: QueueEntry) => boolean | void;
 export type ProductionChangedListener = (cityId: string) => void;
+export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
 
 export type CompleteCurrentProductionResult =
   | { kind: 'completed'; item: Producible }
@@ -59,6 +68,7 @@ export class ProductionSystem {
   private readonly queues = new Map<string, QueueEntry[]>();
   private readonly completedListeners: ProductionCompletedListener[] = [];
   private readonly changedListeners: ProductionChangedListener[] = [];
+  private readonly removedListeners: ProductionRemovedListener[] = [];
   private hasSkippedInitialTurnStart = false;
 
   constructor(
@@ -72,13 +82,17 @@ export class ProductionSystem {
   }
 
   /** Add item to end of queue. */
-  enqueue(cityId: string, item: Producible): void {
+  enqueue(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
       this.queues.set(cityId, queue);
     }
-    queue.push({ item, accumulated: 0 });
+    queue.push({
+      item,
+      accumulated: 0,
+      placement: options.placement ? { ...options.placement } : undefined,
+    });
     this.notifyChanged(cityId);
   }
 
@@ -86,10 +100,11 @@ export class ProductionSystem {
   removeFromQueue(cityId: string, index: number): void {
     const queue = this.queues.get(cityId);
     if (!queue || index < 0 || index >= queue.length) return;
-    queue.splice(index, 1);
+    const [removed] = queue.splice(index, 1);
     if (queue.length === 0) {
       this.queues.delete(cityId);
     }
+    this.notifyRemoved(cityId, removed);
     this.notifyChanged(cityId);
   }
 
@@ -111,12 +126,15 @@ export class ProductionSystem {
         cost,
         turnsRemaining,
         blockedReason: i === 0 ? entry.blockedReason : undefined,
+        placement: entry.placement ? { ...entry.placement } : undefined,
       };
     });
   }
 
   /** Legacy: clears queue and enqueues single item. Used by AI. */
   setProduction(cityId: string, item: Producible): void {
+    const existing = this.queues.get(cityId) ?? [];
+    for (const entry of existing) this.notifyRemoved(cityId, entry);
     this.queues.set(cityId, [{ item, accumulated: 0 }]);
     this.notifyChanged(cityId);
   }
@@ -126,11 +144,18 @@ export class ProductionSystem {
     const queue = this.queues.get(cityId);
     if (!queue || queue.length === 0) return undefined;
     const entry = queue[0];
-    return { item: entry.item, accumulated: entry.accumulated, blockedReason: entry.blockedReason };
+    return {
+      item: entry.item,
+      accumulated: entry.accumulated,
+      blockedReason: entry.blockedReason,
+      placement: entry.placement ? { ...entry.placement } : undefined,
+    };
   }
 
   /** Legacy: empties queue entirely. */
   clearProduction(cityId: string): void {
+    const existing = this.queues.get(cityId) ?? [];
+    for (const entry of existing) this.notifyRemoved(cityId, entry);
     this.queues.delete(cityId);
     this.notifyChanged(cityId);
   }
@@ -205,6 +230,9 @@ export class ProductionSystem {
    * saved queues.
    */
   clearAllQueues(): void {
+    for (const [cityId, queue] of this.queues.entries()) {
+      for (const entry of queue) this.notifyRemoved(cityId, entry);
+    }
     this.queues.clear();
   }
 
@@ -221,6 +249,7 @@ export class ProductionSystem {
       item: entry.item,
       accumulated: entry.accumulated,
       blockedReason: entry.blockedReason,
+      placement: entry.placement ? { ...entry.placement } : undefined,
     })));
   }
 
@@ -240,6 +269,10 @@ export class ProductionSystem {
 
   onChanged(listener: ProductionChangedListener): void {
     this.changedListeners.push(listener);
+  }
+
+  onRemoved(listener: ProductionRemovedListener): void {
+    this.removedListeners.push(listener);
   }
 
   private handleTurnStart(e: TurnStartEvent): void {
@@ -278,11 +311,11 @@ export class ProductionSystem {
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
     let didBlock = false;
     for (const cb of this.completedListeners) {
-      if (cb(cityId, entry.item) === false) didBlock = true;
+      if (cb(cityId, entry.item, entry) === false) didBlock = true;
     }
 
     if (didBlock) {
-      entry.blockedReason = this.getBlockedReason(entry.item);
+      entry.blockedReason = this.getBlockedReason(entry);
     } else {
       entry.blockedReason = undefined;
     }
@@ -295,23 +328,46 @@ export class ProductionSystem {
   }
 
   private getBaseCost(item: Producible): number {
-    // TODO wonder: add case 'wonder' returning item.wonderType.productionCost
-    // once Producible gains a wonder variant.
     switch (item.kind) {
       case 'unit':
         return item.unitType.productionCost;
       case 'building':
         return item.buildingType.productionCost;
+      case 'wonder':
+        return item.wonderType.productionCost;
     }
   }
 
-  private getBlockedReason(item: Producible): string | undefined {
-    // TODO wonder: add case 'wonder' once Producible gains a wonder variant.
+  private getBlockedReason(entryOrItem: QueueEntry | Producible): string | undefined {
+    const item = 'item' in entryOrItem ? entryOrItem.item : entryOrItem;
     switch (item.kind) {
       case 'unit':
         return 'Production blocked: no space for unit';
       case 'building':
         return undefined;
+      case 'wonder':
+        if ('item' in entryOrItem && !entryOrItem.placement) return 'Wonder placement missing';
+        return 'Wonder already completed';
+    }
+  }
+
+  /**
+   * Remove every queued entry that produces the given wonder. Called by
+   * the wonder pipeline when a wonder is completed so other cities'
+   * queues are deterministically cleared.
+   */
+  removeWonderFromAllQueues(wonderId: string): void {
+    for (const [cityId, queue] of [...this.queues.entries()]) {
+      const removed = queue.filter((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId);
+      const next = queue.filter((entry) => !(entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId));
+      if (next.length === queue.length) continue;
+      if (next.length === 0) {
+        this.queues.delete(cityId);
+      } else {
+        this.queues.set(cityId, next);
+      }
+      for (const entry of removed) this.notifyRemoved(cityId, entry);
+      this.notifyChanged(cityId);
     }
   }
 
@@ -326,5 +382,9 @@ export class ProductionSystem {
 
   private notifyChanged(cityId: string): void {
     for (const cb of this.changedListeners) cb(cityId);
+  }
+
+  private notifyRemoved(cityId: string, entry: QueueEntry): void {
+    for (const cb of this.removedListeners) cb(cityId, entry);
   }
 }

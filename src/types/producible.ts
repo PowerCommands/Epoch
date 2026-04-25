@@ -1,5 +1,6 @@
 import type { BuildingType } from '../entities/Building';
 import type { UnitType } from '../entities/UnitType';
+import type { WonderType } from '../entities/Wonder';
 
 /**
  * Discriminated union för saker en stad kan producera.
@@ -7,4 +8,5 @@ import type { UnitType } from '../entities/UnitType';
  */
 export type Producible =
   | { kind: 'unit'; unitType: UnitType }
-  | { kind: 'building'; buildingType: BuildingType };
+  | { kind: 'building'; buildingType: BuildingType }
+  | { kind: 'wonder'; wonderType: WonderType };

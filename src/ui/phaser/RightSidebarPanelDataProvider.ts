@@ -3,6 +3,7 @@ import { getImprovementById } from '../../data/improvements';
 import { getLeaderById, getLeaderByNationId } from '../../data/leaders';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import { ALL_UNIT_TYPES } from '../../data/units';
+import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
 import type { City } from '../../entities/City';
 import type { Unit } from '../../entities/Unit';
@@ -20,9 +21,11 @@ import type { ProductionSystem } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
+import type { WonderSystem } from '../../systems/WonderSystem';
 import type { Producible } from '../../types/producible';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
+import { getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
 import type {
   RightSidebarContent,
   RightSidebarCityDetailsTab,
@@ -38,6 +41,8 @@ type ChangedListener = () => void;
 type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
 type BuildingPlacementRequestResult = { ok: boolean; message?: string };
 type BuildingPlacementRequestHandler = (city: City, buildingId: string) => BuildingPlacementRequestResult;
+type WonderPlacementRequestHandler = (city: City, wonderId: string) => BuildingPlacementRequestResult;
+type WonderPlacementAvailabilityProvider = (city: City, wonderId: string) => boolean;
 type BuyProductionRequestHandler = (city: City, index: number) => void;
 
 interface LeaderboardEntry {
@@ -56,10 +61,13 @@ export class RightSidebarPanelDataProvider {
   private eventLog: EventLogSystem | null = null;
   private researchSystem: ResearchSystem | null = null;
   private cultureSystem: CultureSystem | null = null;
+  private wonderSystem: WonderSystem | null = null;
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
   private buildingPlacementRequestHandler: BuildingPlacementRequestHandler | null = null;
+  private wonderPlacementRequestHandler: WonderPlacementRequestHandler | null = null;
+  private wonderPlacementAvailabilityProvider: WonderPlacementAvailabilityProvider | null = null;
   private buyProductionRequestHandler: BuyProductionRequestHandler | null = null;
   private current: RightSidebarDetailsState = {
     view: null,
@@ -98,6 +106,10 @@ export class RightSidebarPanelDataProvider {
     this.cultureSystem = cultureSystem;
   }
 
+  setWonderSystem(wonderSystem: WonderSystem): void {
+    this.wonderSystem = wonderSystem;
+  }
+
   setDiscoverySystem(ds: DiscoverySystem): void {
     this.discoverySystem = ds;
   }
@@ -113,6 +125,14 @@ export class RightSidebarPanelDataProvider {
 
   setBuildingPlacementRequestHandler(handler: BuildingPlacementRequestHandler): void {
     this.buildingPlacementRequestHandler = handler;
+  }
+
+  setWonderPlacementRequestHandler(handler: WonderPlacementRequestHandler): void {
+    this.wonderPlacementRequestHandler = handler;
+  }
+
+  setWonderPlacementAvailabilityProvider(provider: WonderPlacementAvailabilityProvider): void {
+    this.wonderPlacementAvailabilityProvider = provider;
   }
 
   setBuyProductionRequestHandler(handler: BuyProductionRequestHandler): void {
@@ -368,7 +388,10 @@ export class RightSidebarPanelDataProvider {
         };
       case 'production': {
         const sections = [this.getProductionQueueSection(city, isHuman)];
-        if (isHuman) sections.push(this.getAddToQueueSection(city));
+        if (isHuman) {
+          sections.push(this.getAddToQueueSection(city));
+          sections.push(this.getWonderSection(city));
+        }
         return { title: 'Details', sections };
       }
     }
@@ -489,14 +512,15 @@ export class RightSidebarPanelDataProvider {
     const availableGold = isHuman ? this.nationManager.getResources(city.ownerId).gold : 0;
     queue.forEach((entry, index) => {
       const name = getProducibleName(entry.item);
+      const spritePath = getProducibleSpritePath(entry.item);
       const turnsText = entry.blockedReason ? 'blocked' : `${entry.turnsRemaining} turn${entry.turnsRemaining !== 1 ? 's' : ''}`;
       const label = `${index + 1}. ${name} (${turnsText})${index === 0 ? ' [active]' : ''}`;
       rows.push(isHuman
         ? buttonRow(label, () => {
           this.productionSystem.removeFromQueue(city.id, index);
           this.requestRefresh();
-        }, 0xb86767, '🗑️')
-        : textRow(label));
+        }, 0xb86767, '🗑️', spritePath)
+        : textRow(label, false, false, undefined, spritePath));
       if (isHuman) {
         const buyCost = this.productionSystem.getBuyCost(city.id, index);
         if (buyCost !== null) {
@@ -536,7 +560,7 @@ export class RightSidebarPanelDataProvider {
       rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})`, () => {
         this.productionSystem.enqueue(city.id, item);
         this.requestRefresh();
-      }, 0x6aa7d8));
+      }, 0x6aa7d8, undefined, getProducibleSpritePath(item)));
     }
     rows.push({ kind: 'separator' });
     for (const buildingType of ALL_BUILDINGS) {
@@ -555,6 +579,60 @@ export class RightSidebarPanelDataProvider {
       }, 0x7fbf6a));
     }
     return { title: 'Add to Queue', rows };
+  }
+
+  private getWonderSection(city: City): RightSidebarSection {
+    const rows: RightSidebarRow[] = [];
+    const research = this.researchSystem;
+    const wonderSystem = this.wonderSystem;
+    const isQueuedHere = (wonderId: string): boolean => this.productionSystem.getQueue(city.id)
+      .some((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId);
+
+    for (const wonderType of ALL_WONDERS) {
+      const techUnlocked = research ? research.isWonderUnlocked(city.ownerId, wonderType.id) : true;
+      if (!techUnlocked) continue;
+
+      const item: Producible = { kind: 'wonder', wonderType };
+      const cost = this.productionSystem.getCost(item);
+      const built = wonderSystem?.isWonderBuilt(wonderType.id) ?? false;
+      const queuedHere = isQueuedHere(wonderType.id);
+      const cityCanBuild = wonderSystem ? wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem: research ?? undefined }) : !built;
+      const hasValidPlacement = this.wonderPlacementAvailabilityProvider
+        ? this.wonderPlacementAvailabilityProvider(city, wonderType.id)
+        : true;
+
+      let disabled = false;
+      let reason: string | undefined;
+      if (built) { disabled = true; reason = 'Already completed'; }
+      else if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
+      else if (!cityCanBuild) { disabled = true; reason = 'This city cannot build it'; }
+      else if (!hasValidPlacement) { disabled = true; reason = 'No valid placement tile'; }
+
+      const baseLabel = `${wonderType.name} (${cost})`;
+      const label = reason ? `${baseLabel} — ${reason}` : `${baseLabel} — ${wonderType.description}`;
+      rows.push({
+        kind: 'button',
+        text: label,
+        disabled,
+        accentColor: 0xd9b84a,
+        spritePath: getProducibleSpritePath(item),
+        onClick: () => {
+          if (disabled) return;
+          if (this.wonderPlacementRequestHandler) {
+            const result = this.wonderPlacementRequestHandler(city, wonderType.id);
+            if (!result.ok && result.message) window.alert(result.message);
+            return;
+          }
+          this.productionSystem.enqueue(city.id, item);
+          this.requestRefresh();
+        },
+      });
+    }
+
+    if (rows.length === 0) {
+      rows.push(textRow('No wonders available — research a prerequisite tech.', true));
+    }
+    return { title: 'World Wonders', rows };
   }
 
   private getCultureClaimRows(city: City, isHuman: boolean): RightSidebarRow[] {
@@ -717,12 +795,12 @@ export class RightSidebarPanelDataProvider {
   }
 }
 
-function textRow(text: string, muted = false, large = false, color?: number): RightSidebarRow {
-  return { kind: 'text', text, muted, large, color };
+function textRow(text: string, muted = false, large = false, color?: number, spritePath?: string): RightSidebarRow {
+  return { kind: 'text', text, muted, large, color, spritePath };
 }
 
-function buttonRow(text: string, onClick: () => void, accentColor?: number, trailingIcon?: string): RightSidebarRow {
-  return { kind: 'button', text, onClick, accentColor, trailingIcon };
+function buttonRow(text: string, onClick: () => void, accentColor?: number, trailingIcon?: string, spritePath?: string): RightSidebarRow {
+  return { kind: 'button', text, onClick, accentColor, trailingIcon, spritePath };
 }
 
 function progressRow(label: string, current: number, max: number): RightSidebarRow {
@@ -730,7 +808,25 @@ function progressRow(label: string, current: number, max: number): RightSidebarR
 }
 
 function getProducibleName(item: Producible): string {
-  return item.kind === 'unit' ? item.unitType.name : item.buildingType.name;
+  switch (item.kind) {
+    case 'unit':
+      return item.unitType.name;
+    case 'building':
+      return item.buildingType.name;
+    case 'wonder':
+      return item.wonderType.name;
+  }
+}
+
+function getProducibleSpritePath(item: Producible): string | undefined {
+  switch (item.kind) {
+    case 'unit':
+      return getUnitSpritePath(item.unitType.id);
+    case 'wonder':
+      return getWonderSpritePath(item.wonderType.id);
+    case 'building':
+      return undefined;
+  }
 }
 
 function formatSigned(value: number): string {

@@ -203,6 +203,26 @@ export class CityTerritorySystem {
     return this.claimTile(city, target, mapData);
   }
 
+  /**
+   * Generic tile-claim helper used by non-culture sources (wonder bonuses,
+   * events, leader abilities). Bypasses culture cost and city-distance
+   * filtering so callers can decide their own placement rules, but reuses
+   * the shared claim state-update path so ownership, ownedTileCoords and
+   * worked-tile bookkeeping stay consistent with culture/purchase claims.
+   *
+   * Returns false when the tile is out of bounds, already owned by anyone,
+   * or already in this city's owned set.
+   */
+  claimTileForCity(city: City, coord: CityTileCoord, mapData: MapData): boolean {
+    const tile = this.getTile(mapData, coord.x, coord.y);
+    if (!tile) return false;
+    if (tile.ownerId !== undefined) return false;
+    if (city.ownedTileCoords.some((existing) => existing.x === coord.x && existing.y === coord.y)) {
+      return false;
+    }
+    return this.applyClaimedTile(city, tile, mapData);
+  }
+
   claimNextExpansionTileImmediately(city: City, mapData: MapData): boolean {
     this.refreshNextExpansionTile(city, mapData);
     const target = city.nextExpansionTileCoord;

@@ -153,6 +153,12 @@ export class ResearchSystem {
     );
   }
 
+  getRequiredTechnologyForWonder(wonderId: string): Technology | undefined {
+    return ALL_TECHNOLOGIES.find((technology) =>
+      technology.unlocks.some((unlock) => unlock.kind === 'wonder' && unlock.id === wonderId),
+    );
+  }
+
   isImprovementUnlocked(nationId: string, improvementId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForImprovement(improvementId);
     if (!requiredTechnology) return true;
@@ -167,6 +173,12 @@ export class ResearchSystem {
 
   isBuildingUnlocked(nationId: string, buildingId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForBuilding(buildingId);
+    if (!requiredTechnology) return true;
+    return this.isResearched(nationId, requiredTechnology.id);
+  }
+
+  isWonderUnlocked(nationId: string, wonderId: string): boolean {
+    const requiredTechnology = this.getRequiredTechnologyForWonder(wonderId);
     if (!requiredTechnology) return true;
     return this.isResearched(nationId, requiredTechnology.id);
   }

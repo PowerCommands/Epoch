@@ -32,6 +32,7 @@ interface ModeButton {
 interface ContentButton {
   row: RightSidebarButtonRow;
   background: Phaser.GameObjects.Rectangle;
+  icon: Phaser.GameObjects.Image | null;
   label: Phaser.GameObjects.Text;
   trailingLabel: Phaser.GameObjects.Text | null;
   hitArea: Phaser.GameObjects.Zone;
@@ -65,6 +66,8 @@ const LEADERBOARD_TAB_GAP = 8;
 const LEADERBOARD_TAB_HEIGHT = 34;
 const CITY_TAB_GAP = 8;
 const CITY_TAB_HEIGHT = 34;
+const CONTENT_ICON_SIZE = 32;
+const CONTENT_ICON_GAP = 8;
 
 const MODES: ModeDefinition[] = [
   { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
@@ -112,6 +115,8 @@ export class RightSidebarPanel {
   private readonly modeButtons: ModeButton[];
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly contentButtons: ContentButton[] = [];
+  private readonly requestedIconKeys = new Set<string>();
+  private readonly failedIconKeys = new Set<string>();
   private readonly onResize: () => void;
   private readonly onAddedToScene: (object: Phaser.GameObjects.GameObject) => void;
   private readonly handleWheel: (
@@ -246,6 +251,11 @@ export class RightSidebarPanel {
   }
 
   showDetails(): void {
+    this.show('details');
+  }
+
+  showProductionTab(): void {
+    this.cityDetailsTab = 'production';
     this.show('details');
   }
 
@@ -547,8 +557,10 @@ export class RightSidebarPanel {
     switch (row.kind) {
       case 'text': {
         const hasAccent = row.color !== undefined;
-        const textX = hasAccent ? PANEL_PADDING + 15 : PANEL_PADDING;
-        const wrapWidth = hasAccent ? CONTENT_WIDTH - 15 : CONTENT_WIDTH;
+        const icon = row.spritePath ? this.addContentIcon(row.spritePath, PANEL_PADDING + (hasAccent ? 15 : 0), y + 1) : null;
+        const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
+        const textX = (hasAccent ? PANEL_PADDING + 15 : PANEL_PADDING) + iconWidth;
+        const wrapWidth = (hasAccent ? CONTENT_WIDTH - 15 : CONTENT_WIDTH) - iconWidth;
         const color = row.muted ? '#c1cbd8' : row.large ? '#ffffff' : '#edf4ff';
         if (hasAccent) {
           const marker = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 5, 6, Math.max(14, row.large ? 20 : 16), row.color, 0.95))
@@ -559,11 +571,16 @@ export class RightSidebarPanel {
           this.contentObjects.push(marker);
           marker.setMask(this.contentMask);
         }
+        if (icon) {
+          this.panelContainer.add(icon);
+          this.contentObjects.push(icon);
+          icon.setMask(this.contentMask);
+        }
         const text = this.addContentText(row.text, row.large ? 21 : 16, color, row.large ? 'bold' : 'normal');
         text.setWordWrapWidth(wrapWidth, true);
         text.setPosition(textX, y);
         text.setData('baseY', y);
-        return y + text.height + ROW_GAP;
+        return y + Math.max(text.height, icon ? CONTENT_ICON_SIZE : 0) + ROW_GAP;
       }
       case 'button':
         return this.addContentButton(row, y);
@@ -583,17 +600,20 @@ export class RightSidebarPanel {
   }
 
   private addContentButton(row: RightSidebarButtonRow, y: number): number {
-    const height = 34;
+    const hasIcon = Boolean(row.spritePath && this.canUseContentIcon(row.spritePath));
+    const height = hasIcon ? 40 : 34;
     const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y, CONTENT_WIDTH, height, 0x0f2635, row.disabled ? 0.72 : 0.98))
       .setOrigin(0, 0)
       .setStrokeStyle(1, row.accentColor ?? 0x6fb2d4, row.disabled ? 0.42 : 0.68)
       .setScrollFactor(0);
     background.setData('baseY', y);
     const trailingWidth = row.trailingIcon ? 40 : 0;
-    const label = this.addText(row.text, 15, row.disabled ? '#dbe6f5' : '#ffffff', 'bold', CONTENT_WIDTH - 22 - trailingWidth)
+    const icon = hasIcon && row.spritePath ? this.addContentIcon(row.spritePath, PANEL_PADDING + 9, y + 4) : null;
+    const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
+    const label = this.addText(row.text, 15, row.disabled ? '#dbe6f5' : '#ffffff', 'bold', CONTENT_WIDTH - 22 - trailingWidth - iconWidth)
       .setAlpha(row.disabled ? 0.96 : 1);
-    label.setPosition(PANEL_PADDING + 11, y + 8);
-    label.setData('baseY', y + 8);
+    label.setPosition(PANEL_PADDING + 11 + iconWidth, y + (height - label.height) / 2);
+    label.setData('baseY', y + (height - label.height) / 2);
     const trailingLabel = row.trailingIcon
       ? this.addText(row.trailingIcon, 18, '#ffffff', 'normal', trailingWidth)
         .setOrigin(1, 0)
@@ -609,16 +629,60 @@ export class RightSidebarPanel {
     hitArea.setData('baseY', y);
     if (!row.disabled) hitArea.setInteractive({ cursor: 'pointer' });
 
-    const button: ContentButton = { row, background, label, trailingLabel, hitArea, baseY: y, hovered: false, pressed: false };
+    const button: ContentButton = { row, background, icon, label, trailingLabel, hitArea, baseY: y, hovered: false, pressed: false };
     this.installContentButtonInput(button);
-    this.panelContainer.add(trailingLabel ? [background, label, trailingLabel, hitArea] : [background, label, hitArea]);
-    this.contentObjects.push(...(trailingLabel ? [background, label, trailingLabel, hitArea] : [background, label, hitArea]));
+    const objects = [background, ...(icon ? [icon] : []), label, ...(trailingLabel ? [trailingLabel] : []), hitArea];
+    this.panelContainer.add(objects);
+    this.contentObjects.push(...objects);
     background.setMask(this.contentMask);
+    icon?.setMask(this.contentMask);
     label.setMask(this.contentMask);
     trailingLabel?.setMask(this.contentMask);
     this.contentButtons.push(button);
     this.refreshContentButtonVisual(button);
     return y + height + ROW_GAP;
+  }
+
+  private addContentIcon(spritePath: string, x: number, y: number): Phaser.GameObjects.Image | null {
+    const textureKey = this.getContentIconTextureKey(spritePath);
+    if (!this.scene.textures.exists(textureKey)) {
+      this.requestContentIcon(spritePath, textureKey);
+      return null;
+    }
+    const icon = this.addOwned(new Phaser.GameObjects.Image(this.scene, x + CONTENT_ICON_SIZE / 2, y + CONTENT_ICON_SIZE / 2, textureKey))
+      .setDisplaySize(CONTENT_ICON_SIZE, CONTENT_ICON_SIZE)
+      .setScrollFactor(0);
+    icon.setData('baseY', y + CONTENT_ICON_SIZE / 2);
+    return icon;
+  }
+
+  private canUseContentIcon(spritePath: string): boolean {
+    const textureKey = this.getContentIconTextureKey(spritePath);
+    if (this.failedIconKeys.has(textureKey)) return false;
+    if (this.scene.textures.exists(textureKey)) return true;
+    this.requestContentIcon(spritePath, textureKey);
+    return false;
+  }
+
+  private requestContentIcon(spritePath: string, textureKey: string): void {
+    if (this.requestedIconKeys.has(textureKey) || this.failedIconKeys.has(textureKey)) return;
+    this.requestedIconKeys.add(textureKey);
+
+    const image = new Image();
+    image.onload = () => {
+      if (!this.scene.textures.exists(textureKey)) {
+        this.scene.textures.addImage(textureKey, image);
+      }
+      if (this.activeMode && !this.collapsed) this.renderActiveContent();
+    };
+    image.onerror = () => {
+      this.failedIconKeys.add(textureKey);
+    };
+    image.src = spritePath;
+  }
+
+  private getContentIconTextureKey(spritePath: string): string {
+    return `ui:${spritePath}`;
   }
 
   private addProgressRow(label: string, current: number, max: number, y: number): number {
@@ -770,7 +834,8 @@ export class RightSidebarPanel {
     for (const button of this.contentButtons) {
       const visibleY = button.baseY - this.scrollOffset;
       button.background.setY(visibleY);
-      button.label.setY(visibleY + 8);
+      button.icon?.setY(visibleY + 4 + CONTENT_ICON_SIZE / 2);
+      button.label.setY(visibleY + (button.background.height - button.label.height) / 2);
       button.trailingLabel?.setY(visibleY + 6);
       button.hitArea.setY(visibleY);
       const inView = visibleY + button.background.height >= CONTENT_TOP && visibleY <= CONTENT_TOP + this.getVisibleContentHeight();
@@ -875,7 +940,8 @@ function toCssColor(color: number): string {
 function setGameObjectY(object: Phaser.GameObjects.GameObject, y: number): void {
   if (object instanceof Phaser.GameObjects.Text
     || object instanceof Phaser.GameObjects.Rectangle
-    || object instanceof Phaser.GameObjects.Zone) {
+    || object instanceof Phaser.GameObjects.Zone
+    || object instanceof Phaser.GameObjects.Image) {
     object.setY(y);
   }
 }
