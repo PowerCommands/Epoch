@@ -12,6 +12,7 @@ export interface HudResourceEntry {
   value: number | string;
   delta: number;
   displayMode?: 'valueAndDelta' | 'deltaOnly';
+  tooltip?: string;
 }
 
 export interface HudResearchOption {
@@ -26,6 +27,7 @@ export interface HudResearchState {
   cost: number;
   progressPercent: number;
   sciencePerTurn: number;
+  tooltip: string;
   available: HudResearchOption[];
   researchedNames: string[];
 }
@@ -55,6 +57,7 @@ export interface HudCultureState {
   cost: number;
   progressPercent: number;
   culturePerTurn: number;
+  tooltip: string;
   eras: HudCultureEraState[];
 }
 
@@ -79,6 +82,13 @@ export class NationHudDataProvider {
       .reduce((sum, city) => sum + this.cityManager.getResources(city.id).productionPerTurn, 0);
     const researchProgress = this.researchSystem.getResearchProgress(nationId);
     const researchPerTurn = this.researchSystem.getResearchPerTurn(nationId);
+    const currentResearch = this.researchSystem.getCurrentResearch(nationId);
+    const currentResearchCost = currentResearch ? this.researchSystem.getEffectiveCost(currentResearch.id) : 0;
+    const researchTooltip = getResearchTooltip(currentResearch?.name, researchProgress, currentResearchCost);
+    const currentCulture = this.cultureSystem.getCurrentCultureNode(nationId);
+    const cultureProgress = this.cultureSystem.getCultureProgress(nationId);
+    const currentCultureCost = currentCulture ? this.cultureSystem.getEffectiveCost(currentCulture.id) : 0;
+    const cultureTooltip = getCultureTooltip(currentCulture?.name, cultureProgress, currentCultureCost);
 
     return [
       {
@@ -105,12 +115,14 @@ export class NationHudDataProvider {
         icon: '🔬',
         value: researchProgress,
         delta: researchPerTurn,
+        tooltip: researchTooltip,
       },
       {
         key: 'culture',
         icon: '⭐',
         value: nationResources.culture,
         delta: nationResources.culturePerTurn,
+        tooltip: cultureTooltip,
       },
       {
         key: 'gold',
@@ -136,6 +148,7 @@ export class NationHudDataProvider {
       cost: currentCost,
       progressPercent: currentCost > 0 ? Math.max(0, Math.min(100, Math.round((this.researchSystem.getResearchProgress(nationId) / currentCost) * 100))) : 0,
       sciencePerTurn: this.researchSystem.getResearchPerTurn(nationId),
+      tooltip: getResearchTooltip(current?.name, this.researchSystem.getResearchProgress(nationId), currentCost),
       available: this.researchSystem.getAvailableTechnologies(nationId).map((technology) => ({
         id: technology.id,
         name: technology.name,
@@ -185,6 +198,7 @@ export class NationHudDataProvider {
         ? Math.max(0, Math.min(100, Math.round((this.cultureSystem.getCultureProgress(nationId) / this.cultureSystem.getEffectiveCost(current.id)) * 100)))
         : 0,
       culturePerTurn: this.cultureSystem.getCulturePerTurn(nationId),
+      tooltip: getCultureTooltip(current?.name, this.cultureSystem.getCultureProgress(nationId), current ? this.cultureSystem.getEffectiveCost(current.id) : 0),
       eras: Array.from(eras.values()),
     };
   }
@@ -192,4 +206,12 @@ export class NationHudDataProvider {
 
 function formatEraName(era: string): string {
   return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getResearchTooltip(name: string | undefined, progress: number, cost: number): string {
+  return name ? `Researching: ${name} (${progress}/${cost})` : 'Researching: None selected';
+}
+
+function getCultureTooltip(name: string | undefined, progress: number, cost: number): string {
+  return name ? `Culture: ${name} (${progress}/${cost})` : 'Culture: None selected';
 }

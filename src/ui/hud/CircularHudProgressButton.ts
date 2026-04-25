@@ -23,6 +23,9 @@ const PROGRESS_START_ANGLE = Phaser.Math.DegToRad(-90);
 const PROGRESS_END_ANGLE = Phaser.Math.DegToRad(270);
 const RING_LINE_WIDTH = 5;
 const RIM_LINE_WIDTH = 3;
+const TOOLTIP_PADDING_X = 10;
+const TOOLTIP_PADDING_Y = 7;
+const TOOLTIP_GAP = 8;
 
 export class CircularHudProgressButton {
   private readonly background: Phaser.GameObjects.Arc;
@@ -30,10 +33,13 @@ export class CircularHudProgressButton {
   private readonly progressRing: Phaser.GameObjects.Graphics;
   private readonly icon: Phaser.GameObjects.Text;
   private readonly hitArea: Phaser.GameObjects.Zone;
+  private readonly tooltipBackground: Phaser.GameObjects.Rectangle;
+  private readonly tooltipText: Phaser.GameObjects.Text;
 
   private centerX = 0;
   private centerY = 0;
   private progress = 0;
+  private tooltip = '';
   private hovered = false;
   private pressed = false;
   private active = false;
@@ -70,6 +76,23 @@ export class CircularHudProgressButton {
       .setDepth(config.depth + 4)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
+    this.tooltipBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x081018, 0.96))
+      .setOrigin(0, 0)
+      .setDepth(config.depth + 20)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, config.accentColor, 0.65)
+      .setVisible(false);
+    this.tooltipText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      color: '#f4f1e7',
+      wordWrap: { width: 280, useAdvancedWrap: true },
+    }))
+      .setOrigin(0, 0)
+      .setDepth(config.depth + 21)
+      .setScrollFactor(0)
+      .setResolution(getHudTextResolution())
+      .setVisible(false);
 
     this.hitArea.on(Phaser.Input.Events.POINTER_OVER, (
       _pointer: Phaser.Input.Pointer,
@@ -80,6 +103,7 @@ export class CircularHudProgressButton {
       event.stopPropagation();
       this.hovered = true;
       this.refreshVisualState();
+      this.refreshTooltip();
     });
     this.hitArea.on(Phaser.Input.Events.POINTER_OUT, (
       _pointer: Phaser.Input.Pointer,
@@ -89,6 +113,7 @@ export class CircularHudProgressButton {
       this.hovered = false;
       this.pressed = false;
       this.refreshVisualState();
+      this.hideTooltip();
     });
     this.hitArea.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
@@ -141,6 +166,11 @@ export class CircularHudProgressButton {
     this.drawProgressRing();
   }
 
+  setTooltip(tooltip: string): void {
+    this.tooltip = tooltip;
+    this.refreshTooltip();
+  }
+
   layout(topLeftX: number, topLeftY: number): void {
     const radius = this.config.diameter / 2;
     this.centerX = Math.round(topLeftX + radius);
@@ -152,6 +182,7 @@ export class CircularHudProgressButton {
     this.hitArea.setPosition(this.centerX, this.centerY).setSize(this.config.hitDiameter, this.config.hitDiameter);
     this.drawProgressRing();
     this.refreshVisualState();
+    this.refreshTooltip();
   }
 
   destroy(): void {
@@ -160,6 +191,8 @@ export class CircularHudProgressButton {
     this.progressRing.destroy();
     this.icon.destroy();
     this.hitArea.destroy();
+    this.tooltipBackground.destroy();
+    this.tooltipText.destroy();
   }
 
   private refreshVisualState(): void {
@@ -181,6 +214,40 @@ export class CircularHudProgressButton {
       )
       .setScale(scale);
     this.icon.setScale(scale);
+  }
+
+  private refreshTooltip(): void {
+    if (!this.hovered || !this.tooltip) {
+      this.hideTooltip();
+      return;
+    }
+
+    this.tooltipText.setText(this.tooltip);
+    const width = this.tooltipText.width + TOOLTIP_PADDING_X * 2;
+    const height = this.tooltipText.height + TOOLTIP_PADDING_Y * 2;
+    const left = Phaser.Math.Clamp(
+      this.centerX + (this.config.diameter / 2) + TOOLTIP_GAP,
+      8,
+      Math.max(8, this.scene.scale.width - width - 8),
+    );
+    const top = Phaser.Math.Clamp(
+      this.centerY - (height / 2),
+      8,
+      Math.max(8, this.scene.scale.height - height - 8),
+    );
+
+    this.tooltipBackground
+      .setPosition(Math.round(left), Math.round(top))
+      .setDisplaySize(width, height)
+      .setVisible(true);
+    this.tooltipText
+      .setPosition(Math.round(left + TOOLTIP_PADDING_X), Math.round(top + TOOLTIP_PADDING_Y))
+      .setVisible(true);
+  }
+
+  private hideTooltip(): void {
+    this.tooltipBackground.setVisible(false);
+    this.tooltipText.setVisible(false);
   }
 
   private drawProgressRing(): void {

@@ -84,6 +84,7 @@ export class CultureHudPanel {
     cost: 0,
     progressPercent: 0,
     culturePerTurn: 0,
+    tooltip: 'Culture: None selected',
     eras: [],
   };
 
@@ -230,6 +231,7 @@ export class CultureHudPanel {
     );
     this.cultureText.setText(`Culture: +${state.culturePerTurn}/turn`);
     this.toggleButton.setProgress(state.cost > 0 ? state.progress / state.cost : 0);
+    this.toggleButton.setTooltip(state.tooltip);
     this.rebuildCultureButtons();
     this.layout(this.scene.scale.width, this.scene.scale.height);
   }

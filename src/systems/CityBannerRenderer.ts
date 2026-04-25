@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
 import type { Producible } from '../types/producible';
+import { getBuildingSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
@@ -33,15 +34,6 @@ const NAME_FONT_SIZE = 13;
 const NAME_MIN_FONT_SIZE = 9;
 const POPULATION_FONT_SIZE = 13;
 const PRODUCTION_ICON_INSET = 2;
-
-const UNIT_TEXTURE_MAP: Record<string, string> = {
-  warrior: 'unit_warrior',
-  archer: 'unit_archer',
-  cavalry: 'unit_cavalry',
-  settler: 'unit_settler',
-  fishing_boat: 'unit_fishing_boat',
-  transport_ship: 'unit_transport_ship',
-};
 
 interface CityBannerView {
   container: Phaser.GameObjects.Container;
@@ -328,7 +320,11 @@ export class CityBannerRenderer {
     }
 
     if (production.kind === 'unit') {
-      const textureKey = UNIT_TEXTURE_MAP[production.unitType.id];
+      const textureKey = this.ensureProductionTexture(
+        'unit',
+        production.unitType.id,
+        getUnitSpritePath(production.unitType.id),
+      );
       return {
         textureKey,
         fallbackLabel: getAbbreviation(production.unitType.name),
@@ -336,18 +332,30 @@ export class CityBannerRenderer {
     }
 
     if (production.kind === 'wonder') {
-      return { fallbackLabel: getAbbreviation(production.wonderType.name) };
+      const textureKey = this.ensureProductionTexture(
+        'wonder',
+        production.wonderType.id,
+        getWonderSpritePath(production.wonderType.id),
+      );
+      return {
+        textureKey,
+        fallbackLabel: getAbbreviation(production.wonderType.name),
+      };
     }
 
-    const textureKey = this.ensureBuildingTexture(production.buildingType.id);
+    const textureKey = this.ensureProductionTexture(
+      'building',
+      production.buildingType.id,
+      getBuildingSpritePath(production.buildingType.id),
+    );
     return {
       textureKey,
       fallbackLabel: getAbbreviation(production.buildingType.name),
     };
   }
 
-  private ensureBuildingTexture(buildingId: string): string | undefined {
-    const textureKey = `tile_building_${buildingId}`;
+  private ensureProductionTexture(kind: Producible['kind'], id: string, path: string): string | undefined {
+    const textureKey = `city_banner_${kind}_${id}`;
     if (this.scene.textures.exists(textureKey)) return textureKey;
     if (this.loadingTextures.has(textureKey) || this.missingTextures.has(textureKey)) return undefined;
 
@@ -365,7 +373,7 @@ export class CityBannerRenderer {
       this.rebuildAll();
     });
     this.scene.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, onLoadError);
-    this.scene.load.image(textureKey, `assets/sprites/buildings/${buildingId}.png`);
+    this.scene.load.image(textureKey, path);
     if (!this.scene.load.isLoading()) {
       this.scene.load.start();
     }

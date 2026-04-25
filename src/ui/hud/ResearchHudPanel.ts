@@ -81,6 +81,7 @@ export class ResearchHudPanel {
     sciencePerTurn: 0,
     available: [],
     researchedNames: [],
+    tooltip: 'Researching: None selected',
   };
   private onSelectTechnology: ((techId: string) => boolean) | null = null;
   private onToggle: ((collapsed: boolean) => void) | null = null;
@@ -225,6 +226,7 @@ export class ResearchHudPanel {
     this.scienceText.setText(`Science: +${state.sciencePerTurn}/turn`);
     this.researchedText.setText(state.researchedNames.length > 0 ? state.researchedNames.join(', ') : 'None');
     this.toggleButton.setProgress(state.cost > 0 ? state.progress / state.cost : 0);
+    this.toggleButton.setTooltip(state.tooltip);
     this.rebuildTechButtons();
     this.layout(this.scene.scale.width, this.scene.scale.height);
   }

@@ -18,6 +18,9 @@ interface ResourceEntryView {
 export class TopResourceBar {
   private readonly entries: ResourceEntryView[] = [];
   private readonly values: HudResourceEntry[] = [];
+  private readonly tooltipBackground: Phaser.GameObjects.Rectangle;
+  private readonly tooltipText: Phaser.GameObjects.Text;
+  private hoveredIndex: number | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -41,7 +44,37 @@ export class TopResourceBar {
         .setResolution(HUD_TEXT_RESOLUTION);
 
       this.entries.push({ background, text });
+
+      background.on(Phaser.Input.Events.POINTER_OVER, () => {
+        this.hoveredIndex = index;
+        this.refreshTooltip();
+      });
+      background.on(Phaser.Input.Events.POINTER_OUT, () => {
+        if (this.hoveredIndex === index) {
+          this.hoveredIndex = null;
+          this.hideTooltip();
+        }
+      });
     }
+
+    this.tooltipBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x081018, 0.96))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 20)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, 0xb59a5a, 0.65)
+      .setVisible(false);
+
+    this.tooltipText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      color: '#f4f1e7',
+      wordWrap: { width: 280, useAdvancedWrap: true },
+    }))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 21)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setVisible(false);
   }
 
   setEntries(entries: HudResourceEntry[]): void {
@@ -52,6 +85,7 @@ export class TopResourceBar {
       const value = entries[index];
       if (!value) {
         view.background.setVisible(false);
+        view.background.disableInteractive();
         view.text.setVisible(false);
         continue;
       }
@@ -59,7 +93,13 @@ export class TopResourceBar {
       view.background.setVisible(true);
       view.text.setVisible(true);
       view.text.setText(formatEntryText(value));
+      if (value.tooltip) {
+        if (!view.background.input?.enabled) view.background.setInteractive({ cursor: 'help' });
+      } else {
+        view.background.disableInteractive();
+      }
     }
+    this.refreshTooltip();
   }
 
   layout(): void {
@@ -79,6 +119,7 @@ export class TopResourceBar {
 
       x += width + ENTRY_GAP;
     }
+    this.refreshTooltip();
   }
 
   destroy(): void {
@@ -86,6 +127,47 @@ export class TopResourceBar {
       entry.background.destroy();
       entry.text.destroy();
     }
+    this.tooltipBackground.destroy();
+    this.tooltipText.destroy();
+  }
+
+  private refreshTooltip(): void {
+    if (this.hoveredIndex === null) {
+      this.hideTooltip();
+      return;
+    }
+
+    const value = this.values[this.hoveredIndex];
+    const view = this.entries[this.hoveredIndex];
+    if (!value?.tooltip || !view?.background.visible) {
+      this.hideTooltip();
+      return;
+    }
+
+    const paddingX = 10;
+    const paddingY = 7;
+    this.tooltipText.setText(value.tooltip);
+    const width = this.tooltipText.width + paddingX * 2;
+    const height = this.tooltipText.height + paddingY * 2;
+    const left = Phaser.Math.Clamp(
+      view.background.x,
+      EDGE_MARGIN,
+      Math.max(EDGE_MARGIN, this.scene.scale.width - width - EDGE_MARGIN),
+    );
+    const top = view.background.y + ENTRY_HEIGHT + 6;
+
+    this.tooltipBackground
+      .setPosition(Math.round(left), Math.round(top))
+      .setDisplaySize(width, height)
+      .setVisible(true);
+    this.tooltipText
+      .setPosition(Math.round(left + paddingX), Math.round(top + paddingY))
+      .setVisible(true);
+  }
+
+  private hideTooltip(): void {
+    this.tooltipBackground.setVisible(false);
+    this.tooltipText.setVisible(false);
   }
 }
 

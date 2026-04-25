@@ -1,6 +1,6 @@
 import type { City } from '../entities/City';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
-import { getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+import { getBuildingSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 
 type CloseCallback = () => void;
 type PlacementRequestCallback = (buildingId: string) => void;
@@ -509,7 +509,7 @@ export class CityView {
     const unitsButton = document.createElement('button');
     unitsButton.type = 'button';
     unitsButton.className = 'city-view-placement-button';
-    unitsButton.textContent = 'Units';
+    unitsButton.textContent = 'Queue';
     unitsButton.addEventListener('click', () => {
       for (const callback of this.productionRequestCallbacks) callback();
     });
@@ -567,14 +567,14 @@ export class CityView {
     }
 
     for (const option of buildingOptions) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'city-view-placement-button';
+      const button = this.createProductionButton(
+        getBuildingSpritePath(option.id),
+        `${option.name} (${option.placement})`,
+      );
       if (placementState.active && placementState.buildingId === option.id) {
         button.classList.add('city-view-placement-button-active');
       }
       button.disabled = option.disabled ?? false;
-      button.textContent = `${option.name} (${option.placement})`;
       if (option.reason) button.title = option.reason;
       button.addEventListener('click', () => {
         for (const callback of this.placementRequestCallbacks) callback(option.id);
