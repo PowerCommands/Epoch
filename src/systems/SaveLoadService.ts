@@ -27,6 +27,8 @@ import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
+import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
+import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -84,6 +86,10 @@ export class SaveLoadService {
       return {
         id: nation.id,
         isHuman: nation.isHuman,
+        aiStrategyId: nation.aiStrategyId,
+        aiStrategyStartedTurn: nation.aiStrategyStartedTurn,
+        previousAiStrategyId: nation.previousAiStrategyId,
+        aiNationalAgendaId: nation.aiNationalAgendaId,
         researchedTechIds: [...nation.researchedTechIds],
         currentResearchTechId: nation.currentResearchTechId,
         researchProgress: nation.researchProgress,
@@ -352,6 +358,10 @@ export class SaveLoadService {
     for (const saved of nations) {
       const nation = nationManager.getNation(saved.id);
       if (!nation) continue;
+      nation.aiStrategyId = saved.aiStrategyId ?? BASELINE_AI_STRATEGY_ID;
+      nation.aiStrategyStartedTurn = saved.aiStrategyStartedTurn ?? 0;
+      nation.previousAiStrategyId = saved.previousAiStrategyId;
+      nation.aiNationalAgendaId = saved.aiNationalAgendaId ?? BALANCED_AGENDA_ID;
       nation.researchedTechIds = [...saved.researchedTechIds];
       nation.currentResearchTechId = saved.currentResearchTechId;
       nation.researchProgress = saved.researchProgress;

@@ -1,4 +1,6 @@
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
+import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
+import type { AINationalAgendaId } from '../types/aiNationalAgenda';
 
 export interface NationConfig {
   id: string;
@@ -7,6 +9,9 @@ export interface NationConfig {
   secondaryColor?: number;
   isHuman?: boolean;
   aiStrategyId?: string;
+  aiStrategyStartedTurn?: number;
+  previousAiStrategyId?: string;
+  aiNationalAgendaId?: AINationalAgendaId;
   researchedTechIds?: string[];
   currentResearchTechId?: string;
   researchProgress?: number;
@@ -28,6 +33,9 @@ export class Nation {
   readonly secondaryColor: number;
   isHuman: boolean;
   aiStrategyId: string;
+  aiStrategyStartedTurn: number;
+  previousAiStrategyId?: string;
+  aiNationalAgendaId: AINationalAgendaId;
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;
@@ -42,6 +50,9 @@ export class Nation {
     this.secondaryColor = config.secondaryColor ?? config.color;
     this.isHuman = config.isHuman ?? false;
     this.aiStrategyId = config.aiStrategyId ?? BASELINE_AI_STRATEGY_ID;
+    this.aiStrategyStartedTurn = config.aiStrategyStartedTurn ?? 0;
+    this.previousAiStrategyId = config.previousAiStrategyId;
+    this.aiNationalAgendaId = config.aiNationalAgendaId ?? BALANCED_AGENDA_ID;
     this.researchedTechIds = [...(config.researchedTechIds ?? [])];
     this.currentResearchTechId = config.currentResearchTechId;
     this.researchProgress = config.researchProgress ?? 0;

@@ -6,6 +6,7 @@ import { ALL_UNIT_TYPES } from '../../data/units';
 import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
 import type { City } from '../../entities/City';
+import type { Nation } from '../../entities/Nation';
 import type { Unit } from '../../entities/Unit';
 import { calculateCityEconomy } from '../../systems/CityEconomy';
 import type { CityManager } from '../../systems/CityManager';
@@ -55,6 +56,18 @@ interface LeaderboardEntry {
   color: number;
   score: number;
   detail: string;
+}
+
+export interface LeaderDiplomacyComparisonSelection {
+  pendingPrimaryNationId: string | null;
+  pendingSecondaryNationId: string | null;
+  shownPrimaryNationId: string | null;
+  shownSecondaryNationId: string | null;
+  openDropdown: 'primary' | 'secondary' | null;
+  onToggleDropdown: (dropdown: 'primary' | 'secondary') => void;
+  onSelectPrimary: (nationId: string) => void;
+  onSelectSecondary: (nationId: string) => void;
+  onShowDetails: () => void;
 }
 
 export class RightSidebarPanelDataProvider {
@@ -179,6 +192,16 @@ export class RightSidebarPanelDataProvider {
     return this.current.view === 'leader' ? this.current.leaderId : null;
   }
 
+  getCurrentLeaderNationId(): string | null {
+    return this.current.view === 'leader' ? this.current.nationId : null;
+  }
+
+  getVisibleLeaderDiplomacyNations(): Nation[] {
+    return this.nationManager.getAllNations()
+      .filter((nation) => this.isVisibleInLeaderDiagnostics(nation.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   isShowingCity(cityId?: string): boolean {
     return cityId !== undefined && this.current.view === 'city' && this.current.city?.id === cityId;
   }
@@ -256,6 +279,7 @@ export class RightSidebarPanelDataProvider {
   getDetailsContent(
     cityTab: RightSidebarCityDetailsTab = 'city',
     leaderTab: RightSidebarLeaderDetailsTab = 'details',
+    leaderDiplomacySelection?: LeaderDiplomacyComparisonSelection,
   ): RightSidebarContent {
     let content: RightSidebarContent;
     switch (this.current.view) {
@@ -272,7 +296,9 @@ export class RightSidebarPanelDataProvider {
         content = this.current.nationId ? this.getNationContent(this.current.nationId) : this.getEmptyDetailsContent();
         break;
       case 'leader':
-        content = this.current.leaderId ? this.getLeaderContent(this.current.leaderId, leaderTab) : this.getEmptyDetailsContent();
+        content = this.current.leaderId
+          ? this.getLeaderContent(this.current.leaderId, leaderTab, leaderDiplomacySelection)
+          : this.getEmptyDetailsContent();
         break;
       case null:
         content = this.getEmptyDetailsContent();
@@ -511,13 +537,14 @@ export class RightSidebarPanelDataProvider {
   private getLeaderContent(
     leaderIdOrNationId: string,
     tab: RightSidebarLeaderDetailsTab,
+    diplomacySelection?: LeaderDiplomacyComparisonSelection,
   ): RightSidebarContent {
     const leader = getLeaderById(leaderIdOrNationId) ?? getLeaderByNationId(leaderIdOrNationId);
     if (!leader) return { title: 'Details', sections: [{ title: 'Leader', rows: [textRow('Leader not found.', true)] }] };
     if (tab === 'diplomacy') {
       return {
         title: 'Leader Details',
-        sections: [this.getLeaderDiplomacyDiagnosticsSection(leader.nationId)],
+        sections: this.getLeaderDiplomacyDiagnosticsSections(diplomacySelection),
       };
     }
 
@@ -541,45 +568,121 @@ export class RightSidebarPanelDataProvider {
     return { title: 'Leader Details', sections };
   }
 
-  private getLeaderDiplomacyDiagnosticsSection(nationId: string): RightSidebarSection {
-    // Diplomacy tab is a diagnostic tool to inspect AI relationships.
-    // It does not affect gameplay.
+  private getLeaderDiplomacyDiagnosticsSections(
+    selection?: LeaderDiplomacyComparisonSelection,
+  ): RightSidebarSection[] {
+    // Diplomacy comparison view is diagnostic-only.
+    // It compares one primary nation against one secondary nation.
     if (!this.diplomacyManager) {
-      return { title: 'Diplomacy', rows: [textRow('Diplomacy manager unavailable.', true)] };
+      return [{ title: 'Diplomacy', rows: [textRow('Diplomacy manager unavailable.', true)] }];
     }
 
-    const sourceNation = this.nationManager.getNation(nationId);
-    const otherNations = this.nationManager.getAllNations()
-      .filter((nation) => nation.id !== nationId)
-      .filter((nation) => this.isVisibleInLeaderDiagnostics(nation.id));
+    const nations = this.getVisibleLeaderDiplomacyNations();
+    const pendingPrimaryNation = selection?.pendingPrimaryNationId
+      ? this.nationManager.getNation(selection.pendingPrimaryNationId)
+      : undefined;
+    const pendingSecondaryNation = selection?.pendingSecondaryNationId
+      ? this.nationManager.getNation(selection.pendingSecondaryNationId)
+      : undefined;
+    const shownPrimaryNation = selection?.shownPrimaryNationId
+      ? this.nationManager.getNation(selection.shownPrimaryNationId)
+      : undefined;
+    const shownSecondaryNation = selection?.shownSecondaryNationId
+      ? this.nationManager.getNation(selection.shownSecondaryNationId)
+      : undefined;
 
-    if (otherNations.length === 0) {
-      return { title: 'Diplomacy', rows: [textRow('No discovered leaders.', true)] };
+    const primaryRows: RightSidebarRow[] = [dropdownHeaderRow(
+      `Primary nation: ${pendingPrimaryNation?.name ?? 'Select nation'}`,
+      selection?.openDropdown === 'primary',
+      () => selection?.onToggleDropdown('primary'),
+    )];
+    if (selection?.openDropdown === 'primary') {
+      primaryRows.push(...nations.map((nation) => diplomacyNationButtonRow(
+        nation,
+        nation.id === pendingPrimaryNation?.id,
+        false,
+        () => selection.onSelectPrimary(nation.id),
+      )));
     }
 
-    const rows: RightSidebarRow[] = [];
-    for (const nation of otherNations) {
-      const relation = this.diplomacyManager.getRelation(nationId, nation.id);
-      rows.push(textRow(`Leader: ${nation.name}`, false, true, nation.color));
-      rows.push(textRow(`State: ${relation.state}`));
-      rows.push(textRow(`Attitude: ${this.diplomaticEvaluationSystem?.evaluateAttitude(nationId, nation.id) ?? 'unavailable'}`));
-      rows.push(textRow(`Trust: ${relation.trust}`));
-      rows.push(textRow(`Fear: ${relation.fear}`));
-      rows.push(textRow(`Hostility: ${relation.hostility}`));
-      rows.push(textRow(`Affinity: ${relation.affinity}`));
-      rows.push(textRow('Open Borders:', true));
-      rows.push(textRow(`  ${sourceNation?.name ?? nationId} -> ${nation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(nationId, nation.id))}`));
-      rows.push(textRow(`  ${nation.name} -> ${sourceNation?.name ?? nationId}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(nation.id, nationId))}`));
-      rows.push(textRow(`Military: ${this.militaryEvaluationSystem?.compareMilitaryStrength(nationId, nation.id) ?? 'unavailable'}`));
-      rows.push(textRow(`Threat: ${this.threatEvaluationSystem?.getThreatLevel(nationId, nation.id) ?? 'unavailable'}`));
-      rows.push(textRow(`Last War Turn: ${formatTurn(relation.lastWarDeclarationTurn)}`));
-      rows.push(textRow(`Last Peace Turn: ${formatTurn(relation.lastPeaceProposalTurn)}`));
-      rows.push(textRow(`Last Open Borders Change: ${formatTurn(relation.lastOpenBordersChangeTurn)}`));
-      rows.push({ kind: 'separator' });
+    const secondaryRows: RightSidebarRow[] = [dropdownHeaderRow(
+      `Secondary nation: ${pendingSecondaryNation?.name ?? 'Select nation'}`,
+      selection?.openDropdown === 'secondary',
+      () => selection?.onToggleDropdown('secondary'),
+    )];
+    if (selection?.openDropdown === 'secondary') {
+      secondaryRows.push(...nations.map((nation) => diplomacyNationButtonRow(
+        nation,
+        nation.id === pendingSecondaryNation?.id,
+        nation.id === pendingPrimaryNation?.id,
+        () => selection.onSelectSecondary(nation.id),
+      )));
     }
-    rows.pop();
 
-    return { title: 'Diplomacy', rows };
+    const canShowDetails = Boolean(
+      pendingPrimaryNation &&
+      pendingSecondaryNation &&
+      pendingPrimaryNation.id !== pendingSecondaryNation.id,
+    );
+
+    const sections: RightSidebarSection[] = [
+      { title: 'Primary', rows: primaryRows },
+      { title: 'Secondary', rows: secondaryRows },
+      {
+        title: 'Details',
+        rows: [
+          {
+            kind: 'button',
+            text: 'Show details',
+            disabled: !canShowDetails,
+            accentColor: 0xa7f3d0,
+            onClick: () => selection?.onShowDetails(),
+          },
+        ],
+      },
+    ];
+
+    if (nations.length < 2) {
+      sections.push({
+        title: 'Comparison',
+        rows: [textRow('No discovered nation available for comparison.', true)],
+      });
+      return sections;
+    }
+
+    if (!shownPrimaryNation || !shownSecondaryNation || shownPrimaryNation.id === shownSecondaryNation.id) {
+      sections.push({
+        title: 'Comparison',
+        rows: [textRow('Choose two nations and press Show details.', true)],
+      });
+      return sections;
+    }
+
+    const relation = this.diplomacyManager.getRelation(shownPrimaryNation.id, shownSecondaryNation.id);
+    sections.push({
+      title: `${shownPrimaryNation.name} -> ${shownSecondaryNation.name}`,
+      rows: [
+        textRow(`State: ${relation.state}`),
+        textRow(`Attitude: ${this.diplomaticEvaluationSystem?.evaluateAttitude(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
+        textRow(`Trust: ${relation.trust}`),
+        textRow(`Fear: ${relation.fear}`),
+        textRow(`Hostility: ${relation.hostility}`),
+        textRow(`Affinity: ${relation.affinity}`),
+        textRow('Open Borders:', true),
+        textRow(`${shownPrimaryNation.name} allows ${shownSecondaryNation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(shownPrimaryNation.id, shownSecondaryNation.id))}`),
+        textRow(`${shownSecondaryNation.name} allows ${shownPrimaryNation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(shownSecondaryNation.id, shownPrimaryNation.id))}`),
+        textRow('Military:', true),
+        textRow(`${shownPrimaryNation.name} compared to ${shownSecondaryNation.name}: ${this.militaryEvaluationSystem?.compareMilitaryStrength(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
+        textRow('Threat:', true),
+        textRow(`Threat to ${shownPrimaryNation.name} from ${shownSecondaryNation.name}: ${this.threatEvaluationSystem?.getThreatLevel(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
+        textRow('History:', true),
+        textRow(`Last War Turn: ${formatTurn(relation.lastWarDeclarationTurn)}`),
+        textRow(`Last Peace Turn: ${formatTurn(relation.lastPeaceProposalTurn)}`),
+        textRow(`Last Open Borders Change Turn: ${formatTurn(relation.lastOpenBordersChangeTurn)}`),
+      ],
+    });
+
+    return sections;
   }
 
   private getProductionQueueSection(city: City, isHuman: boolean): RightSidebarSection {
@@ -886,6 +989,33 @@ function textRow(text: string, muted = false, large = false, color?: number, spr
 
 function buttonRow(text: string, onClick: () => void, accentColor?: number, trailingIcon?: string, spritePath?: string): RightSidebarRow {
   return { kind: 'button', text, onClick, accentColor, trailingIcon, spritePath };
+}
+
+function dropdownHeaderRow(text: string, selected: boolean, onClick: () => void): RightSidebarRow {
+  return {
+    kind: 'button',
+    text,
+    selected,
+    accentColor: 0x6ec6ff,
+    trailingIcon: selected ? '▲' : '▼',
+    onClick,
+  };
+}
+
+function diplomacyNationButtonRow(
+  nation: Nation,
+  selected: boolean,
+  disabled: boolean,
+  onClick: () => void,
+): RightSidebarRow {
+  return {
+    kind: 'button',
+    text: nation.name,
+    selected,
+    disabled,
+    accentColor: nation.color,
+    onClick,
+  };
 }
 
 function progressRow(label: string, current: number, max: number): RightSidebarRow {

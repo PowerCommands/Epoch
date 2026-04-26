@@ -1,4 +1,8 @@
 import type { LeaderDefinition } from '../types/leader';
+import {
+  DEFAULT_AI_LEADER_PERSONALITY,
+  type AILeaderPersonality,
+} from '../types/aiLeaderPersonality';
 
 const LEADER_IMAGE_BASE = '/assets/sprites/leaders';
 
@@ -10,6 +14,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'King of England',
     image: `${LEADER_IMAGE_BASE}/henry-v.png`,
     description: 'A martial king remembered for disciplined campaigns and a hard edge in war.',
+    aiPersonality: {
+      aggressionBias: 15,
+      expansionBias: 5,
+      economyBias: 0,
+      cultureBias: -5,
+      diplomacyBias: -5,
+      warTolerance: 75,
+      peacePreference: 30,
+    },
   },
   {
     id: 'leader_charles_vii',
@@ -18,6 +31,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'King of France',
     image: `${LEADER_IMAGE_BASE}/charles-vi.png`,
     description: 'A cautious restorer of French authority after years of fracture.',
+    aiPersonality: {
+      aggressionBias: -5,
+      expansionBias: 0,
+      economyBias: 5,
+      cultureBias: 5,
+      diplomacyBias: 5,
+      warTolerance: 45,
+      peacePreference: 60,
+    },
   },
   {
     id: 'leader_sigismund',
@@ -26,6 +48,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Holy Roman Emperor',
     image: `${LEADER_IMAGE_BASE}/sigismund.png`,
     description: 'An imperial broker balancing crowns, councils, and competing princes.',
+    aiPersonality: {
+      aggressionBias: -5,
+      expansionBias: 0,
+      economyBias: 5,
+      cultureBias: 10,
+      diplomacyBias: 10,
+      warTolerance: 40,
+      peacePreference: 65,
+    },
   },
   {
     id: 'leader_gustav_vasa',
@@ -34,6 +65,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'King of Sweden',
     image: `${LEADER_IMAGE_BASE}/gustaf-vasa.png`,
     description: 'A determined state-builder with an eye for independence and order.',
+    aiPersonality: {
+      aggressionBias: 5,
+      expansionBias: 10,
+      economyBias: 10,
+      cultureBias: 0,
+      diplomacyBias: 0,
+      warTolerance: 55,
+      peacePreference: 45,
+    },
   },
   {
     id: 'leader_vytautas',
@@ -42,6 +82,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Grand Duke of Lithuania',
     image: `${LEADER_IMAGE_BASE}/vytautas-the-great.png`,
     description: 'An ambitious grand duke whose realm looks across the eastern frontier.',
+    aiPersonality: {
+      aggressionBias: 8,
+      expansionBias: 12,
+      economyBias: 0,
+      cultureBias: 0,
+      diplomacyBias: -2,
+      warTolerance: 60,
+      peacePreference: 45,
+    },
   },
   {
     id: 'leader_marfa_boretskaya',
@@ -50,6 +99,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Posadnitsa of Novgorod',
     image: `${LEADER_IMAGE_BASE}/marfa-boretskaya.png`,
     description: 'A formidable civic figure standing for Novgorod tradition and autonomy.',
+    aiPersonality: {
+      aggressionBias: -8,
+      expansionBias: -5,
+      economyBias: 10,
+      cultureBias: 10,
+      diplomacyBias: 8,
+      warTolerance: 35,
+      peacePreference: 70,
+    },
   },
   {
     id: 'leader_mehmed_ii',
@@ -58,6 +116,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Sultan of the Ottoman Empire',
     image: `${LEADER_IMAGE_BASE}/mehmed-i.png`,
     description: 'A conqueror-sultan with a taste for decisive campaigns and imperial ambition.',
+    aiPersonality: {
+      aggressionBias: 20,
+      expansionBias: 15,
+      economyBias: 0,
+      cultureBias: 0,
+      diplomacyBias: -10,
+      warTolerance: 85,
+      peacePreference: 20,
+    },
   },
   {
     id: 'leader_isabella_i',
@@ -66,6 +133,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Queen of Castile',
     image: `${LEADER_IMAGE_BASE}/isabella.png`,
     description: 'A dynastic ruler focused on unity, faith, and royal authority.',
+    aiPersonality: {
+      aggressionBias: 5,
+      expansionBias: 5,
+      economyBias: 5,
+      cultureBias: 10,
+      diplomacyBias: 5,
+      warTolerance: 55,
+      peacePreference: 55,
+    },
   },
   {
     id: 'leader_abu_said_uthman_ii',
@@ -74,6 +150,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Sultan of Morocco',
     image: `${LEADER_IMAGE_BASE}/abu-al-hasan.png`,
     description: 'A Maghrebi ruler anchoring Moroccan power across western trade routes.',
+    aiPersonality: {
+      aggressionBias: 0,
+      expansionBias: 5,
+      economyBias: 12,
+      cultureBias: 4,
+      diplomacyBias: 4,
+      warTolerance: 50,
+      peacePreference: 55,
+    },
   },
   {
     id: 'leader_george-washington',
@@ -82,6 +167,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'President George Washington',
     image: `${LEADER_IMAGE_BASE}/george-washington.png`,
     description: 'A visionary founding father focused on liberty, stability, and national unity.',
+    aiPersonality: {
+      aggressionBias: -2,
+      expansionBias: 8,
+      economyBias: 8,
+      cultureBias: 4,
+      diplomacyBias: 8,
+      warTolerance: 50,
+      peacePreference: 60,
+    },
   },
   {
     id: 'leader_mahatma-gandhi',
@@ -90,6 +184,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Mahatma Gandhi',
     image: `${LEADER_IMAGE_BASE}/mahatma-gandhi.png`,
     description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
+    aiPersonality: {
+      aggressionBias: -15,
+      expansionBias: -5,
+      economyBias: 4,
+      cultureBias: 12,
+      diplomacyBias: 15,
+      warTolerance: 20,
+      peacePreference: 85,
+    },
   },
   {
     id: 'leader_qin-shi-huang',
@@ -98,6 +201,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Emperor Qin Shi Huang',
     image: `${LEADER_IMAGE_BASE}/qin-shi-huang.png`,
     description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
+    aiPersonality: {
+      aggressionBias: 8,
+      expansionBias: 10,
+      economyBias: 8,
+      cultureBias: 5,
+      diplomacyBias: -5,
+      warTolerance: 60,
+      peacePreference: 40,
+    },
   },
   {
     id: 'leader_dom-pedro-ii',
@@ -106,6 +218,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Emperor Dom Pedro II',
     image: `${LEADER_IMAGE_BASE}/dom-pedro-ii.png`,
     description: 'An enlightened monarch focused on scientific progress, cultural growth, and diplomatic stability.',
+    aiPersonality: {
+      aggressionBias: -5,
+      expansionBias: 0,
+      economyBias: 10,
+      cultureBias: 12,
+      diplomacyBias: 10,
+      warTolerance: 40,
+      peacePreference: 70,
+    },
   },
   {
     id: 'leader_mansa-musa',
@@ -114,6 +235,15 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Emperor Mansa Musa',
     image: `${LEADER_IMAGE_BASE}/mansa-musa.png`,
     description: 'A legendary sovereign focused on immense wealth, trans-Saharan trade, and intellectual enlightenment.',
+    aiPersonality: {
+      aggressionBias: -5,
+      expansionBias: 0,
+      economyBias: 20,
+      cultureBias: 8,
+      diplomacyBias: 8,
+      warTolerance: 35,
+      peacePreference: 70,
+    },
   },
 ];
 
@@ -123,4 +253,8 @@ export function getLeaderByNationId(nationId: string): LeaderDefinition | undefi
 
 export function getLeaderById(leaderId: string): LeaderDefinition | undefined {
   return ALL_LEADERS.find((leader) => leader.id === leaderId);
+}
+
+export function getLeaderPersonalityByNationId(nationId: string): AILeaderPersonality {
+  return getLeaderByNationId(nationId)?.aiPersonality ?? DEFAULT_AI_LEADER_PERSONALITY;
 }

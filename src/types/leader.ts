@@ -1,3 +1,5 @@
+import type { AILeaderPersonality } from './aiLeaderPersonality';
+
 export interface LeaderDefinition {
   id: string;
   name: string;
@@ -5,4 +7,5 @@ export interface LeaderDefinition {
   title?: string;
   image: string;
   description?: string;
+  aiPersonality?: AILeaderPersonality;
 }

@@ -116,6 +116,8 @@ export class NationManager {
         secondaryColor,
         isHuman: cfg.isHuman,
         aiStrategyId: cfg.aiStrategyId,
+        aiStrategyStartedTurn: 0,
+        aiNationalAgendaId: cfg.aiNationalAgendaId,
         researchedTechIds: cfg.researchedTechIds,
         currentResearchTechId: cfg.currentResearchTechId,
         researchProgress: cfg.researchProgress,

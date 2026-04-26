@@ -1,9 +1,12 @@
-import type { DiplomacyManager } from '../DiplomacyManager';
-import type { DiplomaticEvaluationSystem } from '../diplomacy/DiplomaticEvaluationSystem';
+import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
+import type { DiplomaticEvaluationSystem, DiplomaticAttitude } from '../diplomacy/DiplomaticEvaluationSystem';
 import type { NationManager } from '../NationManager';
 import type { TurnManager } from '../TurnManager';
-import type { AIMilitaryEvaluationSystem } from './AIMilitaryEvaluationSystem';
-import type { AIMilitaryThreatEvaluationSystem } from './AIMilitaryThreatEvaluationSystem';
+import type { AIMilitaryEvaluationSystem, MilitaryComparison } from './AIMilitaryEvaluationSystem';
+import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './AIMilitaryThreatEvaluationSystem';
+import type { AIDiplomacyAction, AIDiplomacyDecisionReason } from '../../types/aiDiplomacy';
+import type { AILeaderPersonality } from '../../types/aiLeaderPersonality';
+import { getLeaderPersonalityByNationId } from '../../data/leaders';
 
 // AIDiplomacySystem v1:
 // Uses diplomatic attitude to trigger simple decisions.
@@ -18,6 +21,9 @@ const NO_IMMEDIATE_PEACE_AFTER_WAR = 3;
 const NO_IMMEDIATE_WAR_AFTER_PEACE = 5;
 
 export class AIDiplomacySystem {
+  // AI diplomacy reason logging explains decisions without changing them.
+  private readonly decisionListeners: Array<(reason: AIDiplomacyDecisionReason) => void> = [];
+
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
     private readonly evaluationSystem: DiplomaticEvaluationSystem,
@@ -26,6 +32,10 @@ export class AIDiplomacySystem {
     private readonly militaryEvaluationSystem: AIMilitaryEvaluationSystem,
     private readonly threatEvaluationSystem: AIMilitaryThreatEvaluationSystem,
   ) {}
+
+  onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
+    this.decisionListeners.push(listener);
+  }
 
   runTurn(nationId: string): void {
     const self = this.nationManager.getNation(nationId);
@@ -48,6 +58,7 @@ export class AIDiplomacySystem {
     const attitude = this.evaluationSystem.evaluateAttitude(selfId, otherId);
     const comparison = this.militaryEvaluationSystem.compareMilitaryStrength(selfId, otherId);
     const threat = this.threatEvaluationSystem.getThreatLevel(selfId, otherId);
+    const personality = getLeaderPersonalityByNationId(selfId);
 
     if (relation.state === 'WAR') {
       // Sue for peace when geographically threatened, frightened, or when
@@ -55,14 +66,26 @@ export class AIDiplomacySystem {
       const wantsPeace =
         threat === 'high' ||
         attitude === 'afraid' ||
-        (comparison === 'weaker' && attitude === 'hostile');
+        comparison === 'weaker' ||
+        (personality.peacePreference >= 70 && attitude !== 'hostile');
       if (
         wantsPeace &&
         this.canProposePeace(selfId, otherId) &&
         this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) >= PEACE_COOLDOWN &&
         this.turnsSince(relation.lastWarDeclarationTurn, currentTurn) >= NO_IMMEDIATE_PEACE_AFTER_WAR
       ) {
+        const reason = this.createDecisionReason(
+          'proposePeace',
+          selfId,
+          otherId,
+          relation,
+          attitude,
+          comparison,
+          threat,
+          personality,
+        );
         this.diplomacyManager.proposePeace(selfId, otherId);
+        this.emitDecision(reason);
       }
       return; // never touch borders while at war
     }
@@ -73,18 +96,31 @@ export class AIDiplomacySystem {
       // Don't pick a fight we'll obviously lose, or while the enemy is
       // already threatening our cities.
       if (comparison === 'weaker' || threat === 'high') return;
+      const wantsWar = personality.warTolerance >= 50 || personality.aggressionBias > 0;
+      if (!wantsWar) return;
       if (
         this.turnsSince(relation.lastWarDeclarationTurn, currentTurn) >= WAR_COOLDOWN &&
         this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) >= NO_IMMEDIATE_WAR_AFTER_PEACE
       ) {
+        const reason = this.createDecisionReason(
+          'declareWar',
+          selfId,
+          otherId,
+          relation,
+          attitude,
+          comparison,
+          threat,
+          personality,
+        );
         this.diplomacyManager.declareWar(selfId, otherId);
+        this.emitDecision(reason);
       }
       return;
     }
 
-    if (attitude === 'friendly') {
+    if (attitude === 'friendly' || (attitude === 'neutral' && personality.diplomacyBias >= 15 && relation.trust >= 50)) {
       if (this.turnsSince(relation.lastOpenBordersChangeTurn, currentTurn) >= OPEN_BORDERS_COOLDOWN) {
-        this.ensureOpenBorders(selfId, otherId, true);
+        this.ensureOpenBorders(selfId, otherId, true, relation, attitude, comparison, threat, personality);
       }
     }
   }
@@ -104,16 +140,113 @@ export class AIDiplomacySystem {
    * for AI↔AI to keep things simple, but never overrides a human's grant —
    * the human owns their own permission.
    */
-  private ensureOpenBorders(selfId: string, otherId: string, desired: boolean): void {
+  private ensureOpenBorders(
+    selfId: string,
+    otherId: string,
+    desired: boolean,
+    relation: DiplomacyRelation,
+    attitude: DiplomaticAttitude,
+    comparison: MilitaryComparison,
+    threat: ThreatLevel,
+    personality: AILeaderPersonality,
+  ): void {
     if (this.diplomacyManager.isOpenBorderGrantedFrom(selfId, otherId) !== desired) {
+      const reason = this.createDecisionReason(
+        desired ? 'openBorders' : 'cancelOpenBorders',
+        selfId,
+        otherId,
+        relation,
+        attitude,
+        comparison,
+        threat,
+        personality,
+      );
       this.diplomacyManager.toggleOpenBorders(selfId, otherId);
+      this.emitDecision(reason);
     }
 
     const otherNation = this.nationManager.getNation(otherId);
     if (!otherNation || otherNation.isHuman) return;
 
     if (this.diplomacyManager.isOpenBorderGrantedFrom(otherId, selfId) !== desired) {
+      const reverseRelation = this.diplomacyManager.getRelation(otherId, selfId);
+      const reverseAttitude = this.evaluationSystem.evaluateAttitude(otherId, selfId);
+      const reverseComparison = this.militaryEvaluationSystem.compareMilitaryStrength(otherId, selfId);
+      const reverseThreat = this.threatEvaluationSystem.getThreatLevel(otherId, selfId);
+      const reversePersonality = getLeaderPersonalityByNationId(otherId);
+      const reason = this.createDecisionReason(
+        desired ? 'openBorders' : 'cancelOpenBorders',
+        otherId,
+        selfId,
+        reverseRelation,
+        reverseAttitude,
+        reverseComparison,
+        reverseThreat,
+        reversePersonality,
+      );
       this.diplomacyManager.toggleOpenBorders(otherId, selfId);
+      this.emitDecision(reason);
     }
   }
+
+  private emitDecision(reason: AIDiplomacyDecisionReason): void {
+    for (const listener of this.decisionListeners) {
+      listener(reason);
+    }
+  }
+
+  private createDecisionReason(
+    action: AIDiplomacyAction,
+    actorNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+    attitude: DiplomaticAttitude,
+    militaryComparison: MilitaryComparison,
+    threatLevel: ThreatLevel,
+    personality: AILeaderPersonality,
+  ): AIDiplomacyDecisionReason {
+    return {
+      action,
+      actorNationId,
+      targetNationId,
+      attitude,
+      militaryComparison,
+      threatLevel,
+      relationState: relation.state,
+      trust: relation.trust,
+      fear: relation.fear,
+      hostility: relation.hostility,
+      affinity: relation.affinity,
+      reasonText: this.createReasonText(action, attitude, militaryComparison, threatLevel, personality),
+    };
+  }
+
+  private createReasonText(
+    action: AIDiplomacyAction,
+    attitude: DiplomaticAttitude,
+    militaryComparison: MilitaryComparison,
+    threatLevel: ThreatLevel,
+    personality: AILeaderPersonality,
+  ): string {
+    switch (action) {
+      case 'declareWar':
+        return `${attitude} attitude, ${militaryComparison} military, threat level ${threatLevel}, and ${formatTolerance(personality.warTolerance, 'war tolerance')}.`;
+      case 'proposePeace':
+        return `${attitude} attitude, ${militaryComparison} military, threat level ${threatLevel}, and ${formatTolerance(personality.peacePreference, 'peace preference')}.`;
+      case 'openBorders':
+        return `${attitude} attitude and stable relation; military ${militaryComparison}, threat level ${threatLevel}, diplomacy bias ${formatSignedBias(personality.diplomacyBias)}.`;
+      case 'cancelOpenBorders':
+        return `${attitude} attitude; military ${militaryComparison}, threat level ${threatLevel}, diplomacy bias ${formatSignedBias(personality.diplomacyBias)}.`;
+    }
+  }
+}
+
+function formatTolerance(value: number, label: string): string {
+  if (value >= 70) return `high ${label}`;
+  if (value <= 30) return `low ${label}`;
+  return `moderate ${label}`;
+}
+
+function formatSignedBias(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`;
 }

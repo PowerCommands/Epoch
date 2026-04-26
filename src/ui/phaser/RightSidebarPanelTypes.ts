@@ -21,6 +21,7 @@ export interface RightSidebarButtonRow {
   kind: 'button';
   text: string;
   disabled?: boolean;
+  selected?: boolean;
   accentColor?: number;
   spritePath?: string;
   trailingIcon?: string;

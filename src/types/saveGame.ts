@@ -1,4 +1,5 @@
 import type { GameSpeedId } from '../data/gameSpeeds';
+import type { AINationalAgendaId } from './aiNationalAgenda';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -37,6 +38,10 @@ export interface SavedQueueEntry {
 export interface SavedNation {
   id: string;
   isHuman: boolean;
+  aiStrategyId?: string;
+  aiStrategyStartedTurn?: number;
+  previousAiStrategyId?: string;
+  aiNationalAgendaId?: AINationalAgendaId;
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;

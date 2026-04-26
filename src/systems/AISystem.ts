@@ -26,6 +26,7 @@ import type { ResearchSystem } from './ResearchSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { HappinessSystem } from './HappinessSystem';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
+import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
 import {
   pickBestAIProductionCandidate,
   type AIProductionCandidate,
@@ -36,6 +37,7 @@ import {
   type AIMovementCandidate,
 } from './ai/AIMovementScoring';
 import { CITY_BASE_HEALTH } from '../data/cities';
+import { getLeaderPersonalityByNationId } from '../data/leaders';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -47,6 +49,25 @@ const NEAR_OWN_CITY_DISTANCE = 3;
 function isUnit(target: Unit | City): target is Unit {
   return (target as Unit).unitType !== undefined;
 }
+
+function maxThreatLevel(a: ThreatLevel, b: ThreatLevel): ThreatLevel {
+  if (threatRank(b) > threatRank(a)) return b;
+  return a;
+}
+
+function threatRank(level: ThreatLevel): number {
+  switch (level) {
+    case 'none':
+      return 0;
+    case 'low':
+      return 1;
+    case 'medium':
+      return 2;
+    case 'high':
+      return 3;
+  }
+}
+
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.baseStrength > 0
 ));
@@ -99,6 +120,7 @@ export class AISystem {
     private readonly researchSystem?: ResearchSystem,
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly happinessSystem?: HappinessSystem,
+    private readonly threatEvaluationSystem?: AIMilitaryThreatEvaluationSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -134,26 +156,46 @@ export class AISystem {
     const context = this.buildStrategyContext(nationId);
     const nextId = this.strategySelector.selectStrategy(context);
     if (nation.aiStrategyId !== nextId) {
+      nation.previousAiStrategyId = nation.aiStrategyId;
       nation.aiStrategyId = nextId;
+      nation.aiStrategyStartedTurn = context.currentTurn;
     }
   }
 
   private buildStrategyContext(nationId: string): AIStrategyContext {
+    const nation = this.nationManager.getNation(nationId);
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
     const unitCount = this.unitManager.getUnitsByOwner(nationId).length;
     const resources = this.nationManager.getResources(nationId);
 
-    // TODO: derive enemyMilitaryNearby from a proper threat scan.
+    const highestThreatLevel = this.getHighestThreatLevel(nationId);
     return {
       nationId,
+      currentTurn: this.turnManager.getCurrentRound(),
+      currentStrategyId: nation?.aiStrategyId ?? this.getStrategy(nationId).id,
+      strategyStartedTurn: nation?.aiStrategyStartedTurn ?? 0,
+      nationalAgendaId: nation?.aiNationalAgendaId ?? 'balanced',
+      leaderPersonality: getLeaderPersonalityByNationId(nationId),
       cityCount,
       unitCount,
       gold: resources.gold,
       goldPerTurn: resources.goldPerTurn,
       netHappiness: this.happinessSystem?.getNetHappiness(nationId) ?? 0,
       atWar: this.isAtWarWithAnyone(nationId),
-      enemyMilitaryNearby: false,
+      enemyMilitaryNearby: highestThreatLevel !== 'none',
+      highestThreatLevel,
     };
+  }
+
+  private getHighestThreatLevel(nationId: string): ThreatLevel {
+    if (!this.threatEvaluationSystem) return 'none';
+    let highest: ThreatLevel = 'none';
+    for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      highest = maxThreatLevel(highest, this.threatEvaluationSystem.getThreatLevel(nationId, other.id));
+      if (highest === 'high') return highest;
+    }
+    return highest;
   }
 
   private isAtWarWithAnyone(nationId: string): boolean {

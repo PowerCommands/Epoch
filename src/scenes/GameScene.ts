@@ -68,6 +68,7 @@ import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
 import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
+import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
@@ -299,6 +300,15 @@ export class GameScene extends Phaser.Scene {
       aiMilitaryEvaluationSystem,
       aiMilitaryThreatEvaluationSystem,
     );
+    aiDiplomacySystem.onDecision((reason) => {
+      const actorName = nationManager.getNation(reason.actorNationId)?.name ?? reason.actorNationId;
+      const targetName = nationManager.getNation(reason.targetNationId)?.name ?? reason.targetNationId;
+      eventLog.log(
+        `${formatAIDiplomacyAction(reason.action, actorName, targetName)} Reason: ${reason.reasonText}`,
+        [reason.actorNationId, reason.targetNationId],
+        turnManager.getCurrentRound(),
+      );
+    });
     const researchSystem = new ResearchSystem(
       nationManager,
       cityManager,
@@ -531,6 +541,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       diplomacyManager,
       happinessSystem,
+      aiMilitaryThreatEvaluationSystem,
     );
 
     // Humans pick their own initial research via the HUD research panel.
@@ -2391,4 +2402,21 @@ function downloadSaveFile(state: SavedGameState): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function formatAIDiplomacyAction(
+  action: AIDiplomacyAction,
+  actorName: string,
+  targetName: string,
+): string {
+  switch (action) {
+    case 'declareWar':
+      return `${actorName} declared war on ${targetName}.`;
+    case 'proposePeace':
+      return `${actorName} proposed peace to ${targetName}.`;
+    case 'openBorders':
+      return `${actorName} opened borders to ${targetName}.`;
+    case 'cancelOpenBorders':
+      return `${actorName} cancelled open borders with ${targetName}.`;
+  }
 }

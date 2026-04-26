@@ -1,3 +1,5 @@
+import type { AINationalAgendaId } from './aiNationalAgenda';
+
 export interface ScenarioMeta {
   name: string;
   version: number;
@@ -17,6 +19,7 @@ export interface ScenarioNation {
   secondaryColor?: string;
   isHuman: boolean;
   aiStrategyId?: string;
+  aiNationalAgendaId?: AINationalAgendaId;
   startTerritoryCenter: { q: number; r: number };
   researchedTechIds?: string[];
   currentResearchTechId?: string;

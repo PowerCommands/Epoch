@@ -14,4 +14,7 @@ export * from './resources';
 export * from './producible';
 export * from './scenario';
 export * from './aiStrategy';
+export * from './aiDiplomacy';
+export * from './aiNationalAgenda';
+export * from './aiLeaderPersonality';
 export * from './leader';
