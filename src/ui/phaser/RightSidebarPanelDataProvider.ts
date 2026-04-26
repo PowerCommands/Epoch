@@ -16,6 +16,9 @@ import type { EventLogSystem } from '../../systems/EventLogSystem';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
 import type { NationManager } from '../../systems/NationManager';
+import type { AIMilitaryEvaluationSystem } from '../../systems/ai/AIMilitaryEvaluationSystem';
+import type { AIMilitaryThreatEvaluationSystem } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
+import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
 import { canCityProduceUnit } from '../../systems/ProductionRules';
 import type { ProductionSystem } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
@@ -31,6 +34,7 @@ import type {
   RightSidebarCityDetailsTab,
   RightSidebarDetailsState,
   RightSidebarDetailsView,
+  RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarRow,
   RightSidebarSection,
@@ -57,6 +61,9 @@ export class RightSidebarPanelDataProvider {
   private readonly scheduler = new RafScheduler();
   private readonly listeners: ChangedListener[] = [];
   private diplomacyManager: DiplomacyManager | null = null;
+  private diplomaticEvaluationSystem: DiplomaticEvaluationSystem | null = null;
+  private militaryEvaluationSystem: AIMilitaryEvaluationSystem | null = null;
+  private threatEvaluationSystem: AIMilitaryThreatEvaluationSystem | null = null;
   private discoverySystem: DiscoverySystem | null = null;
   private eventLog: EventLogSystem | null = null;
   private researchSystem: ResearchSystem | null = null;
@@ -96,6 +103,18 @@ export class RightSidebarPanelDataProvider {
 
   setDiplomacyManager(dm: DiplomacyManager): void {
     this.diplomacyManager = dm;
+  }
+
+  setDiplomaticEvaluationSystem(system: DiplomaticEvaluationSystem): void {
+    this.diplomaticEvaluationSystem = system;
+  }
+
+  setMilitaryEvaluationSystem(system: AIMilitaryEvaluationSystem): void {
+    this.militaryEvaluationSystem = system;
+  }
+
+  setThreatEvaluationSystem(system: AIMilitaryThreatEvaluationSystem): void {
+    this.threatEvaluationSystem = system;
   }
 
   setResearchSystem(researchSystem: ResearchSystem): void {
@@ -154,6 +173,10 @@ export class RightSidebarPanelDataProvider {
 
   getCurrentCityId(): string | null {
     return this.current.view === 'city' ? this.current.city?.id ?? null : null;
+  }
+
+  getCurrentLeaderId(): string | null {
+    return this.current.view === 'leader' ? this.current.leaderId : null;
   }
 
   isShowingCity(cityId?: string): boolean {
@@ -230,7 +253,10 @@ export class RightSidebarPanelDataProvider {
     this.scheduler.cancel();
   }
 
-  getDetailsContent(cityTab: RightSidebarCityDetailsTab = 'city'): RightSidebarContent {
+  getDetailsContent(
+    cityTab: RightSidebarCityDetailsTab = 'city',
+    leaderTab: RightSidebarLeaderDetailsTab = 'details',
+  ): RightSidebarContent {
     let content: RightSidebarContent;
     switch (this.current.view) {
       case 'tile':
@@ -246,7 +272,7 @@ export class RightSidebarPanelDataProvider {
         content = this.current.nationId ? this.getNationContent(this.current.nationId) : this.getEmptyDetailsContent();
         break;
       case 'leader':
-        content = this.current.leaderId ? this.getLeaderContent(this.current.leaderId) : this.getEmptyDetailsContent();
+        content = this.current.leaderId ? this.getLeaderContent(this.current.leaderId, leaderTab) : this.getEmptyDetailsContent();
         break;
       case null:
         content = this.getEmptyDetailsContent();
@@ -482,9 +508,19 @@ export class RightSidebarPanelDataProvider {
     return { title: 'Details', sections };
   }
 
-  private getLeaderContent(leaderIdOrNationId: string): RightSidebarContent {
+  private getLeaderContent(
+    leaderIdOrNationId: string,
+    tab: RightSidebarLeaderDetailsTab,
+  ): RightSidebarContent {
     const leader = getLeaderById(leaderIdOrNationId) ?? getLeaderByNationId(leaderIdOrNationId);
     if (!leader) return { title: 'Details', sections: [{ title: 'Leader', rows: [textRow('Leader not found.', true)] }] };
+    if (tab === 'diplomacy') {
+      return {
+        title: 'Leader Details',
+        sections: [this.getLeaderDiplomacyDiagnosticsSection(leader.nationId)],
+      };
+    }
+
     const nation = this.nationManager.getNation(leader.nationId);
     const sections: RightSidebarSection[] = [
       {
@@ -502,7 +538,48 @@ export class RightSidebarPanelDataProvider {
     if (leader.nationId !== this.humanNationId && this.diplomacyManager && this.humanNationId && this.isNationKnown(leader.nationId)) {
       sections.push(this.getDiplomacySection(leader.nationId));
     }
-    return { title: 'Details', sections };
+    return { title: 'Leader Details', sections };
+  }
+
+  private getLeaderDiplomacyDiagnosticsSection(nationId: string): RightSidebarSection {
+    // Diplomacy tab is a diagnostic tool to inspect AI relationships.
+    // It does not affect gameplay.
+    if (!this.diplomacyManager) {
+      return { title: 'Diplomacy', rows: [textRow('Diplomacy manager unavailable.', true)] };
+    }
+
+    const sourceNation = this.nationManager.getNation(nationId);
+    const otherNations = this.nationManager.getAllNations()
+      .filter((nation) => nation.id !== nationId)
+      .filter((nation) => this.isVisibleInLeaderDiagnostics(nation.id));
+
+    if (otherNations.length === 0) {
+      return { title: 'Diplomacy', rows: [textRow('No discovered leaders.', true)] };
+    }
+
+    const rows: RightSidebarRow[] = [];
+    for (const nation of otherNations) {
+      const relation = this.diplomacyManager.getRelation(nationId, nation.id);
+      rows.push(textRow(`Leader: ${nation.name}`, false, true, nation.color));
+      rows.push(textRow(`State: ${relation.state}`));
+      rows.push(textRow(`Attitude: ${this.diplomaticEvaluationSystem?.evaluateAttitude(nationId, nation.id) ?? 'unavailable'}`));
+      rows.push(textRow(`Trust: ${relation.trust}`));
+      rows.push(textRow(`Fear: ${relation.fear}`));
+      rows.push(textRow(`Hostility: ${relation.hostility}`));
+      rows.push(textRow(`Affinity: ${relation.affinity}`));
+      rows.push(textRow('Open Borders:', true));
+      rows.push(textRow(`  ${sourceNation?.name ?? nationId} -> ${nation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(nationId, nation.id))}`));
+      rows.push(textRow(`  ${nation.name} -> ${sourceNation?.name ?? nationId}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(nation.id, nationId))}`));
+      rows.push(textRow(`Military: ${this.militaryEvaluationSystem?.compareMilitaryStrength(nationId, nation.id) ?? 'unavailable'}`));
+      rows.push(textRow(`Threat: ${this.threatEvaluationSystem?.getThreatLevel(nationId, nation.id) ?? 'unavailable'}`));
+      rows.push(textRow(`Last War Turn: ${formatTurn(relation.lastWarDeclarationTurn)}`));
+      rows.push(textRow(`Last Peace Turn: ${formatTurn(relation.lastPeaceProposalTurn)}`));
+      rows.push(textRow(`Last Open Borders Change: ${formatTurn(relation.lastOpenBordersChangeTurn)}`));
+      rows.push({ kind: 'separator' });
+    }
+    rows.pop();
+
+    return { title: 'Diplomacy', rows };
   }
 
   private getProductionQueueSection(city: City, isHuman: boolean): RightSidebarSection {
@@ -700,17 +777,20 @@ export class RightSidebarPanelDataProvider {
     const humanId = this.humanNationId!;
     const relation = dm.getRelation(humanId, nationId);
     const nation = this.nationManager.getNation(nationId);
+    // Open borders are now directional: this row reflects whether the human
+    // has granted the other nation passage. The toggle below flips that grant.
+    const humanGrantsBorders = dm.isOpenBorderGrantedFrom(humanId, nationId);
     const rows: RightSidebarRow[] = [
       textRow(`Status: ${relation.state === 'WAR' ? 'At War' : 'At Peace'}`),
     ];
-    if (relation.state === 'PEACE') rows.push(textRow(`Borders: ${relation.openBorders ? 'Open' : 'Closed'}`));
+    if (relation.state === 'PEACE') rows.push(textRow(`Borders: ${humanGrantsBorders ? 'Open' : 'Closed'}`));
     rows.push(buttonRow(relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace', () => {
       document.dispatchEvent(new CustomEvent('diplomacyAction', {
         detail: { action: relation.state === 'PEACE' ? 'declareWar' : 'proposePeace', targetNationId: nationId },
       }));
     }, relation.state === 'PEACE' ? 0xb86767 : nation?.color));
     if (relation.state === 'PEACE') {
-      rows.push(buttonRow(relation.openBorders ? 'Cancel Open Borders' : 'Open Borders', () => {
+      rows.push(buttonRow(humanGrantsBorders ? 'Cancel Open Borders' : 'Open Borders', () => {
         document.dispatchEvent(new CustomEvent('diplomacyAction', {
           detail: { action: 'toggleOpenBorders', targetNationId: nationId },
         }));
@@ -790,6 +870,11 @@ export class RightSidebarPanelDataProvider {
     return this.discoverySystem.hasMet(this.humanNationId, nationId);
   }
 
+  private isVisibleInLeaderDiagnostics(nationId: string): boolean {
+    if (nationId === this.humanNationId) return true;
+    return this.isNationKnown(nationId);
+  }
+
   private notifyChanged(): void {
     for (const listener of this.listeners) listener();
   }
@@ -805,6 +890,14 @@ function buttonRow(text: string, onClick: () => void, accentColor?: number, trai
 
 function progressRow(label: string, current: number, max: number): RightSidebarRow {
   return { kind: 'progress', label, current, max };
+}
+
+function formatYesNo(value: boolean): string {
+  return value ? 'YES' : 'NO';
+}
+
+function formatTurn(value: number | null): string {
+  return value === null ? '-' : `${value}`;
 }
 
 function getProducibleName(item: Producible): string {

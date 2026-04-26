@@ -13,5 +13,5 @@ export * from './events';
 export * from './resources';
 export * from './producible';
 export * from './scenario';
-export * from './ai';
+export * from './aiStrategy';
 export * from './leader';

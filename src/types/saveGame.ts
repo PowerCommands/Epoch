@@ -102,7 +102,26 @@ export interface SavedDiplomacyEntry {
   nationA: string;
   nationB: string;
   state: 'WAR' | 'PEACE';
+  /**
+   * @deprecated Symmetric flag from older saves. Newer saves use the
+   * directional fields below; kept optional so older payloads still load.
+   */
   openBorders?: boolean;
+  openBordersFromAToB?: boolean;
+  openBordersFromBToA?: boolean;
+  // New fields are optional so saves written before the diplomatic memory
+  // groundwork still load cleanly. Missing values fall back to defaults.
+  trust?: number;
+  fear?: number;
+  hostility?: number;
+  affinity?: number;
+  lastWarDeclarationTurn?: number | null;
+  lastPeaceProposalTurn?: number | null;
+  lastOpenBordersChangeTurn?: number | null;
+  /** @deprecated renamed to lastWarDeclarationTurn. */
+  lastWarTurn?: number | null;
+  /** @deprecated renamed to lastPeaceProposalTurn. */
+  lastPeaceTurn?: number | null;
 }
 
 export interface SavedDiscoveryEntry {

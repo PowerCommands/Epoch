@@ -176,7 +176,15 @@ export class SaveLoadService {
       nationA: entry.keys[0],
       nationB: entry.keys[1],
       state: entry.relation.state,
-      openBorders: entry.relation.openBorders,
+      openBordersFromAToB: entry.relation.openBordersFromAToB,
+      openBordersFromBToA: entry.relation.openBordersFromBToA,
+      trust: entry.relation.trust,
+      fear: entry.relation.fear,
+      hostility: entry.relation.hostility,
+      affinity: entry.relation.affinity,
+      lastWarDeclarationTurn: entry.relation.lastWarDeclarationTurn,
+      lastPeaceProposalTurn: entry.relation.lastPeaceProposalTurn,
+      lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
     }));
 
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
@@ -462,7 +470,24 @@ export class SaveLoadService {
   ): void {
     diplomacyManager.resetAll();
     for (const entry of entries) {
-      diplomacyManager.restoreState(entry.nationA, entry.nationB, entry.state, entry.openBorders ?? false);
+      // Older saves only store state/openBorders — normalizeRelation
+      // backfills directional grants from the legacy boolean and fills in
+      // trust/fear/hostility/affinity + last*Turn defaults.
+      diplomacyManager.restoreState(entry.nationA, entry.nationB, {
+        state: entry.state,
+        openBorders: entry.openBorders,
+        openBordersFromAToB: entry.openBordersFromAToB,
+        openBordersFromBToA: entry.openBordersFromBToA,
+        trust: entry.trust,
+        fear: entry.fear,
+        hostility: entry.hostility,
+        affinity: entry.affinity,
+        lastWarDeclarationTurn: entry.lastWarDeclarationTurn,
+        lastPeaceProposalTurn: entry.lastPeaceProposalTurn,
+        lastOpenBordersChangeTurn: entry.lastOpenBordersChangeTurn,
+        lastWarTurn: entry.lastWarTurn,
+        lastPeaceTurn: entry.lastPeaceTurn,
+      });
     }
   }
 

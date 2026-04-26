@@ -2,9 +2,10 @@ import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
 import type { MapData, Tile } from '../types/map';
+import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER } from '../data/units';
 import { GRANARY, WORKSHOP, MARKET } from '../data/buildings';
 import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
@@ -17,18 +18,49 @@ import { canCityProduceUnit } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import { calculateCityEconomy } from './CityEconomy';
-import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
+import { getAIStrategyById } from '../data/aiStrategies';
+import type { AIStrategy } from '../types/aiStrategy';
 import type { IGridSystem } from './grid/IGridSystem';
 import { EMPTY_MODIFIERS } from '../types/modifiers';
 import type { ResearchSystem } from './ResearchSystem';
+import type { DiplomacyManager } from './DiplomacyManager';
+import type { HappinessSystem } from './HappinessSystem';
+import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
+import {
+  pickBestAIProductionCandidate,
+  type AIProductionCandidate,
+} from './ai/AIProductionScoring';
+import { scoreCombatTarget, type AICombatContext } from './ai/AICombatScoring';
+import {
+  pickBestMovementCandidate,
+  type AIMovementCandidate,
+} from './ai/AIMovementScoring';
+import { CITY_BASE_HEALTH } from '../data/cities';
 
-const MAX_MILITARY = 3;
-const SETTLER_MIN_CITY_DISTANCE = 5;
-const LOW_NET_FOOD_THRESHOLD = 1;
-const LOW_PRODUCTION_THRESHOLD = 2;
+// Friendly-support radius is not yet exposed via AIStrategy; preserved here
+// so baseline behavior matches the pre-refactor profile.
+const FRIENDLY_SUPPORT_DISTANCE = 2;
+const NEAR_OWN_CITY_DISTANCE = 3;
+
+// Structural type guard — Unit/City are imported as types, so `instanceof`
+// is unavailable. `unitType` is unique to Unit.
+function isUnit(target: Unit | City): target is Unit {
+  return (target as Unit).unitType !== undefined;
+}
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.baseStrength > 0
 ));
+
+// Base scores reflect how acute the underlying need is. Strategy weights then
+// reshape the final ordering, but the raw signal always comes from city state.
+const SCORE_ACUTE_DEFENDER = 100;
+const SCORE_SETTLER = 80;
+const SCORE_MILITARY = 70;
+const SCORE_FOOD_BUILDING = 65;
+const SCORE_PRODUCTION_BUILDING = 60;
+const SCORE_GOLD_BUILDING = 55;
+const SCORE_FALLBACK = 25;
+const LOW_GOLD_PER_TURN = 0;
 
 /**
  * AISystem kör grundläggande AI för icke-mänskliga nationer.
@@ -50,6 +82,7 @@ export class AISystem {
   private readonly productionSystem: ProductionSystem;
   private readonly foundCitySystem: FoundCitySystem;
   private readonly mapData: MapData;
+  private readonly strategySelector = new AIStrategySelector();
 
   constructor(
     unitManager: UnitManager,
@@ -64,6 +97,8 @@ export class AISystem {
     mapData: MapData,
     private readonly gridSystem: IGridSystem,
     private readonly researchSystem?: ResearchSystem,
+    private readonly diplomacyManager?: DiplomacyManager,
+    private readonly happinessSystem?: HappinessSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -83,10 +118,51 @@ export class AISystem {
   }
 
   runTurn(nationId: string): void {
+    this.updateStrategyForNation(nationId);
     this.runSettlers(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runProduction(nationId);
+  }
+
+  // ─── Strategy selection ──────────────────────────────────────────────────────
+
+  private updateStrategyForNation(nationId: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation || nation.isHuman) return; // humans never get auto-selected
+
+    const context = this.buildStrategyContext(nationId);
+    const nextId = this.strategySelector.selectStrategy(context);
+    if (nation.aiStrategyId !== nextId) {
+      nation.aiStrategyId = nextId;
+    }
+  }
+
+  private buildStrategyContext(nationId: string): AIStrategyContext {
+    const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    const unitCount = this.unitManager.getUnitsByOwner(nationId).length;
+    const resources = this.nationManager.getResources(nationId);
+
+    // TODO: derive enemyMilitaryNearby from a proper threat scan.
+    return {
+      nationId,
+      cityCount,
+      unitCount,
+      gold: resources.gold,
+      goldPerTurn: resources.goldPerTurn,
+      netHappiness: this.happinessSystem?.getNetHappiness(nationId) ?? 0,
+      atWar: this.isAtWarWithAnyone(nationId),
+      enemyMilitaryNearby: false,
+    };
+  }
+
+  private isAtWarWithAnyone(nationId: string): boolean {
+    if (!this.diplomacyManager) return false;
+    for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') return true;
+    }
+    return false;
   }
 
   // ─── Settlers ────────────────────────────────────────────────────────────────
@@ -94,6 +170,7 @@ export class AISystem {
   private runSettlers(nationId: string): void {
     const settlers = this.unitManager.getUnitsByOwner(nationId)
       .filter((u) => u.unitType.canFound);
+    const strategy = this.getStrategy(nationId);
 
     for (const settler of settlers) {
       if (this.unitManager.getUnit(settler.id) === undefined) continue;
@@ -111,19 +188,19 @@ export class AISystem {
       if (this.foundCitySystem.canFound(settler)) {
         const allCities = this.cityManager.getAllCities();
         const minDist = this.minDistanceToCities(settler.tileX, settler.tileY, allCities);
-        if (minDist >= SETTLER_MIN_CITY_DISTANCE) {
+        if (minDist >= strategy.expansion.settlerMinCityDistance) {
           this.foundCitySystem.foundCity(settler);
           continue; // settler consumed
         }
       }
 
       // Move toward valid founding site
-      this.moveSettlerTowardSite(settler, nationId);
+      this.moveSettlerTowardSite(settler, nationId, strategy);
     }
   }
 
-  private moveSettlerTowardSite(settler: Unit, nationId: string): void {
-    const target = this.findFoundingSite(settler, nationId);
+  private moveSettlerTowardSite(settler: Unit, nationId: string, strategy: AIStrategy): void {
+    const target = this.findFoundingSite(settler, nationId, strategy);
     if (!target) return;
 
     const path = this.pathfindingSystem.findPath(settler, target.x, target.y, {
@@ -140,7 +217,11 @@ export class AISystem {
     }
   }
 
-  private findFoundingSite(settler: Unit, _nationId: string): { x: number; y: number } | null {
+  private findFoundingSite(
+    settler: Unit,
+    _nationId: string,
+    strategy: AIStrategy,
+  ): { x: number; y: number } | null {
     const allCities = this.cityManager.getAllCities();
 
     let bestTile: { x: number; y: number } | null = null;
@@ -153,7 +234,7 @@ export class AISystem {
         if (this.cityManager.getCityAt(x, y) !== undefined) continue;
 
         const cityDist = this.minDistanceToCities(x, y, allCities);
-        if (cityDist < SETTLER_MIN_CITY_DISTANCE) continue;
+        if (cityDist < strategy.expansion.settlerMinCityDistance) continue;
 
         const settlerDist = this.gridSystem.getDistance(
           { x: settler.tileX, y: settler.tileY },
@@ -186,21 +267,22 @@ export class AISystem {
 
   private runCombat(nationId: string): void {
     const units = this.unitManager.getUnitsByOwner(nationId);
-    const profile = this.getProfile(nationId);
+    const strategy = this.getStrategy(nationId);
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.baseStrength <= 0) continue; // settlers can't attack
-      if (!this.canTakeAggressiveAction(unit, profile)) continue;
+      if (!this.canTakeAggressiveAction(unit, strategy)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
-      this.tryAttackInRange(unit);
+      this.tryAttackBestTarget(unit, nationId, strategy);
     }
   }
 
-  private tryAttackInRange(unit: Unit): boolean {
+  // Strategy-based scoring allows AI to prioritize targets differently
+  // without changing core combat rules.
+  private tryAttackBestTarget(unit: Unit, nationId: string, strategy: AIStrategy): boolean {
     const range = unit.unitType.range ?? 1;
-
     const tiles = this.gridSystem.getTilesInRange(
       { x: unit.tileX, y: unit.tileY },
       range,
@@ -208,10 +290,86 @@ export class AISystem {
       { includeCenter: false },
     );
 
+    const scored: { x: number; y: number; score: number }[] = [];
     for (const tile of tiles) {
-      if (this.combatSystem.tryAttack(unit, tile.x, tile.y)) {
-        return true;
-      }
+      const target = this.findEnemyTargetAt(tile.x, tile.y, nationId);
+      if (!target) continue;
+
+      const context = this.buildCombatContext(unit, target, nationId, tile.x, tile.y);
+      const score = scoreCombatTarget(context, strategy);
+      scored.push({ x: tile.x, y: tile.y, score });
+    }
+
+    if (scored.length === 0) return false;
+
+    scored.sort((a, b) => b.score - a.score);
+    if (scored[0].score < 0) return false; // not worth attacking this turn
+
+    for (const candidate of scored) {
+      if (candidate.score < 0) break;
+      if (this.combatSystem.tryAttack(unit, candidate.x, candidate.y)) return true;
+    }
+    return false;
+  }
+
+  private findEnemyTargetAt(
+    tileX: number,
+    tileY: number,
+    nationId: string,
+  ): Unit | City | undefined {
+    const targetUnit = this.unitManager.getUnitAt(tileX, tileY);
+    if (targetUnit && targetUnit.ownerId !== nationId) return targetUnit;
+
+    const targetCity = this.cityManager.getCityAt(tileX, tileY);
+    if (targetCity && targetCity.ownerId !== nationId) return targetCity;
+
+    return undefined;
+  }
+
+  private buildCombatContext(
+    attacker: Unit,
+    target: Unit | City,
+    nationId: string,
+    targetX: number,
+    targetY: number,
+  ): AICombatContext {
+    const attackerPosition = { x: attacker.tileX, y: attacker.tileY };
+    const targetPosition = { x: targetX, y: targetY };
+    const distance = this.gridSystem.getDistance(attackerPosition, targetPosition);
+    const isTargetUnit = isUnit(target);
+    const isTargetCity = !isTargetUnit;
+
+    const canAttack = this.diplomacyManager
+      ? this.diplomacyManager.canAttack(nationId, target.ownerId)
+      : true;
+
+    const targetHealthRatio = isTargetUnit
+      ? target.health / target.unitType.baseHealth
+      : target.health / CITY_BASE_HEALTH;
+
+    return {
+      attacker,
+      attackerPosition,
+      target,
+      targetPosition,
+      distance,
+      canAttack,
+      attackerHealthRatio: attacker.health / attacker.unitType.baseHealth,
+      targetHealthRatio,
+      isTargetCity,
+      isTargetUnit,
+      isNearOwnCity: this.isNearOwnCity(targetPosition, nationId),
+    };
+  }
+
+  private isNearOwnCity(position: GridCoord, nationId: string): boolean {
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    for (const city of ownCities) {
+      const dist = this.gridSystem.getDistance(
+        { x: city.tileX, y: city.tileY },
+        position,
+      );
+      if (dist <= NEAR_OWN_CITY_DISTANCE) return true;
     }
     return false;
   }
@@ -220,81 +378,167 @@ export class AISystem {
 
   private runMovement(nationId: string): void {
     const units = this.unitManager.getUnitsByOwner(nationId);
-    const profile = this.getProfile(nationId);
+    const strategy = this.getStrategy(nationId);
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.isNaval) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
-      if (!this.canTakeAggressiveAction(unit, profile)) continue;
+      if (!this.canTakeAggressiveAction(unit, strategy)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
-      this.moveTowardNearestEnemyCity(unit, nationId, profile);
+      this.moveByStrategyScoring(unit, nationId, strategy);
     }
   }
 
-  private moveTowardNearestEnemyCity(
-    unit: Unit,
-    nationId: string,
-    profile: AIBehaviorProfile,
-  ): void {
-    const target = this.pickEnemyCityTarget(unit, nationId, profile);
-    if (target === null) return;
+  // Strategy-based movement scoring shapes where AI units want to go,
+  // while existing pathfinding and movement rules still decide how they move.
+  private moveByStrategyScoring(unit: Unit, nationId: string, strategy: AIStrategy): void {
+    const choices = this.collectMovementChoices(unit, nationId, strategy);
+    if (choices.length === 0) return; // fallback: hold position
 
-    this.movementSystem.moveAlongPath(unit, target.path);
+    const candidates = choices.map((choice) => choice.candidate);
+    const best = pickBestMovementCandidate(candidates, strategy);
+    if (!best) return;
+
+    const chosen = choices.find((c) => c.candidate === best);
+    if (!chosen || !chosen.path) return; // holdPosition or unreachable
+
+    this.movementSystem.moveAlongPath(unit, chosen.path);
   }
 
-  private pickEnemyCityTarget(
+  private collectMovementChoices(
     unit: Unit,
     nationId: string,
-    profile: AIBehaviorProfile,
-  ): { city: City; path: Tile[]; cost: number; distance: number } | null {
-    const targets = this.cityManager.getAllCities()
-      .filter((city) => city.ownerId !== nationId)
-      .map((city) => {
-        const path = this.findBestApproachPath(unit, city);
-        return {
-          city,
+    strategy: AIStrategy,
+  ): { candidate: AIMovementCandidate; path: Tile[] | null }[] {
+    const choices: { candidate: AIMovementCandidate; path: Tile[] | null }[] = [];
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const engageDistance = strategy.military.engageDistance;
+
+    // Enemy cities — approach via adjacent tile, gated by engageDistance.
+    for (const city of this.cityManager.getAllCities()) {
+      if (city.ownerId === nationId) continue;
+      const dest = { x: city.tileX, y: city.tileY };
+      const distance = this.gridSystem.getDistance(unitPos, dest);
+      if (distance > engageDistance) continue;
+
+      const path = this.findApproachPath(unit, dest);
+      choices.push({
+        candidate: this.buildMovementCandidate(
+          dest,
+          'enemyCity',
+          distance,
           path,
-          cost: path === null ? Infinity : this.getPathCost(path),
-          distance: this.gridSystem.getDistance(
-            { x: city.tileX, y: city.tileY },
-            { x: unit.tileX, y: unit.tileY },
-          ),
-        };
+          nationId,
+        ),
+        path,
       });
+    }
 
-    const sameContinentTargets = targets.filter((target) => target.path !== null);
-    const availableTargets =
-      profile.preferSameContinent && sameContinentTargets.length > 0
-        ? sameContinentTargets
-        : targets;
+    // Enemy units — approach adjacently, also gated by engageDistance.
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (enemy.ownerId === nationId) continue;
+      const dest = { x: enemy.tileX, y: enemy.tileY };
+      const distance = this.gridSystem.getDistance(unitPos, dest);
+      if (distance > engageDistance) continue;
 
-    const engagedTargets = availableTargets.filter((target) => (
-      target.distance <= profile.engageDistance
-    ));
-    const candidates = engagedTargets.length > 0 ? engagedTargets : availableTargets;
-    if (candidates.length === 0) return null;
+      const path = this.findApproachPath(unit, dest);
+      choices.push({
+        candidate: this.buildMovementCandidate(
+          dest,
+          'enemyUnit',
+          distance,
+          path,
+          nationId,
+        ),
+        path,
+      });
+    }
 
-    candidates.sort((a, b) => {
-      if (a.distance !== b.distance) return a.distance - b.distance;
-      if (a.cost !== b.cost) return a.cost - b.cost;
-      if (a.city.tileY !== b.city.tileY) return a.city.tileY - b.city.tileY;
-      return a.city.tileX - b.city.tileX;
+    // Own cities — useful for defensive strategies and pulling back to safety.
+    for (const ownCity of this.cityManager.getCitiesByOwner(nationId)) {
+      const dest = { x: ownCity.tileX, y: ownCity.tileY };
+      if (dest.x === unitPos.x && dest.y === unitPos.y) continue;
+      const distance = this.gridSystem.getDistance(unitPos, dest);
+
+      const path = this.findApproachPath(unit, dest);
+      choices.push({
+        candidate: this.buildMovementCandidate(
+          dest,
+          'ownCity',
+          distance,
+          path,
+          nationId,
+        ),
+        path,
+      });
+    }
+
+    // Friendly settlers — escort opportunities for combat units.
+    if (unit.unitType.baseStrength > 0) {
+      for (const friendly of this.unitManager.getUnitsByOwner(nationId)) {
+        if (friendly.id === unit.id) continue;
+        if (friendly.unitType.canFound !== true) continue;
+        const dest = { x: friendly.tileX, y: friendly.tileY };
+        const distance = this.gridSystem.getDistance(unitPos, dest);
+        if (distance > engageDistance) continue;
+
+        const path = this.findApproachPath(unit, dest);
+        choices.push({
+          candidate: this.buildMovementCandidate(
+            dest,
+            'settlerEscort',
+            distance,
+            path,
+            nationId,
+          ),
+          path,
+        });
+      }
+    }
+
+    // Hold position is always a valid fallback so the unit picks something.
+    choices.push({
+      candidate: this.buildMovementCandidate(
+        unitPos,
+        'holdPosition',
+        0,
+        null,
+        nationId,
+      ),
+      path: null,
     });
 
-    if (candidates.length > 1 && Math.random() < profile.randomnessFactor) {
-      const alternateIndex = 1 + Math.floor(Math.random() * (candidates.length - 1));
-      const target = candidates[alternateIndex];
-      return target.path === null ? null : { ...target, path: target.path };
-    }
-
-    const target = candidates[0];
-    return target.path === null ? null : { ...target, path: target.path };
+    // TODO: add 'frontline' and 'exploration' candidates once front detection
+    // and unowned-territory targeting helpers exist.
+    return choices;
   }
 
-  private findBestApproachPath(unit: Unit, city: City): Tile[] | null {
-    const targets = this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY });
+  private buildMovementCandidate(
+    destination: GridCoord,
+    kind: AIMovementCandidate['kind'],
+    distance: number,
+    path: Tile[] | null,
+    nationId: string,
+  ): AIMovementCandidate {
+    const isReachable = kind === 'holdPosition' ? true : path !== null;
+    const pathCost = path ? this.getPathCost(path) : 0;
+
+    return {
+      destination,
+      kind,
+      distance,
+      pathCost,
+      isReachable,
+      isNearOwnCity: this.isNearOwnCity(destination, nationId),
+      isNearEnemyCity: this.isNearEnemyCity(destination, nationId),
+      isNearEnemyUnit: this.isNearEnemyUnit(destination, nationId),
+    };
+  }
+
+  private findApproachPath(unit: Unit, target: GridCoord): Tile[] | null {
+    const targets = [target, ...this.gridSystem.getAdjacentCoords(target)];
     return this.pathfindingSystem.findBestPathToAnyTarget(unit, targets, {
       respectMovementPoints: false,
     });
@@ -308,15 +552,40 @@ export class AISystem {
     return cost;
   }
 
-  private getProfile(nationId: string): AIBehaviorProfile {
-    return this.nationManager.getNation(nationId)?.aiProfile ?? DEFAULT_AI_PROFILE;
+  private isNearEnemyCity(position: GridCoord, nationId: string): boolean {
+    for (const city of this.cityManager.getAllCities()) {
+      if (city.ownerId === nationId) continue;
+      const dist = this.gridSystem.getDistance(
+        { x: city.tileX, y: city.tileY },
+        position,
+      );
+      if (dist <= NEAR_OWN_CITY_DISTANCE) return true;
+    }
+    return false;
   }
 
-  private canTakeAggressiveAction(unit: Unit, profile: AIBehaviorProfile): boolean {
+  private isNearEnemyUnit(position: GridCoord, nationId: string): boolean {
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (enemy.ownerId === nationId) continue;
+      const dist = this.gridSystem.getDistance(
+        { x: enemy.tileX, y: enemy.tileY },
+        position,
+      );
+      if (dist <= NEAR_OWN_CITY_DISTANCE) return true;
+    }
+    return false;
+  }
+
+  private getStrategy(nationId: string): AIStrategy {
+    const nation = this.nationManager.getNation(nationId);
+    return getAIStrategyById(nation?.aiStrategyId);
+  }
+
+  private canTakeAggressiveAction(unit: Unit, strategy: AIStrategy): boolean {
     const healthRatio = unit.health / unit.unitType.baseHealth;
-    if (healthRatio < profile.minAttackHealthRatio) return false;
-    if (this.hasFriendlySupport(unit, profile.groupingDistance)) return true;
-    return healthRatio >= Math.min(1, profile.minAttackHealthRatio + 0.15);
+    if (healthRatio < strategy.military.minAttackHealthRatio) return false;
+    if (this.hasFriendlySupport(unit, FRIENDLY_SUPPORT_DISTANCE)) return true;
+    return healthRatio >= Math.min(1, strategy.military.minAttackHealthRatio + 0.15);
   }
 
   private hasFriendlySupport(unit: Unit, distance: number): boolean {
@@ -337,17 +606,26 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
+    const strategy = this.getStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
+    let plannedSettlerCount = this.countSettlers(nationId);
 
     for (const city of cities) {
       if (this.productionSystem.getProduction(city.id)) continue;
 
-      const choice = this.chooseCityProduction(city, nationId, plannedMilitaryCount);
+      const choice = this.chooseCityProduction(
+        city,
+        nationId,
+        plannedMilitaryCount,
+        plannedSettlerCount,
+        strategy,
+      );
       if (!choice) continue;
 
       this.productionSystem.setProduction(city.id, choice);
-      if (choice.kind === 'unit' && choice.unitType.baseStrength > 0) {
-        plannedMilitaryCount++;
+      if (choice.kind === 'unit') {
+        if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
+        if (choice.unitType.canFound === true) plannedSettlerCount++;
       }
     }
   }
@@ -358,10 +636,29 @@ export class AISystem {
       .length;
   }
 
+  private countSettlers(nationId: string): number {
+    const existing = this.unitManager.getUnitsByOwner(nationId)
+      .filter((u) => u.unitType.canFound === true)
+      .length;
+    let queued = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const current = this.productionSystem.getProduction(city.id);
+      if (
+        current?.item.kind === 'unit' &&
+        current.item.unitType.canFound === true
+      ) {
+        queued++;
+      }
+    }
+    return existing + queued;
+  }
+
   private chooseCityProduction(
     city: City,
     nationId: string,
     plannedMilitaryCount: number,
+    plannedSettlerCount: number,
+    strategy: AIStrategy,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
     const economy = calculateCityEconomy(
@@ -371,37 +668,87 @@ export class AISystem {
       this.gridSystem,
       EMPTY_MODIFIERS,
     );
-    const canBuildMilitary = plannedMilitaryCount < MAX_MILITARY;
+    const canBuildMilitary = plannedMilitaryCount < strategy.military.maxUnits;
+    const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
+    const canProduceSettler =
+      this.canBuildUnit(nationId, SETTLER.id) &&
+      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem);
+    const goldPerTurn = this.nationManager.getResources(nationId).goldPerTurn;
+
+    // Build candidates from preferred to fallback so ties resolve sensibly.
+    const candidates: AIProductionCandidate[] = [];
 
     if (canBuildMilitary && this.needsDefender(city, nationId)) {
-      return { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) };
+      candidates.push({
+        item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
+        baseScore: SCORE_ACUTE_DEFENDER,
+        category: 'military',
+      });
     }
 
-    if (
-      economy.netFood <= LOW_NET_FOOD_THRESHOLD &&
-      !buildings.has(GRANARY.id) &&
-      this.canBuildBuilding(nationId, GRANARY.id)
-    ) {
-      return { kind: 'building', buildingType: GRANARY };
-    }
-
-    if (
-      economy.production <= LOW_PRODUCTION_THRESHOLD &&
-      !buildings.has(WORKSHOP.id) &&
-      this.canBuildBuilding(nationId, WORKSHOP.id)
-    ) {
-      return { kind: 'building', buildingType: WORKSHOP };
-    }
-
-    if (!buildings.has(MARKET.id) && this.canBuildBuilding(nationId, MARKET.id)) {
-      return { kind: 'building', buildingType: MARKET };
+    if (wantsMoreCities && plannedSettlerCount === 0 && canProduceSettler) {
+      candidates.push({
+        item: { kind: 'unit', unitType: SETTLER },
+        baseScore: SCORE_SETTLER,
+        category: 'settler',
+      });
     }
 
     if (canBuildMilitary) {
-      return { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) };
+      candidates.push({
+        item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
+        baseScore: SCORE_MILITARY,
+        category: 'military',
+      });
     }
 
-    return undefined;
+    if (
+      economy.netFood <= strategy.production.lowNetFoodThreshold &&
+      !buildings.has(GRANARY.id) &&
+      this.canBuildBuilding(nationId, GRANARY.id)
+    ) {
+      candidates.push({
+        item: { kind: 'building', buildingType: GRANARY },
+        baseScore: SCORE_FOOD_BUILDING,
+        category: 'foodBuilding',
+      });
+    }
+
+    if (
+      economy.production <= strategy.production.lowProductionThreshold &&
+      !buildings.has(WORKSHOP.id) &&
+      this.canBuildBuilding(nationId, WORKSHOP.id)
+    ) {
+      candidates.push({
+        item: { kind: 'building', buildingType: WORKSHOP },
+        baseScore: SCORE_PRODUCTION_BUILDING,
+        category: 'productionBuilding',
+      });
+    }
+
+    if (
+      goldPerTurn <= LOW_GOLD_PER_TURN &&
+      !buildings.has(MARKET.id) &&
+      this.canBuildBuilding(nationId, MARKET.id)
+    ) {
+      candidates.push({
+        item: { kind: 'building', buildingType: MARKET },
+        baseScore: SCORE_GOLD_BUILDING,
+        category: 'goldBuilding',
+      });
+    }
+
+    // Fallback so the city always has something to do when room is left.
+    if (canBuildMilitary) {
+      candidates.push({
+        item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
+        baseScore: SCORE_FALLBACK,
+        category: 'military',
+      });
+    }
+
+    return pickBestAIProductionCandidate(candidates, strategy)?.item;
   }
 
   private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {

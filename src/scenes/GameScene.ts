@@ -36,6 +36,11 @@ import { CityViewInteractionController } from '../systems/CityViewInteractionCon
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
 import { DiplomacyManager } from '../systems/DiplomacyManager';
+import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
+import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
+import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
+import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
+import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { AISystem } from '../systems/AISystem';
@@ -280,7 +285,20 @@ export class GameScene extends Phaser.Scene {
     let cityViewDismissedCityId: string | null = null;
 
     // 13b. Diplomacy system
-    const diplomacyManager = new DiplomacyManager();
+    const diplomacyManager = new DiplomacyManager(turnManager);
+    const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
+    diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
+    const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(diplomacyManager);
+    const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager);
+    const aiMilitaryThreatEvaluationSystem = new AIMilitaryThreatEvaluationSystem(unitManager, cityManager, gridSystem);
+    const aiDiplomacySystem = new AIDiplomacySystem(
+      diplomacyManager,
+      diplomaticEvaluationSystem,
+      nationManager,
+      turnManager,
+      aiMilitaryEvaluationSystem,
+      aiMilitaryThreatEvaluationSystem,
+    );
     const researchSystem = new ResearchSystem(
       nationManager,
       cityManager,
@@ -511,6 +529,8 @@ export class GameScene extends Phaser.Scene {
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
       gridSystem,
       researchSystem,
+      diplomacyManager,
+      happinessSystem,
     );
 
     // Humans pick their own initial research via the HUD research panel.
@@ -542,6 +562,10 @@ export class GameScene extends Phaser.Scene {
       discoverySystem.scan();
 
       if (!e.nation.isHuman) {
+        // Diplomacy decisions run before military planning — the rest of the
+        // AI turn (settlers, combat, movement, production) reads the freshly
+        // adjusted state.
+        aiDiplomacySystem.runTurn(e.nation.id);
         aiSystem.runTurn(e.nation.id);
         territoryRenderer.render();
         turnManager.endCurrentTurn();
@@ -678,6 +702,7 @@ export class GameScene extends Phaser.Scene {
       // New nation may now be visible in the UI.
       hudLayer?.refresh();
       leaderStrip?.rebuild();
+      rightPanel?.requestRefresh();
     });
 
     // Hantera färdig produktion
@@ -805,6 +830,10 @@ export class GameScene extends Phaser.Scene {
         resourceSystem.recalculateForNation(e.attacker.ownerId);
         if (e.previousOwnerId) {
           resourceSystem.recalculateForNation(e.previousOwnerId);
+        }
+        // Diplomatic memory: capturing a city scars the relationship.
+        if (e.previousOwnerId) {
+          diplomaticMemorySystem.onCityCaptured(e.attacker.ownerId, e.previousOwnerId);
         }
         // A conquered city may introduce new encounters
         discoverySystem.scan();
@@ -1154,6 +1183,9 @@ export class GameScene extends Phaser.Scene {
     );
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     rightPanel.setDiplomacyManager(diplomacyManager);
+    rightPanel.setDiplomaticEvaluationSystem(diplomaticEvaluationSystem);
+    rightPanel.setMilitaryEvaluationSystem(aiMilitaryEvaluationSystem);
+    rightPanel.setThreatEvaluationSystem(aiMilitaryThreatEvaluationSystem);
     rightPanel.setResearchSystem(researchSystem);
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
@@ -1856,6 +1888,8 @@ export class GameScene extends Phaser.Scene {
       cultureSystem,
       resourceSystem,
       diagnosticSystem: this.diagnosticSystem,
+      discoverySystem,
+      nationManager,
       productionSystem,
       cityManager,
       selectionManager,

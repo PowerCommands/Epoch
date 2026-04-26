@@ -2,7 +2,6 @@ import { Nation } from '../entities/Nation';
 import { getNationDefinitionById } from '../data/nations';
 import { NationResources } from '../entities/NationResources';
 import { MapData } from '../types/map';
-import { DEFAULT_AI_PROFILE } from '../types/ai';
 import type { ScenarioNation } from '../types/scenario';
 import type { IGridSystem } from './grid/IGridSystem';
 
@@ -116,7 +115,7 @@ export class NationManager {
         color,
         secondaryColor,
         isHuman: cfg.isHuman,
-        aiProfile: cfg.isHuman ? undefined : DEFAULT_AI_PROFILE,
+        aiStrategyId: cfg.aiStrategyId,
         researchedTechIds: cfg.researchedTechIds,
         currentResearchTechId: cfg.currentResearchTechId,
         researchProgress: cfg.researchProgress,

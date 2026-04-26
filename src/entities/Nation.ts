@@ -1,4 +1,4 @@
-import { AIBehaviorProfile, DEFAULT_AI_PROFILE } from '../types/ai';
+import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 
 export interface NationConfig {
   id: string;
@@ -6,7 +6,7 @@ export interface NationConfig {
   color: number; // hex-färg, t.ex. 0xff4444
   secondaryColor?: number;
   isHuman?: boolean;
-  aiProfile?: AIBehaviorProfile;
+  aiStrategyId?: string;
   researchedTechIds?: string[];
   currentResearchTechId?: string;
   researchProgress?: number;
@@ -27,7 +27,7 @@ export class Nation {
   readonly color: number;
   readonly secondaryColor: number;
   isHuman: boolean;
-  aiProfile: AIBehaviorProfile;
+  aiStrategyId: string;
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;
@@ -41,7 +41,7 @@ export class Nation {
     this.color = config.color;
     this.secondaryColor = config.secondaryColor ?? config.color;
     this.isHuman = config.isHuman ?? false;
-    this.aiProfile = { ...(config.aiProfile ?? DEFAULT_AI_PROFILE) };
+    this.aiStrategyId = config.aiStrategyId ?? BASELINE_AI_STRATEGY_ID;
     this.researchedTechIds = [...(config.researchedTechIds ?? [])];
     this.currentResearchTechId = config.currentResearchTechId;
     this.researchProgress = config.researchProgress ?? 0;

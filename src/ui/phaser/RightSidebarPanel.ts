@@ -6,6 +6,7 @@ import type {
   RightSidebarButtonRow,
   RightSidebarCityDetailsTab,
   RightSidebarContent,
+  RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
   RightSidebarRow,
@@ -66,6 +67,8 @@ const LEADERBOARD_TAB_GAP = 8;
 const LEADERBOARD_TAB_HEIGHT = 34;
 const CITY_TAB_GAP = 8;
 const CITY_TAB_HEIGHT = 34;
+const LEADER_TAB_GAP = 8;
+const LEADER_TAB_HEIGHT = 34;
 const CONTENT_ICON_SIZE = 32;
 const CONTENT_ICON_GAP = 8;
 
@@ -95,6 +98,15 @@ const CITY_DETAIL_TABS: Array<{
   { id: 'growth', label: '👶 Growth', accentColor: 0x86efac },
   { id: 'output', label: '📈 Output', accentColor: 0xf4d06f },
   { id: 'production', label: '⏳ Queue', accentColor: 0xc084fc },
+];
+
+const LEADER_DETAIL_TABS: Array<{
+  id: RightSidebarLeaderDetailsTab;
+  label: string;
+  accentColor: number;
+}> = [
+  { id: 'details', label: 'Details', accentColor: 0x7fb4d5 },
+  { id: 'diplomacy', label: 'Diplomacy', accentColor: 0xa7f3d0 },
 ];
 
 export class RightSidebarPanel {
@@ -138,7 +150,9 @@ export class RightSidebarPanel {
   private contentHeight = 0;
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
+  private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
   private lastDetailsCityId: string | null = null;
+  private lastDetailsLeaderId: string | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -228,6 +242,11 @@ export class RightSidebarPanel {
       if (currentCityId !== this.lastDetailsCityId) {
         this.lastDetailsCityId = currentCityId;
         this.cityDetailsTab = 'city';
+      }
+      const currentLeaderId = this.dataProvider.getCurrentLeaderId();
+      if (currentLeaderId !== this.lastDetailsLeaderId) {
+        this.lastDetailsLeaderId = currentLeaderId;
+        this.leaderDetailsTab = 'details';
       }
       if (!this.activeMode || this.collapsed) return;
       this.renderActiveContent();
@@ -402,7 +421,7 @@ export class RightSidebarPanel {
   private getContentForMode(mode: RightSidebarPanelMode): RightSidebarContent {
     switch (mode) {
       case 'details':
-        return this.dataProvider.getDetailsContent(this.cityDetailsTab);
+        return this.dataProvider.getDetailsContent(this.cityDetailsTab, this.leaderDetailsTab);
       case 'leaderboard':
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
       case 'log':
@@ -426,6 +445,9 @@ export class RightSidebarPanel {
     let y = CONTENT_TOP;
     if (this.activeMode === 'details' && this.dataProvider.getView() === 'city') {
       y = this.addCityDetailsTabs(y);
+    }
+    if (this.activeMode === 'details' && this.dataProvider.getView() === 'leader') {
+      y = this.addLeaderDetailsTabs(y);
     }
     if (this.activeMode === 'leaderboard') {
       y = this.addLeaderboardTabs(y);
@@ -551,6 +573,61 @@ export class RightSidebarPanel {
       x += tabWidth + CITY_TAB_GAP;
     }
     return y + CITY_TAB_HEIGHT + SECTION_GAP;
+  }
+
+  private addLeaderDetailsTabs(y: number): number {
+    const tabWidth = (CONTENT_WIDTH - LEADER_TAB_GAP * (LEADER_DETAIL_TABS.length - 1)) / LEADER_DETAIL_TABS.length;
+    let x = PANEL_PADDING;
+    for (const tab of LEADER_DETAIL_TABS) {
+      const selected = tab.id === this.leaderDetailsTab;
+      const background = this.addOwned(new Phaser.GameObjects.Rectangle(
+        this.scene,
+        x,
+        y,
+        tabWidth,
+        LEADER_TAB_HEIGHT,
+        selected ? 0x1f4b62 : 0x143044,
+        selected ? 1 : 0.92,
+      ))
+        .setOrigin(0, 0)
+        .setStrokeStyle(selected ? 2 : 1, tab.accentColor, selected ? 0.95 : 0.5)
+        .setScrollFactor(0);
+      background.setData('baseY', y);
+
+      const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, x, y, tabWidth, LEADER_TAB_HEIGHT))
+        .setOrigin(0, 0)
+        .setScrollFactor(0)
+        .setInteractive({ cursor: 'pointer' });
+      hitArea.setData('baseY', y);
+      hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        this.worldInputGate.claimPointer(pointer.id);
+        consumePointerEvent(pointer);
+      });
+      hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        consumePointerEvent(pointer);
+        this.worldInputGate.releasePointer(pointer.id);
+        if (this.leaderDetailsTab !== tab.id) {
+          this.leaderDetailsTab = tab.id;
+          this.scrollOffset = 0;
+          this.renderActiveContent();
+        }
+      });
+
+      this.panelContainer.add(background);
+      this.contentObjects.push(background);
+      background.setMask(this.contentMask);
+      const label = this.addContentText(tab.label, 13, selected ? '#ffffff' : '#d7e2ee', 'bold', tabWidth - 12);
+      label.setPosition(x + 6, y + 9);
+      label.setData('baseY', y + 9);
+      this.panelContainer.add(hitArea);
+      this.contentObjects.push(hitArea);
+      x += tabWidth + LEADER_TAB_GAP;
+    }
+    return y + LEADER_TAB_HEIGHT + SECTION_GAP;
   }
 
   private addContentRow(row: RightSidebarRow, y: number): number {

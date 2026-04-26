@@ -189,8 +189,10 @@ export class MovementSystem {
     if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
     if (this.diplomacyManager === undefined) return null;
 
-    const relation = this.diplomacyManager.getRelation(unit.ownerId, tile.ownerId);
-    if (relation.state === 'WAR' || relation.openBorders) return null;
+    // canEnterTerritory already accounts for war state and directional
+    // open-borders grants, so the legacy WAR / openBorders branches collapse
+    // into a single check.
+    if (this.diplomacyManager.canEnterTerritory(unit.ownerId, tile.ownerId)) return null;
     return tile.ownerId;
   }
 

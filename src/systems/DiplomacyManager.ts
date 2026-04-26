@@ -1,8 +1,49 @@
+import type { TurnManager } from './TurnManager';
+
 export type DiplomacyState = 'WAR' | 'PEACE';
 
+/**
+ * Open borders are now directional.
+ * A allowing B does not imply B allows A.
+ *
+ * The trust/fear/hostility/affinity numbers and last*Turn timestamps are
+ * groundwork for future diplomatic memory and AI strategy. They do not
+ * affect gameplay yet — movement still cares only about state and the
+ * directional border grants.
+ */
 export interface DiplomacyRelation {
   state: DiplomacyState;
-  openBorders: boolean;
+
+  // Directional grants. The "A" / "B" labels follow pairKey's sorted order:
+  // pairKey([a, b]) sorts a < b, so `openBordersFromAToB` is the grant from
+  // the alphabetically-first nation to the second.
+  openBordersFromAToB: boolean;
+  openBordersFromBToA: boolean;
+
+  trust: number;
+  fear: number;
+  hostility: number;
+  affinity: number;
+
+  // Cooldowns prevent AI from making rapid contradictory diplomatic decisions.
+  // This stabilizes diplomacy behavior without changing core rules.
+  lastWarDeclarationTurn: number | null;
+  lastPeaceProposalTurn: number | null;
+  lastOpenBordersChangeTurn: number | null;
+}
+
+/**
+ * Input shape used by save-load and other callers that may still carry the
+ * legacy symmetric `openBorders` boolean or the older turn-stamp field
+ * names. Internal code should use `DiplomacyRelation` directly.
+ */
+export interface PartialDiplomacyRelationInput extends Partial<DiplomacyRelation> {
+  /** @deprecated symmetric flag from older saves. Use directional grants. */
+  openBorders?: boolean;
+  /** @deprecated renamed to lastWarDeclarationTurn. */
+  lastWarTurn?: number | null;
+  /** @deprecated renamed to lastPeaceProposalTurn. */
+  lastPeaceTurn?: number | null;
 }
 
 export interface PeaceProposal {
@@ -16,15 +57,79 @@ type PeaceDeclinedListener = (nationA: string, nationB: string) => void;
 type WarDeclaredListener = (aggressorId: string, targetId: string) => void;
 type DiplomacyChangedListener = (nationA: string, nationB: string, relation: DiplomacyRelation) => void;
 
-const DEFAULT_RELATION: DiplomacyRelation = {
-  state: 'PEACE',
-  openBorders: false,
-};
+/**
+ * Hook surface used by DiplomaticMemorySystem. The manager invokes these on
+ * relevant transitions so the memory system can update trust/fear/etc.
+ * Declared as an interface so the manager has no compile-time dependency
+ * on the memory system implementation (which itself depends on the manager).
+ */
+export interface DiplomaticMemoryHook {
+  onDeclareWar(a: string, b: string): void;
+  onMakePeace(a: string, b: string): void;
+  onOpenBorders(from: string, to: string): void;
+  onCancelOpenBorders(from: string, to: string): void;
+  onCityCaptured(attacker: string, defender: string): void;
+}
+
+export interface DiplomaticMemoryValues {
+  trust: number;
+  fear: number;
+  hostility: number;
+  affinity: number;
+}
+
+export const DEFAULT_TRUST = 50;
+export const DEFAULT_FEAR = 0;
+export const DEFAULT_HOSTILITY = 0;
+export const DEFAULT_AFFINITY = 0;
+
+export function createDefaultRelation(): DiplomacyRelation {
+  return {
+    state: 'PEACE',
+    openBordersFromAToB: false,
+    openBordersFromBToA: false,
+    trust: DEFAULT_TRUST,
+    fear: DEFAULT_FEAR,
+    hostility: DEFAULT_HOSTILITY,
+    affinity: DEFAULT_AFFINITY,
+    lastWarDeclarationTurn: null,
+    lastPeaceProposalTurn: null,
+    lastOpenBordersChangeTurn: null,
+  };
+}
+
+/**
+ * Fill in missing fields on a partially-known relation. Used by save-load
+ * to migrate older payloads. If the legacy symmetric `openBorders` flag is
+ * present and the directional grants are not, both directions inherit it
+ * so old saves keep their previous behavior.
+ */
+export function normalizeRelation(partial: PartialDiplomacyRelationInput): DiplomacyRelation {
+  const base = createDefaultRelation();
+  const legacyBoth = partial.openBorders;
+  return {
+    state: partial.state ?? base.state,
+    openBordersFromAToB: partial.openBordersFromAToB ?? legacyBoth ?? base.openBordersFromAToB,
+    openBordersFromBToA: partial.openBordersFromBToA ?? legacyBoth ?? base.openBordersFromBToA,
+    trust: partial.trust ?? base.trust,
+    fear: partial.fear ?? base.fear,
+    hostility: partial.hostility ?? base.hostility,
+    affinity: partial.affinity ?? base.affinity,
+    lastWarDeclarationTurn:
+      partial.lastWarDeclarationTurn ?? partial.lastWarTurn ?? base.lastWarDeclarationTurn,
+    lastPeaceProposalTurn:
+      partial.lastPeaceProposalTurn ?? partial.lastPeaceTurn ?? base.lastPeaceProposalTurn,
+    lastOpenBordersChangeTurn:
+      partial.lastOpenBordersChangeTurn ?? base.lastOpenBordersChangeTurn,
+  };
+}
+
 const PAIR_KEY_SEPARATOR = '|';
 
 /**
  * DiplomacyManager — tracks diplomatic state between nation pairs.
- * Default state is PEACE. Supports war declaration, peace proposals and responses.
+ * Default state is PEACE. Supports war declaration, peace proposals,
+ * responses, and directional open-borders grants.
  */
 export class DiplomacyManager {
   private readonly relations = new Map<string, DiplomacyRelation>();
@@ -34,9 +139,28 @@ export class DiplomacyManager {
   private readonly declinedListeners: PeaceDeclinedListener[] = [];
   private readonly warDeclaredListeners: WarDeclaredListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
+  private memoryHook: DiplomaticMemoryHook | null = null;
+
+  // Optional so older callers/tests still work; when present, war/peace
+  // transitions get stamped with the current round.
+  constructor(private readonly turnManager?: TurnManager) {}
+
+  /**
+   * Attach the memory system that mirrors transitions onto trust/fear/etc.
+   * Done after construction to avoid the circular dep (memory needs the
+   * manager, manager calls into memory).
+   */
+  attachMemoryHook(hook: DiplomaticMemoryHook): void {
+    this.memoryHook = hook;
+  }
+
+  private sortedPair(a: string, b: string): [string, string] {
+    return a < b ? [a, b] : [b, a];
+  }
 
   private pairKey(a: string, b: string): string {
-    return [a, b].sort().join(PAIR_KEY_SEPARATOR);
+    const [first, second] = this.sortedPair(a, b);
+    return `${first}${PAIR_KEY_SEPARATOR}${second}`;
   }
 
   getState(a: string, b: string): DiplomacyState {
@@ -44,21 +168,55 @@ export class DiplomacyManager {
   }
 
   getRelation(a: string, b: string): DiplomacyRelation {
-    return { ...(this.relations.get(this.pairKey(a, b)) ?? DEFAULT_RELATION) };
+    return { ...(this.relations.get(this.pairKey(a, b)) ?? createDefaultRelation()) };
   }
 
   canAttack(a: string, b: string): boolean {
     return this.getState(a, b) === 'WAR';
   }
 
+  /**
+   * True if `visitorNationId` is allowed to enter `territoryOwnerId`'s tiles.
+   * War always allows entry (so the player/AI can attack); otherwise the
+   * territory owner must have granted open borders to the visitor.
+   */
+  canEnterTerritory(visitorNationId: string, territoryOwnerId: string): boolean {
+    if (visitorNationId === territoryOwnerId) return true;
+    const relation = this.relations.get(this.pairKey(visitorNationId, territoryOwnerId))
+      ?? createDefaultRelation();
+    if (relation.state === 'WAR') return true;
+    return this.readDirectionalGrant(territoryOwnerId, visitorNationId, relation);
+  }
+
+  /** Has `fromNationId` granted open borders to `toNationId`? */
+  isOpenBorderGrantedFrom(fromNationId: string, toNationId: string): boolean {
+    if (fromNationId === toNationId) return true;
+    const relation = this.relations.get(this.pairKey(fromNationId, toNationId))
+      ?? createDefaultRelation();
+    return this.readDirectionalGrant(fromNationId, toNationId, relation);
+  }
+
   declareWar(aggressorId: string, targetId: string): void {
     const key = this.pairKey(aggressorId, targetId);
     if (this.relations.get(key)?.state === 'WAR') return;
-    this.relations.set(key, { state: 'WAR', openBorders: false });
+    const previous = this.relations.get(key);
+    const next = normalizeRelation({
+      ...previous,
+      state: 'WAR',
+      // War clears any active border grants in both directions.
+      openBordersFromAToB: false,
+      openBordersFromBToA: false,
+      // TODO: when TurnManager is unavailable the stamp stays null — future
+      // sources (events, AI, replays) should pass an explicit turn instead.
+      lastWarDeclarationTurn:
+        this.turnManager?.getCurrentRound() ?? previous?.lastWarDeclarationTurn ?? null,
+    });
+    this.relations.set(key, next);
     // Clear any pending peace proposal between these nations
     this.pendingProposals.delete(aggressorId);
     this.pendingProposals.delete(targetId);
     for (const cb of this.warDeclaredListeners) cb(aggressorId, targetId);
+    this.memoryHook?.onDeclareWar(aggressorId, targetId);
     this.notifyChanged(aggressorId, targetId);
   }
 
@@ -72,24 +230,48 @@ export class DiplomacyManager {
   respondToPeace(fromId: string, toId: string, accept: boolean): void {
     this.pendingProposals.delete(toId);
     if (accept) {
-      this.relations.set(this.pairKey(fromId, toId), { state: 'PEACE', openBorders: false });
+      const key = this.pairKey(fromId, toId);
+      const previous = this.relations.get(key);
+      const next = normalizeRelation({
+        ...previous,
+        state: 'PEACE',
+        // Peace also clears any leftover grants — both sides reset.
+        openBordersFromAToB: false,
+        openBordersFromBToA: false,
+        // TODO: same as declareWar — stamp explicitly when the manager
+        // doesn't have access to a TurnManager.
+        lastPeaceProposalTurn:
+          this.turnManager?.getCurrentRound() ?? previous?.lastPeaceProposalTurn ?? null,
+      });
+      this.relations.set(key, next);
       for (const cb of this.acceptedListeners) cb(fromId, toId);
+      this.memoryHook?.onMakePeace(fromId, toId);
       this.notifyChanged(fromId, toId);
     } else {
       for (const cb of this.declinedListeners) cb(fromId, toId);
     }
   }
 
-  toggleOpenBorders(a: string, b: string): boolean {
-    const key = this.pairKey(a, b);
-    const current = this.getRelation(a, b);
-    const next: DiplomacyRelation = {
-      ...current,
-      openBorders: !current.openBorders,
-    };
+  /**
+   * Toggle the directional grant from `fromNationId` to `toNationId`.
+   * Only the from-side's permission flips — the other direction is left
+   * untouched. Returns the new grant value for the from→to direction.
+   */
+  toggleOpenBorders(fromNationId: string, toNationId: string): boolean {
+    const key = this.pairKey(fromNationId, toNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    const next: DiplomacyRelation = { ...current };
+    const newGrant = !this.readDirectionalGrant(fromNationId, toNationId, current);
+    this.writeDirectionalGrant(fromNationId, toNationId, next, newGrant);
+    next.lastOpenBordersChangeTurn =
+      this.turnManager?.getCurrentRound() ?? current.lastOpenBordersChangeTurn ?? null;
     this.relations.set(key, next);
-    this.notifyChanged(a, b);
-    return next.openBorders;
+    if (this.memoryHook) {
+      if (newGrant) this.memoryHook.onOpenBorders(fromNationId, toNationId);
+      else this.memoryHook.onCancelOpenBorders(fromNationId, toNationId);
+    }
+    this.notifyChanged(fromNationId, toNationId);
+    return newGrant;
   }
 
   getPendingProposal(toId: string): PeaceProposal | null {
@@ -117,15 +299,29 @@ export class DiplomacyManager {
   }
 
   /**
-   * Return every nation-pair whose diplomatic state differs from the
-   * default PEACE. Used by save-load serialization.
+   * Return every nation-pair whose diplomatic state differs from defaults.
+   * Used by save-load serialization.
    */
   getAllStates(): { keys: [string, string]; relation: DiplomacyRelation }[] {
     const out: { keys: [string, string]; relation: DiplomacyRelation }[] = [];
+    const defaults = createDefaultRelation();
     for (const [key, relation] of this.relations) {
       const [a, b] = key.split(PAIR_KEY_SEPARATOR);
       if (a === undefined || b === undefined) continue;
-      if (relation.state === DEFAULT_RELATION.state && relation.openBorders === DEFAULT_RELATION.openBorders) continue;
+      if (
+        relation.state === defaults.state &&
+        relation.openBordersFromAToB === defaults.openBordersFromAToB &&
+        relation.openBordersFromBToA === defaults.openBordersFromBToA &&
+        relation.trust === defaults.trust &&
+        relation.fear === defaults.fear &&
+        relation.hostility === defaults.hostility &&
+        relation.affinity === defaults.affinity &&
+        relation.lastWarDeclarationTurn === defaults.lastWarDeclarationTurn &&
+        relation.lastPeaceProposalTurn === defaults.lastPeaceProposalTurn &&
+        relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn
+      ) {
+        continue;
+      }
       out.push({ keys: [a, b], relation: { ...relation } });
     }
     return out;
@@ -135,8 +331,25 @@ export class DiplomacyManager {
    * Silently overwrite the state between two nations. Does not fire
    * listeners. Used by save-load restoration.
    */
-  restoreState(a: string, b: string, state: DiplomacyState, openBorders = false): void {
-    this.relations.set(this.pairKey(a, b), { state, openBorders });
+  restoreState(a: string, b: string, partial: PartialDiplomacyRelationInput): void {
+    this.relations.set(this.pairKey(a, b), normalizeRelation(partial));
+  }
+
+  /**
+   * Persist the four memory values (trust/fear/hostility/affinity) for the
+   * given pair. Quiet — no listeners fire. The memory system clamps before
+   * calling so the manager only stores valid 0–100 values.
+   */
+  setMemoryValues(a: string, b: string, values: DiplomaticMemoryValues): void {
+    const key = this.pairKey(a, b);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    this.relations.set(key, {
+      ...current,
+      trust: values.trust,
+      fear: values.fear,
+      hostility: values.hostility,
+      affinity: values.affinity,
+    });
   }
 
   /** Reset all diplomacy state. Used before applying a loaded save. */
@@ -148,5 +361,30 @@ export class DiplomacyManager {
   private notifyChanged(a: string, b: string): void {
     const relation = this.getRelation(a, b);
     for (const cb of this.changedListeners) cb(a, b, relation);
+  }
+
+  private readDirectionalGrant(
+    fromId: string,
+    toId: string,
+    relation: DiplomacyRelation,
+  ): boolean {
+    const [a, b] = this.sortedPair(fromId, toId);
+    if (fromId === a && toId === b) return relation.openBordersFromAToB;
+    if (fromId === b && toId === a) return relation.openBordersFromBToA;
+    return false;
+  }
+
+  private writeDirectionalGrant(
+    fromId: string,
+    toId: string,
+    relation: DiplomacyRelation,
+    value: boolean,
+  ): void {
+    const [a, b] = this.sortedPair(fromId, toId);
+    if (fromId === a && toId === b) {
+      relation.openBordersFromAToB = value;
+    } else if (fromId === b && toId === a) {
+      relation.openBordersFromBToA = value;
+    }
   }
 }

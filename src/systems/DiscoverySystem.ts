@@ -46,6 +46,10 @@ export class DiscoverySystem {
     return this.met.get(nationId) ?? new Set<string>([nationId]);
   }
 
+  revealNation(observerNationId: string, targetNationId: string): void {
+    this.recordMet(observerNationId, targetNationId);
+  }
+
   onNationsMet(cb: NationsMetListener): void {
     this.listeners.push(cb);
   }

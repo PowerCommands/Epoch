@@ -6,6 +6,7 @@ export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output' | 'production';
+export type RightSidebarLeaderDetailsTab = 'details' | 'diplomacy';
 
 export interface RightSidebarTextRow {
   kind: 'text';

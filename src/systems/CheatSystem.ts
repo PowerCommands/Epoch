@@ -4,8 +4,11 @@ import type { ProductionSystem } from './ProductionSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceSystem } from './ResourceSystem';
 import type { DiagnosticSystem } from './DiagnosticSystem';
+import type { DiscoverySystem } from './DiscoverySystem';
+import type { NationManager } from './NationManager';
 import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
+import { ALL_LEADERS } from '../data/leaders';
 import type { Producible } from '../types/producible';
 
 export interface GameContext {
@@ -14,6 +17,8 @@ export interface GameContext {
   cultureSystem: CultureSystem;
   resourceSystem: ResourceSystem;
   diagnosticSystem: DiagnosticSystem;
+  discoverySystem: DiscoverySystem;
+  nationManager: NationManager;
   productionSystem: ProductionSystem;
   cityManager: CityManager;
   selectionManager: SelectionManager;
@@ -151,6 +156,41 @@ export class CheatSystem {
         return context.diagnosticSystem.isOpen()
           ? 'Diagnostics opened.'
           : 'Diagnostics closed.';
+      },
+    });
+
+    this.register({
+      name: 'leaders reveal',
+      description: 'Reveal one leader with "leaders reveal <name>" or every leader with "leaders reveal all".',
+      execute: (args, context) => {
+        if (!context.humanNationId) return 'No human player';
+        if (args.length === 0) return 'Usage: leaders reveal <name|all>';
+
+        const nations = context.nationManager.getAllNations()
+          .filter((nation) => nation.id !== context.humanNationId);
+
+        if (args.length === 1 && args[0] === 'all') {
+          const lines: string[] = [];
+          for (const nation of nations) {
+            context.discoverySystem.revealNation(context.humanNationId, nation.id);
+            lines.push(`Revealed leader: ${nation.name}`);
+          }
+          lines.push('All leaders revealed.');
+          return lines.join('\n');
+        }
+
+        const search = args.join(' ').toLowerCase();
+        const leader = ALL_LEADERS.find((candidate) => candidate.name.toLowerCase() === search)
+          ?? ALL_LEADERS.find((candidate) => candidate.name.toLowerCase().includes(search))
+          ?? ALL_LEADERS.find((candidate) => candidate.id.toLowerCase() === search);
+        const target = nations.find((nation) => nation.name.toLowerCase() === search)
+          ?? nations.find((nation) => nation.name.toLowerCase().includes(search))
+          ?? nations.find((nation) => nation.id.toLowerCase() === search)
+          ?? nations.find((nation) => nation.id === leader?.nationId);
+        if (!target) return `Leader not found: ${args.join(' ')}`;
+
+        context.discoverySystem.revealNation(context.humanNationId, target.id);
+        return `Revealed leader: ${target.name}`;
       },
     });
 
