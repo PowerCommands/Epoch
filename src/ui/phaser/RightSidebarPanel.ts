@@ -6,7 +6,6 @@ import type {
   RightSidebarButtonRow,
   RightSidebarCityDetailsTab,
   RightSidebarContent,
-  RightSidebarDiplomacyTab,
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
@@ -108,6 +107,8 @@ const LEADER_DETAIL_TABS: Array<{
 }> = [
   { id: 'details', label: 'Details', accentColor: 0x7fb4d5 },
   { id: 'diplomacy', label: 'Diplomacy', accentColor: 0xa7f3d0 },
+  { id: 'trade', label: 'Trade', accentColor: 0xf4d06f },
+  { id: 'deals', label: 'Deals', accentColor: 0xc084fc },
 ];
 
 export class RightSidebarPanel {
@@ -152,12 +153,6 @@ export class RightSidebarPanel {
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
   private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
-  private diplomacyTab: RightSidebarDiplomacyTab = 'relations';
-  private pendingDiplomacyPrimaryNationId: string | null = null;
-  private pendingDiplomacySecondaryNationId: string | null = null;
-  private shownDiplomacyPrimaryNationId: string | null = null;
-  private shownDiplomacySecondaryNationId: string | null = null;
-  private openDiplomacyDropdown: 'primary' | 'secondary' | null = null;
   private lastDetailsCityId: string | null = null;
   private lastDetailsLeaderId: string | null = null;
 
@@ -254,12 +249,6 @@ export class RightSidebarPanel {
       if (currentLeaderId !== this.lastDetailsLeaderId) {
         this.lastDetailsLeaderId = currentLeaderId;
         this.leaderDetailsTab = 'details';
-        this.diplomacyTab = 'relations';
-        this.pendingDiplomacyPrimaryNationId = this.dataProvider.getCurrentLeaderNationId();
-        this.pendingDiplomacySecondaryNationId = null;
-        this.shownDiplomacyPrimaryNationId = null;
-        this.shownDiplomacySecondaryNationId = null;
-        this.openDiplomacyDropdown = null;
       }
       if (!this.activeMode || this.collapsed) return;
       this.renderActiveContent();
@@ -434,114 +423,12 @@ export class RightSidebarPanel {
   private getContentForMode(mode: RightSidebarPanelMode): RightSidebarContent {
     switch (mode) {
       case 'details':
-        this.ensureLeaderDiplomacySelection();
-        return this.dataProvider.getDetailsContent(
-          this.cityDetailsTab,
-          this.leaderDetailsTab,
-          {
-            diplomacyTab: this.diplomacyTab,
-            pendingPrimaryNationId: this.pendingDiplomacyPrimaryNationId,
-            pendingSecondaryNationId: this.pendingDiplomacySecondaryNationId,
-            shownPrimaryNationId: this.shownDiplomacyPrimaryNationId,
-            shownSecondaryNationId: this.shownDiplomacySecondaryNationId,
-            openDropdown: this.openDiplomacyDropdown,
-            onToggleDropdown: (dropdown) => this.toggleDiplomacyDropdown(dropdown),
-            onSelectPrimary: (nationId) => this.selectDiplomacyPrimaryNation(nationId),
-            onSelectSecondary: (nationId) => this.selectDiplomacySecondaryNation(nationId),
-            onSelectDiplomacyTab: (tab) => this.selectDiplomacyTab(tab),
-            onShowDetails: () => this.showDiplomacyComparisonDetails(),
-          },
-        );
+        return this.dataProvider.getDetailsContent(this.cityDetailsTab, this.leaderDetailsTab);
       case 'leaderboard':
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
       case 'log':
         return this.dataProvider.getLogContent();
     }
-  }
-
-  private ensureLeaderDiplomacySelection(): void {
-    if (this.activeMode !== 'details' || this.dataProvider.getView() !== 'leader' || this.leaderDetailsTab !== 'diplomacy') {
-      return;
-    }
-
-    const visibleNations = this.dataProvider.getVisibleLeaderDiplomacyNations();
-    const visibleIds = new Set(visibleNations.map((nation) => nation.id));
-    const leaderNationId = this.dataProvider.getCurrentLeaderNationId();
-    const preferredPrimary = leaderNationId && visibleIds.has(leaderNationId)
-      ? leaderNationId
-      : visibleNations[0]?.id ?? null;
-
-    if (!this.pendingDiplomacyPrimaryNationId || !visibleIds.has(this.pendingDiplomacyPrimaryNationId)) {
-      this.pendingDiplomacyPrimaryNationId = preferredPrimary;
-    }
-
-    if (
-      !this.pendingDiplomacySecondaryNationId ||
-      !visibleIds.has(this.pendingDiplomacySecondaryNationId) ||
-      this.pendingDiplomacySecondaryNationId === this.pendingDiplomacyPrimaryNationId
-    ) {
-      this.pendingDiplomacySecondaryNationId = this.getFirstOtherDiplomacyNationId(this.pendingDiplomacyPrimaryNationId);
-    }
-
-    if (
-      this.shownDiplomacyPrimaryNationId &&
-      (!visibleIds.has(this.shownDiplomacyPrimaryNationId) || !visibleIds.has(this.shownDiplomacySecondaryNationId ?? ''))
-    ) {
-      this.shownDiplomacyPrimaryNationId = null;
-      this.shownDiplomacySecondaryNationId = null;
-    }
-  }
-
-  private toggleDiplomacyDropdown(dropdown: 'primary' | 'secondary'): void {
-    this.openDiplomacyDropdown = this.openDiplomacyDropdown === dropdown ? null : dropdown;
-    this.renderActiveContent();
-  }
-
-  private selectDiplomacyPrimaryNation(nationId: string): void {
-    this.pendingDiplomacyPrimaryNationId = nationId;
-    if (this.pendingDiplomacySecondaryNationId === nationId) {
-      this.pendingDiplomacySecondaryNationId = this.getFirstOtherDiplomacyNationId(nationId);
-    }
-    if (!this.pendingDiplomacySecondaryNationId) {
-      this.pendingDiplomacySecondaryNationId = this.getFirstOtherDiplomacyNationId(nationId);
-    }
-    this.openDiplomacyDropdown = null;
-    this.scrollOffset = 0;
-    this.renderActiveContent();
-  }
-
-  private selectDiplomacySecondaryNation(nationId: string): void {
-    if (nationId === this.pendingDiplomacyPrimaryNationId) return;
-    this.pendingDiplomacySecondaryNationId = nationId;
-    this.openDiplomacyDropdown = null;
-    this.scrollOffset = 0;
-    this.renderActiveContent();
-  }
-
-  private showDiplomacyComparisonDetails(): void {
-    if (
-      !this.pendingDiplomacyPrimaryNationId ||
-      !this.pendingDiplomacySecondaryNationId ||
-      this.pendingDiplomacyPrimaryNationId === this.pendingDiplomacySecondaryNationId
-    ) {
-      return;
-    }
-    this.shownDiplomacyPrimaryNationId = this.pendingDiplomacyPrimaryNationId;
-    this.shownDiplomacySecondaryNationId = this.pendingDiplomacySecondaryNationId;
-    this.openDiplomacyDropdown = null;
-    this.renderActiveContent();
-  }
-
-  private selectDiplomacyTab(tab: RightSidebarDiplomacyTab): void {
-    if (this.diplomacyTab === tab) return;
-    this.diplomacyTab = tab;
-    this.scrollOffset = 0;
-    this.renderActiveContent();
-  }
-
-  private getFirstOtherDiplomacyNationId(primaryNationId: string | null): string | null {
-    return this.dataProvider.getVisibleLeaderDiplomacyNations()
-      .find((nation) => nation.id !== primaryNationId)?.id ?? null;
   }
 
   private ensureRenderableContent(content: RightSidebarContent): RightSidebarContent {
@@ -727,7 +614,6 @@ export class RightSidebarPanel {
         this.worldInputGate.releasePointer(pointer.id);
         if (this.leaderDetailsTab !== tab.id) {
           this.leaderDetailsTab = tab.id;
-          if (tab.id === 'diplomacy') this.ensureLeaderDiplomacySelection();
           this.scrollOffset = 0;
           this.renderActiveContent();
         }

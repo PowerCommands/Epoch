@@ -22,6 +22,7 @@ export interface AIMovementCandidate {
   readonly isNearOwnCity: boolean;
   readonly isNearEnemyCity: boolean;
   readonly isNearEnemyUnit: boolean;
+  readonly explorationScore?: number;
 }
 
 const KIND_BASE_SCORE_AGGRESSION_SCALED: Record<
@@ -68,6 +69,7 @@ export function scoreMovementCandidate(
       break;
     case 'exploration':
       score += EXPLORATION_SCORE;
+      if (candidate.explorationScore !== undefined) score += candidate.explorationScore;
       break;
     case 'holdPosition':
       score += HOLD_POSITION_SCORE;

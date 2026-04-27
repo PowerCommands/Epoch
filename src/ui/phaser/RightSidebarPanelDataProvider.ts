@@ -38,7 +38,6 @@ import type {
   RightSidebarCityDetailsTab,
   RightSidebarDetailsState,
   RightSidebarDetailsView,
-  RightSidebarDiplomacyTab,
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarRow,
@@ -60,20 +59,6 @@ interface LeaderboardEntry {
   color: number;
   score: number;
   detail: string;
-}
-
-export interface LeaderDiplomacyComparisonSelection {
-  diplomacyTab: RightSidebarDiplomacyTab;
-  pendingPrimaryNationId: string | null;
-  pendingSecondaryNationId: string | null;
-  shownPrimaryNationId: string | null;
-  shownSecondaryNationId: string | null;
-  openDropdown: 'primary' | 'secondary' | null;
-  onToggleDropdown: (dropdown: 'primary' | 'secondary') => void;
-  onSelectPrimary: (nationId: string) => void;
-  onSelectSecondary: (nationId: string) => void;
-  onSelectDiplomacyTab: (tab: RightSidebarDiplomacyTab) => void;
-  onShowDetails: () => void;
 }
 
 export class RightSidebarPanelDataProvider {
@@ -296,7 +281,6 @@ export class RightSidebarPanelDataProvider {
   getDetailsContent(
     cityTab: RightSidebarCityDetailsTab = 'city',
     leaderTab: RightSidebarLeaderDetailsTab = 'details',
-    leaderDiplomacySelection?: LeaderDiplomacyComparisonSelection,
   ): RightSidebarContent {
     let content: RightSidebarContent;
     switch (this.current.view) {
@@ -311,12 +295,12 @@ export class RightSidebarPanelDataProvider {
         break;
       case 'nation':
         content = this.current.nationId
-          ? this.getNationContent(this.current.nationId, leaderDiplomacySelection)
+          ? this.getNationContent(this.current.nationId)
           : this.getEmptyDetailsContent();
         break;
       case 'leader':
         content = this.current.leaderId
-          ? this.getLeaderContent(this.current.leaderId, leaderTab, leaderDiplomacySelection)
+          ? this.getLeaderContent(this.current.leaderId, leaderTab)
           : this.getEmptyDetailsContent();
         break;
       case null:
@@ -492,10 +476,7 @@ export class RightSidebarPanelDataProvider {
     return { title: 'Details', sections: [{ title: 'Unit', rows }] };
   }
 
-  private getNationContent(
-    nationId: string,
-    diplomacySelection?: LeaderDiplomacyComparisonSelection,
-  ): RightSidebarContent {
+  private getNationContent(nationId: string): RightSidebarContent {
     const nation = this.nationManager.getNation(nationId);
     if (!nation) return { title: 'Details', sections: [{ title: 'Nation', rows: [textRow('Nation not found.', true)] }] };
     const isHuman = nationId === this.humanNationId;
@@ -551,7 +532,7 @@ export class RightSidebarPanelDataProvider {
       },
     ];
     if (!isHuman && this.diplomacyManager && this.humanNationId && this.isNationKnown(nationId)) {
-      sections.push(this.getDiplomacySection(nationId, diplomacySelection));
+      sections.push(this.getDiplomacySection(nationId));
     }
     return { title: 'Details', sections };
   }
@@ -559,158 +540,89 @@ export class RightSidebarPanelDataProvider {
   private getLeaderContent(
     leaderIdOrNationId: string,
     tab: RightSidebarLeaderDetailsTab,
-    diplomacySelection?: LeaderDiplomacyComparisonSelection,
   ): RightSidebarContent {
     const leader = getLeaderById(leaderIdOrNationId) ?? getLeaderByNationId(leaderIdOrNationId);
     if (!leader) return { title: 'Details', sections: [{ title: 'Leader', rows: [textRow('Leader not found.', true)] }] };
-    if (tab === 'diplomacy') {
-      return {
-        title: 'Leader Details',
-        sections: this.getLeaderDiplomacyDiagnosticsSections(diplomacySelection),
-      };
-    }
 
-    const nation = this.nationManager.getNation(leader.nationId);
-    const sections: RightSidebarSection[] = [
-      {
-        title: 'Leader',
-        rows: [
-          textRow(leader.name, false, true, nation?.color),
-          textRow(nation?.name ?? 'Unknown nation', false, false, nation?.color),
-          ...(leader.title ? [textRow(leader.title)] : []),
-          ...(leader.description ? [textRow(leader.description, true)] : []),
-        ],
-      },
-      this.getLeaderNationSection(leader.nationId),
-      this.getLeaderUnitsSection(leader.nationId, leader.nationId === this.humanNationId),
-    ];
-    if (leader.nationId !== this.humanNationId && this.diplomacyManager && this.humanNationId && this.isNationKnown(leader.nationId)) {
-      sections.push(this.getDiplomacySection(leader.nationId, diplomacySelection));
+    switch (tab) {
+      case 'details':
+        return this.getLeaderDetailsContent(leader);
+      case 'diplomacy':
+        return this.getLeaderDiplomacyContent(leader);
+      case 'trade':
+        return this.getLeaderTradeContent(leader);
+      case 'deals':
+        return this.getLeaderDealsContent(leader);
     }
-    return { title: 'Leader Details', sections };
   }
 
-  private getLeaderDiplomacyDiagnosticsSections(
-    selection?: LeaderDiplomacyComparisonSelection,
-  ): RightSidebarSection[] {
-    // Diplomacy comparison view is diagnostic-only.
-    // It compares one primary nation against one secondary nation.
-    if (!this.diplomacyManager) {
-      return [{ title: 'Diplomacy', rows: [textRow('Diplomacy manager unavailable.', true)] }];
-    }
-
-    const nations = this.getVisibleLeaderDiplomacyNations();
-    const pendingPrimaryNation = selection?.pendingPrimaryNationId
-      ? this.nationManager.getNation(selection.pendingPrimaryNationId)
-      : undefined;
-    const pendingSecondaryNation = selection?.pendingSecondaryNationId
-      ? this.nationManager.getNation(selection.pendingSecondaryNationId)
-      : undefined;
-    const shownPrimaryNation = selection?.shownPrimaryNationId
-      ? this.nationManager.getNation(selection.shownPrimaryNationId)
-      : undefined;
-    const shownSecondaryNation = selection?.shownSecondaryNationId
-      ? this.nationManager.getNation(selection.shownSecondaryNationId)
-      : undefined;
-
-    const primaryRows: RightSidebarRow[] = [dropdownHeaderRow(
-      `Primary nation: ${pendingPrimaryNation?.name ?? 'Select nation'}`,
-      selection?.openDropdown === 'primary',
-      () => selection?.onToggleDropdown('primary'),
-    )];
-    if (selection?.openDropdown === 'primary') {
-      primaryRows.push(...nations.map((nation) => diplomacyNationButtonRow(
-        nation,
-        nation.id === pendingPrimaryNation?.id,
-        false,
-        () => selection.onSelectPrimary(nation.id),
-      )));
-    }
-
-    const secondaryRows: RightSidebarRow[] = [dropdownHeaderRow(
-      `Secondary nation: ${pendingSecondaryNation?.name ?? 'Select nation'}`,
-      selection?.openDropdown === 'secondary',
-      () => selection?.onToggleDropdown('secondary'),
-    )];
-    if (selection?.openDropdown === 'secondary') {
-      secondaryRows.push(...nations.map((nation) => diplomacyNationButtonRow(
-        nation,
-        nation.id === pendingSecondaryNation?.id,
-        nation.id === pendingPrimaryNation?.id,
-        () => selection.onSelectSecondary(nation.id),
-      )));
-    }
-
-    const canShowDetails = Boolean(
-      pendingPrimaryNation &&
-      pendingSecondaryNation &&
-      pendingPrimaryNation.id !== pendingSecondaryNation.id,
-    );
-
-    const sections: RightSidebarSection[] = [
-      { title: 'Primary', rows: primaryRows },
-      { title: 'Secondary', rows: secondaryRows },
-      {
-        title: 'Details',
-        rows: [
-          {
-            kind: 'button',
-            text: 'Show details',
-            disabled: !canShowDetails,
-            accentColor: 0xa7f3d0,
-            onClick: () => selection?.onShowDetails(),
-          },
-        ],
-      },
-    ];
-
-    if (nations.length < 2) {
-      sections.push({
-        title: 'Comparison',
-        rows: [textRow('No discovered nation available for comparison.', true)],
-      });
-      return sections;
-    }
-
-    if (!shownPrimaryNation || !shownSecondaryNation || shownPrimaryNation.id === shownSecondaryNation.id) {
-      sections.push({
-        title: 'Comparison',
-        rows: [textRow('Choose two nations and press Show details.', true)],
-      });
-      return sections;
-    }
-
-    const relation = this.diplomacyManager.getRelation(shownPrimaryNation.id, shownSecondaryNation.id);
-    sections.push({
-      title: `${shownPrimaryNation.name} -> ${shownSecondaryNation.name}`,
-      rows: [
-        textRow(`State: ${relation.state}`),
-        textRow(`Attitude: ${this.diplomaticEvaluationSystem?.evaluateAttitude(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
-        textRow(`Trust: ${relation.trust}`),
-        textRow(`Fear: ${relation.fear}`),
-        textRow(`Hostility: ${relation.hostility}`),
-        textRow(`Affinity: ${relation.affinity}`),
-        textRow('Open Borders:', true),
-        textRow(`${shownPrimaryNation.name} allows ${shownSecondaryNation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(shownPrimaryNation.id, shownSecondaryNation.id))}`),
-        textRow(`${shownSecondaryNation.name} allows ${shownPrimaryNation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(shownSecondaryNation.id, shownPrimaryNation.id))}`),
-        textRow('Embassies:', true),
-        textRow(`${shownPrimaryNation.name} has embassy with ${shownSecondaryNation.name}: ${formatYesNo(this.diplomacyManager.hasEmbassy(shownPrimaryNation.id, shownSecondaryNation.id))}`),
-        textRow(`${shownSecondaryNation.name} has embassy with ${shownPrimaryNation.name}: ${formatYesNo(this.diplomacyManager.hasEmbassy(shownSecondaryNation.id, shownPrimaryNation.id))}`),
-        textRow(`Trade Relations: ${formatYesNo(this.diplomacyManager.hasTradeRelations(shownPrimaryNation.id, shownSecondaryNation.id))}`),
-        textRow('Military:', true),
-        textRow(`${shownPrimaryNation.name} compared to ${shownSecondaryNation.name}: ${this.militaryEvaluationSystem?.compareMilitaryStrength(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
-        textRow('Threat:', true),
-        textRow(`Threat to ${shownPrimaryNation.name} from ${shownSecondaryNation.name}: ${this.threatEvaluationSystem?.getThreatLevel(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
-        textRow('History:', true),
-        textRow(`Last War Turn: ${formatTurn(relation.lastWarDeclarationTurn)}`),
-        textRow(`Last Peace Turn: ${formatTurn(relation.lastPeaceProposalTurn)}`),
-        textRow(`Last Open Borders Change Turn: ${formatTurn(relation.lastOpenBordersChangeTurn)}`),
-        textRow(`Last Embassy Change Turn: ${formatTurn(relation.lastEmbassyChangeTurn)}`),
-        textRow(`Last Trade Relations Change Turn: ${formatTurn(relation.lastTradeRelationsChangeTurn)}`),
+  private getLeaderDetailsContent(leader: { name: string; nationId: string; title?: string; description?: string }): RightSidebarContent {
+    const nation = this.nationManager.getNation(leader.nationId);
+    return {
+      title: 'Leader Details',
+      sections: [
+        {
+          title: 'Leader',
+          rows: [
+            textRow(leader.name, false, true, nation?.color),
+            textRow(nation?.name ?? 'Unknown nation', false, false, nation?.color),
+            ...(leader.title ? [textRow(leader.title)] : []),
+            ...(leader.description ? [textRow(leader.description, true)] : []),
+          ],
+        },
+        this.getLeaderNationSection(leader.nationId),
+        this.getLeaderUnitsSection(leader.nationId, leader.nationId === this.humanNationId),
       ],
-    });
+    };
+  }
 
-    return sections;
+  private getLeaderDiplomacyContent(leader: { nationId: string }): RightSidebarContent {
+    if (leader.nationId === this.humanNationId) {
+      return { title: 'Leader Details', sections: [{ title: 'Diplomacy', rows: [textRow('Select another nation to manage diplomacy.', true)] }] };
+    }
+    if (!this.diplomacyManager || !this.humanNationId || !this.isNationKnown(leader.nationId)) {
+      return { title: 'Leader Details', sections: [{ title: 'Diplomacy', rows: [textRow('You have not met this nation.', true)] }] };
+    }
+    return { title: 'Leader Details', sections: [this.getDiplomacySection(leader.nationId)] };
+  }
+
+  private getLeaderTradeContent(leader: { nationId: string }): RightSidebarContent {
+    const rows: RightSidebarRow[] = [];
+    if (leader.nationId === this.humanNationId) {
+      rows.push(textRow('Select another nation to trade with.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
+    }
+    if (!this.diplomacyManager || !this.humanNationId || !this.isNationKnown(leader.nationId)) {
+      rows.push(textRow('You have not met this nation.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
+    }
+    if (this.diplomacyManager.getState(this.humanNationId, leader.nationId) === 'WAR') {
+      rows.push(textRow('Unavailable during war.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
+    }
+    if (!this.diplomacyManager.hasTradeRelations(this.humanNationId, leader.nationId)) {
+      rows.push(textRow('Trade requires active Trade Relations.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
+    }
+    rows.push(...this.getTradeTabRows(leader.nationId));
+    return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
+  }
+
+  private getLeaderDealsContent(leader: { nationId: string }): RightSidebarContent {
+    const rows: RightSidebarRow[] = [];
+    if (!this.tradeDealSystem || !this.humanNationId) {
+      rows.push(textRow('Trade system unavailable.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Deals', rows }] };
+    }
+    const deals = leader.nationId === this.humanNationId
+      ? this.tradeDealSystem.getDealsForNation(this.humanNationId)
+      : this.tradeDealSystem.getDealsBetween(this.humanNationId, leader.nationId);
+    if (deals.length === 0) {
+      rows.push(textRow('No active deals.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Deals', rows }] };
+    }
+    for (const deal of deals) rows.push(textRow(this.formatDealRow(deal)));
+    return { title: 'Leader Details', sections: [{ title: 'Deals', rows }] };
   }
 
   private getProductionQueueSection(city: City, isHuman: boolean): RightSidebarSection {
@@ -903,15 +815,11 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
-  private getDiplomacySection(
-    nationId: string,
-    diplomacySelection?: LeaderDiplomacyComparisonSelection,
-  ): RightSidebarSection {
+  private getDiplomacySection(nationId: string): RightSidebarSection {
     const dm = this.diplomacyManager!;
     const humanId = this.humanNationId!;
     const relation = dm.getRelation(humanId, nationId);
     const nation = this.nationManager.getNation(nationId);
-    const activeTab = diplomacySelection?.diplomacyTab ?? 'relations';
     const validationContext = {
       haveMet: (a: string, b: string): boolean => this.discoverySystem?.hasMet(a, b) ?? true,
       hasTechnology: (targetNationId: string, techId: string): boolean =>
@@ -926,27 +834,7 @@ export class RightSidebarPanelDataProvider {
     const embassyValidation = dm.canEstablishEmbassy(humanId, nationId, validationContext);
     const tradeValidation = dm.canEstablishTradeRelations(humanId, nationId, validationContext);
     const openBordersUnavailableReason = relation.state === 'WAR' ? 'Unavailable during war.' : undefined;
-    const rows: RightSidebarRow[] = [
-      ...this.getDiplomacyTabRows(activeTab, diplomacySelection),
-    ];
-
-    if (activeTab === 'trade') {
-      if (relation.state === 'WAR') {
-        rows.push(textRow('Unavailable during war.', true));
-        return { title: 'Diplomacy', rows };
-      }
-      if (!hasTradeRelations) {
-        rows.push(textRow('Trade requires active Trade Relations.', true));
-        return { title: 'Diplomacy', rows };
-      }
-      rows.push(...this.getTradeTabRows(nationId));
-      return { title: 'Diplomacy', rows };
-    }
-
-    if (activeTab === 'deals') {
-      rows.push(...this.getDealsTabRows());
-      return { title: 'Diplomacy', rows };
-    }
+    const rows: RightSidebarRow[] = [];
 
     rows.push(textRow(`Status: ${relation.state}`));
     rows.push(textRow(`Open Borders: ${humanGrantsBorders ? 'Open' : 'Closed'}`));
@@ -995,24 +883,6 @@ export class RightSidebarPanelDataProvider {
       }));
     }, relation.state === 'PEACE' ? 0xb86767 : nation?.color));
     return { title: 'Diplomacy', rows };
-  }
-
-  private getDiplomacyTabRows(
-    activeTab: RightSidebarDiplomacyTab,
-    diplomacySelection?: LeaderDiplomacyComparisonSelection,
-  ): RightSidebarRow[] {
-    const tabs: Array<{ id: RightSidebarDiplomacyTab; label: string }> = [
-      { id: 'relations', label: 'Relations' },
-      { id: 'trade', label: 'Trade' },
-      { id: 'deals', label: 'Deals' },
-    ];
-    return tabs.map((tab) => ({
-      kind: 'button',
-      text: tab.label,
-      selected: tab.id === activeTab,
-      accentColor: 0xa7f3d0,
-      onClick: () => diplomacySelection?.onSelectDiplomacyTab(tab.id),
-    }));
   }
 
   private getTradeTabRows(otherNationId: string): RightSidebarRow[] {
@@ -1069,23 +939,6 @@ export class RightSidebarPanelDataProvider {
     const message = this.tradeMessages.get(otherNationId);
     if (message) {
       rows.push(textRow(message, true));
-    }
-    return rows;
-  }
-
-  private getDealsTabRows(): RightSidebarRow[] {
-    const rows: RightSidebarRow[] = [];
-    if (!this.tradeDealSystem || !this.humanNationId) {
-      rows.push(textRow('Trade system unavailable.', true));
-      return rows;
-    }
-    const deals = this.tradeDealSystem.getDealsForNation(this.humanNationId);
-    if (deals.length === 0) {
-      rows.push(textRow('No active deals.', true));
-      return rows;
-    }
-    for (const deal of deals) {
-      rows.push(textRow(this.formatDealRow(deal)));
     }
     return rows;
   }
@@ -1232,43 +1085,8 @@ function disabledReasonButtonRow(
   };
 }
 
-function dropdownHeaderRow(text: string, selected: boolean, onClick: () => void): RightSidebarRow {
-  return {
-    kind: 'button',
-    text,
-    selected,
-    accentColor: 0x6ec6ff,
-    trailingIcon: selected ? '▲' : '▼',
-    onClick,
-  };
-}
-
-function diplomacyNationButtonRow(
-  nation: Nation,
-  selected: boolean,
-  disabled: boolean,
-  onClick: () => void,
-): RightSidebarRow {
-  return {
-    kind: 'button',
-    text: nation.name,
-    selected,
-    disabled,
-    accentColor: nation.color,
-    onClick,
-  };
-}
-
 function progressRow(label: string, current: number, max: number): RightSidebarRow {
   return { kind: 'progress', label, current, max };
-}
-
-function formatYesNo(value: boolean): string {
-  return value ? 'YES' : 'NO';
-}
-
-function formatTurn(value: number | null): string {
-  return value === null ? '-' : `${value}`;
 }
 
 function getProducibleName(item: Producible): string {

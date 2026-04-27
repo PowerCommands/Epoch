@@ -24,7 +24,9 @@ Goal: simplified Civilization-style gameplay on a real Europe map.
 * Entities → pure TypeScript (no Phaser)
 * Systems → game rules only
 * Renderers → visuals only (world + UI rendering primitives)
-* UI → user interaction and display (Phaser screen-space UI for runtime, HTML only where explicitly used)
+* UI → Phaser screen-space HUD/panels for normal runtime interaction
+* UI → HTML/CSS overlays only for specific modal or inspection views
+* UI must not contain gameplay rules
 * GameScene → orchestration only; creates systems, wires dependencies, creates UI layers, and connects UI callbacks/events to systems
 
 Never mix responsibilities.
@@ -33,12 +35,42 @@ Never mix responsibilities.
 
 ### UI model
 
-* Phaser → game world and primary runtime UI
-* Phaser screen-space UI is used for HUD, overlays, right sidebar, minimap, and interaction panels
-* HTML/CSS → used only for specific overlays/tools (e.g. CityView, diagnostics, editor)
-* UI must remain separate from game logic
-* Communication between UI and gameplay systems must happen through explicit events, callbacks, or state updates
-* Gameplay rules must not live in UI components
+Phaser renders:
+
+* game world
+* map
+* units
+* cities
+* world overlays
+* normal runtime HUD
+* right sidebar
+* leader details
+* diplomacy tabs
+* minimap
+* unit action toolbox
+
+HTML/CSS is allowed only for isolated overlays/dialogs such as:
+
+* CityView
+* DiagnosticDialog
+* CheatConsole
+* EscapeMenu
+* modal confirmation dialogs
+
+Rules:
+
+* Do not move normal runtime UI back into HTML.
+* Do not create new HTML panels for diplomacy, trade, production, leaderboard, HUD, minimap, or unit actions.
+* Prefer existing Phaser UI infrastructure for runtime game panels.
+* UI must remain separate from game logic.
+* Communication between UI and gameplay systems must happen through explicit events, callbacks, or state updates.
+* Gameplay rules must not live in UI components.
+
+#### Diplomacy and trade UI
+
+* Diplomacy and trade UI live in the Phaser right sidebar.
+* Relations, Trade, and Deals tabs are handled through `RightSidebarPanel` / `RightSidebarPanelDataProvider`.
+* Do not implement diplomacy or trade tabs as HTML panels.
 
 ---
 
@@ -377,7 +409,7 @@ GameScene:
 
 * entities/ → data models
 * systems/ → game logic
-* ui/ → UI components (primarily Phaser UI, plus specific HTML overlays/tools)
+* ui/ → runtime UI components, including Phaser HUD/panels and isolated HTML overlays
 * scenes/ → Phaser scenes
 * data/ → definitions
 * types/ → interfaces

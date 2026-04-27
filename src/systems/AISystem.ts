@@ -24,7 +24,12 @@ import type { IGridSystem } from './grid/IGridSystem';
 import { EMPTY_MODIFIERS } from '../types/modifiers';
 import type { ResearchSystem } from './ResearchSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
+import type { DiscoverySystem } from './DiscoverySystem';
 import type { HappinessSystem } from './HappinessSystem';
+import type { TradeDealSystem } from './TradeDealSystem';
+import type { ResourceAccessSystem } from './ResourceAccessSystem';
+import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
+import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
 import {
@@ -121,6 +126,10 @@ export class AISystem {
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly happinessSystem?: HappinessSystem,
     private readonly threatEvaluationSystem?: AIMilitaryThreatEvaluationSystem,
+    private readonly discoverySystem?: DiscoverySystem,
+    private readonly tradeDealSystem?: TradeDealSystem,
+    private readonly resourceAccessSystem?: ResourceAccessSystem,
+    private readonly explorationMemorySystem?: ExplorationMemorySystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -141,10 +150,130 @@ export class AISystem {
 
   runTurn(nationId: string): void {
     this.updateStrategyForNation(nationId);
+    this.markVisibleTilesForNation(nationId);
     this.runSettlers(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runProduction(nationId);
+    this.runDiplomacyForNation(nationId);
+    this.runTradeForNation(nationId);
+  }
+
+  // ─── Exploration memory ──────────────────────────────────────────────────────
+
+  private markVisibleTilesForNation(nationId: string): void {
+    if (!this.explorationMemorySystem) return;
+    const turn = this.turnManager.getCurrentRound();
+    const visible = new Map<string, Tile>();
+
+    const recordCenterAndAdjacent = (centerX: number, centerY: number): void => {
+      const center = this.mapData.tiles[centerY]?.[centerX];
+      if (center) visible.set(`${center.x},${center.y}`, center);
+      for (const adj of this.gridSystem.getAdjacentCoords({ x: centerX, y: centerY })) {
+        const tile = this.mapData.tiles[adj.y]?.[adj.x];
+        if (tile) visible.set(`${tile.x},${tile.y}`, tile);
+      }
+    };
+
+    for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
+      recordCenterAndAdjacent(unit.tileX, unit.tileY);
+    }
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      recordCenterAndAdjacent(city.tileX, city.tileY);
+    }
+
+    this.explorationMemorySystem.markVisibleTiles(nationId, [...visible.values()], turn);
+  }
+
+  // ─── Diplomacy ───────────────────────────────────────────────────────────────
+
+  private runDiplomacyForNation(nationId: string): void {
+    if (!this.diplomacyManager) return;
+    const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
+    if (weights.diplomacy <= 0) {
+      const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+      console.debug(`AI ${name} skipped diplomacy because diplomacy weight is 0.`);
+      return;
+    }
+    const dm = this.diplomacyManager;
+    const validationContext = {
+      haveMet: (a: string, b: string): boolean => this.discoverySystem?.hasMet(a, b) ?? true,
+      hasTechnology: (target: string, techId: string): boolean =>
+        this.researchSystem?.isResearched(target, techId) ?? false,
+    };
+
+    for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, other.id)) continue;
+      if (dm.getState(nationId, other.id) === 'WAR') continue;
+
+      if (!dm.hasEmbassy(nationId, other.id)) {
+        const embassyCheck = dm.canEstablishEmbassy(nationId, other.id, validationContext);
+        if (embassyCheck.ok && dm.establishEmbassy(nationId, other.id)) {
+          const actor = this.nationManager.getNation(nationId)?.name ?? nationId;
+          const target = other.name;
+          console.debug(`AI ${actor} established embassy with ${target}`);
+        }
+      }
+
+      if (!dm.hasTradeRelations(nationId, other.id)) {
+        const tradeCheck = dm.canEstablishTradeRelations(nationId, other.id, validationContext);
+        if (tradeCheck.ok && dm.establishTradeRelations(nationId, other.id)) {
+          const actor = this.nationManager.getNation(nationId)?.name ?? nationId;
+          const target = other.name;
+          console.debug(`AI ${actor} established trade relations with ${target}`);
+        }
+      }
+    }
+  }
+
+  // ─── Trade ───────────────────────────────────────────────────────────────────
+
+  private runTradeForNation(nationId: string): void {
+    if (!this.diplomacyManager || !this.tradeDealSystem || !this.resourceAccessSystem) return;
+
+    const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
+    const maxDeals = getMaxTradeDealsPerTurn(weights.trade);
+    if (maxDeals <= 0) return;
+
+    const dealTurns = 10;
+    const goldPerTurn = 5;
+    if (this.nationManager.getResources(nationId).gold < goldPerTurn) return;
+
+    const available = new Set(this.resourceAccessSystem.getAvailableResources(nationId));
+    const buyerName = this.nationManager.getNation(nationId)?.name ?? nationId;
+    let dealsCreated = 0;
+
+    outer: for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') continue;
+      if (!this.diplomacyManager.hasTradeRelations(nationId, other.id)) continue;
+
+      for (const resourceId of this.resourceAccessSystem.getOwnedResources(other.id)) {
+        if (available.has(resourceId)) continue;
+        if (this.resourceAccessSystem.hasImportedResource(nationId, resourceId)) continue;
+        if (this.nationManager.getResources(nationId).gold < goldPerTurn * (dealsCreated + 1)) break outer;
+
+        const result = this.tradeDealSystem.createDeal({
+          sellerNationId: other.id,
+          buyerNationId: nationId,
+          resourceId,
+          turns: dealTurns,
+          goldPerTurn,
+        });
+        if (!result.ok) continue;
+
+        console.debug(
+          `AI ${buyerName} bought ${resourceId} from ${other.name} (${dealTurns} turns, ${goldPerTurn} gold/turn)`,
+        );
+        dealsCreated++;
+        if (dealsCreated >= maxDeals) break outer;
+      }
+    }
+
+    if (dealsCreated > 1) {
+      console.debug(`AI ${buyerName} created ${dealsCreated} trade deals due to trade weight ${weights.trade}.`);
+    }
   }
 
   // ─── Strategy selection ──────────────────────────────────────────────────────
@@ -422,6 +551,12 @@ export class AISystem {
     const units = this.unitManager.getUnitsByOwner(nationId);
     const strategy = this.getStrategy(nationId);
 
+    const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
+    if (weights.exploration !== 1) {
+      const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+      console.debug(`AI ${name} exploration score adjusted by strategy weight ${weights.exploration}.`);
+    }
+
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.isNaval) continue;
@@ -552,8 +687,49 @@ export class AISystem {
       path: null,
     });
 
-    // TODO: add 'frontline' and 'exploration' candidates once front detection
-    // and unowned-territory targeting helpers exist.
+    // Exploration — pick the most "curious" tile in range so idle units
+    // wander toward unseen territory instead of holding position.
+    // Strategy weight 0 disables this entirely; weight 2 doubles its appeal.
+    const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
+    if (this.explorationMemorySystem && weights.exploration > 0) {
+      const currentTurn = this.turnManager.getCurrentRound();
+      const tilesInRange = this.gridSystem.getTilesInRange(
+        unitPos,
+        engageDistance,
+        this.mapData,
+        { includeCenter: false },
+      );
+      let bestTile: Tile | null = null;
+      let bestScore = 0;
+      for (const tile of tilesInRange) {
+        if (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Ice) continue;
+        const score = this.explorationMemorySystem.getExplorationScore(nationId, tile, currentTurn);
+        if (score > bestScore) {
+          bestScore = score;
+          bestTile = tile;
+        }
+      }
+      if (bestTile) {
+        const dest = { x: bestTile.x, y: bestTile.y };
+        const path = this.findApproachPath(unit, dest);
+        const distance = this.gridSystem.getDistance(unitPos, dest);
+        choices.push({
+          candidate: this.buildMovementCandidate(
+            dest,
+            'exploration',
+            distance,
+            path,
+            nationId,
+            bestScore * weights.exploration,
+          ),
+          path,
+        });
+      }
+    }
+
+    // TODO: apply weights.aggression / weights.defense to combat candidates
+    // once those weights are validated to not regress current combat balance.
+    // TODO: add 'frontline' candidates once front detection helpers exist.
     return choices;
   }
 
@@ -563,6 +739,7 @@ export class AISystem {
     distance: number,
     path: Tile[] | null,
     nationId: string,
+    explorationScore?: number,
   ): AIMovementCandidate {
     const isReachable = kind === 'holdPosition' ? true : path !== null;
     const pathCost = path ? this.getPathCost(path) : 0;
@@ -576,6 +753,7 @@ export class AISystem {
       isNearOwnCity: this.isNearOwnCity(destination, nationId),
       isNearEnemyCity: this.isNearEnemyCity(destination, nationId),
       isNearEnemyUnit: this.isNearEnemyUnit(destination, nationId),
+      explorationScore,
     };
   }
 

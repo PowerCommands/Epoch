@@ -230,6 +230,24 @@ export class CheatSystem {
     });
 
     this.register({
+      name: 'meet',
+      description: 'Force two nations to have met. Usage: "meet <nationA> <nationB>".',
+      execute: (args, context) => {
+        if (args.length !== 2) return 'Usage: meet <nationA> <nationB>';
+
+        const a = resolveNationId(args[0], context);
+        if (!a.ok) return a.message;
+        const b = resolveNationId(args[1], context);
+        if (!b.ok) return b.message;
+
+        if (a.nationId === b.nationId) return 'Cannot meet the same nation.';
+
+        context.discoverySystem.revealNation(a.nationId, b.nationId);
+        return `${a.label} and ${b.label} have now met.`;
+      },
+    });
+
+    this.register({
       name: 'help',
       description: 'List available commands.',
       execute: () => this.getHelpText(),

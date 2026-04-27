@@ -10,6 +10,7 @@ import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
+import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
@@ -559,6 +560,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // 18. AI-system för icke-mänskliga nationer
+    const explorationMemorySystem = new ExplorationMemorySystem(gridSystem, mapData, cityManager);
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
@@ -567,6 +569,10 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       happinessSystem,
       aiMilitaryThreatEvaluationSystem,
+      discoverySystem,
+      tradeDealSystem,
+      resourceAccessSystem,
+      explorationMemorySystem,
     );
 
     // Humans pick their own initial research via the HUD research panel.
