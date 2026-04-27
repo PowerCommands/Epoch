@@ -9,6 +9,8 @@ export interface GameConfig {
   activeNationIds: string[];
   resourceAbundance: ResourceAbundance;
   gameSpeedId: GameSpeedId;
+  autofocusOnEndTurn?: boolean;
+  earlyGameTurnLimit?: number;
   /**
    * When present, {@link GameScene} applies this snapshot after its
    * normal scenario-based initialization, yielding a fully-restored

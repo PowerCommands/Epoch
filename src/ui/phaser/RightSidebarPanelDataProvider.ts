@@ -20,7 +20,7 @@ import type { NationManager } from '../../systems/NationManager';
 import type { AIMilitaryEvaluationSystem } from '../../systems/ai/AIMilitaryEvaluationSystem';
 import type { AIMilitaryThreatEvaluationSystem } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
-import { canCityProduceUnit } from '../../systems/ProductionRules';
+import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../systems/ProductionRules';
 import type { ProductionSystem } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
@@ -28,6 +28,7 @@ import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
+import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
 import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
 import type { MapData, Tile } from '../../types/map';
@@ -102,6 +103,7 @@ export class RightSidebarPanelDataProvider {
     private readonly cityTerritorySystem: CityTerritorySystem,
     private readonly gridSystem: IGridSystem,
     private readonly happinessSystem: HappinessSystem,
+    private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
   ) {}
 
   onChanged(listener: ChangedListener): void {
@@ -674,13 +676,36 @@ export class RightSidebarPanelDataProvider {
     );
     const rows: RightSidebarRow[] = [];
     for (const unitType of ALL_UNIT_TYPES) {
-      if (!canCityProduceUnit(city, unitType, this.mapData, this.gridSystem)) continue;
       if (this.researchSystem && !this.researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
+      const disabledReason = getCityUnitProductionBlockReason(
+        city,
+        unitType,
+        this.mapData,
+        this.gridSystem,
+        { strategicResourceCapacitySystem: this.strategicResourceCapacitySystem },
+      );
+      if (disabledReason && !unitType.requiredResource) continue;
       const item: Producible = { kind: 'unit', unitType };
-      rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})`, () => {
+      rows.push({
+        kind: 'button',
+        text: disabledReason
+          ? `${getProducibleName(item)} (${this.productionSystem.getCost(item)}) - ${disabledReason}`
+          : `${getProducibleName(item)} (${this.productionSystem.getCost(item)})`,
+        disabled: disabledReason !== undefined,
+        accentColor: 0x6aa7d8,
+        spritePath: getProducibleSpritePath(item),
+        onClick: () => {
+          if (!canCityProduceUnit(
+            city,
+            unitType,
+            this.mapData,
+            this.gridSystem,
+            { strategicResourceCapacitySystem: this.strategicResourceCapacitySystem },
+          )) return;
         this.productionSystem.enqueue(city.id, item);
         this.requestRefresh();
-      }, 0x6aa7d8, undefined, getProducibleSpritePath(item)));
+        },
+      });
     }
     rows.push({ kind: 'separator' });
     for (const buildingType of ALL_BUILDINGS) {

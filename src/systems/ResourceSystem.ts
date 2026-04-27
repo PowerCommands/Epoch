@@ -11,6 +11,9 @@ import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { HappinessSystem } from './HappinessSystem';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
+import type { City } from '../entities/City';
+import type { CityBuildings } from '../entities/CityBuildings';
+import type { Nation } from '../entities/Nation';
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -36,6 +39,7 @@ export class ResourceSystem {
     happinessSystem: HappinessSystem,
     private readonly getNationModifiers: (nationId: string) => Readonly<ModifierSet> = () => EMPTY_MODIFIERS,
     gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+    private readonly getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0,
   ) {
     this.nationManager = nationManager;
     this.cityManager = cityManager;
@@ -92,12 +96,10 @@ export class ResourceSystem {
 
     this.updateWorkedTiles(cities);
 
-    nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(
+    nationRes.goldPerTurn = this.calculateNationGoldPerTurn(
       nation,
       cities,
       lookup,
-      this.mapData,
-      this.gridSystem,
       nationModifiers,
     );
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
@@ -142,12 +144,10 @@ export class ResourceSystem {
     this.happinessSystem.recalculateNation(nation.id);
 
     // Räkna om per-turn (kan ändras om städer förstörts/skapats)
-    nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(
+    nationRes.goldPerTurn = this.calculateNationGoldPerTurn(
       nation,
       cities,
       lookup,
-      this.mapData,
-      this.gridSystem,
       nationModifiers,
     );
     nationRes.gold += nationRes.goldPerTurn;
@@ -206,12 +206,10 @@ export class ResourceSystem {
 
       this.updateWorkedTiles(cities);
 
-      nationRes.goldPerTurn = this.generator.calculateNationGoldPerTurn(
+      nationRes.goldPerTurn = this.calculateNationGoldPerTurn(
         nation,
         cities,
         lookup,
-        this.mapData,
-        this.gridSystem,
         nationModifiers,
       );
       nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
@@ -249,5 +247,23 @@ export class ResourceSystem {
 
   private calculateNationInfluencePerTurn(cities: ReturnType<CityManager['getCitiesByOwner']>): number {
     return cities.reduce((sum, city) => sum + city.population, 0);
+  }
+
+  private calculateNationGoldPerTurn(
+    nation: Nation,
+    cities: City[],
+    lookup: (cityId: string) => CityBuildings,
+    nationModifiers: Readonly<ModifierSet>,
+  ): number {
+    const baseGoldPerTurn = this.generator.calculateNationGoldPerTurn(
+      nation,
+      cities,
+      lookup,
+      this.mapData,
+      this.gridSystem,
+      nationModifiers,
+    );
+
+    return baseGoldPerTurn + this.getTradeGoldPerTurnDelta(nation.id);
   }
 }

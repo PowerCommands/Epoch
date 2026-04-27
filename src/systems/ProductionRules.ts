@@ -2,6 +2,11 @@ import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
 import { TileType, type MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
+
+export interface UnitProductionRuleContext {
+  strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
+}
 
 export function hasAdjacentWater(
   city: City,
@@ -21,10 +26,21 @@ export function canCityProduceUnit(
   unitType: UnitType,
   mapData: MapData,
   gridSystem: IGridSystem,
+  context: UnitProductionRuleContext = {},
 ): boolean {
+  return getCityUnitProductionBlockReason(city, unitType, mapData, gridSystem, context) === undefined;
+}
+
+export function getCityUnitProductionBlockReason(
+  city: City,
+  unitType: UnitType,
+  mapData: MapData,
+  gridSystem: IGridSystem,
+  context: UnitProductionRuleContext = {},
+): string | undefined {
   if (unitType.isNaval === true) {
-    return hasAdjacentWater(city, mapData, gridSystem);
+    if (!hasAdjacentWater(city, mapData, gridSystem)) return 'Requires adjacent water';
   }
 
-  return true;
+  return context.strategicResourceCapacitySystem?.getMissingRequirementReason(city.ownerId, unitType);
 }

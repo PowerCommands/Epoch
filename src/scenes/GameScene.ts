@@ -80,10 +80,12 @@ import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { RightSidebarPanel } from '../ui/phaser/RightSidebarPanel';
 import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDataProvider';
 import { SaveLoadService } from '../systems/SaveLoadService';
+import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { ALL_UNIT_TYPES } from '../data/units';
-import { canCityProduceUnit } from '../systems/ProductionRules';
+import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems/ProductionRules';
+import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
@@ -123,6 +125,7 @@ export class GameScene extends Phaser.Scene {
     const gridLayout = new HexGridLayout();
     const resourceAbundance = data.resourceAbundance ?? 'normal';
     const gameSpeed = getGameSpeedById(data.savedState?.gameSpeedId ?? data.gameSpeedId ?? DEFAULT_GAME_SPEED_ID);
+    const autofocusOnEndTurn = data.autofocusOnEndTurn ?? true;
 
     // 2. Filter to active nations only, set isHuman from config
     const activeSet = new Set(data.activeNationIds);
@@ -228,6 +231,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       (nationId) => wonderSystem.getNationModifiers(nationId),
     );
+    let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     const resourceSystem = new ResourceSystem(
       nationManager,
       cityManager,
@@ -238,6 +242,7 @@ export class GameScene extends Phaser.Scene {
       happinessSystem,
       (nationId) => wonderSystem.getNationModifiers(nationId),
       gameSpeed,
+      (nationId) => getTradeGoldPerTurnDelta(nationId),
     );
 
     // 12. Selection-system (hover depth 20, selection depth 21)
@@ -314,7 +319,11 @@ export class GameScene extends Phaser.Scene {
       },
       (nationId) => nationManager.getNation(nationId) !== undefined,
     );
+    getTradeGoldPerTurnDelta = (nationId) =>
+      tradeDealSystem.getGoldPerTurnDeltaForNation(nationId);
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
+    const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
+    const unitProductionRuleContext = { strategicResourceCapacitySystem };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
     );
@@ -322,7 +331,9 @@ export class GameScene extends Phaser.Scene {
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
     });
-    tradeDealSystem.onChanged(() => {
+    tradeDealSystem.onChanged((event) => {
+      resourceSystem.recalculateForNation(event.deal.sellerNationId);
+      resourceSystem.recalculateForNation(event.deal.buyerNationId);
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -350,6 +361,14 @@ export class GameScene extends Phaser.Scene {
         ).science, 0),
       gameSpeed,
     );
+    if (!data.savedState && humanNationId) {
+      if (!researchSystem.getCurrentResearch(humanNationId)) {
+        researchSystem.startResearch(humanNationId, 'agriculture');
+      }
+      if (!cultureSystem.getCurrentCultureNode(humanNationId)) {
+        cultureSystem.startCultureNode(humanNationId, 'code_of_laws');
+      }
+    }
 
     // 14. Stridssystem
     const combatSystem = new CombatSystem(
@@ -573,6 +592,7 @@ export class GameScene extends Phaser.Scene {
       tradeDealSystem,
       resourceAccessSystem,
       explorationMemorySystem,
+      strategicResourceCapacitySystem,
     );
 
     // Humans pick their own initial research via the HUD research panel.
@@ -641,6 +661,14 @@ export class GameScene extends Phaser.Scene {
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
       this.cameraController.focusOn(x, y, 1.5);
     };
+    const selectActiveUnitWithoutCamera = (unit: Unit) => {
+      suppressPromote = true;
+      try {
+        selectionManager.selectUnit(unit);
+      } finally {
+        suppressPromote = false;
+      }
+    };
     const activateFocusedUnitMove = () => {
       unitActionToolbox.resetMode();
       refreshMovePreview();
@@ -652,12 +680,18 @@ export class GameScene extends Phaser.Scene {
       const active = turnOrderSystem.getActive();
       if (!active) {
         selectionManager.clearSelection();
-        focusHumanCapital();
+        if (autofocusOnEndTurn) {
+          focusHumanCapital();
+        }
         return;
       }
       // Force-focus even if the active id is unchanged since last turn —
       // refreshActive() skips the listener in that case.
-      focusUnit(active);
+      if (autofocusOnEndTurn) {
+        focusUnit(active);
+      } else {
+        selectActiveUnitWithoutCamera(active);
+      }
       // SelectionManager no-ops on same-unit re-select, so onSelectionChanged
       // listeners (including move-preview) don't fire. Refresh explicitly so
       // reachableTiles reflects the unit's just-reset movement points.
@@ -672,7 +706,11 @@ export class GameScene extends Phaser.Scene {
         selectionManager.clearSelection();
         return;
       }
-      focusUnit(unit);
+      if (autofocusOnEndTurn) {
+        focusUnit(unit);
+      } else {
+        selectActiveUnitWithoutCamera(unit);
+      }
       activateFocusedUnitMove();
     });
 
@@ -826,6 +864,17 @@ export class GameScene extends Phaser.Scene {
 
       const placement = this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
       if (placement === null) return false;
+      const unitBlockReason = getCityUnitProductionBlockReason(
+        city,
+        item.unitType,
+        mapData,
+        gridSystem,
+        unitProductionRuleContext,
+      );
+      if (unitBlockReason) {
+        entry.blockedReason = unitBlockReason;
+        return false;
+      }
 
       unitManager.createUnit({
         type: item.unitType,
@@ -1246,6 +1295,7 @@ export class GameScene extends Phaser.Scene {
       cityTerritorySystem,
       gridSystem,
       happinessSystem,
+      strategicResourceCapacitySystem,
     );
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     rightPanel.setDiplomacyManager(diplomacyManager);
@@ -1298,13 +1348,24 @@ export class GameScene extends Phaser.Scene {
     };
     const getCityViewUnitOptions = (city: City): CityViewUnitOption[] => (
       ALL_UNIT_TYPES
-        .filter((unitType) => canCityProduceUnit(city, unitType, mapData, gridSystem))
         .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
-        .map((unitType) => ({
-          id: unitType.id,
-          name: unitType.name,
-          cost: productionSystem.getCost({ kind: 'unit', unitType }),
-        }))
+        .flatMap((unitType) => {
+          const reason = getCityUnitProductionBlockReason(
+            city,
+            unitType,
+            mapData,
+            gridSystem,
+            unitProductionRuleContext,
+          );
+          if (reason && !unitType.requiredResource) return [];
+          return [{
+            id: unitType.id,
+            name: unitType.name,
+            cost: productionSystem.getCost({ kind: 'unit', unitType }),
+            disabled: reason !== undefined,
+            reason,
+          }];
+        })
     );
     const getCityViewWonderOptions = (city: City): CityViewWonderOption[] => {
       const isQueuedHere = (wonderId: string): boolean => productionSystem.getQueue(city.id)
@@ -1602,7 +1663,7 @@ export class GameScene extends Phaser.Scene {
       if (!city) return;
       const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId);
       if (!unitType) return;
-      if (!canCityProduceUnit(city, unitType, mapData, gridSystem)) return;
+      if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
       productionSystem.enqueue(city.id, { kind: 'unit', unitType });
       rightPanel?.requestRefresh();
@@ -2253,6 +2314,37 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     }
 
+    const writeLatestAutosave = (): void => {
+      try {
+        const state = SaveLoadService.serialize({
+          mapKey: data.mapKey,
+          humanNationId: data.humanNationId,
+          activeNationIds: data.activeNationIds,
+          gameSpeedId: gameSpeed.id,
+          mapData,
+          nationManager,
+          cityManager,
+          unitManager,
+          productionSystem,
+          diplomacyManager,
+          discoverySystem,
+          turnManager,
+          gridSystem,
+          wonderSystem,
+          tradeDealSystem,
+        });
+        window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
+      } catch (err: unknown) {
+        console.warn(`Could not write latest autosave: ${(err as Error).message}`);
+      }
+    };
+
+    turnManager.on('turnEnd', (e) => {
+      if (e.nation.id === humanNationId) {
+        writeLatestAutosave();
+      }
+    });
+
     // ─── Escape menu ─────────────────────────────────────────────────────────
 
     const escapeMenu = new EscapeMenu(
@@ -2293,6 +2385,7 @@ export class GameScene extends Phaser.Scene {
               activeNationIds: savedState.activeNationIds,
               resourceAbundance: 'normal',
               gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+              autofocusOnEndTurn,
               savedState,
             });
           }).catch((err: unknown) => {

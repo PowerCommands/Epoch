@@ -3,6 +3,8 @@ import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '
 import type { CultureNode } from '../../types/CultureNode';
 import type { EventLogSystem } from '../EventLogSystem';
 import type { NationManager } from '../NationManager';
+import { pickBestAICultureNode } from '../ai/AICulturePlanningSystem';
+import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../../data/aiBaselinePriorities';
 
 type ChangedListener = () => void;
 type CultureProvider = (nationId: string) => number;
@@ -29,6 +31,7 @@ export class CultureSystem {
       this.nationManager.getResources(nationId).culturePerTurn
     ),
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+    private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
   ) {}
 
   canStartCultureNode(nationId: string, nodeId: string): boolean {
@@ -112,7 +115,15 @@ export class CultureSystem {
     const nation = this.nationManager.getNation(nationId);
     if (!nation || nation.currentCultureNodeId) return false;
 
-    const nextNode = this.getAvailableCultureNodes(nationId)[0];
+    const availableCultureNodes = this.getAvailableCultureNodes(nationId);
+    const nextNode = nation.isHuman
+      ? availableCultureNodes[0]
+      : pickBestAICultureNode({
+        nation,
+        availableCultureNodes,
+        currentTurn: this.getCurrentRound(),
+        earlyGameTurnLimit: this.earlyGameTurnLimit,
+      });
     if (!nextNode) return false;
 
     return this.startCultureNode(nationId, nextNode.id);

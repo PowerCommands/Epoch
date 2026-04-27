@@ -25,7 +25,6 @@ Goal: simplified Civilization-style gameplay on a real Europe map.
 * Systems → game rules only
 * Renderers → visuals only (world + UI rendering primitives)
 * UI → Phaser screen-space HUD/panels for normal runtime interaction
-* UI → HTML/CSS overlays only for specific modal or inspection views
 * UI must not contain gameplay rules
 * GameScene → orchestration only; creates systems, wires dependencies, creates UI layers, and connects UI callbacks/events to systems
 
@@ -49,18 +48,8 @@ Phaser renders:
 * minimap
 * unit action toolbox
 
-HTML/CSS is allowed only for isolated overlays/dialogs such as:
-
-* CityView
-* DiagnosticDialog
-* CheatConsole
-* EscapeMenu
-* modal confirmation dialogs
-
 Rules:
 
-* Do not move normal runtime UI back into HTML.
-* Do not create new HTML panels for diplomacy, trade, production, leaderboard, HUD, minimap, or unit actions.
 * Prefer existing Phaser UI infrastructure for runtime game panels.
 * UI must remain separate from game logic.
 * Communication between UI and gameplay systems must happen through explicit events, callbacks, or state updates.

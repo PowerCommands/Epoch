@@ -4,6 +4,8 @@ import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '
 import type { CityManager } from './CityManager';
 import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
+import { pickBestAIResearchTechnology } from './ai/AIResearchPlanningSystem';
+import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
@@ -25,6 +27,7 @@ export class ResearchSystem {
     private readonly getCurrentRound: () => number,
     private readonly getBuildingSciencePerTurn: ScienceProvider = () => 0,
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+    private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -145,7 +148,15 @@ export class ResearchSystem {
     const nation = this.nationManager.getNation(nationId);
     if (!nation || nation.currentResearchTechId) return false;
 
-    const nextTechnology = this.getAvailableTechnologies(nationId)[0];
+    const availableTechnologies = this.getAvailableTechnologies(nationId);
+    const nextTechnology = nation.isHuman
+      ? availableTechnologies[0]
+      : pickBestAIResearchTechnology({
+        nation,
+        availableTechnologies,
+        currentTurn: this.getCurrentRound(),
+        earlyGameTurnLimit: this.earlyGameTurnLimit,
+      });
     if (!nextTechnology) return false;
 
     return this.startResearch(nationId, nextTechnology.id);

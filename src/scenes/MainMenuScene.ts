@@ -7,7 +7,9 @@ import type { GameConfig, ResourceAbundance } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, type GameSpeedId } from '../data/gameSpeeds';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
+import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import { bindMusicControls } from '../ui/MusicControls';
+import type { SavedGameState } from '../types/saveGame';
 
 /**
  * MainMenuScene — HTML/CSS start screen for map, nation, and opponent setup.
@@ -21,6 +23,8 @@ export class MainMenuScene extends Phaser.Scene {
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
   private selectedGameSpeedId: GameSpeedId = DEFAULT_GAME_SPEED_ID;
+  private autofocusOnEndTurn = true;
+  private latestAutosave: SavedGameState | null = null;
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
   private music: SetupMusicManager | null = null;
@@ -32,6 +36,7 @@ export class MainMenuScene extends Phaser.Scene {
 
   create(): void {
     this.maps = parseMapManifest(this.cache.json.get(MAP_MANIFEST_CACHE_KEY)).maps;
+    this.latestAutosave = this.readLatestAutosave();
     this.overlay = document.createElement('div');
     this.overlay.id = 'main-menu-overlay';
     this.overlay.innerHTML = this.buildHTML();
@@ -154,6 +159,11 @@ export class MainMenuScene extends Phaser.Scene {
               ${gameSpeedOptions}
             </select>
 
+            <label class="mm-option-toggle">
+              <input id="mm-autofocus-toggle" type="checkbox" ${this.autofocusOnEndTurn ? 'checked' : ''} />
+              <span>Autofocus on end turn</span>
+            </label>
+
             <div class="mm-opponent-summary">
               <span class="mm-field-label">Opponents</span>
               <strong id="mm-opponent-count">0 enabled</strong>
@@ -181,6 +191,7 @@ export class MainMenuScene extends Phaser.Scene {
 
         <footer class="mm-actions">
           <button id="mm-start-btn" class="mm-start-btn" type="button" disabled>Start Game</button>
+          <button id="mm-continue-btn" class="mm-continue-btn" type="button"${this.latestAutosave ? '' : ' hidden'}>Continue</button>
           <button id="mm-load-btn" class="mm-load-btn" type="button">Load Game</button>
           <button id="mm-editor-btn" class="mm-editor-btn" type="button">Editor</button>
           <input id="mm-load-input" type="file" accept="application/json,.json" hidden>
@@ -199,6 +210,10 @@ export class MainMenuScene extends Phaser.Scene {
     const gameSpeedSelect = document.getElementById('mm-game-speed-select') as HTMLSelectElement;
     gameSpeedSelect.addEventListener('change', () => {
       this.selectedGameSpeedId = toGameSpeedId(gameSpeedSelect.value);
+    });
+    const autofocusToggle = document.getElementById('mm-autofocus-toggle') as HTMLInputElement;
+    autofocusToggle.addEventListener('change', () => {
+      this.autofocusOnEndTurn = autofocusToggle.checked;
     });
 
     document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
@@ -223,6 +238,9 @@ export class MainMenuScene extends Phaser.Scene {
 
     document.getElementById('mm-start-btn')!.addEventListener('click', () => {
       this.startGame();
+    });
+    document.getElementById('mm-continue-btn')!.addEventListener('click', () => {
+      this.continueLatestAutosave();
     });
 
     const loadInput = document.getElementById('mm-load-input') as HTMLInputElement;
@@ -479,6 +497,7 @@ export class MainMenuScene extends Phaser.Scene {
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
+      autofocusOnEndTurn: this.autofocusOnEndTurn,
     };
 
     this.cleanup();
@@ -501,11 +520,46 @@ export class MainMenuScene extends Phaser.Scene {
         activeNationIds: savedState.activeNationIds,
         resourceAbundance: 'normal',
         gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+        autofocusOnEndTurn: true,
         savedState,
       } satisfies GameConfig);
     }).catch((err: unknown) => {
       window.alert(`Could not read save file: ${(err as Error).message}`);
     });
+  }
+
+  private readLatestAutosave(): SavedGameState | null {
+    try {
+      const raw = window.localStorage.getItem(LATEST_AUTOSAVE_KEY);
+      if (!raw) return null;
+
+      const result = SaveLoadService.parse(raw);
+      if (!result.ok) {
+        console.warn(`Could not parse latest autosave: ${result.error}`);
+        return null;
+      }
+
+      return result.state;
+    } catch (err: unknown) {
+      console.warn(`Could not read latest autosave: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  private continueLatestAutosave(): void {
+    const savedState = this.latestAutosave ?? this.readLatestAutosave();
+    if (!savedState) return;
+
+    this.cleanup();
+    this.scene.start('GameScene', {
+      mapKey: savedState.mapKey,
+      humanNationId: savedState.humanNationId,
+      activeNationIds: savedState.activeNationIds,
+      resourceAbundance: 'normal',
+      gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+      autofocusOnEndTurn: this.autofocusOnEndTurn,
+      savedState,
+    } satisfies GameConfig);
   }
 
   private injectStyles(): void {
@@ -598,6 +652,7 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-victory-card,
       .mm-nation-card,
       .mm-start-btn,
+      .mm-continue-btn,
       .mm-load-btn,
       .mm-editor-btn,
       .mm-change-nation-btn {
@@ -1015,6 +1070,18 @@ export class MainMenuScene extends Phaser.Scene {
         user-select: none;
       }
 
+      .mm-option-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 0 0;
+        color: #2b2017;
+        font-size: 14px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .mm-option-toggle input[type="checkbox"],
       .mm-audio-toggle input[type="checkbox"] {
         width: 16px;
         height: 16px;
@@ -1076,13 +1143,14 @@ export class MainMenuScene extends Phaser.Scene {
 
       .mm-actions {
         display: grid;
-        grid-template-columns: minmax(280px, 420px) 170px 170px;
+        grid-template-columns: minmax(260px, 390px) repeat(3, 150px);
         gap: 14px;
         justify-content: center;
         align-items: center;
       }
 
       .mm-start-btn,
+      .mm-continue-btn,
       .mm-load-btn,
       .mm-editor-btn {
         border-radius: 8px;
@@ -1101,6 +1169,7 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       .mm-start-btn:hover:not(:disabled),
+      .mm-continue-btn:hover,
       .mm-load-btn:hover,
       .mm-editor-btn:hover {
         transform: translateY(-1px);
@@ -1112,6 +1181,7 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       .mm-load-btn,
+      .mm-continue-btn,
       .mm-editor-btn {
         min-height: 48px;
         color: #5f3c16;
@@ -1121,6 +1191,7 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       .mm-load-btn:hover,
+      .mm-continue-btn:hover,
       .mm-editor-btn:hover {
         background: rgba(255, 248, 229, 0.9);
         border-color: rgba(176, 101, 24, 0.7);

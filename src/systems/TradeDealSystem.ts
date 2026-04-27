@@ -95,6 +95,14 @@ export class TradeDealSystem {
       .map((deal) => this.copyDeal(deal));
   }
 
+  getGoldPerTurnDeltaForNation(nationId: string): number {
+    return Array.from(this.deals.values()).reduce((sum, deal) => {
+      if (deal.sellerNationId === nationId) return sum + deal.goldPerTurn;
+      if (deal.buyerNationId === nationId) return sum - deal.goldPerTurn;
+      return sum;
+    }, 0);
+  }
+
   getDealsBetween(nationAId: string, nationBId: string): TradeDeal[] {
     return Array.from(this.deals.values())
       .filter((deal) => this.isDealBetween(deal, nationAId, nationBId))

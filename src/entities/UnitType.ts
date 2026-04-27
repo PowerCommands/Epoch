@@ -25,4 +25,8 @@ export interface UnitType {
   readonly canBuildImprovements?: boolean;
   readonly range?: number;
   readonly isNaval?: boolean;
+  readonly requiredResource?: {
+    readonly resourceId: string;
+    readonly amount: number;
+  };
 }

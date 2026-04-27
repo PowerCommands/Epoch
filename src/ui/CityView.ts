@@ -23,6 +23,8 @@ export interface CityViewUnitOption {
   id: string;
   name: string;
   cost: number;
+  disabled?: boolean;
+  reason?: string;
 }
 
 export interface CityViewWonderOption {
@@ -453,9 +455,14 @@ export class CityView {
     for (const option of unitOptions) {
       const button = this.createProductionButton(
         getUnitSpritePath(option.id),
-        `${option.name} (${option.cost})`,
+        option.reason
+          ? `${option.name} (${option.cost}) - ${option.reason}`
+          : `${option.name} (${option.cost})`,
       );
+      button.disabled = option.disabled ?? false;
+      if (option.reason) button.title = option.reason;
       button.addEventListener('click', () => {
+        if (button.disabled) return;
         for (const callback of this.unitRequestCallbacks) callback(option.id);
       });
       this.unitButtonsEl.append(button);

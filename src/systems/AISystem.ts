@@ -29,6 +29,7 @@ import type { HappinessSystem } from './HappinessSystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
+import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
 import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
@@ -130,6 +131,7 @@ export class AISystem {
     private readonly tradeDealSystem?: TradeDealSystem,
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly explorationMemorySystem?: ExplorationMemorySystem,
+    private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -893,7 +895,9 @@ export class AISystem {
     const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
     const canProduceSettler =
       this.canBuildUnit(nationId, SETTLER.id) &&
-      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem);
+      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      });
     const goldPerTurn = this.nationManager.getResources(nationId).goldPerTurn;
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
@@ -974,7 +978,9 @@ export class AISystem {
   private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
     const available = MILITARY_OPTIONS.filter((u) => (
       this.canBuildUnit(nationId, u.id) &&
-      canCityProduceUnit(city, u, this.mapData, this.gridSystem)
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
     ));
     const archer = available.find((u) => u.id === ARCHER.id);
     if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
