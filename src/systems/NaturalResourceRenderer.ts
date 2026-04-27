@@ -1,19 +1,23 @@
 import Phaser from 'phaser';
 import { getNaturalResourceById } from '../data/naturalResources';
 import type { MapData, Tile } from '../types/map';
+import { HexTileMaskHelper } from './HexTileMaskHelper';
 import { TileMap } from './TileMap';
 
 const RESOURCE_DEPTH = 5.5;
+const RESOURCE_TILE_FILL_SCALE = 0.9;
 
 export class NaturalResourceRenderer {
   private readonly sprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly labels = new Map<string, Phaser.GameObjects.Text>();
+  private readonly hexTileMaskHelper: HexTileMaskHelper;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
     private readonly mapData: MapData,
   ) {
+    this.hexTileMaskHelper = new HexTileMaskHelper(scene, tileMap);
     this.rebuildAll();
   }
 
@@ -31,8 +35,7 @@ export class NaturalResourceRenderer {
 
     for (const [key, sprite] of this.sprites) {
       if (seen.has(key)) continue;
-      sprite.destroy();
-      this.sprites.delete(key);
+      this.destroyTileSprite(key, sprite);
     }
 
     for (const [key, label] of this.labels) {
@@ -46,20 +49,27 @@ export class NaturalResourceRenderer {
     const tile = this.mapData.tiles[tileY]?.[tileX];
     const key = this.coordKey(tileX, tileY);
     if (!tile?.resourceId) {
-      this.sprites.get(key)?.destroy();
-      this.sprites.delete(key);
-      this.labels.get(key)?.destroy();
-      this.labels.delete(key);
+      const existing = this.sprites.get(key);
+      if (existing) this.destroyTileSprite(key, existing);
+      const label = this.labels.get(key);
+      if (label) {
+        label.destroy();
+        this.labels.delete(key);
+      }
       return;
     }
     this.renderTile(tile);
   }
 
   shutdown(): void {
-    for (const sprite of this.sprites.values()) sprite.destroy();
-    for (const label of this.labels.values()) label.destroy();
+    for (const sprite of this.sprites.values()) {
+      this.hexTileMaskHelper.clearMask(sprite);
+      sprite.destroy();
+    }
     this.sprites.clear();
+    for (const label of this.labels.values()) label.destroy();
     this.labels.clear();
+    this.hexTileMaskHelper.destroy();
   }
 
   private renderTile(tile: Tile): void {
@@ -69,31 +79,34 @@ export class NaturalResourceRenderer {
     const key = this.coordKey(tile.x, tile.y);
     const { x, y } = this.tileMap.tileToWorld(tile.x, tile.y);
     const rect = this.tileMap.getTileRect(tile.x, tile.y);
-    const centerY = y - rect.height * 0.08;
 
     if (this.scene.textures.exists(resource.iconKey)) {
-      this.labels.get(key)?.destroy();
-      this.labels.delete(key);
+      const label = this.labels.get(key);
+      if (label) {
+        label.destroy();
+        this.labels.delete(key);
+      }
 
       let sprite = this.sprites.get(key);
       if (!sprite) {
-        sprite = this.scene.add.image(x, centerY, resource.iconKey);
+        sprite = this.scene.add.image(x, y, resource.iconKey);
         sprite.setDepth(RESOURCE_DEPTH);
         this.sprites.set(key, sprite);
       }
       sprite.setTexture(resource.iconKey);
-      sprite.setPosition(x, centerY);
-      sprite.setDisplaySize(rect.width * 0.32, rect.height * 0.32);
+      sprite.setPosition(x, y);
+      sprite.setDisplaySize(rect.width * RESOURCE_TILE_FILL_SCALE, rect.height * RESOURCE_TILE_FILL_SCALE);
       sprite.setAlpha(0.95);
+      this.hexTileMaskHelper.applyHexMask(sprite, tile.x, tile.y);
       return;
     }
 
-    this.sprites.get(key)?.destroy();
-    this.sprites.delete(key);
+    const existingSprite = this.sprites.get(key);
+    if (existingSprite) this.destroyTileSprite(key, existingSprite);
 
     let label = this.labels.get(key);
     if (!label) {
-      label = this.scene.add.text(x, centerY, this.getFallbackLabel(resource.name), {
+      label = this.scene.add.text(x, y, this.getFallbackLabel(resource.name), {
         fontFamily: 'Arial, sans-serif',
         fontSize: `${Math.max(9, Math.floor(rect.height * 0.16))}px`,
         fontStyle: 'bold',
@@ -109,8 +122,14 @@ export class NaturalResourceRenderer {
     }
 
     label.setText(this.getFallbackLabel(resource.name));
-    label.setPosition(x, centerY);
+    label.setPosition(x, y);
     label.setVisible(true);
+  }
+
+  private destroyTileSprite(key: string, sprite: Phaser.GameObjects.Image): void {
+    this.hexTileMaskHelper.clearMask(sprite);
+    sprite.destroy();
+    this.sprites.delete(key);
   }
 
   private getFallbackLabel(name: string): string {

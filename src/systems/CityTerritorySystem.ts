@@ -10,8 +10,8 @@ export interface CityTileCoord {
 }
 
 const CLAIM_RANGE = 5;
-const CLAIM_BASE_COST = 10;
-const CLAIM_COST_PER_OWNED_TILE = 5;
+const CLAIM_BASE_COST = 5;
+const CLAIM_COST_PER_OWNED_TILE = 2;
 
 export class CityTerritorySystem {
   constructor(
