@@ -9,6 +9,7 @@ import type { NationManager } from './NationManager';
 import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
 import { ALL_LEADERS } from '../data/leaders';
+import { ALL_TECHNOLOGIES, type TechnologyDefinition } from '../data/technologies';
 import type { Producible } from '../types/producible';
 
 export interface GameContext {
@@ -37,27 +38,61 @@ export class CheatSystem {
   constructor(private readonly context: GameContext) {
     this.register({
       name: 'gold',
-      description: 'Set player gold with "gold <integer>" or add gold with "gold add <integer>".',
+      description: 'Set nation gold with "gold <integer> [nation]" or add gold with "gold add <integer> [nation]".',
       execute: (args, context) => {
-        if (!context.humanNationId) return 'No human player';
-
         if (args[0] === 'add') {
           const amount = parseInteger(args[1]);
-          if (amount === null || args.length !== 2) return 'Usage: gold add <integer>';
+          if (amount === null || args.length < 2 || args.length > 3) return 'Usage: gold add <integer> [nation]';
 
-          const total = context.resourceSystem.addGold(context.humanNationId, amount);
-          if (total === null) return 'No human player';
+          const target = resolveNationId(args[2], context);
+          if (!target.ok) return target.message;
 
-          return `Gold added: ${amount}. Total gold: ${total}`;
+          const total = context.resourceSystem.addGold(target.nationId, amount);
+          if (total === null) return `Unknown nation: ${args[2] ?? target.nationId}`;
+
+          return `Gold added to ${target.label}: ${amount}. Total gold: ${total}`;
         }
 
         const amount = parseInteger(args[0]);
-        if (amount === null || args.length !== 1) return 'Usage: gold <integer>';
+        if (amount === null || args.length < 1 || args.length > 2) return 'Usage: gold <integer> [nation]';
 
-        const total = context.resourceSystem.setGold(context.humanNationId, amount);
-        if (total === null) return 'No human player';
+        const target = resolveNationId(args[1], context);
+        if (!target.ok) return target.message;
 
-        return `Gold set: ${total}`;
+        const total = context.resourceSystem.setGold(target.nationId, amount);
+        if (total === null) return `Unknown nation: ${args[1] ?? target.nationId}`;
+
+        return `Gold set for ${target.label}: ${total}`;
+      },
+    });
+
+    this.register({
+      name: 'research',
+      description: 'Unlock a technology for a nation. Usage: "research <techId> [nation]" or "research add <techId> [nation]".',
+      execute: (args, context) => {
+        const techArgIndex = args[0] === 'add' ? 1 : 0;
+        const techArg = args[techArgIndex];
+        const expectedMaxArgs = techArgIndex + 2;
+        if (techArg === undefined || args.length > expectedMaxArgs) {
+          return 'Usage: research [add] <techId> [nation]';
+        }
+
+        const tech = resolveTechnologyId(techArg);
+        if (!tech.ok) return tech.message;
+
+        const target = resolveNationId(args[techArgIndex + 1], context);
+        if (!target.ok) return target.message;
+
+        if (context.researchSystem.isResearched(target.nationId, tech.tech.id)) {
+          return `Technology already researched for ${target.label}: ${tech.tech.id}`;
+        }
+
+        const success = context.researchSystem.unlockTechnology(target.nationId, tech.tech.id);
+        if (!success) {
+          return `Technology already researched for ${target.label}: ${tech.tech.id}`;
+        }
+
+        return `Technology unlocked for ${target.label}: ${tech.tech.id}`;
       },
     });
 
@@ -281,6 +316,77 @@ function normalizeCommand(input: string): string {
 function parseInteger(value: string | undefined): number | null {
   if (value === undefined || !/^-?\d+$/.test(value)) return null;
   return Number.parseInt(value, 10);
+}
+
+function resolveNationId(
+  input: string | undefined,
+  context: GameContext,
+): { ok: true; nationId: string; label: string } | { ok: false; message: string } {
+  if (input === undefined) {
+    if (!context.humanNationId) return { ok: false, message: 'No human player' };
+    const nation = context.nationManager.getNation(context.humanNationId);
+    return {
+      ok: true,
+      nationId: context.humanNationId,
+      label: nation?.name ?? context.humanNationId,
+    };
+  }
+
+  const normalizedInput = normalizeNationMatchText(input);
+  const nations = context.nationManager.getAllNations();
+
+  const exactMatches = nations.filter((nation) =>
+    normalizeNationMatchText(nation.id) === normalizedInput ||
+    normalizeNationMatchText(nation.name) === normalizedInput
+  );
+  if (exactMatches.length === 1) {
+    return { ok: true, nationId: exactMatches[0].id, label: exactMatches[0].name };
+  }
+  if (exactMatches.length > 1) return { ok: false, message: `Ambiguous nation: ${input}` };
+
+  const partialMatches = nations.filter((nation) =>
+    normalizeNationMatchText(nation.id).includes(normalizedInput) ||
+    normalizeNationMatchText(nation.name).includes(normalizedInput)
+  );
+  if (partialMatches.length === 1) {
+    return { ok: true, nationId: partialMatches[0].id, label: partialMatches[0].name };
+  }
+  if (partialMatches.length > 1) return { ok: false, message: `Ambiguous nation: ${input}` };
+
+  return { ok: false, message: `Unknown nation: ${input}` };
+}
+
+function normalizeNationMatchText(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function resolveTechnologyId(
+  input: string,
+): { ok: true; tech: TechnologyDefinition } | { ok: false; message: string } {
+  const normalizedInput = normalizeTechnologyMatchText(input);
+  if (normalizedInput.length === 0) {
+    return { ok: false, message: `Unknown technology: ${input}` };
+  }
+
+  const exactMatches = ALL_TECHNOLOGIES.filter((tech) =>
+    normalizeTechnologyMatchText(tech.id) === normalizedInput ||
+    normalizeTechnologyMatchText(tech.name) === normalizedInput
+  );
+  if (exactMatches.length === 1) return { ok: true, tech: exactMatches[0] };
+  if (exactMatches.length > 1) return { ok: false, message: `Ambiguous technology: ${input}` };
+
+  const partialMatches = ALL_TECHNOLOGIES.filter((tech) =>
+    normalizeTechnologyMatchText(tech.id).includes(normalizedInput) ||
+    normalizeTechnologyMatchText(tech.name).includes(normalizedInput)
+  );
+  if (partialMatches.length === 1) return { ok: true, tech: partialMatches[0] };
+  if (partialMatches.length > 1) return { ok: false, message: `Ambiguous technology: ${input}` };
+
+  return { ok: false, message: `Unknown technology: ${input}` };
+}
+
+function normalizeTechnologyMatchText(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
 
 function producibleName(item: Producible): string {

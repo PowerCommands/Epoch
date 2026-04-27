@@ -92,6 +92,27 @@ export class ResearchSystem {
     this.notifyChanged();
   }
 
+  unlockTechnology(nationId: string, techId: string): boolean {
+    const nation = this.nationManager.getNation(nationId);
+    const technology = getTechnologyById(techId);
+    if (!nation || !technology) return false;
+    if (nation.researchedTechIds.includes(technology.id)) return false;
+
+    nation.researchedTechIds.push(technology.id);
+    if (nation.currentResearchTechId === technology.id) {
+      nation.currentResearchTechId = undefined;
+      nation.researchProgress = 0;
+    }
+
+    this.eventLog.log(
+      `${nation.name} discovered ${technology.name}.`,
+      [nation.id],
+      this.getCurrentRound(),
+    );
+    this.notifyChanged();
+    return true;
+  }
+
   completeCurrentResearch(nationId: string): Technology | null {
     const nation = this.nationManager.getNation(nationId);
     if (!nation?.currentResearchTechId) return null;

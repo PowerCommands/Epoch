@@ -19,6 +19,9 @@ export interface DiplomacyRelation {
   // the alphabetically-first nation to the second.
   openBordersFromAToB: boolean;
   openBordersFromBToA: boolean;
+  embassyFromAToB: boolean;
+  embassyFromBToA: boolean;
+  tradeRelations: boolean;
 
   trust: number;
   fear: number;
@@ -30,6 +33,8 @@ export interface DiplomacyRelation {
   lastWarDeclarationTurn: number | null;
   lastPeaceProposalTurn: number | null;
   lastOpenBordersChangeTurn: number | null;
+  lastEmbassyChangeTurn: number | null;
+  lastTradeRelationsChangeTurn: number | null;
 }
 
 /**
@@ -44,6 +49,16 @@ export interface PartialDiplomacyRelationInput extends Partial<DiplomacyRelation
   lastWarTurn?: number | null;
   /** @deprecated renamed to lastPeaceProposalTurn. */
   lastPeaceTurn?: number | null;
+}
+
+export interface DiplomacyAgreementValidationContext {
+  haveMet(a: string, b: string): boolean;
+  hasTechnology(nationId: string, techId: string): boolean;
+}
+
+export interface DiplomacyAgreementValidationResult {
+  ok: boolean;
+  reason?: string;
 }
 
 export interface PeaceProposal {
@@ -88,6 +103,9 @@ export function createDefaultRelation(): DiplomacyRelation {
     state: 'PEACE',
     openBordersFromAToB: false,
     openBordersFromBToA: false,
+    embassyFromAToB: false,
+    embassyFromBToA: false,
+    tradeRelations: false,
     trust: DEFAULT_TRUST,
     fear: DEFAULT_FEAR,
     hostility: DEFAULT_HOSTILITY,
@@ -95,6 +113,8 @@ export function createDefaultRelation(): DiplomacyRelation {
     lastWarDeclarationTurn: null,
     lastPeaceProposalTurn: null,
     lastOpenBordersChangeTurn: null,
+    lastEmbassyChangeTurn: null,
+    lastTradeRelationsChangeTurn: null,
   };
 }
 
@@ -111,6 +131,9 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
     state: partial.state ?? base.state,
     openBordersFromAToB: partial.openBordersFromAToB ?? legacyBoth ?? base.openBordersFromAToB,
     openBordersFromBToA: partial.openBordersFromBToA ?? legacyBoth ?? base.openBordersFromBToA,
+    embassyFromAToB: partial.embassyFromAToB ?? base.embassyFromAToB,
+    embassyFromBToA: partial.embassyFromBToA ?? base.embassyFromBToA,
+    tradeRelations: partial.tradeRelations ?? base.tradeRelations,
     trust: partial.trust ?? base.trust,
     fear: partial.fear ?? base.fear,
     hostility: partial.hostility ?? base.hostility,
@@ -121,6 +144,10 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
       partial.lastPeaceProposalTurn ?? partial.lastPeaceTurn ?? base.lastPeaceProposalTurn,
     lastOpenBordersChangeTurn:
       partial.lastOpenBordersChangeTurn ?? base.lastOpenBordersChangeTurn,
+    lastEmbassyChangeTurn:
+      partial.lastEmbassyChangeTurn ?? base.lastEmbassyChangeTurn,
+    lastTradeRelationsChangeTurn:
+      partial.lastTradeRelationsChangeTurn ?? base.lastTradeRelationsChangeTurn,
   };
 }
 
@@ -206,6 +233,9 @@ export class DiplomacyManager {
       // War clears any active border grants in both directions.
       openBordersFromAToB: false,
       openBordersFromBToA: false,
+      embassyFromAToB: false,
+      embassyFromBToA: false,
+      tradeRelations: false,
       // TODO: when TurnManager is unavailable the stamp stays null — future
       // sources (events, AI, replays) should pass an explicit turn instead.
       lastWarDeclarationTurn:
@@ -238,6 +268,7 @@ export class DiplomacyManager {
         // Peace also clears any leftover grants — both sides reset.
         openBordersFromAToB: false,
         openBordersFromBToA: false,
+        tradeRelations: false,
         // TODO: same as declareWar — stamp explicitly when the manager
         // doesn't have access to a TurnManager.
         lastPeaceProposalTurn:
@@ -272,6 +303,98 @@ export class DiplomacyManager {
     }
     this.notifyChanged(fromNationId, toNationId);
     return newGrant;
+  }
+
+  hasEmbassy(fromNationId: string, toNationId: string): boolean {
+    if (fromNationId === toNationId) return true;
+    const relation = this.relations.get(this.pairKey(fromNationId, toNationId))
+      ?? createDefaultRelation();
+    return this.readEmbassyGrant(fromNationId, toNationId, relation);
+  }
+
+  hasMutualEmbassies(nationAId: string, nationBId: string): boolean {
+    return this.hasEmbassy(nationAId, nationBId) && this.hasEmbassy(nationBId, nationAId);
+  }
+
+  canEstablishEmbassy(
+    fromNationId: string,
+    toNationId: string,
+    context: DiplomacyAgreementValidationContext,
+  ): DiplomacyAgreementValidationResult {
+    if (fromNationId === toNationId) return { ok: false, reason: 'Cannot establish an embassy with yourself.' };
+    if (!context.haveMet(fromNationId, toNationId)) return { ok: false, reason: 'You have not met this nation.' };
+    if (!context.hasTechnology(fromNationId, 'writing') || !context.hasTechnology(toNationId, 'writing')) {
+      return { ok: false, reason: 'Requires both nations to know Writing.' };
+    }
+    if (this.getState(fromNationId, toNationId) === 'WAR') return { ok: false, reason: 'Unavailable during war.' };
+    if (this.hasEmbassy(fromNationId, toNationId)) return { ok: false, reason: 'Embassy already established.' };
+    return { ok: true };
+  }
+
+  establishEmbassy(fromNationId: string, toNationId: string): boolean {
+    if (fromNationId === toNationId) return false;
+    const key = this.pairKey(fromNationId, toNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    if (current.state === 'WAR' || this.readEmbassyGrant(fromNationId, toNationId, current)) return false;
+    const next: DiplomacyRelation = { ...current };
+    this.writeEmbassyGrant(fromNationId, toNationId, next, true);
+    next.lastEmbassyChangeTurn =
+      this.turnManager?.getCurrentRound() ?? current.lastEmbassyChangeTurn ?? null;
+    this.relations.set(key, next);
+    this.notifyChanged(fromNationId, toNationId);
+    return true;
+  }
+
+  canEstablishTradeRelations(
+    nationAId: string,
+    nationBId: string,
+    context: DiplomacyAgreementValidationContext,
+  ): DiplomacyAgreementValidationResult {
+    if (nationAId === nationBId) return { ok: false, reason: 'Cannot trade with yourself.' };
+    if (!context.haveMet(nationAId, nationBId)) return { ok: false, reason: 'You have not met this nation.' };
+    if (!context.hasTechnology(nationAId, 'foreign_trade') || !context.hasTechnology(nationBId, 'foreign_trade')) {
+      return { ok: false, reason: 'Requires both nations to know Foreign Trade.' };
+    }
+    if (this.getState(nationAId, nationBId) === 'WAR') return { ok: false, reason: 'Unavailable during war.' };
+    if (!this.hasMutualEmbassies(nationAId, nationBId)) return { ok: false, reason: 'Requires mutual embassies.' };
+    if (this.hasTradeRelations(nationAId, nationBId)) return { ok: false, reason: 'Trade Relations already active.' };
+    return { ok: true };
+  }
+
+  establishTradeRelations(nationAId: string, nationBId: string): boolean {
+    if (nationAId === nationBId) return false;
+    const key = this.pairKey(nationAId, nationBId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    if (current.state === 'WAR' || current.tradeRelations || !this.hasMutualEmbassies(nationAId, nationBId)) return false;
+    const next: DiplomacyRelation = {
+      ...current,
+      tradeRelations: true,
+      lastTradeRelationsChangeTurn:
+        this.turnManager?.getCurrentRound() ?? current.lastTradeRelationsChangeTurn ?? null,
+    };
+    this.relations.set(key, next);
+    this.notifyChanged(nationAId, nationBId);
+    return true;
+  }
+
+  cancelTradeRelations(nationAId: string, nationBId: string): boolean {
+    if (nationAId === nationBId) return false;
+    const key = this.pairKey(nationAId, nationBId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    if (!current.tradeRelations) return false;
+    const next: DiplomacyRelation = {
+      ...current,
+      tradeRelations: false,
+      lastTradeRelationsChangeTurn:
+        this.turnManager?.getCurrentRound() ?? current.lastTradeRelationsChangeTurn ?? null,
+    };
+    this.relations.set(key, next);
+    this.notifyChanged(nationAId, nationBId);
+    return true;
+  }
+
+  hasTradeRelations(nationAId: string, nationBId: string): boolean {
+    return this.getRelation(nationAId, nationBId).tradeRelations;
   }
 
   getPendingProposal(toId: string): PeaceProposal | null {
@@ -312,13 +435,18 @@ export class DiplomacyManager {
         relation.state === defaults.state &&
         relation.openBordersFromAToB === defaults.openBordersFromAToB &&
         relation.openBordersFromBToA === defaults.openBordersFromBToA &&
+        relation.embassyFromAToB === defaults.embassyFromAToB &&
+        relation.embassyFromBToA === defaults.embassyFromBToA &&
+        relation.tradeRelations === defaults.tradeRelations &&
         relation.trust === defaults.trust &&
         relation.fear === defaults.fear &&
         relation.hostility === defaults.hostility &&
         relation.affinity === defaults.affinity &&
         relation.lastWarDeclarationTurn === defaults.lastWarDeclarationTurn &&
         relation.lastPeaceProposalTurn === defaults.lastPeaceProposalTurn &&
-        relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn
+        relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn &&
+        relation.lastEmbassyChangeTurn === defaults.lastEmbassyChangeTurn &&
+        relation.lastTradeRelationsChangeTurn === defaults.lastTradeRelationsChangeTurn
       ) {
         continue;
       }
@@ -385,6 +513,31 @@ export class DiplomacyManager {
       relation.openBordersFromAToB = value;
     } else if (fromId === b && toId === a) {
       relation.openBordersFromBToA = value;
+    }
+  }
+
+  private readEmbassyGrant(
+    fromId: string,
+    toId: string,
+    relation: DiplomacyRelation,
+  ): boolean {
+    const [a, b] = this.sortedPair(fromId, toId);
+    if (fromId === a && toId === b) return relation.embassyFromAToB;
+    if (fromId === b && toId === a) return relation.embassyFromBToA;
+    return false;
+  }
+
+  private writeEmbassyGrant(
+    fromId: string,
+    toId: string,
+    relation: DiplomacyRelation,
+    value: boolean,
+  ): void {
+    const [a, b] = this.sortedPair(fromId, toId);
+    if (fromId === a && toId === b) {
+      relation.embassyFromAToB = value;
+    } else if (fromId === b && toId === a) {
+      relation.embassyFromBToA = value;
     }
   }
 }

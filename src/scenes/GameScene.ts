@@ -8,6 +8,8 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import { TradeDealSystem } from '../systems/TradeDealSystem';
+import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
@@ -300,6 +302,29 @@ export class GameScene extends Phaser.Scene {
       aiMilitaryEvaluationSystem,
       aiMilitaryThreatEvaluationSystem,
     );
+    const tradeDealSystem = new TradeDealSystem(
+      diplomacyManager,
+      () => turnManager.getCurrentRound(),
+      {
+        getGold: (nationId) => nationManager.getResources(nationId).gold,
+        addGold: (nationId, amount) => {
+          resourceSystem.addGold(nationId, amount);
+        },
+      },
+      (nationId) => nationManager.getNation(nationId) !== undefined,
+    );
+    const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
+    tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
+      resourceAccessSystem.canExportResource(sellerNationId, resourceId),
+    );
+    turnManager.on('turnStart', (e) => tradeDealSystem.advanceTurnForNation(e.nation.id));
+    diplomacyManager.onWarDeclared((aggressorId, targetId) => {
+      tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
+    });
+    tradeDealSystem.onChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
     aiDiplomacySystem.onDecision((reason) => {
       const actorName = nationManager.getNation(reason.actorNationId)?.name ?? reason.actorNationId;
       const targetName = nationManager.getNation(reason.targetNationId)?.name ?? reason.targetNationId;
@@ -1055,6 +1080,10 @@ export class GameScene extends Phaser.Scene {
       const targetNation = nationManager.getNation(targetNationId);
       if (!targetNation) return;
       const color = `#${targetNation.color.toString(16).padStart(6, '0')}`;
+      const validationContext = {
+        haveMet: (a: string, b: string): boolean => discoverySystem.hasMet(a, b),
+        hasTechnology: (nationId: string, techId: string): boolean => researchSystem.isResearched(nationId, techId),
+      };
 
       if (action === 'declareWar') {
         showDiplomacyModal({
@@ -1085,7 +1114,27 @@ export class GameScene extends Phaser.Scene {
           onCancel: () => {},
         });
       } else if (action === 'toggleOpenBorders') {
+        if (diplomacyManager.getState(humanNationIdForDiplomacy, targetNationId) === 'WAR') return;
         diplomacyManager.toggleOpenBorders(humanNationIdForDiplomacy, targetNationId);
+        rightPanel?.refreshCurrent();
+      } else if (action === 'establishEmbassy') {
+        if (!diplomacyManager.canEstablishEmbassy(
+          humanNationIdForDiplomacy,
+          targetNationId,
+          validationContext,
+        ).ok) return;
+        diplomacyManager.establishEmbassy(humanNationIdForDiplomacy, targetNationId);
+        rightPanel?.refreshCurrent();
+      } else if (action === 'establishTradeRelations') {
+        if (!diplomacyManager.canEstablishTradeRelations(
+          humanNationIdForDiplomacy,
+          targetNationId,
+          validationContext,
+        ).ok) return;
+        diplomacyManager.establishTradeRelations(humanNationIdForDiplomacy, targetNationId);
+        rightPanel?.refreshCurrent();
+      } else if (action === 'cancelTradeRelations') {
+        diplomacyManager.cancelTradeRelations(humanNationIdForDiplomacy, targetNationId);
         rightPanel?.refreshCurrent();
       }
     };
@@ -1200,6 +1249,8 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setResearchSystem(researchSystem);
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
+    rightPanel.setTradeDealSystem(tradeDealSystem);
+    rightPanel.setResourceAccessSystem(resourceAccessSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
     rightPanel.setBuilderHintProvider((tile) => {
@@ -2178,6 +2229,7 @@ export class GameScene extends Phaser.Scene {
         turnManager,
         gridSystem,
         wonderSystem,
+        tradeDealSystem,
       });
 
       // Rebuild renderers that depend on replaced entities.
@@ -2215,6 +2267,7 @@ export class GameScene extends Phaser.Scene {
             turnManager,
             gridSystem,
             wonderSystem,
+            tradeDealSystem,
           });
           downloadSaveFile(state);
           escapeMenu.close();

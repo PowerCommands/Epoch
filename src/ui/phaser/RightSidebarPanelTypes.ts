@@ -7,6 +7,7 @@ export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'lea
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output' | 'production';
 export type RightSidebarLeaderDetailsTab = 'details' | 'diplomacy';
+export type RightSidebarDiplomacyTab = 'relations' | 'trade' | 'deals';
 
 export interface RightSidebarTextRow {
   kind: 'text';

@@ -1,5 +1,6 @@
 import type { GameSpeedId } from '../data/gameSpeeds';
 import type { AINationalAgendaId } from './aiNationalAgenda';
+import type { TradeDeal } from './tradeDeal';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -114,6 +115,9 @@ export interface SavedDiplomacyEntry {
   openBorders?: boolean;
   openBordersFromAToB?: boolean;
   openBordersFromBToA?: boolean;
+  embassyFromAToB?: boolean;
+  embassyFromBToA?: boolean;
+  tradeRelations?: boolean;
   // New fields are optional so saves written before the diplomatic memory
   // groundwork still load cleanly. Missing values fall back to defaults.
   trust?: number;
@@ -123,6 +127,8 @@ export interface SavedDiplomacyEntry {
   lastWarDeclarationTurn?: number | null;
   lastPeaceProposalTurn?: number | null;
   lastOpenBordersChangeTurn?: number | null;
+  lastEmbassyChangeTurn?: number | null;
+  lastTradeRelationsChangeTurn?: number | null;
   /** @deprecated renamed to lastWarDeclarationTurn. */
   lastWarTurn?: number | null;
   /** @deprecated renamed to lastPeaceProposalTurn. */
@@ -152,4 +158,5 @@ export interface SavedGameState {
   diplomacy: SavedDiplomacyEntry[];
   discovery: SavedDiscoveryEntry[];
   wonders: SavedWonder[];
+  tradeDeals?: TradeDeal[];
 }

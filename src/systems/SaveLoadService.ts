@@ -20,6 +20,7 @@ import type { DiplomacyManager } from './DiplomacyManager';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
+import type { TradeDealSystem } from './TradeDealSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -45,6 +46,7 @@ export interface SaveLoadContext {
   turnManager: TurnManager;
   gridSystem: IGridSystem;
   wonderSystem: WonderSystem;
+  tradeDealSystem?: TradeDealSystem;
 }
 
 /**
@@ -79,6 +81,7 @@ export class SaveLoadService {
       discoverySystem,
       turnManager,
       wonderSystem,
+      tradeDealSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -184,6 +187,9 @@ export class SaveLoadService {
       state: entry.relation.state,
       openBordersFromAToB: entry.relation.openBordersFromAToB,
       openBordersFromBToA: entry.relation.openBordersFromBToA,
+      embassyFromAToB: entry.relation.embassyFromAToB,
+      embassyFromBToA: entry.relation.embassyFromBToA,
+      tradeRelations: entry.relation.tradeRelations,
       trust: entry.relation.trust,
       fear: entry.relation.fear,
       hostility: entry.relation.hostility,
@@ -191,6 +197,8 @@ export class SaveLoadService {
       lastWarDeclarationTurn: entry.relation.lastWarDeclarationTurn,
       lastPeaceProposalTurn: entry.relation.lastPeaceProposalTurn,
       lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
+      lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
+      lastTradeRelationsChangeTurn: entry.relation.lastTradeRelationsChangeTurn,
     }));
 
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
@@ -225,6 +233,7 @@ export class SaveLoadService {
       diplomacy,
       discovery,
       wonders,
+      tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
     };
   }
 
@@ -296,6 +305,7 @@ export class SaveLoadService {
     SaveLoadService.applyCompletedWonderTiles(state.wonders ?? [], context.mapData);
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
+    context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,
@@ -488,6 +498,9 @@ export class SaveLoadService {
         openBorders: entry.openBorders,
         openBordersFromAToB: entry.openBordersFromAToB,
         openBordersFromBToA: entry.openBordersFromBToA,
+        embassyFromAToB: entry.embassyFromAToB,
+        embassyFromBToA: entry.embassyFromBToA,
+        tradeRelations: entry.tradeRelations,
         trust: entry.trust,
         fear: entry.fear,
         hostility: entry.hostility,
@@ -495,6 +508,8 @@ export class SaveLoadService {
         lastWarDeclarationTurn: entry.lastWarDeclarationTurn,
         lastPeaceProposalTurn: entry.lastPeaceProposalTurn,
         lastOpenBordersChangeTurn: entry.lastOpenBordersChangeTurn,
+        lastEmbassyChangeTurn: entry.lastEmbassyChangeTurn,
+        lastTradeRelationsChangeTurn: entry.lastTradeRelationsChangeTurn,
         lastWarTurn: entry.lastWarTurn,
         lastPeaceTurn: entry.lastPeaceTurn,
       });

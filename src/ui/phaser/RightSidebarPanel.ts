@@ -6,6 +6,7 @@ import type {
   RightSidebarButtonRow,
   RightSidebarCityDetailsTab,
   RightSidebarContent,
+  RightSidebarDiplomacyTab,
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
@@ -151,6 +152,7 @@ export class RightSidebarPanel {
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
   private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
+  private diplomacyTab: RightSidebarDiplomacyTab = 'relations';
   private pendingDiplomacyPrimaryNationId: string | null = null;
   private pendingDiplomacySecondaryNationId: string | null = null;
   private shownDiplomacyPrimaryNationId: string | null = null;
@@ -252,6 +254,7 @@ export class RightSidebarPanel {
       if (currentLeaderId !== this.lastDetailsLeaderId) {
         this.lastDetailsLeaderId = currentLeaderId;
         this.leaderDetailsTab = 'details';
+        this.diplomacyTab = 'relations';
         this.pendingDiplomacyPrimaryNationId = this.dataProvider.getCurrentLeaderNationId();
         this.pendingDiplomacySecondaryNationId = null;
         this.shownDiplomacyPrimaryNationId = null;
@@ -436,6 +439,7 @@ export class RightSidebarPanel {
           this.cityDetailsTab,
           this.leaderDetailsTab,
           {
+            diplomacyTab: this.diplomacyTab,
             pendingPrimaryNationId: this.pendingDiplomacyPrimaryNationId,
             pendingSecondaryNationId: this.pendingDiplomacySecondaryNationId,
             shownPrimaryNationId: this.shownDiplomacyPrimaryNationId,
@@ -444,6 +448,7 @@ export class RightSidebarPanel {
             onToggleDropdown: (dropdown) => this.toggleDiplomacyDropdown(dropdown),
             onSelectPrimary: (nationId) => this.selectDiplomacyPrimaryNation(nationId),
             onSelectSecondary: (nationId) => this.selectDiplomacySecondaryNation(nationId),
+            onSelectDiplomacyTab: (tab) => this.selectDiplomacyTab(tab),
             onShowDetails: () => this.showDiplomacyComparisonDetails(),
           },
         );
@@ -524,6 +529,13 @@ export class RightSidebarPanel {
     this.shownDiplomacyPrimaryNationId = this.pendingDiplomacyPrimaryNationId;
     this.shownDiplomacySecondaryNationId = this.pendingDiplomacySecondaryNationId;
     this.openDiplomacyDropdown = null;
+    this.renderActiveContent();
+  }
+
+  private selectDiplomacyTab(tab: RightSidebarDiplomacyTab): void {
+    if (this.diplomacyTab === tab) return;
+    this.diplomacyTab = tab;
+    this.scrollOffset = 0;
     this.renderActiveContent();
   }
 

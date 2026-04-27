@@ -107,7 +107,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     era: 'ancient',
     cost: 55,
     prerequisites: ['pottery'],
-    leadsTo: ['philosophy', 'drama_and_poetry'],
+    leadsTo: ['philosophy', 'drama_and_poetry', 'foreign_trade'],
     unlocks: [{ kind: 'building', id: 'library' }],
     // TODO: unlocks Great Library wonder and open border agreements.
   },
@@ -184,6 +184,15 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     leadsTo: ['theology', 'civil_service'],
     unlocks: [],
     // TODO: unlocks Amphitheater and Writers' Guild when those buildings exist.
+  },
+  {
+    id: 'foreign_trade',
+    name: 'Foreign Trade',
+    era: 'classical',
+    cost: 105,
+    prerequisites: ['writing'],
+    leadsTo: ['currency'],
+    unlocks: [],
   },
   {
     id: 'horseback_riding',

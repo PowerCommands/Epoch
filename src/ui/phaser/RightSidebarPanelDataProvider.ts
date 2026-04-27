@@ -26,6 +26,9 @@ import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
+import type { TradeDealSystem } from '../../systems/TradeDealSystem';
+import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
+import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
@@ -35,6 +38,7 @@ import type {
   RightSidebarCityDetailsTab,
   RightSidebarDetailsState,
   RightSidebarDetailsView,
+  RightSidebarDiplomacyTab,
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarRow,
@@ -59,6 +63,7 @@ interface LeaderboardEntry {
 }
 
 export interface LeaderDiplomacyComparisonSelection {
+  diplomacyTab: RightSidebarDiplomacyTab;
   pendingPrimaryNationId: string | null;
   pendingSecondaryNationId: string | null;
   shownPrimaryNationId: string | null;
@@ -67,6 +72,7 @@ export interface LeaderDiplomacyComparisonSelection {
   onToggleDropdown: (dropdown: 'primary' | 'secondary') => void;
   onSelectPrimary: (nationId: string) => void;
   onSelectSecondary: (nationId: string) => void;
+  onSelectDiplomacyTab: (tab: RightSidebarDiplomacyTab) => void;
   onShowDetails: () => void;
 }
 
@@ -82,6 +88,9 @@ export class RightSidebarPanelDataProvider {
   private researchSystem: ResearchSystem | null = null;
   private cultureSystem: CultureSystem | null = null;
   private wonderSystem: WonderSystem | null = null;
+  private tradeDealSystem: TradeDealSystem | null = null;
+  private resourceAccessSystem: ResourceAccessSystem | null = null;
+  private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
@@ -140,6 +149,14 @@ export class RightSidebarPanelDataProvider {
 
   setWonderSystem(wonderSystem: WonderSystem): void {
     this.wonderSystem = wonderSystem;
+  }
+
+  setTradeDealSystem(tradeDealSystem: TradeDealSystem): void {
+    this.tradeDealSystem = tradeDealSystem;
+  }
+
+  setResourceAccessSystem(resourceAccessSystem: ResourceAccessSystem): void {
+    this.resourceAccessSystem = resourceAccessSystem;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -293,7 +310,9 @@ export class RightSidebarPanelDataProvider {
         content = this.current.unit ? this.getUnitContent(this.current.unit) : this.getEmptyDetailsContent();
         break;
       case 'nation':
-        content = this.current.nationId ? this.getNationContent(this.current.nationId) : this.getEmptyDetailsContent();
+        content = this.current.nationId
+          ? this.getNationContent(this.current.nationId, leaderDiplomacySelection)
+          : this.getEmptyDetailsContent();
         break;
       case 'leader':
         content = this.current.leaderId
@@ -473,7 +492,10 @@ export class RightSidebarPanelDataProvider {
     return { title: 'Details', sections: [{ title: 'Unit', rows }] };
   }
 
-  private getNationContent(nationId: string): RightSidebarContent {
+  private getNationContent(
+    nationId: string,
+    diplomacySelection?: LeaderDiplomacyComparisonSelection,
+  ): RightSidebarContent {
     const nation = this.nationManager.getNation(nationId);
     if (!nation) return { title: 'Details', sections: [{ title: 'Nation', rows: [textRow('Nation not found.', true)] }] };
     const isHuman = nationId === this.humanNationId;
@@ -529,7 +551,7 @@ export class RightSidebarPanelDataProvider {
       },
     ];
     if (!isHuman && this.diplomacyManager && this.humanNationId && this.isNationKnown(nationId)) {
-      sections.push(this.getDiplomacySection(nationId));
+      sections.push(this.getDiplomacySection(nationId, diplomacySelection));
     }
     return { title: 'Details', sections };
   }
@@ -563,7 +585,7 @@ export class RightSidebarPanelDataProvider {
       this.getLeaderUnitsSection(leader.nationId, leader.nationId === this.humanNationId),
     ];
     if (leader.nationId !== this.humanNationId && this.diplomacyManager && this.humanNationId && this.isNationKnown(leader.nationId)) {
-      sections.push(this.getDiplomacySection(leader.nationId));
+      sections.push(this.getDiplomacySection(leader.nationId, diplomacySelection));
     }
     return { title: 'Leader Details', sections };
   }
@@ -671,6 +693,10 @@ export class RightSidebarPanelDataProvider {
         textRow('Open Borders:', true),
         textRow(`${shownPrimaryNation.name} allows ${shownSecondaryNation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(shownPrimaryNation.id, shownSecondaryNation.id))}`),
         textRow(`${shownSecondaryNation.name} allows ${shownPrimaryNation.name}: ${formatYesNo(this.diplomacyManager.isOpenBorderGrantedFrom(shownSecondaryNation.id, shownPrimaryNation.id))}`),
+        textRow('Embassies:', true),
+        textRow(`${shownPrimaryNation.name} has embassy with ${shownSecondaryNation.name}: ${formatYesNo(this.diplomacyManager.hasEmbassy(shownPrimaryNation.id, shownSecondaryNation.id))}`),
+        textRow(`${shownSecondaryNation.name} has embassy with ${shownPrimaryNation.name}: ${formatYesNo(this.diplomacyManager.hasEmbassy(shownSecondaryNation.id, shownPrimaryNation.id))}`),
+        textRow(`Trade Relations: ${formatYesNo(this.diplomacyManager.hasTradeRelations(shownPrimaryNation.id, shownSecondaryNation.id))}`),
         textRow('Military:', true),
         textRow(`${shownPrimaryNation.name} compared to ${shownSecondaryNation.name}: ${this.militaryEvaluationSystem?.compareMilitaryStrength(shownPrimaryNation.id, shownSecondaryNation.id) ?? 'unavailable'}`),
         textRow('Threat:', true),
@@ -679,6 +705,8 @@ export class RightSidebarPanelDataProvider {
         textRow(`Last War Turn: ${formatTurn(relation.lastWarDeclarationTurn)}`),
         textRow(`Last Peace Turn: ${formatTurn(relation.lastPeaceProposalTurn)}`),
         textRow(`Last Open Borders Change Turn: ${formatTurn(relation.lastOpenBordersChangeTurn)}`),
+        textRow(`Last Embassy Change Turn: ${formatTurn(relation.lastEmbassyChangeTurn)}`),
+        textRow(`Last Trade Relations Change Turn: ${formatTurn(relation.lastTradeRelationsChangeTurn)}`),
       ],
     });
 
@@ -875,31 +903,229 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
-  private getDiplomacySection(nationId: string): RightSidebarSection {
+  private getDiplomacySection(
+    nationId: string,
+    diplomacySelection?: LeaderDiplomacyComparisonSelection,
+  ): RightSidebarSection {
     const dm = this.diplomacyManager!;
     const humanId = this.humanNationId!;
     const relation = dm.getRelation(humanId, nationId);
     const nation = this.nationManager.getNation(nationId);
+    const activeTab = diplomacySelection?.diplomacyTab ?? 'relations';
+    const validationContext = {
+      haveMet: (a: string, b: string): boolean => this.discoverySystem?.hasMet(a, b) ?? true,
+      hasTechnology: (targetNationId: string, techId: string): boolean =>
+        this.researchSystem?.isResearched(targetNationId, techId) ?? false,
+    };
     // Open borders are now directional: this row reflects whether the human
     // has granted the other nation passage. The toggle below flips that grant.
     const humanGrantsBorders = dm.isOpenBorderGrantedFrom(humanId, nationId);
+    const hasHumanEmbassy = dm.hasEmbassy(humanId, nationId);
+    const hasTheirEmbassy = dm.hasEmbassy(nationId, humanId);
+    const hasTradeRelations = dm.hasTradeRelations(humanId, nationId);
+    const embassyValidation = dm.canEstablishEmbassy(humanId, nationId, validationContext);
+    const tradeValidation = dm.canEstablishTradeRelations(humanId, nationId, validationContext);
+    const openBordersUnavailableReason = relation.state === 'WAR' ? 'Unavailable during war.' : undefined;
     const rows: RightSidebarRow[] = [
-      textRow(`Status: ${relation.state === 'WAR' ? 'At War' : 'At Peace'}`),
+      ...this.getDiplomacyTabRows(activeTab, diplomacySelection),
     ];
-    if (relation.state === 'PEACE') rows.push(textRow(`Borders: ${humanGrantsBorders ? 'Open' : 'Closed'}`));
+
+    if (activeTab === 'trade') {
+      if (relation.state === 'WAR') {
+        rows.push(textRow('Unavailable during war.', true));
+        return { title: 'Diplomacy', rows };
+      }
+      if (!hasTradeRelations) {
+        rows.push(textRow('Trade requires active Trade Relations.', true));
+        return { title: 'Diplomacy', rows };
+      }
+      rows.push(...this.getTradeTabRows(nationId));
+      return { title: 'Diplomacy', rows };
+    }
+
+    if (activeTab === 'deals') {
+      rows.push(...this.getDealsTabRows());
+      return { title: 'Diplomacy', rows };
+    }
+
+    rows.push(textRow(`Status: ${relation.state}`));
+    rows.push(textRow(`Open Borders: ${humanGrantsBorders ? 'Open' : 'Closed'}`));
+    rows.push(disabledReasonButtonRow(
+      humanGrantsBorders ? 'Cancel Open Borders' : 'Open Borders',
+      openBordersUnavailableReason,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'toggleOpenBorders', targetNationId: nationId },
+        }));
+      },
+      nation?.color,
+    ));
+    if (openBordersUnavailableReason) rows.push(textRow(openBordersUnavailableReason, true));
+    rows.push(textRow(`Your Embassy: ${hasHumanEmbassy ? 'Established' : 'Not established'}`));
+    rows.push(textRow(`Their Embassy: ${hasTheirEmbassy ? 'Established' : 'Not established'}`));
+    rows.push(disabledReasonButtonRow(
+      hasHumanEmbassy ? 'Embassy Established' : 'Establish Embassy',
+      hasHumanEmbassy ? 'Embassy already established.' : embassyValidation.reason,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'establishEmbassy', targetNationId: nationId },
+        }));
+      },
+      nation?.color,
+    ));
+    if (!hasHumanEmbassy && embassyValidation.reason) rows.push(textRow(embassyValidation.reason, true));
+    rows.push(textRow(`Trade Relations: ${hasTradeRelations ? 'Active' : 'Inactive'}`));
+    rows.push(disabledReasonButtonRow(
+      hasTradeRelations ? 'Cancel Trade Relations' : 'Establish Trade Relations',
+      hasTradeRelations ? undefined : tradeValidation.reason,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: {
+            action: hasTradeRelations ? 'cancelTradeRelations' : 'establishTradeRelations',
+            targetNationId: nationId,
+          },
+        }));
+      },
+      hasTradeRelations ? 0xb86767 : nation?.color,
+    ));
+    if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
     rows.push(buttonRow(relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace', () => {
       document.dispatchEvent(new CustomEvent('diplomacyAction', {
         detail: { action: relation.state === 'PEACE' ? 'declareWar' : 'proposePeace', targetNationId: nationId },
       }));
     }, relation.state === 'PEACE' ? 0xb86767 : nation?.color));
-    if (relation.state === 'PEACE') {
-      rows.push(buttonRow(humanGrantsBorders ? 'Cancel Open Borders' : 'Open Borders', () => {
-        document.dispatchEvent(new CustomEvent('diplomacyAction', {
-          detail: { action: 'toggleOpenBorders', targetNationId: nationId },
-        }));
-      }, nation?.color));
-    }
     return { title: 'Diplomacy', rows };
+  }
+
+  private getDiplomacyTabRows(
+    activeTab: RightSidebarDiplomacyTab,
+    diplomacySelection?: LeaderDiplomacyComparisonSelection,
+  ): RightSidebarRow[] {
+    const tabs: Array<{ id: RightSidebarDiplomacyTab; label: string }> = [
+      { id: 'relations', label: 'Relations' },
+      { id: 'trade', label: 'Trade' },
+      { id: 'deals', label: 'Deals' },
+    ];
+    return tabs.map((tab) => ({
+      kind: 'button',
+      text: tab.label,
+      selected: tab.id === activeTab,
+      accentColor: 0xa7f3d0,
+      onClick: () => diplomacySelection?.onSelectDiplomacyTab(tab.id),
+    }));
+  }
+
+  private getTradeTabRows(otherNationId: string): RightSidebarRow[] {
+    const rows: RightSidebarRow[] = [];
+    if (!this.tradeDealSystem || !this.resourceAccessSystem || !this.humanNationId) {
+      rows.push(textRow('Trade system unavailable.', true));
+      return rows;
+    }
+    const playerId = this.humanNationId;
+    const otherNation = this.nationManager.getNation(otherNationId);
+    const otherOwned = this.resourceAccessSystem.getOwnedResources(otherNationId);
+    const playerOwned = this.resourceAccessSystem.getOwnedResources(playerId);
+    const existingDeals = this.tradeDealSystem.getDealsBetween(playerId, otherNationId);
+    const importedFromSeller = new Set(
+      existingDeals
+        .filter((deal) => deal.sellerNationId === otherNationId && deal.buyerNationId === playerId)
+        .map((deal) => deal.resourceId),
+    );
+
+    rows.push(textRow(`${otherNation?.name ?? otherNationId} can sell to you`, false, true));
+    if (otherOwned.length === 0) {
+      rows.push(textRow('No resources to sell.', true));
+    } else {
+      for (const resourceId of otherOwned) {
+        rows.push(textRow(this.formatResourceName(resourceId)));
+        const alreadyImporting = importedFromSeller.has(resourceId);
+        rows.push({
+          kind: 'button',
+          text: alreadyImporting ? 'Already importing' : 'Buy (10 turns) — 5 gold/turn',
+          accentColor: otherNation?.color,
+          disabled: alreadyImporting,
+          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 10, 5),
+        });
+        rows.push({
+          kind: 'button',
+          text: alreadyImporting ? 'Already importing' : 'Buy (20 turns) — 4 gold/turn',
+          accentColor: otherNation?.color,
+          disabled: alreadyImporting,
+          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 20, 4),
+        });
+      }
+    }
+
+    rows.push({ kind: 'separator' });
+    rows.push(textRow('You can sell to them', false, true));
+    if (playerOwned.length === 0) {
+      rows.push(textRow('You have no resources to offer.', true));
+    } else {
+      for (const resourceId of playerOwned) {
+        rows.push(textRow(this.formatResourceName(resourceId)));
+      }
+    }
+
+    const message = this.tradeMessages.get(otherNationId);
+    if (message) {
+      rows.push(textRow(message, true));
+    }
+    return rows;
+  }
+
+  private getDealsTabRows(): RightSidebarRow[] {
+    const rows: RightSidebarRow[] = [];
+    if (!this.tradeDealSystem || !this.humanNationId) {
+      rows.push(textRow('Trade system unavailable.', true));
+      return rows;
+    }
+    const deals = this.tradeDealSystem.getDealsForNation(this.humanNationId);
+    if (deals.length === 0) {
+      rows.push(textRow('No active deals.', true));
+      return rows;
+    }
+    for (const deal of deals) {
+      rows.push(textRow(this.formatDealRow(deal)));
+    }
+    return rows;
+  }
+
+  private createTradeDealRequest(
+    sellerNationId: string,
+    resourceId: string,
+    turns: number,
+    goldPerTurn: number,
+  ): void {
+    if (!this.tradeDealSystem || !this.humanNationId) return;
+    const result = this.tradeDealSystem.createDeal({
+      sellerNationId,
+      buyerNationId: this.humanNationId,
+      resourceId,
+      turns,
+      goldPerTurn,
+    });
+    if (result.ok) {
+      this.tradeMessages.delete(sellerNationId);
+      return;
+    }
+    this.tradeMessages.set(sellerNationId, result.reason ?? 'Trade deal failed.');
+    this.requestRefresh();
+  }
+
+  private formatResourceName(resourceId: string): string {
+    return getNaturalResourceById(resourceId)?.name ?? resourceId;
+  }
+
+  private formatDealRow(deal: TradeDeal): string {
+    const resourceName = this.formatResourceName(deal.resourceId);
+    const sellerSide = deal.sellerNationId === this.humanNationId
+      ? 'You'
+      : this.nationManager.getNation(deal.sellerNationId)?.name ?? deal.sellerNationId;
+    const buyerSide = deal.buyerNationId === this.humanNationId
+      ? 'You'
+      : this.nationManager.getNation(deal.buyerNationId)?.name ?? deal.buyerNationId;
+    const turnsWord = deal.remainingTurns === 1 ? 'turn' : 'turns';
+    return `${resourceName}: ${sellerSide} → ${buyerSide} | ${deal.goldPerTurn} gold/turn | ${deal.remainingTurns} ${turnsWord} left`;
   }
 
   private getLeaderboardSection(title: string, entries: LeaderboardEntry[]): RightSidebarSection {
@@ -989,6 +1215,21 @@ function textRow(text: string, muted = false, large = false, color?: number, spr
 
 function buttonRow(text: string, onClick: () => void, accentColor?: number, trailingIcon?: string, spritePath?: string): RightSidebarRow {
   return { kind: 'button', text, onClick, accentColor, trailingIcon, spritePath };
+}
+
+function disabledReasonButtonRow(
+  text: string,
+  disabledReason: string | undefined,
+  onClick: () => void,
+  accentColor?: number,
+): RightSidebarRow {
+  return {
+    kind: 'button',
+    text,
+    disabled: disabledReason !== undefined,
+    accentColor,
+    onClick,
+  };
 }
 
 function dropdownHeaderRow(text: string, selected: boolean, onClick: () => void): RightSidebarRow {

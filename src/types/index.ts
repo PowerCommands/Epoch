@@ -11,6 +11,7 @@ export type { UnitConfig } from '../entities/Unit';
 export type { UnitType } from '../entities/UnitType';
 export * from './events';
 export * from './resources';
+export * from './tradeDeal';
 export * from './producible';
 export * from './scenario';
 export * from './aiStrategy';
