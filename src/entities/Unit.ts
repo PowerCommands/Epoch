@@ -9,6 +9,7 @@ export interface UnitConfig {
   unitType: UnitType;
   maxMovementPoints?: number;
   movementPoints?: number;
+  improvementCharges?: number;
 }
 
 /**
@@ -29,6 +30,7 @@ export class Unit {
   health: number;
   transportId?: string;
   isSleeping: boolean;
+  improvementCharges?: number;
 
   constructor(config: UnitConfig) {
     this.id = config.id;
@@ -41,6 +43,7 @@ export class Unit {
     this.movementPoints = config.movementPoints ?? this.maxMovementPoints;
     this.health = config.unitType.baseHealth;
     this.isSleeping = false;
+    this.improvementCharges = config.improvementCharges ?? config.unitType.maxImprovementCharges;
   }
 
   resetMovement(): void {

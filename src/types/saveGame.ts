@@ -82,6 +82,7 @@ export interface SavedUnit {
   tileY: number;
   health: number;
   movementPoints: number;
+  improvementCharges?: number;
   transportId?: string;
   isSleeping: boolean;
 }
@@ -92,6 +93,14 @@ export interface SavedTile {
   ownerId?: string;
   resourceId?: string;
   improvementId?: string;
+  improvementConstruction?: {
+    improvementId: string;
+    cityId: string;
+    unitId: string;
+    ownerId: string;
+    remainingTurns: number;
+    totalTurns: number;
+  };
   buildingId?: string;
   buildingConstruction?: {
     buildingId: string;

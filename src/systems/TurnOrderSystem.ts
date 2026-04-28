@@ -3,6 +3,7 @@ import type { TurnManager } from './TurnManager';
 import type { UnitManager, UnitChangedEvent } from './UnitManager';
 
 type ActiveUnitListener = (unit: Unit | null) => void;
+type UnitTurnOrderBlocker = (unit: Unit) => boolean;
 
 /**
  * Maintains a persistent turn order of the human nation's units.
@@ -24,6 +25,7 @@ export class TurnOrderSystem {
     private readonly unitManager: UnitManager,
     private readonly turnManager: TurnManager,
     private readonly humanNationId: string | undefined,
+    private readonly isUnitBlocked: UnitTurnOrderBlocker = () => false,
   ) {
     if (!humanNationId) return;
 
@@ -160,6 +162,7 @@ export class TurnOrderSystem {
       if (unit.ownerId !== this.humanNationId) continue;
       if (!unit.isAlive()) continue;
       if (unit.isSleeping) continue;
+      if (this.isUnitBlocked(unit)) continue;
       return id;
     }
     return null;

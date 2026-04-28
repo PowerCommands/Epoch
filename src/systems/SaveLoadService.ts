@@ -147,6 +147,7 @@ export class SaveLoadService {
       tileY: unit.tileY,
       health: unit.health,
       movementPoints: unit.movementPoints,
+      improvementCharges: unit.improvementCharges,
       transportId: unit.transportId,
       isSleeping: unit.isSleeping,
     }));
@@ -158,6 +159,7 @@ export class SaveLoadService {
           tile.ownerId === undefined
           && tile.resourceId === undefined
           && tile.improvementId === undefined
+          && tile.improvementConstruction === undefined
           && tile.buildingId === undefined
           && tile.buildingConstruction === undefined
           && tile.wonderId === undefined
@@ -169,6 +171,9 @@ export class SaveLoadService {
           ownerId: tile.ownerId,
           resourceId: tile.resourceId,
           improvementId: tile.improvementId,
+          improvementConstruction: tile.improvementConstruction
+            ? { ...tile.improvementConstruction }
+            : undefined,
           buildingId: tile.buildingId,
           buildingConstruction: tile.buildingConstruction
             ? { ...tile.buildingConstruction }
@@ -333,6 +338,7 @@ export class SaveLoadService {
         tile.ownerId = undefined;
         tile.resourceId = undefined;
         tile.improvementId = undefined;
+        tile.improvementConstruction = undefined;
         tile.buildingId = undefined;
         tile.buildingConstruction = undefined;
         tile.wonderId = undefined;
@@ -345,6 +351,9 @@ export class SaveLoadService {
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
       if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
+      if (saved.improvementConstruction !== undefined) {
+        tile.improvementConstruction = { ...saved.improvementConstruction };
+      }
       if (saved.buildingId !== undefined) tile.buildingId = saved.buildingId;
       if (saved.buildingConstruction !== undefined) {
         tile.buildingConstruction = { ...saved.buildingConstruction };
@@ -478,6 +487,7 @@ export class SaveLoadService {
         unitType: type,
         health: saved.health,
         movementPoints: saved.movementPoints,
+        improvementCharges: saved.improvementCharges,
         transportId: saved.transportId,
         isSleeping: saved.isSleeping,
       });

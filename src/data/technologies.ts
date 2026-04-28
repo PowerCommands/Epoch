@@ -52,8 +52,8 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 35,
     prerequisites: [],
     leadsTo: ['trapping', 'the_wheel'],
-    unlocks: [{ kind: 'unit', id: 'caravan' }],
-    // TODO: reveals Horses, unlocks Pasture improvement.
+    unlocks: [{ kind: 'unit', id: 'caravan' }, { kind: 'improvement', id: 'pasture' }],
+    // TODO: reveals Horses.
   },
   {
     id: 'archery',
@@ -87,9 +87,9 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
       { kind: 'unit', id: 'fishing_boat' },
       { kind: 'unit', id: 'trireme' },
       { kind: 'unit', id: 'cargo_ship' },
+      { kind: 'improvement', id: 'fishing_boats' },
       { kind: 'wonder', id: 'great_lighthouse' },
     ],
-    // TODO: unlocks Fishing Boat improvement.
   },
   {
     id: 'calendar',
@@ -511,8 +511,8 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 2350,
     prerequisites: ['archaeology', 'scientific_theory'],
     leadsTo: ['refrigeration'],
-    unlocks: [{ kind: 'building', id: 'hospital' }],
-    // TODO: reveals Oil and unlocks Oil Well improvement.
+    unlocks: [{ kind: 'building', id: 'hospital' }, { kind: 'improvement', id: 'oil_well' }, { kind: 'improvement', id: 'offshore_platform' }],
+    // TODO: reveals Oil.
   },
   {
     id: 'steam_power',

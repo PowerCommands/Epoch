@@ -326,6 +326,7 @@ export class CityView {
       `<div><strong>Terrain</strong> ${breakdown.terrainType}</div>`,
       `<div><strong>Resource</strong> ${breakdown.resourceName ?? 'None'}</div>`,
       `<div><strong>Improvement</strong> ${breakdown.improvementName ?? 'None'}</div>`,
+      `<div><strong>Improvement Work</strong> ${formatImprovementConstruction(breakdown)}</div>`,
       `<div><strong>Building</strong> ${breakdown.buildingName ?? 'None'}</div>`,
       `<div><strong>Construction</strong> ${breakdown.buildingConstructionName ?? 'None'}</div>`,
       `<div><strong>Status</strong> ${breakdown.notes.length > 0 ? breakdown.notes.join(', ') : 'None'}</div>`,
@@ -668,6 +669,12 @@ function formatResourceYieldBonus(yieldBonus: {
     .map((part) => `${part.value > 0 ? '+' : ''}${part.value} ${part.label}`);
 
   return parts.length > 0 ? parts.join(', ') : '+0';
+}
+
+function formatImprovementConstruction(breakdown: CityViewTileBreakdown): string {
+  if (!breakdown.improvementConstructionName) return 'None';
+  const remaining = breakdown.improvementConstructionRemainingTurns ?? 0;
+  return `${breakdown.improvementConstructionName}: ${remaining} turns remaining`;
 }
 
 function clamp(value: number, min: number, max: number): number {

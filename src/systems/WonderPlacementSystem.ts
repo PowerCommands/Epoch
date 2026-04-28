@@ -156,6 +156,7 @@ export class WonderPlacementSystem {
     if (tile.ownerId !== city.ownerId) return false;
     if (!ownedSet.has(this.getCoordKey(tile.x, tile.y))) return false;
     if (tile.buildingId !== undefined || tile.buildingConstruction !== undefined) return false;
+    if (tile.improvementConstruction !== undefined) return false;
     if (tile.wonderId !== undefined || tile.wonderConstruction !== undefined) return false;
 
     const placement = wonder.placement;

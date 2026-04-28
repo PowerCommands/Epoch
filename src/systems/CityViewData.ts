@@ -17,6 +17,9 @@ export interface CityViewTileBreakdown {
   terrainType: string;
   improvementId?: string;
   improvementName?: string;
+  improvementConstructionId?: string;
+  improvementConstructionName?: string;
+  improvementConstructionRemainingTurns?: number;
   resourceId?: string;
   resourceName?: string;
   resourceYieldBonus?: NaturalResourceYield;
@@ -78,6 +81,7 @@ export function getCityViewTileBreakdown(
   if (isWorked) notes.push('Currently worked');
   if (isClaimable) notes.push('Claimable now');
   if (isNextExpansion) notes.push('Planned next expansion');
+  if (tile.improvementConstruction) notes.push('Improvement under construction');
   if (tile.buildingConstruction) notes.push('Building under construction');
   if (tile.buildingId) notes.push('Finished building');
   if (tile.resourceId) notes.push('Natural resource');
@@ -93,6 +97,11 @@ export function getCityViewTileBreakdown(
     terrainType: tile.type,
     improvementId: tile.improvementId,
     improvementName: tile.improvementId ? getImprovementById(tile.improvementId)?.name : undefined,
+    improvementConstructionId: tile.improvementConstruction?.improvementId,
+    improvementConstructionName: tile.improvementConstruction?.improvementId
+      ? getImprovementById(tile.improvementConstruction.improvementId)?.name
+      : undefined,
+    improvementConstructionRemainingTurns: tile.improvementConstruction?.remainingTurns,
     resourceId: tile.resourceId,
     resourceName: resource?.name,
     resourceYieldBonus: resource?.yieldBonus,

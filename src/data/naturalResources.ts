@@ -47,6 +47,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ food: 1 }),
     iconKey: iconKey('cattle'),
     weight: 9,
+    improvementId: 'pasture',
   },
   {
     id: 'sheep',
@@ -56,6 +57,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ food: 1 }),
     iconKey: iconKey('sheep'),
     weight: 9,
+    improvementId: 'pasture',
   },
   {
     id: 'deer',
@@ -65,6 +67,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('deer'),
     weight: 8,
+    improvementId: 'lumber_mill',
   },
   {
     id: 'fish',
@@ -74,6 +77,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ food: 1 }),
     iconKey: iconKey('fish'),
     weight: 16,
+    improvementId: 'fishing_boats',
   },
   {
     id: 'crabs',
@@ -83,6 +87,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ gold: 2 }),
     iconKey: iconKey('crabs'),
     weight: 8,
+    improvementId: 'fishing_boats',
   },
   {
     id: 'copper',
@@ -92,6 +97,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ gold: 2 }),
     iconKey: iconKey('copper'),
     weight: 7,
+    improvementId: 'mine',
   },
   {
     id: 'bananas',
@@ -111,6 +117,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('stone'),
     weight: 9,
+    improvementId: 'mine',
   },
   {
     id: 'wine',
@@ -130,6 +137,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ gold: 3 }),
     iconKey: iconKey('silver'),
     weight: 4,
+    improvementId: 'mine',
   },
   {
     id: 'gems',
@@ -139,6 +147,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ gold: 3 }),
     iconKey: iconKey('gems'),
     weight: 4,
+    improvementId: 'mine',
   },
   {
     id: 'pearls',
@@ -148,6 +157,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ gold: 1, culture: 1 }),
     iconKey: iconKey('pearls'),
     weight: 4,
+    improvementId: 'fishing_boats',
   },
   {
     id: 'whales',
@@ -157,6 +167,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1, gold: 1 }),
     iconKey: iconKey('whales'),
     weight: 2,
+    improvementId: 'fishing_boats',
   },
   {
     id: 'spices',
@@ -176,6 +187,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ culture: 1, gold: 2 }),
     iconKey: iconKey('silk'),
     weight: 4,
+    improvementId: 'plantation',
   },
   {
     id: 'ivory',
@@ -185,6 +197,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 2, gold: 2 }),
     iconKey: iconKey('ivory'),
     weight: 4,
+    improvementId: 'pasture',
   },
   {
     id: 'horses',
@@ -194,6 +207,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('horses'),
     weight: 7,
+    improvementId: 'pasture',
     revealTechId: 'animal_husbandry',
     requiredTechId: 'animal_husbandry',
   },
@@ -205,6 +219,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('iron'),
     weight: 7,
+    improvementId: 'mine',
     revealTechId: 'iron_working',
     requiredTechId: 'iron_working',
   },
@@ -216,6 +231,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('niter'),
     weight: 5,
+    improvementId: 'mine',
     revealTechId: 'gunpowder',
     requiredTechId: 'gunpowder',
   },
@@ -227,6 +243,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 3 }),
     iconKey: iconKey('coal'),
     weight: 5,
+    improvementId: 'mine',
     revealTechId: 'industrialization',
     requiredTechId: 'industrialization',
   },
@@ -238,6 +255,11 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 5 }),
     iconKey: iconKey('oil'),
     weight: 3,
+    improvementId: 'oil_well',
+    improvementIdByTileType: {
+      [TileType.Coast]: 'offshore_platform',
+      [TileType.Ocean]: 'offshore_platform',
+    },
     revealTechId: 'biology',
     requiredTechId: 'biology',
   },
@@ -249,6 +271,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ science: 1, production: 2 }),
     iconKey: iconKey('aluminum'),
     weight: 3,
+    improvementId: 'mine',
     revealTechId: 'electricity',
     requiredTechId: 'electricity',
   },
@@ -260,6 +283,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 10, science: 1 }),
     iconKey: iconKey('uranium'),
     weight: 2,
+    improvementId: 'mine',
     revealTechId: 'atomic_theory',
     requiredTechId: 'atomic_theory',
   },

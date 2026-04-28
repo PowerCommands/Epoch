@@ -13,6 +13,7 @@ interface UnitDefinitionInput {
   category: UnitCategory;
   canFound?: boolean;
   canBuildImprovements?: boolean;
+  maxImprovementCharges?: number;
   isNaval?: boolean;
   requiredResource?: {
     readonly resourceId: string;
@@ -34,6 +35,7 @@ function unit(input: UnitDefinitionInput): UnitType {
     range: input.range,
     canFound: input.canFound,
     canBuildImprovements: input.canBuildImprovements,
+    maxImprovementCharges: input.maxImprovementCharges,
     isNaval: input.isNaval,
     requiredResource: input.requiredResource,
   };
@@ -44,7 +46,7 @@ export const SCOUT = unit({ id: 'scout', name: 'Scout', era: 'ancient', cost: 25
 export const ARCHER = unit({ id: 'archer', name: 'Archer', era: 'ancient', cost: 40, combatStrength: 5, rangedStrength: 7, range: 2, movement: 2, category: 'ranged' });
 export const SPEARMAN = unit({ id: 'spearman', name: 'Spearman', era: 'ancient', cost: 56, combatStrength: 11, movement: 2, category: 'melee' });
 export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer', era: 'ancient', cost: 56, combatStrength: 6, rangedStrength: 10, range: 2, movement: 4, category: 'mounted' });
-export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
+export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 1, isNaval: true });
 export const TRIREME = unit({ id: 'trireme', name: 'Trireme', era: 'ancient', cost: 45, combatStrength: 10, movement: 4, category: 'naval_melee', isNaval: true });
 export const CARAVAN = unit({ id: 'caravan', name: 'Caravan', era: 'ancient', cost: 75, combatStrength: 0, movement: 1, category: 'civilian' });
 export const CARGO_SHIP = unit({ id: 'cargo_ship', name: 'Cargo Ship', era: 'ancient', cost: 100, combatStrength: 0, movement: 1, category: 'civilian', isNaval: true });
@@ -109,7 +111,7 @@ export const XCOM_SQUAD = unit({ id: 'xcom_squad', name: 'XCOM Squad', era: 'inf
 export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant Death Robot', era: 'information', cost: 425, combatStrength: 150, movement: 5, category: 'mounted' });
 export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 80, rangedStrength: 100, range: 3, movement: 7, category: 'naval_ranged', isNaval: true });
 
-export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true });
+export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2 });
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
 
 export const FISHING_BOAT = unit({ id: 'fishing_boat', name: 'Fishing Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });

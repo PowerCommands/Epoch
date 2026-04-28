@@ -64,6 +64,7 @@ export class UnitManager {
     tileX: number;
     tileY: number;
     movementPoints?: number;
+    improvementCharges?: number;
   }): Unit {
     const unit = new Unit({
       id: this.createProducedUnitId(config.type.id, config.ownerId),
@@ -74,6 +75,7 @@ export class UnitManager {
       unitType: config.type,
       maxMovementPoints: this.getEffectiveMovementPoints(config.type),
       movementPoints: config.movementPoints,
+      improvementCharges: config.improvementCharges,
     });
 
     this.units.set(unit.id, unit);
@@ -307,6 +309,7 @@ export class UnitManager {
     unitType: UnitType;
     health: number;
     movementPoints: number;
+    improvementCharges?: number;
     transportId?: string;
     isSleeping: boolean;
   }): Unit {
@@ -319,6 +322,7 @@ export class UnitManager {
       unitType: config.unitType,
       maxMovementPoints: this.getEffectiveMovementPoints(config.unitType),
       movementPoints: config.movementPoints,
+      improvementCharges: config.improvementCharges,
     });
     unit.health = config.health;
     unit.transportId = config.transportId;

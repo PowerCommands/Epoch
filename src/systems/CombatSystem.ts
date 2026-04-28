@@ -56,6 +56,7 @@ type CombatListener = (e: CombatEvent) => void;
 type CityCombatListener = (e: CityCombatEvent) => void;
 type CombatRejectedListener = (e: CombatRejectedEvent) => void;
 type WarRequiredListener = (e: WarRequiredEvent) => void;
+type UnitCombatBlocker = (unit: Unit) => boolean;
 
 /**
  * CombatSystem hanterar strid mellan enheter och mot städer.
@@ -83,6 +84,7 @@ export class CombatSystem {
     mapData: MapData,
     diplomacyManager: DiplomacyManager | undefined,
     private readonly gridSystem: IGridSystem,
+    private readonly isUnitCombatBlocked: UnitCombatBlocker = () => false,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -118,6 +120,7 @@ export class CombatSystem {
     if (this.turnManager.getCurrentNation().id !== attacker.ownerId) {
       return false;
     }
+    if (this.isUnitCombatBlocked(attacker)) return false;
 
     // 2. Must have movement points
     if (attacker.movementPoints <= 0) {

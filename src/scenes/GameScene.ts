@@ -8,6 +8,7 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
@@ -48,6 +49,7 @@ import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSy
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
+import { EraSystem } from '../systems/EraSystem';
 import { AISystem } from '../systems/AISystem';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
@@ -438,6 +440,8 @@ export class GameScene extends Phaser.Scene {
         ).science, 0),
       gameSpeed,
     );
+    const eraSystem = new EraSystem(nationManager);
+    const improvementConstructionSystem = new ImprovementConstructionSystem(mapData, unitManager, cityManager);
     const isNaturalResourceVisibleToHuman = (resourceId: string): boolean => {
       const resource = getNaturalResourceById(resourceId);
       if (!resource) return false;
@@ -480,6 +484,7 @@ export class GameScene extends Phaser.Scene {
       mapData,
       diplomacyManager,
       gridSystem,
+      (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
     );
     // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
@@ -489,6 +494,7 @@ export class GameScene extends Phaser.Scene {
       mapData,
       gridSystem,
       researchSystem,
+      eraSystem,
     );
     let foundCitySystem: FoundCitySystem;
     let movementSystem: MovementSystem;
@@ -517,20 +523,15 @@ export class GameScene extends Phaser.Scene {
 
       const result = builderSystem.build(unit, tile, {
         consumeMovement: true,
-        requireMovement: false,
+        requireMovement: true,
       });
       if (!result) return false;
 
-      resourceSystem.recalculateForNation(result.unit.ownerId);
-      const nationName = nationManager.getNation(result.unit.ownerId)?.name ?? result.unit.ownerId;
-      eventLog.log(
-        `${nationName} built ${result.improvement.name} near ${result.city.name}.`,
-        [result.unit.ownerId],
-        turnManager.getCurrentRound(),
-      );
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
       rightPanel?.showTile(result.tile);
+      rightPanel?.requestRefresh();
+      hudLayer?.refresh();
       return true;
     };
     const tryActionAttack = (unit: Unit, targetTile: { x: number; y: number }): boolean => {
@@ -575,6 +576,7 @@ export class GameScene extends Phaser.Scene {
 
       const unit = currentSelection.unit;
       if (unit.ownerId !== humanNationId) return false;
+      if (improvementConstructionSystem.isUnitBusy(unit.id)) return true;
 
       const mode = unitActionToolbox.getMode();
       if (unit.isSleeping) unit.isSleeping = false;
@@ -626,13 +628,50 @@ export class GameScene extends Phaser.Scene {
       selectionManager,
       gridSystem,
       diplomacyManager,
+      (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
     );
 
     // Turn order: built AFTER MovementSystem so MovementSystem's turnStart
     // reset fires before TurnOrderSystem auto-selects the active unit.
     // Otherwise the freshly-selected unit would still have 0 MP and the
     // movement-preview matrix would stay hidden until the first move.
-    const turnOrderSystem = new TurnOrderSystem(unitManager, turnManager, humanNationId);
+    const turnOrderSystem = new TurnOrderSystem(
+      unitManager,
+      turnManager,
+      humanNationId,
+      (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
+    );
+    turnManager.on('turnStart', (e) => improvementConstructionSystem.handleTurnStart(e));
+    improvementConstructionSystem.onCompleted((event) => {
+      resourceSystem.recalculateForNation(event.construction.ownerId);
+      if (event.unit.improvementCharges !== undefined) {
+        event.unit.improvementCharges = Math.max(0, event.unit.improvementCharges - 1);
+      }
+      const nationName = nationManager.getNation(event.construction.ownerId)?.name ?? event.construction.ownerId;
+      eventLog.log(
+        `${nationName} built ${event.improvement.name} near ${event.city.name}.`,
+        [event.construction.ownerId],
+        turnManager.getCurrentRound(),
+      );
+      if (event.unit.improvementCharges === 0) {
+        unitManager.removeUnit(event.unit.id);
+        const selected = selectionManager.getSelected();
+        if (selected?.kind === 'unit' && selected.unit.id === event.unit.id) {
+          selectionManager.clearSelection();
+        }
+      }
+      rightPanel?.requestRefresh();
+      hudLayer?.refresh();
+      refreshOpenCityView();
+      tileBuildingRenderer.rebuildAll();
+      turnOrderSystem.refreshActive();
+    });
+    improvementConstructionSystem.onCancelled(() => {
+      rightPanel?.requestRefresh();
+      hudLayer?.refresh();
+      refreshOpenCityView();
+      turnOrderSystem.refreshActive();
+    });
     selectionManager.onSelectionTarget((target, currentSelection) => {
       if (currentSelection?.kind !== 'unit') return false;
 
@@ -837,6 +876,7 @@ export class GameScene extends Phaser.Scene {
       if (!turnManager.getCurrentNation().isHuman) return;
       const selection = selectionManager.getSelected();
       if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) return;
+      if (improvementConstructionSystem.isUnitBusy(selection.unit.id)) return;
       unitActionToolbox.tryActivate(mode);
     };
     const onKeyMove = () => activateActionIfHumanTurn('move');
@@ -1347,6 +1387,7 @@ export class GameScene extends Phaser.Scene {
       cultureSystem,
       turnManager,
       (turn) => this.timeSystem.getLabelForTurn(turn),
+      resourceAccessSystem,
     );
     hudLayer = new HudLayer(this, {
       humanNationId,
@@ -1415,6 +1456,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
+    rightPanel.setEraSystem(eraSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
     rightPanel.setBuilderHintProvider((tile) => {
@@ -2082,6 +2124,10 @@ export class GameScene extends Phaser.Scene {
       if (mode === 'sleep') {
         const selection = selectionManager.getSelected();
         if (selection?.kind !== 'unit') return;
+        if (improvementConstructionSystem.isUnitBusy(selection.unit.id)) {
+          unitActionToolbox.resetMode();
+          return;
+        }
         selection.unit.isSleeping = !selection.unit.isSleeping;
         unitActionToolbox.refresh();
         turnOrderSystem.refreshActive();
@@ -2540,7 +2586,12 @@ export class GameScene extends Phaser.Scene {
 
       const unit = selected.unit;
       const activeNation = turnManager.getCurrentNation();
-      if (!activeNation.isHuman || unit.ownerId !== activeNation.id || unit.movementPoints <= 0) {
+      if (
+        !activeNation.isHuman ||
+        unit.ownerId !== activeNation.id ||
+        unit.movementPoints <= 0 ||
+        improvementConstructionSystem.isUnitBusy(unit.id)
+      ) {
         reachableTiles = new Set<string>();
         pathPreviewRenderer.clear();
         return;

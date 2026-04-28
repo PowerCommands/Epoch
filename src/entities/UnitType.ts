@@ -23,6 +23,7 @@ export interface UnitType {
   readonly rangedStrength?: number;
   readonly canFound?: boolean;
   readonly canBuildImprovements?: boolean;
+  readonly maxImprovementCharges?: number;
   readonly range?: number;
   readonly isNaval?: boolean;
   readonly requiredResource?: {

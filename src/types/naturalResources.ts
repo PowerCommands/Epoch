@@ -20,6 +20,7 @@ export interface NaturalResourceDefinition {
   iconKey: string;
   weight: number;
   improvementId?: string;
+  improvementIdByTileType?: Partial<Record<TileType, string>>;
   notes?: string;
 
   /** Hide the resource on the map until this technology is researched. */

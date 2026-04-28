@@ -2,6 +2,7 @@ import { ALL_BUILDINGS, getBuildingById } from '../../data/buildings';
 import { getImprovementById } from '../../data/improvements';
 import { getLeaderById, getLeaderByNationId } from '../../data/leaders';
 import { getNaturalResourceById } from '../../data/naturalResources';
+import type { Era } from '../../data/technologies';
 import { ALL_UNIT_TYPES } from '../../data/units';
 import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
@@ -14,6 +15,7 @@ import type { CityTerritorySystem } from '../../systems/CityTerritorySystem';
 import type { DiplomacyManager } from '../../systems/DiplomacyManager';
 import type { DiscoverySystem } from '../../systems/DiscoverySystem';
 import type { EventLogSystem } from '../../systems/EventLogSystem';
+import type { EraSystem } from '../../systems/EraSystem';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import { formatPercent, formatHappinessStateLabel, luxuryResourceLabels } from '../happinessFormat';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
@@ -77,6 +79,7 @@ export class RightSidebarPanelDataProvider {
   private wonderSystem: WonderSystem | null = null;
   private tradeDealSystem: TradeDealSystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
+  private eraSystem: EraSystem | null = null;
   private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
@@ -145,6 +148,10 @@ export class RightSidebarPanelDataProvider {
 
   setResourceAccessSystem(resourceAccessSystem: ResourceAccessSystem): void {
     this.resourceAccessSystem = resourceAccessSystem;
+  }
+
+  setEraSystem(eraSystem: EraSystem): void {
+    this.eraSystem = eraSystem;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -349,6 +356,10 @@ export class RightSidebarPanelDataProvider {
   private getTileContent(tile: Tile): RightSidebarContent {
     const owner = tile.ownerId ? this.nationManager.getNation(tile.ownerId) : undefined;
     const improvement = tile.improvementId ? getImprovementById(tile.improvementId) : undefined;
+    const improvementConstruction = tile.improvementConstruction;
+    const constructingImprovement = improvementConstruction
+      ? getImprovementById(improvementConstruction.improvementId)
+      : undefined;
     const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
     const builderHint = this.builderHintProvider?.(tile) ?? null;
     const rows: RightSidebarRow[] = [
@@ -357,6 +368,12 @@ export class RightSidebarPanelDataProvider {
       textRow(`Resource: ${resource?.name ?? 'None'}`),
       textRow(`Improvement: ${improvement?.name ?? 'None'}`),
     ];
+    if (improvementConstruction) {
+      rows.push(textRow(
+        `${constructingImprovement?.name ?? 'Improvement'} under construction: ${improvementConstruction.remainingTurns} turns remaining`,
+        true,
+      ));
+    }
     if (resource) rows.push(textRow(`Resource bonus: ${formatYieldBonus(resource.yieldBonus)}`));
     if (improvement) rows.push(textRow(`Bonus: ${formatYieldBonus(improvement.yieldBonus)}`));
     if (builderHint) {
@@ -457,6 +474,10 @@ export class RightSidebarPanelDataProvider {
 
   private getUnitContent(unit: Unit): RightSidebarContent {
     const nation = this.nationManager.getNation(unit.ownerId);
+    const unitConstruction = this.getImprovementConstructionForUnit(unit.id);
+    const constructingImprovement = unitConstruction
+      ? getImprovementById(unitConstruction.construction.improvementId)
+      : undefined;
     const rows: RightSidebarRow[] = [
       textRow(`${unit.name} (${unit.unitType.name})`, false, true),
       textRow(`Owner: ${nation?.name ?? 'Unknown'}`, false, false, nation?.color),
@@ -466,6 +487,15 @@ export class RightSidebarPanelDataProvider {
       textRow(`Range: ${unit.unitType.range ?? 1}`),
       textRow(`Movement: ${unit.movementPoints}/${unit.maxMovementPoints}`),
     ];
+    if (unit.improvementCharges !== undefined) {
+      rows.push(textRow(`Improvements left: ${unit.improvementCharges}`));
+    }
+    if (unitConstruction) {
+      rows.push(textRow(
+        `Building ${constructingImprovement?.name ?? 'improvement'}: ${unitConstruction.construction.remainingTurns} turns remaining`,
+        true,
+      ));
+    }
     const transport = this.unitManager.getTransportForUnit(unit);
     if (transport) rows.push(textRow(`Onboard: ${transport.name}`, true));
     const cargo = this.unitManager.getCargoForTransport(unit);
@@ -487,13 +517,17 @@ export class RightSidebarPanelDataProvider {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const units = this.unitManager.getUnitsByOwner(nationId);
     const happiness = this.happinessSystem.getNationState(nationId);
+    const era = this.eraSystem?.getNationEra(nationId);
     const unitCounts = new Map<string, number>();
     for (const unit of units) unitCounts.set(unit.unitType.name, (unitCounts.get(unit.unitType.name) ?? 0) + 1);
 
     const sections: RightSidebarSection[] = [
       {
         title: 'Nation',
-        rows: [textRow(`${nation.name}${isHuman ? ' (You)' : ''}`, false, true, nation.color)],
+        rows: [
+          textRow(`${nation.name}${isHuman ? ' (You)' : ''}`, false, true, nation.color),
+          ...(era ? [textRow(`Era: ${formatEraLabel(era)}`)] : []),
+        ],
       },
       {
         title: 'Economy',
@@ -822,10 +856,12 @@ export class RightSidebarPanelDataProvider {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const units = this.unitManager.getUnitsByOwner(nationId);
     const capital = cities.find((city) => city.isCapital);
+    const era = this.eraSystem?.getNationEra(nationId);
     return {
       title: 'Nation',
       rows: [
         textRow(nation.name, false, true, nation.color),
+        ...(era ? [textRow(`Era: ${formatEraLabel(era)}`)] : []),
         textRow(`Capital: ${capital?.name ?? 'none'}`),
         textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
         textRow(`Cities: ${cities.length}`),
@@ -1092,10 +1128,26 @@ export class RightSidebarPanelDataProvider {
   private notifyChanged(): void {
     for (const listener of this.listeners) listener();
   }
+
+  private getImprovementConstructionForUnit(unitId: string): { tile: Tile; construction: NonNullable<Tile['improvementConstruction']> } | null {
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        const construction = tile.improvementConstruction;
+        if (construction?.unitId === unitId) {
+          return { tile, construction };
+        }
+      }
+    }
+    return null;
+  }
 }
 
 function textRow(text: string, muted = false, large = false, color?: number, spritePath?: string): RightSidebarRow {
   return { kind: 'text', text, muted, large, color, spritePath };
+}
+
+function formatEraLabel(era: Era): string {
+  return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function buttonRow(text: string, onClick: () => void, accentColor?: number, trailingIcon?: string, spritePath?: string): RightSidebarRow {

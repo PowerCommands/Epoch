@@ -3,20 +3,25 @@ import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { NationManager } from '../../systems/NationManager';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
+import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
 import { getCultureNodeById } from '../../data/cultureTree';
+import { getNaturalResourceById } from '../../data/naturalResources';
 import {
   buildHappinessTooltip,
   formatHappinessStateLabel,
   happinessStateColor,
 } from '../happinessFormat';
 
+const STRATEGIC_RESOURCE_IDS = ['horses', 'iron', 'niter', 'coal', 'oil', 'aluminum', 'uranium'] as const;
+
 export interface HudResourceEntry {
-  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence';
+  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}`;
   icon: string;
+  iconKey?: string;
   value: number | string;
   delta: number;
-  displayMode?: 'valueAndDelta' | 'deltaOnly' | 'happinessState';
+  displayMode?: 'valueAndDelta' | 'deltaOnly' | 'happinessState' | 'valueOnly';
   stateLabel?: string;
   textColor?: string;
   tooltip?: string;
@@ -81,6 +86,7 @@ export class NationHudDataProvider {
     private readonly cultureSystem: CultureSystem,
     private readonly turnManager: TurnManager,
     private readonly getTurnLabel: (turn: number) => string,
+    private readonly resourceAccessSystem?: ResourceAccessSystem,
   ) {}
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
@@ -98,7 +104,7 @@ export class NationHudDataProvider {
     const cultureTooltip = getCultureTooltip(currentCulture?.name, cultureProgress, currentCultureCost);
     const happiness = this.happinessSystem.getNationState(nationId);
 
-    return [
+    const entries: HudResourceEntry[] = [
       {
         key: 'turn',
         icon: '',
@@ -149,6 +155,24 @@ export class NationHudDataProvider {
         delta: nationResources.influencePerTurn,
       },
     ];
+
+    for (const resourceId of STRATEGIC_RESOURCE_IDS) {
+      const quantity = this.resourceAccessSystem?.getResourceSourceCount(nationId, resourceId) ?? 0;
+      if (quantity <= 0) continue;
+
+      const resource = getNaturalResourceById(resourceId);
+      entries.push({
+        key: `strategic:${resourceId}`,
+        icon: '',
+        iconKey: resource?.iconKey,
+        value: quantity,
+        delta: 0,
+        displayMode: 'valueOnly',
+        tooltip: `${resource?.name ?? resourceId}: ${quantity}`,
+      });
+    }
+
+    return entries;
   }
 
   getResearchState(nationId: string): HudResearchState {

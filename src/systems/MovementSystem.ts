@@ -33,6 +33,7 @@ interface MovementActionOptions {
 }
 
 type MovementWarRequiredListener = (event: MovementWarRequiredEvent) => void;
+type UnitMovementBlocker = (unit: Unit) => boolean;
 
 export function canUnitEnterTile(unit: Unit, tile: Tile): boolean {
   const naval = unit.unitType.isNaval === true;
@@ -60,6 +61,7 @@ export class MovementSystem {
     selectionManager: SelectionManager,
     private readonly gridSystem: IGridSystem,
     private readonly diplomacyManager?: DiplomacyManager,
+    private readonly isUnitMovementBlocked: UnitMovementBlocker = () => false,
   ) {
     this.activeNationId = turnManager.getCurrentNation().id;
 
@@ -83,6 +85,7 @@ export class MovementSystem {
 
   private canMoveUnitToInternal(unit: Unit, tileX: number, tileY: number, respectDiplomacy: boolean): boolean {
     if (unit.ownerId !== this.activeNationId) return false;
+    if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;
     if (!this.gridSystem.isAdjacent(
       { x: unit.tileX, y: unit.tileY },

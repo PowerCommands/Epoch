@@ -176,6 +176,7 @@ export class BuildingPlacementSystem {
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
     if (tile.buildingId !== undefined) return false;
     if (tile.buildingConstruction !== undefined) return false;
+    if (tile.improvementConstruction !== undefined) return false;
     if (tile.wonderId !== undefined) return false;
     if (tile.wonderConstruction !== undefined) return false;
 

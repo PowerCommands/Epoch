@@ -19,6 +19,15 @@ export interface TileWonderConstruction {
   cityId: string;
 }
 
+export interface TileImprovementConstruction {
+  improvementId: string;
+  cityId: string;
+  unitId: string;
+  ownerId: string;
+  remainingTurns: number;
+  totalTurns: number;
+}
+
 export interface Tile {
   x: number; // grid-koordinat (kolumn)
   y: number; // grid-koordinat (rad)
@@ -26,6 +35,7 @@ export interface Tile {
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
   resourceId?: string; // optional natural resource; undefined = none
   improvementId?: string; // optional tile improvement; undefined = none
+  improvementConstruction?: TileImprovementConstruction; // in-progress worker improvement
   buildingId?: string; // finished tile building; undefined = none
   buildingConstruction?: TileBuildingConstruction; // reserved/under-construction tile building
   wonderId?: string; // finished wonder; undefined = none
