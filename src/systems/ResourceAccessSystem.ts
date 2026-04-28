@@ -1,3 +1,4 @@
+import { getNaturalResourceById } from '../data/naturalResources';
 import type { MapData } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';
 
@@ -88,6 +89,12 @@ export class ResourceAccessSystem {
     const ids = new Set<string>(this.getOwnedResources(nationId));
     for (const id of this.getImportedResources(nationId)) ids.add(id);
     return Array.from(ids).filter((id) => this.getResourceSourceCount(nationId, id) > 0);
+  }
+
+  getAvailableLuxuryResources(nationId: string): string[] {
+    return this.getAvailableResources(nationId).filter((id) => (
+      getNaturalResourceById(id)?.category === 'luxury'
+    ));
   }
 
   canExportResource(sellerNationId: string, resourceId: string): boolean {

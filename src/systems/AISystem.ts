@@ -6,7 +6,10 @@ import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
 import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER } from '../data/units';
-import { GRANARY, WORKSHOP, MARKET } from '../data/buildings';
+import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET } from '../data/buildings';
+import { getNaturalResourceById } from '../data/naturalResources';
+import type { BuildingType } from '../entities/Building';
+import type { CityBuildings } from '../entities/CityBuildings';
 import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
@@ -78,6 +81,17 @@ const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.baseStrength > 0
 ));
 
+function luxuryRank(resourceId: string): number {
+  return getNaturalResourceById(resourceId)?.category === 'luxury' ? 1 : 0;
+}
+
+function resolveLuxuryValueMultiplier(netHappiness: number | undefined): number {
+  if (netHappiness === undefined) return 1.0;
+  if (netHappiness <= AI_HAPPINESS_CRITICAL) return LUXURY_VALUE_MULTIPLIER_CRITICAL;
+  if (netHappiness <= AI_HAPPINESS_LOW) return LUXURY_VALUE_MULTIPLIER_LOW;
+  return 1.0;
+}
+
 // Base scores reflect how acute the underlying need is. Strategy weights then
 // reshape the final ordering, but the raw signal always comes from city state.
 const SCORE_ACUTE_DEFENDER = 100;
@@ -88,6 +102,21 @@ const SCORE_PRODUCTION_BUILDING = 60;
 const SCORE_GOLD_BUILDING = 55;
 const SCORE_FALLBACK = 25;
 const LOW_GOLD_PER_TURN = 0;
+
+// Happiness thresholds drive both production prioritization and trade
+// evaluation. Below LOW the AI starts preferring happiness buildings and
+// values luxury trades higher; below CRITICAL it overrides production
+// entirely and doubles the luxury value.
+const AI_HAPPINESS_LOW = -5;
+const AI_HAPPINESS_CRITICAL = -10;
+
+// Boosted score for happiness building when at LOW (not CRITICAL): +50%
+// over a normal food/production building. Stays under SCORE_ACUTE_DEFENDER
+// so a city that lacks a defender still defends first.
+const SCORE_HAPPINESS_BUILDING_LOW = SCORE_FOOD_BUILDING * 1.5;
+
+const LUXURY_VALUE_MULTIPLIER_LOW = 1.5;
+const LUXURY_VALUE_MULTIPLIER_CRITICAL = 2.0;
 
 /**
  * AISystem kör grundläggande AI för icke-mänskliga nationer.
@@ -239,34 +268,52 @@ export class AISystem {
     if (maxDeals <= 0) return;
 
     const dealTurns = 10;
-    const goldPerTurn = 5;
-    if (this.nationManager.getResources(nationId).gold < goldPerTurn) return;
+    const baseGoldPerTurn = 5;
+    if (this.nationManager.getResources(nationId).gold < baseGoldPerTurn) return;
+
+    const happiness = this.happinessSystem?.getNationState(nationId);
+    const luxuryValueMultiplier = resolveLuxuryValueMultiplier(happiness?.netHappiness);
 
     const available = new Set(this.resourceAccessSystem.getAvailableResources(nationId));
     const buyerName = this.nationManager.getNation(nationId)?.name ?? nationId;
     let dealsCreated = 0;
+
+    if (luxuryValueMultiplier > 1.0) {
+      console.debug(
+        `AI ${buyerName} increasing luxury value (x${luxuryValueMultiplier}) due to happiness ${happiness?.netHappiness} (state: ${happiness?.state}).`,
+      );
+    }
 
     outer: for (const other of this.nationManager.getAllNations()) {
       if (other.id === nationId) continue;
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') continue;
       if (!this.diplomacyManager.hasTradeRelations(nationId, other.id)) continue;
 
-      for (const resourceId of this.resourceAccessSystem.getOwnedResources(other.id)) {
+      const ownedResources = this.resourceAccessSystem.getOwnedResources(other.id);
+      const orderedResources = luxuryValueMultiplier > 1.0
+        ? [...ownedResources].sort((a, b) => luxuryRank(b) - luxuryRank(a))
+        : ownedResources;
+
+      for (const resourceId of orderedResources) {
         if (available.has(resourceId)) continue;
         if (this.resourceAccessSystem.hasImportedResource(nationId, resourceId)) continue;
-        if (this.nationManager.getResources(nationId).gold < goldPerTurn * (dealsCreated + 1)) break outer;
+        const isLuxury = getNaturalResourceById(resourceId)?.category === 'luxury';
+        const offerGoldPerTurn = isLuxury
+          ? Math.round(baseGoldPerTurn * luxuryValueMultiplier)
+          : baseGoldPerTurn;
+        if (this.nationManager.getResources(nationId).gold < offerGoldPerTurn * (dealsCreated + 1)) break outer;
 
         const result = this.tradeDealSystem.createDeal({
           sellerNationId: other.id,
           buyerNationId: nationId,
           resourceId,
           turns: dealTurns,
-          goldPerTurn,
+          goldPerTurn: offerGoldPerTurn,
         });
         if (!result.ok) continue;
 
         console.debug(
-          `AI ${buyerName} bought ${resourceId} from ${other.name} (${dealTurns} turns, ${goldPerTurn} gold/turn)`,
+          `AI ${buyerName} bought ${resourceId} from ${other.name} (${dealTurns} turns, ${offerGoldPerTurn} gold/turn)`,
         );
         dealsCreated++;
         if (dealsCreated >= maxDeals) break outer;
@@ -890,6 +937,23 @@ export class AISystem {
       this.gridSystem,
       EMPTY_MODIFIERS,
     );
+
+    const happiness = this.happinessSystem?.getNationState(nationId);
+    const happinessBuilding = (happiness && happiness.netHappiness <= AI_HAPPINESS_LOW)
+      ? this.findBuildableHappinessBuilding(nationId, buildings)
+      : null;
+
+    if (
+      happiness
+      && happiness.netHappiness <= AI_HAPPINESS_CRITICAL
+      && happinessBuilding
+    ) {
+      const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+      console.debug(
+        `AI ${nationName} prioritizing ${happinessBuilding.name} due to critical happiness (${happiness.netHappiness}, state: ${happiness.state}).`,
+      );
+      return { kind: 'building', buildingType: happinessBuilding };
+    }
     const canBuildMilitary = plannedMilitaryCount < strategy.military.maxUnits;
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
     const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
@@ -963,6 +1027,20 @@ export class AISystem {
       });
     }
 
+    if (happinessBuilding) {
+      const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+      console.debug(
+        `AI ${nationName} prioritizing happiness building ${happinessBuilding.name} due to low happiness (${happiness?.netHappiness}, state: ${happiness?.state}).`,
+      );
+      candidates.push({
+        item: { kind: 'building', buildingType: happinessBuilding },
+        baseScore: SCORE_HAPPINESS_BUILDING_LOW,
+        // foodBuilding category reused: scoring weight is consistent across
+        // strategies (=1) so the boosted baseScore drives the priority.
+        category: 'foodBuilding',
+      });
+    }
+
     // Fallback so the city always has something to do when room is left.
     if (canBuildMilitary) {
       candidates.push({
@@ -993,6 +1071,22 @@ export class AISystem {
 
   private canBuildBuilding(nationId: string, buildingId: string): boolean {
     return this.researchSystem?.isBuildingUnlocked(nationId, buildingId) ?? true;
+  }
+
+  private findBuildableHappinessBuilding(
+    nationId: string,
+    buildings: CityBuildings,
+  ): BuildingType | null {
+    let cheapest: BuildingType | null = null;
+    for (const candidate of ALL_BUILDINGS) {
+      if ((candidate.modifiers.happinessPerTurn ?? 0) <= 0) continue;
+      if (buildings.has(candidate.id)) continue;
+      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!cheapest || candidate.productionCost < cheapest.productionCost) {
+        cheapest = candidate;
+      }
+    }
+    return cheapest;
   }
 
   private needsDefender(city: City, nationId: string): boolean {

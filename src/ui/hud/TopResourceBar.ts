@@ -93,6 +93,7 @@ export class TopResourceBar {
       view.background.setVisible(true);
       view.text.setVisible(true);
       view.text.setText(formatEntryText(value));
+      view.text.setColor(value.textColor ?? '#f4f1e7');
       if (value.tooltip) {
         if (!view.background.input?.enabled) view.background.setInteractive({ cursor: 'help' });
       } else {
@@ -182,6 +183,12 @@ function formatEntryText(value: HudResourceEntry): string {
 
   if (value.displayMode === 'deltaOnly') {
     return `${value.icon} ${formatSigned(value.delta)}/turn`;
+  }
+
+  if (value.displayMode === 'happinessState') {
+    const numeric = typeof value.value === 'number' ? value.value : 0;
+    const stateLabel = value.stateLabel ?? '';
+    return `${value.icon} ${formatSigned(numeric)}${stateLabel ? ` (${stateLabel})` : ''}`;
   }
 
   return `${value.icon} ${value.value} (${formatSigned(value.delta)})`;

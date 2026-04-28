@@ -41,6 +41,8 @@ import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/
 import { DiplomacyManager } from '../systems/DiplomacyManager';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
+import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
+import { getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
 import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
@@ -226,10 +228,12 @@ export class GameScene extends Phaser.Scene {
     };
     const wonderSystem = new WonderSystem();
     const territoryExpansionBonusSystem = new TerritoryExpansionBonusSystem(gridSystem, cityTerritorySystem);
+    let getAvailableLuxuryResources: (nationId: string) => readonly string[] = () => [];
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
       (nationId) => wonderSystem.getNationModifiers(nationId),
+      (nationId) => getAvailableLuxuryResources(nationId),
     );
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     const resourceSystem = new ResourceSystem(
@@ -322,6 +326,8 @@ export class GameScene extends Phaser.Scene {
     getTradeGoldPerTurnDelta = (nationId) =>
       tradeDealSystem.getGoldPerTurnDeltaForNation(nationId);
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
+    getAvailableLuxuryResources = (nationId) => resourceAccessSystem.getAvailableLuxuryResources(nationId);
+    happinessSystem.recalculateAll();
     const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
     const unitProductionRuleContext = { strategicResourceCapacitySystem };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
@@ -336,6 +342,74 @@ export class GameScene extends Phaser.Scene {
       resourceSystem.recalculateForNation(event.deal.buyerNationId);
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
+    });
+
+    const diplomaticProposalSystem = new DiplomaticProposalSystem();
+
+    turnManager.on('turnStart', (e) => diplomaticProposalSystem.update(e.round));
+
+    diplomaticProposalSystem.onCreated((proposal) => {
+      if (proposal.toNationId !== humanNationIdForDiplomacy) return;
+      hudLayer?.enqueueProposal(proposal);
+    });
+    diplomaticProposalSystem.onExpired((proposal) => {
+      if (proposal.toNationId !== humanNationIdForDiplomacy) return;
+      hudLayer?.dismissProposal(proposal.id);
+    });
+    diplomaticProposalSystem.onAccepted((proposal) => {
+      const fromId = proposal.fromNationId;
+      const toId = proposal.toNationId;
+      switch (proposal.payload.kind) {
+        case 'open_borders': {
+          if (!diplomacyManager.isOpenBorderGrantedFrom(fromId, toId)) {
+            diplomacyManager.toggleOpenBorders(fromId, toId);
+          }
+          break;
+        }
+        case 'embassy': {
+          diplomacyManager.establishEmbassy(fromId, toId);
+          break;
+        }
+        case 'peace': {
+          diplomacyManager.proposePeace(fromId, toId);
+          diplomacyManager.respondToPeace(fromId, toId, true);
+          break;
+        }
+        case 'resource_trade': {
+          tradeDealSystem.createDeal({
+            sellerNationId: fromId,
+            buyerNationId: toId,
+            resourceId: proposal.payload.resourceId,
+            turns: proposal.payload.turns,
+            goldPerTurn: proposal.payload.goldPerTurn,
+          });
+          break;
+        }
+        case 'gold_trade': {
+          const amount = proposal.payload.goldAmount;
+          if (amount > 0) {
+            resourceSystem.addGold(fromId, -amount);
+            resourceSystem.addGold(toId, amount);
+          }
+          break;
+        }
+      }
+      const fromName = nationManager.getNation(fromId)?.name ?? fromId;
+      const toName = nationManager.getNation(toId)?.name ?? toId;
+      eventLog.log(
+        `${toName} accepted ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`,
+        [fromId, toId],
+        turnManager.getCurrentRound(),
+      );
+    });
+    diplomaticProposalSystem.onRejected((proposal) => {
+      const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
+      const toName = nationManager.getNation(proposal.toNationId)?.name ?? proposal.toNationId;
+      eventLog.log(
+        `${toName} rejected ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`,
+        [proposal.fromNationId, proposal.toNationId],
+        turnManager.getCurrentRound(),
+      );
     });
     aiDiplomacySystem.onDecision((reason) => {
       const actorName = nationManager.getNation(reason.actorNationId)?.name ?? reason.actorNationId;
@@ -1252,6 +1326,11 @@ export class GameScene extends Phaser.Scene {
       dataProvider: hudDataProvider,
       unitActionToolbox,
       worldInputGate,
+      proposalContext: {
+        getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+        getNationColor: (nationId) => nationManager.getNation(nationId)?.color ?? 0xb59a5a,
+        getResourceName: (resourceId) => getNaturalResourceById(resourceId)?.name ?? resourceId,
+      },
       onEndTurn: endHumanTurn,
       onSelectResearch: (technologyId) => {
         if (!humanNationId) return false;
@@ -1266,6 +1345,8 @@ export class GameScene extends Phaser.Scene {
         if (!humanNationId) return false;
         return cultureSystem.startCultureNode(humanNationId, nodeId);
       },
+      onAcceptProposal: (proposalId) => diplomaticProposalSystem.acceptProposal(proposalId),
+      onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
@@ -2570,5 +2651,15 @@ function formatAIDiplomacyAction(
       return `${actorName} opened borders to ${targetName}.`;
     case 'cancelOpenBorders':
       return `${actorName} cancelled open borders with ${targetName}.`;
+  }
+}
+
+function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' | 'gold_trade' | 'peace'): string {
+  switch (kind) {
+    case 'open_borders': return 'Open Borders proposal';
+    case 'embassy': return 'Embassy proposal';
+    case 'resource_trade': return 'resource trade';
+    case 'gold_trade': return 'gold transfer';
+    case 'peace': return 'peace proposal';
   }
 }

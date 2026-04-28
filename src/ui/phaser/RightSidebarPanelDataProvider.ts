@@ -15,6 +15,7 @@ import type { DiplomacyManager } from '../../systems/DiplomacyManager';
 import type { DiscoverySystem } from '../../systems/DiscoverySystem';
 import type { EventLogSystem } from '../../systems/EventLogSystem';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
+import { formatPercent, formatHappinessStateLabel, luxuryResourceNames } from '../happinessFormat';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
 import type { NationManager } from '../../systems/NationManager';
 import type { AIMilitaryEvaluationSystem } from '../../systems/ai/AIMilitaryEvaluationSystem';
@@ -506,15 +507,21 @@ export class RightSidebarPanelDataProvider {
       {
         title: 'Happiness',
         rows: [
-          textRow(`Total Happiness: ${happiness.totalHappiness}`),
-          textRow(`Total Unhappiness: ${happiness.totalUnhappiness}`),
-          textRow(`Net Happiness: ${formatSigned(happiness.netHappiness)}`),
-          textRow(`Base Happiness: ${happiness.breakdown.baseHappiness}`),
-          textRow(`Building Happiness: ${happiness.breakdown.buildingHappiness}`),
-          textRow(`City Unhappiness: ${happiness.breakdown.cityUnhappiness}`),
-          textRow(`Population Unhappiness: ${happiness.breakdown.populationUnhappiness}`),
-          textRow(`Growth penalty: x${happiness.growthModifier.toFixed(2)}`),
-          textRow(`Production penalty: x${happiness.productionModifier.toFixed(2)}`),
+          textRow(`Happiness: ${formatSigned(happiness.netHappiness)} — ${formatHappinessStateLabel(happiness.state)}`, false, true),
+          textRow('Sources:', true),
+          textRow(`Base: ${formatSigned(happiness.happinessFromBase)}`),
+          textRow(`Buildings: ${formatSigned(happiness.happinessFromBuildings)}`),
+          textRow(`Wonders: ${formatSigned(happiness.happinessFromWonders)}`),
+          textRow(`Luxury resources: ${formatSigned(happiness.happinessFromLuxuryResources)}`),
+          ...luxuryResourceNames(happiness.availableLuxuryResourceIds).map((name) => textRow(`  • ${name}`, true)),
+          textRow('Unhappiness:', true),
+          textRow(`Cities: -${happiness.unhappinessFromCities}`),
+          textRow(`Population: -${happiness.unhappinessFromPopulation}`),
+          textRow('Effects:', true),
+          textRow(`Growth: ${formatPercent(happiness.growthModifier)}`),
+          textRow(`Production: ${formatPercent(happiness.productionModifier)}`),
+          textRow(`Culture: ${formatPercent(happiness.cultureModifier)}`),
+          textRow(`Gold: ${formatPercent(happiness.goldModifier)}`),
         ],
       },
       this.getCivicsSummarySection(nationId),

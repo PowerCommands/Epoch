@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
+import type { DiplomaticProposal } from '../../systems/diplomacy/DiplomaticProposal';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { RafScheduler } from '../../utils/RafScheduler';
 import type { UnitActionToolbox } from '../UnitActionToolbox';
 import { CultureHudPanel } from './CultureHudPanel';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import type { NationHudDataProvider } from './NationHudDataProvider';
+import { ProposalDialog, type ProposalDialogContext } from './ProposalDialog';
 import { ResearchHudPanel } from './ResearchHudPanel';
 import { TopResourceBar } from './TopResourceBar';
 import { UnitActionHudToolbox } from './UnitActionHudToolbox';
@@ -14,9 +16,12 @@ interface HudLayerConfig {
   dataProvider: NationHudDataProvider;
   unitActionToolbox: UnitActionToolbox;
   worldInputGate: WorldInputGate;
+  proposalContext: ProposalDialogContext;
   onEndTurn: () => void;
   onSelectResearch: (technologyId: string) => boolean;
   onSelectCultureNode: (nodeId: string) => boolean;
+  onAcceptProposal: (proposalId: string) => void;
+  onRejectProposal: (proposalId: string) => void;
 }
 
 export class HudLayer {
@@ -30,6 +35,8 @@ export class HudLayer {
   private readonly researchPanel: ResearchHudPanel;
   private readonly culturePanel: CultureHudPanel;
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
+  private readonly proposalDialog: ProposalDialog;
+  private readonly proposalQueue: DiplomaticProposal[] = [];
   private readonly handlePointerRelease = (pointer: Phaser.Input.Pointer): void => {
     this.config.worldInputGate.releasePointer(pointer.id);
   };
@@ -81,6 +88,24 @@ export class HudLayer {
       this.config.unitActionToolbox,
       this.config.worldInputGate,
     );
+
+    this.proposalDialog = new ProposalDialog(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+      this.config.proposalContext,
+    );
+    this.proposalDialog.setOnAccept((proposalId) => {
+      this.config.onAcceptProposal(proposalId);
+      this.proposalDialog.hide();
+      this.showNextQueuedProposal();
+    });
+    this.proposalDialog.setOnReject((proposalId) => {
+      this.config.onRejectProposal(proposalId);
+      this.proposalDialog.hide();
+      this.showNextQueuedProposal();
+    });
+
     scene.input.on(Phaser.Input.Events.POINTER_UP, this.handlePointerRelease);
     scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerRelease);
 
@@ -114,6 +139,32 @@ export class HudLayer {
     this.scheduler.schedule('refresh', () => this.refreshNow());
   }
 
+  /**
+   * Show or queue a proposal addressed to the human. The dialog enforces
+   * FIFO order: when one is already on screen, later arrivals wait.
+   */
+  enqueueProposal(proposal: DiplomaticProposal): void {
+    if (this.proposalDialog.isShowing()) {
+      this.proposalQueue.push(proposal);
+      return;
+    }
+    this.proposalDialog.showProposal(proposal);
+  }
+
+  /**
+   * Drop a proposal from the dialog/queue (e.g. when it expires elsewhere).
+   * If the active proposal is the one being dropped, advance to the next.
+   */
+  dismissProposal(proposalId: string): void {
+    if (this.proposalDialog.getCurrentProposalId() === proposalId) {
+      this.proposalDialog.hide();
+      this.showNextQueuedProposal();
+      return;
+    }
+    const index = this.proposalQueue.findIndex((p) => p.id === proposalId);
+    if (index >= 0) this.proposalQueue.splice(index, 1);
+  }
+
   shutdown(): void {
     this.scheduler.cancel();
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
@@ -125,6 +176,8 @@ export class HudLayer {
     this.researchPanel.destroy();
     this.culturePanel.destroy();
     this.unitActionHudToolbox.destroy();
+    this.proposalDialog.destroy();
+    this.proposalQueue.length = 0;
     this.config.worldInputGate.clearAll();
     this.owned.clear();
     this.scene.cameras.remove(this.uiCamera);
@@ -150,6 +203,12 @@ export class HudLayer {
     this.endTurnButton.layout(width, height);
     const endTurnLayout = this.endTurnButton.getLayout();
     this.unitActionHudToolbox.layout(endTurnLayout.centerX, endTurnLayout.centerY, endTurnLayout.radius);
+    this.proposalDialog.layout();
+  }
+
+  private showNextQueuedProposal(): void {
+    const next = this.proposalQueue.shift();
+    if (next) this.proposalDialog.showProposal(next);
   }
 
   private addOwned<T extends Phaser.GameObjects.GameObject>(object: T): T {

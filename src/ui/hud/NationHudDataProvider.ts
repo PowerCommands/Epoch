@@ -5,13 +5,20 @@ import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { TurnManager } from '../../systems/TurnManager';
 import { getCultureNodeById } from '../../data/cultureTree';
+import {
+  buildHappinessTooltip,
+  formatHappinessStateLabel,
+  happinessStateColor,
+} from '../happinessFormat';
 
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence';
   icon: string;
   value: number | string;
   delta: number;
-  displayMode?: 'valueAndDelta' | 'deltaOnly';
+  displayMode?: 'valueAndDelta' | 'deltaOnly' | 'happinessState';
+  stateLabel?: string;
+  textColor?: string;
   tooltip?: string;
 }
 
@@ -89,6 +96,7 @@ export class NationHudDataProvider {
     const cultureProgress = this.cultureSystem.getCultureProgress(nationId);
     const currentCultureCost = currentCulture ? this.cultureSystem.getEffectiveCost(currentCulture.id) : 0;
     const cultureTooltip = getCultureTooltip(currentCulture?.name, cultureProgress, currentCultureCost);
+    const happiness = this.happinessSystem.getNationState(nationId);
 
     return [
       {
@@ -100,8 +108,12 @@ export class NationHudDataProvider {
       {
         key: 'happiness',
         icon: '😀',
-        value: this.happinessSystem.getNetHappiness(nationId),
+        value: happiness.netHappiness,
         delta: nationResources.happinessPerTurn,
+        displayMode: 'happinessState',
+        stateLabel: formatHappinessStateLabel(happiness.state),
+        textColor: happinessStateColor(happiness.state),
+        tooltip: buildHappinessTooltip(happiness),
       },
       {
         key: 'production',

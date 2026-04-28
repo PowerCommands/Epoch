@@ -143,6 +143,9 @@ export class ResourceSystem {
     this.updateWorkedTiles(cities);
     this.happinessSystem.recalculateNation(nation.id);
 
+    const goldModifier = this.happinessSystem.getGoldModifier(nation.id);
+    const cultureModifier = this.happinessSystem.getCultureModifier(nation.id);
+
     // Räkna om per-turn (kan ändras om städer förstörts/skapats)
     nationRes.goldPerTurn = this.calculateNationGoldPerTurn(
       nation,
@@ -150,7 +153,7 @@ export class ResourceSystem {
       lookup,
       nationModifiers,
     );
-    nationRes.gold += nationRes.goldPerTurn;
+    nationRes.gold += Math.floor(nationRes.goldPerTurn * goldModifier);
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
     nationRes.influence += nationRes.influencePerTurn;
     nationRes.culturePerTurn = 0;
@@ -184,14 +187,14 @@ export class ResourceSystem {
       cityRes.sciencePerTurn = displayEconomy.science;
       cityRes.culturePerTurn = displayEconomy.culture;
       cityRes.happinessPerTurn = displayEconomy.happiness;
-      city.culture += cityRes.culturePerTurn;
+      city.culture += Math.floor(cityRes.culturePerTurn * cultureModifier);
       this.cityTerritorySystem.tryClaimNextExpansionTile(city, this.mapData);
       nationRes.culturePerTurn += displayEconomy.culture;
       nationRes.happinessPerTurn += displayEconomy.happiness;
       cityRes.food = city.foodStorage;
     }
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
-    nationRes.culture += nationRes.culturePerTurn;
+    nationRes.culture += Math.floor(nationRes.culturePerTurn * cultureModifier);
 
     this.happinessSystem.recalculateNation(nation.id);
     this.notify({ nationId: nation.id });

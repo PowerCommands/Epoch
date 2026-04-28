@@ -12,9 +12,9 @@ export interface NaturalResourceGenerationOptions {
 }
 
 const DENSITY_BY_ABUNDANCE: Record<ResourceAbundance, number> = {
-  scarce: 0.04,
-  normal: 0.07,
-  abundant: 0.11,
+  scarce: 0.02,
+  normal: 0.03,
+  abundant: 0.4,
 };
 
 export class NaturalResourceSystem {
