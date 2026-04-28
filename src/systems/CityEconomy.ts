@@ -1,3 +1,6 @@
+// TODO: v4 - consider applying requiredTechId to yield visibility
+// TODO: v5 - unify yield calculation with ResourceQuantityService
+
 import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
 import { getBuildingById } from '../data/buildings';
@@ -7,6 +10,7 @@ import { getTerrainYield, type TileYield } from '../data/terrainYields';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import type { MapData, Tile } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
+import { getTileResourceQuantity } from './resource/ResourceQuantity';
 
 export const BASE_CITY_FOOD = 2;
 
@@ -232,5 +236,15 @@ export function getTileNaturalResourceYield(tile: Tile): Omit<WorkedTileYield, '
       happiness: 0,
     };
   }
-  return resource.yieldBonus;
+
+  const quantity = getTileResourceQuantity(tile, getNaturalResourceById);
+  const bonus = resource.yieldBonus;
+  return {
+    food: bonus.food * quantity,
+    production: bonus.production * quantity,
+    gold: bonus.gold * quantity,
+    science: bonus.science * quantity,
+    culture: bonus.culture * quantity,
+    happiness: bonus.happiness,
+  };
 }

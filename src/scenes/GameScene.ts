@@ -228,12 +228,14 @@ export class GameScene extends Phaser.Scene {
     };
     const wonderSystem = new WonderSystem();
     const territoryExpansionBonusSystem = new TerritoryExpansionBonusSystem(gridSystem, cityTerritorySystem);
-    let getAvailableLuxuryResources: (nationId: string) => readonly string[] = () => [];
+    let getAvailableLuxuryResourceQuantities: (
+      nationId: string,
+    ) => ReadonlyArray<{ readonly resourceId: string; readonly quantity: number }> = () => [];
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
       (nationId) => wonderSystem.getNationModifiers(nationId),
-      (nationId) => getAvailableLuxuryResources(nationId),
+      (nationId) => getAvailableLuxuryResourceQuantities(nationId),
     );
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     const resourceSystem = new ResourceSystem(
@@ -326,7 +328,8 @@ export class GameScene extends Phaser.Scene {
     getTradeGoldPerTurnDelta = (nationId) =>
       tradeDealSystem.getGoldPerTurnDeltaForNation(nationId);
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
-    getAvailableLuxuryResources = (nationId) => resourceAccessSystem.getAvailableLuxuryResources(nationId);
+    getAvailableLuxuryResourceQuantities = (nationId) =>
+      resourceAccessSystem.getAvailableLuxuryResourceQuantities(nationId);
     happinessSystem.recalculateAll();
     const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
     const unitProductionRuleContext = { strategicResourceCapacitySystem };

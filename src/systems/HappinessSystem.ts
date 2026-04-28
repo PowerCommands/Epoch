@@ -1,5 +1,11 @@
+// TODO: Add negative happiness sources such as war weariness and overpopulation.
+
 import { getBuildingById } from '../data/buildings';
-import { NationHappiness, type HappinessState } from '../entities/NationHappiness';
+import {
+  NationHappiness,
+  type HappinessState,
+  type LuxuryResourceEntry,
+} from '../entities/NationHappiness';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
@@ -7,10 +13,18 @@ import { NationManager } from './NationManager';
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 3;
 export const POPULATION_UNHAPPINESS = 1;
-export const HAPPINESS_PER_UNIQUE_LUXURY_RESOURCE = 4;
+
+/**
+ * Each unit of usable luxury resource quantity (1 per tile, 2 with the
+ * matching improvement) contributes this much happiness. Keeping this as
+ * a coefficient so future tuning is a one-liner.
+ */
+export const HAPPINESS_PER_LUXURY_QUANTITY = 1;
 
 export type HappinessChangedListener = (nationId: string, state: Readonly<NationHappiness>) => void;
-export type AvailableLuxuryResourcesProvider = (nationId: string) => readonly string[];
+export type AvailableLuxuryResourcesProvider = (
+  nationId: string,
+) => ReadonlyArray<LuxuryResourceEntry>;
 
 interface TierResult {
   state: HappinessState;
@@ -130,8 +144,10 @@ export class HappinessSystem {
     const unhappinessFromCities = cities.length * CITY_UNHAPPINESS;
     const unhappinessFromPopulation = totalPopulation * POPULATION_UNHAPPINESS;
 
-    const availableLuxuryResourceIds = uniqueSorted(this.getAvailableLuxuryResources(nationId));
-    const happinessFromLuxuryResources = availableLuxuryResourceIds.length * HAPPINESS_PER_UNIQUE_LUXURY_RESOURCE;
+    const luxuryEntries = sortedLuxuryEntries(this.getAvailableLuxuryResources(nationId));
+    const availableLuxuryResourceIds = luxuryEntries.map((entry) => entry.resourceId);
+    const totalLuxuryQuantity = luxuryEntries.reduce((sum, entry) => sum + entry.quantity, 0);
+    const happinessFromLuxuryResources = totalLuxuryQuantity * HAPPINESS_PER_LUXURY_QUANTITY;
 
     const totalHappiness = happinessFromBase + happinessFromBuildings + happinessFromWonders + happinessFromLuxuryResources;
     const totalUnhappiness = unhappinessFromCities + unhappinessFromPopulation;
@@ -147,6 +163,7 @@ export class HappinessSystem {
     state.happinessFromWonders = happinessFromWonders;
     state.happinessFromLuxuryResources = happinessFromLuxuryResources;
     state.availableLuxuryResourceIds = availableLuxuryResourceIds;
+    state.availableLuxuryResourceQuantities = luxuryEntries;
     state.unhappinessFromCities = unhappinessFromCities;
     state.unhappinessFromPopulation = unhappinessFromPopulation;
     state.state = tier.state;
@@ -215,6 +232,7 @@ function snapshotState(state: NationHappiness): {
   happinessFromWonders: number;
   happinessFromLuxuryResources: number;
   availableLuxuryResourceIds: string[];
+  availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
   state: HappinessState;
@@ -232,6 +250,7 @@ function snapshotState(state: NationHappiness): {
     happinessFromWonders: state.happinessFromWonders,
     happinessFromLuxuryResources: state.happinessFromLuxuryResources,
     availableLuxuryResourceIds: [...state.availableLuxuryResourceIds],
+    availableLuxuryResourceQuantities: state.availableLuxuryResourceQuantities.map((entry) => ({ ...entry })),
     unhappinessFromCities: state.unhappinessFromCities,
     unhappinessFromPopulation: state.unhappinessFromPopulation,
     state: state.state,
@@ -260,7 +279,8 @@ function statesEqual(
     && previous.happinessFromLuxuryResources === next.happinessFromLuxuryResources
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation
-    && stringArraysEqual(previous.availableLuxuryResourceIds, next.availableLuxuryResourceIds);
+    && stringArraysEqual(previous.availableLuxuryResourceIds, next.availableLuxuryResourceIds)
+    && luxuryEntriesEqual(previous.availableLuxuryResourceQuantities, next.availableLuxuryResourceQuantities);
 }
 
 function stringArraysEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -271,6 +291,28 @@ function stringArraysEqual(a: readonly string[], b: readonly string[]): boolean 
   return true;
 }
 
-function uniqueSorted(values: readonly string[]): string[] {
-  return Array.from(new Set(values)).sort();
+function luxuryEntriesEqual(
+  a: ReadonlyArray<LuxuryResourceEntry>,
+  b: ReadonlyArray<LuxuryResourceEntry>,
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].resourceId !== b[i].resourceId) return false;
+    if (a[i].quantity !== b[i].quantity) return false;
+  }
+  return true;
+}
+
+function sortedLuxuryEntries(
+  entries: ReadonlyArray<LuxuryResourceEntry>,
+): LuxuryResourceEntry[] {
+  // Dedupe by resourceId (sum quantities) and sort for stable output.
+  const totals = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.quantity <= 0) continue;
+    totals.set(entry.resourceId, (totals.get(entry.resourceId) ?? 0) + entry.quantity);
+  }
+  return Array.from(totals.entries())
+    .map(([resourceId, quantity]) => ({ resourceId, quantity }))
+    .sort((a, b) => a.resourceId.localeCompare(b.resourceId));
 }

@@ -1,5 +1,9 @@
 import { getNaturalResourceById } from '../data/naturalResources';
-import type { NationHappiness, HappinessState } from '../entities/NationHappiness';
+import type {
+  HappinessState,
+  LuxuryResourceEntry,
+  NationHappiness,
+} from '../entities/NationHappiness';
 
 export function formatPercent(modifier: number): string {
   const pct = Math.round((modifier - 1) * 100);
@@ -48,8 +52,8 @@ export function buildHappinessTooltip(happiness: Readonly<NationHappiness>): str
   lines.push(`Buildings: ${formatSignedNumber(happiness.happinessFromBuildings)}`);
   lines.push(`Wonders: ${formatSignedNumber(happiness.happinessFromWonders)}`);
   lines.push(`Luxury resources: ${formatSignedNumber(happiness.happinessFromLuxuryResources)}`);
-  for (const name of luxuryResourceNames(happiness.availableLuxuryResourceIds)) {
-    lines.push(`  • ${name}`);
+  for (const label of luxuryResourceLabels(happiness.availableLuxuryResourceQuantities)) {
+    lines.push(`  • ${label}`);
   }
   lines.push('');
   lines.push('Unhappiness:');
@@ -66,4 +70,13 @@ export function buildHappinessTooltip(happiness: Readonly<NationHappiness>): str
 
 export function luxuryResourceNames(ids: readonly string[]): string[] {
   return ids.map((id) => getNaturalResourceById(id)?.name ?? id);
+}
+
+export function luxuryResourceLabels(
+  entries: ReadonlyArray<LuxuryResourceEntry>,
+): string[] {
+  return entries.map((entry) => {
+    const name = getNaturalResourceById(entry.resourceId)?.name ?? entry.resourceId;
+    return entry.quantity > 1 ? `${name} x${entry.quantity}` : name;
+  });
 }

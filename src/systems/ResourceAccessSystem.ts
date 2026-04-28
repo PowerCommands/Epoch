@@ -1,6 +1,10 @@
+// TODO: v3 - integrate resource quantity into city economy yields
+// TODO: v4 - review happiness scaling for luxury resources
+
 import { getNaturalResourceById } from '../data/naturalResources';
 import type { MapData } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';
+import { getTileResourceQuantity } from './resource/ResourceQuantity';
 
 export interface ResourceAccessSummary {
   owned: string[];
@@ -111,6 +115,25 @@ export class ResourceAccessSystem {
     ));
   }
 
+  /**
+   * Per-resource usable quantity for every luxury the nation can access.
+   * Quantity is the same metric `getResourceSourceCount` exposes: owned-tile
+   * quantity (with improvement bonus) net of exports, plus imported deals,
+   * subject to the usability predicate. Each entry has quantity > 0.
+   */
+  getAvailableLuxuryResourceQuantities(nationId: string): ReadonlyArray<{
+    readonly resourceId: string;
+    readonly quantity: number;
+  }> {
+    const entries: { resourceId: string; quantity: number }[] = [];
+    for (const id of this.getAvailableLuxuryResources(nationId)) {
+      const quantity = this.getResourceSourceCount(nationId, id);
+      if (quantity <= 0) continue;
+      entries.push({ resourceId: id, quantity });
+    }
+    return entries;
+  }
+
   canExportResource(sellerNationId: string, resourceId: string): boolean {
     if (!this.canUseResource(sellerNationId, resourceId)) return false;
     return this.countOwnedTiles(sellerNationId, resourceId)
@@ -124,11 +147,20 @@ export class ResourceAccessSystem {
     return { owned, imported, available };
   }
 
+  /**
+   * Sum the per-tile resource quantity across all tiles this nation owns
+   * that match `resourceId`. A bare resource tile contributes 1; a tile
+   * with the matching improvement contributes 2 (see ResourceQuantity).
+   * Callers are responsible for the upstream usability check; this
+   * helper only deals with ownership and quantity.
+   */
   private countOwnedTiles(nationId: string, resourceId: string): number {
     let count = 0;
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
-        if (tile.ownerId === nationId && tile.resourceId === resourceId) count += 1;
+        if (tile.ownerId !== nationId) continue;
+        if (tile.resourceId !== resourceId) continue;
+        count += getTileResourceQuantity(tile, getNaturalResourceById);
       }
     }
     return count;

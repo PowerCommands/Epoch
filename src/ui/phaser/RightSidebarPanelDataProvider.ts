@@ -15,7 +15,7 @@ import type { DiplomacyManager } from '../../systems/DiplomacyManager';
 import type { DiscoverySystem } from '../../systems/DiscoverySystem';
 import type { EventLogSystem } from '../../systems/EventLogSystem';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
-import { formatPercent, formatHappinessStateLabel, luxuryResourceNames } from '../happinessFormat';
+import { formatPercent, formatHappinessStateLabel, luxuryResourceLabels } from '../happinessFormat';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
 import type { NationManager } from '../../systems/NationManager';
 import type { AIMilitaryEvaluationSystem } from '../../systems/ai/AIMilitaryEvaluationSystem';
@@ -513,7 +513,7 @@ export class RightSidebarPanelDataProvider {
           textRow(`Buildings: ${formatSigned(happiness.happinessFromBuildings)}`),
           textRow(`Wonders: ${formatSigned(happiness.happinessFromWonders)}`),
           textRow(`Luxury resources: ${formatSigned(happiness.happinessFromLuxuryResources)}`),
-          ...luxuryResourceNames(happiness.availableLuxuryResourceIds).map((name) => textRow(`  • ${name}`, true)),
+          ...luxuryResourceLabels(happiness.availableLuxuryResourceQuantities).map((label) => textRow(`  • ${label}`, true)),
           textRow('Unhappiness:', true),
           textRow(`Cities: -${happiness.unhappinessFromCities}`),
           textRow(`Population: -${happiness.unhappinessFromPopulation}`),

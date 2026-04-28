@@ -8,6 +8,11 @@ export type HappinessState =
   | 'unrest'
   | 'crisis';
 
+export interface LuxuryResourceEntry {
+  readonly resourceId: string;
+  readonly quantity: number;
+}
+
 export class NationHappiness {
   readonly nationId: string;
   totalHappiness: number;
@@ -19,6 +24,7 @@ export class NationHappiness {
   happinessFromWonders: number;
   happinessFromLuxuryResources: number;
   availableLuxuryResourceIds: string[];
+  availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
 
@@ -38,6 +44,7 @@ export class NationHappiness {
     this.happinessFromWonders = 0;
     this.happinessFromLuxuryResources = 0;
     this.availableLuxuryResourceIds = [];
+    this.availableLuxuryResourceQuantities = [];
     this.unhappinessFromCities = 0;
     this.unhappinessFromPopulation = 0;
     this.state = 'stable';
