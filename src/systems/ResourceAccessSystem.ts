@@ -1,6 +1,3 @@
-// TODO: v3 - integrate resource quantity into city economy yields
-// TODO: v4 - review happiness scaling for luxury resources
-
 import { getNaturalResourceById } from '../data/naturalResources';
 import type { MapData } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';

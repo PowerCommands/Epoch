@@ -5,7 +5,7 @@ import type { IResourceGenerator } from './ResourceGenerator';
 import type { TurnStartEvent } from '../types/events';
 import type { ResourceChangedEvent, ResourceListener } from '../types/resources';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
-import { calculateCityEconomy } from './CityEconomy';
+import { calculateCityEconomy, type CityEconomySummary } from './CityEconomy';
 import type { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -91,30 +91,25 @@ export class ResourceSystem {
 
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const nationRes = this.nationManager.getResources(nationId);
-    const lookup = (cityId: string) => this.cityManager.getBuildings(cityId);
     const nationModifiers = this.getNationModifiers(nationId);
 
     this.updateWorkedTiles(cities);
 
-    nationRes.goldPerTurn = this.calculateNationGoldPerTurn(
-      nation,
-      cities,
-      lookup,
-      nationModifiers,
-    );
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
+    nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId);
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
     for (const city of cities) {
       const cityRes = this.cityManager.getResources(city.id);
-      const buildings = this.cityManager.getBuildings(city.id);
-      cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-      cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-      cityRes.goldPerTurn = this.generator.calculateCityGoldPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-      cityRes.sciencePerTurn = this.generator.calculateCitySciencePerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-      cityRes.culturePerTurn = this.generator.calculateCityCulturePerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-      cityRes.happinessPerTurn = this.generator.calculateCityHappinessPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
+      const economy = this.calculateEconomyForCity(city, nationModifiers);
+      cityRes.foodPerTurn = economy.food;
+      cityRes.productionPerTurn = economy.production;
+      cityRes.goldPerTurn = economy.gold;
+      cityRes.sciencePerTurn = economy.science;
+      cityRes.culturePerTurn = economy.culture;
+      cityRes.happinessPerTurn = economy.happiness;
+      nationRes.goldPerTurn += cityRes.goldPerTurn;
       nationRes.culturePerTurn += cityRes.culturePerTurn;
       nationRes.happinessPerTurn += cityRes.happinessPerTurn;
       cityRes.food = city.foodStorage;
@@ -268,5 +263,18 @@ export class ResourceSystem {
     );
 
     return baseGoldPerTurn + this.getTradeGoldPerTurnDelta(nation.id);
+  }
+
+  private calculateEconomyForCity(
+    city: City,
+    nationModifiers: Readonly<ModifierSet>,
+  ): CityEconomySummary {
+    return calculateCityEconomy(
+      city,
+      this.mapData,
+      this.cityManager.getBuildings(city.id),
+      this.gridSystem,
+      nationModifiers,
+    );
   }
 }

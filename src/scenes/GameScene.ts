@@ -42,7 +42,7 @@ import { DiplomacyManager } from '../systems/DiplomacyManager';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
-import { getNaturalResourceById } from '../data/naturalResources';
+import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
 import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
@@ -445,6 +445,9 @@ export class GameScene extends Phaser.Scene {
       if (!humanNationId) return false;
       return researchSystem.isResearched(humanNationId, resource.revealTechId);
     };
+    const isNaturalResourceRevealTechnology = (technologyId: string): boolean => (
+      NATURAL_RESOURCES.some((resource) => resource.revealTechId === technologyId)
+    );
     naturalResourceRenderer.setVisibilityPredicate(isNaturalResourceVisibleToHuman);
     naturalResourceRenderer.rebuildAll();
 
@@ -1375,11 +1378,6 @@ export class GameScene extends Phaser.Scene {
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
     researchSystem.onChanged(() => {
-      naturalResourceRenderer.rebuildAll();
-      for (const nation of nationManager.getAllNations()) {
-        resourceSystem.recalculateForNation(nation.id);
-      }
-      happinessSystem.recalculateAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -2106,11 +2104,15 @@ export class GameScene extends Phaser.Scene {
     });
     unitActionToolbox.onChanged(() => hudLayer?.refresh());
     researchSystem.onChanged(() => {
-      naturalResourceRenderer.rebuildAll();
-      for (const nation of nationManager.getAllNations()) {
-        resourceSystem.recalculateForNation(nation.id);
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    researchSystem.onCompleted((event) => {
+      if (event.nationId === humanNationId && isNaturalResourceRevealTechnology(event.technologyId)) {
+        naturalResourceRenderer.rebuildAll();
       }
-      happinessSystem.recalculateAll();
+      resourceSystem.recalculateForNation(event.nationId);
+      happinessSystem.recalculateNation(event.nationId);
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });

@@ -9,6 +9,10 @@ import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
+export type ResearchCompletedListener = (event: {
+  readonly nationId: string;
+  readonly technologyId: string;
+}) => void;
 type ScienceProvider = (nationId: string) => number;
 
 /**
@@ -19,6 +23,7 @@ type ScienceProvider = (nationId: string) => number;
  */
 export class ResearchSystem {
   private readonly listeners: ChangedListener[] = [];
+  private readonly completedListeners: ResearchCompletedListener[] = [];
 
   constructor(
     private readonly nationManager: NationManager,
@@ -81,7 +86,9 @@ export class ResearchSystem {
       return;
     }
 
-    if (!nation.researchedTechIds.includes(technology.id)) {
+    const completedTechnologyId = technology.id;
+    const didCompleteTechnology = !nation.researchedTechIds.includes(completedTechnologyId);
+    if (didCompleteTechnology) {
       nation.researchedTechIds.push(technology.id);
     }
     nation.currentResearchTechId = undefined;
@@ -92,6 +99,9 @@ export class ResearchSystem {
       [nation.id],
       this.getCurrentRound(),
     );
+    if (didCompleteTechnology) {
+      this.notifyCompleted(nation.id, completedTechnologyId);
+    }
     this.notifyChanged();
   }
 
@@ -112,6 +122,7 @@ export class ResearchSystem {
       [nation.id],
       this.getCurrentRound(),
     );
+    this.notifyCompleted(nation.id, technology.id);
     this.notifyChanged();
     return true;
   }
@@ -128,7 +139,9 @@ export class ResearchSystem {
       return null;
     }
 
-    if (!nation.researchedTechIds.includes(technology.id)) {
+    const completedTechnologyId = technology.id;
+    const didCompleteTechnology = !nation.researchedTechIds.includes(completedTechnologyId);
+    if (didCompleteTechnology) {
       nation.researchedTechIds.push(technology.id);
     }
     nation.currentResearchTechId = undefined;
@@ -139,6 +152,9 @@ export class ResearchSystem {
       [nation.id],
       this.getCurrentRound(),
     );
+    if (didCompleteTechnology) {
+      this.notifyCompleted(nation.id, completedTechnologyId);
+    }
     this.notifyChanged();
 
     return technology;
@@ -250,11 +266,21 @@ export class ResearchSystem {
     this.listeners.push(cb);
   }
 
+  onCompleted(listener: ResearchCompletedListener): void {
+    this.completedListeners.push(listener);
+  }
+
   private calculateResearchPerTurn(nationId: string): number {
     return 1 + this.cityManager.getCitiesByOwner(nationId).length + this.getBuildingSciencePerTurn(nationId);
   }
 
   private notifyChanged(): void {
     for (const cb of this.listeners) cb();
+  }
+
+  private notifyCompleted(nationId: string, technologyId: string): void {
+    for (const listener of this.completedListeners) {
+      listener({ nationId, technologyId });
+    }
   }
 }
