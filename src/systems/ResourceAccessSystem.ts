@@ -12,24 +12,33 @@ export interface ImportedDealsProvider {
   getAllDeals(): readonly TradeDeal[];
 }
 
+export type ResourceUsabilityPredicate = (nationId: string, resourceId: string) => boolean;
+
+/**
+ * Owns the rules for who has access to which natural resources, taking into
+ * account map ownership, active trade deals, and (via an injected predicate)
+ * technology gating. Hidden strategic resources can still exist on tiles —
+ * they simply do not count as accessible until the predicate allows it.
+ */
 export class ResourceAccessSystem {
+  private canUseResource: ResourceUsabilityPredicate = () => true;
+
   constructor(
     private readonly mapData: MapData,
     private readonly tradeDealSource: ImportedDealsProvider,
   ) {}
+
+  setResourceUsabilityPredicate(predicate: ResourceUsabilityPredicate): void {
+    this.canUseResource = predicate;
+  }
 
   hasOwnResource(nationId: string, resourceId: string): boolean {
     return this.getOwnedResourceSourceCount(nationId, resourceId) > 0;
   }
 
   getOwnedResourceSourceCount(nationId: string, resourceId: string): number {
-    let count = 0;
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        if (tile.ownerId === nationId && tile.resourceId === resourceId) count += 1;
-      }
-    }
-    return count;
+    if (!this.canUseResource(nationId, resourceId)) return 0;
+    return this.countOwnedTiles(nationId, resourceId);
   }
 
   getOwnedResources(nationId: string): string[] {
@@ -38,6 +47,7 @@ export class ResourceAccessSystem {
       for (const tile of row) {
         if (tile.ownerId !== nationId) continue;
         if (tile.resourceId === undefined) continue;
+        if (!this.canUseResource(nationId, tile.resourceId)) continue;
         ids.add(tile.resourceId);
       }
     }
@@ -49,6 +59,7 @@ export class ResourceAccessSystem {
   }
 
   getImportedResourceSourceCount(nationId: string, resourceId: string): number {
+    if (!this.canUseResource(nationId, resourceId)) return 0;
     let count = 0;
     for (const deal of this.tradeDealSource.getAllDeals()) {
       if (deal.buyerNationId === nationId && deal.resourceId === resourceId) count += 1;
@@ -65,17 +76,20 @@ export class ResourceAccessSystem {
   }
 
   getResourceSourceCount(nationId: string, resourceId: string): number {
+    if (!this.canUseResource(nationId, resourceId)) return 0;
+    const ownedRaw = this.countOwnedTiles(nationId, resourceId);
     const retainedOwnedSources = Math.max(
       0,
-      this.getOwnedResourceSourceCount(nationId, resourceId) - this.getExportedResourceSourceCount(nationId, resourceId),
+      ownedRaw - this.getExportedResourceSourceCount(nationId, resourceId),
     );
-    return retainedOwnedSources + this.getImportedResourceSourceCount(nationId, resourceId);
+    return retainedOwnedSources + this.getRawImportedResourceSourceCount(nationId, resourceId);
   }
 
   getImportedResources(nationId: string): string[] {
     const ids = new Set<string>();
     for (const deal of this.tradeDealSource.getAllDeals()) {
       if (deal.buyerNationId !== nationId) continue;
+      if (!this.canUseResource(nationId, deal.resourceId)) continue;
       ids.add(deal.resourceId);
     }
     return Array.from(ids);
@@ -98,7 +112,8 @@ export class ResourceAccessSystem {
   }
 
   canExportResource(sellerNationId: string, resourceId: string): boolean {
-    return this.getOwnedResourceSourceCount(sellerNationId, resourceId)
+    if (!this.canUseResource(sellerNationId, resourceId)) return false;
+    return this.countOwnedTiles(sellerNationId, resourceId)
       > this.getExportedResourceSourceCount(sellerNationId, resourceId);
   }
 
@@ -107,5 +122,23 @@ export class ResourceAccessSystem {
     const imported = this.getImportedResources(nationId);
     const available = this.getAvailableResources(nationId);
     return { owned, imported, available };
+  }
+
+  private countOwnedTiles(nationId: string, resourceId: string): number {
+    let count = 0;
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        if (tile.ownerId === nationId && tile.resourceId === resourceId) count += 1;
+      }
+    }
+    return count;
+  }
+
+  private getRawImportedResourceSourceCount(nationId: string, resourceId: string): number {
+    let count = 0;
+    for (const deal of this.tradeDealSource.getAllDeals()) {
+      if (deal.buyerNationId === nationId && deal.resourceId === resourceId) count += 1;
+    }
+    return count;
   }
 }

@@ -194,6 +194,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('horses'),
     weight: 7,
+    revealTechId: 'animal_husbandry',
+    requiredTechId: 'animal_husbandry',
   },
   {
     id: 'iron',
@@ -203,6 +205,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('iron'),
     weight: 7,
+    revealTechId: 'iron_working',
+    requiredTechId: 'iron_working',
   },
   {
     id: 'niter',
@@ -212,6 +216,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 1 }),
     iconKey: iconKey('niter'),
     weight: 5,
+    revealTechId: 'gunpowder',
+    requiredTechId: 'gunpowder',
   },
   {
     id: 'coal',
@@ -221,6 +227,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 3 }),
     iconKey: iconKey('coal'),
     weight: 5,
+    revealTechId: 'industrialization',
+    requiredTechId: 'industrialization',
   },
   {
     id: 'oil',
@@ -230,6 +238,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 5 }),
     iconKey: iconKey('oil'),
     weight: 3,
+    revealTechId: 'biology',
+    requiredTechId: 'biology',
   },
   {
     id: 'aluminum',
@@ -239,6 +249,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ science: 1, production: 2 }),
     iconKey: iconKey('aluminum'),
     weight: 3,
+    revealTechId: 'electricity',
+    requiredTechId: 'electricity',
   },
   {
     id: 'uranium',
@@ -248,6 +260,8 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     yieldBonus: yieldBonus({ production: 10, science: 1 }),
     iconKey: iconKey('uranium'),
     weight: 2,
+    revealTechId: 'atomic_theory',
+    requiredTechId: 'atomic_theory',
   },
 ];
 

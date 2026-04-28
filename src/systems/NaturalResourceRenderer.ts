@@ -7,10 +7,13 @@ import { TileMap } from './TileMap';
 const RESOURCE_DEPTH = 5.5;
 const RESOURCE_TILE_FILL_SCALE = 0.9;
 
+export type ResourceVisibilityPredicate = (resourceId: string) => boolean;
+
 export class NaturalResourceRenderer {
   private readonly sprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly labels = new Map<string, Phaser.GameObjects.Text>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
+  private visibilityPredicate: ResourceVisibilityPredicate = () => true;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -21,12 +24,21 @@ export class NaturalResourceRenderer {
     this.rebuildAll();
   }
 
+  /**
+   * Set the visibility predicate. Caller is responsible for invoking
+   * `rebuildAll()` afterwards to apply the change.
+   */
+  setVisibilityPredicate(predicate: ResourceVisibilityPredicate): void {
+    this.visibilityPredicate = predicate;
+  }
+
   rebuildAll(): void {
     const seen = new Set<string>();
 
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (!tile.resourceId) continue;
+        if (!this.visibilityPredicate(tile.resourceId)) continue;
         const key = this.coordKey(tile.x, tile.y);
         seen.add(key);
         this.renderTile(tile);
@@ -48,7 +60,8 @@ export class NaturalResourceRenderer {
   refreshTile(tileX: number, tileY: number): void {
     const tile = this.mapData.tiles[tileY]?.[tileX];
     const key = this.coordKey(tileX, tileY);
-    if (!tile?.resourceId) {
+    const visible = !!tile?.resourceId && this.visibilityPredicate(tile.resourceId);
+    if (!visible) {
       const existing = this.sprites.get(key);
       if (existing) this.destroyTileSprite(key, existing);
       const label = this.labels.get(key);
@@ -58,7 +71,7 @@ export class NaturalResourceRenderer {
       }
       return;
     }
-    this.renderTile(tile);
+    this.renderTile(tile!);
   }
 
   shutdown(): void {

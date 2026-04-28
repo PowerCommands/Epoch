@@ -21,4 +21,14 @@ export interface NaturalResourceDefinition {
   weight: number;
   improvementId?: string;
   notes?: string;
+
+  /** Hide the resource on the map until this technology is researched. */
+  readonly revealTechId?: string;
+
+  /**
+   * Resource is not usable for economy, trade, or strategic-resource
+   * capacity until the owning/holding nation has researched this tech.
+   * The tile and resource still exist; access is gated by `ResourceAccessSystem`.
+   */
+  readonly requiredTechId?: string;
 }

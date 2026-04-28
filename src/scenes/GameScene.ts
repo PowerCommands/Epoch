@@ -435,6 +435,27 @@ export class GameScene extends Phaser.Scene {
         ).science, 0),
       gameSpeed,
     );
+    const isNaturalResourceVisibleToHuman = (resourceId: string): boolean => {
+      const resource = getNaturalResourceById(resourceId);
+      if (!resource) return false;
+      if (!resource.revealTechId) return true;
+      if (!humanNationId) return false;
+      return researchSystem.isResearched(humanNationId, resource.revealTechId);
+    };
+    naturalResourceRenderer.setVisibilityPredicate(isNaturalResourceVisibleToHuman);
+    naturalResourceRenderer.rebuildAll();
+
+    resourceAccessSystem.setResourceUsabilityPredicate((nationId, resourceId) => {
+      const resource = getNaturalResourceById(resourceId);
+      if (!resource) return false;
+      if (!resource.requiredTechId) return true;
+      return researchSystem.isResearched(nationId, resource.requiredTechId);
+    });
+    happinessSystem.recalculateAll();
+    for (const nation of nationManager.getAllNations()) {
+      resourceSystem.recalculateForNation(nation.id);
+    }
+
     if (!data.savedState && humanNationId) {
       if (!researchSystem.getCurrentResearch(humanNationId)) {
         researchSystem.startResearch(humanNationId, 'agriculture');
@@ -1351,6 +1372,11 @@ export class GameScene extends Phaser.Scene {
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
     researchSystem.onChanged(() => {
+      naturalResourceRenderer.rebuildAll();
+      for (const nation of nationManager.getAllNations()) {
+        resourceSystem.recalculateForNation(nation.id);
+      }
+      happinessSystem.recalculateAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -2077,6 +2103,11 @@ export class GameScene extends Phaser.Scene {
     });
     unitActionToolbox.onChanged(() => hudLayer?.refresh());
     researchSystem.onChanged(() => {
+      naturalResourceRenderer.rebuildAll();
+      for (const nation of nationManager.getAllNations()) {
+        resourceSystem.recalculateForNation(nation.id);
+      }
+      happinessSystem.recalculateAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
