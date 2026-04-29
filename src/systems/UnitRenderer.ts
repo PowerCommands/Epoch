@@ -6,6 +6,7 @@ import { getUnitActionSpriteKey, getUnitSpriteKey } from '../utils/assetPaths';
 
 const UNIT_DEPTH = 18;
 const PROGRESS_TEXT_DEPTH = UNIT_DEPTH + 1.5;
+const UNIT_TILE_FILL_SCALE = 0.9;
 
 const HP_BAR_WIDTH = 32;
 const HP_BAR_HEIGHT = 4;
@@ -25,9 +26,9 @@ interface UnitVisual {
 /**
  * UnitRenderer draws sprites for units on the map.
  *
- * Uses per-unit-type textures with nation color tint. When a unit has an
- * active action with an override sprite (e.g. worker_action_improvement),
- * the override is shown and a build-progress percentage is drawn over it.
+ * Uses per-unit-type textures. When a unit has an active action with an
+ * override sprite (e.g. worker_action_improvement), the override is shown
+ * and a build-progress percentage is drawn over it.
  */
 export class UnitRenderer {
   private readonly scene: Phaser.Scene;
@@ -119,6 +120,7 @@ export class UnitRenderer {
     if (visual.sprite.texture.key !== textureKey) {
       visual.sprite.setTexture(textureKey);
     }
+    this.applyUnitTileSize(unit, visual.sprite);
 
     if (unit.isBuildingImprovement() && unit.buildAction !== undefined) {
       const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
@@ -169,7 +171,7 @@ export class UnitRenderer {
 
     const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
     const sprite = this.scene.add.image(0, 0, textureKey);
-    sprite.setTint(nation.color);
+    this.applyUnitTileSize(unit, sprite);
 
     const container = this.scene.add.container(0, 0, [sprite]);
     container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);
@@ -197,6 +199,11 @@ export class UnitRenderer {
     const baseKey = getUnitSpriteKey(unitTypeId);
     if (this.scene.textures.exists(baseKey)) return baseKey;
     return FALLBACK_TEXTURE_KEY;
+  }
+
+  private applyUnitTileSize(unit: { tileX: number; tileY: number }, sprite: Phaser.GameObjects.Image): void {
+    const rect = this.tileMap.getTileRect(unit.tileX, unit.tileY);
+    sprite.setDisplaySize(rect.width * UNIT_TILE_FILL_SCALE, rect.height * UNIT_TILE_FILL_SCALE);
   }
 
   private refreshHpBar(unitId: string): void {

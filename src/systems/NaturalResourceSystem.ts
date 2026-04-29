@@ -1,4 +1,4 @@
-import { getNaturalResourcesForTileType, NATURAL_RESOURCES } from '../data/naturalResources';
+import { getNaturalResourcesForTileType, isResourceAllowedOnTile, NATURAL_RESOURCES } from '../data/naturalResources';
 import type { MapData, Tile } from '../types/map';
 import type { NaturalResourceDefinition } from '../types/naturalResources';
 import type { ResourceAbundance } from '../types/gameConfig';
@@ -20,17 +20,22 @@ const DENSITY_BY_ABUNDANCE: Record<ResourceAbundance, number> = {
 export class NaturalResourceSystem {
   generate(mapData: MapData, options: NaturalResourceGenerationOptions): void {
     const cityCoordKeys = new Set(options.cityCoords.map((coord) => this.coordKey(coord.x, coord.y)));
+    this.warnAboutInvalidExistingResources(mapData, cityCoordKeys);
+    const validResourceTileCount = this.countValidResourceTiles(mapData, cityCoordKeys);
+    const existingResourceCount = this.countExistingValidResources(mapData, cityCoordKeys);
+    const targetTotalCount = Math.round(validResourceTileCount * DENSITY_BY_ABUNDANCE[options.resourceAbundance]);
+    const remainingToPlace = Math.max(0, targetTotalCount - existingResourceCount);
+    if (remainingToPlace <= 0) return;
+
     const candidates = this.shuffle(
       this.getValidCandidates(mapData, cityCoordKeys),
       new SeededRng(this.buildSeed(options)),
     );
-    const targetCount = Math.round(candidates.length * DENSITY_BY_ABUNDANCE[options.resourceAbundance]);
-    if (targetCount <= 0) return;
 
     let placed = 0;
-    placed += this.placeFromCandidates(mapData, candidates, targetCount, true, new SeededRng(`${this.buildSeed(options)}:weighted:first`));
-    if (placed < targetCount) {
-      this.placeFromCandidates(mapData, candidates, targetCount - placed, false, new SeededRng(`${this.buildSeed(options)}:weighted:second`));
+    placed += this.placeFromCandidates(mapData, candidates, remainingToPlace, true, new SeededRng(`${this.buildSeed(options)}:weighted:first`));
+    if (placed < remainingToPlace) {
+      this.placeFromCandidates(mapData, candidates, remainingToPlace - placed, false, new SeededRng(`${this.buildSeed(options)}:weighted:second`));
     }
   }
 
@@ -45,6 +50,46 @@ export class NaturalResourceSystem {
       }
     }
     return candidates;
+  }
+
+  private countValidResourceTiles(mapData: MapData, cityCoordKeys: Set<string>): number {
+    let count = 0;
+    for (const row of mapData.tiles) {
+      for (const tile of row) {
+        if (cityCoordKeys.has(this.coordKey(tile.x, tile.y))) continue;
+        if (getNaturalResourcesForTileType(tile.type).length === 0) continue;
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  private countExistingValidResources(mapData: MapData, cityCoordKeys: Set<string>): number {
+    let count = 0;
+    for (const row of mapData.tiles) {
+      for (const tile of row) {
+        if (!tile.resourceId) continue;
+        if (cityCoordKeys.has(this.coordKey(tile.x, tile.y))) continue;
+        if (!isResourceAllowedOnTile(tile.resourceId, tile.type)) continue;
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  private warnAboutInvalidExistingResources(mapData: MapData, cityCoordKeys: Set<string>): void {
+    for (const row of mapData.tiles) {
+      for (const tile of row) {
+        if (!tile.resourceId) continue;
+        if (cityCoordKeys.has(this.coordKey(tile.x, tile.y))) {
+          console.warn(`NaturalResourceSystem: ignoring pre-placed resource "${tile.resourceId}" on city tile (${tile.x},${tile.y}).`);
+          continue;
+        }
+        if (!isResourceAllowedOnTile(tile.resourceId, tile.type)) {
+          console.warn(`NaturalResourceSystem: ignoring invalid pre-placed resource "${tile.resourceId}" on ${tile.type} tile (${tile.x},${tile.y}).`);
+        }
+      }
+    }
   }
 
   private placeFromCandidates(

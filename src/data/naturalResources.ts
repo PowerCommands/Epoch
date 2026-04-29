@@ -254,7 +254,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     allowedTileTypes: [TileType.Desert, TileType.Ocean, TileType.Ice, TileType.Plains],
     yieldBonus: yieldBonus({ production: 5 }),
     iconKey: iconKey('oil'),
-    weight: 3,
+    weight: 1,
     improvementId: 'oil_well',
     improvementIdByTileType: {
       [TileType.Coast]: 'offshore_platform',
@@ -291,6 +291,10 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
 
 export function getNaturalResourceById(id: string): NaturalResourceDefinition | undefined {
   return NATURAL_RESOURCES.find((resource) => resource.id === id);
+}
+
+export function isResourceAllowedOnTile(resourceId: string, tileType: TileType): boolean {
+  return getNaturalResourceById(resourceId)?.allowedTileTypes.includes(tileType) ?? false;
 }
 
 export function getNaturalResourcesForTileType(tileType: TileType): NaturalResourceDefinition[] {

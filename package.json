@@ -10,12 +10,13 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc && vite build",
     "prebuild": "npm run generate-manifests",
-    "generate-manifests": "tsx scripts/generateSoundsManifest.ts && tsx scripts/generateMapManifest.ts && tsx scripts/generateNationManifest.ts",
+    "generate-manifests": "tsx scripts/generateSoundsManifest.ts && tsx scripts/generateMapManifest.ts && tsx scripts/generateNationManifest.ts && tsx scripts/generateNaturalResourceManifest.ts",
     "generate-sprites": "tsx scripts/generateSprites.ts",
     "generate-resource-icons": "tsx scripts/generateResourceIcons.ts",
     "generate-sounds-manifest": "tsx scripts/generateSoundsManifest.ts",
     "generate-map-manifest": "tsx scripts/generateMapManifest.ts",
     "generate-nation-manifest": "tsx scripts/generateNationManifest.ts",
+    "generate-natural-resource-manifest": "tsx scripts/generateNaturalResourceManifest.ts",
     "preview": "vite preview"
   },
   "dependencies": {

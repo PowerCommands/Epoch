@@ -29,7 +29,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 }
 .palette-btn:hover { border-color: #666; }
 .palette-btn.active { border-color: #fff; background: #333; }
+.palette-btn.invalid { opacity: 0.45; }
 .palette-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+.palette-resource-img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; image-rendering: pixelated; }
+.palette-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
 .mode-btn {
   width: 100%; margin-bottom: 6px; border: 2px solid transparent; border-radius: 3px;
   padding: 6px 8px; background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px;
@@ -148,7 +151,17 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     </div>
 
     <div class="section" id="palette-section">
-      <div class="section-title">Terrain Palette</div>
+      <div class="section-title" id="palette-title">Terrain Palette</div>
+      <div class="palette-tabs">
+        <button class="mode-btn active" id="terrain-paint-mode-btn" type="button" aria-pressed="true">
+          <span class="mode-icon" aria-hidden="true">&#9635;</span>
+          <span>Terrain</span>
+        </button>
+        <button class="mode-btn" id="resource-paint-mode-btn" type="button" aria-pressed="false">
+          <span class="mode-icon" aria-hidden="true">&#9672;</span>
+          <span>Resource</span>
+        </button>
+      </div>
       <button class="mode-btn" id="pan-mode-btn" type="button" aria-pressed="false">
         <span class="mode-icon" aria-hidden="true">&#9995;</span>
         <span>Pan Camera</span>
@@ -220,7 +233,9 @@ let scenario = null;
 let mapManifest = { maps: [] };
 let currentMap = null;
 let nationRegistry = { nations: [] };
+let naturalResourceManifest = { resources: [] };
 let tiles = null; // 2D array [r][q] of type strings
+let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let mapW = 0, mapH = 0, tileSize = 0;
 let hexSize = 0;
 let worldBounds = { width: 0, height: 0 };
@@ -234,7 +249,9 @@ const DRAG_THRESHOLD = 4;
 
 // Tool state
 let currentTool = 'paint';
+let currentPaintMode = 'terrain';
 let currentTerrain = 'plains';
+let currentResourceId = null;
 let interactionMode = 'paint';
 let brushSize = 1;
 let selectedEntity = null; // { kind: 'city'|'unit', index: number }
@@ -244,11 +261,16 @@ let isPainting = false;
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const viewport = document.getElementById('viewport');
+const resourceImages = new Map();
 
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  [mapManifest, nationRegistry] = await Promise.all([loadMapManifest(), loadNationRegistry()]);
+  [mapManifest, nationRegistry, naturalResourceManifest] = await Promise.all([
+    loadMapManifest(),
+    loadNationRegistry(),
+    loadNaturalResourceManifest(),
+  ]);
   currentMap = resolveRequestedMap(mapManifest);
   if (!currentMap) {
     document.getElementById('status-info').textContent = 'No maps available. Regenerate assets/maps/manifest.json.';
@@ -268,13 +290,22 @@ async function init() {
 
   // Build 2D q/r tile array
   tiles = [];
+  tileResources = [];
   for (let r = 0; r < mapH; r++) {
     const row = [];
+    const resourceRow = [];
     for (let q = 0; q < mapW; q++) row.push('ocean');
+    for (let q = 0; q < mapW; q++) resourceRow.push(undefined);
     tiles.push(row);
+    tileResources.push(resourceRow);
   }
   for (const t of scenario.map.tiles) {
-    if (tiles[t.r]) tiles[t.r][t.q] = t.type;
+    if (tiles[t.r]) {
+      tiles[t.r][t.q] = t.type;
+      if (typeof t.resourceId === 'string' && t.resourceId.length > 0) {
+        tileResources[t.r][t.q] = t.resourceId;
+      }
+    }
   }
 
   // Center camera
@@ -343,6 +374,28 @@ async function loadNationRegistry() {
   return { nations: [] };
 }
 
+async function loadNaturalResourceManifest() {
+  try {
+    const res = await fetch('/assets/data/natural-resources-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`natural resource manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.resources)) {
+      return {
+        resources: manifest.resources.filter(resource =>
+          resource
+          && typeof resource.id === 'string'
+          && typeof resource.name === 'string'
+          && Array.isArray(resource.allowedTileTypes)
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load natural resource manifest.', err);
+  }
+
+  return { resources: [] };
+}
+
 function resolveRequestedMap(manifest) {
   const requestedKey = new URLSearchParams(window.location.search).get('map');
   return manifest.maps.find(map => map.key === requestedKey) ?? manifest.maps[0];
@@ -357,6 +410,16 @@ function getMapFilename(map) {
 function buildPalette() {
   const grid = document.getElementById('palette');
   grid.innerHTML = '';
+  document.getElementById('palette-title').textContent = currentPaintMode === 'terrain'
+    ? 'Terrain Palette'
+    : 'Resource Palette';
+
+  if (currentPaintMode === 'resource') {
+    buildResourcePalette(grid);
+    updateInteractionModeUI();
+    return;
+  }
+
   for (const type of TILE_TYPES) {
     const btn = document.createElement('button');
     btn.className = 'palette-btn' + (type === currentTerrain ? ' active' : '');
@@ -376,8 +439,51 @@ function buildPalette() {
   updateInteractionModeUI();
 }
 
+function buildResourcePalette(grid) {
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'palette-btn' + (currentResourceId === null ? ' active' : '');
+  clearBtn.dataset.resourceId = '';
+  clearBtn.innerHTML = `<span class="palette-swatch" style="background:#111; border:1px solid #666"></span>None`;
+  clearBtn.title = 'Clear resource';
+  clearBtn.addEventListener('click', () => selectResource(null));
+  grid.appendChild(clearBtn);
+
+  for (const resource of naturalResourceManifest.resources) {
+    const btn = document.createElement('button');
+    btn.className = 'palette-btn' + (resource.id === currentResourceId ? ' active' : '');
+    btn.dataset.resourceId = resource.id;
+    btn.title = `${resource.name} (${resource.allowedTileTypes.join(', ')})`;
+    const iconPath = resource.iconPath || `/assets/sprites/resources/${resource.id}.png`;
+    btn.innerHTML = `<img class="palette-resource-img" src="${iconPath}" alt="">${resource.name}`;
+    btn.addEventListener('click', () => selectResource(resource.id));
+    grid.appendChild(btn);
+  }
+}
+
+function selectResource(resourceId) {
+  currentResourceId = resourceId;
+  currentTool = 'paint';
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
+  updateToolPanels();
+  setInteractionMode('paint');
+  buildPalette();
+  render();
+}
+
 document.getElementById('pan-mode-btn').addEventListener('click', () => {
   setInteractionMode('pan');
+});
+
+document.getElementById('terrain-paint-mode-btn').addEventListener('click', () => {
+  currentPaintMode = 'terrain';
+  buildPalette();
+  updateInteractionModeUI();
+});
+
+document.getElementById('resource-paint-mode-btn').addEventListener('click', () => {
+  currentPaintMode = 'resource';
+  buildPalette();
+  updateInteractionModeUI();
 });
 
 // ─── Entity lists ───────────────────────────────────────────────────────────
@@ -660,6 +766,18 @@ function setInteractionMode(mode) {
 
 function updateInteractionModeUI() {
   const panModeBtn = document.getElementById('pan-mode-btn');
+  const terrainModeBtn = document.getElementById('terrain-paint-mode-btn');
+  const resourceModeBtn = document.getElementById('resource-paint-mode-btn');
+  if (terrainModeBtn) {
+    const active = currentTool === 'paint' && currentPaintMode === 'terrain';
+    terrainModeBtn.classList.toggle('active', active);
+    terrainModeBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  if (resourceModeBtn) {
+    const active = currentTool === 'paint' && currentPaintMode === 'resource';
+    resourceModeBtn.classList.toggle('active', active);
+    resourceModeBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
   if (!panModeBtn) return;
   const isPanMode = currentTool === 'paint' && interactionMode === 'pan';
   panModeBtn.classList.toggle('active', isPanMode);
@@ -784,9 +902,33 @@ function getWorldBounds() {
 
 // ─── Painting ───────────────────────────────────────────────────────────────
 
+function getNaturalResource(resourceId) {
+  return naturalResourceManifest.resources.find(resource => resource.id === resourceId) || null;
+}
+
+function isResourceAllowedOnTile(resourceId, tileType) {
+  const resource = getNaturalResource(resourceId);
+  return !!resource && resource.allowedTileTypes.includes(tileType);
+}
+
+function clearInvalidResourceForTerrain(q, r) {
+  const resourceId = tileResources[r][q];
+  if (resourceId && !isResourceAllowedOnTile(resourceId, tiles[r][q])) {
+    tileResources[r][q] = undefined;
+    return resourceId;
+  }
+  return null;
+}
+
 function paintAt(q, r) {
+  if (currentPaintMode === 'resource') {
+    paintResourceAt(q, r);
+    return;
+  }
+
   const radius = brushSize - 1;
   let changed = false;
+  let cleared = 0;
 
   for (let dq = -radius; dq <= radius; dq++) {
     const minDr = Math.max(-radius, -dq - radius);
@@ -798,9 +940,52 @@ function paintAt(q, r) {
       if (pq < 0 || pr < 0 || pq >= mapW || pr >= mapH) continue;
       if (tiles[pr][pq] !== currentTerrain) {
         tiles[pr][pq] = currentTerrain;
+        if (clearInvalidResourceForTerrain(pq, pr)) cleared += 1;
         changed = true;
       }
     }
+  }
+  if (cleared > 0) setStatusInfo(`Cleared ${cleared} incompatible resource${cleared === 1 ? '' : 's'}`);
+  if (changed) render();
+}
+
+function paintResourceAt(q, r) {
+  const radius = brushSize - 1;
+  let changed = false;
+  let rejected = 0;
+
+  for (let dq = -radius; dq <= radius; dq++) {
+    const minDr = Math.max(-radius, -dq - radius);
+    const maxDr = Math.min(radius, -dq + radius);
+
+    for (let dr = minDr; dr <= maxDr; dr++) {
+      const pq = q + dq;
+      const pr = r + dr;
+      if (pq < 0 || pr < 0 || pq >= mapW || pr >= mapH) continue;
+
+      if (currentResourceId === null) {
+        if (tileResources[pr][pq] !== undefined) {
+          tileResources[pr][pq] = undefined;
+          changed = true;
+        }
+        continue;
+      }
+
+      if (!isResourceAllowedOnTile(currentResourceId, tiles[pr][pq])) {
+        rejected += 1;
+        continue;
+      }
+
+      if (tileResources[pr][pq] !== currentResourceId) {
+        tileResources[pr][pq] = currentResourceId;
+        changed = true;
+      }
+    }
+  }
+
+  if (rejected > 0) {
+    const resource = getNaturalResource(currentResourceId);
+    setStatusInfo(`${resource?.name || currentResourceId} cannot be placed on ${rejected} selected tile${rejected === 1 ? '' : 's'}`);
   }
   if (changed) render();
 }
@@ -1005,7 +1190,11 @@ viewport.addEventListener('mousemove', (e) => {
   const pos = screenToTile(e.clientX, e.clientY);
   if (pos) {
     document.getElementById('status-pos').textContent = `q/r (${pos.q}, ${pos.r})`;
-    document.getElementById('status-tile').textContent = tiles[pos.r][pos.q];
+    const resourceId = tileResources[pos.r][pos.q];
+    const resource = resourceId ? getNaturalResource(resourceId) : null;
+    document.getElementById('status-tile').textContent = resource
+      ? `${tiles[pos.r][pos.q]} • ${resource.name}`
+      : tiles[pos.r][pos.q];
   }
 
   if (isPainting && currentTool === 'paint' && pos) {
@@ -1121,6 +1310,19 @@ function render() {
 
         strokeHex(q, r, 'rgba(0,0,0,0.2)', 1);
       }
+    }
+  }
+
+  // Draw resource icons on top of terrain
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const resourceId = tileResources[r][q];
+      if (!resourceId) continue;
+      const rect = hexRect(q, r);
+      if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) {
+        continue;
+      }
+      drawResource(q, r, resourceId);
     }
   }
 
@@ -1246,6 +1448,57 @@ function strokeHex(q, r, strokeStyle, lineWidth) {
   ctx.stroke();
 }
 
+function drawResource(q, r, resourceId) {
+  const resource = getNaturalResource(resourceId);
+  const world = tileToWorld(q, r);
+  const sx = (world.x - camX) * zoom;
+  const sy = (world.y - camY) * zoom;
+  const size = Math.max(8, tileSize * zoom * 0.58);
+
+  if (!resource) {
+    drawResourceFallback(resourceId, sx, sy, size);
+    return;
+  }
+
+  const image = getResourceImage(resource);
+  if (image?.complete && image.naturalWidth > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(image, sx - size / 2, sy - size / 2, size, size);
+    ctx.restore();
+    return;
+  }
+
+  drawResourceFallback(resource.name, sx, sy, size);
+}
+
+function getResourceImage(resource) {
+  if (resourceImages.has(resource.id)) return resourceImages.get(resource.id);
+  const image = new Image();
+  image.src = resource.iconPath || `/assets/sprites/resources/${resource.id}.png`;
+  image.addEventListener('load', render, { once: true });
+  image.addEventListener('error', render, { once: true });
+  resourceImages.set(resource.id, image);
+  return image;
+}
+
+function drawResourceFallback(label, sx, sy, size) {
+  const text = label
+    .split(/\s+/)
+    .map(part => part.charAt(0))
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  ctx.fillStyle = '#fff7cc';
+  ctx.strokeStyle = '#2b2112';
+  ctx.lineWidth = 3;
+  ctx.font = `bold ${Math.max(9, size * 0.35)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.strokeText(text, sx, sy);
+  ctx.fillText(text, sx, sy);
+}
+
 function worldToScreen(point) {
   return {
     x: (point.x - camX) * zoom,
@@ -1278,6 +1531,18 @@ function validateScenario() {
     if (!activeIds.has(unit.nationId)) warnings.push(`${unit.unitTypeId} at (${unit.q},${unit.r}) references inactive or unknown nation ${unit.nationId}`);
   }
 
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const resourceId = tileResources[r][q];
+      if (!resourceId) continue;
+      if (!getNaturalResource(resourceId)) {
+        warnings.push(`Unknown resource ${resourceId} at (${q},${r})`);
+      } else if (!isResourceAllowedOnTile(resourceId, tiles[r][q])) {
+        warnings.push(`${resourceId} is not allowed on ${tiles[r][q]} at (${q},${r})`);
+      }
+    }
+  }
+
   return warnings;
 }
 
@@ -1300,7 +1565,9 @@ document.getElementById('save-btn').addEventListener('click', () => {
   const flatTiles = [];
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
-      flatTiles.push({ q, r, type: tiles[r][q] });
+      const tile = { q, r, type: tiles[r][q] };
+      if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
+      flatTiles.push(tile);
     }
   }
 

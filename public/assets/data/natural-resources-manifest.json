@@ -1,0 +1,247 @@
+{
+  "resources": [
+    {
+      "id": "wheat",
+      "name": "Wheat",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/wheat.png"
+    },
+    {
+      "id": "rice",
+      "name": "Rice",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/rice.png"
+    },
+    {
+      "id": "cattle",
+      "name": "Cattle",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/cattle.png"
+    },
+    {
+      "id": "sheep",
+      "name": "Sheep",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/sheep.png"
+    },
+    {
+      "id": "deer",
+      "name": "Deer",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "forest"
+      ],
+      "iconPath": "/assets/sprites/resources/deer.png"
+    },
+    {
+      "id": "fish",
+      "name": "Fish",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "coast",
+        "ocean"
+      ],
+      "iconPath": "/assets/sprites/resources/fish.png"
+    },
+    {
+      "id": "crabs",
+      "name": "Crabs",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "coast"
+      ],
+      "iconPath": "/assets/sprites/resources/crabs.png"
+    },
+    {
+      "id": "copper",
+      "name": "Copper",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "mountain"
+      ],
+      "iconPath": "/assets/sprites/resources/copper.png"
+    },
+    {
+      "id": "bananas",
+      "name": "Bananas",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "jungle"
+      ],
+      "iconPath": "/assets/sprites/resources/bananas.png"
+    },
+    {
+      "id": "stone",
+      "name": "Stone",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "mountain"
+      ],
+      "iconPath": "/assets/sprites/resources/stone.png"
+    },
+    {
+      "id": "wine",
+      "name": "Wine",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/wine.png"
+    },
+    {
+      "id": "silver",
+      "name": "Silver",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "mountain"
+      ],
+      "iconPath": "/assets/sprites/resources/silver.png"
+    },
+    {
+      "id": "gems",
+      "name": "Gems",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "jungle",
+        "mountain"
+      ],
+      "iconPath": "/assets/sprites/resources/gems.png"
+    },
+    {
+      "id": "pearls",
+      "name": "Pearls",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "coast"
+      ],
+      "iconPath": "/assets/sprites/resources/pearls.png"
+    },
+    {
+      "id": "whales",
+      "name": "Whales",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "coast",
+        "ocean"
+      ],
+      "iconPath": "/assets/sprites/resources/whales.png"
+    },
+    {
+      "id": "spices",
+      "name": "Spices",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "jungle",
+        "forest"
+      ],
+      "iconPath": "/assets/sprites/resources/spices.png"
+    },
+    {
+      "id": "silk",
+      "name": "Silk",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "forest",
+        "jungle"
+      ],
+      "iconPath": "/assets/sprites/resources/silk.png"
+    },
+    {
+      "id": "ivory",
+      "name": "Ivory",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "plains",
+        "forest"
+      ],
+      "iconPath": "/assets/sprites/resources/ivory.png"
+    },
+    {
+      "id": "horses",
+      "name": "Horses",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/horses.png"
+    },
+    {
+      "id": "iron",
+      "name": "Iron",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "mountain",
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/iron.png"
+    },
+    {
+      "id": "niter",
+      "name": "Niter",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "plains",
+        "desert"
+      ],
+      "iconPath": "/assets/sprites/resources/niter.png"
+    },
+    {
+      "id": "coal",
+      "name": "Coal",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "forest",
+        "mountain"
+      ],
+      "iconPath": "/assets/sprites/resources/coal.png"
+    },
+    {
+      "id": "oil",
+      "name": "Oil",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "desert",
+        "ocean",
+        "ice",
+        "plains"
+      ],
+      "iconPath": "/assets/sprites/resources/oil.png"
+    },
+    {
+      "id": "aluminum",
+      "name": "Aluminum",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "plains",
+        "desert",
+        "ice"
+      ],
+      "iconPath": "/assets/sprites/resources/aluminum.png"
+    },
+    {
+      "id": "uranium",
+      "name": "Uranium",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "mountain",
+        "desert",
+        "ice"
+      ],
+      "iconPath": "/assets/sprites/resources/uranium.png"
+    }
+  ]
+}
