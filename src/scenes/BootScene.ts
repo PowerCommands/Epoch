@@ -1,10 +1,13 @@
 import Phaser from 'phaser';
+import { CULTURE_TREE } from '../data/cultureTree';
 import { MAP_MANIFEST_CACHE_KEY, MAP_MANIFEST_URL, parseMapManifest } from '../data/maps';
 import { ALL_LEADERS } from '../data/leaders';
 import { NATURAL_RESOURCES } from '../data/naturalResources';
 import { ALL_TECHNOLOGIES } from '../data/technologies';
 import { ALL_UNIT_TYPES } from '../data/units';
 import {
+  getCultureSpriteKey,
+  getCultureSpritePath,
   getTechnologySpriteKey,
   getTechnologySpritePath,
   getUnitActionSpriteKey,
@@ -69,6 +72,10 @@ export class BootScene extends Phaser.Scene {
 
     for (const technology of ALL_TECHNOLOGIES) {
       this.load.image(getTechnologySpriteKey(technology.id), getTechnologySpritePath(technology.id));
+    }
+
+    for (const cultureNode of CULTURE_TREE) {
+      this.load.image(getCultureSpriteKey(cultureNode.id), getCultureSpritePath(cultureNode.id));
     }
 
     // Leader portraits (used by the Phaser-side leader strip in GameScene)

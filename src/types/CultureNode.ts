@@ -6,6 +6,7 @@ export interface CultureNode {
   name: string;
   cost: number;
   era: Era;
+  readonly description: string;
   prerequisites?: string[];
   unlocks: CultureUnlock[];
 }

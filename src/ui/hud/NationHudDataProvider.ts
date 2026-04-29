@@ -7,6 +7,7 @@ import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
 import { getCultureNodeById } from '../../data/cultureTree';
 import { getNaturalResourceById } from '../../data/naturalResources';
+import { getCultureSpriteKey, getCultureSpritePath } from '../../utils/assetPaths';
 import {
   buildHappinessTooltip,
   formatHappinessStateLabel,
@@ -50,6 +51,9 @@ export interface HudCultureEntry {
   id: string;
   name: string;
   era: string;
+  description: string;
+  imageKey: string;
+  imagePath: string;
   unlocks: string[];
   effectiveCost: number;
   isUnlocked: boolean;
@@ -216,6 +220,9 @@ export class NationHudDataProvider {
         id: entry.node.id,
         name: entry.node.name,
         era: entry.node.era,
+        description: entry.node.description,
+        imageKey: getCultureSpriteKey(entry.node.id),
+        imagePath: getCultureSpritePath(entry.node.id),
         unlocks: entry.node.unlocks.map((unlock) => `${unlock.type}: ${unlock.value}`),
         effectiveCost: entry.effectiveCost,
         isUnlocked: entry.isUnlocked,

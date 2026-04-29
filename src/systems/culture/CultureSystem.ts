@@ -7,6 +7,10 @@ import { pickBestAICultureNode } from '../ai/AICulturePlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../../data/aiBaselinePriorities';
 
 type ChangedListener = () => void;
+export type CultureCompletedListener = (event: {
+  readonly nationId: string;
+  readonly cultureNode: CultureNode;
+}) => void;
 type CultureProvider = (nationId: string) => number;
 
 export type CultureTreeNode = CultureNode;
@@ -22,6 +26,7 @@ export interface CultureNodeViewState {
 
 export class CultureSystem {
   private readonly listeners: ChangedListener[] = [];
+  private readonly completedListeners: CultureCompletedListener[] = [];
 
   constructor(
     private readonly nationManager: NationManager,
@@ -184,6 +189,10 @@ export class CultureSystem {
     this.listeners.push(cb);
   }
 
+  onCompleted(listener: CultureCompletedListener): void {
+    this.completedListeners.push(listener);
+  }
+
   private tryCompleteCurrentNode(nationId: string): CultureNode | null {
     const nation = this.nationManager.getNation(nationId);
     if (!nation?.currentCultureNodeId) return null;
@@ -205,6 +214,7 @@ export class CultureSystem {
       [nation.id],
       this.getCurrentRound(),
     );
+    this.notifyCompleted(nation.id, node);
     this.notifyChanged();
 
     return node;
@@ -212,5 +222,11 @@ export class CultureSystem {
 
   private notifyChanged(): void {
     for (const cb of this.listeners) cb();
+  }
+
+  private notifyCompleted(nationId: string, cultureNode: CultureNode): void {
+    for (const listener of this.completedListeners) {
+      listener({ nationId, cultureNode });
+    }
   }
 }

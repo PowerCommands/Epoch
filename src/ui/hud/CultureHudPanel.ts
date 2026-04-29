@@ -23,17 +23,25 @@ const PANEL_SCROLLBAR_WIDTH = 10;
 const PANEL_SCROLLBAR_GAP = 12;
 const PANEL_CONTENT_WIDTH = PANEL_WIDTH - (PANEL_INNER_PADDING * 2) - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP;
 const LINE_HEIGHT = 29;
-const BUTTON_HEIGHT = 72;
-const BUTTON_GAP = 8;
+const BUTTON_HEIGHT = 112;
+const BUTTON_GAP = 10;
+const CULTURE_ICON_SIZE = 68;
+const CULTURE_ICON_PADDING = 14;
+const CULTURE_TEXT_GAP = 14;
 const SECTION_GAP = 16;
 const SCROLL_STEP = 56;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
 interface CultureButtonView {
   id: string;
+  imageKey: string;
   background: Phaser.GameObjects.Rectangle;
-  label: Phaser.GameObjects.Text;
-  detail: Phaser.GameObjects.Text;
+  iconFrame: Phaser.GameObjects.Rectangle;
+  iconImage: Phaser.GameObjects.Image;
+  fallbackIcon: Phaser.GameObjects.Text;
+  nameText: Phaser.GameObjects.Text;
+  metaText: Phaser.GameObjects.Text;
+  descriptionText: Phaser.GameObjects.Text;
   prerequisite: Phaser.GameObjects.Text;
   isSelectable: boolean;
   baseFillColor: number;
@@ -291,12 +299,24 @@ export class CultureHudPanel {
 
       for (const _node of era.nodes) {
         const button = this.cultureButtons[buttonIndex];
+        const buttonY = baseY + contentCursor;
+        const iconX = innerX + CULTURE_ICON_PADDING;
+        const iconY = buttonY + Math.round((BUTTON_HEIGHT - CULTURE_ICON_SIZE) / 2);
+        const textX = iconX + CULTURE_ICON_SIZE + CULTURE_TEXT_GAP;
         button.background.setVisible(panelVisible)
-          .setPosition(Math.round(innerX), Math.round(baseY + contentCursor))
+          .setPosition(Math.round(innerX), Math.round(buttonY))
           .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
-        button.label.setVisible(panelVisible).setPosition(Math.round(innerX + 12), Math.round(baseY + contentCursor + 12));
-        button.detail.setVisible(panelVisible).setPosition(Math.round(innerX + 12), Math.round(baseY + contentCursor + 33));
-        button.prerequisite.setVisible(panelVisible).setPosition(Math.round(innerX + 12), Math.round(baseY + contentCursor + 52));
+        button.iconFrame.setVisible(panelVisible)
+          .setPosition(Math.round(iconX), Math.round(iconY))
+          .setDisplaySize(CULTURE_ICON_SIZE, CULTURE_ICON_SIZE);
+        button.iconImage.setVisible(panelVisible && this.scene.textures.exists(button.imageKey))
+          .setPosition(Math.round(iconX + (CULTURE_ICON_SIZE / 2)), Math.round(iconY + (CULTURE_ICON_SIZE / 2)));
+        button.fallbackIcon.setVisible(panelVisible && !this.scene.textures.exists(button.imageKey))
+          .setPosition(Math.round(iconX + (CULTURE_ICON_SIZE / 2)), Math.round(iconY + (CULTURE_ICON_SIZE / 2)));
+        button.nameText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 10));
+        button.metaText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 34));
+        button.descriptionText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 55));
+        button.prerequisite.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 90));
         contentCursor += BUTTON_HEIGHT + BUTTON_GAP;
         buttonIndex += 1;
       }
@@ -389,23 +409,57 @@ export class CultureHudPanel {
       .setStrokeStyle(1, style.strokeColor, 0.58)
       .setInteractive({ useHandCursor: style.isSelectable })
       .setMask(this.contentMask);
-    const label = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${entry.name} (${entry.effectiveCost})`, {
+    const iconFrame = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, CULTURE_ICON_SIZE, CULTURE_ICON_SIZE, 0x0b1821, 0.95))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, 0xd7c7ff, 0.34)
+      .setMask(this.contentMask);
+    const iconImage = this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, entry.imageKey))
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH + 3)
+      .setScrollFactor(0)
+      .setDisplaySize(CULTURE_ICON_SIZE - 10, CULTURE_ICON_SIZE - 10)
+      .setMask(this.contentMask);
+    const fallbackIcon = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(entry.name), {
       fontFamily: 'sans-serif',
-      fontSize: '16px',
+      fontSize: '18px',
+      color: '#eadfff',
+      fontStyle: 'bold',
+    }))
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH + 3)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setMask(this.contentMask);
+    const nameText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, entry.name, {
+      fontFamily: 'sans-serif',
+      fontSize: '18px',
       color: style.labelColor,
-      fontStyle: entry.isActive ? 'bold' : 'normal',
-      wordWrap: { width: PANEL_CONTENT_WIDTH - 24, useAdvancedWrap: true },
+      fontStyle: 'bold',
+      wordWrap: { width: getCultureTextWidth(), useAdvancedWrap: true },
     }))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION)
       .setMask(this.contentMask);
-    const detail = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getDetailText(entry), {
+    const metaText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${formatEraName(entry.era)} - ${entry.effectiveCost} culture - ${getStatusText(entry)}`, {
       fontFamily: 'sans-serif',
       fontSize: '14px',
       color: style.detailColor,
-      wordWrap: { width: PANEL_CONTENT_WIDTH - 24, useAdvancedWrap: true },
+      wordWrap: { width: getCultureTextWidth(), useAdvancedWrap: true },
+    }))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 2)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setMask(this.contentMask);
+    const descriptionText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, entry.description, {
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      color: style.detailColor,
+      wordWrap: { width: getCultureTextWidth(), useAdvancedWrap: true },
     }))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
@@ -416,7 +470,7 @@ export class CultureHudPanel {
       fontFamily: 'sans-serif',
       fontSize: '13px',
       color: style.prerequisiteColor,
-      wordWrap: { width: PANEL_CONTENT_WIDTH - 24, useAdvancedWrap: true },
+      wordWrap: { width: getCultureTextWidth(), useAdvancedWrap: true },
     }))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
@@ -424,12 +478,17 @@ export class CultureHudPanel {
       .setResolution(HUD_TEXT_RESOLUTION)
       .setMask(this.contentMask);
 
-    this.contentObjects.push(background, label, detail, prerequisite);
+    this.contentObjects.push(background, iconFrame, iconImage, fallbackIcon, nameText, metaText, descriptionText, prerequisite);
     const button: CultureButtonView = {
       id: entry.id,
+      imageKey: entry.imageKey,
       background,
-      label,
-      detail,
+      iconFrame,
+      iconImage,
+      fallbackIcon,
+      nameText,
+      metaText,
+      descriptionText,
       prerequisite,
       isSelectable: style.isSelectable,
       baseFillColor: style.fillColor,
@@ -497,14 +556,20 @@ export class CultureHudPanel {
 
   private destroyCultureButtons(): void {
     for (const button of this.cultureButtons) {
-      for (const object of [button.background, button.label, button.detail, button.prerequisite]) {
+      for (const object of [
+        button.background,
+        button.iconFrame,
+        button.iconImage,
+        button.fallbackIcon,
+        button.nameText,
+        button.metaText,
+        button.descriptionText,
+        button.prerequisite,
+      ]) {
         const index = this.contentObjects.indexOf(object);
         if (index >= 0) this.contentObjects.splice(index, 1);
+        object.destroy();
       }
-      button.background.destroy();
-      button.label.destroy();
-      button.detail.destroy();
-      button.prerequisite.destroy();
     }
     this.cultureButtons.length = 0;
   }
@@ -579,6 +644,14 @@ export class CultureHudPanel {
     for (const object of this.contentObjects) {
       (object as Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Visible).setVisible(panelVisible);
     }
+    for (const button of this.cultureButtons) {
+      const hasIcon = this.scene.textures.exists(button.imageKey);
+      if (hasIcon) {
+        button.iconImage.setTexture(button.imageKey).setDisplaySize(CULTURE_ICON_SIZE - 10, CULTURE_ICON_SIZE - 10);
+      }
+      button.iconImage.setVisible(panelVisible && hasIcon);
+      button.fallbackIcon.setVisible(panelVisible && !hasIcon);
+    }
   }
 
   private refreshToggleState(): void {
@@ -639,12 +712,11 @@ function getCultureNodeVisualState(entry: HudCultureEntry): {
   };
 }
 
-function getDetailText(entry: HudCultureEntry): string {
-  const unlocks = entry.unlocks.length > 0 ? entry.unlocks.join(', ') : 'No direct unlocks';
-  if (entry.isUnlocked) return `Unlocked - ${unlocks}`;
-  if (entry.isActive) return `Active - ${unlocks}`;
-  if (entry.isAvailable) return `Available - ${unlocks}`;
-  return `Locked - ${unlocks}`;
+function getStatusText(entry: HudCultureEntry): string {
+  if (entry.isUnlocked) return 'Unlocked';
+  if (entry.isActive) return 'Active';
+  if (entry.isAvailable) return 'Available';
+  return 'Locked';
 }
 
 function getPrerequisiteText(entry: HudCultureEntry): string {
@@ -657,21 +729,42 @@ function getPrerequisiteText(entry: HudCultureEntry): string {
   return `Missing: ${entry.missingPrerequisiteNames.join(', ')}`;
 }
 
+function formatEraName(era: string): string {
+  return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getCultureTextWidth(): number {
+  return PANEL_CONTENT_WIDTH - CULTURE_ICON_PADDING - CULTURE_ICON_SIZE - CULTURE_TEXT_GAP - 14;
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 function refreshCultureButtonVisual(button: CultureButtonView): void {
   const scale = button.pressed ? 0.985 : button.hovered && button.isSelectable ? 1.01 : 1;
   button.background.setScale(scale);
 
   if (!button.isSelectable) {
     button.background.setFillStyle(button.baseFillColor, button.baseFillAlpha);
+    button.iconFrame.setFillStyle(0x0b1821, 0.95);
     return;
   }
 
   if (button.pressed) {
     button.background.setFillStyle(0x1f4b62, 0.98);
+    button.iconFrame.setFillStyle(0x102c3a, 0.98);
   } else if (button.hovered) {
     button.background.setFillStyle(0x1d495e, 1);
+    button.iconFrame.setFillStyle(0x123343, 1);
   } else {
     button.background.setFillStyle(0x153343, 0.96);
+    button.iconFrame.setFillStyle(0x0b1821, 0.95);
   }
 }
 

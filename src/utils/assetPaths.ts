@@ -37,3 +37,11 @@ export function getTechnologySpriteKey(technologyId: string): string {
 export function getTechnologySpritePath(technologyId: string): string {
   return `assets/sprites/techs/${technologyId}.png`;
 }
+
+export function getCultureSpriteKey(cultureId: string): string {
+  return `culture_${cultureId}`;
+}
+
+export function getCultureSpritePath(cultureId: string): string {
+  return `assets/sprites/cultures/${cultureId}.png`;
+}

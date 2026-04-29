@@ -42,6 +42,7 @@ interface CityBannerView {
   nameText: Phaser.GameObjects.Text;
   populationText: Phaser.GameObjects.Text;
   productionImage: Phaser.GameObjects.Image;
+  productionMask: Phaser.GameObjects.Graphics;
   productionFallbackText: Phaser.GameObjects.Text;
 }
 
@@ -124,6 +125,7 @@ export class CityBannerRenderer {
 
     view.nameText.setPosition(contentLeft, nameBaselineY);
     view.populationText.setPosition(populationCenterX, 0);
+    this.refreshProductionMask(view, world.x + slotCenterX, world.y + CITY_BANNER_OFFSET_Y);
     this.refreshProductionSlot(view, production, slotCenterX);
   }
 
@@ -144,13 +146,17 @@ export class CityBannerRenderer {
   removeBanner(cityId: string): void {
     const view = this.banners.get(cityId);
     if (!view) return;
+    view.productionImage.clearMask(false);
     view.container.destroy(true);
+    view.productionMask.destroy();
     this.banners.delete(cityId);
   }
 
   shutdown(): void {
     for (const view of this.banners.values()) {
+      view.productionImage.clearMask(false);
       view.container.destroy(true);
+      view.productionMask.destroy();
     }
     this.banners.clear();
   }
@@ -181,6 +187,9 @@ export class CityBannerRenderer {
 
     const productionImage = this.scene.add.image(0, 0, 'unit_warrior')
       .setVisible(false);
+    const productionMask = this.scene.add.graphics();
+    productionMask.setVisible(false);
+    productionImage.setMask(productionMask.createGeometryMask());
 
     const productionFallbackText = this.scene.add.text(0, 0, '-', {
       fontFamily: 'Arial, sans-serif',
@@ -206,6 +215,7 @@ export class CityBannerRenderer {
       nameText,
       populationText,
       productionImage,
+      productionMask,
       productionFallbackText,
     };
     this.banners.set(cityId, view);
@@ -311,6 +321,13 @@ export class CityBannerRenderer {
     view.productionImage.setVisible(false);
     view.productionFallbackText.setText(fallbackLabel);
     view.productionFallbackText.setVisible(true);
+  }
+
+  private refreshProductionMask(view: CityBannerView, x: number, y: number): void {
+    view.productionMask.clear();
+    view.productionMask.setPosition(x, y);
+    view.productionMask.fillStyle(0xffffff, 1);
+    view.productionMask.fillCircle(0, 0, RIGHT_SLOT_RADIUS - PRODUCTION_ICON_INSET);
   }
 
   private getProductionPresentation(production: Producible | undefined): {

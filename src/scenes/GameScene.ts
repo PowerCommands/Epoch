@@ -90,12 +90,17 @@ import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { CULTURE_TREE } from '../data/cultureTree';
 import { getImprovementById } from '../data/improvements';
 import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
 import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
+import type { CultureNode } from '../types/CultureNode';
+import type { CultureUnlock } from '../types/CultureUnlock';
 import {
   getBuildingSpriteKey,
   getBuildingSpritePath,
+  getCultureSpriteKey,
+  getCultureSpritePath,
   getTechnologySpriteKey,
   getTechnologySpritePath,
   getUnitSpriteKey,
@@ -529,6 +534,67 @@ export class GameScene extends Phaser.Scene {
         }
       }
     };
+    const buildCultureDiscoveryPopupData = (cultureNode: CultureNode): DiscoveryPopupData => ({
+      title: cultureNode.name,
+      imageKey: getCultureSpriteKey(cultureNode.id),
+      imagePath: getCultureSpritePath(cultureNode.id),
+      description: cultureNode.description,
+      unlockRows: cultureNode.unlocks.map((unlock) => buildCultureUnlockRow(unlock)),
+      leadsToRows: getCultureLeadsTo(cultureNode.id).map((nextNode) => ({
+        label: nextNode.name,
+        imageKey: getCultureSpriteKey(nextNode.id),
+        imagePath: getCultureSpritePath(nextNode.id),
+        fallbackLabel: getDiscoveryFallbackLabel(nextNode.name),
+      })),
+    });
+    const buildCultureUnlockRow = (unlock: CultureUnlock): DiscoveryPopupRow => {
+      switch (unlock.type) {
+        case 'unit': {
+          const unitType = getUnitTypeById(unlock.value);
+          const label = unitType?.name ?? formatCultureUnlockValue(unlock.value);
+          return {
+            label,
+            imageKey: getUnitSpriteKey(unlock.value),
+            imagePath: getUnitSpritePath(unlock.value),
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'building': {
+          const building = getBuildingById(unlock.value);
+          const label = building?.name ?? formatCultureUnlockValue(unlock.value);
+          return {
+            label,
+            imageKey: getBuildingSpriteKey(unlock.value),
+            imagePath: getBuildingSpritePath(unlock.value),
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'government': {
+          const label = formatCultureUnlockValue(unlock.value);
+          return {
+            label,
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'policySlot': {
+          const label = `${formatCultureUnlockValue(unlock.value)} Policy Slot`;
+          return {
+            label,
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'diplomacy': {
+          const label = formatCultureUnlockValue(unlock.value);
+          return {
+            label,
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+      }
+    };
+    const getCultureLeadsTo = (cultureId: string): CultureNode[] => (
+      CULTURE_TREE.filter((node) => node.prerequisites?.includes(cultureId) === true)
+    );
     const eraSystem = new EraSystem(nationManager);
     const improvementConstructionSystem = new ImprovementConstructionSystem(mapData, unitManager, cityManager);
     // Temporary debug reveal: only natural resource icons for now. This can
@@ -2301,6 +2367,14 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
+    cultureSystem.onCompleted((event) => {
+      if (event.nationId === humanNationId) {
+        hudLayer?.enqueueDiscovery(buildCultureDiscoveryPopupData(event.cultureNode));
+      }
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
     happinessSystem.onChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -2872,6 +2946,12 @@ function getDiscoveryFallbackLabel(label: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+function formatCultureUnlockValue(value: string): string {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatAIDiplomacyAction(
