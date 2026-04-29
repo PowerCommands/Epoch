@@ -24,6 +24,7 @@ export interface GameContext {
   cityManager: CityManager;
   selectionManager: SelectionManager;
   unitManager: UnitManager;
+  revealMapResourcesTemporarily: () => void;
 }
 
 export interface CheatCommand {
@@ -244,6 +245,16 @@ export class CheatSystem {
 
         context.discoverySystem.revealNation(a.nationId, b.nationId);
         return `${a.label} and ${b.label} have now met.`;
+      },
+    });
+
+    this.register({
+      name: 'map reveal',
+      description: 'Temporarily reveal all natural resource icons until the next turn transition.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: map reveal';
+        context.revealMapResourcesTemporarily();
+        return 'Map resources revealed until the next turn transition.';
       },
     });
 

@@ -28,6 +28,14 @@ export class WonderSystem {
     return this.completed.has(wonderId);
   }
 
+  isWonderAvailable(wonderId: string): boolean {
+    return !this.isWonderBuilt(wonderId);
+  }
+
+  getAvailableWonders(wonders: readonly WonderType[]): WonderType[] {
+    return wonders.filter((wonder) => this.isWonderAvailable(wonder.id));
+  }
+
   getCompletedWonder(wonderId: string): WonderState | undefined {
     return this.completed.get(wonderId);
   }

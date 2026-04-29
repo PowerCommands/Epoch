@@ -30,7 +30,9 @@ export interface HudResourceEntry {
 export interface HudResearchOption {
   id: string;
   name: string;
+  era: string;
   cost: number;
+  description: string;
 }
 
 export interface HudResearchState {
@@ -188,7 +190,9 @@ export class NationHudDataProvider {
       available: this.researchSystem.getAvailableTechnologies(nationId).map((technology) => ({
         id: technology.id,
         name: technology.name,
+        era: technology.era,
         cost: this.researchSystem.getEffectiveCost(technology.id),
+        description: technology.description,
       })),
       researchedNames: this.researchSystem.getResearchedTechnologies(nationId).map((technology) => technology.name),
     };

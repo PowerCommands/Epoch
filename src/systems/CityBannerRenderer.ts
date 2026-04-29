@@ -7,6 +7,7 @@ import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import { TileMap } from './TileMap';
+import type { WonderSystem } from './WonderSystem';
 
 const CITY_BANNER_DEPTH = 17;
 const CITY_BANNER_OFFSET_Y = -30;
@@ -55,6 +56,7 @@ export class CityBannerRenderer {
     private readonly cityManager: CityManager,
     private readonly nationManager: NationManager,
     private readonly productionSystem: ProductionSystem,
+    private readonly wonderSystem?: WonderSystem,
   ) {
     this.rebuildAll();
   }
@@ -68,7 +70,7 @@ export class CityBannerRenderer {
 
     const view = this.banners.get(city.id) ?? this.createBanner(city.id);
     const world = this.tileMap.tileToWorld(city.tileX, city.tileY);
-    const production = this.productionSystem.getProduction(city.id)?.item;
+    const production = this.getVisibleProduction(city.id);
     const name = city.name.toUpperCase();
     const textColor = toCssColor(nation.secondaryColor);
     const textStrokeColor = toCssColor(darkenColor(nation.color, 0.35));
@@ -352,6 +354,17 @@ export class CityBannerRenderer {
       textureKey,
       fallbackLabel: getAbbreviation(production.buildingType.name),
     };
+  }
+
+  private getVisibleProduction(cityId: string): Producible | undefined {
+    const production = this.productionSystem.getProduction(cityId)?.item;
+    if (
+      production?.kind === 'wonder' &&
+      this.wonderSystem?.isWonderBuilt(production.wonderType.id) === true
+    ) {
+      return undefined;
+    }
+    return production;
   }
 
   private ensureProductionTexture(kind: Producible['kind'], id: string, path: string): string | undefined {

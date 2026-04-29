@@ -80,6 +80,7 @@ import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
+import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
 import { UnitHoverDiagnosticHud } from '../ui/hud/UnitHoverDiagnosticHud';
 import { MinimapHud } from '../ui/hud/MinimapHud';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
@@ -89,7 +90,19 @@ import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
-import { ALL_UNIT_TYPES } from '../data/units';
+import { getImprovementById } from '../data/improvements';
+import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
+import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
+import {
+  getBuildingSpriteKey,
+  getBuildingSpritePath,
+  getTechnologySpriteKey,
+  getTechnologySpritePath,
+  getUnitSpriteKey,
+  getUnitSpritePath,
+  getWonderSpriteKey,
+  getWonderSpritePath,
+} from '../utils/assetPaths';
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems/ProductionRules';
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
 import { TileType } from '../types/map';
@@ -269,6 +282,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       nationManager,
       productionSystem,
+      wonderSystem,
     );
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
@@ -444,14 +458,99 @@ export class GameScene extends Phaser.Scene {
         ).science, 0),
       gameSpeed,
     );
+    const humanNeedsResearchSelection = (): boolean => {
+      if (!humanNationId) return false;
+      return !researchSystem.getCurrentResearch(humanNationId)
+        && researchSystem.getAvailableTechnologies(humanNationId).length > 0;
+    };
+    const openPendingHumanSelectionPanels = (): void => {
+      if (hudLayer?.hasBlockingModal()) return;
+      if (humanNeedsResearchSelection()) {
+        hudLayer?.openResearchPanel();
+      } else if (humanNeedsCultureSelection()) {
+        hudLayer?.openCulturePanel();
+      }
+    };
+    const buildTechnologyDiscoveryPopupData = (technology: TechnologyDefinition): DiscoveryPopupData => ({
+      title: technology.name,
+      imageKey: getTechnologySpriteKey(technology.id),
+      imagePath: getTechnologySpritePath(technology.id),
+      description: technology.description,
+      unlockRows: technology.unlocks.map((unlock) => buildTechnologyUnlockRow(unlock)),
+      leadsToRows: technology.leadsTo.map((technologyId) => {
+        const leadTechnology = getTechnologyById(technologyId);
+        return {
+          label: leadTechnology?.name ?? technologyId,
+          imageKey: getTechnologySpriteKey(technologyId),
+          imagePath: getTechnologySpritePath(technologyId),
+          fallbackLabel: getDiscoveryFallbackLabel(leadTechnology?.name ?? technologyId),
+        };
+      }),
+    });
+    const buildTechnologyUnlockRow = (unlock: TechnologyUnlock): DiscoveryPopupRow => {
+      switch (unlock.kind) {
+        case 'unit': {
+          const unitType = getUnitTypeById(unlock.id);
+          const label = unitType?.name ?? unlock.id;
+          return {
+            label,
+            imageKey: getUnitSpriteKey(unlock.id),
+            imagePath: getUnitSpritePath(unlock.id),
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'building': {
+          const building = getBuildingById(unlock.id);
+          const label = building?.name ?? unlock.id;
+          return {
+            label,
+            imageKey: getBuildingSpriteKey(unlock.id),
+            imagePath: getBuildingSpritePath(unlock.id),
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'wonder': {
+          const wonder = getWonderById(unlock.id);
+          const label = wonder?.name ?? unlock.id;
+          return {
+            label,
+            imageKey: getWonderSpriteKey(unlock.id),
+            imagePath: getWonderSpritePath(unlock.id),
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+        case 'improvement': {
+          const improvement = getImprovementById(unlock.id);
+          const label = improvement?.name ?? unlock.id;
+          return {
+            label,
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
+      }
+    };
     const eraSystem = new EraSystem(nationManager);
     const improvementConstructionSystem = new ImprovementConstructionSystem(mapData, unitManager, cityManager);
+    // Temporary debug reveal: only natural resource icons for now. This can
+    // later expand to fog-of-war once an exploration visibility layer exists.
+    let isMapRevealActive = false;
     const isNaturalResourceVisibleToHuman = (resourceId: string): boolean => {
+      if (isMapRevealActive) return true;
+
       const resource = getNaturalResourceById(resourceId);
       if (!resource) return false;
       if (!resource.revealTechId) return true;
       if (!humanNationId) return false;
       return researchSystem.isResearched(humanNationId, resource.revealTechId);
+    };
+    const revealMapResourcesTemporarily = (): void => {
+      isMapRevealActive = true;
+      naturalResourceRenderer.rebuildAll();
+    };
+    const clearTemporaryMapReveal = (): void => {
+      if (!isMapRevealActive) return;
+      isMapRevealActive = false;
+      naturalResourceRenderer.rebuildAll();
     };
     const isNaturalResourceRevealTechnology = (technologyId: string): boolean => (
       NATURAL_RESOURCES.some((resource) => resource.revealTechId === technologyId)
@@ -761,16 +860,7 @@ export class GameScene extends Phaser.Scene {
       cultureSystem.advanceCultureForNation(e.nation.id);
 
       if (e.nation.isHuman) {
-        const needsResearchSelection = !researchSystem.getCurrentResearch(e.nation.id)
-          && researchSystem.getAvailableTechnologies(e.nation.id).length > 0;
-        const needsCultureSelection = !cultureSystem.getCurrentCultureNode(e.nation.id)
-          && cultureSystem.getAvailableCultureNodes(e.nation.id).length > 0;
-
-        if (needsResearchSelection) {
-          hudLayer?.openResearchPanel();
-        } else if (needsCultureSelection) {
-          hudLayer?.openCulturePanel();
-        }
+        openPendingHumanSelectionPanels();
       }
     });
 
@@ -1019,6 +1109,8 @@ export class GameScene extends Phaser.Scene {
           );
         }
         refreshOpenCityView();
+        rightPanel?.requestRefresh();
+        hudLayer?.refresh();
         return true;
       }
 
@@ -1366,6 +1458,7 @@ export class GameScene extends Phaser.Scene {
     const diagnosticDialog = new DiagnosticDialog(this.diagnosticSystem);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
+      if (hudLayer?.hasBlockingModal()) return;
       turnManager.endCurrentTurn();
     };
     const isFocusedElementEditingText = (): boolean => {
@@ -1384,7 +1477,7 @@ export class GameScene extends Phaser.Scene {
       });
     };
     const shouldIgnoreGlobalTurnHotkey = (): boolean => (
-      isFocusedElementEditingText() || isVisibleModalOverlayActive()
+      isFocusedElementEditingText() || isVisibleModalOverlayActive() || hudLayer?.hasBlockingModal() === true
     );
     // Global turn hotkeys stay bound across CityView and other UI states.
     const onEnterEndTurn = (event?: KeyboardEvent) => {
@@ -1434,6 +1527,7 @@ export class GameScene extends Phaser.Scene {
       },
       onAcceptProposal: (proposalId) => diplomaticProposalSystem.acceptProposal(proposalId),
       onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
+      onDiscoveryClosed: openPendingHumanSelectionPanels,
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
@@ -1548,17 +1642,15 @@ export class GameScene extends Phaser.Scene {
       const isQueuedHere = (wonderId: string): boolean => productionSystem.getQueue(city.id)
         .some((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId);
 
-      return ALL_WONDERS
+      return wonderSystem.getAvailableWonders(ALL_WONDERS)
         .filter((wonderType) => researchSystem.isWonderUnlocked(city.ownerId, wonderType.id))
         .map((wonderType) => {
-          const built = wonderSystem.isWonderBuilt(wonderType.id);
           const queuedHere = isQueuedHere(wonderType.id);
           const cityCanBuild = wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem });
           const validCoords = wonderPlacementSystem.getValidPlacementCoords(city, wonderType, mapData);
           let disabled = false;
           let reason: string | undefined;
-          if (built) { disabled = true; reason = 'Already completed'; }
-          else if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
+          if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
           else if (!cityCanBuild) { disabled = true; reason = 'This city cannot build it'; }
           else if (validCoords.length === 0) { disabled = true; reason = 'No valid owned tile matches this wonder placement.'; }
           return {
@@ -2195,6 +2287,12 @@ export class GameScene extends Phaser.Scene {
       }
       resourceSystem.recalculateForNation(event.nationId);
       happinessSystem.recalculateNation(event.nationId);
+      if (event.nationId === humanNationId) {
+        const technology = getTechnologyById(event.technologyId);
+        if (technology) {
+          hudLayer?.enqueueDiscovery(buildTechnologyDiscoveryPopupData(technology));
+        }
+      }
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -2222,9 +2320,11 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       selectionManager,
       unitManager,
+      revealMapResourcesTemporarily,
     }));
 
     turnManager.on('turnStart', () => {
+      clearTemporaryMapReveal();
       hudLayer?.refresh();
       const activeNation = turnManager.getCurrentNation();
       hudLayer?.setEndTurnEnabled(activeNation.isHuman);
@@ -2763,6 +2863,15 @@ function downloadSaveFile(state: SavedGameState): void {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function getDiscoveryFallbackLabel(label: string): string {
+  return label
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
 function formatAIDiplomacyAction(

@@ -4,6 +4,7 @@ import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { RafScheduler } from '../../utils/RafScheduler';
 import type { UnitActionToolbox } from '../UnitActionToolbox';
 import { CultureHudPanel } from './CultureHudPanel';
+import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import type { NationHudDataProvider } from './NationHudDataProvider';
 import { ProposalDialog, type ProposalDialogContext } from './ProposalDialog';
@@ -22,6 +23,7 @@ interface HudLayerConfig {
   onSelectCultureNode: (nodeId: string) => boolean;
   onAcceptProposal: (proposalId: string) => void;
   onRejectProposal: (proposalId: string) => void;
+  onDiscoveryClosed: () => void;
 }
 
 export class HudLayer {
@@ -36,7 +38,9 @@ export class HudLayer {
   private readonly culturePanel: CultureHudPanel;
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
   private readonly proposalDialog: ProposalDialog;
+  private readonly discoveryPopup: DiscoveryPopup;
   private readonly proposalQueue: DiplomaticProposal[] = [];
+  private readonly discoveryQueue: DiscoveryPopupData[] = [];
   private readonly handlePointerRelease = (pointer: Phaser.Input.Pointer): void => {
     this.config.worldInputGate.releasePointer(pointer.id);
   };
@@ -98,12 +102,24 @@ export class HudLayer {
     this.proposalDialog.setOnAccept((proposalId) => {
       this.config.onAcceptProposal(proposalId);
       this.proposalDialog.hide();
-      this.showNextQueuedProposal();
+      this.showNextQueuedModal();
     });
     this.proposalDialog.setOnReject((proposalId) => {
       this.config.onRejectProposal(proposalId);
       this.proposalDialog.hide();
-      this.showNextQueuedProposal();
+      this.showNextQueuedModal();
+    });
+
+    this.discoveryPopup = new DiscoveryPopup(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+    );
+    this.discoveryPopup.setOnClose(() => {
+      this.showNextQueuedModal();
+      if (!this.hasBlockingModal()) {
+        this.config.onDiscoveryClosed();
+      }
     });
 
     scene.input.on(Phaser.Input.Events.POINTER_UP, this.handlePointerRelease);
@@ -144,7 +160,7 @@ export class HudLayer {
    * FIFO order: when one is already on screen, later arrivals wait.
    */
   enqueueProposal(proposal: DiplomaticProposal): void {
-    if (this.proposalDialog.isShowing()) {
+    if (this.hasBlockingModal()) {
       this.proposalQueue.push(proposal);
       return;
     }
@@ -158,11 +174,23 @@ export class HudLayer {
   dismissProposal(proposalId: string): void {
     if (this.proposalDialog.getCurrentProposalId() === proposalId) {
       this.proposalDialog.hide();
-      this.showNextQueuedProposal();
+      this.showNextQueuedModal();
       return;
     }
     const index = this.proposalQueue.findIndex((p) => p.id === proposalId);
     if (index >= 0) this.proposalQueue.splice(index, 1);
+  }
+
+  enqueueDiscovery(data: DiscoveryPopupData): void {
+    if (this.hasBlockingModal()) {
+      this.discoveryQueue.push(data);
+      return;
+    }
+    this.discoveryPopup.show(data);
+  }
+
+  hasBlockingModal(): boolean {
+    return this.discoveryPopup.isShowing() || this.proposalDialog.isShowing();
   }
 
   /**
@@ -186,7 +214,9 @@ export class HudLayer {
     this.culturePanel.destroy();
     this.unitActionHudToolbox.destroy();
     this.proposalDialog.destroy();
+    this.discoveryPopup.destroy();
     this.proposalQueue.length = 0;
+    this.discoveryQueue.length = 0;
     this.config.worldInputGate.clearAll();
     this.owned.clear();
     this.scene.cameras.remove(this.uiCamera);
@@ -213,11 +243,18 @@ export class HudLayer {
     const endTurnLayout = this.endTurnButton.getLayout();
     this.unitActionHudToolbox.layout(endTurnLayout.centerX, endTurnLayout.centerY, endTurnLayout.radius);
     this.proposalDialog.layout();
+    this.discoveryPopup.layout();
   }
 
-  private showNextQueuedProposal(): void {
+  private showNextQueuedModal(): void {
+    if (this.hasBlockingModal()) return;
     const next = this.proposalQueue.shift();
-    if (next) this.proposalDialog.showProposal(next);
+    if (next) {
+      this.proposalDialog.showProposal(next);
+      return;
+    }
+    const discovery = this.discoveryQueue.shift();
+    if (discovery) this.discoveryPopup.show(discovery);
   }
 
   private addOwned<T extends Phaser.GameObjects.GameObject>(object: T): T {

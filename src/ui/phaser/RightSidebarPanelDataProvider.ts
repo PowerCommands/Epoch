@@ -24,7 +24,7 @@ import type { AIMilitaryEvaluationSystem } from '../../systems/ai/AIMilitaryEval
 import type { AIMilitaryThreatEvaluationSystem } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../systems/ProductionRules';
-import type { ProductionSystem } from '../../systems/ProductionSystem';
+import type { ProductionSystem, QueueEntryView } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
@@ -669,15 +669,15 @@ export class RightSidebarPanelDataProvider {
   }
 
   private getProductionQueueSection(city: City, isHuman: boolean): RightSidebarSection {
-    const queue = this.productionSystem.getQueue(city.id);
+    const queue = this.getVisibleProductionQueue(city.id);
     if (queue.length === 0) return { title: 'Production Queue', rows: [textRow('No production queued', true)] };
     const rows: RightSidebarRow[] = [];
     const availableGold = isHuman ? this.nationManager.getResources(city.ownerId).gold : 0;
-    queue.forEach((entry, index) => {
+    queue.forEach(({ entry, index }, visibleIndex) => {
       const name = getProducibleName(entry.item);
       const spritePath = getProducibleSpritePath(entry.item);
       const turnsText = entry.blockedReason ? 'blocked' : `${entry.turnsRemaining} turn${entry.turnsRemaining !== 1 ? 's' : ''}`;
-      const label = `${index + 1}. ${name} (${turnsText})${index === 0 ? ' [active]' : ''}`;
+      const label = `${visibleIndex + 1}. ${name} (${turnsText})${index === 0 ? ' [active]' : ''}`;
       rows.push(isHuman
         ? buttonRow(label, () => {
           this.productionSystem.removeFromQueue(city.id, index);
@@ -707,6 +707,17 @@ export class RightSidebarPanelDataProvider {
       if (entry.blockedReason) rows.push(textRow(entry.blockedReason, true));
     });
     return { title: 'Production Queue', rows };
+  }
+
+  private getVisibleProductionQueue(cityId: string): Array<{ entry: QueueEntryView; index: number }> {
+    return this.productionSystem.getQueue(cityId)
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => !this.isCompletedWonderQueueEntry(entry));
+  }
+
+  private isCompletedWonderQueueEntry(entry: QueueEntryView): boolean {
+    return entry.item.kind === 'wonder'
+      && this.wonderSystem?.isWonderBuilt(entry.item.wonderType.id) === true;
   }
 
   private getAddToQueueSection(city: City): RightSidebarSection {
@@ -774,23 +785,22 @@ export class RightSidebarPanelDataProvider {
     const isQueuedHere = (wonderId: string): boolean => this.productionSystem.getQueue(city.id)
       .some((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId);
 
-    for (const wonderType of ALL_WONDERS) {
+    const wonderTypes = wonderSystem?.getAvailableWonders(ALL_WONDERS) ?? ALL_WONDERS;
+    for (const wonderType of wonderTypes) {
       const techUnlocked = research ? research.isWonderUnlocked(city.ownerId, wonderType.id) : true;
       if (!techUnlocked) continue;
 
       const item: Producible = { kind: 'wonder', wonderType };
       const cost = this.productionSystem.getCost(item);
-      const built = wonderSystem?.isWonderBuilt(wonderType.id) ?? false;
       const queuedHere = isQueuedHere(wonderType.id);
-      const cityCanBuild = wonderSystem ? wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem: research ?? undefined }) : !built;
+      const cityCanBuild = wonderSystem ? wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem: research ?? undefined }) : true;
       const hasValidPlacement = this.wonderPlacementAvailabilityProvider
         ? this.wonderPlacementAvailabilityProvider(city, wonderType.id)
         : true;
 
       let disabled = false;
       let reason: string | undefined;
-      if (built) { disabled = true; reason = 'Already completed'; }
-      else if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
+      if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
       else if (!cityCanBuild) { disabled = true; reason = 'This city cannot build it'; }
       else if (!hasValidPlacement) { disabled = true; reason = 'No valid placement tile'; }
 

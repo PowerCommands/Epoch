@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
+import { getTechnologySpriteKey } from '../../utils/assetPaths';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 import { CircularHudProgressButton } from './CircularHudProgressButton';
 import type { HudResearchState } from './NationHudDataProvider';
@@ -23,8 +24,11 @@ const PANEL_SCROLLBAR_WIDTH = 10;
 const PANEL_SCROLLBAR_GAP = 12;
 const PANEL_CONTENT_WIDTH = PANEL_WIDTH - (PANEL_INNER_PADDING * 2) - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP;
 const LINE_HEIGHT = 29;
-const BUTTON_HEIGHT = 34;
-const BUTTON_GAP = 7;
+const BUTTON_HEIGHT = 104;
+const BUTTON_GAP = 10;
+const TECH_ICON_SIZE = 68;
+const TECH_ICON_PADDING = 14;
+const TECH_TEXT_GAP = 14;
 const SECTION_GAP = 17;
 const SCROLL_STEP = 56;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
@@ -32,7 +36,12 @@ const HUD_TEXT_RESOLUTION = getHudTextResolution();
 interface TechButtonView {
   id: string;
   background: Phaser.GameObjects.Rectangle;
-  label: Phaser.GameObjects.Text;
+  iconFrame: Phaser.GameObjects.Rectangle;
+  iconImage: Phaser.GameObjects.Image;
+  fallbackIcon: Phaser.GameObjects.Text;
+  nameText: Phaser.GameObjects.Text;
+  metaText: Phaser.GameObjects.Text;
+  descriptionText: Phaser.GameObjects.Text;
   hovered: boolean;
   pressed: boolean;
 }
@@ -281,11 +290,26 @@ export class ResearchHudPanel {
     contentCursor += LINE_HEIGHT;
 
     for (const button of this.techButtons) {
+      const buttonY = baseY + contentCursor;
+      const iconX = contentX + TECH_ICON_PADDING;
+      const iconY = buttonY + Math.round((BUTTON_HEIGHT - TECH_ICON_SIZE) / 2);
+      const textX = iconX + TECH_ICON_SIZE + TECH_TEXT_GAP;
       button.background.setVisible(panelVisible)
-        .setPosition(Math.round(contentX), Math.round(baseY + contentCursor))
+        .setPosition(Math.round(contentX), Math.round(buttonY))
         .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
-      button.label.setVisible(panelVisible)
-        .setPosition(Math.round(contentX + 12), Math.round(baseY + contentCursor + (BUTTON_HEIGHT / 2)));
+      button.iconFrame.setVisible(panelVisible)
+        .setPosition(Math.round(iconX), Math.round(iconY))
+        .setDisplaySize(TECH_ICON_SIZE, TECH_ICON_SIZE);
+      button.iconImage.setVisible(panelVisible && this.scene.textures.exists(getTechnologySpriteKey(button.id)))
+        .setPosition(Math.round(iconX + (TECH_ICON_SIZE / 2)), Math.round(iconY + (TECH_ICON_SIZE / 2)));
+      button.fallbackIcon.setVisible(panelVisible && !this.scene.textures.exists(getTechnologySpriteKey(button.id)))
+        .setPosition(Math.round(iconX + (TECH_ICON_SIZE / 2)), Math.round(iconY + (TECH_ICON_SIZE / 2)));
+      button.nameText.setVisible(panelVisible)
+        .setPosition(Math.round(textX), Math.round(buttonY + 12));
+      button.metaText.setVisible(panelVisible)
+        .setPosition(Math.round(textX), Math.round(buttonY + 36));
+      button.descriptionText.setVisible(panelVisible)
+        .setPosition(Math.round(textX), Math.round(buttonY + 58));
       contentCursor += BUTTON_HEIGHT + BUTTON_GAP;
     }
 
@@ -366,19 +390,79 @@ export class ResearchHudPanel {
         .setStrokeStyle(1, 0x6fb2d4, 0.5)
         .setInteractive({ useHandCursor: true })
         .setMask(this.contentMask);
-      const label = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${tech.name} (${tech.cost})`, {
+
+      const iconFrame = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, TECH_ICON_SIZE, TECH_ICON_SIZE, 0x0b1821, 0.95))
+        .setOrigin(0, 0)
+        .setDepth(DEPTH + 2)
+        .setScrollFactor(0)
+        .setStrokeStyle(1, 0x86c9e8, 0.34)
+        .setMask(this.contentMask);
+      const iconImage = this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, getTechnologySpriteKey(tech.id)))
+        .setOrigin(0.5, 0.5)
+        .setDepth(DEPTH + 3)
+        .setScrollFactor(0)
+        .setDisplaySize(TECH_ICON_SIZE - 10, TECH_ICON_SIZE - 10)
+        .setMask(this.contentMask);
+      const fallbackIcon = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(tech.name), {
         fontFamily: 'sans-serif',
-        fontSize: '16px',
-        color: '#ddf2ff',
+        fontSize: '18px',
+        color: '#bfe9ff',
+        fontStyle: 'bold',
       }))
-        .setOrigin(0, 0.5)
+        .setOrigin(0.5, 0.5)
+        .setDepth(DEPTH + 3)
+        .setScrollFactor(0)
+        .setResolution(HUD_TEXT_RESOLUTION)
+        .setMask(this.contentMask);
+      const nameText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, tech.name, {
+        fontFamily: 'sans-serif',
+        fontSize: '18px',
+        color: '#ddf2ff',
+        fontStyle: 'bold',
+      }))
+        .setOrigin(0, 0)
+        .setDepth(DEPTH + 2)
+        .setScrollFactor(0)
+        .setResolution(HUD_TEXT_RESOLUTION)
+        .setMask(this.contentMask);
+      const metaText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${formatEraName(tech.era)} - ${tech.cost} science`, {
+        fontFamily: 'sans-serif',
+        fontSize: '14px',
+        color: '#8fd0ff',
+      }))
+        .setOrigin(0, 0)
+        .setDepth(DEPTH + 2)
+        .setScrollFactor(0)
+        .setResolution(HUD_TEXT_RESOLUTION)
+        .setMask(this.contentMask);
+      const descriptionText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, tech.description, {
+        fontFamily: 'sans-serif',
+        fontSize: '14px',
+        color: '#c8d7e2',
+        wordWrap: {
+          width: PANEL_CONTENT_WIDTH - TECH_ICON_PADDING - TECH_ICON_SIZE - TECH_TEXT_GAP - 14,
+          useAdvancedWrap: true,
+        },
+      }))
+        .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
         .setScrollFactor(0)
         .setResolution(HUD_TEXT_RESOLUTION)
         .setMask(this.contentMask);
 
-      this.contentObjects.push(background, label);
-      const button: TechButtonView = { id: tech.id, background, label, hovered: false, pressed: false };
+      this.contentObjects.push(background, iconFrame, iconImage, fallbackIcon, nameText, metaText, descriptionText);
+      const button: TechButtonView = {
+        id: tech.id,
+        background,
+        iconFrame,
+        iconImage,
+        fallbackIcon,
+        nameText,
+        metaText,
+        descriptionText,
+        hovered: false,
+        pressed: false,
+      };
 
       background.on(Phaser.Input.Events.POINTER_OVER, (
         _pointer: Phaser.Input.Pointer,
@@ -439,12 +523,20 @@ export class ResearchHudPanel {
 
   private destroyTechButtons(): void {
     for (const button of this.techButtons) {
-      const backgroundIndex = this.contentObjects.indexOf(button.background);
-      if (backgroundIndex >= 0) this.contentObjects.splice(backgroundIndex, 1);
-      const labelIndex = this.contentObjects.indexOf(button.label);
-      if (labelIndex >= 0) this.contentObjects.splice(labelIndex, 1);
-      button.background.destroy();
-      button.label.destroy();
+      const objects = [
+        button.background,
+        button.iconFrame,
+        button.iconImage,
+        button.fallbackIcon,
+        button.nameText,
+        button.metaText,
+        button.descriptionText,
+      ];
+      for (const object of objects) {
+        const index = this.contentObjects.indexOf(object);
+        if (index >= 0) this.contentObjects.splice(index, 1);
+        object.destroy();
+      }
     }
     this.techButtons.length = 0;
   }
@@ -519,6 +611,11 @@ export class ResearchHudPanel {
     for (const object of this.contentObjects) {
       (object as Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Visible).setVisible(panelVisible);
     }
+    for (const button of this.techButtons) {
+      const hasIcon = this.scene.textures.exists(getTechnologySpriteKey(button.id));
+      button.iconImage.setVisible(panelVisible && hasIcon);
+      button.fallbackIcon.setVisible(panelVisible && !hasIcon);
+    }
   }
 
   private refreshToggleState(): void {
@@ -528,14 +625,30 @@ export class ResearchHudPanel {
   private refreshTechButtonVisual(button: TechButtonView): void {
     if (button.pressed) {
       button.background.setFillStyle(0x1f4b62, 0.98).setScale(0.985);
+      button.iconFrame.setFillStyle(0x102c3a, 0.98);
       return;
     }
     if (button.hovered) {
       button.background.setFillStyle(0x1d495e, 1).setScale(1.01);
+      button.iconFrame.setFillStyle(0x123343, 1);
       return;
     }
     button.background.setFillStyle(0x153343, 0.96).setScale(1);
+    button.iconFrame.setFillStyle(0x0b1821, 0.95);
   }
+}
+
+function formatEraName(era: string): string {
+  return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
 function getHudTextResolution(): number {

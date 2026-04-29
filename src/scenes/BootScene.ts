@@ -2,8 +2,11 @@ import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, MAP_MANIFEST_URL, parseMapManifest } from '../data/maps';
 import { ALL_LEADERS } from '../data/leaders';
 import { NATURAL_RESOURCES } from '../data/naturalResources';
+import { ALL_TECHNOLOGIES } from '../data/technologies';
 import { ALL_UNIT_TYPES } from '../data/units';
 import {
+  getTechnologySpriteKey,
+  getTechnologySpritePath,
   getUnitActionSpriteKey,
   getUnitActionSpritePath,
   getUnitSpriteKey,
@@ -62,6 +65,10 @@ export class BootScene extends Phaser.Scene {
 
     for (const resource of NATURAL_RESOURCES) {
       this.load.image(resource.iconKey, `assets/sprites/resources/${resource.id}.png`);
+    }
+
+    for (const technology of ALL_TECHNOLOGIES) {
+      this.load.image(getTechnologySpriteKey(technology.id), getTechnologySpritePath(technology.id));
     }
 
     // Leader portraits (used by the Phaser-side leader strip in GameScene)

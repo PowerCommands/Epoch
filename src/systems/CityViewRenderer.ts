@@ -52,12 +52,12 @@ export class CityViewRenderer {
     const workedSet = new Set(city.workedTileCoords.map((coord) => `${coord.x},${coord.y}`));
     const claimableCoords = this.cityTerritorySystem.getClaimableTiles(city, this.mapData);
     const claimableSet = new Set(claimableCoords.map((coord) => `${coord.x},${coord.y}`));
+    const expansionProgress = this.cityTerritorySystem.getExpansionProgress(city, this.mapData);
     const nextKey = city.nextExpansionTileCoord
       ? `${city.nextExpansionTileCoord.x},${city.nextExpansionTileCoord.y}`
       : null;
     const focusSet = this.buildFocusSet(city, claimableCoords);
     const workedBreakdown = getWorkedTileYieldBreakdown(city, this.mapData, this.gridSystem);
-    const expansionProgress = this.cityTerritorySystem.getExpansionProgress(city, this.mapData);
     const validDropSet = new Set(interaction.validDropCoords.map((coord) => `${coord.x},${coord.y}`));
     const validPlacementSet = new Set(placement.validCoords.map((coord) => `${coord.x},${coord.y}`));
     const constructionTiles = city.ownedTileCoords

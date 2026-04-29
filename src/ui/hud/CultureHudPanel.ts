@@ -119,7 +119,7 @@ export class CultureHudPanel {
       this.onToggle?.(this.collapsed);
     });
 
-    this.panelBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_WIDTH, 100, 0x071017, 0.88))
+    this.panelBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_WIDTH, 100, 0xb56cff, 0.88))
       .setOrigin(0, 0)
       .setDepth(DEPTH)
       .setScrollFactor(0)
