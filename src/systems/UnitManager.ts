@@ -7,7 +7,13 @@ import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 
-export type UnitChangedReason = 'created' | 'moved' | 'movementReset' | 'damaged' | 'removed';
+export type UnitChangedReason =
+  | 'created'
+  | 'moved'
+  | 'movementReset'
+  | 'damaged'
+  | 'removed'
+  | 'actionChanged';
 
 export interface UnitChangedEvent {
   unit: Unit;
@@ -198,6 +204,12 @@ export class UnitManager {
     this.notify({ unit, reason: 'damaged' });
   }
 
+  notifyActionChanged(unitId: string): void {
+    const unit = this.units.get(unitId);
+    if (unit === undefined) return;
+    this.notify({ unit, reason: 'actionChanged' });
+  }
+
   onUnitChanged(listener: UnitChangedListener): void {
     this.listeners.push(listener);
   }
@@ -312,6 +324,8 @@ export class UnitManager {
     improvementCharges?: number;
     transportId?: string;
     isSleeping: boolean;
+    actionStatus?: import('../entities/Unit').UnitActionStatus;
+    buildAction?: import('../entities/Unit').UnitBuildAction;
   }): Unit {
     const unit = new Unit({
       id: config.id,
@@ -327,6 +341,16 @@ export class UnitManager {
     unit.health = config.health;
     unit.transportId = config.transportId;
     unit.isSleeping = config.isSleeping;
+
+    if (config.actionStatus !== undefined) {
+      unit.actionStatus = config.actionStatus;
+    } else if (config.isSleeping) {
+      unit.actionStatus = 'sleep';
+    }
+    if (config.buildAction !== undefined) {
+      unit.buildAction = { ...config.buildAction };
+      unit.actionStatus = 'building';
+    }
 
     this.units.set(unit.id, unit);
     this.placeOnGrid(unit);

@@ -165,6 +165,15 @@ export class HudLayer {
     if (index >= 0) this.proposalQueue.splice(index, 1);
   }
 
+  /**
+   * Allow external HUD components to register themselves with this
+   * layer's UI camera. The callback returned mirrors the internal
+   * `addOwned` helper used by built-in components.
+   */
+  getOwnedObjectAttacher(): <T extends Phaser.GameObjects.GameObject>(object: T) => T {
+    return (object) => this.addOwned(object);
+  }
+
   shutdown(): void {
     this.scheduler.cancel();
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);

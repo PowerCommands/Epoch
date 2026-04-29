@@ -3,6 +3,10 @@ import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
 import type { MapData, Tile, TileImprovementConstruction } from '../types/map';
 import type { TurnStartEvent } from '../types/events';
+import {
+  BUILD_REQUIRED_PROGRESS,
+  computeUnitBuildProgress,
+} from './BuilderSystem';
 import type { CityManager } from './CityManager';
 import type { UnitChangedEvent, UnitManager } from './UnitManager';
 
@@ -14,10 +18,18 @@ export interface ImprovementConstructionCompletedEvent {
   unit: Unit;
 }
 
+export type ImprovementConstructionCancelReason =
+  | 'unitRemoved'
+  | 'invalidTile'
+  | 'invalidUnit'
+  | 'missingImprovement'
+  | 'missingCity'
+  | 'userInterrupt';
+
 export interface ImprovementConstructionCancelledEvent {
   tile: Tile;
   construction: TileImprovementConstruction;
-  reason: 'unitRemoved' | 'invalidTile' | 'invalidUnit' | 'missingImprovement' | 'missingCity';
+  reason: ImprovementConstructionCancelReason;
 }
 
 type CompletedListener = (event: ImprovementConstructionCompletedEvent) => void;
@@ -33,6 +45,7 @@ export class ImprovementConstructionSystem {
     private readonly cityManager: CityManager,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
+    this.syncUnitsFromTiles();
   }
 
   handleTurnStart(event: TurnStartEvent): void {
@@ -50,10 +63,13 @@ export class ImprovementConstructionSystem {
       const unit = this.unitManager.getUnit(construction.unitId);
       if (unit !== undefined) {
         this.unitManager.consumeAllMovement(unit.id);
+        this.syncUnitProgress(unit, construction);
       }
 
       if (construction.remainingTurns <= 0) {
         this.complete(tile, construction);
+      } else if (unit !== undefined) {
+        this.unitManager.notifyActionChanged(unit.id);
       }
     }
   }
@@ -72,6 +88,18 @@ export class ImprovementConstructionSystem {
       }
     }
     return null;
+  }
+
+  /**
+   * Cancel any in-progress build owned by this unit. Used when the player
+   * explicitly wakes/moves the worker — the build is forfeit and progress
+   * resets, matching the "moving/waking cancels" rule.
+   */
+  cancelBuildForUnit(unitId: string, reason: ImprovementConstructionCancelReason = 'userInterrupt'): boolean {
+    const active = this.getConstructionForUnit(unitId);
+    if (active === null) return false;
+    this.cancel(active.tile, active.construction, reason);
+    return true;
   }
 
   onCompleted(listener: CompletedListener): void {
@@ -104,7 +132,7 @@ export class ImprovementConstructionSystem {
   private getInvalidReason(
     tile: Tile,
     construction: TileImprovementConstruction,
-  ): ImprovementConstructionCancelledEvent['reason'] | null {
+  ): ImprovementConstructionCancelReason | null {
     const unit = this.unitManager.getUnit(construction.unitId);
     if (unit === undefined) return 'invalidUnit';
     if (unit.tileX !== tile.x || unit.tileY !== tile.y || unit.ownerId !== construction.ownerId) return 'invalidUnit';
@@ -118,9 +146,14 @@ export class ImprovementConstructionSystem {
   private cancel(
     tile: Tile,
     construction: TileImprovementConstruction,
-    reason: ImprovementConstructionCancelledEvent['reason'],
+    reason: ImprovementConstructionCancelReason,
   ): void {
     tile.improvementConstruction = undefined;
+    const unit = this.unitManager.getUnit(construction.unitId);
+    if (unit !== undefined) {
+      unit.clearBuildAction();
+      this.unitManager.notifyActionChanged(unit.id);
+    }
     for (const listener of this.cancelledListeners) {
       listener({ tile, construction, reason });
     }
@@ -145,8 +178,48 @@ export class ImprovementConstructionSystem {
 
     tile.improvementId = construction.improvementId;
     tile.improvementConstruction = undefined;
+    unit.clearBuildAction();
+    this.unitManager.notifyActionChanged(unit.id);
     for (const listener of this.completedListeners) {
       listener({ tile, construction, improvement, city, unit });
+    }
+  }
+
+  private syncUnitProgress(unit: Unit, construction: TileImprovementConstruction): void {
+    const progress = computeUnitBuildProgress(
+      construction.remainingTurns,
+      construction.totalTurns,
+    );
+    if (unit.buildAction === undefined) {
+      unit.setBuildingImprovement({
+        improvementId: construction.improvementId,
+        tileX: unit.tileX,
+        tileY: unit.tileY,
+        progress,
+        requiredProgress: BUILD_REQUIRED_PROGRESS,
+      });
+      return;
+    }
+    unit.buildAction.progress = progress;
+    unit.buildAction.requiredProgress = BUILD_REQUIRED_PROGRESS;
+    unit.actionStatus = 'building';
+  }
+
+  /**
+   * Bring unit.buildAction in line with the live tile state. Called once
+   * after construction and again after save-load so units restored from
+   * older saves (which only carry tile.improvementConstruction) end up
+   * with a populated mirror for rendering.
+   */
+  syncUnitsFromTiles(): void {
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        const construction = tile.improvementConstruction;
+        if (construction === undefined) continue;
+        const unit = this.unitManager.getUnit(construction.unitId);
+        if (unit === undefined) continue;
+        this.syncUnitProgress(unit, construction);
+      }
     }
   }
 }

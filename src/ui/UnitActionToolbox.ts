@@ -41,6 +41,7 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     mode: 'build',
     label: 'Improve',
     isAvailable: (unit) => unit.unitType.canBuildImprovements === true,
+    isToggledOn: (unit) => unit.isBuildingImprovement(),
   },
   {
     mode: 'sleep',

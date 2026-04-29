@@ -150,6 +150,8 @@ export class SaveLoadService {
       improvementCharges: unit.improvementCharges,
       transportId: unit.transportId,
       isSleeping: unit.isSleeping,
+      actionStatus: unit.actionStatus,
+      buildAction: unit.buildAction ? { ...unit.buildAction } : undefined,
     }));
 
     const tiles: SavedTile[] = [];
@@ -490,6 +492,8 @@ export class SaveLoadService {
         improvementCharges: saved.improvementCharges,
         transportId: saved.transportId,
         isSleeping: saved.isSleeping,
+        actionStatus: saved.actionStatus,
+        buildAction: saved.buildAction ? { ...saved.buildAction } : undefined,
       });
     }
   }

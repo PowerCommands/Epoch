@@ -69,9 +69,17 @@ export class BuilderSystem {
       remainingTurns: requiredTurns,
       totalTurns: requiredTurns,
     };
+    unit.setBuildingImprovement({
+      improvementId: preview.improvement.id,
+      tileX: tile.x,
+      tileY: tile.y,
+      progress: 0,
+      requiredProgress: BUILD_REQUIRED_PROGRESS,
+    });
     if (options.consumeMovement ?? true) {
       this.unitManager.consumeAllMovement(unit.id);
     }
+    this.unitManager.notifyActionChanged(unit.id);
 
     return { unit, tile, improvement: preview.improvement, city, requiredTurns };
   }
@@ -174,6 +182,23 @@ export class BuilderSystem {
     }
     return undefined;
   }
+}
+
+/**
+ * Display-only scale used by unit.buildAction.progress. The canonical
+ * remaining-turn state lives on tile.improvementConstruction; the unit
+ * mirror exists so renderers can show a 0–100 percentage without
+ * walking the map every frame.
+ */
+export const BUILD_REQUIRED_PROGRESS = 100;
+
+export function computeUnitBuildProgress(
+  remainingTurns: number,
+  totalTurns: number,
+): number {
+  if (totalTurns <= 0) return BUILD_REQUIRED_PROGRESS;
+  const completedTurns = Math.max(0, totalTurns - Math.max(0, remainingTurns));
+  return Math.min(BUILD_REQUIRED_PROGRESS, (completedTurns / totalTurns) * BUILD_REQUIRED_PROGRESS);
 }
 
 export function getImprovementBuildTurnsForEra(era: Era): number {

@@ -2,8 +2,10 @@ import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import { UnitManager } from './UnitManager';
 import { NationManager } from './NationManager';
+import { getUnitActionSpriteKey, getUnitSpriteKey } from '../utils/assetPaths';
 
 const UNIT_DEPTH = 18;
+const PROGRESS_TEXT_DEPTH = UNIT_DEPTH + 1.5;
 
 const HP_BAR_WIDTH = 32;
 const HP_BAR_HEIGHT = 4;
@@ -12,26 +14,27 @@ const HP_BAR_BG_COLOR = 0x400000;
 
 const HIT_RADIUS = 16;
 
-const TEXTURE_MAP: Record<string, string> = {
-  warrior: 'unit_warrior',
-  archer: 'unit_archer',
-  cavalry: 'unit_cavalry',
-  settler: 'unit_settler',
-  fishing_boat: 'unit_fishing_boat',
-  transport_ship: 'unit_transport_ship',
-};
+const FALLBACK_TEXTURE_KEY = 'unit_warrior';
+
+interface UnitVisual {
+  container: Phaser.GameObjects.Container;
+  sprite: Phaser.GameObjects.Image;
+  progressText?: Phaser.GameObjects.Text;
+}
 
 /**
  * UnitRenderer draws sprites for units on the map.
  *
- * Uses per-unit-type textures with nation color tint.
+ * Uses per-unit-type textures with nation color tint. When a unit has an
+ * active action with an override sprite (e.g. worker_action_improvement),
+ * the override is shown and a build-progress percentage is drawn over it.
  */
 export class UnitRenderer {
   private readonly scene: Phaser.Scene;
   private readonly tileMap: TileMap;
   private readonly unitManager: UnitManager;
   private readonly nationManager: NationManager;
-  private readonly containers = new Map<string, Phaser.GameObjects.Container>();
+  private readonly visuals = new Map<string, UnitVisual>();
   private readonly hpBars = new Map<string, Phaser.GameObjects.Graphics>();
 
   constructor(
@@ -58,12 +61,15 @@ export class UnitRenderer {
         this.refreshHpBar(event.unit.id);
       } else if (event.reason === 'moved') {
         this.refreshUnitPosition(event.unit.id);
+        this.refreshUnitVisual(event.unit.id);
+      } else if (event.reason === 'actionChanged') {
+        this.refreshUnitVisual(event.unit.id);
       }
     });
   }
 
   getUnitContainer(unitId: string): Phaser.GameObjects.Container | undefined {
-    return this.containers.get(unitId);
+    return this.visuals.get(unitId)?.container;
   }
 
   /**
@@ -72,8 +78,8 @@ export class UnitRenderer {
    * has been replaced wholesale.
    */
   rebuildAll(): void {
-    for (const container of this.containers.values()) container.destroy();
-    this.containers.clear();
+    for (const visual of this.visuals.values()) visual.container.destroy();
+    this.visuals.clear();
     for (const gfx of this.hpBars.values()) gfx.destroy();
     this.hpBars.clear();
 
@@ -85,13 +91,13 @@ export class UnitRenderer {
 
   refreshUnitPosition(unitId: string): void {
     const unit = this.unitManager.getUnit(unitId);
-    const container = this.containers.get(unitId);
-    if (unit === undefined || container === undefined) return;
+    const visual = this.visuals.get(unitId);
+    if (unit === undefined || visual === undefined) return;
 
     const { x, y } = this.getUnitWorldPosition(unitId);
-    container.setPosition(x, y);
-    container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
-    container.setScale(unit.transportId ? 0.75 : 1);
+    visual.container.setPosition(x, y);
+    visual.container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
+    visual.container.setScale(unit.transportId ? 0.75 : 1);
 
     const hpBar = this.hpBars.get(unitId);
     if (hpBar) {
@@ -99,11 +105,50 @@ export class UnitRenderer {
     }
   }
 
+  /**
+   * Re-evaluate which sprite + progress overlay this unit should show.
+   * Called on action-status changes (build start, build complete, sleep
+   * toggle) and on movement (unit may have moved away from a build site).
+   */
+  refreshUnitVisual(unitId: string): void {
+    const unit = this.unitManager.getUnit(unitId);
+    const visual = this.visuals.get(unitId);
+    if (unit === undefined || visual === undefined) return;
+
+    const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
+    if (visual.sprite.texture.key !== textureKey) {
+      visual.sprite.setTexture(textureKey);
+    }
+
+    if (unit.isBuildingImprovement() && unit.buildAction !== undefined) {
+      const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
+      const label = `${percent}%`;
+      if (visual.progressText === undefined) {
+        const text = this.scene.add.text(0, 0, label, {
+          fontFamily: 'sans-serif',
+          fontSize: '12px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 3,
+        });
+        text.setOrigin(0.5, 0.5);
+        text.setDepth(PROGRESS_TEXT_DEPTH);
+        visual.container.add(text);
+        visual.progressText = text;
+      } else {
+        visual.progressText.setText(label);
+      }
+    } else if (visual.progressText !== undefined) {
+      visual.progressText.destroy();
+      visual.progressText = undefined;
+    }
+  }
+
   removeUnit(unitId: string): void {
-    const container = this.containers.get(unitId);
-    if (container) {
-      container.destroy();
-      this.containers.delete(unitId);
+    const visual = this.visuals.get(unitId);
+    if (visual) {
+      visual.container.destroy();
+      this.visuals.delete(unitId);
     }
 
     const hpBar = this.hpBars.get(unitId);
@@ -114,7 +159,7 @@ export class UnitRenderer {
   }
 
   private renderUnit(unitId: string): void {
-    if (this.containers.has(unitId)) return;
+    if (this.visuals.has(unitId)) return;
 
     const unit = this.unitManager.getUnit(unitId);
     if (unit === undefined) return;
@@ -122,7 +167,7 @@ export class UnitRenderer {
     const nation = this.nationManager.getNation(unit.ownerId);
     if (nation === undefined) return;
 
-    const textureKey = TEXTURE_MAP[unit.unitType.id] ?? 'unit_warrior';
+    const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
     const sprite = this.scene.add.image(0, 0, textureKey);
     sprite.setTint(nation.color);
 
@@ -138,7 +183,20 @@ export class UnitRenderer {
     container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
     container.setScale(unit.transportId ? 0.75 : 1);
 
-    this.containers.set(unit.id, container);
+    const visual: UnitVisual = { container, sprite };
+    this.visuals.set(unit.id, visual);
+
+    this.refreshUnitVisual(unit.id);
+  }
+
+  private resolveTextureKey(unitTypeId: string, actionStatus: string, hasBuildAction: boolean): string {
+    if (actionStatus === 'building' && hasBuildAction) {
+      const actionKey = getUnitActionSpriteKey(unitTypeId, 'improvement');
+      if (this.scene.textures.exists(actionKey)) return actionKey;
+    }
+    const baseKey = getUnitSpriteKey(unitTypeId);
+    if (this.scene.textures.exists(baseKey)) return baseKey;
+    return FALLBACK_TEXTURE_KEY;
   }
 
   private refreshHpBar(unitId: string): void {
@@ -193,4 +251,11 @@ export class UnitRenderer {
     if (unit.transportId === undefined) return base;
     return { x: base.x + 12, y: base.y - 12 };
   }
+}
+
+function clampPercent(progress: number, required: number): number {
+  if (required <= 0) return 0;
+  const ratio = progress / required;
+  if (!Number.isFinite(ratio)) return 0;
+  return Math.max(0, Math.min(100, Math.floor(ratio * 100)));
 }

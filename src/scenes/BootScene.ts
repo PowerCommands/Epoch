@@ -2,6 +2,20 @@ import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, MAP_MANIFEST_URL, parseMapManifest } from '../data/maps';
 import { ALL_LEADERS } from '../data/leaders';
 import { NATURAL_RESOURCES } from '../data/naturalResources';
+import { ALL_UNIT_TYPES } from '../data/units';
+import {
+  getUnitActionSpriteKey,
+  getUnitActionSpritePath,
+  getUnitSpriteKey,
+  getUnitSpritePath,
+} from '../utils/assetPaths';
+
+// Action ids that have base-image overrides today. Only these are pre-loaded
+// so Phaser does not try to fetch missing optional files for every unit type.
+const UNIT_ACTION_PRELOAD: ReadonlyArray<{ unitTypeId: string; actionId: string }> = [
+  { unitTypeId: 'worker', actionId: 'improvement' },
+  { unitTypeId: 'work_boat', actionId: 'improvement' },
+];
 
 /**
  * BootScene — runs first at startup.
@@ -24,12 +38,6 @@ export class BootScene extends Phaser.Scene {
 
     // Sprite assets
     this.load.image('city_default', 'assets/sprites/city_default.png');
-    this.load.image('unit_warrior', 'assets/sprites/unit_warrior.png');
-    this.load.image('unit_archer', 'assets/sprites/unit_archer.png');
-    this.load.image('unit_cavalry', 'assets/sprites/unit_cavalry.png');
-    this.load.image('unit_settler', 'assets/sprites/unit_settler.png');
-    this.load.image('unit_fishing_boat', 'assets/sprites/unit_fishing_boat.png');
-    this.load.image('unit_transport_ship', 'assets/sprites/unit_transport_ship.png');
     this.load.image('end_turn', 'assets/sprites/end_turn.png');
     this.load.image('action_move', 'assets/sprites/actions/move.png');
     this.load.image('action_attack', 'assets/sprites/actions/attack.png');
@@ -37,6 +45,21 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
     this.load.image('action_improve', 'assets/sprites/actions/improve.png');
     this.load.image('action_found_city', 'assets/sprites/actions/found-city.png');
+
+    // Base unit images, keyed by unitType.id (e.g. worker, work_boat, settler).
+    for (const unitType of ALL_UNIT_TYPES) {
+      this.load.image(getUnitSpriteKey(unitType.id), getUnitSpritePath(unitType.id));
+    }
+
+    // Per-action overrides for unit images. Loaded only for known action ids
+    // so Phaser does not 404 on optional files.
+    for (const entry of UNIT_ACTION_PRELOAD) {
+      this.load.image(
+        getUnitActionSpriteKey(entry.unitTypeId, entry.actionId),
+        getUnitActionSpritePath(entry.unitTypeId, entry.actionId),
+      );
+    }
+
     for (const resource of NATURAL_RESOURCES) {
       this.load.image(resource.iconKey, `assets/sprites/resources/${resource.id}.png`);
     }

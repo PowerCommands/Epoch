@@ -227,6 +227,30 @@ Rules:
 
 ---
 
+### Unit images
+
+* Base unit images live in `public/assets/sprites/units/<unitType.id>.png`
+* Action overrides live in `public/assets/sprites/units/<unitType.id>_action_<actionId>.png`
+* Current action ids:
+  * `improvement` (worker / work boat)
+* Sprite key helpers: `getUnitSpriteKey`, `getUnitActionSpriteKey` in `utils/assetPaths`
+* `BootScene` preloads every base unit image plus the known action images
+* `UnitRenderer` falls back to the base image when an action override is not loaded
+* Unit rendering has priority over tile / resource / improvement / building visuals on the same tile
+
+### Unit action status
+
+* `Unit.actionStatus` is one of: `active`, `sleep`, `building`
+* `building` is set by `BuilderSystem` when a worker / work boat starts an improvement
+* `Unit.buildAction` mirrors progress on a 0–100 scale for the renderer
+* The canonical multi-turn state still lives on `tile.improvementConstruction`
+* Building improvements is multi-turn, deterministic, and cancellable
+* Moving / waking the unit cancels the build and resets progress
+* The Sleep button on a busy worker acts as the cancel-build affordance
+* `TurnOrderSystem` skips units whose `actionStatus` is `building` (same behavior as sleeping)
+
+---
+
 ### DiagnosticSystem
 
 * Provides runtime diagnostic data

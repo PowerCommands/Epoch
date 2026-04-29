@@ -1,5 +1,15 @@
 import type { UnitType } from './UnitType';
 
+export type UnitActionStatus = 'active' | 'sleep' | 'building';
+
+export interface UnitBuildAction {
+  improvementId: string;
+  tileX: number;
+  tileY: number;
+  progress: number;
+  requiredProgress: number;
+}
+
 export interface UnitConfig {
   id: string;
   name: string;
@@ -31,6 +41,8 @@ export class Unit {
   transportId?: string;
   isSleeping: boolean;
   improvementCharges?: number;
+  actionStatus: UnitActionStatus;
+  buildAction?: UnitBuildAction;
 
   constructor(config: UnitConfig) {
     this.id = config.id;
@@ -44,6 +56,7 @@ export class Unit {
     this.health = config.unitType.baseHealth;
     this.isSleeping = false;
     this.improvementCharges = config.improvementCharges ?? config.unitType.maxImprovementCharges;
+    this.actionStatus = 'active';
   }
 
   resetMovement(): void {
@@ -52,5 +65,22 @@ export class Unit {
 
   isAlive(): boolean {
     return this.health > 0;
+  }
+
+  isBuildingImprovement(): boolean {
+    return this.actionStatus === 'building' && this.buildAction !== undefined;
+  }
+
+  setBuildingImprovement(action: UnitBuildAction): void {
+    this.actionStatus = 'building';
+    this.buildAction = action;
+    this.isSleeping = false;
+  }
+
+  clearBuildAction(): void {
+    this.buildAction = undefined;
+    if (this.actionStatus === 'building') {
+      this.actionStatus = 'active';
+    }
   }
 }

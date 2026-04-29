@@ -85,6 +85,16 @@ export interface SavedUnit {
   improvementCharges?: number;
   transportId?: string;
   isSleeping: boolean;
+  // Optional in older saves; absent values are derived from isSleeping +
+  // tile.improvementConstruction at load time.
+  actionStatus?: 'active' | 'sleep' | 'building';
+  buildAction?: {
+    improvementId: string;
+    tileX: number;
+    tileY: number;
+    progress: number;
+    requiredProgress: number;
+  };
 }
 
 export interface SavedTile {

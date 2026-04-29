@@ -79,6 +79,7 @@ import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
+import { UnitHoverDiagnosticHud } from '../ui/hud/UnitHoverDiagnosticHud';
 import { MinimapHud } from '../ui/hud/MinimapHud';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { RightSidebarPanel } from '../ui/phaser/RightSidebarPanel';
@@ -527,6 +528,13 @@ export class GameScene extends Phaser.Scene {
       });
       if (!result) return false;
 
+      const nationName = nationManager.getNation(unit.ownerId)?.name ?? unit.ownerId;
+      eventLog.log(
+        `${nationName} started building ${result.improvement.name} near ${result.city.name}.`,
+        [unit.ownerId],
+        turnManager.getCurrentRound(),
+      );
+
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
       rightPanel?.showTile(result.tile);
@@ -876,7 +884,11 @@ export class GameScene extends Phaser.Scene {
       if (!turnManager.getCurrentNation().isHuman) return;
       const selection = selectionManager.getSelected();
       if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) return;
-      if (improvementConstructionSystem.isUnitBusy(selection.unit.id)) return;
+      // Sleep is the cancel-build affordance for a busy worker; the
+      // sleep handler routes through cancelBuildForUnit. Other actions
+      // (move/attack/ranged) stay blocked while a build is running so
+      // the user explicitly cancels via Sleep before redirecting.
+      if (mode !== 'sleep' && improvementConstructionSystem.isUnitBusy(selection.unit.id)) return;
       unitActionToolbox.tryActivate(mode);
     };
     const onKeyMove = () => activateActionIfHumanTurn('move');
@@ -1418,6 +1430,14 @@ export class GameScene extends Phaser.Scene {
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
+
+    new UnitHoverDiagnosticHud(
+      this,
+      hudLayer.getOwnedObjectAttacher(),
+      selectionManager,
+      unitManager,
+      nationManager,
+    );
     researchSystem.onChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -2124,11 +2144,20 @@ export class GameScene extends Phaser.Scene {
       if (mode === 'sleep') {
         const selection = selectionManager.getSelected();
         if (selection?.kind !== 'unit') return;
+        // Pressing Sleep on a building worker cancels the build —
+        // matching the "moving/waking cancels progress" rule. The unit
+        // returns to active so the next turn it can be redirected.
         if (improvementConstructionSystem.isUnitBusy(selection.unit.id)) {
+          improvementConstructionSystem.cancelBuildForUnit(selection.unit.id);
+          unitActionToolbox.refresh();
+          turnOrderSystem.refreshActive();
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
           unitActionToolbox.resetMode();
           return;
         }
         selection.unit.isSleeping = !selection.unit.isSleeping;
+        selection.unit.actionStatus = selection.unit.isSleeping ? 'sleep' : 'active';
         unitActionToolbox.refresh();
         turnOrderSystem.refreshActive();
         hudLayer?.refresh();
@@ -2461,6 +2490,9 @@ export class GameScene extends Phaser.Scene {
         wonderSystem,
         tradeDealSystem,
       });
+      // Older saves only persist tile.improvementConstruction; recompute
+      // the unit-side mirror so the worker shows its build sprite + %.
+      improvementConstructionSystem.syncUnitsFromTiles();
 
       // Rebuild renderers that depend on replaced entities.
       cityRenderer.rebuildAll();
