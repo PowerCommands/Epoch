@@ -1,4 +1,5 @@
 import type { Unit } from '../entities/Unit';
+import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 
 export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'sleep' | 'kill';
 
@@ -14,6 +15,7 @@ export interface UnitActionViewState {
   label: string;
   isAvailable: boolean;
   isActive: boolean;
+  tooltip?: string;
 }
 
 export const ACTIONS: readonly UnitActionDefinition[] = [
@@ -58,6 +60,7 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
 
 type ModeChangedListener = (mode: UnitActionMode) => void;
 type ChangedListener = () => void;
+type BuildAvailabilityProvider = Pick<BuilderSystem, 'getCurrentTileBuildPreview'>;
 
 const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'sleep', 'build', 'found'];
 
@@ -68,10 +71,16 @@ export class UnitActionToolbox {
   private selectedUnit: Unit | null = null;
   private mode: UnitActionMode = 'move';
   private root: HTMLElement | null = null;
+  private buildAvailabilityProvider: BuildAvailabilityProvider | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
   private readonly changedListeners: ChangedListener[] = [];
 
   constructor(private readonly humanNationId: string | undefined) {}
+
+  setBuildAvailabilityProvider(provider: BuildAvailabilityProvider): void {
+    this.buildAvailabilityProvider = provider;
+    this.refresh();
+  }
 
   getMode(): UnitActionMode {
     return this.mode;
@@ -117,7 +126,7 @@ export class UnitActionToolbox {
     const unit = this.selectedUnit;
     if (!unit) return;
     const action = ACTIONS.find((a) => a.mode === mode);
-    if (!action || !action.isAvailable(unit)) return;
+    if (!action || !this.isActionAvailable(action, unit)) return;
     if (mode === 'sleep' || mode === 'kill') {
       this.triggerMode(mode);
       return;
@@ -141,7 +150,10 @@ export class UnitActionToolbox {
         return { mode, label: mode, isAvailable: false, isActive: false };
       }
 
-      const isAvailable = unit !== null && action.isAvailable(unit);
+      const preview = unit !== null && action.mode === 'build'
+        ? this.getBuildPreview(unit)
+        : undefined;
+      const isAvailable = unit !== null && this.isActionAvailable(action, unit, preview);
       const isActive = unit !== null && isAvailable && (
         this.mode === action.mode || action.isToggledOn?.(unit) === true
       );
@@ -151,6 +163,7 @@ export class UnitActionToolbox {
         label: action.label,
         isAvailable,
         isActive,
+        tooltip: this.getActionTooltip(action, preview),
       };
     });
   }
@@ -186,17 +199,24 @@ export class UnitActionToolbox {
     row.className = 'unit-action-row';
 
     for (const action of ACTIONS) {
-      if (!action.isAvailable(unit)) continue;
+      const preview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined;
+      const isAvailable = this.isActionAvailable(action, unit, preview);
+      if (!isAvailable && action.mode !== 'build') continue;
 
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'unit-action-button';
       const selectedAsMode = this.mode === action.mode;
-      const toggledOn = action.isToggledOn?.(unit) === true;
+      const toggledOn = isAvailable && action.isToggledOn?.(unit) === true;
       button.classList.toggle('unit-action-button-active', selectedAsMode || toggledOn);
       if (action.mode === 'kill') button.classList.add('unit-action-button-danger');
       button.textContent = action.label;
+      const tooltip = this.getActionTooltip(action, preview);
+      if (tooltip !== undefined) button.title = tooltip;
+      button.disabled = !isAvailable;
+      button.style.opacity = isAvailable ? '1' : '0.4';
       button.addEventListener('click', () => {
+        if (!this.isActionAvailable(action, unit)) return;
         if (action.mode === 'sleep' || action.mode === 'kill') {
           this.triggerMode(action.mode);
           return;
@@ -212,6 +232,30 @@ export class UnitActionToolbox {
 
   private notifyModeChanged(): void {
     for (const listener of this.modeChangedListeners) listener(this.mode);
+  }
+
+  private isActionAvailable(
+    action: UnitActionDefinition,
+    unit: Unit,
+    buildPreview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined,
+  ): boolean {
+    if (!action.isAvailable(unit)) return false;
+    if (action.mode !== 'build') return true;
+    return buildPreview?.canBuild === true;
+  }
+
+  private getBuildPreview(unit: Unit): BuildImprovementPreview {
+    return this.buildAvailabilityProvider?.getCurrentTileBuildPreview(unit)
+      ?? { canBuild: false, reason: 'No build rules available' };
+  }
+
+  private getActionTooltip(
+    action: UnitActionDefinition,
+    buildPreview: BuildImprovementPreview | undefined,
+  ): string | undefined {
+    if (action.mode !== 'build') return undefined;
+    if (buildPreview?.canBuild) return 'Build improvement';
+    return buildPreview?.reason ?? 'Cannot build improvement';
   }
 
   private notifyChanged(): void {

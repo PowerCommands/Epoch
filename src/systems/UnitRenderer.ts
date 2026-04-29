@@ -20,6 +20,7 @@ const FALLBACK_TEXTURE_KEY = 'unit_warrior';
 interface UnitVisual {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
+  maskGraphics: Phaser.GameObjects.Graphics;
   progressText?: Phaser.GameObjects.Text;
 }
 
@@ -79,7 +80,7 @@ export class UnitRenderer {
    * has been replaced wholesale.
    */
   rebuildAll(): void {
-    for (const visual of this.visuals.values()) visual.container.destroy();
+    for (const visual of this.visuals.values()) this.destroyVisual(visual);
     this.visuals.clear();
     for (const gfx of this.hpBars.values()) gfx.destroy();
     this.hpBars.clear();
@@ -99,6 +100,8 @@ export class UnitRenderer {
     visual.container.setPosition(x, y);
     visual.container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
     visual.container.setScale(unit.transportId ? 0.75 : 1);
+    visual.maskGraphics.setPosition(x, y);
+    visual.maskGraphics.setScale(unit.transportId ? 0.75 : 1);
 
     const hpBar = this.hpBars.get(unitId);
     if (hpBar) {
@@ -149,7 +152,7 @@ export class UnitRenderer {
   removeUnit(unitId: string): void {
     const visual = this.visuals.get(unitId);
     if (visual) {
-      visual.container.destroy();
+      this.destroyVisual(visual);
       this.visuals.delete(unitId);
     }
 
@@ -171,7 +174,9 @@ export class UnitRenderer {
 
     const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
     const sprite = this.scene.add.image(0, 0, textureKey);
-    this.applyUnitTileSize(unit, sprite);
+    const maskGraphics = this.scene.add.graphics();
+    sprite.setMask(maskGraphics.createGeometryMask());
+    this.applyUnitTileSize(unit, sprite, maskGraphics);
 
     const container = this.scene.add.container(0, 0, [sprite]);
     container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);
@@ -184,8 +189,10 @@ export class UnitRenderer {
     container.setPosition(x, y);
     container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
     container.setScale(unit.transportId ? 0.75 : 1);
+    maskGraphics.setPosition(x, y);
+    maskGraphics.setScale(unit.transportId ? 0.75 : 1);
 
-    const visual: UnitVisual = { container, sprite };
+    const visual: UnitVisual = { container, sprite, maskGraphics };
     this.visuals.set(unit.id, visual);
 
     this.refreshUnitVisual(unit.id);
@@ -201,9 +208,28 @@ export class UnitRenderer {
     return FALLBACK_TEXTURE_KEY;
   }
 
-  private applyUnitTileSize(unit: { tileX: number; tileY: number }, sprite: Phaser.GameObjects.Image): void {
+  private applyUnitTileSize(
+    unit: { tileX: number; tileY: number },
+    sprite: Phaser.GameObjects.Image,
+    maskGraphics?: Phaser.GameObjects.Graphics,
+  ): void {
     const rect = this.tileMap.getTileRect(unit.tileX, unit.tileY);
-    sprite.setDisplaySize(rect.width * UNIT_TILE_FILL_SCALE, rect.height * UNIT_TILE_FILL_SCALE);
+    const size = Math.min(rect.width, rect.height) * UNIT_TILE_FILL_SCALE;
+    sprite.setDisplaySize(size, size);
+
+    const mask = maskGraphics ?? sprite.getData('circleMask') as Phaser.GameObjects.Graphics | undefined;
+    if (mask === undefined) return;
+    mask.clear();
+    mask.fillStyle(0xffffff, 1);
+    mask.fillCircle(0, 0, size / 2 - 1);
+    mask.setVisible(false);
+    sprite.setData('circleMask', mask);
+  }
+
+  private destroyVisual(visual: UnitVisual): void {
+    visual.sprite.clearMask(false);
+    visual.container.destroy();
+    visual.maskGraphics.destroy();
   }
 
   private refreshHpBar(unitId: string): void {

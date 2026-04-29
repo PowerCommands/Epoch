@@ -23,6 +23,7 @@ export interface BuildImprovementResult {
 export interface BuildImprovementPreview {
   canBuild: boolean;
   improvement?: TileImprovementDefinition;
+  improvementId?: string;
   reason?: string;
   remainingTurns?: number;
 }
@@ -45,6 +46,16 @@ export class BuilderSystem {
 
   canBuild(unit: Unit, tile: Tile): boolean {
     return this.getBuildPreview(unit, tile).canBuild;
+  }
+
+  canUnitBuildOnCurrentTile(unit: Unit): boolean {
+    return this.getCurrentTileBuildPreview(unit).canBuild;
+  }
+
+  getCurrentTileBuildPreview(unit: Unit): BuildImprovementPreview {
+    const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
+    if (tile === undefined) return { canBuild: false, reason: 'Invalid tile' };
+    return this.evaluateBuild(unit, tile);
   }
 
   getBuildPreview(unit: Unit, tile: Tile): BuildImprovementPreview {
@@ -89,32 +100,32 @@ export class BuilderSystem {
     tile: Tile,
     options: BuildImprovementOptions = {},
   ): BuildImprovementPreview {
-    if (!unit.unitType.canBuildImprovements) return { canBuild: false, reason: 'Unit cannot build improvements' };
+    if (!unit.unitType.canBuildImprovements) return { canBuild: false, reason: 'Unit cannot improve tiles' };
     if (unit.improvementCharges !== undefined && unit.improvementCharges <= 0) {
-      return { canBuild: false, reason: 'Worker has no improvement charges remaining' };
+      return { canBuild: false, reason: 'No improvement charges remaining' };
     }
     if (this.turnManager.getCurrentNation().id !== unit.ownerId) return { canBuild: false, reason: 'Not this unit\'s turn' };
     const activeConstruction = this.getConstructionForUnit(unit.id);
     if (activeConstruction !== undefined) {
       return {
         canBuild: false,
-        reason: 'Worker is already building an improvement',
+        reason: 'Already building an improvement',
         remainingTurns: activeConstruction.remainingTurns,
       };
     }
     if (!this.isCurrentTile(unit, tile)) return { canBuild: false, reason: 'Worker must stand on this tile' };
-    if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already has an improvement' };
+    if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
-    if ((options.requireMovement ?? true) && unit.movementPoints <= 0) return { canBuild: false, reason: 'Worker has no movement remaining' };
-    if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'Cannot improve a city tile' };
-    if (!canUnitEnterTile(unit, tile)) return { canBuild: false, reason: 'Tile is not valid land for this unit' };
-    if (tile.ownerId !== unit.ownerId) return { canBuild: false, reason: 'Tile is not owned by this nation' };
+    if ((options.requireMovement ?? true) && unit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
+    if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
+    if (!canUnitEnterTile(unit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
+    if (tile.ownerId !== unit.ownerId) return { canBuild: false, reason: 'Must be inside your territory' };
     if (this.getFriendlyCityForWorkableTile(unit.ownerId, tile) === undefined) {
-      return { canBuild: false, reason: 'Tile is outside friendly city workable area' };
+      return { canBuild: false, reason: 'Must be near a friendly city' };
     }
 
     const improvement = this.resolveImprovementForTile(unit.ownerId, tile);
-    if (improvement === undefined) return { canBuild: false, reason: 'No improvement for this terrain' };
+    if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this terrain' };
     const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
     if (
       requiredTechnology !== undefined &&
@@ -123,11 +134,12 @@ export class BuilderSystem {
       return {
         canBuild: false,
         improvement,
+        improvementId: improvement.id,
         reason: `Requires ${requiredTechnology.name}`,
       };
     }
 
-    return { canBuild: true, improvement };
+    return { canBuild: true, improvement, improvementId: improvement.id };
   }
 
   private isCurrentTile(unit: Unit, tile: Tile): boolean {

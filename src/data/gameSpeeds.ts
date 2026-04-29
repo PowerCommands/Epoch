@@ -15,7 +15,7 @@ export const GAME_SPEEDS: GameSpeedDefinition[] = [
   { id: 'marathon', name: 'Marathon', costMultiplier: 1.00, yearProgressionMultiplier: 0.25, movementBonus: 0 },
 ];
 
-export const DEFAULT_GAME_SPEED_ID: GameSpeedId = 'marathon';
+export const DEFAULT_GAME_SPEED_ID: GameSpeedId = 'standard';
 
 export function getGameSpeedById(id: string | undefined): GameSpeedDefinition {
   return GAME_SPEEDS.find((speed) => speed.id === id) ?? GAME_SPEEDS.find((speed) => speed.id === DEFAULT_GAME_SPEED_ID)!;

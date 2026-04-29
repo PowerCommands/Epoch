@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { UnitActionMode, UnitActionToolbox, UnitActionViewState } from '../UnitActionToolbox';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
+import { Tooltip } from './Tooltip';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
@@ -35,6 +36,7 @@ interface ToolboxButtonView {
 
 export class UnitActionHudToolbox {
   private readonly buttons: ToolboxButtonView[] = [];
+  private readonly tooltip: Tooltip;
   private visible = false;
 
   constructor(
@@ -43,6 +45,8 @@ export class UnitActionHudToolbox {
     private readonly toolbox: UnitActionToolbox,
     private readonly worldInputGate: WorldInputGate,
   ) {
+    this.tooltip = new Tooltip(scene, addOwned);
+
     for (const state of this.toolbox.getHudActions()) {
       const background = addOwned(new Phaser.GameObjects.Arc(scene, 0, 0, ACTION_RADIUS, 0, 360, false, 0x12202d, 0.94))
         .setDepth(DEPTH + 1)
@@ -89,6 +93,9 @@ export class UnitActionHudToolbox {
       ) => {
         event.stopPropagation();
         button.hovered = true;
+        if (button.state.tooltip) {
+          this.tooltip.show(button.state.tooltip, _pointer);
+        }
         this.refreshButtonVisual(button);
       });
       hitArea.on(Phaser.Input.Events.POINTER_OUT, (
@@ -98,6 +105,7 @@ export class UnitActionHudToolbox {
         event.stopPropagation();
         button.hovered = false;
         button.pressed = false;
+        this.tooltip.hide();
         this.refreshButtonVisual(button);
       });
       hitArea.on(Phaser.Input.Events.POINTER_DOWN, (
@@ -125,6 +133,7 @@ export class UnitActionHudToolbox {
         const shouldActivate = button.state.isAvailable && button.pressed;
         button.pressed = false;
         this.worldInputGate.releasePointer(pointer.id);
+        this.tooltip.hide();
         if (shouldActivate) {
           this.toolbox.tryActivate(button.state.mode);
         }
@@ -149,6 +158,7 @@ export class UnitActionHudToolbox {
       button.hitArea.setVisible(isVisible);
       button.hovered = isVisible ? button.hovered : false;
       button.pressed = isVisible ? button.pressed : false;
+      if (!isVisible || !button.state.tooltip) this.tooltip.hide();
       button.hitArea.disableInteractive();
       if (isVisible) {
         button.hitArea.setInteractive({ useHandCursor: button.state.isAvailable });
@@ -185,6 +195,7 @@ export class UnitActionHudToolbox {
       button.iconMask.destroy();
       button.hitArea.destroy();
     }
+    this.tooltip.destroy();
   }
 
   private refreshButtonVisual(button: ToolboxButtonView): void {

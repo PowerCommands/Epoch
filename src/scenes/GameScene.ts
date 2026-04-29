@@ -60,6 +60,7 @@ import { calculateCityEconomy } from '../systems/CityEconomy';
 import { CityBannerRenderer } from '../systems/CityBannerRenderer';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
+import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOverlayRenderer';
 import { TimeSystem } from '../systems/TimeSystem';
 import { WonderSystem } from '../systems/WonderSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
@@ -296,6 +297,8 @@ export class GameScene extends Phaser.Scene {
 
     // 13. Produktionssystem
     const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem);
+    const tileImprovementOverlayRenderer = new TileImprovementOverlayRenderer(this, tileMap, mapData);
+    tileImprovementOverlayRenderer.rebuildAll();
     let hudLayer: HudLayer | null = null;
     let rightPanel: RightSidebarPanelDataProvider | null = null;
     let leaderStrip: LeaderPortraitStrip | null = null;
@@ -497,6 +500,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       eraSystem,
     );
+    unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     let foundCitySystem: FoundCitySystem;
     let movementSystem: MovementSystem;
     let selectedBuilderForHints: Unit | null = null;
@@ -537,6 +541,7 @@ export class GameScene extends Phaser.Scene {
 
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
+      tileImprovementOverlayRenderer.refreshTile(result.tile.x, result.tile.y);
       rightPanel?.showTile(result.tile);
       rightPanel?.requestRefresh();
       hudLayer?.refresh();
@@ -672,12 +677,14 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       refreshOpenCityView();
       tileBuildingRenderer.rebuildAll();
+      tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
       turnOrderSystem.refreshActive();
     });
-    improvementConstructionSystem.onCancelled(() => {
+    improvementConstructionSystem.onCancelled((event) => {
       rightPanel?.requestRefresh();
       hudLayer?.refresh();
       refreshOpenCityView();
+      tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
       turnOrderSystem.refreshActive();
     });
     selectionManager.onSelectionTarget((target, currentSelection) => {
@@ -2423,6 +2430,7 @@ export class GameScene extends Phaser.Scene {
       cityRenderer.shutdown();
       naturalResourceRenderer.shutdown();
       tileBuildingRenderer.shutdown();
+      tileImprovementOverlayRenderer.shutdown();
       this.minimapHud?.shutdown();
       this.minimapHud = null;
       this.rightSidebarPanel?.shutdown();
@@ -2499,6 +2507,7 @@ export class GameScene extends Phaser.Scene {
       cityBannerRenderer.rebuildAll();
       naturalResourceRenderer.rebuildAll();
       tileBuildingRenderer.rebuildAll();
+      tileImprovementOverlayRenderer.rebuildAll();
       unitRenderer.rebuildAll();
       territoryRenderer.render();
       leaderStrip?.rebuild();
