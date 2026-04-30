@@ -931,7 +931,7 @@ export class RightSidebarPanelDataProvider {
       return buttonRow(
         `${city.name}${city.isCapital ? ' ★' : ''}  Pop ${city.population}  HP ${city.health}/${CITY_BASE_HEALTH}  Production: ${productionLabel}`,
         () => {
-          window.dispatchEvent(new CustomEvent('focusCity', { detail: { cityId: city.id } }));
+          window.dispatchEvent(new CustomEvent('leaderCityFocusRequested', { detail: { cityId: city.id } }));
         },
         undefined,
         undefined,

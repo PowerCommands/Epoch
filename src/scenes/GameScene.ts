@@ -954,13 +954,16 @@ export class GameScene extends Phaser.Scene {
 
     // Focus the camera on the human capital at the start of each human turn.
     const humanIdForFocus = data.humanNationId;
+    const focusOnCity = (city: City): void => {
+      const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
+      this.cameraController.focusOn(x, y, 1.5);
+    };
     const focusHumanCapital = () => {
       if (!humanIdForFocus) return;
       const ownedCities = cityManager.getCitiesByOwner(humanIdForFocus);
       if (ownedCities.length > 0) {
         const target = ownedCities.find((c) => c.isCapital) ?? ownedCities[0];
-        const { x, y } = tileMap.tileToWorld(target.tileX, target.tileY);
-        this.cameraController.focusOn(x, y, 1.5);
+        focusOnCity(target);
         return;
       }
       const ownedUnits = unitManager.getUnitsByOwner(humanIdForFocus);
@@ -2637,6 +2640,15 @@ export class GameScene extends Phaser.Scene {
     };
     window.addEventListener('focusCity', onFocusCity);
 
+    const onLeaderCityFocusRequested = (event: Event) => {
+      const cityId = (event as CustomEvent<{ cityId: string }>).detail.cityId;
+      const city = cityManager.getCity(cityId);
+      if (!city) return;
+
+      focusOnCity(city);
+    };
+    window.addEventListener('leaderCityFocusRequested', onLeaderCityFocusRequested);
+
     const onFocusUnit = (event: Event) => {
       const unitId = (event as CustomEvent<{ unitId: string }>).detail.unitId;
       const unit = unitManager.getUnit(unitId);
@@ -2656,6 +2668,7 @@ export class GameScene extends Phaser.Scene {
       this.input.off(Phaser.Input.Events.POINTER_UP, onCityViewPointerUp);
       this.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, onCityViewPointerUp);
       window.removeEventListener('focusCity', onFocusCity);
+      window.removeEventListener('leaderCityFocusRequested', onLeaderCityFocusRequested);
       window.removeEventListener('focusUnit', onFocusUnit);
       document.removeEventListener('nationSelected', onNationSelected);
       document.removeEventListener('leaderSelected', onLeaderSelected);
@@ -2740,6 +2753,25 @@ export class GameScene extends Phaser.Scene {
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
       improvementConstructionSystem.syncUnitsFromTiles();
+
+      const restoredCities = cityManager.getAllCities();
+      console.log(
+        '[GameScene] Restored cities before renderer rebuild:',
+        restoredCities.length,
+        restoredCities.map((city) => ({
+          id: city.id,
+          name: city.name,
+          ownerId: city.ownerId,
+          tileX: city.tileX,
+          tileY: city.tileY,
+        })),
+      );
+      for (const savedCity of data.savedState.cities) {
+        if (cityManager.getCity(savedCity.id)) continue;
+        console.warn(
+          `[GameScene] Restored city missing from CityManager before cityRenderer.rebuildAll(): ${savedCity.id} (${savedCity.name})`,
+        );
+      }
 
       // Rebuild renderers that depend on replaced entities.
       cityRenderer.rebuildAll();

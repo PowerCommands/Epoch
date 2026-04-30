@@ -16,6 +16,7 @@ import { getLegacyCompatibleUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import type { Producible } from '../types/producible';
 import type { CityManager } from './CityManager';
+import type { City } from '../entities/City';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { NationManager } from './NationManager';
@@ -379,6 +380,36 @@ export class SaveLoadService {
     }
   }
 
+  private static applyCityOwnedTilesToMap(city: City, mapData: MapData): void {
+    const cityTile = mapData.tiles[city.tileY]?.[city.tileX];
+    if (!cityTile) {
+      console.warn(
+        `[SaveLoadService] Saved city tile outside map: ${city.id} (${city.name}) at (${city.tileX},${city.tileY})`,
+      );
+    }
+
+    const ownedTileKeys = new Set<string>();
+    ownedTileKeys.add(`${city.tileX},${city.tileY}`);
+    for (const coord of city.ownedTileCoords) {
+      ownedTileKeys.add(`${coord.x},${coord.y}`);
+    }
+
+    for (const key of ownedTileKeys) {
+      const [xText, yText] = key.split(',');
+      const x = Number(xText);
+      const y = Number(yText);
+      const tile = mapData.tiles[y]?.[x];
+      if (!tile) continue;
+      tile.ownerId = city.ownerId;
+    }
+
+    if (cityTile && cityTile.ownerId === undefined) {
+      console.warn(
+        `[SaveLoadService] Restored city tile has no owner: ${city.id} (${city.name}) at (${city.tileX},${city.tileY})`,
+      );
+    }
+  }
+
   private static applyNations(nations: SavedNation[], nationManager: NationManager): void {
     for (const saved of nations) {
       const nation = nationManager.getNation(saved.id);
@@ -433,6 +464,7 @@ export class SaveLoadService {
       } else {
         cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
       }
+      SaveLoadService.applyCityOwnedTilesToMap(city, mapData);
 
       if (saved.workedTileCoords && saved.workedTileCoords.length > 0) {
         city.workedTileCoords = saved.workedTileCoords.map((coord) => ({ ...coord }));
