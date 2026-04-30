@@ -10,6 +10,7 @@ import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import type { City } from '../entities/City';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
+import type { PolicySystem } from './PolicySystem';
 
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 3;
@@ -120,6 +121,7 @@ export class HappinessSystem {
     private readonly getNationModifiers: (nationId: string) => Readonly<ModifierSet> = () => EMPTY_MODIFIERS,
     private readonly getAvailableLuxuryResources: AvailableLuxuryResourcesProvider = () => [],
     private readonly getCityFoodSurplus: CityFoodSurplusProvider = () => 0,
+    private readonly policySystem?: PolicySystem,
   ) {
     this.recalculateAll();
   }
@@ -145,8 +147,6 @@ export class HappinessSystem {
     const happinessFromWonders = nationModifiers.happinessPerTurn ?? 0;
 
     const happinessFromBase = BASE_HAPPINESS;
-    const unhappinessFromCities = cities.length * CITY_UNHAPPINESS;
-    const unhappinessFromPopulation = totalPopulation * POPULATION_UNHAPPINESS;
 
     const luxuryEntries = sortedLuxuryEntries(this.getAvailableLuxuryResources(nationId));
     const availableLuxuryResourceIds = luxuryEntries.map((entry) => entry.resourceId);
@@ -155,13 +155,33 @@ export class HappinessSystem {
     const happinessFromFoodSurplus = cities.reduce((sum, city) => (
       sum + Math.floor(this.getCityFoodSurplus(city) / FOOD_SURPLUS_PER_HAPPINESS)
     ), 0);
+    const happinessFromPolicies =
+      this.getPolicyFlat(nationId, 'happinessFlat')
+      + (this.getPolicyFlat(nationId, 'happinessPerCity') * cities.length)
+      + (this.getPolicyFlat(nationId, 'happinessPerLuxuryResource') * availableLuxuryResourceIds.length);
 
     const totalHappiness = happinessFromBase
       + happinessFromBuildings
       + happinessFromWonders
       + happinessFromLuxuryResources
-      + happinessFromFoodSurplus;
-    const totalUnhappiness = unhappinessFromCities + unhappinessFromPopulation;
+      + happinessFromFoodSurplus
+      + happinessFromPolicies;
+    const baseUnhappinessFromCities = cities.length * CITY_UNHAPPINESS;
+    const policyCityUnhappinessPerCity = this.getPolicyFlat(nationId, 'unhappinessPerCityFlat');
+    const adjustedUnhappinessPerCity = Math.max(0, CITY_UNHAPPINESS + policyCityUnhappinessPerCity);
+    const adjustedUnhappinessFromCities = cities.length * adjustedUnhappinessPerCity;
+    const unhappinessFromPolicyCityModifiers = adjustedUnhappinessFromCities - baseUnhappinessFromCities;
+    const baseUnhappinessFromPopulation = totalPopulation * POPULATION_UNHAPPINESS;
+    const populationUnhappinessMultiplier = Math.max(
+      0,
+      1 + (this.getPolicyPercent(nationId, 'unhappinessPerPopulationPercent') / 100),
+    );
+    const adjustedUnhappinessFromPopulation = Math.round(
+      baseUnhappinessFromPopulation * populationUnhappinessMultiplier,
+    );
+    const unhappinessFromPolicyPopulationModifiers =
+      adjustedUnhappinessFromPopulation - baseUnhappinessFromPopulation;
+    const totalUnhappiness = adjustedUnhappinessFromCities + adjustedUnhappinessFromPopulation;
     const netHappiness = totalHappiness - totalUnhappiness;
 
     const tier = resolveTier(netHappiness);
@@ -174,10 +194,13 @@ export class HappinessSystem {
     state.happinessFromWonders = happinessFromWonders;
     state.happinessFromLuxuryResources = happinessFromLuxuryResources;
     state.happinessFromFoodSurplus = happinessFromFoodSurplus;
+    state.happinessFromPolicies = happinessFromPolicies;
     state.availableLuxuryResourceIds = availableLuxuryResourceIds;
     state.availableLuxuryResourceQuantities = luxuryEntries;
-    state.unhappinessFromCities = unhappinessFromCities;
-    state.unhappinessFromPopulation = unhappinessFromPopulation;
+    state.unhappinessFromCities = adjustedUnhappinessFromCities;
+    state.unhappinessFromPopulation = adjustedUnhappinessFromPopulation;
+    state.unhappinessFromPolicyCityModifiers = unhappinessFromPolicyCityModifiers;
+    state.unhappinessFromPolicyPopulationModifiers = unhappinessFromPolicyPopulationModifiers;
     state.state = tier.state;
     state.growthModifier = tier.growthModifier;
     state.productionModifier = tier.productionModifier;
@@ -237,6 +260,14 @@ export class HappinessSystem {
       listener(nationId, state);
     }
   }
+
+  private getPolicyFlat(nationId: string, type: Parameters<PolicySystem['getFlatModifierTotal']>[1]): number {
+    return this.policySystem?.getFlatModifierTotal(nationId, type) ?? 0;
+  }
+
+  private getPolicyPercent(nationId: string, type: Parameters<PolicySystem['getPercentModifierTotal']>[1]): number {
+    return this.policySystem?.getPercentModifierTotal(nationId, type) ?? 0;
+  }
 }
 
 function snapshotState(state: NationHappiness): {
@@ -248,10 +279,13 @@ function snapshotState(state: NationHappiness): {
   happinessFromWonders: number;
   happinessFromLuxuryResources: number;
   happinessFromFoodSurplus: number;
+  happinessFromPolicies: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
+  unhappinessFromPolicyCityModifiers: number;
+  unhappinessFromPolicyPopulationModifiers: number;
   state: HappinessState;
   growthModifier: number;
   productionModifier: number;
@@ -267,10 +301,13 @@ function snapshotState(state: NationHappiness): {
     happinessFromWonders: state.happinessFromWonders,
     happinessFromLuxuryResources: state.happinessFromLuxuryResources,
     happinessFromFoodSurplus: state.happinessFromFoodSurplus,
+    happinessFromPolicies: state.happinessFromPolicies,
     availableLuxuryResourceIds: [...state.availableLuxuryResourceIds],
     availableLuxuryResourceQuantities: state.availableLuxuryResourceQuantities.map((entry) => ({ ...entry })),
     unhappinessFromCities: state.unhappinessFromCities,
     unhappinessFromPopulation: state.unhappinessFromPopulation,
+    unhappinessFromPolicyCityModifiers: state.unhappinessFromPolicyCityModifiers,
+    unhappinessFromPolicyPopulationModifiers: state.unhappinessFromPolicyPopulationModifiers,
     state: state.state,
     growthModifier: state.growthModifier,
     productionModifier: state.productionModifier,
@@ -296,8 +333,11 @@ function statesEqual(
     && previous.happinessFromWonders === next.happinessFromWonders
     && previous.happinessFromLuxuryResources === next.happinessFromLuxuryResources
     && previous.happinessFromFoodSurplus === next.happinessFromFoodSurplus
+    && previous.happinessFromPolicies === next.happinessFromPolicies
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation
+    && previous.unhappinessFromPolicyCityModifiers === next.unhappinessFromPolicyCityModifiers
+    && previous.unhappinessFromPolicyPopulationModifiers === next.unhappinessFromPolicyPopulationModifiers
     && stringArraysEqual(previous.availableLuxuryResourceIds, next.availableLuxuryResourceIds)
     && luxuryEntriesEqual(previous.availableLuxuryResourceQuantities, next.availableLuxuryResourceQuantities);
 }

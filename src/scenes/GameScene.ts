@@ -16,6 +16,7 @@ import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
 import { CultureSystem } from '../systems/culture/CultureSystem';
+import { PolicySystem } from '../systems/PolicySystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
@@ -45,6 +46,7 @@ import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvalu
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
+import { AIPolicySystem } from '../systems/ai/AIPolicySystem';
 import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
@@ -243,6 +245,7 @@ export class GameScene extends Phaser.Scene {
       undefined,
       gameSpeed,
     );
+    const policySystem = new PolicySystem(nationManager);
     const humanNeedsCultureSelection = (): boolean => {
       if (!humanNationId) return false;
       return !cultureSystem.getCurrentCultureNode(humanNationId)
@@ -262,6 +265,7 @@ export class GameScene extends Phaser.Scene {
       (nationId) => wonderSystem.getNationModifiers(nationId),
       (nationId) => getAvailableLuxuryResourceQuantities(nationId),
       (city) => getCityFoodSurplus(city),
+      policySystem,
     );
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     const resourceSystem = new ResourceSystem(
@@ -275,6 +279,7 @@ export class GameScene extends Phaser.Scene {
       (nationId) => wonderSystem.getNationModifiers(nationId),
       gameSpeed,
       (nationId) => getTradeGoldPerTurnDelta(nationId),
+      policySystem,
     );
     getCityFoodSurplus = (city) => resourceSystem.getFoodSurplus(city);
 
@@ -285,7 +290,7 @@ export class GameScene extends Phaser.Scene {
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
-    const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed);
+    const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
     const cityBannerRenderer = new CityBannerRenderer(
       this,
       tileMap,
@@ -588,6 +593,13 @@ export class GameScene extends Phaser.Scene {
             fallbackLabel: getDiscoveryFallbackLabel(label),
           };
         }
+        case 'policy': {
+          const label = `${formatCultureUnlockValue(unlock.value)} Policy`;
+          return {
+            label,
+            fallbackLabel: getDiscoveryFallbackLabel(label),
+          };
+        }
         case 'diplomacy': {
           const label = formatCultureUnlockValue(unlock.value);
           return {
@@ -601,7 +613,12 @@ export class GameScene extends Phaser.Scene {
       CULTURE_TREE.filter((node) => node.prerequisites?.includes(cultureId) === true)
     );
     const eraSystem = new EraSystem(nationManager);
-    const improvementConstructionSystem = new ImprovementConstructionSystem(mapData, unitManager, cityManager);
+    const improvementConstructionSystem = new ImprovementConstructionSystem(
+      mapData,
+      unitManager,
+      cityManager,
+      policySystem,
+    );
     // Temporary debug reveal: only natural resource icons for now. This can
     // later expand to fog-of-war once an exploration visibility layer exists.
     let isMapRevealActive = false;
@@ -659,6 +676,7 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       gridSystem,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
+      policySystem,
     );
     // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
@@ -921,9 +939,17 @@ export class GameScene extends Phaser.Scene {
       explorationMemorySystem,
       strategicResourceCapacitySystem,
     );
+    const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
     // Humans pick their own initial research via the HUD research panel.
     // AI nations keep the deterministic auto-pick so they never stall.
+    const refreshPolicyDerivedState = (nationId: string): void => {
+      happinessSystem.recalculateNation(nationId);
+      resourceSystem.recalculateForNation(nationId);
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    };
+
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) {
         researchSystem.ensureResearchSelected(e.nation.id);
@@ -931,6 +957,13 @@ export class GameScene extends Phaser.Scene {
       }
       researchSystem.advanceResearchForNation(e.nation.id);
       cultureSystem.advanceCultureForNation(e.nation.id);
+      policySystem.normalizeActivePolicies(e.nation.id);
+      if (!e.nation.isHuman) {
+        aiPolicySystem.runTurn(e.nation.id);
+        refreshPolicyDerivedState(e.nation.id);
+      } else {
+        hudLayer?.refreshPolicyPanel();
+      }
 
       if (e.nation.isHuman) {
         openPendingHumanSelectionPanels();
@@ -1580,6 +1613,7 @@ export class GameScene extends Phaser.Scene {
     hudLayer = new HudLayer(this, {
       humanNationId,
       dataProvider: hudDataProvider,
+      policySystem,
       unitActionToolbox,
       worldInputGate,
       proposalContext: {
@@ -1601,6 +1635,7 @@ export class GameScene extends Phaser.Scene {
         if (!humanNationId) return false;
         return cultureSystem.startCultureNode(humanNationId, nodeId);
       },
+      onPoliciesChanged: refreshPolicyDerivedState,
       onAcceptProposal: (proposalId) => diplomaticProposalSystem.acceptProposal(proposalId),
       onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
       onDiscoveryClosed: openPendingHumanSelectionPanels,
@@ -2692,6 +2727,7 @@ export class GameScene extends Phaser.Scene {
         turnManager,
         gridSystem,
         wonderSystem,
+        policySystem,
         tradeDealSystem,
       });
       // Older saves only persist tile.improvementConstruction; recompute
@@ -2750,6 +2786,7 @@ export class GameScene extends Phaser.Scene {
           turnManager,
           gridSystem,
           wonderSystem,
+          policySystem,
           tradeDealSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
@@ -2784,6 +2821,7 @@ export class GameScene extends Phaser.Scene {
             turnManager,
             gridSystem,
             wonderSystem,
+            policySystem,
             tradeDealSystem,
           });
           downloadSaveFile(state);

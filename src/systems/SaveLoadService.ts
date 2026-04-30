@@ -21,6 +21,7 @@ import type { DiplomacyManager } from './DiplomacyManager';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
+import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
@@ -42,6 +43,7 @@ export interface SaveLoadContext {
   cityManager: CityManager;
   unitManager: UnitManager;
   productionSystem: ProductionSystem;
+  policySystem: PolicySystem;
   diplomacyManager: DiplomacyManager;
   discoverySystem: DiscoverySystem;
   turnManager: TurnManager;
@@ -78,6 +80,7 @@ export class SaveLoadService {
       cityManager,
       unitManager,
       productionSystem,
+      policySystem,
       diplomacyManager,
       discoverySystem,
       turnManager,
@@ -100,6 +103,7 @@ export class SaveLoadService {
         unlockedCultureNodeIds: [...nation.unlockedCultureNodeIds],
         currentCultureNodeId: nation.currentCultureNodeId,
         cultureProgress: nation.cultureProgress,
+        activePolicies: policySystem.getActivePolicyAssignments(nation.id),
         gold: res.gold,
         culture: res.culture,
         influence: res.influence,
@@ -303,6 +307,10 @@ export class SaveLoadService {
   static apply(state: SavedGameState, context: SaveLoadContext): void {
     SaveLoadService.applyTiles(state.tiles, context.mapData);
     SaveLoadService.applyNations(state.nations, context.nationManager);
+    context.policySystem.loadAllNationPolicies(state.nations.map((nation) => ({
+      nationId: nation.id,
+      activePolicies: nation.activePolicies ?? [],
+    })));
     SaveLoadService.applyWonders(state.wonders ?? [], context.wonderSystem);
     SaveLoadService.applyCitiesAndProduction(
       state.cities,

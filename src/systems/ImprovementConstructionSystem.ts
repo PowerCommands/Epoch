@@ -9,6 +9,7 @@ import {
   computeUnitBuildProgress,
 } from './BuilderSystem';
 import type { CityManager } from './CityManager';
+import type { PolicySystem } from './PolicySystem';
 import type { UnitChangedEvent, UnitManager } from './UnitManager';
 
 export interface ImprovementConstructionCompletedEvent {
@@ -44,6 +45,7 @@ export class ImprovementConstructionSystem {
     private readonly mapData: MapData,
     private readonly unitManager: UnitManager,
     private readonly cityManager: CityManager,
+    private readonly policySystem?: PolicySystem,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
     this.syncUnitsFromTiles();
@@ -60,7 +62,7 @@ export class ImprovementConstructionSystem {
         continue;
       }
 
-      construction.remainingTurns = Math.max(0, construction.remainingTurns - 1);
+      this.advanceConstruction(construction);
       const unit = this.unitManager.getUnit(construction.unitId);
       if (unit !== undefined) {
         this.unitManager.consumeAllMovement(unit.id);
@@ -232,6 +234,30 @@ export class ImprovementConstructionSystem {
     unit.buildAction.progress = progress;
     unit.buildAction.requiredProgress = BUILD_REQUIRED_PROGRESS;
     unit.actionStatus = 'building';
+  }
+
+  private advanceConstruction(construction: TileImprovementConstruction): void {
+    if (construction.totalTurns <= 0) {
+      construction.remainingTurns = 0;
+      return;
+    }
+
+    const currentProgress = computeUnitBuildProgress(
+      construction.remainingTurns,
+      construction.totalTurns,
+    );
+    const baseProgressPerTurn = BUILD_REQUIRED_PROGRESS / construction.totalTurns;
+    const percent = this.policySystem?.getPercentModifierTotal(
+      construction.ownerId,
+      'improvementBuildSpeedPercent',
+    ) ?? 0;
+    const multiplier = Math.max(0, 1 + (percent / 100));
+    const gainedProgress = Math.round(baseProgressPerTurn * multiplier);
+    const nextProgress = Math.min(BUILD_REQUIRED_PROGRESS, currentProgress + gainedProgress);
+    construction.remainingTurns = Math.max(
+      0,
+      Math.ceil(((BUILD_REQUIRED_PROGRESS - nextProgress) / BUILD_REQUIRED_PROGRESS) * construction.totalTurns),
+    );
   }
 
   /**

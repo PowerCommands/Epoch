@@ -24,10 +24,13 @@ export class NationHappiness {
   happinessFromWonders: number;
   happinessFromLuxuryResources: number;
   happinessFromFoodSurplus: number;
+  happinessFromPolicies: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
+  unhappinessFromPolicyCityModifiers: number;
+  unhappinessFromPolicyPopulationModifiers: number;
 
   state: HappinessState;
   growthModifier: number;
@@ -45,10 +48,13 @@ export class NationHappiness {
     this.happinessFromWonders = 0;
     this.happinessFromLuxuryResources = 0;
     this.happinessFromFoodSurplus = 0;
+    this.happinessFromPolicies = 0;
     this.availableLuxuryResourceIds = [];
     this.availableLuxuryResourceQuantities = [];
     this.unhappinessFromCities = 0;
     this.unhappinessFromPopulation = 0;
+    this.unhappinessFromPolicyCityModifiers = 0;
+    this.unhappinessFromPolicyPopulationModifiers = 0;
     this.state = 'stable';
     this.growthModifier = 1.0;
     this.productionModifier = 1.0;

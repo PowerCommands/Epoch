@@ -16,6 +16,7 @@ import { ProductionSystem } from './ProductionSystem';
 import type { MapData } from '../types/map';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { PolicySystem } from './PolicySystem';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -85,6 +86,7 @@ export class CombatSystem {
     diplomacyManager: DiplomacyManager | undefined,
     private readonly gridSystem: IGridSystem,
     private readonly isUnitCombatBlocked: UnitCombatBlocker = () => false,
+    private readonly policySystem?: PolicySystem,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -177,9 +179,13 @@ export class CombatSystem {
       return false;
     }
 
+    const modifiers = {
+      attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
+      defenderStrengthBonus: this.getOwnedTerritoryCombatBonus(target),
+    };
     const result = isRanged
-      ? resolveRangedCombat(attacker, target)
-      : resolveCombat(attacker, target);
+      ? resolveRangedCombat(attacker, target, modifiers)
+      : resolveCombat(attacker, target, modifiers);
 
     attacker.health = Math.max(0, attacker.health - result.attackerDamageTaken);
     target.health = Math.max(0, target.health - result.defenderDamageTaken);
@@ -198,9 +204,13 @@ export class CombatSystem {
   }
 
   private executeCityCombat(attacker: Unit, city: City, isRanged = false): boolean {
+    const modifiers = {
+      attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
+      cityDefenseBonus: this.policySystem?.getFlatModifierTotal(city.ownerId, 'cityDefenseFlat') ?? 0,
+    };
     const result = isRanged
-      ? resolveRangedVsCity(attacker, city)
-      : resolveUnitVsCity(attacker, city);
+      ? resolveRangedVsCity(attacker, city, modifiers)
+      : resolveUnitVsCity(attacker, city, modifiers);
 
     attacker.health = Math.max(0, attacker.health - result.attackerDamageTaken);
     // Ranged cannot capture: city stays at 1 HP minimum
@@ -235,6 +245,12 @@ export class CombatSystem {
 
   private notifyRejected(attacker: Unit, target: Unit, reason: string): void {
     for (const cb of this.rejectedListeners) cb({ attacker, target, reason });
+  }
+
+  private getOwnedTerritoryCombatBonus(unit: Unit): number {
+    const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
+    if (tile?.ownerId !== unit.ownerId) return 0;
+    return this.policySystem?.getFlatModifierTotal(unit.ownerId, 'ownedTerritoryCombatFlat') ?? 0;
   }
 
   private notifyWarRequired(

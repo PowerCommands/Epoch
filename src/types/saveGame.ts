@@ -1,4 +1,5 @@
 import type { GameSpeedId } from '../data/gameSpeeds';
+import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
 
@@ -49,6 +50,7 @@ export interface SavedNation {
   unlockedCultureNodeIds?: string[];
   currentCultureNodeId?: string;
   cultureProgress?: number;
+  activePolicies?: ActivePolicyAssignment[];
   gold: number;
   culture: number;
   influence?: number;

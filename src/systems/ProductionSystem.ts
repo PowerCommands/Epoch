@@ -4,6 +4,7 @@ import { HappinessSystem } from './HappinessSystem';
 import type { Producible } from '../types/producible';
 import type { TurnStartEvent } from '../types/events';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
+import type { PolicySystem } from './PolicySystem';
 
 /**
  * A single entry in a city's production queue.
@@ -76,6 +77,7 @@ export class ProductionSystem {
     turnManager: TurnManager,
     private readonly happinessSystem: HappinessSystem,
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+    private readonly policySystem?: PolicySystem,
   ) {
     this.cityManager = cityManager;
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
@@ -113,9 +115,8 @@ export class ProductionSystem {
     const queue = this.queues.get(cityId);
     if (!queue || queue.length === 0) return [];
 
-    const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId));
-
     return queue.map((entry, i) => {
+      const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, entry.item));
       const cost = this.getCost(entry.item);
       const progress = entry.accumulated;
       const remaining = cost - (i === 0 ? progress : 0);
@@ -290,7 +291,10 @@ export class ProductionSystem {
       const cost = this.getCost(entry.item);
 
       if (entry.accumulated < cost) {
-        entry.accumulated = Math.min(cost, entry.accumulated + this.getEffectiveProductionPerTurn(city.id));
+        entry.accumulated = Math.min(
+          cost,
+          entry.accumulated + this.getEffectiveProductionPerTurn(city.id, entry.item),
+        );
         entry.blockedReason = undefined;
       }
 
@@ -371,13 +375,30 @@ export class ProductionSystem {
     }
   }
 
-  private getEffectiveProductionPerTurn(cityId: string): number {
+  private getEffectiveProductionPerTurn(cityId: string, item?: Producible): number {
     const city = this.cityManager.getCity(cityId);
     if (!city) return 0;
 
     const cityRes = this.cityManager.getResources(cityId);
     const modifier = this.happinessSystem.getProductionModifier(city.ownerId);
-    return Math.floor(cityRes.productionPerTurn * modifier);
+    const baseProduction = Math.floor(cityRes.productionPerTurn * modifier);
+    if (!item) return baseProduction;
+
+    return applyPercent(baseProduction, this.getPolicyProductionPercent(city.ownerId, item));
+  }
+
+  private getPolicyProductionPercent(nationId: string, item: Producible): number {
+    if (item.kind === 'wonder') {
+      return this.policySystem?.getPercentModifierTotal(nationId, 'wonderProductionPercent') ?? 0;
+    }
+    if (
+      item.kind === 'unit' &&
+      item.unitType.isNaval !== true &&
+      item.unitType.category !== 'air'
+    ) {
+      return this.policySystem?.getPercentModifierTotal(nationId, 'landUnitProductionPercent') ?? 0;
+    }
+    return 0;
   }
 
   private notifyChanged(cityId: string): void {
@@ -387,4 +408,9 @@ export class ProductionSystem {
   private notifyRemoved(cityId: string, entry: QueueEntry): void {
     for (const cb of this.removedListeners) cb(cityId, entry);
   }
+}
+
+function applyPercent(value: number, percent: number): number {
+  const multiplier = Math.max(0, 1 + (percent / 100));
+  return Math.round(value * multiplier);
 }

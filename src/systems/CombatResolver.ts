@@ -16,6 +16,16 @@ export interface CityCombatResult {
   cityFell: boolean;
 }
 
+export interface UnitCombatModifiers {
+  readonly attackerStrengthBonus?: number;
+  readonly defenderStrengthBonus?: number;
+}
+
+export interface CityCombatModifiers {
+  readonly attackerStrengthBonus?: number;
+  readonly cityDefenseBonus?: number;
+}
+
 /**
  * Ren funktion: beräknar stridsutfall deterministiskt.
  * Inga sidoeffekter — mutation sker i CombatSystem.
@@ -25,12 +35,18 @@ export interface CityCombatResult {
  * - Försvararens motskada = baseStrength * 0.6 * (currentHP / baseHealth)
  *   (försvararen slår tillbaka mjukare)
  */
-export function resolveCombat(attacker: Unit, defender: Unit): CombatResult {
+export function resolveCombat(
+  attacker: Unit,
+  defender: Unit,
+  modifiers: UnitCombatModifiers = {},
+): CombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
   const defenderHpRatio = defender.health / defender.unitType.baseHealth;
+  const attackerStrength = attacker.unitType.baseStrength + (modifiers.attackerStrengthBonus ?? 0);
+  const defenderStrength = defender.unitType.baseStrength + (modifiers.defenderStrengthBonus ?? 0);
 
-  const damageToDefender = Math.round(attacker.unitType.baseStrength * attackerHpRatio);
-  const damageToAttacker = Math.round(defender.unitType.baseStrength * 0.6 * defenderHpRatio);
+  const damageToDefender = Math.round(attackerStrength * attackerHpRatio);
+  const damageToAttacker = Math.round(defenderStrength * 0.6 * defenderHpRatio);
 
   const newAttackerHp = Math.max(0, attacker.health - damageToAttacker);
   const newDefenderHp = Math.max(0, defender.health - damageToDefender);
@@ -47,9 +63,14 @@ export function resolveCombat(attacker: Unit, defender: Unit): CombatResult {
  * Ranged unit vs unit: attacker deals damage, no counter-attack.
  * Uses rangedStrength when set, falling back to baseStrength.
  */
-export function resolveRangedCombat(attacker: Unit, defender: Unit): CombatResult {
+export function resolveRangedCombat(
+  attacker: Unit,
+  defender: Unit,
+  modifiers: UnitCombatModifiers = {},
+): CombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
-  const rangedStr = attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength;
+  const rangedStr = (attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength)
+    + (modifiers.attackerStrengthBonus ?? 0);
   const damageToDefender = Math.round(rangedStr * attackerHpRatio);
   const newDefenderHp = Math.max(0, defender.health - damageToDefender);
 
@@ -65,9 +86,14 @@ export function resolveRangedCombat(attacker: Unit, defender: Unit): CombatResul
  * Ranged unit vs city: attacker deals damage, no counter-attack.
  * Uses rangedStrength when set, falling back to baseStrength.
  */
-export function resolveRangedVsCity(attacker: Unit, city: City): CityCombatResult {
+export function resolveRangedVsCity(
+  attacker: Unit,
+  city: City,
+  modifiers: CityCombatModifiers = {},
+): CityCombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
-  const rangedStr = attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength;
+  const rangedStr = (attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength)
+    + (modifiers.attackerStrengthBonus ?? 0);
   const damageToCity = Math.round(rangedStr * attackerHpRatio);
   const newCityHp = Math.max(0, city.health - damageToCity);
 
@@ -85,11 +111,17 @@ export function resolveRangedVsCity(attacker: Unit, city: City): CityCombatResul
  * Staden slår tillbaka med fast defense oavsett HP.
  * Multiplikator 0.5 gör stadsattacker mindre dödliga för attackeraren.
  */
-export function resolveUnitVsCity(attacker: Unit, city: City): CityCombatResult {
+export function resolveUnitVsCity(
+  attacker: Unit,
+  city: City,
+  modifiers: CityCombatModifiers = {},
+): CityCombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
+  const attackerStrength = attacker.unitType.baseStrength + (modifiers.attackerStrengthBonus ?? 0);
+  const cityDefense = CITY_BASE_DEFENSE + (modifiers.cityDefenseBonus ?? 0);
 
-  const damageToCity = Math.round(attacker.unitType.baseStrength * attackerHpRatio);
-  const damageToAttacker = Math.round(CITY_BASE_DEFENSE * 0.5);
+  const damageToCity = Math.round(attackerStrength * attackerHpRatio);
+  const damageToAttacker = Math.round(cityDefense * 0.5);
 
   const newCityHp = Math.max(0, city.health - damageToCity);
   const newAttackerHp = Math.max(0, attacker.health - damageToAttacker);

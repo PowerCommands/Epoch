@@ -19,6 +19,7 @@ import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
 import type { Nation } from '../entities/Nation';
+import type { PolicySystem } from './PolicySystem';
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -45,6 +46,7 @@ export class ResourceSystem {
     private readonly getNationModifiers: (nationId: string) => Readonly<ModifierSet> = () => EMPTY_MODIFIERS,
     gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0,
+    private readonly policySystem?: PolicySystem,
   ) {
     this.nationManager = nationManager;
     this.cityManager = cityManager;
@@ -108,14 +110,17 @@ export class ResourceSystem {
 
     this.updateWorkedTiles(cities);
 
-    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
+    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nationId, cities);
     nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId);
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
     for (const city of cities) {
       const cityRes = this.cityManager.getResources(city.id);
-      const economy = this.calculateEconomyForCity(city, nationModifiers);
+      const economy = this.applyPolicyEconomyModifiers(
+        city.ownerId,
+        this.calculateEconomyForCity(city, nationModifiers),
+      );
       cityRes.foodPerTurn = economy.food;
       cityRes.productionPerTurn = economy.production;
       cityRes.goldPerTurn = economy.gold;
@@ -162,7 +167,7 @@ export class ResourceSystem {
       nationModifiers,
     );
     nationRes.gold += Math.floor(nationRes.goldPerTurn * goldModifier);
-    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
+    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.influence += nationRes.influencePerTurn;
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
@@ -171,10 +176,11 @@ export class ResourceSystem {
       const cityRes = this.cityManager.getResources(city.id);
       const buildings = this.cityManager.getBuildings(city.id);
       const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers);
+      const policyEconomy = this.applyPolicyEconomyModifiers(city.ownerId, economy);
       const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
-      let displayEconomy = economy;
-      cityRes.production += economy.production;
+      let displayEconomy = policyEconomy;
+      cityRes.production += policyEconomy.production;
 
       if (economy.netFood > 0 && growthModifier > 0) {
         const adjustedGrowth = Math.floor(economy.netFood * growthModifier);
@@ -185,7 +191,10 @@ export class ResourceSystem {
           this.cityTerritorySystem.updateWorkedTiles(city, this.mapData);
           this.cityTerritorySystem.refreshNextExpansionTile(city, this.mapData);
           this.happinessSystem.recalculateNation(city.ownerId);
-          displayEconomy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers);
+          displayEconomy = this.applyPolicyEconomyModifiers(
+            city.ownerId,
+            calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+          );
         }
       }
 
@@ -201,7 +210,7 @@ export class ResourceSystem {
       nationRes.happinessPerTurn += displayEconomy.happiness;
       cityRes.food = city.foodStorage;
     }
-    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
+    nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.culture += Math.floor(nationRes.culturePerTurn * cultureModifier);
 
     this.happinessSystem.recalculateNation(nation.id);
@@ -223,19 +232,23 @@ export class ResourceSystem {
         lookup,
         nationModifiers,
       );
-      nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(cities);
+      nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
       nationRes.culturePerTurn = 0;
       nationRes.happinessPerTurn = 0;
 
       for (const city of cities) {
         const cityRes = this.cityManager.getResources(city.id);
         const buildings = this.cityManager.getBuildings(city.id);
-        cityRes.foodPerTurn = this.generator.calculateCityFoodPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-        cityRes.productionPerTurn = this.generator.calculateCityProductionPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-        cityRes.goldPerTurn = this.generator.calculateCityGoldPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-        cityRes.sciencePerTurn = this.generator.calculateCitySciencePerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-        cityRes.culturePerTurn = this.generator.calculateCityCulturePerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
-        cityRes.happinessPerTurn = this.generator.calculateCityHappinessPerTurn(city, buildings, this.mapData, this.gridSystem, nationModifiers);
+        const economy = this.applyPolicyEconomyModifiers(
+          city.ownerId,
+          calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+        );
+        cityRes.foodPerTurn = economy.food;
+        cityRes.productionPerTurn = economy.production;
+        cityRes.goldPerTurn = economy.gold;
+        cityRes.sciencePerTurn = economy.science;
+        cityRes.culturePerTurn = economy.culture;
+        cityRes.happinessPerTurn = economy.happiness;
         nationRes.culturePerTurn += cityRes.culturePerTurn;
         nationRes.happinessPerTurn += cityRes.happinessPerTurn;
         cityRes.food = city.foodStorage;
@@ -256,8 +269,13 @@ export class ResourceSystem {
     }
   }
 
-  private calculateNationInfluencePerTurn(cities: ReturnType<CityManager['getCitiesByOwner']>): number {
-    return cities.reduce((sum, city) => sum + city.population, 0);
+  private calculateNationInfluencePerTurn(
+    nationId: string,
+    cities: ReturnType<CityManager['getCitiesByOwner']>,
+  ): number {
+    const baseInfluence = cities.reduce((sum, city) => sum + city.population, 0);
+    const withFlat = baseInfluence + this.getPolicyFlat(nationId, 'influenceFlat');
+    return applyPercent(withFlat, this.getPolicyPercent(nationId, 'influencePercent'));
   }
 
   private calculateNationGoldPerTurn(
@@ -266,14 +284,13 @@ export class ResourceSystem {
     lookup: (cityId: string) => CityBuildings,
     nationModifiers: Readonly<ModifierSet>,
   ): number {
-    const baseGoldPerTurn = this.generator.calculateNationGoldPerTurn(
-      nation,
-      cities,
-      lookup,
-      this.mapData,
-      this.gridSystem,
-      nationModifiers,
-    );
+    const baseGoldPerTurn = cities.reduce((sum, city) => {
+      const economy = this.applyPolicyEconomyModifiers(
+        nation.id,
+        calculateCityEconomy(city, this.mapData, lookup(city.id), this.gridSystem, nationModifiers),
+      );
+      return sum + economy.gold;
+    }, 0);
 
     return baseGoldPerTurn + this.getTradeGoldPerTurnDelta(nation.id);
   }
@@ -290,4 +307,42 @@ export class ResourceSystem {
       nationModifiers,
     );
   }
+
+  private applyPolicyEconomyModifiers(
+    nationId: string,
+    economy: CityEconomySummary,
+  ): CityEconomySummary {
+    return {
+      ...economy,
+      production: applyPercent(
+        economy.production + this.getPolicyFlat(nationId, 'productionFlatPerCity'),
+        this.getPolicyPercent(nationId, 'productionPercent'),
+      ),
+      culture: applyPercent(
+        economy.culture + this.getPolicyFlat(nationId, 'cultureFlatPerCity'),
+        this.getPolicyPercent(nationId, 'culturePercent'),
+      ),
+      gold: applyPercent(
+        economy.gold + this.getPolicyFlat(nationId, 'goldFlatPerCity'),
+        this.getPolicyPercent(nationId, 'goldPercent'),
+      ),
+      science: applyPercent(
+        economy.science + this.getPolicyFlat(nationId, 'scienceFlatPerCity'),
+        this.getPolicyPercent(nationId, 'sciencePercent'),
+      ),
+    };
+  }
+
+  private getPolicyFlat(nationId: string, type: Parameters<PolicySystem['getFlatModifierTotal']>[1]): number {
+    return this.policySystem?.getFlatModifierTotal(nationId, type) ?? 0;
+  }
+
+  private getPolicyPercent(nationId: string, type: Parameters<PolicySystem['getPercentModifierTotal']>[1]): number {
+    return this.policySystem?.getPercentModifierTotal(nationId, type) ?? 0;
+  }
+}
+
+function applyPercent(value: number, percent: number): number {
+  const multiplier = Math.max(0, 1 + (percent / 100));
+  return Math.round(value * multiplier);
 }
