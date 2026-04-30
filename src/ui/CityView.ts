@@ -285,6 +285,10 @@ export class CityView {
     return this.open && this.currentCityId === cityId;
   }
 
+  getOpenCityId(): string | null {
+    return this.open ? this.currentCityId : null;
+  }
+
   show(
     city: City,
     unitOptions: CityViewUnitOption[],

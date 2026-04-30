@@ -1939,6 +1939,39 @@ export class GameScene extends Phaser.Scene {
       if (selected.city.ownerId !== humanNationId) return null;
       return selected.city;
     };
+    const getHumanCitiesForCityViewNavigation = (): City[] => (
+      humanNationId ? cityManager.getCitiesByOwner(humanNationId) : []
+    );
+    const shouldIgnoreCityViewNavigationHotkey = (): boolean => (
+      shouldIgnoreGlobalTurnHotkey() || hudLayer?.hasOpenSelectionPanel() === true
+    );
+    const navigateOpenCityView = (direction: 1 | -1): boolean => {
+      const openCityId = cityView.getOpenCityId();
+      if (openCityId === null) return false;
+
+      const humanCities = getHumanCitiesForCityViewNavigation();
+      if (humanCities.length <= 1) return false;
+
+      const currentIndex = humanCities.findIndex((city) => city.id === openCityId);
+      if (currentIndex < 0) return false;
+
+      const nextIndex = (currentIndex + direction + humanCities.length) % humanCities.length;
+      const targetCity = humanCities[nextIndex];
+      cityViewDismissedCityId = null;
+      selectionManager.selectCity(targetCity);
+      focusOnCity(targetCity);
+      return true;
+    };
+    const onKeyCityViewTab = (event: KeyboardEvent): void => {
+      if (shouldIgnoreCityViewNavigationHotkey()) return;
+      const handled = navigateOpenCityView(event.shiftKey ? -1 : 1);
+      if (!handled) return;
+      event.preventDefault();
+    };
+    this.input.keyboard?.on('keydown-TAB', onKeyCityViewTab);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-TAB', onKeyCityViewTab);
+    });
     const clearCityViewInteraction = (): void => {
       cityViewInteraction.clear();
       buildingPlacementSystem.cancelPlacement();
@@ -2100,71 +2133,6 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     });
 
-    const showBuildingPlacementConfirm = (onConfirm: () => void, onCancel: () => void): void => {
-      const existing = document.getElementById('building-placement-modal');
-      if (existing) existing.remove();
-
-      const overlay = document.createElement('div');
-      overlay.id = 'building-placement-modal';
-      overlay.style.cssText = `
-        position: fixed; inset: 0; z-index: 9998;
-        display: flex; align-items: center; justify-content: center;
-        background: rgba(0,0,0,0.68);
-      `;
-
-      const box = document.createElement('div');
-      box.style.cssText = `
-        width: min(420px, calc(100vw - 32px));
-        padding: 24px 28px;
-        border-radius: 10px;
-        border: 1px solid rgba(180, 224, 235, 0.36);
-        background: linear-gradient(180deg, rgba(11, 18, 24, 0.98), rgba(7, 12, 18, 0.96));
-        color: #edf8fb;
-        font-family: monospace;
-        box-shadow: 0 18px 40px rgba(0,0,0,0.42);
-      `;
-
-      const title = document.createElement('div');
-      title.textContent = 'Confirm placement';
-      title.style.cssText = 'font-size: 18px; font-weight: 700; margin-bottom: 12px;';
-
-      const message = document.createElement('div');
-      message.textContent = 'This will remove the existing improvement. Continue?';
-      message.style.cssText = 'font-size: 13px; line-height: 1.5; margin-bottom: 18px;';
-
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
-
-      const makeButton = (label: string, primary: boolean, handler: () => void) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = label;
-        button.style.cssText = `
-          border-radius: 6px;
-          border: 1px solid ${primary ? 'rgba(132, 243, 255, 0.55)' : 'rgba(255,255,255,0.16)'};
-          background: ${primary ? 'rgba(46, 240, 255, 0.18)' : 'rgba(255,255,255,0.05)'};
-          color: #eff9fb;
-          cursor: pointer;
-          font: inherit;
-          padding: 8px 12px;
-        `;
-        button.addEventListener('click', () => {
-          handler();
-          overlay.remove();
-        });
-        return button;
-      };
-
-      actions.append(
-        makeButton('Cancel', false, onCancel),
-        makeButton('Continue', true, onConfirm),
-      );
-
-      box.append(title, message, actions);
-      overlay.append(box);
-      document.body.append(overlay);
-    };
-
     const onCityViewPointerDown = (pointer: Phaser.Input.Pointer): void => {
       if (pointer.button !== 0) return;
       const city = getOpenCityViewCity();
@@ -2209,30 +2177,6 @@ export class GameScene extends Phaser.Scene {
           cityView.hideTooltip();
           refreshOpenCityView();
           rightPanel?.requestRefresh();
-          return;
-        }
-        if (result.status === 'needs_confirmation') {
-          cityView.hideTooltip();
-          showBuildingPlacementConfirm(
-            () => {
-              const placedCoord = buildingPlacementSystem.confirmPendingPlacement(mapData);
-              if (placedCoord) {
-                const buildingDef = getBuildingById(placedCoord.buildingId);
-                if (buildingDef && !isBuildingQueued(city.id, placedCoord.buildingId)) {
-                  productionSystem.enqueue(city.id, { kind: 'building', buildingType: buildingDef });
-                }
-                cityTerritorySystem.updateWorkedTiles(city, mapData);
-                resourceSystem.recalculateForNation(city.ownerId);
-                tileBuildingRenderer.refreshTile(placedCoord.x, placedCoord.y);
-              }
-              refreshOpenCityView();
-              rightPanel?.requestRefresh();
-            },
-            () => {
-              buildingPlacementSystem.clearPendingConfirmation();
-              refreshOpenCityView();
-            },
-          );
           return;
         }
         if (result.status === 'invalid') return;

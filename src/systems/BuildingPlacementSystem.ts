@@ -7,12 +7,10 @@ export interface BuildingPlacementState {
   cityId: string;
   buildingId: string;
   validCoords: Array<{ x: number; y: number }>;
-  pendingConfirmationCoord?: { x: number; y: number };
 }
 
 export type BuildingPlacementSelectionResult =
   | { status: 'inactive' | 'invalid' }
-  | { status: 'needs_confirmation'; coord: { x: number; y: number }; improvementId: string }
   | { status: 'reserved'; coord: { x: number; y: number }; buildingId: string };
 
 export class BuildingPlacementSystem {
@@ -51,9 +49,6 @@ export class BuildingPlacementSystem {
         cityId: this.state.cityId,
         buildingId: this.state.buildingId,
         validCoords: this.state.validCoords.map((coord) => ({ ...coord })),
-        pendingConfirmationCoord: this.state.pendingConfirmationCoord
-          ? { ...this.state.pendingConfirmationCoord }
-          : undefined,
       }
       : null;
   }
@@ -95,43 +90,8 @@ export class BuildingPlacementSystem {
     const tile = mapData.tiles[coord.y]?.[coord.x];
     if (!tile) return { status: 'invalid' };
 
-    if (tile.improvementId) {
-      this.state = {
-        ...this.state,
-        pendingConfirmationCoord: { x: coord.x, y: coord.y },
-      };
-      return {
-        status: 'needs_confirmation',
-        coord: { x: coord.x, y: coord.y },
-        improvementId: tile.improvementId,
-      };
-    }
-
     const buildingId = this.reservePlacement(tile);
     return { status: 'reserved', coord: { x: coord.x, y: coord.y }, buildingId };
-  }
-
-  confirmPendingPlacement(mapData: MapData): { x: number; y: number; buildingId: string } | null {
-    if (!this.state?.pendingConfirmationCoord) return null;
-
-    const coord = this.state.pendingConfirmationCoord;
-    const tile = mapData.tiles[coord.y]?.[coord.x];
-    if (!tile) {
-      this.cancelPlacement();
-      return null;
-    }
-
-    tile.improvementId = undefined;
-    const buildingId = this.reservePlacement(tile);
-    return { ...coord, buildingId };
-  }
-
-  clearPendingConfirmation(): void {
-    if (!this.state) return;
-    this.state = {
-      ...this.state,
-      pendingConfirmationCoord: undefined,
-    };
   }
 
   findReservedTile(
@@ -176,7 +136,6 @@ export class BuildingPlacementSystem {
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
     if (tile.buildingId !== undefined) return false;
     if (tile.buildingConstruction !== undefined) return false;
-    if (tile.improvementConstruction !== undefined) return false;
     if (tile.wonderId !== undefined) return false;
     if (tile.wonderConstruction !== undefined) return false;
 

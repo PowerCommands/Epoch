@@ -193,6 +193,10 @@ export class HudLayer {
     return this.discoveryPopup.isShowing() || this.proposalDialog.isShowing();
   }
 
+  hasOpenSelectionPanel(): boolean {
+    return this.researchPanel.isOpen() || this.culturePanel.isOpen();
+  }
+
   /**
    * Allow external HUD components to register themselves with this
    * layer's UI camera. The callback returned mirrors the internal

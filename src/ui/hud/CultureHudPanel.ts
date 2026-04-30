@@ -259,6 +259,10 @@ export class CultureHudPanel {
     this.refreshToggleState();
   }
 
+  isOpen(): boolean {
+    return !this.collapsed;
+  }
+
   layout(viewportWidth: number, viewportHeight: number): void {
     const toggleX = EDGE_MARGIN;
     const toggleY = CULTURE_TOGGLE_Y;

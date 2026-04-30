@@ -612,6 +612,7 @@ export class RightSidebarPanelDataProvider {
           ],
         },
         this.getLeaderNationSection(leader.nationId),
+        this.getLeaderTerritorySection(leader.nationId),
       ],
     };
   }
@@ -885,7 +886,18 @@ export class RightSidebarPanelDataProvider {
         textRow(`Capital: ${capital?.name ?? 'none'}`),
         textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
         textRow(`Cities: ${cities.length}`),
+      ],
+    };
+  }
+
+  private getLeaderTerritorySection(nationId: string): RightSidebarSection {
+    const happiness = this.happinessSystem.getNationState(nationId);
+    const value = this.happinessSystem.getHappinessForNation(nationId);
+    return {
+      title: 'Territory',
+      rows: [
         textRow(`Territory: ${this.nationManager.getTileCount(nationId, this.mapData)} tiles`),
+        textRow(`😀 ${formatSigned(value)} (${formatHappinessStateLabel(happiness.state)})`),
       ],
     };
   }

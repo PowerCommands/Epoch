@@ -255,6 +255,10 @@ export class ResearchHudPanel {
     this.refreshToggleState();
   }
 
+  isOpen(): boolean {
+    return !this.collapsed;
+  }
+
   layout(viewportWidth: number, viewportHeight: number): void {
     const toggleX = EDGE_MARGIN;
     const toggleY = TOGGLE_BASE_Y;

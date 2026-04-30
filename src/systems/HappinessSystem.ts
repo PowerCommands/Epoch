@@ -14,14 +14,14 @@ import { NationManager } from './NationManager';
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 3;
 export const POPULATION_UNHAPPINESS = 1;
-export const FOOD_SURPLUS_PER_HAPPINESS = 2;
+export const FOOD_SURPLUS_PER_HAPPINESS = 1;
 
 /**
  * Each unit of usable luxury resource quantity (1 per tile, 2 with the
  * matching improvement) contributes this much happiness. Keeping this as
  * a coefficient so future tuning is a one-liner.
  */
-export const HAPPINESS_PER_LUXURY_QUANTITY = 1;
+export const HAPPINESS_PER_LUXURY_QUANTITY = 2;
 
 export type HappinessChangedListener = (nationId: string, state: Readonly<NationHappiness>) => void;
 export type AvailableLuxuryResourcesProvider = (
@@ -200,6 +200,10 @@ export class HappinessSystem {
   }
 
   getNetHappiness(nationId: string): number {
+    return this.getNationState(nationId).netHappiness;
+  }
+
+  getHappinessForNation(nationId: string): number {
     return this.getNationState(nationId).netHappiness;
   }
 
