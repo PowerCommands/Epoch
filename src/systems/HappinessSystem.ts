@@ -7,12 +7,14 @@ import {
   type LuxuryResourceEntry,
 } from '../entities/NationHappiness';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
+import type { City } from '../entities/City';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 3;
 export const POPULATION_UNHAPPINESS = 1;
+export const FOOD_SURPLUS_PER_HAPPINESS = 2;
 
 /**
  * Each unit of usable luxury resource quantity (1 per tile, 2 with the
@@ -25,6 +27,7 @@ export type HappinessChangedListener = (nationId: string, state: Readonly<Nation
 export type AvailableLuxuryResourcesProvider = (
   nationId: string,
 ) => ReadonlyArray<LuxuryResourceEntry>;
+export type CityFoodSurplusProvider = (city: City) => number;
 
 interface TierResult {
   state: HappinessState;
@@ -116,6 +119,7 @@ export class HappinessSystem {
     private readonly cityManager: CityManager,
     private readonly getNationModifiers: (nationId: string) => Readonly<ModifierSet> = () => EMPTY_MODIFIERS,
     private readonly getAvailableLuxuryResources: AvailableLuxuryResourcesProvider = () => [],
+    private readonly getCityFoodSurplus: CityFoodSurplusProvider = () => 0,
   ) {
     this.recalculateAll();
   }
@@ -148,8 +152,15 @@ export class HappinessSystem {
     const availableLuxuryResourceIds = luxuryEntries.map((entry) => entry.resourceId);
     const totalLuxuryQuantity = luxuryEntries.reduce((sum, entry) => sum + entry.quantity, 0);
     const happinessFromLuxuryResources = totalLuxuryQuantity * HAPPINESS_PER_LUXURY_QUANTITY;
+    const happinessFromFoodSurplus = cities.reduce((sum, city) => (
+      sum + Math.floor(this.getCityFoodSurplus(city) / FOOD_SURPLUS_PER_HAPPINESS)
+    ), 0);
 
-    const totalHappiness = happinessFromBase + happinessFromBuildings + happinessFromWonders + happinessFromLuxuryResources;
+    const totalHappiness = happinessFromBase
+      + happinessFromBuildings
+      + happinessFromWonders
+      + happinessFromLuxuryResources
+      + happinessFromFoodSurplus;
     const totalUnhappiness = unhappinessFromCities + unhappinessFromPopulation;
     const netHappiness = totalHappiness - totalUnhappiness;
 
@@ -162,6 +173,7 @@ export class HappinessSystem {
     state.happinessFromBuildings = happinessFromBuildings;
     state.happinessFromWonders = happinessFromWonders;
     state.happinessFromLuxuryResources = happinessFromLuxuryResources;
+    state.happinessFromFoodSurplus = happinessFromFoodSurplus;
     state.availableLuxuryResourceIds = availableLuxuryResourceIds;
     state.availableLuxuryResourceQuantities = luxuryEntries;
     state.unhappinessFromCities = unhappinessFromCities;
@@ -231,6 +243,7 @@ function snapshotState(state: NationHappiness): {
   happinessFromBuildings: number;
   happinessFromWonders: number;
   happinessFromLuxuryResources: number;
+  happinessFromFoodSurplus: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
@@ -249,6 +262,7 @@ function snapshotState(state: NationHappiness): {
     happinessFromBuildings: state.happinessFromBuildings,
     happinessFromWonders: state.happinessFromWonders,
     happinessFromLuxuryResources: state.happinessFromLuxuryResources,
+    happinessFromFoodSurplus: state.happinessFromFoodSurplus,
     availableLuxuryResourceIds: [...state.availableLuxuryResourceIds],
     availableLuxuryResourceQuantities: state.availableLuxuryResourceQuantities.map((entry) => ({ ...entry })),
     unhappinessFromCities: state.unhappinessFromCities,
@@ -277,6 +291,7 @@ function statesEqual(
     && previous.happinessFromBuildings === next.happinessFromBuildings
     && previous.happinessFromWonders === next.happinessFromWonders
     && previous.happinessFromLuxuryResources === next.happinessFromLuxuryResources
+    && previous.happinessFromFoodSurplus === next.happinessFromFoodSurplus
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation
     && stringArraysEqual(previous.availableLuxuryResourceIds, next.availableLuxuryResourceIds)

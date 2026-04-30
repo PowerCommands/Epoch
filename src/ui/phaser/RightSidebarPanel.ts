@@ -97,7 +97,6 @@ const CITY_DETAIL_TABS: Array<{
   { id: 'city', label: '🏠 City', accentColor: 0x7fb4d5 },
   { id: 'growth', label: '👶 Growth', accentColor: 0x86efac },
   { id: 'output', label: '📈 Output', accentColor: 0xf4d06f },
-  { id: 'production', label: '⏳ Queue', accentColor: 0xc084fc },
 ];
 
 const LEADER_DETAIL_TABS: Array<{
@@ -106,6 +105,8 @@ const LEADER_DETAIL_TABS: Array<{
   accentColor: number;
 }> = [
   { id: 'details', label: 'Details', accentColor: 0x7fb4d5 },
+  { id: 'units', label: 'Units', accentColor: 0x6ec6ff },
+  { id: 'cities', label: 'Cities', accentColor: 0x86efac },
   { id: 'diplomacy', label: 'Diplomacy', accentColor: 0xa7f3d0 },
   { id: 'trade', label: 'Trade', accentColor: 0xf4d06f },
   { id: 'deals', label: 'Deals', accentColor: 0xc084fc },
@@ -272,11 +273,6 @@ export class RightSidebarPanel {
   }
 
   showDetails(): void {
-    this.show('details');
-  }
-
-  showProductionTab(): void {
-    this.cityDetailsTab = 'production';
     this.show('details');
   }
 

@@ -101,13 +101,15 @@ export interface SavedTile {
   q: number;
   r: number;
   ownerId?: string;
+  resourceOwnerNationId?: string;
   resourceId?: string;
   improvementId?: string;
   improvementConstruction?: {
     improvementId: string;
-    cityId: string;
+    cityId?: string;
     unitId: string;
     ownerId: string;
+    resourceOwnerNationId?: string;
     remainingTurns: number;
     totalTurns: number;
   };

@@ -114,7 +114,6 @@ export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Crui
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2 });
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
 
-export const FISHING_BOAT = unit({ id: 'fishing_boat', name: 'Fishing Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
 
 export const ALL_UNIT_TYPES: UnitType[] = [
@@ -128,9 +127,14 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   NUCLEAR_SUBMARINE, ATOMIC_BOMB, HELICOPTER_GUNSHIP, BAZOOKA,
   MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
-  WORKER, SETTLER, FISHING_BOAT, TRANSPORT_SHIP,
+  WORKER, SETTLER, TRANSPORT_SHIP,
 ];
 
 export function getUnitTypeById(id: string): UnitType | undefined {
   return ALL_UNIT_TYPES.find((unitType) => unitType.id === id);
+}
+
+export function getLegacyCompatibleUnitTypeById(id: string): UnitType | undefined {
+  const normalizedId = id === 'fishing_boat' ? 'work_boat' : id;
+  return getUnitTypeById(normalizedId);
 }

@@ -8,17 +8,14 @@ export interface UnitProductionRuleContext {
   strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
 }
 
-export function hasAdjacentWater(
+export function cityHasWaterTile(
   city: City,
   mapData: MapData,
-  gridSystem: IGridSystem,
 ): boolean {
-  return gridSystem
-    .getAdjacentCoords({ x: city.tileX, y: city.tileY })
-    .some((coord) => {
-      const tile = mapData.tiles[coord.y]?.[coord.x];
-      return tile?.type === TileType.Coast || tile?.type === TileType.Ocean;
-    });
+  return city.ownedTileCoords.some(({ x, y }) => {
+    const tile = mapData.tiles[y]?.[x];
+    return tile?.type === TileType.Coast || tile?.type === TileType.Ocean;
+  });
 }
 
 export function canCityProduceUnit(
@@ -39,7 +36,7 @@ export function getCityUnitProductionBlockReason(
   context: UnitProductionRuleContext = {},
 ): string | undefined {
   if (unitType.isNaval === true) {
-    if (!hasAdjacentWater(city, mapData, gridSystem)) return 'Requires adjacent water';
+    if (!cityHasWaterTile(city, mapData)) return 'Requires city-owned water tile';
   }
 
   return context.strategicResourceCapacitySystem?.getMissingRequirementReason(city.ownerId, unitType);

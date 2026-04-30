@@ -74,7 +74,7 @@ import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
-import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
+import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
@@ -253,11 +253,15 @@ export class GameScene extends Phaser.Scene {
     let getAvailableLuxuryResourceQuantities: (
       nationId: string,
     ) => ReadonlyArray<{ readonly resourceId: string; readonly quantity: number }> = () => [];
+    let getCityFoodSurplus: (
+      city: City,
+    ) => number = () => 0;
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
       (nationId) => wonderSystem.getNationModifiers(nationId),
       (nationId) => getAvailableLuxuryResourceQuantities(nationId),
+      (city) => getCityFoodSurplus(city),
     );
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     const resourceSystem = new ResourceSystem(
@@ -272,6 +276,7 @@ export class GameScene extends Phaser.Scene {
       gameSpeed,
       (nationId) => getTradeGoldPerTurnDelta(nationId),
     );
+    getCityFoodSurplus = (city) => resourceSystem.getFoodSurplus(city);
 
     // 12. Selection-system (hover depth 20, selection depth 21)
     const selectionManager = new SelectionManager(
@@ -698,8 +703,9 @@ export class GameScene extends Phaser.Scene {
       if (!result) return false;
 
       const nationName = nationManager.getNation(unit.ownerId)?.name ?? unit.ownerId;
+      const locationLabel = result.city ? `near ${result.city.name}` : 'on a sea resource';
       eventLog.log(
-        `${nationName} started building ${result.improvement.name} near ${result.city.name}.`,
+        `${nationName} started building ${result.improvement.name} ${locationLabel}.`,
         [unit.ownerId],
         turnManager.getCurrentRound(),
       );
@@ -826,8 +832,9 @@ export class GameScene extends Phaser.Scene {
         event.unit.improvementCharges = Math.max(0, event.unit.improvementCharges - 1);
       }
       const nationName = nationManager.getNation(event.construction.ownerId)?.name ?? event.construction.ownerId;
+      const locationLabel = event.city ? `near ${event.city.name}` : 'on a sea resource';
       eventLog.log(
-        `${nationName} built ${event.improvement.name} near ${event.city.name}.`,
+        `${nationName} built ${event.improvement.name} ${locationLabel}.`,
         [event.construction.ownerId],
         turnManager.getCurrentRound(),
       );
@@ -1618,6 +1625,7 @@ export class GameScene extends Phaser.Scene {
       tileMap,
       mapData,
       nationManager,
+      cityManager,
       this.cameraController,
       worldInputGate,
     );
@@ -1677,9 +1685,39 @@ export class GameScene extends Phaser.Scene {
           return {
             id: building.id,
             name: building.name,
+            cost: productionSystem.getCost({ kind: 'building', buildingType: building }),
             placement: building.placement,
             disabled: validCoords.length === 0,
             reason: validCoords.length === 0 ? 'No valid owned tile matches this building placement.' : undefined,
+          };
+        });
+    };
+    const getCityViewQueueItems = (city: City): CityViewQueueItem[] => {
+      const availableGold = nationManager.getResources(city.ownerId).gold;
+      return productionSystem.getQueue(city.id)
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => !(
+          entry.item.kind === 'wonder' && wonderSystem.isWonderBuilt(entry.item.wonderType.id)
+        ))
+        .map(({ entry, index }) => {
+          const buyCost = city.ownerId === humanNationId ? productionSystem.getBuyCost(city.id, index) : null;
+          const canBuy = buyCost !== null && availableGold >= buyCost;
+          return {
+            index,
+            name: getProducibleName(entry.item),
+            spritePath: getProducibleSpritePath(entry.item),
+            progress: entry.progress,
+            cost: entry.cost,
+            turnsRemaining: entry.turnsRemaining,
+            blockedReason: entry.blockedReason,
+            active: index === 0,
+            buyCost: buyCost ?? undefined,
+            buyLabel: buyCost === null
+              ? undefined
+              : canBuy
+                ? `Buy ${buyCost}`
+                : `Need ${buyCost - availableGold}`,
+            canBuy,
           };
         });
     };
@@ -2004,11 +2042,34 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
-    cityView.onProductionRequested(() => {
+    cityView.onQueueRemoveRequested((index) => {
       const city = getOpenCityViewCity();
       if (!city) return;
-      rightPanel?.showCity(city);
-      this.rightSidebarPanel?.showProductionTab();
+      productionSystem.removeFromQueue(city.id, index);
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
+    cityView.onQueueBuyRequested((index) => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+      const cost = productionSystem.getBuyCost(city.id, index);
+      if (cost === null) return;
+      const nationResources = nationManager.getResources(city.ownerId);
+      if (nationResources.gold < cost) {
+        refreshOpenCityView();
+        return;
+      }
+
+      resourceSystem.addGold(city.ownerId, -cost);
+      const result = productionSystem.completeQueueEntry(city.id, index);
+      if (!result.ok) {
+        resourceSystem.addGold(city.ownerId, cost);
+        refreshOpenCityView();
+        return;
+      }
+      resourceSystem.recalculateForNation(city.ownerId);
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
     });
     cityView.onWonderRequested((wonderId) => {
       const city = getOpenCityViewCity();
@@ -2229,6 +2290,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewPlacementPanelState(city),
         getCityViewTilePurchaseState(city),
         getCityViewWonderOptions(city),
+        getCityViewQueueItems(city),
       );
       cityViewRenderer.showWithState(
         city,
@@ -2582,6 +2644,9 @@ export class GameScene extends Phaser.Scene {
 
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
       this.cameras.main.centerOn(x, y);
+      selectionManager.selectUnit(unit);
+      rightPanel?.showUnit(unit);
+      refreshMovePreview();
     };
     window.addEventListener('focusUnit', onFocusUnit);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -2841,6 +2906,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewPlacementPanelState(selected.city),
         getCityViewTilePurchaseState(selected.city),
         getCityViewWonderOptions(selected.city),
+        getCityViewQueueItems(selected.city),
       );
       cityViewRenderer.showWithState(
         selected.city,
@@ -2858,6 +2924,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewPlacementPanelState(city),
         getCityViewTilePurchaseState(city),
         getCityViewWonderOptions(city),
+        getCityViewQueueItems(city),
       );
       cityViewRenderer.showWithState(
         city,
@@ -2885,7 +2952,7 @@ export class GameScene extends Phaser.Scene {
   ): { x: number; y: number } | null {
     const adjacentCandidates = gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY });
     const candidates = unitType.isNaval
-      ? adjacentCandidates
+      ? city.ownedTileCoords
       : [{ x: city.tileX, y: city.tileY }, ...adjacentCandidates];
 
     for (const candidate of candidates) {
@@ -2946,6 +3013,28 @@ function getDiscoveryFallbackLabel(label: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+function getProducibleName(item: Producible): string {
+  switch (item.kind) {
+    case 'unit':
+      return item.unitType.name;
+    case 'building':
+      return item.buildingType.name;
+    case 'wonder':
+      return item.wonderType.name;
+  }
+}
+
+function getProducibleSpritePath(item: Producible): string | undefined {
+  switch (item.kind) {
+    case 'unit':
+      return getUnitSpritePath(item.unitType.id);
+    case 'building':
+      return getBuildingSpritePath(item.buildingType.id);
+    case 'wonder':
+      return getWonderSpritePath(item.wonderType.id);
+  }
 }
 
 function formatCultureUnlockValue(value: string): string {

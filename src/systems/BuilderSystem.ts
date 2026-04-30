@@ -1,8 +1,8 @@
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import { getImprovementById, getImprovementForTileType, type TileImprovementDefinition } from '../data/improvements';
-import { getNaturalResourceById } from '../data/naturalResources';
-import type { MapData, Tile } from '../types/map';
+import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
+import { TileType, type MapData, type Tile } from '../types/map';
 import { canUnitEnterTile } from './MovementSystem';
 import type { CityManager } from './CityManager';
 import type { TurnManager } from './TurnManager';
@@ -16,7 +16,7 @@ export interface BuildImprovementResult {
   unit: Unit;
   tile: Tile;
   improvement: TileImprovementDefinition;
-  city: City;
+  city?: City;
   requiredTurns: number;
 }
 
@@ -24,6 +24,7 @@ export interface BuildImprovementPreview {
   canBuild: boolean;
   improvement?: TileImprovementDefinition;
   improvementId?: string;
+  claimsSeaResource?: boolean;
   reason?: string;
   remainingTurns?: number;
 }
@@ -66,17 +67,20 @@ export class BuilderSystem {
     const preview = this.evaluateBuild(unit, tile, options);
     if (!preview.canBuild || preview.improvement === undefined) return null;
 
-    const city = this.getFriendlyCityForWorkableTile(unit.ownerId, tile);
-    if (city === undefined) return null;
+    const city = preview.claimsSeaResource === true
+      ? undefined
+      : this.getFriendlyCityForOwnedTile(tile.x, tile.y, unit.ownerId);
+    if (preview.claimsSeaResource !== true && city === null) return null;
 
     const requiredTurns = getImprovementBuildTurnsForEra(
       this.eraSystem?.getNationEra(unit.ownerId) ?? 'ancient',
     );
     tile.improvementConstruction = {
       improvementId: preview.improvement.id,
-      cityId: city.id,
+      cityId: city?.id,
       unitId: unit.id,
       ownerId: unit.ownerId,
+      resourceOwnerNationId: preview.claimsSeaResource === true ? unit.ownerId : undefined,
       remainingTurns: requiredTurns,
       totalTurns: requiredTurns,
     };
@@ -92,7 +96,7 @@ export class BuilderSystem {
     }
     this.unitManager.notifyActionChanged(unit.id);
 
-    return { unit, tile, improvement: preview.improvement, city, requiredTurns };
+    return { unit, tile, improvement: preview.improvement, city: city ?? undefined, requiredTurns };
   }
 
   private evaluateBuild(
@@ -119,12 +123,17 @@ export class BuilderSystem {
     if ((options.requireMovement ?? true) && unit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
     if (!canUnitEnterTile(unit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
-    if (tile.ownerId !== unit.ownerId) return { canBuild: false, reason: 'Must be inside your territory' };
-    if (this.getFriendlyCityForWorkableTile(unit.ownerId, tile) === undefined) {
-      return { canBuild: false, reason: 'Must be near a friendly city' };
+
+    if (unit.unitType.isNaval === true) {
+      return this.evaluateNavalResourceBuild(unit, tile);
     }
 
-    const improvement = this.resolveImprovementForTile(unit.ownerId, tile);
+    if (tile.ownerId !== unit.ownerId) return { canBuild: false, reason: 'Must be inside your territory' };
+    if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, unit.ownerId) === null) {
+      return { canBuild: false, reason: 'Tile must be owned by your territory' };
+    }
+
+    const improvement = this.resolveImprovementForTile(tile);
     if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this terrain' };
     const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
     if (
@@ -142,46 +151,75 @@ export class BuilderSystem {
     return { canBuild: true, improvement, improvementId: improvement.id };
   }
 
+  private evaluateNavalResourceBuild(unit: Unit, tile: Tile): BuildImprovementPreview {
+    if (!this.isSeaTile(tile)) return { canBuild: false, reason: 'Naval builders can only improve sea resources' };
+    if (tile.resourceId === undefined) return { canBuild: false, reason: 'Sea resource required' };
+
+    const improvement = this.getResourceImprovement(tile);
+    if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this sea resource' };
+
+    const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
+    if (
+      requiredTechnology !== undefined &&
+      !this.researchSystem?.isImprovementUnlocked(unit.ownerId, improvement.id)
+    ) {
+      return {
+        canBuild: false,
+        improvement,
+        improvementId: improvement.id,
+        claimsSeaResource: true,
+        reason: `Requires ${requiredTechnology.name}`,
+      };
+    }
+
+    return {
+      canBuild: true,
+      improvement,
+      improvementId: improvement.id,
+      claimsSeaResource: true,
+    };
+  }
+
   private isCurrentTile(unit: Unit, tile: Tile): boolean {
     return unit.tileX === tile.x && unit.tileY === tile.y;
   }
 
-  private resolveImprovementForTile(ownerId: string, tile: Tile): TileImprovementDefinition | undefined {
-    const resourceImprovement = this.getResourceImprovement(ownerId, tile);
+  private resolveImprovementForTile(tile: Tile): TileImprovementDefinition | undefined {
+    const resourceImprovement = this.getResourceImprovement(tile);
     return resourceImprovement ?? getImprovementForTileType(tile.type);
   }
 
-  private getResourceImprovement(ownerId: string, tile: Tile): TileImprovementDefinition | undefined {
+  private getResourceImprovement(tile: Tile): TileImprovementDefinition | undefined {
     if (tile.resourceId === undefined) return undefined;
 
     const resource = getNaturalResourceById(tile.resourceId);
     if (resource === undefined) return undefined;
 
-    const improvementId = resource.improvementIdByTileType?.[tile.type] ?? resource.improvementId;
+    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
     if (improvementId === undefined) return undefined;
 
     const improvement = getImprovementById(improvementId);
     if (improvement === undefined) return undefined;
     if (!improvement.allowedTileTypes.includes(tile.type)) return undefined;
-    if (!this.isImprovementUnlocked(ownerId, improvement.id)) return undefined;
 
     return improvement;
   }
 
-  private isImprovementUnlocked(ownerId: string, improvementId: string): boolean {
-    const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvementId);
-    return requiredTechnology === undefined || this.researchSystem?.isImprovementUnlocked(ownerId, improvementId) === true;
+  private isSeaTile(tile: Tile): boolean {
+    return tile.type === TileType.Coast || tile.type === TileType.Ocean;
   }
 
-  private getFriendlyCityForWorkableTile(ownerId: string, tile: Tile): City | undefined {
-    const cities = this.cityManager.getCitiesByOwner(ownerId);
+  private getFriendlyCityForOwnedTile(tileX: number, tileY: number, playerId: string): City | null {
+    const cities = this.cityManager.getCitiesByOwner(playerId);
     for (const city of cities) {
-      const workableTiles = this.gridSystem.getWorkableCityTiles(city, this.mapData);
-      if (workableTiles.some((workable) => workable.x === tile.x && workable.y === tile.y)) {
+      const isOwned = city.ownedTileCoords.some((tileCoord) => (
+        tileCoord.x === tileX && tileCoord.y === tileY
+      ));
+      if (isOwned) {
         return city;
       }
     }
-    return undefined;
+    return null;
   }
 
   private getConstructionForUnit(unitId: string): Tile['improvementConstruction'] | undefined {

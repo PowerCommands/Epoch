@@ -1,5 +1,6 @@
 import type { Tile } from '../../types/map';
 import type { NaturalResourceDefinition } from '../../types/naturalResources';
+import { getNaturalResourceImprovementIdForTile } from '../../data/naturalResources';
 
 export type NaturalResourceLookup = (id: string) => NaturalResourceDefinition | undefined;
 
@@ -23,13 +24,17 @@ export function getTileResourceQuantity(
 
   let quantity = 1;
 
-  if (
-    tile.improvementId !== undefined
-    && resource.improvementId !== undefined
-    && tile.improvementId === resource.improvementId
-  ) {
+  if (isTileImprovedForResource(tile, resource)) {
     quantity += 1;
   }
 
   return quantity;
+}
+
+export function isTileImprovedForResource(
+  tile: Tile,
+  resource: NaturalResourceDefinition,
+): boolean {
+  const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+  return improvementId !== undefined && tile.improvementId === improvementId;
 }

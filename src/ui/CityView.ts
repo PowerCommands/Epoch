@@ -9,11 +9,15 @@ type BuyTileRequestCallback = () => void;
 type RenameRequestCallback = (cityId: string, name: string) => void;
 type UnitRequestCallback = (unitId: string) => void;
 type WonderRequestCallback = (wonderId: string) => void;
-type ProductionRequestCallback = () => void;
+type QueueRemoveRequestCallback = (index: number) => void;
+type QueueBuyRequestCallback = (index: number) => void;
+type CityViewMode = 'production' | 'queue';
+type ProductionAccordionId = 'units' | 'buildings' | 'wonders';
 
 export interface CityViewBuildingOption {
   id: string;
   name: string;
+  cost: number;
   placement: 'land' | 'water';
   disabled?: boolean;
   reason?: string;
@@ -53,6 +57,20 @@ export interface CityViewTilePurchaseState {
   detailText?: string;
 }
 
+export interface CityViewQueueItem {
+  index: number;
+  name: string;
+  spritePath?: string;
+  progress: number;
+  cost: number;
+  turnsRemaining: number;
+  blockedReason?: string;
+  active: boolean;
+  buyCost?: number;
+  buyLabel?: string;
+  canBuy?: boolean;
+}
+
 export class CityView {
   private readonly root: HTMLDivElement;
   private readonly headerEl: HTMLDivElement;
@@ -61,12 +79,11 @@ export class CityView {
   private readonly renameButton: HTMLButtonElement;
   private readonly statsEl: HTMLDivElement;
   private readonly nextTileEl: HTMLDivElement;
-  private readonly unitHeaderEl: HTMLDivElement;
-  private readonly unitButtonsEl: HTMLDivElement;
+  private readonly modeButtonsEl: HTMLDivElement;
+  private readonly productionModeButton: HTMLButtonElement;
+  private readonly queueModeButton: HTMLButtonElement;
+  private readonly modeContentEl: HTMLDivElement;
   private readonly placementStatusEl: HTMLDivElement;
-  private readonly placementButtonsEl: HTMLDivElement;
-  private readonly wonderHeaderEl: HTMLDivElement;
-  private readonly wonderButtonsEl: HTMLDivElement;
   private readonly tooltipEl: HTMLDivElement;
   private readonly closeCallbacks: CloseCallback[] = [];
   private readonly placementRequestCallbacks: PlacementRequestCallback[] = [];
@@ -75,13 +92,29 @@ export class CityView {
   private readonly renameRequestCallbacks: RenameRequestCallback[] = [];
   private readonly unitRequestCallbacks: UnitRequestCallback[] = [];
   private readonly wonderRequestCallbacks: WonderRequestCallback[] = [];
-  private readonly productionRequestCallbacks: ProductionRequestCallback[] = [];
+  private readonly queueRemoveRequestCallbacks: QueueRemoveRequestCallback[] = [];
+  private readonly queueBuyRequestCallbacks: QueueBuyRequestCallback[] = [];
   private currentCityId: string | null = null;
+  private mode: CityViewMode = 'production';
+  private readonly accordionExpanded: Record<ProductionAccordionId, boolean> = {
+    units: true,
+    buildings: false,
+    wonders: false,
+  };
   private open = false;
   private dragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
   private editingTitleCityId: string | null = null;
+  private lastRenderState: {
+    city: City;
+    unitOptions: CityViewUnitOption[];
+    buildingOptions: CityViewBuildingOption[];
+    placementState: CityViewPlacementPanelState;
+    tilePurchaseState: CityViewTilePurchaseState;
+    wonderOptions: CityViewWonderOption[];
+    queueItems: CityViewQueueItem[];
+  } | null = null;
 
   constructor() {
     const mount = document.getElementById('app-layout');
@@ -164,46 +197,24 @@ export class CityView {
     this.nextTileEl = document.createElement('div');
     this.nextTileEl.className = 'city-view-next';
 
-    const unitSection = document.createElement('div');
-    unitSection.className = 'city-view-placement';
-
-    this.unitHeaderEl = document.createElement('div');
-    this.unitHeaderEl.className = 'city-view-placement-status';
-    this.unitHeaderEl.textContent = 'Units';
-
-    this.unitButtonsEl = document.createElement('div');
-    this.unitButtonsEl.className = 'city-view-placement-buttons';
-
-    unitSection.append(this.unitHeaderEl, this.unitButtonsEl);
-
-    const placementSection = document.createElement('div');
-    placementSection.className = 'city-view-placement';
-
     this.placementStatusEl = document.createElement('div');
-    this.placementStatusEl.className = 'city-view-placement-status';
+    this.placementStatusEl.className = 'city-view-placement city-view-current-production';
 
-    this.placementButtonsEl = document.createElement('div');
-    this.placementButtonsEl.className = 'city-view-placement-buttons';
+    this.modeButtonsEl = document.createElement('div');
+    this.modeButtonsEl.className = 'city-view-mode-buttons';
 
-    placementSection.append(this.placementStatusEl, this.placementButtonsEl);
+    this.productionModeButton = this.createModeButton('production', 'Production');
+    this.queueModeButton = this.createModeButton('queue', 'Queue');
+    this.modeButtonsEl.append(this.productionModeButton, this.queueModeButton);
 
-    const wonderSection = document.createElement('div');
-    wonderSection.className = 'city-view-placement';
-
-    this.wonderHeaderEl = document.createElement('div');
-    this.wonderHeaderEl.className = 'city-view-placement-status';
-    this.wonderHeaderEl.textContent = 'World Wonders';
-
-    this.wonderButtonsEl = document.createElement('div');
-    this.wonderButtonsEl.className = 'city-view-placement-buttons';
-
-    wonderSection.append(this.wonderHeaderEl, this.wonderButtonsEl);
+    this.modeContentEl = document.createElement('div');
+    this.modeContentEl.className = 'city-view-mode-content';
 
     const hint = document.createElement('div');
     hint.className = 'city-view-hint';
     hint.textContent = 'Drag the planned expansion tile to retarget culture growth, or choose a building below to place it on a cyan tile.';
 
-    panel.append(this.headerEl, this.statsEl, this.nextTileEl, unitSection, placementSection, wonderSection, hint);
+    panel.append(this.headerEl, this.statsEl, this.nextTileEl, this.placementStatusEl, this.modeButtonsEl, this.modeContentEl, hint);
     this.root.append(panel);
     mount.append(this.root);
 
@@ -262,8 +273,12 @@ export class CityView {
     this.wonderRequestCallbacks.push(callback);
   }
 
-  onProductionRequested(callback: ProductionRequestCallback): void {
-    this.productionRequestCallbacks.push(callback);
+  onQueueRemoveRequested(callback: QueueRemoveRequestCallback): void {
+    this.queueRemoveRequestCallbacks.push(callback);
+  }
+
+  onQueueBuyRequested(callback: QueueBuyRequestCallback): void {
+    this.queueBuyRequestCallbacks.push(callback);
   }
 
   isOpenForCity(cityId: string): boolean {
@@ -277,11 +292,13 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
+    queueItems: CityViewQueueItem[],
   ): void {
+    if (this.currentCityId !== city.id) this.resetViewState();
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
-    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions);
+    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, queueItems);
   }
 
   refresh(
@@ -291,14 +308,16 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
+    queueItems: CityViewQueueItem[],
   ): void {
     if (!this.isOpenForCity(city.id)) return;
-    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions);
+    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, queueItems);
   }
 
   close(): void {
     this.open = false;
     this.currentCityId = null;
+    this.lastRenderState = null;
     this.stopTitleEditing(false);
     this.root.style.display = 'none';
     this.dragging = false;
@@ -411,7 +430,17 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
+    queueItems: CityViewQueueItem[],
   ): void {
+    this.lastRenderState = {
+      city,
+      unitOptions,
+      buildingOptions,
+      placementState,
+      tilePurchaseState,
+      wonderOptions,
+      queueItems,
+    };
     const isEditingCurrentCity = this.editingTitleCityId === city.id;
     if (!isEditingCurrentCity) {
       this.titleEl.textContent = city.name;
@@ -435,25 +464,22 @@ export class CityView {
 
     this.renderTilePurchase(tilePurchaseState);
 
-    this.renderUnitOptions(unitOptions);
-
-    this.renderPlacementOptions(buildingOptions, placementState);
-
-    this.renderWonderOptions(wonderOptions);
+    this.renderPlacementStatus(placementState);
+    this.syncModeButtons();
+    if (this.mode === 'queue') {
+      this.renderQueueMode(queueItems);
+    } else {
+      this.renderProductionMode(unitOptions, buildingOptions, placementState, wonderOptions);
+    }
   }
 
-  private renderUnitOptions(unitOptions: CityViewUnitOption[]): void {
-    this.unitButtonsEl.replaceChildren();
-
-    if (unitOptions.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'city-view-placement-empty';
-      empty.textContent = 'No units available.';
-      this.unitButtonsEl.append(empty);
-      return;
-    }
-
-    for (const option of unitOptions) {
+  private renderProductionMode(
+    unitOptions: CityViewUnitOption[],
+    buildingOptions: CityViewBuildingOption[],
+    placementState: CityViewPlacementPanelState,
+    wonderOptions: CityViewWonderOption[],
+  ): void {
+    const units = this.renderProductionAccordion('units', 'Units', unitOptions, (grid, option) => {
       const button = this.createProductionButton(
         getUnitSpritePath(option.id),
         option.reason
@@ -466,22 +492,29 @@ export class CityView {
         if (button.disabled) return;
         for (const callback of this.unitRequestCallbacks) callback(option.id);
       });
-      this.unitButtonsEl.append(button);
-    }
-  }
+      grid.append(button);
+    }, 'No units available.');
 
-  private renderWonderOptions(wonderOptions: CityViewWonderOption[]): void {
-    this.wonderButtonsEl.replaceChildren();
+    const buildings = this.renderProductionAccordion('buildings', 'Buildings', buildingOptions, (grid, option) => {
+      const button = this.createProductionButton(
+        getBuildingSpritePath(option.id),
+        option.reason
+          ? `${option.name} (${option.cost}) - ${option.reason}`
+          : `${option.name} (${option.cost}) - ${option.placement}`,
+      );
+      if (placementState.active && placementState.buildingId === option.id) {
+        button.classList.add('city-view-placement-button-active');
+      }
+      button.disabled = option.disabled ?? false;
+      if (option.reason) button.title = option.reason;
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        for (const callback of this.placementRequestCallbacks) callback(option.id);
+      });
+      grid.append(button);
+    }, 'No building placements available for this city.');
 
-    if (wonderOptions.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'city-view-placement-empty';
-      empty.textContent = 'No wonders available — research a prerequisite tech.';
-      this.wonderButtonsEl.append(empty);
-      return;
-    }
-
-    for (const option of wonderOptions) {
+    const wonders = this.renderProductionAccordion('wonders', 'Wonders', wonderOptions, (grid, option) => {
       const suffix = option.reason ? ` — ${option.reason}` : '';
       const button = this.createProductionButton(
         getWonderSpritePath(option.id),
@@ -490,10 +523,13 @@ export class CityView {
       button.disabled = option.disabled ?? false;
       button.title = option.description;
       button.addEventListener('click', () => {
+        if (button.disabled) return;
         for (const callback of this.wonderRequestCallbacks) callback(option.id);
       });
-      this.wonderButtonsEl.append(button);
-    }
+      grid.append(button);
+    }, 'No wonders available — research a prerequisite tech.');
+
+    this.modeContentEl.replaceChildren(units, buildings, wonders);
   }
 
   private renderTilePurchase(tilePurchaseState: CityViewTilePurchaseState): void {
@@ -514,15 +550,6 @@ export class CityView {
     });
     row.append(button);
 
-    const unitsButton = document.createElement('button');
-    unitsButton.type = 'button';
-    unitsButton.className = 'city-view-placement-button';
-    unitsButton.textContent = 'Queue';
-    unitsButton.addEventListener('click', () => {
-      for (const callback of this.productionRequestCallbacks) callback();
-    });
-    row.append(unitsButton);
-
     this.nextTileEl.append(row);
 
     if (tilePurchaseState.detailText) {
@@ -534,12 +561,7 @@ export class CityView {
     }
   }
 
-  private renderPlacementOptions(
-    buildingOptions: CityViewBuildingOption[],
-    placementState: CityViewPlacementPanelState,
-  ): void {
-    this.placementButtonsEl.replaceChildren();
-
+  private renderPlacementStatus(placementState: CityViewPlacementPanelState): void {
     const statusRow = document.createElement('div');
     statusRow.className = 'city-view-placement-status-row';
 
@@ -565,30 +587,184 @@ export class CityView {
     }
 
     this.placementStatusEl.replaceChildren(statusRow);
+  }
 
-    if (buildingOptions.length === 0) {
+  private renderQueueMode(queueItems: CityViewQueueItem[]): void {
+    const section = document.createElement('div');
+    section.className = 'city-view-placement city-view-queue-section';
+
+    const title = document.createElement('div');
+    title.className = 'city-view-placement-status';
+    title.textContent = 'Production Queue';
+    section.append(title);
+
+    if (queueItems.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'city-view-placement-empty';
-      empty.textContent = 'No building placements available for this city.';
-      this.placementButtonsEl.append(empty);
+      empty.textContent = 'No production queued.';
+      section.append(empty);
+      this.modeContentEl.replaceChildren(section);
       return;
     }
 
-    for (const option of buildingOptions) {
-      const button = this.createProductionButton(
-        getBuildingSpritePath(option.id),
-        `${option.name} (${option.placement})`,
-      );
-      if (placementState.active && placementState.buildingId === option.id) {
-        button.classList.add('city-view-placement-button-active');
-      }
-      button.disabled = option.disabled ?? false;
-      if (option.reason) button.title = option.reason;
-      button.addEventListener('click', () => {
-        for (const callback of this.placementRequestCallbacks) callback(option.id);
-      });
-      this.placementButtonsEl.append(button);
+    for (const item of queueItems) {
+      section.append(this.createQueueItem(item));
     }
+
+    this.modeContentEl.replaceChildren(section);
+  }
+
+  private renderProductionAccordion<T>(
+    id: ProductionAccordionId,
+    title: string,
+    options: T[],
+    renderOption: (grid: HTMLDivElement, option: T) => void,
+    emptyText: string,
+  ): HTMLDivElement {
+    const section = document.createElement('div');
+    section.className = 'city-view-placement city-view-accordion';
+
+    const header = document.createElement('button');
+    header.type = 'button';
+    header.className = 'city-view-accordion-header';
+    header.setAttribute('aria-expanded', String(this.accordionExpanded[id]));
+    header.textContent = `${this.accordionExpanded[id] ? '▾' : '▸'} ${title}`;
+    section.append(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'city-view-placement-buttons city-view-production-grid';
+    if (options.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'city-view-placement-empty';
+      empty.textContent = emptyText;
+      grid.append(empty);
+    } else {
+      for (const option of options) renderOption(grid, option);
+    }
+    section.append(grid);
+
+    const syncExpanded = (): void => {
+      header.textContent = `${this.accordionExpanded[id] ? '▾' : '▸'} ${title}`;
+      header.setAttribute('aria-expanded', String(this.accordionExpanded[id]));
+      grid.style.display = this.accordionExpanded[id] ? '' : 'none';
+    };
+    header.addEventListener('click', () => {
+      this.accordionExpanded[id] = !this.accordionExpanded[id];
+      syncExpanded();
+    });
+    syncExpanded();
+
+    return section;
+  }
+
+  private createQueueItem(item: CityViewQueueItem): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = 'city-view-queue-item';
+
+    const icon = document.createElement('img');
+    icon.className = 'city-view-production-icon';
+    icon.alt = '';
+    icon.decoding = 'async';
+    if (item.spritePath) {
+      icon.src = item.spritePath;
+      icon.addEventListener('error', () => { icon.style.display = 'none'; });
+    } else {
+      icon.style.display = 'none';
+    }
+
+    const body = document.createElement('div');
+    body.className = 'city-view-queue-body';
+
+    const title = document.createElement('div');
+    title.className = 'city-view-queue-title';
+    title.textContent = `${item.index + 1}. ${item.name}${item.active ? ' [active]' : ''}`;
+
+    const turns = item.blockedReason
+      ? 'blocked'
+      : `${item.turnsRemaining} turn${item.turnsRemaining !== 1 ? 's' : ''}`;
+    const meta = document.createElement('div');
+    meta.className = 'city-view-queue-meta';
+    meta.textContent = `${item.progress}/${item.cost} production • ${turns}`;
+
+    const progress = document.createElement('div');
+    progress.className = 'city-view-queue-progress';
+    const fill = document.createElement('div');
+    fill.style.width = `${Math.max(0, Math.min(100, Math.floor((item.progress / Math.max(1, item.cost)) * 100)))}%`;
+    progress.append(fill);
+
+    body.append(title, meta, progress);
+    if (item.blockedReason) {
+      const reason = document.createElement('div');
+      reason.className = 'city-view-placement-empty';
+      reason.textContent = item.blockedReason;
+      body.append(reason);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'city-view-queue-actions';
+
+    if (item.buyCost !== undefined) {
+      const buyButton = document.createElement('button');
+      buyButton.type = 'button';
+      buyButton.className = 'city-view-placement-button';
+      buyButton.textContent = item.buyLabel ?? (item.canBuy ? `Buy ${item.buyCost}` : `Need ${item.buyCost}`);
+      buyButton.disabled = !item.canBuy;
+      buyButton.addEventListener('click', () => {
+        if (buyButton.disabled) return;
+        for (const callback of this.queueBuyRequestCallbacks) callback(item.index);
+      });
+      actions.append(buyButton);
+    }
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'city-view-placement-button';
+    removeButton.textContent = 'Remove';
+    removeButton.addEventListener('click', () => {
+      for (const callback of this.queueRemoveRequestCallbacks) callback(item.index);
+    });
+    actions.append(removeButton);
+
+    row.append(icon, body, actions);
+    return row;
+  }
+
+  private createModeButton(mode: CityViewMode, label: string): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'city-view-placement-button city-view-mode-button';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      this.mode = mode;
+      this.syncModeButtons();
+      this.renderLastState();
+    });
+    return button;
+  }
+
+  private syncModeButtons(): void {
+    this.productionModeButton.classList.toggle('city-view-placement-button-active', this.mode === 'production');
+    this.queueModeButton.classList.toggle('city-view-placement-button-active', this.mode === 'queue');
+  }
+
+  private resetViewState(): void {
+    this.mode = 'production';
+    this.accordionExpanded.units = true;
+    this.accordionExpanded.buildings = false;
+    this.accordionExpanded.wonders = false;
+  }
+
+  private renderLastState(): void {
+    if (!this.lastRenderState) return;
+    this.render(
+      this.lastRenderState.city,
+      this.lastRenderState.unitOptions,
+      this.lastRenderState.buildingOptions,
+      this.lastRenderState.placementState,
+      this.lastRenderState.tilePurchaseState,
+      this.lastRenderState.wonderOptions,
+      this.lastRenderState.queueItems,
+    );
   }
 
   private createProductionButton(spritePath: string, labelText: string): HTMLButtonElement {

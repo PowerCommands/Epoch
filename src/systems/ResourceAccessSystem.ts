@@ -1,7 +1,7 @@
 import { getNaturalResourceById } from '../data/naturalResources';
-import type { MapData } from '../types/map';
+import type { MapData, Tile } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';
-import { getTileResourceQuantity } from './resource/ResourceQuantity';
+import { getTileResourceQuantity, isTileImprovedForResource } from './resource/ResourceQuantity';
 
 export interface ResourceAccessSummary {
   owned: string[];
@@ -46,10 +46,11 @@ export class ResourceAccessSystem {
     const ids = new Set<string>();
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
-        if (tile.ownerId !== nationId) continue;
         if (tile.resourceId === undefined) continue;
         if (!this.canUseResource(nationId, tile.resourceId)) continue;
-        ids.add(tile.resourceId);
+        if (this.tileProvidesOwnResource(tile, nationId, tile.resourceId)) {
+          ids.add(tile.resourceId);
+        }
       }
     }
     return Array.from(ids);
@@ -155,12 +156,20 @@ export class ResourceAccessSystem {
     let count = 0;
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
-        if (tile.ownerId !== nationId) continue;
         if (tile.resourceId !== resourceId) continue;
+        if (!this.tileProvidesOwnResource(tile, nationId, resourceId)) continue;
         count += getTileResourceQuantity(tile, getNaturalResourceById);
       }
     }
     return count;
+  }
+
+  private tileProvidesOwnResource(tile: Tile, nationId: string, resourceId: string): boolean {
+    if (tile.ownerId === nationId) return true;
+    if (tile.resourceOwnerNationId !== nationId) return false;
+
+    const resource = getNaturalResourceById(resourceId);
+    return resource !== undefined && isTileImprovedForResource(tile, resource);
   }
 
   private getRawImportedResourceSourceCount(nationId: string, resourceId: string): number {

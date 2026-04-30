@@ -50,6 +50,14 @@ export function getFoodToGrow(population: number): number {
   return 10 + population * 8;
 }
 
+export function getFoodConsumption(population: number): number {
+  return population * 2;
+}
+
+export function getPositiveFoodSurplus(foodProduced: number, foodConsumed: number): number {
+  return Math.max(0, foodProduced - foodConsumed);
+}
+
 export function calculateCityEconomy(
   city: City,
   mapData: MapData,
@@ -111,7 +119,7 @@ export function calculateCityEconomy(
   science = applyPercent(science, modifiers.sciencePercent);
   culture = applyPercent(culture, modifiers.culturePercent);
 
-  const foodConsumption = city.population * 2;
+  const foodConsumption = getFoodConsumption(city.population);
 
   return {
     baseFood: BASE_CITY_FOOD,

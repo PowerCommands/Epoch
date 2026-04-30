@@ -21,9 +21,10 @@ export interface TileWonderConstruction {
 
 export interface TileImprovementConstruction {
   improvementId: string;
-  cityId: string;
+  cityId?: string;
   unitId: string;
   ownerId: string;
+  resourceOwnerNationId?: string;
   remainingTurns: number;
   totalTurns: number;
 }
@@ -33,6 +34,7 @@ export interface Tile {
   y: number; // grid-koordinat (rad)
   type: TileType;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
+  resourceOwnerNationId?: string; // resource-only claim; does not make the tile city territory
   resourceId?: string; // optional natural resource; undefined = none
   improvementId?: string; // optional tile improvement; undefined = none
   improvementConstruction?: TileImprovementConstruction; // in-progress worker improvement

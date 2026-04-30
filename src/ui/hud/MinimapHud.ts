@@ -3,16 +3,23 @@ import { TileType, type MapData } from '../../types/map';
 import type { NationManager } from '../../systems/NationManager';
 import type { CameraController } from '../../systems/CameraController';
 import type { TileMap } from '../../systems/TileMap';
+import type { CityManager } from '../../systems/CityManager';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 
 const DEPTH = 1000;
-const PANEL_WIDTH = 300;
-const PANEL_HEIGHT = 220;
+const NORMAL_PANEL_WIDTH = 300;
+const NORMAL_PANEL_HEIGHT = 220;
+const ENLARGED_SCALE = 2;
 const EDGE_MARGIN = 16;
 const PANEL_PADDING = 8;
 const WHEEL_BLOCKER_ID = 'minimap-hud';
 const OWNED_TILE_ALPHA = 0.95;
+const CITY_TILE_ALPHA = 1;
+const TOGGLE_BUTTON_SIZE = 22;
+const TOGGLE_BUTTON_MARGIN = 4;
+const TOGGLE_BUTTON_LABEL_NORMAL = '↗️';
+const TOGGLE_BUTTON_LABEL_ENLARGED = '↙️';
 
 const TERRAIN_COLORS: Record<TileType, number> = {
   [TileType.Ocean]: 0x1a557d,
@@ -34,6 +41,8 @@ export class MinimapHud {
   private readonly hitArea: Phaser.GameObjects.Zone;
   private readonly mapGfx: Phaser.GameObjects.Graphics;
   private readonly viewportGfx: Phaser.GameObjects.Graphics;
+  private readonly toggleButtonBg: Phaser.GameObjects.Rectangle;
+  private readonly toggleButtonLabel: Phaser.GameObjects.Text;
   private readonly worldBounds: { width: number; height: number };
   private readonly mapArea = new Phaser.Geom.Rectangle(0, 0, 1, 1);
   private readonly onResize: () => void;
@@ -45,39 +54,65 @@ export class MinimapHud {
   private worldToMiniScale = 1;
   private worldToMiniOffsetX = 0;
   private worldToMiniOffsetY = 0;
+  private isExpanded = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
     private readonly mapData: MapData,
     private readonly nationManager: NationManager,
+    private readonly cityManager: CityManager,
     private readonly cameraController: CameraController,
     private readonly worldInputGate: WorldInputGate,
   ) {
     this.worldBounds = tileMap.getWorldBounds();
+    const initialWidth = this.panelWidth;
+    const initialHeight = this.panelHeight;
     this.container = scene.add.container(0, 0).setDepth(DEPTH).setScrollFactor(0);
-    this.background = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, 0x071019, 0.78)
+    this.background = scene.add.rectangle(0, 0, initialWidth, initialHeight, 0x071019, 0.78)
       .setOrigin(0, 0)
       .setScrollFactor(0);
-    this.border = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT)
+    this.border = scene.add.rectangle(0, 0, initialWidth, initialHeight)
       .setOrigin(0, 0)
       .setStrokeStyle(1, 0xd8e2ee, 0.42)
       .setFillStyle(0x000000, 0)
       .setScrollFactor(0);
     this.mapGfx = scene.add.graphics().setScrollFactor(0);
     this.viewportGfx = scene.add.graphics().setScrollFactor(0);
-    this.hitArea = scene.add.zone(0, 0, PANEL_WIDTH, PANEL_HEIGHT)
+    this.hitArea = scene.add.zone(0, 0, initialWidth, initialHeight)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setInteractive({ cursor: 'pointer' });
+    this.toggleButtonBg = scene.add.rectangle(0, 0, TOGGLE_BUTTON_SIZE, TOGGLE_BUTTON_SIZE, 0x101a26, 0.85)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0xd8e2ee, 0.6)
+      .setScrollFactor(0)
+      .setInteractive({ cursor: 'pointer' });
+    this.toggleButtonLabel = scene.add.text(0, 0, TOGGLE_BUTTON_LABEL_NORMAL, {
+      fontFamily: 'Segoe UI Emoji, Apple Color Emoji, sans-serif',
+      fontSize: '14px',
+      color: '#ffffff',
+    })
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0);
 
-    this.container.add([this.background, this.mapGfx, this.viewportGfx, this.border, this.hitArea]);
+    this.container.add([
+      this.background,
+      this.mapGfx,
+      this.viewportGfx,
+      this.border,
+      this.hitArea,
+      this.toggleButtonBg,
+      this.toggleButtonLabel,
+    ]);
     this.owned.add(this.container);
     this.owned.add(this.background);
     this.owned.add(this.border);
     this.owned.add(this.hitArea);
     this.owned.add(this.mapGfx);
     this.owned.add(this.viewportGfx);
+    this.owned.add(this.toggleButtonBg);
+    this.owned.add(this.toggleButtonLabel);
 
     this.uiCamera = scene.cameras.add(0, 0, scene.scale.width, scene.scale.height);
     this.uiCamera.setScroll(0, 0);
@@ -103,7 +138,14 @@ export class MinimapHud {
       this.beginPointerNavigation(pointer);
     });
 
+    this.toggleButtonBg.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      this.handleTogglePressed(pointer);
+    });
+
     this.handlePointerDown = (pointer) => {
+      if (this.isPointerOverToggleButton(pointer.x, pointer.y)) {
+        return;
+      }
       this.beginPointerNavigation(pointer);
     };
     this.handlePointerMove = (pointer) => {
@@ -131,16 +173,37 @@ export class MinimapHud {
     this.worldInputGate.registerWheelBlocker(WHEEL_BLOCKER_ID, (screenX, screenY) => this.containsScreenPoint(screenX, screenY));
   }
 
+  private get panelWidth(): number {
+    return this.isExpanded ? NORMAL_PANEL_WIDTH * ENLARGED_SCALE : NORMAL_PANEL_WIDTH;
+  }
+
+  private get panelHeight(): number {
+    return this.isExpanded ? NORMAL_PANEL_HEIGHT * ENLARGED_SCALE : NORMAL_PANEL_HEIGHT;
+  }
+
   rebuild(): void {
     this.mapGfx.clear();
     this.mapGfx.fillStyle(0x0c1520, 1);
     this.mapGfx.fillRect(this.mapArea.x, this.mapArea.y, this.mapArea.width, this.mapArea.height);
+
+    const cityOwnedTiles = this.collectCityOwnedTiles();
 
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         const outline = this.tileMap.getTileOutlinePoints(tile.x, tile.y)
           .map((point) => this.worldToMini(point.x, point.y));
         if (outline.length < 3) continue;
+
+        const cityOwnerId = cityOwnedTiles.get(coordKey(tile.x, tile.y));
+        if (cityOwnerId !== undefined) {
+          const cityNationColor = this.nationManager.getNation(cityOwnerId)?.color;
+          if (cityNationColor !== undefined) {
+            this.mapGfx.fillStyle(cityNationColor, CITY_TILE_ALPHA);
+            this.fillPolygon(this.mapGfx, outline);
+            continue;
+          }
+        }
+
         const nationColor = tile.ownerId !== undefined
           ? this.nationManager.getNation(tile.ownerId)?.color
           : undefined;
@@ -185,12 +248,19 @@ export class MinimapHud {
   }
 
   private layout(): void {
+    const width = this.panelWidth;
+    const height = this.panelHeight;
     const panelX = EDGE_MARGIN;
-    const panelY = this.scene.scale.height - PANEL_HEIGHT - EDGE_MARGIN;
+    const panelY = this.scene.scale.height - height - EDGE_MARGIN;
     this.container.setPosition(panelX, panelY);
 
-    const contentWidth = PANEL_WIDTH - PANEL_PADDING * 2;
-    const contentHeight = PANEL_HEIGHT - PANEL_PADDING * 2;
+    this.background.setSize(width, height);
+    this.border.setSize(width, height);
+    this.hitArea.setSize(width, height);
+    this.hitArea.input?.hitArea.setTo(0, 0, width, height);
+
+    const contentWidth = width - PANEL_PADDING * 2;
+    const contentHeight = height - PANEL_PADDING * 2;
     this.worldToMiniScale = Math.min(
       contentWidth / this.worldBounds.width,
       contentHeight / this.worldBounds.height,
@@ -200,6 +270,12 @@ export class MinimapHud {
     this.worldToMiniOffsetX = PANEL_PADDING + (contentWidth - drawnWidth) / 2;
     this.worldToMiniOffsetY = PANEL_PADDING + (contentHeight - drawnHeight) / 2;
     this.mapArea.setTo(this.worldToMiniOffsetX, this.worldToMiniOffsetY, drawnWidth, drawnHeight);
+
+    const buttonX = width - TOGGLE_BUTTON_SIZE - TOGGLE_BUTTON_MARGIN;
+    const buttonY = TOGGLE_BUTTON_MARGIN;
+    this.toggleButtonBg.setPosition(buttonX, buttonY);
+    this.toggleButtonLabel.setPosition(buttonX + TOGGLE_BUTTON_SIZE / 2, buttonY + TOGGLE_BUTTON_SIZE / 2);
+    this.toggleButtonLabel.setText(this.isExpanded ? TOGGLE_BUTTON_LABEL_ENLARGED : TOGGLE_BUTTON_LABEL_NORMAL);
   }
 
   private centerCameraFromPointer(pointer: Phaser.Input.Pointer): void {
@@ -214,10 +290,26 @@ export class MinimapHud {
   private beginPointerNavigation(pointer: Phaser.Input.Pointer): void {
     if (pointer.button !== 0) return;
     if (!this.containsScreenPoint(pointer.x, pointer.y)) return;
+    if (this.isPointerOverToggleButton(pointer.x, pointer.y)) return;
     this.dragPointerId = pointer.id;
     this.worldInputGate.claimPointer(pointer.id);
     consumePointerEvent(pointer);
     this.centerCameraFromPointer(pointer);
+  }
+
+  private handleTogglePressed(pointer: Phaser.Input.Pointer): void {
+    if (pointer.button !== 0) return;
+    this.worldInputGate.claimPointer(pointer.id);
+    consumePointerEvent(pointer);
+    this.toggleExpanded();
+  }
+
+  private toggleExpanded(): void {
+    this.isExpanded = !this.isExpanded;
+    this.toggleButtonLabel.setText(this.isExpanded ? TOGGLE_BUTTON_LABEL_ENLARGED : TOGGLE_BUTTON_LABEL_NORMAL);
+    this.layout();
+    this.rebuild();
+    this.update();
   }
 
   private stopDrag(pointer: Phaser.Input.Pointer): void {
@@ -228,9 +320,18 @@ export class MinimapHud {
 
   private containsScreenPoint(screenX: number, screenY: number): boolean {
     return screenX >= this.container.x
-      && screenX <= this.container.x + PANEL_WIDTH
+      && screenX <= this.container.x + this.panelWidth
       && screenY >= this.container.y
-      && screenY <= this.container.y + PANEL_HEIGHT;
+      && screenY <= this.container.y + this.panelHeight;
+  }
+
+  private isPointerOverToggleButton(screenX: number, screenY: number): boolean {
+    const localX = screenX - this.container.x;
+    const localY = screenY - this.container.y;
+    return localX >= this.toggleButtonBg.x
+      && localX <= this.toggleButtonBg.x + TOGGLE_BUTTON_SIZE
+      && localY >= this.toggleButtonBg.y
+      && localY <= this.toggleButtonBg.y + TOGGLE_BUTTON_SIZE;
   }
 
   private worldToMini(worldX: number, worldY: number): { x: number; y: number } {
@@ -250,4 +351,18 @@ export class MinimapHud {
     graphics.fillPath();
   }
 
+  private collectCityOwnedTiles(): Map<string, string> {
+    const result = new Map<string, string>();
+    for (const city of this.cityManager.getAllCities()) {
+      result.set(coordKey(city.tileX, city.tileY), city.ownerId);
+      for (const coord of city.ownedTileCoords) {
+        result.set(coordKey(coord.x, coord.y), city.ownerId);
+      }
+    }
+    return result;
+  }
+}
+
+function coordKey(x: number, y: number): string {
+  return `${x},${y}`;
 }

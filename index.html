@@ -546,7 +546,7 @@
         left: 12vw;
         top: 18px;
         z-index: 1200;
-        width: min(540px, 46vw);
+        width: min(760px, 64vw);
         pointer-events: none;
       }
 
@@ -626,6 +626,11 @@
         background: rgba(255, 255, 255, 0.025);
       }
 
+      .city-view-current-production {
+        color: #dcecf0;
+        font-size: 18px;
+      }
+
       .city-view-placement-status {
         font-size: 18px;
         color: #dcecf0;
@@ -643,6 +648,36 @@
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
+      }
+
+      .city-view-mode-buttons {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+      }
+
+      .city-view-mode-button {
+        min-width: 140px;
+      }
+
+      .city-view-accordion-header {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        color: #dcecf0;
+        cursor: pointer;
+        font: inherit;
+        font-size: 18px;
+        font-weight: 700;
+        padding: 0;
+        text-align: left;
+      }
+
+      .city-view-production-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 12px;
       }
 
       .city-view-placement-button,
@@ -677,6 +712,10 @@
         display: inline-flex;
         align-items: center;
         gap: 9px;
+        justify-content: flex-start;
+        min-height: 58px;
+        width: 100%;
+        text-align: left;
       }
 
       .city-view-production-icon {
@@ -691,8 +730,77 @@
         color: #93a5a8;
       }
 
+      .city-view-queue-item {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+      }
+
+      .city-view-queue-item:first-of-type {
+        border-top: 0;
+      }
+
+      .city-view-queue-body {
+        min-width: 0;
+      }
+
+      .city-view-queue-title {
+        color: #eef5f2;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+
+      .city-view-queue-meta {
+        color: #aab5a0;
+        font-size: 15px;
+        margin-top: 4px;
+      }
+
+      .city-view-queue-progress {
+        height: 8px;
+        margin-top: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .city-view-queue-progress > div {
+        height: 100%;
+        background: #9fd28b;
+      }
+
+      .city-view-queue-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
       .city-view-hint {
         color: #aab5a0;
+      }
+
+      @media (max-width: 900px) {
+        .city-view-overlay {
+          left: 12px;
+          width: calc(100vw - 24px);
+        }
+
+        .city-view-production-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .city-view-queue-item {
+          grid-template-columns: 32px minmax(0, 1fr);
+        }
+
+        .city-view-queue-actions {
+          grid-column: 1 / -1;
+          flex-direction: row;
+        }
       }
     </style>
   </head>

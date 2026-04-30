@@ -91,7 +91,6 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     leadsTo: ['optics'],
     unlocks: [
       { kind: 'unit', id: 'work_boat' },
-      { kind: 'unit', id: 'fishing_boat' },
       { kind: 'unit', id: 'trireme' },
       { kind: 'unit', id: 'cargo_ship' },
       { kind: 'improvement', id: 'fishing_boats' },

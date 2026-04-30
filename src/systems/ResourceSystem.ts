@@ -5,7 +5,12 @@ import type { IResourceGenerator } from './ResourceGenerator';
 import type { TurnStartEvent } from '../types/events';
 import type { ResourceChangedEvent, ResourceListener } from '../types/resources';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
-import { calculateCityEconomy, type CityEconomySummary } from './CityEconomy';
+import {
+  calculateCityEconomy,
+  getFoodConsumption,
+  getPositiveFoodSurplus,
+  type CityEconomySummary,
+} from './CityEconomy';
 import type { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -79,6 +84,14 @@ export class ResourceSystem {
     this.notify({ nationId });
 
     return nationRes.gold;
+  }
+
+  getFoodSurplus(city: City): number {
+    const cityRes = this.cityManager.getResources(city.id);
+    return getPositiveFoodSurplus(
+      cityRes.foodPerTurn,
+      getFoodConsumption(city.population),
+    );
   }
 
   /**

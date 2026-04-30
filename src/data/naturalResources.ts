@@ -293,6 +293,13 @@ export function getNaturalResourceById(id: string): NaturalResourceDefinition | 
   return NATURAL_RESOURCES.find((resource) => resource.id === id);
 }
 
+export function getNaturalResourceImprovementIdForTile(
+  resource: NaturalResourceDefinition,
+  tileType: TileType,
+): string | undefined {
+  return resource.improvementIdByTileType?.[tileType] ?? resource.improvementId;
+}
+
 export function isResourceAllowedOnTile(resourceId: string, tileType: TileType): boolean {
   return getNaturalResourceById(resourceId)?.allowedTileTypes.includes(tileType) ?? false;
 }

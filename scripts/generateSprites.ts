@@ -276,40 +276,6 @@ function generateSettler() {
   save('unit_settler.png', c);
 }
 
-function generateFishingBoat() {
-  const [c, ctx] = unitToken();
-  fillSymbol(ctx);
-
-  ctx.beginPath();
-  ctx.ellipse(CX, CY + 8, 13, 4.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#575757';
-  ctx.beginPath();
-  ctx.ellipse(CX, CY + 6, 9, 2.4, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = '#3d3d3d';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(CX - 1, CY + 5);
-  ctx.lineTo(CX - 1, CY - 11);
-  ctx.stroke();
-
-  ctx.fillStyle = '#eeeeee';
-  ctx.strokeStyle = '#6f6f6f';
-  ctx.lineWidth = 1.3;
-  ctx.beginPath();
-  ctx.moveTo(CX, CY - 10);
-  ctx.lineTo(CX, CY + 3);
-  ctx.lineTo(CX + 10, CY + 2);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  save('unit_fishing_boat.png', c);
-}
-
 function generateTransportShip() {
   const [c, ctx] = unitToken();
   fillSymbol(ctx);
@@ -353,6 +319,5 @@ generateWarrior();
 generateArcher();
 generateCavalry();
 generateSettler();
-generateFishingBoat();
 generateTransportShip();
-console.log('done - 7 sprites generated');
+console.log('done - 6 sprites generated');

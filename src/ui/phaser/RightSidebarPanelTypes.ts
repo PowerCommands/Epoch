@@ -5,8 +5,8 @@ import type { Tile } from '../../types/map';
 export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture';
-export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output' | 'production';
-export type LeaderPanelTab = 'details' | 'diplomacy' | 'trade' | 'deals';
+export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';
+export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'trade' | 'deals';
 export type RightSidebarLeaderDetailsTab = LeaderPanelTab;
 
 export interface RightSidebarTextRow {

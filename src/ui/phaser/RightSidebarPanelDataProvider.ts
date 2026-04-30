@@ -57,6 +57,8 @@ type WonderPlacementRequestHandler = (city: City, wonderId: string) => BuildingP
 type WonderPlacementAvailabilityProvider = (city: City, wonderId: string) => boolean;
 type BuyProductionRequestHandler = (city: City, index: number) => void;
 
+const CITY_SPRITE_PATH = 'assets/sprites/city_default.png';
+
 interface LeaderboardEntry {
   nationId: string;
   name: string;
@@ -461,14 +463,6 @@ export class RightSidebarPanelDataProvider {
         ],
           }],
         };
-      case 'production': {
-        const sections = [this.getProductionQueueSection(city, isHuman)];
-        if (isHuman) {
-          sections.push(this.getAddToQueueSection(city));
-          sections.push(this.getWonderSection(city));
-        }
-        return { title: 'Details', sections };
-      }
     }
   }
 
@@ -590,6 +584,10 @@ export class RightSidebarPanelDataProvider {
     switch (tab) {
       case 'details':
         return this.getLeaderDetailsContent(leader);
+      case 'units':
+        return this.getLeaderUnitsContent(leader);
+      case 'cities':
+        return this.getLeaderCitiesContent(leader);
       case 'diplomacy':
         return this.getLeaderDiplomacyContent(leader);
       case 'trade':
@@ -614,8 +612,21 @@ export class RightSidebarPanelDataProvider {
           ],
         },
         this.getLeaderNationSection(leader.nationId),
-        this.getLeaderUnitsSection(leader.nationId, leader.nationId === this.humanNationId),
       ],
+    };
+  }
+
+  private getLeaderUnitsContent(leader: { nationId: string }): RightSidebarContent {
+    return {
+      title: 'Leader Details',
+      sections: [this.getLeaderUnitsSection(leader.nationId, leader.nationId === this.humanNationId)],
+    };
+  }
+
+  private getLeaderCitiesContent(leader: { nationId: string }): RightSidebarContent {
+    return {
+      title: 'Leader Details',
+      sections: [this.getLeaderCitiesSection(leader.nationId)],
     };
   }
 
@@ -864,7 +875,6 @@ export class RightSidebarPanelDataProvider {
     if (!nation) return { title: 'Nation', rows: [textRow('Nation not found.', true)] };
     const resources = this.nationManager.getResources(nationId);
     const cities = this.cityManager.getCitiesByOwner(nationId);
-    const units = this.unitManager.getUnitsByOwner(nationId);
     const capital = cities.find((city) => city.isCapital);
     const era = this.eraSystem?.getNationEra(nationId);
     return {
@@ -875,7 +885,6 @@ export class RightSidebarPanelDataProvider {
         textRow(`Capital: ${capital?.name ?? 'none'}`),
         textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
         textRow(`Cities: ${cities.length}`),
-        textRow(`Units: ${units.length}`),
         textRow(`Territory: ${this.nationManager.getTileCount(nationId, this.mapData)} tiles`),
       ],
     };
@@ -885,12 +894,50 @@ export class RightSidebarPanelDataProvider {
     const units = this.unitManager.getUnitsByOwner(nationId);
     return {
       title: `Units (${units.length})`,
-      rows: units.length === 0
-        ? [textRow('No units', true)]
-        : units.map((unit) => buttonRow(`${unit.unitType.name}${isHuman && unit.isSleeping ? ' (sleeping)' : ''}  HP ${unit.health}/${unit.unitType.baseHealth}`, () => {
-          window.dispatchEvent(new CustomEvent('focusUnit', { detail: { unitId: unit.id } }));
-        })),
+      rows: this.renderUnitList(units, isHuman),
     };
+  }
+
+  private renderUnitList(units: Unit[], isHuman: boolean): RightSidebarRow[] {
+    if (units.length === 0) return [textRow('No units', true)];
+    return units.map((unit) => {
+      const movement = `MP ${unit.movementPoints}/${unit.maxMovementPoints}`;
+      const sleeping = isHuman && unit.isSleeping ? ' (sleeping)' : '';
+      return buttonRow(
+        `${unit.unitType.name}${sleeping}  HP ${unit.health}/${unit.unitType.baseHealth}  ${movement}`,
+        () => {
+          window.dispatchEvent(new CustomEvent('focusUnit', { detail: { unitId: unit.id } }));
+        },
+        undefined,
+        undefined,
+        getUnitSpritePath(unit.unitType.id),
+      );
+    });
+  }
+
+  private getLeaderCitiesSection(nationId: string): RightSidebarSection {
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    return {
+      title: `Cities (${cities.length})`,
+      rows: this.renderCityList(cities),
+    };
+  }
+
+  private renderCityList(cities: City[]): RightSidebarRow[] {
+    if (cities.length === 0) return [textRow('No cities', true)];
+    return cities.map((city) => {
+      const activeProduction = this.getVisibleProductionQueue(city.id)[0]?.entry.item;
+      const productionLabel = activeProduction ? getProducibleName(activeProduction) : 'None';
+      return buttonRow(
+        `${city.name}${city.isCapital ? ' ★' : ''}  Pop ${city.population}  HP ${city.health}/${CITY_BASE_HEALTH}  Production: ${productionLabel}`,
+        () => {
+          window.dispatchEvent(new CustomEvent('focusCity', { detail: { cityId: city.id } }));
+        },
+        undefined,
+        undefined,
+        CITY_SPRITE_PATH,
+      );
+    });
   }
 
   private getDiplomacySection(nationId: string): RightSidebarSection {

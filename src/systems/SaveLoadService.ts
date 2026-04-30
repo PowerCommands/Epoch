@@ -12,7 +12,7 @@ import type {
 } from '../types/saveGame';
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
-import { getUnitTypeById } from '../data/units';
+import { getLegacyCompatibleUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import type { Producible } from '../types/producible';
 import type { CityManager } from './CityManager';
@@ -159,6 +159,7 @@ export class SaveLoadService {
       for (const tile of row) {
         if (
           tile.ownerId === undefined
+          && tile.resourceOwnerNationId === undefined
           && tile.resourceId === undefined
           && tile.improvementId === undefined
           && tile.improvementConstruction === undefined
@@ -171,6 +172,7 @@ export class SaveLoadService {
           q: tile.x,
           r: tile.y,
           ownerId: tile.ownerId,
+          resourceOwnerNationId: tile.resourceOwnerNationId,
           resourceId: tile.resourceId,
           improvementId: tile.improvementId,
           improvementConstruction: tile.improvementConstruction
@@ -338,6 +340,7 @@ export class SaveLoadService {
     for (const row of mapData.tiles) {
       for (const tile of row) {
         tile.ownerId = undefined;
+        tile.resourceOwnerNationId = undefined;
         tile.resourceId = undefined;
         tile.improvementId = undefined;
         tile.improvementConstruction = undefined;
@@ -351,6 +354,7 @@ export class SaveLoadService {
       const tile = mapData.tiles[saved.r]?.[saved.q];
       if (!tile) continue;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
+      if (saved.resourceOwnerNationId !== undefined) tile.resourceOwnerNationId = saved.resourceOwnerNationId;
       if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
       if (saved.improvementConstruction !== undefined) {
@@ -475,7 +479,7 @@ export class SaveLoadService {
     unitManager.clearAllSilently();
 
     for (const saved of units) {
-      const type = getUnitTypeById(saved.unitTypeId);
+      const type = getLegacyCompatibleUnitTypeById(saved.unitTypeId);
       if (!type) {
         console.warn(`[SaveLoadService] Unknown unit type: ${saved.unitTypeId}`);
         continue;
@@ -553,7 +557,7 @@ function toSavedProducible(item: Producible): { kind: 'unit' | 'building' | 'won
 
 function fromSavedProducible(item: { kind: 'unit' | 'building' | 'wonder'; id: string }): Producible | null {
   if (item.kind === 'unit') {
-    const type = getUnitTypeById(item.id);
+    const type = getLegacyCompatibleUnitTypeById(item.id);
     return type ? { kind: 'unit', unitType: type } : null;
   }
   if (item.kind === 'wonder') {

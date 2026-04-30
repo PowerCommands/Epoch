@@ -1,7 +1,8 @@
 import { getImprovementById, type TileImprovementDefinition } from '../data/improvements';
+import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
-import type { MapData, Tile, TileImprovementConstruction } from '../types/map';
+import { TileType, type MapData, type Tile, type TileImprovementConstruction } from '../types/map';
 import type { TurnStartEvent } from '../types/events';
 import {
   BUILD_REQUIRED_PROGRESS,
@@ -14,7 +15,7 @@ export interface ImprovementConstructionCompletedEvent {
   tile: Tile;
   construction: TileImprovementConstruction;
   improvement: TileImprovementDefinition;
-  city: City;
+  city?: City;
   unit: Unit;
 }
 
@@ -136,8 +137,14 @@ export class ImprovementConstructionSystem {
     const unit = this.unitManager.getUnit(construction.unitId);
     if (unit === undefined) return 'invalidUnit';
     if (unit.tileX !== tile.x || unit.tileY !== tile.y || unit.ownerId !== construction.ownerId) return 'invalidUnit';
-    if (tile.ownerId !== construction.ownerId || tile.improvementId !== undefined) return 'invalidTile';
+    if (tile.improvementId !== undefined) return 'invalidTile';
     if (getImprovementById(construction.improvementId) === undefined) return 'missingImprovement';
+    if (construction.resourceOwnerNationId !== undefined) {
+      if (!this.isValidSeaResourceClaim(tile, construction, unit)) return 'invalidTile';
+      return null;
+    }
+    if (tile.ownerId !== construction.ownerId) return 'invalidTile';
+    if (construction.cityId === undefined) return 'missingCity';
     const city = this.cityManager.getCity(construction.cityId);
     if (city === undefined || city.ownerId !== construction.ownerId) return 'missingCity';
     return null;
@@ -161,13 +168,15 @@ export class ImprovementConstructionSystem {
 
   private complete(tile: Tile, construction: TileImprovementConstruction): void {
     const improvement = getImprovementById(construction.improvementId);
-    const city = this.cityManager.getCity(construction.cityId);
+    const city = construction.cityId !== undefined
+      ? this.cityManager.getCity(construction.cityId)
+      : undefined;
     const unit = this.unitManager.getUnit(construction.unitId);
     if (improvement === undefined) {
       this.cancel(tile, construction, 'missingImprovement');
       return;
     }
-    if (city === undefined) {
+    if (construction.resourceOwnerNationId === undefined && city === undefined) {
       this.cancel(tile, construction, 'missingCity');
       return;
     }
@@ -177,12 +186,32 @@ export class ImprovementConstructionSystem {
     }
 
     tile.improvementId = construction.improvementId;
+    if (construction.resourceOwnerNationId !== undefined) {
+      tile.resourceOwnerNationId = construction.resourceOwnerNationId;
+    }
     tile.improvementConstruction = undefined;
     unit.clearBuildAction();
     this.unitManager.notifyActionChanged(unit.id);
     for (const listener of this.completedListeners) {
       listener({ tile, construction, improvement, city, unit });
     }
+  }
+
+  private isValidSeaResourceClaim(
+    tile: Tile,
+    construction: TileImprovementConstruction,
+    unit: Unit,
+  ): boolean {
+    if (construction.resourceOwnerNationId !== construction.ownerId) return false;
+    if (unit.unitType.isNaval !== true || unit.unitType.canBuildImprovements !== true) return false;
+    if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
+    if (tile.resourceId === undefined) return false;
+
+    const resource = getNaturalResourceById(tile.resourceId);
+    if (resource === undefined) return false;
+
+    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    return improvementId === construction.improvementId;
   }
 
   private syncUnitProgress(unit: Unit, construction: TileImprovementConstruction): void {
