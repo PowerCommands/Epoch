@@ -13,7 +13,7 @@ import { NationManager } from './NationManager';
 import type { PolicySystem } from './PolicySystem';
 
 export const BASE_HAPPINESS = 6;
-export const CITY_UNHAPPINESS = 3;
+export const CITY_UNHAPPINESS = 1;
 export const POPULATION_UNHAPPINESS = 1;
 export const FOOD_SURPLUS_PER_HAPPINESS = 1;
 

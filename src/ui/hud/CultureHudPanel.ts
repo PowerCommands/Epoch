@@ -76,6 +76,10 @@ export class CultureHudPanel {
   ) => void;
 
   private readonly cultureButtons: CultureButtonView[] = [];
+  private readonly policiesButtonBackground: Phaser.GameObjects.Rectangle;
+  private readonly policiesButtonText: Phaser.GameObjects.Text;
+  private policiesButtonHovered = false;
+  private policiesButtonPressed = false;
   private collapsed = true;
   private draggingScrollbar = false;
   private dragPointerId: number | null = null;
@@ -86,6 +90,7 @@ export class CultureHudPanel {
   private panelBounds = new Phaser.Geom.Rectangle();
   private onSelectCultureNode: ((nodeId: string) => boolean) | null = null;
   private onToggle: ((collapsed: boolean) => void) | null = null;
+  private onOpenPolicies: (() => void) | null = null;
   private state: HudCultureState = {
     currentName: 'None selected',
     progress: 0,
@@ -150,6 +155,72 @@ export class CultureHudPanel {
     this.currentText = this.createMaskedText('', 18, '#f2f7fb', 'normal', PANEL_CONTENT_WIDTH);
     this.progressText = this.createMaskedText('', 17, '#c7d6e5');
     this.cultureText = this.createMaskedText('', 17, '#8fd0ff');
+
+    this.policiesButtonBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 110, 32, 0x182434, 1))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 3)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.policiesButtonText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Policies', {
+      fontFamily: 'sans-serif',
+      fontSize: '14px',
+      color: '#f4f1e7',
+      fontStyle: 'bold',
+    }))
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH + 4)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setVisible(false);
+
+    this.policiesButtonBackground.on(Phaser.Input.Events.POINTER_OVER, (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.policiesButtonHovered = true;
+      this.refreshPoliciesButtonVisual();
+    });
+    this.policiesButtonBackground.on(Phaser.Input.Events.POINTER_OUT, (
+      _pointer: Phaser.Input.Pointer,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.policiesButtonHovered = false;
+      this.policiesButtonPressed = false;
+      this.refreshPoliciesButtonVisual();
+    });
+    this.policiesButtonBackground.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      this.policiesButtonPressed = true;
+      consumePointerEvent(pointer);
+      this.refreshPoliciesButtonVisual();
+    });
+    this.policiesButtonBackground.on(Phaser.Input.Events.POINTER_UP, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      const shouldFire = this.policiesButtonPressed;
+      this.policiesButtonPressed = false;
+      this.worldInputGate.releasePointer(pointer.id);
+      this.refreshPoliciesButtonVisual();
+      if (shouldFire) this.onOpenPolicies?.();
+    });
 
     this.blocker.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
@@ -252,6 +323,10 @@ export class CultureHudPanel {
     this.onToggle = handler;
   }
 
+  setOnOpenPolicies(handler: () => void): void {
+    this.onOpenPolicies = handler;
+  }
+
   setCollapsed(collapsed: boolean): void {
     if (this.collapsed === collapsed) return;
     this.collapsed = collapsed;
@@ -282,6 +357,22 @@ export class CultureHudPanel {
     let contentCursor = 0;
 
     this.titleText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
+
+    const policiesButtonWidth = 110;
+    const policiesButtonHeight = 32;
+    const policiesButtonX = panelX + PANEL_WIDTH - PANEL_INNER_PADDING - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP - policiesButtonWidth;
+    const policiesButtonY = panelY + 12;
+    this.policiesButtonBackground
+      .setVisible(panelVisible)
+      .setPosition(Math.round(policiesButtonX), Math.round(policiesButtonY))
+      .setDisplaySize(policiesButtonWidth, policiesButtonHeight);
+    this.policiesButtonText
+      .setVisible(panelVisible)
+      .setPosition(
+        Math.round(policiesButtonX + policiesButtonWidth / 2),
+        Math.round(policiesButtonY + policiesButtonHeight / 2),
+      );
+
     contentCursor += LINE_HEIGHT + 5;
 
     this.currentText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
@@ -356,8 +447,22 @@ export class CultureHudPanel {
     this.currentText.destroy();
     this.progressText.destroy();
     this.cultureText.destroy();
+    this.policiesButtonBackground.destroy();
+    this.policiesButtonText.destroy();
     this.destroyCultureButtons();
     for (const text of this.eraTitleTexts) text.destroy();
+  }
+
+  private refreshPoliciesButtonVisual(): void {
+    if (this.policiesButtonPressed) {
+      this.policiesButtonBackground.setFillStyle(0x223145, 1);
+      return;
+    }
+    if (this.policiesButtonHovered) {
+      this.policiesButtonBackground.setFillStyle(0x1f2c40, 1);
+      return;
+    }
+    this.policiesButtonBackground.setFillStyle(0x182434, 1);
   }
 
   private createMaskedText(

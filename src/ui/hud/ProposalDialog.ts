@@ -67,7 +67,6 @@ export class ProposalDialog {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
       .setScrollFactor(0)
-      .setStrokeStyle(2, 0xb59a5a, 0.85)
       .setVisible(false);
 
     this.titleText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {

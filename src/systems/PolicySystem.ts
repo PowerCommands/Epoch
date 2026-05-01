@@ -1,10 +1,10 @@
 import { CULTURE_TREE } from '../data/cultureTree';
 import { ALL_POLICIES, getPolicyById } from '../data/policies';
 import { NationPolicies, type ActivePolicyAssignment, type PolicySlotCounts } from '../entities/NationPolicies';
-import type { PolicyCategory, PolicyDefinition, PolicyModifier } from '../types/policy';
+import type { PolicyCategory, PolicyDefinition, PolicyModifier, PolicySlotCategory } from '../types/policy';
 import type { NationManager } from './NationManager';
 
-const POLICY_CATEGORIES: readonly PolicyCategory[] = ['economic', 'military', 'diplomatic', 'wildcard'];
+const POLICY_SLOT_CATEGORIES: readonly PolicySlotCategory[] = ['economic', 'military', 'diplomatic', 'ideology', 'wildcard'];
 
 type MutablePolicySlotCounts = {
   -readonly [K in keyof PolicySlotCounts]: PolicySlotCounts[K];
@@ -35,7 +35,7 @@ export class PolicySystem {
 
       for (const unlock of cultureNode.unlocks) {
         if (unlock.type !== 'policySlot') continue;
-        if (!isPolicyCategory(unlock.value)) continue;
+        if (!isPolicySlotCategory(unlock.value)) continue;
         counts[unlock.value] += 1;
       }
     }
@@ -67,7 +67,7 @@ export class PolicySystem {
   ): void {
     const policies = this.getNationPolicies(nationId);
     policies.activePolicies = assignments
-      .filter((assignment) => isPolicyCategory(assignment.slotCategory))
+      .filter((assignment) => isPolicySlotCategory(assignment.slotCategory))
       .map((assignment) => ({
         policyId: assignment.policyId,
         slotCategory: assignment.slotCategory,
@@ -112,7 +112,7 @@ export class PolicySystem {
   canActivatePolicy(
     nationId: string,
     policyId: string,
-    preferredSlotCategory?: PolicyCategory,
+    preferredSlotCategory?: PolicySlotCategory,
   ): boolean {
     return this.resolveActivationSlot(nationId, policyId, preferredSlotCategory) !== null;
   }
@@ -120,7 +120,7 @@ export class PolicySystem {
   activatePolicy(
     nationId: string,
     policyId: string,
-    preferredSlotCategory?: PolicyCategory,
+    preferredSlotCategory?: PolicySlotCategory,
   ): boolean {
     const slotCategory = this.resolveActivationSlot(nationId, policyId, preferredSlotCategory);
     if (!slotCategory) return false;
@@ -142,7 +142,7 @@ export class PolicySystem {
     nationId: string,
     oldPolicyId: string,
     newPolicyId: string,
-    preferredSlotCategory?: PolicyCategory,
+    preferredSlotCategory?: PolicySlotCategory,
   ): boolean {
     const policies = this.getNationPolicies(nationId);
     const oldIndex = policies.activePolicies.findIndex((assignment) => assignment.policyId === oldPolicyId);
@@ -170,8 +170,8 @@ export class PolicySystem {
       const policy = getPolicyById(assignment.policyId);
       if (!policy) continue;
       if (!this.isPolicyUnlocked(nationId, policy)) continue;
-      if (!isPolicyCategory(assignment.slotCategory)) continue;
-      if (!isSlotCompatible(policy.category, assignment.slotCategory)) continue;
+      if (!isPolicySlotCategory(assignment.slotCategory)) continue;
+      if (!isPolicySlotCompatible(policy.category, assignment.slotCategory)) continue;
       if (usedSlots[assignment.slotCategory] >= slotCounts[assignment.slotCategory]) continue;
 
       normalized.push({ ...assignment });
@@ -191,8 +191,8 @@ export class PolicySystem {
   private resolveActivationSlot(
     nationId: string,
     policyId: string,
-    preferredSlotCategory?: PolicyCategory,
-  ): PolicyCategory | null {
+    preferredSlotCategory?: PolicySlotCategory,
+  ): PolicySlotCategory | null {
     const policy = getPolicyById(policyId);
     if (!policy) return null;
     if (!this.nationManager.getNation(nationId)) return null;
@@ -210,9 +210,7 @@ export class PolicySystem {
         : null;
     }
 
-    const slotOrder: readonly PolicyCategory[] = policy.category === 'wildcard'
-      ? ['wildcard']
-      : [policy.category, 'wildcard'];
+    const slotOrder: readonly PolicySlotCategory[] = [policy.category, 'wildcard'];
 
     for (const slotCategory of slotOrder) {
       if (this.canUseSlot(policy, slotCategory, slotCounts, usedSlots)) {
@@ -230,18 +228,18 @@ export class PolicySystem {
 
   private canUseSlot(
     policy: PolicyDefinition,
-    slotCategory: PolicyCategory,
+    slotCategory: PolicySlotCategory,
     slotCounts: PolicySlotCounts,
     usedSlots: PolicySlotCounts,
   ): boolean {
-    return isSlotCompatible(policy.category, slotCategory)
+    return isPolicySlotCompatible(policy.category, slotCategory)
       && usedSlots[slotCategory] < slotCounts[slotCategory];
   }
 
   private getUsedSlotCounts(assignments: readonly ActivePolicyAssignment[]): PolicySlotCounts {
     const counts = createEmptySlotCounts();
     for (const assignment of assignments) {
-      if (!isPolicyCategory(assignment.slotCategory)) continue;
+      if (!isPolicySlotCategory(assignment.slotCategory)) continue;
       counts[assignment.slotCategory] += 1;
     }
     return counts;
@@ -253,15 +251,16 @@ function createEmptySlotCounts(): MutablePolicySlotCounts {
     economic: 0,
     military: 0,
     diplomatic: 0,
+    ideology: 0,
     wildcard: 0,
   };
 }
 
-function isPolicyCategory(value: string): value is PolicyCategory {
-  return POLICY_CATEGORIES.includes(value as PolicyCategory);
+function isPolicySlotCategory(value: string): value is PolicySlotCategory {
+  return POLICY_SLOT_CATEGORIES.includes(value as PolicySlotCategory);
 }
 
-function isSlotCompatible(policyCategory: PolicyCategory, slotCategory: PolicyCategory): boolean {
+export function isPolicySlotCompatible(policyCategory: PolicyCategory, slotCategory: PolicySlotCategory): boolean {
   return policyCategory === slotCategory || slotCategory === 'wildcard';
 }
 

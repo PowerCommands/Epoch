@@ -9,12 +9,13 @@ export interface NaturalResourceGenerationOptions {
   humanNationId: string;
   resourceAbundance: ResourceAbundance;
   cityCoords: Array<{ x: number; y: number }>;
+  worldSeed: string;
 }
 
 const DENSITY_BY_ABUNDANCE: Record<ResourceAbundance, number> = {
   scarce: 0.02,
   normal: 0.03,
-  abundant: 0.4,
+  abundant: 0.08,
 };
 
 export class NaturalResourceSystem {
@@ -154,6 +155,7 @@ export class NaturalResourceSystem {
 
   private buildSeed(options: NaturalResourceGenerationOptions): string {
     return [
+      options.worldSeed,
       options.mapKey,
       options.humanNationId,
       [...options.activeNationIds].sort().join(','),

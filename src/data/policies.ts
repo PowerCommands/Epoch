@@ -140,7 +140,7 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
     id: 'oral_tradition',
     name: 'Oral Tradition',
-    category: 'wildcard',
+    category: 'ideology',
     requiredCultureNodeId: 'code_of_laws',
     description: 'Each city gains +1 culture.',
     modifiers: [{ type: 'cultureFlatPerCity', value: 1 }],
@@ -148,7 +148,7 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
     id: 'mystic_authority',
     name: 'Mystic Authority',
-    category: 'wildcard',
+    category: 'ideology',
     requiredCultureNodeId: 'mysticism',
     description: 'Gain +2 happiness.',
     modifiers: [{ type: 'happinessFlat', value: 2 }],
@@ -156,7 +156,7 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
     id: 'centralized_power',
     name: 'Centralized Power',
-    category: 'wildcard',
+    category: 'ideology',
     requiredCultureNodeId: 'political_philosophy',
     description: 'Cities gain +10% production.',
     modifiers: [{ type: 'productionPercent', value: 10 }],
@@ -164,7 +164,7 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
     id: 'national_identity',
     name: 'National Identity',
-    category: 'wildcard',
+    category: 'ideology',
     requiredCultureNodeId: 'nationalism',
     description: 'Culture output increases by 15%.',
     modifiers: [{ type: 'culturePercent', value: 15 }],
@@ -172,7 +172,7 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
     id: 'modern_bureaucracy',
     name: 'Modern Bureaucracy',
-    category: 'wildcard',
+    category: 'ideology',
     requiredCultureNodeId: 'urbanization',
     description: 'Population unhappiness is reduced by 10%.',
     modifiers: [{ type: 'unhappinessPerPopulationPercent', value: -10 }],

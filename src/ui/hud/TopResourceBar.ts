@@ -32,7 +32,6 @@ export class TopResourceBar {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 20)
       .setScrollFactor(0)
-      .setStrokeStyle(1, 0xb59a5a, 0.65)
       .setVisible(false);
 
     this.tooltipText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
@@ -170,8 +169,7 @@ export class TopResourceBar {
     const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, 10, ENTRY_HEIGHT, 0x0b1118, 0.84))
       .setOrigin(0, 0)
       .setDepth(DEPTH)
-      .setScrollFactor(0)
-      .setStrokeStyle(1, 0xb59a5a, 0.45);
+      .setScrollFactor(0);
 
     const icon = this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, 'resource_horses'))
       .setOrigin(0.5, 0.5)

@@ -12,6 +12,13 @@ export interface GameConfig {
   autofocusOnEndTurn?: boolean;
   earlyGameTurnLimit?: number;
   /**
+   * Per-game seed mixed into procedural natural-resource placement so each
+   * new game with the same setup produces a different layout. Loaded saves
+   * skip resource generation entirely, so the seed is only consulted on
+   * fresh starts.
+   */
+  worldSeed?: string;
+  /**
    * When present, {@link GameScene} applies this snapshot after its
    * normal scenario-based initialization, yielding a fully-restored
    * running session. Populated by the Load Game flow.

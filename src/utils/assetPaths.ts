@@ -45,3 +45,11 @@ export function getCultureSpriteKey(cultureId: string): string {
 export function getCultureSpritePath(cultureId: string): string {
   return `assets/sprites/cultures/${cultureId}.png`;
 }
+
+export function getPolicySpriteKey(policyId: string): string {
+  return `policy_${policyId}`;
+}
+
+export function getPolicySpritePath(policyId: string): string {
+  return `assets/sprites/policies/${policyId}.png`;
+}

@@ -498,6 +498,7 @@ export class MainMenuScene extends Phaser.Scene {
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
       autofocusOnEndTurn: this.autofocusOnEndTurn,
+      worldSeed: generateNewGameSeed(),
     };
 
     this.cleanup();
@@ -1262,4 +1263,12 @@ function toResourceAbundance(value: string): ResourceAbundance {
 function toGameSpeedId(value: string): GameSpeedId {
   if (value === 'quick' || value === 'standard' || value === 'epic' || value === 'marathon') return value;
   return DEFAULT_GAME_SPEED_ID;
+}
+
+function generateNewGameSeed(): string {
+  const cryptoRef = (typeof globalThis !== 'undefined' ? globalThis.crypto : undefined) as
+    | { randomUUID?: () => string }
+    | undefined;
+  if (cryptoRef?.randomUUID) return cryptoRef.randomUUID();
+  return `${Date.now()}-${Math.random()}`;
 }

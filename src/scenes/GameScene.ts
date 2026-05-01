@@ -169,6 +169,7 @@ export class GameScene extends Phaser.Scene {
         humanNationId: data.humanNationId,
         resourceAbundance,
         cityCoords: activeCities.map((city) => ({ x: city.q, y: city.r })),
+        worldSeed: data.worldSeed ?? generateWorldSeed(),
       });
     }
 
@@ -3002,6 +3003,14 @@ export class GameScene extends Phaser.Scene {
     }
     return tileMap.getTileAt(selectable.unit.tileX, selectable.unit.tileY);
   }
+}
+
+function generateWorldSeed(): string {
+  const cryptoRef = (typeof globalThis !== 'undefined' ? globalThis.crypto : undefined) as
+    | { randomUUID?: () => string }
+    | undefined;
+  if (cryptoRef?.randomUUID) return cryptoRef.randomUUID();
+  return `${Date.now()}-${Math.random()}`;
 }
 
 function downloadSaveFile(state: SavedGameState): void {

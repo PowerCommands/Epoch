@@ -8,7 +8,7 @@ import { CultureHudPanel } from './CultureHudPanel';
 import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import type { NationHudDataProvider } from './NationHudDataProvider';
-import { PolicyHudPanel } from './PolicyHudPanel';
+import { PolicyDialog } from './PolicyDialog';
 import { ProposalDialog, type ProposalDialogContext } from './ProposalDialog';
 import { ResearchHudPanel } from './ResearchHudPanel';
 import { TopResourceBar } from './TopResourceBar';
@@ -40,7 +40,7 @@ export class HudLayer {
   private readonly topResourceBar: TopResourceBar;
   private readonly researchPanel: ResearchHudPanel;
   private readonly culturePanel: CultureHudPanel;
-  private readonly policyPanel: PolicyHudPanel;
+  private readonly policyDialog: PolicyDialog;
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
   private readonly proposalDialog: ProposalDialog;
   private readonly discoveryPopup: DiscoveryPopup;
@@ -80,7 +80,7 @@ export class HudLayer {
     this.researchPanel.setOnToggle((collapsed) => {
       if (!collapsed) {
         this.culturePanel.setCollapsed(true);
-        this.policyPanel.setCollapsed(true);
+        this.policyDialog.close();
       }
     });
 
@@ -89,24 +89,18 @@ export class HudLayer {
     this.culturePanel.setOnToggle((collapsed) => {
       if (!collapsed) {
         this.researchPanel.setCollapsed(true);
-        this.policyPanel.setCollapsed(true);
       }
     });
+    this.culturePanel.setOnOpenPolicies(() => this.policyDialog.open());
 
-    this.policyPanel = new PolicyHudPanel(
+    this.policyDialog = new PolicyDialog(
       scene,
       (object) => this.addOwned(object),
       this.config.worldInputGate,
       this.config.policySystem,
       () => this.config.humanNationId,
     );
-    this.policyPanel.setOnPoliciesChanged((nationId) => this.config.onPoliciesChanged(nationId));
-    this.policyPanel.setOnToggle((collapsed) => {
-      if (!collapsed) {
-        this.researchPanel.setCollapsed(true);
-        this.culturePanel.setCollapsed(true);
-      }
-    });
+    this.policyDialog.setOnPoliciesChanged((nationId) => this.config.onPoliciesChanged(nationId));
 
     this.unitActionHudToolbox = new UnitActionHudToolbox(
       scene,
@@ -163,20 +157,20 @@ export class HudLayer {
 
   openResearchPanel(): void {
     this.culturePanel.setCollapsed(true);
-    this.policyPanel.setCollapsed(true);
+    this.policyDialog.close();
     this.researchPanel.setCollapsed(false);
     this.layout();
   }
 
   openCulturePanel(): void {
     this.researchPanel.setCollapsed(true);
-    this.policyPanel.setCollapsed(true);
+    this.policyDialog.close();
     this.culturePanel.setCollapsed(false);
     this.layout();
   }
 
   refreshPolicyPanel(): void {
-    this.policyPanel.refresh();
+    this.policyDialog.refresh();
   }
 
   refresh(): void {
@@ -222,7 +216,7 @@ export class HudLayer {
   }
 
   hasOpenSelectionPanel(): boolean {
-    return this.researchPanel.isOpen() || this.culturePanel.isOpen() || this.policyPanel.isOpen();
+    return this.researchPanel.isOpen() || this.culturePanel.isOpen() || this.policyDialog.isShowing();
   }
 
   /**
@@ -244,7 +238,7 @@ export class HudLayer {
     this.topResourceBar.destroy();
     this.researchPanel.destroy();
     this.culturePanel.destroy();
-    this.policyPanel.destroy();
+    this.policyDialog.destroy();
     this.unitActionHudToolbox.destroy();
     this.proposalDialog.destroy();
     this.discoveryPopup.destroy();
@@ -262,7 +256,7 @@ export class HudLayer {
     this.topResourceBar.setEntries(this.config.dataProvider.getResourceEntries(nationId));
     this.researchPanel.setState(this.config.dataProvider.getResearchState(nationId));
     this.culturePanel.setState(this.config.dataProvider.getCultureState(nationId));
-    this.policyPanel.refresh();
+    this.policyDialog.refresh();
     this.unitActionHudToolbox.refresh();
     this.endTurnButton.setEnabled(this.endTurnEnabled);
     this.layout();
@@ -273,7 +267,6 @@ export class HudLayer {
     this.topResourceBar.layout();
     this.researchPanel.layout(width, height);
     this.culturePanel.layout(width, height);
-    this.policyPanel.layout(width, height);
     this.endTurnButton.layout(width, height);
     const endTurnLayout = this.endTurnButton.getLayout();
     this.unitActionHudToolbox.layout(endTurnLayout.centerX, endTurnLayout.centerY, endTurnLayout.radius);

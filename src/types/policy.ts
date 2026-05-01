@@ -2,6 +2,10 @@ export type PolicyCategory =
   | 'economic'
   | 'military'
   | 'diplomatic'
+  | 'ideology';
+
+export type PolicySlotCategory =
+  | PolicyCategory
   | 'wildcard';
 
 export type PolicyModifier =

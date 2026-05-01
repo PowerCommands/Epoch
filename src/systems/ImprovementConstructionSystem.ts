@@ -242,22 +242,13 @@ export class ImprovementConstructionSystem {
       return;
     }
 
-    const currentProgress = computeUnitBuildProgress(
-      construction.remainingTurns,
-      construction.totalTurns,
-    );
-    const baseProgressPerTurn = BUILD_REQUIRED_PROGRESS / construction.totalTurns;
     const percent = this.policySystem?.getPercentModifierTotal(
       construction.ownerId,
       'improvementBuildSpeedPercent',
     ) ?? 0;
     const multiplier = Math.max(0, 1 + (percent / 100));
-    const gainedProgress = Math.round(baseProgressPerTurn * multiplier);
-    const nextProgress = Math.min(BUILD_REQUIRED_PROGRESS, currentProgress + gainedProgress);
-    construction.remainingTurns = Math.max(
-      0,
-      Math.ceil(((BUILD_REQUIRED_PROGRESS - nextProgress) / BUILD_REQUIRED_PROGRESS) * construction.totalTurns),
-    );
+    const turnProgress = Math.max(1, Math.floor(multiplier));
+    construction.remainingTurns = Math.max(0, construction.remainingTurns - turnProgress);
   }
 
   /**
