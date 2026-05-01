@@ -454,7 +454,15 @@ export class RightSidebarPanel {
       const heading = this.addContentText(section.title, 17, '#91a9c4', 'bold');
       heading.setPosition(PANEL_PADDING, y);
       heading.setData('baseY', y);
-      y += heading.height + 9;
+      let headingHeight = heading.height;
+      if (section.titleRight) {
+        const rightHeading = this.addContentText(section.titleRight, 15, '#d8c686', 'bold', CONTENT_WIDTH);
+        rightHeading.setOrigin(1, 0);
+        rightHeading.setPosition(PANEL_PADDING + CONTENT_WIDTH, y + 1);
+        rightHeading.setData('baseY', y + 1);
+        headingHeight = Math.max(headingHeight, rightHeading.height);
+      }
+      y += headingHeight + 9;
       for (const row of section.rows) {
         y = this.addContentRow(row, y);
       }

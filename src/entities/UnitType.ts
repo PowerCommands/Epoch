@@ -17,6 +17,7 @@ export interface UnitType {
   readonly era: Era;
   readonly category: UnitCategory;
   readonly productionCost: number;
+  readonly upkeepGold?: number;
   readonly movementPoints: number;
   readonly baseHealth: number;
   readonly baseStrength: number;

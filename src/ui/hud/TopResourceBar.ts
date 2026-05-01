@@ -225,6 +225,10 @@ function formatEntryText(value: HudResourceEntry): string {
     return value.icon ? `${value.icon} ${value.value}` : `${value.value}`;
   }
 
+  if (value.key === 'gold' && value.upkeep !== undefined && value.upkeep > 0) {
+    return `${value.icon} ${value.value} (${formatSigned(value.delta)} - ${value.upkeep})`;
+  }
+
   return `${value.icon} ${value.value} (${formatSigned(value.delta)})`;
 }
 

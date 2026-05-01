@@ -6,6 +6,7 @@ interface UnitDefinitionInput {
   name: string;
   era: Era;
   cost: number;
+  upkeepGold?: number;
   combatStrength: number;
   rangedStrength?: number;
   range?: number;
@@ -28,6 +29,7 @@ function unit(input: UnitDefinitionInput): UnitType {
     era: input.era,
     category: input.category,
     productionCost: input.cost,
+    upkeepGold: input.upkeepGold ?? getDefaultUpkeepGold(input.category, input.era),
     movementPoints: input.movement,
     baseHealth: input.combatStrength > 0 ? 100 : 50,
     baseStrength: input.combatStrength,
@@ -39,6 +41,25 @@ function unit(input: UnitDefinitionInput): UnitType {
     isNaval: input.isNaval,
     requiredResource: input.requiredResource,
   };
+}
+
+function getDefaultUpkeepGold(category: UnitCategory, era: Era): number {
+  if (category === 'civilian' || category === 'recon') return 0;
+
+  switch (era) {
+    case 'ancient':
+    case 'classical':
+      return 1;
+    case 'medieval':
+    case 'renaissance':
+      return 3;
+    case 'industrial':
+    case 'modern':
+    case 'atomic':
+    case 'information':
+    case 'future':
+      return 5;
+  }
 }
 
 export const WARRIOR = unit({ id: 'warrior', name: 'Warrior', era: 'ancient', cost: 40, combatStrength: 8, movement: 2, category: 'melee' });

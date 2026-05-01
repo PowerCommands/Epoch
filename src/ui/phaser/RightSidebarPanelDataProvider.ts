@@ -32,6 +32,7 @@ import type { WonderSystem } from '../../systems/WonderSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
+import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
 import type { MapData, Tile } from '../../types/map';
@@ -904,8 +905,14 @@ export class RightSidebarPanelDataProvider {
 
   private getLeaderUnitsSection(nationId: string, isHuman: boolean): RightSidebarSection {
     const units = this.unitManager.getUnitsByOwner(nationId);
+    const militaryUnits = units.filter((unit) => (unit.unitType.upkeepGold ?? 0) > 0);
+    const totalUpkeep = militaryUnits.reduce(
+      (sum, unit) => sum + calculateUnitUpkeep(unit, this.mapData),
+      0,
+    );
     return {
       title: `Units (${units.length})`,
+      titleRight: `Total upkeep: ${totalUpkeep} 💰`,
       rows: this.renderUnitList(units, isHuman),
     };
   }

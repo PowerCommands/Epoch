@@ -48,6 +48,7 @@ export type RightSidebarRow =
 
 export interface RightSidebarSection {
   title: string;
+  titleRight?: string;
   rows: RightSidebarRow[];
 }
 

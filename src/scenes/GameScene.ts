@@ -8,6 +8,7 @@ import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
@@ -283,6 +284,14 @@ export class GameScene extends Phaser.Scene {
       policySystem,
     );
     getCityFoodSurplus = (city) => resourceSystem.getFoodSurplus(city);
+    const unitUpkeepSystem = new UnitUpkeepSystem(
+      nationManager,
+      unitManager,
+      resourceSystem,
+      mapData,
+      policySystem,
+    );
+    turnManager.on('turnStart', (e) => unitUpkeepSystem.handleTurnStart(e));
 
     // 12. Selection-system (hover depth 20, selection depth 21)
     const selectionManager = new SelectionManager(
@@ -1610,6 +1619,7 @@ export class GameScene extends Phaser.Scene {
       turnManager,
       (turn) => this.timeSystem.getLabelForTurn(turn),
       resourceAccessSystem,
+      unitUpkeepSystem,
     );
     hudLayer = new HudLayer(this, {
       humanNationId,
@@ -2471,7 +2481,7 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       if (
         rightPanel &&
-        (rightPanel.isShowingCity(event.cityId) || rightPanel.isShowingUnit(event.unit))
+        (rightPanel.isShowingCity(event.cityId) || rightPanel.isShowingUnit(event.unit) || rightPanel.getView() === 'leader')
       ) {
         rightPanel.requestRefresh();
       }

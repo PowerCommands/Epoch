@@ -5,6 +5,7 @@ import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
+import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
 import { getCultureNodeById } from '../../data/cultureTree';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import { getCultureSpriteKey, getCultureSpritePath } from '../../utils/assetPaths';
@@ -22,6 +23,7 @@ export interface HudResourceEntry {
   iconKey?: string;
   value: number | string;
   delta: number;
+  upkeep?: number;
   displayMode?: 'valueAndDelta' | 'deltaOnly' | 'happinessState' | 'valueOnly';
   stateLabel?: string;
   textColor?: string;
@@ -93,6 +95,7 @@ export class NationHudDataProvider {
     private readonly turnManager: TurnManager,
     private readonly getTurnLabel: (turn: number) => string,
     private readonly resourceAccessSystem?: ResourceAccessSystem,
+    private readonly unitUpkeepSystem?: UnitUpkeepSystem,
   ) {}
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
@@ -109,6 +112,7 @@ export class NationHudDataProvider {
     const currentCultureCost = currentCulture ? this.cultureSystem.getEffectiveCost(currentCulture.id) : 0;
     const cultureTooltip = getCultureTooltip(currentCulture?.name, cultureProgress, currentCultureCost);
     const happiness = this.happinessSystem.getNationState(nationId);
+    const unitUpkeep = this.unitUpkeepSystem?.calculateUpkeep(nationId) ?? 0;
 
     const entries: HudResourceEntry[] = [
       {
@@ -153,6 +157,7 @@ export class NationHudDataProvider {
         icon: '💰',
         value: nationResources.gold,
         delta: nationResources.goldPerTurn,
+        upkeep: unitUpkeep,
       },
       {
         key: 'influence',
