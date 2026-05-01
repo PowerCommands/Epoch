@@ -223,7 +223,7 @@ export class GameScene extends Phaser.Scene {
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
 
     // 9. Rendera enheter (depth 18)
-    const unitRenderer = new UnitRenderer(this, tileMap, unitManager, nationManager);
+    const unitRenderer = new UnitRenderer(this, tileMap, unitManager, nationManager, mapData);
 
     // 10. Starta i en overview som täcker hela canvasen.
     this.cameras.main.setZoom(overviewZoom);
@@ -297,7 +297,7 @@ export class GameScene extends Phaser.Scene {
     const selectionManager = new SelectionManager(
       this, tileMap, this.cameraController, cityManager, unitManager, worldInputGate,
     );
-    const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem);
+    const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem, nationManager);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
@@ -839,6 +839,7 @@ export class GameScene extends Phaser.Scene {
       turnManager,
       selectionManager,
       gridSystem,
+      nationManager,
       diplomacyManager,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
     );

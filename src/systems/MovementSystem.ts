@@ -8,6 +8,8 @@ import { UnitManager } from './UnitManager';
 import { UnitRenderer } from './UnitRenderer';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { NationManager } from './NationManager';
+import { canUnitEnterTile } from './UnitMovementRules';
 
 /** Return movement cost for entering a tile. */
 export function getTileMovementCost(tile: Tile): number {
@@ -35,14 +37,6 @@ interface MovementActionOptions {
 type MovementWarRequiredListener = (event: MovementWarRequiredEvent) => void;
 type UnitMovementBlocker = (unit: Unit) => boolean;
 
-export function canUnitEnterTile(unit: Unit, tile: Tile): boolean {
-  const naval = unit.unitType.isNaval === true;
-  if (naval) {
-    return tile.type === TileType.Ocean || tile.type === TileType.Coast;
-  }
-  return tile.type !== TileType.Ocean && tile.type !== TileType.Coast;
-}
-
 /**
  * MovementSystem äger rörelsereglerna för enheter.
  *
@@ -60,6 +54,7 @@ export class MovementSystem {
     turnManager: TurnManager,
     selectionManager: SelectionManager,
     private readonly gridSystem: IGridSystem,
+    private readonly nationManager: NationManager,
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly isUnitMovementBlocked: UnitMovementBlocker = () => false,
   ) {
@@ -101,7 +96,7 @@ export class MovementSystem {
       return unit.movementPoints >= BOARDING_MOVEMENT_COST;
     }
 
-    if (!canUnitEnterTile(unit, targetTile)) return false;
+    if (!canUnitEnterTile(unit, targetTile, this.nationManager.getNation(unit.ownerId))) return false;
 
     const cost = getTileMovementCost(targetTile);
     if (unit.movementPoints < cost) return false;

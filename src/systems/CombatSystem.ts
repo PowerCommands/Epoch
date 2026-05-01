@@ -17,6 +17,7 @@ import type { MapData } from '../types/map';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { PolicySystem } from './PolicySystem';
+import { isEmbarked } from './UnitMovementRules';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -58,6 +59,8 @@ type CityCombatListener = (e: CityCombatEvent) => void;
 type CombatRejectedListener = (e: CombatRejectedEvent) => void;
 type WarRequiredListener = (e: WarRequiredEvent) => void;
 type UnitCombatBlocker = (unit: Unit) => boolean;
+
+const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
 
 /**
  * CombatSystem hanterar strid mellan enheter och mot städer.
@@ -123,6 +126,7 @@ export class CombatSystem {
       return false;
     }
     if (this.isUnitCombatBlocked(attacker)) return false;
+    if (isEmbarked(attacker, this.mapData)) return false;
 
     // 2. Must have movement points
     if (attacker.movementPoints <= 0) {
@@ -182,6 +186,7 @@ export class CombatSystem {
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
       defenderStrengthBonus: this.getOwnedTerritoryCombatBonus(target),
+      defenderStrengthMultiplier: isEmbarked(target, this.mapData) ? EMBARKED_DEFENSE_MULTIPLIER : 1,
     };
     const result = isRanged
       ? resolveRangedCombat(attacker, target, modifiers)

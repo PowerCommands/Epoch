@@ -19,6 +19,7 @@ export interface CityCombatResult {
 export interface UnitCombatModifiers {
   readonly attackerStrengthBonus?: number;
   readonly defenderStrengthBonus?: number;
+  readonly defenderStrengthMultiplier?: number;
 }
 
 export interface CityCombatModifiers {
@@ -43,7 +44,11 @@ export function resolveCombat(
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
   const defenderHpRatio = defender.health / defender.unitType.baseHealth;
   const attackerStrength = attacker.unitType.baseStrength + (modifiers.attackerStrengthBonus ?? 0);
-  const defenderStrength = defender.unitType.baseStrength + (modifiers.defenderStrengthBonus ?? 0);
+  const defenderBaseStrength = defender.unitType.baseStrength + (modifiers.defenderStrengthBonus ?? 0);
+  const defenderStrength = Math.max(
+    1,
+    Math.floor(defenderBaseStrength * (modifiers.defenderStrengthMultiplier ?? 1)),
+  );
 
   const damageToDefender = Math.round(attackerStrength * attackerHpRatio);
   const damageToAttacker = Math.round(defenderStrength * 0.6 * defenderHpRatio);

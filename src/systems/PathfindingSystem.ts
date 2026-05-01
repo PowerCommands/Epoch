@@ -2,8 +2,10 @@ import type { Unit } from '../entities/Unit';
 import type { GridCoord } from '../types/grid';
 import type { MapData, Tile } from '../types/map';
 import { MinHeap } from '../utils/MinHeap';
-import { canUnitEnterTile, getTileMovementCost } from './MovementSystem';
+import { getTileMovementCost } from './MovementSystem';
+import type { NationManager } from './NationManager';
 import { UnitManager } from './UnitManager';
+import { canUnitEnterTile } from './UnitMovementRules';
 import type { IGridSystem } from './grid/IGridSystem';
 
 interface FindPathOptions {
@@ -40,6 +42,7 @@ export class PathfindingSystem {
     private readonly mapData: MapData,
     private readonly unitManager: UnitManager,
     private readonly gridSystem: IGridSystem,
+    private readonly nationManager: NationManager,
   ) {
     this.mapWidth = mapData.width;
     this.mapHeight = mapData.height;
@@ -222,7 +225,7 @@ export class PathfindingSystem {
   }
 
   private canEnter(unit: Unit, tile: Tile): boolean {
-    if (!canUnitEnterTile(unit, tile)) return false;
+    if (!canUnitEnterTile(unit, tile, this.nationManager.getNation(unit.ownerId))) return false;
 
     const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
     if (occupant !== null && occupant.id !== unit.id) return false;

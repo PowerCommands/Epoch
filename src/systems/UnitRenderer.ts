@@ -2,7 +2,10 @@ import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import { UnitManager } from './UnitManager';
 import { NationManager } from './NationManager';
+import type { Unit } from '../entities/Unit';
 import { getUnitActionSpriteKey, getUnitSpriteKey } from '../utils/assetPaths';
+import { isEmbarked } from './UnitMovementRules';
+import type { MapData } from '../types/map';
 
 const UNIT_DEPTH = 18;
 const PROGRESS_TEXT_DEPTH = UNIT_DEPTH + 1.5;
@@ -44,6 +47,7 @@ export class UnitRenderer {
     tileMap: TileMap,
     unitManager: UnitManager,
     nationManager: NationManager,
+    private readonly mapData: MapData,
   ) {
     this.scene = scene;
     this.tileMap = tileMap;
@@ -124,6 +128,7 @@ export class UnitRenderer {
       visual.sprite.setTexture(textureKey);
     }
     this.applyUnitTileSize(unit, visual.sprite);
+    this.applyDerivedVisualState(unit, visual);
 
     if (unit.isBuildingImprovement() && unit.buildAction !== undefined) {
       const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
@@ -196,6 +201,17 @@ export class UnitRenderer {
     this.visuals.set(unit.id, visual);
 
     this.refreshUnitVisual(unit.id);
+  }
+
+  private applyDerivedVisualState(unit: Unit, visual: UnitVisual): void {
+    if (isEmbarked(unit, this.mapData)) {
+      visual.sprite.setTint(0x66ccff);
+      visual.sprite.setAlpha(0.88);
+      return;
+    }
+
+    visual.sprite.clearTint();
+    visual.sprite.setAlpha(1);
   }
 
   private resolveTextureKey(unitTypeId: string, actionStatus: string, hasBuildAction: boolean): string {

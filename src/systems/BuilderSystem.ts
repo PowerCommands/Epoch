@@ -3,7 +3,7 @@ import type { City } from '../entities/City';
 import { getImprovementById, getImprovementForTileType, type TileImprovementDefinition } from '../data/improvements';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import { TileType, type MapData, type Tile } from '../types/map';
-import { canUnitEnterTile } from './MovementSystem';
+import { canUnitEnterTile } from './UnitMovementRules';
 import type { CityManager } from './CityManager';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
