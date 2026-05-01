@@ -17,7 +17,7 @@ import { TurnManager } from './TurnManager';
 import { getTileMovementCost, MovementSystem } from './MovementSystem';
 import { CombatSystem } from './CombatSystem';
 import { ProductionSystem } from './ProductionSystem';
-import { canCityProduceUnit } from './ProductionRules';
+import { canCityProduceUnit, cityHasWaterTile } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import { calculateCityEconomy } from './CityEconomy';
@@ -57,6 +57,30 @@ const NEAR_OWN_CITY_DISTANCE = 3;
 // is unavailable. `unitType` is unique to Unit.
 function isUnit(target: Unit | City): target is Unit {
   return (target as Unit).unitType !== undefined;
+}
+
+function tileKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+interface CoastalDefenseTargets {
+  readonly zone: Set<string>;          // tile keys for the coastal patrol zone
+  readonly patrolTiles: readonly Tile[]; // water tiles inside the zone
+  readonly resourceTiles: readonly Tile[]; // patrol tiles that hold a resource
+}
+
+interface EnemyCoastalTargets {
+  readonly zone: Set<string>;                  // tile keys across all war enemies
+  readonly zoneTiles: readonly Tile[];          // patrol-pressure water tiles
+  readonly navalUnits: readonly Unit[];         // priority 1: enemy ships in zone
+  readonly coastAdjacentUnits: readonly Unit[]; // priority 3: enemy land near coast
+}
+
+interface NavalPatrolContext {
+  readonly targets: CoastalDefenseTargets;
+  readonly enemyTargets: EnemyCoastalTargets;
+  readonly claimedNavalTiles: Set<string>;
+  readonly ownZoneHasEnemy: boolean;
 }
 
 function maxThreatLevel(a: ThreatLevel, b: ThreatLevel): ThreatLevel {
@@ -101,7 +125,27 @@ const SCORE_FOOD_BUILDING = 65;
 const SCORE_PRODUCTION_BUILDING = 60;
 const SCORE_GOLD_BUILDING = 55;
 const SCORE_FALLBACK = 25;
+const SCORE_NAVAL = 40;
 const LOW_GOLD_PER_TURN = 0;
+
+// Coastal site evaluation. Combined with -settlerDistance so that the AI still
+// favors closer founding sites but breaks toward the sea when the bonus
+// outweighs a few extra tiles of travel.
+const COASTAL_SITE_BONUS = 3;
+const COASTAL_TILE_BONUS = 1;
+const WATER_RESOURCE_BONUS = 4;
+
+// Naval patrol behavior. Distance is subtracted from the score directly so
+// units favor close targets; resource bonuses can pull them ~3 tiles out.
+const NAVAL_COASTAL_ZONE_RADIUS = 2;
+const NAVAL_ENEMY_NEAR_CITY_RADIUS = 3;
+const NAVAL_PATROL_RESOURCE_BONUS = 3;
+
+// Naval offensive behavior. Cap on how far a ship will travel to reach an
+// offensive target so it doesn't wander deep into open ocean. Targets must
+// already be in/near an enemy coastal zone, so this primarily limits per-unit
+// engagement range from current position.
+const NAVAL_MAX_OFFENSIVE_REACH = 8;
 
 // Happiness thresholds drive both production prioritization and trade
 // evaluation. Below LOW the AI starts preferring happiness buildings and
@@ -445,7 +489,7 @@ export class AISystem {
     const allCities = this.cityManager.getAllCities();
 
     let bestTile: { x: number; y: number } | null = null;
-    let bestDist = Infinity;
+    let bestScore = -Infinity;
 
     for (let y = 0; y < this.mapData.height; y++) {
       for (let x = 0; x < this.mapData.width; x++) {
@@ -460,14 +504,33 @@ export class AISystem {
           { x: settler.tileX, y: settler.tileY },
           { x, y },
         );
-        if (settlerDist < bestDist) {
-          bestDist = settlerDist;
+        const coastalBonus = this.computeCoastalSiteBonus({ x, y });
+        const score = coastalBonus - settlerDist;
+        if (score > bestScore) {
+          bestScore = score;
           bestTile = { x, y };
         }
       }
     }
 
     return bestTile;
+  }
+
+  private computeCoastalSiteBonus(coord: GridCoord): number {
+    let coastCount = 0;
+    let waterResourceCount = 0;
+    for (const adj of this.gridSystem.getAdjacentCoords(coord)) {
+      const tile = this.mapData.tiles[adj.y]?.[adj.x];
+      if (!tile) continue;
+      if (tile.type === TileType.Coast) coastCount++;
+      const isWater = tile.type === TileType.Coast || tile.type === TileType.Ocean;
+      if (isWater && tile.resourceId !== undefined) waterResourceCount++;
+    }
+    let bonus = 0;
+    if (coastCount > 0) bonus += COASTAL_SITE_BONUS;
+    bonus += coastCount * COASTAL_TILE_BONUS;
+    bonus += waterResourceCount * WATER_RESOURCE_BONUS;
+    return bonus;
   }
 
   private minDistanceToCities(tileX: number, tileY: number, cities: City[]): number {
@@ -606,15 +669,446 @@ export class AISystem {
       console.debug(`AI ${name} exploration score adjusted by strategy weight ${weights.exploration}.`);
     }
 
+    // Naval state shared across this nation's ships for the turn: defines
+    // where we want to defend and which tiles are already claimed/occupied,
+    // so multiple ships spread out instead of stacking.
+    const navalContext = this.buildNavalPatrolContext(nationId);
+
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
-      if (unit.unitType.isNaval) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
-      if (!this.canTakeAggressiveAction(unit, strategy)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
+
+      if (unit.unitType.isNaval) {
+        this.moveNavalUnitForPatrol(unit, nationId, strategy, navalContext);
+        continue;
+      }
+
+      if (!this.canTakeAggressiveAction(unit, strategy)) continue;
 
       this.moveByStrategyScoring(unit, nationId, strategy);
     }
+  }
+
+  // ─── Naval patrol ────────────────────────────────────────────────────────────
+
+  private buildNavalPatrolContext(nationId: string): NavalPatrolContext {
+    const targets = this.getCoastalDefenseTargets(nationId);
+    const enemyTargets = this.getEnemyCoastalTargets(nationId);
+    const ownZoneHasEnemy = this.ownCoastalZoneHasEnemy(nationId, targets);
+    // Pre-claim tiles that own naval units already occupy so other ships
+    // don't try to converge onto a tile they can't enter (no stacking).
+    const claimedNavalTiles = new Set<string>();
+    for (const u of this.unitManager.getUnitsByOwner(nationId)) {
+      if (u.unitType.isNaval) claimedNavalTiles.add(tileKey(u.tileX, u.tileY));
+    }
+    return { targets, enemyTargets, claimedNavalTiles, ownZoneHasEnemy };
+  }
+
+  private moveNavalUnitForPatrol(
+    unit: Unit,
+    nationId: string,
+    strategy: AIStrategy,
+    context: NavalPatrolContext,
+  ): void {
+    // Combat naval first try to intercept high-priority enemies near our
+    // coast. The combat phase already attacks adjacent ones; this just
+    // closes distance so the next turn's combat phase can finish the job.
+    if (unit.unitType.baseStrength > 0) {
+      const enemy = this.findHighPriorityNavalEnemy(unit, nationId, context.targets);
+      if (enemy && this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY })) return;
+    }
+
+    // Offensive harassment along enemy coasts. Gated by:
+    //  - combat naval only (no work boats / cargo)
+    //  - no enemy presence in our own coastal zone (else we defend instead)
+    //  - at least one war enemy with a coastal zone (the helper already
+    //    enforces the WAR diplomacy requirement)
+    if (
+      unit.unitType.baseStrength > 0 &&
+      !context.ownZoneHasEnemy &&
+      context.enemyTargets.zone.size > 0 &&
+      this.tryOffensiveNavalMove(unit, context)
+    ) return;
+
+    if (this.moveNavalUnitToPatrolTile(unit, context)) return;
+
+    // No coastal zone available (e.g. nation lost its coast): fall back to
+    // generic water exploration so units don't sit still indefinitely.
+    this.moveNavalUnitForExploration(unit, nationId, strategy);
+  }
+
+  private tryOffensiveNavalMove(unit: Unit, context: NavalPatrolContext): boolean {
+    const { enemyTargets, claimedNavalTiles } = context;
+    // Priority 1 → Priority 3: enemy ships in zone, then exposed land units.
+    // (Priority 2 — embarked units — does not apply: this game has no embarkation.)
+    if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.navalUnits, claimedNavalTiles)) return true;
+    if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.coastAdjacentUnits, claimedNavalTiles)) return true;
+
+    // Priority 4: patrol-pressure on enemy coast.
+    return this.tryMoveTowardNearestZoneTile(unit, enemyTargets.zoneTiles, claimedNavalTiles);
+  }
+
+  private tryMoveTowardNearestEnemyUnit(
+    unit: Unit,
+    enemies: readonly Unit[],
+    claimed: Set<string>,
+  ): boolean {
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const sorted = enemies
+      .filter((e) => !claimed.has(tileKey(e.tileX, e.tileY)))
+      .map((e) => ({
+        enemy: e,
+        dist: this.gridSystem.getDistance(unitPos, { x: e.tileX, y: e.tileY }),
+      }))
+      .filter(({ dist }) => dist <= NAVAL_MAX_OFFENSIVE_REACH)
+      .sort((a, b) => a.dist - b.dist);
+
+    for (const { enemy } of sorted) {
+      if (this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY })) {
+        claimed.add(tileKey(enemy.tileX, enemy.tileY));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private tryMoveTowardNearestZoneTile(
+    unit: Unit,
+    zoneTiles: readonly Tile[],
+    claimed: Set<string>,
+  ): boolean {
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    let bestTile: Tile | null = null;
+    let bestDist = Infinity;
+    for (const tile of zoneTiles) {
+      const key = tileKey(tile.x, tile.y);
+      if (claimed.has(key)) continue;
+      const dist = this.gridSystem.getDistance(unitPos, { x: tile.x, y: tile.y });
+      if (dist > NAVAL_MAX_OFFENSIVE_REACH) continue;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTile = tile;
+      }
+    }
+    if (!bestTile) return false;
+    if (!this.moveNavalUnitToward(unit, { x: bestTile.x, y: bestTile.y })) return false;
+    claimed.add(tileKey(bestTile.x, bestTile.y));
+    return true;
+  }
+
+  private moveNavalUnitToPatrolTile(
+    unit: Unit,
+    context: NavalPatrolContext,
+  ): boolean {
+    const { targets, claimedNavalTiles } = context;
+    if (targets.patrolTiles.length === 0) return false;
+
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const resourceKeys = new Set(
+      targets.resourceTiles.map((tile) => tileKey(tile.x, tile.y)),
+    );
+
+    let bestTile: Tile | null = null;
+    let bestScore = -Infinity;
+    for (const tile of targets.patrolTiles) {
+      const key = tileKey(tile.x, tile.y);
+      if (claimedNavalTiles.has(key)) continue;
+      const distance = this.gridSystem.getDistance(unitPos, { x: tile.x, y: tile.y });
+      let score = -distance;
+      if (this.tileIsNearWaterResource(tile, resourceKeys)) {
+        score += NAVAL_PATROL_RESOURCE_BONUS;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestTile = tile;
+      }
+    }
+    if (!bestTile) return false;
+    if (!this.moveNavalUnitToward(unit, { x: bestTile.x, y: bestTile.y })) return false;
+    claimedNavalTiles.add(tileKey(bestTile.x, bestTile.y));
+    return true;
+  }
+
+  private tileIsNearWaterResource(tile: Tile, resourceKeys: Set<string>): boolean {
+    if (resourceKeys.has(tileKey(tile.x, tile.y))) return true;
+    for (const adj of this.gridSystem.getAdjacentCoords({ x: tile.x, y: tile.y })) {
+      if (resourceKeys.has(tileKey(adj.x, adj.y))) return true;
+    }
+    return false;
+  }
+
+  private moveNavalUnitToward(unit: Unit, dest: GridCoord): boolean {
+    const path = this.pathfindingSystem.findPath(unit, dest.x, dest.y, {
+      respectMovementPoints: false,
+    });
+    if (path !== null) {
+      this.movementSystem.moveAlongPath(unit, path);
+      return true;
+    }
+    // Land destinations (e.g. coastal city tiles) are unreachable for naval
+    // units; try water tiles adjacent to the target instead.
+    for (const adj of this.gridSystem.getAdjacentCoords(dest)) {
+      const adjTile = this.mapData.tiles[adj.y]?.[adj.x];
+      if (!adjTile) continue;
+      if (adjTile.type !== TileType.Coast && adjTile.type !== TileType.Ocean) continue;
+      const adjPath = this.pathfindingSystem.findPath(unit, adj.x, adj.y, {
+        respectMovementPoints: false,
+      });
+      if (adjPath !== null) {
+        this.movementSystem.moveAlongPath(unit, adjPath);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private findHighPriorityNavalEnemy(
+    unit: Unit,
+    nationId: string,
+    targets: CoastalDefenseTargets,
+  ): Unit | null {
+    const coastalCities = this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => cityHasWaterTile(city, this.mapData));
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+
+    let best: Unit | null = null;
+    let bestDist = Infinity;
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (enemy.ownerId === nationId) continue;
+      if (this.diplomacyManager
+        && !this.diplomacyManager.canAttack(nationId, enemy.ownerId)) continue;
+
+      const enemyPos = { x: enemy.tileX, y: enemy.tileY };
+      const enemyKey = tileKey(enemyPos.x, enemyPos.y);
+
+      let highPriority = targets.zone.has(enemyKey);
+      if (!highPriority) {
+        for (const city of coastalCities) {
+          const d = this.gridSystem.getDistance(
+            { x: city.tileX, y: city.tileY },
+            enemyPos,
+          );
+          if (d <= NAVAL_ENEMY_NEAR_CITY_RADIUS) { highPriority = true; break; }
+        }
+      }
+      if (!highPriority) continue;
+
+      const dist = this.gridSystem.getDistance(unitPos, enemyPos);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = enemy;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Enemy coastal targets across all war enemies. Diplomacy gates the entire
+   * helper: nations not at WAR contribute no zone tiles and no targets, so
+   * downstream offensive logic never selects them.
+   */
+  private getEnemyCoastalTargets(nationId: string): EnemyCoastalTargets {
+    const empty: EnemyCoastalTargets = {
+      zone: new Set(),
+      zoneTiles: [],
+      navalUnits: [],
+      coastAdjacentUnits: [],
+    };
+    if (!this.diplomacyManager) return empty;
+
+    const dm = this.diplomacyManager;
+    const warEnemyIds = new Set<string>();
+    for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      if (dm.getState(nationId, other.id) !== 'WAR') continue;
+      warEnemyIds.add(other.id);
+    }
+    if (warEnemyIds.size === 0) return empty;
+
+    const zone = new Set<string>();
+    const zoneTiles: Tile[] = [];
+    const addZoneTile = (tile: Tile | undefined): void => {
+      if (!tile) return;
+      if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return;
+      const key = tileKey(tile.x, tile.y);
+      if (zone.has(key)) return;
+      zone.add(key);
+      zoneTiles.push(tile);
+    };
+
+    for (const enemyId of warEnemyIds) {
+      for (const city of this.cityManager.getCitiesByOwner(enemyId)) {
+        // Water tiles adjacent to enemy territory.
+        for (const owned of city.ownedTileCoords) {
+          for (const adj of this.gridSystem.getAdjacentCoords(owned)) {
+            addZoneTile(this.mapData.tiles[adj.y]?.[adj.x]);
+          }
+        }
+        // Water tiles within radius 2 of enemy coastal cities.
+        if (cityHasWaterTile(city, this.mapData)) {
+          const inRange = this.gridSystem.getTilesInRange(
+            { x: city.tileX, y: city.tileY },
+            NAVAL_COASTAL_ZONE_RADIUS,
+            this.mapData,
+            { includeCenter: true },
+          );
+          for (const tile of inRange) addZoneTile(tile);
+        }
+      }
+    }
+
+    if (zone.size === 0) return empty;
+
+    const navalUnits: Unit[] = [];
+    const coastAdjacentUnits: Unit[] = [];
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (!warEnemyIds.has(enemy.ownerId)) continue;
+      if (!dm.canAttack(nationId, enemy.ownerId)) continue;
+
+      const enemyKey = tileKey(enemy.tileX, enemy.tileY);
+      if (enemy.unitType.isNaval === true) {
+        if (zone.has(enemyKey)) navalUnits.push(enemy);
+        continue;
+      }
+
+      // Land unit: count it only if it sits on a tile adjacent to a
+      // zone water tile, i.e. exposed to naval attack.
+      const adjacentToZone = this.gridSystem
+        .getAdjacentCoords({ x: enemy.tileX, y: enemy.tileY })
+        .some((adj) => zone.has(tileKey(adj.x, adj.y)));
+      if (adjacentToZone) coastAdjacentUnits.push(enemy);
+    }
+
+    return { zone, zoneTiles, navalUnits, coastAdjacentUnits };
+  }
+
+  /**
+   * True if any enemy unit we can attack sits inside our coastal zone or
+   * within `NAVAL_ENEMY_NEAR_CITY_RADIUS` of one of our coastal cities.
+   * When this is true, naval units stay in defensive/patrol mode rather
+   * than venturing offensive — even if we are at war elsewhere.
+   */
+  private ownCoastalZoneHasEnemy(
+    nationId: string,
+    ownTargets: CoastalDefenseTargets,
+  ): boolean {
+    const coastalCities = this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => cityHasWaterTile(city, this.mapData));
+
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (enemy.ownerId === nationId) continue;
+      if (this.diplomacyManager
+        && !this.diplomacyManager.canAttack(nationId, enemy.ownerId)) continue;
+
+      const enemyPos = { x: enemy.tileX, y: enemy.tileY };
+      if (ownTargets.zone.has(tileKey(enemyPos.x, enemyPos.y))) return true;
+      for (const city of coastalCities) {
+        const d = this.gridSystem.getDistance(
+          { x: city.tileX, y: city.tileY },
+          enemyPos,
+        );
+        if (d <= NAVAL_ENEMY_NEAR_CITY_RADIUS) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Coastal defense targets for a nation: water tiles near our borders plus
+   * water tiles holding resources. Anchors are Coast tiles either owned by
+   * the nation or adjacent to its territory; the zone expands outward by
+   * `NAVAL_COASTAL_ZONE_RADIUS` over water tiles.
+   */
+  private getCoastalDefenseTargets(nationId: string): CoastalDefenseTargets {
+    const ownedCoords: GridCoord[] = [];
+    const ownedKeys = new Set<string>();
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      for (const coord of city.ownedTileCoords) {
+        const key = tileKey(coord.x, coord.y);
+        if (ownedKeys.has(key)) continue;
+        ownedKeys.add(key);
+        ownedCoords.push(coord);
+      }
+    }
+
+    const anchorSet = new Set<string>();
+    const anchors: Tile[] = [];
+    const addAnchor = (x: number, y: number): void => {
+      const tile = this.mapData.tiles[y]?.[x];
+      if (!tile) return;
+      if (tile.type !== TileType.Coast) return;
+      const key = tileKey(x, y);
+      if (anchorSet.has(key)) return;
+      anchorSet.add(key);
+      anchors.push(tile);
+    };
+
+    for (const owned of ownedCoords) {
+      addAnchor(owned.x, owned.y);
+      for (const adj of this.gridSystem.getAdjacentCoords(owned)) {
+        addAnchor(adj.x, adj.y);
+      }
+    }
+
+    const zone = new Set<string>(anchorSet);
+    const patrolTiles: Tile[] = [...anchors];
+    for (const anchor of anchors) {
+      const inRange = this.gridSystem.getTilesInRange(
+        { x: anchor.x, y: anchor.y },
+        NAVAL_COASTAL_ZONE_RADIUS,
+        this.mapData,
+        { includeCenter: false },
+      );
+      for (const tile of inRange) {
+        if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) continue;
+        const key = tileKey(tile.x, tile.y);
+        if (zone.has(key)) continue;
+        zone.add(key);
+        patrolTiles.push(tile);
+      }
+    }
+
+    const resourceTiles = patrolTiles.filter((tile) => tile.resourceId !== undefined);
+
+    return { zone, patrolTiles, resourceTiles };
+  }
+
+  private moveNavalUnitForExploration(
+    unit: Unit,
+    nationId: string,
+    strategy: AIStrategy,
+  ): void {
+    if (!this.explorationMemorySystem) return;
+    const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
+    if (weights.exploration <= 0) return;
+
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const tilesInRange = this.gridSystem.getTilesInRange(
+      unitPos,
+      strategy.military.engageDistance,
+      this.mapData,
+      { includeCenter: false },
+    );
+    const currentTurn = this.turnManager.getCurrentRound();
+
+    let bestTile: Tile | null = null;
+    let bestScore = 0;
+    for (const tile of tilesInRange) {
+      if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
+      const score = this.explorationMemorySystem.getExplorationScore(nationId, tile, currentTurn);
+      if (score > bestScore) {
+        bestScore = score;
+        bestTile = tile;
+      }
+    }
+    if (!bestTile) return;
+
+    const path = this.pathfindingSystem.findPath(unit, bestTile.x, bestTile.y, {
+      respectMovementPoints: false,
+    });
+    if (path === null) return;
+    this.movementSystem.moveAlongPath(unit, path);
   }
 
   // Strategy-based movement scoring shapes where AI units want to go,
@@ -878,6 +1372,8 @@ export class AISystem {
     const strategy = this.getStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
+    let plannedNavalCount = this.countNavalUnits(nationId);
+    const coastalCityCount = this.countCoastalCities(nationId);
 
     for (const city of cities) {
       if (this.productionSystem.getProduction(city.id)) continue;
@@ -887,6 +1383,8 @@ export class AISystem {
         nationId,
         plannedMilitaryCount,
         plannedSettlerCount,
+        plannedNavalCount,
+        coastalCityCount,
         strategy,
       );
       if (!choice) continue;
@@ -895,6 +1393,9 @@ export class AISystem {
       if (choice.kind === 'unit') {
         if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
         if (choice.unitType.canFound === true) plannedSettlerCount++;
+        if (choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
+          plannedNavalCount++;
+        }
       }
     }
   }
@@ -902,6 +1403,18 @@ export class AISystem {
   private countMilitary(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
       .filter((u) => u.unitType.baseStrength > 0)
+      .length;
+  }
+
+  private countNavalUnits(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((u) => u.unitType.isNaval === true && u.unitType.baseStrength > 0)
+      .length;
+  }
+
+  private countCoastalCities(nationId: string): number {
+    return this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => cityHasWaterTile(city, this.mapData))
       .length;
   }
 
@@ -927,6 +1440,8 @@ export class AISystem {
     nationId: string,
     plannedMilitaryCount: number,
     plannedSettlerCount: number,
+    plannedNavalCount: number,
+    coastalCityCount: number,
     strategy: AIStrategy,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
@@ -992,6 +1507,22 @@ export class AISystem {
     }
 
     if (
+      canBuildMilitary &&
+      coastalCityCount > 0 &&
+      cityHasWaterTile(city, this.mapData) &&
+      plannedNavalCount < coastalCityCount
+    ) {
+      const navalUnit = this.pickNavalUnitForCity(city, nationId);
+      if (navalUnit) {
+        candidates.push({
+          item: { kind: 'unit', unitType: navalUnit },
+          baseScore: SCORE_NAVAL,
+          category: 'military',
+        });
+      }
+    }
+
+    if (
       economy.netFood <= strategy.production.lowNetFoodThreshold &&
       !buildings.has(GRANARY.id) &&
       this.canBuildBuilding(nationId, GRANARY.id)
@@ -1051,6 +1582,19 @@ export class AISystem {
     }
 
     return pickBestAIProductionCandidate(candidates, strategy)?.item;
+  }
+
+  private pickNavalUnitForCity(city: City, nationId: string): UnitType | undefined {
+    const candidates = ALL_UNIT_TYPES.filter((u) => (
+      u.isNaval === true &&
+      u.baseStrength > 0 &&
+      this.canBuildUnit(nationId, u.id) &&
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ));
+    if (candidates.length === 0) return undefined;
+    return candidates.reduce((a, b) => (a.productionCost <= b.productionCost ? a : b));
   }
 
   private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
