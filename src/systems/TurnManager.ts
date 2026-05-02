@@ -128,7 +128,12 @@ export class TurnManager {
     const list = this.listeners[event as keyof typeof this.listeners];
     if (list) {
       for (const cb of list) {
-        (cb as (e: unknown) => void)(data);
+        try {
+          (cb as (e: unknown) => void)(data);
+        } catch (error) {
+          console.error(`[TurnManager] ${event} listener failed`, error);
+          throw error;
+        }
       }
     }
   }

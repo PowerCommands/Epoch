@@ -9,25 +9,23 @@ import type { City } from '../entities/City';
 import type { Nation } from '../entities/Nation';
 import type { RoundEndEvent } from '../types/events';
 
+export type AutoplayNationRunner = (nation: Nation) => void;
+
 /**
  * AutoplaySystem v1.1 — debug-only.
  *
- * v1.0 ran the existing AI-turn chain synchronously. v1.1 keeps the same
- * non-invasive trick of flipping `isHuman = false` on every nation (so the
- * existing turnStart AI listener handles all of them, dialogs stay
- * suppressed, and AI selects research/culture for the human nation), but
- * splits the chain into async per-turn ticks so the browser repaints
- * between AI turns and pause/resume/stop can act between any two turns.
+ * v1.0 ran the existing AI-turn chain synchronously. v1.1 owns its async
+ * autoplay loop here and receives the per-nation AI work as a callback from
+ * GameScene. Nations are still temporarily marked non-human for lower-level
+ * AI helpers that guard their own work.
  *
  * Logging reuses EventLogSystem: every entry it appends while autoplay is
  * active is forwarded as a `log` event for the HUD. AutoplaySystem does
  * not subscribe to AI internals.
  *
- * Cooperation with the AI listener: GameScene's existing `turnStart`
- * listener still runs the full AI pipeline; instead of immediately calling
- * `turnManager.endCurrentTurn()` at the end, it calls
- * {@link notifyTurnCompleted} when autoplay is active. AutoplaySystem then
- * schedules the next tick (or pauses).
+ * GameScene's normal AI `turnStart` listener is disabled while autoplay is
+ * active. AutoplaySystem is the only owner of `endCurrentTurn()` during
+ * autoplay.
  */
 
 const TURN_DELAY_MS = 30;
@@ -82,6 +80,7 @@ export class AutoplaySystem {
     private readonly combatSystem: CombatSystem,
     private readonly foundCitySystem: FoundCitySystem,
     private readonly eventLog: EventLogSystem,
+    private readonly runAutoplayNationTurn: AutoplayNationRunner,
   ) {
     this.turnManager.on('roundEnd', (e) => this.handleRoundEnd(e));
   }
@@ -115,11 +114,9 @@ export class AutoplaySystem {
 
     console.log(`[AUTOPLAY] Starting at round ${this.startRound} for ${this.requestedRounds} rounds.`);
     this.emitStarted();
-    this.emitProgress();
+    this.safeEmitProgress();
 
-    // Kick the chain. Current nation's turnStart already fired before
-    // start() was called, so it's a "bye" this round; subsequent turnStarts
-    // route through the AI listener which now defers advance to us.
+    // Kick the chain, including the current active nation.
     this.scheduleNextTurn();
   }
 
@@ -132,14 +129,26 @@ export class AutoplaySystem {
       this.hasPendingResume = true;
     }
     console.log(`[AUTOPLAY] Paused at round ${this.turnManager.getCurrentRound()}.`);
-    for (const cb of this.pausedListeners) cb();
+    for (const cb of this.pausedListeners) {
+      try {
+        cb();
+      } catch (error) {
+        console.error('[AUTOPLAY] paused listener failed', error);
+      }
+    }
   }
 
   resume(): void {
     if (!this.active || !this.paused) return;
     this.paused = false;
     console.log(`[AUTOPLAY] Resumed at round ${this.turnManager.getCurrentRound()}.`);
-    for (const cb of this.resumedListeners) cb();
+    for (const cb of this.resumedListeners) {
+      try {
+        cb();
+      } catch (error) {
+        console.error('[AUTOPLAY] resumed listener failed', error);
+      }
+    }
     if (this.hasPendingResume) {
       this.hasPendingResume = false;
       this.scheduleNextTurn();
@@ -161,7 +170,13 @@ export class AutoplaySystem {
     }
     this.originalIsHuman.clear();
     console.log(`[AUTOPLAY] Stopped at round ${this.turnManager.getCurrentRound()}.`);
-    for (const cb of this.stoppedListeners) cb();
+    for (const cb of this.stoppedListeners) {
+      try {
+        cb();
+      } catch (error) {
+        console.error('[AUTOPLAY] stopped listener failed', error);
+      }
+    }
   }
 
   isRunning(): boolean { return this.active && !this.paused; }
@@ -171,27 +186,19 @@ export class AutoplaySystem {
   getCompletedRounds(): number { return this.completedRounds; }
   getRemainingRounds(): number { return Math.max(0, this.requestedRounds - this.completedRounds); }
 
-  /**
-   * Called by the AI turnStart listener after the AI pipeline has run for
-   * one nation. Schedules the next per-nation tick (or stops if the target
-   * round count was just reached during this turn).
-   */
-  notifyTurnCompleted(nation: Nation): void {
+  logDiagnostic(message: string): void {
     if (!this.active) return;
-    console.log(`[AUTOPLAY] Round ${this.turnManager.getCurrentRound()} — ${nation.name} acted.`);
-
-    // Forward fresh strategic-log entries appended during this turn.
-    this.flushEventLog();
-
-    if (this.completedRounds >= this.requestedRounds) {
-      this.stop();
-      return;
+    const payload: AutoplayLogEvent = {
+      message,
+      round: this.turnManager.getCurrentRound(),
+    };
+    for (const cb of this.logListeners) {
+      try {
+        cb(payload);
+      } catch (error) {
+        console.error('[AUTOPLAY] log listener failed', error);
+      }
     }
-    if (this.paused) {
-      this.hasPendingResume = true;
-      return;
-    }
-    this.scheduleNextTurn();
   }
 
   // ─── Event subscriptions ───────────────────────────────────────────────────
@@ -207,22 +214,78 @@ export class AutoplaySystem {
 
   private scheduleNextTurn(): void {
     if (!this.active || this.paused) return;
-    if (this.nextTurnTimer !== null) return;
+    if (this.nextTurnTimer !== null) {
+      console.debug('[AUTOPLAY] Next turn already scheduled, skipping duplicate schedule.');
+      return;
+    }
+    const scheduledRound = this.turnManager.getCurrentRound();
+    const scheduledNation = this.turnManager.getCurrentNation();
+    console.debug(`[AUTOPLAY] Scheduling next step: Round ${scheduledRound} — ${scheduledNation.name}`);
     this.nextTurnTimer = setTimeout(() => {
       this.nextTurnTimer = null;
       if (!this.active || this.paused) {
         this.hasPendingResume = this.active;
         return;
       }
-      this.turnManager.endCurrentTurn();
+      const currentRound = this.turnManager.getCurrentRound();
+      const currentNation = this.turnManager.getCurrentNation();
+      console.debug(`[AUTOPLAY] Advancing from Round ${currentRound} — ${currentNation.name}`);
+      this.runCurrentAutoplayTurn();
     }, TURN_DELAY_MS);
+  }
+
+  private runCurrentAutoplayTurn(): void {
+    if (!this.active || this.paused) return;
+
+    const nation = this.turnManager.getCurrentNation();
+
+    try {
+      this.runAutoplayNationTurn(nation);
+    } catch (error) {
+      console.error(`[AUTOPLAY] AI turn failed for ${nation.name}`, error);
+      this.logDiagnostic(`ERROR: ${nation.name} AI turn failed. See browser console.`);
+    }
+
+    this.safeFlushEventLog();
+    this.safeEmitProgress();
+
+    if (this.completedRounds >= this.requestedRounds) {
+      this.stop();
+      return;
+    }
+
+    try {
+      this.turnManager.endCurrentTurn();
+    } catch (error) {
+      const currentNation = this.turnManager.getCurrentNation();
+      console.error(
+        `[AUTOPLAY] Turn transition failed. Current nation is now ${currentNation.name}.`,
+        error,
+      );
+      this.logDiagnostic(
+        `ERROR: turn transition failed near ${currentNation.name}. Continuing autoplay; see browser console.`,
+      );
+    } finally {
+      this.safeFlushEventLog();
+      this.safeEmitProgress();
+
+      if (this.completedRounds >= this.requestedRounds) {
+        this.stop();
+        return;
+      }
+
+      if (this.active && !this.paused) {
+        console.debug('[AUTOPLAY] Reached final scheduling block');
+        this.scheduleNextTurn();
+      }
+    }
   }
 
   private handleRoundEnd(e: RoundEndEvent): void {
     if (!this.active) return;
     this.completedRounds = e.round - this.startRound + 1;
-    this.flushEventLog();
-    this.emitProgress();
+    this.safeFlushEventLog();
+    this.safeEmitProgress();
   }
 
   private installEventHooksOnce(): void {
@@ -243,8 +306,24 @@ export class AutoplaySystem {
     });
     this.eventLog.onChanged(() => {
       if (!this.active) return;
-      this.flushEventLog();
+      this.safeFlushEventLog();
     });
+  }
+
+  private safeEmitProgress(): void {
+    try {
+      this.emitProgress();
+    } catch (error) {
+      console.error('[AUTOPLAY] Progress listener failed', error);
+    }
+  }
+
+  private safeFlushEventLog(): void {
+    try {
+      this.flushEventLog();
+    } catch (error) {
+      console.error('[AUTOPLAY] Log listener failed', error);
+    }
   }
 
   private flushEventLog(): void {
@@ -253,7 +332,13 @@ export class AutoplaySystem {
       if (entry.id <= this.lastSeenEventLogId) continue;
       this.lastSeenEventLogId = entry.id;
       const payload: AutoplayLogEvent = { message: entry.text, round: entry.round };
-      for (const cb of this.logListeners) cb(payload);
+      for (const cb of this.logListeners) {
+        try {
+          cb(payload);
+        } catch (error) {
+          console.error('[AUTOPLAY] log listener failed', error);
+        }
+      }
     }
   }
 
@@ -264,7 +349,13 @@ export class AutoplaySystem {
 
   private emitStarted(): void {
     const payload: AutoplayStartedEvent = { requestedRounds: this.requestedRounds };
-    for (const cb of this.startedListeners) cb(payload);
+    for (const cb of this.startedListeners) {
+      try {
+        cb(payload);
+      } catch (error) {
+        console.error('[AUTOPLAY] started listener failed', error);
+      }
+    }
   }
 
   private emitProgress(): void {
@@ -275,7 +366,13 @@ export class AutoplaySystem {
       requestedRounds: this.requestedRounds,
       currentTurnLabel: `Round ${currentRound} — ${currentNation.name}`,
     };
-    for (const cb of this.progressListeners) cb(payload);
+    for (const cb of this.progressListeners) {
+      try {
+        cb(payload);
+      } catch (error) {
+        console.error('[AUTOPLAY] progress listener failed', error);
+      }
+    }
   }
 
   private focusTile(tileX: number, tileY: number): void {

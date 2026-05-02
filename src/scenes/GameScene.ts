@@ -119,6 +119,7 @@ import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCap
 import { TileType } from '../types/map';
 import type { ScenarioData } from '../types/scenario';
 import type { City } from '../entities/City';
+import type { Nation } from '../entities/Nation';
 import type { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
@@ -955,6 +956,17 @@ export class GameScene extends Phaser.Scene {
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
+    const runAutoplayNationTurn = (nation: Nation): void => {
+      discoverySystem.scan();
+
+      aiDiplomacySystem.runTurn(nation.id);
+      aiSystem.runTurn(nation.id);
+      territoryRenderer.render();
+
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    };
+
     const autoplaySystem = new AutoplaySystem(
       nationManager,
       turnManager,
@@ -963,6 +975,7 @@ export class GameScene extends Phaser.Scene {
       combatSystem,
       foundCitySystem,
       eventLog,
+      runAutoplayNationTurn,
     );
 
     // Humans pick their own initial research via the HUD research panel.
@@ -975,41 +988,40 @@ export class GameScene extends Phaser.Scene {
     };
 
     turnManager.on('turnStart', (e) => {
-      if (!e.nation.isHuman) {
+      const isAutoplay = autoplaySystem.isActive();
+      const shouldAutoControlNation = !e.nation.isHuman || isAutoplay;
+
+      if (shouldAutoControlNation) {
         researchSystem.ensureResearchSelected(e.nation.id);
         cultureSystem.ensureCultureNodeSelected(e.nation.id);
       }
       researchSystem.advanceResearchForNation(e.nation.id);
       cultureSystem.advanceCultureForNation(e.nation.id);
       policySystem.normalizeActivePolicies(e.nation.id);
-      if (!e.nation.isHuman) {
+      if (shouldAutoControlNation) {
         aiPolicySystem.runTurn(e.nation.id);
         refreshPolicyDerivedState(e.nation.id);
       } else {
         hudLayer?.refreshPolicyPanel();
       }
 
-      if (e.nation.isHuman) {
+      if (e.nation.isHuman && !isAutoplay) {
         openPendingHumanSelectionPanels();
       }
     });
 
     turnManager.on('turnStart', (e) => {
-      // Scan for new discoveries at the start of every turn
-      discoverySystem.scan();
+      if (autoplaySystem.isActive()) return;
 
       if (!e.nation.isHuman) {
+        discoverySystem.scan();
         // Diplomacy decisions run before military planning — the rest of the
         // AI turn (settlers, combat, movement, production) reads the freshly
         // adjusted state.
         aiDiplomacySystem.runTurn(e.nation.id);
         aiSystem.runTurn(e.nation.id);
         territoryRenderer.render();
-        if (autoplaySystem.isActive()) {
-          autoplaySystem.notifyTurnCompleted(e.nation);
-        } else {
-          turnManager.endCurrentTurn();
-        }
+        turnManager.endCurrentTurn();
       }
     });
 
@@ -2434,7 +2446,7 @@ export class GameScene extends Phaser.Scene {
       }
       resourceSystem.recalculateForNation(event.nationId);
       happinessSystem.recalculateNation(event.nationId);
-      if (event.nationId === humanNationId) {
+      if (event.nationId === humanNationId && !autoplaySystem.isActive()) {
         const technology = getTechnologyById(event.technologyId);
         if (technology) {
           hudLayer?.enqueueDiscovery(buildTechnologyDiscoveryPopupData(technology));
@@ -2449,7 +2461,7 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     });
     cultureSystem.onCompleted((event) => {
-      if (event.nationId === humanNationId) {
+      if (event.nationId === humanNationId && !autoplaySystem.isActive()) {
         hudLayer?.enqueueDiscovery(buildCultureDiscoveryPopupData(event.cultureNode));
       }
       hudLayer?.refresh();
