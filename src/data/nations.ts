@@ -20,6 +20,8 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_china', name: 'China', color: '#d64541', secondaryColor: '#f0c46b' },
   { id: 'nation_south_america', name: 'South America', color: '#f2994a', secondaryColor: '#4d7c59' },
   { id: 'nation_mali_empire', name: 'Mali Empire', color: '#b7950b', secondaryColor: '#5b4b2a' },
+  { id: 'nation_mongolia', name: 'Mongolia', color: '#c49a2c', secondaryColor: '#3a2a14' },
+  { id: 'nation_japan', name: 'Japan', color: '#ffffff', secondaryColor: '#bc002d' },
 ];
 
 export function getNationDefinitionById(nationId: string): NationDefinition | undefined {

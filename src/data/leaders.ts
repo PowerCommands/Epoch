@@ -245,6 +245,40 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       peacePreference: 70,
     },
   },
+  {
+    id: 'leader_genghis-khan',
+    name: 'Genghis Khan',
+    nationId: 'nation_mongolia',
+    title: 'Great Khan of the Mongols',
+    image: `${LEADER_IMAGE_BASE}/genghis-khan.png`,
+    description: 'A relentless conqueror whose horse-borne armies carve empires from the steppe.',
+    aiPersonality: {
+      aggressionBias: 18,
+      expansionBias: 18,
+      economyBias: 0,
+      cultureBias: -5,
+      diplomacyBias: -10,
+      warTolerance: 85,
+      peacePreference: 20,
+    },
+  },
+  {
+    id: 'leader_oda-nobunaga',
+    name: 'Oda Nobunaga',
+    nationId: 'nation_japan',
+    title: 'Daimyo of Owari',
+    image: `${LEADER_IMAGE_BASE}/oda-nobunaga.png`,
+    description: 'A ruthless unifier of the islands, balancing martial prowess with disciplined defense.',
+    aiPersonality: {
+      aggressionBias: 15,
+      expansionBias: 8,
+      economyBias: 5,
+      cultureBias: 5,
+      diplomacyBias: -5,
+      warTolerance: 70,
+      peacePreference: 35,
+    },
+  },
 ];
 
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {

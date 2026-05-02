@@ -6,7 +6,22 @@ export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';
-export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'trade' | 'deals';
+export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'trade' | 'deals';
+
+/**
+ * One row in the Relations tab, from the selected leader's perspective.
+ * Numeric fields are null when the human player has not met the other
+ * nation, in which case the UI renders "?" instead of a number.
+ */
+export interface LeaderRelationRow {
+  nationId: string;
+  displayName: string;
+  isKnownToHuman: boolean;
+  trust: number | null;
+  affinity: number | null;
+  fear: number | null;
+  hostility: number | null;
+}
 export type RightSidebarLeaderDetailsTab = LeaderPanelTab;
 
 export interface RightSidebarTextRow {
@@ -40,11 +55,26 @@ export interface RightSidebarSeparatorRow {
   kind: 'separator';
 }
 
+export interface RelationsTableRowCells {
+  leader: string;
+  trust: string;
+  affinity: string;
+  fear: string;
+  hostility: string;
+}
+
+export interface RightSidebarRelationsTableRow {
+  kind: 'relationsTable';
+  header: RelationsTableRowCells;
+  rows: RelationsTableRowCells[];
+}
+
 export type RightSidebarRow =
   | RightSidebarTextRow
   | RightSidebarButtonRow
   | RightSidebarProgressRow
-  | RightSidebarSeparatorRow;
+  | RightSidebarSeparatorRow
+  | RightSidebarRelationsTableRow;
 
 export interface RightSidebarSection {
   title: string;

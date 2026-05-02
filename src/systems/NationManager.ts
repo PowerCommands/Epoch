@@ -109,7 +109,7 @@ export class NationManager {
         (cfg.secondaryColor ?? definition?.secondaryColor ?? cfg.color).replace('#', ''),
         16,
       );
-      manager.addNation(new Nation({
+      const nation = new Nation({
         id: cfg.id,
         name: cfg.name,
         color,
@@ -124,8 +124,19 @@ export class NationManager {
         unlockedCultureNodeIds: cfg.unlockedCultureNodeIds,
         currentCultureNodeId: cfg.currentCultureNodeId,
         cultureProgress: cfg.cultureProgress,
-      }));
+      });
+      manager.addNation(nation);
       if (!cfg.isHuman) {
+        if (!nation.aiGoals) {
+          nation.aiGoals = [
+            {
+              id: 'initial-expand',
+              type: 'expand',
+              priority: 0.5,
+              remainingTurns: 20,
+            },
+          ];
+        }
         NationManager.claimArea(
           mapData,
           cfg.id,

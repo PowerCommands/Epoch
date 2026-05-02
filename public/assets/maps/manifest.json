@@ -1,6 +1,11 @@
 {
   "maps": [
     {
+      "key": "map_asia",
+      "label": "Asia simple Map",
+      "file": "assets/maps/asiaScenario.json"
+    },
+    {
       "key": "map_europe",
       "label": "Europe 1400",
       "file": "assets/maps/europeScenario.json"

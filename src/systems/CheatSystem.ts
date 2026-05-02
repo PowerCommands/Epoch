@@ -1,3 +1,4 @@
+import type { AutoplaySystem } from './AutoplaySystem';
 import type { CityManager } from './CityManager';
 import type { CultureSystem } from './culture/CultureSystem';
 import type { ProductionSystem } from './ProductionSystem';
@@ -24,6 +25,7 @@ export interface GameContext {
   cityManager: CityManager;
   selectionManager: SelectionManager;
   unitManager: UnitManager;
+  autoplaySystem: AutoplaySystem;
   revealMapResourcesTemporarily: () => void;
 }
 
@@ -255,6 +257,35 @@ export class CheatSystem {
         if (args.length !== 0) return 'Usage: map reveal';
         context.revealMapResourcesTemporarily();
         return 'Map resources revealed until the next turn transition.';
+      },
+    });
+
+    this.register({
+      name: 'autoplay',
+      description: 'Run AI for ALL nations for N rounds. Usage: "autoplay <rounds>", "autoplay pause", "autoplay resume", or "autoplay stop".',
+      execute: (args, context) => {
+        const autoplay = context.autoplaySystem;
+        if (args.length === 1 && args[0] === 'stop') {
+          if (!autoplay.isActive()) return 'Autoplay is not running.';
+          autoplay.stop();
+          return 'Autoplay stopped.';
+        }
+        if (args.length === 1 && args[0] === 'pause') {
+          if (!autoplay.isRunning()) return 'Autoplay is not running.';
+          autoplay.pause();
+          return 'Autoplay paused.';
+        }
+        if (args.length === 1 && args[0] === 'resume') {
+          if (!autoplay.isPaused()) return 'Autoplay is not paused.';
+          autoplay.resume();
+          return 'Autoplay resumed.';
+        }
+        if (args.length !== 1) return 'Usage: autoplay <rounds> | pause | resume | stop';
+        const rounds = parseInteger(args[0]);
+        if (rounds === null || rounds <= 0) return 'Usage: autoplay <rounds> (positive integer)';
+        // Restarts cleanly if already active (start() handles the stop internally).
+        autoplay.start(rounds);
+        return `Autoplay started for ${rounds} round(s).`;
       },
     });
 

@@ -34,12 +34,20 @@ import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
 import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
+import { AIGoalSystem } from './ai/AIGoalSystem';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
 import {
   pickBestAIProductionCandidate,
   type AIProductionCandidate,
 } from './ai/AIProductionScoring';
+import {
+  applyGoalWeights,
+  getCandidateGoalCategory,
+  getProductionWeights,
+} from './ai/utils/AIProductionGoalWeights';
+import { getExpansionBias, hasGoalOfType } from './ai/utils/AIExpansionUtils';
+import { getMilitaryIntent } from './ai/utils/AIMilitaryUtils';
 import { scoreCombatTarget, type AICombatContext } from './ai/AICombatScoring';
 import {
   pickBestMovementCandidate,
@@ -162,6 +170,14 @@ const SCORE_HAPPINESS_BUILDING_LOW = SCORE_FOOD_BUILDING * 1.5;
 const LUXURY_VALUE_MULTIPLIER_LOW = 1.5;
 const LUXURY_VALUE_MULTIPLIER_CRITICAL = 2.0;
 
+function describeProducible(item: Producible): string {
+  switch (item.kind) {
+    case 'unit': return `unit:${item.unitType.name}`;
+    case 'building': return `building:${item.buildingType.name}`;
+    case 'wonder': return `wonder:${item.wonderType.name}`;
+  }
+}
+
 /**
  * AISystem kör grundläggande AI för icke-mänskliga nationer.
  *
@@ -183,6 +199,16 @@ export class AISystem {
   private readonly foundCitySystem: FoundCitySystem;
   private readonly mapData: MapData;
   private readonly strategySelector = new AIStrategySelector();
+  private readonly aiGoalSystem = new AIGoalSystem((nation) => {
+    const resources = this.nationManager.getResources(nation.id);
+    return {
+      cityCount: this.cityManager.getCitiesByOwner(nation.id).length,
+      gold: resources.gold,
+      goldPerTurn: resources.goldPerTurn,
+      isAtWar: this.isAtWarWithAnyone(nation.id),
+      happiness: this.happinessSystem?.getNetHappiness(nation.id) ?? 0,
+    };
+  });
 
   constructor(
     unitManager: UnitManager,
@@ -226,12 +252,29 @@ export class AISystem {
   runTurn(nationId: string): void {
     this.updateStrategyForNation(nationId);
     this.markVisibleTilesForNation(nationId);
+
+    const nation = this.nationManager.getNation(nationId);
+    if (nation) {
+      this.aiGoalSystem.update(nation);
+      console.log(
+        `[AI Goal Selected] ${nation.name}:`,
+        (nation.aiGoals ?? []).map((g) => `${g.type}(${g.priority.toFixed(2)})`).join(', '),
+      );
+    }
+
     this.runSettlers(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runProduction(nationId);
     this.runDiplomacyForNation(nationId);
     this.runTradeForNation(nationId);
+
+    if (nation?.aiGoals && nation.aiGoals.length > 0) {
+      console.log(
+        `[AI Goals] ${nation.name}:`,
+        nation.aiGoals.map((g) => `${g.type}(${g.remainingTurns})`).join(', '),
+      );
+    }
   }
 
   // ─── Exploration memory ──────────────────────────────────────────────────────
@@ -448,11 +491,15 @@ export class AISystem {
         continue; // settler consumed
       }
 
-      // Later settlers respect spacing from all existing cities.
+      // Later settlers respect spacing from all existing cities. With an
+      // active "expand" goal, the spacing requirement is relaxed deterministically
+      // so eager nations settle slightly closer together.
       if (this.foundCitySystem.canFound(settler)) {
         const allCities = this.cityManager.getAllCities();
         const minDist = this.minDistanceToCities(settler.tileX, settler.tileY, allCities);
-        if (minDist >= strategy.expansion.settlerMinCityDistance) {
+        const expansionBias = getExpansionBias(this.nationManager.getNation(nationId)?.aiGoals);
+        const effectiveMinDist = strategy.expansion.settlerMinCityDistance / expansionBias;
+        if (minDist >= effectiveMinDist) {
           this.foundCitySystem.foundCity(settler);
           continue; // settler consumed
         }
@@ -483,10 +530,20 @@ export class AISystem {
 
   private findFoundingSite(
     settler: Unit,
-    _nationId: string,
+    nationId: string,
     strategy: AIStrategy,
   ): { x: number; y: number } | null {
     const allCities = this.cityManager.getAllCities();
+    const nation = this.nationManager.getNation(nationId);
+    const goals = nation?.aiGoals;
+    const expansionBias = getExpansionBias(goals);
+    const effectiveMinCityDistance = strategy.expansion.settlerMinCityDistance / expansionBias;
+    const wantsResources = hasGoalOfType(goals, 'build_economy');
+    const wantsCoast = hasGoalOfType(goals, 'build_navy');
+    const hasExpandGoal = hasGoalOfType(goals, 'expand');
+
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    const capital = ownCities[0];
 
     let bestTile: { x: number; y: number } | null = null;
     let bestScore = -Infinity;
@@ -498,14 +555,18 @@ export class AISystem {
         if (this.cityManager.getCityAt(x, y) !== undefined) continue;
 
         const cityDist = this.minDistanceToCities(x, y, allCities);
-        if (cityDist < strategy.expansion.settlerMinCityDistance) continue;
+        if (cityDist < effectiveMinCityDistance) continue;
 
         const settlerDist = this.gridSystem.getDistance(
           { x: settler.tileX, y: settler.tileY },
           { x, y },
         );
-        const coastalBonus = this.computeCoastalSiteBonus({ x, y });
-        const score = coastalBonus - settlerDist;
+        const score = this.scoreFoundingTile(tile, settlerDist, capital, {
+          wantsResources,
+          wantsCoast,
+          hasExpandGoal,
+        });
+
         if (score > bestScore) {
           bestScore = score;
           bestTile = { x, y };
@@ -513,7 +574,52 @@ export class AISystem {
       }
     }
 
+    if (bestTile) {
+      const nationName = nation?.name ?? nationId;
+      console.log(
+        `[AI Expansion] ${nationName}: targeting tile (${bestTile.x}, ${bestTile.y})`,
+      );
+    }
+
     return bestTile;
+  }
+
+  private scoreFoundingTile(
+    tile: Tile,
+    settlerDist: number,
+    capital: City | undefined,
+    intents: { wantsResources: boolean; wantsCoast: boolean; hasExpandGoal: boolean },
+  ): number {
+    let score = this.computeCoastalSiteBonus({ x: tile.x, y: tile.y }) - settlerDist;
+
+    if (tile.resourceId !== undefined) score += 5;
+
+    let touchesCoast = false;
+    for (const adj of this.gridSystem.getAdjacentCoords({ x: tile.x, y: tile.y })) {
+      const adjTile = this.mapData.tiles[adj.y]?.[adj.x];
+      if (adjTile?.type === TileType.Coast) {
+        touchesCoast = true;
+        break;
+      }
+    }
+    if (touchesCoast) score += 2;
+
+    if (tile.type === TileType.Desert) score -= 2;
+    if (tile.type === TileType.Mountain) score -= 3;
+
+    if (capital) {
+      const capitalDist = this.gridSystem.getDistance(
+        { x: capital.tileX, y: capital.tileY },
+        { x: tile.x, y: tile.y },
+      );
+      score -= capitalDist * 0.2;
+    }
+
+    if (intents.hasExpandGoal) score += 2;
+    if (intents.wantsResources && tile.resourceId !== undefined) score += 3;
+    if (intents.wantsCoast && touchesCoast) score += 3;
+
+    return score;
   }
 
   private computeCoastalSiteBonus(coord: GridCoord): number {
@@ -573,13 +679,15 @@ export class AISystem {
       { includeCenter: false },
     );
 
+    const intent = getMilitaryIntent(this.nationManager.getNation(nationId)?.aiGoals);
+
     const scored: { x: number; y: number; score: number }[] = [];
     for (const tile of tiles) {
       const target = this.findEnemyTargetAt(tile.x, tile.y, nationId);
       if (!target) continue;
 
       const context = this.buildCombatContext(unit, target, nationId, tile.x, tile.y);
-      const score = scoreCombatTarget(context, strategy);
+      const score = scoreCombatTarget(context, strategy, intent);
       scored.push({ x: tile.x, y: tile.y, score });
     }
 
@@ -1378,7 +1486,7 @@ export class AISystem {
     for (const city of cities) {
       if (this.productionSystem.getProduction(city.id)) continue;
 
-      const choice = this.chooseCityProduction(
+      let choice = this.chooseCityProduction(
         city,
         nationId,
         plannedMilitaryCount,
@@ -1387,7 +1495,27 @@ export class AISystem {
         coastalCityCount,
         strategy,
       );
-      if (!choice) continue;
+
+      let usedFallback = false;
+      if (!choice) {
+        choice = this.pickFallbackProduction(city, nationId, strategy, plannedSettlerCount);
+        usedFallback = choice !== undefined;
+      }
+
+      if (!choice) {
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        console.warn(
+          `[AI Production] ${nationName}/${city.name}: no valid candidate (queue stays empty)`,
+        );
+        continue;
+      }
+
+      if (usedFallback) {
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        console.debug(
+          `[AI Production Fallback] ${nationName}/${city.name}: ${describeProducible(choice)}`,
+        );
+      }
 
       this.productionSystem.setProduction(city.id, choice);
       if (choice.kind === 'unit') {
@@ -1398,6 +1526,75 @@ export class AISystem {
         }
       }
     }
+  }
+
+  /**
+   * Deterministic fallback used when scoring yields no candidate (e.g. military
+   * cap reached and economy is comfortable). Walks a fixed priority ladder so
+   * AI cities never stay idle when something legal is buildable.
+   */
+  private pickFallbackProduction(
+    city: City,
+    nationId: string,
+    strategy: AIStrategy,
+    plannedSettlerCount: number,
+  ): Producible | undefined {
+    const buildings = this.cityManager.getBuildings(city.id);
+
+    // 1. Defender if no friendly combat unit at or adjacent to the city.
+    if (this.needsDefender(city, nationId)) {
+      const defender = this.pickAnyValidMilitaryForCity(city, nationId);
+      if (defender) return { kind: 'unit', unitType: defender };
+    }
+
+    // 2. Settler if the nation is still below its strategy's desired city count.
+    const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    if (
+      cityCount < strategy.expansion.desiredCityCount &&
+      plannedSettlerCount === 0 &&
+      this.canBuildUnit(nationId, SETTLER.id) &&
+      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ) {
+      return { kind: 'unit', unitType: SETTLER };
+    }
+
+    // 3-5. Core economy buildings (granary -> workshop -> market) if missing.
+    for (const buildingType of [GRANARY, WORKSHOP, MARKET]) {
+      if (!buildings.has(buildingType.id) && this.canBuildBuilding(nationId, buildingType.id)) {
+        return { kind: 'building', buildingType };
+      }
+    }
+
+    // 6-7. Warrior, then Archer if the city can actually build them.
+    for (const unitType of [WARRIOR, ARCHER]) {
+      if (
+        this.canBuildUnit(nationId, unitType.id) &&
+        canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, {
+          strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+        })
+      ) {
+        return { kind: 'unit', unitType };
+      }
+    }
+
+    // 8. Any valid producible military unit (cheapest first).
+    const anyMilitary = this.pickAnyValidMilitaryForCity(city, nationId);
+    if (anyMilitary) return { kind: 'unit', unitType: anyMilitary };
+
+    return undefined;
+  }
+
+  private pickAnyValidMilitaryForCity(city: City, nationId: string): UnitType | undefined {
+    const candidates = MILITARY_OPTIONS.filter((u) => (
+      this.canBuildUnit(nationId, u.id) &&
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ));
+    if (candidates.length === 0) return undefined;
+    return candidates.reduce((a, b) => (a.productionCost <= b.productionCost ? a : b));
   }
 
   private countMilitary(nationId: string): number {
@@ -1581,7 +1778,19 @@ export class AISystem {
       });
     }
 
-    return pickBestAIProductionCandidate(candidates, strategy)?.item;
+    const nation = this.nationManager.getNation(nationId);
+    const goalWeights = getProductionWeights(nation?.aiGoals);
+    const weightedCandidates = applyGoalWeights(candidates, goalWeights);
+    const best = pickBestAIProductionCandidate(weightedCandidates, strategy);
+    if (best) {
+      const nationName = nation?.name ?? nationId;
+      console.log(
+        `[AI Production] ${nationName}: chose ${getCandidateGoalCategory(best)} (weights:`,
+        goalWeights,
+        ')',
+      );
+    }
+    return best?.item;
   }
 
   private pickNavalUnitForCity(city: City, nationId: string): UnitType | undefined {

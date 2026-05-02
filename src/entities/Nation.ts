@@ -1,5 +1,6 @@
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
+import type { AIGoal } from '../types/ai/AIGoal';
 import type { AINationalAgendaId } from '../types/aiNationalAgenda';
 
 export interface NationConfig {
@@ -42,6 +43,7 @@ export class Nation {
   unlockedCultureNodeIds: string[];
   currentCultureNodeId?: string;
   cultureProgress: number;
+  aiGoals?: AIGoal[];
 
   constructor(config: NationConfig) {
     this.id = config.id;

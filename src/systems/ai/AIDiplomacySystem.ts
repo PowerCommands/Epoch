@@ -7,6 +7,11 @@ import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './AIMilitary
 import type { AIDiplomacyAction, AIDiplomacyDecisionReason } from '../../types/aiDiplomacy';
 import type { AILeaderPersonality } from '../../types/aiLeaderPersonality';
 import { getLeaderPersonalityByNationId } from '../../data/leaders';
+import {
+  getMilitaryIntent,
+  getNationPersonalityFactor,
+  type MilitaryIntent,
+} from './utils/AIMilitaryUtils';
 
 // AIDiplomacySystem v1:
 // Uses diplomatic attitude to trigger simple decisions.
@@ -41,10 +46,15 @@ export class AIDiplomacySystem {
     const self = this.nationManager.getNation(nationId);
     if (!self || self.isHuman) return; // human players control their own diplomacy
 
+    const intent = getMilitaryIntent(self.aiGoals);
+    console.log(
+      `[AI Military] ${self.name}: aggression=${intent.aggression.toFixed(2)} defense=${intent.defense.toFixed(2)}`,
+    );
+
     const currentTurn = this.turnManager.getCurrentRound();
     for (const other of this.nationManager.getAllNations()) {
       if (other.id === nationId) continue;
-      this.decideAgainst(nationId, other.id, currentTurn);
+      this.decideAgainst(nationId, other.id, currentTurn, intent);
     }
   }
 
@@ -53,7 +63,7 @@ export class AIDiplomacySystem {
    * peace → war → open-border adjustments, so an aggressive turn never both
    * declares war and fiddles with borders against the same nation.
    */
-  private decideAgainst(selfId: string, otherId: string, currentTurn: number): void {
+  private decideAgainst(selfId: string, otherId: string, currentTurn: number, intent: MilitaryIntent): void {
     const relation = this.diplomacyManager.getRelation(selfId, otherId);
     const attitude = this.evaluationSystem.evaluateAttitude(selfId, otherId);
     const comparison = this.militaryEvaluationSystem.compareMilitaryStrength(selfId, otherId);
@@ -96,8 +106,28 @@ export class AIDiplomacySystem {
       // Don't pick a fight we'll obviously lose, or while the enemy is
       // already threatening our cities.
       if (comparison === 'weaker' || threat === 'high') return;
-      const wantsWar = personality.warTolerance >= 50 || personality.aggressionBias > 0;
-      if (!wantsWar) return;
+      const personalityWantsWar = personality.warTolerance >= 50 || personality.aggressionBias > 0;
+
+      // Goal-driven war score augments — but never bypasses — the safety
+      // gates above. A nation with a prepare_war/expand goal can declare even
+      // when its personality alone would not, but only if the existing
+      // cooldowns and military checks already permit it.
+      let warScore = intent.aggression * 0.3;
+      if (comparison === 'stronger') warScore += 0.4;
+      else if (comparison === 'equal') warScore += 0.2;
+      if (threat === 'low' || threat === 'medium') warScore += 0.3;
+      const personalityFactor = getNationPersonalityFactor(selfId);
+      warScore *= 0.8 + personalityFactor * 0.4;
+
+      const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
+      const selfName = this.nationManager.getNation(selfId)?.name ?? selfId;
+      console.log(
+        `[AI War Decision] ${selfName} → ${targetName}: score=${warScore.toFixed(2)}`,
+      );
+
+      const goalWantsWar = warScore > 0.7;
+      if (!personalityWantsWar && !goalWantsWar) return;
+
       if (
         this.turnsSince(relation.lastWarDeclarationTurn, currentTurn) >= WAR_COOLDOWN &&
         this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) >= NO_IMMEDIATE_WAR_AFTER_PEACE

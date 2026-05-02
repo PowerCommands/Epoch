@@ -19,7 +19,10 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(echo \"---EXIT:$?---\")",
       "Bash([ -f \"public/assets/sprites/units/$u.png\" ])",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); print\\('scripts:', list\\(p.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")"
     ]
   }
 }

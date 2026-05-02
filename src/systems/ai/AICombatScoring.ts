@@ -2,6 +2,7 @@ import type { Unit } from '../../entities/Unit';
 import type { City } from '../../entities/City';
 import type { GridCoord } from '../../types/grid';
 import type { AIStrategy } from '../../types/aiStrategy';
+import type { MilitaryIntent } from './utils/AIMilitaryUtils';
 
 // Strategy-based scoring allows AI to prioritize targets differently
 // without changing core combat rules.
@@ -35,9 +36,13 @@ const NEAR_OWN_CITY_WEIGHT = 25;
 const RISK_TOLERANCE_WEIGHT = 30;
 const NEUTRAL_HEALTH_RATIO = 0.5;
 
+const GOAL_CITY_BIAS_WEIGHT = 8;
+const GOAL_DEFENSE_BIAS_WEIGHT = 10;
+
 export function scoreCombatTarget(
   context: AICombatContext,
   strategy: AIStrategy,
+  intent?: MilitaryIntent,
 ): number {
   if (!context.canAttack) return -Infinity;
 
@@ -57,6 +62,16 @@ export function scoreCombatTarget(
 
   // Strategic bias
   score += getStrategyBias(context, strategy);
+
+  // Goal-driven bias (additive layer; pure 1s when no goals are present).
+  if (intent) {
+    if (context.isTargetCity) {
+      score += GOAL_CITY_BIAS_WEIGHT * intent.expansionWar;
+    }
+    if (context.isNearOwnCity) {
+      score += GOAL_DEFENSE_BIAS_WEIGHT * intent.defense;
+    }
+  }
 
   return score;
 }

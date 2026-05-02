@@ -46,6 +46,15 @@
       "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png"
     },
     {
+      "nationId": "nation_japan",
+      "nationName": "Japan",
+      "color": "#ffffff",
+      "leaderId": "leader_oda-nobunaga",
+      "leaderName": "Oda Nobunaga",
+      "leaderTitle": "Daimyo of Owari",
+      "leaderImage": "/assets/sprites/leaders/oda-nobunaga.png"
+    },
+    {
       "nationId": "nation_lithuania",
       "nationName": "Lithuania",
       "color": "#c0392b",
@@ -62,6 +71,15 @@
       "leaderName": "Mansa Musa",
       "leaderTitle": "Emperor Mansa Musa",
       "leaderImage": "/assets/sprites/leaders/mansa-musa.png"
+    },
+    {
+      "nationId": "nation_mongolia",
+      "nationName": "Mongolia",
+      "color": "#c49a2c",
+      "leaderId": "leader_genghis-khan",
+      "leaderName": "Genghis Khan",
+      "leaderTitle": "Great Khan of the Mongols",
+      "leaderImage": "/assets/sprites/leaders/genghis-khan.png"
     },
     {
       "nationId": "nation_morocco_empire",

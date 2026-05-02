@@ -58,6 +58,8 @@ import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { CheatSystem } from '../systems/CheatSystem';
+import { AutoplaySystem } from '../systems/AutoplaySystem';
+import { AutoplayHud } from '../ui/hud/AutoplayHud';
 import { DiagnosticSystem } from '../systems/DiagnosticSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
 import { CityBannerRenderer } from '../systems/CityBannerRenderer';
@@ -65,6 +67,7 @@ import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOverlayRenderer';
 import { TimeSystem } from '../systems/TimeSystem';
+import { getEstimatedEraFromProgress } from '../data/eraTimeline';
 import { WonderSystem } from '../systems/WonderSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
@@ -952,6 +955,16 @@ export class GameScene extends Phaser.Scene {
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
+    const autoplaySystem = new AutoplaySystem(
+      nationManager,
+      turnManager,
+      this.cameraController,
+      tileMap,
+      combatSystem,
+      foundCitySystem,
+      eventLog,
+    );
+
     // Humans pick their own initial research via the HUD research panel.
     // AI nations keep the deterministic auto-pick so they never stall.
     const refreshPolicyDerivedState = (nationId: string): void => {
@@ -992,7 +1005,11 @@ export class GameScene extends Phaser.Scene {
         aiDiplomacySystem.runTurn(e.nation.id);
         aiSystem.runTurn(e.nation.id);
         territoryRenderer.render();
-        turnManager.endCurrentTurn();
+        if (autoplaySystem.isActive()) {
+          autoplaySystem.notifyTurnCompleted(e.nation);
+        } else {
+          turnManager.endCurrentTurn();
+        }
       }
     });
 
@@ -1618,7 +1635,15 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       cultureSystem,
       turnManager,
-      (turn) => this.timeSystem.getLabelForTurn(turn),
+      (turn) => {
+        const era = humanNationId
+          ? getEstimatedEraFromProgress({
+              researchedTechIds: nationManager.getNation(humanNationId)?.researchedTechIds ?? [],
+              unlockedCultureIds: cultureSystem.getUnlockedCultureNodes(humanNationId).map((node) => node.id),
+            })
+          : undefined;
+        return this.timeSystem.getLabelForTurn(turn, era);
+      },
       resourceAccessSystem,
       unitUpkeepSystem,
     );
@@ -2438,6 +2463,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     new CombatLog(this, combatSystem, nationManager);
+    new AutoplayHud(autoplaySystem);
     const cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
@@ -2450,6 +2476,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       selectionManager,
       unitManager,
+      autoplaySystem,
       revealMapResourcesTemporarily,
     }));
 

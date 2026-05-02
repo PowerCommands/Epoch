@@ -48,6 +48,14 @@ export class EventLogSystem {
     );
   }
 
+  /**
+   * Returns every entry regardless of human discovery state. Used by
+   * debug UIs (autoplay) that need to display omniscient activity.
+   */
+  getAllEntries(): EventLogEntry[] {
+    return [...this.entries];
+  }
+
   onChanged(cb: ChangedListener): void {
     this.listeners.push(cb);
   }

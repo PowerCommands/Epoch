@@ -39,6 +39,7 @@ import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
 import { getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
 import type {
+  LeaderRelationRow,
   RightSidebarContent,
   RightSidebarCityDetailsTab,
   RightSidebarDetailsState,
@@ -591,6 +592,8 @@ export class RightSidebarPanelDataProvider {
         return this.getLeaderCitiesContent(leader);
       case 'diplomacy':
         return this.getLeaderDiplomacyContent(leader);
+      case 'relations':
+        return this.getLeaderRelationsContent(leader);
       case 'trade':
         return this.getLeaderTradeContent(leader);
       case 'deals':
@@ -630,6 +633,70 @@ export class RightSidebarPanelDataProvider {
       title: 'Leader Details',
       sections: [this.getLeaderCitiesSection(leader.nationId)],
     };
+  }
+
+  /**
+   * Build one row per active nation other than `selectedNationId`, from the
+   * selected leader's perspective. Values come from DiplomacyManager.getRelation
+   * (currently symmetric, but we call it directionally so future asymmetric
+   * relations slot in here without UI changes). Rows for nations the human
+   * player has not met return null values; the UI renders these as "?".
+   */
+  getLeaderRelationRows(selectedNationId: string): LeaderRelationRow[] {
+    const rows: LeaderRelationRow[] = [];
+    for (const nation of this.nationManager.getAllNations()) {
+      if (nation.id === selectedNationId) continue;
+      const isKnownToHuman = this.isNationKnown(nation.id);
+      const leader = isKnownToHuman ? getLeaderByNationId(nation.id) : undefined;
+      const displayName = isKnownToHuman
+        ? (leader?.name ?? nation.name)
+        : 'Unknown leader';
+      if (!isKnownToHuman || !this.diplomacyManager) {
+        rows.push({
+          nationId: nation.id,
+          displayName,
+          isKnownToHuman,
+          trust: null,
+          affinity: null,
+          fear: null,
+          hostility: null,
+        });
+        continue;
+      }
+      const relation = this.diplomacyManager.getRelation(selectedNationId, nation.id);
+      rows.push({
+        nationId: nation.id,
+        displayName,
+        isKnownToHuman: true,
+        trust: Math.round(relation.trust),
+        affinity: Math.round(relation.affinity),
+        fear: Math.round(relation.fear),
+        hostility: Math.round(relation.hostility),
+      });
+    }
+    rows.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    return rows;
+  }
+
+  private getLeaderRelationsContent(leader: { nationId: string }): RightSidebarContent {
+    const rows = this.getLeaderRelationRows(leader.nationId);
+    const sectionRows: RightSidebarRow[] = [];
+    if (rows.length === 0) {
+      sectionRows.push(textRow('No other nations.', true));
+    } else {
+      sectionRows.push({
+        kind: 'relationsTable',
+        header: { leader: 'Leader', trust: 'Trust', affinity: 'Affinity', fear: 'Fear', hostility: 'Hostility' },
+        rows: rows.map((row) => ({
+          leader: row.displayName,
+          trust: formatRelationCell(row.trust),
+          affinity: formatRelationCell(row.affinity),
+          fear: formatRelationCell(row.fear),
+          hostility: formatRelationCell(row.hostility),
+        })),
+      });
+    }
+    return { title: 'Leader Details', sections: [{ title: 'Relations', rows: sectionRows }] };
   }
 
   private getLeaderDiplomacyContent(leader: { nationId: string }): RightSidebarContent {
@@ -1220,6 +1287,11 @@ export class RightSidebarPanelDataProvider {
 
 function textRow(text: string, muted = false, large = false, color?: number, spritePath?: string): RightSidebarRow {
   return { kind: 'text', text, muted, large, color, spritePath };
+}
+
+function formatRelationCell(value: number | null): string {
+  if (value === null) return '?';
+  return Math.max(0, value).toString();
 }
 
 function formatEraLabel(era: Era): string {

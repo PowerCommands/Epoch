@@ -20,6 +20,10 @@
       "/assets/sounds/nation_india/nation_india-theme-01.mp3",
       "/assets/sounds/nation_india/nation_india-theme-02.mp3"
     ],
+    "nation_japan": [
+      "/assets/sounds/nation_japan/nation_japan-theme-01.mp3",
+      "/assets/sounds/nation_japan/nation_japan-theme-02.mp3"
+    ],
     "nation_lithuania": [
       "/assets/sounds/nation_lithuania/nation_lithuania-theme-01.mp3",
       "/assets/sounds/nation_lithuania/nation_lithuania-theme-02.mp3"
@@ -27,6 +31,10 @@
     "nation_mali-empire": [
       "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
       "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"
+    ],
+    "nation_mongolia": [
+      "/assets/sounds/nation_mongolia/nation_mongolia-theme-01.mp3",
+      "/assets/sounds/nation_mongolia/nation_mongolia-theme-02.mp3"
     ],
     "nation_morocco_empire": [
       "/assets/sounds/nation_morocco_empire/nation_morocco_empire-theme-01.mp3",

@@ -9,6 +9,7 @@ import type {
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
+  RightSidebarRelationsTableRow,
   RightSidebarRow,
 } from './RightSidebarPanelTypes';
 
@@ -44,7 +45,7 @@ interface ContentButton {
 
 const DEPTH = 1200;
 const EDGE_MARGIN = 16;
-const PANEL_WIDTH = 560;
+const PANEL_WIDTH = 678;
 const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
 const PANEL_PADDING = 24;
@@ -108,6 +109,7 @@ const LEADER_DETAIL_TABS: Array<{
   { id: 'units', label: 'Units', accentColor: 0x6ec6ff },
   { id: 'cities', label: 'Cities', accentColor: 0x86efac },
   { id: 'diplomacy', label: 'Diplomacy', accentColor: 0xa7f3d0 },
+  { id: 'relations', label: 'Relations', accentColor: 0xf0a8c0 },
   { id: 'trade', label: 'Trade', accentColor: 0xf4d06f },
   { id: 'deals', label: 'Deals', accentColor: 0xc084fc },
 ];
@@ -679,7 +681,76 @@ export class RightSidebarPanel {
         line.setMask(this.contentMask);
         return y + 16;
       }
+      case 'relationsTable':
+        return this.addRelationsTableRow(row, y);
     }
+  }
+
+  private addRelationsTableRow(row: RightSidebarRelationsTableRow, y: number): number {
+    const numericColWidth = 70;
+    const numericCols = 4;
+    const leaderX = PANEL_PADDING;
+    // Right edges of numeric columns, ordered Trust, Affinity, Fear, Hostility.
+    const numericRightEdges: number[] = [];
+    for (let i = 0; i < numericCols; i++) {
+      numericRightEdges.push(PANEL_PADDING + CONTENT_WIDTH - (numericCols - 1 - i) * numericColWidth);
+    }
+    const leaderColWidth = numericRightEdges[0] - numericColWidth - leaderX;
+
+    const placeLeft = (text: Phaser.GameObjects.Text, x: number, ty: number): void => {
+      text.setOrigin(0, 0);
+      text.setPosition(x, ty);
+      text.setData('baseY', ty);
+    };
+    const placeRight = (text: Phaser.GameObjects.Text, rightX: number, ty: number): void => {
+      text.setOrigin(1, 0);
+      text.setPosition(rightX, ty);
+      text.setData('baseY', ty);
+    };
+
+    // Header.
+    const headerY = y;
+    const headerLeader = this.addContentText(row.header.leader, 14, '#a8b6c8', 'bold', leaderColWidth);
+    placeLeft(headerLeader, leaderX, headerY);
+    const headerCells = [row.header.trust, row.header.affinity, row.header.fear, row.header.hostility];
+    headerCells.forEach((cell, i) => {
+      const text = this.addContentText(cell, 14, '#a8b6c8', 'bold');
+      placeRight(text, numericRightEdges[i], headerY);
+    });
+    const headerHeight = headerLeader.height;
+
+    // Underline below header.
+    const underlineY = headerY + headerHeight + 4;
+    const underline = this.addOwned(new Phaser.GameObjects.Rectangle(
+      this.scene,
+      leaderX,
+      underlineY,
+      CONTENT_WIDTH,
+      1,
+      0x7f8b99,
+      0.32,
+    )).setOrigin(0, 0).setScrollFactor(0);
+    underline.setData('baseY', underlineY);
+    this.panelContainer.add(underline);
+    this.contentObjects.push(underline);
+    underline.setMask(this.contentMask);
+
+    let cursorY = underlineY + 6;
+    const rowVerticalPadding = 5;
+    for (const dataRow of row.rows) {
+      const leaderText = this.addContentText(dataRow.leader, 15, '#edf4ff', 'normal', leaderColWidth);
+      placeLeft(leaderText, leaderX, cursorY);
+      const valueCells = [dataRow.trust, dataRow.affinity, dataRow.fear, dataRow.hostility];
+      let maxCellHeight = leaderText.height;
+      valueCells.forEach((cell, i) => {
+        const text = this.addContentText(cell, 15, '#edf4ff', 'normal');
+        placeRight(text, numericRightEdges[i], cursorY);
+        if (text.height > maxCellHeight) maxCellHeight = text.height;
+      });
+      cursorY += maxCellHeight + rowVerticalPadding;
+    }
+
+    return cursorY + (ROW_GAP - rowVerticalPadding);
   }
 
   private addContentButton(row: RightSidebarButtonRow, y: number): number {
