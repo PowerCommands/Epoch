@@ -47,6 +47,7 @@ import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvalu
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
+import { AIExplorationSystem } from '../systems/ai/AIExplorationSystem';
 import { AIPolicySystem } from '../systems/ai/AIPolicySystem';
 import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
@@ -940,6 +941,16 @@ export class GameScene extends Phaser.Scene {
 
     // 18. AI-system för icke-mänskliga nationer
     const explorationMemorySystem = new ExplorationMemorySystem(gridSystem, mapData, cityManager);
+    const aiExplorationSystem = new AIExplorationSystem(
+      unitManager,
+      cityManager,
+      nationManager,
+      turnManager,
+      movementSystem,
+      pathfindingSystem,
+      mapData,
+      eventLog,
+    );
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
@@ -961,6 +972,7 @@ export class GameScene extends Phaser.Scene {
 
       aiDiplomacySystem.runTurn(nation.id);
       aiSystem.runTurn(nation.id);
+      aiExplorationSystem.runTurn(nation.id);
       territoryRenderer.render();
 
       hudLayer?.refresh();
@@ -1020,6 +1032,7 @@ export class GameScene extends Phaser.Scene {
         // adjusted state.
         aiDiplomacySystem.runTurn(e.nation.id);
         aiSystem.runTurn(e.nation.id);
+        aiExplorationSystem.runTurn(e.nation.id);
         territoryRenderer.render();
         turnManager.endCurrentTurn();
       }

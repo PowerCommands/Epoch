@@ -1,4 +1,5 @@
 import type {
+  AutoplayCompletedPayload,
   AutoplayLogEvent,
   AutoplayProgressEvent,
   AutoplayStartedEvent,
@@ -7,15 +8,14 @@ import type {
 
 const PANEL_WIDTH = 600;
 const PANEL_HEIGHT = 480;
-const MAX_LOG_LINES = 400;
 
 /**
  * AutoplayHud — debug overlay shown while AutoplaySystem is running or
  * paused. Pure HTML/CSS, mirrors the DiagnosticDialog pattern.
  *
  * Knows nothing about AI internals: subscribes to AutoplaySystem events
- * (started / progress / paused / resumed / stopped / log) and forwards
- * button clicks back to AutoplaySystem.pause / resume / stop.
+ * (started / progress / paused / resumed / stopped / completed / log) and
+ * forwards button clicks back to AutoplaySystem.
  */
 export class AutoplayHud {
   private readonly root: HTMLDivElement;
@@ -26,6 +26,7 @@ export class AutoplayHud {
   private readonly pauseButton: HTMLButtonElement;
   private readonly resumeButton: HTMLButtonElement;
   private readonly stopButton: HTMLButtonElement;
+  private readonly closeButton: HTMLButtonElement;
 
   private logLineCount = 0;
 
@@ -121,10 +122,15 @@ export class AutoplayHud {
     this.pauseButton = makeButton('Pause', '#f4d06f');
     this.resumeButton = makeButton('Resume', '#a7f3d0');
     this.stopButton = makeButton('Stop', '#f08a7e');
+    this.closeButton = makeButton('Close', '#a7f3d0');
     this.pauseButton.addEventListener('click', () => this.autoplay.pause());
     this.resumeButton.addEventListener('click', () => this.autoplay.resume());
     this.stopButton.addEventListener('click', () => this.autoplay.stop());
-    buttonRow.append(this.pauseButton, this.resumeButton, this.stopButton);
+    this.closeButton.addEventListener('click', () => {
+      this.autoplay.reset();
+      this.hide();
+    });
+    buttonRow.append(this.pauseButton, this.resumeButton, this.stopButton, this.closeButton);
 
     this.root.append(header, progressBlock, this.logBox, buttonRow);
     document.body.appendChild(this.root);
@@ -135,6 +141,7 @@ export class AutoplayHud {
     this.autoplay.onPaused(() => this.refreshButtons());
     this.autoplay.onResumed(() => this.refreshButtons());
     this.autoplay.onStopped(() => this.handleStopped());
+    this.autoplay.onCompleted((e) => this.handleCompleted(e));
   }
 
   shutdown(): void {
@@ -165,11 +172,16 @@ export class AutoplayHud {
     line.textContent = `[r${e.round}] ${e.message}`;
     this.logBox.append(line);
     this.logLineCount += 1;
-    while (this.logLineCount > MAX_LOG_LINES && this.logBox.firstChild) {
-      this.logBox.removeChild(this.logBox.firstChild);
-      this.logLineCount -= 1;
-    }
     this.logBox.scrollTop = this.logBox.scrollHeight;
+  }
+
+  private handleCompleted(e: AutoplayCompletedPayload): void {
+    this.progressText.textContent = `Autoplay completed (${e.totalRounds} / ${this.autoplay.getRequestedRounds()} rounds)`;
+    this.progressBarFill.style.width = '100%';
+    this.turnLabel.textContent = 'Complete';
+    this.show();
+    this.refreshButtons();
+    this.copyLogToClipboard();
   }
 
   private handleStopped(): void {
@@ -179,9 +191,14 @@ export class AutoplayHud {
   private refreshButtons(): void {
     const running = this.autoplay.isRunning();
     const paused = this.autoplay.isPaused();
+    const completed = this.autoplay.isCompleted();
     this.pauseButton.style.display = running ? '' : 'none';
     this.resumeButton.style.display = paused ? '' : 'none';
     this.stopButton.style.display = running || paused ? '' : 'none';
+    this.closeButton.style.display = completed ? '' : 'none';
+    this.pauseButton.disabled = completed;
+    this.resumeButton.disabled = completed;
+    this.stopButton.disabled = completed;
   }
 
   private show(): void {
@@ -190,6 +207,17 @@ export class AutoplayHud {
 
   private hide(): void {
     this.root.style.display = 'none';
+  }
+
+  private copyLogToClipboard(): void {
+    const fullLogText = this.logBox.innerText;
+    if (!navigator.clipboard?.writeText) {
+      console.warn('[AUTOPLAY] Clipboard API unavailable; log was not copied.');
+      return;
+    }
+    navigator.clipboard.writeText(fullLogText).catch((error) => {
+      console.warn('[AUTOPLAY] Clipboard copy failed; log was not copied.', error);
+    });
   }
 }
 

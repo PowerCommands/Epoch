@@ -45,7 +45,12 @@ export interface AutoplayStartedEvent {
   readonly requestedRounds: number;
 }
 
+export interface AutoplayCompletedPayload {
+  readonly totalRounds: number;
+}
+
 type StartedListener = (e: AutoplayStartedEvent) => void;
+type CompletedListener = (e: AutoplayCompletedPayload) => void;
 type ProgressListener = (e: AutoplayProgressEvent) => void;
 type PausedListener = () => void;
 type ResumedListener = () => void;
@@ -55,6 +60,7 @@ type LogListener = (e: AutoplayLogEvent) => void;
 export class AutoplaySystem {
   private active = false;
   private paused = false;
+  private completed = false;
   private requestedRounds = 0;
   private completedRounds = 0;
   private startRound = 0;
@@ -66,6 +72,7 @@ export class AutoplaySystem {
   private hooksInstalled = false;
 
   private readonly startedListeners: StartedListener[] = [];
+  private readonly completedListeners: CompletedListener[] = [];
   private readonly progressListeners: ProgressListener[] = [];
   private readonly pausedListeners: PausedListener[] = [];
   private readonly resumedListeners: ResumedListener[] = [];
@@ -101,6 +108,7 @@ export class AutoplaySystem {
 
     this.requestedRounds = Math.floor(rounds);
     this.completedRounds = 0;
+    this.completed = false;
     this.startRound = this.turnManager.getCurrentRound();
     this.lastSeenEventLogId = this.lastEventLogIdSnapshot();
 
@@ -156,19 +164,16 @@ export class AutoplaySystem {
   }
 
   stop(): void {
-    if (!this.active) return;
+    if (!this.active && !this.completed) return;
     this.active = false;
     this.paused = false;
+    this.completed = false;
     this.hasPendingResume = false;
     if (this.nextTurnTimer !== null) {
       clearTimeout(this.nextTurnTimer);
       this.nextTurnTimer = null;
     }
-    for (const [nationId, wasHuman] of this.originalIsHuman) {
-      const nation = this.nationManager.getNation(nationId);
-      if (nation) nation.isHuman = wasHuman;
-    }
-    this.originalIsHuman.clear();
+    this.restoreHumanFlags();
     console.log(`[AUTOPLAY] Stopped at round ${this.turnManager.getCurrentRound()}.`);
     for (const cb of this.stoppedListeners) {
       try {
@@ -182,9 +187,24 @@ export class AutoplaySystem {
   isRunning(): boolean { return this.active && !this.paused; }
   isPaused(): boolean { return this.active && this.paused; }
   isActive(): boolean { return this.active; }
+  isCompleted(): boolean { return this.completed; }
   getRequestedRounds(): number { return this.requestedRounds; }
   getCompletedRounds(): number { return this.completedRounds; }
   getRemainingRounds(): number { return Math.max(0, this.requestedRounds - this.completedRounds); }
+
+  reset(): void {
+    this.active = false;
+    this.paused = false;
+    this.completed = false;
+    this.completedRounds = 0;
+    this.requestedRounds = 0;
+    this.hasPendingResume = false;
+    if (this.nextTurnTimer !== null) {
+      clearTimeout(this.nextTurnTimer);
+      this.nextTurnTimer = null;
+    }
+    this.restoreHumanFlags();
+  }
 
   logDiagnostic(message: string): void {
     if (!this.active) return;
@@ -204,6 +224,7 @@ export class AutoplaySystem {
   // ─── Event subscriptions ───────────────────────────────────────────────────
 
   onStarted(cb: StartedListener): void { this.startedListeners.push(cb); }
+  onCompleted(cb: CompletedListener): void { this.completedListeners.push(cb); }
   onProgress(cb: ProgressListener): void { this.progressListeners.push(cb); }
   onPaused(cb: PausedListener): void { this.pausedListeners.push(cb); }
   onResumed(cb: ResumedListener): void { this.resumedListeners.push(cb); }
@@ -250,7 +271,7 @@ export class AutoplaySystem {
     this.safeEmitProgress();
 
     if (this.completedRounds >= this.requestedRounds) {
-      this.stop();
+      this.completeRun();
       return;
     }
 
@@ -270,7 +291,7 @@ export class AutoplaySystem {
       this.safeEmitProgress();
 
       if (this.completedRounds >= this.requestedRounds) {
-        this.stop();
+        this.completeRun();
         return;
       }
 
@@ -286,6 +307,31 @@ export class AutoplaySystem {
     this.completedRounds = e.round - this.startRound + 1;
     this.safeFlushEventLog();
     this.safeEmitProgress();
+  }
+
+  private completeRun(): void {
+    if (!this.active) return;
+    this.completed = true;
+    this.active = false;
+    this.paused = false;
+    this.hasPendingResume = false;
+    if (this.nextTurnTimer !== null) {
+      clearTimeout(this.nextTurnTimer);
+      this.nextTurnTimer = null;
+    }
+    this.restoreHumanFlags();
+
+    this.safeFlushEventLog();
+    this.safeEmitProgress();
+    this.emitCompleted();
+  }
+
+  private restoreHumanFlags(): void {
+    for (const [nationId, wasHuman] of this.originalIsHuman) {
+      const nation = this.nationManager.getNation(nationId);
+      if (nation) nation.isHuman = wasHuman;
+    }
+    this.originalIsHuman.clear();
   }
 
   private installEventHooksOnce(): void {
@@ -354,6 +400,17 @@ export class AutoplaySystem {
         cb(payload);
       } catch (error) {
         console.error('[AUTOPLAY] started listener failed', error);
+      }
+    }
+  }
+
+  private emitCompleted(): void {
+    const payload: AutoplayCompletedPayload = { totalRounds: this.completedRounds };
+    for (const cb of this.completedListeners) {
+      try {
+        cb(payload);
+      } catch (error) {
+        console.error('[AUTOPLAY] completed listener failed', error);
       }
     }
   }

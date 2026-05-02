@@ -98,6 +98,21 @@ export class ProductionSystem {
     this.notifyChanged(cityId);
   }
 
+  /** Add item to the front of the queue, making it the active production. */
+  enqueueFront(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
+    let queue = this.queues.get(cityId);
+    if (!queue) {
+      queue = [];
+      this.queues.set(cityId, queue);
+    }
+    queue.unshift({
+      item,
+      accumulated: 0,
+      placement: options.placement ? { ...options.placement } : undefined,
+    });
+    this.notifyChanged(cityId);
+  }
+
   /** Remove item at index. */
   removeFromQueue(cityId: string, index: number): void {
     const queue = this.queues.get(cityId);

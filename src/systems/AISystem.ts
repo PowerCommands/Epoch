@@ -5,7 +5,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET } from '../data/buildings';
 import { getNaturalResourceById } from '../data/naturalResources';
 import type { BuildingType } from '../entities/Building';
@@ -785,6 +785,7 @@ export class AISystem {
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
+      if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
       if (unit.unitType.isNaval) {
@@ -1477,6 +1478,8 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
+    this.ensureScoutProduction(nationId, cities);
+
     const strategy = this.getStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
@@ -1526,6 +1529,31 @@ export class AISystem {
         }
       }
     }
+  }
+
+  private ensureScoutProduction(nationId: string, cities: City[]): void {
+    if (cities.length === 0) return;
+    const hasScout = this.unitManager.getUnitsByOwner(nationId)
+      .some((unit) => unit.unitType.id === SCOUT.id);
+    if (hasScout || this.hasQueuedScout(nationId)) return;
+    if (!this.canBuildUnit(nationId, SCOUT.id)) return;
+
+    const city = cities.find((candidate) => (
+      canCityProduceUnit(candidate, SCOUT, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ));
+    if (!city) return;
+
+    this.productionSystem.enqueueFront(city.id, { kind: 'unit', unitType: SCOUT });
+    const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+    console.debug(`[AI Production] ${nationName}/${city.name}: prioritized Scout`);
+  }
+
+  private hasQueuedScout(nationId: string): boolean {
+    return this.cityManager.getCitiesByOwner(nationId)
+      .some((city) => this.productionSystem.getQueue(city.id)
+        .some((entry) => entry.item.kind === 'unit' && entry.item.unitType.id === SCOUT.id));
   }
 
   /**
