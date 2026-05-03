@@ -11,6 +11,7 @@ export type AIMovementDestinationKind =
   | 'frontline'
   | 'settlerEscort'
   | 'exploration'
+  | 'militaryInterest'
   | 'holdPosition';
 
 export interface AIMovementCandidate {
@@ -26,7 +27,7 @@ export interface AIMovementCandidate {
 }
 
 const KIND_BASE_SCORE_AGGRESSION_SCALED: Record<
-  Exclude<AIMovementDestinationKind, 'settlerEscort' | 'exploration' | 'holdPosition'>,
+  Exclude<AIMovementDestinationKind, 'settlerEscort' | 'exploration' | 'militaryInterest' | 'holdPosition'>,
   { weight: number; useInverse: boolean }
 > = {
   enemyCity: { weight: 80, useInverse: false },
@@ -37,6 +38,9 @@ const KIND_BASE_SCORE_AGGRESSION_SCALED: Record<
 
 const SETTLER_ESCORT_SCORE = 70;
 const EXPLORATION_SCORE = 40;
+// Sits below settlerEscort/ownCity so escort and defense always win when
+// applicable; well above holdPosition so units actually advance at peace.
+const MILITARY_INTEREST_SCORE = 30;
 const HOLD_POSITION_SCORE = 10;
 
 const NEAR_OWN_CITY_BIAS = 20;
@@ -70,6 +74,9 @@ export function scoreMovementCandidate(
     case 'exploration':
       score += EXPLORATION_SCORE;
       if (candidate.explorationScore !== undefined) score += candidate.explorationScore;
+      break;
+    case 'militaryInterest':
+      score += MILITARY_INTEREST_SCORE;
       break;
     case 'holdPosition':
       score += HOLD_POSITION_SCORE;

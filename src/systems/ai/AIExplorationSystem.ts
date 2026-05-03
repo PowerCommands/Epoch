@@ -53,6 +53,11 @@ const MAX_TARGET_RADIUS = 12;
 const RECENT_HISTORY_LIMIT = 10;
 const EDGE_DISTANCE = 2;
 const MIN_EDGE_DISTANCE = 3;
+// After this many turns of finding no valid frontier target, a scout stops
+// re-running expensive frontier scoring until the nation's known-tile set
+// grows past the snapshot below — the guard against the reject-loop.
+const FRONTIER_FAILURE_LIMIT = 10;
+const FRONTIER_KNOWLEDGE_GROWTH_RETRY = 5;
 
 const POI_PRIORITY: Record<PointOfInterestType, number> = {
   foreignCity: 4,
@@ -66,6 +71,11 @@ export class AIExplorationSystem {
   private readonly explorationTargets = new Map<UnitId, TileIndex | null>();
   private readonly recentPositions = new Map<UnitId, TileIndex[]>();
   private readonly visitedTargetsByUnit = new Map<UnitId, Set<TileIndex>>();
+  private readonly frontierFailuresByUnit = new Map<UnitId, number>();
+  // Snapshot of nation knownTiles size when a scout was frontier-blocked.
+  // Frontier scoring is skipped until the nation has explored materially more.
+  private readonly frontierBlockKnowledgeSnapshot = new Map<UnitId, number>();
+  private readonly frontierFallbackLogged = new Set<UnitId>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -170,34 +180,131 @@ export class AIExplorationSystem {
   }
 
   private selectTarget(unit: Unit): PointOfInterest | null {
+    if (this.isFrontierSelectionBlocked(unit)) return null;
+
     const visitedTargets = this.getVisitedTargets(unit.id);
-    const candidates = this.collectPointsOfInterest(unit.ownerId, true)
+    // Tiles other scouts of the same nation are already heading toward.
+    // Derived live from explorationTargets so there is no extra state to sync.
+    const peerTargets = this.getPeerScoutTargets(unit);
+
+    const allPois = this.collectPointsOfInterest(unit.ownerId, true);
+    const byPriority = (a: PointOfInterest, b: PointOfInterest): number => (
+      b.priority - a.priority
+      || this.manhattan(unit.tileX, unit.tileY, a.tile.x, a.tile.y)
+        - this.manhattan(unit.tileX, unit.tileY, b.tile.x, b.tile.y)
+      || a.tile.y - b.tile.y
+      || a.tile.x - b.tile.x
+    );
+
+    // Prefer tiles no other scout has claimed; fall back to allowing overlap
+    // only when no alternative exists.
+    let primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, true).sort(byPriority);
+    if (primary.length === 0) {
+      primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, false).sort(byPriority);
+    }
+    if (primary.length > 0) {
+      this.clearFrontierFailure(unit.id);
+      return primary[0];
+    }
+
+    const allPoisIncEdges = this.collectPointsOfInterest(unit.ownerId, false);
+    const byDistance = (a: PointOfInterest, b: PointOfInterest): number => (
+      this.manhattan(unit.tileX, unit.tileY, a.tile.x, a.tile.y)
+        - this.manhattan(unit.tileX, unit.tileY, b.tile.x, b.tile.y)
+      || a.tile.y - b.tile.y
+      || a.tile.x - b.tile.x
+    );
+    const edgeRadius = Math.floor(MAX_TARGET_RADIUS / 2);
+    let edges = this.filterPois(
+      unit,
+      allPoisIncEdges.filter((poi) => poi.isEdgeFrontier),
+      visitedTargets,
+      peerTargets,
+      edgeRadius,
+      true,
+    ).sort(byDistance);
+    if (edges.length === 0) {
+      edges = this.filterPois(
+        unit,
+        allPoisIncEdges.filter((poi) => poi.isEdgeFrontier),
+        visitedTargets,
+        peerTargets,
+        edgeRadius,
+        false,
+      ).sort(byDistance);
+    }
+    if (edges.length > 0) {
+      this.clearFrontierFailure(unit.id);
+      return edges[0];
+    }
+
+    this.recordFrontierFailure(unit);
+    return null;
+  }
+
+  private filterPois(
+    unit: Unit,
+    pois: PointOfInterest[],
+    visitedTargets: Set<TileIndex>,
+    peerTargets: Set<TileIndex>,
+    radius: number,
+    excludePeerTargets: boolean,
+  ): PointOfInterest[] {
+    return pois
       .filter((poi) => !visitedTargets.has(poi.tileIndex))
-      .filter((poi) => this.manhattan(unit.tileX, unit.tileY, poi.tile.x, poi.tile.y) <= MAX_TARGET_RADIUS)
-      .filter((poi) => this.findPathTowardTarget(unit, poi.tileIndex) !== null)
-      .sort((a, b) => (
-        b.priority - a.priority
-        || this.manhattan(unit.tileX, unit.tileY, a.tile.x, a.tile.y)
-          - this.manhattan(unit.tileX, unit.tileY, b.tile.x, b.tile.y)
-        || a.tile.y - b.tile.y
-        || a.tile.x - b.tile.x
-      ));
+      .filter((poi) => !excludePeerTargets || !peerTargets.has(poi.tileIndex))
+      .filter((poi) => this.manhattan(unit.tileX, unit.tileY, poi.tile.x, poi.tile.y) <= radius)
+      .filter((poi) => this.findPathTowardTarget(unit, poi.tileIndex) !== null);
+  }
 
-    if (candidates.length > 0) return candidates[0];
+  private getPeerScoutTargets(unit: Unit): Set<TileIndex> {
+    const claimed = new Set<TileIndex>();
+    for (const peer of this.unitManager.getUnitsByOwner(unit.ownerId)) {
+      if (peer.id === unit.id) continue;
+      if (peer.unitType.id !== SCOUT.id) continue;
+      const target = this.explorationTargets.get(peer.id);
+      if (target !== undefined && target !== null) claimed.add(target);
+    }
+    return claimed;
+  }
 
-    const edgeFrontiers = this.collectPointsOfInterest(unit.ownerId, false)
-      .filter((poi) => poi.isEdgeFrontier)
-      .filter((poi) => !visitedTargets.has(poi.tileIndex))
-      .filter((poi) => this.manhattan(unit.tileX, unit.tileY, poi.tile.x, poi.tile.y) <= Math.floor(MAX_TARGET_RADIUS / 2))
-      .filter((poi) => this.findPathTowardTarget(unit, poi.tileIndex) !== null)
-      .sort((a, b) => (
-        this.manhattan(unit.tileX, unit.tileY, a.tile.x, a.tile.y)
-          - this.manhattan(unit.tileX, unit.tileY, b.tile.x, b.tile.y)
-        || a.tile.y - b.tile.y
-        || a.tile.x - b.tile.x
-      ));
+  private isFrontierSelectionBlocked(unit: Unit): boolean {
+    const snapshot = this.frontierBlockKnowledgeSnapshot.get(unit.id);
+    if (snapshot === undefined) return false;
+    const knownNow = this.getKnowledge(unit.ownerId).knownTiles.size;
+    if (knownNow >= snapshot + FRONTIER_KNOWLEDGE_GROWTH_RETRY) {
+      // Nation has explored materially more — let the scout retry frontier
+      // scoring with the fresh knowledge.
+      this.frontierBlockKnowledgeSnapshot.delete(unit.id);
+      this.frontierFailuresByUnit.delete(unit.id);
+      return false;
+    }
+    return true;
+  }
 
-    return edgeFrontiers[0] ?? null;
+  private recordFrontierFailure(unit: Unit): void {
+    const failures = (this.frontierFailuresByUnit.get(unit.id) ?? 0) + 1;
+    this.frontierFailuresByUnit.set(unit.id, failures);
+    if (failures < FRONTIER_FAILURE_LIMIT) return;
+    if (this.frontierBlockKnowledgeSnapshot.has(unit.id)) return;
+
+    this.frontierBlockKnowledgeSnapshot.set(
+      unit.id,
+      this.getKnowledge(unit.ownerId).knownTiles.size,
+    );
+    if (!this.frontierFallbackLogged.has(unit.id)) {
+      this.frontierFallbackLogged.add(unit.id);
+      this.log(
+        unit.ownerId,
+        `${this.getNationName(unit.ownerId)} fallback to local exploration (no valid frontier)`,
+      );
+    }
+  }
+
+  private clearFrontierFailure(unitId: UnitId): void {
+    this.frontierFailuresByUnit.delete(unitId);
+    this.frontierBlockKnowledgeSnapshot.delete(unitId);
+    this.frontierFallbackLogged.delete(unitId);
   }
 
   private collectPointsOfInterest(nationId: string, rejectEdgeFrontiers: boolean): PointOfInterest[] {
@@ -227,7 +334,8 @@ export class AIExplorationSystem {
       if (tile === undefined) continue;
       const isEdgeFrontier = !this.isWithinSafeExplorationBounds(tile);
       if (isEdgeFrontier && rejectEdgeFrontiers) {
-        this.log(nationId, `${this.getNationName(nationId)} rejected edge frontier at (${tile.x},${tile.y})`);
+        // Silently skip: when every frontier is an edge tile, the previous
+        // per-tile log spammed every turn. Failure handling lives in selectTarget.
         continue;
       }
       addPoi('frontier', tileIndex, isEdgeFrontier);

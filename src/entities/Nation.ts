@@ -36,6 +36,8 @@ export class Nation {
   aiStrategyId: string;
   aiStrategyStartedTurn: number;
   previousAiStrategyId?: string;
+  aiPrimaryStrategyId?: string;
+  aiSecondaryStrategyId?: string;
   aiNationalAgendaId: AINationalAgendaId;
   researchedTechIds: string[];
   currentResearchTechId?: string;

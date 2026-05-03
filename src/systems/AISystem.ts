@@ -36,6 +36,10 @@ import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacit
 import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
 import { AIGoalSystem } from './ai/AIGoalSystem';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
+import {
+  AIStrategyEvaluationSystem,
+  getStrategyDisplayName,
+} from './ai/AIStrategyEvaluationSystem';
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
 import {
   pickBestAIProductionCandidate,
@@ -60,6 +64,13 @@ import { getLeaderPersonalityByNationId } from '../data/leaders';
 // so baseline behavior matches the pre-refactor profile.
 const FRIENDLY_SUPPORT_DISTANCE = 2;
 const NEAR_OWN_CITY_DISTANCE = 3;
+// Distance from a discovered enemy city where at-peace military units stage.
+// Tight enough to form a visible border presence, loose enough to stay one
+// step outside a 1-radius city's owned tiles.
+const MILITARY_STAGING_DISTANCE = 2;
+// Maximum extra outward steps when the geometric staging tile lands inside
+// enemy territory or off-map. Keeps the search bounded and deterministic.
+const MILITARY_STAGING_OUTWARD_RETRY = 3;
 
 // Structural type guard — Unit/City are imported as types, so `instanceof`
 // is unavailable. `unitType` is unique to Unit.
@@ -89,6 +100,11 @@ interface NavalPatrolContext {
   readonly enemyTargets: EnemyCoastalTargets;
   readonly claimedNavalTiles: Set<string>;
   readonly ownZoneHasEnemy: boolean;
+}
+
+interface MilitaryStagingTarget {
+  readonly enemyCity: GridCoord;   // discovered enemy capital/city we're staging against
+  readonly stagingTile: GridCoord; // shared rally tile, MILITARY_STAGING_DISTANCE from enemyCity
 }
 
 function maxThreatLevel(a: ThreatLevel, b: ThreatLevel): ThreatLevel {
@@ -199,6 +215,27 @@ export class AISystem {
   private readonly foundCitySystem: FoundCitySystem;
   private readonly mapData: MapData;
   private readonly strategySelector = new AIStrategySelector();
+  private readonly strategyEvaluationSystem = new AIStrategyEvaluationSystem();
+  // Pass-1 evaluation rollout: only Mongolia logs the result for now.
+  // Add more ids as the evaluation pass is validated against other leaders.
+  private readonly strategyEvaluationNationIds = new Set<string>(['nation_mongolia']);
+
+  // Per-nation military staging targets: one shared staging tile per met
+  // enemy nation. All this nation's military units gather toward the SAME
+  // staging tile per enemy so they form a visible border presence rather
+  // than spreading. Cached per round so collectMovementChoices doesn't
+  // recompute it for every unit.
+  private militaryStagingCacheRound = -1;
+  private readonly militaryStagingByNation = new Map<string, Map<string, MilitaryStagingTarget>>();
+  // Per-nation set of "enemyId@x,y" descriptors already logged, so the
+  // "staging near enemy city" line is emitted once per (nation, target) pair.
+  private readonly militaryStagingLoggedKeys = new Map<string, Set<string>>();
+  // Per-nation last round we logged the "moving to staging position" line,
+  // so the per-unit movement logs collapse to one per nation per round.
+  private readonly militaryAdvanceLoggedRound = new Map<string, number>();
+  // Per-nation last round we logged the "holding position at staging
+  // distance" line, also one-per-round.
+  private readonly militaryHoldingLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -251,6 +288,7 @@ export class AISystem {
 
   runTurn(nationId: string): void {
     this.updateStrategyForNation(nationId);
+    this.evaluateStrategyForNation(nationId);
     this.markVisibleTilesForNation(nationId);
 
     const nation = this.nationManager.getNation(nationId);
@@ -427,6 +465,28 @@ export class AISystem {
     }
   }
 
+  // Pass-1 strategy evaluation: scores primary + secondary slots from the
+  // leader personality and stores them on the nation. Does not yet drive
+  // production, diplomacy, research, culture, or military behavior.
+  // Restricted to a small allowlist (currently Mongolia only) so we can
+  // validate the scoring against intended leader character before rolling out.
+  private evaluateStrategyForNation(nationId: string): void {
+    if (!this.strategyEvaluationNationIds.has(nationId)) return;
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation || nation.isHuman) return;
+
+    const result = this.strategyEvaluationSystem.evaluate({
+      leaderPersonality: getLeaderPersonalityByNationId(nationId),
+    });
+    nation.aiPrimaryStrategyId = result.primaryStrategyId;
+    nation.aiSecondaryStrategyId = result.secondaryStrategyId;
+
+    const round = this.turnManager.getCurrentRound();
+    const primary = getStrategyDisplayName(result.primaryStrategyId);
+    const secondary = getStrategyDisplayName(result.secondaryStrategyId);
+    console.log(`[r${round}] ${nation.name} AI strategy: ${primary} / ${secondary}`);
+  }
+
   private buildStrategyContext(nationId: string): AIStrategyContext {
     const nation = this.nationManager.getNation(nationId);
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
@@ -470,6 +530,138 @@ export class AISystem {
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') return true;
     }
     return false;
+  }
+
+  // ─── Military staging targets ────────────────────────────────────────────────
+  // For each met enemy nation, pick one enemy city to stage against and one
+  // shared rally tile MILITARY_STAGING_DISTANCE outside it. All this nation's
+  // military units use the SAME staging tile per enemy so they form a visible
+  // border presence rather than spreading. Combat still requires a war
+  // declaration; the staging tile is placed outside enemy territory, so units
+  // do not cross enemy borders while at peace.
+
+  private getMilitaryStagingByEnemy(nationId: string): Map<string, MilitaryStagingTarget> {
+    const round = this.turnManager.getCurrentRound();
+    if (round !== this.militaryStagingCacheRound) {
+      this.militaryStagingByNation.clear();
+      this.militaryStagingCacheRound = round;
+    }
+    const cached = this.militaryStagingByNation.get(nationId);
+    if (cached) return cached;
+
+    const result = new Map<string, MilitaryStagingTarget>();
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    if (ownCities.length === 0) {
+      this.militaryStagingByNation.set(nationId, result);
+      return result;
+    }
+
+    // First own city is a stable anchor across the run, so the chosen enemy
+    // city per nation and the line we lerp along are both deterministic.
+    const anchor: GridCoord = { x: ownCities[0].tileX, y: ownCities[0].tileY };
+
+    for (const enemy of this.nationManager.getAllNations()) {
+      if (enemy.id === nationId) continue;
+      if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, enemy.id)) continue;
+
+      const enemyCities = this.cityManager.getCitiesByOwner(enemy.id);
+      if (enemyCities.length === 0) continue;
+
+      let bestCity = enemyCities[0];
+      let bestDist = this.gridSystem.getDistance(anchor, { x: bestCity.tileX, y: bestCity.tileY });
+      for (const city of enemyCities) {
+        const dist = this.gridSystem.getDistance(anchor, { x: city.tileX, y: city.tileY });
+        if (dist < bestDist) {
+          bestCity = city;
+          bestDist = dist;
+        }
+      }
+      const enemyCityCoord: GridCoord = { x: bestCity.tileX, y: bestCity.tileY };
+
+      const enemyTerritory = this.collectEnemyTerritory(enemy.id);
+      const stagingTile = this.findStagingTile(enemyCityCoord, anchor, enemyTerritory);
+      if (!stagingTile) continue;
+
+      result.set(enemy.id, { enemyCity: enemyCityCoord, stagingTile });
+      this.logStagingTargetOnce(nationId, enemy.id, enemyCityCoord);
+    }
+
+    this.militaryStagingByNation.set(nationId, result);
+    return result;
+  }
+
+  // Walks the line from enemy city back toward the anchor and returns the
+  // first tile that is on-map and outside enemy territory, starting at
+  // MILITARY_STAGING_DISTANCE and stepping outward up to the retry cap.
+  private findStagingTile(
+    enemyCity: GridCoord,
+    anchor: GridCoord,
+    enemyTerritory: Set<string>,
+  ): GridCoord | null {
+    const dist = this.gridSystem.getDistance(enemyCity, anchor);
+    if (dist === 0) return null;
+
+    for (let extra = 0; extra <= MILITARY_STAGING_OUTWARD_RETRY; extra++) {
+      const d = MILITARY_STAGING_DISTANCE + extra;
+      if (d > dist) return null;
+      const t = d / dist;
+      const sx = Math.round(enemyCity.x + (anchor.x - enemyCity.x) * t);
+      const sy = Math.round(enemyCity.y + (anchor.y - enemyCity.y) * t);
+      if (this.mapData.tiles[sy]?.[sx] === undefined) continue;
+      if (enemyTerritory.has(`${sx},${sy}`)) continue;
+      return { x: sx, y: sy };
+    }
+    return null;
+  }
+
+  private collectEnemyTerritory(enemyNationId: string): Set<string> {
+    const set = new Set<string>();
+    for (const city of this.cityManager.getCitiesByOwner(enemyNationId)) {
+      for (const c of city.ownedTileCoords) set.add(`${c.x},${c.y}`);
+    }
+    return set;
+  }
+
+  private isWithinAnyStagingDistance(unitPos: GridCoord, nationId: string): boolean {
+    const staging = this.getMilitaryStagingByEnemy(nationId);
+    for (const entry of staging.values()) {
+      if (this.gridSystem.getDistance(unitPos, entry.enemyCity) <= MILITARY_STAGING_DISTANCE) return true;
+    }
+    return false;
+  }
+
+  private logStagingTargetOnce(
+    nationId: string,
+    enemyNationId: string,
+    enemyCity: GridCoord,
+  ): void {
+    let logged = this.militaryStagingLoggedKeys.get(nationId);
+    if (!logged) {
+      logged = new Set<string>();
+      this.militaryStagingLoggedKeys.set(nationId, logged);
+    }
+    const key = `${enemyNationId}@${enemyCity.x},${enemyCity.y}`;
+    if (logged.has(key)) return;
+    logged.add(key);
+    const round = this.turnManager.getCurrentRound();
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    console.log(`[r${round}] ${name} staging near enemy city at (${enemyCity.x},${enemyCity.y})`);
+  }
+
+  private logStagingAdvanceOncePerRound(nationId: string): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.militaryAdvanceLoggedRound.get(nationId) === round) return;
+    this.militaryAdvanceLoggedRound.set(nationId, round);
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    console.log(`[r${round}] ${name} unit moving to staging position`);
+  }
+
+  private logStagingHoldingOncePerRound(nationId: string): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.militaryHoldingLoggedRound.get(nationId) === round) return;
+    this.militaryHoldingLoggedRound.set(nationId, round);
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    console.log(`[r${round}] ${name} unit holding position at staging distance`);
   }
 
   // ─── Settlers ────────────────────────────────────────────────────────────────
@@ -1231,9 +1423,27 @@ export class AISystem {
     if (!best) return;
 
     const chosen = choices.find((c) => c.candidate === best);
-    if (!chosen || !chosen.path) return; // holdPosition or unreachable
+    if (!chosen) return;
+
+    // A combat unit that ended on holdPosition while inside the staging ring
+    // of any known enemy is the "army holding the line" case — log it once
+    // per nation per round so the ongoing presence is visible.
+    if (
+      chosen.candidate.kind === 'holdPosition'
+      && unit.unitType.baseStrength > 0
+      && !this.isAtWarWithAnyone(nationId)
+      && this.isWithinAnyStagingDistance({ x: unit.tileX, y: unit.tileY }, nationId)
+    ) {
+      this.logStagingHoldingOncePerRound(nationId);
+    }
+
+    if (!chosen.path) return; // holdPosition or unreachable: nothing to walk
 
     this.movementSystem.moveAlongPath(unit, chosen.path);
+
+    if (chosen.candidate.kind === 'militaryInterest') {
+      this.logStagingAdvanceOncePerRound(nationId);
+    }
   }
 
   private collectMovementChoices(
@@ -1327,6 +1537,35 @@ export class AISystem {
       }
     }
 
+    // Military staging — push combat units toward a shared staging tile
+    // outside each known enemy city. All units of this nation rally to the
+    // SAME staging tile per enemy, forming a visible border presence rather
+    // than spreading. Suppressed when at war so the existing enemyCity /
+    // enemyUnit candidates dominate. Units already inside staging distance
+    // do not get a candidate — holdPosition wins, and the move loop logs
+    // the hold once per round.
+    if (
+      unit.unitType.baseStrength > 0
+      && !this.isAtWarWithAnyone(nationId)
+    ) {
+      for (const entry of this.getMilitaryStagingByEnemy(nationId).values()) {
+        if (this.gridSystem.getDistance(unitPos, entry.enemyCity) <= MILITARY_STAGING_DISTANCE) continue;
+        if (entry.stagingTile.x === unitPos.x && entry.stagingTile.y === unitPos.y) continue;
+        const path = this.findApproachPath(unit, entry.stagingTile);
+        const distance = this.gridSystem.getDistance(unitPos, entry.stagingTile);
+        choices.push({
+          candidate: this.buildMovementCandidate(
+            entry.stagingTile,
+            'militaryInterest',
+            distance,
+            path,
+            nationId,
+          ),
+          path,
+        });
+      }
+    }
+
     // Hold position is always a valid fallback so the unit picks something.
     choices.push({
       candidate: this.buildMovementCandidate(
@@ -1339,45 +1578,10 @@ export class AISystem {
       path: null,
     });
 
-    // Exploration — pick the most "curious" tile in range so idle units
-    // wander toward unseen territory instead of holding position.
-    // Strategy weight 0 disables this entirely; weight 2 doubles its appeal.
-    const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
-    if (this.explorationMemorySystem && weights.exploration > 0) {
-      const currentTurn = this.turnManager.getCurrentRound();
-      const tilesInRange = this.gridSystem.getTilesInRange(
-        unitPos,
-        engageDistance,
-        this.mapData,
-        { includeCenter: false },
-      );
-      let bestTile: Tile | null = null;
-      let bestScore = 0;
-      for (const tile of tilesInRange) {
-        if (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Ice) continue;
-        const score = this.explorationMemorySystem.getExplorationScore(nationId, tile, currentTurn);
-        if (score > bestScore) {
-          bestScore = score;
-          bestTile = tile;
-        }
-      }
-      if (bestTile) {
-        const dest = { x: bestTile.x, y: bestTile.y };
-        const path = this.findApproachPath(unit, dest);
-        const distance = this.gridSystem.getDistance(unitPos, dest);
-        choices.push({
-          candidate: this.buildMovementCandidate(
-            dest,
-            'exploration',
-            distance,
-            path,
-            nationId,
-            bestScore * weights.exploration,
-          ),
-          path,
-        });
-      }
-    }
+    // Military units no longer pick "exploration" as a destination.
+    // Exploration is the scouts' job (see AIExplorationSystem); armies should
+    // act on already-discovered information rather than wander into unseen
+    // territory looking for enemies.
 
     // TODO: apply weights.aggression / weights.defense to combat candidates
     // once those weights are validated to not regress current combat balance.
@@ -1531,13 +1735,20 @@ export class AISystem {
     }
   }
 
+  // Each AI nation should keep at least this many active recon units in the
+  // early game so exploration is done by scouts, not military units.
+  private static readonly DESIRED_SCOUT_COUNT = 2;
+
   private ensureScoutProduction(nationId: string, cities: City[]): void {
     if (cities.length === 0) return;
-    const hasScout = this.unitManager.getUnitsByOwner(nationId)
-      .some((unit) => unit.unitType.id === SCOUT.id);
-    if (hasScout || this.hasQueuedScout(nationId)) return;
+    const activeScouts = this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => unit.unitType.id === SCOUT.id).length;
+    const queuedScouts = this.countQueuedScouts(nationId);
+    if (activeScouts + queuedScouts >= AISystem.DESIRED_SCOUT_COUNT) return;
     if (!this.canBuildUnit(nationId, SCOUT.id)) return;
 
+    // Enqueue at most one scout per pass — runProduction is per-turn, so the
+    // next turn will enqueue another if we are still short.
     const city = cities.find((candidate) => (
       canCityProduceUnit(candidate, SCOUT, this.mapData, this.gridSystem, {
         strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
@@ -1547,13 +1758,20 @@ export class AISystem {
 
     this.productionSystem.enqueueFront(city.id, { kind: 'unit', unitType: SCOUT });
     const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
-    console.debug(`[AI Production] ${nationName}/${city.name}: prioritized Scout`);
+    const planned = activeScouts + queuedScouts + 1;
+    console.debug(
+      `[AI Production] ${nationName}/${city.name}: prioritized Scout (${planned}/${AISystem.DESIRED_SCOUT_COUNT})`,
+    );
   }
 
-  private hasQueuedScout(nationId: string): boolean {
-    return this.cityManager.getCitiesByOwner(nationId)
-      .some((city) => this.productionSystem.getQueue(city.id)
-        .some((entry) => entry.item.kind === 'unit' && entry.item.unitType.id === SCOUT.id));
+  private countQueuedScouts(nationId: string): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      for (const entry of this.productionSystem.getQueue(city.id)) {
+        if (entry.item.kind === 'unit' && entry.item.unitType.id === SCOUT.id) count++;
+      }
+    }
+    return count;
   }
 
   /**

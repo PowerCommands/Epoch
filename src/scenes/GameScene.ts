@@ -363,6 +363,7 @@ export class GameScene extends Phaser.Scene {
       turnManager,
       aiMilitaryEvaluationSystem,
       aiMilitaryThreatEvaluationSystem,
+      (a, b) => discoverySystem.hasMet(a, b),
     );
     const tradeDealSystem = new TradeDealSystem(
       diplomacyManager,

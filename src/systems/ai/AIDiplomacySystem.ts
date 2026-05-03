@@ -36,6 +36,7 @@ export class AIDiplomacySystem {
     private readonly turnManager: TurnManager,
     private readonly militaryEvaluationSystem: AIMilitaryEvaluationSystem,
     private readonly threatEvaluationSystem: AIMilitaryThreatEvaluationSystem,
+    private readonly haveMet: (a: string, b: string) => boolean,
   ) {}
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
@@ -54,6 +55,7 @@ export class AIDiplomacySystem {
     const currentTurn = this.turnManager.getCurrentRound();
     for (const other of this.nationManager.getAllNations()) {
       if (other.id === nationId) continue;
+      if (!this.haveMet(nationId, other.id)) continue;
       this.decideAgainst(nationId, other.id, currentTurn, intent);
     }
   }
@@ -64,6 +66,8 @@ export class AIDiplomacySystem {
    * declares war and fiddles with borders against the same nation.
    */
   private decideAgainst(selfId: string, otherId: string, currentTurn: number, intent: MilitaryIntent): void {
+    if (!this.haveMet(selfId, otherId)) return;
+
     const relation = this.diplomacyManager.getRelation(selfId, otherId);
     const attitude = this.evaluationSystem.evaluateAttitude(selfId, otherId);
     const comparison = this.militaryEvaluationSystem.compareMilitaryStrength(selfId, otherId);
