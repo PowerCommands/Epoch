@@ -8,4 +8,5 @@ export interface LeaderDefinition {
   image: string;
   description?: string;
   aiPersonality?: AILeaderPersonality;
+  culturePriorities?: string[];
 }

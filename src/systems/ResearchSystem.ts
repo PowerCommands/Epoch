@@ -6,6 +6,7 @@ import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
 import { pickBestAIResearchTechnology } from './ai/AIResearchPlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
+import type { AILogFormatter } from './ai/AILogFormatter';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
@@ -33,6 +34,7 @@ export class ResearchSystem {
     private readonly getBuildingSciencePerTurn: ScienceProvider = () => 0,
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
+    private readonly formatLog?: AILogFormatter,
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -57,8 +59,9 @@ export class ResearchSystem {
     nation.currentResearchTechId = techId;
     nation.researchProgress = 0;
 
+    const message = `${nation.name} started researching ${technology.name}.`;
     this.eventLog.log(
-      `${nation.name} started researching ${technology.name}.`,
+      nation.isHuman ? message : this.formatAIResearchLog(nation.id, `started researching ${technology.name}.`, message),
       [nation.id],
       this.getCurrentRound(),
     );
@@ -94,11 +97,7 @@ export class ResearchSystem {
     nation.currentResearchTechId = undefined;
     nation.researchProgress = 0;
 
-    this.eventLog.log(
-      `${nation.name} discovered ${technology.name}.`,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logResearchDiscovery(nation.id, technology.name);
     if (didCompleteTechnology) {
       this.notifyCompleted(nation.id, completedTechnologyId);
     }
@@ -117,11 +116,7 @@ export class ResearchSystem {
       nation.researchProgress = 0;
     }
 
-    this.eventLog.log(
-      `${nation.name} discovered ${technology.name}.`,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logResearchDiscovery(nation.id, technology.name);
     this.notifyCompleted(nation.id, technology.id);
     this.notifyChanged();
     return true;
@@ -147,11 +142,7 @@ export class ResearchSystem {
     nation.currentResearchTechId = undefined;
     nation.researchProgress = 0;
 
-    this.eventLog.log(
-      `${nation.name} discovered ${technology.name}.`,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logResearchDiscovery(nation.id, technology.name);
     if (didCompleteTechnology) {
       this.notifyCompleted(nation.id, completedTechnologyId);
     }
@@ -172,6 +163,7 @@ export class ResearchSystem {
         availableTechnologies,
         currentTurn: this.getCurrentRound(),
         earlyGameTurnLimit: this.earlyGameTurnLimit,
+        formatLog: this.formatLog,
       });
     if (!nextTechnology) return false;
 
@@ -260,6 +252,21 @@ export class ResearchSystem {
   getEffectiveCost(techId: string): number {
     const technology = getTechnologyById(techId);
     return technology ? scaleGameSpeedCost(technology.cost, this.gameSpeed) : 0;
+  }
+
+  private logResearchDiscovery(nationId: string, technologyName: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return;
+    const fallbackMessage = `${nation.name} discovered ${technologyName}.`;
+    this.eventLog.log(
+      nation.isHuman ? fallbackMessage : this.formatAIResearchLog(nation.id, `discovered ${technologyName}.`, fallbackMessage),
+      [nation.id],
+      this.getCurrentRound(),
+    );
+  }
+
+  private formatAIResearchLog(nationId: string, aiMessage: string, fallbackMessage: string): string {
+    return this.formatLog?.(nationId, aiMessage) ?? fallbackMessage;
   }
 
   onChanged(cb: ChangedListener): void {

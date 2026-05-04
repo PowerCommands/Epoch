@@ -22,7 +22,9 @@
       "Read(//tmp/**)",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); print\\('scripts:', list\\(p.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); print\\('scripts:', list\\(p.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes status -s)",
+      "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes diff --stat HEAD)"
     ]
   }
 }

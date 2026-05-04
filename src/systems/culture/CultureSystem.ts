@@ -5,6 +5,7 @@ import type { EventLogSystem } from '../EventLogSystem';
 import type { NationManager } from '../NationManager';
 import { pickBestAICultureNode } from '../ai/AICulturePlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../../data/aiBaselinePriorities';
+import type { AILogFormatter } from '../ai/AILogFormatter';
 
 type ChangedListener = () => void;
 export type CultureCompletedListener = (event: {
@@ -12,6 +13,7 @@ export type CultureCompletedListener = (event: {
   readonly cultureNode: CultureNode;
 }) => void;
 type CultureProvider = (nationId: string) => number;
+type HappinessProvider = (nationId: string) => number;
 
 export type CultureTreeNode = CultureNode;
 
@@ -37,6 +39,8 @@ export class CultureSystem {
     ),
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
+    private readonly formatLog?: AILogFormatter,
+    private readonly getNetHappiness: HappinessProvider = () => 0,
   ) {}
 
   canStartCultureNode(nationId: string, nodeId: string): boolean {
@@ -63,11 +67,7 @@ export class CultureSystem {
     const completedNode = this.tryCompleteCurrentNode(nationId);
     if (completedNode) return true;
 
-    this.eventLog.log(
-      `${nation.name} started developing ${node.name}.`,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logCultureEvent(nation.id, `started developing ${node.name}.`);
     this.notifyChanged();
 
     return true;
@@ -128,6 +128,8 @@ export class CultureSystem {
         availableCultureNodes,
         currentTurn: this.getCurrentRound(),
         earlyGameTurnLimit: this.earlyGameTurnLimit,
+        netHappiness: this.getNetHappiness(nation.id),
+        formatLog: this.formatLog,
       });
     if (!nextNode) return false;
 
@@ -193,6 +195,17 @@ export class CultureSystem {
     this.completedListeners.push(listener);
   }
 
+  private logCultureEvent(nationId: string, aiMessage: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return;
+    const fallbackMessage = `${nation.name} ${aiMessage}`;
+    this.eventLog.log(
+      nation.isHuman ? fallbackMessage : this.formatLog?.(nation.id, aiMessage) ?? fallbackMessage,
+      [nation.id],
+      this.getCurrentRound(),
+    );
+  }
+
   private tryCompleteCurrentNode(nationId: string): CultureNode | null {
     const nation = this.nationManager.getNation(nationId);
     if (!nation?.currentCultureNodeId) return null;
@@ -209,11 +222,7 @@ export class CultureSystem {
     nation.cultureProgress -= effectiveCost;
     nation.currentCultureNodeId = undefined;
 
-    this.eventLog.log(
-      `${nation.name} completed ${node.name}.`,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logCultureEvent(nation.id, `completed ${node.name}.`);
     this.notifyCompleted(nation.id, node);
     this.notifyChanged();
 

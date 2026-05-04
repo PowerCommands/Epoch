@@ -15,6 +15,7 @@ import type { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { HappinessSystem } from './HappinessSystem';
+import type { CultureEffectSystem } from './culture/CultureEffectSystem';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
@@ -47,6 +48,7 @@ export class ResourceSystem {
     gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0,
     private readonly policySystem?: PolicySystem,
+    private readonly cultureEffectSystem?: CultureEffectSystem,
   ) {
     this.nationManager = nationManager;
     this.cityManager = cityManager;
@@ -154,6 +156,7 @@ export class ResourceSystem {
     const nationModifiers = this.getNationModifiers(nation.id);
 
     this.updateWorkedTiles(cities);
+    this.cultureEffectSystem?.beginTurn(nation.id);
     this.happinessSystem.recalculateNation(nation.id);
 
     const goldModifier = this.happinessSystem.getGoldModifier(nation.id);
@@ -212,6 +215,7 @@ export class ResourceSystem {
     }
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.culture += Math.floor(nationRes.culturePerTurn * cultureModifier);
+    this.cultureEffectSystem?.applyTurnStartEffects(nation.id);
 
     this.happinessSystem.recalculateNation(nation.id);
     this.notify({ nationId: nation.id });

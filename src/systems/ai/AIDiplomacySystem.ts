@@ -12,6 +12,7 @@ import {
   getNationPersonalityFactor,
   type MilitaryIntent,
 } from './utils/AIMilitaryUtils';
+import type { AILogFormatter } from './AILogFormatter';
 
 // AIDiplomacySystem v1:
 // Uses diplomatic attitude to trigger simple decisions.
@@ -24,6 +25,7 @@ const PEACE_COOLDOWN = 5;
 const OPEN_BORDERS_COOLDOWN = 5;
 const NO_IMMEDIATE_PEACE_AFTER_WAR = 3;
 const NO_IMMEDIATE_WAR_AFTER_PEACE = 5;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 export class AIDiplomacySystem {
   // AI diplomacy reason logging explains decisions without changing them.
@@ -37,6 +39,7 @@ export class AIDiplomacySystem {
     private readonly militaryEvaluationSystem: AIMilitaryEvaluationSystem,
     private readonly threatEvaluationSystem: AIMilitaryThreatEvaluationSystem,
     private readonly haveMet: (a: string, b: string) => boolean,
+    private readonly formatLog: AILogFormatter = fallbackFormatLog,
   ) {}
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
@@ -49,7 +52,7 @@ export class AIDiplomacySystem {
 
     const intent = getMilitaryIntent(self.aiGoals);
     console.log(
-      `[AI Military] ${self.name}: aggression=${intent.aggression.toFixed(2)} defense=${intent.defense.toFixed(2)}`,
+      this.formatLog(nationId, `AI military: aggression=${intent.aggression.toFixed(2)} defense=${intent.defense.toFixed(2)}`),
     );
 
     const currentTurn = this.turnManager.getCurrentRound();
@@ -124,9 +127,8 @@ export class AIDiplomacySystem {
       warScore *= 0.8 + personalityFactor * 0.4;
 
       const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
-      const selfName = this.nationManager.getNation(selfId)?.name ?? selfId;
       console.log(
-        `[AI War Decision] ${selfName} → ${targetName}: score=${warScore.toFixed(2)}`,
+        this.formatLog(selfId, `AI war decision toward ${targetName}: score=${warScore.toFixed(2)}`),
       );
 
       const goalWantsWar = warScore > 0.7;

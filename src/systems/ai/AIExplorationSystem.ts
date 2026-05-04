@@ -9,6 +9,7 @@ import type { NationManager } from '../NationManager';
 import type { PathfindingSystem } from '../PathfindingSystem';
 import type { TurnManager } from '../TurnManager';
 import type { UnitChangedEvent, UnitManager } from '../UnitManager';
+import type { AILogFormatter } from './AILogFormatter';
 
 type TileIndex = number;
 type UnitId = string;
@@ -73,6 +74,7 @@ const PHASE_ENEMY_FOCUS_FAR_FROM_ENEMY_FRONTIER_PENALTY = 2;
 // scout's last assigned target — encourages turning rather than re-targeting
 // the same wedge of the map.
 const SAME_DIRECTION_PENALTY = 1;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 const POI_PRIORITY: Record<PointOfInterestType, number> = {
   foreignCity: 4,
@@ -113,6 +115,7 @@ export class AIExplorationSystem {
     private readonly pathfindingSystem: PathfindingSystem,
     private readonly mapData: MapData,
     private readonly eventLog: EventLogSystem,
+    private readonly formatLog: AILogFormatter = fallbackFormatLog,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
   }
@@ -142,8 +145,7 @@ export class AIExplorationSystem {
     const prev = this.scoutPhaseByNation.get(nationId);
     if (prev === next) return;
     this.scoutPhaseByNation.set(nationId, next);
-    const round = this.turnManager.getCurrentRound();
-    console.log(`[r${round}] ${this.getNationName(nationId)} scout phase: ${next}`);
+    console.log(this.formatLog(nationId, `scout phase: ${next}`));
   }
 
   private computeScoutPhase(knowledge: NationExplorationKnowledge): ScoutPhase {
@@ -171,7 +173,7 @@ export class AIExplorationSystem {
       });
       this.log(
         unit.ownerId,
-        `${this.getNationName(unit.ownerId)} Scout target assigned (${this.formatPoiType(nextTarget.type)}) at (${nextTarget.tile.x},${nextTarget.tile.y})`,
+        `Scout target assigned (${this.formatPoiType(nextTarget.type)}) at (${nextTarget.tile.x},${nextTarget.tile.y})`,
       );
       this.maybeLogEnemyFocus(unit.ownerId, nextTarget);
       if (this.moveTowardTarget(unit, nextTarget.tileIndex)) return;
@@ -200,9 +202,8 @@ export class AIExplorationSystem {
     const key = `${anchor.coord.x},${anchor.coord.y}`;
     if (logged.has(key)) return;
     logged.add(key);
-    const round = this.turnManager.getCurrentRound();
     console.log(
-      `[r${round}] ${this.getNationName(nationId)} focusing exploration near enemy at (${anchor.coord.x},${anchor.coord.y})`,
+      this.formatLog(nationId, `focusing exploration near enemy at (${anchor.coord.x},${anchor.coord.y})`),
     );
   }
 
@@ -455,7 +456,7 @@ export class AIExplorationSystem {
       this.frontierFallbackLogged.add(unit.id);
       this.log(
         unit.ownerId,
-        `${this.getNationName(unit.ownerId)} fallback to local exploration (no valid frontier)`,
+        'fallback to local exploration (no valid frontier)',
       );
     }
   }
@@ -524,7 +525,7 @@ export class AIExplorationSystem {
     this.rememberVisit(unit.id, unit.tileX, unit.tileY);
     const target = this.getTileByIndex(targetIndex);
     if (target !== undefined) {
-      this.log(unit.ownerId, `${this.getNationName(unit.ownerId)} Scout moved toward target (${target.x},${target.y})`);
+      this.log(unit.ownerId, `Scout moved toward target (${target.x},${target.y})`);
     }
     if (this.getTileIndex(unit.tileX, unit.tileY) === targetIndex) {
       this.markTargetVisited(unit.id, targetIndex);
@@ -561,9 +562,9 @@ export class AIExplorationSystem {
 
     this.rememberVisit(unit.id, unit.tileX, unit.tileY);
     if (this.getDistanceToEdge(fromX, fromY) < MIN_EDGE_DISTANCE && this.getDistanceToEdge(unit.tileX, unit.tileY) > this.getDistanceToEdge(fromX, fromY)) {
-      this.log(unit.ownerId, `${this.getNationName(unit.ownerId)} Scout moved inward from map edge`);
+      this.log(unit.ownerId, 'Scout moved inward from map edge');
     }
-    this.log(unit.ownerId, `${this.getNationName(unit.ownerId)} Scout exploring locally`);
+    this.log(unit.ownerId, 'Scout exploring locally');
   }
 
   private pickBestLocalCandidate(unit: Unit): ExplorationCandidate | null {
@@ -686,7 +687,7 @@ export class AIExplorationSystem {
     knowledge.loggedForeignNationIds.add(foreignNationId);
     this.log(
       observerNationId,
-      `${this.getNationName(observerNationId)} discovered ${this.getNationName(foreignNationId)} near (${x},${y})`,
+      `discovered ${this.getNationName(foreignNationId)} near (${x},${y})`,
     );
   }
 
@@ -758,7 +759,7 @@ export class AIExplorationSystem {
   }
 
   private log(nationId: string, message: string): void {
-    this.eventLog.log(message, [nationId], this.turnManager.getCurrentRound());
+    this.eventLog.log(this.formatLog(nationId, message), [nationId], this.turnManager.getCurrentRound());
   }
 
   private smallRandom(unit: Unit, tile: Tile): number {

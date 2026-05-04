@@ -50,7 +50,7 @@ import {
   getCandidateGoalCategory,
   getProductionWeights,
 } from './ai/utils/AIProductionGoalWeights';
-import { getExpansionBias, hasGoalOfType } from './ai/utils/AIExpansionUtils';
+import { hasGoalOfType } from './ai/utils/AIExpansionUtils';
 import { getMilitaryIntent } from './ai/utils/AIMilitaryUtils';
 import { scoreCombatTarget, type AICombatContext } from './ai/AICombatScoring';
 import {
@@ -59,6 +59,7 @@ import {
 } from './ai/AIMovementScoring';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import { getLeaderPersonalityByNationId } from '../data/leaders';
+import type { AILogFormatter } from './ai/AILogFormatter';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -71,6 +72,15 @@ const MILITARY_STAGING_DISTANCE = 2;
 // Maximum extra outward steps when the geometric staging tile lands inside
 // enemy territory or off-map. Keeps the search bounded and deterministic.
 const MILITARY_STAGING_OUTWARD_RETRY = 3;
+// AI nations below this city count are still in Foundation Phase: scouts,
+// settlers, and basic defense first; no offensive staging behavior yet.
+const FOUNDATION_PHASE_CITY_COUNT = 3;
+// Settler production is suppressed in Foundation Phase if happiness drops
+// below this floor — the nation needs to recover before it can absorb
+// another city.
+const FOUNDATION_HAPPINESS_FLOOR = -2;
+type AIPhase = 'FOUNDATION' | 'STRATEGY';
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 // Structural type guard — Unit/City are imported as types, so `instanceof`
 // is unavailable. `unitType` is unique to Unit.
@@ -151,6 +161,13 @@ const SCORE_GOLD_BUILDING = 55;
 const SCORE_FALLBACK = 25;
 const SCORE_NAVAL = 40;
 const LOW_GOLD_PER_TURN = 0;
+// Foundation Phase production tuning. Building base scores get a flat boost
+// so they outscore the regular military candidate (70) when food/production/
+// gold thresholds fire — a Foundation city with a real building need always
+// beats fallback-warriors. Happiness building threshold is loosened so
+// nations build colosseums proactively rather than only when collapsing.
+const SCORE_FOUNDATION_BUILDING_BOOST = 20;
+const FOUNDATION_HAPPINESS_BUILDING_THRESHOLD = 1;
 
 // Coastal site evaluation. Combined with -settlerDistance so that the AI still
 // favors closer founding sites but breaks toward the sea when the bonus
@@ -220,6 +237,10 @@ export class AISystem {
   // Add more ids as the evaluation pass is validated against other leaders.
   private readonly strategyEvaluationNationIds = new Set<string>(['nation_mongolia']);
 
+  // Last AI phase logged per nation. Phase itself is derived live in
+  // getAIPhase; this map only deduplicates the transition log line.
+  private readonly aiPhaseByNation = new Map<string, AIPhase>();
+
   // Per-nation military staging targets: one shared staging tile per met
   // enemy nation. All this nation's military units gather toward the SAME
   // staging tile per enemy so they form a visible border presence rather
@@ -268,6 +289,7 @@ export class AISystem {
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly explorationMemorySystem?: ExplorationMemorySystem,
     private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
+    private readonly formatLog: AILogFormatter = fallbackFormatLog,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -295,8 +317,7 @@ export class AISystem {
     if (nation) {
       this.aiGoalSystem.update(nation);
       console.log(
-        `[AI Goal Selected] ${nation.name}:`,
-        (nation.aiGoals ?? []).map((g) => `${g.type}(${g.priority.toFixed(2)})`).join(', '),
+        this.formatLog(nationId, `AI goal selected: ${(nation.aiGoals ?? []).map((g) => `${g.type}(${g.priority.toFixed(2)})`).join(', ')}`),
       );
     }
 
@@ -309,8 +330,7 @@ export class AISystem {
 
     if (nation?.aiGoals && nation.aiGoals.length > 0) {
       console.log(
-        `[AI Goals] ${nation.name}:`,
-        nation.aiGoals.map((g) => `${g.type}(${g.remainingTurns})`).join(', '),
+        this.formatLog(nationId, `AI goals: ${nation.aiGoals.map((g) => `${g.type}(${g.remainingTurns})`).join(', ')}`),
       );
     }
   }
@@ -347,8 +367,7 @@ export class AISystem {
     if (!this.diplomacyManager) return;
     const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
     if (weights.diplomacy <= 0) {
-      const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-      console.debug(`AI ${name} skipped diplomacy because diplomacy weight is 0.`);
+      console.debug(this.formatLog(nationId, 'AI skipped diplomacy because diplomacy weight is 0.'));
       return;
     }
     const dm = this.diplomacyManager;
@@ -366,18 +385,16 @@ export class AISystem {
       if (!dm.hasEmbassy(nationId, other.id)) {
         const embassyCheck = dm.canEstablishEmbassy(nationId, other.id, validationContext);
         if (embassyCheck.ok && dm.establishEmbassy(nationId, other.id)) {
-          const actor = this.nationManager.getNation(nationId)?.name ?? nationId;
           const target = other.name;
-          console.debug(`AI ${actor} established embassy with ${target}`);
+          console.debug(this.formatLog(nationId, `AI established embassy with ${target}`));
         }
       }
 
       if (!dm.hasTradeRelations(nationId, other.id)) {
         const tradeCheck = dm.canEstablishTradeRelations(nationId, other.id, validationContext);
         if (tradeCheck.ok && dm.establishTradeRelations(nationId, other.id)) {
-          const actor = this.nationManager.getNation(nationId)?.name ?? nationId;
           const target = other.name;
-          console.debug(`AI ${actor} established trade relations with ${target}`);
+          console.debug(this.formatLog(nationId, `AI established trade relations with ${target}`));
         }
       }
     }
@@ -400,12 +417,11 @@ export class AISystem {
     const luxuryValueMultiplier = resolveLuxuryValueMultiplier(happiness?.netHappiness);
 
     const available = new Set(this.resourceAccessSystem.getAvailableResources(nationId));
-    const buyerName = this.nationManager.getNation(nationId)?.name ?? nationId;
     let dealsCreated = 0;
 
     if (luxuryValueMultiplier > 1.0) {
       console.debug(
-        `AI ${buyerName} increasing luxury value (x${luxuryValueMultiplier}) due to happiness ${happiness?.netHappiness} (state: ${happiness?.state}).`,
+        this.formatLog(nationId, `AI increasing luxury value (x${luxuryValueMultiplier}) due to happiness ${happiness?.netHappiness} (state: ${happiness?.state}).`),
       );
     }
 
@@ -438,7 +454,7 @@ export class AISystem {
         if (!result.ok) continue;
 
         console.debug(
-          `AI ${buyerName} bought ${resourceId} from ${other.name} (${dealTurns} turns, ${offerGoldPerTurn} gold/turn)`,
+          this.formatLog(nationId, `AI bought ${resourceId} from ${other.name} (${dealTurns} turns, ${offerGoldPerTurn} gold/turn)`),
         );
         dealsCreated++;
         if (dealsCreated >= maxDeals) break outer;
@@ -446,7 +462,7 @@ export class AISystem {
     }
 
     if (dealsCreated > 1) {
-      console.debug(`AI ${buyerName} created ${dealsCreated} trade deals due to trade weight ${weights.trade}.`);
+      console.debug(this.formatLog(nationId, `AI created ${dealsCreated} trade deals due to trade weight ${weights.trade}.`));
     }
   }
 
@@ -481,10 +497,9 @@ export class AISystem {
     nation.aiPrimaryStrategyId = result.primaryStrategyId;
     nation.aiSecondaryStrategyId = result.secondaryStrategyId;
 
-    const round = this.turnManager.getCurrentRound();
     const primary = getStrategyDisplayName(result.primaryStrategyId);
     const secondary = getStrategyDisplayName(result.secondaryStrategyId);
-    console.log(`[r${round}] ${nation.name} AI strategy: ${primary} / ${secondary}`);
+    console.log(this.formatLog(nationId, `AI strategy: ${primary} / ${secondary}`));
   }
 
   private buildStrategyContext(nationId: string): AIStrategyContext {
@@ -530,6 +545,44 @@ export class AISystem {
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') return true;
     }
     return false;
+  }
+
+  // ─── Foundation Phase ────────────────────────────────────────────────────────
+  // Early-game gate: until a nation has FOUNDATION_PHASE_CITY_COUNT cities it
+  // builds scouts + settlers and avoids offensive staging. Past that, normal
+  // strategy logic resumes. Derived live so any city founded mid-turn is
+  // reflected immediately by all callers.
+
+  private getAIPhase(nationId: string): AIPhase {
+    const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    return cityCount < FOUNDATION_PHASE_CITY_COUNT ? 'FOUNDATION' : 'STRATEGY';
+  }
+
+  private updateAndLogAIPhase(nationId: string): AIPhase {
+    const next = this.getAIPhase(nationId);
+    if (this.aiPhaseByNation.get(nationId) === next) return next;
+    this.aiPhaseByNation.set(nationId, next);
+    const tail = next === 'FOUNDATION' ? 'establishing base' : 'normal AI behavior';
+    console.log(this.formatLog(nationId, `phase: ${next} - ${tail}`));
+    return next;
+  }
+
+  // Settler production is suppressed in Foundation Phase if happiness has
+  // dropped below the recovery floor. Outside Foundation Phase the normal
+  // strategy logic still gates settlers via desiredCityCount, etc.
+  private isSettlerProductionBlockedByHappiness(nationId: string): boolean {
+    if (this.getAIPhase(nationId) !== 'FOUNDATION') return false;
+    const netHappiness = this.happinessSystem?.getNetHappiness(nationId) ?? 0;
+    return netHappiness < FOUNDATION_HAPPINESS_FLOOR;
+  }
+
+  // Single gate for offensive military staging behavior: never while at war
+  // (combat candidates dominate then) and never in Foundation Phase
+  // (military stays near territory until the base is established).
+  private shouldStageMilitary(nationId: string): boolean {
+    if (this.isAtWarWithAnyone(nationId)) return false;
+    if (this.getAIPhase(nationId) === 'FOUNDATION') return false;
+    return true;
   }
 
   // ─── Military staging targets ────────────────────────────────────────────────
@@ -643,28 +696,62 @@ export class AISystem {
     const key = `${enemyNationId}@${enemyCity.x},${enemyCity.y}`;
     if (logged.has(key)) return;
     logged.add(key);
-    const round = this.turnManager.getCurrentRound();
-    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-    console.log(`[r${round}] ${name} staging near enemy city at (${enemyCity.x},${enemyCity.y})`);
+    console.log(this.formatLog(nationId, `staging near enemy city at (${enemyCity.x},${enemyCity.y})`));
   }
 
   private logStagingAdvanceOncePerRound(nationId: string): void {
     const round = this.turnManager.getCurrentRound();
     if (this.militaryAdvanceLoggedRound.get(nationId) === round) return;
     this.militaryAdvanceLoggedRound.set(nationId, round);
-    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-    console.log(`[r${round}] ${name} unit moving to staging position`);
+    console.log(this.formatLog(nationId, 'unit moving to staging position'));
   }
 
   private logStagingHoldingOncePerRound(nationId: string): void {
     const round = this.turnManager.getCurrentRound();
     if (this.militaryHoldingLoggedRound.get(nationId) === round) return;
     this.militaryHoldingLoggedRound.set(nationId, round);
-    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-    console.log(`[r${round}] ${name} unit holding position at staging distance`);
+    console.log(this.formatLog(nationId, 'unit holding position at staging distance'));
   }
 
   // ─── Settlers ────────────────────────────────────────────────────────────────
+
+  // Per-(settler, tile, round) keys we've already logged a spacing rejection
+  // for. Prevents the same rejection from spamming the log when a settler
+  // sits on an invalid tile across the same turn pass.
+  private readonly settlerSpacingRejectionLogged = new Set<string>();
+
+  // Single source of truth for "is this settler allowed to found a city
+  // here, right now?" — combines the FoundCitySystem terrain rules with the
+  // strategy's settlerMinCityDistance spacing requirement against ALL cities
+  // (own and foreign).
+  private canFoundWithSpacing(settler: Unit, strategy: AIStrategy): boolean {
+    if (!this.foundCitySystem.canFound(settler)) return false;
+    const minDist = this.minDistanceToCities(
+      settler.tileX,
+      settler.tileY,
+      this.cityManager.getAllCities(),
+    );
+    return minDist >= strategy.expansion.settlerMinCityDistance;
+  }
+
+  private logSettlerSpacingRejection(
+    nationId: string,
+    settler: Unit,
+    requiredDistance: number,
+  ): void {
+    const round = this.turnManager.getCurrentRound();
+    const key = `${settler.id}@${settler.tileX},${settler.tileY}:${round}`;
+    if (this.settlerSpacingRejectionLogged.has(key)) return;
+    this.settlerSpacingRejectionLogged.add(key);
+    const distance = this.minDistanceToCities(
+      settler.tileX,
+      settler.tileY,
+      this.cityManager.getAllCities(),
+    );
+    console.debug(
+      this.formatLog(nationId, `settler rejected founding site at (${settler.tileX},${settler.tileY}): too close to existing city, distance ${distance}, required ${requiredDistance}`),
+    );
+  }
 
   private runSettlers(nationId: string): void {
     const settlers = this.unitManager.getUnitsByOwner(nationId)
@@ -674,27 +761,20 @@ export class AISystem {
     for (const settler of settlers) {
       if (this.unitManager.getUnit(settler.id) === undefined) continue;
 
-      const ownsNoCities = this.cityManager.getCitiesByOwner(nationId).length === 0;
-      const isOpeningRound = this.turnManager.getCurrentRound() === 1;
-
-      // Opening-round rule: every AI founds its capital immediately if possible.
-      if (isOpeningRound && ownsNoCities && this.foundCitySystem.canFound(settler)) {
+      // Single spacing-aware gate. The strategy's settlerMinCityDistance is
+      // the absolute floor — even capitals respect it, so two AIs that start
+      // within range walk apart before founding instead of double-booking
+      // adjacent territory. expansionBias used to relax this rule and is no
+      // longer applied; expansionist nations may want more cities, but they
+      // earn them by traveling farther rather than crowding the border.
+      if (this.canFoundWithSpacing(settler, strategy)) {
         this.foundCitySystem.foundCity(settler);
         continue; // settler consumed
       }
-
-      // Later settlers respect spacing from all existing cities. With an
-      // active "expand" goal, the spacing requirement is relaxed deterministically
-      // so eager nations settle slightly closer together.
       if (this.foundCitySystem.canFound(settler)) {
-        const allCities = this.cityManager.getAllCities();
-        const minDist = this.minDistanceToCities(settler.tileX, settler.tileY, allCities);
-        const expansionBias = getExpansionBias(this.nationManager.getNation(nationId)?.aiGoals);
-        const effectiveMinDist = strategy.expansion.settlerMinCityDistance / expansionBias;
-        if (minDist >= effectiveMinDist) {
-          this.foundCitySystem.foundCity(settler);
-          continue; // settler consumed
-        }
+        // canFound passed but spacing failed — log so the rejection is
+        // visible in autoplay traces.
+        this.logSettlerSpacingRejection(nationId, settler, strategy.expansion.settlerMinCityDistance);
       }
 
       // Move toward valid founding site
@@ -714,8 +794,13 @@ export class AISystem {
     this.movementSystem.moveAlongPath(settler, path);
 
     if (settler.tileX === target.x && settler.tileY === target.y) {
-      if (this.foundCitySystem.canFound(settler)) {
+      // World may have changed during the trip (another nation founded a city
+      // nearby), so re-validate spacing — never just canFound — at the moment
+      // of commitment.
+      if (this.canFoundWithSpacing(settler, strategy)) {
         this.foundCitySystem.foundCity(settler);
+      } else if (this.foundCitySystem.canFound(settler)) {
+        this.logSettlerSpacingRejection(nationId, settler, strategy.expansion.settlerMinCityDistance);
       }
     }
   }
@@ -728,8 +813,10 @@ export class AISystem {
     const allCities = this.cityManager.getAllCities();
     const nation = this.nationManager.getNation(nationId);
     const goals = nation?.aiGoals;
-    const expansionBias = getExpansionBias(goals);
-    const effectiveMinCityDistance = strategy.expansion.settlerMinCityDistance / expansionBias;
+    // Strict spacing — same floor canFoundWithSpacing enforces — so the site
+    // search and the commit check stay consistent. expansionBias no longer
+    // shrinks the floor; expansionist nations travel farther for cities.
+    const minCityDistance = strategy.expansion.settlerMinCityDistance;
     const wantsResources = hasGoalOfType(goals, 'build_economy');
     const wantsCoast = hasGoalOfType(goals, 'build_navy');
     const hasExpandGoal = hasGoalOfType(goals, 'expand');
@@ -747,7 +834,7 @@ export class AISystem {
         if (this.cityManager.getCityAt(x, y) !== undefined) continue;
 
         const cityDist = this.minDistanceToCities(x, y, allCities);
-        if (cityDist < effectiveMinCityDistance) continue;
+        if (cityDist < minCityDistance) continue;
 
         const settlerDist = this.gridSystem.getDistance(
           { x: settler.tileX, y: settler.tileY },
@@ -767,9 +854,8 @@ export class AISystem {
     }
 
     if (bestTile) {
-      const nationName = nation?.name ?? nationId;
       console.log(
-        `[AI Expansion] ${nationName}: targeting tile (${bestTile.x}, ${bestTile.y})`,
+        this.formatLog(nationId, `AI expansion targeting tile (${bestTile.x}, ${bestTile.y})`),
       );
     }
 
@@ -965,8 +1051,7 @@ export class AISystem {
 
     const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
     if (weights.exploration !== 1) {
-      const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-      console.debug(`AI ${name} exploration score adjusted by strategy weight ${weights.exploration}.`);
+      console.debug(this.formatLog(nationId, `AI exploration score adjusted by strategy weight ${weights.exploration}.`));
     }
 
     // Naval state shared across this nation's ships for the turn: defines
@@ -1431,7 +1516,7 @@ export class AISystem {
     if (
       chosen.candidate.kind === 'holdPosition'
       && unit.unitType.baseStrength > 0
-      && !this.isAtWarWithAnyone(nationId)
+      && this.shouldStageMilitary(nationId)
       && this.isWithinAnyStagingDistance({ x: unit.tileX, y: unit.tileY }, nationId)
     ) {
       this.logStagingHoldingOncePerRound(nationId);
@@ -1546,7 +1631,7 @@ export class AISystem {
     // the hold once per round.
     if (
       unit.unitType.baseStrength > 0
-      && !this.isAtWarWithAnyone(nationId)
+      && this.shouldStageMilitary(nationId)
     ) {
       for (const entry of this.getMilitaryStagingByEnemy(nationId).values()) {
         if (this.gridSystem.getDistance(unitPos, entry.enemyCity) <= MILITARY_STAGING_DISTANCE) continue;
@@ -1682,7 +1767,9 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
+    this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
+    this.ensureFoundationSettlerProduction(nationId, cities);
 
     const strategy = this.getStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
@@ -1710,17 +1797,15 @@ export class AISystem {
       }
 
       if (!choice) {
-        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
         console.warn(
-          `[AI Production] ${nationName}/${city.name}: no valid candidate (queue stays empty)`,
+          this.formatLog(nationId, `AI production in ${city.name}: no valid candidate (queue stays empty)`),
         );
         continue;
       }
 
       if (usedFallback) {
-        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
         console.debug(
-          `[AI Production Fallback] ${nationName}/${city.name}: ${describeProducible(choice)}`,
+          this.formatLog(nationId, `AI production fallback in ${city.name}: ${describeProducible(choice)}`),
         );
       }
 
@@ -1757,10 +1842,9 @@ export class AISystem {
     if (!city) return;
 
     this.productionSystem.enqueueFront(city.id, { kind: 'unit', unitType: SCOUT });
-    const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
     const planned = activeScouts + queuedScouts + 1;
     console.debug(
-      `[AI Production] ${nationName}/${city.name}: prioritized Scout (${planned}/${AISystem.DESIRED_SCOUT_COUNT})`,
+      this.formatLog(nationId, `AI production in ${city.name}: prioritized Scout (${planned}/${AISystem.DESIRED_SCOUT_COUNT})`),
     );
   }
 
@@ -1772,6 +1856,29 @@ export class AISystem {
       }
     }
     return count;
+  }
+
+  // Foundation Phase settler push: enqueues a single settler at the front of
+  // a producible city's queue when the nation has none active or in flight.
+  // Symmetric to ensureScoutProduction so settlers and scouts share the
+  // same prioritization mechanism. Strategy Phase falls back to the regular
+  // chooseCityProduction settler scoring.
+  private ensureFoundationSettlerProduction(nationId: string, cities: City[]): void {
+    if (cities.length === 0) return;
+    if (this.getAIPhase(nationId) !== 'FOUNDATION') return;
+    if (this.isSettlerProductionBlockedByHappiness(nationId)) return;
+    if (this.countSettlers(nationId) > 0) return; // already have or queued one
+    if (!this.canBuildUnit(nationId, SETTLER.id)) return;
+
+    const city = cities.find((candidate) => (
+      canCityProduceUnit(candidate, SETTLER, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ));
+    if (!city) return;
+
+    this.productionSystem.enqueueFront(city.id, { kind: 'unit', unitType: SETTLER });
+    console.log(this.formatLog(nationId, `phase: FOUNDATION - producing settler in ${city.name}`));
   }
 
   /**
@@ -1801,7 +1908,8 @@ export class AISystem {
       this.canBuildUnit(nationId, SETTLER.id) &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, {
         strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      }) &&
+      !this.isSettlerProductionBlockedByHappiness(nationId)
     ) {
       return { kind: 'unit', unitType: SETTLER };
     }
@@ -1896,8 +2004,15 @@ export class AISystem {
       EMPTY_MODIFIERS,
     );
 
+    const inFoundation = this.getAIPhase(nationId) === 'FOUNDATION';
+    const buildingBoost = inFoundation ? SCORE_FOUNDATION_BUILDING_BOOST : 0;
+    // Foundation Phase reaches for happiness buildings much earlier so the
+    // 2-3 city ramp doesn't strand the nation in negative happiness.
+    const happinessBuildingThreshold = inFoundation
+      ? FOUNDATION_HAPPINESS_BUILDING_THRESHOLD
+      : AI_HAPPINESS_LOW;
     const happiness = this.happinessSystem?.getNationState(nationId);
-    const happinessBuilding = (happiness && happiness.netHappiness <= AI_HAPPINESS_LOW)
+    const happinessBuilding = (happiness && happiness.netHappiness <= happinessBuildingThreshold)
       ? this.findBuildableHappinessBuilding(nationId, buildings)
       : null;
 
@@ -1906,9 +2021,8 @@ export class AISystem {
       && happiness.netHappiness <= AI_HAPPINESS_CRITICAL
       && happinessBuilding
     ) {
-      const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
       console.debug(
-        `AI ${nationName} prioritizing ${happinessBuilding.name} due to critical happiness (${happiness.netHappiness}, state: ${happiness.state}).`,
+        this.formatLog(nationId, `AI prioritizing ${happinessBuilding.name} due to critical happiness (${happiness.netHappiness}, state: ${happiness.state}).`),
       );
       return { kind: 'building', buildingType: happinessBuilding };
     }
@@ -1933,7 +2047,12 @@ export class AISystem {
       });
     }
 
-    if (wantsMoreCities && plannedSettlerCount === 0 && canProduceSettler) {
+    if (
+      wantsMoreCities
+      && plannedSettlerCount === 0
+      && canProduceSettler
+      && !this.isSettlerProductionBlockedByHappiness(nationId)
+    ) {
       candidates.push({
         item: { kind: 'unit', unitType: SETTLER },
         baseScore: SCORE_SETTLER,
@@ -1972,7 +2091,7 @@ export class AISystem {
     ) {
       candidates.push({
         item: { kind: 'building', buildingType: GRANARY },
-        baseScore: SCORE_FOOD_BUILDING,
+        baseScore: SCORE_FOOD_BUILDING + buildingBoost,
         category: 'foodBuilding',
       });
     }
@@ -1984,7 +2103,7 @@ export class AISystem {
     ) {
       candidates.push({
         item: { kind: 'building', buildingType: WORKSHOP },
-        baseScore: SCORE_PRODUCTION_BUILDING,
+        baseScore: SCORE_PRODUCTION_BUILDING + buildingBoost,
         category: 'productionBuilding',
       });
     }
@@ -1996,19 +2115,18 @@ export class AISystem {
     ) {
       candidates.push({
         item: { kind: 'building', buildingType: MARKET },
-        baseScore: SCORE_GOLD_BUILDING,
+        baseScore: SCORE_GOLD_BUILDING + buildingBoost,
         category: 'goldBuilding',
       });
     }
 
     if (happinessBuilding) {
-      const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
       console.debug(
-        `AI ${nationName} prioritizing happiness building ${happinessBuilding.name} due to low happiness (${happiness?.netHappiness}, state: ${happiness?.state}).`,
+        this.formatLog(nationId, `AI prioritizing happiness building ${happinessBuilding.name} due to low happiness (${happiness?.netHappiness}, state: ${happiness?.state}).`),
       );
       candidates.push({
         item: { kind: 'building', buildingType: happinessBuilding },
-        baseScore: SCORE_HAPPINESS_BUILDING_LOW,
+        baseScore: SCORE_HAPPINESS_BUILDING_LOW + buildingBoost,
         // foodBuilding category reused: scoring weight is consistent across
         // strategies (=1) so the boosted baseScore drives the priority.
         category: 'foodBuilding',
@@ -2024,17 +2142,35 @@ export class AISystem {
       });
     }
 
+    // Foundation Phase: if the city has any unbuilt available building, offer
+    // it as a fallback ranked above fallback military. Keeps cities improving
+    // their base instead of churning warriors when no urgent need fired.
+    if (inFoundation) {
+      const missingBuilding = this.findMissingBuildableBuilding(nationId, buildings);
+      if (missingBuilding) {
+        candidates.push({
+          item: { kind: 'building', buildingType: missingBuilding },
+          baseScore: SCORE_FALLBACK + buildingBoost,
+          category: 'foodBuilding',
+        });
+      }
+    }
+
     const nation = this.nationManager.getNation(nationId);
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
     const best = pickBestAIProductionCandidate(weightedCandidates, strategy);
     if (best) {
-      const nationName = nation?.name ?? nationId;
       console.log(
-        `[AI Production] ${nationName}: chose ${getCandidateGoalCategory(best)} (weights:`,
-        goalWeights,
-        ')',
+        this.formatLog(nationId, `AI production chose ${getCandidateGoalCategory(best)} (weights: ${JSON.stringify(goalWeights)})`),
       );
+      if (inFoundation) {
+        const itemName = this.foundationProducibleName(best.item);
+        const reason = this.describeFoundationProductionReason(best.item);
+        console.log(
+          this.formatLog(nationId, `phase: FOUNDATION - chose ${itemName} for ${reason}`),
+        );
+      }
     }
     return best?.item;
   }
@@ -2086,6 +2222,50 @@ export class AISystem {
       }
     }
     return cheapest;
+  }
+
+  // Cheapest unbuilt available building of any kind. Foundation Phase uses
+  // this as a fallback so cities default to infrastructure rather than
+  // fallback military when no urgent need fired.
+  private findMissingBuildableBuilding(
+    nationId: string,
+    buildings: CityBuildings,
+  ): BuildingType | null {
+    let cheapest: BuildingType | null = null;
+    for (const candidate of ALL_BUILDINGS) {
+      if (buildings.has(candidate.id)) continue;
+      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!cheapest || candidate.productionCost < cheapest.productionCost) {
+        cheapest = candidate;
+      }
+    }
+    return cheapest;
+  }
+
+  // Short reason tag derived from the chosen producible. Used only for the
+  // Foundation Phase production log so traces explain why each city built
+  // what it built.
+  private describeFoundationProductionReason(item: Producible): string {
+    if (item.kind === 'unit') {
+      if (item.unitType.id === SETTLER.id) return 'core expansion';
+      if (item.unitType.id === SCOUT.id) return 'exploration';
+      if (item.unitType.canFound === true) return 'core expansion';
+      if (item.unitType.isNaval === true) return 'naval coverage';
+      return 'defense';
+    }
+    if (item.kind === 'wonder') return 'wonder';
+    const bt = item.buildingType;
+    if ((bt.modifiers.happinessPerTurn ?? 0) > 0) return 'low happiness';
+    if (bt.id === GRANARY.id) return 'city growth';
+    if (bt.id === WORKSHOP.id) return 'production';
+    if (bt.id === MARKET.id) return 'economy';
+    return 'infrastructure';
+  }
+
+  private foundationProducibleName(item: Producible): string {
+    if (item.kind === 'unit') return item.unitType.name;
+    if (item.kind === 'wonder') return item.wonderType.name;
+    return item.buildingType.name;
   }
 
   private needsDefender(city: City, nationId: string): boolean {

@@ -252,6 +252,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Great Khan of the Mongols',
     image: `${LEADER_IMAGE_BASE}/genghis-khan.png`,
     description: 'A relentless conqueror whose horse-borne armies carve empires from the steppe.',
+    culturePriorities: ['early_empire'],
     aiPersonality: {
       aggressionBias: 18,
       expansionBias: 18,

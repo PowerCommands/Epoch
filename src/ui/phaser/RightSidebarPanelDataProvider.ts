@@ -603,6 +603,7 @@ export class RightSidebarPanelDataProvider {
 
   private getLeaderDetailsContent(leader: { name: string; nationId: string; title?: string; description?: string }): RightSidebarContent {
     const nation = this.nationManager.getNation(leader.nationId);
+    const resources = this.nationManager.getResources(leader.nationId);
     return {
       title: 'Leader Details',
       sections: [
@@ -613,6 +614,7 @@ export class RightSidebarPanelDataProvider {
             textRow(nation?.name ?? 'Unknown nation', false, false, nation?.color),
             ...(leader.title ? [textRow(leader.title)] : []),
             ...(leader.description ? [textRow(leader.description, true)] : []),
+            textRow(`🕊️ ${resources.influence} (${formatSigned(resources.influencePerTurn)})`),
           ],
         },
         this.getLeaderNationSection(leader.nationId),
