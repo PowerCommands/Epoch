@@ -19,7 +19,7 @@ export const BASELINE_AI_STRATEGY: AIStrategy = {
   military: {
     maxUnits: 3,
     minAttackHealthRatio: 0.5,
-    engageDistance: 8,
+    engageDistance: 6,
     preferReachableTargets: true,
     randomnessFactor: 0.1,
     aggression: 1.0,
@@ -27,7 +27,7 @@ export const BASELINE_AI_STRATEGY: AIStrategy = {
 
   expansion: {
     desiredCityCount: 3,
-    settlerMinCityDistance: 5,
+    settlerMinCityDistance: 7,
   },
 
   production: {
@@ -57,7 +57,7 @@ export const BALANCED_AI_STRATEGY: AIStrategy = {
 
   expansion: {
     desiredCityCount: 3,
-    settlerMinCityDistance: 5,
+    settlerMinCityDistance: 8,
   },
 
   production: {
@@ -87,7 +87,7 @@ export const EXPANSIONIST_AI_STRATEGY: AIStrategy = {
 
   expansion: {
     desiredCityCount: 5,
-    settlerMinCityDistance: 4,
+    settlerMinCityDistance: 8,
   },
 
   production: {
@@ -116,8 +116,8 @@ export const DEFENSIVE_AI_STRATEGY: AIStrategy = {
   },
 
   expansion: {
-    desiredCityCount: 2,
-    settlerMinCityDistance: 5,
+    desiredCityCount: 4,
+    settlerMinCityDistance: 7,
   },
 
   production: {
@@ -147,7 +147,7 @@ export const AGGRESSIVE_AI_STRATEGY: AIStrategy = {
 
   expansion: {
     desiredCityCount: 3,
-    settlerMinCityDistance: 5,
+    settlerMinCityDistance: 7,
   },
 
   production: {
@@ -176,8 +176,8 @@ export const ECONOMIC_AI_STRATEGY: AIStrategy = {
   },
 
   expansion: {
-    desiredCityCount: 3,
-    settlerMinCityDistance: 5,
+    desiredCityCount: 6,
+    settlerMinCityDistance: 9,
   },
 
   production: {

@@ -13,6 +13,7 @@ import type { UnitChangedEvent, UnitManager } from '../UnitManager';
 type TileIndex = number;
 type UnitId = string;
 type PointOfInterestType = 'foreignCity' | 'foreignUnit' | 'resource' | 'frontier';
+type ScoutPhase = 'EXPANSION' | 'ENEMY_FOCUS';
 
 interface NationExplorationKnowledge {
   readonly knownTiles: Set<TileIndex>;
@@ -58,6 +59,20 @@ const MIN_EDGE_DISTANCE = 3;
 // grows past the snapshot below — the guard against the reject-loop.
 const FRONTIER_FAILURE_LIMIT = 10;
 const FRONTIER_KNOWLEDGE_GROWTH_RETRY = 5;
+// Phase-based scoring bonuses applied on top of POI base priority.
+// Tuning: priority deltas between POI types are 1, so the ENEMY_FOCUS bonus
+// of +3 lifts an enemy-adjacent frontier above a same-distance resource POI,
+// matching the user's "shift toward enemy regions" intent without
+// overshadowing direct foreignUnit / foreignCity POIs.
+const PHASE_EXPANSION_FAR_FRONTIER_BONUS_DIVISOR = 4;
+const PHASE_EXPANSION_FAR_FRONTIER_BONUS_CAP = 3;
+const PHASE_ENEMY_FOCUS_NEAR_ENEMY_RADIUS = 6;
+const PHASE_ENEMY_FOCUS_NEAR_ENEMY_FRONTIER_BONUS = 3;
+const PHASE_ENEMY_FOCUS_FAR_FROM_ENEMY_FRONTIER_PENALTY = 2;
+// Penalty applied when a candidate sits in the same general direction as the
+// scout's last assigned target — encourages turning rather than re-targeting
+// the same wedge of the map.
+const SAME_DIRECTION_PENALTY = 1;
 
 const POI_PRIORITY: Record<PointOfInterestType, number> = {
   foreignCity: 4,
@@ -76,6 +91,18 @@ export class AIExplorationSystem {
   // Frontier scoring is skipped until the nation has explored materially more.
   private readonly frontierBlockKnowledgeSnapshot = new Map<UnitId, number>();
   private readonly frontierFallbackLogged = new Set<UnitId>();
+  // Per-nation exploration phase. EXPANSION before any foreign nation has
+  // been met; ENEMY_FOCUS once contact is made. Drives phase-conditional
+  // scoring bonuses in selectTarget.
+  private readonly scoutPhaseByNation = new Map<string, ScoutPhase>();
+  // Direction (target.x - unit.x, target.y - unit.y) of each scout's last
+  // assigned target. Used to penalize re-picking targets in the same wedge
+  // and reduce repeat wandering.
+  private readonly lastTargetDirectionByUnit = new Map<UnitId, { dx: number; dy: number }>();
+  // Per-nation set of "x,y" foreign tiles already announced via the
+  // "focusing exploration near enemy" log. Keyed by the foreign anchor tile
+  // a chosen target was clustered around, so the log fires once per anchor.
+  private readonly enemyFocusLoggedKeys = new Map<string, Set<string>>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -92,6 +119,7 @@ export class AIExplorationSystem {
 
   runTurn(nationId: string): void {
     this.updateNationKnowledge(nationId);
+    this.updateScoutPhase(nationId);
 
     const scouts = this.unitManager.getUnitsByOwner(nationId)
       .filter((unit) => unit.unitType.id === SCOUT.id)
@@ -102,7 +130,25 @@ export class AIExplorationSystem {
       if (this.unitManager.getUnit(scout.id) === undefined) continue;
       this.moveScout(scout);
       this.updateNationKnowledge(nationId);
+      // Knowledge can change mid-turn (a scout reveals a foreign nation), so
+      // re-evaluate the phase between scouts in the same nation.
+      this.updateScoutPhase(nationId);
     }
+  }
+
+  private updateScoutPhase(nationId: string): void {
+    const knowledge = this.getKnowledge(nationId);
+    const next = this.computeScoutPhase(knowledge);
+    const prev = this.scoutPhaseByNation.get(nationId);
+    if (prev === next) return;
+    this.scoutPhaseByNation.set(nationId, next);
+    const round = this.turnManager.getCurrentRound();
+    console.log(`[r${round}] ${this.getNationName(nationId)} scout phase: ${next}`);
+  }
+
+  private computeScoutPhase(knowledge: NationExplorationKnowledge): ScoutPhase {
+    if (knowledge.loggedForeignNationIds.size === 0) return 'EXPANSION';
+    return 'ENEMY_FOCUS';
   }
 
   private handleUnitChanged(event: UnitChangedEvent): void {
@@ -119,15 +165,45 @@ export class AIExplorationSystem {
     const nextTarget = this.selectTarget(unit);
     if (nextTarget !== null) {
       this.explorationTargets.set(unit.id, nextTarget.tileIndex);
+      this.lastTargetDirectionByUnit.set(unit.id, {
+        dx: nextTarget.tile.x - unit.tileX,
+        dy: nextTarget.tile.y - unit.tileY,
+      });
       this.log(
         unit.ownerId,
         `${this.getNationName(unit.ownerId)} Scout target assigned (${this.formatPoiType(nextTarget.type)}) at (${nextTarget.tile.x},${nextTarget.tile.y})`,
       );
+      this.maybeLogEnemyFocus(unit.ownerId, nextTarget);
       if (this.moveTowardTarget(unit, nextTarget.tileIndex)) return;
     }
 
     this.explorationTargets.set(unit.id, null);
+    this.lastTargetDirectionByUnit.delete(unit.id);
     this.exploreLocally(unit);
+  }
+
+  // Emits "focusing exploration near enemy at (x,y)" once per (nation, enemy
+  // anchor) pair, when a chosen target sits inside the ENEMY_FOCUS bonus
+  // ring of a known foreign tile. The anchor coordinate is the actual
+  // discovered foreign tile so the log is anchored to a real position.
+  private maybeLogEnemyFocus(nationId: string, target: PointOfInterest): void {
+    if (this.scoutPhaseByNation.get(nationId) !== 'ENEMY_FOCUS') return;
+    const knowledge = this.getKnowledge(nationId);
+    const anchor = this.nearestKnownForeignTile(target.tile, knowledge);
+    if (!anchor || anchor.distance > PHASE_ENEMY_FOCUS_NEAR_ENEMY_RADIUS) return;
+
+    let logged = this.enemyFocusLoggedKeys.get(nationId);
+    if (!logged) {
+      logged = new Set<string>();
+      this.enemyFocusLoggedKeys.set(nationId, logged);
+    }
+    const key = `${anchor.coord.x},${anchor.coord.y}`;
+    if (logged.has(key)) return;
+    logged.add(key);
+    const round = this.turnManager.getCurrentRound();
+    console.log(
+      `[r${round}] ${this.getNationName(nationId)} focusing exploration near enemy at (${anchor.coord.x},${anchor.coord.y})`,
+    );
   }
 
   private updateNationKnowledge(nationId: string): void {
@@ -187,20 +263,32 @@ export class AIExplorationSystem {
     // Derived live from explorationTargets so there is no extra state to sync.
     const peerTargets = this.getPeerScoutTargets(unit);
 
-    const allPois = this.collectPointsOfInterest(unit.ownerId, true);
-    const byPriority = (a: PointOfInterest, b: PointOfInterest): number => (
-      b.priority - a.priority
+    const knowledge = this.getKnowledge(unit.ownerId);
+    const phase = this.scoutPhaseByNation.get(unit.ownerId) ?? this.computeScoutPhase(knowledge);
+    const lastDir = this.lastTargetDirectionByUnit.get(unit.id);
+    const scoreCache = new Map<PointOfInterest, number>();
+    const scoreOf = (poi: PointOfInterest): number => {
+      let cached = scoreCache.get(poi);
+      if (cached === undefined) {
+        cached = poi.priority + this.getPhaseBonus(unit, poi, phase, knowledge, lastDir);
+        scoreCache.set(poi, cached);
+      }
+      return cached;
+    };
+    const byScore = (a: PointOfInterest, b: PointOfInterest): number => (
+      scoreOf(b) - scoreOf(a)
       || this.manhattan(unit.tileX, unit.tileY, a.tile.x, a.tile.y)
         - this.manhattan(unit.tileX, unit.tileY, b.tile.x, b.tile.y)
       || a.tile.y - b.tile.y
       || a.tile.x - b.tile.x
     );
 
+    const allPois = this.collectPointsOfInterest(unit.ownerId, true);
     // Prefer tiles no other scout has claimed; fall back to allowing overlap
     // only when no alternative exists.
-    let primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, true).sort(byPriority);
+    let primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, true).sort(byScore);
     if (primary.length === 0) {
-      primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, false).sort(byPriority);
+      primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, false).sort(byScore);
     }
     if (primary.length > 0) {
       this.clearFrontierFailure(unit.id);
@@ -240,6 +328,77 @@ export class AIExplorationSystem {
 
     this.recordFrontierFailure(unit);
     return null;
+  }
+
+  private getPhaseBonus(
+    unit: Unit,
+    poi: PointOfInterest,
+    phase: ScoutPhase,
+    knowledge: NationExplorationKnowledge,
+    lastDir: { dx: number; dy: number } | undefined,
+  ): number {
+    let bonus = 0;
+    if (phase === 'EXPANSION' && poi.type === 'frontier') {
+      const distFromHome = this.minDistanceFromOwnCities(unit.ownerId, poi.tile.x, poi.tile.y);
+      if (distFromHome !== null) {
+        bonus += Math.min(
+          distFromHome / PHASE_EXPANSION_FAR_FRONTIER_BONUS_DIVISOR,
+          PHASE_EXPANSION_FAR_FRONTIER_BONUS_CAP,
+        );
+      }
+    }
+    if (phase === 'ENEMY_FOCUS' && poi.type === 'frontier') {
+      const anchor = this.nearestKnownForeignTile(poi.tile, knowledge);
+      if (anchor && anchor.distance <= PHASE_ENEMY_FOCUS_NEAR_ENEMY_RADIUS) {
+        bonus += PHASE_ENEMY_FOCUS_NEAR_ENEMY_FRONTIER_BONUS;
+      } else {
+        // Distant frontier unrelated to any known enemy is actively
+        // discouraged so scouts stop wandering off the contact axis.
+        bonus -= PHASE_ENEMY_FOCUS_FAR_FROM_ENEMY_FRONTIER_PENALTY;
+      }
+    }
+    if (lastDir && this.isSameDirection(unit, poi.tile, lastDir)) {
+      bonus -= SAME_DIRECTION_PENALTY;
+    }
+    return bonus;
+  }
+
+  private minDistanceFromOwnCities(nationId: string, x: number, y: number): number | null {
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    if (cities.length === 0) return null;
+    let best = Number.POSITIVE_INFINITY;
+    for (const city of cities) {
+      const d = this.manhattan(city.tileX, city.tileY, x, y);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  private nearestKnownForeignTile(
+    tile: Tile,
+    knowledge: NationExplorationKnowledge,
+  ): { coord: GridCoord; distance: number } | null {
+    let best: { coord: GridCoord; distance: number } | null = null;
+    const consider = (tileIndex: TileIndex): void => {
+      const fc = this.getTileByIndex(tileIndex);
+      if (!fc) return;
+      const d = this.manhattan(fc.x, fc.y, tile.x, tile.y);
+      if (best === null || d < best.distance) best = { coord: { x: fc.x, y: fc.y }, distance: d };
+    };
+    for (const tileIndex of knowledge.knownForeignUnits) consider(tileIndex);
+    for (const tileIndex of knowledge.knownForeignCities) consider(tileIndex);
+    return best;
+  }
+
+  private isSameDirection(unit: Unit, tile: Tile, lastDir: { dx: number; dy: number }): boolean {
+    const dx = tile.x - unit.tileX;
+    const dy = tile.y - unit.tileY;
+    if (dx === 0 && dy === 0) return false;
+    // Same general quadrant: signs match on both axes (a 0 on either side is
+    // treated as compatible so cardinal directions don't escape the penalty).
+    const sameX = Math.sign(dx) === Math.sign(lastDir.dx) || lastDir.dx === 0 || dx === 0;
+    const sameY = Math.sign(dy) === Math.sign(lastDir.dy) || lastDir.dy === 0 || dy === 0;
+    return sameX && sameY;
   }
 
   private filterPois(
