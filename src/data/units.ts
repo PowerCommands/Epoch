@@ -44,7 +44,7 @@ function unit(input: UnitDefinitionInput): UnitType {
 }
 
 function getDefaultUpkeepGold(category: UnitCategory, era: Era): number {
-  if (category === 'civilian' || category === 'recon') return 0;
+  if (category === 'civilian' || category === 'recon' || category === 'naval_recon') return 0;
 
   switch (era) {
     case 'ancient':
@@ -64,6 +64,7 @@ function getDefaultUpkeepGold(category: UnitCategory, era: Era): number {
 
 export const WARRIOR = unit({ id: 'warrior', name: 'Warrior', era: 'ancient', cost: 40, combatStrength: 8, movement: 2, category: 'melee' });
 export const SCOUT = unit({ id: 'scout', name: 'Scout', era: 'ancient', cost: 25, combatStrength: 0, movement: 4, category: 'recon' });
+export const SCOUT_BOAT = unit({ id: 'scout_boat', name: 'Scout Boat', era: 'ancient', cost: 35, combatStrength: 0, movement: 5, category: 'naval_recon', isNaval: true, upkeepGold: 0 });
 export const ARCHER = unit({ id: 'archer', name: 'Archer', era: 'ancient', cost: 40, combatStrength: 5, rangedStrength: 7, range: 2, movement: 2, category: 'ranged' });
 export const SPEARMAN = unit({ id: 'spearman', name: 'Spearman', era: 'ancient', cost: 56, combatStrength: 11, movement: 2, category: 'melee' });
 export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer', era: 'ancient', cost: 56, combatStrength: 6, rangedStrength: 10, range: 2, movement: 4, category: 'mounted' });
@@ -138,7 +139,7 @@ export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', co
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
 
 export const ALL_UNIT_TYPES: UnitType[] = [
-  WARRIOR, SCOUT, ARCHER, SPEARMAN, CHARIOT_ARCHER, WORK_BOAT, TRIREME, CARAVAN, CARGO_SHIP,
+  WARRIOR, SCOUT, SCOUT_BOAT, ARCHER, SPEARMAN, CHARIOT_ARCHER, WORK_BOAT, TRIREME, CARAVAN, CARGO_SHIP,
   HORSEMAN, COMPOSITE_BOWMAN, CATAPULT, SWORDSMAN,
   PIKEMAN, CROSSBOWMAN, LONGSWORDSMAN, KNIGHT, TREBUCHET, GALLEASS,
   MUSKETMAN, CARAVEL, FRIGATE, PRIVATEER, CANNON, LANCER,

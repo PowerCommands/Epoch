@@ -104,7 +104,7 @@ import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { CULTURE_TREE } from '../data/cultureTree';
 import { getImprovementById } from '../data/improvements';
 import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
-import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
+import { ALL_UNIT_TYPES, WORK_BOAT, getUnitTypeById } from '../data/units';
 import type { CultureNode } from '../types/CultureNode';
 import type { CultureUnlock } from '../types/CultureUnlock';
 import {
@@ -900,6 +900,19 @@ export class GameScene extends Phaser.Scene {
       }
       const nationName = nationManager.getNation(event.construction.ownerId)?.name ?? event.construction.ownerId;
       const locationLabel = event.city ? `near ${event.city.name}` : 'on a sea resource';
+      if (
+        event.unit.unitType.id === WORK_BOAT.id &&
+        event.tile.resourceId !== undefined
+      ) {
+        eventLog.log(
+          formatLog(
+            event.construction.ownerId,
+            `Work Boat improved ${event.tile.resourceId} at (${event.tile.x},${event.tile.y}) with ${event.improvement.id}`,
+          ),
+          [event.construction.ownerId],
+          turnManager.getCurrentRound(),
+        );
+      }
       eventLog.log(
         `${nationName} built ${event.improvement.name} ${locationLabel}.`,
         [event.construction.ownerId],
@@ -985,6 +998,12 @@ export class GameScene extends Phaser.Scene {
       mapData,
       eventLog,
       formatLog,
+      (nationId, resourceId) => {
+        const resource = getNaturalResourceById(resourceId);
+        if (!resource) return false;
+        if (!resource.revealTechId) return true;
+        return researchSystem.isResearched(nationId, resource.revealTechId);
+      },
     );
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
@@ -1001,6 +1020,9 @@ export class GameScene extends Phaser.Scene {
       strategicResourceCapacitySystem,
       formatLog,
       eraSystem,
+      undefined,
+      undefined,
+      builderSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 

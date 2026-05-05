@@ -2,6 +2,7 @@ import type { Era } from '../data/technologies';
 
 export type AILeaderEraStrategyId =
   | 'frontierExpansion'
+  | 'coastalFoundation'
   | 'balancedGrowth'
   | 'militaryPreparation'
   | 'conquestCampaign'
@@ -66,6 +67,15 @@ export interface AILeaderEraFoundingPreferences {
   distancePenalty?: number;
 }
 
+export interface AILeaderEraFoundingRules {
+  minCityDistance?: number;
+}
+
+export interface AILeaderEraResourcePriorities {
+  seaResourceExploitation?: number;
+  workBoatProduction?: number;
+}
+
 export interface AILeaderEraStrategy {
   id: AILeaderEraStrategyId;
   name: string;
@@ -76,6 +86,8 @@ export interface AILeaderEraStrategy {
   diplomacyWeights: AILeaderEraDiplomacyWeights;
   militaryBehavior: AILeaderEraMilitaryBehavior;
   foundingPreferences?: AILeaderEraFoundingPreferences;
+  foundingRules?: AILeaderEraFoundingRules;
+  resourcePriorities?: AILeaderEraResourcePriorities;
 }
 
 export interface LeaderEraStrategyProfile {

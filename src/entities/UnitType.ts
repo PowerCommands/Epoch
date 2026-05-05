@@ -7,6 +7,7 @@ export type UnitCategory =
   | 'siege'
   | 'naval_melee'
   | 'naval_ranged'
+  | 'naval_recon'
   | 'air'
   | 'civilian'
   | 'recon';

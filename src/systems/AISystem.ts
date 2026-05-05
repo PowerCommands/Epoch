@@ -5,9 +5,9 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORK_BOAT } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET } from '../data/buildings';
-import { getNaturalResourceById } from '../data/naturalResources';
+import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { BuildingType } from '../entities/Building';
 import type { CityBuildings } from '../entities/CityBuildings';
 import { UnitManager } from './UnitManager';
@@ -20,6 +20,7 @@ import { ProductionSystem } from './ProductionSystem';
 import { canCityProduceUnit, cityHasWaterTile } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
+import type { BuilderSystem } from './BuilderSystem';
 import { calculateCityEconomy } from './CityEconomy';
 import { getAIStrategyById } from '../data/aiStrategies';
 import type { AIStrategy } from '../types/aiStrategy';
@@ -69,6 +70,11 @@ import {
   type AISettlementMemorySystem,
   type SettlementCandidate,
 } from './ai/AISettlementMemorySystem';
+import {
+  getSharedAISeaResourceMemorySystem,
+  type AISeaResourceMemorySystem,
+  type SeaResourceCandidate,
+} from './ai/AISeaResourceMemorySystem';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -169,6 +175,7 @@ const SCORE_PRODUCTION_BUILDING = 60;
 const SCORE_GOLD_BUILDING = 55;
 const SCORE_FALLBACK = 25;
 const SCORE_NAVAL = 40;
+const SCORE_WORK_BOAT = 42;
 const LOW_GOLD_PER_TURN = 0;
 // Foundation Phase production tuning. Building base scores get a flat boost
 // so they outscore the regular military candidate (70) when food/production/
@@ -190,6 +197,9 @@ const WATER_RESOURCE_BONUS = 4;
 const NAVAL_COASTAL_ZONE_RADIUS = 2;
 const NAVAL_ENEMY_NEAR_CITY_RADIUS = 3;
 const NAVAL_PATROL_RESOURCE_BONUS = 3;
+const MIN_KNOWN_SEA_RESOURCE_TARGETS = 3;
+const DESIRED_EARLY_NAVAL_RECON_COUNT = 1;
+const MAX_EARLY_WORK_BOATS_COASTAL_FOUNDATION = 2;
 
 // Naval offensive behavior. Cap on how far a ship will travel to reach an
 // offensive target so it doesn't wander deep into open ocean. Targets must
@@ -240,7 +250,11 @@ export class AISystem {
   private readonly productionSystem: ProductionSystem;
   private readonly foundCitySystem: FoundCitySystem;
   private readonly settlementMemorySystem: AISettlementMemorySystem;
+  private readonly seaResourceMemorySystem: AISeaResourceMemorySystem;
   private readonly mapData: MapData;
+  private readonly workBoatTargetsByUnit = new Map<string, string>();
+  private readonly workBoatMovementLogKeyByUnit = new Map<string, string>();
+  private readonly coastalSpacingLoggedBySettler = new Set<string>();
   private readonly strategySelector = new AIStrategySelector();
   private readonly strategyEvaluationSystem = new AIStrategyEvaluationSystem();
   // Pass-1 evaluation rollout: only Mongolia logs the result for now.
@@ -306,6 +320,8 @@ export class AISystem {
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly eraSystem?: EraSystem,
     settlementMemorySystem?: AISettlementMemorySystem,
+    seaResourceMemorySystem?: AISeaResourceMemorySystem,
+    private readonly builderSystem?: BuilderSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -317,6 +333,7 @@ export class AISystem {
     this.productionSystem = productionSystem;
     this.foundCitySystem = foundCitySystem;
     this.settlementMemorySystem = settlementMemorySystem ?? getSharedAISettlementMemorySystem(mapData);
+    this.seaResourceMemorySystem = seaResourceMemorySystem ?? getSharedAISeaResourceMemorySystem(mapData);
     this.mapData = mapData;
   }
 
@@ -770,14 +787,14 @@ export class AISystem {
   // here, right now?" — combines the FoundCitySystem terrain rules with the
   // strategy's settlerMinCityDistance spacing requirement against ALL cities
   // (own and foreign).
-  private canFoundWithSpacing(settler: Unit, strategy: AIStrategy): boolean {
+  private canFoundWithSpacing(settler: Unit, strategy: AIStrategy, eraStrategy: AILeaderEraStrategy): boolean {
     if (!this.foundCitySystem.canFound(settler)) return false;
     const minDist = this.minDistanceToCities(
       settler.tileX,
       settler.tileY,
       this.cityManager.getAllCities(),
     );
-    return minDist >= strategy.expansion.settlerMinCityDistance;
+    return minDist >= this.getEffectiveSettlerMinCityDistance(strategy, eraStrategy);
   }
 
   private logSettlerSpacingRejection(
@@ -815,9 +832,9 @@ export class AISystem {
       // adjacent territory. expansionBias used to relax this rule and is no
       // longer applied; expansionist nations may want more cities, but they
       // earn them by traveling farther rather than crowding the border.
-      if (this.canFoundWithSpacing(settler, strategy)) {
+      if (this.canFoundWithSpacing(settler, strategy, eraStrategy)) {
         const founded = this.foundCitySystem.foundCity(settler);
-        if (founded) console.log(this.formatLog(nationId, `founded city at (${founded.tileX},${founded.tileY})`));
+        if (founded) this.logFoundedCity(nationId, founded);
         continue; // settler consumed
       }
       if (this.foundCitySystem.canFound(settler)) {
@@ -841,7 +858,7 @@ export class AISystem {
     let target = this.findScoutDiscoveredFoundingSite(settler, nationId, strategy, eraStrategy, claimedTargets);
     const usingScoutMemory = target !== null;
     if (!target) {
-      target = this.findFoundingSite(settler, nationId, strategy, claimedTargets);
+      target = this.findFoundingSite(settler, nationId, strategy, eraStrategy, claimedTargets);
       if (target) this.logSettlerFallback(nationId);
     }
     if (!target) {
@@ -867,9 +884,9 @@ export class AISystem {
       // World may have changed during the trip (another nation founded a city
       // nearby), so re-validate spacing — never just canFound — at the moment
       // of commitment.
-      if (this.canFoundWithSpacing(settler, strategy)) {
+      if (this.canFoundWithSpacing(settler, strategy, eraStrategy)) {
         const founded = this.foundCitySystem.foundCity(settler);
-        if (founded) console.log(this.formatLog(nationId, `founded city at (${founded.tileX},${founded.tileY})`));
+        if (founded) this.logFoundedCity(nationId, founded);
       } else if (this.foundCitySystem.canFound(settler)) {
         this.logSettlerSpacingRejection(nationId, settler, strategy.expansion.settlerMinCityDistance);
       }
@@ -899,7 +916,7 @@ export class AISystem {
 
     for (const { candidate, score } of candidates) {
       if (claimedTargets.has(tileKey(candidate.x, candidate.y))) continue;
-      if (!this.isFoundingTargetValid(candidate.x, candidate.y, strategy)) {
+      if (!this.isFoundingTargetValid(candidate.x, candidate.y, strategy, eraStrategy)) {
         this.settlementMemorySystem.removeCandidate(nationId, candidate.x, candidate.y);
         continue;
       }
@@ -946,6 +963,7 @@ export class AISystem {
     settler: Unit,
     nationId: string,
     strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
     claimedTargets: Set<string> = new Set<string>(),
   ): { x: number; y: number; score: number } | null {
     const allCities = this.cityManager.getAllCities();
@@ -954,7 +972,7 @@ export class AISystem {
     // Strict spacing — same floor canFoundWithSpacing enforces — so the site
     // search and the commit check stay consistent. expansionBias no longer
     // shrinks the floor; expansionist nations travel farther for cities.
-    const minCityDistance = strategy.expansion.settlerMinCityDistance;
+    const minCityDistance = this.getEffectiveSettlerMinCityDistance(strategy, eraStrategy);
     const wantsResources = hasGoalOfType(goals, 'build_economy');
     const wantsCoast = hasGoalOfType(goals, 'build_navy');
     const hasExpandGoal = hasGoalOfType(goals, 'expand');
@@ -980,11 +998,17 @@ export class AISystem {
           { x: settler.tileX, y: settler.tileY },
           { x, y },
         );
-        const score = this.scoreFoundingTile(tile, settlerDist, capital, {
-          wantsResources,
-          wantsCoast,
-          hasExpandGoal,
-        });
+        const score = this.scoreFoundingTile(
+          tile,
+          settlerDist,
+          capital,
+          {
+            wantsResources,
+            wantsCoast,
+            hasExpandGoal,
+          },
+          eraStrategy,
+        );
 
         if (score > bestScore) {
           bestScore = score;
@@ -1002,14 +1026,19 @@ export class AISystem {
     return bestTile ? { ...bestTile, score: bestScore } : null;
   }
 
-  private isFoundingTargetValid(x: number, y: number, strategy: AIStrategy): boolean {
+  private isFoundingTargetValid(
+    x: number,
+    y: number,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+  ): boolean {
     const tile = this.mapData.tiles[y]?.[x];
     if (!tile) return false;
     if (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Ice) return false;
     if (this.cityManager.getCityAt(x, y) !== undefined) return false;
     if (this.unitManager.getUnitAt(x, y) !== null) return false;
     const cityDist = this.minDistanceToCities(x, y, this.cityManager.getAllCities());
-    return cityDist >= strategy.expansion.settlerMinCityDistance;
+    return cityDist >= this.getEffectiveSettlerMinCityDistance(strategy, eraStrategy);
   }
 
   private logSettlerAssignment(
@@ -1020,9 +1049,39 @@ export class AISystem {
     const key = `${target.x},${target.y}`;
     if (this.settlerAssignmentLogKeyByUnit.get(settler.id) === key) return;
     this.settlerAssignmentLogKeyByUnit.set(settler.id, key);
+    this.maybeLogCoastalSpacingOverride(nationId, settler, target);
+    if (this.isCoastalFoundingTile(target.x, target.y)) {
+      console.log(
+        this.formatLog(nationId, `settler assigned coastal target at (${target.x},${target.y}) score: ${Math.round(target.score)}`),
+      );
+      return;
+    }
     console.log(
       this.formatLog(nationId, `settler assigned target (${target.x},${target.y}) score: ${Math.round(target.score)}`),
     );
+  }
+
+  private logFoundedCity(nationId: string, city: City): void {
+    const prefix = this.isCoastalFoundingTile(city.tileX, city.tileY) ? 'founded coastal city' : 'founded city';
+    console.log(this.formatLog(nationId, `${prefix} at (${city.tileX},${city.tileY})`));
+  }
+
+  private maybeLogCoastalSpacingOverride(
+    nationId: string,
+    settler: Unit,
+    target: { x: number; y: number },
+  ): void {
+    const strategy = this.getStrategy(nationId);
+    const eraStrategy = this.getActiveEraStrategy(nationId);
+    const effectiveMin = this.getEffectiveSettlerMinCityDistance(strategy, eraStrategy);
+    const genericMin = strategy.expansion.settlerMinCityDistance;
+    if (effectiveMin >= genericMin) return;
+    const nearestCityDistance = this.minDistanceToCities(target.x, target.y, this.cityManager.getAllCities());
+    if (nearestCityDistance >= genericMin) return;
+    const key = `${settler.id}:${effectiveMin}`;
+    if (this.coastalSpacingLoggedBySettler.has(key)) return;
+    this.coastalSpacingLoggedBySettler.add(key);
+    console.log(this.formatLog(nationId, `settler using coastal spacing minDistance=${effectiveMin}`));
   }
 
   private logSettlerUsingScoutMemory(
@@ -1055,8 +1114,9 @@ export class AISystem {
     settlerDist: number,
     capital: City | undefined,
     intents: { wantsResources: boolean; wantsCoast: boolean; hasExpandGoal: boolean },
+    eraStrategy?: AILeaderEraStrategy,
   ): number {
-    let score = this.computeCoastalSiteBonus({ x: tile.x, y: tile.y }) - settlerDist;
+    let score = this.computeCoastalSiteBonus({ x: tile.x, y: tile.y }, eraStrategy) - settlerDist;
 
     if (tile.resourceId !== undefined) score += 5;
 
@@ -1088,7 +1148,7 @@ export class AISystem {
     return score;
   }
 
-  private computeCoastalSiteBonus(coord: GridCoord): number {
+  private computeCoastalSiteBonus(coord: GridCoord, eraStrategy?: AILeaderEraStrategy): number {
     let coastCount = 0;
     let waterResourceCount = 0;
     for (const adj of this.gridSystem.getAdjacentCoords(coord)) {
@@ -1099,10 +1159,31 @@ export class AISystem {
       if (isWater && tile.resourceId !== undefined) waterResourceCount++;
     }
     let bonus = 0;
-    if (coastCount > 0) bonus += COASTAL_SITE_BONUS;
+    const foundingPreferences = eraStrategy?.id === 'coastalFoundation'
+      ? eraStrategy.foundingPreferences
+      : undefined;
+    const coastalAccessWeight = foundingPreferences?.coastalAccess ?? 1;
+    const waterResourceWeight = foundingPreferences?.waterResource ?? 1;
+    if (coastCount > 0) bonus += COASTAL_SITE_BONUS * coastalAccessWeight;
     bonus += coastCount * COASTAL_TILE_BONUS;
-    bonus += waterResourceCount * WATER_RESOURCE_BONUS;
+    bonus += waterResourceCount * WATER_RESOURCE_BONUS * waterResourceWeight;
     return bonus;
+  }
+
+  private isCoastalFoundingTile(x: number, y: number): boolean {
+    return this.gridSystem.getAdjacentCoords({ x, y }).some((adj) => {
+      const tile = this.mapData.tiles[adj.y]?.[adj.x];
+      return tile?.type === TileType.Coast || tile?.type === TileType.Ocean;
+    });
+  }
+
+  private getEffectiveSettlerMinCityDistance(
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+  ): number {
+    return eraStrategy.foundingRules?.minCityDistance
+      ?? strategy.expansion.settlerMinCityDistance
+      ?? 7;
   }
 
   private minDistanceToCities(tileX: number, tileY: number, cities: City[]): number {
@@ -1251,7 +1332,13 @@ export class AISystem {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
       if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
+      if (unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon') continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
+
+      if (unit.unitType.id === WORK_BOAT.id) {
+        this.runWorkBoat(unit, nationId);
+        continue;
+      }
 
       if (unit.unitType.isNaval) {
         this.moveNavalUnitForPatrol(unit, nationId, strategy, navalContext);
@@ -1685,6 +1772,166 @@ export class AISystem {
     this.movementSystem.moveAlongPath(unit, path);
   }
 
+  // ─── Work boats ─────────────────────────────────────────────────────────────
+
+  private runWorkBoat(unit: Unit, nationId: string): void {
+    if (!this.builderSystem) return;
+    if (unit.unitType.canBuildImprovements !== true || unit.unitType.isNaval !== true) return;
+
+    let target = this.getAssignedWorkBoatTarget(unit, nationId);
+    if (target === null) {
+      target = this.getValidSeaResourceTargetsForWorkBoat(nationId, unit, {
+        requireReachable: true,
+        includeAssigned: false,
+      })[0] ?? null;
+      if (target === null) return;
+      this.workBoatTargetsByUnit.set(unit.id, tileKey(target.x, target.y));
+      console.log(
+        this.formatLog(
+          nationId,
+          `Work Boat assigned sea resource ${target.resourceId} at (${target.x},${target.y})`,
+        ),
+      );
+    }
+
+    const tile = this.mapData.tiles[target.y]?.[target.x];
+    if (!tile) {
+      this.workBoatTargetsByUnit.delete(unit.id);
+      return;
+    }
+
+    if (unit.tileX === target.x && unit.tileY === target.y) {
+      const result = this.builderSystem.build(unit, tile, {
+        consumeMovement: true,
+        requireMovement: true,
+      });
+      if (result !== null) {
+        this.workBoatTargetsByUnit.delete(unit.id);
+      }
+      return;
+    }
+
+    const path = this.pathfindingSystem.findPath(unit, target.x, target.y, {
+      respectMovementPoints: false,
+    });
+    if (path === null) {
+      this.workBoatTargetsByUnit.delete(unit.id);
+      return;
+    }
+
+    const fromX = unit.tileX;
+    const fromY = unit.tileY;
+    this.movementSystem.moveAlongPath(unit, path);
+    if (unit.tileX === fromX && unit.tileY === fromY) return;
+
+    const logKey = `${target.x},${target.y}:${unit.tileX},${unit.tileY}`;
+    if (this.workBoatMovementLogKeyByUnit.get(unit.id) !== logKey) {
+      this.workBoatMovementLogKeyByUnit.set(unit.id, logKey);
+      console.log(
+        this.formatLog(
+          nationId,
+          `Work Boat moved toward sea resource ${target.resourceId} at (${target.x},${target.y})`,
+        ),
+      );
+    }
+  }
+
+  private getAssignedWorkBoatTarget(unit: Unit, nationId: string): SeaResourceCandidate | null {
+    const key = this.workBoatTargetsByUnit.get(unit.id);
+    if (key === undefined) return null;
+    const [xRaw, yRaw] = key.split(',');
+    const x = Number(xRaw);
+    const y = Number(yRaw);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      this.workBoatTargetsByUnit.delete(unit.id);
+      return null;
+    }
+    const target = this.getValidSeaResourceTargetsForWorkBoat(nationId, unit, {
+      requireReachable: true,
+      includeAssigned: true,
+      allowedAssignedKey: key,
+    }).find((candidate) => candidate.x === x && candidate.y === y) ?? null;
+    if (target === null) this.workBoatTargetsByUnit.delete(unit.id);
+    return target;
+  }
+
+  private getValidSeaResourceTargetsForWorkBoat(
+    nationId: string,
+    unit: Unit | undefined,
+    options: {
+      requireReachable: boolean;
+      includeAssigned: boolean;
+      allowedAssignedKey?: string;
+    },
+  ): SeaResourceCandidate[] {
+    const assignedKeys = new Set(this.workBoatTargetsByUnit.values());
+    const eraStrategy = this.getActiveEraStrategy(nationId);
+    const exploitation = eraStrategy.resourcePriorities?.seaResourceExploitation ?? 1;
+    return this.seaResourceMemorySystem.getBestSeaResourceTargetsForNation(nationId)
+      .filter((candidate) => {
+        const key = tileKey(candidate.x, candidate.y);
+        if (
+          !options.includeAssigned &&
+          assignedKeys.has(key) &&
+          key !== options.allowedAssignedKey
+        ) return false;
+        if (
+          options.includeAssigned &&
+          assignedKeys.has(key) &&
+          key !== options.allowedAssignedKey
+        ) return false;
+        return this.isValidWorkBoatTarget(nationId, candidate, unit, options.requireReachable);
+      })
+      .sort((a, b) => (
+        this.scoreWorkBoatTarget(b, nationId, exploitation) - this.scoreWorkBoatTarget(a, nationId, exploitation)
+        || a.discoveredTurn - b.discoveredTurn
+        || a.y - b.y
+        || a.x - b.x
+      ));
+  }
+
+  private isValidWorkBoatTarget(
+    nationId: string,
+    candidate: SeaResourceCandidate,
+    unit: Unit | undefined,
+    requireReachable: boolean,
+  ): boolean {
+    const tile = this.mapData.tiles[candidate.y]?.[candidate.x];
+    if (!tile) return false;
+    if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
+    if (tile.resourceId !== candidate.resourceId) return false;
+    if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
+
+    const ownerNationId = tile.resourceOwnerNationId ?? tile.ownerId;
+    if (ownerNationId !== undefined && ownerNationId !== nationId) return false;
+
+    const resource = getNaturalResourceById(tile.resourceId);
+    if (resource === undefined) return false;
+    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    if (improvementId === undefined) return false;
+    if (!this.researchSystem?.isImprovementUnlocked(nationId, improvementId)) return false;
+
+    if (requireReachable && unit !== undefined) {
+      return this.pathfindingSystem.findPath(unit, tile.x, tile.y, {
+        respectMovementPoints: false,
+      }) !== null;
+    }
+    return true;
+  }
+
+  private scoreWorkBoatTarget(
+    candidate: SeaResourceCandidate,
+    nationId: string,
+    exploitation: number,
+  ): number {
+    const tile = this.mapData.tiles[candidate.y]?.[candidate.x];
+    const ownerNationId = tile ? tile.resourceOwnerNationId ?? tile.ownerId : undefined;
+    let score = candidate.scoreBase * exploitation;
+    if (ownerNationId === undefined) score += 4;
+    else if (ownerNationId === nationId) score += 2;
+    return score;
+  }
+
   // Strategy-based movement scoring shapes where AI units want to go,
   // while existing pathfinding and movement rules still decide how they move.
   private moveByStrategyScoring(unit: Unit, nationId: string, strategy: AIStrategy): void {
@@ -1958,12 +2205,14 @@ export class AISystem {
     this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
     this.ensureFoundationSettlerProduction(nationId, cities);
+    this.ensureNavalReconProduction(nationId, cities);
 
     const strategy = this.getStrategy(nationId);
     const eraStrategy = this.getActiveEraStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
     let plannedNavalCount = this.countNavalUnits(nationId);
+    let plannedWorkBoatCount = this.countWorkBoats(nationId) + this.countQueuedWorkBoats(nationId);
     const coastalCityCount = this.countCoastalCities(nationId);
 
     for (const city of cities) {
@@ -1975,6 +2224,7 @@ export class AISystem {
         plannedMilitaryCount,
         plannedSettlerCount,
         plannedNavalCount,
+        plannedWorkBoatCount,
         coastalCityCount,
         strategy,
         eraStrategy,
@@ -2006,6 +2256,7 @@ export class AISystem {
         if (choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
           plannedNavalCount++;
         }
+        if (choice.unitType.id === WORK_BOAT.id) plannedWorkBoatCount++;
       }
     }
   }
@@ -2043,6 +2294,69 @@ export class AISystem {
     for (const city of this.cityManager.getCitiesByOwner(nationId)) {
       for (const entry of this.productionSystem.getQueue(city.id)) {
         if (entry.item.kind === 'unit' && entry.item.unitType.id === SCOUT.id) count++;
+      }
+    }
+    return count;
+  }
+
+  private ensureNavalReconProduction(nationId: string, cities: City[]): void {
+    if (cities.length === 0) return;
+    if (!this.canBuildUnit(nationId, SCOUT_BOAT.id)) return;
+
+    const coastalCities = cities.filter((city) => cityHasWaterTile(city, this.mapData));
+    if (coastalCities.length === 0) return;
+
+    const plannedNavalRecon = this.countNavalReconUnits(nationId) + this.countQueuedNavalRecon(nationId);
+    if (plannedNavalRecon >= DESIRED_EARLY_NAVAL_RECON_COUNT) return;
+    if (!this.shouldBuildNavalRecon(nationId, coastalCities)) return;
+
+    const city = coastalCities.find((candidate) => (
+      this.productionSystem.getProduction(candidate.id) === undefined &&
+      canCityProduceUnit(candidate, SCOUT_BOAT, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ));
+    if (!city) return;
+
+    this.productionSystem.setProduction(city.id, { kind: 'unit', unitType: SCOUT_BOAT });
+    console.debug(
+      this.formatLog(nationId, `AI production in ${city.name}: prioritized Scout Boat (${plannedNavalRecon + 1}/${DESIRED_EARLY_NAVAL_RECON_COUNT})`),
+    );
+  }
+
+  private shouldBuildNavalRecon(nationId: string, coastalCities: readonly City[]): boolean {
+    const knownTargets = this.seaResourceMemorySystem.getBestSeaResourceTargetsForNation(nationId).length;
+    if (knownTargets < MIN_KNOWN_SEA_RESOURCE_TARGETS) return true;
+    return this.hasUnexploredWaterNearCoastalCities(nationId, coastalCities);
+  }
+
+  private hasUnexploredWaterNearCoastalCities(nationId: string, coastalCities: readonly City[]): boolean {
+    if (!this.explorationMemorySystem) return true;
+    for (const city of coastalCities) {
+      const tiles = this.gridSystem.getTilesInRange(
+        { x: city.tileX, y: city.tileY },
+        6,
+        this.mapData,
+        { includeCenter: false },
+      );
+      for (const tile of tiles) {
+        if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) continue;
+        if (!this.explorationMemorySystem.hasSeenTile(nationId, tile.x, tile.y)) return true;
+      }
+    }
+    return false;
+  }
+
+  private countQueuedNavalRecon(nationId: string): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      for (const entry of this.productionSystem.getQueue(city.id)) {
+        if (
+          entry.item.kind === 'unit' &&
+          (entry.item.unitType.id === SCOUT_BOAT.id || entry.item.unitType.category === 'naval_recon')
+        ) {
+          count++;
+        }
       }
     }
     return count;
@@ -2153,6 +2467,28 @@ export class AISystem {
       .length;
   }
 
+  private countNavalReconUnits(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((u) => u.unitType.id === SCOUT_BOAT.id || u.unitType.category === 'naval_recon')
+      .length;
+  }
+
+  private countWorkBoats(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((u) => u.unitType.id === WORK_BOAT.id)
+      .length;
+  }
+
+  private countQueuedWorkBoats(nationId: string): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      for (const entry of this.productionSystem.getQueue(city.id)) {
+        if (entry.item.kind === 'unit' && entry.item.unitType.id === WORK_BOAT.id) count++;
+      }
+    }
+    return count;
+  }
+
   private countCoastalCities(nationId: string): number {
     return this.cityManager.getCitiesByOwner(nationId)
       .filter((city) => cityHasWaterTile(city, this.mapData))
@@ -2182,6 +2518,7 @@ export class AISystem {
     plannedMilitaryCount: number,
     plannedSettlerCount: number,
     plannedNavalCount: number,
+    plannedWorkBoatCount: number,
     coastalCityCount: number,
     strategy: AIStrategy,
     eraStrategy: AILeaderEraStrategy,
@@ -2275,6 +2612,25 @@ export class AISystem {
       }
     }
 
+    const workBoatTarget = this.pickBestWorkBoatTargetForProduction(nationId);
+    if (
+      eraStrategy.resourcePriorities?.workBoatProduction !== undefined &&
+      workBoatTarget !== null &&
+      cityHasWaterTile(city, this.mapData) &&
+      plannedWorkBoatCount < this.getMaxWorkBoatsForStrategy(nationId, eraStrategy) &&
+      this.canBuildUnit(nationId, WORK_BOAT.id) &&
+      canCityProduceUnit(city, WORK_BOAT, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ) {
+      const priority = eraStrategy.resourcePriorities?.workBoatProduction ?? 1;
+      candidates.push({
+        item: { kind: 'unit', unitType: WORK_BOAT },
+        baseScore: (SCORE_WORK_BOAT + workBoatTarget.scoreBase) * priority,
+        category: 'military',
+      });
+    }
+
     if (
       economy.netFood <= strategy.production.lowNetFoodThreshold &&
       !buildings.has(GRANARY.id) &&
@@ -2350,6 +2706,15 @@ export class AISystem {
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
     const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy);
     if (best) {
+      if (best.item.kind === 'unit' && best.item.unitType.id === WORK_BOAT.id && workBoatTarget !== null) {
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        console.log(
+          this.formatLog(
+            nationId,
+            `${nationName} / ${city.name} selected Work Boat (strategy: ${eraStrategy.id}, reason: known sea resource ${workBoatTarget.resourceId} at (${workBoatTarget.x},${workBoatTarget.y}))`,
+          ),
+        );
+      }
       console.log(
         this.formatLog(nationId, `AI production chose ${getCandidateGoalCategory(best)} (weights: ${JSON.stringify(goalWeights)})`),
       );
@@ -2381,6 +2746,25 @@ export class AISystem {
     ));
     if (candidates.length === 0) return undefined;
     return candidates.reduce((a, b) => (a.productionCost <= b.productionCost ? a : b));
+  }
+
+  private pickBestWorkBoatTargetForProduction(nationId: string): SeaResourceCandidate | null {
+    const targets = this.getValidSeaResourceTargetsForWorkBoat(nationId, undefined, {
+      requireReachable: false,
+      includeAssigned: false,
+    });
+    return targets[0] ?? null;
+  }
+
+  private getMaxWorkBoatsForStrategy(nationId: string, eraStrategy: AILeaderEraStrategy): number {
+    const era = this.getNationEra(nationId);
+    if (
+      eraStrategy.id === 'coastalFoundation' &&
+      (era === 'ancient' || era === 'classical')
+    ) {
+      return MAX_EARLY_WORK_BOATS_COASTAL_FOUNDATION;
+    }
+    return 1;
   }
 
   private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
@@ -2444,6 +2828,7 @@ export class AISystem {
     if (item.kind === 'unit') {
       if (item.unitType.id === SETTLER.id) return 'core expansion';
       if (item.unitType.id === SCOUT.id) return 'exploration';
+      if (item.unitType.id === SCOUT_BOAT.id || item.unitType.category === 'naval_recon') return 'naval exploration';
       if (item.unitType.canFound === true) return 'core expansion';
       if (item.unitType.isNaval === true) return 'naval coverage';
       return 'defense';

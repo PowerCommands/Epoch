@@ -140,6 +140,7 @@ export class UnitManager {
   canBoardUnit(unit: Unit, transport: Unit): boolean {
     if (unit.ownerId !== transport.ownerId) return false;
     if (unit.unitType.isNaval || !transport.unitType.isNaval) return false;
+    if (transport.unitType.category === 'naval_recon') return false;
     if (unit.transportId !== undefined || transport.transportId !== undefined) return false;
     return this.getCargoForTransport(transport) === undefined;
   }

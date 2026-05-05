@@ -4,6 +4,7 @@ import {
 } from '../../data/aiBaselinePriorities';
 import { getLeaderPersonalityByNationId } from '../../data/leaders';
 import type { Nation } from '../../entities/Nation';
+import type { AILeaderEraResearchWeights, AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
 import type { Technology } from '../ResearchSystem';
 import { getBehaviorWeights } from '../AIStrategyService';
 import type { AILogFormatter } from './AILogFormatter';
@@ -14,6 +15,7 @@ export interface AIResearchPlanningContext {
   currentTurn: number;
   earlyGameTurnLimit?: number;
   formatLog?: AILogFormatter;
+  eraStrategy?: AILeaderEraStrategy;
 }
 
 export function pickBestAIResearchTechnology(context: AIResearchPlanningContext): Technology | undefined {
@@ -30,6 +32,7 @@ export function pickBestAIResearchTechnology(context: AIResearchPlanningContext)
     const score = getDefinitionOrderTieBreakScore(context.availableTechnologies.length, index)
       + baselineScore
       + getStrategyModifier(context.nation, technology.id)
+      + getEraStrategyResearchModifier(technology.id, context.eraStrategy)
       + getPersonalityModifier(context.nation.id, technology.id);
 
     if (baselineScore > 0) {
@@ -67,6 +70,30 @@ function getStrategyModifier(nation: Nation, techId: string): number {
   if (techId !== 'writing') return 0;
   const weights = getBehaviorWeights(nation.aiStrategyId);
   return weights.diplomacy + weights.trade;
+}
+
+function getEraStrategyResearchModifier(
+  techId: string,
+  eraStrategy: AILeaderEraStrategy | undefined,
+): number {
+  if (!eraStrategy) return 0;
+  const category = getTechnologyResearchCategory(techId);
+  if (category === undefined) return 0;
+  const weight = eraStrategy.researchWeights[category];
+  return (weight - 1) * 10;
+}
+
+function getTechnologyResearchCategory(techId: string): keyof AILeaderEraResearchWeights | undefined {
+  switch (techId) {
+    case 'sailing':
+    case 'optics':
+    case 'compass':
+    case 'astronomy':
+    case 'navigation':
+      return 'naval';
+    default:
+      return undefined;
+  }
 }
 
 function getPersonalityModifier(nationId: string, techId: string): number {

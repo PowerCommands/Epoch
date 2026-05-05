@@ -1,7 +1,9 @@
-import { SCOUT } from '../../data/units';
+import { getNaturalResourceById } from '../../data/naturalResources';
+import { SCOUT, SCOUT_BOAT } from '../../data/units';
 import type { Unit } from '../../entities/Unit';
 import type { GridCoord } from '../../types/grid';
 import type { MapData, Tile } from '../../types/map';
+import { TileType } from '../../types/map';
 import type { CityManager } from '../CityManager';
 import type { EventLogSystem } from '../EventLogSystem';
 import type { MovementSystem } from '../MovementSystem';
@@ -15,16 +17,23 @@ import {
   type AISettlementMemorySystem,
   type SettlementCandidate,
 } from './AISettlementMemorySystem';
+import {
+  getSharedAISeaResourceMemorySystem,
+  type AISeaResourceMemorySystem,
+  type SeaResourceCandidate,
+} from './AISeaResourceMemorySystem';
 
 type TileIndex = number;
 type UnitId = string;
-type PointOfInterestType = 'foreignCity' | 'foreignUnit' | 'resource' | 'frontier';
+type PointOfInterestType = 'foreignCity' | 'foreignUnit' | 'resource' | 'seaResource' | 'frontier';
 type ScoutPhase = 'EXPANSION' | 'ENEMY_FOCUS';
+type ResourceVisibilityPredicate = (nationId: string, resourceId: string) => boolean;
 
 interface NationExplorationKnowledge {
   readonly knownTiles: Set<TileIndex>;
   readonly visibleTiles: Set<TileIndex>;
   readonly seenResources: Set<TileIndex>;
+  readonly seenSeaResources: Set<TileIndex>;
   readonly knownForeignCities: Set<TileIndex>;
   readonly knownForeignUnits: Set<TileIndex>;
   readonly loggedForeignNationIds: Set<string>;
@@ -85,6 +94,7 @@ const POI_PRIORITY: Record<PointOfInterestType, number> = {
   foreignCity: 4,
   foreignUnit: 3,
   resource: 2,
+  seaResource: 3,
   frontier: 1,
 };
 
@@ -111,6 +121,7 @@ export class AIExplorationSystem {
   // a chosen target was clustered around, so the log fires once per anchor.
   private readonly enemyFocusLoggedKeys = new Map<string, Set<string>>();
   private readonly settlementCandidateLogRoundByNation = new Map<string, number>();
+  private readonly seaResourceDiscoveryLoggedKeys = new Set<string>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -122,7 +133,9 @@ export class AIExplorationSystem {
     private readonly mapData: MapData,
     private readonly eventLog: EventLogSystem,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
+    private readonly canSeeNaturalResource: ResourceVisibilityPredicate = () => true,
     private readonly settlementMemorySystem: AISettlementMemorySystem = getSharedAISettlementMemorySystem(mapData),
+    private readonly seaResourceMemorySystem: AISeaResourceMemorySystem = getSharedAISeaResourceMemorySystem(mapData),
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
   }
@@ -132,7 +145,7 @@ export class AIExplorationSystem {
     this.updateScoutPhase(nationId);
 
     const scouts = this.unitManager.getUnitsByOwner(nationId)
-      .filter((unit) => unit.unitType.id === SCOUT.id)
+      .filter((unit) => this.isExplorationUnit(unit))
       .sort((a, b) => a.id.localeCompare(b.id));
 
     for (const scout of scouts) {
@@ -162,6 +175,7 @@ export class AIExplorationSystem {
 
   private handleUnitChanged(event: UnitChangedEvent): void {
     if (event.reason !== 'moved' && event.reason !== 'created') return;
+    if (!this.isExplorationUnit(event.unit)) return;
     this.getKnowledge(event.unit.ownerId).knownTiles.add(this.getTileIndex(event.unit.tileX, event.unit.tileY));
   }
 
@@ -180,7 +194,7 @@ export class AIExplorationSystem {
       });
       this.log(
         unit.ownerId,
-        `Scout target assigned (${this.formatPoiType(nextTarget.type)}) at (${nextTarget.tile.x},${nextTarget.tile.y})`,
+        `${this.getScoutLogName(unit)} target assigned (${this.formatPoiType(nextTarget.type)}) at (${nextTarget.tile.x},${nextTarget.tile.y})`,
       );
       this.maybeLogEnemyFocus(unit.ownerId, nextTarget);
       if (this.moveTowardTarget(unit, nextTarget.tileIndex)) return;
@@ -219,17 +233,28 @@ export class AIExplorationSystem {
     knowledge.visibleTiles.clear();
 
     const scouts = this.unitManager.getUnitsByOwner(nationId)
-      .filter((unit) => unit.unitType.id === SCOUT.id);
+      .filter((unit) => this.isExplorationUnit(unit));
 
     for (const scout of scouts) {
       for (const tile of this.getTilesInRadius(scout.tileX, scout.tileY, SCOUT_VISION_RADIUS)) {
+        if (this.isNavalReconUnit(scout) && !this.isWaterTile(tile)) continue;
         const tileIndex = this.getTileIndex(tile.x, tile.y);
         if (!knowledge.knownTiles.has(tileIndex)) {
-          this.rememberSettlementCandidate(nationId, tile);
+          if (scout.unitType.id === SCOUT.id) {
+            this.rememberSettlementCandidate(nationId, tile);
+          }
         }
         knowledge.visibleTiles.add(tileIndex);
         knowledge.knownTiles.add(tileIndex);
-        if (tile.resourceId !== undefined) knowledge.seenResources.add(tileIndex);
+        if (tile.resourceId !== undefined && this.canSeeNaturalResource(nationId, tile.resourceId)) {
+          knowledge.seenResources.add(tileIndex);
+          if (this.isWaterTile(tile)) {
+            knowledge.seenSeaResources.add(tileIndex);
+            if (this.isNavalReconUnit(scout)) {
+              this.rememberSeaResource(nationId, scout, tile);
+            }
+          }
+        }
       }
     }
 
@@ -283,6 +308,37 @@ export class AIExplorationSystem {
     );
   }
 
+  private rememberSeaResource(nationId: string, unit: Unit, tile: Tile): void {
+    if (tile.resourceId === undefined) return;
+    const resource = getNaturalResourceById(tile.resourceId);
+    if (resource === undefined) return;
+
+    const discoveryKey = `${nationId}:${tile.x},${tile.y}`;
+    if (!this.seaResourceDiscoveryLoggedKeys.has(discoveryKey)) {
+      this.seaResourceDiscoveryLoggedKeys.add(discoveryKey);
+      this.log(
+        nationId,
+        `${this.getScoutLogName(unit)} discovered sea resource ${resource.id} at (${tile.x},${tile.y})`,
+      );
+    }
+
+    const { result, candidate } = this.seaResourceMemorySystem.rememberVisibleSeaResource(
+      nationId,
+      tile,
+      this.turnManager.getCurrentRound(),
+    );
+    if (candidate === null) return;
+    if (result !== 'added' && result !== 'replaced') return;
+    this.logSeaResourceMemorized(nationId, candidate);
+  }
+
+  private logSeaResourceMemorized(nationId: string, candidate: SeaResourceCandidate): void {
+    this.log(
+      nationId,
+      `memorized sea resource ${candidate.resourceId} at (${candidate.x},${candidate.y}), score: ${candidate.scoreBase}`,
+    );
+  }
+
   private getValidTarget(unit: Unit): TileIndex | null {
     const target = this.explorationTargets.get(unit.id) ?? null;
     if (target === null) return null;
@@ -307,7 +363,9 @@ export class AIExplorationSystem {
     const peerTargets = this.getPeerScoutTargets(unit);
 
     const knowledge = this.getKnowledge(unit.ownerId);
-    const phase = this.scoutPhaseByNation.get(unit.ownerId) ?? this.computeScoutPhase(knowledge);
+    const phase = this.isNavalReconUnit(unit)
+      ? 'EXPANSION'
+      : this.scoutPhaseByNation.get(unit.ownerId) ?? this.computeScoutPhase(knowledge);
     const lastDir = this.lastTargetDirectionByUnit.get(unit.id);
     const scoreCache = new Map<PointOfInterest, number>();
     const scoreOf = (poi: PointOfInterest): number => {
@@ -326,7 +384,9 @@ export class AIExplorationSystem {
       || a.tile.x - b.tile.x
     );
 
-    const allPois = this.collectPointsOfInterest(unit.ownerId, true);
+    const allPois = this.isNavalReconUnit(unit)
+      ? this.collectNavalPointsOfInterest(unit.ownerId, true)
+      : this.collectPointsOfInterest(unit.ownerId, true);
     // Prefer tiles no other scout has claimed; fall back to allowing overlap
     // only when no alternative exists.
     let primary = this.filterPois(unit, allPois, visitedTargets, peerTargets, MAX_TARGET_RADIUS, true).sort(byScore);
@@ -338,7 +398,9 @@ export class AIExplorationSystem {
       return primary[0];
     }
 
-    const allPoisIncEdges = this.collectPointsOfInterest(unit.ownerId, false);
+    const allPoisIncEdges = this.isNavalReconUnit(unit)
+      ? this.collectNavalPointsOfInterest(unit.ownerId, false)
+      : this.collectPointsOfInterest(unit.ownerId, false);
     const byDistance = (a: PointOfInterest, b: PointOfInterest): number => (
       this.manhattan(unit.tileX, unit.tileY, a.tile.x, a.tile.y)
         - this.manhattan(unit.tileX, unit.tileY, b.tile.x, b.tile.y)
@@ -463,7 +525,7 @@ export class AIExplorationSystem {
     const claimed = new Set<TileIndex>();
     for (const peer of this.unitManager.getUnitsByOwner(unit.ownerId)) {
       if (peer.id === unit.id) continue;
-      if (peer.unitType.id !== SCOUT.id) continue;
+      if (peer.unitType.id !== unit.unitType.id) continue;
       const target = this.explorationTargets.get(peer.id);
       if (target !== undefined && target !== null) claimed.add(target);
     }
@@ -546,6 +608,37 @@ export class AIExplorationSystem {
     return [...byTile.values()];
   }
 
+  private collectNavalPointsOfInterest(nationId: string, rejectEdgeFrontiers: boolean): PointOfInterest[] {
+    const knowledge = this.getKnowledge(nationId);
+    const byTile = new Map<TileIndex, PointOfInterest>();
+
+    const addPoi = (type: PointOfInterestType, tileIndex: TileIndex, isEdgeFrontier = false): void => {
+      const tile = this.getTileByIndex(tileIndex);
+      if (tile === undefined || !this.isWaterTile(tile)) return;
+      const next: PointOfInterest = {
+        type,
+        tileIndex,
+        tile,
+        priority: POI_PRIORITY[type] - (type === 'seaResource' && !this.isWithinSafeExplorationBounds(tile) ? 1.5 : 0),
+        isEdgeFrontier,
+      };
+      const existing = byTile.get(tileIndex);
+      if (!existing || next.priority > existing.priority) byTile.set(tileIndex, next);
+    };
+
+    for (const tileIndex of knowledge.seenSeaResources) addPoi('seaResource', tileIndex);
+    for (const tileIndex of knowledge.knownTiles) {
+      if (!this.isWaterTileAdjacentToUnknownWater(nationId, tileIndex)) continue;
+      const tile = this.getTileByIndex(tileIndex);
+      if (tile === undefined || !this.isWaterTile(tile)) continue;
+      const isEdgeFrontier = !this.isWithinSafeExplorationBounds(tile);
+      if (isEdgeFrontier && rejectEdgeFrontiers) continue;
+      addPoi('frontier', tileIndex, isEdgeFrontier);
+    }
+
+    return [...byTile.values()];
+  }
+
   private moveTowardTarget(unit: Unit, targetIndex: TileIndex): boolean {
     const path = this.findPathTowardTarget(unit, targetIndex);
     if (path === null || path.length < 2) {
@@ -567,7 +660,10 @@ export class AIExplorationSystem {
     this.rememberVisit(unit.id, unit.tileX, unit.tileY);
     const target = this.getTileByIndex(targetIndex);
     if (target !== undefined) {
-      this.log(unit.ownerId, `Scout moved toward target (${target.x},${target.y})`);
+      const targetLabel = this.isNavalReconUnit(unit) && target.resourceId !== undefined
+        ? 'sea resource'
+        : 'target';
+      this.log(unit.ownerId, `${this.getScoutLogName(unit)} moved toward ${targetLabel} (${target.x},${target.y})`);
     }
     if (this.getTileIndex(unit.tileX, unit.tileY) === targetIndex) {
       this.markTargetVisited(unit.id, targetIndex);
@@ -604,9 +700,9 @@ export class AIExplorationSystem {
 
     this.rememberVisit(unit.id, unit.tileX, unit.tileY);
     if (this.getDistanceToEdge(fromX, fromY) < MIN_EDGE_DISTANCE && this.getDistanceToEdge(unit.tileX, unit.tileY) > this.getDistanceToEdge(fromX, fromY)) {
-      this.log(unit.ownerId, 'Scout moved inward from map edge');
+      this.log(unit.ownerId, `${this.getScoutLogName(unit)} moved inward from map edge`);
     }
-    this.log(unit.ownerId, 'Scout exploring locally');
+    this.log(unit.ownerId, `${this.getScoutLogName(unit)} exploring locally`);
   }
 
   private pickBestLocalCandidate(unit: Unit): ExplorationCandidate | null {
@@ -628,7 +724,9 @@ export class AIExplorationSystem {
     const knowledge = this.getKnowledge(unit.ownerId);
     const tileIndex = this.getTileIndex(tile.x, tile.y);
     const isUnexplored = !knowledge.knownTiles.has(tileIndex);
-    const adjacentToUnknown = this.isTileAdjacentToUnknown(unit.ownerId, tileIndex);
+    const adjacentToUnknown = this.isNavalReconUnit(unit)
+      ? this.isWaterTileAdjacentToUnknownWater(unit.ownerId, tileIndex)
+      : this.isTileAdjacentToUnknown(unit.ownerId, tileIndex);
     const distanceFromOwnCity = this.getDistanceFromNearestOwnCity(unit.ownerId, tile.x, tile.y);
     const isNearOwnCity = distanceFromOwnCity < 8;
     const edgePenalty = this.getEdgePenalty(tile.x, tile.y);
@@ -641,6 +739,7 @@ export class AIExplorationSystem {
     const score =
       (isUnexplored ? 8 : 0)
       + (adjacentToUnknown ? 5 : 0)
+      + (this.isNavalReconUnit(unit) && tile.resourceId !== undefined ? 6 : 0)
       + (isNearOwnCity ? 3 : 0)
       + inwardEdgeAdjustment
       - edgePenalty
@@ -661,10 +760,15 @@ export class AIExplorationSystem {
   private isTargetStillRelevant(unit: Unit, targetIndex: TileIndex): boolean {
     const target = this.getTileByIndex(targetIndex);
     if (target === undefined) return false;
+    if (this.isNavalReconUnit(unit) && !this.isWaterTile(target)) return false;
     if (this.getVisitedTargets(unit.id).has(targetIndex)) return false;
     if (this.manhattan(unit.tileX, unit.tileY, target.x, target.y) > MAX_TARGET_RADIUS + 4) return false;
 
     const knowledge = this.getKnowledge(unit.ownerId);
+    if (this.isNavalReconUnit(unit)) {
+      return knowledge.seenSeaResources.has(targetIndex)
+        || this.isWaterTileAdjacentToUnknownWater(unit.ownerId, targetIndex);
+    }
     return knowledge.knownForeignCities.has(targetIndex)
       || knowledge.knownForeignUnits.has(targetIndex)
       || knowledge.seenResources.has(targetIndex)
@@ -678,6 +782,18 @@ export class AIExplorationSystem {
     return CARDINAL_DIRECTIONS.some((direction) => {
       const neighbor = this.mapData.tiles[tile.y + direction.y]?.[tile.x + direction.x];
       return neighbor !== undefined && !knowledge.knownTiles.has(this.getTileIndex(neighbor.x, neighbor.y));
+    });
+  }
+
+  private isWaterTileAdjacentToUnknownWater(nationId: string, tileIndex: TileIndex): boolean {
+    const tile = this.getTileByIndex(tileIndex);
+    if (tile === undefined || !this.isWaterTile(tile)) return false;
+    const knowledge = this.getKnowledge(nationId);
+    return CARDINAL_DIRECTIONS.some((direction) => {
+      const neighbor = this.mapData.tiles[tile.y + direction.y]?.[tile.x + direction.x];
+      return neighbor !== undefined
+        && this.isWaterTile(neighbor)
+        && !knowledge.knownTiles.has(this.getTileIndex(neighbor.x, neighbor.y));
     });
   }
 
@@ -741,6 +857,8 @@ export class AIExplorationSystem {
         return 'foreign unit';
       case 'resource':
         return 'resource';
+      case 'seaResource':
+        return 'sea resource';
       case 'frontier':
         return 'frontier';
     }
@@ -766,6 +884,7 @@ export class AIExplorationSystem {
         knownTiles: new Set<TileIndex>(),
         visibleTiles: new Set<TileIndex>(),
         seenResources: new Set<TileIndex>(),
+        seenSeaResources: new Set<TileIndex>(),
         knownForeignCities: new Set<TileIndex>(),
         knownForeignUnits: new Set<TileIndex>(),
         loggedForeignNationIds: new Set<string>(),
@@ -798,6 +917,22 @@ export class AIExplorationSystem {
 
   private getNationName(nationId: string): string {
     return this.nationManager.getNation(nationId)?.name ?? nationId;
+  }
+
+  private isExplorationUnit(unit: Unit): boolean {
+    return unit.unitType.id === SCOUT.id || this.isNavalReconUnit(unit);
+  }
+
+  private isNavalReconUnit(unit: Unit): boolean {
+    return unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon';
+  }
+
+  private getScoutLogName(unit: Unit): string {
+    return this.isNavalReconUnit(unit) ? 'Scout Boat' : 'Scout';
+  }
+
+  private isWaterTile(tile: Tile): boolean {
+    return tile.type === TileType.Coast || tile.type === TileType.Ocean;
   }
 
   private log(nationId: string, message: string): void {

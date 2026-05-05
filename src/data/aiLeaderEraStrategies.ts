@@ -108,6 +108,70 @@ export const FRONTIER_EXPANSION_STRATEGY: AILeaderEraStrategy = {
   },
 };
 
+export const COASTAL_FOUNDATION_STRATEGY: AILeaderEraStrategy = {
+  id: 'coastalFoundation',
+  name: 'Coastal Foundation',
+  description:
+    'Ancient coastal expansion strategy focused on locating coastlines, founding cities near water, preparing for Sailing, and enabling later naval recon/work boat play.',
+  productionWeights: {
+    settler: 1.25,
+    scout: 1.1,
+    military: 0.85,
+    melee: 0.85,
+    ranged: 0.95,
+    naval: 1.2,
+    foodBuilding: 1.0,
+    productionBuilding: 1.0,
+    goldBuilding: 1.05,
+    happinessBuilding: 1.0,
+    wonder: 0.9,
+  },
+  researchWeights: {
+    food: 1.0,
+    production: 1.0,
+    military: 0.8,
+    naval: 1.6,
+    economy: 1.1,
+    science: 1.0,
+    expansion: 1.2,
+  },
+  cultureWeights: {
+    expansion: 1.2,
+    diplomacy: 1.0,
+    military: 0.8,
+    happiness: 1.0,
+    economy: 1.0,
+  },
+  diplomacyWeights: {
+    openBorders: 1.0,
+    embassy: 1.0,
+    trade: 1.0,
+    war: 0.35,
+  },
+  militaryBehavior: {
+    prepareForWar: false,
+    targetWeakNeighbor: false,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 0.8,
+  },
+  foundingPreferences: {
+    strategicResource: 0.8,
+    luxuryResource: 1.1,
+    coastalAccess: 2.0,
+    waterResource: 1.6,
+    foodYield: 1.1,
+    productionYield: 1.0,
+    distancePenalty: 0.8,
+  },
+  foundingRules: {
+    minCityDistance: 6,
+  },
+  resourcePriorities: {
+    seaResourceExploitation: 1.8,
+    workBoatProduction: 1.6,
+  },
+};
+
 export const BALANCED_GROWTH_STRATEGY: AILeaderEraStrategy = {
   id: 'balancedGrowth',
   name: 'Balanced Growth',
@@ -187,6 +251,7 @@ export const CIVIC_DEVELOPMENT_STRATEGY: AILeaderEraStrategy = {
 
 export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   FRONTIER_EXPANSION_STRATEGY,
+  COASTAL_FOUNDATION_STRATEGY,
   BALANCED_GROWTH_STRATEGY,
   MILITARY_PREPARATION_STRATEGY,
   CONQUEST_CAMPAIGN_STRATEGY,
@@ -198,6 +263,7 @@ export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
 
 const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
   frontierExpansion: FRONTIER_EXPANSION_STRATEGY,
+  coastalFoundation: COASTAL_FOUNDATION_STRATEGY,
   balancedGrowth: BALANCED_GROWTH_STRATEGY,
   militaryPreparation: MILITARY_PREPARATION_STRATEGY,
   conquestCampaign: CONQUEST_CAMPAIGN_STRATEGY,
@@ -212,6 +278,12 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
     leaderId: 'leader_genghis-khan',
     strategiesByEra: {
       ancient: 'frontierExpansion',
+    },
+  },
+  {
+    leaderId: 'leader_oda-nobunaga',
+    strategiesByEra: {
+      ancient: 'coastalFoundation',
     },
   },
 ];

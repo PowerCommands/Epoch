@@ -1,12 +1,15 @@
 import type { TechnologyDefinition } from '../data/technologies';
 import { ALL_TECHNOLOGIES, getTechnologyById } from '../data/technologies';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
+import { getLeaderByNationId } from '../data/leaders';
+import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import type { CityManager } from './CityManager';
 import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
 import { pickBestAIResearchTechnology } from './ai/AIResearchPlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
 import type { AILogFormatter } from './ai/AILogFormatter';
+import { getHighestEra } from './EraSystem';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
@@ -164,9 +167,19 @@ export class ResearchSystem {
         currentTurn: this.getCurrentRound(),
         earlyGameTurnLimit: this.earlyGameTurnLimit,
         formatLog: this.formatLog,
+        eraStrategy: this.getActiveEraStrategy(nationId),
       });
     if (!nextTechnology) return false;
 
+    if (!nation.isHuman) {
+      const eraStrategy = this.getActiveEraStrategy(nationId);
+      console.log(
+        this.formatLog?.(
+          nationId,
+          `selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`,
+        ) ?? `${nation.name} selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`,
+      );
+    }
     return this.startResearch(nationId, nextTechnology.id);
   }
 
@@ -239,6 +252,16 @@ export class ResearchSystem {
     return ALL_TECHNOLOGIES.filter((technology) =>
       this.isResearched(nationId, technology.id),
     );
+  }
+
+  private getActiveEraStrategy(nationId: string) {
+    const nation = this.nationManager.getNation(nationId);
+    const era = getHighestEra(
+      (nation?.researchedTechIds ?? [])
+        .map((technologyId) => getTechnologyById(technologyId)?.era)
+        .filter((era): era is import('../data/technologies').Era => era !== undefined),
+    );
+    return resolveLeaderEraStrategy(getLeaderByNationId(nationId)?.id, era);
   }
 
   getResearchProgress(nationId: string): number {
