@@ -10,6 +10,11 @@ import type { PathfindingSystem } from '../PathfindingSystem';
 import type { TurnManager } from '../TurnManager';
 import type { UnitChangedEvent, UnitManager } from '../UnitManager';
 import type { AILogFormatter } from './AILogFormatter';
+import {
+  getSharedAISettlementMemorySystem,
+  type AISettlementMemorySystem,
+  type SettlementCandidate,
+} from './AISettlementMemorySystem';
 
 type TileIndex = number;
 type UnitId = string;
@@ -105,6 +110,7 @@ export class AIExplorationSystem {
   // "focusing exploration near enemy" log. Keyed by the foreign anchor tile
   // a chosen target was clustered around, so the log fires once per anchor.
   private readonly enemyFocusLoggedKeys = new Map<string, Set<string>>();
+  private readonly settlementCandidateLogRoundByNation = new Map<string, number>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -116,6 +122,7 @@ export class AIExplorationSystem {
     private readonly mapData: MapData,
     private readonly eventLog: EventLogSystem,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
+    private readonly settlementMemorySystem: AISettlementMemorySystem = getSharedAISettlementMemorySystem(mapData),
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
   }
@@ -217,6 +224,9 @@ export class AIExplorationSystem {
     for (const scout of scouts) {
       for (const tile of this.getTilesInRadius(scout.tileX, scout.tileY, SCOUT_VISION_RADIUS)) {
         const tileIndex = this.getTileIndex(tile.x, tile.y);
+        if (!knowledge.knownTiles.has(tileIndex)) {
+          this.rememberSettlementCandidate(nationId, tile);
+        }
         knowledge.visibleTiles.add(tileIndex);
         knowledge.knownTiles.add(tileIndex);
         if (tile.resourceId !== undefined) knowledge.seenResources.add(tileIndex);
@@ -239,6 +249,38 @@ export class AIExplorationSystem {
       knowledge.knownForeignUnits.add(tileIndex);
       this.logForeignDiscovery(nationId, unit.ownerId, unit.tileX, unit.tileY, knowledge);
     }
+  }
+
+  private rememberSettlementCandidate(nationId: string, tile: Tile): void {
+    if (!this.settlementMemorySystem) return;
+    const evaluation = this.settlementMemorySystem.evaluateTile(
+      tile.x,
+      tile.y,
+      this.turnManager.getCurrentRound(),
+    );
+    if (evaluation === null) return;
+
+    const result = this.settlementMemorySystem.addCandidate(nationId, evaluation.candidate);
+    if (result !== 'added' && result !== 'replaced') return;
+    this.maybeLogSettlementCandidate(nationId, evaluation.candidate);
+  }
+
+  private maybeLogSettlementCandidate(nationId: string, candidate: SettlementCandidate): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.settlementCandidateLogRoundByNation.get(nationId) === round) return;
+    this.settlementCandidateLogRoundByNation.set(nationId, round);
+
+    const traits: string[] = [];
+    if (candidate.hasStrategicResource || candidate.hasLuxuryResource || candidate.hasWaterResource) {
+      traits.push('resource');
+    }
+    if (candidate.hasWaterAccess) traits.push('coast');
+    console.log(
+      this.formatLog(
+        nationId,
+        `discovered settlement candidate at (${candidate.x},${candidate.y}) score: ${candidate.scoreBase}${traits.length > 0 ? ` (${traits.join(', ')})` : ''}`,
+      ),
+    );
   }
 
   private getValidTarget(unit: Unit): TileIndex | null {

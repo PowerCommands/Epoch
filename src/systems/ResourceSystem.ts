@@ -277,7 +277,7 @@ export class ResourceSystem {
     nationId: string,
     cities: ReturnType<CityManager['getCitiesByOwner']>,
   ): number {
-    const baseInfluence = cities.reduce((sum, city) => sum + city.population, 0);
+    const baseInfluence = cities.reduce((sum, city) => sum + city.population * 0.2, 0);
     const withFlat = baseInfluence + this.getPolicyFlat(nationId, 'influenceFlat');
     return applyPercent(withFlat, this.getPolicyPercent(nationId, 'influencePercent'));
   }

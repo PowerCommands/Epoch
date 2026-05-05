@@ -58,8 +58,17 @@ import {
   type AIMovementCandidate,
 } from './ai/AIMovementScoring';
 import { CITY_BASE_HEALTH } from '../data/cities';
-import { getLeaderPersonalityByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId } from '../data/leaders';
+import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
+import type { AILeaderEraStrategy } from '../types/aiLeaderEraStrategy';
+import type { EraSystem } from './EraSystem';
+import type { Era } from '../data/technologies';
 import type { AILogFormatter } from './ai/AILogFormatter';
+import {
+  getSharedAISettlementMemorySystem,
+  type AISettlementMemorySystem,
+  type SettlementCandidate,
+} from './ai/AISettlementMemorySystem';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -230,6 +239,7 @@ export class AISystem {
   private readonly combatSystem: CombatSystem;
   private readonly productionSystem: ProductionSystem;
   private readonly foundCitySystem: FoundCitySystem;
+  private readonly settlementMemorySystem: AISettlementMemorySystem;
   private readonly mapData: MapData;
   private readonly strategySelector = new AIStrategySelector();
   private readonly strategyEvaluationSystem = new AIStrategyEvaluationSystem();
@@ -240,6 +250,10 @@ export class AISystem {
   // Last AI phase logged per nation. Phase itself is derived live in
   // getAIPhase; this map only deduplicates the transition log line.
   private readonly aiPhaseByNation = new Map<string, AIPhase>();
+
+  // Last era-strategy id logged per nation, so the transition log fires once
+  // per era change instead of every turn.
+  private readonly loggedEraStrategyByNation = new Map<string, string>();
 
   // Per-nation military staging targets: one shared staging tile per met
   // enemy nation. All this nation's military units gather toward the SAME
@@ -290,6 +304,8 @@ export class AISystem {
     private readonly explorationMemorySystem?: ExplorationMemorySystem,
     private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
+    private readonly eraSystem?: EraSystem,
+    settlementMemorySystem?: AISettlementMemorySystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -300,12 +316,38 @@ export class AISystem {
     this.combatSystem = combatSystem;
     this.productionSystem = productionSystem;
     this.foundCitySystem = foundCitySystem;
+    this.settlementMemorySystem = settlementMemorySystem ?? getSharedAISettlementMemorySystem(mapData);
     this.mapData = mapData;
   }
 
   isHuman(nationId: string): boolean {
     const nation = this.nationManager.getNation(nationId);
     return nation?.isHuman ?? false;
+  }
+
+  private getNationEra(nationId: string): Era {
+    return this.eraSystem?.getNationEra(nationId) ?? 'ancient';
+  }
+
+  /**
+   * Resolve the active era strategy for the leader of `nationId` and log a
+   * one-shot transition line when the resolved strategy id changes. Always
+   * returns a usable strategy; falls back to balancedGrowth via the resolver.
+   */
+  private getActiveEraStrategy(nationId: string): AILeaderEraStrategy {
+    const leaderId = getLeaderByNationId(nationId)?.id;
+    const era = this.getNationEra(nationId);
+    const strategy = resolveLeaderEraStrategy(leaderId, era);
+
+    const lastLogged = this.loggedEraStrategyByNation.get(nationId);
+    const tag = `${strategy.id}@${era}`;
+    if (lastLogged !== tag) {
+      this.loggedEraStrategyByNation.set(nationId, tag);
+      console.log(
+        this.formatLog(nationId, `active AI strategy: ${strategy.name} (${era})`),
+      );
+    }
+    return strategy;
   }
 
   runTurn(nationId: string): void {
@@ -719,6 +761,10 @@ export class AISystem {
   // for. Prevents the same rejection from spamming the log when a settler
   // sits on an invalid tile across the same turn pass.
   private readonly settlerSpacingRejectionLogged = new Set<string>();
+  private readonly settlerAssignmentLogKeyByUnit = new Map<string, string>();
+  private readonly settlerScoutMemoryLogKeyByUnit = new Map<string, string>();
+  private readonly settlerFallbackLogRoundByNation = new Map<string, number>();
+  private readonly settlerNoValidSiteLogRoundByNation = new Map<string, number>();
 
   // Single source of truth for "is this settler allowed to found a city
   // here, right now?" — combines the FoundCitySystem terrain rules with the
@@ -757,6 +803,8 @@ export class AISystem {
     const settlers = this.unitManager.getUnitsByOwner(nationId)
       .filter((u) => u.unitType.canFound);
     const strategy = this.getStrategy(nationId);
+    const eraStrategy = this.getActiveEraStrategy(nationId);
+    const claimedTargets = new Set<string>();
 
     for (const settler of settlers) {
       if (this.unitManager.getUnit(settler.id) === undefined) continue;
@@ -768,7 +816,8 @@ export class AISystem {
       // longer applied; expansionist nations may want more cities, but they
       // earn them by traveling farther rather than crowding the border.
       if (this.canFoundWithSpacing(settler, strategy)) {
-        this.foundCitySystem.foundCity(settler);
+        const founded = this.foundCitySystem.foundCity(settler);
+        if (founded) console.log(this.formatLog(nationId, `founded city at (${founded.tileX},${founded.tileY})`));
         continue; // settler consumed
       }
       if (this.foundCitySystem.canFound(settler)) {
@@ -778,19 +827,40 @@ export class AISystem {
       }
 
       // Move toward valid founding site
-      this.moveSettlerTowardSite(settler, nationId, strategy);
+      this.moveSettlerTowardSite(settler, nationId, strategy, eraStrategy, claimedTargets);
     }
   }
 
-  private moveSettlerTowardSite(settler: Unit, nationId: string, strategy: AIStrategy): void {
-    const target = this.findFoundingSite(settler, nationId, strategy);
-    if (!target) return;
+  private moveSettlerTowardSite(
+    settler: Unit,
+    nationId: string,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+    claimedTargets: Set<string>,
+  ): void {
+    let target = this.findScoutDiscoveredFoundingSite(settler, nationId, strategy, eraStrategy, claimedTargets);
+    const usingScoutMemory = target !== null;
+    if (!target) {
+      target = this.findFoundingSite(settler, nationId, strategy, claimedTargets);
+      if (target) this.logSettlerFallback(nationId);
+    }
+    if (!target) {
+      this.logSettlerNoValidSite(nationId);
+      return;
+    }
 
     const path = this.pathfindingSystem.findPath(settler, target.x, target.y, {
       respectMovementPoints: false,
     });
-    if (path === null) return;
+    if (path === null) {
+      if (usingScoutMemory) this.settlementMemorySystem?.removeCandidate(nationId, target.x, target.y);
+      this.logSettlerNoValidSite(nationId);
+      return;
+    }
 
+    claimedTargets.add(tileKey(target.x, target.y));
+    this.logSettlerAssignment(nationId, settler, target);
+    if (usingScoutMemory) this.logSettlerUsingScoutMemory(nationId, settler, target);
     this.movementSystem.moveAlongPath(settler, path);
 
     if (settler.tileX === target.x && settler.tileY === target.y) {
@@ -798,18 +868,86 @@ export class AISystem {
       // nearby), so re-validate spacing — never just canFound — at the moment
       // of commitment.
       if (this.canFoundWithSpacing(settler, strategy)) {
-        this.foundCitySystem.foundCity(settler);
+        const founded = this.foundCitySystem.foundCity(settler);
+        if (founded) console.log(this.formatLog(nationId, `founded city at (${founded.tileX},${founded.tileY})`));
       } else if (this.foundCitySystem.canFound(settler)) {
         this.logSettlerSpacingRejection(nationId, settler, strategy.expansion.settlerMinCityDistance);
       }
     }
   }
 
+  private findScoutDiscoveredFoundingSite(
+    settler: Unit,
+    nationId: string,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+    claimedTargets: Set<string>,
+  ): { x: number; y: number; score: number } | null {
+    if (!this.settlementMemorySystem) return null;
+
+    const candidates = this.settlementMemorySystem.getCandidates(nationId)
+      .map((candidate) => ({
+        candidate,
+        score: this.scoreSettlementCandidate(settler, candidate, eraStrategy),
+      }))
+      .sort((a, b) => (
+        b.score - a.score
+        || a.candidate.discoveredTurn - b.candidate.discoveredTurn
+        || a.candidate.y - b.candidate.y
+        || a.candidate.x - b.candidate.x
+      ));
+
+    for (const { candidate, score } of candidates) {
+      if (claimedTargets.has(tileKey(candidate.x, candidate.y))) continue;
+      if (!this.isFoundingTargetValid(candidate.x, candidate.y, strategy)) {
+        this.settlementMemorySystem.removeCandidate(nationId, candidate.x, candidate.y);
+        continue;
+      }
+      const path = this.pathfindingSystem.findPath(settler, candidate.x, candidate.y, {
+        respectMovementPoints: false,
+      });
+      if (path === null) {
+        this.settlementMemorySystem.removeCandidate(nationId, candidate.x, candidate.y);
+        continue;
+      }
+      return { x: candidate.x, y: candidate.y, score };
+    }
+
+    return null;
+  }
+
+  private scoreSettlementCandidate(
+    settler: Unit,
+    candidate: SettlementCandidate,
+    eraStrategy: AILeaderEraStrategy,
+  ): number {
+    const preferences = eraStrategy.foundingPreferences;
+    let multiplier = 1;
+    if (candidate.hasStrategicResource) multiplier += preferences?.strategicResource ?? 0;
+    if (candidate.hasLuxuryResource) multiplier += preferences?.luxuryResource ?? 0;
+    if (candidate.hasWaterAccess) multiplier += preferences?.coastalAccess ?? 0;
+    if (candidate.hasWaterResource) multiplier += preferences?.waterResource ?? 0;
+
+    const yields = this.settlementMemorySystem?.getSiteYields(candidate.x, candidate.y) ?? {
+      foodYield: 0,
+      productionYield: 0,
+    };
+    multiplier += ((preferences?.foodYield ?? 1) - 1) * Math.min(yields.foodYield / 12, 1);
+    multiplier += ((preferences?.productionYield ?? 1) - 1) * Math.min(yields.productionYield / 10, 1);
+
+    const distance = this.gridSystem.getDistance(
+      { x: settler.tileX, y: settler.tileY },
+      { x: candidate.x, y: candidate.y },
+    );
+    return candidate.scoreBase * multiplier - distance * (preferences?.distancePenalty ?? 1);
+  }
+
   private findFoundingSite(
     settler: Unit,
     nationId: string,
     strategy: AIStrategy,
-  ): { x: number; y: number } | null {
+    claimedTargets: Set<string> = new Set<string>(),
+  ): { x: number; y: number; score: number } | null {
     const allCities = this.cityManager.getAllCities();
     const nation = this.nationManager.getNation(nationId);
     const goals = nation?.aiGoals;
@@ -832,6 +970,8 @@ export class AISystem {
         const tile = this.mapData.tiles[y][x];
         if (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Ice) continue;
         if (this.cityManager.getCityAt(x, y) !== undefined) continue;
+        if (this.unitManager.getUnitAt(x, y) !== null) continue;
+        if (claimedTargets.has(tileKey(x, y))) continue;
 
         const cityDist = this.minDistanceToCities(x, y, allCities);
         if (cityDist < minCityDistance) continue;
@@ -859,7 +999,55 @@ export class AISystem {
       );
     }
 
-    return bestTile;
+    return bestTile ? { ...bestTile, score: bestScore } : null;
+  }
+
+  private isFoundingTargetValid(x: number, y: number, strategy: AIStrategy): boolean {
+    const tile = this.mapData.tiles[y]?.[x];
+    if (!tile) return false;
+    if (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Ice) return false;
+    if (this.cityManager.getCityAt(x, y) !== undefined) return false;
+    if (this.unitManager.getUnitAt(x, y) !== null) return false;
+    const cityDist = this.minDistanceToCities(x, y, this.cityManager.getAllCities());
+    return cityDist >= strategy.expansion.settlerMinCityDistance;
+  }
+
+  private logSettlerAssignment(
+    nationId: string,
+    settler: Unit,
+    target: { x: number; y: number; score: number },
+  ): void {
+    const key = `${target.x},${target.y}`;
+    if (this.settlerAssignmentLogKeyByUnit.get(settler.id) === key) return;
+    this.settlerAssignmentLogKeyByUnit.set(settler.id, key);
+    console.log(
+      this.formatLog(nationId, `settler assigned target (${target.x},${target.y}) score: ${Math.round(target.score)}`),
+    );
+  }
+
+  private logSettlerUsingScoutMemory(
+    nationId: string,
+    settler: Unit,
+    target: { x: number; y: number },
+  ): void {
+    const key = `${target.x},${target.y}`;
+    if (this.settlerScoutMemoryLogKeyByUnit.get(settler.id) === key) return;
+    this.settlerScoutMemoryLogKeyByUnit.set(settler.id, key);
+    console.log(this.formatLog(nationId, 'settler using scout-discovered site'));
+  }
+
+  private logSettlerFallback(nationId: string): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.settlerFallbackLogRoundByNation.get(nationId) === round) return;
+    this.settlerFallbackLogRoundByNation.set(nationId, round);
+    console.log(this.formatLog(nationId, 'settler fallback to local search'));
+  }
+
+  private logSettlerNoValidSite(nationId: string): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.settlerNoValidSiteLogRoundByNation.get(nationId) === round) return;
+    this.settlerNoValidSiteLogRoundByNation.set(nationId, round);
+    console.log(this.formatLog(nationId, 'settler found no valid settlement candidates'));
   }
 
   private scoreFoundingTile(
@@ -1772,6 +1960,7 @@ export class AISystem {
     this.ensureFoundationSettlerProduction(nationId, cities);
 
     const strategy = this.getStrategy(nationId);
+    const eraStrategy = this.getActiveEraStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
     let plannedNavalCount = this.countNavalUnits(nationId);
@@ -1788,6 +1977,7 @@ export class AISystem {
         plannedNavalCount,
         coastalCityCount,
         strategy,
+        eraStrategy,
       );
 
       let usedFallback = false;
@@ -1994,6 +2184,7 @@ export class AISystem {
     plannedNavalCount: number,
     coastalCityCount: number,
     strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
     const economy = calculateCityEconomy(
@@ -2127,9 +2318,7 @@ export class AISystem {
       candidates.push({
         item: { kind: 'building', buildingType: happinessBuilding },
         baseScore: SCORE_HAPPINESS_BUILDING_LOW + buildingBoost,
-        // foodBuilding category reused: scoring weight is consistent across
-        // strategies (=1) so the boosted baseScore drives the priority.
-        category: 'foodBuilding',
+        category: 'happinessBuilding',
       });
     }
 
@@ -2159,14 +2348,20 @@ export class AISystem {
     const nation = this.nationManager.getNation(nationId);
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
-    const best = pickBestAIProductionCandidate(weightedCandidates, strategy);
+    const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy);
     if (best) {
       console.log(
         this.formatLog(nationId, `AI production chose ${getCandidateGoalCategory(best)} (weights: ${JSON.stringify(goalWeights)})`),
       );
+      const itemName = this.foundationProducibleName(best.item);
+      const reason = this.describeFoundationProductionReason(best.item);
+      console.log(
+        this.formatLog(
+          nationId,
+          `${city.name} selected ${itemName} (strategy: ${eraStrategy.id}, reason: ${reason})`,
+        ),
+      );
       if (inFoundation) {
-        const itemName = this.foundationProducibleName(best.item);
-        const reason = this.describeFoundationProductionReason(best.item);
         console.log(
           this.formatLog(nationId, `phase: FOUNDATION - chose ${itemName} for ${reason}`),
         );

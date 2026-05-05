@@ -57,6 +57,8 @@ import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { EraSystem } from '../systems/EraSystem';
 import { AISystem } from '../systems/AISystem';
+import { getLeaderByNationId } from '../data/leaders';
+import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
@@ -388,6 +390,10 @@ export class GameScene extends Phaser.Scene {
       aiMilitaryThreatEvaluationSystem,
       (a, b) => discoverySystem.hasMet(a, b),
       formatLog,
+      (nationId) => resolveLeaderEraStrategy(
+        getLeaderByNationId(nationId)?.id,
+        eraSystem.getNationEra(nationId),
+      ),
     );
     const tradeDealSystem = new TradeDealSystem(
       diplomacyManager,
@@ -994,6 +1000,7 @@ export class GameScene extends Phaser.Scene {
       explorationMemorySystem,
       strategicResourceCapacitySystem,
       formatLog,
+      eraSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 

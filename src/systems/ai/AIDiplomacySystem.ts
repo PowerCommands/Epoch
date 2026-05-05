@@ -6,6 +6,7 @@ import type { AIMilitaryEvaluationSystem, MilitaryComparison } from './AIMilitar
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './AIMilitaryThreatEvaluationSystem';
 import type { AIDiplomacyAction, AIDiplomacyDecisionReason } from '../../types/aiDiplomacy';
 import type { AILeaderPersonality } from '../../types/aiLeaderPersonality';
+import type { AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
 import { getLeaderPersonalityByNationId } from '../../data/leaders';
 import {
   getMilitaryIntent,
@@ -40,6 +41,7 @@ export class AIDiplomacySystem {
     private readonly threatEvaluationSystem: AIMilitaryThreatEvaluationSystem,
     private readonly haveMet: (a: string, b: string) => boolean,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
+    private readonly getEraStrategy?: (nationId: string) => AILeaderEraStrategy | undefined,
   ) {}
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
@@ -125,6 +127,12 @@ export class AIDiplomacySystem {
       if (threat === 'low' || threat === 'medium') warScore += 0.3;
       const personalityFactor = getNationPersonalityFactor(selfId);
       warScore *= 0.8 + personalityFactor * 0.4;
+      // Era-strategy multiplier dampens or amplifies war propensity per
+      // leader/era preset. Defaults to 1.0 when no era strategy is wired.
+      const eraStrategy = this.getEraStrategy?.(selfId);
+      if (eraStrategy) {
+        warScore *= eraStrategy.diplomacyWeights.war;
+      }
 
       const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
       console.log(

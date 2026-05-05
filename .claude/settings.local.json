@@ -24,7 +24,9 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); print\\('scripts:', list\\(p.get\\('scripts',{}\\).keys\\(\\)\\)\\)\")",
       "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes status -s)",
-      "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes diff --stat HEAD)"
+      "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes diff --stat HEAD)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('src/data/cityNames.json'\\)\\); [print\\(f'{k}: {len\\(v\\)}'\\) for k,v in d.items\\(\\)]\")",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }
