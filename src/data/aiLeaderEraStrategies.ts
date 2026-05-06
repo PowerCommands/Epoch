@@ -242,6 +242,76 @@ export const TALL_GROWTH_STRATEGY: AILeaderEraStrategy = {
   },
 };
 
+export const IMPERIAL_INFRASTRUCTURE_STRATEGY: AILeaderEraStrategy = {
+  id: 'imperialInfrastructure',
+  name: 'Imperial Infrastructure',
+  description:
+    'Structured imperial development strategy focused on controlled expansion, production, workers, science, infrastructure, and defensive readiness.',
+  productionWeights: {
+    settler: 1.15,
+    scout: 1.0,
+    military: 0.85,
+    melee: 0.9,
+    ranged: 1.05,
+    naval: 0.75,
+    foodBuilding: 1.1,
+    productionBuilding: 1.55,
+    goldBuilding: 1.15,
+    happinessBuilding: 1.15,
+    wonder: 1.1,
+    worker: 1.45,
+    workBoat: 0.8,
+  },
+  researchWeights: {
+    food: 1.05,
+    production: 1.45,
+    military: 0.9,
+    naval: 0.65,
+    economy: 1.2,
+    science: 1.35,
+    expansion: 1.1,
+  },
+  cultureWeights: {
+    expansion: 1.15,
+    diplomacy: 0.85,
+    military: 0.8,
+    happiness: 1.05,
+    economy: 1.25,
+  },
+  diplomacyWeights: {
+    openBorders: 0.8,
+    embassy: 1.0,
+    trade: 1.15,
+    war: 0.45,
+  },
+  militaryBehavior: {
+    prepareForWar: false,
+    targetWeakNeighbor: false,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 1.05,
+  },
+  foundingPreferences: {
+    strategicResource: 1.25,
+    luxuryResource: 1.05,
+    coastalAccess: 0.55,
+    waterResource: 0.65,
+    foodYield: 1.15,
+    productionYield: 1.55,
+    distancePenalty: 1.15,
+  },
+  foundingRules: {
+    minCityDistance: 8,
+  },
+  tilePurchase: {
+    minGoldReserve: 125,
+    minScore: 60,
+  },
+  happinessBehavior: {
+    stabilizationThreshold: 3,
+    criticalThreshold: 0,
+  },
+};
+
 export const BALANCED_GROWTH_STRATEGY: AILeaderEraStrategy = {
   id: 'balancedGrowth',
   name: 'Balanced Growth',
@@ -323,6 +393,7 @@ export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   FRONTIER_EXPANSION_STRATEGY,
   COASTAL_FOUNDATION_STRATEGY,
   TALL_GROWTH_STRATEGY,
+  IMPERIAL_INFRASTRUCTURE_STRATEGY,
   BALANCED_GROWTH_STRATEGY,
   MILITARY_PREPARATION_STRATEGY,
   CONQUEST_CAMPAIGN_STRATEGY,
@@ -336,6 +407,7 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
   frontierExpansion: FRONTIER_EXPANSION_STRATEGY,
   coastalFoundation: COASTAL_FOUNDATION_STRATEGY,
   tallGrowth: TALL_GROWTH_STRATEGY,
+  imperialInfrastructure: IMPERIAL_INFRASTRUCTURE_STRATEGY,
   balancedGrowth: BALANCED_GROWTH_STRATEGY,
   militaryPreparation: MILITARY_PREPARATION_STRATEGY,
   conquestCampaign: CONQUEST_CAMPAIGN_STRATEGY,
@@ -362,6 +434,12 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
     leaderId: 'leader_mahatma-gandhi',
     strategiesByEra: {
       ancient: 'tallGrowth',
+    },
+  },
+  {
+    leaderId: 'leader_qin-shi-huang',
+    strategiesByEra: {
+      ancient: 'imperialInfrastructure',
     },
   },
 ];

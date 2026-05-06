@@ -2924,7 +2924,10 @@ export class AISystem {
   private isDefensivePressureActive(nationId: string): boolean {
     if (this.isAtWarWithAnyone(nationId)) return true;
     const threat = this.getHighestThreatLevel(nationId);
-    return threat === 'medium' || threat === 'high';
+    if (threat === 'medium' || threat === 'high') return true;
+
+    const eraStrategy = this.getActiveEraStrategy(nationId);
+    return this.isBelowMinimumMilitaryReadiness(nationId, eraStrategy);
   }
 
   private logDefensiveModeOnce(nationId: string, eraStrategy: AILeaderEraStrategy): void {
@@ -2933,6 +2936,58 @@ export class AISystem {
     this.defensiveModeLoggedRound.set(nationId, currentRound);
     console.debug(
       this.formatLog(nationId, `AI defensive mode triggered; military production restored under ${eraStrategy.id}.`),
+    );
+  }
+
+  private isBelowMinimumMilitaryReadiness(
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+  ): boolean {
+    const minimumReadiness = eraStrategy.militaryBehavior.minimumMilitaryReadiness;
+    if (minimumReadiness <= 1) return false;
+
+    const ownStrength = this.getNationMilitaryStrength(nationId);
+    const strongestOtherStrength = this.getStrongestKnownMilitaryStrength(nationId);
+    if (strongestOtherStrength <= 0) return false;
+
+    const readinessRatio = ownStrength / strongestOtherStrength;
+    const isBelowReadiness = readinessRatio < minimumReadiness;
+    if (isBelowReadiness) {
+      this.logLowMilitaryReadinessOnce(nationId, eraStrategy, readinessRatio, minimumReadiness);
+    }
+    return isBelowReadiness;
+  }
+
+  private getNationMilitaryStrength(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => unit.unitType.baseStrength > 0)
+      .reduce((total, unit) => total + unit.unitType.baseStrength, 0);
+  }
+
+  private getStrongestKnownMilitaryStrength(nationId: string): number {
+    let strongest = 0;
+    for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, other.id)) continue;
+      strongest = Math.max(strongest, this.getNationMilitaryStrength(other.id));
+    }
+    return strongest;
+  }
+
+  private logLowMilitaryReadinessOnce(
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+    readinessRatio: number,
+    minimumReadiness: number,
+  ): void {
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.defensiveModeLoggedRound.get(nationId) === currentRound) return;
+    this.defensiveModeLoggedRound.set(nationId, currentRound);
+    console.debug(
+      this.formatLog(
+        nationId,
+        `AI increased defensive readiness under ${eraStrategy.id} (military ratio ${readinessRatio.toFixed(2)} below ${minimumReadiness.toFixed(2)}).`,
+      ),
     );
   }
 

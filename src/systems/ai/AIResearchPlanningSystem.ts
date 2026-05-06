@@ -92,7 +92,9 @@ function getTechnologyResearchCategory(techId: string): keyof AILeaderEraResearc
       return 'food';
     case 'mining':
     case 'construction':
+    case 'mathematics':
     case 'metal_casting':
+    case 'machinery':
       return 'production';
     case 'calendar':
     case 'currency':

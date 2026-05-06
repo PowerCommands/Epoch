@@ -3,6 +3,7 @@ import type { Era } from '../data/technologies';
 export type AILeaderEraStrategyId =
   | 'frontierExpansion'
   | 'coastalFoundation'
+  | 'imperialInfrastructure'
   | 'balancedGrowth'
   | 'militaryPreparation'
   | 'conquestCampaign'
