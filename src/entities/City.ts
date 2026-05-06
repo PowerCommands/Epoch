@@ -29,6 +29,7 @@ export class City {
   workedTileCoords: Array<{ x: number; y: number }>;
   nextExpansionTileCoord: { x: number; y: number } | undefined;
   lastTurnAttacked: number | null = null;
+  lastTilePurchaseTurn?: number;
 
   constructor(config: CityConfig) {
     this.id = config.id;

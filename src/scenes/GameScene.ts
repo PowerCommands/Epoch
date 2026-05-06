@@ -1009,6 +1009,7 @@ export class GameScene extends Phaser.Scene {
       unitManager, cityManager, nationManager, turnManager,
       movementSystem, pathfindingSystem, combatSystem, productionSystem, foundCitySystem, mapData,
       gridSystem,
+      cityTerritorySystem,
       researchSystem,
       diplomacyManager,
       happinessSystem,
@@ -1995,11 +1996,14 @@ export class GameScene extends Phaser.Scene {
       const cost = cityTerritorySystem.getClaimCost(city, mapData);
       const availableGold = nationManager.getResources(city.ownerId).gold;
       const missingGold = Math.max(0, cost - availableGold);
+      const alreadyPurchasedThisTurn = city.lastTilePurchaseTurn === turnManager.getCurrentRound();
       return {
         visible: true,
-        enabled: availableGold >= cost,
+        enabled: availableGold >= cost && !alreadyPurchasedThisTurn,
         buttonLabel: `Buy Tile (${cost} gold)`,
-        detailText: availableGold >= cost
+        detailText: alreadyPurchasedThisTurn
+          ? 'This city has already bought a tile this turn.'
+          : availableGold >= cost
           ? `Claim the currently planned expansion tile immediately.`
           : `Need ${missingGold} more gold to buy the planned tile.`,
       };
@@ -2190,6 +2194,11 @@ export class GameScene extends Phaser.Scene {
     cityView.onBuyTileRequested(() => {
       const city = getOpenCityViewCity();
       if (!city) return;
+      const currentTurn = turnManager.getCurrentRound();
+      if (city.lastTilePurchaseTurn === currentTurn) {
+        refreshOpenCityView();
+        return;
+      }
 
       cityTerritorySystem.refreshNextExpansionTile(city, mapData);
       if (!city.nextExpansionTileCoord) {
@@ -2212,6 +2221,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
+      city.lastTilePurchaseTurn = currentTurn;
       resourceSystem.recalculateForNation(city.ownerId);
       rightPanel?.requestRefresh();
       refreshOpenCityView();

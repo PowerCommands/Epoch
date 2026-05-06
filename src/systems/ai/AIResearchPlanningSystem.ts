@@ -85,6 +85,29 @@ function getEraStrategyResearchModifier(
 
 function getTechnologyResearchCategory(techId: string): keyof AILeaderEraResearchWeights | undefined {
   switch (techId) {
+    case 'agriculture':
+    case 'pottery':
+    case 'the_wheel':
+    case 'engineering':
+      return 'food';
+    case 'mining':
+    case 'construction':
+    case 'metal_casting':
+      return 'production';
+    case 'calendar':
+    case 'currency':
+    case 'foreign_trade':
+      return 'economy';
+    case 'writing':
+    case 'philosophy':
+    case 'education':
+      return 'science';
+    case 'archery':
+    case 'bronze_working':
+    case 'horseback_riding':
+    case 'iron_working':
+    case 'civil_service':
+      return 'military';
     case 'sailing':
     case 'optics':
     case 'compass':

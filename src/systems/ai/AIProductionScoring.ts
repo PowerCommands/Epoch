@@ -12,7 +12,9 @@ export type AIProductionCategory =
   | 'productionBuilding'
   | 'goldBuilding'
   | 'happinessBuilding'
-  | 'wonder';
+  | 'wonder'
+  | 'worker'
+  | 'workBoat';
 
 export interface AIProductionCandidate {
   readonly item: Producible;
@@ -38,6 +40,8 @@ function getProductionWeight(
     case 'settler':
       return strategy.production.settlerWeight;
     case 'scout':
+    case 'worker':
+    case 'workBoat':
       return 1;
     case 'military':
       return strategy.production.militaryWeight;
@@ -75,6 +79,10 @@ function getEraProductionMultiplier(
       return weights.happinessBuilding;
     case 'wonder':
       return weights.wonder;
+    case 'worker':
+      return weights.worker ?? 1;
+    case 'workBoat':
+      return weights.workBoat ?? 1;
     case 'military': {
       const subWeight = getMilitarySubweight(candidate, weights);
       return weights.military * subWeight;

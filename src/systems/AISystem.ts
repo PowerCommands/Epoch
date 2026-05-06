@@ -5,7 +5,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORK_BOAT } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET } from '../data/buildings';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { BuildingType } from '../entities/Building';
@@ -21,7 +21,8 @@ import { canCityProduceUnit, cityHasWaterTile } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import type { BuilderSystem } from './BuilderSystem';
-import { calculateCityEconomy } from './CityEconomy';
+import { calculateCityEconomy, getTileYield } from './CityEconomy';
+import { CityTerritorySystem } from './CityTerritorySystem';
 import { getAIStrategyById } from '../data/aiStrategies';
 import type { AIStrategy } from '../types/aiStrategy';
 import type { IGridSystem } from './grid/IGridSystem';
@@ -176,7 +177,10 @@ const SCORE_GOLD_BUILDING = 55;
 const SCORE_FALLBACK = 25;
 const SCORE_NAVAL = 40;
 const SCORE_WORK_BOAT = 42;
+const SCORE_WORKER = 62;
 const LOW_GOLD_PER_TURN = 0;
+const TILE_PURCHASE_DEFAULT_RESERVE = 100;
+const TILE_PURCHASE_DEFAULT_MIN_SCORE = 45;
 // Foundation Phase production tuning. Building base scores get a flat boost
 // so they outscore the regular military candidate (70) when food/production/
 // gold thresholds fire — a Foundation city with a real building need always
@@ -285,6 +289,7 @@ export class AISystem {
   // Per-nation last round we logged the "holding position at staging
   // distance" line, also one-per-round.
   private readonly militaryHoldingLoggedRound = new Map<string, number>();
+  private readonly defensiveModeLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -308,6 +313,7 @@ export class AISystem {
     foundCitySystem: FoundCitySystem,
     mapData: MapData,
     private readonly gridSystem: IGridSystem,
+    private readonly cityTerritorySystem: CityTerritorySystem = new CityTerritorySystem(undefined, gridSystem),
     private readonly researchSystem?: ResearchSystem,
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly happinessSystem?: HappinessSystem,
@@ -383,6 +389,7 @@ export class AISystem {
     this.runSettlers(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
+    this.runTilePurchases(nationId);
     this.runProduction(nationId);
     this.runDiplomacyForNation(nationId);
     this.runTradeForNation(nationId);
@@ -418,6 +425,105 @@ export class AISystem {
     }
 
     this.explorationMemorySystem.markVisibleTiles(nationId, [...visible.values()], turn);
+  }
+
+  // ─── Tile Purchases ─────────────────────────────────────────────────────────
+
+  private runTilePurchases(nationId: string): void {
+    const eraStrategy = this.getActiveEraStrategy(nationId);
+    if (!eraStrategy.tilePurchase) return;
+
+    const currentTurn = this.turnManager.getCurrentRound();
+    const resources = this.nationManager.getResources(nationId);
+    const minReserve = eraStrategy.tilePurchase.minGoldReserve ?? TILE_PURCHASE_DEFAULT_RESERVE;
+    const minScore = eraStrategy.tilePurchase.minScore ?? TILE_PURCHASE_DEFAULT_MIN_SCORE;
+
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      if (city.lastTilePurchaseTurn === currentTurn) continue;
+
+      const cost = this.cityTerritorySystem.getClaimCost(city, this.mapData);
+      if (resources.gold < Math.max(cost + minReserve, cost + 75)) continue;
+
+      const target = this.pickBestTilePurchaseTarget(city, minScore);
+      if (!target) continue;
+
+      resources.gold -= cost;
+      const claimed = this.cityTerritorySystem.claimTileForCity(city, target.tile, this.mapData);
+      if (!claimed) {
+        resources.gold += cost;
+        continue;
+      }
+
+      city.lastTilePurchaseTurn = currentTurn;
+      console.log(
+        this.formatLog(
+          nationId,
+          `${this.nationManager.getNation(nationId)?.name ?? 'AI'} purchased tile (${target.tile.x},${target.tile.y}) for ${city.name}; reason: ${target.reason}`,
+        ),
+      );
+    }
+  }
+
+  private pickBestTilePurchaseTarget(
+    city: City,
+    minScore: number,
+  ): { tile: Tile; score: number; reason: string } | null {
+    const claimable = new Set(
+      this.cityTerritorySystem.getClaimableTiles(city, this.mapData).map((coord) => tileKey(coord.x, coord.y)),
+    );
+    let best: { tile: Tile; score: number; reason: string } | null = null;
+
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        if (!claimable.has(tileKey(tile.x, tile.y))) continue;
+        if (tile.ownerId !== undefined) continue;
+
+        const score = this.scoreTilePurchaseTarget(city, tile);
+        if (score.score < minScore) continue;
+        if (!best || score.score > best.score) {
+          best = { tile, ...score };
+        }
+      }
+    }
+
+    return best;
+  }
+
+  private scoreTilePurchaseTarget(city: City, tile: Tile): { score: number; reason: string } {
+    const yieldValue = getTileYield(tile);
+    const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
+    const distance = this.cityTerritorySystem.getExpansionRingDistance(city, tile);
+    let score = 0;
+    const reasons: string[] = [];
+
+    if (resource) {
+      score += 50;
+      reasons.push('resource');
+      if (resource.category === 'luxury') {
+        score += 70;
+        reasons.push('luxury');
+      }
+      if (tile.type === TileType.Coast || tile.type === TileType.Ocean) {
+        score += 25;
+        reasons.push('water resource');
+      }
+    }
+
+    score += yieldValue.food * 10;
+    score += yieldValue.production * 10;
+    score += yieldValue.gold * 4;
+    score += (yieldValue.happiness ?? 0) * 20;
+    if (yieldValue.food > 0) reasons.push('food');
+    if (yieldValue.production > 0) reasons.push('production');
+    if (yieldValue.gold > 0) reasons.push('gold');
+    if ((yieldValue.happiness ?? 0) > 0) reasons.push('happiness');
+    if (tile.type === TileType.Desert || tile.type === TileType.Ice) score -= 40;
+    score -= Math.max(0, distance - 2) * 4;
+
+    return {
+      score,
+      reason: reasons.length > 0 ? reasons.slice(0, 3).join('/') : 'yield',
+    };
   }
 
   // ─── Diplomacy ───────────────────────────────────────────────────────────────
@@ -2212,6 +2318,7 @@ export class AISystem {
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
     let plannedNavalCount = this.countNavalUnits(nationId);
+    let plannedWorkerCount = this.countWorkers(nationId) + this.countQueuedWorkers(nationId);
     let plannedWorkBoatCount = this.countWorkBoats(nationId) + this.countQueuedWorkBoats(nationId);
     const coastalCityCount = this.countCoastalCities(nationId);
 
@@ -2224,6 +2331,7 @@ export class AISystem {
         plannedMilitaryCount,
         plannedSettlerCount,
         plannedNavalCount,
+        plannedWorkerCount,
         plannedWorkBoatCount,
         coastalCityCount,
         strategy,
@@ -2253,6 +2361,7 @@ export class AISystem {
       if (choice.kind === 'unit') {
         if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
         if (choice.unitType.canFound === true) plannedSettlerCount++;
+        if (choice.unitType.id === WORKER.id) plannedWorkerCount++;
         if (choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
           plannedNavalCount++;
         }
@@ -2479,9 +2588,29 @@ export class AISystem {
       .length;
   }
 
+  private countWorkers(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((u) => u.unitType.id === WORKER.id)
+      .length;
+  }
+
+  private countQueuedWorkers(nationId: string): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const current = this.productionSystem.getProduction(city.id);
+      if (current?.item.kind === 'unit' && current.item.unitType.id === WORKER.id) count++;
+      for (const entry of this.productionSystem.getQueue(city.id)) {
+        if (entry.item.kind === 'unit' && entry.item.unitType.id === WORKER.id) count++;
+      }
+    }
+    return count;
+  }
+
   private countQueuedWorkBoats(nationId: string): number {
     let count = 0;
     for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const current = this.productionSystem.getProduction(city.id);
+      if (current?.item.kind === 'unit' && current.item.unitType.id === WORK_BOAT.id) count++;
       for (const entry of this.productionSystem.getQueue(city.id)) {
         if (entry.item.kind === 'unit' && entry.item.unitType.id === WORK_BOAT.id) count++;
       }
@@ -2518,6 +2647,7 @@ export class AISystem {
     plannedMilitaryCount: number,
     plannedSettlerCount: number,
     plannedNavalCount: number,
+    plannedWorkerCount: number,
     plannedWorkBoatCount: number,
     coastalCityCount: number,
     strategy: AIStrategy,
@@ -2538,7 +2668,11 @@ export class AISystem {
     // 2-3 city ramp doesn't strand the nation in negative happiness.
     const happinessBuildingThreshold = inFoundation
       ? FOUNDATION_HAPPINESS_BUILDING_THRESHOLD
-      : AI_HAPPINESS_LOW;
+      : Math.max(AI_HAPPINESS_LOW, eraStrategy.happinessBehavior?.stabilizationThreshold ?? AI_HAPPINESS_LOW);
+    const criticalHappinessThreshold = Math.max(
+      AI_HAPPINESS_CRITICAL,
+      eraStrategy.happinessBehavior?.criticalThreshold ?? AI_HAPPINESS_CRITICAL,
+    );
     const happiness = this.happinessSystem?.getNationState(nationId);
     const happinessBuilding = (happiness && happiness.netHappiness <= happinessBuildingThreshold)
       ? this.findBuildableHappinessBuilding(nationId, buildings)
@@ -2546,15 +2680,16 @@ export class AISystem {
 
     if (
       happiness
-      && happiness.netHappiness <= AI_HAPPINESS_CRITICAL
+      && happiness.netHappiness <= criticalHappinessThreshold
       && happinessBuilding
     ) {
       console.debug(
-        this.formatLog(nationId, `AI prioritizing ${happinessBuilding.name} due to critical happiness (${happiness.netHappiness}, state: ${happiness.state}).`),
+        this.formatLog(nationId, `AI prioritizing ${happinessBuilding.name} due to happiness stabilization priority (${happiness.netHappiness}, state: ${happiness.state}).`),
       );
       return { kind: 'building', buildingType: happinessBuilding };
     }
     const canBuildMilitary = plannedMilitaryCount < strategy.military.maxUnits;
+    const defensivePressure = this.isDefensivePressureActive(nationId);
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
     const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
     const canProduceSettler =
@@ -2570,7 +2705,7 @@ export class AISystem {
     if (canBuildMilitary && this.needsDefender(city, nationId)) {
       candidates.push({
         item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
-        baseScore: SCORE_ACUTE_DEFENDER,
+        baseScore: this.getMilitaryProductionScore(SCORE_ACUTE_DEFENDER, nationId, eraStrategy, true, false),
         category: 'military',
       });
     }
@@ -2583,7 +2718,7 @@ export class AISystem {
     ) {
       candidates.push({
         item: { kind: 'unit', unitType: SETTLER },
-        baseScore: SCORE_SETTLER,
+        baseScore: this.getSettlerProductionScore(SCORE_SETTLER, eraStrategy, happiness?.netHappiness),
         category: 'settler',
       });
     }
@@ -2591,7 +2726,7 @@ export class AISystem {
     if (canBuildMilitary) {
       candidates.push({
         item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
-        baseScore: SCORE_MILITARY,
+        baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure),
         category: 'military',
       });
     }
@@ -2606,10 +2741,28 @@ export class AISystem {
       if (navalUnit) {
         candidates.push({
           item: { kind: 'unit', unitType: navalUnit },
-          baseScore: SCORE_NAVAL,
+          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure),
           category: 'military',
         });
       }
+    }
+
+    if (
+      eraStrategy.productionWeights.worker !== undefined &&
+      plannedWorkerCount < Math.max(1, cityCount) &&
+      this.canBuildUnit(nationId, WORKER.id) &&
+      canCityProduceUnit(city, WORKER, this.mapData, this.gridSystem, {
+        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      })
+    ) {
+      console.debug(
+        this.formatLog(nationId, `AI worker prioritized in ${city.name} (strategy: ${eraStrategy.id}).`),
+      );
+      candidates.push({
+        item: { kind: 'unit', unitType: WORKER },
+        baseScore: SCORE_WORKER,
+        category: 'worker',
+      });
     }
 
     const workBoatTarget = this.pickBestWorkBoatTargetForProduction(nationId);
@@ -2627,7 +2780,7 @@ export class AISystem {
       candidates.push({
         item: { kind: 'unit', unitType: WORK_BOAT },
         baseScore: (SCORE_WORK_BOAT + workBoatTarget.scoreBase) * priority,
-        category: 'military',
+        category: 'workBoat',
       });
     }
 
@@ -2682,7 +2835,7 @@ export class AISystem {
     if (canBuildMilitary) {
       candidates.push({
         item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
-        baseScore: SCORE_FALLBACK,
+        baseScore: this.getMilitaryProductionScore(SCORE_FALLBACK, nationId, eraStrategy, defensivePressure),
         category: 'military',
       });
     }
@@ -2733,6 +2886,54 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private getSettlerProductionScore(
+    baseScore: number,
+    eraStrategy: AILeaderEraStrategy,
+    netHappiness: number | undefined,
+  ): number {
+    const threshold = eraStrategy.happinessBehavior?.stabilizationThreshold;
+    if (threshold === undefined || netHappiness === undefined || netHappiness >= threshold) {
+      return baseScore;
+    }
+    return baseScore * 0.55;
+  }
+
+  private getMilitaryProductionScore(
+    baseScore: number,
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+    defensivePressure: boolean,
+    logDefensivePressure = true,
+  ): number {
+    if (defensivePressure) {
+      if (logDefensivePressure) {
+        this.logDefensiveModeOnce(nationId, eraStrategy);
+      }
+      return baseScore / Math.max(eraStrategy.productionWeights.military, 0.1);
+    }
+    const threshold = eraStrategy.happinessBehavior?.stabilizationThreshold;
+    const netHappiness = this.happinessSystem?.getNetHappiness(nationId);
+    if (threshold !== undefined && netHappiness !== undefined && netHappiness < threshold) {
+      return baseScore * 0.65;
+    }
+    return baseScore;
+  }
+
+  private isDefensivePressureActive(nationId: string): boolean {
+    if (this.isAtWarWithAnyone(nationId)) return true;
+    const threat = this.getHighestThreatLevel(nationId);
+    return threat === 'medium' || threat === 'high';
+  }
+
+  private logDefensiveModeOnce(nationId: string, eraStrategy: AILeaderEraStrategy): void {
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.defensiveModeLoggedRound.get(nationId) === currentRound) return;
+    this.defensiveModeLoggedRound.set(nationId, currentRound);
+    console.debug(
+      this.formatLog(nationId, `AI defensive mode triggered; military production restored under ${eraStrategy.id}.`),
+    );
   }
 
   private pickNavalUnitForCity(city: City, nationId: string): UnitType | undefined {

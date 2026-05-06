@@ -172,6 +172,76 @@ export const COASTAL_FOUNDATION_STRATEGY: AILeaderEraStrategy = {
   },
 };
 
+export const TALL_GROWTH_STRATEGY: AILeaderEraStrategy = {
+  id: 'tallGrowth',
+  name: 'Tall Growth',
+  description:
+    'Peaceful tall-growth strategy focused on population, production, happiness stability, active workers, and selective tile purchases.',
+  productionWeights: {
+    settler: 0.85,
+    scout: 0.85,
+    military: 0.35,
+    melee: 0.35,
+    ranged: 0.45,
+    naval: 0.45,
+    foodBuilding: 1.6,
+    productionBuilding: 1.5,
+    goldBuilding: 1.15,
+    happinessBuilding: 1.8,
+    wonder: 0.75,
+    worker: 1.8,
+    workBoat: 1.3,
+  },
+  researchWeights: {
+    food: 1.4,
+    production: 1.35,
+    military: 0.45,
+    naval: 0.75,
+    economy: 1.2,
+    science: 1.0,
+    expansion: 0.9,
+  },
+  cultureWeights: {
+    expansion: 0.9,
+    diplomacy: 1.15,
+    military: 0.35,
+    happiness: 1.6,
+    economy: 1.2,
+  },
+  diplomacyWeights: {
+    openBorders: 1.2,
+    embassy: 1.2,
+    trade: 1.3,
+    war: 0.15,
+  },
+  militaryBehavior: {
+    prepareForWar: false,
+    targetWeakNeighbor: false,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 0.65,
+  },
+  foundingPreferences: {
+    strategicResource: 0.8,
+    luxuryResource: 1.4,
+    coastalAccess: 0.7,
+    waterResource: 0.9,
+    foodYield: 1.6,
+    productionYield: 1.45,
+    distancePenalty: 1.0,
+  },
+  resourcePriorities: {
+    workBoatProduction: 1.3,
+  },
+  tilePurchase: {
+    minGoldReserve: 100,
+    minScore: 45,
+  },
+  happinessBehavior: {
+    stabilizationThreshold: 5,
+    criticalThreshold: 0,
+  },
+};
+
 export const BALANCED_GROWTH_STRATEGY: AILeaderEraStrategy = {
   id: 'balancedGrowth',
   name: 'Balanced Growth',
@@ -252,6 +322,7 @@ export const CIVIC_DEVELOPMENT_STRATEGY: AILeaderEraStrategy = {
 export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   FRONTIER_EXPANSION_STRATEGY,
   COASTAL_FOUNDATION_STRATEGY,
+  TALL_GROWTH_STRATEGY,
   BALANCED_GROWTH_STRATEGY,
   MILITARY_PREPARATION_STRATEGY,
   CONQUEST_CAMPAIGN_STRATEGY,
@@ -264,6 +335,7 @@ export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
 const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
   frontierExpansion: FRONTIER_EXPANSION_STRATEGY,
   coastalFoundation: COASTAL_FOUNDATION_STRATEGY,
+  tallGrowth: TALL_GROWTH_STRATEGY,
   balancedGrowth: BALANCED_GROWTH_STRATEGY,
   militaryPreparation: MILITARY_PREPARATION_STRATEGY,
   conquestCampaign: CONQUEST_CAMPAIGN_STRATEGY,
@@ -284,6 +356,12 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
     leaderId: 'leader_oda-nobunaga',
     strategiesByEra: {
       ancient: 'coastalFoundation',
+    },
+  },
+  {
+    leaderId: 'leader_mahatma-gandhi',
+    strategiesByEra: {
+      ancient: 'tallGrowth',
     },
   },
 ];

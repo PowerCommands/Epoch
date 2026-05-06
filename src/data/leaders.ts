@@ -184,6 +184,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Mahatma Gandhi',
     image: `${LEADER_IMAGE_BASE}/mahatma-gandhi.png`,
     description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
+    culturePriorities: ['early_empire', 'state_workforce', 'mysticism', 'political_philosophy', 'games_recreation'],
     aiPersonality: {
       aggressionBias: -15,
       expansionBias: -5,

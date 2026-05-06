@@ -138,6 +138,7 @@ export class SaveLoadService {
           ? { ...city.nextExpansionTileCoord }
           : undefined,
         lastTurnAttacked: city.lastTurnAttacked,
+        lastTilePurchaseTurn: city.lastTilePurchaseTurn,
         buildings,
         productionQueue,
       };
@@ -465,6 +466,7 @@ export class SaveLoadService {
         foodStorage: saved.foodStorage,
         culture: saved.culture,
         lastTurnAttacked: saved.lastTurnAttacked,
+        lastTilePurchaseTurn: saved.lastTilePurchaseTurn,
       });
 
       if (saved.ownedTileCoords && saved.ownedTileCoords.length > 0) {

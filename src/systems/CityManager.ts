@@ -132,6 +132,7 @@ export class CityManager {
     foodStorage: number;
     culture: number;
     lastTurnAttacked: number | null;
+    lastTilePurchaseTurn?: number;
   }): City {
     const city = new City({
       id: config.id,
@@ -146,6 +147,7 @@ export class CityManager {
     city.foodStorage = config.foodStorage;
     city.culture = config.culture;
     city.lastTurnAttacked = config.lastTurnAttacked;
+    city.lastTilePurchaseTurn = config.lastTilePurchaseTurn;
 
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));

@@ -9,7 +9,8 @@ export type AILeaderEraStrategyId =
   | 'defensiveBuilder'
   | 'navalExpansion'
   | 'scientificDevelopment'
-  | 'civicDevelopment';
+  | 'civicDevelopment'
+  | 'tallGrowth';
 
 export interface AILeaderEraProductionWeights {
   settler: number;
@@ -23,6 +24,8 @@ export interface AILeaderEraProductionWeights {
   goldBuilding: number;
   happinessBuilding: number;
   wonder: number;
+  worker?: number;
+  workBoat?: number;
 }
 
 export interface AILeaderEraResearchWeights {
@@ -76,6 +79,16 @@ export interface AILeaderEraResourcePriorities {
   workBoatProduction?: number;
 }
 
+export interface AILeaderEraTilePurchasePreferences {
+  minGoldReserve?: number;
+  minScore?: number;
+}
+
+export interface AILeaderEraHappinessBehavior {
+  stabilizationThreshold?: number;
+  criticalThreshold?: number;
+}
+
 export interface AILeaderEraStrategy {
   id: AILeaderEraStrategyId;
   name: string;
@@ -88,6 +101,8 @@ export interface AILeaderEraStrategy {
   foundingPreferences?: AILeaderEraFoundingPreferences;
   foundingRules?: AILeaderEraFoundingRules;
   resourcePriorities?: AILeaderEraResourcePriorities;
+  tilePurchase?: AILeaderEraTilePurchasePreferences;
+  happinessBehavior?: AILeaderEraHappinessBehavior;
 }
 
 export interface LeaderEraStrategyProfile {

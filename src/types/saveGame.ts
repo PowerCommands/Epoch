@@ -71,6 +71,7 @@ export interface SavedCity {
   workedTileCoords?: Array<{ x: number; y: number }>;
   nextExpansionTileCoord?: { x: number; y: number };
   lastTurnAttacked: number | null;
+  lastTilePurchaseTurn?: number;
   buildings: string[];
   productionQueue: SavedQueueEntry[];
 }
