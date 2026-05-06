@@ -18,6 +18,7 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_north_america', name: 'North America', color: '#2f80ed', secondaryColor: '#dfeaf8' },
   { id: 'nation_india', name: 'India', color: '#27ae60', secondaryColor: '#f3d27a' },
   { id: 'nation_china', name: 'China', color: '#d64541', secondaryColor: '#f0c46b' },
+  { id: 'nation_taiwan', name: 'Taiwan', color: '#012169', secondaryColor: '#fe0000' },
   { id: 'nation_south_america', name: 'South America', color: '#f2994a', secondaryColor: '#4d7c59' },
   { id: 'nation_mali_empire', name: 'Mali Empire', color: '#b7950b', secondaryColor: '#5b4b2a' },
   { id: 'nation_mongolia', name: 'Mongolia', color: '#c49a2c', secondaryColor: '#3a2a14' },

@@ -222,6 +222,28 @@
     "Fuzhou",
     "Urumqi"
   ],
+  "nation_taiwan": [
+    "Taipei",
+    "Kaohsiung",
+    "Taichung",
+    "Tainan",
+    "Hsinchu",
+    "Keelung",
+    "Chiayi",
+    "Changhua",
+    "Pingtung",
+    "Yilan",
+    "Hualien",
+    "Taitung",
+    "Douliu",
+    "Nantou",
+    "Banqiao",
+    "Taoyuan",
+    "Zhongli",
+    "Miaoli",
+    "Magong",
+    "New Taipei"
+  ],
   "nation_south_america": [
     "São Paulo",
     "Buenos Aires",

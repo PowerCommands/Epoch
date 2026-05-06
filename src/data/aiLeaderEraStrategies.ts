@@ -442,6 +442,12 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
       ancient: 'imperialInfrastructure',
     },
   },
+  {
+    leaderId: 'leader_tsai-ingwen',
+    strategiesByEra: {
+      ancient: 'coastalFoundation',
+    },
+  },
 ];
 
 const ERA_ORDER: readonly Era[] = [
