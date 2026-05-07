@@ -11,6 +11,7 @@ import { CityRenderer } from './CityRenderer';
 import { ResourceSystem } from './ResourceSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
+import { CulturalSphereSystem } from './CulturalSphereSystem';
 import cityNamePoolsJson from '../data/cityNames.json';
 
 const FOUNDABLE_TYPES = new Set<TileType>([
@@ -43,6 +44,7 @@ export class FoundCitySystem {
   private readonly resourceSystem: ResourceSystem;
   private readonly mapData: MapData;
   private readonly cityTerritorySystem = new CityTerritorySystem();
+  private readonly culturalSphereSystem = new CulturalSphereSystem();
   private readonly foundedListeners: ((city: City) => void)[] = [];
   private nextCityNumber = 1;
 
@@ -103,6 +105,10 @@ export class FoundCitySystem {
 
     // Claim the active grid's city territory.
     this.claimTerritory(unit.ownerId, unit.tileX, unit.tileY);
+
+    // Establish the city's initial 7-tile cultural core (independent
+    // from territory ownership).
+    this.culturalSphereSystem.claimInitialCityCulture(city, this.mapData, this.gridSystem);
 
     // Consume settler
     this.unitManager.removeUnit(unit.id);

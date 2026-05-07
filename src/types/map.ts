@@ -42,6 +42,8 @@ export interface Tile {
   buildingConstruction?: TileBuildingConstruction; // reserved/under-construction tile building
   wonderId?: string; // finished wonder; undefined = none
   wonderConstruction?: TileWonderConstruction; // reserved/under-construction wonder
+  cultureOwnerId?: string; // culturally dominating nation (independent of territory ownerId)
+  cultureSourceCityId?: string; // city that originally/most recently culturally claimed this tile
 }
 
 export interface MapData {

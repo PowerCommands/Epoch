@@ -29,6 +29,7 @@ import type { WonderSystem } from './WonderSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
+import { CulturalSphereSystem } from './CulturalSphereSystem';
 import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
@@ -173,6 +174,8 @@ export class SaveLoadService {
           && tile.buildingConstruction === undefined
           && tile.wonderId === undefined
           && tile.wonderConstruction === undefined
+          && tile.cultureOwnerId === undefined
+          && tile.cultureSourceCityId === undefined
         ) continue;
         tiles.push({
           q: tile.x,
@@ -192,6 +195,8 @@ export class SaveLoadService {
           wonderConstruction: tile.wonderConstruction
             ? { ...tile.wonderConstruction }
             : undefined,
+          cultureOwnerId: tile.cultureOwnerId,
+          cultureSourceCityId: tile.cultureSourceCityId,
         });
       }
     }
@@ -322,6 +327,20 @@ export class SaveLoadService {
       state.gameSpeedId ?? context.gameSpeedId,
     );
     SaveLoadService.applyCompletedWonderTiles(state.wonders ?? [], context.mapData);
+
+    // Backfill culture for old saves that pre-date the culture layer.
+    // New saves include culture data and are left untouched.
+    if (!SaveLoadService.hasAnySavedCulture(state.tiles)) {
+      const culturalSphereSystem = new CulturalSphereSystem();
+      for (const city of context.cityManager.getAllCities()) {
+        culturalSphereSystem.claimInitialCityCulture(
+          city,
+          context.mapData,
+          context.gridSystem,
+        );
+      }
+    }
+
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
@@ -358,6 +377,8 @@ export class SaveLoadService {
         tile.buildingConstruction = undefined;
         tile.wonderId = undefined;
         tile.wonderConstruction = undefined;
+        tile.cultureOwnerId = undefined;
+        tile.cultureSourceCityId = undefined;
       }
     }
     for (const saved of tiles) {
@@ -378,7 +399,24 @@ export class SaveLoadService {
       if (saved.wonderConstruction !== undefined) {
         tile.wonderConstruction = { ...saved.wonderConstruction };
       }
+      if (saved.cultureOwnerId !== undefined) tile.cultureOwnerId = saved.cultureOwnerId;
+      if (saved.cultureSourceCityId !== undefined) {
+        tile.cultureSourceCityId = saved.cultureSourceCityId;
+      }
     }
+  }
+
+  /**
+   * Old saves predate the culture layer. After all cities have been
+   * restored, callers can use this to detect missing culture data and
+   * rebuild initial city culture as a fallback.
+   */
+  static hasAnySavedCulture(tiles: SavedTile[]): boolean {
+    for (const saved of tiles) {
+      if (saved.cultureOwnerId !== undefined) return true;
+      if (saved.cultureSourceCityId !== undefined) return true;
+    }
+    return false;
   }
 
   private static applyCompletedWonderTiles(wonders: SavedWonder[], mapData: MapData): void {

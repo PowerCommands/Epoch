@@ -39,6 +39,15 @@ import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
 import { BuildingPlacementSystem } from '../systems/BuildingPlacementSystem';
 import { WonderPlacementSystem } from '../systems/WonderPlacementSystem';
 import { CityTerritorySystem } from '../systems/CityTerritorySystem';
+import {
+  CulturalSphereSystem,
+  CULTURAL_BUILDING_BURST_RADIUS,
+  CULTURAL_BUILDING_BURST_MAX_TILES,
+  CULTURAL_PERCENT_BUILDING_BURST_RADIUS,
+  CULTURAL_PERCENT_BUILDING_BURST_MAX_TILES,
+  WORLD_WONDER_CULTURAL_BURST_RADIUS,
+  WORLD_WONDER_CULTURAL_BURST_MAX_TILES,
+} from '../systems/CulturalSphereSystem';
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
@@ -71,6 +80,8 @@ import { CityBannerRenderer } from '../systems/CityBannerRenderer';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOverlayRenderer';
+import { CultureLayerRenderer } from '../renderers/CultureLayerRenderer';
+import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { TimeSystem } from '../systems/TimeSystem';
 import { getEstimatedEraFromProgress } from '../data/eraTimeline';
 import { WonderSystem } from '../systems/WonderSystem';
@@ -210,10 +221,15 @@ export class GameScene extends Phaser.Scene {
     const territoryRenderer = new TerritoryRenderer(this, tileMap, nationManager, mapData, gridSystem);
     territoryRenderer.render();
 
+    // 5b. Culture overlay renderer (hidden until the player toggles the lens).
+    const cultureLayerRenderer = new CultureLayerRenderer(this, tileMap, nationManager, mapData);
+
     // 6. Create cities from scenario (filtered)
     const cityManager = CityManager.loadFromScenario(activeCities, mapData);
+    const culturalSphereSystem = new CulturalSphereSystem();
     for (const city of cityManager.getAllCities()) {
       cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
+      culturalSphereSystem.claimInitialCityCulture(city, mapData, gridSystem);
     }
 
     // 7. Create units from scenario (filtered)
@@ -371,6 +387,20 @@ export class GameScene extends Phaser.Scene {
     let hudLayer: HudLayer | null = null;
     let rightPanel: RightSidebarPanelDataProvider | null = null;
     let leaderStrip: LeaderPortraitStrip | null = null;
+    let mapLensMode: MapLensMode = DEFAULT_MAP_LENS;
+    const applyMapLensMode = (): void => {
+      cultureLayerRenderer.setVisible(mapLensMode === 'culture');
+      hudLayer?.setMapLensMode(mapLensMode);
+    };
+    const refreshCultureOverlay = (): void => {
+      cultureLayerRenderer.refresh();
+    };
+    const toggleMapLens = (): void => {
+      mapLensMode = mapLensMode === 'culture' ? 'normal' : 'culture';
+      refreshCultureOverlay();
+      applyMapLensMode();
+    };
+    refreshCultureOverlay();
     const cityView = new CityView();
     let cityViewDismissedCityId: string | null = null;
 
@@ -985,6 +1015,7 @@ export class GameScene extends Phaser.Scene {
       eventLog.log(isAINation(city.ownerId) ? formatLog(city.ownerId, `${city.name} was founded.`) : text, [city.ownerId], turnManager.getCurrentRound());
       cityBannerRenderer.refreshCity(city);
       discoverySystem.scan();
+      refreshCultureOverlay();
     });
 
     // 18. AI-system för icke-mänskliga nationer
@@ -1273,6 +1304,30 @@ export class GameScene extends Phaser.Scene {
         cityManager.getBuildings(cityId).add(item.buildingType);
         resourceSystem.recalculateForNation(city.ownerId);
         tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
+
+        const hasFlatCulture = (item.buildingType.modifiers.culturePerTurn ?? 0) > 0;
+        const hasPercentCulture = (item.buildingType.modifiers.culturePercent ?? 0) > 0;
+        if (hasPercentCulture || hasFlatCulture) {
+          const burst = culturalSphereSystem.triggerCulturalBurst(city, mapData, gridSystem, {
+            radius: hasPercentCulture
+              ? CULTURAL_PERCENT_BUILDING_BURST_RADIUS
+              : CULTURAL_BUILDING_BURST_RADIUS,
+            maxTiles: hasPercentCulture
+              ? CULTURAL_PERCENT_BUILDING_BURST_MAX_TILES
+              : CULTURAL_BUILDING_BURST_MAX_TILES,
+            allowOverwrite: true,
+          });
+          refreshCultureOverlay();
+          if (burst.claimedTiles + burst.convertedTiles > 0) {
+            const burstText = `${city.name} cultural burst from ${item.buildingType.name}: ${burst.claimedTiles} claimed, ${burst.convertedTiles} converted.`;
+            eventLog.log(
+              isAINation(city.ownerId) ? formatLog(city.ownerId, burstText) : burstText,
+              [city.ownerId],
+              turnManager.getCurrentRound(),
+            );
+          }
+        }
+
         refreshOpenCityView();
         return true;
       }
@@ -1333,6 +1388,22 @@ export class GameScene extends Phaser.Scene {
             turnManager.getCurrentRound(),
           );
         }
+
+        const wonderBurst = culturalSphereSystem.triggerCulturalBurst(city, mapData, gridSystem, {
+          radius: WORLD_WONDER_CULTURAL_BURST_RADIUS,
+          maxTiles: WORLD_WONDER_CULTURAL_BURST_MAX_TILES,
+          allowOverwrite: true,
+        });
+        refreshCultureOverlay();
+        if (wonderBurst.claimedTiles + wonderBurst.convertedTiles > 0) {
+          const wonderBurstText = `${city.name} cultural burst from ${item.wonderType.name}: ${wonderBurst.claimedTiles} claimed, ${wonderBurst.convertedTiles} converted.`;
+          eventLog.log(
+            isAINation(city.ownerId) ? formatLog(city.ownerId, wonderBurstText) : wonderBurstText,
+            [city.ownerId],
+            turnManager.getCurrentRound(),
+          );
+        }
+
         refreshOpenCityView();
         rightPanel?.requestRefresh();
         hudLayer?.refresh();
@@ -1393,6 +1464,7 @@ export class GameScene extends Phaser.Scene {
         // Territory borders och minimap behöver ritas om efter ownerId-transfer.
         territoryRenderer.render();
         this.minimapHud?.rebuild();
+        refreshCultureOverlay();
         hudLayer?.refresh();
         // Recalculate resources for both old and new owner
         resourceSystem.recalculateForNation(e.attacker.ownerId);
@@ -1766,9 +1838,11 @@ export class GameScene extends Phaser.Scene {
       onAcceptProposal: (proposalId) => diplomaticProposalSystem.acceptProposal(proposalId),
       onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
       onDiscoveryClosed: openPendingHumanSelectionPanels,
+      onToggleMapLens: toggleMapLens,
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
+    applyMapLensMode();
 
     new UnitHoverDiagnosticHud(
       this,
@@ -1794,6 +1868,8 @@ export class GameScene extends Phaser.Scene {
       this.cameraController,
       worldInputGate,
     );
+    // Stack the lens toggle above the minimap panel.
+    hudLayer.setMapLensBottomReserved(236);
     rightPanel = new RightSidebarPanelDataProvider(
       productionSystem,
       cityManager,
@@ -2932,6 +3008,7 @@ export class GameScene extends Phaser.Scene {
       tileImprovementOverlayRenderer.rebuildAll();
       unitRenderer.rebuildAll();
       territoryRenderer.render();
+      refreshCultureOverlay();
       leaderStrip?.rebuild();
       for (const nation of nationManager.getAllNations()) {
         resourceSystem.recalculateForNation(nation.id);

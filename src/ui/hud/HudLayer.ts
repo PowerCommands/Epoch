@@ -2,11 +2,13 @@ import Phaser from 'phaser';
 import type { DiplomaticProposal } from '../../systems/diplomacy/DiplomaticProposal';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import type { PolicySystem } from '../../systems/PolicySystem';
+import type { MapLensMode } from '../../types/mapLens';
 import { RafScheduler } from '../../utils/RafScheduler';
 import type { UnitActionToolbox } from '../UnitActionToolbox';
 import { CultureHudPanel } from './CultureHudPanel';
 import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
+import { MapLensToggleHud } from './MapLensToggleHud';
 import type { NationHudDataProvider } from './NationHudDataProvider';
 import { PolicyDialog } from './PolicyDialog';
 import { ProposalDialog, type ProposalDialogContext } from './ProposalDialog';
@@ -28,6 +30,7 @@ interface HudLayerConfig {
   onAcceptProposal: (proposalId: string) => void;
   onRejectProposal: (proposalId: string) => void;
   onDiscoveryClosed: () => void;
+  onToggleMapLens: () => void;
 }
 
 export class HudLayer {
@@ -44,6 +47,8 @@ export class HudLayer {
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
   private readonly proposalDialog: ProposalDialog;
   private readonly discoveryPopup: DiscoveryPopup;
+  private readonly mapLensToggle: MapLensToggleHud;
+  private mapLensBottomReserved = 0;
   private readonly proposalQueue: DiplomaticProposal[] = [];
   private readonly discoveryQueue: DiscoveryPopupData[] = [];
   private readonly handlePointerRelease = (pointer: Phaser.Input.Pointer): void => {
@@ -126,6 +131,13 @@ export class HudLayer {
       this.showNextQueuedModal();
     });
 
+    this.mapLensToggle = new MapLensToggleHud(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+    );
+    this.mapLensToggle.setOnToggle(() => this.config.onToggleMapLens());
+
     this.discoveryPopup = new DiscoveryPopup(
       scene,
       (object) => this.addOwned(object),
@@ -171,6 +183,20 @@ export class HudLayer {
 
   refreshPolicyPanel(): void {
     this.policyDialog.refresh();
+  }
+
+  setMapLensMode(mode: MapLensMode): void {
+    this.mapLensToggle.setMode(mode);
+  }
+
+  /**
+   * Reserve vertical space at the bottom-left so the lens button stacks
+   * above the minimap (or any other bottom-left HUD element).
+   */
+  setMapLensBottomReserved(pixels: number): void {
+    if (this.mapLensBottomReserved === pixels) return;
+    this.mapLensBottomReserved = pixels;
+    this.layout();
   }
 
   refresh(): void {
@@ -242,6 +268,7 @@ export class HudLayer {
     this.unitActionHudToolbox.destroy();
     this.proposalDialog.destroy();
     this.discoveryPopup.destroy();
+    this.mapLensToggle.destroy();
     this.proposalQueue.length = 0;
     this.discoveryQueue.length = 0;
     this.config.worldInputGate.clearAll();
@@ -272,6 +299,7 @@ export class HudLayer {
     this.unitActionHudToolbox.layout(endTurnLayout.centerX, endTurnLayout.centerY, endTurnLayout.radius);
     this.proposalDialog.layout();
     this.discoveryPopup.layout();
+    this.mapLensToggle.layout(height, this.mapLensBottomReserved);
   }
 
   private showNextQueuedModal(): void {

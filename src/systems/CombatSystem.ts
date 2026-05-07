@@ -237,7 +237,7 @@ export class CombatSystem {
     let previousOwnerId: string | undefined;
     if (!isRanged && result.cityFell && !result.attackerDied) {
       previousOwnerId = city.ownerId;
-      captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem, this.unitManager);
+      captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem, this.unitManager, this.gridSystem);
       captured = true;
     }
 

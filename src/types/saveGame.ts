@@ -126,6 +126,10 @@ export interface SavedTile {
     wonderId: string;
     cityId: string;
   };
+  // Culture layer is independent from territory ownership. Older saves
+  // omit these fields; loading must accept their absence.
+  cultureOwnerId?: string;
+  cultureSourceCityId?: string;
 }
 
 export interface SavedDiplomacyEntry {

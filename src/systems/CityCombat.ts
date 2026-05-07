@@ -6,6 +6,8 @@ import type { MapData } from '../types/map';
 import { CITY_BASE_HEALTH, CITY_CAPTURE_HEALTH_FRACTION } from '../data/cities';
 import type { UnitManager } from './UnitManager';
 import { CityTerritorySystem } from './CityTerritorySystem';
+import { CulturalSphereSystem } from './CulturalSphereSystem';
+import type { IGridSystem } from './grid/IGridSystem';
 
 /**
  * Intern hjälpmodul för stadserövring.
@@ -18,6 +20,7 @@ export function captureCity(
   mapData: MapData,
   productionSystem: ProductionSystem,
   unitManager: UnitManager,
+  gridSystem: IGridSystem,
 ): void {
   const newOwnerId = attacker.ownerId;
 
@@ -26,6 +29,10 @@ export function captureCity(
 
   // Stadens hela territorium byter ägare så renderers och save/load ser samma state.
   new CityTerritorySystem().transferCityTerritory(city, newOwnerId, mapData);
+
+  // The city's initial 7-tile cultural core flips with the city itself.
+  // Wider cultural pressure / flipping is intentionally not implemented here.
+  new CulturalSphereSystem().claimInitialCityCulture(city, mapData, gridSystem);
 
   // HP återställs till 25% av max
   city.health = Math.round(CITY_BASE_HEALTH * CITY_CAPTURE_HEALTH_FRACTION);
