@@ -1,7 +1,7 @@
 import type { Unit } from '../entities/Unit';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 
-export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'sleep' | 'kill';
+export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'sleep' | 'dismiss';
 
 export interface UnitActionDefinition {
   mode: UnitActionMode;
@@ -52,8 +52,8 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     isToggledOn: (unit) => unit.isSleeping,
   },
   {
-    mode: 'kill',
-    label: 'Kill',
+    mode: 'dismiss',
+    label: 'Dismiss',
     isAvailable: () => true,
   },
 ];
@@ -61,8 +61,11 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
 type ModeChangedListener = (mode: UnitActionMode) => void;
 type ChangedListener = () => void;
 type BuildAvailabilityProvider = Pick<BuilderSystem, 'getCurrentTileBuildPreview'>;
+type DismissAvailabilityProvider = {
+  getCargoForTransport(unit: Unit): Unit | undefined;
+};
 
-const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'sleep', 'build', 'found'];
+const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'sleep', 'build', 'found', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -72,6 +75,7 @@ export class UnitActionToolbox {
   private mode: UnitActionMode = 'move';
   private root: HTMLElement | null = null;
   private buildAvailabilityProvider: BuildAvailabilityProvider | null = null;
+  private dismissAvailabilityProvider: DismissAvailabilityProvider | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
   private readonly changedListeners: ChangedListener[] = [];
 
@@ -79,6 +83,11 @@ export class UnitActionToolbox {
 
   setBuildAvailabilityProvider(provider: BuildAvailabilityProvider): void {
     this.buildAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setDismissAvailabilityProvider(provider: DismissAvailabilityProvider): void {
+    this.dismissAvailabilityProvider = provider;
     this.refresh();
   }
 
@@ -127,7 +136,7 @@ export class UnitActionToolbox {
     if (!unit) return;
     const action = ACTIONS.find((a) => a.mode === mode);
     if (!action || !this.isActionAvailable(action, unit)) return;
-    if (mode === 'sleep' || mode === 'kill') {
+    if (mode === 'sleep' || mode === 'dismiss') {
       this.triggerMode(mode);
       return;
     }
@@ -209,7 +218,7 @@ export class UnitActionToolbox {
       const selectedAsMode = this.mode === action.mode;
       const toggledOn = isAvailable && action.isToggledOn?.(unit) === true;
       button.classList.toggle('unit-action-button-active', selectedAsMode || toggledOn);
-      if (action.mode === 'kill') button.classList.add('unit-action-button-danger');
+      if (action.mode === 'dismiss') button.classList.add('unit-action-button-danger');
       button.textContent = action.label;
       const tooltip = this.getActionTooltip(action, preview);
       if (tooltip !== undefined) button.title = tooltip;
@@ -217,7 +226,7 @@ export class UnitActionToolbox {
       button.style.opacity = isAvailable ? '1' : '0.4';
       button.addEventListener('click', () => {
         if (!this.isActionAvailable(action, unit)) return;
-        if (action.mode === 'sleep' || action.mode === 'kill') {
+        if (action.mode === 'sleep' || action.mode === 'dismiss') {
           this.triggerMode(action.mode);
           return;
         }
@@ -240,6 +249,9 @@ export class UnitActionToolbox {
     buildPreview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined,
   ): boolean {
     if (!action.isAvailable(unit)) return false;
+    if (action.mode === 'dismiss' && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
+      return false;
+    }
     if (action.mode !== 'build') return true;
     return buildPreview?.canBuild === true;
   }
@@ -253,6 +265,13 @@ export class UnitActionToolbox {
     action: UnitActionDefinition,
     buildPreview: BuildImprovementPreview | undefined,
   ): string | undefined {
+    if (action.mode === 'dismiss') {
+      const unit = this.selectedUnit;
+      if (unit !== null && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
+        return 'Cannot dismiss a transport carrying a unit.';
+      }
+      return 'Permanently remove this unit.';
+    }
     if (action.mode !== 'build') return undefined;
     if (buildPreview?.canBuild) return 'Build improvement';
     return buildPreview?.reason ?? 'Cannot build improvement';

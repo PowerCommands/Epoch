@@ -10,6 +10,7 @@ export type AIProductionCategory =
   | 'military'
   | 'foodBuilding'
   | 'productionBuilding'
+  | 'scienceBuilding'
   | 'goldBuilding'
   | 'happinessBuilding'
   | 'wonder'
@@ -50,6 +51,8 @@ function getProductionWeight(
       return strategy.production.foodBuildingWeight;
     case 'productionBuilding':
       return strategy.production.productionBuildingWeight;
+    case 'scienceBuilding':
+      return 1;
     case 'goldBuilding':
       return strategy.production.goldBuildingWeight;
     case 'wonder':
@@ -73,6 +76,8 @@ function getEraProductionMultiplier(
       return weights.foodBuilding;
     case 'productionBuilding':
       return weights.productionBuilding;
+    case 'scienceBuilding':
+      return weights.scienceBuilding ?? 1;
     case 'goldBuilding':
       return weights.goldBuilding;
     case 'happinessBuilding':

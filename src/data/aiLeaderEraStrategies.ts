@@ -172,6 +172,85 @@ export const COASTAL_FOUNDATION_STRATEGY: AILeaderEraStrategy = {
   },
 };
 
+export const COASTAL_TECH_ECONOMY_STRATEGY: AILeaderEraStrategy = {
+  ...COASTAL_FOUNDATION_STRATEGY,
+  id: 'coastalTechEconomy',
+  name: 'Coastal Tech Economy',
+  description:
+    'Compact coastal development strategy layered on Coastal Foundation, focused on science, trade, food, sea resources, and defensive economic growth.',
+  productionWeights: {
+    ...COASTAL_FOUNDATION_STRATEGY.productionWeights,
+    settler: 0.95,
+    military: 0.65,
+    melee: 0.65,
+    ranged: 0.9,
+    naval: 1.0,
+    foodBuilding: 1.35,
+    productionBuilding: 1.1,
+    scienceBuilding: 1.55,
+    goldBuilding: 1.45,
+    happinessBuilding: 1.25,
+    wonder: 0.85,
+    worker: 1.15,
+    workBoat: 1.65,
+  },
+  researchWeights: {
+    ...COASTAL_FOUNDATION_STRATEGY.researchWeights,
+    food: 1.25,
+    production: 1.0,
+    military: 0.6,
+    naval: 1.35,
+    economy: 1.45,
+    science: 1.6,
+    expansion: 0.95,
+  },
+  cultureWeights: {
+    ...COASTAL_FOUNDATION_STRATEGY.cultureWeights,
+    expansion: 0.9,
+    diplomacy: 1.15,
+    military: 0.55,
+    happiness: 1.2,
+    economy: 1.35,
+  },
+  diplomacyWeights: {
+    ...COASTAL_FOUNDATION_STRATEGY.diplomacyWeights,
+    openBorders: 1.05,
+    embassy: 1.1,
+    trade: 1.3,
+    war: 0.2,
+  },
+  militaryBehavior: {
+    ...COASTAL_FOUNDATION_STRATEGY.militaryBehavior,
+    minimumMilitaryReadiness: 0.9,
+  },
+  foundingPreferences: {
+    ...COASTAL_FOUNDATION_STRATEGY.foundingPreferences,
+    strategicResource: 0.75,
+    luxuryResource: 1.15,
+    coastalAccess: 1.85,
+    waterResource: 1.9,
+    foodYield: 1.4,
+    productionYield: 0.95,
+    distancePenalty: 1.2,
+  },
+  foundingRules: {
+    minCityDistance: 7,
+  },
+  resourcePriorities: {
+    ...COASTAL_FOUNDATION_STRATEGY.resourcePriorities,
+    seaResourceExploitation: 2.25,
+    workBoatProduction: 2.05,
+  },
+  tilePurchase: {
+    minGoldReserve: 110,
+    minScore: 55,
+  },
+  happinessBehavior: {
+    stabilizationThreshold: 4,
+    criticalThreshold: 0,
+  },
+};
+
 export const TALL_GROWTH_STRATEGY: AILeaderEraStrategy = {
   id: 'tallGrowth',
   name: 'Tall Growth',
@@ -392,6 +471,7 @@ export const CIVIC_DEVELOPMENT_STRATEGY: AILeaderEraStrategy = {
 export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   FRONTIER_EXPANSION_STRATEGY,
   COASTAL_FOUNDATION_STRATEGY,
+  COASTAL_TECH_ECONOMY_STRATEGY,
   TALL_GROWTH_STRATEGY,
   IMPERIAL_INFRASTRUCTURE_STRATEGY,
   BALANCED_GROWTH_STRATEGY,
@@ -406,6 +486,7 @@ export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
 const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
   frontierExpansion: FRONTIER_EXPANSION_STRATEGY,
   coastalFoundation: COASTAL_FOUNDATION_STRATEGY,
+  coastalTechEconomy: COASTAL_TECH_ECONOMY_STRATEGY,
   tallGrowth: TALL_GROWTH_STRATEGY,
   imperialInfrastructure: IMPERIAL_INFRASTRUCTURE_STRATEGY,
   balancedGrowth: BALANCED_GROWTH_STRATEGY,
@@ -443,9 +524,9 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
     },
   },
   {
-    leaderId: 'leader_tsai-ingwen',
+    leaderId: 'leader_koxinga',
     strategiesByEra: {
-      ancient: 'coastalFoundation',
+      ancient: 'coastalTechEconomy',
     },
   },
 ];

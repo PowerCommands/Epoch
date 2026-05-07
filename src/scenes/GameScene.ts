@@ -737,6 +737,7 @@ export class GameScene extends Phaser.Scene {
       eraSystem,
     );
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
+    unitActionToolbox.setDismissAvailabilityProvider(unitManager);
     let foundCitySystem: FoundCitySystem;
     let movementSystem: MovementSystem;
     let selectedBuilderForHints: Unit | null = null;
@@ -2442,17 +2443,43 @@ export class GameScene extends Phaser.Scene {
       }
       return keys;
     };
-    const showKillConfirmation = (unit: Unit) => {
+    const showDismissConfirmation = (unit: Unit) => {
+      const unitId = unit.id;
       showDiplomacyModal({
-        title: 'Disband Unit',
-        message: `Disband ${unit.name}?`,
+        title: 'Dismiss Unit',
+        message: 'Dismiss this unit permanently?',
         accentColor: '#c44',
-        confirmLabel: 'Kill',
+        confirmLabel: 'Dismiss',
         cancelLabel: 'Cancel',
         onConfirm: () => {
-          unitManager.removeUnit(unit.id);
+          const currentUnit = unitManager.getUnit(unitId);
+          if (currentUnit === undefined || currentUnit.ownerId !== humanNationId) {
+            const selection = selectionManager.getSelected();
+            if (selection?.kind === 'unit' && selection.unit.id === unitId) {
+              selectionManager.clearSelection();
+            }
+            unitActionToolbox.resetMode();
+            hudLayer?.refresh();
+            rightPanel?.requestRefresh();
+            return;
+          }
+          if (unitManager.getCargoForTransport(currentUnit) !== undefined) {
+            unitActionToolbox.resetMode();
+            hudLayer?.refresh();
+            rightPanel?.requestRefresh();
+            return;
+          }
+          unitManager.removeUnit(currentUnit.id);
+          selectionManager.clearSelection();
+          unitActionToolbox.resetMode();
+          turnOrderSystem.refreshActive();
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
         },
-        onCancel: () => {},
+        onCancel: () => {
+          unitActionToolbox.resetMode();
+          hudLayer?.refresh();
+        },
       });
     };
     unitActionToolbox.onModeChanged((mode) => {
@@ -2510,14 +2537,18 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (mode === 'kill') {
+      if (mode === 'dismiss') {
         const selection = selectionManager.getSelected();
-        if (selection?.kind !== 'unit') {
+        if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) {
           unitActionToolbox.resetMode();
           return;
         }
-        showKillConfirmation(selection.unit);
-        unitActionToolbox.resetMode();
+        if (unitManager.getCargoForTransport(selection.unit) !== undefined) {
+          unitActionToolbox.resetMode();
+          hudLayer?.refresh();
+          return;
+        }
+        showDismissConfirmation(selection.unit);
         return;
       }
     });

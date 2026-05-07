@@ -3,6 +3,7 @@ import type { Era } from '../data/technologies';
 export type AILeaderEraStrategyId =
   | 'frontierExpansion'
   | 'coastalFoundation'
+  | 'coastalTechEconomy'
   | 'imperialInfrastructure'
   | 'balancedGrowth'
   | 'militaryPreparation'
@@ -22,6 +23,7 @@ export interface AILeaderEraProductionWeights {
   naval: number;
   foodBuilding: number;
   productionBuilding: number;
+  scienceBuilding?: number;
   goldBuilding: number;
   happinessBuilding: number;
   wonder: number;

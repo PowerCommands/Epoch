@@ -561,10 +561,21 @@ function buildNationRegistrySelect() {
   const available = getAvailableRegistryNations();
   select.innerHTML = '';
 
+  if (available.length === 0) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'All registry nations already exist in this scenario';
+    option.disabled = true;
+    option.selected = true;
+    select.appendChild(option);
+  }
+
   for (const nation of available) {
     const option = document.createElement('option');
     option.value = nation.nationId;
-    option.textContent = `${nation.nationName} — ${nation.leaderName}`;
+    option.textContent = nation.leaderName
+      ? `${nation.nationName} — ${nation.leaderName}`
+      : nation.nationName;
     select.appendChild(option);
   }
 

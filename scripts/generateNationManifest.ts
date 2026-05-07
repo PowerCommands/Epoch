@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ALL_LEADERS } from '../src/data/leaders';
-import { getNationDefinitionById } from '../src/data/nations';
+import { NATION_DEFINITIONS } from '../src/data/nations';
 
 /**
  * Writes a browser-friendly nation registry for the standalone editor.
@@ -16,6 +16,7 @@ interface NationManifestEntry {
   nationId: string;
   nationName: string;
   color: string;
+  secondaryColor: string;
   leaderId: string;
   leaderName: string;
   leaderTitle: string;
@@ -27,17 +28,18 @@ interface NationManifest {
 }
 
 const manifest: NationManifest = {
-  nations: ALL_LEADERS
-    .map((leader): NationManifestEntry => {
-      const nation = getNationDefinitionById(leader.nationId);
+  nations: NATION_DEFINITIONS
+    .map((nation): NationManifestEntry => {
+      const leader = ALL_LEADERS.find((candidate) => candidate.nationId === nation.id);
       return {
-        nationId: leader.nationId,
-        nationName: nation?.name ?? labelFromNationId(leader.nationId),
-        color: nation?.color ?? '#888888',
-        leaderId: leader.id,
-        leaderName: leader.name,
-        leaderTitle: leader.title ?? '',
-        leaderImage: leader.image,
+        nationId: nation.id,
+        nationName: nation.name,
+        color: nation.color,
+        secondaryColor: nation.secondaryColor,
+        leaderId: leader?.id ?? '',
+        leaderName: leader?.name ?? '',
+        leaderTitle: leader?.title ?? '',
+        leaderImage: leader?.image ?? '',
       };
     })
     .sort((a, b) => a.nationId.localeCompare(b.nationId)),
@@ -46,12 +48,3 @@ const manifest: NationManifest = {
 fs.mkdirSync(dataDir, { recursive: true });
 fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2) + '\n');
 console.log(`Wrote ${outputPath} with ${manifest.nations.length} nation(s).`);
-
-function labelFromNationId(nationId: string): string {
-  return nationId
-    .replace(/^nation_/, '')
-    .split('_')
-    .filter(Boolean)
-    .map(word => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
-    .join(' ');
-}

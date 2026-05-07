@@ -290,6 +290,7 @@ export class AISystem {
   // distance" line, also one-per-round.
   private readonly militaryHoldingLoggedRound = new Map<string, number>();
   private readonly defensiveModeLoggedRound = new Map<string, number>();
+  private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -1265,7 +1266,7 @@ export class AISystem {
       if (isWater && tile.resourceId !== undefined) waterResourceCount++;
     }
     let bonus = 0;
-    const foundingPreferences = eraStrategy?.id === 'coastalFoundation'
+    const foundingPreferences = eraStrategy?.resourcePriorities?.seaResourceExploitation !== undefined
       ? eraStrategy.foundingPreferences
       : undefined;
     const coastalAccessWeight = foundingPreferences?.coastalAccess ?? 1;
@@ -2714,13 +2715,16 @@ export class AISystem {
       wantsMoreCities
       && plannedSettlerCount === 0
       && canProduceSettler
-      && !this.isSettlerProductionBlockedByHappiness(nationId)
     ) {
-      candidates.push({
-        item: { kind: 'unit', unitType: SETTLER },
-        baseScore: this.getSettlerProductionScore(SCORE_SETTLER, eraStrategy, happiness?.netHappiness),
-        category: 'settler',
-      });
+      if (this.isSettlerProductionBlockedByHappiness(nationId)) {
+        this.logSettlerHappinessDelayOnce(nationId, eraStrategy, happiness?.netHappiness);
+      } else {
+        candidates.push({
+          item: { kind: 'unit', unitType: SETTLER },
+          baseScore: this.getSettlerProductionScore(SCORE_SETTLER, eraStrategy, happiness?.netHappiness),
+          category: 'settler',
+        });
+      }
     }
 
     if (canBuildMilitary) {
@@ -2820,6 +2824,15 @@ export class AISystem {
       });
     }
 
+    const economicScienceBuilding = this.findMissingEconomicScienceBuilding(nationId, buildings);
+    if (economicScienceBuilding) {
+      candidates.push({
+        item: { kind: 'building', buildingType: economicScienceBuilding },
+        baseScore: SCORE_FALLBACK + buildingBoost,
+        category: this.getInfrastructureProductionCategory(economicScienceBuilding),
+      });
+    }
+
     if (happinessBuilding) {
       console.debug(
         this.formatLog(nationId, `AI prioritizing happiness building ${happinessBuilding.name} due to low happiness (${happiness?.netHappiness}, state: ${happiness?.state}).`),
@@ -2849,7 +2862,7 @@ export class AISystem {
         candidates.push({
           item: { kind: 'building', buildingType: missingBuilding },
           baseScore: SCORE_FALLBACK + buildingBoost,
-          category: 'foodBuilding',
+          category: this.getInfrastructureProductionCategory(missingBuilding),
         });
       }
     }
@@ -2991,6 +3004,22 @@ export class AISystem {
     );
   }
 
+  private logSettlerHappinessDelayOnce(
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+    netHappiness: number | undefined,
+  ): void {
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.settlerHappinessDelayLoggedRound.get(nationId) === currentRound) return;
+    this.settlerHappinessDelayLoggedRound.set(nationId, currentRound);
+    console.debug(
+      this.formatLog(
+        nationId,
+        `AI delayed settler production under ${eraStrategy.id} due to low happiness (${netHappiness ?? 'unknown'}).`,
+      ),
+    );
+  }
+
   private pickNavalUnitForCity(city: City, nationId: string): UnitType | undefined {
     const candidates = ALL_UNIT_TYPES.filter((u) => (
       u.isNaval === true &&
@@ -3015,7 +3044,7 @@ export class AISystem {
   private getMaxWorkBoatsForStrategy(nationId: string, eraStrategy: AILeaderEraStrategy): number {
     const era = this.getNationEra(nationId);
     if (
-      eraStrategy.id === 'coastalFoundation' &&
+      eraStrategy.resourcePriorities?.workBoatProduction !== undefined &&
       (era === 'ancient' || era === 'classical')
     ) {
       return MAX_EARLY_WORK_BOATS_COASTAL_FOUNDATION;
@@ -3077,6 +3106,45 @@ export class AISystem {
     return cheapest;
   }
 
+  private findMissingEconomicScienceBuilding(
+    nationId: string,
+    buildings: CityBuildings,
+  ): BuildingType | null {
+    let cheapest: BuildingType | null = null;
+    for (const candidate of ALL_BUILDINGS) {
+      if (buildings.has(candidate.id)) continue;
+      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.isEconomicScienceBuilding(candidate)) continue;
+      if (!cheapest || candidate.productionCost < cheapest.productionCost) {
+        cheapest = candidate;
+      }
+    }
+    return cheapest;
+  }
+
+  private isEconomicScienceBuilding(candidate: BuildingType): boolean {
+    const modifiers = candidate.modifiers;
+    return (modifiers.sciencePerTurn ?? 0) > 0
+      || (modifiers.sciencePercent ?? 0) > 0
+      || (modifiers.goldPerTurn ?? 0) > 0
+      || (modifiers.goldPercent ?? 0) > 0;
+  }
+
+  private getInfrastructureProductionCategory(buildingType: BuildingType): AIProductionCandidate['category'] {
+    const modifiers = buildingType.modifiers;
+    if ((modifiers.sciencePerTurn ?? 0) > 0 || (modifiers.sciencePercent ?? 0) > 0) {
+      return 'scienceBuilding';
+    }
+    if ((modifiers.goldPerTurn ?? 0) > 0 || (modifiers.goldPercent ?? 0) > 0) {
+      return 'goldBuilding';
+    }
+    if ((modifiers.productionPerTurn ?? 0) > 0 || (modifiers.productionPercent ?? 0) > 0) {
+      return 'productionBuilding';
+    }
+    if ((modifiers.happinessPerTurn ?? 0) > 0) return 'happinessBuilding';
+    return 'foodBuilding';
+  }
+
   // Short reason tag derived from the chosen producible. Used only for the
   // Foundation Phase production log so traces explain why each city built
   // what it built.
@@ -3095,6 +3163,8 @@ export class AISystem {
     if (bt.id === GRANARY.id) return 'city growth';
     if (bt.id === WORKSHOP.id) return 'production';
     if (bt.id === MARKET.id) return 'economy';
+    if ((bt.modifiers.sciencePerTurn ?? 0) > 0 || (bt.modifiers.sciencePercent ?? 0) > 0) return 'science';
+    if ((bt.modifiers.goldPerTurn ?? 0) > 0 || (bt.modifiers.goldPercent ?? 0) > 0) return 'economy';
     return 'infrastructure';
   }
 

@@ -214,12 +214,12 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     },
   },
   {
-    id: 'leader_tsai-ingwen',
-    name: 'Tsai Ing-wen',
+    id: 'leader_koxinga',
+    name: 'Koxinga',
     nationId: 'nation_taiwan',
-    title: 'President of Taiwan',
-    image: `${LEADER_IMAGE_BASE}/tsai-ingwen.png`,
-    description: 'A modern democratic leader focused on technology, trade, diplomacy, and resilient island defense.',
+    title: 'Zheng Chenggong',
+    image: `${LEADER_IMAGE_BASE}/leader_koxinga.png`,
+    description: 'A maritime commander focused on trade, diplomacy, technology, and resilient island defense.',
     culturePriorities: ['foreign_trade', 'state_workforce', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'diplomatic_service'],
     aiPersonality: {
       aggressionBias: -4,

@@ -64,6 +64,10 @@
       "/assets/sounds/nation_sweden/nation_sweden-theme-01.mp3",
       "/assets/sounds/nation_sweden/nation_sweden-theme-02.mp3"
     ],
+    "nation_taiwan": [
+      "/assets/sounds/nation_taiwan/nation_taiwan-theme-01.mp3",
+      "/assets/sounds/nation_taiwan/nation_taiwan-theme-02.mp3"
+    ],
     "start": [
       "/assets/sounds/start/theme-01.mp3",
       "/assets/sounds/start/theme-02.mp3"
