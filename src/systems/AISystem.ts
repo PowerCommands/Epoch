@@ -6,7 +6,7 @@ import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
 import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT } from '../data/units';
-import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET } from '../data/buildings';
+import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById } from '../data/buildings';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { BuildingType } from '../entities/Building';
@@ -23,6 +23,7 @@ import { canCityProduceUnit, cityHasWaterTile } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import type { BuilderSystem } from './BuilderSystem';
+import type { BuildingPlacementSystem } from './BuildingPlacementSystem';
 import type { WonderSystem } from './WonderSystem';
 import type { WonderPlacementSystem } from './WonderPlacementSystem';
 import { calculateCityEconomy, getTileYield } from './CityEconomy';
@@ -101,7 +102,19 @@ const FOUNDATION_PHASE_CITY_COUNT = 3;
 // below this floor — the nation needs to recover before it can absorb
 // another city.
 const FOUNDATION_HAPPINESS_FLOOR = -2;
+const PEACE_UNITS_BEFORE_INFRASTRUCTURE = 2;
+const WAR_UNITS_BEFORE_INFRASTRUCTURE = 3;
+const WARTIME_INFRASTRUCTURE_BUILDING_IDS = [
+  'walls',
+  'barracks',
+  'castle',
+  'armory',
+  'military_academy',
+  'arsenal',
+  'military_base',
+] as const;
 type AIPhase = 'FOUNDATION' | 'STRATEGY';
+type ProductionRhythmPhase = 'peace' | 'war';
 const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 // Structural type guard — Unit/City are imported as types, so `instanceof`
@@ -340,6 +353,7 @@ export class AISystem {
     private readonly builderSystem?: BuilderSystem,
     private readonly wonderSystem?: WonderSystem,
     private readonly wonderPlacementSystem?: WonderPlacementSystem,
+    private readonly buildingPlacementSystem?: BuildingPlacementSystem,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
   ) {
     this.unitManager = unitManager;
@@ -737,6 +751,10 @@ export class AISystem {
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') return true;
     }
     return false;
+  }
+
+  private isNationAtWar(nationId: string): boolean {
+    return this.isAtWarWithAnyone(nationId);
   }
 
   // ─── Foundation Phase ────────────────────────────────────────────────────────
@@ -2415,10 +2433,18 @@ export class AISystem {
 
       const placement = choice.kind === 'wonder'
         ? this.reserveAIWonderPlacement(city, choice.wonderType)
-        : undefined;
+        : choice.kind === 'building'
+          ? this.reserveAIBuildingPlacement(city, choice.buildingType)
+          : undefined;
       if (choice.kind === 'wonder' && !placement) {
         console.warn(
           this.formatLog(nationId, `AI production in ${city.name}: skipped ${choice.wonderType.name}, no wonder placement available`),
+        );
+        continue;
+      }
+      if (choice.kind === 'building' && this.buildingPlacementSystem && !placement) {
+        console.warn(
+          this.formatLog(nationId, `AI production in ${city.name}: skipped ${choice.buildingType.name}, no building placement available`),
         );
         continue;
       }
@@ -2954,7 +2980,16 @@ export class AISystem {
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
     const cityFocus = city.focus ?? 'balanced';
-    const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
+    const rhythmPick = this.pickProductionRhythmCandidate(
+      city,
+      nationId,
+      strategy,
+      eraStrategy,
+      cityFocus,
+      happiness?.netHappiness,
+      happinessBuildingThreshold,
+    );
+    const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
       if (cityFocus !== 'balanced') {
         const itemName = this.foundationProducibleName(best.item);
@@ -3000,6 +3035,154 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private pickProductionRhythmCandidate(
+    city: City,
+    nationId: string,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+    cityFocus: City['focus'],
+    netHappiness: number | undefined,
+    happinessBuildingThreshold: number,
+  ): AIProductionCandidate | undefined {
+    const phase = this.getProductionRhythmPhase(city, nationId, eraStrategy);
+    if (!phase) return undefined;
+
+    if (phase === 'war' && this.needsDefender(city, nationId)) return undefined;
+
+    this.logProductionRhythm(
+      nationId,
+      `${city.name} entered ${phase === 'war' ? 'wartime' : 'peace'} infrastructure phase after ${city.productionRhythm.completedUnitsSinceInfrastructure} completed units.`,
+    );
+
+    const candidates = phase === 'war'
+      ? this.getWartimeInfrastructureCandidates(city, nationId, netHappiness, happinessBuildingThreshold)
+      : this.getPeaceInfrastructureCandidates(city, nationId, eraStrategy);
+
+    if (candidates.length === 0) {
+      this.logProductionRhythm(
+        nationId,
+        `${city.name} skipped infrastructure phase because no valid building or wonder was available.`,
+      );
+      return undefined;
+    }
+
+    const best = pickBestAIProductionCandidate(candidates, strategy, eraStrategy, cityFocus ?? 'balanced');
+    if (!best) return undefined;
+
+    this.logProductionRhythm(nationId, `${city.name} production rhythm selected ${this.describeRhythmItem(best.item)}.`);
+    return best;
+  }
+
+  private getProductionRhythmPhase(
+    city: City,
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+  ): ProductionRhythmPhase | undefined {
+    const completedUnits = city.productionRhythm.completedUnitsSinceInfrastructure;
+    if (this.isNationAtWar(nationId)) {
+      const threshold = eraStrategy.productionRhythm?.warUnitsBeforeInfrastructure ?? WAR_UNITS_BEFORE_INFRASTRUCTURE;
+      return completedUnits >= threshold ? 'war' : undefined;
+    }
+
+    const threshold = eraStrategy.productionRhythm?.peaceUnitsBeforeInfrastructure ?? PEACE_UNITS_BEFORE_INFRASTRUCTURE;
+    return completedUnits >= threshold ? 'peace' : undefined;
+  }
+
+  private getPeaceInfrastructureCandidates(
+    city: City,
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+  ): AIProductionCandidate[] {
+    const buildings = this.cityManager.getBuildings(city.id);
+    const candidates: AIProductionCandidate[] = [];
+
+    for (const building of ALL_BUILDINGS) {
+      if (buildings.has(building.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, building)) continue;
+      candidates.push({
+        item: { kind: 'building', buildingType: building },
+        baseScore: this.getInfrastructureRhythmBuildingScore(building),
+        category: this.getInfrastructureProductionCategory(building),
+      });
+    }
+
+    const wonder = this.pickBestAvailableWorldWonder(city, nationId, eraStrategy);
+    if (wonder) {
+      candidates.push({
+        item: { kind: 'wonder', wonderType: wonder },
+        baseScore: this.getWorldWonderProductionScore(wonder),
+        category: 'wonder',
+      });
+    }
+
+    return candidates;
+  }
+
+  private getWartimeInfrastructureCandidates(
+    city: City,
+    nationId: string,
+    netHappiness: number | undefined,
+    happinessBuildingThreshold: number,
+  ): AIProductionCandidate[] {
+    const buildings = this.cityManager.getBuildings(city.id);
+    const candidates: AIProductionCandidate[] = [];
+
+    for (const buildingId of WARTIME_INFRASTRUCTURE_BUILDING_IDS) {
+      const building = getBuildingById(buildingId);
+      if (!building) continue;
+      if (buildings.has(building.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, building)) continue;
+      candidates.push({
+        item: { kind: 'building', buildingType: building },
+        baseScore: SCORE_HAPPINESS_BUILDING_LOW + building.productionCost / 20,
+        category: 'happinessBuilding',
+      });
+    }
+
+    if (candidates.length > 0 || netHappiness === undefined || netHappiness > happinessBuildingThreshold) {
+      return candidates;
+    }
+
+    const happinessBuilding = this.findBuildableHappinessBuildingForCity(city, nationId, buildings);
+    if (happinessBuilding) {
+      candidates.push({
+        item: { kind: 'building', buildingType: happinessBuilding },
+        baseScore: SCORE_HAPPINESS_BUILDING_LOW,
+        category: 'happinessBuilding',
+      });
+    }
+    return candidates;
+  }
+
+  private getInfrastructureRhythmBuildingScore(building: BuildingType): number {
+    return SCORE_FALLBACK
+      + building.productionCost / 100
+      + (building.modifiers.foodPerTurn ?? 0) * 5
+      + (building.modifiers.productionPerTurn ?? 0) * 7
+      + (building.modifiers.productionPercent ?? 0)
+      + (building.modifiers.happinessPerTurn ?? 0) * 6
+      + (building.modifiers.sciencePerTurn ?? 0) * 5
+      + (building.modifiers.goldPerTurn ?? 0) * 4
+      + (building.modifiers.culturePerTurn ?? 0) * 5
+      + (building.modifiers.culturePercent ?? 0);
+  }
+
+  private describeRhythmItem(item: Producible): string {
+    switch (item.kind) {
+      case 'building':
+        return `building:${item.buildingType.name}`;
+      case 'wonder':
+        return `wonder:${item.wonderType.name}`;
+      case 'unit':
+        return `unit:${item.unitType.name}`;
+    }
+  }
+
+  private logProductionRhythm(nationId: string, message: string): void {
+    console.log(this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
   }
 
   private getSettlerProductionScore(
@@ -3173,6 +3356,12 @@ export class AISystem {
     return this.researchSystem?.isBuildingUnlocked(nationId, buildingId) ?? true;
   }
 
+  private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
+    if (!this.canBuildBuilding(nationId, building.id)) return false;
+    if (!this.buildingPlacementSystem) return true;
+    return this.buildingPlacementSystem.getValidPlacementCoords(city, building, this.mapData).length > 0;
+  }
+
   private findBuildableHappinessBuilding(
     nationId: string,
     buildings: CityBuildings,
@@ -3182,6 +3371,23 @@ export class AISystem {
       if ((candidate.modifiers.happinessPerTurn ?? 0) <= 0) continue;
       if (buildings.has(candidate.id)) continue;
       if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!cheapest || candidate.productionCost < cheapest.productionCost) {
+        cheapest = candidate;
+      }
+    }
+    return cheapest;
+  }
+
+  private findBuildableHappinessBuildingForCity(
+    city: City,
+    nationId: string,
+    buildings: CityBuildings,
+  ): BuildingType | null {
+    let cheapest: BuildingType | null = null;
+    for (const candidate of ALL_BUILDINGS) {
+      if ((candidate.modifiers.happinessPerTurn ?? 0) <= 0) continue;
+      if (buildings.has(candidate.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, candidate)) continue;
       if (!cheapest || candidate.productionCost < cheapest.productionCost) {
         cheapest = candidate;
       }
@@ -3300,6 +3506,13 @@ export class AISystem {
     wonderType: WonderType,
   ): { tileX: number; tileY: number } | undefined {
     return this.wonderPlacementSystem?.reserveFirstValidPlacement(city, wonderType, this.mapData);
+  }
+
+  private reserveAIBuildingPlacement(
+    city: City,
+    buildingType: BuildingType,
+  ): { tileX: number; tileY: number } | undefined {
+    return this.buildingPlacementSystem?.reserveFirstValidPlacement(city, buildingType, this.mapData);
   }
 
   private isEconomicScienceBuilding(candidate: BuildingType): boolean {

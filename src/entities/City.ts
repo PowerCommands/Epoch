@@ -16,6 +16,12 @@ export interface CityConfig {
   tileY: number;   // grid-koordinat
   isCapital?: boolean;
   focus?: CityFocusType;
+  productionRhythm?: CityProductionRhythm;
+}
+
+export interface CityProductionRhythm {
+  completedUnitsSinceInfrastructure: number;
+  completedInfrastructureSinceUnit: number;
 }
 
 /**
@@ -41,6 +47,7 @@ export class City {
   lastTurnAttacked: number | null = null;
   lastTilePurchaseTurn?: number;
   focus?: CityFocusType;
+  productionRhythm: CityProductionRhythm;
 
   constructor(config: CityConfig) {
     this.id = config.id;
@@ -58,6 +65,10 @@ export class City {
     this.workedTileCoords = [];
     this.nextExpansionTileCoord = undefined;
     this.focus = config.focus ?? 'balanced';
+    this.productionRhythm = {
+      completedUnitsSinceInfrastructure: config.productionRhythm?.completedUnitsSinceInfrastructure ?? 0,
+      completedInfrastructureSinceUnit: config.productionRhythm?.completedInfrastructureSinceUnit ?? 0,
+    };
   }
 
   get isDamaged(): boolean {

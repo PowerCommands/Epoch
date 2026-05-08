@@ -104,6 +104,11 @@ export interface AILeaderEraCityFocusRules {
   largeCityPopulationThreshold?: number;
 }
 
+export interface AILeaderEraProductionRhythm {
+  peaceUnitsBeforeInfrastructure?: number;
+  warUnitsBeforeInfrastructure?: number;
+}
+
 export interface AILeaderEraStrategy {
   id: AILeaderEraStrategyId;
   name: string;
@@ -119,6 +124,7 @@ export interface AILeaderEraStrategy {
   tilePurchase?: AILeaderEraTilePurchasePreferences;
   happinessBehavior?: AILeaderEraHappinessBehavior;
   cityFocusRules?: AILeaderEraCityFocusRules;
+  productionRhythm?: AILeaderEraProductionRhythm;
 }
 
 export interface LeaderEraStrategyProfile {

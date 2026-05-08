@@ -1,5 +1,5 @@
 import { City } from '../entities/City';
-import type { CityFocusType } from '../entities/City';
+import type { CityFocusType, CityProductionRhythm } from '../entities/City';
 import { CityResources } from '../entities/CityResources';
 import { CityBuildings } from '../entities/CityBuildings';
 import { NationManager } from './NationManager';
@@ -129,6 +129,7 @@ export class CityManager {
     tileY: number;
     isCapital: boolean;
     focus?: CityFocusType;
+    productionRhythm?: CityProductionRhythm;
     health: number;
     population: number;
     foodStorage: number;
@@ -145,6 +146,7 @@ export class CityManager {
       tileY: config.tileY,
       isCapital: config.isCapital,
       focus: config.focus,
+      productionRhythm: config.productionRhythm,
     });
     city.health = config.health;
     city.population = config.population;

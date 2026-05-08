@@ -122,6 +122,33 @@ export class BuildingPlacementSystem {
     return tile;
   }
 
+  reserveFirstValidPlacement(
+    city: City,
+    building: BuildingType,
+    mapData: MapData,
+  ): { tileX: number; tileY: number } | undefined {
+    const [coord] = this.getValidPlacementCoords(city, building, mapData);
+    if (!coord) return undefined;
+
+    const tile = mapData.tiles[coord.y]?.[coord.x];
+    if (!tile) return undefined;
+    tile.buildingConstruction = {
+      buildingId: building.id,
+      cityId: city.id,
+    };
+    return { tileX: coord.x, tileY: coord.y };
+  }
+
+  releaseCityBuildingReservation(cityId: string, buildingId: string, mapData: MapData): void {
+    for (const row of mapData.tiles) {
+      for (const tile of row) {
+        if (tile.buildingConstruction?.cityId !== cityId) continue;
+        if (tile.buildingConstruction.buildingId !== buildingId) continue;
+        tile.buildingConstruction = undefined;
+      }
+    }
+  }
+
   private reservePlacement(tile: Tile): string {
     if (!this.state) return '';
     const buildingId = this.state.buildingId;

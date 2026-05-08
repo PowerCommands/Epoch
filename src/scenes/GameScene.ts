@@ -1062,6 +1062,7 @@ export class GameScene extends Phaser.Scene {
       builderSystem,
       wonderSystem,
       wonderPlacementSystem,
+      buildingPlacementSystem,
       (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
@@ -1296,6 +1297,17 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
 
+    const updateCityProductionRhythm = (city: City, item: Producible): void => {
+      if (item.kind === 'unit') {
+        city.productionRhythm.completedUnitsSinceInfrastructure += 1;
+        city.productionRhythm.completedInfrastructureSinceUnit = 0;
+        return;
+      }
+
+      city.productionRhythm.completedUnitsSinceInfrastructure = 0;
+      city.productionRhythm.completedInfrastructureSinceUnit += 1;
+    };
+
     // Hantera färdig produktion
     productionSystem.onCompleted((cityId, item, entry) => {
       const city = cityManager.getCity(cityId);
@@ -1336,6 +1348,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         refreshOpenCityView();
+        updateCityProductionRhythm(city, item);
         return true;
       }
 
@@ -1414,6 +1427,7 @@ export class GameScene extends Phaser.Scene {
         refreshOpenCityView();
         rightPanel?.requestRefresh();
         hudLayer?.refresh();
+        updateCityProductionRhythm(city, item);
         return true;
       }
 
@@ -1439,11 +1453,16 @@ export class GameScene extends Phaser.Scene {
         movementPoints: 0,
       });
 
+      updateCityProductionRhythm(city, item);
       return true;
     });
     productionSystem.onRemoved((cityId, entry) => {
-      if (entry.item.kind !== 'wonder') return;
-      wonderPlacementSystem.releaseCityWonderReservation(cityId, entry.item.wonderType.id, mapData);
+      if (entry.item.kind === 'wonder') {
+        wonderPlacementSystem.releaseCityWonderReservation(cityId, entry.item.wonderType.id, mapData);
+      }
+      if (entry.item.kind === 'building') {
+        buildingPlacementSystem.releaseCityBuildingReservation(cityId, entry.item.buildingType.id, mapData);
+      }
     });
 
     // ─── City combat events ─────────────────────────────────────────────────

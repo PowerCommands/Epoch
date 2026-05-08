@@ -130,6 +130,10 @@ export class SaveLoadService {
         tileY: city.tileY,
         isCapital: city.isCapital,
         focus: city.focus === 'balanced' ? undefined : city.focus,
+        productionRhythm: {
+          completedUnitsSinceInfrastructure: city.productionRhythm.completedUnitsSinceInfrastructure,
+          completedInfrastructureSinceUnit: city.productionRhythm.completedInfrastructureSinceUnit,
+        },
         health: city.health,
         population: city.population,
         foodStorage: city.foodStorage,
@@ -502,6 +506,10 @@ export class SaveLoadService {
         tileY: saved.tileY,
         isCapital: saved.isCapital,
         focus: saved.focus,
+        productionRhythm: {
+          completedUnitsSinceInfrastructure: saved.productionRhythm?.completedUnitsSinceInfrastructure ?? 0,
+          completedInfrastructureSinceUnit: saved.productionRhythm?.completedInfrastructureSinceUnit ?? 0,
+        },
         health: saved.health,
         population: saved.population,
         foodStorage: saved.foodStorage,
