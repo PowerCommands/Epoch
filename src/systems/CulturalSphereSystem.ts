@@ -14,14 +14,14 @@ export interface CulturalBurstOptions {
 }
 
 // Burst sizes are starting values — tune later as the culture layer matures.
-export const CULTURAL_BUILDING_BURST_RADIUS = 2;
-export const CULTURAL_BUILDING_BURST_MAX_TILES = 6;
+export const CULTURAL_BUILDING_BURST_RADIUS = 3;
+export const CULTURAL_BUILDING_BURST_MAX_TILES = 8;
 
 export const CULTURAL_PERCENT_BUILDING_BURST_RADIUS = 3;
-export const CULTURAL_PERCENT_BUILDING_BURST_MAX_TILES = 10;
+export const CULTURAL_PERCENT_BUILDING_BURST_MAX_TILES = 12;
 
-export const WORLD_WONDER_CULTURAL_BURST_RADIUS = 3;
-export const WORLD_WONDER_CULTURAL_BURST_MAX_TILES = 12;
+export const WORLD_WONDER_CULTURAL_BURST_RADIUS = 4;
+export const WORLD_WONDER_CULTURAL_BURST_MAX_TILES = 18;
 
 /**
  * CulturalSphereSystem maintains a culture-ownership layer that is
