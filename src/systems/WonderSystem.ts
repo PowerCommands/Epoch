@@ -44,6 +44,10 @@ export class WonderSystem {
     return [...this.completed.values()];
   }
 
+  getCompletedWondersForCity(cityId: string): WonderState[] {
+    return [...this.completed.values()].filter((state) => state.cityId === cityId);
+  }
+
   canCityBuildWonder(
     city: City,
     wonderType: WonderType,

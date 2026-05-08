@@ -315,6 +315,7 @@ export class GameScene extends Phaser.Scene {
         && cultureSystem.getAvailableCultureNodes(humanNationId).length > 0;
     };
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
+    let refreshCultureOverlay = (): void => {};
     const resourceSystem = new ResourceSystem(
       nationManager,
       cityManager,
@@ -328,6 +329,9 @@ export class GameScene extends Phaser.Scene {
       (nationId) => getTradeGoldPerTurnDelta(nationId),
       policySystem,
       cultureEffectSystem,
+      culturalSphereSystem,
+      wonderSystem,
+      () => refreshCultureOverlay(),
     );
     getCityFoodSurplus = (city) => resourceSystem.getFoodSurplus(city);
     const unitUpkeepSystem = new UnitUpkeepSystem(
@@ -392,7 +396,7 @@ export class GameScene extends Phaser.Scene {
       cultureLayerRenderer.setVisible(mapLensMode === 'culture');
       hudLayer?.setMapLensMode(mapLensMode);
     };
-    const refreshCultureOverlay = (): void => {
+    refreshCultureOverlay = (): void => {
       cultureLayerRenderer.refresh();
     };
     const toggleMapLens = (): void => {

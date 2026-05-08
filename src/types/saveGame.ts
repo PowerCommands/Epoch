@@ -67,6 +67,7 @@ export interface SavedCity {
   population: number;
   foodStorage: number;
   culture: number;
+  culturalSphereProgress?: number;
   ownedTileCoords?: Array<{ x: number; y: number }>;
   workedTileCoords?: Array<{ x: number; y: number }>;
   nextExpansionTileCoord?: { x: number; y: number };

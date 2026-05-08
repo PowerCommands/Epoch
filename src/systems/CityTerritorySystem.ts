@@ -9,7 +9,7 @@ export interface CityTileCoord {
   y: number;
 }
 
-const CLAIM_RANGE = 5;
+export const CITY_CLAIM_RANGE = 5;
 const CLAIM_BASE_COST = 5;
 const CLAIM_COST_PER_OWNED_TILE = 2;
 
@@ -65,7 +65,7 @@ export class CityTerritorySystem {
       .flat()
       .filter((tile) => (
         tile.ownerId === city.ownerId &&
-        this.getExpansionRingDistance(city, tile) <= CLAIM_RANGE
+        this.getExpansionRingDistance(city, tile) <= CITY_CLAIM_RANGE
       )).length;
 
     return scaleGameSpeedCost(CLAIM_BASE_COST + ownedNearbyCount * CLAIM_COST_PER_OWNED_TILE, this.gameSpeed);
@@ -82,7 +82,7 @@ export class CityTerritorySystem {
         if (tile.ownerId !== undefined) return false;
         const distance = this.getExpansionRingDistance(city, tile);
         if (distance < 2) return false;
-        if (distance > CLAIM_RANGE) return false;
+        if (distance > CITY_CLAIM_RANGE) return false;
         return true;
       })
       .map((tile) => ({ x: tile.x, y: tile.y }))

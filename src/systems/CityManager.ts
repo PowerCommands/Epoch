@@ -131,6 +131,7 @@ export class CityManager {
     population: number;
     foodStorage: number;
     culture: number;
+    culturalSphereProgress?: number;
     lastTurnAttacked: number | null;
     lastTilePurchaseTurn?: number;
   }): City {
@@ -146,6 +147,7 @@ export class CityManager {
     city.population = config.population;
     city.foodStorage = config.foodStorage;
     city.culture = config.culture;
+    city.culturalSphereProgress = config.culturalSphereProgress ?? 0;
     city.lastTurnAttacked = config.lastTurnAttacked;
     city.lastTilePurchaseTurn = config.lastTilePurchaseTurn;
 

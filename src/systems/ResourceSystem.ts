@@ -21,6 +21,8 @@ import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
 import type { Nation } from '../entities/Nation';
 import type { PolicySystem } from './PolicySystem';
+import type { CulturalSphereSystem } from './CulturalSphereSystem';
+import type { WonderSystem } from './WonderSystem';
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -49,6 +51,9 @@ export class ResourceSystem {
     private readonly getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0,
     private readonly policySystem?: PolicySystem,
     private readonly cultureEffectSystem?: CultureEffectSystem,
+    private readonly culturalSphereSystem?: CulturalSphereSystem,
+    private readonly wonderSystem?: WonderSystem,
+    private readonly onCultureLayerChanged: () => void = () => {},
   ) {
     this.nationManager = nationManager;
     this.cityManager = cityManager;
@@ -208,6 +213,7 @@ export class ResourceSystem {
       cityRes.culturePerTurn = displayEconomy.culture;
       cityRes.happinessPerTurn = displayEconomy.happiness;
       city.culture += Math.floor(cityRes.culturePerTurn * cultureModifier);
+      this.advanceRecurringCulturalSphere(city);
       this.cityTerritorySystem.tryClaimNextExpansionTile(city, this.mapData);
       nationRes.culturePerTurn += displayEconomy.culture;
       nationRes.happinessPerTurn += displayEconomy.happiness;
@@ -343,6 +349,25 @@ export class ResourceSystem {
 
   private getPolicyPercent(nationId: string, type: Parameters<PolicySystem['getPercentModifierTotal']>[1]): number {
     return this.policySystem?.getPercentModifierTotal(nationId, type) ?? 0;
+  }
+
+  private advanceRecurringCulturalSphere(city: City): void {
+    if (!this.culturalSphereSystem || !this.wonderSystem) return;
+
+    const rate = this.culturalSphereSystem.getRecurringCulturalExpansionRate(city, {
+      cityManager: this.cityManager,
+      wonderSystem: this.wonderSystem,
+    });
+    city.culturalSphereProgress += this.culturalSphereSystem.getRecurringCulturalProgressGain(rate);
+
+    const result = this.culturalSphereSystem.tryClaimNextRecurringCultureTile(
+      city,
+      this.mapData,
+      this.gridSystem,
+    );
+    if (result.claimedTiles + result.convertedTiles > 0) {
+      this.onCultureLayerChanged();
+    }
   }
 }
 

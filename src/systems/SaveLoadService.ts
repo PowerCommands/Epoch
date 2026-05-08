@@ -133,6 +133,7 @@ export class SaveLoadService {
         population: city.population,
         foodStorage: city.foodStorage,
         culture: city.culture,
+        culturalSphereProgress: city.culturalSphereProgress,
         ownedTileCoords: city.ownedTileCoords.map((coord) => ({ ...coord })),
         workedTileCoords: city.workedTileCoords.map((coord) => ({ ...coord })),
         nextExpansionTileCoord: city.nextExpansionTileCoord
@@ -503,6 +504,7 @@ export class SaveLoadService {
         population: saved.population,
         foodStorage: saved.foodStorage,
         culture: saved.culture,
+        culturalSphereProgress: saved.culturalSphereProgress,
         lastTurnAttacked: saved.lastTurnAttacked,
         lastTilePurchaseTurn: saved.lastTilePurchaseTurn,
       });
