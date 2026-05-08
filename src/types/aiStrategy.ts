@@ -31,5 +31,7 @@ export interface AIStrategy {
     readonly foodBuildingWeight: number;
     readonly productionBuildingWeight: number;
     readonly goldBuildingWeight: number;
+    readonly cultureBuildingWeight?: number;
+    readonly wonderWeight?: number;
   };
 }

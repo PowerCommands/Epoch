@@ -7,8 +7,10 @@ import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
 import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET } from '../data/buildings';
+import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { BuildingType } from '../entities/Building';
+import type { WonderType } from '../entities/Wonder';
 import type { CityBuildings } from '../entities/CityBuildings';
 import { UnitManager } from './UnitManager';
 import { CityManager } from './CityManager';
@@ -21,6 +23,8 @@ import { canCityProduceUnit, cityHasWaterTile } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import type { BuilderSystem } from './BuilderSystem';
+import type { WonderSystem } from './WonderSystem';
+import type { WonderPlacementSystem } from './WonderPlacementSystem';
 import { calculateCityEconomy, getTileYield } from './CityEconomy';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { getAIStrategyById } from '../data/aiStrategies';
@@ -76,6 +80,7 @@ import {
   type AISeaResourceMemorySystem,
   type SeaResourceCandidate,
 } from './ai/AISeaResourceMemorySystem';
+import { CityFocusSystem } from './ai/CityFocusSystem';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -174,6 +179,8 @@ const SCORE_MILITARY = 70;
 const SCORE_FOOD_BUILDING = 65;
 const SCORE_PRODUCTION_BUILDING = 60;
 const SCORE_GOLD_BUILDING = 55;
+const SCORE_CULTURE_BUILDING = 75;
+const SCORE_WORLD_WONDER = 68;
 const SCORE_FALLBACK = 25;
 const SCORE_NAVAL = 40;
 const SCORE_WORK_BOAT = 42;
@@ -301,6 +308,7 @@ export class AISystem {
       happiness: this.happinessSystem?.getNetHappiness(nation.id) ?? 0,
     };
   });
+  private readonly cityFocusSystem: CityFocusSystem;
 
   constructor(
     unitManager: UnitManager,
@@ -329,6 +337,8 @@ export class AISystem {
     settlementMemorySystem?: AISettlementMemorySystem,
     seaResourceMemorySystem?: AISeaResourceMemorySystem,
     private readonly builderSystem?: BuilderSystem,
+    private readonly wonderSystem?: WonderSystem,
+    private readonly wonderPlacementSystem?: WonderPlacementSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -342,6 +352,14 @@ export class AISystem {
     this.settlementMemorySystem = settlementMemorySystem ?? getSharedAISettlementMemorySystem(mapData);
     this.seaResourceMemorySystem = seaResourceMemorySystem ?? getSharedAISeaResourceMemorySystem(mapData);
     this.mapData = mapData;
+    this.cityFocusSystem = new CityFocusSystem(
+      this.cityManager,
+      this.nationManager,
+      this.mapData,
+      this.gridSystem,
+      this.formatLog,
+    );
+    this.foundCitySystem.onCityFounded((city) => this.cityFocusSystem.updateFocusForCity(city));
   }
 
   isHuman(nationId: string): boolean {
@@ -375,6 +393,7 @@ export class AISystem {
   }
 
   runTurn(nationId: string): void {
+    this.cityFocusSystem.updateFocusForNation(nationId);
     this.updateStrategyForNation(nationId);
     this.evaluateStrategyForNation(nationId);
     this.markVisibleTilesForNation(nationId);
@@ -644,6 +663,9 @@ export class AISystem {
       nation.previousAiStrategyId = nation.aiStrategyId;
       nation.aiStrategyId = nextId;
       nation.aiStrategyStartedTurn = context.currentTurn;
+      console.log(
+        this.formatLog(nationId, `strategic focus: ${getStrategyDisplayName(nextId)}.`),
+      );
     }
   }
 
@@ -1049,15 +1071,18 @@ export class AISystem {
     let multiplier = 1;
     if (candidate.hasStrategicResource) multiplier += preferences?.strategicResource ?? 0;
     if (candidate.hasLuxuryResource) multiplier += preferences?.luxuryResource ?? 0;
+    if (candidate.hasNaturalWonder) multiplier += preferences?.naturalWonder ?? 0;
     if (candidate.hasWaterAccess) multiplier += preferences?.coastalAccess ?? 0;
     if (candidate.hasWaterResource) multiplier += preferences?.waterResource ?? 0;
 
     const yields = this.settlementMemorySystem?.getSiteYields(candidate.x, candidate.y) ?? {
       foodYield: 0,
       productionYield: 0,
+      cultureYield: 0,
     };
     multiplier += ((preferences?.foodYield ?? 1) - 1) * Math.min(yields.foodYield / 12, 1);
     multiplier += ((preferences?.productionYield ?? 1) - 1) * Math.min(yields.productionYield / 10, 1);
+    multiplier += ((preferences?.cultureYield ?? 1) - 1) * Math.min(yields.cultureYield / 3, 1);
 
     const distance = this.gridSystem.getDistance(
       { x: settler.tileX, y: settler.tileY },
@@ -1226,6 +1251,7 @@ export class AISystem {
     let score = this.computeCoastalSiteBonus({ x: tile.x, y: tile.y }, eraStrategy) - settlerDist;
 
     if (tile.resourceId !== undefined) score += 5;
+    score += this.computeCulturalSiteBonus({ x: tile.x, y: tile.y }, eraStrategy);
 
     let touchesCoast = false;
     for (const adj of this.gridSystem.getAdjacentCoords({ x: tile.x, y: tile.y })) {
@@ -1275,6 +1301,31 @@ export class AISystem {
     bonus += coastCount * COASTAL_TILE_BONUS;
     bonus += waterResourceCount * WATER_RESOURCE_BONUS * waterResourceWeight;
     return bonus;
+  }
+
+  private computeCulturalSiteBonus(coord: GridCoord, eraStrategy?: AILeaderEraStrategy): number {
+    const preferences = eraStrategy?.foundingPreferences;
+    if (!preferences) return 0;
+
+    let cultureYield = 0;
+    let hasNaturalWonder = false;
+    const coords = [
+      coord,
+      ...this.gridSystem.getAdjacentCoords(coord),
+    ];
+    for (const entry of coords) {
+      const tile = this.mapData.tiles[entry.y]?.[entry.x];
+      if (!tile?.resourceId) continue;
+      const resource = getNaturalResourceById(tile.resourceId);
+      if (!resource) continue;
+      cultureYield += resource.yieldBonus.culture;
+      if (resource.isNaturalWonder === true || resource.notes?.toLowerCase().includes('natural wonder') === true) {
+        hasNaturalWonder = true;
+      }
+    }
+
+    return cultureYield * (preferences.cultureYield ?? 1) * 2
+      + (hasNaturalWonder ? (preferences.naturalWonder ?? 0) * 10 : 0);
   }
 
   private isCoastalFoundingTile(x: number, y: number): boolean {
@@ -2358,7 +2409,17 @@ export class AISystem {
         );
       }
 
-      this.productionSystem.setProduction(city.id, choice);
+      const placement = choice.kind === 'wonder'
+        ? this.reserveAIWonderPlacement(city, choice.wonderType)
+        : undefined;
+      if (choice.kind === 'wonder' && !placement) {
+        console.warn(
+          this.formatLog(nationId, `AI production in ${city.name}: skipped ${choice.wonderType.name}, no wonder placement available`),
+        );
+        continue;
+      }
+
+      this.productionSystem.setProduction(city.id, choice, { placement });
       if (choice.kind === 'unit') {
         if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
         if (choice.unitType.canFound === true) plannedSettlerCount++;
@@ -2824,6 +2885,24 @@ export class AISystem {
       });
     }
 
+    const cultureBuilding = this.findMissingCultureBuilding(nationId, buildings);
+    if (cultureBuilding) {
+      candidates.push({
+        item: { kind: 'building', buildingType: cultureBuilding },
+        baseScore: this.getCultureBuildingProductionScore(cultureBuilding) + buildingBoost,
+        category: 'cultureBuilding',
+      });
+    }
+
+    const wonder = this.pickBestAvailableWorldWonder(city, nationId, eraStrategy);
+    if (wonder) {
+      candidates.push({
+        item: { kind: 'wonder', wonderType: wonder },
+        baseScore: this.getWorldWonderProductionScore(wonder),
+        category: 'wonder',
+      });
+    }
+
     const economicScienceBuilding = this.findMissingEconomicScienceBuilding(nationId, buildings);
     if (economicScienceBuilding) {
       candidates.push({
@@ -2870,7 +2949,7 @@ export class AISystem {
     const nation = this.nationManager.getNation(nationId);
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
-    const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy);
+    const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, city.focus ?? 'balanced');
     if (best) {
       if (best.item.kind === 'unit' && best.item.unitType.id === WORK_BOAT.id && workBoatTarget !== null) {
         const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
@@ -2884,6 +2963,16 @@ export class AISystem {
       console.log(
         this.formatLog(nationId, `AI production chose ${getCandidateGoalCategory(best)} (weights: ${JSON.stringify(goalWeights)})`),
       );
+      if (best.item.kind === 'building' && this.isCultureBuilding(best.item.buildingType)) {
+        console.log(
+          this.formatLog(nationId, `prioritizing culture building: ${best.item.buildingType.name}`),
+        );
+      }
+      if (best.item.kind === 'wonder') {
+        console.log(
+          this.formatLog(nationId, `prioritizing World Wonder: ${best.item.wonderType.name}`),
+        );
+      }
       const itemName = this.foundationProducibleName(best.item);
       const reason = this.describeFoundationProductionReason(best.item);
       console.log(
@@ -3122,6 +3211,85 @@ export class AISystem {
     return cheapest;
   }
 
+  private findMissingCultureBuilding(
+    nationId: string,
+    buildings: CityBuildings,
+  ): BuildingType | null {
+    let best: BuildingType | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const candidate of ALL_BUILDINGS) {
+      if (buildings.has(candidate.id)) continue;
+      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.isCultureBuilding(candidate)) continue;
+
+      const score = this.getCultureBuildingProductionScore(candidate) - candidate.productionCost / 20;
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  private isCultureBuilding(candidate: BuildingType): boolean {
+    const modifiers = candidate.modifiers;
+    return (modifiers.culturePerTurn ?? 0) > 0 || (modifiers.culturePercent ?? 0) > 0;
+  }
+
+  private getCultureBuildingProductionScore(buildingType: BuildingType): number {
+    const modifiers = buildingType.modifiers;
+    return SCORE_CULTURE_BUILDING
+      + (modifiers.culturePerTurn ?? 0) * 8
+      + (modifiers.culturePercent ?? 0) * 1.5;
+  }
+
+  private pickBestAvailableWorldWonder(
+    city: City,
+    nationId: string,
+    eraStrategy: AILeaderEraStrategy,
+  ): WonderType | null {
+    if (!this.wonderSystem || !this.wonderPlacementSystem) return null;
+    if ((eraStrategy.productionWeights.wonder ?? 1) <= 1) return null;
+
+    let best: WonderType | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const wonder of ALL_WONDERS) {
+      if (!this.wonderSystem.canCityBuildWonder(city, wonder, { researchSystem: this.researchSystem })) continue;
+      if (this.isWonderQueued(wonder.id)) continue;
+      if (this.wonderPlacementSystem.getValidPlacementCoords(city, wonder, this.mapData).length === 0) continue;
+
+      const score = this.getWorldWonderProductionScore(wonder) - wonder.productionCost / 30;
+      if (score > bestScore) {
+        best = wonder;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  private isWonderQueued(wonderId: string): boolean {
+    return this.cityManager.getAllCities().some((city) => (
+      this.productionSystem.getQueue(city.id)
+        .some((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId)
+    ));
+  }
+
+  private getWorldWonderProductionScore(wonderType: WonderType): number {
+    const modifiers = wonderType.modifiers;
+    return SCORE_WORLD_WONDER
+      + (modifiers.culturePerTurn ?? 0) * 18
+      + (modifiers.culturePercent ?? 0) * 2
+      + (modifiers.happinessPerTurn ?? 0) * 4
+      + (modifiers.sciencePerTurn ?? 0) * 3;
+  }
+
+  private reserveAIWonderPlacement(
+    city: City,
+    wonderType: WonderType,
+  ): { tileX: number; tileY: number } | undefined {
+    return this.wonderPlacementSystem?.reserveFirstValidPlacement(city, wonderType, this.mapData);
+  }
+
   private isEconomicScienceBuilding(candidate: BuildingType): boolean {
     const modifiers = candidate.modifiers;
     return (modifiers.sciencePerTurn ?? 0) > 0
@@ -3132,6 +3300,9 @@ export class AISystem {
 
   private getInfrastructureProductionCategory(buildingType: BuildingType): AIProductionCandidate['category'] {
     const modifiers = buildingType.modifiers;
+    if ((modifiers.culturePerTurn ?? 0) > 0 || (modifiers.culturePercent ?? 0) > 0) {
+      return 'cultureBuilding';
+    }
     if ((modifiers.sciencePerTurn ?? 0) > 0 || (modifiers.sciencePercent ?? 0) > 0) {
       return 'scienceBuilding';
     }

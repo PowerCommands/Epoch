@@ -1,5 +1,13 @@
 import { CITY_BASE_HEALTH } from '../data/cities';
 
+export type CityFocusType =
+  | 'balanced'
+  | 'cultural'
+  | 'military'
+  | 'economic'
+  | 'naval'
+  | 'scientific';
+
 export interface CityConfig {
   id: string;
   name: string;
@@ -7,6 +15,7 @@ export interface CityConfig {
   tileX: number;   // grid-koordinat
   tileY: number;   // grid-koordinat
   isCapital?: boolean;
+  focus?: CityFocusType;
 }
 
 /**
@@ -31,6 +40,7 @@ export class City {
   nextExpansionTileCoord: { x: number; y: number } | undefined;
   lastTurnAttacked: number | null = null;
   lastTilePurchaseTurn?: number;
+  focus?: CityFocusType;
 
   constructor(config: CityConfig) {
     this.id = config.id;
@@ -47,6 +57,7 @@ export class City {
     this.ownedTileCoords = [];
     this.workedTileCoords = [];
     this.nextExpansionTileCoord = undefined;
+    this.focus = config.focus ?? 'balanced';
   }
 
   get isDamaged(): boolean {

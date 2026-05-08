@@ -12,6 +12,7 @@ export type AILeaderEraStrategyId =
   | 'navalExpansion'
   | 'scientificDevelopment'
   | 'civicDevelopment'
+  | 'culturalDominance'
   | 'tallGrowth';
 
 export interface AILeaderEraProductionWeights {
@@ -24,6 +25,7 @@ export interface AILeaderEraProductionWeights {
   foodBuilding: number;
   productionBuilding: number;
   scienceBuilding?: number;
+  cultureBuilding?: number;
   goldBuilding: number;
   happinessBuilding: number;
   wonder: number;
@@ -39,6 +41,8 @@ export interface AILeaderEraResearchWeights {
   economy: number;
   science: number;
   expansion: number;
+  culture?: number;
+  wonder?: number;
 }
 
 export interface AILeaderEraCultureWeights {
@@ -68,6 +72,8 @@ export interface AILeaderEraFoundingPreferences {
   luxuryResource?: number;
   coastalAccess?: number;
   waterResource?: number;
+  naturalWonder?: number;
+  cultureYield?: number;
   foodYield?: number;
   productionYield?: number;
   distancePenalty?: number;

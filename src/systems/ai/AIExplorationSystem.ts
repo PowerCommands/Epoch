@@ -299,6 +299,8 @@ export class AIExplorationSystem {
     if (candidate.hasStrategicResource || candidate.hasLuxuryResource || candidate.hasWaterResource) {
       traits.push('resource');
     }
+    if (candidate.hasNaturalWonder) traits.push('nearby Natural Wonder');
+    if (candidate.cultureYield > 0) traits.push('culture yield');
     if (candidate.hasWaterAccess) traits.push('coast');
     console.log(
       this.formatLog(

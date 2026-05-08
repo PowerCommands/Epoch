@@ -6,6 +6,7 @@ export const EXPANSIONIST_AI_STRATEGY_ID = 'expansionist';
 export const DEFENSIVE_AI_STRATEGY_ID = 'defensive';
 export const AGGRESSIVE_AI_STRATEGY_ID = 'aggressive';
 export const ECONOMIC_AI_STRATEGY_ID = 'economic';
+export const CULTURAL_DOMINANCE_AI_STRATEGY_ID = 'cultural_dominance';
 
 /**
  * Baseline strategy preserves the legacy hard-coded AI behavior so the
@@ -38,6 +39,8 @@ export const BASELINE_AI_STRATEGY: AIStrategy = {
     foodBuildingWeight: 1,
     productionBuildingWeight: 1,
     goldBuildingWeight: 1,
+    cultureBuildingWeight: 1,
+    wonderWeight: 1,
   },
 };
 
@@ -68,6 +71,8 @@ export const BALANCED_AI_STRATEGY: AIStrategy = {
     foodBuildingWeight: 1,
     productionBuildingWeight: 1,
     goldBuildingWeight: 1,
+    cultureBuildingWeight: 1,
+    wonderWeight: 1,
   },
 };
 
@@ -98,6 +103,8 @@ export const EXPANSIONIST_AI_STRATEGY: AIStrategy = {
     foodBuildingWeight: 1.25,
     productionBuildingWeight: 1,
     goldBuildingWeight: 1,
+    cultureBuildingWeight: 1.15,
+    wonderWeight: 0.9,
   },
 };
 
@@ -128,6 +135,8 @@ export const DEFENSIVE_AI_STRATEGY: AIStrategy = {
     foodBuildingWeight: 1,
     productionBuildingWeight: 1.25,
     goldBuildingWeight: 1,
+    cultureBuildingWeight: 1,
+    wonderWeight: 0.85,
   },
 };
 
@@ -158,6 +167,8 @@ export const AGGRESSIVE_AI_STRATEGY: AIStrategy = {
     foodBuildingWeight: 1,
     productionBuildingWeight: 1,
     goldBuildingWeight: 0.75,
+    cultureBuildingWeight: 0.75,
+    wonderWeight: 0.6,
   },
 };
 
@@ -188,6 +199,40 @@ export const ECONOMIC_AI_STRATEGY: AIStrategy = {
     foodBuildingWeight: 1.25,
     productionBuildingWeight: 1.5,
     goldBuildingWeight: 1.75,
+    cultureBuildingWeight: 1.1,
+    wonderWeight: 1.1,
+  },
+};
+
+/** Soft-power profile — culture buildings, wonders, expansion, and a smaller defensive army. */
+export const CULTURAL_DOMINANCE_AI_STRATEGY: AIStrategy = {
+  id: CULTURAL_DOMINANCE_AI_STRATEGY_ID,
+  name: 'Cultural Dominance',
+
+  military: {
+    maxUnits: 2,
+    minAttackHealthRatio: 0.65,
+    engageDistance: 5,
+    preferReachableTargets: true,
+    randomnessFactor: 0.05,
+    aggression: 0.55,
+  },
+
+  expansion: {
+    desiredCityCount: 5,
+    settlerMinCityDistance: 8,
+  },
+
+  production: {
+    lowNetFoodThreshold: 1,
+    lowProductionThreshold: 2,
+    settlerWeight: 1.15,
+    militaryWeight: 0.45,
+    foodBuildingWeight: 1.0,
+    productionBuildingWeight: 0.9,
+    goldBuildingWeight: 0.85,
+    cultureBuildingWeight: 2.75,
+    wonderWeight: 2.2,
   },
 };
 
@@ -198,6 +243,7 @@ export const AI_STRATEGIES: readonly AIStrategy[] = [
   DEFENSIVE_AI_STRATEGY,
   AGGRESSIVE_AI_STRATEGY,
   ECONOMIC_AI_STRATEGY,
+  CULTURAL_DOMINANCE_AI_STRATEGY,
 ];
 
 export function getAIStrategyById(id: string | undefined): AIStrategy {

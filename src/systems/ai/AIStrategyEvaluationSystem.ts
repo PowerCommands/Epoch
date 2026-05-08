@@ -4,6 +4,7 @@ import {
   DEFENSIVE_AI_STRATEGY_ID,
   ECONOMIC_AI_STRATEGY_ID,
   EXPANSIONIST_AI_STRATEGY_ID,
+  CULTURAL_DOMINANCE_AI_STRATEGY_ID,
   getAIStrategyById,
 } from '../../data/aiStrategies';
 import type { AILeaderPersonality } from '../../types/aiLeaderPersonality';
@@ -23,6 +24,7 @@ const CANDIDATE_STRATEGY_IDS = [
   EXPANSIONIST_AI_STRATEGY_ID,
   DEFENSIVE_AI_STRATEGY_ID,
   ECONOMIC_AI_STRATEGY_ID,
+  CULTURAL_DOMINANCE_AI_STRATEGY_ID,
   BALANCED_AI_STRATEGY_ID,
 ] as const;
 
@@ -55,6 +57,7 @@ export class AIStrategyEvaluationSystem {
       + Math.max(0, -p.diplomacyBias) / 2;
 
     const economic = p.economyBias * 2;
+    const cultural = p.cultureBias * 2 + Math.max(0, p.diplomacyBias);
 
     const balanced = 5 + Math.floor(p.diplomacyBias / 2);
 
@@ -63,6 +66,7 @@ export class AIStrategyEvaluationSystem {
       [EXPANSIONIST_AI_STRATEGY_ID]: expansionist,
       [DEFENSIVE_AI_STRATEGY_ID]: defensive,
       [ECONOMIC_AI_STRATEGY_ID]: economic,
+      [CULTURAL_DOMINANCE_AI_STRATEGY_ID]: cultural,
       [BALANCED_AI_STRATEGY_ID]: balanced,
     };
 

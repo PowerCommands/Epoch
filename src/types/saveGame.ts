@@ -1,4 +1,5 @@
 import type { GameSpeedId } from '../data/gameSpeeds';
+import type { CityFocusType } from '../entities/City';
 import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
@@ -63,6 +64,7 @@ export interface SavedCity {
   tileX: number;
   tileY: number;
   isCapital: boolean;
+  focus?: CityFocusType;
   health: number;
   population: number;
   foodStorage: number;

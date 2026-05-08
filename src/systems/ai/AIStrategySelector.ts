@@ -4,6 +4,7 @@ import {
   DEFENSIVE_AI_STRATEGY_ID,
   ECONOMIC_AI_STRATEGY_ID,
   EXPANSIONIST_AI_STRATEGY_ID,
+  CULTURAL_DOMINANCE_AI_STRATEGY_ID,
 } from '../../data/aiStrategies';
 import { getAINationalAgendaById } from '../../data/aiNationalAgendas';
 import type { AILeaderPersonality } from '../../types/aiLeaderPersonality';
@@ -18,6 +19,7 @@ const STRATEGY_SCORE_ORDER = [
   BALANCED_AI_STRATEGY_ID,
   EXPANSIONIST_AI_STRATEGY_ID,
   ECONOMIC_AI_STRATEGY_ID,
+  CULTURAL_DOMINANCE_AI_STRATEGY_ID,
   DEFENSIVE_AI_STRATEGY_ID,
   AGGRESSIVE_AI_STRATEGY_ID,
 ] as const;
@@ -69,6 +71,7 @@ export class AIStrategySelector {
       [BALANCED_AI_STRATEGY_ID]: 10,
       [EXPANSIONIST_AI_STRATEGY_ID]: context.cityCount <= LOW_CITY_COUNT ? 30 : 0,
       [ECONOMIC_AI_STRATEGY_ID]: context.goldPerTurn < 0 || context.gold < LOW_GOLD ? 30 : 0,
+      [CULTURAL_DOMINANCE_AI_STRATEGY_ID]: 0,
       [DEFENSIVE_AI_STRATEGY_ID]: context.highestThreatLevel === 'medium' ? 30 : 0,
       [AGGRESSIVE_AI_STRATEGY_ID]: context.atWar ? 25 : 0,
     };
@@ -87,9 +90,9 @@ export class AIStrategySelector {
     scores[ECONOMIC_AI_STRATEGY_ID] += context.leaderPersonality.economyBias;
     scores[BALANCED_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.diplomacyBias / 2);
     scores[DEFENSIVE_AI_STRATEGY_ID] += Math.max(0, -context.leaderPersonality.aggressionBias);
-    // TODO: Route cultureBias into a dedicated culture strategy when one exists.
-    scores[BALANCED_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.cultureBias / 2);
-    scores[ECONOMIC_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.cultureBias / 3);
+    scores[CULTURAL_DOMINANCE_AI_STRATEGY_ID] += context.leaderPersonality.cultureBias * 2;
+    scores[BALANCED_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.cultureBias / 4);
+    scores[ECONOMIC_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.cultureBias / 5);
 
     let bestStrategyId: string = STRATEGY_SCORE_ORDER[0];
     for (const strategyId of STRATEGY_SCORE_ORDER) {

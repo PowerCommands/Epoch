@@ -1,0 +1,163 @@
+import type { City, CityFocusType } from '../../entities/City';
+import { getBuildingById } from '../../data/buildings';
+import type { MapData, Tile } from '../../types/map';
+import { TileType } from '../../types/map';
+import { EMPTY_MODIFIERS } from '../../types/modifiers';
+import { calculateCityEconomy } from '../CityEconomy';
+import type { CityManager } from '../CityManager';
+import type { NationManager } from '../NationManager';
+import { cityHasWaterTile } from '../ProductionRules';
+import type { IGridSystem } from '../grid/IGridSystem';
+import type { AILogFormatter } from './AILogFormatter';
+
+interface CapitalFocusRule {
+  readonly nationId: string;
+  readonly focus: CityFocusType;
+}
+
+const CAPITAL_FOCUS_RULES: readonly CapitalFocusRule[] = [
+  { nationId: 'nation_france', focus: 'cultural' },
+];
+
+const SPECIALIZATION_POPULATION_THRESHOLD = 10;
+const CLEAR_DOMINANCE_RATIO = 1.35;
+
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+
+export class CityFocusSystem {
+  constructor(
+    private readonly cityManager: CityManager,
+    private readonly nationManager: NationManager,
+    private readonly mapData: MapData,
+    private readonly gridSystem: IGridSystem,
+    private readonly formatLog: AILogFormatter = fallbackFormatLog,
+  ) {}
+
+  updateFocusForNation(nationId: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation || nation.isHuman) return;
+
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      this.updateFocusForCity(city);
+    }
+  }
+
+  updateFocusForCity(city: City): void {
+    const nation = this.nationManager.getNation(city.ownerId);
+    if (!nation || nation.isHuman) return;
+
+    const capitalRule = this.getCapitalRule(city);
+    if (capitalRule) {
+      this.assignFocus(city, capitalRule.focus, `${nation.name} assigned ${city.name} as ${capitalRule.focus} city focus.`);
+      return;
+    }
+
+    if (city.population < SPECIALIZATION_POPULATION_THRESHOLD) return;
+
+    const currentFocus = city.focus ?? 'balanced';
+    const evaluation = this.evaluateSpecialization(city);
+    if (!evaluation) return;
+
+    if (currentFocus === 'balanced' || evaluation.dominanceRatio >= CLEAR_DOMINANCE_RATIO) {
+      this.assignFocus(
+        city,
+        evaluation.focus,
+        `${city.name} shifted from ${currentFocus} to ${evaluation.focus} focus due to ${evaluation.reason}.`,
+      );
+    }
+  }
+
+  private getCapitalRule(city: City): CapitalFocusRule | undefined {
+    if (!city.isCapital) return undefined;
+    return CAPITAL_FOCUS_RULES.find((rule) => rule.nationId === city.ownerId);
+  }
+
+  private evaluateSpecialization(city: City): { focus: CityFocusType; reason: string; dominanceRatio: number } | null {
+    const buildings = this.cityManager.getBuildings(city.id);
+    const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, EMPTY_MODIFIERS);
+    const infrastructure = this.getInfrastructureSignals(buildings.getAll());
+    const waterUsage = this.getWorkedWaterTileCount(city);
+
+    const unsortedScores: Array<{ focus: CityFocusType; score: number; reason: string }> = [
+      {
+        focus: 'cultural',
+        score: economy.culture + infrastructure.culture * 2,
+        reason: 'high culture output',
+      },
+      {
+        focus: 'military',
+        score: economy.production + infrastructure.production * 2,
+        reason: 'high production',
+      },
+      {
+        focus: 'economic',
+        score: economy.gold + infrastructure.gold * 2,
+        reason: 'high gold output',
+      },
+      {
+        focus: 'scientific',
+        score: economy.science + infrastructure.science * 2,
+        reason: 'high science output',
+      },
+      {
+        focus: 'naval',
+        score: (cityHasWaterTile(city, this.mapData) ? 2 : 0) + waterUsage * 3 + infrastructure.naval * 2,
+        reason: 'coastal development',
+      },
+    ];
+    const scores = unsortedScores.sort((a, b) => b.score - a.score);
+
+    const best = scores[0];
+    if (!best || best.score <= 0) return null;
+    const runnerUp = scores[1]?.score ?? 0;
+    return {
+      focus: best.focus,
+      reason: best.reason,
+      dominanceRatio: best.score / Math.max(runnerUp, 1),
+    };
+  }
+
+  private getInfrastructureSignals(buildingIds: readonly string[]): {
+    culture: number;
+    production: number;
+    gold: number;
+    science: number;
+    naval: number;
+  } {
+    const signals = { culture: 0, production: 0, gold: 0, science: 0, naval: 0 };
+    for (const id of buildingIds) {
+      const building = getBuildingById(id);
+      if (!building) continue;
+      const modifiers = building.modifiers;
+      signals.culture += (modifiers.culturePerTurn ?? 0) + (modifiers.culturePercent ?? 0) / 10;
+      signals.production += (modifiers.productionPerTurn ?? 0) + (modifiers.productionPercent ?? 0) / 10;
+      signals.gold += (modifiers.goldPerTurn ?? 0) + (modifiers.goldPercent ?? 0) / 10;
+      signals.science += (modifiers.sciencePerTurn ?? 0) + (modifiers.sciencePercent ?? 0) / 10;
+      if (building.placement === 'water' || /harbor|lighthouse|sea[_ -]?port/i.test(building.id)) {
+        signals.naval += 1;
+      }
+    }
+    return signals;
+  }
+
+  private getWorkedWaterTileCount(city: City): number {
+    let count = 0;
+    for (const coord of city.workedTileCoords) {
+      const tile = this.mapData.tiles[coord.y]?.[coord.x];
+      if (this.isWater(tile)) count++;
+    }
+    return count;
+  }
+
+  private isWater(tile: Tile | undefined): boolean {
+    return tile?.type === TileType.Coast || tile?.type === TileType.Ocean;
+  }
+
+  private assignFocus(city: City, nextFocus: CityFocusType, message: string): void {
+    const currentFocus = city.focus ?? 'balanced';
+    if (currentFocus === nextFocus) return;
+
+    city.focus = nextFocus;
+    console.log(this.formatLog(city.ownerId, message));
+  }
+}

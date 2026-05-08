@@ -22,6 +22,7 @@ export interface NaturalResourceDefinition {
   improvementId?: string;
   improvementIdByTileType?: Partial<Record<TileType, string>>;
   notes?: string;
+  readonly isNaturalWonder?: boolean;
 
   /** Hide the resource on the map until this technology is researched. */
   readonly revealTechId?: string;

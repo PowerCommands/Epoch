@@ -1,5 +1,6 @@
 import { Nation } from '../entities/Nation';
 import { getNationDefinitionById } from '../data/nations';
+import { getLeaderByNationId } from '../data/leaders';
 import { NationResources } from '../entities/NationResources';
 import { MapData } from '../types/map';
 import type { ScenarioNation } from '../types/scenario';
@@ -117,7 +118,7 @@ export class NationManager {
         isHuman: cfg.isHuman,
         aiStrategyId: cfg.aiStrategyId,
         aiStrategyStartedTurn: 0,
-        aiNationalAgendaId: cfg.aiNationalAgendaId,
+        aiNationalAgendaId: cfg.aiNationalAgendaId ?? getLeaderByNationId(cfg.id)?.aiNationalAgendaId,
         researchedTechIds: cfg.researchedTechIds,
         currentResearchTechId: cfg.currentResearchTechId,
         researchProgress: cfg.researchProgress,

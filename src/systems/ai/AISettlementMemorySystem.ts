@@ -9,6 +9,8 @@ export type SettlementCandidate = {
   scoreBase: number;
   hasStrategicResource: boolean;
   hasLuxuryResource: boolean;
+  hasNaturalWonder: boolean;
+  cultureYield: number;
   hasWaterAccess: boolean;
   hasWaterResource: boolean;
   discoveredTurn: number;
@@ -20,6 +22,7 @@ interface SettlementSiteEvaluation {
   readonly candidate: SettlementCandidate;
   readonly foodYield: number;
   readonly productionYield: number;
+  readonly cultureYield: number;
   readonly resourceCount: number;
 }
 
@@ -105,9 +108,11 @@ export class AISettlementMemorySystem {
 
     let foodYield = 0;
     let productionYield = 0;
+    let cultureYield = 0;
     let resourceCount = 0;
     let hasStrategicResource = false;
     let hasLuxuryResource = false;
+    let hasNaturalWonder = false;
     let hasWaterResource = false;
 
     for (const siteTile of this.getTilesInSiteRadius(x, y)) {
@@ -121,8 +126,12 @@ export class AISettlementMemorySystem {
       if (resource) {
         foodYield += resource.yieldBonus.food;
         productionYield += resource.yieldBonus.production;
+        cultureYield += resource.yieldBonus.culture;
         if (resource.category === 'strategic') hasStrategicResource = true;
         if (resource.category === 'luxury') hasLuxuryResource = true;
+        if (resource.isNaturalWonder === true || resource.notes?.toLowerCase().includes('natural wonder') === true) {
+          hasNaturalWonder = true;
+        }
       }
       if (this.isWaterTile(siteTile)) hasWaterResource = true;
     }
@@ -134,6 +143,8 @@ export class AISettlementMemorySystem {
       + resourceCount * 2
       + (hasStrategicResource ? 4 : 0)
       + (hasLuxuryResource ? 3 : 0)
+      + (hasNaturalWonder ? 8 : 0)
+      + cultureYield * 2
       + (hasWaterAccess ? 2 : 0)
       + (hasWaterResource ? 3 : 0)
       + this.getTerrainAdjustment(tile);
@@ -145,21 +156,25 @@ export class AISettlementMemorySystem {
         scoreBase: Math.round(scoreBase),
         hasStrategicResource,
         hasLuxuryResource,
+        hasNaturalWonder,
+        cultureYield,
         hasWaterAccess,
         hasWaterResource,
         discoveredTurn,
       },
       foodYield,
       productionYield,
+      cultureYield,
       resourceCount,
     };
   }
 
-  getSiteYields(x: number, y: number): { foodYield: number; productionYield: number } {
+  getSiteYields(x: number, y: number): { foodYield: number; productionYield: number; cultureYield: number } {
     const evaluation = this.evaluateTile(x, y, 0);
     return {
       foodYield: evaluation?.foodYield ?? 0,
       productionYield: evaluation?.productionYield ?? 0,
+      cultureYield: evaluation?.cultureYield ?? 0,
     };
   }
 

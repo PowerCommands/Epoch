@@ -5,6 +5,7 @@ import {
   DEFENSIVE_AI_STRATEGY_ID,
   ECONOMIC_AI_STRATEGY_ID,
   EXPANSIONIST_AI_STRATEGY_ID,
+  CULTURAL_DOMINANCE_AI_STRATEGY_ID,
 } from './aiStrategies';
 
 export const BALANCED_AGENDA_ID: AINationalAgendaId = 'balanced';
@@ -34,7 +35,8 @@ export const CULTURE_AGENDA: AINationalAgenda = {
   name: 'Culture',
   description: 'Prioritizes stability, culture, happiness, and peaceful development.',
   strategyBias: {
-    [BALANCED_AI_STRATEGY_ID]: 10,
+    [CULTURAL_DOMINANCE_AI_STRATEGY_ID]: 20,
+    [BALANCED_AI_STRATEGY_ID]: 5,
     [ECONOMIC_AI_STRATEGY_ID]: 5,
     [DEFENSIVE_AI_STRATEGY_ID]: 5,
   },

@@ -6,6 +6,7 @@ import {
   DEFENSIVE_AI_STRATEGY_ID,
   ECONOMIC_AI_STRATEGY_ID,
   EXPANSIONIST_AI_STRATEGY_ID,
+  CULTURAL_DOMINANCE_AI_STRATEGY_ID,
 } from './aiStrategies';
 
 export const BALANCED_BEHAVIOR_WEIGHTS: AIStrategyBehaviorWeights = {
@@ -45,6 +46,13 @@ export const AI_STRATEGY_BEHAVIOR_WEIGHTS: Record<string, AIStrategyBehaviorWeig
     diplomacy: 0,
     trade: 0,
     aggression: 2,
+    defense: 1,
+  },
+  [CULTURAL_DOMINANCE_AI_STRATEGY_ID]: {
+    exploration: 2,
+    diplomacy: 2,
+    trade: 1,
+    aggression: 0,
     defense: 1,
   },
 };

@@ -321,6 +321,82 @@ export const TALL_GROWTH_STRATEGY: AILeaderEraStrategy = {
   },
 };
 
+export const CULTURAL_DOMINANCE_ERA_STRATEGY: AILeaderEraStrategy = {
+  id: 'culturalDominance',
+  name: 'Cultural Dominance',
+  description:
+    'France test profile focused on culture buildings, World Wonders, beautiful settlement sites, diplomacy, and long-range cultural sphere growth.',
+  productionWeights: {
+    settler: 1.15,
+    scout: 1.25,
+    military: 0.35,
+    melee: 0.3,
+    ranged: 0.55,
+    naval: 0.45,
+    foodBuilding: 1.0,
+    productionBuilding: 0.85,
+    scienceBuilding: 1.0,
+    cultureBuilding: 4.0,
+    goldBuilding: 0.8,
+    happinessBuilding: 1.25,
+    wonder: 4.25,
+    worker: 1.15,
+    workBoat: 1.0,
+  },
+  researchWeights: {
+    food: 0.95,
+    production: 0.95,
+    military: 0.45,
+    naval: 0.75,
+    economy: 1.0,
+    science: 1.15,
+    expansion: 1.1,
+    culture: 1.85,
+    wonder: 1.9,
+  },
+  cultureWeights: {
+    expansion: 1.35,
+    diplomacy: 1.35,
+    military: 0.35,
+    happiness: 1.25,
+    economy: 1.0,
+  },
+  diplomacyWeights: {
+    openBorders: 1.35,
+    embassy: 1.35,
+    trade: 1.15,
+    war: 0.15,
+  },
+  militaryBehavior: {
+    prepareForWar: false,
+    targetWeakNeighbor: false,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 0.65,
+  },
+  foundingPreferences: {
+    strategicResource: 0.65,
+    luxuryResource: 1.4,
+    coastalAccess: 0.75,
+    waterResource: 0.9,
+    naturalWonder: 3.0,
+    cultureYield: 2.35,
+    foodYield: 1.05,
+    productionYield: 0.9,
+    distancePenalty: 0.7,
+  },
+  foundingRules: {
+    minCityDistance: 7,
+  },
+  tilePurchase: {
+    minGoldReserve: 125,
+    minScore: 50,
+  },
+  happinessBehavior: {
+    stabilizationThreshold: 3,
+    criticalThreshold: -1,
+  },
+};
+
 export const IMPERIAL_INFRASTRUCTURE_STRATEGY: AILeaderEraStrategy = {
   id: 'imperialInfrastructure',
   name: 'Imperial Infrastructure',
@@ -481,6 +557,7 @@ export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   NAVAL_EXPANSION_STRATEGY,
   SCIENTIFIC_DEVELOPMENT_STRATEGY,
   CIVIC_DEVELOPMENT_STRATEGY,
+  CULTURAL_DOMINANCE_ERA_STRATEGY,
 ];
 
 const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
@@ -496,9 +573,16 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
   navalExpansion: NAVAL_EXPANSION_STRATEGY,
   scientificDevelopment: SCIENTIFIC_DEVELOPMENT_STRATEGY,
   civicDevelopment: CIVIC_DEVELOPMENT_STRATEGY,
+  culturalDominance: CULTURAL_DOMINANCE_ERA_STRATEGY,
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  {
+    leaderId: 'leader_charles_vii',
+    strategiesByEra: {
+      ancient: 'culturalDominance',
+    },
+  },
   {
     leaderId: 'leader_genghis-khan',
     strategiesByEra: {

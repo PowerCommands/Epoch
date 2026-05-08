@@ -148,10 +148,14 @@ export class ProductionSystem {
   }
 
   /** Legacy: clears queue and enqueues single item. Used by AI. */
-  setProduction(cityId: string, item: Producible): void {
+  setProduction(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
     const existing = this.queues.get(cityId) ?? [];
     for (const entry of existing) this.notifyRemoved(cityId, entry);
-    this.queues.set(cityId, [{ item, accumulated: 0 }]);
+    this.queues.set(cityId, [{
+      item,
+      accumulated: 0,
+      placement: options.placement ? { ...options.placement } : undefined,
+    }]);
     this.notifyChanged(cityId);
   }
 

@@ -100,6 +100,23 @@ export class WonderPlacementSystem {
     return { status: 'reserved', coord: { x: coord.x, y: coord.y }, wonderId };
   }
 
+  reserveFirstValidPlacement(
+    city: City,
+    wonder: WonderType,
+    mapData: MapData,
+  ): { tileX: number; tileY: number } | undefined {
+    const [coord] = this.getValidPlacementCoords(city, wonder, mapData);
+    if (!coord) return undefined;
+
+    const tile = mapData.tiles[coord.y]?.[coord.x];
+    if (!tile) return undefined;
+    tile.wonderConstruction = {
+      wonderId: wonder.id,
+      cityId: city.id,
+    };
+    return { tileX: coord.x, tileY: coord.y };
+  }
+
   findReservedTile(cityId: string, wonderId: string, mapData: MapData): Tile | null {
     for (const row of mapData.tiles) {
       for (const tile of row) {

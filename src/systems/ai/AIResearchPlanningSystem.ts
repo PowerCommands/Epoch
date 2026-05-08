@@ -79,7 +79,7 @@ function getEraStrategyResearchModifier(
   if (!eraStrategy) return 0;
   const category = getTechnologyResearchCategory(techId);
   if (category === undefined) return 0;
-  const weight = eraStrategy.researchWeights[category];
+  const weight = eraStrategy.researchWeights[category] ?? 1;
   return (weight - 1) * 10;
 }
 
@@ -91,19 +91,22 @@ function getTechnologyResearchCategory(techId: string): keyof AILeaderEraResearc
     case 'engineering':
       return 'food';
     case 'mining':
-    case 'construction':
-    case 'mathematics':
     case 'metal_casting':
     case 'machinery':
       return 'production';
-    case 'calendar':
     case 'currency':
     case 'foreign_trade':
       return 'economy';
     case 'writing':
-    case 'philosophy':
     case 'education':
       return 'science';
+    case 'philosophy':
+    case 'construction':
+    case 'mathematics':
+    case 'masonry':
+      return 'wonder';
+    case 'calendar':
+      return 'culture';
     case 'archery':
     case 'bronze_working':
     case 'horseback_riding':

@@ -1,4 +1,5 @@
 import { City } from '../entities/City';
+import type { CityFocusType } from '../entities/City';
 import { CityResources } from '../entities/CityResources';
 import { CityBuildings } from '../entities/CityBuildings';
 import { NationManager } from './NationManager';
@@ -127,6 +128,7 @@ export class CityManager {
     tileX: number;
     tileY: number;
     isCapital: boolean;
+    focus?: CityFocusType;
     health: number;
     population: number;
     foodStorage: number;
@@ -142,6 +144,7 @@ export class CityManager {
       tileX: config.tileX,
       tileY: config.tileY,
       isCapital: config.isCapital,
+      focus: config.focus,
     });
     city.health = config.health;
     city.population = config.population;

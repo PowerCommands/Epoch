@@ -1060,6 +1060,8 @@ export class GameScene extends Phaser.Scene {
       undefined,
       undefined,
       builderSystem,
+      wonderSystem,
+      wonderPlacementSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
