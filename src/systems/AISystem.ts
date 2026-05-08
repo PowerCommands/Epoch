@@ -49,6 +49,7 @@ import {
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
 import {
   pickBestAIProductionCandidate,
+  scoreAIProductionCandidate,
   type AIProductionCandidate,
 } from './ai/AIProductionScoring';
 import {
@@ -339,6 +340,7 @@ export class AISystem {
     private readonly builderSystem?: BuilderSystem,
     private readonly wonderSystem?: WonderSystem,
     private readonly wonderPlacementSystem?: WonderPlacementSystem,
+    private readonly logStrategicEvent?: (nationId: string, message: string) => void,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -358,6 +360,8 @@ export class AISystem {
       this.mapData,
       this.gridSystem,
       this.formatLog,
+      (nationId) => this.getActiveEraStrategy(nationId),
+      this.logStrategicEvent,
     );
     this.foundCitySystem.onCityFounded((city) => this.cityFocusSystem.updateFocusForCity(city));
   }
@@ -2949,8 +2953,16 @@ export class AISystem {
     const nation = this.nationManager.getNation(nationId);
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
-    const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, city.focus ?? 'balanced');
+    const cityFocus = city.focus ?? 'balanced';
+    const best = pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
+      if (cityFocus !== 'balanced') {
+        const itemName = this.foundationProducibleName(best.item);
+        const score = scoreAIProductionCandidate(best, strategy, eraStrategy, cityFocus);
+        const message = `${city.name} production focus ${cityFocus} selected ${itemName}, score ${Math.round(score)}.`;
+        console.log(this.formatLog(nationId, message));
+        this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
+      }
       if (best.item.kind === 'unit' && best.item.unitType.id === WORK_BOAT.id && workBoatTarget !== null) {
         const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
         console.log(

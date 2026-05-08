@@ -1062,6 +1062,7 @@ export class GameScene extends Phaser.Scene {
       builderSystem,
       wonderSystem,
       wonderPlacementSystem,
+      (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 

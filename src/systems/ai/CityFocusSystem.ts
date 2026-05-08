@@ -3,21 +3,13 @@ import { getBuildingById } from '../../data/buildings';
 import type { MapData, Tile } from '../../types/map';
 import { TileType } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
+import type { AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
 import { calculateCityEconomy } from '../CityEconomy';
 import type { CityManager } from '../CityManager';
 import type { NationManager } from '../NationManager';
 import { cityHasWaterTile } from '../ProductionRules';
 import type { IGridSystem } from '../grid/IGridSystem';
 import type { AILogFormatter } from './AILogFormatter';
-
-interface CapitalFocusRule {
-  readonly nationId: string;
-  readonly focus: CityFocusType;
-}
-
-const CAPITAL_FOCUS_RULES: readonly CapitalFocusRule[] = [
-  { nationId: 'nation_france', focus: 'cultural' },
-];
 
 const SPECIALIZATION_POPULATION_THRESHOLD = 10;
 const CLEAR_DOMINANCE_RATIO = 1.35;
@@ -31,28 +23,41 @@ export class CityFocusSystem {
     private readonly mapData: MapData,
     private readonly gridSystem: IGridSystem,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
+    private readonly getEraStrategy?: (nationId: string) => AILeaderEraStrategy | undefined,
+    private readonly logStrategicEvent?: (nationId: string, message: string) => void,
   ) {}
 
   updateFocusForNation(nationId: string): void {
     const nation = this.nationManager.getNation(nationId);
     if (!nation || nation.isHuman) return;
 
+    const eraStrategy = this.getEraStrategy?.(nationId);
+    const primaryCity = this.getPrimaryCity(nationId);
     for (const city of this.cityManager.getCitiesByOwner(nationId)) {
-      this.updateFocusForCity(city);
+      this.updateFocusForCity(city, eraStrategy, primaryCity);
     }
   }
 
-  updateFocusForCity(city: City): void {
+  updateFocusForCity(
+    city: City,
+    eraStrategy: AILeaderEraStrategy | undefined = this.getEraStrategy?.(city.ownerId),
+    primaryCity: City | undefined = this.getPrimaryCity(city.ownerId),
+  ): void {
     const nation = this.nationManager.getNation(city.ownerId);
     if (!nation || nation.isHuman) return;
 
-    const capitalRule = this.getCapitalRule(city);
-    if (capitalRule) {
-      this.assignFocus(city, capitalRule.focus, `${nation.name} assigned ${city.name} as ${capitalRule.focus} city focus.`);
+    const primaryCityFocus = eraStrategy?.cityFocusRules?.primaryCityFocus;
+    if (primaryCityFocus && primaryCity?.id === city.id) {
+      this.assignFocus(city, primaryCityFocus, [
+        `${nation.name} assigned ${city.name} as ${primaryCityFocus} primary city focus.`,
+        `${city.name} shifted from ${city.focus ?? 'balanced'} to ${primaryCityFocus} focus due to strategy primaryCityFocus.`,
+      ]);
       return;
     }
 
-    if (city.population < SPECIALIZATION_POPULATION_THRESHOLD) return;
+    const specializationThreshold =
+      eraStrategy?.cityFocusRules?.largeCityPopulationThreshold ?? SPECIALIZATION_POPULATION_THRESHOLD;
+    if (city.population < specializationThreshold) return;
 
     const currentFocus = city.focus ?? 'balanced';
     const evaluation = this.evaluateSpecialization(city);
@@ -62,14 +67,14 @@ export class CityFocusSystem {
       this.assignFocus(
         city,
         evaluation.focus,
-        `${city.name} shifted from ${currentFocus} to ${evaluation.focus} focus due to ${evaluation.reason}.`,
+        [`${city.name} shifted from ${currentFocus} to ${evaluation.focus} focus due to ${evaluation.reason}.`],
       );
     }
   }
 
-  private getCapitalRule(city: City): CapitalFocusRule | undefined {
-    if (!city.isCapital) return undefined;
-    return CAPITAL_FOCUS_RULES.find((rule) => rule.nationId === city.ownerId);
+  private getPrimaryCity(nationId: string): City | undefined {
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    return cities.find((city) => city.isCapital) ?? cities[0];
   }
 
   private evaluateSpecialization(city: City): { focus: CityFocusType; reason: string; dominanceRatio: number } | null {
@@ -153,11 +158,14 @@ export class CityFocusSystem {
     return tile?.type === TileType.Coast || tile?.type === TileType.Ocean;
   }
 
-  private assignFocus(city: City, nextFocus: CityFocusType, message: string): void {
+  private assignFocus(city: City, nextFocus: CityFocusType, messages: readonly string[]): void {
     const currentFocus = city.focus ?? 'balanced';
     if (currentFocus === nextFocus) return;
 
     city.focus = nextFocus;
-    console.log(this.formatLog(city.ownerId, message));
+    for (const message of messages) {
+      console.log(this.formatLog(city.ownerId, message));
+      this.logStrategicEvent?.(city.ownerId, this.formatLog(city.ownerId, message));
+    }
   }
 }

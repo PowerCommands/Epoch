@@ -1,4 +1,5 @@
 import type { Era } from '../data/technologies';
+import type { CityFocusType } from '../entities/City';
 
 export type AILeaderEraStrategyId =
   | 'frontierExpansion'
@@ -98,6 +99,11 @@ export interface AILeaderEraHappinessBehavior {
   criticalThreshold?: number;
 }
 
+export interface AILeaderEraCityFocusRules {
+  primaryCityFocus?: CityFocusType;
+  largeCityPopulationThreshold?: number;
+}
+
 export interface AILeaderEraStrategy {
   id: AILeaderEraStrategyId;
   name: string;
@@ -112,6 +118,7 @@ export interface AILeaderEraStrategy {
   resourcePriorities?: AILeaderEraResourcePriorities;
   tilePurchase?: AILeaderEraTilePurchasePreferences;
   happinessBehavior?: AILeaderEraHappinessBehavior;
+  cityFocusRules?: AILeaderEraCityFocusRules;
 }
 
 export interface LeaderEraStrategyProfile {

@@ -343,6 +343,10 @@ export const CULTURAL_DOMINANCE_ERA_STRATEGY: AILeaderEraStrategy = {
     worker: 1.15,
     workBoat: 1.0,
   },
+  cityFocusRules: {
+    primaryCityFocus: 'cultural',
+    largeCityPopulationThreshold: 10,
+  },
   researchWeights: {
     food: 0.95,
     production: 0.95,
