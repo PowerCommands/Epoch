@@ -26,7 +26,10 @@
       "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes status -s)",
       "Bash(git -C /mnt/c/Repos/Github/EpochOfTimes diff --stat HEAD)",
       "Bash(python3 -c \"import json; d=json.load\\(open\\('src/data/cityNames.json'\\)\\); [print\\(f'{k}: {len\\(v\\)}'\\) for k,v in d.items\\(\\)]\")",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.items\\(\\) if 'north_america' in k or 'south_america' in k}, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

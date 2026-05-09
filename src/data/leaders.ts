@@ -164,8 +164,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
   },
   {
     id: 'leader_george-washington',
-    name: 'George Washinton',
-    nationId: 'nation_north_america',
+    name: 'George Washington',
+    nationId: 'nation_usa',
     title: 'President George Washington',
     image: `${LEADER_IMAGE_BASE}/george-washington.png`,
     description: 'A visionary founding father focused on liberty, stability, and national unity.',
@@ -235,8 +235,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
   },
   {
     id: 'leader_dom-pedro-ii',
-    name: 'Dom Pedro',
-    nationId: 'nation_south_america',
+    name: 'Dom Pedro II',
+    nationId: 'nation_brazil',
     title: 'Emperor Dom Pedro II',
     image: `${LEADER_IMAGE_BASE}/dom-pedro-ii.png`,
     description: 'An enlightened monarch focused on scientific progress, cultural growth, and diplomatic stability.',

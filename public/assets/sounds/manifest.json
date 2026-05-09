@@ -40,10 +40,6 @@
       "/assets/sounds/nation_morocco_empire/nation_morocco_empire-theme-01.mp3",
       "/assets/sounds/nation_morocco_empire/nation_morocco_empire-theme-02.mp3"
     ],
-    "nation_north_america": [
-      "/assets/sounds/nation_north_america/nation_north_america-theme-01.mp3",
-      "/assets/sounds/nation_north_america/nation_north_america-theme-02.mp3"
-    ],
     "nation_novgorod": [
       "/assets/sounds/nation_novgorod/nation_novgorod-theme-01.mp3",
       "/assets/sounds/nation_novgorod/nation_novgorod-theme-02.mp3"
@@ -51,10 +47,6 @@
     "nation_ottoman": [
       "/assets/sounds/nation_ottoman/nation_ottoman-theme-01.mp3",
       "/assets/sounds/nation_ottoman/nation_ottoman-theme-02.mp3"
-    ],
-    "nation_south_america": [
-      "/assets/sounds/nation_south_america/nation_south_america-theme-01.mp3",
-      "/assets/sounds/nation_south_america/nation_south_america-theme-02.mp3"
     ],
     "nation_spain": [
       "/assets/sounds/nation_spain/nation_spain-theme-01.mp3",
@@ -71,6 +63,14 @@
     "start": [
       "/assets/sounds/start/theme-01.mp3",
       "/assets/sounds/start/theme-02.mp3"
+    ],
+    "nation_usa": [
+      "/assets/sounds/nation_usa/nation_usa-theme-01.mp3",
+      "/assets/sounds/nation_usa/nation_usa-theme-02.mp3"
+    ],
+    "nation_brazil": [
+      "/assets/sounds/nation_brazil/nation_brazil-theme-01.mp3",
+      "/assets/sounds/nation_brazil/nation_brazil-theme-02.mp3"
     ]
   }
 }

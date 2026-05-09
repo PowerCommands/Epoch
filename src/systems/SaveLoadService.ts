@@ -268,9 +268,13 @@ export class SaveLoadService {
    * so callers can show a clean error message without try/catch.
    */
   static parse(json: string): SaveParseResult {
+    // Migrate renamed nation ids from older saves before parsing.
+    const migrated = json
+      .replace(/"nation_north_america"/g, '"nation_usa"')
+      .replace(/"nation_south_america"/g, '"nation_brazil"');
     let data: unknown;
     try {
-      data = JSON.parse(json);
+      data = JSON.parse(migrated);
     } catch (err) {
       return { ok: false, error: `Invalid JSON: ${(err as Error).message}` };
     }

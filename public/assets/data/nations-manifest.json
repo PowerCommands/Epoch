@@ -1,6 +1,16 @@
 {
   "nations": [
     {
+      "nationId": "nation_brazil",
+      "nationName": "Brazil",
+      "color": "#009739",
+      "secondaryColor": "#ffdf00",
+      "leaderId": "leader_dom-pedro-ii",
+      "leaderName": "Dom Pedro II",
+      "leaderTitle": "Emperor Dom Pedro II",
+      "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png"
+    },
+    {
       "nationId": "nation_china",
       "nationName": "China",
       "color": "#d64541",
@@ -101,16 +111,6 @@
       "leaderImage": "/assets/sprites/leaders/abu-al-hasan.png"
     },
     {
-      "nationId": "nation_north_america",
-      "nationName": "North America",
-      "color": "#2f80ed",
-      "secondaryColor": "#dfeaf8",
-      "leaderId": "leader_george-washington",
-      "leaderName": "George Washinton",
-      "leaderTitle": "President George Washington",
-      "leaderImage": "/assets/sprites/leaders/george-washington.png"
-    },
-    {
       "nationId": "nation_novgorod",
       "nationName": "Novgorod",
       "color": "#16a085",
@@ -129,16 +129,6 @@
       "leaderName": "Mehmed II",
       "leaderTitle": "Sultan of the Ottoman Empire",
       "leaderImage": "/assets/sprites/leaders/mehmed-i.png"
-    },
-    {
-      "nationId": "nation_south_america",
-      "nationName": "South America",
-      "color": "#f2994a",
-      "secondaryColor": "#4d7c59",
-      "leaderId": "leader_dom-pedro-ii",
-      "leaderName": "Dom Pedro",
-      "leaderTitle": "Emperor Dom Pedro II",
-      "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png"
     },
     {
       "nationId": "nation_spain",
@@ -169,6 +159,16 @@
       "leaderName": "Koxinga",
       "leaderTitle": "Zheng Chenggong",
       "leaderImage": "/assets/sprites/leaders/leader_koxinga.png"
+    },
+    {
+      "nationId": "nation_usa",
+      "nationName": "United States",
+      "color": "#2f80ed",
+      "secondaryColor": "#dfeaf8",
+      "leaderId": "leader_george-washington",
+      "leaderName": "George Washington",
+      "leaderTitle": "President George Washington",
+      "leaderImage": "/assets/sprites/leaders/george-washington.png"
     }
   ]
 }
