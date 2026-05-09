@@ -29,7 +29,9 @@
       "Bash(echo \"exit: $?\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in d.items\\(\\) if 'north_america' in k or 'south_america' in k}, indent=2\\)\\)\")",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(python3 scripts/generateWorldMap.py)",
+      "Bash(python3 -)"
     ]
   }
 }

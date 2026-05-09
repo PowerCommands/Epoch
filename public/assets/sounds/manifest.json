@@ -1,5 +1,9 @@
 {
   "playlists": {
+    "nation_brazil": [
+      "/assets/sounds/nation_brazil/nation_brazil-theme-01.mp3",
+      "/assets/sounds/nation_brazil/nation_brazil-theme-02.mp3"
+    ],
     "nation_china": [
       "/assets/sounds/nation_china/nation_china-theme-01.mp3",
       "/assets/sounds/nation_china/nation_china-theme-02.mp3"
@@ -60,17 +64,13 @@
       "/assets/sounds/nation_taiwan/nation_taiwan-theme-01.mp3",
       "/assets/sounds/nation_taiwan/nation_taiwan-theme-02.mp3"
     ],
-    "start": [
-      "/assets/sounds/start/theme-01.mp3",
-      "/assets/sounds/start/theme-02.mp3"
-    ],
     "nation_usa": [
       "/assets/sounds/nation_usa/nation_usa-theme-01.mp3",
       "/assets/sounds/nation_usa/nation_usa-theme-02.mp3"
     ],
-    "nation_brazil": [
-      "/assets/sounds/nation_brazil/nation_brazil-theme-01.mp3",
-      "/assets/sounds/nation_brazil/nation_brazil-theme-02.mp3"
+    "start": [
+      "/assets/sounds/start/theme-01.mp3",
+      "/assets/sounds/start/theme-02.mp3"
     ]
   }
 }
