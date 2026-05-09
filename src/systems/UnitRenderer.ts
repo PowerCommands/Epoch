@@ -18,12 +18,18 @@ const HP_BAR_BG_COLOR = 0x400000;
 
 const HIT_RADIUS = 16;
 
+const NATION_RING_RADIUS = 22;
+const NATION_RING_WIDTH = 4;
+const NATION_RING_SEGMENTS = 12;
+const NATION_RING_OUTLINE_WIDTH = 2;
+
 const FALLBACK_TEXTURE_KEY = 'unit_warrior';
 
 interface UnitVisual {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
   maskGraphics: Phaser.GameObjects.Graphics;
+  nationRing: Phaser.GameObjects.Graphics;
   progressText?: Phaser.GameObjects.Text;
 }
 
@@ -178,12 +184,16 @@ export class UnitRenderer {
     if (nation === undefined) return;
 
     const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
+
+    const nationRing = this.scene.add.graphics();
+    drawNationRing(nationRing, nation.color, nation.secondaryColor);
+
     const sprite = this.scene.add.image(0, 0, textureKey);
     const maskGraphics = this.scene.add.graphics();
     sprite.setMask(maskGraphics.createGeometryMask());
     this.applyUnitTileSize(unit, sprite, maskGraphics);
 
-    const container = this.scene.add.container(0, 0, [sprite]);
+    const container = this.scene.add.container(0, 0, [nationRing, sprite]);
     container.setSize(HIT_RADIUS * 2, HIT_RADIUS * 2);
     container.setInteractive(
       new Phaser.Geom.Circle(0, 0, HIT_RADIUS),
@@ -197,7 +207,7 @@ export class UnitRenderer {
     maskGraphics.setPosition(x, y);
     maskGraphics.setScale(unit.transportId ? 0.75 : 1);
 
-    const visual: UnitVisual = { container, sprite, maskGraphics };
+    const visual: UnitVisual = { container, sprite, maskGraphics, nationRing };
     this.visuals.set(unit.id, visual);
 
     this.refreshUnitVisual(unit.id);
@@ -307,4 +317,34 @@ function clampPercent(progress: number, required: number): number {
   const ratio = progress / required;
   if (!Number.isFinite(ratio)) return 0;
   return Math.max(0, Math.min(100, Math.floor(ratio * 100)));
+}
+
+function drawNationRing(
+  graphics: Phaser.GameObjects.Graphics,
+  primaryColor: number,
+  secondaryColor: number,
+): void {
+  graphics.clear();
+
+  // Dark outline ring so light-colored nations stay visible on bright terrain.
+  const outlineLineWidth = NATION_RING_WIDTH + NATION_RING_OUTLINE_WIDTH * 2;
+  graphics.lineStyle(outlineLineWidth, 0x111111, 0.6);
+  graphics.beginPath();
+  graphics.arc(0, 0, NATION_RING_RADIUS, 0, Math.PI * 2, false);
+  graphics.strokePath();
+
+  // Alternating primary/secondary arc segments with a small gap between each.
+  const segmentAngle = (Math.PI * 2) / NATION_RING_SEGMENTS;
+  const gapAngle = 0.06;
+
+  for (let i = 0; i < NATION_RING_SEGMENTS; i++) {
+    const color = i % 2 === 0 ? primaryColor : secondaryColor;
+    const startAngle = i * segmentAngle + gapAngle / 2;
+    const endAngle = (i + 1) * segmentAngle - gapAngle / 2;
+
+    graphics.lineStyle(NATION_RING_WIDTH, color, 1);
+    graphics.beginPath();
+    graphics.arc(0, 0, NATION_RING_RADIUS, startAngle, endAngle, false);
+    graphics.strokePath();
+  }
 }
