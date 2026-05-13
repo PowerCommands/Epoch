@@ -8,6 +8,7 @@ import { Selectable } from '../types/selection';
 import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
+import type { Tile } from '../types/map';
 
 type SelectionCallback = (selection: Selectable | null) => void;
 type SelectionTargetCallback = (
@@ -86,6 +87,10 @@ export class SelectionManager {
 
   selectCity(city: City): void {
     this.setSelection({ kind: 'city', city });
+  }
+
+  selectTile(tile: Tile): void {
+    this.setSelection({ kind: 'tile', tile });
   }
 
   selectUnit(unit: Unit): void {

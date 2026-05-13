@@ -11,6 +11,7 @@ import type {
   RightSidebarPanelMode,
   RightSidebarRelationsTableRow,
   RightSidebarRow,
+  RightSidebarSearchInputRow,
 } from './RightSidebarPanelTypes';
 
 interface ModeDefinition {
@@ -41,6 +42,12 @@ interface ContentButton {
   baseY: number;
   hovered: boolean;
   pressed: boolean;
+}
+
+interface ContentInput {
+  element: HTMLInputElement;
+  baseY: number;
+  height: number;
 }
 
 const DEPTH = 1200;
@@ -132,6 +139,7 @@ export class RightSidebarPanel {
   private readonly modeButtons: ModeButton[];
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly contentButtons: ContentButton[] = [];
+  private readonly contentInputs: ContentInput[] = [];
   private readonly requestedIconKeys = new Set<string>();
   private readonly failedIconKeys = new Set<string>();
   private readonly onResize: () => void;
@@ -158,6 +166,7 @@ export class RightSidebarPanel {
   private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
   private lastDetailsCityId: string | null = null;
   private lastDetailsLeaderId: string | null = null;
+  private focusSearchInputAfterRender = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -681,9 +690,65 @@ export class RightSidebarPanel {
         line.setMask(this.contentMask);
         return y + 16;
       }
+      case 'searchInput':
+        return this.addSearchInputRow(row, y);
       case 'relationsTable':
         return this.addRelationsTableRow(row, y);
     }
+  }
+
+  private addSearchInputRow(row: RightSidebarSearchInputRow, y: number): number {
+    const height = 34;
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.value = row.value;
+    input.placeholder = row.placeholder;
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.className = 'right-sidebar-search-input';
+    input.style.cssText = `
+      position: fixed;
+      z-index: ${DEPTH + 20};
+      width: ${CONTENT_WIDTH}px;
+      height: ${height}px;
+      box-sizing: border-box;
+      border: 1px solid rgba(126, 183, 214, 0.55);
+      border-radius: 7px;
+      background: rgba(8, 17, 25, 0.96);
+      color: #edf4ff;
+      outline: none;
+      padding: 6px 10px;
+      font: 15px Arial, sans-serif;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+    `;
+    input.addEventListener('input', () => {
+      row.onChange(input.value);
+      this.focusSearchInputAfterRender = true;
+      this.renderActiveContent();
+    });
+    input.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+    });
+    input.addEventListener('wheel', (event) => {
+      event.stopPropagation();
+    });
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+    });
+    input.addEventListener('keyup', (event) => {
+      event.stopPropagation();
+    });
+    document.body.append(input);
+
+    const contentInput: ContentInput = { element: input, baseY: y, height };
+    this.contentInputs.push(contentInput);
+    this.positionContentInput(contentInput);
+    if (this.focusSearchInputAfterRender) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      this.focusSearchInputAfterRender = false;
+    }
+    return y + height + ROW_GAP;
   }
 
   private addRelationsTableRow(row: RightSidebarRelationsTableRow, y: number): number {
@@ -1015,6 +1080,20 @@ export class RightSidebarPanel {
         setGameObjectY(object, data - this.scrollOffset);
       }
     }
+    for (const input of this.contentInputs) {
+      this.positionContentInput(input);
+    }
+  }
+
+  private positionContentInput(input: ContentInput): void {
+    const rect = this.scene.game.canvas.getBoundingClientRect();
+    const visibleY = input.baseY - this.scrollOffset;
+    const contentTop = CONTENT_TOP;
+    const contentBottom = CONTENT_TOP + this.getVisibleContentHeight();
+    const inView = visibleY + input.height >= contentTop && visibleY <= contentBottom;
+    input.element.style.display = !this.collapsed && inView ? 'block' : 'none';
+    input.element.style.left = `${rect.left + this.panelContainer.x + PANEL_PADDING}px`;
+    input.element.style.top = `${rect.top + this.panelContainer.y + visibleY}px`;
   }
 
   private applyScroll(delta: number): void {
@@ -1026,12 +1105,15 @@ export class RightSidebarPanel {
 
   private destroyContentObjects(): void {
     for (const object of this.contentObjects) object.destroy();
+    for (const input of this.contentInputs) input.element.remove();
     this.contentObjects.length = 0;
     this.contentButtons.length = 0;
+    this.contentInputs.length = 0;
   }
 
   private refreshVisibility(): void {
     this.panelContainer.setVisible(!this.collapsed);
+    for (const input of this.contentInputs) this.positionContentInput(input);
   }
 
   private refreshButtonVisuals(): void {

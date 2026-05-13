@@ -38,6 +38,10 @@ export function getCorporationSpriteKey(corporationId: string): string {
   return `corporation_${corporationId}`;
 }
 
+export function getNaturalResourceSpritePath(resourceId: string): string {
+  return `assets/sprites/resources/${resourceId}.png`;
+}
+
 export function getTechnologySpriteKey(technologyId: string): string {
   return `tech_${technologyId}`;
 }

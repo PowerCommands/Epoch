@@ -35,13 +35,14 @@ import type { WonderSystem } from '../../systems/WonderSystem';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
+import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
-import { getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
+import { getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
 import type {
   LeaderRelationRow,
   RightSidebarContent,
@@ -88,6 +89,8 @@ export class RightSidebarPanelDataProvider {
   private corporationSystem: CorporationSystem | null = null;
   private tradeDealSystem: TradeDealSystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
+  private resourceCitySearchSystem: ResourceCitySearchSystem | null = null;
+  private detailsSearchQuery = '';
   private eraSystem: EraSystem | null = null;
   private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
@@ -161,6 +164,10 @@ export class RightSidebarPanelDataProvider {
 
   setResourceAccessSystem(resourceAccessSystem: ResourceAccessSystem): void {
     this.resourceAccessSystem = resourceAccessSystem;
+  }
+
+  setResourceCitySearchSystem(resourceCitySearchSystem: ResourceCitySearchSystem): void {
+    this.resourceCitySearchSystem = resourceCitySearchSystem;
   }
 
   setEraSystem(eraSystem: EraSystem): void {
@@ -397,7 +404,57 @@ export class RightSidebarPanelDataProvider {
         true,
       ));
     }
-    return { title: 'Details', sections: [{ title: 'Tile', rows }] };
+    return { title: 'Details', sections: [{ title: 'Tile', rows }, this.getFinderSection()] };
+  }
+
+  private getFinderSection(): RightSidebarSection {
+    const rows: RightSidebarRow[] = [{
+      kind: 'searchInput',
+      value: this.detailsSearchQuery,
+      placeholder: 'Search resources or cities...',
+      onChange: (value) => {
+        this.detailsSearchQuery = value;
+      },
+    }];
+
+    const results = this.resourceCitySearchSystem?.search(this.detailsSearchQuery) ?? [];
+    if (this.detailsSearchQuery.trim().length > 0 && results.length === 0) {
+      rows.push(textRow('No matches.', true));
+    } else {
+      for (const result of results) rows.push(this.getFinderResultRow(result));
+      if (results.length >= 25) rows.push(textRow('Showing first 25 matches.', true));
+    }
+
+    return { title: 'Find', rows };
+  }
+
+  private getFinderResultRow(result: ResourceCitySearchResult): RightSidebarRow {
+    if (result.kind === 'city') {
+      return buttonRow(
+        `${result.city.name} - ${result.ownerNationName} - pop ${result.city.population}`,
+        () => {
+          window.dispatchEvent(new CustomEvent('detailsFinderFocus', {
+            detail: { kind: 'city', cityId: result.city.id },
+          }));
+        },
+        0x7fb4d5,
+        '🗺️',
+        CITY_SPRITE_PATH,
+      );
+    }
+
+    const owner = result.ownerNationName ?? 'Unclaimed';
+    return buttonRow(
+      `${result.resourceName} - (${result.tile.x},${result.tile.y}) - ${owner}`,
+      () => {
+        window.dispatchEvent(new CustomEvent('detailsFinderFocus', {
+          detail: { kind: 'tile', x: result.tile.x, y: result.tile.y },
+        }));
+      },
+      0x86efac,
+      '🗺️',
+      getNaturalResourceSpritePath(result.resourceId),
+    );
   }
 
   private getCityContent(city: City, tab: RightSidebarCityDetailsTab): RightSidebarContent {

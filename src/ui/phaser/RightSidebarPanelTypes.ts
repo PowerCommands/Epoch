@@ -55,6 +55,13 @@ export interface RightSidebarSeparatorRow {
   kind: 'separator';
 }
 
+export interface RightSidebarSearchInputRow {
+  kind: 'searchInput';
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}
+
 export interface RelationsTableRowCells {
   leader: string;
   trust: string;
@@ -74,6 +81,7 @@ export type RightSidebarRow =
   | RightSidebarButtonRow
   | RightSidebarProgressRow
   | RightSidebarSeparatorRow
+  | RightSidebarSearchInputRow
   | RightSidebarRelationsTableRow;
 
 export interface RightSidebarSection {

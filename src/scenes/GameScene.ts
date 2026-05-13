@@ -12,6 +12,7 @@ import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
+import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
 import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
@@ -449,6 +450,7 @@ export class GameScene extends Phaser.Scene {
     getTradeGoldPerTurnDelta = (nationId) =>
       tradeDealSystem.getGoldPerTurnDeltaForNation(nationId);
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
+    const resourceCitySearchSystem = new ResourceCitySearchSystem(mapData, cityManager, nationManager);
     getAvailableLuxuryResourceQuantities = (nationId) =>
       resourceAccessSystem.getAvailableLuxuryResourceQuantities(nationId);
     happinessSystem.recalculateAll();
@@ -1973,6 +1975,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
+    rightPanel.setResourceCitySearchSystem(resourceCitySearchSystem);
     rightPanel.setEraSystem(eraSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     rightPanel.setEventLog(eventLog);
@@ -3019,6 +3022,32 @@ export class GameScene extends Phaser.Scene {
       refreshMovePreview();
     };
     window.addEventListener('focusUnit', onFocusUnit);
+    const onDetailsFinderFocus = (event: Event) => {
+      const detail = (event as CustomEvent<
+        | { kind: 'tile'; x: number; y: number }
+        | { kind: 'city'; cityId: string }
+      >).detail;
+
+      if (detail.kind === 'city') {
+        const city = cityManager.getCity(detail.cityId);
+        if (!city) return;
+        const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
+        this.cameraController.focusOn(x, y, this.cameraController.zoom);
+        selectionManager.selectCity(city);
+        rightPanel?.showCity(city);
+        refreshMovePreview();
+        return;
+      }
+
+      const tile = tileMap.getTileAt(detail.x, detail.y);
+      if (!tile) return;
+      const { x, y } = tileMap.tileToWorld(tile.x, tile.y);
+      this.cameraController.focusOn(x, y, this.cameraController.zoom);
+      selectionManager.selectTile(tile);
+      rightPanel?.showTile(tile);
+      refreshMovePreview();
+    };
+    window.addEventListener('detailsFinderFocus', onDetailsFinderFocus);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       clearCityViewInteraction();
       this.input.off(Phaser.Input.Events.POINTER_DOWN, onCityViewPointerDown);
@@ -3028,6 +3057,7 @@ export class GameScene extends Phaser.Scene {
       window.removeEventListener('focusCity', onFocusCity);
       window.removeEventListener('leaderCityFocusRequested', onLeaderCityFocusRequested);
       window.removeEventListener('focusUnit', onFocusUnit);
+      window.removeEventListener('detailsFinderFocus', onDetailsFinderFocus);
       document.removeEventListener('nationSelected', onNationSelected);
       document.removeEventListener('leaderSelected', onLeaderSelected);
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
