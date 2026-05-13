@@ -7,6 +7,7 @@ import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
 import { getCultureNodeById } from '../../data/cultureTree';
+import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import { getCultureSpriteKey, getCultureSpritePath } from '../../utils/assetPaths';
 import {
@@ -18,7 +19,7 @@ import {
 const STRATEGIC_RESOURCE_IDS = ['horses', 'iron', 'niter', 'coal', 'oil', 'aluminum', 'uranium'] as const;
 
 export interface HudResourceEntry {
-  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}`;
+  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}` | `manufactured:${string}`;
   icon: string;
   iconKey?: string;
   value: number | string;
@@ -180,6 +181,19 @@ export class NationHudDataProvider {
         delta: 0,
         displayMode: 'valueOnly',
         tooltip: `${resource?.name ?? resourceId}: ${quantity}`,
+      });
+    }
+
+    for (const entry of this.resourceAccessSystem?.getAvailableManufacturedResourceQuantities(nationId) ?? []) {
+      const resource = getManufacturedResourceById(entry.resourceId);
+      entries.push({
+        key: `manufactured:${entry.resourceId}`,
+        icon: '🏭',
+        iconKey: resource?.iconKey,
+        value: entry.quantity,
+        delta: 0,
+        displayMode: 'valueOnly',
+        tooltip: `${resource?.name ?? entry.resourceId}: ${entry.quantity}`,
       });
     }
 

@@ -252,6 +252,7 @@ function describeProducible(item: Producible): string {
     case 'unit': return `unit:${item.unitType.name}`;
     case 'building': return `building:${item.buildingType.name}`;
     case 'wonder': return `wonder:${item.wonderType.name}`;
+    case 'corporation': return `corporation:${item.corporationType.name}`;
   }
 }
 
@@ -633,7 +634,7 @@ export class AISystem {
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') continue;
       if (!this.diplomacyManager.hasTradeRelations(nationId, other.id)) continue;
 
-      const ownedResources = this.resourceAccessSystem.getOwnedResources(other.id);
+      const ownedResources = this.resourceAccessSystem.getOwnedNaturalResources(other.id);
       const orderedResources = luxuryValueMultiplier > 1.0
         ? [...ownedResources].sort((a, b) => luxuryRank(b) - luxuryRank(a))
         : ownedResources;
@@ -3177,6 +3178,8 @@ export class AISystem {
         return `wonder:${item.wonderType.name}`;
       case 'unit':
         return `unit:${item.unitType.name}`;
+      case 'corporation':
+        return `corporation:${item.corporationType.name}`;
     }
   }
 
@@ -3554,6 +3557,7 @@ export class AISystem {
       return 'defense';
     }
     if (item.kind === 'wonder') return 'wonder';
+    if (item.kind === 'corporation') return 'corporation';
     const bt = item.buildingType;
     if ((bt.modifiers.happinessPerTurn ?? 0) > 0) return 'low happiness';
     if (bt.id === GRANARY.id) return 'city growth';
@@ -3567,6 +3571,7 @@ export class AISystem {
   private foundationProducibleName(item: Producible): string {
     if (item.kind === 'unit') return item.unitType.name;
     if (item.kind === 'wonder') return item.wonderType.name;
+    if (item.kind === 'corporation') return item.corporationType.name;
     return item.buildingType.name;
   }
 

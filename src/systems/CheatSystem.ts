@@ -1,15 +1,23 @@
 import type { AutoplaySystem } from './AutoplaySystem';
 import type { CityManager } from './CityManager';
 import type { CultureSystem } from './culture/CultureSystem';
+import type { CorporationSystem } from './CorporationSystem';
 import type { ProductionSystem } from './ProductionSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceSystem } from './ResourceSystem';
+import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { DiagnosticSystem } from './DiagnosticSystem';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { NationManager } from './NationManager';
 import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
 import { ALL_LEADERS } from '../data/leaders';
+import {
+  CORPORATIONS,
+  getCorporationById,
+  type CorporationDefinition,
+} from '../data/corporations';
+import { getManufacturedResourceById } from '../data/manufacturedResources';
 import { ALL_TECHNOLOGIES, type TechnologyDefinition } from '../data/technologies';
 import type { Producible } from '../types/producible';
 
@@ -17,7 +25,9 @@ export interface GameContext {
   humanNationId: string | undefined;
   researchSystem: ResearchSystem;
   cultureSystem: CultureSystem;
+  corporationSystem: CorporationSystem;
   resourceSystem: ResourceSystem;
+  resourceAccessSystem: ResourceAccessSystem;
   diagnosticSystem: DiagnosticSystem;
   discoverySystem: DiscoverySystem;
   nationManager: NationManager;
@@ -261,6 +271,117 @@ export class CheatSystem {
     });
 
     this.register({
+      name: 'corp list',
+      description: 'List corporation definitions and whether each is founded.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: corp list';
+
+        return CORPORATIONS.map((corporation) => {
+          const founded = context.corporationSystem.getFoundedCorporation(corporation.id);
+          if (!founded) return `${corporation.id} (${corporation.name}) - available`;
+
+          const founder = context.nationManager.getNation(founded.founderNationId);
+          const city = founded.cityId ? context.cityManager.getCity(founded.cityId) : undefined;
+          const cityText = city ? ` in ${city.name}` : '';
+          return `${corporation.id} (${corporation.name}) - founded by ${founder?.name ?? founded.founderNationId}${cityText} on turn ${founded.foundedTurn}`;
+        }).join('\n');
+      },
+    });
+
+    this.register({
+      name: 'corp founded',
+      description: 'List founded corporations and founding nations.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: corp founded';
+
+        const founded = context.corporationSystem.getFoundedCorporations();
+        if (founded.length === 0) return 'No corporations founded.';
+
+        return founded.map((corporation) => {
+          const definition = getCorporationById(corporation.corporationId);
+          const founder = context.nationManager.getNation(corporation.founderNationId);
+          const city = corporation.cityId ? context.cityManager.getCity(corporation.cityId) : undefined;
+          const cityText = city ? ` in ${city.name}` : '';
+          return `${definition?.name ?? corporation.corporationId} - founded by ${founder?.name ?? corporation.founderNationId}${cityText} on turn ${corporation.foundedTurn}`;
+        }).join('\n');
+      },
+    });
+
+    this.register({
+      name: 'corp can',
+      description: 'Check whether a nation can found a corporation. Usage: "corp can <corporationId> [nation]".',
+      execute: (args, context) => {
+        if (args.length < 1 || args.length > 2) return 'Usage: corp can <corporationId> [nation]';
+
+        const corporation = resolveCorporationId(args[0]);
+        if (!corporation.ok) return corporation.message;
+
+        const target = resolveNationId(args[1], context);
+        if (!target.ok) return target.message;
+
+        const blockers = context.corporationSystem.getFoundingBlockers(target.nationId, corporation.corporation.id);
+        if (blockers.length === 0) {
+          return `${target.label} can found ${corporation.corporation.name}.`;
+        }
+
+        return `${target.label} cannot found ${corporation.corporation.name}:\n${blockers.map((blocker) => `- ${blocker}`).join('\n')}`;
+      },
+    });
+
+    this.register({
+      name: 'corp found',
+      description: 'Found a corporation for a nation. Usage: "corp found <corporationId> [nation]".',
+      execute: (args, context) => {
+        if (args.length < 1 || args.length > 2) return 'Usage: corp found <corporationId> [nation]';
+
+        const corporation = resolveCorporationId(args[0]);
+        if (!corporation.ok) return corporation.message;
+
+        const target = resolveNationId(args[1], context);
+        if (!target.ok) return target.message;
+
+        const blockers = context.corporationSystem.getFoundingBlockers(target.nationId, corporation.corporation.id);
+        if (blockers.length > 0) {
+          return `${target.label} cannot found ${corporation.corporation.name}:\n${blockers.map((blocker) => `- ${blocker}`).join('\n')}`;
+        }
+
+        const founded = context.corporationSystem.foundCorporation(target.nationId, corporation.corporation.id);
+        if (!founded) return `Could not found ${corporation.corporation.name}.`;
+
+        return `${target.label} founded ${corporation.corporation.name}.`;
+      },
+    });
+
+    this.register({
+      name: 'corp resources',
+      description: 'List manufactured resource totals for a nation. Usage: "corp resources [nation]".',
+      execute: (args, context) => {
+        if (args.length > 1) return 'Usage: corp resources [nation]';
+
+        const target = resolveNationId(args[0], context);
+        if (!target.ok) return target.message;
+
+        const produced = context.corporationSystem.getNationManufacturedResources(target.nationId);
+        const available = context.resourceAccessSystem.getAvailableManufacturedResourceQuantities(target.nationId);
+        const imported = context.resourceAccessSystem.getImportedResources(target.nationId)
+          .filter((resourceId) => getManufacturedResourceById(resourceId) !== undefined);
+        const exportable = context.resourceAccessSystem.getExportableResourceQuantities(target.nationId)
+          .filter((entry) => getManufacturedResourceById(entry.resourceId) !== undefined);
+
+        if (produced.size === 0 && available.length === 0 && imported.length === 0 && exportable.length === 0) {
+          return `${target.label} has no manufactured corporation resources.`;
+        }
+
+        return [
+          `Produced: ${formatManufacturedMap(produced)}`,
+          `Available: ${formatManufacturedEntries(available)}`,
+          `Imported: ${imported.length > 0 ? imported.map(formatManufacturedResourceName).join(', ') : 'none'}`,
+          `Exportable: ${formatManufacturedEntries(exportable)}`,
+        ].join('\n');
+      },
+    });
+
+    this.register({
       name: 'autoplay',
       description: 'Run AI for ALL nations for N rounds. Usage: "autoplay <rounds>", "autoplay pause", "autoplay resume", or "autoplay stop".',
       execute: (args, context) => {
@@ -449,6 +570,56 @@ function normalizeTechnologyMatchText(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
 
+function resolveCorporationId(
+  input: string,
+): { ok: true; corporation: CorporationDefinition } | { ok: false; message: string } {
+  const normalizedInput = normalizeCorporationMatchText(input);
+  if (normalizedInput.length === 0) {
+    return { ok: false, message: `Unknown corporation: ${input}` };
+  }
+
+  const exactMatches = CORPORATIONS.filter((corporation) =>
+    normalizeCorporationMatchText(corporation.id) === normalizedInput ||
+    normalizeCorporationMatchText(corporation.name) === normalizedInput
+  );
+  if (exactMatches.length === 1) return { ok: true, corporation: exactMatches[0] };
+  if (exactMatches.length > 1) return { ok: false, message: `Ambiguous corporation: ${input}` };
+
+  const partialMatches = CORPORATIONS.filter((corporation) =>
+    normalizeCorporationMatchText(corporation.id).includes(normalizedInput) ||
+    normalizeCorporationMatchText(corporation.name).includes(normalizedInput)
+  );
+  if (partialMatches.length === 1) return { ok: true, corporation: partialMatches[0] };
+  if (partialMatches.length > 1) return { ok: false, message: `Ambiguous corporation: ${input}` };
+
+  return { ok: false, message: `Unknown corporation: ${input}` };
+}
+
+function normalizeCorporationMatchText(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function formatManufacturedMap(resources: ReadonlyMap<string, number>): string {
+  if (resources.size === 0) return 'none';
+  return formatManufacturedEntries(
+    [...resources.entries()].map(([resourceId, quantity]) => ({ resourceId, quantity })),
+  );
+}
+
+function formatManufacturedEntries(entries: ReadonlyArray<{
+  readonly resourceId: string;
+  readonly quantity: number;
+}>): string {
+  if (entries.length === 0) return 'none';
+  return entries
+    .map((entry) => `${formatManufacturedResourceName(entry.resourceId)}: ${entry.quantity}`)
+    .join(', ');
+}
+
+function formatManufacturedResourceName(resourceId: string): string {
+  return getManufacturedResourceById(resourceId)?.name ?? resourceId;
+}
+
 function producibleName(item: Producible): string {
   switch (item.kind) {
     case 'unit':
@@ -457,6 +628,8 @@ function producibleName(item: Producible): string {
       return item.buildingType.name;
     case 'wonder':
       return item.wonderType.name;
+    case 'corporation':
+      return item.corporationType.name;
   }
 }
 

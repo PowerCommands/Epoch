@@ -1,6 +1,6 @@
 import type { City } from '../entities/City';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
-import { getBuildingSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+import { getBuildingSpritePath, getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 
 type CloseCallback = () => void;
 type PlacementRequestCallback = (buildingId: string) => void;
@@ -9,10 +9,11 @@ type BuyTileRequestCallback = () => void;
 type RenameRequestCallback = (cityId: string, name: string) => void;
 type UnitRequestCallback = (unitId: string) => void;
 type WonderRequestCallback = (wonderId: string) => void;
+type CorporationRequestCallback = (corporationId: string) => void;
 type QueueRemoveRequestCallback = (index: number) => void;
 type QueueBuyRequestCallback = (index: number) => void;
 type CityViewMode = 'production' | 'queue';
-type ProductionAccordionId = 'units' | 'buildings' | 'wonders';
+type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations';
 
 export interface CityViewBuildingOption {
   id: string;
@@ -36,8 +37,21 @@ export interface CityViewWonderOption {
   name: string;
   cost: number;
   description: string;
+  outputSummary?: string;
   disabled?: boolean;
   reason?: string;
+  turnsRemaining?: number;
+}
+
+export interface CityViewCorporationOption {
+  id: string;
+  name: string;
+  cost: number;
+  description: string;
+  outputSummary?: string;
+  disabled?: boolean;
+  reason?: string;
+  turnsRemaining?: number;
 }
 
 export interface CityViewPlacementPanelState {
@@ -92,6 +106,7 @@ export class CityView {
   private readonly renameRequestCallbacks: RenameRequestCallback[] = [];
   private readonly unitRequestCallbacks: UnitRequestCallback[] = [];
   private readonly wonderRequestCallbacks: WonderRequestCallback[] = [];
+  private readonly corporationRequestCallbacks: CorporationRequestCallback[] = [];
   private readonly queueRemoveRequestCallbacks: QueueRemoveRequestCallback[] = [];
   private readonly queueBuyRequestCallbacks: QueueBuyRequestCallback[] = [];
   private currentCityId: string | null = null;
@@ -100,6 +115,7 @@ export class CityView {
     units: true,
     buildings: false,
     wonders: false,
+    corporations: false,
   };
   private open = false;
   private dragging = false;
@@ -113,6 +129,7 @@ export class CityView {
     placementState: CityViewPlacementPanelState;
     tilePurchaseState: CityViewTilePurchaseState;
     wonderOptions: CityViewWonderOption[];
+    corporationOptions: CityViewCorporationOption[];
     queueItems: CityViewQueueItem[];
   } | null = null;
 
@@ -273,6 +290,10 @@ export class CityView {
     this.wonderRequestCallbacks.push(callback);
   }
 
+  onCorporationRequested(callback: CorporationRequestCallback): void {
+    this.corporationRequestCallbacks.push(callback);
+  }
+
   onQueueRemoveRequested(callback: QueueRemoveRequestCallback): void {
     this.queueRemoveRequestCallbacks.push(callback);
   }
@@ -296,13 +317,14 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
+    corporationOptions: CityViewCorporationOption[],
     queueItems: CityViewQueueItem[],
   ): void {
     if (this.currentCityId !== city.id) this.resetViewState();
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
-    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, queueItems);
+    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, queueItems);
   }
 
   refresh(
@@ -312,10 +334,11 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
+    corporationOptions: CityViewCorporationOption[],
     queueItems: CityViewQueueItem[],
   ): void {
     if (!this.isOpenForCity(city.id)) return;
-    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, queueItems);
+    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, queueItems);
   }
 
   close(): void {
@@ -366,13 +389,7 @@ export class CityView {
     }
     this.tooltipEl.innerHTML = rows.join('');
     this.tooltipEl.style.display = 'block';
-
-    const width = this.tooltipEl.offsetWidth || 240;
-    const height = this.tooltipEl.offsetHeight || 180;
-    const left = Math.min(window.innerWidth - width - 12, screenX + 16);
-    const top = Math.min(window.innerHeight - height - 12, screenY + 16);
-    this.tooltipEl.style.left = `${Math.max(12, left)}px`;
-    this.tooltipEl.style.top = `${Math.max(12, top)}px`;
+    this.positionTooltip(screenX, screenY);
   }
 
   hideTooltip(): void {
@@ -434,6 +451,7 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
+    corporationOptions: CityViewCorporationOption[],
     queueItems: CityViewQueueItem[],
   ): void {
     this.lastRenderState = {
@@ -443,6 +461,7 @@ export class CityView {
       placementState,
       tilePurchaseState,
       wonderOptions,
+      corporationOptions,
       queueItems,
     };
     const isEditingCurrentCity = this.editingTitleCityId === city.id;
@@ -473,7 +492,7 @@ export class CityView {
     if (this.mode === 'queue') {
       this.renderQueueMode(queueItems);
     } else {
-      this.renderProductionMode(unitOptions, buildingOptions, placementState, wonderOptions);
+      this.renderProductionMode(unitOptions, buildingOptions, placementState, wonderOptions, corporationOptions);
     }
   }
 
@@ -482,6 +501,7 @@ export class CityView {
     buildingOptions: CityViewBuildingOption[],
     placementState: CityViewPlacementPanelState,
     wonderOptions: CityViewWonderOption[],
+    corporationOptions: CityViewCorporationOption[],
   ): void {
     const units = this.renderProductionAccordion('units', 'Units', unitOptions, (grid, option) => {
       const button = this.createProductionButton(
@@ -533,7 +553,33 @@ export class CityView {
       grid.append(button);
     }, 'No wonders available — research a prerequisite tech.');
 
-    this.modeContentEl.replaceChildren(units, buildings, wonders);
+    const corporations = this.renderProductionAccordion('corporations', 'Corporations', corporationOptions, (grid, option) => {
+      const estimate = option.turnsRemaining ?? option.cost;
+      const button = this.createProductionButton(
+        getCorporationSpritePath(option.id),
+        `${option.name} (${estimate})`,
+      );
+      const disabled = option.disabled ?? false;
+      if (disabled) {
+        button.classList.add('city-view-placement-button-disabled');
+        button.setAttribute('aria-disabled', 'true');
+      }
+      this.attachProductionTooltip(button, [
+        option.name,
+        option.description,
+        `Turns: ${estimate}`,
+        disabled ? 'State: Unavailable' : 'State: Available',
+        option.reason ? `Requirements: ${option.reason}` : undefined,
+        option.outputSummary,
+      ]);
+      button.addEventListener('click', () => {
+        if (disabled) return;
+        for (const callback of this.corporationRequestCallbacks) callback(option.id);
+      });
+      grid.append(button);
+    }, 'No corporations available.');
+
+    this.modeContentEl.replaceChildren(units, buildings, wonders, corporations);
   }
 
   private renderTilePurchase(tilePurchaseState: CityViewTilePurchaseState): void {
@@ -756,6 +802,7 @@ export class CityView {
     this.accordionExpanded.units = true;
     this.accordionExpanded.buildings = false;
     this.accordionExpanded.wonders = false;
+    this.accordionExpanded.corporations = false;
   }
 
   private renderLastState(): void {
@@ -767,18 +814,23 @@ export class CityView {
       this.lastRenderState.placementState,
       this.lastRenderState.tilePurchaseState,
       this.lastRenderState.wonderOptions,
+      this.lastRenderState.corporationOptions,
       this.lastRenderState.queueItems,
     );
   }
 
-  private createProductionButton(spritePath: string, labelText: string): HTMLButtonElement {
+  private createProductionButton(spritePath: string | undefined, labelText: string): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'city-view-placement-button city-view-production-button';
 
     const icon = document.createElement('img');
     icon.className = 'city-view-production-icon';
-    icon.src = spritePath;
+    if (spritePath) {
+      icon.src = spritePath;
+    } else {
+      icon.style.display = 'none';
+    }
     icon.alt = '';
     icon.decoding = 'async';
     icon.addEventListener('error', () => {
@@ -786,10 +838,41 @@ export class CityView {
     });
 
     const label = document.createElement('span');
+    label.className = 'city-view-production-label';
     label.textContent = labelText;
 
     button.append(icon, label);
     return button;
+  }
+
+  private attachProductionTooltip(button: HTMLElement, lines: Array<string | undefined>): void {
+    const tooltipLines = lines.filter((line): line is string => Boolean(line));
+    button.addEventListener('mouseenter', (event) => {
+      this.showTextTooltip(tooltipLines, event.clientX, event.clientY);
+    });
+    button.addEventListener('mousemove', (event) => {
+      this.positionTooltip(event.clientX, event.clientY);
+    });
+    button.addEventListener('mouseleave', () => {
+      this.hideTooltip();
+    });
+  }
+
+  private showTextTooltip(lines: readonly string[], screenX: number, screenY: number): void {
+    this.tooltipEl.innerHTML = lines
+      .map((line, index) => `<div${index === 0 ? ' style="font-weight:700; margin-bottom:4px;"' : ''}>${escapeHtml(line)}</div>`)
+      .join('');
+    this.tooltipEl.style.display = 'block';
+    this.positionTooltip(screenX, screenY);
+  }
+
+  private positionTooltip(screenX: number, screenY: number): void {
+    const width = this.tooltipEl.offsetWidth || 240;
+    const height = this.tooltipEl.offsetHeight || 180;
+    const left = Math.min(window.innerWidth - width - 12, screenX + 16);
+    const top = Math.min(window.innerHeight - height - 12, screenY + 16);
+    this.tooltipEl.style.left = `${Math.max(12, left)}px`;
+    this.tooltipEl.style.top = `${Math.max(12, top)}px`;
   }
 
   private startTitleEditing(): void {
@@ -855,6 +938,15 @@ function formatImprovementConstruction(breakdown: CityViewTileBreakdown): string
   if (!breakdown.improvementConstructionName) return 'None';
   const remaining = breakdown.improvementConstructionRemainingTurns ?? 0;
   return `${breakdown.improvementConstructionName}: ${remaining} turns remaining`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function clamp(value: number, min: number, max: number): number {

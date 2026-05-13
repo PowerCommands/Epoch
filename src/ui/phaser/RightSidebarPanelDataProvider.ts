@@ -6,6 +6,9 @@ import type { Era } from '../../data/technologies';
 import { ALL_UNIT_TYPES } from '../../data/units';
 import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
+import { CORPORATIONS } from '../../data/corporations';
+import { getManufacturedResourceById } from '../../data/manufacturedResources';
+import { getResourceDisplayName } from '../../data/resources';
 import type { City } from '../../entities/City';
 import type { Nation } from '../../entities/Nation';
 import type { Unit } from '../../entities/Unit';
@@ -29,6 +32,7 @@ import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
+import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
@@ -37,7 +41,7 @@ import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
-import { getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
+import { getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
 import type {
   LeaderRelationRow,
   RightSidebarContent,
@@ -81,6 +85,7 @@ export class RightSidebarPanelDataProvider {
   private researchSystem: ResearchSystem | null = null;
   private cultureSystem: CultureSystem | null = null;
   private wonderSystem: WonderSystem | null = null;
+  private corporationSystem: CorporationSystem | null = null;
   private tradeDealSystem: TradeDealSystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
   private eraSystem: EraSystem | null = null;
@@ -144,6 +149,10 @@ export class RightSidebarPanelDataProvider {
 
   setWonderSystem(wonderSystem: WonderSystem): void {
     this.wonderSystem = wonderSystem;
+  }
+
+  setCorporationSystem(corporationSystem: CorporationSystem): void {
+    this.corporationSystem = corporationSystem;
   }
 
   setTradeDealSystem(tradeDealSystem: TradeDealSystem): void {
@@ -451,19 +460,23 @@ export class RightSidebarPanelDataProvider {
       case 'output':
         return {
           title: 'Details',
-          sections: [{
-        title: 'Output',
-        rows: [
-          textRow(`Worked tiles: ${economy.workedTileCount} / ${economy.maxWorkableTiles}`),
-          textRow(`Food: ${formatSigned(economy.food)}/turn`),
-          textRow(`Production: ${resources.production} stored (+${resources.productionPerTurn}/turn)`),
-          textRow(`Gold: +${resources.goldPerTurn}/turn`),
-          textRow(`Science: +${resources.sciencePerTurn}/turn`),
-          textRow(`Culture per turn: +${resources.culturePerTurn}/turn`),
-          textRow(`Happiness: +${resources.happinessPerTurn}/turn`),
-          textRow(`Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
-        ],
-          }],
+          sections: [
+            {
+              title: 'Output',
+              rows: [
+                textRow(`Worked tiles: ${economy.workedTileCount} / ${economy.maxWorkableTiles}`),
+                textRow(`Food: ${formatSigned(economy.food)}/turn`),
+                textRow(`Production: ${resources.production} stored (+${resources.productionPerTurn}/turn)`),
+                textRow(`Gold: +${resources.goldPerTurn}/turn`),
+                textRow(`Science: +${resources.sciencePerTurn}/turn`),
+                textRow(`Culture per turn: +${resources.culturePerTurn}/turn`),
+                textRow(`Happiness: +${resources.happinessPerTurn}/turn`),
+                textRow(`Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
+              ],
+            },
+            this.getProductionQueueSection(city, isHuman),
+            ...(isHuman ? [this.getAddToQueueSection(city), this.getWonderSection(city), this.getCorporationSection(city)] : []),
+          ],
         };
     }
   }
@@ -542,6 +555,7 @@ export class RightSidebarPanelDataProvider {
           textRow(`Base: ${formatSigned(happiness.happinessFromBase)}`),
           textRow(`Buildings: ${formatSigned(happiness.happinessFromBuildings)}`),
           textRow(`Wonders: ${formatSigned(happiness.happinessFromWonders)}`),
+          textRow(`Corporations: ${formatSigned(happiness.happinessFromCorporations)}`),
           textRow(`Luxury resources: ${formatSigned(happiness.happinessFromLuxuryResources)}`),
           ...luxuryResourceLabels(happiness.availableLuxuryResourceQuantities).map((label) => textRow(`  • ${label}`, true)),
           textRow('Unhappiness:', true),
@@ -555,6 +569,7 @@ export class RightSidebarPanelDataProvider {
         ],
       },
       this.getCivicsSummarySection(nationId),
+      this.getManufacturedResourcesSection(nationId),
       {
         title: `Cities (${cities.length})`,
         rows: cities.length === 0
@@ -574,6 +589,21 @@ export class RightSidebarPanelDataProvider {
       sections.push(this.getDiplomacySection(nationId));
     }
     return { title: 'Details', sections };
+  }
+
+  private getManufacturedResourcesSection(nationId: string): RightSidebarSection {
+    const entries = this.resourceAccessSystem?.getAvailableManufacturedResourceQuantities(nationId) ?? [];
+    if (entries.length === 0) {
+      return { title: 'Manufactured Resources', rows: [textRow('None', true)] };
+    }
+
+    return {
+      title: 'Manufactured Resources',
+      rows: entries.map((entry) => {
+        const resource = getManufacturedResourceById(entry.resourceId);
+        return textRow(`${resource?.name ?? entry.resourceId}: ${entry.quantity}`);
+      }),
+    };
   }
 
   private getLeaderContent(
@@ -794,12 +824,17 @@ export class RightSidebarPanelDataProvider {
   private getVisibleProductionQueue(cityId: string): Array<{ entry: QueueEntryView; index: number }> {
     return this.productionSystem.getQueue(cityId)
       .map((entry, index) => ({ entry, index }))
-      .filter(({ entry }) => !this.isCompletedWonderQueueEntry(entry));
+      .filter(({ entry }) => !this.isUnavailableUniqueQueueEntry(entry));
   }
 
-  private isCompletedWonderQueueEntry(entry: QueueEntryView): boolean {
-    return entry.item.kind === 'wonder'
-      && this.wonderSystem?.isWonderBuilt(entry.item.wonderType.id) === true;
+  private isUnavailableUniqueQueueEntry(entry: QueueEntryView): boolean {
+    if (entry.item.kind === 'wonder') {
+      return this.wonderSystem?.isWonderBuilt(entry.item.wonderType.id) === true;
+    }
+    if (entry.item.kind === 'corporation') {
+      return this.corporationSystem?.isFounded(entry.item.corporationType.id) === true;
+    }
+    return false;
   }
 
   private getAddToQueueSection(city: City): RightSidebarSection {
@@ -858,6 +893,43 @@ export class RightSidebarPanelDataProvider {
       }, 0x7fbf6a));
     }
     return { title: 'Add to Queue', rows };
+  }
+
+  private getCorporationSection(city: City): RightSidebarSection {
+    const rows: RightSidebarRow[] = [];
+    const corporationSystem = this.corporationSystem;
+    const isQueuedHere = (corporationId: string): boolean => this.productionSystem.getQueue(city.id)
+      .some((entry) => entry.item.kind === 'corporation' && entry.item.corporationType.id === corporationId);
+
+    for (const corporationType of CORPORATIONS) {
+      if (corporationSystem?.isFounded(corporationType.id)) continue;
+
+      const item: Producible = { kind: 'corporation', corporationType };
+      const queuedHere = isQueuedHere(corporationType.id);
+      const blockers = corporationSystem?.getCityCorporationBlockers(city, corporationType.id) ?? [];
+      let disabled = false;
+      let reason: string | undefined;
+      if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
+      else if (blockers.length > 0) { disabled = true; reason = blockers.join(', '); }
+
+      const turns = this.productionSystem.getTurnsEstimate(city.id, item);
+      const baseLabel = `${corporationType.name} (${turns})`;
+      rows.push({
+        kind: 'button',
+        text: reason ? `${baseLabel} — ${reason}` : baseLabel,
+        disabled,
+        accentColor: 0x8fb9d9,
+        spritePath: getProducibleSpritePath(item),
+        onClick: () => {
+          if (disabled || !corporationSystem?.canCityProduceCorporation(city, corporationType.id)) return;
+          this.productionSystem.enqueue(city.id, item);
+          this.requestRefresh();
+        },
+      });
+    }
+
+    if (rows.length === 0) rows.push(textRow('No corporations available.', true));
+    return { title: 'Corporations', rows };
   }
 
   private getWonderSection(city: City): RightSidebarSection {
@@ -1106,8 +1178,8 @@ export class RightSidebarPanelDataProvider {
     }
     const playerId = this.humanNationId;
     const otherNation = this.nationManager.getNation(otherNationId);
-    const otherOwned = this.resourceAccessSystem.getOwnedResources(otherNationId);
-    const playerOwned = this.resourceAccessSystem.getOwnedResources(playerId);
+    const otherOwned = this.resourceAccessSystem.getExportableResourceQuantities(otherNationId);
+    const playerOwned = this.resourceAccessSystem.getExportableResourceQuantities(playerId);
     const existingDeals = this.tradeDealSystem.getDealsBetween(playerId, otherNationId);
     const importedFromSeller = new Set(
       existingDeals
@@ -1119,22 +1191,23 @@ export class RightSidebarPanelDataProvider {
     if (otherOwned.length === 0) {
       rows.push(textRow('No resources to sell.', true));
     } else {
-      for (const resourceId of otherOwned) {
-        rows.push(textRow(this.formatResourceName(resourceId)));
+      for (const { resourceId, quantity } of otherOwned) {
+        const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
+        rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
         const alreadyImporting = importedFromSeller.has(resourceId);
         rows.push({
           kind: 'button',
-          text: alreadyImporting ? 'Already importing' : 'Buy (10 turns) — 5 gold/turn',
+          text: alreadyImporting ? 'Already importing' : `Buy (10 turns) — ${tradeGold} gold/turn`,
           accentColor: otherNation?.color,
           disabled: alreadyImporting,
-          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 10, 5),
+          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 10, tradeGold),
         });
         rows.push({
           kind: 'button',
-          text: alreadyImporting ? 'Already importing' : 'Buy (20 turns) — 4 gold/turn',
+          text: alreadyImporting ? 'Already importing' : `Buy (20 turns) — ${Math.max(1, tradeGold - 1)} gold/turn`,
           accentColor: otherNation?.color,
           disabled: alreadyImporting,
-          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 20, 4),
+          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 20, Math.max(1, tradeGold - 1)),
         });
       }
     }
@@ -1144,8 +1217,8 @@ export class RightSidebarPanelDataProvider {
     if (playerOwned.length === 0) {
       rows.push(textRow('You have no resources to offer.', true));
     } else {
-      for (const resourceId of playerOwned) {
-        rows.push(textRow(this.formatResourceName(resourceId)));
+      for (const { resourceId, quantity } of playerOwned) {
+        rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
       }
     }
 
@@ -1179,7 +1252,17 @@ export class RightSidebarPanelDataProvider {
   }
 
   private formatResourceName(resourceId: string): string {
-    return getNaturalResourceById(resourceId)?.name ?? resourceId;
+    return getResourceDisplayName(resourceId);
+  }
+
+  private getResourceTypeSuffix(resourceId: string): string {
+    return getManufacturedResourceById(resourceId) ? ' (manufactured)' : '';
+  }
+
+  private getResourceTradeGoldPerTurn(resourceId: string): number {
+    const manufactured = getManufacturedResourceById(resourceId);
+    if (manufactured?.tradeGoldPerTurn !== undefined) return manufactured.tradeGoldPerTurn;
+    return getNaturalResourceById(resourceId)?.category === 'luxury' ? 5 : 4;
   }
 
   private formatDealRow(deal: TradeDeal): string {
@@ -1331,6 +1414,8 @@ function getProducibleName(item: Producible): string {
       return item.buildingType.name;
     case 'wonder':
       return item.wonderType.name;
+    case 'corporation':
+      return item.corporationType.name;
   }
 }
 
@@ -1340,6 +1425,8 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getUnitSpritePath(item.unitType.id);
     case 'wonder':
       return getWonderSpritePath(item.wonderType.id);
+    case 'corporation':
+      return getCorporationSpritePath(item.corporationType.id);
     case 'building':
       return undefined;
   }

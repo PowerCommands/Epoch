@@ -30,6 +30,7 @@ export type AvailableLuxuryResourcesProvider = (
 ) => ReadonlyArray<LuxuryResourceEntry>;
 export type CityFoodSurplusProvider = (city: City) => number;
 export type CultureHappinessProvider = (nationId: string) => number;
+export type CorporationHappinessProvider = (nationId: string) => number;
 
 interface TierResult {
   state: HappinessState;
@@ -124,6 +125,7 @@ export class HappinessSystem {
     private readonly getCityFoodSurplus: CityFoodSurplusProvider = () => 0,
     private readonly policySystem?: PolicySystem,
     private readonly getCultureHappinessBonus: CultureHappinessProvider = () => 0,
+    private readonly getCorporationHappinessBonus: CorporationHappinessProvider = () => 0,
   ) {
     this.recalculateAll();
   }
@@ -162,6 +164,7 @@ export class HappinessSystem {
       + (this.getPolicyFlat(nationId, 'happinessPerCity') * cities.length)
       + (this.getPolicyFlat(nationId, 'happinessPerLuxuryResource') * availableLuxuryResourceIds.length);
     const happinessFromCultureEffects = this.getCultureHappinessBonus(nationId);
+    const happinessFromCorporations = this.getCorporationHappinessBonus(nationId);
 
     const totalHappiness = happinessFromBase
       + happinessFromBuildings
@@ -169,7 +172,8 @@ export class HappinessSystem {
       + happinessFromLuxuryResources
       + happinessFromFoodSurplus
       + happinessFromPolicies
-      + happinessFromCultureEffects;
+      + happinessFromCultureEffects
+      + happinessFromCorporations;
     const baseUnhappinessFromCities = cities.length * CITY_UNHAPPINESS;
     const policyCityUnhappinessPerCity = this.getPolicyFlat(nationId, 'unhappinessPerCityFlat');
     const adjustedUnhappinessPerCity = Math.max(0, CITY_UNHAPPINESS + policyCityUnhappinessPerCity);
@@ -200,6 +204,7 @@ export class HappinessSystem {
     state.happinessFromFoodSurplus = happinessFromFoodSurplus;
     state.happinessFromPolicies = happinessFromPolicies;
     state.happinessFromCultureEffects = happinessFromCultureEffects;
+    state.happinessFromCorporations = happinessFromCorporations;
     state.availableLuxuryResourceIds = availableLuxuryResourceIds;
     state.availableLuxuryResourceQuantities = luxuryEntries;
     state.unhappinessFromCities = adjustedUnhappinessFromCities;
@@ -286,6 +291,7 @@ function snapshotState(state: NationHappiness): {
   happinessFromFoodSurplus: number;
   happinessFromPolicies: number;
   happinessFromCultureEffects: number;
+  happinessFromCorporations: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
@@ -309,6 +315,7 @@ function snapshotState(state: NationHappiness): {
     happinessFromFoodSurplus: state.happinessFromFoodSurplus,
     happinessFromPolicies: state.happinessFromPolicies,
     happinessFromCultureEffects: state.happinessFromCultureEffects,
+    happinessFromCorporations: state.happinessFromCorporations,
     availableLuxuryResourceIds: [...state.availableLuxuryResourceIds],
     availableLuxuryResourceQuantities: state.availableLuxuryResourceQuantities.map((entry) => ({ ...entry })),
     unhappinessFromCities: state.unhappinessFromCities,
@@ -342,6 +349,7 @@ function statesEqual(
     && previous.happinessFromFoodSurplus === next.happinessFromFoodSurplus
     && previous.happinessFromPolicies === next.happinessFromPolicies
     && previous.happinessFromCultureEffects === next.happinessFromCultureEffects
+    && previous.happinessFromCorporations === next.happinessFromCorporations
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation
     && previous.unhappinessFromPolicyCityModifiers === next.unhappinessFromPolicyCityModifiers

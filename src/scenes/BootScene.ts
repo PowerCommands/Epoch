@@ -6,7 +6,10 @@ import { NATURAL_RESOURCES } from '../data/naturalResources';
 import { ALL_POLICIES } from '../data/policies';
 import { ALL_TECHNOLOGIES } from '../data/technologies';
 import { ALL_UNIT_TYPES } from '../data/units';
+import { CORPORATIONS } from '../data/corporations';
 import {
+  getCorporationSpriteKey,
+  getCorporationSpritePath,
   getCultureSpriteKey,
   getCultureSpritePath,
   getPolicySpriteKey,
@@ -80,6 +83,10 @@ export class BootScene extends Phaser.Scene {
 
     for (const cultureNode of CULTURE_TREE) {
       this.load.image(getCultureSpriteKey(cultureNode.id), getCultureSpritePath(cultureNode.id));
+    }
+
+    for (const corporation of CORPORATIONS) {
+      this.load.image(getCorporationSpriteKey(corporation.id), getCorporationSpritePath(corporation.id));
     }
 
     for (const policy of ALL_POLICIES) {

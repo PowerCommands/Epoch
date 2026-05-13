@@ -556,7 +556,11 @@
         border-radius: 14px;
         box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
         color: #e6ecd9;
+        display: flex;
+        flex-direction: column;
         font-family: monospace;
+        max-height: calc(100vh - 36px);
+        overflow: hidden;
         padding: 21px 24px;
         pointer-events: auto;
       }
@@ -652,8 +656,16 @@
 
       .city-view-mode-buttons {
         display: flex;
+        flex: 0 0 auto;
         gap: 10px;
         margin-bottom: 15px;
+      }
+
+      .city-view-mode-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 4px;
       }
 
       .city-view-mode-button {
@@ -692,7 +704,7 @@
         padding: 9px 14px;
       }
 
-      .city-view-placement-button:hover:not(:disabled),
+      .city-view-placement-button:hover:not(:disabled):not(.city-view-placement-button-disabled),
       .city-view-placement-cancel:hover {
         background: rgba(255, 255, 255, 0.12);
       }
@@ -703,7 +715,8 @@
         color: #effdff;
       }
 
-      .city-view-placement-button:disabled {
+      .city-view-placement-button:disabled,
+      .city-view-placement-button-disabled {
         opacity: 0.45;
         cursor: not-allowed;
       }
@@ -712,6 +725,7 @@
         display: inline-flex;
         align-items: center;
         gap: 9px;
+        height: 58px;
         justify-content: flex-start;
         min-height: 58px;
         width: 100%;
@@ -723,6 +737,13 @@
         height: 32px;
         object-fit: contain;
         flex: 0 0 auto;
+      }
+
+      .city-view-production-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .city-view-placement-empty {

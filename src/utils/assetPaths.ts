@@ -30,6 +30,14 @@ export function getWonderSpriteKey(wonderId: string): string {
   return `wonder_${wonderId}`;
 }
 
+export function getCorporationSpritePath(corporationId: string): string {
+  return `assets/sprites/corporations/${corporationId}.png`;
+}
+
+export function getCorporationSpriteKey(corporationId: string): string {
+  return `corporation_${corporationId}`;
+}
+
 export function getTechnologySpriteKey(technologyId: string): string {
   return `tech_${technologyId}`;
 }

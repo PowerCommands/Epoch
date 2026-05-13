@@ -85,6 +85,7 @@ import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { TimeSystem } from '../systems/TimeSystem';
 import { getEstimatedEraFromProgress } from '../data/eraTimeline';
 import { WonderSystem } from '../systems/WonderSystem';
+import { CorporationSystem } from '../systems/CorporationSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
@@ -96,10 +97,12 @@ import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
-import { CityView, type CityViewBuildingOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
+import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
+import { CORPORATIONS, getCorporationById } from '../data/corporations';
+import { getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
 import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
@@ -121,6 +124,7 @@ import type { CultureUnlock } from '../types/CultureUnlock';
 import {
   getBuildingSpriteKey,
   getBuildingSpritePath,
+  getCorporationSpritePath,
   getCultureSpriteKey,
   getCultureSpritePath,
   getTechnologySpriteKey,
@@ -267,6 +271,7 @@ export class GameScene extends Phaser.Scene {
     const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
     const policySystem = new PolicySystem(nationManager);
     const wonderSystem = new WonderSystem();
+    let corporationSystem: CorporationSystem | undefined;
     const territoryExpansionBonusSystem = new TerritoryExpansionBonusSystem(gridSystem, cityTerritorySystem);
     let getAvailableLuxuryResourceQuantities: (
       nationId: string,
@@ -283,6 +288,7 @@ export class GameScene extends Phaser.Scene {
       (city) => getCityFoodSurplus(city),
       policySystem,
       (nationId) => cultureEffectSystem?.getCultureHappinessBonus(nationId) ?? 0,
+      (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
     );
     const eraSystem = new EraSystem(nationManager);
     const formatLog = createAILogFormatter({
@@ -555,6 +561,37 @@ export class GameScene extends Phaser.Scene {
       gameSpeed,
       undefined,
       formatLog,
+    );
+    corporationSystem = new CorporationSystem(
+      nationManager,
+      cityManager,
+      {
+        researchSystem,
+        resourceAccessSystem,
+        eventLog,
+        getCurrentTurn: () => turnManager.getCurrentRound(),
+        grantCultureBurst: (nationId, amount) => {
+          nationManager.getResources(nationId).culture += amount;
+          const originCity = cityManager.getCitiesByOwner(nationId)
+            .find((city) => city.isCapital)
+            ?? cityManager.getCitiesByOwner(nationId)[0];
+          if (!originCity) return;
+
+          const maxTiles = Math.max(1, Math.min(4, Math.ceil(amount / 20)));
+          const burst = culturalSphereSystem.triggerCulturalBurst(originCity, mapData, gridSystem, {
+            radius: 1,
+            maxTiles,
+            allowOverwrite: true,
+          });
+          if (burst.claimedTiles + burst.convertedTiles > 0) {
+            refreshCultureOverlay();
+          }
+        },
+        recalculateHappiness: (nationId) => happinessSystem.recalculateNation(nationId),
+      },
+    );
+    resourceAccessSystem.setManufacturedResourceProvider((nationId) =>
+      corporationSystem?.getNationManufacturedResources(nationId) ?? new Map(),
     );
     const humanNeedsResearchSelection = (): boolean => {
       if (!humanNationId) return false;
@@ -1431,6 +1468,23 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
 
+      if (item.kind === 'corporation') {
+        if (corporationSystem?.isFounded(item.corporationType.id)) return false;
+        if (!corporationSystem?.canCityProduceCorporation(city, item.corporationType.id)) return false;
+
+        const founded = corporationSystem.foundCorporation(city.ownerId, item.corporationType.id, city.id);
+        if (!founded) return false;
+
+        productionSystem.removeCorporationFromAllQueues(item.corporationType.id);
+        resourceSystem.recalculateForNation(city.ownerId);
+        happinessSystem.recalculateNation(city.ownerId);
+        refreshOpenCityView();
+        rightPanel?.requestRefresh();
+        hudLayer?.refresh();
+        updateCityProductionRhythm(city, item);
+        return true;
+      }
+
       const placement = this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
       if (placement === null) return false;
       const unitBlockReason = getCityUnitProductionBlockReason(
@@ -1844,7 +1898,7 @@ export class GameScene extends Phaser.Scene {
       proposalContext: {
         getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
         getNationColor: (nationId) => nationManager.getNation(nationId)?.color ?? 0xb59a5a,
-        getResourceName: (resourceId) => getNaturalResourceById(resourceId)?.name ?? resourceId,
+        getResourceName: (resourceId) => getResourceDisplayName(resourceId),
       },
       onEndTurn: endHumanTurn,
       onSelectResearch: (technologyId) => {
@@ -1916,6 +1970,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setResearchSystem(researchSystem);
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
+    rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
     rightPanel.setEraSystem(eraSystem);
@@ -1965,6 +2020,9 @@ export class GameScene extends Phaser.Scene {
         .map((entry, index) => ({ entry, index }))
         .filter(({ entry }) => !(
           entry.item.kind === 'wonder' && wonderSystem.isWonderBuilt(entry.item.wonderType.id)
+        ))
+        .filter(({ entry }) => !(
+          entry.item.kind === 'corporation' && (corporationSystem?.isFounded(entry.item.corporationType.id) ?? false)
         ))
         .map(({ entry, index }) => {
           const buyCost = city.ownerId === humanNationId ? productionSystem.getBuyCost(city.id, index) : null;
@@ -2029,6 +2087,31 @@ export class GameScene extends Phaser.Scene {
             name: wonderType.name,
             cost: productionSystem.getCost({ kind: 'wonder', wonderType }),
             description: wonderType.description,
+            disabled,
+            reason,
+          };
+        });
+    };
+    const getCityViewCorporationOptions = (city: City): CityViewCorporationOption[] => {
+      const isQueuedHere = (corporationId: string): boolean => productionSystem.getQueue(city.id)
+        .some((entry) => entry.item.kind === 'corporation' && entry.item.corporationType.id === corporationId);
+
+      return CORPORATIONS
+        .filter((corporationType) => !corporationSystem?.isFounded(corporationType.id))
+        .map((corporationType) => {
+          const queuedHere = isQueuedHere(corporationType.id);
+          const blockers = corporationSystem?.getCityCorporationBlockers(city, corporationType.id) ?? [];
+          let disabled = false;
+          let reason: string | undefined;
+          if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
+          else if (blockers.length > 0) { disabled = true; reason = blockers.join(', '); }
+          return {
+            id: corporationType.id,
+            name: corporationType.name,
+            cost: productionSystem.getCost({ kind: 'corporation', corporationType }),
+            turnsRemaining: productionSystem.getTurnsEstimate(city.id, { kind: 'corporation', corporationType }),
+            description: corporationType.description,
+            outputSummary: `Produces ${corporationType.resourcePerBuilding} ${corporationType.manufacturedResourceId} per ${corporationType.productionBuildingId}.`,
             disabled,
             reason,
           };
@@ -2405,6 +2488,26 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
+    cityView.onCorporationRequested((corporationId) => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+      const corporationType = getCorporationById(corporationId);
+      if (!corporationType) return;
+      if (!corporationSystem?.canCityProduceCorporation(city, corporationType.id)) {
+        refreshOpenCityView();
+        return;
+      }
+      const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
+        entry.item.kind === 'corporation' && entry.item.corporationType.id === corporationType.id
+      ));
+      if (alreadyQueued) {
+        refreshOpenCityView();
+        return;
+      }
+      productionSystem.enqueue(city.id, { kind: 'corporation', corporationType });
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
 
     const onCityViewPointerDown = (pointer: Phaser.Input.Pointer): void => {
       if (pointer.button !== 0) return;
@@ -2510,6 +2613,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewPlacementPanelState(city),
         getCityViewTilePurchaseState(city),
         getCityViewWonderOptions(city),
+        getCityViewCorporationOptions(city),
         getCityViewQueueItems(city),
       );
       cityViewRenderer.showWithState(
@@ -2702,7 +2806,9 @@ export class GameScene extends Phaser.Scene {
       humanNationId,
       researchSystem,
       cultureSystem,
+      corporationSystem,
       resourceSystem,
+      resourceAccessSystem,
       diagnosticSystem: this.diagnosticSystem,
       discoverySystem,
       nationManager,
@@ -3002,6 +3108,7 @@ export class GameScene extends Phaser.Scene {
         wonderSystem,
         policySystem,
         tradeDealSystem,
+        corporationSystem,
       });
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
@@ -3062,6 +3169,7 @@ export class GameScene extends Phaser.Scene {
           wonderSystem,
           policySystem,
           tradeDealSystem,
+          corporationSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -3097,6 +3205,7 @@ export class GameScene extends Phaser.Scene {
             wonderSystem,
             policySystem,
             tradeDealSystem,
+            corporationSystem,
           });
           downloadSaveFile(state);
           escapeMenu.close();
@@ -3194,6 +3303,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewPlacementPanelState(selected.city),
         getCityViewTilePurchaseState(selected.city),
         getCityViewWonderOptions(selected.city),
+        getCityViewCorporationOptions(selected.city),
         getCityViewQueueItems(selected.city),
       );
       cityViewRenderer.showWithState(
@@ -3212,6 +3322,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewPlacementPanelState(city),
         getCityViewTilePurchaseState(city),
         getCityViewWonderOptions(city),
+        getCityViewCorporationOptions(city),
         getCityViewQueueItems(city),
       );
       cityViewRenderer.showWithState(
@@ -3319,6 +3430,8 @@ function getProducibleName(item: Producible): string {
       return item.buildingType.name;
     case 'wonder':
       return item.wonderType.name;
+    case 'corporation':
+      return item.corporationType.name;
   }
 }
 
@@ -3330,6 +3443,8 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getBuildingSpritePath(item.buildingType.id);
     case 'wonder':
       return getWonderSpritePath(item.wonderType.id);
+    case 'corporation':
+      return getCorporationSpritePath(item.corporationType.id);
   }
 }
 

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
 import type { Producible } from '../types/producible';
-import { getBuildingSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+import { getBuildingSpritePath, getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
@@ -359,6 +359,18 @@ export class CityBannerRenderer {
       return {
         textureKey,
         fallbackLabel: getAbbreviation(production.wonderType.name),
+      };
+    }
+
+    if (production.kind === 'corporation') {
+      const textureKey = this.ensureProductionTexture(
+        'corporation',
+        production.corporationType.id,
+        getCorporationSpritePath(production.corporationType.id),
+      );
+      return {
+        textureKey,
+        fallbackLabel: getAbbreviation(production.corporationType.name),
       };
     }
 

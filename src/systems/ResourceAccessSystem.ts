@@ -1,4 +1,5 @@
 import { getNaturalResourceById } from '../data/naturalResources';
+import { getManufacturedResourceById } from '../data/manufacturedResources';
 import type { MapData, Tile } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';
 import { getTileResourceQuantity, isTileImprovedForResource } from './resource/ResourceQuantity';
@@ -6,6 +7,7 @@ import { getTileResourceQuantity, isTileImprovedForResource } from './resource/R
 export interface ResourceAccessSummary {
   owned: string[];
   imported: string[];
+  manufactured: string[];
   available: string[];
 }
 
@@ -14,6 +16,7 @@ export interface ImportedDealsProvider {
 }
 
 export type ResourceUsabilityPredicate = (nationId: string, resourceId: string) => boolean;
+export type ManufacturedResourceProvider = (nationId: string) => ReadonlyMap<string, number>;
 
 /**
  * Owns the rules for who has access to which natural resources, taking into
@@ -23,6 +26,7 @@ export type ResourceUsabilityPredicate = (nationId: string, resourceId: string) 
  */
 export class ResourceAccessSystem {
   private canUseResource: ResourceUsabilityPredicate = () => true;
+  private getManufacturedResourceQuantities: ManufacturedResourceProvider = () => new Map();
 
   constructor(
     private readonly mapData: MapData,
@@ -33,16 +37,29 @@ export class ResourceAccessSystem {
     this.canUseResource = predicate;
   }
 
+  setManufacturedResourceProvider(provider: ManufacturedResourceProvider): void {
+    this.getManufacturedResourceQuantities = provider;
+  }
+
   hasOwnResource(nationId: string, resourceId: string): boolean {
     return this.getOwnedResourceSourceCount(nationId, resourceId) > 0;
   }
 
   getOwnedResourceSourceCount(nationId: string, resourceId: string): number {
+    const manufacturedQuantity = this.getManufacturedResourceSourceCount(nationId, resourceId);
+    if (manufacturedQuantity > 0) return manufacturedQuantity;
+    if (getManufacturedResourceById(resourceId)) return 0;
     if (!this.canUseResource(nationId, resourceId)) return 0;
     return this.countOwnedTiles(nationId, resourceId);
   }
 
   getOwnedResources(nationId: string): string[] {
+    const ids = new Set<string>(this.getOwnedNaturalResources(nationId));
+    for (const id of this.getProducedManufacturedResources(nationId)) ids.add(id);
+    return Array.from(ids);
+  }
+
+  getOwnedNaturalResources(nationId: string): string[] {
     const ids = new Set<string>();
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
@@ -61,7 +78,7 @@ export class ResourceAccessSystem {
   }
 
   getImportedResourceSourceCount(nationId: string, resourceId: string): number {
-    if (!this.canUseResource(nationId, resourceId)) return 0;
+    if (!getManufacturedResourceById(resourceId) && !this.canUseResource(nationId, resourceId)) return 0;
     let count = 0;
     for (const deal of this.tradeDealSource.getAllDeals()) {
       if (deal.buyerNationId === nationId && deal.resourceId === resourceId) count += 1;
@@ -78,6 +95,17 @@ export class ResourceAccessSystem {
   }
 
   getResourceSourceCount(nationId: string, resourceId: string): number {
+    const manufacturedProduced = this.getManufacturedResourceSourceCount(nationId, resourceId);
+    if (manufacturedProduced > 0 || getManufacturedResourceById(resourceId)) {
+      return Math.max(
+        0,
+        manufacturedProduced - this.getExportedResourceSourceCount(nationId, resourceId),
+      ) + this.getRawImportedResourceSourceCount(nationId, resourceId);
+    }
+    return this.getMapOrImportedResourceSourceCount(nationId, resourceId);
+  }
+
+  getMapOrImportedResourceSourceCount(nationId: string, resourceId: string): number {
     if (!this.canUseResource(nationId, resourceId)) return 0;
     const ownedRaw = this.countOwnedTiles(nationId, resourceId);
     const retainedOwnedSources = Math.max(
@@ -91,7 +119,7 @@ export class ResourceAccessSystem {
     const ids = new Set<string>();
     for (const deal of this.tradeDealSource.getAllDeals()) {
       if (deal.buyerNationId !== nationId) continue;
-      if (!this.canUseResource(nationId, deal.resourceId)) continue;
+      if (!getManufacturedResourceById(deal.resourceId) && !this.canUseResource(nationId, deal.resourceId)) continue;
       ids.add(deal.resourceId);
     }
     return Array.from(ids);
@@ -104,7 +132,53 @@ export class ResourceAccessSystem {
   getAvailableResources(nationId: string): string[] {
     const ids = new Set<string>(this.getOwnedResources(nationId));
     for (const id of this.getImportedResources(nationId)) ids.add(id);
+    for (const id of this.getProducedManufacturedResources(nationId)) ids.add(id);
     return Array.from(ids).filter((id) => this.getResourceSourceCount(nationId, id) > 0);
+  }
+
+  getManufacturedResourceSourceCount(nationId: string, resourceId: string): number {
+    return Math.max(0, this.getManufacturedResourceQuantities(nationId).get(resourceId) ?? 0);
+  }
+
+  getManufacturedResources(nationId: string): string[] {
+    return this.getAvailableManufacturedResourceQuantities(nationId)
+      .map((entry) => entry.resourceId);
+  }
+
+  getProducedManufacturedResources(nationId: string): string[] {
+    return this.getProducedManufacturedResourceQuantities(nationId)
+      .map((entry) => entry.resourceId);
+  }
+
+  getProducedManufacturedResourceQuantities(nationId: string): ReadonlyArray<{
+    readonly resourceId: string;
+    readonly quantity: number;
+  }> {
+    return [...this.getManufacturedResourceQuantities(nationId).entries()]
+      .filter(([resourceId, quantity]) => quantity > 0 && getManufacturedResourceById(resourceId) !== undefined)
+      .map(([resourceId, quantity]) => ({ resourceId, quantity }))
+      .sort((a, b) => a.resourceId.localeCompare(b.resourceId));
+  }
+
+  getAvailableManufacturedResourceQuantities(nationId: string): ReadonlyArray<{
+    readonly resourceId: string;
+    readonly quantity: number;
+  }> {
+    const ids = new Set<string>();
+    for (const { resourceId } of this.getProducedManufacturedResourceQuantities(nationId)) {
+      ids.add(resourceId);
+    }
+    for (const resourceId of this.getImportedResources(nationId)) {
+      if (getManufacturedResourceById(resourceId)) ids.add(resourceId);
+    }
+
+    return [...ids]
+      .map((resourceId) => ({
+        resourceId,
+        quantity: this.getResourceSourceCount(nationId, resourceId),
+      }))
+      .filter((entry) => entry.quantity > 0)
+      .sort((a, b) => a.resourceId.localeCompare(b.resourceId));
   }
 
   getAvailableLuxuryResources(nationId: string): string[] {
@@ -133,16 +207,38 @@ export class ResourceAccessSystem {
   }
 
   canExportResource(sellerNationId: string, resourceId: string): boolean {
+    const manufacturedQuantity = this.getManufacturedResourceSourceCount(sellerNationId, resourceId);
+    if (manufacturedQuantity > 0 || getManufacturedResourceById(resourceId)) {
+      return manufacturedQuantity > this.getExportedResourceSourceCount(sellerNationId, resourceId);
+    }
     if (!this.canUseResource(sellerNationId, resourceId)) return false;
     return this.countOwnedTiles(sellerNationId, resourceId)
       > this.getExportedResourceSourceCount(sellerNationId, resourceId);
   }
 
+  getExportableResourceQuantities(nationId: string): ReadonlyArray<{
+    readonly resourceId: string;
+    readonly quantity: number;
+  }> {
+    const ids = new Set<string>(this.getOwnedResources(nationId));
+    const entries: { resourceId: string; quantity: number }[] = [];
+
+    for (const resourceId of ids) {
+      const producedOrOwned = this.getOwnedResourceSourceCount(nationId, resourceId);
+      const available = Math.max(0, producedOrOwned - this.getExportedResourceSourceCount(nationId, resourceId));
+      if (available <= 0) continue;
+      entries.push({ resourceId, quantity: available });
+    }
+
+    return entries.sort((a, b) => a.resourceId.localeCompare(b.resourceId));
+  }
+
   getResourceAccessSummary(nationId: string): ResourceAccessSummary {
     const owned = this.getOwnedResources(nationId);
     const imported = this.getImportedResources(nationId);
+    const manufactured = this.getManufacturedResources(nationId);
     const available = this.getAvailableResources(nationId);
-    return { owned, imported, available };
+    return { owned, imported, manufactured, available };
   }
 
   /**

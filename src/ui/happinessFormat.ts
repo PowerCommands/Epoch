@@ -51,6 +51,7 @@ export function buildHappinessTooltip(happiness: Readonly<NationHappiness>): str
   lines.push(`Base: ${formatSignedNumber(happiness.happinessFromBase)}`);
   lines.push(`Buildings: ${formatSignedNumber(happiness.happinessFromBuildings)}`);
   lines.push(`Wonders: ${formatSignedNumber(happiness.happinessFromWonders)}`);
+  lines.push(`Corporations: ${formatSignedNumber(happiness.happinessFromCorporations)}`);
   lines.push(`Luxury resources: ${formatSignedNumber(happiness.happinessFromLuxuryResources)}`);
   for (const label of luxuryResourceLabels(happiness.availableLuxuryResourceQuantities)) {
     lines.push(`  • ${label}`);

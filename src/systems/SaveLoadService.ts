@@ -5,15 +5,18 @@ import type {
   SavedDiscoveryEntry,
   SavedGameState,
   SavedNation,
+  SavedProducible,
   SavedQueueEntry,
   SavedTile,
   SavedUnit,
   SavedWonder,
+  SavedCorporation,
 } from '../types/saveGame';
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { getLegacyCompatibleUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
+import { getCorporationById } from '../data/corporations';
 import type { Producible } from '../types/producible';
 import type { CityManager } from './CityManager';
 import type { City } from '../entities/City';
@@ -26,6 +29,7 @@ import type { TradeDealSystem } from './TradeDealSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
+import type { CorporationSystem } from './CorporationSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -50,6 +54,7 @@ export interface SaveLoadContext {
   turnManager: TurnManager;
   gridSystem: IGridSystem;
   wonderSystem: WonderSystem;
+  corporationSystem?: CorporationSystem;
   tradeDealSystem?: TradeDealSystem;
 }
 
@@ -86,6 +91,7 @@ export class SaveLoadService {
       discoverySystem,
       turnManager,
       wonderSystem,
+      corporationSystem,
       tradeDealSystem,
     } = context;
 
@@ -241,6 +247,13 @@ export class SaveLoadService {
       completedTurn: state.completedTurn,
     }));
 
+    const corporations: SavedCorporation[] = corporationSystem?.getFoundedCorporations().map((state) => ({
+      corporationId: state.corporationId,
+      founderNationId: state.founderNationId,
+      cityId: state.cityId,
+      foundedTurn: state.foundedTurn,
+    })) ?? [];
+
     return {
       version: SAVED_GAME_VERSION,
       savedAt: new Date().toISOString(),
@@ -259,6 +272,7 @@ export class SaveLoadService {
       diplomacy,
       discovery,
       wonders,
+      corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
     };
   }
@@ -328,6 +342,7 @@ export class SaveLoadService {
       activePolicies: nation.activePolicies ?? [],
     })));
     SaveLoadService.applyWonders(state.wonders ?? [], context.wonderSystem);
+    SaveLoadService.applyCorporations(state.corporations ?? [], context.corporationSystem);
     SaveLoadService.applyCitiesAndProduction(
       state.cities,
       context.cityManager,
@@ -371,6 +386,22 @@ export class SaveLoadService {
         tileX: saved.tileX,
         tileY: saved.tileY,
         completedTurn: saved.completedTurn,
+      });
+    }
+  }
+
+  private static applyCorporations(
+    corporations: SavedCorporation[],
+    corporationSystem: CorporationSystem | undefined,
+  ): void {
+    if (!corporationSystem) return;
+    corporationSystem.clearAll();
+    for (const saved of corporations) {
+      corporationSystem.restoreFoundedCorporation({
+        corporationId: saved.corporationId,
+        founderNationId: saved.founderNationId,
+        cityId: saved.cityId,
+        foundedTurn: saved.foundedTurn,
       });
     }
   }
@@ -640,7 +671,7 @@ export class SaveLoadService {
   }
 }
 
-function toSavedProducible(item: Producible): { kind: 'unit' | 'building' | 'wonder'; id: string } {
+function toSavedProducible(item: Producible): SavedProducible {
   switch (item.kind) {
     case 'unit':
       return { kind: 'unit', id: item.unitType.id };
@@ -648,10 +679,12 @@ function toSavedProducible(item: Producible): { kind: 'unit' | 'building' | 'won
       return { kind: 'building', id: item.buildingType.id };
     case 'wonder':
       return { kind: 'wonder', id: item.wonderType.id };
+    case 'corporation':
+      return { kind: 'corporation', id: item.corporationType.id };
   }
 }
 
-function fromSavedProducible(item: { kind: 'unit' | 'building' | 'wonder'; id: string }): Producible | null {
+function fromSavedProducible(item: SavedProducible): Producible | null {
   if (item.kind === 'unit') {
     const type = getLegacyCompatibleUnitTypeById(item.id);
     return type ? { kind: 'unit', unitType: type } : null;
@@ -663,6 +696,14 @@ function fromSavedProducible(item: { kind: 'unit' | 'building' | 'wonder'; id: s
       return null;
     }
     return { kind: 'wonder', wonderType: def };
+  }
+  if (item.kind === 'corporation') {
+    const def = getCorporationById(item.id);
+    if (!def) {
+      console.warn(`[SaveLoadService] Unknown corporation id during restore: ${item.id}`);
+      return null;
+    }
+    return { kind: 'corporation', corporationType: def };
   }
   const def = getBuildingById(item.id);
   return def ? { kind: 'building', buildingType: def } : null;

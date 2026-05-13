@@ -215,6 +215,11 @@ export class ProductionSystem {
     return entries[index].turnsRemaining * BUY_COST_PER_TURN;
   }
 
+  getTurnsEstimate(cityId: string, item: Producible): number {
+    const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, item));
+    return Math.max(1, Math.ceil(this.getCost(item) / ppt));
+  }
+
   /**
    * Force-complete a specific queue entry via the normal completion
    * pipeline. Used by the buy flow so building/unit/wonder completion
@@ -358,6 +363,8 @@ export class ProductionSystem {
         return item.buildingType.productionCost;
       case 'wonder':
         return item.wonderType.productionCost;
+      case 'corporation':
+        return item.corporationType.productionCost;
     }
   }
 
@@ -371,6 +378,8 @@ export class ProductionSystem {
       case 'wonder':
         if ('item' in entryOrItem && !entryOrItem.placement) return 'Wonder placement missing';
         return 'Wonder already completed';
+      case 'corporation':
+        return 'Corporation already founded or requirements no longer met';
     }
   }
 
@@ -383,6 +392,25 @@ export class ProductionSystem {
     for (const [cityId, queue] of [...this.queues.entries()]) {
       const removed = queue.filter((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId);
       const next = queue.filter((entry) => !(entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId));
+      if (next.length === queue.length) continue;
+      if (next.length === 0) {
+        this.queues.delete(cityId);
+      } else {
+        this.queues.set(cityId, next);
+      }
+      for (const entry of removed) this.notifyRemoved(cityId, entry);
+      this.notifyChanged(cityId);
+    }
+  }
+
+  removeCorporationFromAllQueues(corporationId: string): void {
+    for (const [cityId, queue] of [...this.queues.entries()]) {
+      const removed = queue.filter((entry) =>
+        entry.item.kind === 'corporation' && entry.item.corporationType.id === corporationId,
+      );
+      const next = queue.filter((entry) =>
+        !(entry.item.kind === 'corporation' && entry.item.corporationType.id === corporationId),
+      );
       if (next.length === queue.length) continue;
       if (next.length === 0) {
         this.queues.delete(cityId);

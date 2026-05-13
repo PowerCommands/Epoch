@@ -16,7 +16,7 @@ import type { TradeDeal } from './tradeDeal';
 export const SAVED_GAME_VERSION = 3 as const;
 
 export interface SavedProducible {
-  kind: 'unit' | 'building' | 'wonder';
+  kind: 'unit' | 'building' | 'wonder' | 'corporation';
   id: string;
 }
 
@@ -27,6 +27,13 @@ export interface SavedWonder {
   tileX?: number;
   tileY?: number;
   completedTurn: number;
+}
+
+export interface SavedCorporation {
+  corporationId: string;
+  founderNationId: string;
+  cityId?: string;
+  foundedTurn: number;
 }
 
 export interface SavedQueueEntry {
@@ -191,5 +198,6 @@ export interface SavedGameState {
   diplomacy: SavedDiplomacyEntry[];
   discovery: SavedDiscoveryEntry[];
   wonders: SavedWonder[];
+  corporations?: SavedCorporation[];
   tradeDeals?: TradeDeal[];
 }
