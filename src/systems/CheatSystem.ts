@@ -581,18 +581,23 @@ function normalizeCommand(input: string): string {
 function getCompletionArgs(input: string, command: CheatCommand): string[] {
   const normalizedCommandName = normalizeCommand(command.name);
   const normalizedInput = normalizeCommand(input);
+  const hasTrailingWhitespace = /\s$/.test(input);
   if (isExactCommandInput(input, command)) return [];
+  if (normalizedInput === normalizedCommandName) return [''];
 
   const argText = normalizedInput.length === normalizedCommandName.length
     ? ''
     : normalizedInput.slice(normalizedCommandName.length).trimStart();
   if (argText.length === 0) return [''];
-  return argText.split(/\s+/);
+  const args = argText.split(/\s+/);
+  if (hasTrailingWhitespace) args.push('');
+  return args;
 }
 
 function replaceCurrentArgument(input: string, command: CheatCommand, value: string): string {
   const normalizedCommandName = normalizeCommand(command.name);
   const normalizedInput = normalizeCommand(input);
+  const hasTrailingWhitespace = /\s$/.test(input);
   if (isExactCommandInput(input, command)) return `${normalizedCommandName} ${value} `;
 
   const argText = normalizedInput.length === normalizedCommandName.length
@@ -601,7 +606,11 @@ function replaceCurrentArgument(input: string, command: CheatCommand, value: str
   if (argText.length === 0) return `${normalizedCommandName} ${value} `;
 
   const args = argText.split(/\s+/);
-  args[args.length - 1] = value;
+  if (hasTrailingWhitespace) {
+    args.push(value);
+  } else {
+    args[args.length - 1] = value;
+  }
   return `${normalizedCommandName} ${args.join(' ')} `;
 }
 

@@ -10,9 +10,12 @@ interface ConsoleLine {
 export class CheatConsole {
   private readonly root: HTMLDivElement;
   private readonly outputEl: HTMLDivElement;
+  private readonly completionEl: HTMLDivElement;
   private readonly inputEl: HTMLInputElement;
   private readonly history: string[] = [];
   private readonly lines: ConsoleLine[] = [];
+  private completionSuggestions: CheatCompletionSuggestion[] = [];
+  private selectedCompletionIndex = 0;
   private historyIndex = 0;
   private isOpen = false;
 
@@ -48,6 +51,16 @@ export class CheatConsole {
       overflow-wrap: anywhere;
     `;
 
+    this.completionEl = document.createElement('div');
+    this.completionEl.style.cssText = `
+      display: none;
+      max-height: 18vh;
+      overflow-y: auto;
+      border: 1px solid rgba(180, 180, 180, 0.22);
+      border-radius: 4px;
+      background: rgba(10, 10, 10, 0.96);
+    `;
+
     this.inputEl = document.createElement('input');
     this.inputEl.type = 'text';
     this.inputEl.spellcheck = false;
@@ -64,16 +77,18 @@ export class CheatConsole {
       font: inherit;
     `;
 
-    this.root.append(this.outputEl, this.inputEl);
+    this.root.append(this.outputEl, this.completionEl, this.inputEl);
     document.body.appendChild(this.root);
 
     document.addEventListener('keydown', this.handleDocumentKeyDown);
     this.inputEl.addEventListener('keydown', this.handleInputKeyDown);
+    this.inputEl.addEventListener('input', this.handleInputChange);
   }
 
   shutdown(): void {
     document.removeEventListener('keydown', this.handleDocumentKeyDown);
     this.inputEl.removeEventListener('keydown', this.handleInputKeyDown);
+    this.inputEl.removeEventListener('input', this.handleInputChange);
     this.root.remove();
   }
 
@@ -94,6 +109,7 @@ export class CheatConsole {
 
   private close(): void {
     this.isOpen = false;
+    this.closeCompletions();
     this.root.style.display = 'none';
     this.inputEl.blur();
   }
@@ -112,6 +128,7 @@ export class CheatConsole {
     }
 
     this.inputEl.value = '';
+    this.closeCompletions();
   }
 
   private addLine(kind: ConsoleLine['kind'], text: string): void {
@@ -124,6 +141,7 @@ export class CheatConsole {
     this.lines.length = 0;
     this.inputEl.value = '';
     this.historyIndex = this.history.length;
+    this.closeCompletions();
     this.renderOutput();
   }
 
@@ -143,6 +161,7 @@ export class CheatConsole {
   private recallHistory(delta: number): void {
     if (this.history.length === 0) return;
 
+    this.closeCompletions();
     this.historyIndex = clamp(this.historyIndex + delta, 0, this.history.length);
     this.inputEl.value = this.historyIndex === this.history.length
       ? ''
@@ -152,6 +171,109 @@ export class CheatConsole {
       const end = this.inputEl.value.length;
       this.inputEl.setSelectionRange(end, end);
     }, 0);
+  }
+
+  private refreshCompletions(): void {
+    this.completionSuggestions = this.cheatSystem.getCompletions(this.inputEl.value);
+    this.selectedCompletionIndex = 0;
+    this.renderCompletions();
+  }
+
+  private closeCompletions(): void {
+    this.completionSuggestions = [];
+    this.selectedCompletionIndex = 0;
+    this.renderCompletions();
+  }
+
+  private renderCompletions(): void {
+    this.completionEl.replaceChildren();
+
+    if (this.completionSuggestions.length === 0) {
+      this.completionEl.style.display = 'none';
+      return;
+    }
+
+    this.completionEl.style.display = 'block';
+    this.completionSuggestions.forEach((suggestion, index) => {
+      const row = document.createElement('div');
+      const selected = index === this.selectedCompletionIndex;
+      row.style.cssText = `
+        display: grid;
+        grid-template-columns: minmax(120px, 1fr) minmax(90px, 1fr) minmax(90px, 1.4fr);
+        gap: 10px;
+        align-items: baseline;
+        padding: 4px 8px;
+        cursor: pointer;
+        background: ${selected ? 'rgba(80, 140, 220, 0.95)' : 'rgba(24, 24, 24, 0.96)'};
+        color: ${selected ? '#ffffff' : '#e7e7e7'};
+      `;
+
+      const valueEl = document.createElement('span');
+      valueEl.textContent = suggestion.value;
+      valueEl.style.cssText = `
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      `;
+
+      const labelEl = document.createElement('span');
+      labelEl.textContent = suggestion.label && suggestion.label !== suggestion.value ? suggestion.label : '';
+      labelEl.style.cssText = `
+        color: ${selected ? '#ffffff' : '#b8d6ff'};
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      `;
+
+      const descriptionEl = document.createElement('span');
+      descriptionEl.textContent = suggestion.description ?? '';
+      descriptionEl.style.cssText = `
+        color: ${selected ? '#f4f8ff' : '#a8a8a8'};
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      `;
+
+      row.append(valueEl, labelEl, descriptionEl);
+      row.addEventListener('mouseenter', () => {
+        this.selectedCompletionIndex = index;
+        this.renderCompletions();
+      });
+      row.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        this.applyCompletion(suggestion);
+      });
+      this.completionEl.appendChild(row);
+    });
+  }
+
+  private moveCompletionSelection(delta: number): void {
+    if (this.completionSuggestions.length === 0) return;
+
+    this.selectedCompletionIndex = wrapIndex(
+      this.selectedCompletionIndex + delta,
+      this.completionSuggestions.length,
+    );
+    this.renderCompletions();
+  }
+
+  private applySelectedCompletion(): void {
+    const selected = this.completionSuggestions[this.selectedCompletionIndex];
+    if (!selected) return;
+    this.applyCompletion(selected);
+  }
+
+  private applyCompletion(suggestion: CheatCompletionSuggestion): void {
+    this.inputEl.value = this.cheatSystem.getCompletionReplacement(this.inputEl.value, suggestion);
+    const end = this.inputEl.value.length;
+    this.inputEl.setSelectionRange(end, end);
+    this.closeCompletions();
+    this.inputEl.focus();
+  }
+
+  private hasOpenCompletions(): boolean {
+    return this.completionSuggestions.length > 0;
   }
 
   private readonly handleDocumentKeyDown = (event: KeyboardEvent): void => {
@@ -174,38 +296,57 @@ export class CheatConsole {
 
     if (event.key === 'Escape') {
       event.preventDefault();
+      if (this.hasOpenCompletions()) {
+        this.closeCompletions();
+        return;
+      }
       this.close();
       return;
     }
 
     if (event.key === 'Enter') {
       event.preventDefault();
+      if (this.hasOpenCompletions()) {
+        this.applySelectedCompletion();
+        return;
+      }
       this.submit();
       return;
     }
 
     if (event.key === 'Tab') {
       event.preventDefault();
-      const suggestions = this.cheatSystem.getCompletions(this.inputEl.value);
-      if (suggestions.length === 1) {
-        this.inputEl.value = this.cheatSystem.getCompletionReplacement(this.inputEl.value, suggestions[0]);
-      } else if (suggestions.length > 1) {
-        this.addLine('output', formatCompletionSuggestions(suggestions));
+      if (this.hasOpenCompletions()) {
+        this.moveCompletionSelection(event.shiftKey ? -1 : 1);
+      } else {
+        this.refreshCompletions();
       }
-      const end = this.inputEl.value.length;
-      this.inputEl.setSelectionRange(end, end);
       return;
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault();
+      if (this.hasOpenCompletions()) {
+        this.moveCompletionSelection(-1);
+        return;
+      }
       this.recallHistory(-1);
       return;
     }
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
+      if (this.hasOpenCompletions()) {
+        this.moveCompletionSelection(1);
+        return;
+      }
       this.recallHistory(1);
+    }
+  };
+
+  private readonly handleInputChange = (): void => {
+    if (this.hasOpenCompletions()) {
+      this.refreshCompletions();
     }
   };
 }
@@ -214,12 +355,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function formatCompletionSuggestions(suggestions: readonly CheatCompletionSuggestion[]): string {
-  return suggestions.map((suggestion) => {
-    const labelText = suggestion.label && suggestion.label !== suggestion.value
-      ? ` (${suggestion.label})`
-      : '';
-    const descriptionText = suggestion.description ? ` - ${suggestion.description}` : '';
-    return `${suggestion.value}${labelText}${descriptionText}`;
-  }).join('\n');
+function wrapIndex(index: number, length: number): number {
+  return ((index % length) + length) % length;
 }
