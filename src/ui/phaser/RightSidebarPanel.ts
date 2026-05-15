@@ -70,6 +70,9 @@ const COLLAPSE_HEIGHT = 42;
 const SECTION_GAP = 18;
 const ROW_GAP = 8;
 const SCROLL_STEP = 52;
+const SCROLLBAR_WIDTH = 6;
+const SCROLLBAR_MARGIN = 8;
+const SCROLLBAR_MIN_THUMB_HEIGHT = 28;
 const WHEEL_BLOCKER_ID = 'right-sidebar-panel';
 const LEADERBOARD_TAB_GAP = 8;
 const LEADERBOARD_TAB_HEIGHT = 34;
@@ -132,6 +135,8 @@ export class RightSidebarPanel {
   private readonly titleText: Phaser.GameObjects.Text;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
   private readonly contentMask: Phaser.Display.Masks.GeometryMask;
+  private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
+  private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly collapseBackground: Phaser.GameObjects.Rectangle;
   private readonly collapseIcon: Phaser.GameObjects.Graphics;
   private readonly collapseLabel: Phaser.GameObjects.Text;
@@ -161,6 +166,7 @@ export class RightSidebarPanel {
   private scrollOffset = 0;
   private maxScroll = 0;
   private contentHeight = 0;
+  private scrollableContentTop = CONTENT_TOP;
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
   private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
@@ -188,6 +194,12 @@ export class RightSidebarPanel {
     this.titleText = this.addText('Details', 26, '#f4f8ff', 'bold', CONTENT_WIDTH);
     this.contentMaskGraphics = this.addOwned(new Phaser.GameObjects.Graphics(scene).setScrollFactor(0));
     this.contentMask = this.contentMaskGraphics.createGeometryMask();
+    this.scrollbarTrack = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, 100, 0x1d3142, 0.56))
+      .setOrigin(0, 0)
+      .setScrollFactor(0);
+    this.scrollbarThumb = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB_HEIGHT, 0x9fc5dd, 0.86))
+      .setOrigin(0, 0)
+      .setScrollFactor(0);
 
     this.collapseBackground = this.addOwned(scene.add.rectangle(0, 0, COLLAPSE_WIDTH, COLLAPSE_HEIGHT, 0x101b27, 0.96))
       .setOrigin(0.5)
@@ -204,6 +216,8 @@ export class RightSidebarPanel {
       this.panelBackground,
       this.panelHitArea,
       this.titleText,
+      this.scrollbarTrack,
+      this.scrollbarThumb,
       this.collapseBackground,
       this.collapseIcon,
       this.collapseLabel,
@@ -240,9 +254,10 @@ export class RightSidebarPanel {
     this.worldInputGate.registerWheelBlocker(WHEEL_BLOCKER_ID, (screenX, screenY) => this.containsScreenPoint(screenX, screenY));
 
     this.handleWheel = (pointer, _gameObjects, _deltaX, deltaY, _deltaZ, event) => {
-      if (this.collapsed || this.maxScroll <= 0 || !this.isPointerOverPanelContent(pointer)) return;
+      if (this.collapsed || !this.isPointerOverPanel(pointer)) return;
       consumePointerEvent(pointer);
       event.preventDefault?.();
+      if (this.maxScroll <= 0) return;
       this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
     };
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
@@ -424,7 +439,9 @@ export class RightSidebarPanel {
     this.contentHeight = this.buildContent(content);
     this.maxScroll = Math.max(0, this.contentHeight - this.getVisibleContentHeight());
     this.scrollOffset = Phaser.Math.Clamp(this.scrollOffset, 0, this.maxScroll);
+    this.updateContentMask();
     this.positionContentObjects();
+    this.updateScrollbar();
   }
 
   private getContentForMode(mode: RightSidebarPanelMode): RightSidebarContent {
@@ -452,11 +469,15 @@ export class RightSidebarPanel {
 
   private buildContent(content: RightSidebarContent): number {
     let y = CONTENT_TOP;
+    this.scrollableContentTop = CONTENT_TOP;
+    let scrollContentStartY = CONTENT_TOP;
     if (this.activeMode === 'details' && this.dataProvider.getView() === 'city') {
       y = this.addCityDetailsTabs(y);
     }
     if (this.activeMode === 'details' && this.dataProvider.getView() === 'leader') {
       y = this.addLeaderDetailsTabs(y);
+      this.scrollableContentTop = y;
+      scrollContentStartY = y;
     }
     if (this.activeMode === 'leaderboard') {
       y = this.addLeaderboardTabs(y);
@@ -479,7 +500,7 @@ export class RightSidebarPanel {
       }
       y += SECTION_GAP;
     }
-    return y - CONTENT_TOP;
+    return Math.max(0, y - scrollContentStartY);
   }
 
   private addLeaderboardTabs(y: number): number {
@@ -610,12 +631,14 @@ export class RightSidebarPanel {
         .setStrokeStyle(selected ? 2 : 1, tab.accentColor, selected ? 0.95 : 0.5)
         .setScrollFactor(0);
       background.setData('baseY', y);
+      background.setData('fixedY', true);
 
       const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, x, y, tabWidth, LEADER_TAB_HEIGHT))
         .setOrigin(0, 0)
         .setScrollFactor(0)
         .setInteractive({ cursor: 'pointer' });
       hitArea.setData('baseY', y);
+      hitArea.setData('fixedY', true);
       hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
         event.stopPropagation();
         if (pointer.button !== 0) return;
@@ -636,10 +659,12 @@ export class RightSidebarPanel {
 
       this.panelContainer.add(background);
       this.contentObjects.push(background);
-      background.setMask(this.contentMask);
-      const label = this.addContentText(tab.label, 13, selected ? '#ffffff' : '#d7e2ee', 'bold', tabWidth - 12);
+      const label = this.addText(tab.label, 13, selected ? '#ffffff' : '#d7e2ee', 'bold', tabWidth - 12);
       label.setPosition(x + 6, y + 9);
       label.setData('baseY', y + 9);
+      label.setData('fixedY', true);
+      this.panelContainer.add(label);
+      this.contentObjects.push(label);
       this.panelContainer.add(hitArea);
       this.contentObjects.push(hitArea);
       x += tabWidth + LEADER_TAB_GAP;
@@ -1025,6 +1050,7 @@ export class RightSidebarPanel {
     this.panelHitArea.setSize(PANEL_WIDTH, this.panelHeight).setPosition(0, 0);
     this.titleText.setPosition(PANEL_PADDING, PANEL_PADDING);
     this.updateContentMask();
+    this.updateScrollbar();
 
     const buttonRowWidth = (BUTTON_DIAMETER * this.modeButtons.length) + (BUTTON_GAP * (this.modeButtons.length - 1));
     let buttonX = panelX + PANEL_WIDTH - buttonRowWidth + BUTTON_RADIUS;
@@ -1049,17 +1075,20 @@ export class RightSidebarPanel {
   }
 
   private updateContentMask(): void {
+    const visibleContentHeight = this.getVisibleContentHeight();
     this.contentMaskGraphics.clear();
     this.contentMaskGraphics.fillStyle(0xffffff, 1);
     this.contentMaskGraphics.fillRect(
       this.panelContainer.x + PANEL_PADDING,
-      this.panelContainer.y + CONTENT_TOP - 2,
+      this.panelContainer.y + this.scrollableContentTop - 2,
       CONTENT_WIDTH,
-      this.getVisibleContentHeight() + 4,
+      visibleContentHeight + 4,
     );
   }
 
   private positionContentObjects(): void {
+    const contentTop = this.scrollableContentTop;
+    const contentBottom = this.scrollableContentTop + this.getVisibleContentHeight();
     for (const button of this.contentButtons) {
       const visibleY = button.baseY - this.scrollOffset;
       button.background.setY(visibleY);
@@ -1067,7 +1096,7 @@ export class RightSidebarPanel {
       button.label.setY(visibleY + (button.background.height - button.label.height) / 2);
       button.trailingLabel?.setY(visibleY + 6);
       button.hitArea.setY(visibleY);
-      const inView = visibleY + button.background.height >= CONTENT_TOP && visibleY <= CONTENT_TOP + this.getVisibleContentHeight();
+      const inView = visibleY + button.background.height >= contentTop && visibleY <= contentBottom;
       if (inView && !button.row.disabled) {
         if (!button.hitArea.input?.enabled) button.hitArea.setInteractive({ cursor: 'pointer' });
       } else {
@@ -1077,19 +1106,21 @@ export class RightSidebarPanel {
     for (const object of this.contentObjects) {
       const data = object.getData('baseY') as number | undefined;
       if (data !== undefined) {
-        setGameObjectY(object, data - this.scrollOffset);
+        const fixedY = object.getData('fixedY') as boolean | undefined;
+        setGameObjectY(object, fixedY ? data : data - this.scrollOffset);
       }
     }
     for (const input of this.contentInputs) {
       this.positionContentInput(input);
     }
+    this.updateScrollbar();
   }
 
   private positionContentInput(input: ContentInput): void {
     const rect = this.scene.game.canvas.getBoundingClientRect();
     const visibleY = input.baseY - this.scrollOffset;
-    const contentTop = CONTENT_TOP;
-    const contentBottom = CONTENT_TOP + this.getVisibleContentHeight();
+    const contentTop = this.scrollableContentTop;
+    const contentBottom = this.scrollableContentTop + this.getVisibleContentHeight();
     const inView = visibleY + input.height >= contentTop && visibleY <= contentBottom;
     input.element.style.display = !this.collapsed && inView ? 'block' : 'none';
     input.element.style.left = `${rect.left + this.panelContainer.x + PANEL_PADDING}px`;
@@ -1101,6 +1132,30 @@ export class RightSidebarPanel {
     if (next === this.scrollOffset) return;
     this.scrollOffset = next;
     this.positionContentObjects();
+  }
+
+  private updateScrollbar(): void {
+    const visibleHeight = this.getVisibleContentHeight();
+    const shouldShow = !this.collapsed && this.maxScroll > 0 && this.contentHeight > visibleHeight;
+    this.scrollbarTrack.setVisible(shouldShow);
+    this.scrollbarThumb.setVisible(shouldShow);
+    if (!shouldShow) return;
+
+    const trackHeight = visibleHeight;
+    const trackX = PANEL_WIDTH - PANEL_PADDING + SCROLLBAR_MARGIN;
+    const trackY = this.scrollableContentTop;
+    const thumbHeight = Phaser.Math.Clamp(
+      (visibleHeight / this.contentHeight) * trackHeight,
+      SCROLLBAR_MIN_THUMB_HEIGHT,
+      trackHeight,
+    );
+    const travel = Math.max(0, trackHeight - thumbHeight);
+    const thumbY = trackY + (this.maxScroll > 0 ? (this.scrollOffset / this.maxScroll) * travel : 0);
+
+    this.scrollbarTrack.setPosition(trackX, trackY).setSize(SCROLLBAR_WIDTH, trackHeight);
+    this.scrollbarThumb.setPosition(trackX, thumbY).setSize(SCROLLBAR_WIDTH, thumbHeight);
+    this.panelContainer.bringToTop(this.scrollbarTrack);
+    this.panelContainer.bringToTop(this.scrollbarThumb);
   }
 
   private destroyContentObjects(): void {
@@ -1150,16 +1205,16 @@ export class RightSidebarPanel {
   }
 
   private getVisibleContentHeight(): number {
-    return Math.max(120, this.panelHeight - CONTENT_TOP - CONTENT_BOTTOM_GAP);
+    return Math.max(120, this.panelHeight - this.scrollableContentTop - CONTENT_BOTTOM_GAP);
   }
 
-  private isPointerOverPanelContent(pointer: Phaser.Input.Pointer): boolean {
+  private isPointerOverPanel(pointer: Phaser.Input.Pointer): boolean {
     const panelX = this.scene.scale.width - PANEL_WIDTH - EDGE_MARGIN;
     const panelY = PANEL_TOP;
-    return pointer.x >= panelX + PANEL_PADDING
-      && pointer.x <= panelX + PANEL_PADDING + CONTENT_WIDTH
-      && pointer.y >= panelY + CONTENT_TOP
-      && pointer.y <= panelY + CONTENT_TOP + this.getVisibleContentHeight();
+    return pointer.x >= panelX
+      && pointer.x <= panelX + PANEL_WIDTH
+      && pointer.y >= panelY
+      && pointer.y <= panelY + this.panelHeight;
   }
 
   private containsScreenPoint(screenX: number, screenY: number): boolean {

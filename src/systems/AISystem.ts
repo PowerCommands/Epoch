@@ -40,6 +40,7 @@ import type { TradeDealSystem } from './TradeDealSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
+import type { UnitUpkeepSystem } from './UnitUpkeepSystem';
 import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
 import { AIGoalSystem } from './ai/AIGoalSystem';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
@@ -347,6 +348,7 @@ export class AISystem {
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly explorationMemorySystem?: ExplorationMemorySystem,
     private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
+    private readonly unitUpkeepSystem?: UnitUpkeepSystem,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly eraSystem?: EraSystem,
     settlementMemorySystem?: AISettlementMemorySystem,
@@ -2474,13 +2476,12 @@ export class AISystem {
     const queuedScouts = this.countQueuedScouts(nationId);
     if (activeScouts + queuedScouts >= AISystem.DESIRED_SCOUT_COUNT) return;
     if (!this.canBuildUnit(nationId, SCOUT.id)) return;
+    if (!this.canAffordUnitProduction(nationId, SCOUT)) return;
 
     // Enqueue at most one scout per pass — runProduction is per-turn, so the
     // next turn will enqueue another if we are still short.
     const city = cities.find((candidate) => (
-      canCityProduceUnit(candidate, SCOUT, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(candidate, SCOUT, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (!city) return;
 
@@ -2504,6 +2505,7 @@ export class AISystem {
   private ensureNavalReconProduction(nationId: string, cities: City[]): void {
     if (cities.length === 0) return;
     if (!this.canBuildUnit(nationId, SCOUT_BOAT.id)) return;
+    if (!this.canAffordUnitProduction(nationId, SCOUT_BOAT)) return;
 
     const coastalCities = cities.filter((city) => cityHasWaterTile(city, this.mapData));
     if (coastalCities.length === 0) return;
@@ -2514,9 +2516,7 @@ export class AISystem {
 
     const city = coastalCities.find((candidate) => (
       this.productionSystem.getProduction(candidate.id) === undefined &&
-      canCityProduceUnit(candidate, SCOUT_BOAT, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(candidate, SCOUT_BOAT, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (!city) return;
 
@@ -2575,11 +2575,10 @@ export class AISystem {
     if (this.isSettlerProductionBlockedByHappiness(nationId)) return;
     if (this.countSettlers(nationId) > 0) return; // already have or queued one
     if (!this.canBuildUnit(nationId, SETTLER.id)) return;
+    if (!this.canAffordUnitProduction(nationId, SETTLER)) return;
 
     const city = cities.find((candidate) => (
-      canCityProduceUnit(candidate, SETTLER, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(candidate, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (!city) return;
 
@@ -2612,9 +2611,7 @@ export class AISystem {
       cityCount < strategy.expansion.desiredCityCount &&
       plannedSettlerCount === 0 &&
       this.canBuildUnit(nationId, SETTLER.id) &&
-      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      }) &&
+      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext()) &&
       !this.isSettlerProductionBlockedByHappiness(nationId)
     ) {
       return { kind: 'unit', unitType: SETTLER };
@@ -2631,9 +2628,7 @@ export class AISystem {
     for (const unitType of [WARRIOR, ARCHER]) {
       if (
         this.canBuildUnit(nationId, unitType.id) &&
-        canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, {
-          strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-        })
+        canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
       ) {
         return { kind: 'unit', unitType };
       }
@@ -2649,9 +2644,7 @@ export class AISystem {
   private pickAnyValidMilitaryForCity(city: City, nationId: string): UnitType | undefined {
     const candidates = MILITARY_OPTIONS.filter((u) => (
       this.canBuildUnit(nationId, u.id) &&
-      canCityProduceUnit(city, u, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (candidates.length === 0) return undefined;
     return candidates.reduce((a, b) => (a.productionCost <= b.productionCost ? a : b));
@@ -2787,20 +2780,21 @@ export class AISystem {
     const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
     const canProduceSettler =
       this.canBuildUnit(nationId, SETTLER.id) &&
-      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      });
+      canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext());
     const goldPerTurn = this.nationManager.getResources(nationId).goldPerTurn;
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
 
     if (canBuildMilitary && this.needsDefender(city, nationId)) {
-      candidates.push({
-        item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
-        baseScore: this.getMilitaryProductionScore(SCORE_ACUTE_DEFENDER, nationId, eraStrategy, true, false),
-        category: 'military',
-      });
+      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId);
+      if (militaryUnit) {
+        candidates.push({
+          item: { kind: 'unit', unitType: militaryUnit },
+          baseScore: this.getMilitaryProductionScore(SCORE_ACUTE_DEFENDER, nationId, eraStrategy, true, false),
+          category: 'military',
+        });
+      }
     }
 
     if (
@@ -2820,11 +2814,14 @@ export class AISystem {
     }
 
     if (canBuildMilitary) {
-      candidates.push({
-        item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
-        baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure),
-        category: 'military',
-      });
+      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId);
+      if (militaryUnit) {
+        candidates.push({
+          item: { kind: 'unit', unitType: militaryUnit },
+          baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure),
+          category: 'military',
+        });
+      }
     }
 
     if (
@@ -2847,9 +2844,7 @@ export class AISystem {
       eraStrategy.productionWeights.worker !== undefined &&
       plannedWorkerCount < Math.max(1, cityCount) &&
       this.canBuildUnit(nationId, WORKER.id) &&
-      canCityProduceUnit(city, WORKER, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(city, WORKER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ) {
       console.debug(
         this.formatLog(nationId, `AI worker prioritized in ${city.name} (strategy: ${eraStrategy.id}).`),
@@ -2868,9 +2863,7 @@ export class AISystem {
       cityHasWaterTile(city, this.mapData) &&
       plannedWorkBoatCount < this.getMaxWorkBoatsForStrategy(nationId, eraStrategy) &&
       this.canBuildUnit(nationId, WORK_BOAT.id) &&
-      canCityProduceUnit(city, WORK_BOAT, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(city, WORK_BOAT, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ) {
       const priority = eraStrategy.resourcePriorities?.workBoatProduction ?? 1;
       candidates.push({
@@ -2956,11 +2949,14 @@ export class AISystem {
 
     // Fallback so the city always has something to do when room is left.
     if (canBuildMilitary) {
-      candidates.push({
-        item: { kind: 'unit', unitType: this.pickMilitaryUnitForCity(city, nationId) },
-        baseScore: this.getMilitaryProductionScore(SCORE_FALLBACK, nationId, eraStrategy, defensivePressure),
-        category: 'military',
-      });
+      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId);
+      if (militaryUnit) {
+        candidates.push({
+          item: { kind: 'unit', unitType: militaryUnit },
+          baseScore: this.getMilitaryProductionScore(SCORE_FALLBACK, nationId, eraStrategy, defensivePressure),
+          category: 'military',
+        });
+      }
     }
 
     // Foundation Phase: if the city has any unbuilt available building, offer
@@ -3312,9 +3308,7 @@ export class AISystem {
       u.isNaval === true &&
       u.baseStrength > 0 &&
       this.canBuildUnit(nationId, u.id) &&
-      canCityProduceUnit(city, u, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (candidates.length === 0) return undefined;
     return candidates.reduce((a, b) => (a.productionCost <= b.productionCost ? a : b));
@@ -3339,20 +3333,34 @@ export class AISystem {
     return 1;
   }
 
-  private pickMilitaryUnitForCity(city: City, nationId: string): UnitType {
+  private pickMilitaryUnitForCity(city: City, nationId: string): UnitType | undefined {
     const available = MILITARY_OPTIONS.filter((u) => (
       this.canBuildUnit(nationId, u.id) &&
-      canCityProduceUnit(city, u, this.mapData, this.gridSystem, {
-        strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
-      })
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     const archer = available.find((u) => u.id === ARCHER.id);
     if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
-    return available.find((u) => u.id === WARRIOR.id) ?? WARRIOR;
+    return available.find((u) => u.id === WARRIOR.id) ?? available[0];
   }
 
   private canBuildUnit(nationId: string, unitId: string): boolean {
     return this.researchSystem?.isUnitUnlocked(nationId, unitId) ?? true;
+  }
+
+  private canAffordUnitProduction(nationId: string, unitType: UnitType): boolean {
+    return this.unitUpkeepSystem?.getUnitUpkeepAffordabilityReason(nationId, unitType, 10) === undefined;
+  }
+
+  private getUnitProductionRuleContext(): {
+    strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
+    unitUpkeepAffordability?: UnitUpkeepSystem;
+    upkeepAffordabilityTurns: number;
+  } {
+    return {
+      strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+      unitUpkeepAffordability: this.unitUpkeepSystem,
+      upkeepAffordabilityTurns: 10,
+    };
   }
 
   private canBuildBuilding(nationId: string, buildingId: string): boolean {

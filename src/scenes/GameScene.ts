@@ -13,6 +13,7 @@ import { ImprovementConstructionSystem } from '../systems/ImprovementConstructio
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
+import { BorderPressureSystem, type BorderPressureEvent } from '../systems/BorderPressureSystem';
 import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
@@ -56,6 +57,7 @@ import { DiplomacyManager } from '../systems/DiplomacyManager';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
+import { IdeologicalDriftSystem, type IdeologicalDriftEvent } from '../systems/diplomacy/IdeologicalDriftSystem';
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
 import { AIExplorationSystem } from '../systems/ai/AIExplorationSystem';
@@ -346,7 +348,10 @@ export class GameScene extends Phaser.Scene {
       unitManager,
       resourceSystem,
       mapData,
+      cityManager,
       policySystem,
+      eventLog,
+      () => turnManager.getCurrentRound(),
     );
     turnManager.on('turnStart', (e) => unitUpkeepSystem.handleTurnStart(e));
 
@@ -420,8 +425,22 @@ export class GameScene extends Phaser.Scene {
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
     const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(diplomacyManager);
+    const ideologicalDriftSystem = new IdeologicalDriftSystem(
+      diplomacyManager,
+      nationManager,
+      (a, b) => discoverySystem.hasMet(a, b),
+    );
     const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager);
     const aiMilitaryThreatEvaluationSystem = new AIMilitaryThreatEvaluationSystem(unitManager, cityManager, gridSystem);
+    const borderPressureSystem = new BorderPressureSystem(
+      diplomacyManager,
+      cityManager,
+      nationManager,
+      mapData,
+      gridSystem,
+      aiMilitaryEvaluationSystem,
+      (a, b) => discoverySystem.hasMet(a, b),
+    );
     const aiDiplomacySystem = new AIDiplomacySystem(
       diplomacyManager,
       diplomaticEvaluationSystem,
@@ -455,11 +474,44 @@ export class GameScene extends Phaser.Scene {
       resourceAccessSystem.getAvailableLuxuryResourceQuantities(nationId);
     happinessSystem.recalculateAll();
     const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
-    const unitProductionRuleContext = { strategicResourceCapacitySystem };
+    const unitProductionRuleContext = {
+      strategicResourceCapacitySystem,
+      unitUpkeepAffordability: unitUpkeepSystem,
+      upkeepAffordabilityTurns: 10,
+    };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
     );
     turnManager.on('turnStart', (e) => tradeDealSystem.advanceTurnForNation(e.nation.id));
+    const ideologicalDriftEvents: IdeologicalDriftEvent[] = [];
+    const ideologicalDriftLogCooldowns = new Map<string, number>();
+    const borderPressureEvents: BorderPressureEvent[] = [];
+    const borderPressureLogCooldowns = new Map<string, number>();
+    ideologicalDriftSystem.onDrift((event) => ideologicalDriftEvents.push(event));
+    borderPressureSystem.onPressure((event) => borderPressureEvents.push(event));
+    turnManager.on('roundStart', (event) => {
+      ideologicalDriftEvents.length = 0;
+      borderPressureEvents.length = 0;
+      ideologicalDriftSystem.handleRoundStart(event.round);
+      borderPressureSystem.handleRoundStart(event.round);
+      const summary = formatIdeologicalDriftSummary(
+        event.round,
+        ideologicalDriftEvents,
+        ideologicalDriftLogCooldowns,
+      );
+      if (summary) {
+        eventLog.log(summary.text, summary.nationIds, event.round);
+      }
+      const borderPressureSummary = formatBorderPressureSummary(
+        event.round,
+        borderPressureEvents,
+        borderPressureLogCooldowns,
+      );
+      if (borderPressureSummary) {
+        eventLog.log(borderPressureSummary.text, borderPressureSummary.nationIds, event.round);
+      }
+      if (ideologicalDriftEvents.length > 0 || borderPressureEvents.length > 0) rightPanel?.requestRefresh();
+    });
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
     });
@@ -1094,6 +1146,7 @@ export class GameScene extends Phaser.Scene {
       resourceAccessSystem,
       explorationMemorySystem,
       strategicResourceCapacitySystem,
+      unitUpkeepSystem,
       formatLog,
       eraSystem,
       undefined,
@@ -1963,10 +2016,12 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       happinessSystem,
       strategicResourceCapacitySystem,
+      unitUpkeepSystem,
     );
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setDiplomaticEvaluationSystem(diplomaticEvaluationSystem);
+    rightPanel.setBorderPressureSystem(borderPressureSystem);
     rightPanel.setMilitaryEvaluationSystem(aiMilitaryEvaluationSystem);
     rightPanel.setThreatEvaluationSystem(aiMilitaryThreatEvaluationSystem);
     rightPanel.setResearchSystem(researchSystem);
@@ -2060,7 +2115,7 @@ export class GameScene extends Phaser.Scene {
             gridSystem,
             unitProductionRuleContext,
           );
-          if (reason && !unitType.requiredResource) return [];
+          if (reason && !unitType.requiredResource && !isUnitUpkeepAffordabilityReason(reason)) return [];
           return [{
             id: unitType.id,
             name: unitType.name,
@@ -3498,6 +3553,169 @@ function formatAIDiplomacyAction(
     case 'cancelOpenBorders':
       return `cancelled open borders with ${targetName}.`;
   }
+}
+
+const IDEOLOGICAL_DRIFT_LOG_COOLDOWN_ROUNDS = 20;
+const MAX_IDEOLOGICAL_DRIFT_SUMMARY_LINES = 8;
+const BORDER_PRESSURE_LOG_COOLDOWN_ROUNDS = 15;
+const MAX_BORDER_PRESSURE_SUMMARY_LINES = 8;
+
+function formatIdeologicalDriftSummary(
+  round: number,
+  events: readonly IdeologicalDriftEvent[],
+  recentLogs: Map<string, number>,
+): { text: string; nationIds: string[] } | null {
+  const lines: string[] = [];
+  const nationIds = new Set<string>();
+
+  for (const event of events) {
+    if (!isMeaningfulIdeologicalDriftLogEvent(event)) continue;
+
+    const cacheKey = getIdeologicalDriftLogCacheKey(event);
+    const lastLoggedRound = recentLogs.get(cacheKey);
+    if (
+      lastLoggedRound !== undefined &&
+      round - lastLoggedRound < IDEOLOGICAL_DRIFT_LOG_COOLDOWN_ROUNDS
+    ) {
+      continue;
+    }
+
+    recentLogs.set(cacheKey, round);
+    nationIds.add(event.nationAId);
+    nationIds.add(event.nationBId);
+    lines.push(`- ${event.nationAName}/${event.nationBName}: ${event.compatibilityLabel} (${formatIdeologicalDriftDelta(event)})`);
+  }
+
+  pruneIdeologicalDriftLogCooldowns(round, recentLogs);
+  if (lines.length === 0) return null;
+
+  const visibleLines = lines.slice(0, MAX_IDEOLOGICAL_DRIFT_SUMMARY_LINES);
+  const hiddenCount = lines.length - visibleLines.length;
+  const overflowLine = hiddenCount > 0 ? [`- ${hiddenCount} more ideological shifts suppressed.`] : [];
+  return {
+    text: ['Ideological drift:', ...visibleLines, ...overflowLine].join('\n'),
+    nationIds: [...nationIds],
+  };
+}
+
+function formatIdeologicalDriftDelta(event: IdeologicalDriftEvent): string {
+  const parts: string[] = [];
+  if (event.delta.trust !== undefined && event.delta.trust !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.trust)}trust`);
+  }
+  if (event.delta.affinity !== undefined && event.delta.affinity !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.affinity)}affinity`);
+  }
+  if (event.delta.hostility !== undefined && event.delta.hostility !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.hostility)}hostility`);
+  }
+  if (event.delta.fear !== undefined && event.delta.fear !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.fear)}fear`);
+  }
+  return parts.join(', ');
+}
+
+function isMeaningfulIdeologicalDriftLogEvent(event: IdeologicalDriftEvent): boolean {
+  return (event.delta.trust ?? 0) !== 0 || (event.delta.hostility ?? 0) !== 0;
+}
+
+function getIdeologicalDriftLogCacheKey(event: IdeologicalDriftEvent): string {
+  const [firstNationId, secondNationId] = [event.nationAId, event.nationBId].sort();
+  return [
+    firstNationId,
+    secondNationId,
+    event.compatibilityLabel,
+    event.delta.trust ?? 0,
+    event.delta.hostility ?? 0,
+  ].join('|');
+}
+
+function pruneIdeologicalDriftLogCooldowns(round: number, recentLogs: Map<string, number>): void {
+  for (const [key, lastLoggedRound] of recentLogs) {
+    if (round - lastLoggedRound >= IDEOLOGICAL_DRIFT_LOG_COOLDOWN_ROUNDS * 2) {
+      recentLogs.delete(key);
+    }
+  }
+}
+
+function formatSignedDeltaLabel(value: number): string {
+  return value > 0 ? '+' : '-';
+}
+
+function formatBorderPressureSummary(
+  round: number,
+  events: readonly BorderPressureEvent[],
+  recentLogs: Map<string, number>,
+): { text: string; nationIds: string[] } | null {
+  const lines: string[] = [];
+  const nationIds = new Set<string>();
+
+  for (const event of events) {
+    const cacheKey = getBorderPressureLogCacheKey(event);
+    const lastLoggedRound = recentLogs.get(cacheKey);
+    if (
+      lastLoggedRound !== undefined &&
+      round - lastLoggedRound < BORDER_PRESSURE_LOG_COOLDOWN_ROUNDS
+    ) {
+      continue;
+    }
+
+    recentLogs.set(cacheKey, round);
+    nationIds.add(event.nationAId);
+    nationIds.add(event.nationBId);
+    lines.push(`- ${event.nationAName}/${event.nationBName}: ${event.pressureLevel} pressure (${formatBorderPressureDelta(event)})`);
+  }
+
+  pruneBorderPressureLogCooldowns(round, recentLogs);
+  if (lines.length === 0) return null;
+
+  const visibleLines = lines.slice(0, MAX_BORDER_PRESSURE_SUMMARY_LINES);
+  const hiddenCount = lines.length - visibleLines.length;
+  const overflowLine = hiddenCount > 0 ? [`- ${hiddenCount} more border pressure shifts suppressed.`] : [];
+  return {
+    text: ['Border tensions:', ...visibleLines, ...overflowLine].join('\n'),
+    nationIds: [...nationIds],
+  };
+}
+
+function formatBorderPressureDelta(event: BorderPressureEvent): string {
+  const parts: string[] = [];
+  if (event.delta.trust !== undefined && event.delta.trust !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.trust)}trust`);
+  }
+  if (event.delta.hostility !== undefined && event.delta.hostility !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.hostility)}hostility`);
+  }
+  if (event.delta.fear !== undefined && event.delta.fear !== 0) {
+    parts.push(`${formatSignedDeltaLabel(event.delta.fear)}fear`);
+  }
+  if (event.compatibility >= 25) parts.push('softened by ideology');
+  else if (event.compatibility <= -25) parts.push('amplified by ideology');
+  return parts.join(', ');
+}
+
+function getBorderPressureLogCacheKey(event: BorderPressureEvent): string {
+  const [firstNationId, secondNationId] = [event.nationAId, event.nationBId].sort();
+  return [
+    firstNationId,
+    secondNationId,
+    event.pressureLevel,
+    event.delta.trust ?? 0,
+    event.delta.hostility ?? 0,
+    event.delta.fear ?? 0,
+  ].join('|');
+}
+
+function pruneBorderPressureLogCooldowns(round: number, recentLogs: Map<string, number>): void {
+  for (const [key, lastLoggedRound] of recentLogs) {
+    if (round - lastLoggedRound >= BORDER_PRESSURE_LOG_COOLDOWN_ROUNDS * 2) {
+      recentLogs.delete(key);
+    }
+  }
+}
+
+function isUnitUpkeepAffordabilityReason(reason: string): boolean {
+  return reason.startsWith('Not enough gold reserves to support this unit');
 }
 
 function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' | 'gold_trade' | 'peace'): string {

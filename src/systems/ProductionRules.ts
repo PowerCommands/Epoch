@@ -6,6 +6,10 @@ import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacit
 
 export interface UnitProductionRuleContext {
   strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
+  unitUpkeepAffordability?: {
+    getUnitUpkeepAffordabilityReason(nationId: string, unitType: UnitType, turns: number): string | undefined;
+  };
+  upkeepAffordabilityTurns?: number;
 }
 
 export function cityHasWaterTile(
@@ -39,5 +43,12 @@ export function getCityUnitProductionBlockReason(
     if (!cityHasWaterTile(city, mapData)) return 'Requires city-owned water tile';
   }
 
-  return context.strategicResourceCapacitySystem?.getMissingRequirementReason(city.ownerId, unitType);
+  const resourceReason = context.strategicResourceCapacitySystem?.getMissingRequirementReason(city.ownerId, unitType);
+  if (resourceReason) return resourceReason;
+
+  return context.unitUpkeepAffordability?.getUnitUpkeepAffordabilityReason(
+    city.ownerId,
+    unitType,
+    context.upkeepAffordabilityTurns ?? 10,
+  );
 }

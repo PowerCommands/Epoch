@@ -27,6 +27,7 @@ import type { HappinessSystem } from '../../systems/HappinessSystem';
 import { formatPercent, formatHappinessStateLabel, luxuryResourceLabels } from '../happinessFormat';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
 import type { NationManager } from '../../systems/NationManager';
+import type { BorderPressureSystem } from '../../systems/BorderPressureSystem';
 import type { AIMilitaryEvaluationSystem, MilitaryComparison } from '../../systems/ai/AIMilitaryEvaluationSystem';
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
@@ -42,6 +43,7 @@ import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
+import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
@@ -85,6 +87,7 @@ export class RightSidebarPanelDataProvider {
   private readonly listeners: ChangedListener[] = [];
   private diplomacyManager: DiplomacyManager | null = null;
   private diplomaticEvaluationSystem: DiplomaticEvaluationSystem | null = null;
+  private borderPressureSystem: BorderPressureSystem | null = null;
   private militaryEvaluationSystem: AIMilitaryEvaluationSystem | null = null;
   private threatEvaluationSystem: AIMilitaryThreatEvaluationSystem | null = null;
   private discoverySystem: DiscoverySystem | null = null;
@@ -126,6 +129,7 @@ export class RightSidebarPanelDataProvider {
     private readonly gridSystem: IGridSystem,
     private readonly happinessSystem: HappinessSystem,
     private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
+    private readonly unitUpkeepSystem?: UnitUpkeepSystem,
   ) {}
 
   onChanged(listener: ChangedListener): void {
@@ -138,6 +142,10 @@ export class RightSidebarPanelDataProvider {
 
   setDiplomaticEvaluationSystem(system: DiplomaticEvaluationSystem): void {
     this.diplomaticEvaluationSystem = system;
+  }
+
+  setBorderPressureSystem(system: BorderPressureSystem): void {
+    this.borderPressureSystem = system;
   }
 
   setMilitaryEvaluationSystem(system: AIMilitaryEvaluationSystem): void {
@@ -728,6 +736,8 @@ export class RightSidebarPanelDataProvider {
     const compatibility = getIdeologyCompatibility(humanIdeology.id, ideology.id);
     const compatibilityLabel = formatIdeologyCompatibilityLabel(describeIdeologyCompatibility(compatibility));
     rows.push(textRow(`Ideological relation: ${compatibilityLabel} (${formatSigned(compatibility)})`));
+    const blocLabel = getIdeologicalBlocLabel(compatibility);
+    if (blocLabel) rows.push(textRow(`Ideological bloc: ${blocLabel}`));
     return rows;
   }
 
@@ -929,9 +939,13 @@ export class RightSidebarPanelDataProvider {
         unitType,
         this.mapData,
         this.gridSystem,
-        { strategicResourceCapacitySystem: this.strategicResourceCapacitySystem },
+        {
+          strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+          unitUpkeepAffordability: this.unitUpkeepSystem,
+          upkeepAffordabilityTurns: 10,
+        },
       );
-      if (disabledReason && !unitType.requiredResource) continue;
+      if (disabledReason && !unitType.requiredResource && !isUnitUpkeepAffordabilityReason(disabledReason)) continue;
       const item: Producible = { kind: 'unit', unitType };
       rows.push({
         kind: 'button',
@@ -947,7 +961,11 @@ export class RightSidebarPanelDataProvider {
             unitType,
             this.mapData,
             this.gridSystem,
-            { strategicResourceCapacitySystem: this.strategicResourceCapacitySystem },
+            {
+              strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+              unitUpkeepAffordability: this.unitUpkeepSystem,
+              upkeepAffordabilityTurns: 10,
+            },
           )) return;
         this.productionSystem.enqueue(city.id, item);
         this.requestRefresh();
@@ -1257,6 +1275,7 @@ export class RightSidebarPanelDataProvider {
     const evaluation = this.diplomaticEvaluationSystem?.evaluateRelation(viewerNationId, targetNationId);
     const militaryComparison = this.militaryEvaluationSystem?.compareMilitaryStrength(viewerNationId, targetNationId);
     const threatLevel = this.threatEvaluationSystem?.getThreatLevel(viewerNationId, targetNationId);
+    const borderPressureLevel = this.borderPressureSystem?.getBorderPressureLevel(viewerNationId, targetNationId);
     const ideologyScore = evaluation?.ideologyCompatibility;
     const ideologyLabel = evaluation
       ? formatIdeologyCompatibilityLabel(evaluation.ideologyCompatibilityLabel)
@@ -1269,6 +1288,7 @@ export class RightSidebarPanelDataProvider {
       textRow(`Hostility: ${Math.round(relation.hostility)}`),
       textRow(`Affinity: ${Math.round(relation.affinity)}`),
       textRow(`Ideology: ${ideologyScore === undefined ? '?' : formatSigned(ideologyScore)} (${ideologyLabel})`),
+      textRow(`Border pressure: ${formatBorderPressureLevel(borderPressureLevel)}`),
       textRow(`Military balance: ${formatMilitaryComparison(militaryComparison)}`),
       textRow(`Threat level: ${formatThreatLevel(threatLevel)}`),
       textRow(`Final attitude: ${formatAttitude(evaluation?.attitude ?? 'neutral')}`),
@@ -1545,6 +1565,12 @@ function formatIdeologyCompatibilityLabel(label: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function getIdeologicalBlocLabel(compatibility: number): string | null {
+  if (compatibility >= 25) return 'Partner';
+  if (compatibility <= -25) return 'Rival';
+  return null;
+}
+
 function formatMilitaryComparison(comparison: MilitaryComparison | undefined): string {
   switch (comparison) {
     case 'stronger':
@@ -1571,6 +1597,25 @@ function formatThreatLevel(threatLevel: ThreatLevel | undefined): string {
     case undefined:
       return 'Unknown';
   }
+}
+
+function formatBorderPressureLevel(level: 'mild' | 'strong' | 'severe' | null | undefined): string {
+  switch (level) {
+    case 'mild':
+      return 'Mild';
+    case 'strong':
+      return 'Strong';
+    case 'severe':
+      return 'Severe';
+    case null:
+      return 'None';
+    case undefined:
+      return 'Unknown';
+  }
+}
+
+function isUnitUpkeepAffordabilityReason(reason: string): boolean {
+  return reason.startsWith('Not enough gold reserves to support this unit');
 }
 
 function formatAttitude(attitude: DiplomaticAttitude): string {
