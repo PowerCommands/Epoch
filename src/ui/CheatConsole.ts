@@ -1,4 +1,4 @@
-import { CheatSystem } from '../systems/CheatSystem';
+import { CheatSystem, type CheatCompletionSuggestion } from '../systems/CheatSystem';
 
 const MAX_OUTPUT_LINES = 40;
 
@@ -186,7 +186,12 @@ export class CheatConsole {
 
     if (event.key === 'Tab') {
       event.preventDefault();
-      this.inputEl.value = this.cheatSystem.completeInput(this.inputEl.value);
+      const suggestions = this.cheatSystem.getCompletions(this.inputEl.value);
+      if (suggestions.length === 1) {
+        this.inputEl.value = this.cheatSystem.getCompletionReplacement(this.inputEl.value, suggestions[0]);
+      } else if (suggestions.length > 1) {
+        this.addLine('output', formatCompletionSuggestions(suggestions));
+      }
       const end = this.inputEl.value.length;
       this.inputEl.setSelectionRange(end, end);
       return;
@@ -207,4 +212,14 @@ export class CheatConsole {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function formatCompletionSuggestions(suggestions: readonly CheatCompletionSuggestion[]): string {
+  return suggestions.map((suggestion) => {
+    const labelText = suggestion.label && suggestion.label !== suggestion.value
+      ? ` (${suggestion.label})`
+      : '';
+    const descriptionText = suggestion.description ? ` - ${suggestion.description}` : '';
+    return `${suggestion.value}${labelText}${descriptionText}`;
+  }).join('\n');
 }

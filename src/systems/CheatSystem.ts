@@ -43,6 +43,13 @@ export interface CheatCommand {
   name: string;
   description: string;
   execute: (args: string[], context: GameContext) => string;
+  complete?: (args: string[], context: GameContext) => CheatCompletionSuggestion[];
+}
+
+export interface CheatCompletionSuggestion {
+  value: string;
+  label?: string;
+  description?: string;
 }
 
 export class CheatSystem {
@@ -106,6 +113,19 @@ export class CheatSystem {
         }
 
         return `Technology unlocked for ${target.label}: ${tech.tech.id}`;
+      },
+      complete: (args, context) => {
+        if (args.length === 1) {
+          return matchLiteralSuggestions(args[0], [{ value: 'add', description: 'Unlock a technology.' }])
+            .concat(completeTechnology(args[0]));
+        }
+        if (args[0] === 'add') {
+          if (args.length === 2) return completeTechnology(args[1]);
+          if (args.length === 3) return completeNation(args[2], context);
+          return [];
+        }
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
       },
     });
 
@@ -240,6 +260,11 @@ export class CheatSystem {
         context.discoverySystem.revealNation(context.humanNationId, target.id);
         return `Revealed leader: ${target.name}`;
       },
+      complete: (args) => {
+        if (args.length > 1) return [];
+        return matchLiteralSuggestions(args[0] ?? '', [{ value: 'all', description: 'Reveal every leader.' }])
+          .concat(completeLeader(args[0] ?? ''));
+      },
     });
 
     this.register({
@@ -257,6 +282,15 @@ export class CheatSystem {
 
         context.discoverySystem.revealNation(a.nationId, b.nationId);
         return `${a.label} and ${b.label} have now met.`;
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeNation(args[0], context);
+        if (args.length === 2) {
+          const firstNation = resolveNationId(args[0], context);
+          const excludedNationIds = firstNation.ok ? new Set([firstNation.nationId]) : undefined;
+          return completeNation(args[1], context, excludedNationIds);
+        }
+        return [];
       },
     });
 
@@ -326,6 +360,11 @@ export class CheatSystem {
 
         return `${target.label} cannot found ${corporation.corporation.name}:\n${blockers.map((blocker) => `- ${blocker}`).join('\n')}`;
       },
+      complete: (args, context) => {
+        if (args.length === 1) return completeCorporation(args[0]);
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
+      },
     });
 
     this.register({
@@ -349,6 +388,11 @@ export class CheatSystem {
         if (!founded) return `Could not found ${corporation.corporation.name}.`;
 
         return `${target.label} founded ${corporation.corporation.name}.`;
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeCorporation(args[0]);
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
       },
     });
 
@@ -378,6 +422,10 @@ export class CheatSystem {
           `Imported: ${imported.length > 0 ? imported.map(formatManufacturedResourceName).join(', ') : 'none'}`,
           `Exportable: ${formatManufacturedEntries(exportable)}`,
         ].join('\n');
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeNation(args[0], context);
+        return [];
       },
     });
 
@@ -435,31 +483,54 @@ export class CheatSystem {
     return command.execute(args, this.context);
   }
 
-  completeInput(input: string): string {
-    const roots = this.getCompletionRoots();
-    if (roots.length === 0) return input;
+  getCompletions(input: string): CheatCompletionSuggestion[] {
+    const trimmedStart = input.trimStart();
+    const normalizedInput = normalizeCommand(trimmedStart);
+    const command = this.findCommand(normalizedInput);
 
+    if (!command) {
+      return this.getCommandCompletions(normalizedInput);
+    }
+
+    if (isExactCommandInput(trimmedStart, command)) {
+      return [{ value: normalizeCommand(command.name), description: command.description }];
+    }
+
+    const args = getCompletionArgs(trimmedStart, command);
+    return command.complete?.(args, this.context) ?? [];
+  }
+
+  completeInput(input: string): string {
     const trimmedStart = input.trimStart();
     const leadingWhitespace = input.slice(0, input.length - trimmedStart.length);
     const normalizedInput = normalizeCommand(trimmedStart);
 
-    if (normalizedInput.length === 0) {
-      return `${leadingWhitespace}${roots[0]} `;
+    if (normalizedInput.length === 0) return input;
+
+    const command = this.findCommand(normalizedInput);
+    const suggestions = command
+      ? command.complete?.(getCompletionArgs(trimmedStart, command), this.context) ?? []
+      : this.getCommandCompletions(normalizedInput);
+    if (suggestions.length !== 1) return input;
+
+    if (!command) {
+      return `${leadingWhitespace}${suggestions[0].value} `;
     }
 
-    if (/\s/.test(trimmedStart)) return input;
+    return `${leadingWhitespace}${replaceCurrentArgument(trimmedStart, command, suggestions[0].value)}`;
+  }
 
-    const firstToken = normalizedInput.split(' ')[0];
-    if (roots.includes(firstToken)) {
-      return `${leadingWhitespace}${firstToken} `;
+  getCompletionReplacement(input: string, suggestion: CheatCompletionSuggestion): string {
+    const trimmedStart = input.trimStart();
+    const leadingWhitespace = input.slice(0, input.length - trimmedStart.length);
+    const normalizedInput = normalizeCommand(trimmedStart);
+    const command = this.findCommand(normalizedInput);
+
+    if (!command) return `${leadingWhitespace}${suggestion.value} `;
+    if (isExactCommandInput(trimmedStart, command) && normalizeCommand(suggestion.value) === normalizeCommand(command.name)) {
+      return `${leadingWhitespace}${normalizeCommand(command.name)} `;
     }
-
-    const matches = roots.filter((root) => root.startsWith(firstToken));
-    if (matches.length === 1) {
-      return `${leadingWhitespace}${matches[0]} `;
-    }
-
-    return input;
+    return `${leadingWhitespace}${replaceCurrentArgument(trimmedStart, command, suggestion.value)}`;
   }
 
   register(command: CheatCommand): void {
@@ -488,10 +559,157 @@ export class CheatSystem {
         .filter((root) => root !== 'help'),
     )).sort((a, b) => a.localeCompare(b));
   }
+
+  private getCommandCompletions(normalizedInput: string): CheatCompletionSuggestion[] {
+    const commandSuggestions = this.commands
+      .filter((command) => normalizeCommand(command.name) !== 'help')
+      .map((command) => ({
+        value: normalizeCommand(command.name),
+        description: command.description,
+      }));
+    if (normalizedInput.length === 0) {
+      return this.getCompletionRoots().map((root) => ({ value: root }));
+    }
+    return matchSuggestions(normalizedInput, commandSuggestions);
+  }
 }
 
 function normalizeCommand(input: string): string {
   return input.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getCompletionArgs(input: string, command: CheatCommand): string[] {
+  const normalizedCommandName = normalizeCommand(command.name);
+  const normalizedInput = normalizeCommand(input);
+  if (isExactCommandInput(input, command)) return [];
+
+  const argText = normalizedInput.length === normalizedCommandName.length
+    ? ''
+    : normalizedInput.slice(normalizedCommandName.length).trimStart();
+  if (argText.length === 0) return [''];
+  return argText.split(/\s+/);
+}
+
+function replaceCurrentArgument(input: string, command: CheatCommand, value: string): string {
+  const normalizedCommandName = normalizeCommand(command.name);
+  const normalizedInput = normalizeCommand(input);
+  if (isExactCommandInput(input, command)) return `${normalizedCommandName} ${value} `;
+
+  const argText = normalizedInput.length === normalizedCommandName.length
+    ? ''
+    : normalizedInput.slice(normalizedCommandName.length).trimStart();
+  if (argText.length === 0) return `${normalizedCommandName} ${value} `;
+
+  const args = argText.split(/\s+/);
+  args[args.length - 1] = value;
+  return `${normalizedCommandName} ${args.join(' ')} `;
+}
+
+function isExactCommandInput(input: string, command: CheatCommand): boolean {
+  return normalizeCommand(input) === normalizeCommand(command.name) && !/\s$/.test(input);
+}
+
+function completeNation(
+  input: string,
+  context: GameContext,
+  excludedNationIds?: ReadonlySet<string>,
+): CheatCompletionSuggestion[] {
+  const suggestions = context.nationManager.getAllNations()
+    .filter((nation) => !excludedNationIds?.has(nation.id))
+    .map((nation) => ({
+      value: nation.id,
+      label: nation.name,
+      description: nation.id,
+      matchText: [nation.id, nation.name],
+    }));
+  return matchSuggestions(input, suggestions);
+}
+
+function completeTechnology(input: string): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, ALL_TECHNOLOGIES.map((technology) => ({
+    value: technology.id,
+    label: technology.name,
+    description: technology.era,
+    matchText: [technology.id, technology.name],
+  })));
+}
+
+function completeCorporation(input: string): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, CORPORATIONS.map((corporation) => ({
+    value: corporation.id,
+    label: corporation.name,
+    description: corporation.id,
+    matchText: [corporation.id, corporation.name],
+  })));
+}
+
+function completeLeader(input: string): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, ALL_LEADERS.map((leader) => ({
+    value: leader.name,
+    label: leader.name,
+    description: leader.id,
+    matchText: [leader.id, leader.name],
+  })));
+}
+
+function matchLiteralSuggestions(
+  input: string,
+  suggestions: ReadonlyArray<CheatCompletionSuggestion>,
+): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, suggestions.map((suggestion) => ({
+    ...suggestion,
+    matchText: [suggestion.value, suggestion.label ?? ''],
+  })));
+}
+
+interface MatchableSuggestion extends CheatCompletionSuggestion {
+  matchText?: readonly string[];
+}
+
+function matchSuggestions(
+  input: string,
+  suggestions: ReadonlyArray<MatchableSuggestion>,
+): CheatCompletionSuggestion[] {
+  const normalizedInput = normalizeCompletionMatchText(input);
+  const ranked = suggestions
+    .map((suggestion, index) => {
+      const rank = getSuggestionRank(normalizedInput, suggestion);
+      return { suggestion, index, rank };
+    })
+    .filter((entry): entry is { suggestion: MatchableSuggestion; index: number; rank: number } => entry.rank !== null)
+    .sort((a, b) => a.rank - b.rank || a.index - b.index);
+
+  return ranked.map((entry) => ({
+    value: entry.suggestion.value,
+    label: entry.suggestion.label,
+    description: entry.suggestion.description,
+  }));
+}
+
+function getSuggestionRank(normalizedInput: string, suggestion: MatchableSuggestion): number | null {
+  if (normalizedInput.length === 0) return 0;
+
+  const texts = suggestion.matchText ?? [suggestion.value, suggestion.label ?? ''];
+  let bestRank: number | null = null;
+  for (const text of texts) {
+    const normalizedText = normalizeCompletionMatchText(text);
+    const rank = getMatchRank(normalizedInput, normalizedText);
+    if (rank !== null && (bestRank === null || rank < bestRank)) {
+      bestRank = rank;
+    }
+  }
+  return bestRank;
+}
+
+function getMatchRank(normalizedInput: string, normalizedText: string): number | null {
+  if (normalizedText === normalizedInput) return 0;
+  if (normalizedText.startsWith(normalizedInput)) return 1;
+  if (normalizedText.includes(normalizedInput)) return 2;
+  return null;
+}
+
+function normalizeCompletionMatchText(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
 }
 
 function parseInteger(value: string | undefined): number | null {
