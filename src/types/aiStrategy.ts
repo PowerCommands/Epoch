@@ -21,6 +21,7 @@ export interface AIStrategy {
   readonly expansion: {
     readonly desiredCityCount: number;
     readonly settlerMinCityDistance: number;
+    readonly settlerInterval?: number;
   };
 
   readonly production: {

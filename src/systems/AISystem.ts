@@ -201,6 +201,9 @@ const SCORE_NAVAL = 40;
 const SCORE_WORK_BOAT = 42;
 const SCORE_WORKER = 62;
 const LOW_GOLD_PER_TURN = 0;
+const POST_TARGET_SETTLER_DEFAULT_INTERVAL = 8;
+const POST_TARGET_SETTLER_MIN_GOLD = 25;
+const POST_TARGET_SETTLER_MIN_GOLD_PER_TURN = -1;
 const TILE_PURCHASE_DEFAULT_RESERVE = 100;
 const TILE_PURCHASE_DEFAULT_MIN_SCORE = 45;
 // Foundation Phase production tuning. Building base scores get a flat boost
@@ -314,6 +317,8 @@ export class AISystem {
   private readonly militaryHoldingLoggedRound = new Map<string, number>();
   private readonly defensiveModeLoggedRound = new Map<string, number>();
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
+  private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
+  private readonly longTermExpansionLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -381,6 +386,9 @@ export class AISystem {
       this.logStrategicEvent,
     );
     this.foundCitySystem.onCityFounded((city) => this.cityFocusSystem.updateFocusForCity(city));
+    this.productionSystem.onCompletedSuccessfully((cityId, item) => {
+      this.recordCompletedProductionCycle(cityId, item);
+    });
   }
 
   isHuman(nationId: string): boolean {
@@ -2383,6 +2391,31 @@ export class AISystem {
 
   // ─── Production ──────────────────────────────────────────────────────────────
 
+  private recordCompletedProductionCycle(cityId: string, item: Producible): void {
+    const city = this.cityManager.getCity(cityId);
+    if (!city || this.isHuman(city.ownerId)) return;
+
+    if (item.kind === 'unit' && item.unitType.canFound === true) {
+      this.completedProductionCyclesSinceLastSettler.set(city.ownerId, 0);
+      return;
+    }
+
+    const current = this.completedProductionCyclesSinceLastSettler.get(city.ownerId) ?? 0;
+    this.completedProductionCyclesSinceLastSettler.set(city.ownerId, current + 1);
+  }
+
+  private recordSettlerProductionStarted(nationId: string, reason: 'earlyTarget' | 'longTerm'): void {
+    this.completedProductionCyclesSinceLastSettler.set(nationId, 0);
+    if (reason !== 'longTerm') return;
+
+    const round = this.turnManager.getCurrentRound();
+    if (this.longTermExpansionLoggedRound.get(nationId) === round) return;
+    this.longTermExpansionLoggedRound.set(nationId, round);
+    const message = 'planned a long-term expansion settler.';
+    console.log(this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
+  }
+
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     this.updateAndLogAIPhase(nationId);
@@ -2454,6 +2487,14 @@ export class AISystem {
 
       this.productionSystem.setProduction(city.id, choice, { placement });
       if (choice.kind === 'unit') {
+        if (choice.unitType.canFound === true) {
+          this.recordSettlerProductionStarted(
+            nationId,
+            this.cityManager.getCitiesByOwner(nationId).length >= strategy.expansion.desiredCityCount
+              ? 'longTerm'
+              : 'earlyTarget',
+          );
+        }
         if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
         if (choice.unitType.canFound === true) plannedSettlerCount++;
         if (choice.unitType.id === WORKER.id) plannedWorkerCount++;
@@ -2583,6 +2624,7 @@ export class AISystem {
     if (!city) return;
 
     this.productionSystem.enqueueFront(city.id, { kind: 'unit', unitType: SETTLER });
+    this.recordSettlerProductionStarted(nationId, 'earlyTarget');
     console.log(this.formatLog(nationId, `phase: FOUNDATION - producing settler in ${city.name}`));
   }
 
@@ -2781,6 +2823,15 @@ export class AISystem {
     const canProduceSettler =
       this.canBuildUnit(nationId, SETTLER.id) &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext());
+    const settlerPlan = this.getSettlerProductionPlan(
+      city,
+      nationId,
+      strategy,
+      eraStrategy,
+      plannedSettlerCount,
+      canProduceSettler,
+      happiness?.netHappiness,
+    );
     const goldPerTurn = this.nationManager.getResources(nationId).goldPerTurn;
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
@@ -2799,8 +2850,7 @@ export class AISystem {
 
     if (
       wantsMoreCities
-      && plannedSettlerCount === 0
-      && canProduceSettler
+      && settlerPlan !== undefined
     ) {
       if (this.isSettlerProductionBlockedByHappiness(nationId)) {
         this.logSettlerHappinessDelayOnce(nationId, eraStrategy, happiness?.netHappiness);
@@ -2811,6 +2861,14 @@ export class AISystem {
           category: 'settler',
         });
       }
+    }
+
+    if (!wantsMoreCities && settlerPlan === 'longTerm') {
+      candidates.push({
+        item: { kind: 'unit', unitType: SETTLER },
+        baseScore: this.getSettlerProductionScore(SCORE_SETTLER - 10, eraStrategy, happiness?.netHappiness),
+        category: 'settler',
+      });
     }
 
     if (canBuildMilitary) {
@@ -3032,6 +3090,79 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private getSettlerProductionPlan(
+    city: City,
+    nationId: string,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+    plannedSettlerCount: number,
+    canProduceSettler: boolean,
+    netHappiness: number | undefined,
+  ): 'earlyTarget' | 'longTerm' | undefined {
+    if (plannedSettlerCount > 0 || !canProduceSettler) return undefined;
+
+    const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    if (cityCount < strategy.expansion.desiredCityCount) return 'earlyTarget';
+
+    const interval = strategy.expansion.settlerInterval ?? POST_TARGET_SETTLER_DEFAULT_INTERVAL;
+    const completedCycles = this.completedProductionCyclesSinceLastSettler.get(nationId) ?? 0;
+    if (completedCycles < interval) return undefined;
+    if (!this.canResumeLongTermExpansion(nationId, strategy, eraStrategy, netHappiness)) return undefined;
+    if (!this.hasReasonableFoundingSite(city, nationId, strategy, eraStrategy)) return undefined;
+
+    return 'longTerm';
+  }
+
+  private canResumeLongTermExpansion(
+    nationId: string,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+    netHappiness: number | undefined,
+  ): boolean {
+    const resources = this.nationManager.getResources(nationId);
+    if (resources.gold < POST_TARGET_SETTLER_MIN_GOLD && resources.goldPerTurn <= POST_TARGET_SETTLER_MIN_GOLD_PER_TURN) {
+      return false;
+    }
+    if ((netHappiness ?? 0) <= AI_HAPPINESS_LOW) return false;
+    if (this.getHighestThreatLevel(nationId) === 'high') return false;
+    if (this.isAtWarWithAnyone(nationId) && this.isBelowMinimumMilitaryReadiness(nationId, eraStrategy)) return false;
+    if (!this.canAffordUnitProduction(nationId, SETTLER)) return false;
+
+    const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    const interval = strategy.expansion.settlerInterval ?? POST_TARGET_SETTLER_DEFAULT_INTERVAL;
+    return cityCount >= strategy.expansion.desiredCityCount && interval > 0;
+  }
+
+  private hasReasonableFoundingSite(
+    originCity: City,
+    nationId: string,
+    strategy: AIStrategy,
+    eraStrategy: AILeaderEraStrategy,
+  ): boolean {
+    const allCities = this.cityManager.getAllCities();
+    const goals = this.nationManager.getNation(nationId)?.aiGoals;
+    const intents = {
+      wantsResources: hasGoalOfType(goals, 'build_economy'),
+      wantsCoast: hasGoalOfType(goals, 'build_navy'),
+      hasExpandGoal: hasGoalOfType(goals, 'expand'),
+    };
+
+    for (let y = 0; y < this.mapData.height; y++) {
+      for (let x = 0; x < this.mapData.width; x++) {
+        if (!this.isFoundingTargetValid(x, y, strategy, eraStrategy)) continue;
+        const tile = this.mapData.tiles[y][x];
+        const distance = this.gridSystem.getDistance(
+          { x: originCity.tileX, y: originCity.tileY },
+          { x, y },
+        );
+        const score = this.scoreFoundingTile(tile, distance, originCity, intents, eraStrategy);
+        if (score >= 0 && this.minDistanceToCities(x, y, allCities) < Infinity) return true;
+      }
+    }
+
+    return false;
   }
 
   private pickProductionRhythmCandidate(

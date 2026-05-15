@@ -69,7 +69,7 @@ import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { EraSystem } from '../systems/EraSystem';
 import { AISystem } from '../systems/AISystem';
-import { getLeaderByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
@@ -325,6 +325,7 @@ export class GameScene extends Phaser.Scene {
     };
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     let refreshCultureOverlay = (): void => {};
+    let isAutoplayActive = (): boolean => false;
     const resourceSystem = new ResourceSystem(
       nationManager,
       cityManager,
@@ -526,8 +527,38 @@ export class GameScene extends Phaser.Scene {
 
     turnManager.on('turnStart', (e) => diplomaticProposalSystem.update(e.round));
 
+    const shouldAutoplayAcceptPeace = (fromNationId: string, toNationId: string): boolean => {
+      const evaluation = diplomaticEvaluationSystem.evaluateRelation(toNationId, fromNationId);
+      const militaryComparison = aiMilitaryEvaluationSystem.compareMilitaryStrength(toNationId, fromNationId);
+      const threatLevel = aiMilitaryThreatEvaluationSystem.getThreatLevel(toNationId, fromNationId);
+      const personality = getLeaderPersonalityByNationId(toNationId);
+      return threatLevel === 'high'
+        || evaluation.attitude === 'afraid'
+        || militaryComparison === 'weaker'
+        || (personality.peacePreference >= 70 && evaluation.attitude !== 'hostile');
+    };
+
+    const logAutoplayPeaceResolution = (fromNationId: string, toNationId: string, accepted: boolean): void => {
+      const fromName = nationManager.getNation(fromNationId)?.name ?? fromNationId;
+      const toName = nationManager.getNation(toNationId)?.name ?? toNationId;
+      eventLog.log(
+        `[r${turnManager.getCurrentRound()}] ${toName} ${accepted ? 'accepted' : 'rejected'} ${fromName}'s peace offer during autoplay.`,
+        [fromNationId, toNationId],
+        turnManager.getCurrentRound(),
+      );
+    };
+
     diplomaticProposalSystem.onCreated((proposal) => {
       if (proposal.toNationId !== humanNationIdForDiplomacy) return;
+      if (isAutoplayActive()) {
+        if (proposal.payload.kind === 'peace') {
+          const accepted = shouldAutoplayAcceptPeace(proposal.fromNationId, proposal.toNationId);
+          if (accepted) diplomaticProposalSystem.acceptProposal(proposal.id);
+          else diplomaticProposalSystem.rejectProposal(proposal.id);
+          logAutoplayPeaceResolution(proposal.fromNationId, proposal.toNationId, accepted);
+        }
+        return;
+      }
       hudLayer?.enqueueProposal(proposal);
     });
     diplomaticProposalSystem.onExpired((proposal) => {
@@ -1181,6 +1212,7 @@ export class GameScene extends Phaser.Scene {
       eventLog,
       runAutoplayNationTurn,
     );
+    isAutoplayActive = () => autoplaySystem.isActive();
 
     // Humans pick their own initial research via the HUD research panel.
     // AI nations keep the deterministic auto-pick so they never stall.
@@ -1762,6 +1794,13 @@ export class GameScene extends Phaser.Scene {
     diplomacyManager.onPeaceProposed((proposal) => {
       // Skip modal if human is the proposer (already handled via diplomacyAction)
       if (proposal.fromNationId === humanNationIdForDiplomacy) return;
+      if (isAutoplayActive()) {
+        const accepted = shouldAutoplayAcceptPeace(proposal.fromNationId, proposal.toNationId);
+        diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
+        logAutoplayPeaceResolution(proposal.fromNationId, proposal.toNationId, accepted);
+        rightPanel?.requestRefresh();
+        return;
+      }
 
       const nation = nationManager.getNation(proposal.fromNationId);
       if (!nation) return;

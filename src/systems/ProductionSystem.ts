@@ -44,6 +44,7 @@ export interface CityProduction {
 }
 
 export type ProductionCompletedListener = (cityId: string, item: Producible, entry: QueueEntry) => boolean | void;
+export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Producible, entry: QueueEntry) => void;
 export type ProductionChangedListener = (cityId: string) => void;
 export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
 
@@ -68,6 +69,7 @@ export class ProductionSystem {
   private readonly cityManager: CityManager;
   private readonly queues = new Map<string, QueueEntry[]>();
   private readonly completedListeners: ProductionCompletedListener[] = [];
+  private readonly completedSuccessfullyListeners: ProductionCompletedSuccessfullyListener[] = [];
   private readonly changedListeners: ProductionChangedListener[] = [];
   private readonly removedListeners: ProductionRemovedListener[] = [];
   private hasSkippedInitialTurnStart = false;
@@ -292,6 +294,10 @@ export class ProductionSystem {
     this.completedListeners.push(listener);
   }
 
+  onCompletedSuccessfully(listener: ProductionCompletedSuccessfullyListener): void {
+    this.completedSuccessfullyListeners.push(listener);
+  }
+
   onChanged(listener: ProductionChangedListener): void {
     this.changedListeners.push(listener);
   }
@@ -348,7 +354,9 @@ export class ProductionSystem {
       entry.blockedReason = undefined;
     }
 
-    return !didBlock;
+    if (didBlock) return false;
+    for (const cb of this.completedSuccessfullyListeners) cb(cityId, entry.item, entry);
+    return true;
   }
 
   getCost(item: Producible): number {

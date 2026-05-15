@@ -16,6 +16,11 @@
       "file": "assets/maps/simpleGrassland12x12.json"
     },
     {
+      "key": "map_two_continents_scenario_i",
+      "label": "Two Continents Scenario I",
+      "file": "assets/maps/twoContinentsScenarioI.json"
+    },
+    {
       "key": "map_world",
       "label": "World 1400",
       "file": "assets/maps/worldScenario.json"

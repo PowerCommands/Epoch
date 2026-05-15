@@ -29,6 +29,7 @@ export const BASELINE_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 3,
     settlerMinCityDistance: 7,
+    settlerInterval: 8,
   },
 
   production: {
@@ -61,6 +62,7 @@ export const BALANCED_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 3,
     settlerMinCityDistance: 8,
+    settlerInterval: 7,
   },
 
   production: {
@@ -93,6 +95,7 @@ export const EXPANSIONIST_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 5,
     settlerMinCityDistance: 8,
+    settlerInterval: 4,
   },
 
   production: {
@@ -125,6 +128,7 @@ export const DEFENSIVE_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 4,
     settlerMinCityDistance: 7,
+    settlerInterval: 8,
   },
 
   production: {
@@ -157,6 +161,7 @@ export const AGGRESSIVE_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 3,
     settlerMinCityDistance: 7,
+    settlerInterval: 5,
   },
 
   production: {
@@ -189,6 +194,7 @@ export const ECONOMIC_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 6,
     settlerMinCityDistance: 9,
+    settlerInterval: 7,
   },
 
   production: {
@@ -221,6 +227,7 @@ export const CULTURAL_DOMINANCE_AI_STRATEGY: AIStrategy = {
   expansion: {
     desiredCityCount: 5,
     settlerMinCityDistance: 8,
+    settlerInterval: 10,
   },
 
   production: {
