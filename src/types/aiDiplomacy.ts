@@ -27,5 +27,10 @@ export interface AIDiplomacyDecisionReason {
   readonly hostility: number;
   readonly affinity: number;
 
+  readonly ideologyCompatibility?: number;
+  readonly ideologyCompatibilityLabel?: string;
+  readonly sourceIdeologyName?: string;
+  readonly targetIdeologyName?: string;
+
   readonly reasonText: string;
 }

@@ -3,6 +3,8 @@ import {
   DEFAULT_AI_LEADER_PERSONALITY,
   type AILeaderPersonality,
 } from '../types/aiLeaderPersonality';
+import { getIdeologyById } from './ideologies';
+import type { IdeologyDefinition } from '../types/ideology';
 
 const LEADER_IMAGE_BASE = '/assets/sprites/leaders';
 
@@ -14,6 +16,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'King of England',
     image: `${LEADER_IMAGE_BASE}/henry-v.png`,
     description: 'A martial king remembered for disciplined campaigns and a hard edge in war.',
+    ideologyId: 'militarism',
     aiPersonality: {
       aggressionBias: 15,
       expansionBias: 5,
@@ -31,6 +34,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'King of France',
     image: `${LEADER_IMAGE_BASE}/charles-vi.png`,
     description: 'A prestige-minded restorer of French authority, leaning on courtly culture, diplomacy, and monumental soft power.',
+    ideologyId: 'traditionalism',
     aiNationalAgendaId: 'culture',
     culturePriorities: ['code_of_laws', 'foreign_trade', 'mysticism', 'state_workforce', 'political_philosophy', 'drama_poetry', 'recorded_history'],
     aiPersonality: {
@@ -50,6 +54,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Holy Roman Emperor',
     image: `${LEADER_IMAGE_BASE}/sigismund.png`,
     description: 'An imperial broker balancing crowns, councils, and competing princes.',
+    ideologyId: 'conservatism',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
@@ -67,6 +72,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'King of Sweden',
     image: `${LEADER_IMAGE_BASE}/gustaf-vasa.png`,
     description: 'A determined state-builder with an eye for independence and order.',
+    ideologyId: 'nationalism',
     aiPersonality: {
       aggressionBias: 5,
       expansionBias: 10,
@@ -84,6 +90,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Grand Duke of Lithuania',
     image: `${LEADER_IMAGE_BASE}/vytautas-the-great.png`,
     description: 'An ambitious grand duke whose realm looks across the eastern frontier.',
+    ideologyId: 'nationalism',
     aiPersonality: {
       aggressionBias: 8,
       expansionBias: 12,
@@ -101,6 +108,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Posadnitsa of Novgorod',
     image: `${LEADER_IMAGE_BASE}/marfa-boretskaya.png`,
     description: 'A formidable civic figure standing for Novgorod tradition and autonomy.',
+    ideologyId: 'conservatism',
     aiPersonality: {
       aggressionBias: -8,
       expansionBias: -5,
@@ -118,6 +126,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Sultan of the Ottoman Empire',
     image: `${LEADER_IMAGE_BASE}/mehmed-i.png`,
     description: 'A conqueror-sultan with a taste for decisive campaigns and imperial ambition.',
+    ideologyId: 'militarism',
     aiPersonality: {
       aggressionBias: 20,
       expansionBias: 15,
@@ -135,6 +144,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Queen of Castile',
     image: `${LEADER_IMAGE_BASE}/isabella.png`,
     description: 'A dynastic ruler focused on unity, faith, and royal authority.',
+    ideologyId: 'traditionalism',
     aiPersonality: {
       aggressionBias: 5,
       expansionBias: 5,
@@ -152,6 +162,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Sultan of Morocco',
     image: `${LEADER_IMAGE_BASE}/abu-al-hasan.png`,
     description: 'A Maghrebi ruler anchoring Moroccan power across western trade routes.',
+    ideologyId: 'globalism',
     aiPersonality: {
       aggressionBias: 0,
       expansionBias: 5,
@@ -169,6 +180,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'President George Washington',
     image: `${LEADER_IMAGE_BASE}/george-washington.png`,
     description: 'A visionary founding father focused on liberty, stability, and national unity.',
+    ideologyId: 'liberalism',
     aiPersonality: {
       aggressionBias: -2,
       expansionBias: 8,
@@ -186,6 +198,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Mahatma Gandhi',
     image: `${LEADER_IMAGE_BASE}/mahatma-gandhi.png`,
     description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
+    ideologyId: 'liberalism',
     culturePriorities: ['early_empire', 'state_workforce', 'mysticism', 'political_philosophy', 'games_recreation'],
     aiPersonality: {
       aggressionBias: -15,
@@ -204,6 +217,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Emperor Qin Shi Huang',
     image: `${LEADER_IMAGE_BASE}/qin-shi-huang.png`,
     description: 'An imperial unifier focused on administration, infrastructure, discipline, and centralized expansion.',
+    ideologyId: 'nationalism',
     culturePriorities: ['state_workforce', 'early_empire', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'guilds'],
     aiPersonality: {
       aggressionBias: 5,
@@ -222,6 +236,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Zheng Chenggong',
     image: `${LEADER_IMAGE_BASE}/leader_koxinga.png`,
     description: 'A maritime commander focused on trade, diplomacy, technology, and resilient island defense.',
+    ideologyId: 'globalism',
     culturePriorities: ['foreign_trade', 'state_workforce', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'diplomatic_service'],
     aiPersonality: {
       aggressionBias: -4,
@@ -240,6 +255,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Emperor Dom Pedro II',
     image: `${LEADER_IMAGE_BASE}/dom-pedro-ii.png`,
     description: 'An enlightened monarch focused on scientific progress, cultural growth, and diplomatic stability.',
+    ideologyId: 'progressivism',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
@@ -257,6 +273,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Emperor Mansa Musa',
     image: `${LEADER_IMAGE_BASE}/mansa-musa.png`,
     description: 'A legendary sovereign focused on immense wealth, trans-Saharan trade, and intellectual enlightenment.',
+    ideologyId: 'globalism',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
@@ -274,6 +291,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Great Khan of the Mongols',
     image: `${LEADER_IMAGE_BASE}/genghis-khan.png`,
     description: 'A relentless conqueror whose horse-borne armies carve empires from the steppe.',
+    ideologyId: 'militarism',
     culturePriorities: ['early_empire'],
     aiPersonality: {
       aggressionBias: 18,
@@ -292,6 +310,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     title: 'Daimyo of Owari',
     image: `${LEADER_IMAGE_BASE}/oda-nobunaga.png`,
     description: 'A ruthless unifier of the islands, balancing martial prowess with disciplined defense.',
+    ideologyId: 'militarism',
     aiPersonality: {
       aggressionBias: 15,
       expansionBias: 8,
@@ -310,6 +329,14 @@ export function getLeaderByNationId(nationId: string): LeaderDefinition | undefi
 
 export function getLeaderById(leaderId: string): LeaderDefinition | undefined {
   return ALL_LEADERS.find((leader) => leader.id === leaderId);
+}
+
+export function getLeaderIdeologyByNationId(nationId: string): IdeologyDefinition {
+  return getIdeologyById(getLeaderByNationId(nationId)?.ideologyId);
+}
+
+export function getLeaderIdeologyById(leaderId: string): IdeologyDefinition {
+  return getIdeologyById(getLeaderById(leaderId)?.ideologyId);
 }
 
 export function getLeaderPersonalityByNationId(nationId: string): AILeaderPersonality {

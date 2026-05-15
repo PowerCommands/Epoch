@@ -1,6 +1,10 @@
 import { ALL_BUILDINGS, getBuildingById } from '../../data/buildings';
 import { getImprovementById } from '../../data/improvements';
-import { getLeaderById, getLeaderByNationId } from '../../data/leaders';
+import { getLeaderById, getLeaderByNationId, getLeaderIdeologyByNationId } from '../../data/leaders';
+import {
+  describeIdeologyCompatibility,
+  getIdeologyCompatibility,
+} from '../../data/ideologyCompatibility';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import type { Era } from '../../data/technologies';
 import { ALL_UNIT_TYPES } from '../../data/units';
@@ -23,9 +27,10 @@ import type { HappinessSystem } from '../../systems/HappinessSystem';
 import { formatPercent, formatHappinessStateLabel, luxuryResourceLabels } from '../happinessFormat';
 import type { IGridSystem } from '../../systems/grid/IGridSystem';
 import type { NationManager } from '../../systems/NationManager';
-import type { AIMilitaryEvaluationSystem } from '../../systems/ai/AIMilitaryEvaluationSystem';
-import type { AIMilitaryThreatEvaluationSystem } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
+import type { AIMilitaryEvaluationSystem, MilitaryComparison } from '../../systems/ai/AIMilitaryEvaluationSystem';
+import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
+import type { DiplomaticAttitude } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../systems/ProductionRules';
 import type { ProductionSystem, QueueEntryView } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
@@ -40,6 +45,7 @@ import type { StrategicResourceCapacitySystem } from '../../systems/StrategicRes
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
+import type { LeaderDefinition } from '../../types/leader';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
 import { getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
@@ -688,9 +694,10 @@ export class RightSidebarPanelDataProvider {
     }
   }
 
-  private getLeaderDetailsContent(leader: { name: string; nationId: string; title?: string; description?: string }): RightSidebarContent {
+  private getLeaderDetailsContent(leader: LeaderDefinition): RightSidebarContent {
     const nation = this.nationManager.getNation(leader.nationId);
     const resources = this.nationManager.getResources(leader.nationId);
+    const ideologyRows = this.getLeaderIdeologyRows(leader.nationId);
     return {
       title: 'Leader Details',
       sections: [
@@ -702,12 +709,26 @@ export class RightSidebarPanelDataProvider {
             ...(leader.title ? [textRow(leader.title)] : []),
             ...(leader.description ? [textRow(leader.description, true)] : []),
             textRow(`🕊️ ${resources.influence} (${formatSigned(resources.influencePerTurn)})`),
+            ...ideologyRows,
           ],
         },
         this.getLeaderNationSection(leader.nationId),
         this.getLeaderTerritorySection(leader.nationId),
       ],
     };
+  }
+
+  private getLeaderIdeologyRows(leaderNationId: string): RightSidebarRow[] {
+    const ideology = getLeaderIdeologyByNationId(leaderNationId);
+    const rows: RightSidebarRow[] = [textRow(`Ideology: ${ideology.name}`)];
+
+    if (!this.humanNationId) return rows;
+
+    const humanIdeology = getLeaderIdeologyByNationId(this.humanNationId);
+    const compatibility = getIdeologyCompatibility(humanIdeology.id, ideology.id);
+    const compatibilityLabel = formatIdeologyCompatibilityLabel(describeIdeologyCompatibility(compatibility));
+    rows.push(textRow(`Ideological relation: ${compatibilityLabel} (${formatSigned(compatibility)})`));
+    return rows;
   }
 
   private getLeaderUnitsContent(leader: { nationId: string }): RightSidebarContent {
@@ -1178,6 +1199,8 @@ export class RightSidebarPanelDataProvider {
     const openBordersUnavailableReason = relation.state === 'WAR' ? 'Unavailable during war.' : undefined;
     const rows: RightSidebarRow[] = [];
 
+    rows.push(...this.getDiplomaticBreakdownRows(humanId, nationId));
+    rows.push({ kind: 'separator' });
     rows.push(textRow(`Status: ${relation.state}`));
     rows.push(textRow(`Open Borders: ${humanGrantsBorders ? 'Open' : 'Closed'}`));
     rows.push(disabledReasonButtonRow(
@@ -1225,6 +1248,31 @@ export class RightSidebarPanelDataProvider {
       }));
     }, relation.state === 'PEACE' ? 0xb86767 : nation?.color));
     return { title: 'Diplomacy', rows };
+  }
+
+  private getDiplomaticBreakdownRows(viewerNationId: string, targetNationId: string): RightSidebarRow[] {
+    const relation = this.diplomacyManager?.getRelation(viewerNationId, targetNationId);
+    if (!relation) return [];
+
+    const evaluation = this.diplomaticEvaluationSystem?.evaluateRelation(viewerNationId, targetNationId);
+    const militaryComparison = this.militaryEvaluationSystem?.compareMilitaryStrength(viewerNationId, targetNationId);
+    const threatLevel = this.threatEvaluationSystem?.getThreatLevel(viewerNationId, targetNationId);
+    const ideologyScore = evaluation?.ideologyCompatibility;
+    const ideologyLabel = evaluation
+      ? formatIdeologyCompatibilityLabel(evaluation.ideologyCompatibilityLabel)
+      : 'Unknown';
+
+    return [
+      textRow('Relations', false, true),
+      textRow(`Trust: ${Math.round(relation.trust)}`),
+      textRow(`Fear: ${Math.round(relation.fear)}`),
+      textRow(`Hostility: ${Math.round(relation.hostility)}`),
+      textRow(`Affinity: ${Math.round(relation.affinity)}`),
+      textRow(`Ideology: ${ideologyScore === undefined ? '?' : formatSigned(ideologyScore)} (${ideologyLabel})`),
+      textRow(`Military balance: ${formatMilitaryComparison(militaryComparison)}`),
+      textRow(`Threat level: ${formatThreatLevel(threatLevel)}`),
+      textRow(`Final attitude: ${formatAttitude(evaluation?.attitude ?? 'neutral')}`),
+    ];
   }
 
   private getTradeTabRows(otherNationId: string): RightSidebarRow[] {
@@ -1491,6 +1539,42 @@ function getProducibleSpritePath(item: Producible): string | undefined {
 
 function formatSigned(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+function formatIdeologyCompatibilityLabel(label: string): string {
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatMilitaryComparison(comparison: MilitaryComparison | undefined): string {
+  switch (comparison) {
+    case 'stronger':
+      return 'Stronger';
+    case 'equal':
+      return 'Balanced';
+    case 'weaker':
+      return 'Weaker';
+    case undefined:
+      return 'Unknown';
+  }
+}
+
+function formatThreatLevel(threatLevel: ThreatLevel | undefined): string {
+  switch (threatLevel) {
+    case 'none':
+      return 'None';
+    case 'low':
+      return 'Low';
+    case 'medium':
+      return 'Moderate';
+    case 'high':
+      return 'High';
+    case undefined:
+      return 'Unknown';
+  }
+}
+
+function formatAttitude(attitude: DiplomaticAttitude): string {
+  return attitude.charAt(0).toUpperCase() + attitude.slice(1);
 }
 
 function formatYieldBonus(yieldBonus: {
