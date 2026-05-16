@@ -162,6 +162,10 @@ export class RightSidebarPanel {
   private collapsed = true;
   private collapseHovered = false;
   private collapsePressed = false;
+  private draggingScrollbar = false;
+  private dragPointerId: number | null = null;
+  private dragStartPointerY = 0;
+  private dragStartScrollOffset = 0;
   private panelHeight = 260;
   private scrollOffset = 0;
   private maxScroll = 0;
@@ -196,10 +200,12 @@ export class RightSidebarPanel {
     this.contentMask = this.contentMaskGraphics.createGeometryMask();
     this.scrollbarTrack = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, 100, 0x1d3142, 0.56))
       .setOrigin(0, 0)
-      .setScrollFactor(0);
+      .setScrollFactor(0)
+      .setInteractive({ cursor: 'pointer' });
     this.scrollbarThumb = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB_HEIGHT, 0x9fc5dd, 0.86))
       .setOrigin(0, 0)
-      .setScrollFactor(0);
+      .setScrollFactor(0)
+      .setInteractive({ cursor: 'pointer' });
 
     this.collapseBackground = this.addOwned(scene.add.rectangle(0, 0, COLLAPSE_WIDTH, COLLAPSE_HEIGHT, 0x101b27, 0.96))
       .setOrigin(0.5)
@@ -227,6 +233,7 @@ export class RightSidebarPanel {
 
     this.modeButtons = MODES.map((definition) => this.createModeButton(definition));
     this.installPanelInput();
+    this.installScrollbarInput();
     this.installCollapseInput();
 
     this.uiCamera = scene.cameras.add(0, 0, scene.scale.width, scene.scale.height);
@@ -261,6 +268,9 @@ export class RightSidebarPanel {
       this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
     };
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
+    scene.input.on(Phaser.Input.Events.POINTER_MOVE, this.handlePointerMove);
+    scene.input.on(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
+    scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
 
     this.dataProvider.onChanged(() => {
       console.debug('[RightSidebarPanel] received data change', {
@@ -316,6 +326,9 @@ export class RightSidebarPanel {
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
     this.scene.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.onAddedToScene);
     this.scene.input.off(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
+    this.scene.input.off(Phaser.Input.Events.POINTER_MOVE, this.handlePointerMove);
+    this.scene.input.off(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
+    this.scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
     this.worldInputGate.unregisterWheelBlocker(WHEEL_BLOCKER_ID);
     this.destroyContentObjects();
     this.scene.cameras.remove(this.uiCamera);
@@ -391,6 +404,49 @@ export class RightSidebarPanel {
       if (pointer.button !== 0) return;
       consumePointerEvent(pointer);
       this.worldInputGate.releasePointer(pointer.id);
+    });
+  }
+
+  private installScrollbarInput(): void {
+    this.scrollbarTrack.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0 || this.collapsed || this.maxScroll <= 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+
+      const trackHeight = this.scrollbarTrack.height;
+      const thumbHeight = this.scrollbarThumb.height;
+      const thumbTop = this.scrollbarThumb.y - this.scrollbarTrack.y;
+      const targetThumbTop = Phaser.Math.Clamp(localY - (thumbHeight / 2), 0, Math.max(0, trackHeight - thumbHeight));
+      const pageScroll = Math.max(SCROLL_STEP, this.getVisibleContentHeight() * 0.8);
+      if (targetThumbTop < thumbTop) {
+        this.applyScroll(-pageScroll);
+      } else if (targetThumbTop > thumbTop) {
+        this.applyScroll(pageScroll);
+      }
+
+      this.worldInputGate.releasePointer(pointer.id);
+    });
+
+    this.scrollbarThumb.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0 || this.collapsed || this.maxScroll <= 0) return;
+      this.draggingScrollbar = true;
+      this.dragPointerId = pointer.id;
+      this.dragStartPointerY = pointer.y;
+      this.dragStartScrollOffset = this.scrollOffset;
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
     });
   }
 
@@ -1133,6 +1189,26 @@ export class RightSidebarPanel {
     this.scrollOffset = next;
     this.positionContentObjects();
   }
+
+  private readonly handlePointerMove = (pointer: Phaser.Input.Pointer): void => {
+    if (!this.draggingScrollbar || this.dragPointerId !== pointer.id || this.maxScroll <= 0) return;
+    const trackTravel = this.scrollbarTrack.height - this.scrollbarThumb.height;
+    if (trackTravel <= 0) return;
+
+    const deltaY = pointer.y - this.dragStartPointerY;
+    const scrollDelta = (deltaY / trackTravel) * this.maxScroll;
+    const next = Phaser.Math.Clamp(this.dragStartScrollOffset + scrollDelta, 0, this.maxScroll);
+    if (next === this.scrollOffset) return;
+    this.scrollOffset = next;
+    this.positionContentObjects();
+  };
+
+  private readonly handlePointerUp = (pointer: Phaser.Input.Pointer): void => {
+    if (!this.draggingScrollbar || this.dragPointerId !== pointer.id) return;
+    this.draggingScrollbar = false;
+    this.dragPointerId = null;
+    this.worldInputGate.releasePointer(pointer.id);
+  };
 
   private updateScrollbar(): void {
     const visibleHeight = this.getVisibleContentHeight();
