@@ -42,6 +42,7 @@ import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
 import type { UnitUpkeepSystem } from './UnitUpkeepSystem';
+import { UnitUpgradeSystem } from './UnitUpgradeSystem';
 import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
 import { AIGoalSystem } from './ai/AIGoalSystem';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
@@ -356,6 +357,7 @@ export class AISystem {
     private readonly explorationMemorySystem?: ExplorationMemorySystem,
     private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
     private readonly unitUpkeepSystem?: UnitUpkeepSystem,
+    private readonly unitUpgradeSystem?: UnitUpgradeSystem,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly eraSystem?: EraSystem,
     settlementMemorySystem?: AISettlementMemorySystem,
@@ -2426,6 +2428,7 @@ export class AISystem {
     this.ensureScoutProduction(nationId, cities);
     this.ensureFoundationSettlerProduction(nationId, cities);
     this.ensureNavalReconProduction(nationId, cities);
+    this.runMilitaryModernization(nationId);
 
     const strategy = this.getStrategy(nationId);
     const eraStrategy = this.getActiveEraStrategy(nationId);
@@ -2508,6 +2511,39 @@ export class AISystem {
         if (choice.unitType.id === WORK_BOAT.id) plannedWorkBoatCount++;
       }
     }
+  }
+
+  private runMilitaryModernization(nationId: string): void {
+    if (!this.unitUpgradeSystem) return;
+
+    const reserve = 150 * UnitUpgradeSystem.getEraMultiplier(this.getNationEra(nationId));
+    const resources = this.nationManager.getResources(nationId);
+    const candidates = this.unitManager.getUnitsByOwner(nationId)
+      .map((unit) => {
+        const preview = this.unitUpgradeSystem?.getUpgradePreview(unit, nationId);
+        if (!preview?.canUpgrade || !preview.target || preview.cost === undefined) return null;
+        if (resources.gold - preview.cost < reserve) return null;
+
+        const oldStrength = this.getUpgradeRelevanceStrength(unit.unitType);
+        const newStrength = this.getUpgradeRelevanceStrength(preview.target);
+        const relevance = newStrength > 0 ? oldStrength / newStrength : 1;
+        return { unit, cost: preview.cost, relevance };
+      })
+      .filter((candidate): candidate is { unit: Unit; cost: number; relevance: number } => candidate !== null)
+      .sort((a, b) => a.relevance - b.relevance || b.cost - a.cost);
+
+    let upgraded = 0;
+    for (const candidate of candidates) {
+      if (upgraded >= 2) break;
+      if (resources.gold - candidate.cost < reserve) continue;
+      if (this.unitUpgradeSystem.upgradeUnit(candidate.unit, nationId)) {
+        upgraded += 1;
+      }
+    }
+  }
+
+  private getUpgradeRelevanceStrength(unitType: UnitType): number {
+    return Math.max(unitType.baseStrength, unitType.rangedStrength ?? 0, 1);
   }
 
   // Each AI nation should keep at least this many active recon units in the

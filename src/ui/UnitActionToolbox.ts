@@ -1,7 +1,8 @@
 import type { Unit } from '../entities/Unit';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
+import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'sleep' | 'dismiss';
+export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss';
 
 export interface UnitActionDefinition {
   mode: UnitActionMode;
@@ -46,6 +47,11 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     isToggledOn: (unit) => unit.isBuildingImprovement(),
   },
   {
+    mode: 'upgrade',
+    label: 'Upgrade',
+    isAvailable: (unit) => unit.unitType.upgradeToUnitId !== undefined,
+  },
+  {
     mode: 'sleep',
     label: 'Sleep',
     isAvailable: () => true,
@@ -64,8 +70,9 @@ type BuildAvailabilityProvider = Pick<BuilderSystem, 'getCurrentTileBuildPreview
 type DismissAvailabilityProvider = {
   getCargoForTransport(unit: Unit): Unit | undefined;
 };
+type UpgradeAvailabilityProvider = Pick<UnitUpgradeSystem, 'getUpgradePreview'>;
 
-const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'sleep', 'build', 'found', 'dismiss'];
+const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'found', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -76,6 +83,7 @@ export class UnitActionToolbox {
   private root: HTMLElement | null = null;
   private buildAvailabilityProvider: BuildAvailabilityProvider | null = null;
   private dismissAvailabilityProvider: DismissAvailabilityProvider | null = null;
+  private upgradeAvailabilityProvider: UpgradeAvailabilityProvider | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
   private readonly changedListeners: ChangedListener[] = [];
 
@@ -88,6 +96,11 @@ export class UnitActionToolbox {
 
   setDismissAvailabilityProvider(provider: DismissAvailabilityProvider): void {
     this.dismissAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setUpgradeAvailabilityProvider(provider: UpgradeAvailabilityProvider): void {
+    this.upgradeAvailabilityProvider = provider;
     this.refresh();
   }
 
@@ -136,7 +149,7 @@ export class UnitActionToolbox {
     if (!unit) return;
     const action = ACTIONS.find((a) => a.mode === mode);
     if (!action || !this.isActionAvailable(action, unit)) return;
-    if (mode === 'sleep' || mode === 'dismiss') {
+    if (mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade') {
       this.triggerMode(mode);
       return;
     }
@@ -162,17 +175,20 @@ export class UnitActionToolbox {
       const preview = unit !== null && action.mode === 'build'
         ? this.getBuildPreview(unit)
         : undefined;
-      const isAvailable = unit !== null && this.isActionAvailable(action, unit, preview);
+      const upgradePreview = unit !== null && action.mode === 'upgrade'
+        ? this.getUpgradePreview(unit)
+        : undefined;
+      const isAvailable = unit !== null && this.isActionAvailable(action, unit, preview, upgradePreview);
       const isActive = unit !== null && isAvailable && (
         this.mode === action.mode || action.isToggledOn?.(unit) === true
       );
 
       return {
         mode,
-        label: action.label,
+        label: this.getActionLabel(action, upgradePreview),
         isAvailable,
         isActive,
-        tooltip: this.getActionTooltip(action, preview),
+        tooltip: this.getActionTooltip(action, preview, upgradePreview),
       };
     });
   }
@@ -209,7 +225,8 @@ export class UnitActionToolbox {
 
     for (const action of ACTIONS) {
       const preview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined;
-      const isAvailable = this.isActionAvailable(action, unit, preview);
+      const upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined;
+      const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview);
       if (!isAvailable && action.mode !== 'build') continue;
 
       const button = document.createElement('button');
@@ -219,14 +236,14 @@ export class UnitActionToolbox {
       const toggledOn = isAvailable && action.isToggledOn?.(unit) === true;
       button.classList.toggle('unit-action-button-active', selectedAsMode || toggledOn);
       if (action.mode === 'dismiss') button.classList.add('unit-action-button-danger');
-      button.textContent = action.label;
-      const tooltip = this.getActionTooltip(action, preview);
+      button.textContent = this.getActionLabel(action, upgradePreview);
+      const tooltip = this.getActionTooltip(action, preview, upgradePreview);
       if (tooltip !== undefined) button.title = tooltip;
       button.disabled = !isAvailable;
       button.style.opacity = isAvailable ? '1' : '0.4';
       button.addEventListener('click', () => {
         if (!this.isActionAvailable(action, unit)) return;
-        if (action.mode === 'sleep' || action.mode === 'dismiss') {
+        if (action.mode === 'sleep' || action.mode === 'dismiss' || action.mode === 'upgrade') {
           this.triggerMode(action.mode);
           return;
         }
@@ -247,11 +264,13 @@ export class UnitActionToolbox {
     action: UnitActionDefinition,
     unit: Unit,
     buildPreview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined,
+    upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined,
   ): boolean {
     if (!action.isAvailable(unit)) return false;
     if (action.mode === 'dismiss' && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
       return false;
     }
+    if (action.mode === 'upgrade') return upgradePreview?.canUpgrade === true;
     if (action.mode !== 'build') return true;
     return buildPreview?.canBuild === true;
   }
@@ -261,9 +280,26 @@ export class UnitActionToolbox {
       ?? { canBuild: false, reason: 'No build rules available' };
   }
 
+  private getUpgradePreview(unit: Unit): UnitUpgradePreview {
+    return this.upgradeAvailabilityProvider?.getUpgradePreview(unit, unit.ownerId)
+      ?? { canUpgrade: false, reason: 'No upgrade rules available' };
+  }
+
+  private getActionLabel(
+    action: UnitActionDefinition,
+    upgradePreview: UnitUpgradePreview | undefined,
+  ): string {
+    if (action.mode !== 'upgrade') return action.label;
+    if (upgradePreview?.target && upgradePreview.cost !== undefined) {
+      return `Upgrade to ${upgradePreview.target.name} (${upgradePreview.cost} gold)`;
+    }
+    return 'Upgrade';
+  }
+
   private getActionTooltip(
     action: UnitActionDefinition,
     buildPreview: BuildImprovementPreview | undefined,
+    upgradePreview: UnitUpgradePreview | undefined,
   ): string | undefined {
     if (action.mode === 'dismiss') {
       const unit = this.selectedUnit;
@@ -271,6 +307,12 @@ export class UnitActionToolbox {
         return 'Cannot dismiss a transport carrying a unit.';
       }
       return 'Permanently remove this unit.';
+    }
+    if (action.mode === 'upgrade') {
+      if (upgradePreview?.target && upgradePreview.cost !== undefined) {
+        return `Upgrade to ${upgradePreview.target.name} for ${upgradePreview.cost} gold.`;
+      }
+      return upgradePreview?.reason ?? 'Cannot upgrade this unit.';
     }
     if (action.mode !== 'build') return undefined;
     if (buildPreview?.canBuild) return 'Build improvement';

@@ -12,6 +12,7 @@ export type UnitChangedReason =
   | 'moved'
   | 'movementReset'
   | 'damaged'
+  | 'upgraded'
   | 'removed'
   | 'actionChanged';
 
@@ -205,6 +206,14 @@ export class UnitManager {
 
   notifyDamaged(unit: Unit): void {
     this.notify({ unit, reason: 'damaged' });
+  }
+
+  upgradeUnitType(unitId: string, targetType: UnitType): boolean {
+    const unit = this.units.get(unitId);
+    if (unit === undefined) return false;
+    unit.changeUnitType(targetType, this.getEffectiveMovementPoints(targetType));
+    this.notify({ unit, reason: 'upgraded' });
+    return true;
   }
 
   notifyActionChanged(unitId: string): void {

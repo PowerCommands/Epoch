@@ -74,6 +74,9 @@ export class UnitRenderer {
       } else if (event.reason === 'moved') {
         this.refreshUnitPosition(event.unit.id);
         this.refreshUnitVisual(event.unit.id);
+      } else if (event.reason === 'upgraded') {
+        this.refreshUnitVisual(event.unit.id);
+        this.refreshHpBar(event.unit.id);
       } else if (event.reason === 'actionChanged') {
         this.refreshUnitVisual(event.unit.id);
       }

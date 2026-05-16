@@ -144,7 +144,7 @@ export class TurnOrderSystem {
       return;
     }
 
-    if ((reason === 'moved' || reason === 'damaged')
+    if ((reason === 'moved' || reason === 'damaged' || reason === 'upgraded')
       && unit.ownerId === this.humanNationId
       && isHumanTurn
       && unit.movementPoints <= 0

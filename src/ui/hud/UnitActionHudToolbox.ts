@@ -19,6 +19,7 @@ const ACTION_ICON_KEYS: Record<UnitActionMode, string> = {
   ranged: 'action_ranged_attack',
   sleep: 'action_sleep',
   build: 'action_improve',
+  upgrade: 'action_attack',
   found: 'action_found_city',
   dismiss: 'action_dismiss',
 };

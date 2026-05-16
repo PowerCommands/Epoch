@@ -30,12 +30,12 @@ export interface UnitConfig {
  */
 export class Unit {
   readonly id: string;
-  readonly name: string;
+  name: string;
   readonly ownerId: string;
-  readonly unitType: UnitType;
+  unitType: UnitType;
   tileX: number;
   tileY: number;
-  readonly maxMovementPoints: number;
+  maxMovementPoints: number;
   movementPoints: number;
   health: number;
   transportId?: string;
@@ -61,6 +61,14 @@ export class Unit {
 
   resetMovement(): void {
     this.movementPoints = this.maxMovementPoints;
+  }
+
+  changeUnitType(unitType: UnitType, maxMovementPoints = unitType.movementPoints): void {
+    this.unitType = unitType;
+    this.name = unitType.name;
+    this.maxMovementPoints = maxMovementPoints;
+    this.health = Math.min(this.health, unitType.baseHealth);
+    this.movementPoints = 0;
   }
 
   isAlive(): boolean {

@@ -20,6 +20,7 @@ export interface UnitType {
   readonly category: UnitCategory;
   readonly productionCost: number;
   readonly upkeepGold?: number;
+  readonly upgradeToUnitId?: string;
   readonly movementPoints: number;
   readonly baseHealth: number;
   readonly baseStrength: number;

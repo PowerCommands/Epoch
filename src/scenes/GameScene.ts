@@ -9,6 +9,7 @@ import { UnitManager } from '../systems/UnitManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
+import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
@@ -933,6 +934,15 @@ export class GameScene extends Phaser.Scene {
       nationCollapseSystem,
       (nationId) => nationManager.getNation(nationId)?.isHuman === true,
     );
+    const unitUpgradeSystem = new UnitUpgradeSystem(
+      nationManager,
+      unitManager,
+      researchSystem,
+      {
+        logEvent: (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
+        formatLog,
+      },
+    );
     // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
       unitManager,
@@ -945,6 +955,7 @@ export class GameScene extends Phaser.Scene {
     );
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     unitActionToolbox.setDismissAvailabilityProvider(unitManager);
+    unitActionToolbox.setUpgradeAvailabilityProvider(unitUpgradeSystem);
     let foundCitySystem: FoundCitySystem;
     let movementSystem: MovementSystem;
     let selectedBuilderForHints: Unit | null = null;
@@ -1230,6 +1241,7 @@ export class GameScene extends Phaser.Scene {
       explorationMemorySystem,
       strategicResourceCapacitySystem,
       unitUpkeepSystem,
+      unitUpgradeSystem,
       formatLog,
       eraSystem,
       undefined,
@@ -3120,6 +3132,23 @@ export class GameScene extends Phaser.Scene {
         turnOrderSystem.refreshActive();
         hudLayer?.refresh();
         rightPanel?.requestRefresh();
+        unitActionToolbox.resetMode();
+        return;
+      }
+
+      if (mode === 'upgrade') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) {
+          unitActionToolbox.resetMode();
+          return;
+        }
+        const upgraded = unitUpgradeSystem.upgradeUnit(selection.unit, humanNationId);
+        if (upgraded) {
+          unitActionToolbox.refresh();
+          turnOrderSystem.refreshActive();
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        }
         unitActionToolbox.resetMode();
         return;
       }
