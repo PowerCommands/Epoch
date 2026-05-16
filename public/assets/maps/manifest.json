@@ -16,6 +16,11 @@
       "file": "assets/maps/simpleGrassland12x12.json"
     },
     {
+      "key": "map_maritime_expansion",
+      "label": "Maritime Expansion",
+      "file": "assets/maps/maritimeExpansion.json"
+    },
+    {
       "key": "map_two_continents_scenario_i",
       "label": "Two Continents Scenario I",
       "file": "assets/maps/twoContinentsScenarioI.json"
