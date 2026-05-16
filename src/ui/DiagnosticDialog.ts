@@ -2,12 +2,15 @@ import type { DiagnosticSnapshot } from '../systems/DiagnosticSystem';
 import type { DiagnosticSystem } from '../systems/DiagnosticSystem';
 
 const DEFAULT_WIDTH = 320;
-const DEFAULT_HEIGHT = 220;
+const DEFAULT_HEIGHT = 320;
+
+export type DiagnosticExtraTextProvider = () => readonly string[];
 
 export class DiagnosticDialog {
   private readonly root: HTMLDivElement;
   private readonly header: HTMLDivElement;
   private readonly content: HTMLDivElement;
+  private readonly extraContent: HTMLPreElement;
   private readonly valueEls: Record<'zoom' | 'camX' | 'camY', HTMLSpanElement>;
   private readonly unsubscribeSnapshot: () => void;
   private readonly unsubscribeVisibility: () => void;
@@ -16,7 +19,10 @@ export class DiagnosticDialog {
   private dragOffsetY = 0;
   private hasPosition = false;
 
-  constructor(private readonly diagnosticSystem: DiagnosticSystem) {
+  constructor(
+    private readonly diagnosticSystem: DiagnosticSystem,
+    private readonly extraTextProvider?: DiagnosticExtraTextProvider,
+  ) {
     this.root = document.createElement('div');
     this.root.style.cssText = `
       position: fixed;
@@ -82,6 +88,20 @@ export class DiagnosticDialog {
       camX: this.createValueRow('Cam X'),
       camY: this.createValueRow('Cam Y'),
     };
+    this.extraContent = document.createElement('pre');
+    this.extraContent.style.cssText = `
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #c9d7e8;
+      font: inherit;
+      line-height: 1.35;
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+    `;
+    this.content.append(this.extraContent);
 
     this.root.append(this.header, this.content);
     document.body.appendChild(this.root);
@@ -160,6 +180,7 @@ export class DiagnosticDialog {
     this.valueEls.zoom.textContent = snapshot.zoom.toFixed(2);
     this.valueEls.camX.textContent = String(snapshot.camX);
     this.valueEls.camY.textContent = String(snapshot.camY);
+    this.extraContent.textContent = this.extraTextProvider?.().join('\n') ?? '';
   }
 
   private readonly handleHeaderMouseDown = (event: MouseEvent): void => {

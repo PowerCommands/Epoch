@@ -10,6 +10,8 @@ import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
 import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
+import { WorldMarkerSystem } from '../systems/WorldMarkerSystem';
+import { WorldMarkerRenderer } from '../systems/WorldMarkerRenderer';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
@@ -62,6 +64,7 @@ import { IdeologicalDriftSystem, type IdeologicalDriftEvent } from '../systems/d
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
 import { AIExplorationSystem } from '../systems/ai/AIExplorationSystem';
+import { AIOverseasExpansionSystem } from '../systems/AIOverseasExpansionSystem';
 import { AIPolicySystem } from '../systems/ai/AIPolicySystem';
 import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
@@ -181,6 +184,7 @@ export class GameScene extends Phaser.Scene {
     const scenarioJson = this.cache.json.get(data.mapKey) as ScenarioData;
     const scenario = ScenarioLoader.parse(scenarioJson);
     const mapData = scenario.mapData;
+    const worldMarkerSystem = new WorldMarkerSystem(data.savedState?.worldMarkers ?? scenario.worldMarkers);
     const gridSystem = new HexGridSystem();
     const gridLayout = new HexGridLayout();
     const resourceAbundance = data.resourceAbundance ?? 'normal';
@@ -255,8 +259,6 @@ export class GameScene extends Phaser.Scene {
     const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
     const worldInputGate = new WorldInputGate();
     this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
-    this.timeSystem = new TimeSystem(gameSpeed);
-
     // 8. Rendera städer (depth 15)
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
 
@@ -300,11 +302,13 @@ export class GameScene extends Phaser.Scene {
       (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
     );
     const eraSystem = new EraSystem(nationManager);
+    this.timeSystem = new TimeSystem(gameSpeed);
     const formatLog = createAILogFormatter({
       nationManager,
       turnManager,
       eraSystem,
       happinessSystem,
+      timeSystem: this.timeSystem,
     });
     const isAINation = (nationId: string): boolean => nationManager.getNation(nationId)?.isHuman === false;
     const cultureSystem = new CultureSystem(
@@ -1209,6 +1213,20 @@ export class GameScene extends Phaser.Scene {
 
     // 18. AI-system för icke-mänskliga nationer
     const explorationMemorySystem = new ExplorationMemorySystem(gridSystem, mapData, cityManager);
+    const aiOverseasExpansionSystem = new AIOverseasExpansionSystem(
+      worldMarkerSystem,
+      nationManager,
+      cityManager,
+      turnManager,
+      mapData,
+      productionSystem,
+      unitManager,
+      movementSystem,
+      pathfindingSystem,
+      gridSystem,
+      formatLog,
+      (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
+    );
     const aiExplorationSystem = new AIExplorationSystem(
       unitManager,
       cityManager,
@@ -1225,6 +1243,10 @@ export class GameScene extends Phaser.Scene {
         if (!resource.revealTechId) return true;
         return researchSystem.isResearched(nationId, resource.revealTechId);
       },
+      undefined,
+      undefined,
+      worldMarkerSystem,
+      aiOverseasExpansionSystem,
     );
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
@@ -1252,6 +1274,7 @@ export class GameScene extends Phaser.Scene {
       buildingPlacementSystem,
       (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
       cityDefenseSystem,
+      aiOverseasExpansionSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
@@ -2224,7 +2247,11 @@ export class GameScene extends Phaser.Scene {
       scrollX: this.cameraController.scrollX,
       scrollY: this.cameraController.scrollY,
     }));
-    const diagnosticDialog = new DiagnosticDialog(this.diagnosticSystem);
+    const diagnosticDialog = new DiagnosticDialog(
+      this.diagnosticSystem,
+      () => aiOverseasExpansionSystem.getDiagnosticLines(),
+    );
+    const worldMarkerRenderer = new WorldMarkerRenderer(this, tileMap, worldMarkerSystem, this.diagnosticSystem);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       if (hudLayer?.hasBlockingModal()) return;
@@ -3471,6 +3498,7 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.shutdown();
       rightPanel?.shutdown();
       diagnosticDialog.shutdown();
+      worldMarkerRenderer.shutdown();
       this.diagnosticSystem.shutdown();
       cityView.shutdown();
       cityBannerRenderer.shutdown();
@@ -3547,6 +3575,7 @@ export class GameScene extends Phaser.Scene {
         tradeDealSystem,
         exileProtectionSystem,
         corporationSystem,
+        worldMarkerSystem,
       });
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
@@ -3580,6 +3609,7 @@ export class GameScene extends Phaser.Scene {
       unitRenderer.rebuildAll();
       territoryRenderer.render();
       refreshCultureOverlay();
+      worldMarkerRenderer.refresh();
       leaderStrip?.rebuild();
       for (const nation of nationManager.getAllNations()) {
         resourceSystem.recalculateForNation(nation.id);
@@ -3609,6 +3639,7 @@ export class GameScene extends Phaser.Scene {
           tradeDealSystem,
           exileProtectionSystem,
           corporationSystem,
+          worldMarkerSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -3646,6 +3677,7 @@ export class GameScene extends Phaser.Scene {
             tradeDealSystem,
             exileProtectionSystem,
             corporationSystem,
+            worldMarkerSystem,
           });
           downloadSaveFile(state);
           escapeMenu.close();

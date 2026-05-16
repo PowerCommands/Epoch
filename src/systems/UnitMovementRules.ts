@@ -6,6 +6,11 @@ import { TileType, type MapData, type Tile } from '../types/map';
 
 export function canEmbark(unit: Unit, nation: Nation | undefined): boolean {
   if (unit.unitType.isNaval === true || nation === undefined) return false;
+  return canNationEmbarkLandUnits(nation);
+}
+
+export function canNationEmbarkLandUnits(nation: Nation | undefined): boolean {
+  if (nation === undefined) return false;
   return compareEras(getHighestEraForNation(nation), 'industrial') >= 0;
 }
 

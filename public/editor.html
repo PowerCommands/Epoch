@@ -78,10 +78,11 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 #exit-btn:hover { background: #303030; border-color: #aaa; }
 
 .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; font-size: 11px; color: #aaa; }
-.field input, .field select {
+.field input, .field select, .field textarea {
   width: 100%; background: #151515; border: 1px solid #444; border-radius: 3px;
   color: #ddd; font: inherit; font-size: 12px; padding: 5px;
 }
+.field textarea { min-height: 78px; resize: vertical; }
 .field input[type="color"] { height: 34px; padding: 2px; }
 .inline-field { display: flex; align-items: center; gap: 6px; }
 .inline-field input[type="color"] { width: 34px; height: 28px; padding: 1px; }
@@ -120,6 +121,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <button class="tool-btn" data-tool="setStart">Set Start Position</button>
         <button class="tool-btn" data-tool="addCity">Add City</button>
         <button class="tool-btn" data-tool="addUnit">Add Unit</button>
+        <button class="tool-btn" data-tool="marker">World Marker</button>
       </div>
     </div>
 
@@ -191,6 +193,32 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       </label>
     </div>
 
+    <div class="section" id="marker-tool-section" style="display:none">
+      <div class="section-title">World Marker</div>
+      <label class="field">
+        Type
+        <select id="marker-type-select">
+          <option value="islandDiscovery">islandDiscovery</option>
+        </select>
+      </label>
+      <label class="field">
+        Name
+        <input id="marker-name-input" type="text" placeholder="Iceland">
+      </label>
+      <label class="field">
+        Radius
+        <input id="marker-radius-input" type="number" min="0" step="1" value="6">
+      </label>
+      <label class="field">
+        Metadata JSON
+        <textarea id="marker-metadata-input" spellcheck="false">{ "priority": 80, "settlementTargets": [] }</textarea>
+      </label>
+      <button class="small-btn" id="add-marker-btn" type="button">Add Marker At View Center</button>
+      <button class="small-btn" id="remove-marker-btn" type="button">Remove Selected Marker</button>
+      <div class="entity-list" id="marker-list" style="margin-top:6px"></div>
+      <div class="hint">Click the map to add or select markers.</div>
+    </div>
+
     <div class="section">
       <div class="section-title">Brush</div>
       <label style="font-size:12px; display:flex; align-items:center; gap:6px;">
@@ -255,6 +283,7 @@ let currentResourceId = null;
 let interactionMode = 'paint';
 let brushSize = 1;
 let selectedEntity = null; // { kind: 'city'|'unit', index: number }
+let selectedMarkerIndex = null;
 let selectedNationId = null;
 let isPainting = false;
 
@@ -279,6 +308,7 @@ async function init() {
 
   const res = await fetch(`/${currentMap.file}`);
   scenario = await res.json();
+  if (!Array.isArray(scenario.worldMarkers)) scenario.worldMarkers = [];
   normalizeNationColors();
   document.title = `Map Editor — ${currentMap.label}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
@@ -322,6 +352,8 @@ async function init() {
   buildNationRegistrySelect();
   buildNationList();
   buildEntityLists();
+  buildMarkerList();
+  updateMarkerForm();
   updateToolPanels();
   resizeCanvas();
   render();
@@ -511,6 +543,107 @@ function buildEntityLists() {
     row.addEventListener('click', () => selectEntity('unit', i));
     unitList.appendChild(row);
   });
+}
+
+// ─── World markers ─────────────────────────────────────────────────────────
+
+function buildMarkerList() {
+  const markerList = document.getElementById('marker-list');
+  markerList.innerHTML = '';
+
+  scenario.worldMarkers.forEach((marker, i) => {
+    const row = document.createElement('div');
+    row.className = 'entity-row' + (selectedMarkerIndex === i ? ' selected' : '');
+    row.innerHTML = `<span class="entity-dot" style="background:#38d5ff"></span>
+      <span>${marker.name || marker.id} (${marker.x},${marker.y})</span>`;
+    row.addEventListener('click', () => selectMarker(i));
+    markerList.appendChild(row);
+  });
+}
+
+function selectMarker(index) {
+  selectedMarkerIndex = index;
+  selectedEntity = null;
+  updateMarkerForm();
+  buildMarkerList();
+  updateEntityHighlights();
+  render();
+}
+
+function updateMarkerForm() {
+  const marker = selectedMarkerIndex === null ? null : scenario.worldMarkers[selectedMarkerIndex];
+  document.getElementById('remove-marker-btn').disabled = !marker;
+  if (!marker) return;
+  document.getElementById('marker-type-select').value = marker.type;
+  document.getElementById('marker-name-input').value = marker.name || '';
+  document.getElementById('marker-radius-input').value = String(marker.radius ?? 0);
+  document.getElementById('marker-metadata-input').value = JSON.stringify(marker.metadata || {}, null, 2);
+}
+
+function getDefaultMarkerMetadata(type) {
+  if (type === 'islandDiscovery') return { priority: 80, settlementTargets: [] };
+  return {};
+}
+
+function makeDefaultMarkerName(type) {
+  if (type === 'islandDiscovery') return 'Island Discovery';
+  return 'World Marker';
+}
+
+function addMarkerAt(q, r) {
+  const type = document.getElementById('marker-type-select').value || 'islandDiscovery';
+  const formName = document.getElementById('marker-name-input').value.trim();
+  const name = formName || makeDefaultMarkerName(type);
+  const radius = Math.max(0, parseInt(document.getElementById('marker-radius-input').value, 10) || 0);
+  const marker = {
+    id: makeUniqueId('marker', name, new Set(scenario.worldMarkers.map(marker => marker.id))),
+    type,
+    x: q,
+    y: r,
+    radius,
+    name,
+    metadata: getDefaultMarkerMetadata(type),
+  };
+  scenario.worldMarkers.push(marker);
+  selectMarker(scenario.worldMarkers.length - 1);
+  setStatusInfo(`Added ${type} marker at (${q},${r})`);
+}
+
+function removeSelectedMarker() {
+  if (selectedMarkerIndex === null) return;
+  const removed = scenario.worldMarkers.splice(selectedMarkerIndex, 1)[0];
+  selectedMarkerIndex = null;
+  buildMarkerList();
+  updateMarkerForm();
+  render();
+  setStatusInfo(`Removed marker ${removed?.name || removed?.id || ''}`);
+}
+
+function updateSelectedMarkerFromForm() {
+  if (selectedMarkerIndex === null) return;
+  const marker = scenario.worldMarkers[selectedMarkerIndex];
+  if (!marker) return;
+
+  const metadataInput = document.getElementById('marker-metadata-input');
+  let metadata;
+  try {
+    metadata = JSON.parse(metadataInput.value || '{}');
+    if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+      throw new Error('Metadata must be a JSON object.');
+    }
+    metadataInput.style.borderColor = '#444';
+  } catch (err) {
+    metadataInput.style.borderColor = '#c66';
+    setStatusInfo(`Invalid marker metadata: ${err.message}`);
+    return;
+  }
+
+  marker.type = document.getElementById('marker-type-select').value || marker.type;
+  marker.name = document.getElementById('marker-name-input').value.trim() || undefined;
+  marker.radius = Math.max(0, parseInt(document.getElementById('marker-radius-input').value, 10) || 0);
+  marker.metadata = metadata;
+  buildMarkerList();
+  render();
 }
 
 // ─── Nation editing ─────────────────────────────────────────────────────────
@@ -726,6 +859,7 @@ function removeNation(nationId) {
 }
 
 function selectEntity(kind, index) {
+  selectedMarkerIndex = null;
   if (selectedEntity && selectedEntity.kind === kind && selectedEntity.index === index) {
     selectedEntity = null;
   } else {
@@ -734,6 +868,8 @@ function selectEntity(kind, index) {
     if (entity?.nationId) selectedNationId = entity.nationId;
   }
   buildNationList();
+  buildMarkerList();
+  updateMarkerForm();
   updateEntityHighlights();
   render();
 }
@@ -757,6 +893,9 @@ document.getElementById('tool-btns').addEventListener('click', (e) => {
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b === btn));
   updateToolPanels();
   selectedEntity = null;
+  if (currentTool !== 'marker') selectedMarkerIndex = null;
+  buildMarkerList();
+  updateMarkerForm();
   updateEntityHighlights();
   updateViewportCursor();
   render();
@@ -766,8 +905,22 @@ function updateToolPanels() {
   document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
   document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
   document.getElementById('unit-tool-section').style.display = currentTool === 'addUnit' ? '' : 'none';
+  document.getElementById('marker-tool-section').style.display = currentTool === 'marker' ? '' : 'none';
   updateInteractionModeUI();
 }
+
+document.getElementById('marker-type-select').addEventListener('change', updateSelectedMarkerFromForm);
+document.getElementById('marker-name-input').addEventListener('input', updateSelectedMarkerFromForm);
+document.getElementById('marker-radius-input').addEventListener('input', updateSelectedMarkerFromForm);
+document.getElementById('marker-metadata-input').addEventListener('input', updateSelectedMarkerFromForm);
+document.getElementById('remove-marker-btn').addEventListener('click', removeSelectedMarker);
+document.getElementById('add-marker-btn').addEventListener('click', () => {
+  const centerWorldX = camX + viewport.clientWidth / (2 * zoom);
+  const centerWorldY = camY + viewport.clientHeight / (2 * zoom);
+  const pos = worldToTile(centerWorldX, centerWorldY);
+  if (!pos || pos.q < 0 || pos.q >= mapW || pos.r < 0 || pos.r >= mapH) return;
+  addMarkerAt(pos.q, pos.r);
+});
 
 function setInteractionMode(mode) {
   interactionMode = mode;
@@ -1185,6 +1338,10 @@ function applyToolAt(q, r) {
     addCityAt(q, r);
   } else if (currentTool === 'addUnit') {
     addUnitAt(q, r);
+  } else if (currentTool === 'marker') {
+    const markerIdx = scenario.worldMarkers.findIndex(marker => marker.x === q && marker.y === r);
+    if (markerIdx >= 0) selectMarker(markerIdx);
+    else addMarkerAt(q, r);
   }
 }
 
@@ -1337,6 +1494,8 @@ function render() {
     }
   }
 
+  drawWorldMarkers();
+
   // Draw cities
   for (let i = 0; i < scenario.cities.length; i++) {
     const city = scenario.cities[i];
@@ -1434,6 +1593,47 @@ function render() {
       ctx.textBaseline = 'top';
       ctx.strokeText(unit.unitTypeId, sx, sy + s + 2);
       ctx.fillText(unit.unitTypeId, sx, sy + s + 2);
+    }
+  }
+}
+
+function drawWorldMarkers() {
+  if (!Array.isArray(scenario.worldMarkers)) return;
+
+  for (let i = 0; i < scenario.worldMarkers.length; i++) {
+    const marker = scenario.worldMarkers[i];
+    const world = tileToWorld(marker.x, marker.y);
+    const sx = (world.x - camX) * zoom;
+    const sy = (world.y - camY) * zoom;
+    const radius = Math.max(4, tileSize * zoom * 0.16);
+    const markerRadius = Math.max(0, marker.radius || 0) * tileSize * zoom * 0.75;
+    const isSelected = selectedMarkerIndex === i;
+
+    if (markerRadius > 0) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, markerRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(56,213,255,0.45)';
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#38d5ff';
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#fff' : '#00313b';
+    ctx.lineWidth = isSelected ? 3 : 1.5;
+    ctx.stroke();
+
+    if (zoom > 0.25 && marker.name) {
+      ctx.fillStyle = '#bff7ff';
+      ctx.strokeStyle = '#00151c';
+      ctx.lineWidth = 3;
+      ctx.font = `bold ${Math.max(9, 10 * zoom)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.strokeText(marker.name, sx, sy - radius - 3);
+      ctx.fillText(marker.name, sx, sy - radius - 3);
     }
   }
 }
@@ -1588,6 +1788,7 @@ document.getElementById('save-btn').addEventListener('click', () => {
     nations: scenario.nations,
     cities: scenario.cities,
     units: scenario.units,
+    worldMarkers: scenario.worldMarkers || [],
   };
 
   const blob = new Blob([JSON.stringify(output)], { type: 'application/json' });
@@ -1634,7 +1835,10 @@ window.addEventListener('keydown', (e) => {
   // Escape deselects entity
   if (e.key === 'Escape') {
     selectedEntity = null;
+    selectedMarkerIndex = null;
     updateEntityHighlights();
+    buildMarkerList();
+    updateMarkerForm();
     render();
   }
 

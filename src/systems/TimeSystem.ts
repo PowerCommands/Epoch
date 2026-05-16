@@ -52,17 +52,13 @@ export class TimeSystem {
   }
 
   getLabelForTurn(turn: number, era?: Era): string {
+    return `Year: ${this.getYearLabelForTurn(turn, era)} (turn:${turn})`;
+  }
+
+  getYearLabelForTurn(turn: number, era?: Era): string {
     const year = this.getYearForTurn(turn, era);
-
-    let yearLabel: string;
-
-    if (year < 0) {
-      yearLabel = `${Math.abs(year)} BC`;
-    } else {
-      yearLabel = `${year} AD`;
-    }
-
-    return `Year: ${yearLabel} (turn:${turn})`;
+    if (year < 0) return `${Math.abs(year)} BC`;
+    return `${year} AD`;
   }
 
   getDebugInfoForTurn(turn: number, era?: Era): TimeDebugInfo {

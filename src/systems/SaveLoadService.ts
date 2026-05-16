@@ -27,6 +27,7 @@ import type { ProductionSystem } from './ProductionSystem';
 import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
+import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -58,6 +59,7 @@ export interface SaveLoadContext {
   corporationSystem?: CorporationSystem;
   tradeDealSystem?: TradeDealSystem;
   exileProtectionSystem?: ExileProtectionSystem;
+  worldMarkerSystem?: WorldMarkerSystem;
 }
 
 /**
@@ -95,6 +97,7 @@ export class SaveLoadService {
       corporationSystem,
       tradeDealSystem,
       exileProtectionSystem,
+      worldMarkerSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -116,6 +119,7 @@ export class SaveLoadService {
         gold: res.gold,
         culture: res.culture,
         influence: res.influence,
+        knownIslandTargets: nation.knownIslandTargets?.map((target) => ({ ...target })),
       };
     });
 
@@ -281,6 +285,8 @@ export class SaveLoadService {
       corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
+      worldMarkers: worldMarkerSystem?.getAllMarkers(),
+      worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
     };
   }
 
@@ -377,6 +383,10 @@ export class SaveLoadService {
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
+    if (context.worldMarkerSystem) {
+      context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());
+      context.worldMarkerSystem.restoreDiscovery(state.worldMarkerDiscoveries ?? []);
+    }
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,
@@ -520,6 +530,7 @@ export class SaveLoadService {
       nation.unlockedCultureNodeIds = [...(saved.unlockedCultureNodeIds ?? [])];
       nation.currentCultureNodeId = saved.currentCultureNodeId;
       nation.cultureProgress = saved.cultureProgress ?? 0;
+      nation.knownIslandTargets = saved.knownIslandTargets?.map((target) => ({ ...target }));
 
       const res = nationManager.getResources(saved.id);
       res.gold = saved.gold;

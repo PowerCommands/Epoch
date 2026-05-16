@@ -5,6 +5,7 @@ import type {
   ScenarioCity,
   ScenarioUnit,
 } from '../types/scenario';
+import type { WorldMarker } from '../types/WorldMarker';
 
 const TYPE_MAP: Record<string, TileType> = {
   ocean: TileType.Ocean,
@@ -22,6 +23,7 @@ export interface ParsedScenario {
   nations: ScenarioNation[];
   cities: ScenarioCity[];
   units: ScenarioUnit[];
+  worldMarkers: WorldMarker[];
 }
 
 /**
@@ -58,6 +60,7 @@ export class ScenarioLoader {
       nations: json.nations,
       cities: json.cities,
       units: json.units,
+      worldMarkers: json.worldMarkers ?? [],
     };
   }
 }

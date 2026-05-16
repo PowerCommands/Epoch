@@ -11,6 +11,9 @@ import type { NationManager } from '../NationManager';
 import type { PathfindingSystem } from '../PathfindingSystem';
 import type { TurnManager } from '../TurnManager';
 import type { UnitChangedEvent, UnitManager } from '../UnitManager';
+import type { WorldMarkerSystem } from '../WorldMarkerSystem';
+import type { AIOverseasExpansionSystem } from '../AIOverseasExpansionSystem';
+import type { WorldMarker } from '../../types/WorldMarker';
 import type { AILogFormatter } from './AILogFormatter';
 import {
   getSharedAISettlementMemorySystem,
@@ -84,11 +87,23 @@ const PHASE_EXPANSION_FAR_FRONTIER_BONUS_CAP = 3;
 const PHASE_ENEMY_FOCUS_NEAR_ENEMY_RADIUS = 6;
 const PHASE_ENEMY_FOCUS_NEAR_ENEMY_FRONTIER_BONUS = 3;
 const PHASE_ENEMY_FOCUS_FAR_FROM_ENEMY_FRONTIER_PENALTY = 2;
+const LOCAL_EXPLORATION_STEP_LIMIT = 12;
 // Penalty applied when a candidate sits in the same general direction as the
 // scout's last assigned target — encourages turning rather than re-targeting
 // the same wedge of the map.
 const SAME_DIRECTION_PENALTY = 1;
 const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+
+function getMarkerPriority(marker: WorldMarker): number {
+  const priority = marker.metadata?.priority;
+  return typeof priority === 'number' ? priority : 0;
+}
+
+function markerDistanceSquared(unit: Unit, marker: WorldMarker): number {
+  const dx = unit.tileX - marker.x;
+  const dy = unit.tileY - marker.y;
+  return dx * dx + dy * dy;
+}
 
 const POI_PRIORITY: Record<PointOfInterestType, number> = {
   foreignCity: 4,
@@ -136,6 +151,8 @@ export class AIExplorationSystem {
     private readonly canSeeNaturalResource: ResourceVisibilityPredicate = () => true,
     private readonly settlementMemorySystem: AISettlementMemorySystem = getSharedAISettlementMemorySystem(mapData),
     private readonly seaResourceMemorySystem: AISeaResourceMemorySystem = getSharedAISeaResourceMemorySystem(mapData),
+    private readonly worldMarkerSystem?: WorldMarkerSystem,
+    private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
   }
@@ -177,6 +194,29 @@ export class AIExplorationSystem {
     if (event.reason !== 'moved' && event.reason !== 'created') return;
     if (!this.isExplorationUnit(event.unit)) return;
     this.getKnowledge(event.unit.ownerId).knownTiles.add(this.getTileIndex(event.unit.tileX, event.unit.tileY));
+    if (event.reason === 'moved') this.discoverNearbyWorldMarkers(event.unit);
+  }
+
+  private discoverNearbyWorldMarkers(unit: Unit): void {
+    if (!this.worldMarkerSystem) return;
+    if (!this.isNavalReconUnit(unit)) return;
+
+    const markers = this.worldMarkerSystem.getMarkersNear(unit.tileX, unit.tileY, SCOUT_VISION_RADIUS)
+      .filter((marker) => marker.type === 'islandDiscovery')
+      .sort((a, b) => {
+        const priorityDelta = getMarkerPriority(b) - getMarkerPriority(a);
+        if (priorityDelta !== 0) return priorityDelta;
+        const distanceDelta = markerDistanceSquared(unit, a) - markerDistanceSquared(unit, b);
+        if (distanceDelta !== 0) return distanceDelta;
+        return a.id.localeCompare(b.id);
+      });
+
+    for (const marker of markers) {
+      if (!this.worldMarkerSystem.discoverMarker(unit.ownerId, marker.id)) continue;
+      const markerLabel = marker.name ?? marker.id;
+      this.log(unit.ownerId, `discovered island opportunity: ${markerLabel}`);
+      this.overseasExpansionSystem?.registerDiscoveredIslandMarker(unit.ownerId, marker.id);
+    }
   }
 
   private moveScout(unit: Unit): void {
@@ -649,10 +689,10 @@ export class AIExplorationSystem {
       return false;
     }
 
-    const nextTile = path[1];
     const fromX = unit.tileX;
     const fromY = unit.tileY;
-    this.movementSystem.moveAlongPath(unit, [nextTile]);
+    const pathToFollow = path.slice(1);
+    this.movementSystem.moveAlongPath(unit, pathToFollow);
     if (unit.tileX === fromX && unit.tileY === fromY) {
       this.markTargetVisited(unit.id, targetIndex);
       this.explorationTargets.set(unit.id, null);
@@ -662,10 +702,15 @@ export class AIExplorationSystem {
     this.rememberVisit(unit.id, unit.tileX, unit.tileY);
     const target = this.getTileByIndex(targetIndex);
     if (target !== undefined) {
+      const endIdx = pathToFollow.findIndex((t) => t.x === unit.tileX && t.y === unit.tileY);
+      const tilesMoved = endIdx >= 0 ? endIdx + 1 : pathToFollow.length;
       const targetLabel = this.isNavalReconUnit(unit) && target.resourceId !== undefined
         ? 'sea resource'
         : 'target';
-      this.log(unit.ownerId, `${this.getScoutLogName(unit)} moved toward ${targetLabel} (${target.x},${target.y})`);
+      this.log(
+        unit.ownerId,
+        `${this.getScoutLogName(unit)} moved ${tilesMoved} tile${tilesMoved !== 1 ? 's' : ''} toward ${targetLabel} (${target.x},${target.y})`,
+      );
     }
     if (this.getTileIndex(unit.tileX, unit.tileY) === targetIndex) {
       this.markTargetVisited(unit.id, targetIndex);
@@ -692,26 +737,46 @@ export class AIExplorationSystem {
   }
 
   private exploreLocally(unit: Unit): void {
-    const candidate = this.pickBestLocalCandidate(unit);
-    if (!candidate) return;
+    const visitedThisTurn = new Set<TileIndex>();
+    visitedThisTurn.add(this.getTileIndex(unit.tileX, unit.tileY));
+    let tilesMoved = 0;
+    let movedInwardFromEdge = false;
 
-    const fromX = unit.tileX;
-    const fromY = unit.tileY;
-    this.movementSystem.moveAlongPath(unit, [candidate.tile]);
-    if (unit.tileX === fromX && unit.tileY === fromY) return;
+    while (unit.movementPoints > 0 && tilesMoved < LOCAL_EXPLORATION_STEP_LIMIT) {
+      const candidate = this.pickBestLocalCandidate(unit, visitedThisTurn);
+      if (!candidate) break;
 
-    this.rememberVisit(unit.id, unit.tileX, unit.tileY);
-    if (this.getDistanceToEdge(fromX, fromY) < MIN_EDGE_DISTANCE && this.getDistanceToEdge(unit.tileX, unit.tileY) > this.getDistanceToEdge(fromX, fromY)) {
-      this.log(unit.ownerId, `${this.getScoutLogName(unit)} moved inward from map edge`);
+      const fromX = unit.tileX;
+      const fromY = unit.tileY;
+      this.movementSystem.moveAlongPath(unit, [candidate.tile]);
+      if (unit.tileX === fromX && unit.tileY === fromY) break;
+
+      this.rememberVisit(unit.id, unit.tileX, unit.tileY);
+      visitedThisTurn.add(this.getTileIndex(unit.tileX, unit.tileY));
+      tilesMoved++;
+
+      if (!movedInwardFromEdge
+        && this.getDistanceToEdge(fromX, fromY) < MIN_EDGE_DISTANCE
+        && this.getDistanceToEdge(unit.tileX, unit.tileY) > this.getDistanceToEdge(fromX, fromY)) {
+        movedInwardFromEdge = true;
+      }
     }
-    this.log(unit.ownerId, `${this.getScoutLogName(unit)} exploring locally`);
+
+    if (tilesMoved > 0) {
+      const edgeNote = movedInwardFromEdge ? ', moved inward from map edge' : '';
+      this.log(
+        unit.ownerId,
+        `${this.getScoutLogName(unit)} exploring locally (${tilesMoved} tile${tilesMoved !== 1 ? 's' : ''}${edgeNote})`,
+      );
+    }
   }
 
-  private pickBestLocalCandidate(unit: Unit): ExplorationCandidate | null {
+  private pickBestLocalCandidate(unit: Unit, visitedThisTurn?: Set<TileIndex>): ExplorationCandidate | null {
     const candidates = CARDINAL_DIRECTIONS
       .map((direction) => this.mapData.tiles[unit.tileY + direction.y]?.[unit.tileX + direction.x])
       .filter((tile): tile is Tile => tile !== undefined)
       .filter((tile) => this.movementSystem.canMoveUnitTo(unit, tile.x, tile.y))
+      .filter((tile) => visitedThisTurn === undefined || !visitedThisTurn.has(this.getTileIndex(tile.x, tile.y)))
       .map((tile) => this.scoreLocalTile(unit, tile))
       .sort((a, b) => (
         b.score - a.score

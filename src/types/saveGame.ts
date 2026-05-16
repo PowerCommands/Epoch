@@ -5,6 +5,8 @@ import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
 import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
+import type { WorldMarker, WorldMarkerDiscoveryEntry } from './WorldMarker';
+import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -64,6 +66,7 @@ export interface SavedNation {
   gold: number;
   culture: number;
   influence?: number;
+  knownIslandTargets?: OverseasSettlementTarget[];
 }
 
 export interface SavedCity {
@@ -206,4 +209,6 @@ export interface SavedGameState {
   corporations?: SavedCorporation[];
   tradeDeals?: TradeDeal[];
   exileProtectionAgreements?: ExileProtectionAgreement[];
+  worldMarkers?: WorldMarker[];
+  worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];
 }

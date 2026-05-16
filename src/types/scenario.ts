@@ -1,4 +1,5 @@
 import type { AINationalAgendaId } from './aiNationalAgenda';
+import type { WorldMarker } from './WorldMarker';
 
 export interface ScenarioMeta {
   name: string;
@@ -54,4 +55,5 @@ export interface ScenarioData {
   nations: ScenarioNation[];
   cities: ScenarioCity[];
   units: ScenarioUnit[];
+  worldMarkers?: WorldMarker[];
 }

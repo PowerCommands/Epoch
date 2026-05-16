@@ -5,7 +5,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, TRANSPORT_SHIP } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById } from '../data/buildings';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
@@ -43,6 +43,7 @@ import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
 import type { UnitUpkeepSystem } from './UnitUpkeepSystem';
 import { UnitUpgradeSystem } from './UnitUpgradeSystem';
+import type { AIOverseasExpansionSystem } from './AIOverseasExpansionSystem';
 import { getBehaviorWeights, getMaxTradeDealsPerTurn } from './AIStrategyService';
 import { AIGoalSystem } from './ai/AIGoalSystem';
 import { AIStrategySelector, type AIStrategyContext } from './ai/AIStrategySelector';
@@ -385,6 +386,7 @@ export class AISystem {
     private readonly buildingPlacementSystem?: BuildingPlacementSystem,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
     private readonly cityDefenseSystem?: CityDefenseSystem,
+    private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -457,7 +459,9 @@ export class AISystem {
       );
     }
 
+    this.overseasExpansionSystem?.runTurn(nationId);
     this.runSettlers(nationId);
+    this.overseasExpansionSystem?.runStaging(nationId);
     this.runLeaderRelocation(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
@@ -1010,6 +1014,7 @@ export class AISystem {
 
     for (const settler of settlers) {
       if (this.unitManager.getUnit(settler.id) === undefined) continue;
+      if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(settler.id) === true) continue;
 
       // Single spacing-aware gate. The strategy's settlerMinCityDistance is
       // the absolute floor — even capitals respect it, so two AIs that start
@@ -1544,6 +1549,7 @@ export class AISystem {
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
+      if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
       if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
       if (unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon') continue;
@@ -2895,7 +2901,8 @@ export class AISystem {
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
 
-    if (canBuildMilitary && this.needsDefender(city, nationId)) {
+    const acuteDefenderNeeded = canBuildMilitary && this.needsDefender(city, nationId);
+    if (acuteDefenderNeeded) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
@@ -2904,6 +2911,25 @@ export class AISystem {
           category: 'military',
         });
       }
+    }
+
+    const canProduceTransport =
+      this.canBuildUnit(nationId, TRANSPORT_SHIP.id) &&
+      canCityProduceUnit(city, TRANSPORT_SHIP, this.mapData, this.gridSystem, this.getUnitProductionRuleContext());
+    const overseasRequest = acuteDefenderNeeded
+      ? undefined
+      : this.overseasExpansionSystem?.getExpeditionProductionRequest(
+        nationId,
+        city,
+        canProduceSettler,
+        canProduceTransport,
+      );
+    if (overseasRequest) {
+      candidates.push({
+        item: { kind: 'unit', unitType: overseasRequest.unitType },
+        baseScore: SCORE_ACUTE_DEFENDER - 5,
+        category: overseasRequest.component === 'settler' ? 'settler' : 'workBoat',
+      });
     }
 
     if (
@@ -3141,6 +3167,18 @@ export class AISystem {
       }
       const itemName = this.foundationProducibleName(best.item);
       const reason = this.describeFoundationProductionReason(best.item);
+      if (
+        overseasRequest
+        && best.item.kind === 'unit'
+        && best.item.unitType.id === overseasRequest.unitType.id
+      ) {
+        this.overseasExpansionSystem?.markProductionSelected(
+          nationId,
+          city.name,
+          overseasRequest.component,
+          overseasRequest.target.markerId,
+        );
+      }
       console.log(
         this.formatLog(
           nationId,
