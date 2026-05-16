@@ -31,7 +31,8 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
       "Bash(python3 -c ' *)",
       "Bash(python3 scripts/generateWorldMap.py)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
     ]
   }
 }

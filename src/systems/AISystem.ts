@@ -69,8 +69,21 @@ import {
   type AIMovementCandidate,
 } from './ai/AIMovementScoring';
 import { CITY_BASE_HEALTH } from '../data/cities';
-import { getLeaderByNationId, getLeaderPersonalityByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
+import { getEraIndex } from '../data/eraTimeline';
+import {
+  buildArmyRoleProfile,
+  scoreMilitaryUnitCandidate,
+  isMaritimeDoctrine,
+  type ArmyRoleProfile,
+} from './ai/AIMilitaryDoctrineScoring';
+import type { AIMilitaryDoctrine } from '../types/aiMilitaryDoctrine';
+import {
+  getModernizationGoldReserve,
+  getModernizationMaxUpgrades,
+  scoreUpgradeCandidate,
+} from './AIMilitaryModernizationSystem';
 import type { AILeaderEraStrategy } from '../types/aiLeaderEraStrategy';
 import type { EraSystem } from './EraSystem';
 import type { Era } from '../data/technologies';
@@ -176,6 +189,9 @@ function threatRank(level: ThreatLevel): number {
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.baseStrength > 0
 ));
+// Score boost applied to naval candidates when a maritime doctrine is active
+// and the nation has fewer naval units than coastal cities.
+const MARITIME_NAVAL_URGENCY_MULTIPLIER = 1.5;
 
 function luxuryRank(resourceId: string): number {
   return getNaturalResourceById(resourceId)?.category === 'luxury' ? 1 : 0;
@@ -319,6 +335,7 @@ export class AISystem {
   private readonly militaryHoldingLoggedRound = new Map<string, number>();
   private readonly defensiveModeLoggedRound = new Map<string, number>();
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
+  private readonly doctrineProductionLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
   private readonly longTermExpansionLoggedRound = new Map<string, number>();
   private readonly leaderEvacuationDecisionLog = new Map<string, string>();
@@ -2516,34 +2533,34 @@ export class AISystem {
   private runMilitaryModernization(nationId: string): void {
     if (!this.unitUpgradeSystem) return;
 
-    const reserve = 150 * UnitUpgradeSystem.getEraMultiplier(this.getNationEra(nationId));
+    const doctrine = getLeaderMilitaryDoctrineByNationId(nationId);
+    const reserve = getModernizationGoldReserve(doctrine);
+    const maxUpgrades = getModernizationMaxUpgrades(doctrine);
     const resources = this.nationManager.getResources(nationId);
+
     const candidates = this.unitManager.getUnitsByOwner(nationId)
       .map((unit) => {
         const preview = this.unitUpgradeSystem?.getUpgradePreview(unit, nationId);
         if (!preview?.canUpgrade || !preview.target || preview.cost === undefined) return null;
         if (resources.gold - preview.cost < reserve) return null;
-
-        const oldStrength = this.getUpgradeRelevanceStrength(unit.unitType);
-        const newStrength = this.getUpgradeRelevanceStrength(preview.target);
-        const relevance = newStrength > 0 ? oldStrength / newStrength : 1;
-        return { unit, cost: preview.cost, relevance };
+        const score = scoreUpgradeCandidate(unit, preview.target, doctrine);
+        return { unit, target: preview.target, cost: preview.cost, score };
       })
-      .filter((candidate): candidate is { unit: Unit; cost: number; relevance: number } => candidate !== null)
-      .sort((a, b) => a.relevance - b.relevance || b.cost - a.cost);
+      .filter((c): c is { unit: Unit; target: UnitType; cost: number; score: number } => c !== null)
+      .sort((a, b) => b.score - a.score);
 
     let upgraded = 0;
     for (const candidate of candidates) {
-      if (upgraded >= 2) break;
+      if (upgraded >= maxUpgrades) break;
       if (resources.gold - candidate.cost < reserve) continue;
+      const fromName = candidate.unit.unitType.name;
       if (this.unitUpgradeSystem.upgradeUnit(candidate.unit, nationId)) {
-        upgraded += 1;
+        upgraded++;
+        const isNaval = doctrine.preferredRoles.navalMelee > 1.3 || doctrine.preferredRoles.navalRanged > 1.3;
+        const tag = isNaval ? ' [naval]' : '';
+        console.log(this.formatLog(nationId, `upgraded${tag} ${fromName} → ${candidate.target.name} for ${candidate.cost} gold (doctrine: ${doctrine.id})`));
       }
     }
-  }
-
-  private getUpgradeRelevanceStrength(unitType: UnitType): number {
-    return Math.max(unitType.baseStrength, unitType.rangedStrength ?? 0, 1);
   }
 
   // Each AI nation should keep at least this many active recon units in the
@@ -2873,12 +2890,13 @@ export class AISystem {
       happiness?.netHappiness,
     );
     const goldPerTurn = this.nationManager.getResources(nationId).goldPerTurn;
+    const militaryDoctrineCtx = this.buildMilitaryDoctrineContext(nationId);
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
 
     if (canBuildMilitary && this.needsDefender(city, nationId)) {
-      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId);
+      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
           item: { kind: 'unit', unitType: militaryUnit },
@@ -2912,7 +2930,7 @@ export class AISystem {
     }
 
     if (canBuildMilitary) {
-      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId);
+      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
           item: { kind: 'unit', unitType: militaryUnit },
@@ -2928,11 +2946,14 @@ export class AISystem {
       cityHasWaterTile(city, this.mapData) &&
       plannedNavalCount < coastalCityCount
     ) {
-      const navalUnit = this.pickNavalUnitForCity(city, nationId);
+      const navalUnit = this.pickNavalUnitForCity(city, nationId, militaryDoctrineCtx);
       if (navalUnit) {
+        const navalUrgency = isMaritimeDoctrine(militaryDoctrineCtx.doctrine)
+          ? MARITIME_NAVAL_URGENCY_MULTIPLIER
+          : 1.0;
         candidates.push({
           item: { kind: 'unit', unitType: navalUnit },
-          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure),
+          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure) * navalUrgency,
           category: 'military',
         });
       }
@@ -3047,7 +3068,7 @@ export class AISystem {
 
     // Fallback so the city always has something to do when room is left.
     if (canBuildMilitary) {
-      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId);
+      const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
           item: { kind: 'unit', unitType: militaryUnit },
@@ -3086,6 +3107,9 @@ export class AISystem {
     );
     const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
+      if (best.item.kind === 'unit' && best.item.unitType.baseStrength > 0) {
+        this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx);
+      }
       if (cityFocus !== 'balanced') {
         const itemName = this.foundationProducibleName(best.item);
         const score = scoreAIProductionCandidate(best, strategy, eraStrategy, cityFocus);
@@ -3367,6 +3391,50 @@ export class AISystem {
     return baseScore * 0.55;
   }
 
+  private buildMilitaryDoctrineContext(nationId: string): {
+    doctrine: AIMilitaryDoctrine;
+    nationEraIndex: number;
+    armyProfile: ArmyRoleProfile;
+  } {
+    return {
+      doctrine: getLeaderMilitaryDoctrineByNationId(nationId),
+      nationEraIndex: getEraIndex(this.getNationEra(nationId)),
+      armyProfile: buildArmyRoleProfile(this.unitManager.getUnitsByOwner(nationId)),
+    };
+  }
+
+  private logDoctrineProductionOnce(nationId: string, message: string): void {
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
+    this.doctrineProductionLoggedRound.set(nationId, currentRound);
+    console.debug(this.formatLog(nationId, message));
+  }
+
+  private logDoctrineProductionIfMaterial(
+    nationId: string,
+    unitType: UnitType,
+    ctx: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+  ): void {
+    const { doctrine } = ctx;
+    if (doctrine.id === 'balanced') return;
+    const unitEraIndex = getEraIndex(unitType.era);
+    const eraGap = ctx.nationEraIndex - unitEraIndex;
+    const isNaval = unitType.isNaval === true;
+    const isMountedUnit = ['horseman', 'knight', 'lancer', 'cavalry', 'landship', 'tank', 'modern_armor'].includes(unitType.id);
+    const isRangedOrSiege = ['ranged', 'siege'].includes(unitType.category);
+    const isHighQuality = unitType.baseStrength >= 20;
+
+    if (isNaval && isMaritimeDoctrine(doctrine)) {
+      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) favored naval production (${unitType.name}).`);
+    } else if (isMountedUnit && doctrine.preferredRoles.mounted >= 1.5) {
+      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) favored mounted unit production (${unitType.name}).`);
+    } else if ((isRangedOrSiege) && (doctrine.preferredRoles.ranged >= 1.2 || doctrine.preferredRoles.siege >= 1.1)) {
+      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) favored ranged/siege production (${unitType.name}).`);
+    } else if (isHighQuality && doctrine.qualityBias >= 1.3 && eraGap === 0) {
+      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) preferred high-quality production (${unitType.name}).`);
+    }
+  }
+
   private getMilitaryProductionScore(
     baseScore: number,
     nationId: string,
@@ -3474,7 +3542,11 @@ export class AISystem {
     );
   }
 
-  private pickNavalUnitForCity(city: City, nationId: string): UnitType | undefined {
+  private pickNavalUnitForCity(
+    city: City,
+    nationId: string,
+    doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+  ): UnitType | undefined {
     const candidates = ALL_UNIT_TYPES.filter((u) => (
       u.isNaval === true &&
       u.baseStrength > 0 &&
@@ -3482,6 +3554,18 @@ export class AISystem {
       canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (candidates.length === 0) return undefined;
+
+    if (doctrineCtx) {
+      const { doctrine, nationEraIndex, armyProfile } = doctrineCtx;
+      let best: UnitType = candidates[0];
+      let bestScore = -Infinity;
+      for (const u of candidates) {
+        const s = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
+        if (s > bestScore) { best = u; bestScore = s; }
+      }
+      return best;
+    }
+
     return candidates.reduce((a, b) => (a.productionCost <= b.productionCost ? a : b));
   }
 
@@ -3504,11 +3588,29 @@ export class AISystem {
     return 1;
   }
 
-  private pickMilitaryUnitForCity(city: City, nationId: string): UnitType | undefined {
+  private pickMilitaryUnitForCity(
+    city: City,
+    nationId: string,
+    doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+  ): UnitType | undefined {
     const available = MILITARY_OPTIONS.filter((u) => (
+      u.isNaval !== true &&
       this.canBuildUnit(nationId, u.id) &&
       canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
+    if (available.length === 0) return undefined;
+
+    if (doctrineCtx) {
+      const { doctrine, nationEraIndex, armyProfile } = doctrineCtx;
+      let best: UnitType = available[0];
+      let bestScore = -Infinity;
+      for (const u of available) {
+        const s = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
+        if (s > bestScore) { best = u; bestScore = s; }
+      }
+      return best;
+    }
+
     const archer = available.find((u) => u.id === ARCHER.id);
     if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
     return available.find((u) => u.id === WARRIOR.id) ?? available[0];

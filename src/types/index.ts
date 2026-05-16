@@ -18,4 +18,5 @@ export * from './aiStrategy';
 export * from './aiDiplomacy';
 export * from './aiNationalAgenda';
 export * from './aiLeaderPersonality';
+export * from './aiMilitaryDoctrine';
 export * from './leader';

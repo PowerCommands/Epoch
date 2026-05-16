@@ -5,6 +5,8 @@ import {
 } from '../types/aiLeaderPersonality';
 import { getIdeologyById } from './ideologies';
 import type { IdeologyDefinition } from '../types/ideology';
+import { getAIMilitaryDoctrineById } from './aiMilitaryDoctrines';
+import type { AIMilitaryDoctrine } from '../types/aiMilitaryDoctrine';
 
 const LEADER_IMAGE_BASE = '/assets/sprites/leaders';
 
@@ -17,6 +19,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/henry-v.png`,
     description: 'A martial king remembered for disciplined campaigns and a hard edge in war.',
     ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'navalPower',
     aiPersonality: {
       aggressionBias: 15,
       expansionBias: 5,
@@ -35,6 +38,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/charles-vi.png`,
     description: 'A prestige-minded restorer of French authority, leaning on courtly culture, diplomacy, and monumental soft power.',
     ideologyId: 'traditionalism',
+    aiMilitaryDoctrineId: 'culturalDefense',
     aiNationalAgendaId: 'culture',
     culturePriorities: ['code_of_laws', 'foreign_trade', 'mysticism', 'state_workforce', 'political_philosophy', 'drama_poetry', 'recorded_history'],
     aiPersonality: {
@@ -73,6 +77,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/gustaf-vasa.png`,
     description: 'A determined state-builder with an eye for independence and order.',
     ideologyId: 'nationalism',
+    aiMilitaryDoctrineId: 'navalPower',
     aiPersonality: {
       aggressionBias: 5,
       expansionBias: 10,
@@ -145,6 +150,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/isabella.png`,
     description: 'A dynastic ruler focused on unity, faith, and royal authority.',
     ideologyId: 'traditionalism',
+    aiMilitaryDoctrineId: 'imperialCombinedArms',
     aiPersonality: {
       aggressionBias: 5,
       expansionBias: 5,
@@ -181,6 +187,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/george-washington.png`,
     description: 'A visionary founding father focused on liberty, stability, and national unity.',
     ideologyId: 'liberalism',
+    aiMilitaryDoctrineId: 'imperialCombinedArms',
     aiPersonality: {
       aggressionBias: -2,
       expansionBias: 8,
@@ -199,6 +206,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/mahatma-gandhi.png`,
     description: 'A spiritual leader focused on non-violence, civil disobedience, and national liberation.',
     ideologyId: 'liberalism',
+    aiMilitaryDoctrineId: 'defensiveModern',
     culturePriorities: ['early_empire', 'state_workforce', 'mysticism', 'political_philosophy', 'games_recreation'],
     aiPersonality: {
       aggressionBias: -15,
@@ -218,6 +226,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/qin-shi-huang.png`,
     description: 'An imperial unifier focused on administration, infrastructure, discipline, and centralized expansion.',
     ideologyId: 'nationalism',
+    aiMilitaryDoctrineId: 'imperialCombinedArms',
     culturePriorities: ['state_workforce', 'early_empire', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'guilds'],
     aiPersonality: {
       aggressionBias: 5,
@@ -237,6 +246,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/leader_koxinga.png`,
     description: 'A maritime commander focused on trade, diplomacy, technology, and resilient island defense.',
     ideologyId: 'globalism',
+    aiMilitaryDoctrineId: 'maritimeRaider',
     culturePriorities: ['foreign_trade', 'state_workforce', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'diplomatic_service'],
     aiPersonality: {
       aggressionBias: -4,
@@ -256,6 +266,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/dom-pedro-ii.png`,
     description: 'An enlightened monarch focused on scientific progress, cultural growth, and diplomatic stability.',
     ideologyId: 'progressivism',
+    aiMilitaryDoctrineId: 'balanced',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
@@ -292,6 +303,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/genghis-khan.png`,
     description: 'A relentless conqueror whose horse-borne armies carve empires from the steppe.',
     ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'steppeHorde',
     culturePriorities: ['early_empire'],
     aiPersonality: {
       aggressionBias: 18,
@@ -311,6 +323,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/oda-nobunaga.png`,
     description: 'A ruthless unifier of the islands, balancing martial prowess with disciplined defense.',
     ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'maritimeRaider',
     aiPersonality: {
       aggressionBias: 15,
       expansionBias: 8,
@@ -341,4 +354,12 @@ export function getLeaderIdeologyById(leaderId: string): IdeologyDefinition {
 
 export function getLeaderPersonalityByNationId(nationId: string): AILeaderPersonality {
   return getLeaderByNationId(nationId)?.aiPersonality ?? DEFAULT_AI_LEADER_PERSONALITY;
+}
+
+export function getLeaderMilitaryDoctrineByNationId(nationId: string): AIMilitaryDoctrine {
+  return getAIMilitaryDoctrineById(getLeaderByNationId(nationId)?.aiMilitaryDoctrineId);
+}
+
+export function getLeaderMilitaryDoctrineById(leaderId: string): AIMilitaryDoctrine {
+  return getAIMilitaryDoctrineById(getLeaderById(leaderId)?.aiMilitaryDoctrineId);
 }

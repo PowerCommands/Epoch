@@ -12,5 +12,6 @@ export interface LeaderDefinition {
   readonly ideologyId?: IdeologyId;
   aiPersonality?: AILeaderPersonality;
   aiNationalAgendaId?: AINationalAgendaId;
+  aiMilitaryDoctrineId?: string;
   culturePriorities?: string[];
 }
