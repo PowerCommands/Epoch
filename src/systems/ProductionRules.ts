@@ -10,6 +10,8 @@ export interface UnitProductionRuleContext {
     getUnitUpkeepAffordabilityReason(nationId: string, unitType: UnitType, turns: number): string | undefined;
   };
   upkeepAffordabilityTurns?: number;
+  hasActiveUnitOfType?: (nationId: string, unitTypeId: string) => boolean;
+  isResidenceCapital?: (city: City) => boolean;
 }
 
 export function cityHasWaterTile(
@@ -39,6 +41,14 @@ export function getCityUnitProductionBlockReason(
   gridSystem: IGridSystem,
   context: UnitProductionRuleContext = {},
 ): string | undefined {
+  if (unitType.uniquePerNation === true && context.hasActiveUnitOfType?.(city.ownerId, unitType.id)) {
+    return `Only one ${unitType.name} may be active`;
+  }
+
+  if (unitType.residenceCapitalOnly === true && context.isResidenceCapital?.(city) !== true) {
+    return `${unitType.name} may only be produced in the residence capital`;
+  }
+
   if (unitType.isNaval === true) {
     if (!cityHasWaterTile(city, mapData)) return 'Requires city-owned water tile';
   }

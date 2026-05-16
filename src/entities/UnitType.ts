@@ -10,7 +10,8 @@ export type UnitCategory =
   | 'naval_recon'
   | 'air'
   | 'civilian'
-  | 'recon';
+  | 'recon'
+  | 'leader';
 
 export interface UnitType {
   readonly id: string;
@@ -28,6 +29,11 @@ export interface UnitType {
   readonly maxImprovementCharges?: number;
   readonly range?: number;
   readonly isNaval?: boolean;
+  readonly ignoresUnitCollision?: boolean;
+  readonly canTraverseWater?: boolean;
+  readonly mustEndOnLand?: boolean;
+  readonly uniquePerNation?: boolean;
+  readonly residenceCapitalOnly?: boolean;
   readonly requiredResource?: {
     readonly resourceId: string;
     readonly amount: number;

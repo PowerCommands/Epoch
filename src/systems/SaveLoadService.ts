@@ -26,6 +26,7 @@ import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
+import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -56,6 +57,7 @@ export interface SaveLoadContext {
   wonderSystem: WonderSystem;
   corporationSystem?: CorporationSystem;
   tradeDealSystem?: TradeDealSystem;
+  exileProtectionSystem?: ExileProtectionSystem;
 }
 
 /**
@@ -79,7 +81,6 @@ export class SaveLoadService {
     const {
       mapKey,
       humanNationId,
-      activeNationIds,
       gameSpeedId,
       mapData,
       nationManager,
@@ -93,6 +94,7 @@ export class SaveLoadService {
       wonderSystem,
       corporationSystem,
       tradeDealSystem,
+      exileProtectionSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -134,7 +136,11 @@ export class SaveLoadService {
         ownerId: city.ownerId,
         tileX: city.tileX,
         tileY: city.tileY,
-        isCapital: city.isCapital,
+        isCapital: city.isOriginalCapital,
+        originNationId: city.originNationId,
+        isOriginalCapital: city.isOriginalCapital,
+        isResidenceCapital: city.isResidenceCapital,
+        occupiedOriginalNationId: city.occupiedOriginalNationId,
         focus: city.focus === 'balanced' ? undefined : city.focus,
         productionRhythm: {
           completedUnitsSinceInfrastructure: city.productionRhythm.completedUnitsSinceInfrastructure,
@@ -259,7 +265,7 @@ export class SaveLoadService {
       savedAt: new Date().toISOString(),
       mapKey,
       humanNationId,
-      activeNationIds: [...activeNationIds],
+      activeNationIds: nationManager.getAllNations().map((nation) => nation.id),
       gameSpeedId,
       turn: {
         currentRound: turnManager.getCurrentRound(),
@@ -274,6 +280,7 @@ export class SaveLoadService {
       wonders,
       corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
+      exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
     };
   }
 
@@ -369,6 +376,7 @@ export class SaveLoadService {
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
+    context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,
@@ -540,6 +548,10 @@ export class SaveLoadService {
         tileX: saved.tileX,
         tileY: saved.tileY,
         isCapital: saved.isCapital,
+        originNationId: saved.originNationId ?? saved.ownerId,
+        isOriginalCapital: saved.isOriginalCapital ?? saved.isCapital,
+        isResidenceCapital: saved.isResidenceCapital ?? saved.isCapital,
+        occupiedOriginalNationId: saved.occupiedOriginalNationId,
         focus: saved.focus,
         productionRhythm: {
           completedUnitsSinceInfrastructure: saved.productionRhythm?.completedUnitsSinceInfrastructure ?? 0,

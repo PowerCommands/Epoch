@@ -70,6 +70,19 @@ export class CityManager {
     return this.getAllCities().filter((c) => c.ownerId === ownerId);
   }
 
+  getResidenceCapital(ownerId: string): City | undefined {
+    return this.getAllCities().find((city) => city.ownerId === ownerId && city.isResidenceCapital);
+  }
+
+  setResidenceCapital(ownerId: string, cityId: string): City | undefined {
+    const next = this.cities.get(cityId);
+    if (!next || next.ownerId !== ownerId) return undefined;
+    for (const city of this.cities.values()) {
+      if (city.ownerId === ownerId) city.isResidenceCapital = city.id === cityId;
+    }
+    return next;
+  }
+
   getResources(cityId: string): CityResources {
     return this.resources.get(cityId)!;
   }
@@ -128,6 +141,10 @@ export class CityManager {
     tileX: number;
     tileY: number;
     isCapital: boolean;
+    originNationId?: string;
+    isOriginalCapital?: boolean;
+    isResidenceCapital?: boolean;
+    occupiedOriginalNationId?: string;
     focus?: CityFocusType;
     productionRhythm?: CityProductionRhythm;
     health: number;
@@ -145,6 +162,10 @@ export class CityManager {
       tileX: config.tileX,
       tileY: config.tileY,
       isCapital: config.isCapital,
+      originNationId: config.originNationId,
+      isOriginalCapital: config.isOriginalCapital,
+      isResidenceCapital: config.isResidenceCapital,
+      occupiedOriginalNationId: config.occupiedOriginalNationId,
       focus: config.focus,
       productionRhythm: config.productionRhythm,
     });
@@ -198,6 +219,9 @@ export class CityManager {
           tileX,
           tileY,
           isCapital: true,
+          originNationId: cap.nationId,
+          isOriginalCapital: true,
+          isResidenceCapital: true,
         }),
       );
     }
@@ -225,6 +249,9 @@ export class CityManager {
           tileX,
           tileY,
           isCapital: cfg.isCapital,
+          originNationId: cfg.originNationId ?? cfg.nationId,
+          isOriginalCapital: cfg.isOriginalCapital ?? cfg.isCapital,
+          isResidenceCapital: cfg.isResidenceCapital ?? cfg.isCapital,
         }),
       );
     }

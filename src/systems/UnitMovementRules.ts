@@ -16,6 +16,8 @@ export function isEmbarked(unit: Unit, mapData: MapData): boolean {
 }
 
 export function canUnitEnterTile(unit: Unit, tile: Tile, nation?: Nation): boolean {
+  if (unit.unitType.canTraverseWater === true) return true;
+
   if (unit.unitType.isNaval === true) {
     return isWaterTile(tile);
   }
@@ -24,6 +26,12 @@ export function canUnitEnterTile(unit: Unit, tile: Tile, nation?: Nation): boole
     return canEmbark(unit, nation);
   }
 
+  return true;
+}
+
+export function canUnitEndMovementOnTile(unit: Unit, tile: Tile, nation?: Nation): boolean {
+  if (!canUnitEnterTile(unit, tile, nation)) return false;
+  if (unit.unitType.mustEndOnLand === true && isWaterTile(tile)) return false;
   return true;
 }
 

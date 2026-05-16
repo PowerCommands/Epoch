@@ -73,6 +73,11 @@ import { getLeaderByNationId, getLeaderPersonalityByNationId } from '../data/lea
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
+import { PoliticalCapitalSystem } from '../systems/PoliticalCapitalSystem';
+import { LeaderCaptureSystem, type LeaderCaptureChoiceRequest } from '../systems/LeaderCaptureSystem';
+import { NationCollapseSystem } from '../systems/NationCollapseSystem';
+import { ExileProtectionSystem, type ExileProtectionChoiceRequest } from '../systems/ExileProtectionSystem';
+import { CityDefenseSystem } from '../systems/CityDefenseSystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
@@ -479,6 +484,9 @@ export class GameScene extends Phaser.Scene {
       strategicResourceCapacitySystem,
       unitUpkeepAffordability: unitUpkeepSystem,
       upkeepAffordabilityTurns: 10,
+      hasActiveUnitOfType: (nationId: string, unitTypeId: string) =>
+        unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
+      isResidenceCapital: (city: City) => city.isResidenceCapital,
     };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
@@ -870,6 +878,18 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    const exileProtectionSystem = new ExileProtectionSystem(
+      cityManager,
+      unitManager,
+      nationManager,
+      diplomacyManager,
+      mapData,
+      turnManager,
+      (a, b) => discoverySystem.hasMet(a, b),
+      (nationId) => getAvailableLuxuryResourceQuantities(nationId).map((entry) => entry.resourceId),
+    );
+    const cityDefenseSystem = new CityDefenseSystem(unitManager);
+
     // 14. Stridssystem
     const combatSystem = new CombatSystem(
       unitManager,
@@ -881,6 +901,37 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
       policySystem,
+      (attacker, target) => exileProtectionSystem.getProtectorForProtectedLeaderTarget(attacker.ownerId, target),
+      cityDefenseSystem,
+    );
+    const nationCollapseSystem = new NationCollapseSystem(
+      cityManager,
+      unitManager,
+      nationManager,
+      turnManager,
+      mapData,
+      productionSystem,
+      diplomacyManager,
+      gridSystem,
+      tradeDealSystem,
+      exileProtectionSystem,
+    );
+    const politicalCapitalSystem = new PoliticalCapitalSystem(
+      cityManager,
+      unitManager,
+      nationManager,
+      turnManager,
+      nationCollapseSystem,
+    );
+    const leaderCaptureSystem = new LeaderCaptureSystem(
+      cityManager,
+      unitManager,
+      nationManager,
+      mapData,
+      gridSystem,
+      diplomacyManager,
+      nationCollapseSystem,
+      (nationId) => nationManager.getNation(nationId)?.isHuman === true,
     );
     // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
@@ -1037,6 +1088,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       diplomacyManager,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
+      (unit, territoryOwnerId) => exileProtectionSystem.canLeaderEnterTerritory(unit, territoryOwnerId),
     );
 
     // Turn order: built AFTER MovementSystem so MovementSystem's turnStart
@@ -1187,6 +1239,7 @@ export class GameScene extends Phaser.Scene {
       wonderPlacementSystem,
       buildingPlacementSystem,
       (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
+      cityDefenseSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
@@ -1272,7 +1325,7 @@ export class GameScene extends Phaser.Scene {
       if (!humanIdForFocus) return;
       const ownedCities = cityManager.getCitiesByOwner(humanIdForFocus);
       if (ownedCities.length > 0) {
-        const target = ownedCities.find((c) => c.isCapital) ?? ownedCities[0];
+        const target = ownedCities.find((c) => c.isResidenceCapital) ?? ownedCities[0];
         focusOnCity(target);
         return;
       }
@@ -1606,13 +1659,202 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // ─── City combat events ─────────────────────────────────────────────────
+    // ─── Leader capture and combat events ───────────────────────────────────
+
+    const showLeaderCaptureDialog = (request: LeaderCaptureChoiceRequest): void => {
+      const existing = document.getElementById('leader-capture-modal');
+      if (existing) existing.remove();
+
+      const attackerName = nationManager.getNation(request.attacker.ownerId)?.name ?? request.attacker.ownerId;
+      const defeatedName = nationManager.getNation(request.defeatedNationId)?.name ?? request.defeatedNationId;
+      const defeatedGold = nationManager.getResources(request.defeatedNationId).gold;
+      const ransomGold = Math.floor(Math.max(0, defeatedGold) * 0.5);
+
+      const overlay = document.createElement('div');
+      overlay.id = 'leader-capture-modal';
+      overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 10000;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.72);
+      `;
+
+      const box = document.createElement('div');
+      box.style.cssText = `
+        width: min(460px, calc(100vw - 32px));
+        background: #191b24; border: 2px solid #d9b85f;
+        border-radius: 8px; padding: 26px 30px; color: #eee;
+        font-family: sans-serif; box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+      `;
+
+      const title = document.createElement('div');
+      title.textContent = `${attackerName} captured ${defeatedName}'s leader`;
+      title.style.cssText = 'font-size: 20px; font-weight: 700; margin-bottom: 12px;';
+      box.appendChild(title);
+
+      const details = document.createElement('div');
+      details.textContent = `Execute the leader to collapse ${defeatedName}, or ransom and release them for up to 50% of their treasury (${ransomGold} gold). Released leaders escape to a valid land tile and do not move the residence capital until end turn.`;
+      details.style.cssText = 'font-size: 15px; line-height: 1.45; color: #d8d8d8; margin-bottom: 22px;';
+      box.appendChild(details);
+
+      const buttons = document.createElement('div');
+      buttons.style.cssText = 'display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;';
+
+      const makeButton = (label: string, primary: boolean, handler: () => void): HTMLButtonElement => {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.style.cssText = `
+          padding: 9px 14px; border-radius: 6px; cursor: pointer; font-size: 14px;
+          border: 1px solid ${primary ? '#d9b85f' : '#777'};
+          background: ${primary ? '#d9b85f' : 'transparent'};
+          color: ${primary ? '#111' : '#eee'};
+        `;
+        button.addEventListener('click', () => {
+          overlay.remove();
+          handler();
+        });
+        return button;
+      };
+
+      buttons.appendChild(makeButton('Ransom and Release Leader', false, request.ransom));
+      buttons.appendChild(makeButton('Execute Leader', true, request.execute));
+      box.appendChild(buttons);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    };
+
+    leaderCaptureSystem.onChoiceRequested(showLeaderCaptureDialog);
+    leaderCaptureSystem.onResolved((event) => {
+      eventLog.log(event.message, [event.attacker.ownerId, event.defeatedNationId], turnManager.getCurrentRound());
+      unitRenderer.rebuildAll();
+      cityRenderer.rebuildAll();
+      cityBannerRenderer.rebuildAll();
+      territoryRenderer.render();
+      this.minimapHud?.rebuild();
+      refreshCultureOverlay();
+      resourceSystem.recalculateForNation(event.attacker.ownerId);
+      if (nationManager.getNation(event.defeatedNationId)) {
+        resourceSystem.recalculateForNation(event.defeatedNationId);
+      }
+      happinessSystem.recalculateAll();
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+
+    const showExileProtectionDialog = (request: ExileProtectionChoiceRequest): void => {
+      const existing = document.getElementById('exile-protection-modal');
+      if (existing) existing.remove();
+
+      const protectedName = nationManager.getNation(request.protectedNationId)?.name ?? request.protectedNationId;
+      const enemyName = nationManager.getNation(request.enemyNationId)?.name ?? request.enemyNationId;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'exile-protection-modal';
+      overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 10000;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.72);
+      `;
+
+      const box = document.createElement('div');
+      box.style.cssText = `
+        width: min(520px, calc(100vw - 32px));
+        background: #191b24; border: 2px solid #79a7d8;
+        border-radius: 8px; padding: 26px 30px; color: #eee;
+        font-family: sans-serif; box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+      `;
+
+      const title = document.createElement('div');
+      title.textContent = `${protectedName} requests protection`;
+      title.style.cssText = 'font-size: 20px; font-weight: 700; margin-bottom: 12px;';
+      box.appendChild(title);
+
+      const details = document.createElement('div');
+      details.textContent = `${protectedName}'s fleeing leader asks to shelter in your territory. Accepting allows the Leader into your land and cities, damages relations with ${enemyName}, and may force a war if ${enemyName} attacks the Leader under your protection.`;
+      details.style.cssText = 'font-size: 15px; line-height: 1.45; color: #d8d8d8; margin-bottom: 22px;';
+      box.appendChild(details);
+
+      const buttons = document.createElement('div');
+      buttons.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;';
+
+      const makeButton = (label: string, handler: () => void): HTMLButtonElement => {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.style.cssText = `
+          padding: 9px 12px; border-radius: 6px; cursor: pointer; font-size: 14px;
+          border: 1px solid #79a7d8; background: transparent; color: #eee;
+        `;
+        button.addEventListener('click', () => {
+          overlay.remove();
+          handler();
+        });
+        return button;
+      };
+
+      buttons.appendChild(makeButton('Deny protection', request.deny));
+      buttons.appendChild(makeButton('Accept for free', request.acceptFree));
+      buttons.appendChild(makeButton('Accept for gold tribute', request.acceptGold));
+      buttons.appendChild(makeButton('Accept for resource tribute', request.acceptResource));
+      box.appendChild(buttons);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    };
+
+    exileProtectionSystem.onChoiceRequested(showExileProtectionDialog);
+    exileProtectionSystem.onGranted((event) => {
+      eventLog.log(event.message, [
+        event.request.protectedNationId,
+        event.request.protectorNationId,
+        event.request.enemyNationId,
+      ], turnManager.getCurrentRound());
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    exileProtectionSystem.onDenied((event) => {
+      eventLog.log(event.message, [
+        event.request.protectedNationId,
+        event.request.protectorNationId,
+      ], turnManager.getCurrentRound());
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    exileProtectionSystem.onExpired((event) => {
+      eventLog.log(event.message, [
+        event.request.protectedNationId,
+        event.request.protectorNationId,
+      ], turnManager.getCurrentRound());
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+
+    combatSystem.on((e) => {
+      if (e.result.defenderDied) {
+        leaderCaptureSystem.handleUnitDefeated(e.attacker, e.defender);
+      }
+      if (e.result.attackerDied) {
+        unitRenderer.removeUnit(e.attacker.id);
+      } else {
+        unitRenderer.refreshUnitPosition(e.attacker.id);
+      }
+      if (!e.result.defenderDied || e.defender.unitType.id !== 'leader') {
+        if (e.result.defenderDied) unitRenderer.removeUnit(e.defender.id);
+        else unitRenderer.refreshUnitPosition(e.defender.id);
+      }
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
 
     combatSystem.onCityCombat((e) => {
       // Uppdatera stadsrendering
       cityRenderer.refreshCity(e.city);
       cityBannerRenderer.refreshCity(e.city);
       hudLayer?.refresh();
+      if ((e.leaderDefenseBonus ?? 0) > 0) {
+        eventLog.log(
+          `${e.city.name} defended with Leader bonus (+50%).`,
+          [e.city.ownerId],
+          turnManager.getCurrentRound(),
+        );
+      }
 
       // Om attackeraren dog
       if (e.result.attackerDied) {
@@ -1624,6 +1866,13 @@ export class GameScene extends Phaser.Scene {
 
       // Om staden erövrades
       if (e.captured) {
+        let leaderCaptureHandled = false;
+        if (e.previousOwnerId) {
+          leaderCaptureHandled = leaderCaptureSystem.handleCityCaptured(e.city, e.previousOwnerId, e.attacker);
+          if (!leaderCaptureHandled) {
+            politicalCapitalSystem.handleCityCaptured(e.city, e.previousOwnerId, e.attacker.ownerId);
+          }
+        }
         // Den erövrande enheten flyttades in på stadens tile
         unitRenderer.refreshUnitPosition(e.attacker.id);
         cityRenderer.refreshCity(e.city);
@@ -1647,6 +1896,41 @@ export class GameScene extends Phaser.Scene {
       }
 
       rightPanel?.requestRefresh();
+    });
+
+    politicalCapitalSystem.onResidenceRelocated((event) => {
+      cityRenderer.refreshCity(event.fromCity);
+      cityRenderer.refreshCity(event.toCity);
+      cityBannerRenderer.refreshCity(event.fromCity);
+      cityBannerRenderer.refreshCity(event.toCity);
+      unitRenderer.rebuildAll();
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      const nationName = nationManager.getNation(event.nationId)?.name ?? event.nationId;
+      eventLog.log(
+        isAINation(event.nationId)
+          ? formatLog(event.nationId, `relocated its residence capital to ${event.toCity.name}.`)
+          : `${nationName} relocated its residence capital from ${event.fromCity.name} to ${event.toCity.name}.`,
+        [event.nationId],
+        turnManager.getCurrentRound(),
+      );
+    });
+
+    nationCollapseSystem.onNationCollapsed((event) => {
+      for (const city of event.occupiedCities) {
+        cityRenderer.refreshCity(city);
+        cityBannerRenderer.refreshCity(city);
+      }
+      unitRenderer.rebuildAll();
+      territoryRenderer.render();
+      this.minimapHud?.rebuild();
+      refreshCultureOverlay();
+      if (event.conquerorNationId) resourceSystem.recalculateForNation(event.conquerorNationId);
+      happinessSystem.recalculateAll();
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      if (event.reason === 'leader_executed') return;
+      eventLog.log(event.message, event.conquerorNationId ? [event.conquerorNationId] : [], turnManager.getCurrentRound());
     });
 
     // ─── Healing events ─────────────────────────────────────────────────────
@@ -3232,6 +3516,7 @@ export class GameScene extends Phaser.Scene {
         wonderSystem,
         policySystem,
         tradeDealSystem,
+        exileProtectionSystem,
         corporationSystem,
       });
       // Older saves only persist tile.improvementConstruction; recompute
@@ -3293,6 +3578,7 @@ export class GameScene extends Phaser.Scene {
           wonderSystem,
           policySystem,
           tradeDealSystem,
+          exileProtectionSystem,
           corporationSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
@@ -3329,6 +3615,7 @@ export class GameScene extends Phaser.Scene {
             wonderSystem,
             policySystem,
             tradeDealSystem,
+            exileProtectionSystem,
             corporationSystem,
           });
           downloadSaveFile(state);
@@ -3473,6 +3760,14 @@ export class GameScene extends Phaser.Scene {
     unitType: UnitType,
     gridSystem: IGridSystem,
   ): { x: number; y: number } | null {
+    if (unitType.residenceCapitalOnly === true) {
+      const tile = tileMap.getTileAt(city.tileX, city.tileY);
+      if (tile && tile.ownerId === city.ownerId && city.isResidenceCapital) {
+        return { x: city.tileX, y: city.tileY };
+      }
+      return null;
+    }
+
     const adjacentCandidates = gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY });
     const candidates = unitType.isNaval
       ? city.ownedTileCoords

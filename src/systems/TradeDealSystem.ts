@@ -85,6 +85,17 @@ export class TradeDealSystem {
     }
   }
 
+  cancelDealsForNation(nationId: string, reason: TradeDealEndReason): number {
+    let cancelled = 0;
+    for (const deal of Array.from(this.deals.values())) {
+      if (deal.sellerNationId !== nationId && deal.buyerNationId !== nationId) continue;
+      this.deals.delete(deal.id);
+      this.emitCancelled(deal, reason);
+      cancelled++;
+    }
+    return cancelled;
+  }
+
   getAllDeals(): readonly TradeDeal[] {
     return Array.from(this.deals.values()).map((deal) => this.copyDeal(deal));
   }

@@ -5,7 +5,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById } from '../data/buildings';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
@@ -31,6 +31,7 @@ import { CityTerritorySystem } from './CityTerritorySystem';
 import { getAIStrategyById } from '../data/aiStrategies';
 import type { AIStrategy } from '../types/aiStrategy';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { CityDefenseSystem } from './CityDefenseSystem';
 import { EMPTY_MODIFIERS } from '../types/modifiers';
 import type { ResearchSystem } from './ResearchSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
@@ -319,6 +320,7 @@ export class AISystem {
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
   private readonly longTermExpansionLoggedRound = new Map<string, number>();
+  private readonly leaderEvacuationDecisionLog = new Map<string, string>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -363,6 +365,7 @@ export class AISystem {
     private readonly wonderPlacementSystem?: WonderPlacementSystem,
     private readonly buildingPlacementSystem?: BuildingPlacementSystem,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
+    private readonly cityDefenseSystem?: CityDefenseSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -436,6 +439,7 @@ export class AISystem {
     }
 
     this.runSettlers(nationId);
+    this.runLeaderRelocation(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runTilePurchases(nationId);
@@ -3474,6 +3478,133 @@ export class AISystem {
     return available.find((u) => u.id === WARRIOR.id) ?? available[0];
   }
 
+  private runLeaderRelocation(nationId: string): void {
+    const residence = this.cityManager.getResidenceCapital(nationId);
+    if (!residence) return;
+    const evaluation = this.evaluateLeaderEvacuation(nationId, residence);
+    if (evaluation.action === 'stay') {
+      if (evaluation.meaningful) {
+        this.logLeaderEvacuationDecision(nationId, 'stay', `kept its Leader in ${residence.name} due to strong defenses.`);
+      }
+      return;
+    }
+
+    const leader = this.unitManager.getUnitsByOwner(nationId).find((unit) => unit.unitType.id === LEADER.id);
+    if (!leader) {
+      if (
+        (evaluation.action === 'prepare' || evaluation.action === 'evacuate') &&
+        !this.productionSystem.getProduction(residence.id) &&
+        canCityProduceUnit(residence, LEADER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      ) {
+        this.productionSystem.setProduction(residence.id, { kind: 'unit', unitType: LEADER });
+        console.log(this.formatLog(nationId, `AI emergency: preparing leader relocation from ${residence.name}.`));
+      }
+      return;
+    }
+
+    if (evaluation.action === 'prepare' && leader.tileX === residence.tileX && leader.tileY === residence.tileY) {
+      this.logLeaderEvacuationDecision(nationId, 'prepare', `kept its Leader in ${residence.name} while preparing evacuation.`);
+      return;
+    }
+
+    const target = this.pickLeaderRelocationTarget(nationId, residence);
+    if (!target) {
+      this.logLeaderEvacuationDecision(nationId, 'stay-no-target', `kept its Leader in ${residence.name}; no safer city was available.`);
+      return;
+    }
+    const path = this.pathfindingSystem.findPath(leader, target.tileX, target.tileY, { respectMovementPoints: true });
+    if (!path) return;
+    this.movementSystem.moveAlongPath(leader, path, { source: 'system' });
+    this.logLeaderEvacuationDecision(nationId, 'evacuate', `evacuated its Leader from ${residence.name} due to imminent capture threat.`);
+  }
+
+  private evaluateLeaderEvacuation(nationId: string, residence: City): {
+    action: 'stay' | 'prepare' | 'evacuate';
+    meaningful: boolean;
+    score: number;
+  } {
+    if (!this.isAtWarWithAnyone(nationId)) return { action: 'stay', meaningful: false, score: 0 };
+
+    const cityDamage = Math.max(0, 100 - residence.health) * 0.45;
+    let enemyThreat = 0;
+    let enemyCaptureThreat = 0;
+    let friendlyDefense = 0;
+    for (const unit of this.unitManager.getAllUnits()) {
+      const distance = this.gridSystem.getDistance(
+        { x: residence.tileX, y: residence.tileY },
+        { x: unit.tileX, y: unit.tileY },
+      );
+      if (unit.ownerId === nationId) {
+        if (distance <= 2 && unit.unitType.baseStrength > 0) friendlyDefense += 10;
+        continue;
+      }
+      if (this.diplomacyManager?.getState(nationId, unit.ownerId) !== 'WAR') continue;
+      if (distance <= 5 && unit.unitType.baseStrength > 0) {
+        enemyThreat += Math.max(0, 6 - distance) * 5;
+      }
+      if (distance <= 3 && unit.unitType.baseStrength > 0 && (unit.unitType.range ?? 1) <= 1) {
+        enemyCaptureThreat += Math.max(0, 4 - distance) * 10;
+      }
+    }
+
+    const leaderDefenseValue = (this.cityDefenseSystem?.getLeaderDefenseBonus(residence) ?? 0) > 0 ? 28 : 0;
+    const defensiveInfrastructureValue = this.getDefensiveInfrastructureValue(residence);
+    const safeAlternative = this.pickLeaderRelocationTarget(nationId, residence);
+    const noSafeAlternativePenalty = safeAlternative ? 0 : 22;
+    const lackOfFriendlyDefense = Math.max(0, 24 - friendlyDefense);
+    const score = cityDamage
+      + enemyThreat
+      + enemyCaptureThreat
+      + lackOfFriendlyDefense
+      - leaderDefenseValue
+      - defensiveInfrastructureValue
+      - noSafeAlternativePenalty;
+
+    if (score > 70) return { action: 'evacuate', meaningful: true, score };
+    if (score >= 40) return { action: 'prepare', meaningful: true, score };
+    return { action: 'stay', meaningful: enemyThreat > 0 || cityDamage > 0, score };
+  }
+
+  private getDefensiveInfrastructureValue(city: City): number {
+    const buildings = this.cityManager.getBuildings(city.id);
+    let value = 0;
+    for (const id of ['castle', 'arsenal', 'miltary_base']) {
+      if (buildings.has(id)) value += 8;
+    }
+    const garrison = this.unitManager.getUnitsAt(city.tileX, city.tileY)
+      .some((unit) => unit.ownerId === city.ownerId && unit.unitType.baseStrength > 0);
+    if (garrison) value += 10;
+    if (city.health >= 75) value += 12;
+    return value;
+  }
+
+  private logLeaderEvacuationDecision(nationId: string, decision: string, message: string): void {
+    const key = `${this.turnManager.getCurrentRound()}:${decision}`;
+    if (this.leaderEvacuationDecisionLog.get(nationId) === key) return;
+    this.leaderEvacuationDecisionLog.set(nationId, key);
+    this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
+  }
+
+  private pickLeaderRelocationTarget(nationId: string, residence: City): City | undefined {
+    return this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => city.id !== residence.id)
+      .sort((a, b) => this.scoreLeaderTarget(nationId, b) - this.scoreLeaderTarget(nationId, a))[0];
+  }
+
+  private scoreLeaderTarget(nationId: string, city: City): number {
+    let score = city.population * 5 + city.health;
+    const tile = this.mapData.tiles[city.tileY]?.[city.tileX];
+    if (tile?.type !== TileType.Coast) score += 20;
+    for (const unit of this.unitManager.getAllUnits()) {
+      const distance = this.gridSystem.getDistance({ x: city.tileX, y: city.tileY }, { x: unit.tileX, y: unit.tileY });
+      if (unit.ownerId === nationId && distance <= 2 && unit.unitType.baseStrength > 0) score += 8;
+      if (unit.ownerId !== nationId && this.diplomacyManager?.getState(nationId, unit.ownerId) === 'WAR' && distance <= 4) {
+        score -= 18;
+      }
+    }
+    return score;
+  }
+
   private canBuildUnit(nationId: string, unitId: string): boolean {
     return this.researchSystem?.isUnitUnlocked(nationId, unitId) ?? true;
   }
@@ -3486,11 +3617,16 @@ export class AISystem {
     strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
     unitUpkeepAffordability?: UnitUpkeepSystem;
     upkeepAffordabilityTurns: number;
+    hasActiveUnitOfType?: (nationId: string, unitTypeId: string) => boolean;
+    isResidenceCapital?: (city: City) => boolean;
   } {
     return {
       strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
       unitUpkeepAffordability: this.unitUpkeepSystem,
       upkeepAffordabilityTurns: 10,
+      hasActiveUnitOfType: (nationId, unitTypeId) =>
+        this.unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
+      isResidenceCapital: (city) => city.isResidenceCapital,
     };
   }
 

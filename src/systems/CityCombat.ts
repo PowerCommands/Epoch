@@ -26,6 +26,9 @@ export function captureCity(
 
   // Byt stadsägare och rensa produktion
   cityManager.transferOwnership(city.id, newOwnerId, productionSystem);
+  city.occupiedOriginalNationId = city.originNationId !== newOwnerId
+    ? city.originNationId
+    : undefined;
 
   // Stadens hela territorium byter ägare så renderers och save/load ser samma state.
   new CityTerritorySystem().transferCityTerritory(city, newOwnerId, mapData);

@@ -18,6 +18,7 @@ import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { PolicySystem } from './PolicySystem';
 import { isEmbarked } from './UnitMovementRules';
+import type { CityDefenseSystem } from './CityDefenseSystem';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -31,6 +32,7 @@ export interface CityCombatEvent {
   result: CityCombatResult;
   captured: boolean;
   previousOwnerId?: string;
+  leaderDefenseBonus?: number;
 }
 
 export interface CombatRejectedEvent {
@@ -59,6 +61,7 @@ type CityCombatListener = (e: CityCombatEvent) => void;
 type CombatRejectedListener = (e: CombatRejectedEvent) => void;
 type WarRequiredListener = (e: WarRequiredEvent) => void;
 type UnitCombatBlocker = (unit: Unit) => boolean;
+type ProtectedLeaderProtectorResolver = (attacker: Unit, target: Unit) => string | null;
 
 const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
 
@@ -90,6 +93,8 @@ export class CombatSystem {
     private readonly gridSystem: IGridSystem,
     private readonly isUnitCombatBlocked: UnitCombatBlocker = () => false,
     private readonly policySystem?: PolicySystem,
+    private readonly getProtectedLeaderProtector: ProtectedLeaderProtectorResolver = () => null,
+    private readonly cityDefenseSystem?: CityDefenseSystem,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -159,6 +164,11 @@ export class CombatSystem {
     const targetCity = this.cityManager.getCityAt(tileX, tileY);
 
     if (targetUnit && targetUnit.ownerId !== attacker.ownerId) {
+      const protectorNationId = this.getProtectedLeaderProtector(attacker, targetUnit);
+      if (protectorNationId !== null) {
+        this.notifyWarRequired(attacker, protectorNationId, tileX, tileY, options.source ?? 'system');
+        return false;
+      }
       if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
         this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY, options.source ?? 'system');
         return false;
@@ -201,7 +211,9 @@ export class CombatSystem {
     this.unitManager.notifyDamaged(target);
 
     if (result.attackerDied) this.unitManager.removeUnit(attacker.id);
-    if (result.defenderDied) this.unitManager.removeUnit(target.id);
+    if (result.defenderDied && target.unitType.id !== 'leader') {
+      this.unitManager.removeUnit(target.id);
+    }
 
     for (const cb of this.listeners) cb({ attacker, defender: target, result });
 
@@ -209,9 +221,11 @@ export class CombatSystem {
   }
 
   private executeCityCombat(attacker: Unit, city: City, isRanged = false): boolean {
+    const leaderDefenseBonus = !isRanged ? (this.cityDefenseSystem?.getLeaderDefenseBonus(city) ?? 0) : 0;
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
       cityDefenseBonus: this.policySystem?.getFlatModifierTotal(city.ownerId, 'cityDefenseFlat') ?? 0,
+      cityDefenseMultiplier: 1 + leaderDefenseBonus,
     };
     const result = isRanged
       ? resolveRangedVsCity(attacker, city, modifiers)
@@ -242,7 +256,7 @@ export class CombatSystem {
     }
 
     for (const cb of this.cityCombatListeners) {
-      cb({ attacker, city, result, captured, previousOwnerId });
+      cb({ attacker, city, result, captured, previousOwnerId, leaderDefenseBonus });
     }
 
     return true;

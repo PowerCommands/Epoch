@@ -97,6 +97,9 @@ export class FoundCitySystem {
       tileX: unit.tileX,
       tileY: unit.tileY,
       isCapital,
+      originNationId: unit.ownerId,
+      isOriginalCapital: isCapital,
+      isResidenceCapital: isCapital,
     });
 
     this.cityTerritorySystem.initializeOwnedTiles(city, this.mapData, this.gridSystem);

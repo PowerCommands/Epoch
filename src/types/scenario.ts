@@ -36,6 +36,9 @@ export interface ScenarioCity {
   q: number;
   r: number;
   isCapital: boolean;
+  originNationId?: string;
+  isOriginalCapital?: boolean;
+  isResidenceCapital?: boolean;
 }
 
 export interface ScenarioUnit {

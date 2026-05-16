@@ -15,7 +15,8 @@ const HIT_RADIUS = 20;
  * CityRenderer draws a sprite for each city on the map.
  *
  * Uses `city_default` texture with nation color tint.
- * Capital cities rendered at 1.2x scale.
+ * Original and residence capitals use separate indicators so conquest
+ * preserves historical identity without implying political control.
  */
 export class CityRenderer {
   private readonly scene: Phaser.Scene;
@@ -89,14 +90,22 @@ export class CityRenderer {
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
 
     const sprite = this.scene.add.image(0, 0, 'city_default');
-    const scaleMultiplier = city.isCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
+    const scaleMultiplier = city.isResidenceCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
     sprite.setDisplaySize(
       rect.width * CITY_TILE_FILL_SCALE * scaleMultiplier,
       rect.height * CITY_TILE_FILL_SCALE * scaleMultiplier,
     );
     this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
 
-    const container = this.scene.add.container(worldX, worldY, [sprite]);
+    const children: Phaser.GameObjects.GameObject[] = [sprite];
+    if (city.isOriginalCapital) {
+      children.push(this.createOriginalCapitalRing(rect.width, rect.height));
+    }
+    if (city.isResidenceCapital) {
+      children.push(this.createResidenceCrown(rect.width, rect.height));
+    }
+
+    const container = this.scene.add.container(worldX, worldY, children);
     container.setDepth(CITY_DEPTH);
 
     // Interactive hit area — circle matching old behavior
@@ -107,5 +116,34 @@ export class CityRenderer {
     );
 
     this.containers.set(city.id, container);
+  }
+
+  private createOriginalCapitalRing(tileWidth: number, tileHeight: number): Phaser.GameObjects.Graphics {
+    const ring = this.scene.add.graphics();
+    ring.lineStyle(2, 0xf6e58d, 0.92);
+    ring.strokeEllipse(0, 0, tileWidth * 0.82, tileHeight * 0.64);
+    ring.lineStyle(1, 0x332b11, 0.65);
+    ring.strokeEllipse(0, 0, tileWidth * 0.9, tileHeight * 0.7);
+    return ring;
+  }
+
+  private createResidenceCrown(tileWidth: number, tileHeight: number): Phaser.GameObjects.Graphics {
+    const crown = this.scene.add.graphics();
+    const y = -tileHeight * 0.34;
+    const w = tileWidth * 0.34;
+    crown.fillStyle(0xf8d36b, 0.96);
+    crown.lineStyle(1, 0x43330d, 0.85);
+    crown.beginPath();
+    crown.moveTo(-w / 2, y + 8);
+    crown.lineTo(-w * 0.32, y - 2);
+    crown.lineTo(-w * 0.1, y + 5);
+    crown.lineTo(0, y - 6);
+    crown.lineTo(w * 0.1, y + 5);
+    crown.lineTo(w * 0.32, y - 2);
+    crown.lineTo(w / 2, y + 8);
+    crown.closePath();
+    crown.fillPath();
+    crown.strokePath();
+    return crown;
   }
 }

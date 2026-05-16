@@ -25,6 +25,7 @@ export interface UnitCombatModifiers {
 export interface CityCombatModifiers {
   readonly attackerStrengthBonus?: number;
   readonly cityDefenseBonus?: number;
+  readonly cityDefenseMultiplier?: number;
 }
 
 /**
@@ -123,7 +124,8 @@ export function resolveUnitVsCity(
 ): CityCombatResult {
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
   const attackerStrength = attacker.unitType.baseStrength + (modifiers.attackerStrengthBonus ?? 0);
-  const cityDefense = CITY_BASE_DEFENSE + (modifiers.cityDefenseBonus ?? 0);
+  const cityDefenseBase = CITY_BASE_DEFENSE + (modifiers.cityDefenseBonus ?? 0);
+  const cityDefense = Math.max(1, Math.floor(cityDefenseBase * (modifiers.cityDefenseMultiplier ?? 1)));
 
   const damageToCity = Math.round(attackerStrength * attackerHpRatio);
   const damageToAttacker = Math.round(cityDefense * 0.5);

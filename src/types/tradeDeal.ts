@@ -8,7 +8,7 @@ export interface TradeDeal {
   remainingTurns: number;
 }
 
-export type TradeDealEndReason = 'expired' | 'cancelled' | 'war' | 'buyer_cannot_pay';
+export type TradeDealEndReason = 'expired' | 'cancelled' | 'war' | 'buyer_cannot_pay' | 'nation_collapsed';
 
 export interface TradeDealResult {
   ok: boolean;

@@ -36,7 +36,9 @@ export class VictorySystem {
     const activeNations = this.nationManager.getAllNations();
     if (activeNations.length < 2) return null;
 
-    const capitals = this.cityManager.getAllCities().filter((c) => c.isCapital);
+    const activeNationIds = new Set(activeNations.map((nation) => nation.id));
+    const capitals = this.cityManager.getAllCities()
+      .filter((c) => c.isOriginalCapital && activeNationIds.has(c.originNationId));
     if (capitals.length < activeNations.length) return null;
 
     const owners = new Set(capitals.map((c) => c.ownerId));

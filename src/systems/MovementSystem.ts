@@ -9,7 +9,7 @@ import { UnitRenderer } from './UnitRenderer';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { NationManager } from './NationManager';
-import { canUnitEnterTile } from './UnitMovementRules';
+import { canUnitEndMovementOnTile, canUnitEnterTile } from './UnitMovementRules';
 
 /** Return movement cost for entering a tile. */
 export function getTileMovementCost(tile: Tile): number {
@@ -36,6 +36,7 @@ interface MovementActionOptions {
 
 type MovementWarRequiredListener = (event: MovementWarRequiredEvent) => void;
 type UnitMovementBlocker = (unit: Unit) => boolean;
+type ProtectedLeaderTerritoryAccess = (unit: Unit, territoryOwnerId: string) => boolean;
 
 /**
  * MovementSystem äger rörelsereglerna för enheter.
@@ -57,6 +58,7 @@ export class MovementSystem {
     private readonly nationManager: NationManager,
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly isUnitMovementBlocked: UnitMovementBlocker = () => false,
+    private readonly canProtectedLeaderEnterTerritory: ProtectedLeaderTerritoryAccess = () => false,
   ) {
     this.activeNationId = turnManager.getCurrentNation().id;
 
@@ -96,13 +98,13 @@ export class MovementSystem {
       return unit.movementPoints >= BOARDING_MOVEMENT_COST;
     }
 
-    if (!canUnitEnterTile(unit, targetTile, this.nationManager.getNation(unit.ownerId))) return false;
+    if (!canUnitEndMovementOnTile(unit, targetTile, this.nationManager.getNation(unit.ownerId))) return false;
 
     const cost = getTileMovementCost(targetTile);
     if (unit.movementPoints < cost) return false;
 
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
-    if (occupyingUnit !== null && occupyingUnit.id !== unit.id) return false;
+    if (occupyingUnit !== null && occupyingUnit.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
 
     return true;
   }
@@ -148,10 +150,13 @@ export class MovementSystem {
 
   moveAlongPath(unit: Unit, path: Tile[], options: MovementActionOptions = {}): void {
     if (path.length === 0) return;
+    const destination = path[path.length - 1];
+    if (!canUnitEndMovementOnTile(unit, destination, this.nationManager.getNation(unit.ownerId))) return;
 
     for (const tile of path) {
       if (tile.x === unit.tileX && tile.y === unit.tileY) continue;
-      if (!this.canMoveUnitToInternal(unit, tile.x, tile.y, false)) break;
+      const isDestination = tile === destination;
+      if (!this.canMoveUnitStepToInternal(unit, tile.x, tile.y, false, !isDestination)) break;
       const closedBorderOwner = this.getClosedBorderOwner(unit, tile);
       if (closedBorderOwner !== null) {
         this.notifyWarRequired(unit, closedBorderOwner, tile.x, tile.y, options.source ?? 'system');
@@ -165,6 +170,33 @@ export class MovementSystem {
       this.unitRenderer.refreshUnitPosition(unit.id);
       if (unit.movementPoints <= 0) break;
     }
+  }
+
+  private canMoveUnitStepToInternal(
+    unit: Unit,
+    tileX: number,
+    tileY: number,
+    respectDiplomacy: boolean,
+    allowTransitOnly: boolean,
+  ): boolean {
+    if (!allowTransitOnly) return this.canMoveUnitToInternal(unit, tileX, tileY, respectDiplomacy);
+    if (unit.ownerId !== this.activeNationId) return false;
+    if (this.isUnitMovementBlocked(unit)) return false;
+    if (unit.movementPoints <= 0) return false;
+    if (!this.gridSystem.isAdjacent({ x: unit.tileX, y: unit.tileY }, { x: tileX, y: tileY })) return false;
+
+    const targetTile = this.tileMap.getTileAt(tileX, tileY);
+    if (targetTile === null) return false;
+    if (respectDiplomacy && this.getClosedBorderOwner(unit, targetTile) !== null) return false;
+    if (!canUnitEnterTile(unit, targetTile, this.nationManager.getNation(unit.ownerId))) return false;
+
+    const cost = getTileMovementCost(targetTile);
+    if (unit.movementPoints < cost) return false;
+
+    const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
+    if (occupyingUnit !== null && occupyingUnit.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
+
+    return true;
   }
 
   private getTileForSelectable(selectable: Selectable): Tile | null {
@@ -191,6 +223,7 @@ export class MovementSystem {
     // open-borders grants, so the legacy WAR / openBorders branches collapse
     // into a single check.
     if (this.diplomacyManager.canEnterTerritory(unit.ownerId, tile.ownerId)) return null;
+    if (this.canProtectedLeaderEnterTerritory(unit, tile.ownerId)) return null;
     return tile.ownerId;
   }
 

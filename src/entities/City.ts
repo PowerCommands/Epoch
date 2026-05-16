@@ -15,6 +15,10 @@ export interface CityConfig {
   tileX: number;   // grid-koordinat
   tileY: number;   // grid-koordinat
   isCapital?: boolean;
+  originNationId?: string;
+  isOriginalCapital?: boolean;
+  isResidenceCapital?: boolean;
+  occupiedOriginalNationId?: string;
   focus?: CityFocusType;
   productionRhythm?: CityProductionRhythm;
 }
@@ -33,9 +37,12 @@ export class City {
   readonly id: string;
   name: string;
   ownerId: string;
+  readonly originNationId: string;
   readonly tileX: number;
   readonly tileY: number;
-  readonly isCapital: boolean;
+  readonly isOriginalCapital: boolean;
+  isResidenceCapital: boolean;
+  occupiedOriginalNationId?: string;
   health: number;
   population: number;
   foodStorage: number;
@@ -53,9 +60,12 @@ export class City {
     this.id = config.id;
     this.name = config.name;
     this.ownerId = config.ownerId;
+    this.originNationId = config.originNationId ?? config.ownerId;
     this.tileX = config.tileX;
     this.tileY = config.tileY;
-    this.isCapital = config.isCapital ?? false;
+    this.isOriginalCapital = config.isOriginalCapital ?? config.isCapital ?? false;
+    this.isResidenceCapital = config.isResidenceCapital ?? config.isCapital ?? false;
+    this.occupiedOriginalNationId = config.occupiedOriginalNationId;
     this.health = CITY_BASE_HEALTH;
     this.population = 1;
     this.foodStorage = 0;
@@ -73,6 +83,10 @@ export class City {
 
   get isDamaged(): boolean {
     return this.health < CITY_BASE_HEALTH;
+  }
+
+  get isCapital(): boolean {
+    return this.isOriginalCapital;
   }
 
   rename(name: string): void {

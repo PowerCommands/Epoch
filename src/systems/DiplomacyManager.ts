@@ -486,6 +486,22 @@ export class DiplomacyManager {
     this.pendingProposals.clear();
   }
 
+  removeNationRelations(nationId: string): number {
+    let removed = 0;
+    for (const key of Array.from(this.relations.keys())) {
+      const [a, b] = key.split(PAIR_KEY_SEPARATOR);
+      if (a !== nationId && b !== nationId) continue;
+      this.relations.delete(key);
+      removed++;
+    }
+    this.pendingProposals.delete(nationId);
+    for (const [toId, proposal] of Array.from(this.pendingProposals.entries())) {
+      if (proposal.fromNationId !== nationId && proposal.toNationId !== nationId) continue;
+      this.pendingProposals.delete(toId);
+    }
+    return removed;
+  }
+
   private notifyChanged(a: string, b: string): void {
     const relation = this.getRelation(a, b);
     for (const cb of this.changedListeners) cb(a, b, relation);

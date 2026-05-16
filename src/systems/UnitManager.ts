@@ -113,7 +113,9 @@ export class UnitManager {
   getUnitAt(tileX: number, tileY: number): Unit | null {
     const key = this.gridKey(tileX, tileY);
     if (key === null) return null;
-    return this.unitGrid[key];
+    return this.unitGrid[key] ?? this.getAllUnits().find((unit) => (
+      unit.transportId === undefined && unit.tileX === tileX && unit.tileY === tileY
+    )) ?? null;
   }
 
   getUnitsAt(tileX: number, tileY: number): Unit[] {
@@ -277,7 +279,7 @@ export class UnitManager {
       if (!tile) continue;
       if (unitType.isNaval) {
         if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
-      } else if (tile.type === TileType.Ocean || tile.type === TileType.Coast) {
+      } else if (unitType.canTraverseWater !== true && (tile.type === TileType.Ocean || tile.type === TileType.Coast)) {
         continue;
       }
 
@@ -387,6 +389,7 @@ export class UnitManager {
     if (unit.transportId !== undefined) return;
     const key = this.gridKey(unit.tileX, unit.tileY);
     if (key === null) return;
+    if (unit.unitType.ignoresUnitCollision === true && this.unitGrid[key] !== null) return;
     this.unitGrid[key] = unit;
   }
 

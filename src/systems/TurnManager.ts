@@ -55,6 +55,19 @@ export class TurnManager {
     this.stopped = true;
   }
 
+  removeNation(nationId: string): void {
+    const index = this.turnOrder.findIndex((nation) => nation.id === nationId);
+    if (index < 0) return;
+    this.turnOrder.splice(index, 1);
+    if (this.turnOrder.length === 0) {
+      this.stopped = true;
+      this.currentTurnIndex = 0;
+      return;
+    }
+    if (index < this.currentTurnIndex) this.currentTurnIndex -= 1;
+    if (this.currentTurnIndex >= this.turnOrder.length) this.currentTurnIndex = 0;
+  }
+
   /** Avsluta nuvarande nations tur och avancera. */
   endCurrentTurn(): void {
     if (this.stopped) return;

@@ -16,6 +16,11 @@ interface UnitDefinitionInput {
   canBuildImprovements?: boolean;
   maxImprovementCharges?: number;
   isNaval?: boolean;
+  ignoresUnitCollision?: boolean;
+  canTraverseWater?: boolean;
+  mustEndOnLand?: boolean;
+  uniquePerNation?: boolean;
+  residenceCapitalOnly?: boolean;
   requiredResource?: {
     readonly resourceId: string;
     readonly amount: number;
@@ -39,6 +44,11 @@ function unit(input: UnitDefinitionInput): UnitType {
     canBuildImprovements: input.canBuildImprovements,
     maxImprovementCharges: input.maxImprovementCharges,
     isNaval: input.isNaval,
+    ignoresUnitCollision: input.ignoresUnitCollision,
+    canTraverseWater: input.canTraverseWater,
+    mustEndOnLand: input.mustEndOnLand,
+    uniquePerNation: input.uniquePerNation,
+    residenceCapitalOnly: input.residenceCapitalOnly,
     requiredResource: input.requiredResource,
   };
 }
@@ -135,6 +145,21 @@ export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Crui
 
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2 });
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
+export const LEADER = unit({
+  id: 'leader',
+  name: 'Leader',
+  era: 'ancient',
+  cost: 0,
+  combatStrength: 8,
+  movement: 10,
+  category: 'leader',
+  upkeepGold: 0,
+  ignoresUnitCollision: true,
+  canTraverseWater: true,
+  mustEndOnLand: true,
+  uniquePerNation: true,
+  residenceCapitalOnly: true,
+});
 
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
 
@@ -149,7 +174,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   NUCLEAR_SUBMARINE, ATOMIC_BOMB, HELICOPTER_GUNSHIP, BAZOOKA,
   MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
-  WORKER, SETTLER, TRANSPORT_SHIP,
+  WORKER, SETTLER, LEADER, TRANSPORT_SHIP,
 ];
 
 export function getUnitTypeById(id: string): UnitType | undefined {

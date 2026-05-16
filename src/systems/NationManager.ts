@@ -31,6 +31,11 @@ export class NationManager {
     return Array.from(this.nations.values());
   }
 
+  removeNation(nationId: string): void {
+    this.nations.delete(nationId);
+    this.resources.delete(nationId);
+  }
+
   getResources(nationId: string): NationResources {
     return this.resources.get(nationId)!;
   }

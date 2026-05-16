@@ -5,7 +5,7 @@ import { MinHeap } from '../utils/MinHeap';
 import { getTileMovementCost } from './MovementSystem';
 import type { NationManager } from './NationManager';
 import { UnitManager } from './UnitManager';
-import { canUnitEnterTile } from './UnitMovementRules';
+import { canUnitEndMovementOnTile, canUnitEnterTile } from './UnitMovementRules';
 import type { IGridSystem } from './grid/IGridSystem';
 
 interface FindPathOptions {
@@ -60,7 +60,7 @@ export class PathfindingSystem {
     const target = this.getTile(targetX, targetY);
     if (!start || !target) return null;
     if (start.x === target.x && start.y === target.y) return [start];
-    if (!this.canEnter(unit, target)) return null;
+    if (!this.canEndOn(unit, target)) return null;
 
     this.ensureBuffers();
     const gen = this.nextGeneration();
@@ -228,7 +228,16 @@ export class PathfindingSystem {
     if (!canUnitEnterTile(unit, tile, this.nationManager.getNation(unit.ownerId))) return false;
 
     const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
-    if (occupant !== null && occupant.id !== unit.id) return false;
+    if (occupant !== null && occupant.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
+
+    return true;
+  }
+
+  private canEndOn(unit: Unit, tile: Tile): boolean {
+    if (!canUnitEndMovementOnTile(unit, tile, this.nationManager.getNation(unit.ownerId))) return false;
+
+    const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
+    if (occupant !== null && occupant.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
 
     return true;
   }
@@ -244,7 +253,7 @@ export class PathfindingSystem {
       if (!target) continue;
 
       const key = target.y * this.mapWidth + target.x;
-      if (key !== startKey && !this.canEnter(unit, target)) continue;
+      if (key !== startKey && !this.canEndOn(unit, target)) continue;
       if (!keys.includes(key)) keys.push(key);
     }
 

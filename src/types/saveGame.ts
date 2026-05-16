@@ -4,6 +4,7 @@ import type { CityProductionRhythm } from '../entities/City';
 import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
+import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -13,7 +14,7 @@ import type { TradeDeal } from './tradeDeal';
  * so future changes can be detected and rejected cleanly.
  */
 
-export const SAVED_GAME_VERSION = 3 as const;
+export const SAVED_GAME_VERSION = 4 as const;
 
 export interface SavedProducible {
   kind: 'unit' | 'building' | 'wonder' | 'corporation';
@@ -72,6 +73,10 @@ export interface SavedCity {
   tileX: number;
   tileY: number;
   isCapital: boolean;
+  originNationId: string;
+  isOriginalCapital: boolean;
+  isResidenceCapital: boolean;
+  occupiedOriginalNationId?: string;
   focus?: CityFocusType;
   productionRhythm?: CityProductionRhythm;
   health: number;
@@ -200,4 +205,5 @@ export interface SavedGameState {
   wonders: SavedWonder[];
   corporations?: SavedCorporation[];
   tradeDeals?: TradeDeal[];
+  exileProtectionAgreements?: ExileProtectionAgreement[];
 }
