@@ -84,7 +84,7 @@ export class MovementSystem {
 
   private canMoveUnitToInternal(unit: Unit, tileX: number, tileY: number, respectDiplomacy: boolean): boolean {
     if (unit.ownerId !== this.activeNationId) return false;
-    if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return false;
+    if (unit.carriedByUnitId !== undefined) return false;
     if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;
     if (!this.gridSystem.isAdjacent(
@@ -181,7 +181,7 @@ export class MovementSystem {
   ): boolean {
     if (!allowTransitOnly) return this.canMoveUnitToInternal(unit, tileX, tileY, respectDiplomacy);
     if (unit.ownerId !== this.activeNationId) return false;
-    if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return false;
+    if (unit.carriedByUnitId !== undefined) return false;
     if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;
     if (!this.gridSystem.isAdjacent({ x: unit.tileX, y: unit.tileY }, { x: tileX, y: tileY })) return false;
@@ -209,7 +209,7 @@ export class MovementSystem {
   }
 
   private getBoardingTransport(unit: Unit, tileX: number, tileY: number): Unit | undefined {
-    if (unit.unitType.isNaval || unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return undefined;
+    if (unit.unitType.isNaval || unit.carriedByUnitId !== undefined) return undefined;
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
     if (occupyingUnit === null) return undefined;
     const canBoard = this.unitBoardingManager?.canBoard(unit, occupyingUnit)

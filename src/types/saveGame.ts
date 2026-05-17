@@ -112,6 +112,7 @@ export interface SavedUnit {
   improvementCharges?: number;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];
+  /** Legacy save-load migration field. Runtime Unit state uses carriedByUnitId. */
   transportId?: string;
   isSleeping: boolean;
   // Optional in older saves; absent values are derived from isSleeping +

@@ -44,7 +44,6 @@ export class Unit {
   health: number;
   carriedByUnitId?: string;
   cargoUnitIds: string[];
-  transportId?: string;
   isSleeping: boolean;
   improvementCharges?: number;
   createdRound: number;
@@ -64,7 +63,6 @@ export class Unit {
     this.health = config.unitType.baseHealth;
     this.carriedByUnitId = config.carriedByUnitId;
     this.cargoUnitIds = [...(config.cargoUnitIds ?? [])];
-    this.transportId = config.carriedByUnitId;
     this.isSleeping = false;
     this.improvementCharges = config.improvementCharges ?? config.unitType.maxImprovementCharges;
     this.createdRound = config.createdRound ?? 1;

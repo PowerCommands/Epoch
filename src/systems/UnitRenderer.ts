@@ -327,7 +327,7 @@ export class UnitRenderer {
   }
 
   private isCargo(unit: Unit): boolean {
-    return unit.carriedByUnitId !== undefined || unit.transportId !== undefined;
+    return unit.carriedByUnitId !== undefined;
   }
 }
 

@@ -188,7 +188,6 @@ export class SaveLoadService {
       improvementCharges: unit.improvementCharges,
       carriedByUnitId: unit.carriedByUnitId,
       cargoUnitIds: [...unit.cargoUnitIds],
-      transportId: unit.transportId,
       isSleeping: unit.isSleeping,
       actionStatus: unit.actionStatus,
       buildAction: unit.buildAction ? { ...unit.buildAction } : undefined,
@@ -668,12 +667,12 @@ export class SaveLoadService {
         improvementCharges: saved.improvementCharges,
         carriedByUnitId: saved.carriedByUnitId ?? saved.transportId,
         cargoUnitIds: saved.cargoUnitIds,
-        transportId: saved.transportId,
         isSleeping: saved.isSleeping,
         actionStatus: saved.actionStatus,
         buildAction: saved.buildAction ? { ...saved.buildAction } : undefined,
       });
     }
+    unitManager.normalizeCargoLinks();
   }
 
   private static applyDiplomacy(

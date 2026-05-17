@@ -541,14 +541,14 @@ export class AIOverseasExpansionSystem {
     return result;
   }
 
-  private getBestBoardingTile(coastalTile: MarkerTargetCoord, transportId: string | undefined): MarkerTargetCoord | undefined {
+  private getBestBoardingTile(coastalTile: MarkerTargetCoord, carrierUnitId: string | undefined): MarkerTargetCoord | undefined {
     return this.gridSystem.getAdjacentCoords(coastalTile)
       .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
       .filter((tile) => {
         if (!tile) return false;
         if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
         const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
-        return occupant === null || occupant.id === transportId;
+        return occupant === null || occupant.id === carrierUnitId;
       })
       .sort((a, b) => (a.y - b.y) || (a.x - b.x))[0];
   }

@@ -62,7 +62,7 @@ export class UnitBoardingManager {
   }
 
   isCargo(unit: Unit): boolean {
-    return unit.carriedByUnitId !== undefined || unit.transportId !== undefined;
+    return unit.carriedByUnitId !== undefined;
   }
 
   getBoardingFailureReason(passenger: Unit, transport: Unit): string | undefined {

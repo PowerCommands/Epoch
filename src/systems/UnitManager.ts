@@ -134,13 +134,13 @@ export class UnitManager {
     const key = this.gridKey(tileX, tileY);
     if (key === null) return null;
     return this.unitGrid[key] ?? this.getAllUnits().find((unit) => (
-      unit.carriedByUnitId === undefined && unit.transportId === undefined && unit.tileX === tileX && unit.tileY === tileY
+      unit.carriedByUnitId === undefined && unit.tileX === tileX && unit.tileY === tileY
     )) ?? null;
   }
 
   getUnitsAt(tileX: number, tileY: number): Unit[] {
     const units = Array.from(this.units.values())
-      .filter((unit) => unit.carriedByUnitId === undefined && unit.transportId === undefined)
+      .filter((unit) => unit.carriedByUnitId === undefined)
       .filter((unit) => unit.tileX === tileX && unit.tileY === tileY);
     return [
       ...units,
@@ -148,9 +148,8 @@ export class UnitManager {
   }
 
   getTransportForUnit(unit: Unit): Unit | undefined {
-    const transportId = unit.carriedByUnitId ?? unit.transportId;
-    if (transportId === undefined) return undefined;
-    return this.units.get(transportId);
+    if (unit.carriedByUnitId === undefined) return undefined;
+    return this.units.get(unit.carriedByUnitId);
   }
 
   getCargoForTransport(transport: Unit): Unit | undefined {
@@ -160,27 +159,26 @@ export class UnitManager {
   getCargoUnitsForTransport(transport: Unit): Unit[] {
     const cargoIds = new Set(transport.cargoUnitIds);
     return Array.from(this.units.values())
-      .filter((unit) => cargoIds.has(unit.id) || unit.carriedByUnitId === transport.id || unit.transportId === transport.id);
+      .filter((unit) => cargoIds.has(unit.id) || unit.carriedByUnitId === transport.id);
   }
 
   canBoardUnit(unit: Unit, transport: Unit): boolean {
     if (unit.ownerId !== transport.ownerId) return false;
     if (unit.unitType.isNaval || !transport.unitType.isNaval) return false;
-    if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return false;
-    if (transport.carriedByUnitId !== undefined || transport.transportId !== undefined) return false;
+    if (unit.carriedByUnitId !== undefined) return false;
+    if (transport.carriedByUnitId !== undefined) return false;
     if (!canCarryUnitType(transport.unitType, unit.unitType)) return false;
     return this.getCargoUnitsForTransport(transport).length < (transport.unitType.cargoCapacity ?? 0);
   }
 
-  boardUnit(unitId: string, transportId: string, movementCost = 1): boolean {
+  boardUnit(unitId: string, carrierUnitId: string, movementCost = 1): boolean {
     const unit = this.units.get(unitId);
-    const transport = this.units.get(transportId);
+    const transport = this.units.get(carrierUnitId);
     if (unit === undefined || transport === undefined) return false;
     if (!this.canBoardUnit(unit, transport)) return false;
 
     this.clearFromGrid(unit);
     unit.carriedByUnitId = transport.id;
-    unit.transportId = transport.id;
     unit.tileX = transport.tileX;
     unit.tileY = transport.tileY;
     unit.movementPoints = Math.max(0, unit.movementPoints - movementCost);
@@ -199,7 +197,6 @@ export class UnitManager {
 
     transport.cargoUnitIds = transport.cargoUnitIds.filter((cargoUnitId) => cargoUnitId !== unit.id);
     unit.carriedByUnitId = undefined;
-    unit.transportId = undefined;
     unit.tileX = tileX;
     unit.tileY = tileY;
     unit.movementPoints = Math.max(0, unit.movementPoints - movementCost);
@@ -213,7 +210,7 @@ export class UnitManager {
   moveUnit(unitId: string, tileX: number, tileY: number, movementCost = 0): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
-    if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return false;
+    if (unit.carriedByUnitId !== undefined) return false;
 
     this.clearFromGrid(unit);
     unit.tileX = tileX;
@@ -244,7 +241,7 @@ export class UnitManager {
   resetMovementForOwner(ownerId: string): void {
     for (const unit of this.units.values()) {
       if (unit.ownerId !== ownerId) continue;
-      if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) continue;
+      if (unit.carriedByUnitId !== undefined) continue;
       unit.movementPoints = this.getEffectiveMovementPoints(unit.unitType);
       this.notify({ unit, reason: 'movementReset' });
     }
@@ -382,7 +379,6 @@ export class UnitManager {
     improvementCharges?: number;
     carriedByUnitId?: string;
     cargoUnitIds?: string[];
-    transportId?: string;
     isSleeping: boolean;
     actionStatus?: import('../entities/Unit').UnitActionStatus;
     buildAction?: import('../entities/Unit').UnitBuildAction;
@@ -399,20 +395,12 @@ export class UnitManager {
       maxMovementPoints: this.getEffectiveMovementPoints(config.unitType),
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
-      carriedByUnitId: config.carriedByUnitId ?? config.transportId,
+      carriedByUnitId: config.carriedByUnitId,
       cargoUnitIds: config.cargoUnitIds,
       createdRound: config.createdRound,
       expiresAtRound: config.expiresAtRound,
     });
     unit.health = config.health;
-    unit.transportId = config.carriedByUnitId ?? config.transportId;
-    for (const cargoUnitId of unit.cargoUnitIds) {
-      const cargo = this.units.get(cargoUnitId);
-      if (cargo) {
-        cargo.carriedByUnitId = unit.id;
-        cargo.transportId = unit.id;
-      }
-    }
     unit.isSleeping = config.isSleeping;
 
     if (config.actionStatus !== undefined) {
@@ -429,6 +417,41 @@ export class UnitManager {
     this.units.set(unit.id, unit);
     this.placeOnGrid(unit);
     return unit;
+  }
+
+  normalizeCargoLinks(): void {
+    const carrierByPassengerId = new Map<string, string>();
+
+    for (const passenger of this.units.values()) {
+      if (passenger.carriedByUnitId && this.units.has(passenger.carriedByUnitId)) {
+        carrierByPassengerId.set(passenger.id, passenger.carriedByUnitId);
+      }
+    }
+
+    for (const transport of this.units.values()) {
+      for (const cargoUnitId of [...new Set(transport.cargoUnitIds)]) {
+        const passenger = this.units.get(cargoUnitId);
+        if (!passenger || passenger.id === transport.id || carrierByPassengerId.has(passenger.id)) continue;
+        carrierByPassengerId.set(passenger.id, transport.id);
+      }
+    }
+
+    for (const unit of this.units.values()) {
+      unit.carriedByUnitId = carrierByPassengerId.get(unit.id);
+      unit.cargoUnitIds = [];
+    }
+
+    for (const [passengerId, carrierUnitId] of carrierByPassengerId) {
+      const passenger = this.units.get(passengerId);
+      const transport = this.units.get(carrierUnitId);
+      if (!passenger || !transport) continue;
+      if (!transport.cargoUnitIds.includes(passenger.id)) transport.cargoUnitIds.push(passenger.id);
+      passenger.tileX = transport.tileX;
+      passenger.tileY = transport.tileY;
+    }
+
+    this.unitGrid.fill(null);
+    for (const unit of this.units.values()) this.placeOnGrid(unit);
   }
 
   /** Emit a 'created' event for a unit already placed via restoreUnit. */
@@ -468,7 +491,7 @@ export class UnitManager {
   }
 
   private placeOnGrid(unit: Unit): void {
-    if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return;
+    if (unit.carriedByUnitId !== undefined) return;
     const key = this.gridKey(unit.tileX, unit.tileY);
     if (key === null) return;
     if (unit.unitType.ignoresUnitCollision === true && this.unitGrid[key] !== null) return;

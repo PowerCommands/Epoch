@@ -177,7 +177,7 @@ export class ForeignTroopViolationSystem {
   }
 
   private isForeignTroopViolationUnit(unit: Unit): boolean {
-    if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return false;
+    if (unit.carriedByUnitId !== undefined) return false;
     if (unit.unitType.baseStrength <= 0) return false;
     if (unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon') return false;
     if (unit.unitType.category === 'civilian' || unit.unitType.category === 'leader') return false;

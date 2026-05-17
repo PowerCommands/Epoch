@@ -4470,6 +4470,6 @@ export class AISystem {
   }
 
   private isCargoUnit(unit: Unit): boolean {
-    return unit.carriedByUnitId !== undefined || unit.transportId !== undefined;
+    return unit.carriedByUnitId !== undefined;
   }
 }
