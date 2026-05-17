@@ -5,7 +5,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, TRANSPORT_SHIP } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, canCarryUnitType, hasCargoCapacity } from '../data/units';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById } from '../data/buildings';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
@@ -526,7 +526,7 @@ export class AISystem {
       }
     };
 
-    for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
+    for (const unit of this.unitManager.getUnitsByOwner(nationId).filter((u) => !this.isCargoUnit(u))) {
       recordCenterAndAdjacent(unit.tileX, unit.tileY);
     }
     for (const city of this.cityManager.getCitiesByOwner(nationId)) {
@@ -1455,7 +1455,7 @@ export class AISystem {
   // ─── Combat ──────────────────────────────────────────────────────────────────
 
   private runCombat(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId);
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
     const strategy = this.getStrategy(nationId);
 
     for (const unit of units) {
@@ -1595,7 +1595,7 @@ export class AISystem {
   // ─── Movement ────────────────────────────────────────────────────────────────
 
   private runMovement(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId);
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
     const strategy = this.getStrategy(nationId);
 
     const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
@@ -1682,7 +1682,7 @@ export class AISystem {
     // Pre-claim tiles that own naval units already occupy so other ships
     // don't try to converge onto a tile they can't enter (no stacking).
     const claimedNavalTiles = new Set<string>();
-    for (const u of this.unitManager.getUnitsByOwner(nationId)) {
+    for (const u of this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit))) {
       if (u.unitType.isNaval) claimedNavalTiles.add(tileKey(u.tileX, u.tileY));
     }
     return { targets, enemyTargets, claimedNavalTiles, ownZoneHasEnemy };
@@ -3099,16 +3099,20 @@ export class AISystem {
       }
     }
 
-    const canProduceTransport =
-      this.canBuildUnit(nationId, TRANSPORT_SHIP.id) &&
-      canCityProduceUnit(city, TRANSPORT_SHIP, this.mapData, this.gridSystem, this.getUnitProductionRuleContext());
+    const availableOverseasTransportUnitTypes = ALL_UNIT_TYPES.filter((unitType) => (
+      unitType.isNaval === true
+      && hasCargoCapacity(unitType)
+      && canCarryUnitType(unitType, SETTLER)
+      && this.canBuildUnit(nationId, unitType.id)
+      && canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+    ));
     const overseasRequest = acuteDefenderNeeded
       ? undefined
       : this.overseasExpansionSystem?.getExpeditionProductionRequest(
         nationId,
         city,
         canProduceSettler,
-        canProduceTransport,
+        availableOverseasTransportUnitTypes,
       );
     if (overseasRequest) {
       candidates.push({
@@ -4463,5 +4467,9 @@ export class AISystem {
     }
 
     return false;
+  }
+
+  private isCargoUnit(unit: Unit): boolean {
+    return unit.carriedByUnitId !== undefined || unit.transportId !== undefined;
   }
 }

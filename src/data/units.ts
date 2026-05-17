@@ -8,6 +8,8 @@ interface UnitDefinitionInput {
   cost: number;
   upkeepGold?: number;
   upgradeToUnitId?: string;
+  cargoCapacity?: number;
+  allowedCargoCategories?: readonly UnitCategory[];
   combatStrength: number;
   rangedStrength?: number;
   range?: number;
@@ -37,6 +39,8 @@ function unit(input: UnitDefinitionInput): UnitType {
     productionCost: input.cost,
     upkeepGold: input.upkeepGold ?? getDefaultUpkeepGold(input.category, input.era),
     upgradeToUnitId: input.upgradeToUnitId,
+    cargoCapacity: input.cargoCapacity,
+    allowedCargoCategories: input.allowedCargoCategories,
     movementPoints: input.movement,
     baseHealth: input.combatStrength > 0 ? 100 : 50,
     baseStrength: input.combatStrength,
@@ -83,7 +87,7 @@ export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer
 export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 1, isNaval: true });
 export const TRIREME = unit({ id: 'trireme', name: 'Trireme', era: 'ancient', cost: 45, combatStrength: 10, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'caravel' });
 export const CARAVAN = unit({ id: 'caravan', name: 'Caravan', era: 'ancient', cost: 75, combatStrength: 0, movement: 1, category: 'civilian' });
-export const CARGO_SHIP = unit({ id: 'cargo_ship', name: 'Cargo Ship', era: 'ancient', cost: 100, combatStrength: 0, movement: 1, category: 'civilian', isNaval: true });
+export const CARGO_SHIP = unit({ id: 'cargo_ship', name: 'Cargo Ship', era: 'ancient', cost: 100, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 1, allowedCargoCategories: ['civilian'] });
 
 export const HORSEMAN = unit({ id: 'horseman', name: 'Horseman', era: 'classical', cost: 75, combatStrength: 12, movement: 4, category: 'mounted', requiredResource: { resourceId: 'horses', amount: 1 }, upkeepGold: 3, upgradeToUnitId: 'knight' });
 export const COMPOSITE_BOWMAN = unit({ id: 'composite_bowman', name: 'Composite Bowman', era: 'classical', cost: 75, combatStrength: 8, rangedStrength: 11, range: 2, movement: 2, category: 'ranged' , upkeepGold: 3, upgradeToUnitId: 'crossbowman' });
@@ -119,7 +123,7 @@ export const GREAT_WAR_BOMBER = unit({ id: 'great_war_bomber', name: 'Great War 
 export const DESTROYER = unit({ id: 'destroyer', name: 'Destroyer', era: 'modern', cost: 375, combatStrength: 75, movement: 6, category: 'naval_melee', isNaval: true, upkeepGold: 9 });
 export const SUBMARINE = unit({ id: 'submarine', name: 'Submarine', era: 'modern', cost: 325, combatStrength: 35, rangedStrength: 60, range: 3, movement: 5, category: 'naval_ranged', isNaval: true, upkeepGold: 9, upgradeToUnitId: 'nuclear_submarine' });
 export const BATTLESHIP = unit({ id: 'battleship', name: 'Battleship', era: 'modern', cost: 375, combatStrength: 55, rangedStrength: 65, range: 3, movement: 5, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 15, upgradeToUnitId: 'missile_cruiser' });
-export const CARRIER = unit({ id: 'carrier', name: 'Carrier', era: 'modern', cost: 375, combatStrength: 50, movement: 5, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 15, upgradeToUnitId: 'missile_cruiser' });
+export const CARRIER = unit({ id: 'carrier', name: 'Carrier', era: 'modern', cost: 375, combatStrength: 50, movement: 5, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 15, cargoCapacity: 3, allowedCargoCategories: ['air'] });
 
 export const INFANTRY = unit({ id: 'infantry', name: 'Infantry', era: 'atomic', cost: 375, combatStrength: 108, movement: 2, category: 'melee', upkeepGold: 9, upgradeToUnitId: 'mechanized_infantry' });
 export const ANTI_AIRCRAFT_GUN = unit({ id: 'anti_aircraft_gun', name: 'Anti-Aircraft Gun', era: 'atomic', cost: 375, combatStrength: 50, range: 2, movement: 2, category: 'ranged', upkeepGold: 3, upgradeToUnitId: 'mobile_sam' });
@@ -166,7 +170,7 @@ export const LEADER = unit({
   residenceCapitalOnly: true,
 });
 
-export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
+export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 3, allowedCargoCategories: ['civilian', 'melee', 'ranged', 'mounted', 'siege'] });
 
 export const SPECIAL_UNIT_TYPES: UnitType[] = [
   LEADER,
@@ -189,6 +193,15 @@ export const ALL_UNIT_TYPES: UnitType[] = [
 export function getUnitTypeById(id: string): UnitType | undefined {
   return ALL_UNIT_TYPES.find((unitType) => unitType.id === id)
     ?? SPECIAL_UNIT_TYPES.find((unitType) => unitType.id === id);
+}
+
+export function hasCargoCapacity(unitType: UnitType): boolean {
+  return (unitType.cargoCapacity ?? 0) > 0;
+}
+
+export function canCarryUnitType(transportType: UnitType, passengerType: UnitType): boolean {
+  return hasCargoCapacity(transportType)
+    && (transportType.allowedCargoCategories ?? []).includes(passengerType.category);
 }
 
 export function getLegacyCompatibleUnitTypeById(id: string): UnitType | undefined {

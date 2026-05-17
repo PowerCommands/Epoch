@@ -7,6 +7,8 @@ export type OverseasTargetStatus =
   | 'expeditionReady'
   | 'staging'
   | 'readyToBoard'
+  | 'embarked'
+  | 'enRoute'
   | 'readyToEmbark'
   | 'completed'
   | 'cancelled';
@@ -27,4 +29,5 @@ export interface OverseasSettlementTarget {
   assignedTransportUnitId?: string;
   settlerRequested?: boolean;
   transportRequested?: boolean;
+  requestedTransportUnitTypeId?: string;
 }

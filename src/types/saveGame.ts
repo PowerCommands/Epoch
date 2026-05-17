@@ -110,6 +110,8 @@ export interface SavedUnit {
   createdRound?: number;
   expiresAtRound?: number;
   improvementCharges?: number;
+  carriedByUnitId?: string;
+  cargoUnitIds?: string[];
   transportId?: string;
   isSleeping: boolean;
   // Optional in older saves; absent values are derived from isSleeping +

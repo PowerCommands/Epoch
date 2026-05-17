@@ -163,6 +163,7 @@ export class AIExplorationSystem {
     this.updateScoutPhase(nationId);
 
     const scouts = this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => unit.carriedByUnitId === undefined && unit.transportId === undefined)
       .filter((unit) => this.isExplorationUnit(unit))
       .sort((a, b) => a.id.localeCompare(b.id));
 
@@ -274,6 +275,7 @@ export class AIExplorationSystem {
     knowledge.visibleTiles.clear();
 
     const scouts = this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => unit.carriedByUnitId === undefined && unit.transportId === undefined)
       .filter((unit) => this.isExplorationUnit(unit));
 
     for (const scout of scouts) {

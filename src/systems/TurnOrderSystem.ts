@@ -118,6 +118,7 @@ export class TurnOrderSystem {
 
     const owned = this.unitManager.getUnitsByOwner(this.humanNationId!);
     for (const unit of owned) {
+      if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) continue;
       if (!this.order.includes(unit.id)) this.order.push(unit.id);
     }
 
@@ -131,8 +132,17 @@ export class TurnOrderSystem {
     const isHumanTurn = this.turnManager.getCurrentNation().id === this.humanNationId;
 
     if (reason === 'created' && unit.ownerId === this.humanNationId) {
+      if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) return;
       if (!this.order.includes(unit.id)) this.order.push(unit.id);
       if (isHumanTurn) this.notifyActiveChangedIfNeeded();
+      return;
+    }
+
+    if (reason === 'moved' && (unit.carriedByUnitId !== undefined || unit.transportId !== undefined)) {
+      const idx = this.order.indexOf(unit.id);
+      if (idx >= 0) this.order.splice(idx, 1);
+      this.doneThisTurn.add(unit.id);
+      if (unit.ownerId === this.humanNationId && isHumanTurn) this.notifyActiveChangedIfNeeded();
       return;
     }
 
@@ -161,6 +171,7 @@ export class TurnOrderSystem {
       if (!unit) continue;
       if (unit.ownerId !== this.humanNationId) continue;
       if (!unit.isAlive()) continue;
+      if (unit.carriedByUnitId !== undefined || unit.transportId !== undefined) continue;
       if (unit.isSleeping) continue;
       if (this.isUnitBlocked(unit)) continue;
       return id;

@@ -61,17 +61,24 @@ export class UnitRenderer {
     this.nationManager = nationManager;
 
     for (const unit of unitManager.getAllUnits()) {
+      if (this.isCargo(unit)) continue;
       this.renderUnit(unit.id);
     }
 
     unitManager.onUnitChanged((event) => {
       if (event.reason === 'created') {
+        if (this.isCargo(event.unit)) return;
         this.renderUnit(event.unit.id);
       } else if (event.reason === 'removed') {
         this.removeUnit(event.unit.id);
       } else if (event.reason === 'damaged') {
         this.refreshHpBar(event.unit.id);
       } else if (event.reason === 'moved') {
+        if (this.isCargo(event.unit)) {
+          this.removeUnit(event.unit.id);
+          return;
+        }
+        if (!this.visuals.has(event.unit.id)) this.renderUnit(event.unit.id);
         this.refreshUnitPosition(event.unit.id);
         this.refreshUnitVisual(event.unit.id);
       } else if (event.reason === 'upgraded') {
@@ -99,6 +106,7 @@ export class UnitRenderer {
     this.hpBars.clear();
 
     for (const unit of this.unitManager.getAllUnits()) {
+      if (this.isCargo(unit)) continue;
       this.renderUnit(unit.id);
       this.refreshHpBar(unit.id);
     }
@@ -108,13 +116,17 @@ export class UnitRenderer {
     const unit = this.unitManager.getUnit(unitId);
     const visual = this.visuals.get(unitId);
     if (unit === undefined || visual === undefined) return;
+    if (this.isCargo(unit)) {
+      this.removeUnit(unit.id);
+      return;
+    }
 
     const { x, y } = this.getUnitWorldPosition(unitId);
     visual.container.setPosition(x, y);
-    visual.container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
-    visual.container.setScale(unit.transportId ? 0.75 : 1);
+    visual.container.setDepth(UNIT_DEPTH);
+    visual.container.setScale(1);
     visual.maskGraphics.setPosition(x, y);
-    visual.maskGraphics.setScale(unit.transportId ? 0.75 : 1);
+    visual.maskGraphics.setScale(1);
 
     const hpBar = this.hpBars.get(unitId);
     if (hpBar) {
@@ -182,6 +194,7 @@ export class UnitRenderer {
 
     const unit = this.unitManager.getUnit(unitId);
     if (unit === undefined) return;
+    if (this.isCargo(unit)) return;
 
     const nation = this.nationManager.getNation(unit.ownerId);
     if (nation === undefined) return;
@@ -205,10 +218,10 @@ export class UnitRenderer {
 
     const { x, y } = this.getUnitWorldPosition(unit.id);
     container.setPosition(x, y);
-    container.setDepth(unit.transportId ? UNIT_DEPTH + 2 : UNIT_DEPTH);
-    container.setScale(unit.transportId ? 0.75 : 1);
+    container.setDepth(UNIT_DEPTH);
+    container.setScale(1);
     maskGraphics.setPosition(x, y);
-    maskGraphics.setScale(unit.transportId ? 0.75 : 1);
+    maskGraphics.setScale(1);
 
     const visual: UnitVisual = { container, sprite, maskGraphics, nationRing };
     this.visuals.set(unit.id, visual);
@@ -310,8 +323,11 @@ export class UnitRenderer {
     if (!unit) return { x: 0, y: 0 };
 
     const base = this.tileMap.tileToWorld(unit.tileX, unit.tileY);
-    if (unit.transportId === undefined) return base;
-    return { x: base.x + 12, y: base.y - 12 };
+    return base;
+  }
+
+  private isCargo(unit: Unit): boolean {
+    return unit.carriedByUnitId !== undefined || unit.transportId !== undefined;
   }
 }
 

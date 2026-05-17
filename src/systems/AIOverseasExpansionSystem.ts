@@ -8,6 +8,7 @@ import type { MovementSystem } from './MovementSystem';
 import type { PathfindingSystem } from './PathfindingSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { AILogFormatter } from './ai/AILogFormatter';
+import type { UnitBoardingManager } from './UnitBoardingManager';
 import type { OverseasSettlementTarget, OverseasTargetSource } from '../types/ai/OverseasSettlementTarget';
 import type { WorldMarker } from '../types/WorldMarker';
 import type { MapData } from '../types/map';
@@ -17,7 +18,8 @@ import type { UnitType } from '../entities/UnitType';
 import { TileType } from '../types/map';
 import { cityHasWaterTile } from './ProductionRules';
 import { canNationEmbarkLandUnits } from './UnitMovementRules';
-import { SETTLER, TRANSPORT_SHIP } from '../data/units';
+import { SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
+import { getEraIndex } from '../data/eraTimeline';
 
 const SAILING_TECH_ID = 'sailing';
 const ISLAND_DISCOVERY_MARKER_TYPE = 'islandDiscovery';
@@ -58,6 +60,7 @@ export class AIOverseasExpansionSystem {
     private readonly movementSystem: MovementSystem,
     private readonly pathfindingSystem: PathfindingSystem,
     private readonly gridSystem: IGridSystem,
+    private readonly unitBoardingManager?: UnitBoardingManager,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
   ) {
@@ -147,7 +150,7 @@ export class AIOverseasExpansionSystem {
 
   runStaging(nationId: string): void {
     const target = this.getMutableSelectedTarget(nationId);
-    if (!target || (target.status !== 'expeditionReady' && target.status !== 'staging')) return;
+    if (!target || (target.status !== 'expeditionReady' && target.status !== 'staging' && target.status !== 'readyToBoard')) return;
 
     const settler = target.assignedSettlerUnitId ? this.unitManager.getUnit(target.assignedSettlerUnitId) : undefined;
     if (!settler) return;
@@ -170,8 +173,14 @@ export class AIOverseasExpansionSystem {
     this.moveUnitToward(settler, plan.coastalTile, 'Settler', target.name, 'coastal staging tile');
 
     if (transportRequired && transport && plan.boardingTile) {
+      if (target.status === 'readyToBoard') {
+        this.boardExpeditionSettler(nationId, target, settler, transport);
+        return;
+      }
+
       this.moveUnitToward(transport, plan.boardingTile, 'Transport', target.name, 'boarding tile');
       if (this.isAt(settler, plan.coastalTile) && this.isAt(transport, plan.boardingTile) && this.areAdjacent(settler, transport)) {
+        if (this.boardExpeditionSettler(nationId, target, settler, transport)) return;
         target.status = 'readyToBoard';
         this.log(nationId, `overseas expedition ${target.name} is ready to board.`);
       }
@@ -216,7 +225,7 @@ export class AIOverseasExpansionSystem {
     const target = this.getMutableSelectedTarget(nationId);
     if (!target || target.status === 'expeditionReady') return false;
     if (target.assignedTransportUnitId && this.unitManager.getUnit(target.assignedTransportUnitId)) return false;
-    return !this.hasQueuedUnit(nationId, TRANSPORT_SHIP.id);
+    return !this.hasQueuedSettlerTransport(nationId);
   }
 
   isExpeditionReady(nationId: string): boolean {
@@ -229,7 +238,7 @@ export class AIOverseasExpansionSystem {
     nationId: string,
     city: City,
     canProduceSettler: boolean,
-    canProduceTransport: boolean,
+    availableTransportUnitTypes: readonly UnitType[],
   ): { unitType: UnitType; target: OverseasSettlementTarget; component: 'settler' | 'transport' } | undefined {
     const target = this.getMutableSelectedTarget(nationId);
     if (!target || target.status === 'expeditionReady') return undefined;
@@ -241,10 +250,15 @@ export class AIOverseasExpansionSystem {
 
     if (
       this.needsTransportForSelectedTarget(nationId)
-      && canProduceTransport
       && cityHasWaterTile(city, this.mapData)
     ) {
-      return { unitType: TRANSPORT_SHIP, target: { ...normalizeTarget(target) }, component: 'transport' };
+      const transportType = this.chooseBestSettlerTransportUnitType(availableTransportUnitTypes);
+      if (!transportType) return undefined;
+      if (target.requestedTransportUnitTypeId !== transportType.id) {
+        target.requestedTransportUnitTypeId = transportType.id;
+        this.log(nationId, `wants ${transportType.name} for overseas expedition target ${target.name}.`);
+      }
+      return { unitType: transportType, target: { ...normalizeTarget(target) }, component: 'transport' };
     }
 
     return undefined;
@@ -258,7 +272,12 @@ export class AIOverseasExpansionSystem {
   ): void {
     const target = this.getMutableTarget(nationId, targetMarkerId);
     if (!target) return;
-    const label = component === 'settler' ? 'Settler' : 'Transport';
+    const requestedTransportType = target.requestedTransportUnitTypeId
+      ? getUnitTypeById(target.requestedTransportUnitTypeId)
+      : undefined;
+    const label = component === 'settler'
+      ? 'Settler'
+      : requestedTransportType?.name ?? 'Transport';
     this.log(nationId, `${cityName} production selected ${label} for overseas expedition target ${target.name}.`);
   }
 
@@ -313,6 +332,8 @@ export class AIOverseasExpansionSystem {
       || mutableTarget.status === 'expeditionReady'
       || mutableTarget.status === 'staging'
       || mutableTarget.status === 'readyToBoard'
+      || mutableTarget.status === 'embarked'
+      || mutableTarget.status === 'enRoute'
       || mutableTarget.status === 'readyToEmbark'
     ) return;
 
@@ -326,7 +347,6 @@ export class AIOverseasExpansionSystem {
       if (!mutableTarget.assignedTransportUnitId && !mutableTarget.transportRequested) {
         mutableTarget.transportRequested = true;
         mutableTarget.status = 'transportRequested';
-        this.log(nationId, `wants Transport for overseas expedition target ${mutableTarget.name}.`);
       }
     } else if (mutableTarget.status === 'settlerRequested' || mutableTarget.status === 'selected') {
       this.log(nationId, `does not require Transport for ${mutableTarget.name} because land embarkation is available.`);
@@ -362,7 +382,7 @@ export class AIOverseasExpansionSystem {
     ) {
       target.assignedTransportUnitId = unit.id;
       target.status = 'expeditionPreparing';
-      this.log(unit.ownerId, `assigned Transport to overseas expedition target ${target.name}.`);
+      this.log(unit.ownerId, `assigned ${unit.unitType.name} to overseas expedition target ${target.name}.`);
       this.updateTargetReadiness(unit.ownerId, target);
     }
   }
@@ -379,6 +399,27 @@ export class AIOverseasExpansionSystem {
     if (target.settlerRequested || target.transportRequested || target.assignedSettlerUnitId || target.assignedTransportUnitId) {
       target.status = 'expeditionPreparing';
     }
+  }
+
+  private boardExpeditionSettler(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    settler: Unit,
+    transport: Unit,
+  ): boolean {
+    if (!this.unitBoardingManager) return false;
+    if (this.unitBoardingManager.isCargo(settler)) {
+      target.status = 'embarked';
+      return true;
+    }
+    if (!this.unitBoardingManager.board(settler, transport)) {
+      const reason = this.unitBoardingManager.getBoardingFailureReason(settler, transport);
+      if (reason) this.log(nationId, `could not board Settler for overseas expedition ${target.name}: ${reason}.`);
+      return false;
+    }
+    target.status = 'embarked';
+    this.log(nationId, `Settler boarded ${transport.unitType.name} for overseas expedition target ${target.name}.`);
+    return true;
   }
 
   private isTargetReady(nationId: string, target: OverseasSettlementTarget): boolean {
@@ -412,10 +453,34 @@ export class AIOverseasExpansionSystem {
     ));
   }
 
+  private hasQueuedSettlerTransport(nationId: string): boolean {
+    return this.cityManager.getCitiesByOwner(nationId).some((city) => (
+      this.productionSystem.getQueue(city.id).some((entry) => (
+        entry.item.kind === 'unit' && this.isSettlerTransportUnitType(entry.item.unitType)
+      ))
+    ));
+  }
+
   private isTransportCapableUnit(unit: Unit): boolean {
-    return unit.unitType.isNaval === true
-      && unit.unitType.category !== 'naval_recon'
-      && unit.unitType.id === TRANSPORT_SHIP.id;
+    return this.isSettlerTransportUnitType(unit.unitType);
+  }
+
+  private isSettlerTransportUnitType(unitType: UnitType): boolean {
+    return unitType.isNaval === true
+      && hasCargoCapacity(unitType)
+      && canCarryUnitType(unitType, SETTLER);
+  }
+
+  private chooseBestSettlerTransportUnitType(unitTypes: readonly UnitType[]): UnitType | undefined {
+    return unitTypes
+      .filter((unitType) => this.isSettlerTransportUnitType(unitType))
+      .sort((a, b) => {
+        const eraDelta = getEraIndex(a.era) - getEraIndex(b.era);
+        if (eraDelta !== 0) return eraDelta;
+        const costDelta = a.productionCost - b.productionCost;
+        if (costDelta !== 0) return costDelta;
+        return a.name.localeCompare(b.name);
+      })[0];
   }
 
   private describeExpeditionState(nationId: string, target: OverseasSettlementTarget): string {
@@ -426,7 +491,7 @@ export class AIOverseasExpansionSystem {
         ? 'requested'
         : 'needed';
     const transport = this.requiresTransportForOverseasExpansion(nationId)
-      ? `Transport: required/${target.assignedTransportUnitId ? 'assigned' : target.transportRequested || this.hasQueuedUnit(nationId, TRANSPORT_SHIP.id) ? 'requested' : 'needed'}`
+      ? `Transport: required/${target.assignedTransportUnitId ? 'assigned' : target.transportRequested || this.hasQueuedSettlerTransport(nationId) ? 'requested' : 'needed'}`
       : 'Transport: not required';
     return `Settler: ${settler}, ${transport}`;
   }

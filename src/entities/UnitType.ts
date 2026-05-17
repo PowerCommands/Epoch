@@ -21,6 +21,8 @@ export interface UnitType {
   readonly productionCost: number;
   readonly upkeepGold?: number;
   readonly upgradeToUnitId?: string;
+  readonly cargoCapacity?: number;
+  readonly allowedCargoCategories?: readonly UnitCategory[];
   readonly movementPoints: number;
   readonly baseHealth: number;
   readonly baseStrength: number;

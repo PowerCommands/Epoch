@@ -6,6 +6,7 @@ import { SelectionManager } from '../systems/SelectionManager';
 import { NationManager } from '../systems/NationManager';
 import { CityManager } from '../systems/CityManager';
 import { UnitManager } from '../systems/UnitManager';
+import { UnitBoardingManager } from '../systems/UnitBoardingManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
@@ -1104,6 +1105,18 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    const unitBoardingManager = new UnitBoardingManager(
+      unitManager,
+      mapData,
+      gridSystem,
+      nationManager,
+      (message) => logManager.info({
+        nationId: turnManager.getCurrentNation().id,
+        category: 'unit',
+        message,
+      }),
+    );
+
     // 15. Rörelseregler för enheter
     movementSystem = new MovementSystem(
       tileMap,
@@ -1116,6 +1129,7 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
       (unit, territoryOwnerId) => exileProtectionSystem.canLeaderEnterTerritory(unit, territoryOwnerId),
+      unitBoardingManager,
     );
 
     // Turn order: built AFTER MovementSystem so MovementSystem's turnStart
@@ -1230,6 +1244,7 @@ export class GameScene extends Phaser.Scene {
       movementSystem,
       pathfindingSystem,
       gridSystem,
+      unitBoardingManager,
       formatLog,
       (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
     );

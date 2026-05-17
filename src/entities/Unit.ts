@@ -22,6 +22,8 @@ export interface UnitConfig {
   improvementCharges?: number;
   createdRound?: number;
   expiresAtRound?: number;
+  carriedByUnitId?: string;
+  cargoUnitIds?: string[];
 }
 
 /**
@@ -40,6 +42,8 @@ export class Unit {
   maxMovementPoints: number;
   movementPoints: number;
   health: number;
+  carriedByUnitId?: string;
+  cargoUnitIds: string[];
   transportId?: string;
   isSleeping: boolean;
   improvementCharges?: number;
@@ -58,6 +62,9 @@ export class Unit {
     this.maxMovementPoints = config.maxMovementPoints ?? config.unitType.movementPoints;
     this.movementPoints = config.movementPoints ?? this.maxMovementPoints;
     this.health = config.unitType.baseHealth;
+    this.carriedByUnitId = config.carriedByUnitId;
+    this.cargoUnitIds = [...(config.cargoUnitIds ?? [])];
+    this.transportId = config.carriedByUnitId;
     this.isSleeping = false;
     this.improvementCharges = config.improvementCharges ?? config.unitType.maxImprovementCharges;
     this.createdRound = config.createdRound ?? 1;
