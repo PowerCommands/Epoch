@@ -26,6 +26,7 @@ const ISLAND_DISCOVERY_MARKER_TYPE = 'islandDiscovery';
 const LANDING_RADIUS_START = 3;
 const LANDING_RADIUS_EXPAND = 5;
 const LANDING_RADIUS_MAX = 8;
+const DEFAULT_CITY_WITHIN_MARKER_RADIUS = 8;
 
 interface MarkerTargetCoord {
   readonly x: number;
@@ -108,15 +109,60 @@ export class AIOverseasExpansionSystem {
   }
 
   registerDiscoveredIslandMarker(nationId: string, markerId: string): boolean {
+    // Fetch marker data via getMarker (bypasses claim filter) so we have the
+    // data available before we attempt to claim.
     const marker = this.worldMarkerSystem.getMarker(markerId);
     if (!marker || marker.type !== ISLAND_DISCOVERY_MARKER_TYPE) return false;
 
     const nation = this.nationManager.getNation(nationId);
     if (!nation) return false;
     if (!nation.knownIslandTargets) nation.knownIslandTargets = [];
+
+    // Already registered for this nation — idempotent guard (no claim needed again).
     if (nation.knownIslandTargets.some((target) => target.markerId === marker.id)) return false;
 
+    // Per-nation region-name dedup: ignore further markers for a region we have
+    // already handled, but do NOT claim them — leave them for other nations.
+    if (marker.name) {
+      const normalized = normalizeOverseasRegionName(marker.name);
+      if (nation.handledOverseasRegionNames?.includes(normalized)) {
+        this.log(nationId, `ignored island opportunity ${marker.name}: region already handled.`);
+        return false;
+      }
+    }
+
+    // Global claim: first nation to register this marker wins; others are blocked.
+    if (this.worldMarkerSystem.isMarkerClaimed(markerId)) {
+      const owner = this.worldMarkerSystem.getMarkerClaimOwner(markerId);
+      const ownerName = owner ? (this.nationManager.getNation(owner)?.name ?? owner) : 'unknown';
+      this.log(nationId, `island opportunity ${marker.name ?? markerId} already claimed by ${ownerName}.`);
+      return false;
+    }
+
+    // Rule 2: If the nation already has a city inside this marker's radius,
+    // consume the marker globally without creating an expedition.
+    const existingCity = this.findCityWithinMarkerRadius(nationId, marker);
+    if (existingCity) {
+      if (!this.worldMarkerSystem.claimMarker(nationId, markerId)) return false;
+      if (marker.name) {
+        if (!nation.handledOverseasRegionNames) nation.handledOverseasRegionNames = [];
+        nation.handledOverseasRegionNames.push(normalizeOverseasRegionName(marker.name));
+      }
+      const radius = getMarkerCheckRadius(marker);
+      this.log(nationId, `claimed island opportunity ${marker.name ?? markerId} but no expedition needed: city ${existingCity.name} is within radius ${radius}.`);
+      return true;
+    }
+
     const expeditionTarget = this.getExpeditionTargetForMarker(marker);
+
+    // Attempt the global claim before committing the target.
+    if (!this.worldMarkerSystem.claimMarker(nationId, markerId)) return false;
+
+    // Record the region name so this nation skips future markers for the same region.
+    if (marker.name) {
+      if (!nation.handledOverseasRegionNames) nation.handledOverseasRegionNames = [];
+      nation.handledOverseasRegionNames.push(normalizeOverseasRegionName(marker.name));
+    }
 
     const target: OverseasSettlementTarget = {
       markerId: marker.id,
@@ -132,17 +178,10 @@ export class AIOverseasExpansionSystem {
 
     nation.knownIslandTargets.push(target);
     this.sortTargets(nation.knownIslandTargets);
-    if (target.source === 'marker') {
-      this.log(
-        nationId,
-        `registered overseas expedition target ${target.name} at marker position (${target.targetX},${target.targetY}), priority ${target.priority}`,
-      );
-    } else {
-      this.log(
-        nationId,
-        `registered overseas expedition target ${target.name} at metadata target (${target.targetX},${target.targetY}), priority ${target.priority}`,
-      );
-    }
+    this.log(
+      nationId,
+      `claimed island opportunity ${target.name} and registered overseas expedition target at ${target.source === 'marker' ? 'marker' : 'metadata'} position (${target.targetX},${target.targetY}), priority ${target.priority}`,
+    );
     return true;
   }
 
@@ -851,6 +890,14 @@ export class AIOverseasExpansionSystem {
       .some((city) => cityHasWaterTile(city, this.mapData));
   }
 
+  private findCityWithinMarkerRadius(nationId: string, marker: WorldMarker): City | undefined {
+    const radius = getMarkerCheckRadius(marker);
+    const markerCoord = { x: marker.x, y: marker.y };
+    return this.cityManager.getCitiesByOwner(nationId).find(
+      (city) => this.gridSystem.getDistance({ x: city.tileX, y: city.tileY }, markerCoord) <= radius,
+    );
+  }
+
   private getExpeditionTargetForMarker(marker: WorldMarker): MarkerExpeditionTarget {
     const metadataTarget = this.getFirstValidSettlementTarget(marker);
     if (metadataTarget) {
@@ -897,6 +944,17 @@ export class AIOverseasExpansionSystem {
     console.log(this.formatLog(nationId, message));
     this.logStrategicEvent?.(nationId, message);
   }
+}
+
+function normalizeOverseasRegionName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function getMarkerCheckRadius(marker: WorldMarker): number {
+  const metaRadius = marker.metadata?.radius;
+  return typeof metaRadius === 'number' && metaRadius > 0
+    ? metaRadius
+    : marker.radius ?? DEFAULT_CITY_WITHIN_MARKER_RADIUS;
 }
 
 function compareTargets(a: OverseasSettlementTarget, b: OverseasSettlementTarget): number {

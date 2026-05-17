@@ -14,3 +14,8 @@ export interface WorldMarkerDiscoveryEntry {
   nationId: string;
   markerIds: string[];
 }
+
+export interface WorldMarkerClaimEntry {
+  markerId: string;
+  nationId: string;
+}

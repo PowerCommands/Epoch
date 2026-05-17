@@ -5,7 +5,7 @@ import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
 import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
-import type { WorldMarker, WorldMarkerDiscoveryEntry } from './WorldMarker';
+import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
 import type { LeaderEvacuationState } from '../entities/Nation';
 
@@ -68,6 +68,7 @@ export interface SavedNation {
   culture: number;
   influence?: number;
   knownIslandTargets?: OverseasSettlementTarget[];
+  handledOverseasRegionNames?: string[];
   leaderEvacuationState?: LeaderEvacuationState;
 }
 
@@ -227,5 +228,6 @@ export interface SavedGameState {
   exileProtectionAgreements?: ExileProtectionAgreement[];
   worldMarkers?: WorldMarker[];
   worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];
+  worldMarkerClaims?: WorldMarkerClaimEntry[];
   foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
 }

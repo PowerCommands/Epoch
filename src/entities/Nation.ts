@@ -66,6 +66,7 @@ export class Nation {
   cultureProgress: number;
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
+  handledOverseasRegionNames?: string[];
   leaderEvacuationState?: LeaderEvacuationState;
 
   constructor(config: NationConfig) {

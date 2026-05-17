@@ -124,6 +124,7 @@ export class SaveLoadService {
         culture: res.culture,
         influence: res.influence,
         knownIslandTargets: nation.knownIslandTargets?.map((target) => ({ ...target })),
+        handledOverseasRegionNames: nation.handledOverseasRegionNames ? [...nation.handledOverseasRegionNames] : undefined,
         leaderEvacuationState: nation.leaderEvacuationState
           ? { ...nation.leaderEvacuationState }
           : undefined,
@@ -299,8 +300,9 @@ export class SaveLoadService {
       corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
-      worldMarkers: worldMarkerSystem?.getAllMarkers(),
+      worldMarkers: worldMarkerSystem?.getAllMarkersForSave(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
+      worldMarkerClaims: worldMarkerSystem?.getClaimEntries(),
       foreignTroopViolationWarnings,
     };
   }
@@ -402,6 +404,7 @@ export class SaveLoadService {
     if (context.worldMarkerSystem) {
       context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());
       context.worldMarkerSystem.restoreDiscovery(state.worldMarkerDiscoveries ?? []);
+      context.worldMarkerSystem.restoreClaims(state.worldMarkerClaims ?? []);
     }
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
     context.turnManager.restoreTurnState(
@@ -547,6 +550,7 @@ export class SaveLoadService {
       nation.currentCultureNodeId = saved.currentCultureNodeId;
       nation.cultureProgress = saved.cultureProgress ?? 0;
       nation.knownIslandTargets = saved.knownIslandTargets?.map((target) => ({ ...target }));
+      nation.handledOverseasRegionNames = saved.handledOverseasRegionNames ? [...saved.handledOverseasRegionNames] : undefined;
       nation.leaderEvacuationState = saved.leaderEvacuationState
         ? { ...saved.leaderEvacuationState }
         : undefined;
