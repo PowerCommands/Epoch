@@ -11,18 +11,19 @@ import type { AILogFormatter } from './ai/AILogFormatter';
 import type { UnitBoardingManager } from './UnitBoardingManager';
 import type { OverseasSettlementTarget, OverseasTargetSource } from '../types/ai/OverseasSettlementTarget';
 import type { WorldMarker } from '../types/WorldMarker';
-import type { MapData } from '../types/map';
+import type { MapData, Tile } from '../types/map';
 import type { City } from '../entities/City';
 import type { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import { TileType } from '../types/map';
 import { cityHasWaterTile } from './ProductionRules';
-import { canNationEmbarkLandUnits } from './UnitMovementRules';
+import { canNationEmbarkLandUnits, canUnitEndMovementOnTile, isWaterTile } from './UnitMovementRules';
 import { SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
 import { getEraIndex } from '../data/eraTimeline';
 
 const SAILING_TECH_ID = 'sailing';
 const ISLAND_DISCOVERY_MARKER_TYPE = 'islandDiscovery';
+const OVERSEAS_TARGET_SEARCH_RADIUS = 5;
 
 interface MarkerTargetCoord {
   readonly x: number;
@@ -150,14 +151,34 @@ export class AIOverseasExpansionSystem {
 
   runStaging(nationId: string): void {
     const target = this.getMutableSelectedTarget(nationId);
-    if (!target || (target.status !== 'expeditionReady' && target.status !== 'staging' && target.status !== 'readyToBoard')) return;
+    if (!target || !this.isActiveExpeditionTravelStatus(target.status)) return;
 
     const settler = target.assignedSettlerUnitId ? this.unitManager.getUnit(target.assignedSettlerUnitId) : undefined;
-    if (!settler) return;
+    if (!settler) {
+      this.cancelExpedition(nationId, target, 'assigned Settler is missing');
+      return;
+    }
 
     const transportRequired = this.requiresTransportForOverseasExpansion(nationId);
     const transport = target.assignedTransportUnitId ? this.unitManager.getUnit(target.assignedTransportUnitId) : undefined;
-    if (transportRequired && !transport) return;
+    if (transportRequired && !transport) {
+      this.cancelExpedition(nationId, target, 'assigned transport is missing');
+      return;
+    }
+
+    if (
+      transportRequired
+      && transport
+      && (
+        target.status === 'embarked'
+        || target.status === 'enRoute'
+        || target.status === 'landing'
+        || this.unitBoardingManager?.isCargo(settler) === true
+      )
+    ) {
+      this.runEmbarkedExpedition(nationId, target, settler, transport);
+      return;
+    }
 
     const plan = this.findStagingPlan(nationId, settler, transport);
     if (!plan) {
@@ -320,7 +341,9 @@ export class AIOverseasExpansionSystem {
       return { canSelect: false, reason: 'no coastal city access' };
     }
 
-    const bestTarget = [...targets].sort(compareTargets)[0];
+    const bestTarget = targets
+      .filter((target) => target.status !== 'completed' && target.status !== 'cancelled')
+      .sort(compareTargets)[0];
     if (!bestTarget) return { canSelect: false, reason: 'no known overseas targets' };
     return { canSelect: true, bestTarget };
   }
@@ -334,6 +357,7 @@ export class AIOverseasExpansionSystem {
       || mutableTarget.status === 'readyToBoard'
       || mutableTarget.status === 'embarked'
       || mutableTarget.status === 'enRoute'
+      || mutableTarget.status === 'landing'
       || mutableTarget.status === 'readyToEmbark'
     ) return;
 
@@ -422,6 +446,107 @@ export class AIOverseasExpansionSystem {
     return true;
   }
 
+  private runEmbarkedExpedition(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    settler: Unit,
+    transport: Unit,
+  ): void {
+    if (!this.unitBoardingManager) {
+      this.cancelExpedition(nationId, target, 'boarding manager is unavailable');
+      return;
+    }
+    if (!this.unitBoardingManager.isCargo(settler)) {
+      target.status = 'staging';
+      this.log(nationId, `overseas expedition ${target.name} returned to staging because Settler is not cargo.`);
+      return;
+    }
+
+    if (target.status === 'embarked') {
+      target.status = 'enRoute';
+      this.log(nationId, `${transport.unitType.name} sailing toward overseas expedition target ${target.name}.`);
+    }
+
+    const immediateLanding = this.findLandingTile(nationId, target, settler, transport);
+    if (immediateLanding) {
+      this.completeLanding(nationId, target, settler, immediateLanding);
+      return;
+    }
+
+    const destinationWaterTiles = this.getDestinationWaterTiles(nationId, target, settler, transport);
+    if (destinationWaterTiles.length === 0) {
+      this.cancelExpedition(nationId, target, `no landing region found near ${target.name}`);
+      return;
+    }
+
+    const path = this.pathfindingSystem.findBestPathToAnyTarget(transport, destinationWaterTiles, {
+      respectMovementPoints: false,
+    });
+    if (!path) {
+      this.cancelExpedition(nationId, target, `${transport.unitType.name} could not find a naval path to ${target.name}`);
+      return;
+    }
+
+    const beforeX = transport.tileX;
+    const beforeY = transport.tileY;
+    this.movementSystem.moveAlongPath(transport, path);
+
+    const landingAfterMove = this.findLandingTile(nationId, target, settler, transport);
+    if (landingAfterMove) {
+      this.log(nationId, `${transport.unitType.name} reached overseas target region ${target.name}.`);
+      this.completeLanding(nationId, target, settler, landingAfterMove);
+      return;
+    }
+
+    const destination = path[path.length - 1];
+    if (
+      destination
+      && transport.tileX === beforeX
+      && transport.tileY === beforeY
+      && (transport.tileX !== destination.x || transport.tileY !== destination.y)
+      && transport.movementPoints > 0
+    ) {
+      this.cancelExpedition(nationId, target, `${transport.unitType.name} could not advance toward ${target.name}`);
+    }
+  }
+
+  private completeLanding(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    settler: Unit,
+    landingTile: MarkerTargetCoord,
+  ): void {
+    if (!this.unitBoardingManager) return;
+    target.status = 'landing';
+    this.log(nationId, `selected landing tile (${landingTile.x},${landingTile.y}) near ${target.name}.`);
+    if (!this.unitBoardingManager.unboard(settler, landingTile.x, landingTile.y)) {
+      const reason = this.unitBoardingManager.getUnboardingFailureReason(settler, landingTile.x, landingTile.y);
+      this.cancelExpedition(nationId, target, reason ? `landing failed near ${target.name}: ${reason}` : `landing failed near ${target.name}`);
+      return;
+    }
+
+    this.log(nationId, `Settler unboarded near ${target.name}.`);
+    target.status = 'completed';
+    target.selected = false;
+    target.assignedSettlerUnitId = undefined;
+    target.assignedTransportUnitId = undefined;
+    target.settlerRequested = false;
+    target.transportRequested = false;
+    target.requestedTransportUnitTypeId = undefined;
+    this.log(nationId, `Overseas expedition to ${target.name} completed.`);
+  }
+
+  private cancelExpedition(nationId: string, target: OverseasSettlementTarget, reason: string): void {
+    target.status = 'cancelled';
+    target.selected = false;
+    target.assignedSettlerUnitId = undefined;
+    target.assignedTransportUnitId = undefined;
+    target.settlerRequested = false;
+    target.transportRequested = false;
+    target.requestedTransportUnitTypeId = undefined;
+    this.log(nationId, `overseas expedition ${target.name} cancelled: ${reason}.`);
+  }
+
   private isTargetReady(nationId: string, target: OverseasSettlementTarget): boolean {
     const settlerReady = target.assignedSettlerUnitId !== undefined
       && this.unitManager.getUnit(target.assignedSettlerUnitId) !== undefined;
@@ -494,6 +619,102 @@ export class AIOverseasExpansionSystem {
       ? `Transport: required/${target.assignedTransportUnitId ? 'assigned' : target.transportRequested || this.hasQueuedSettlerTransport(nationId) ? 'requested' : 'needed'}`
       : 'Transport: not required';
     return `Settler: ${settler}, ${transport}`;
+  }
+
+  private isActiveExpeditionTravelStatus(status: OverseasSettlementTarget['status']): boolean {
+    return status === 'expeditionReady'
+      || status === 'staging'
+      || status === 'readyToBoard'
+      || status === 'embarked'
+      || status === 'enRoute'
+      || status === 'landing';
+  }
+
+  private getDestinationWaterTiles(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    settler: Unit,
+    transport: Unit,
+  ): MarkerTargetCoord[] {
+    const seen = new Set<string>();
+    const candidates: MarkerTargetCoord[] = [];
+    const targetCoord = { x: target.targetX, y: target.targetY };
+
+    for (const landingTile of this.getLandingRegionTiles(nationId, target, settler)) {
+      for (const coord of this.gridSystem.getAdjacentCoords(landingTile)) {
+        const tile = this.mapData.tiles[coord.y]?.[coord.x];
+        if (!tile || !isWaterTile(tile)) continue;
+        const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
+        if (occupant && occupant.id !== transport.id) continue;
+        const key = `${tile.x},${tile.y}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        candidates.push({ x: tile.x, y: tile.y });
+      }
+    }
+
+    return candidates.sort((a, b) => {
+      const distanceDelta = this.gridSystem.getDistance(a, targetCoord) - this.gridSystem.getDistance(b, targetCoord);
+      if (distanceDelta !== 0) return distanceDelta;
+      return (a.y - b.y) || (a.x - b.x);
+    });
+  }
+
+  private findLandingTile(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    settler: Unit,
+    transport: Unit,
+  ): MarkerTargetCoord | undefined {
+    if (!this.unitBoardingManager) return undefined;
+    const targetCoord = { x: target.targetX, y: target.targetY };
+    return this.gridSystem.getAdjacentCoords({ x: transport.tileX, y: transport.tileY })
+      .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
+      .filter((tile): tile is Tile => tile !== undefined)
+      .filter((tile) => this.isCandidateLandingTile(nationId, settler, tile))
+      .filter((tile) => this.unitBoardingManager?.canUnboard(settler, tile.x, tile.y) === true)
+      .sort((a, b) => {
+        const scoreDelta = this.getLandingTileScore(a, targetCoord) - this.getLandingTileScore(b, targetCoord);
+        if (scoreDelta !== 0) return scoreDelta;
+        return (a.y - b.y) || (a.x - b.x);
+      })[0];
+  }
+
+  private getLandingRegionTiles(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    settler: Unit,
+  ): Tile[] {
+    return this.gridSystem.getTilesInRange(
+      { x: target.targetX, y: target.targetY },
+      OVERSEAS_TARGET_SEARCH_RADIUS,
+      this.mapData,
+      { includeCenter: true },
+    )
+      .filter((tile) => this.isCandidateLandingTile(nationId, settler, tile))
+      .sort((a, b) => {
+        const scoreDelta = this.getLandingTileScore(a, { x: target.targetX, y: target.targetY })
+          - this.getLandingTileScore(b, { x: target.targetX, y: target.targetY });
+        if (scoreDelta !== 0) return scoreDelta;
+        return (a.y - b.y) || (a.x - b.x);
+      });
+  }
+
+  private isCandidateLandingTile(nationId: string, settler: Unit, tile: Tile): boolean {
+    if (isWaterTile(tile)) return false;
+    if (tile.ownerId !== undefined && tile.ownerId !== nationId) return false;
+    if (!canUnitEndMovementOnTile(settler, tile, this.nationManager.getNation(nationId))) return false;
+    const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
+    if (occupant && occupant.id !== settler.id) return false;
+    return this.hasAdjacentWaterTile(tile.x, tile.y);
+  }
+
+  private getLandingTileScore(tile: Tile, target: MarkerTargetCoord): number {
+    let score = this.gridSystem.getDistance(tile, target) * 100;
+    if (tile.type === TileType.Plains || tile.type === TileType.Forest || tile.type === TileType.Jungle) score -= 20;
+    if (tile.resourceId !== undefined) score -= 10;
+    if (this.hasAdjacentWaterTile(tile.x, tile.y)) score -= 5;
+    return score;
   }
 
   private findStagingPlan(

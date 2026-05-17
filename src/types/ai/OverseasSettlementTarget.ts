@@ -9,6 +9,7 @@ export type OverseasTargetStatus =
   | 'readyToBoard'
   | 'embarked'
   | 'enRoute'
+  | 'landing'
   | 'readyToEmbark'
   | 'completed'
   | 'cancelled';

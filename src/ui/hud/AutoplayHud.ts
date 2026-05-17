@@ -198,7 +198,7 @@ export class AutoplayHud {
     this.pauseButton.style.display = running ? '' : 'none';
     this.resumeButton.style.display = paused ? '' : 'none';
     this.stopButton.style.display = running || paused ? '' : 'none';
-    this.copyButton.style.display = completed ? '' : 'none';
+    this.copyButton.style.display = running || paused || completed ? '' : 'none';
     this.closeButton.style.display = completed ? '' : 'none';
     this.pauseButton.disabled = completed;
     this.resumeButton.disabled = completed;
