@@ -428,3 +428,10 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# rembg asset pipeline working files
+tools/rembg-pipeline/input/
+tools/rembg-pipeline/output/
+tools/rembg-pipeline/backup/
+tools/rembg-pipeline/preview/
+tools/rembg-pipeline/reports/

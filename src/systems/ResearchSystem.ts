@@ -4,11 +4,9 @@ import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '
 import { getLeaderByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import type { CityManager } from './CityManager';
-import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
 import { pickBestAIResearchTechnology } from './ai/AIResearchPlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
-import type { AILogFormatter } from './ai/AILogFormatter';
 import { getHighestEra } from './EraSystem';
 
 export type Technology = TechnologyDefinition;
@@ -32,12 +30,11 @@ export class ResearchSystem {
   constructor(
     private readonly nationManager: NationManager,
     private readonly cityManager: CityManager,
-    private readonly eventLog: EventLogSystem,
     private readonly getCurrentRound: () => number,
     private readonly getBuildingSciencePerTurn: ScienceProvider = () => 0,
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
-    private readonly formatLog?: AILogFormatter,
+    private readonly logEvent?: (nationId: string, message: string) => void,
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -62,12 +59,7 @@ export class ResearchSystem {
     nation.currentResearchTechId = techId;
     nation.researchProgress = 0;
 
-    const message = `${nation.name} started researching ${technology.name}.`;
-    this.eventLog.log(
-      nation.isHuman ? message : this.formatAIResearchLog(nation.id, `started researching ${technology.name}.`, message),
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logEvent?.(nation.id, `started researching ${technology.name}.`);
     this.notifyChanged();
 
     return true;
@@ -166,19 +158,13 @@ export class ResearchSystem {
         availableTechnologies,
         currentTurn: this.getCurrentRound(),
         earlyGameTurnLimit: this.earlyGameTurnLimit,
-        formatLog: this.formatLog,
         eraStrategy: this.getActiveEraStrategy(nationId),
       });
     if (!nextTechnology) return false;
 
     if (!nation.isHuman) {
       const eraStrategy = this.getActiveEraStrategy(nationId);
-      console.log(
-        this.formatLog?.(
-          nationId,
-          `selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`,
-        ) ?? `${nation.name} selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`,
-      );
+      console.log(`${nation.name} selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`);
     }
     return this.startResearch(nationId, nextTechnology.id);
   }
@@ -278,18 +264,7 @@ export class ResearchSystem {
   }
 
   private logResearchDiscovery(nationId: string, technologyName: string): void {
-    const nation = this.nationManager.getNation(nationId);
-    if (!nation) return;
-    const fallbackMessage = `${nation.name} discovered ${technologyName}.`;
-    this.eventLog.log(
-      nation.isHuman ? fallbackMessage : this.formatAIResearchLog(nation.id, `discovered ${technologyName}.`, fallbackMessage),
-      [nation.id],
-      this.getCurrentRound(),
-    );
-  }
-
-  private formatAIResearchLog(nationId: string, aiMessage: string, fallbackMessage: string): string {
-    return this.formatLog?.(nationId, aiMessage) ?? fallbackMessage;
+    this.logEvent?.(nationId, `discovered ${technologyName}.`);
   }
 
   onChanged(cb: ChangedListener): void {

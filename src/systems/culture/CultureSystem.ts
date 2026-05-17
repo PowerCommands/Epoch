@@ -1,11 +1,9 @@
 import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../../data/gameSpeeds';
 import type { CultureNode } from '../../types/CultureNode';
-import type { EventLogSystem } from '../EventLogSystem';
 import type { NationManager } from '../NationManager';
 import { pickBestAICultureNode } from '../ai/AICulturePlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../../data/aiBaselinePriorities';
-import type { AILogFormatter } from '../ai/AILogFormatter';
 
 type ChangedListener = () => void;
 export type CultureCompletedListener = (event: {
@@ -32,14 +30,13 @@ export class CultureSystem {
 
   constructor(
     private readonly nationManager: NationManager,
-    private readonly eventLog: EventLogSystem,
     private readonly getCurrentRound: () => number,
     private readonly cultureProvider: CultureProvider = (nationId) => (
       this.nationManager.getResources(nationId).culturePerTurn
     ),
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
-    private readonly formatLog?: AILogFormatter,
+    private readonly logEvent?: (nationId: string, message: string) => void,
     private readonly getNetHappiness: HappinessProvider = () => 0,
   ) {}
 
@@ -129,7 +126,6 @@ export class CultureSystem {
         currentTurn: this.getCurrentRound(),
         earlyGameTurnLimit: this.earlyGameTurnLimit,
         netHappiness: this.getNetHappiness(nation.id),
-        formatLog: this.formatLog,
       });
     if (!nextNode) return false;
 
@@ -195,15 +191,8 @@ export class CultureSystem {
     this.completedListeners.push(listener);
   }
 
-  private logCultureEvent(nationId: string, aiMessage: string): void {
-    const nation = this.nationManager.getNation(nationId);
-    if (!nation) return;
-    const fallbackMessage = `${nation.name} ${aiMessage}`;
-    this.eventLog.log(
-      nation.isHuman ? fallbackMessage : this.formatLog?.(nation.id, aiMessage) ?? fallbackMessage,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+  private logCultureEvent(nationId: string, message: string): void {
+    this.logEvent?.(nationId, message);
   }
 
   private tryCompleteCurrentNode(nationId: string): CultureNode | null {

@@ -8,7 +8,6 @@ import { getManufacturedResourceById } from '../data/manufacturedResources';
 import type { City } from '../entities/City';
 import type { Corporation } from '../entities/Corporation';
 import type { CityManager } from './CityManager';
-import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
@@ -26,7 +25,7 @@ export interface CorporationFoundResult {
 export interface CorporationFoundContext {
   readonly researchSystem: ResearchSystem;
   readonly resourceAccessSystem: ResourceAccessSystem;
-  readonly eventLog?: EventLogSystem;
+  readonly logEvent?: (nationId: string, message: string) => void;
   readonly getCurrentTurn?: () => number;
   readonly grantCultureBurst?: (nationId: string, amount: number) => void;
   readonly recalculateHappiness?: (nationId: string) => void;
@@ -246,14 +245,7 @@ export class CorporationSystem {
   }
 
   private logFounded(nationId: string, corporation: CorporationDefinition): void {
-    const nation = this.nationManager.getNation(nationId);
-    if (!nation || !this.context.eventLog) return;
-
-    this.context.eventLog.log(
-      `${nation.name} founded ${corporation.name}.`,
-      [nation.id],
-      this.context.getCurrentTurn?.() ?? 0,
-    );
+    this.context.logEvent?.(nationId, `founded ${corporation.name}.`);
   }
 
   private notifyFounded(result: CorporationFoundResult): void {

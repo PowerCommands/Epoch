@@ -4,7 +4,6 @@ import type { TurnStartEvent } from '../types/events';
 import type { MapData } from '../types/map';
 import { getUnitTypeById } from '../data/units';
 import type { CityManager } from './CityManager';
-import type { EventLogSystem } from './EventLogSystem';
 import type { NationManager } from './NationManager';
 import type { PolicySystem } from './PolicySystem';
 import type { ResourceSystem } from './ResourceSystem';
@@ -25,8 +24,7 @@ export class UnitUpkeepSystem {
     private readonly mapData: MapData,
     private readonly cityManager?: CityManager,
     private readonly policySystem?: PolicySystem,
-    private readonly eventLog?: EventLogSystem,
-    private readonly getCurrentRound: () => number = () => 0,
+    private readonly logEvent?: (nationId: string, message: string) => void,
   ) {}
 
   handleTurnStart(event: TurnStartEvent): void {
@@ -181,15 +179,9 @@ export class UnitUpkeepSystem {
   }
 
   private logDismissals(nationId: string, units: readonly Unit[]): void {
-    if (!this.eventLog) return;
-    const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
-    const round = this.getCurrentRound();
+    if (!this.logEvent) return;
     const summary = summarizeUnits(units);
-    this.eventLog.log(
-      `[r${round}] ${nationName} disbanded ${summary} due to unpaid upkeep.`,
-      [nationId],
-      round,
-    );
+    this.logEvent(nationId, `disbanded ${summary} due to unpaid upkeep.`);
   }
 }
 

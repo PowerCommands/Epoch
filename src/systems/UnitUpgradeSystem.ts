@@ -51,7 +51,6 @@ export interface UnitUpgradePreview {
 
 export interface UnitUpgradeLogContext {
   readonly logEvent?: (nationId: string, message: string) => void;
-  readonly formatLog?: (nationId: string, message: string) => string;
 }
 
 export class UnitUpgradeSystem {
@@ -151,10 +150,6 @@ export class UnitUpgradeSystem {
   }
 
   private logUpgrade(nationId: string, oldType: UnitType, newType: UnitType, cost: number): void {
-    const message = `upgraded ${oldType.name} to ${newType.name} for ${cost} gold.`;
-    this.logContext.logEvent?.(
-      nationId,
-      this.logContext.formatLog?.(nationId, message) ?? `${this.nationManager.getNation(nationId)?.name ?? nationId} ${message}`,
-    );
+    this.logContext.logEvent?.(nationId, `upgraded ${oldType.name} to ${newType.name} for ${cost} gold.`);
   }
 }

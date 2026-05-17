@@ -165,7 +165,7 @@ export class CityFocusSystem {
     city.focus = nextFocus;
     for (const message of messages) {
       console.log(this.formatLog(city.ownerId, message));
-      this.logStrategicEvent?.(city.ownerId, this.formatLog(city.ownerId, message));
+      this.logStrategicEvent?.(city.ownerId, message);
     }
   }
 }

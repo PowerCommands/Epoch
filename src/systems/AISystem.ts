@@ -1670,7 +1670,7 @@ export class AISystem {
     if (this.exposedLeaderTargetLoggedRound.get(nationId) === round) return;
     this.exposedLeaderTargetLoggedRound.set(nationId, round);
     const leaderNationName = this.nationManager.getNation(leaderNationId)?.name ?? leaderNationId;
-    this.logStrategicEvent?.(nationId, this.formatLog(nationId, `prioritizing exposed ${leaderNationName} leader.`));
+    this.logStrategicEvent?.(nationId, `prioritizing exposed ${leaderNationName} leader.`);
   }
 
   // ─── Naval patrol ────────────────────────────────────────────────────────────
@@ -2628,7 +2628,7 @@ export class AISystem {
     this.longTermExpansionLoggedRound.set(nationId, round);
     const message = 'planned a long-term expansion settler.';
     console.log(this.formatLog(nationId, message));
-    this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, message);
   }
 
   private runProduction(nationId: string): void {
@@ -3327,7 +3327,7 @@ export class AISystem {
         const score = scoreAIProductionCandidate(best, strategy, eraStrategy, cityFocus);
         const message = `${city.name} production focus ${cityFocus} selected ${itemName}, score ${Math.round(score)}.`;
         console.log(this.formatLog(nationId, message));
-        this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
+        this.logStrategicEvent?.(nationId, message);
       }
       if (best.item.kind === 'unit' && best.item.unitType.id === WORK_BOAT.id && workBoatTarget !== null) {
         const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
@@ -3600,7 +3600,7 @@ export class AISystem {
 
   private logProductionRhythm(nationId: string, message: string): void {
     console.log(this.formatLog(nationId, message));
-    this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, message);
   }
 
   private getSettlerProductionScore(

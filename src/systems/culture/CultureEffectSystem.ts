@@ -1,7 +1,5 @@
 import { getCultureNodeById } from '../../data/cultureTree';
 import type { CultureEffect, CultureNode } from '../../types/CultureNode';
-import type { AILogFormatter } from '../ai/AILogFormatter';
-import type { EventLogSystem } from '../EventLogSystem';
 import type { NationManager } from '../NationManager';
 
 type InfluenceConversionEffect = Extract<CultureEffect, { readonly type: 'influenceToHappiness' }>;
@@ -14,10 +12,8 @@ export class CultureEffectSystem {
 
   constructor(
     private readonly nationManager: NationManager,
-    private readonly eventLog: EventLogSystem,
-    private readonly getCurrentRound: () => number,
     private readonly getNetHappiness: (nationId: string) => number,
-    private readonly formatLog?: AILogFormatter,
+    private readonly logEvent?: (nationId: string, message: string) => void,
   ) {}
 
   beginTurn(nationId: string): void {
@@ -164,15 +160,7 @@ export class CultureEffectSystem {
   }
 
   private logCultureEffectEvent(nationId: string, message: string): void {
-    const nation = this.nationManager.getNation(nationId);
-    if (!nation) return;
-
-    const fallbackMessage = `${nation.name} ${message}`;
-    this.eventLog.log(
-      nation.isHuman ? fallbackMessage : this.formatLog?.(nation.id, message) ?? fallbackMessage,
-      [nation.id],
-      this.getCurrentRound(),
-    );
+    this.logEvent?.(nationId, message);
   }
 }
 

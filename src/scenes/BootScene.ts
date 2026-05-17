@@ -57,7 +57,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
     this.load.image('action_improve', 'assets/sprites/actions/improve.png');
     this.load.image('action_found_city', 'assets/sprites/actions/found-city.png');
-    this.load.svg('action_dismiss', 'assets/sprites/actions/dismiss.svg', { width: 64, height: 64 });
+    this.load.image('action_dismiss', 'assets/sprites/actions/dismiss.png');
 
     // Base unit images, keyed by unitType.id (e.g. worker, work_boat, settler).
     // Special units are preloaded for systems that spawn them directly, but

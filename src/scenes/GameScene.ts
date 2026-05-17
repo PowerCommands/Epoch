@@ -157,6 +157,7 @@ import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
+import { LogManager } from '../systems/LogManager';
 
 /**
  * GameScene — huvudspelscenen.
@@ -309,22 +310,20 @@ export class GameScene extends Phaser.Scene {
       happinessSystem,
     });
     const isAINation = (nationId: string): boolean => nationManager.getNation(nationId)?.isHuman === false;
+    const logManager = new LogManager({ turnManager, nationManager, eraSystem, happinessSystem, eventLog });
     const cultureSystem = new CultureSystem(
       nationManager,
-      eventLog,
       () => turnManager.getCurrentRound(),
       undefined,
       gameSpeed,
       undefined,
-      formatLog,
+      (nationId, message) => logManager.info({ nationId, category: 'culture', message }),
       (nationId) => happinessSystem.getNetHappiness(nationId),
     );
     cultureEffectSystem = new CultureEffectSystem(
       nationManager,
-      eventLog,
-      () => turnManager.getCurrentRound(),
       (nationId) => happinessSystem.getNetHappiness(nationId),
-      formatLog,
+      (nationId, message) => logManager.info({ nationId, category: 'culture', message }),
     );
     const humanNeedsCultureSelection = (): boolean => {
       if (!humanNationId) return false;
@@ -359,8 +358,7 @@ export class GameScene extends Phaser.Scene {
       mapData,
       cityManager,
       policySystem,
-      eventLog,
-      () => turnManager.getCurrentRound(),
+      (nationId, message) => logManager.info({ nationId, category: 'upkeep', message }),
     );
     turnManager.on('turnStart', (e) => unitUpkeepSystem.handleTurnStart(e));
 
@@ -371,7 +369,7 @@ export class GameScene extends Phaser.Scene {
     const unitLifetimeSystem = new UnitLifetimeSystem(
       unitManager,
       nationManager,
-      (unit, message, round) => eventLog.log(message, [unit.ownerId], round),
+      (nationId, message) => logManager.info({ nationId, category: 'unit', message }),
       (unit) => {
         const selected = selectionManager.getSelected();
         if (selected?.kind === 'unit' && selected.unit.id === unit.id) {
@@ -530,7 +528,7 @@ export class GameScene extends Phaser.Scene {
         ideologicalDriftLogCooldowns,
       );
       if (summary) {
-        eventLog.log(summary.text, summary.nationIds, event.round);
+        logManager.info({ nationIds: summary.nationIds, category: 'diplomacy', message: summary.text });
       }
       const borderPressureSummary = formatBorderPressureSummary(
         event.round,
@@ -538,7 +536,7 @@ export class GameScene extends Phaser.Scene {
         borderPressureLogCooldowns,
       );
       if (borderPressureSummary) {
-        eventLog.log(borderPressureSummary.text, borderPressureSummary.nationIds, event.round);
+        logManager.info({ nationIds: borderPressureSummary.nationIds, category: 'diplomacy', message: borderPressureSummary.text });
       }
       if (ideologicalDriftEvents.length > 0 || borderPressureEvents.length > 0) rightPanel?.requestRefresh();
     });
@@ -570,11 +568,11 @@ export class GameScene extends Phaser.Scene {
     const logAutoplayPeaceResolution = (fromNationId: string, toNationId: string, accepted: boolean): void => {
       const fromName = nationManager.getNation(fromNationId)?.name ?? fromNationId;
       const toName = nationManager.getNation(toNationId)?.name ?? toNationId;
-      eventLog.log(
-        `[r${turnManager.getCurrentRound()}] ${toName} ${accepted ? 'accepted' : 'rejected'} ${fromName}'s peace offer during autoplay.`,
-        [fromNationId, toNationId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationIds: [fromNationId, toNationId],
+        category: 'diplomacy',
+        message: `${toName} ${accepted ? 'accepted' : 'rejected'} ${fromName}'s peace offer during autoplay.`,
+      });
     };
 
     diplomaticProposalSystem.onCreated((proposal) => {
@@ -634,35 +632,35 @@ export class GameScene extends Phaser.Scene {
       }
       const fromName = nationManager.getNation(fromId)?.name ?? fromId;
       const toName = nationManager.getNation(toId)?.name ?? toId;
-      const text = `${toName} accepted ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`;
-      eventLog.log(
-        isAINation(fromId) ? formatLog(fromId, `${toName} accepted ${formatProposalKind(proposal.payload.kind)}.`) : text,
-        [fromId, toId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: fromId,
+        nationIds: [fromId, toId],
+        category: 'diplomacy',
+        message: `${toName} accepted ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`,
+      });
     });
     diplomaticProposalSystem.onRejected((proposal) => {
       const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
       const toName = nationManager.getNation(proposal.toNationId)?.name ?? proposal.toNationId;
-      const text = `${toName} rejected ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`;
-      eventLog.log(
-        isAINation(proposal.fromNationId) ? formatLog(proposal.fromNationId, `${toName} rejected ${formatProposalKind(proposal.payload.kind)}.`) : text,
-        [proposal.fromNationId, proposal.toNationId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: proposal.fromNationId,
+        nationIds: [proposal.fromNationId, proposal.toNationId],
+        category: 'diplomacy',
+        message: `${toName} rejected ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`,
+      });
     });
     aiDiplomacySystem.onDecision((reason) => {
       const targetName = nationManager.getNation(reason.targetNationId)?.name ?? reason.targetNationId;
-      eventLog.log(
-        formatLog(reason.actorNationId, `${formatAIDiplomacyAction(reason.action, targetName)} Reason: ${reason.reasonText}`),
-        [reason.actorNationId, reason.targetNationId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: reason.actorNationId,
+        nationIds: [reason.actorNationId, reason.targetNationId],
+        category: 'diplomacy',
+        message: `${formatAIDiplomacyAction(reason.action, targetName)} Reason: ${reason.reasonText}`,
+      });
     });
     const researchSystem = new ResearchSystem(
       nationManager,
       cityManager,
-      eventLog,
       () => turnManager.getCurrentRound(),
       (nationId) => cityManager.getCitiesByOwner(nationId)
         .reduce((sum, city) => sum + calculateCityEconomy(
@@ -674,7 +672,7 @@ export class GameScene extends Phaser.Scene {
         ).science, 0),
       gameSpeed,
       undefined,
-      formatLog,
+      (nationId, message) => logManager.info({ nationId, category: 'research', message }),
     );
     corporationSystem = new CorporationSystem(
       nationManager,
@@ -682,7 +680,7 @@ export class GameScene extends Phaser.Scene {
       {
         researchSystem,
         resourceAccessSystem,
-        eventLog,
+        logEvent: (nationId, message) => logManager.info({ nationId, category: 'corporation', message }),
         getCurrentTurn: () => turnManager.getCurrentRound(),
         grantCultureBurst: (nationId, amount) => {
           nationManager.getResources(nationId).culture += amount;
@@ -959,8 +957,7 @@ export class GameScene extends Phaser.Scene {
       unitManager,
       researchSystem,
       {
-        logEvent: (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
-        formatLog,
+        logEvent: (nationId, message) => logManager.info({ nationId, category: 'unit', message }),
       },
     );
     // Unit action toolbox modes run before movement and culture claim.
@@ -1007,13 +1004,12 @@ export class GameScene extends Phaser.Scene {
       });
       if (!result) return false;
 
-      const nationName = nationManager.getNation(unit.ownerId)?.name ?? unit.ownerId;
       const locationLabel = result.city ? `near ${result.city.name}` : 'on a sea resource';
-      eventLog.log(
-        `${nationName} started building ${result.improvement.name} ${locationLabel}.`,
-        [unit.ownerId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: unit.ownerId,
+        category: 'improvement',
+        message: `started building ${result.improvement.name} ${locationLabel}.`,
+      });
 
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
@@ -1138,26 +1134,22 @@ export class GameScene extends Phaser.Scene {
       if (event.unit.improvementCharges !== undefined) {
         event.unit.improvementCharges = Math.max(0, event.unit.improvementCharges - 1);
       }
-      const nationName = nationManager.getNation(event.construction.ownerId)?.name ?? event.construction.ownerId;
       const locationLabel = event.city ? `near ${event.city.name}` : 'on a sea resource';
       if (
         event.unit.unitType.id === WORK_BOAT.id &&
         event.tile.resourceId !== undefined
       ) {
-        eventLog.log(
-          formatLog(
-            event.construction.ownerId,
-            `Work Boat improved ${event.tile.resourceId} at (${event.tile.x},${event.tile.y}) with ${event.improvement.id}`,
-          ),
-          [event.construction.ownerId],
-          turnManager.getCurrentRound(),
-        );
+        logManager.info({
+          nationId: event.construction.ownerId,
+          category: 'improvement',
+          message: `Work Boat improved ${event.tile.resourceId} at (${event.tile.x},${event.tile.y}) with ${event.improvement.id}.`,
+        });
       }
-      eventLog.log(
-        `${nationName} built ${event.improvement.name} ${locationLabel}.`,
-        [event.construction.ownerId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: event.construction.ownerId,
+        category: 'improvement',
+        message: `built ${event.improvement.name} ${locationLabel}.`,
+      });
       if (event.unit.improvementCharges === 0) {
         unitManager.removeUnit(event.unit.id);
         const selected = selectionManager.getSelected();
@@ -1219,9 +1211,7 @@ export class GameScene extends Phaser.Scene {
 
     // Log city founded and re-scan discovery (new city may trigger encounters).
     foundCitySystem.onCityFounded((city) => {
-      const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
-      const text = `${city.name} was founded by ${nationName}.`;
-      eventLog.log(isAINation(city.ownerId) ? formatLog(city.ownerId, `${city.name} was founded.`) : text, [city.ownerId], turnManager.getCurrentRound());
+      logManager.info({ nationId: city.ownerId, category: 'city', message: `${city.name} was founded.` });
       cityBannerRenderer.refreshCity(city);
       discoverySystem.scan();
       refreshCultureOverlay();
@@ -1241,7 +1231,7 @@ export class GameScene extends Phaser.Scene {
       pathfindingSystem,
       gridSystem,
       formatLog,
-      (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
+      (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
     );
     const aiExplorationSystem = new AIExplorationSystem(
       unitManager,
@@ -1263,6 +1253,7 @@ export class GameScene extends Phaser.Scene {
       undefined,
       worldMarkerSystem,
       aiOverseasExpansionSystem,
+      (nationId, message) => logManager.info({ nationId, category: 'exploration', message }),
     );
     const aiSystem = new AISystem(
       unitManager, cityManager, nationManager, turnManager,
@@ -1288,7 +1279,7 @@ export class GameScene extends Phaser.Scene {
       wonderSystem,
       wonderPlacementSystem,
       buildingPlacementSystem,
-      (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
+      (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
       cityDefenseSystem,
       aiOverseasExpansionSystem,
       exileProtectionSystem,
@@ -1519,7 +1510,7 @@ export class GameScene extends Phaser.Scene {
     discoverySystem.onNationsMet((a, b) => {
       const nameA = nationManager.getNation(a)?.name ?? a;
       const nameB = nationManager.getNation(b)?.name ?? b;
-      eventLog.log(`${nameA} has met ${nameB}.`, [a, b], turnManager.getCurrentRound());
+      logManager.info({ nationIds: [a, b], category: 'diplomacy', message: `${nameA} has met ${nameB}.` });
       // New nation may now be visible in the UI.
       hudLayer?.refresh();
       leaderStrip?.rebuild();
@@ -1568,11 +1559,7 @@ export class GameScene extends Phaser.Scene {
           refreshCultureOverlay();
           if (burst.claimedTiles + burst.convertedTiles > 0) {
             const burstText = `${city.name} cultural burst from ${item.buildingType.name}: ${burst.claimedTiles} claimed, ${burst.convertedTiles} converted.`;
-            eventLog.log(
-              isAINation(city.ownerId) ? formatLog(city.ownerId, burstText) : burstText,
-              [city.ownerId],
-              turnManager.getCurrentRound(),
-            );
+            logManager.info({ nationId: city.ownerId, category: 'culture', message: burstText });
           }
         }
 
@@ -1622,20 +1609,9 @@ export class GameScene extends Phaser.Scene {
           territoryRenderer.render();
           this.minimapHud?.rebuild();
         }
-        const ownerName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
-        const completedWonderText = `${ownerName} completed the ${item.wonderType.name} in ${city.name}.`;
-        eventLog.log(
-          isAINation(city.ownerId) ? formatLog(city.ownerId, `completed the ${item.wonderType.name} in ${city.name}.`) : completedWonderText,
-          [city.ownerId],
-          turnManager.getCurrentRound(),
-        );
+        logManager.info({ nationId: city.ownerId, category: 'wonder', message: `completed the ${item.wonderType.name} in ${city.name}.` });
         if (expansion.claimedCoords.length > 0) {
-          const expansionText = `${item.wonderType.name} expanded ${city.name}'s territory.`;
-          eventLog.log(
-            isAINation(city.ownerId) ? formatLog(city.ownerId, expansionText) : expansionText,
-            [city.ownerId],
-            turnManager.getCurrentRound(),
-          );
+          logManager.info({ nationId: city.ownerId, category: 'wonder', message: `${item.wonderType.name} expanded ${city.name}'s territory.` });
         }
 
         const wonderBurst = culturalSphereSystem.triggerCulturalBurst(city, mapData, gridSystem, {
@@ -1646,11 +1622,7 @@ export class GameScene extends Phaser.Scene {
         refreshCultureOverlay();
         if (wonderBurst.claimedTiles + wonderBurst.convertedTiles > 0) {
           const wonderBurstText = `${city.name} cultural burst from ${item.wonderType.name}: ${wonderBurst.claimedTiles} claimed, ${wonderBurst.convertedTiles} converted.`;
-          eventLog.log(
-            isAINation(city.ownerId) ? formatLog(city.ownerId, wonderBurstText) : wonderBurstText,
-            [city.ownerId],
-            turnManager.getCurrentRound(),
-          );
+          logManager.info({ nationId: city.ownerId, category: 'wonder', message: wonderBurstText });
         }
 
         refreshOpenCityView();
@@ -1776,7 +1748,7 @@ export class GameScene extends Phaser.Scene {
 
     leaderCaptureSystem.onChoiceRequested(showLeaderCaptureDialog);
     leaderCaptureSystem.onResolved((event) => {
-      eventLog.log(event.message, [event.attacker.ownerId, event.defeatedNationId], turnManager.getCurrentRound());
+      logManager.info({ nationIds: [event.attacker.ownerId, event.defeatedNationId], category: 'combat', message: event.message });
       unitRenderer.rebuildAll();
       cityRenderer.rebuildAll();
       cityBannerRenderer.rebuildAll();
@@ -1853,27 +1825,17 @@ export class GameScene extends Phaser.Scene {
 
     exileProtectionSystem.onChoiceRequested(showExileProtectionDialog);
     exileProtectionSystem.onGranted((event) => {
-      eventLog.log(event.message, [
-        event.request.protectedNationId,
-        event.request.protectorNationId,
-        event.request.enemyNationId,
-      ], turnManager.getCurrentRound());
+      logManager.info({ nationIds: [event.request.protectedNationId, event.request.protectorNationId, event.request.enemyNationId], category: 'diplomacy', message: event.message });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
     exileProtectionSystem.onDenied((event) => {
-      eventLog.log(event.message, [
-        event.request.protectedNationId,
-        event.request.protectorNationId,
-      ], turnManager.getCurrentRound());
+      logManager.info({ nationIds: [event.request.protectedNationId, event.request.protectorNationId], category: 'diplomacy', message: event.message });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
     exileProtectionSystem.onExpired((event) => {
-      eventLog.log(event.message, [
-        event.request.protectedNationId,
-        event.request.protectorNationId,
-      ], turnManager.getCurrentRound());
+      logManager.info({ nationIds: [event.request.protectedNationId, event.request.protectorNationId], category: 'diplomacy', message: event.message });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -1901,11 +1863,7 @@ export class GameScene extends Phaser.Scene {
       cityBannerRenderer.refreshCity(e.city);
       hudLayer?.refresh();
       if ((e.leaderDefenseBonus ?? 0) > 0) {
-        eventLog.log(
-          `${e.city.name} defended with Leader bonus (+50%).`,
-          [e.city.ownerId],
-          turnManager.getCurrentRound(),
-        );
+        logManager.info({ nationId: e.city.ownerId, category: 'combat', message: `${e.city.name} defended with Leader bonus (+50%).` });
       }
 
       // Om attackeraren dog
@@ -1958,14 +1916,11 @@ export class GameScene extends Phaser.Scene {
       unitRenderer.rebuildAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
-      const nationName = nationManager.getNation(event.nationId)?.name ?? event.nationId;
-      eventLog.log(
-        isAINation(event.nationId)
-          ? formatLog(event.nationId, `relocated its residence capital to ${event.toCity.name}.`)
-          : `${nationName} relocated its residence capital from ${event.fromCity.name} to ${event.toCity.name}.`,
-        [event.nationId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: event.nationId,
+        category: 'city',
+        message: `relocated its residence capital from ${event.fromCity.name} to ${event.toCity.name}.`,
+      });
     });
 
     nationCollapseSystem.onNationCollapsed((event) => {
@@ -1982,7 +1937,7 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       if (event.reason === 'leader_executed') return;
-      eventLog.log(event.message, event.conquerorNationId ? [event.conquerorNationId] : [], turnManager.getCurrentRound());
+      logManager.info({ nationIds: event.conquerorNationId ? [event.conquerorNationId] : [], category: 'combat', message: event.message });
     });
 
     // ─── Healing events ─────────────────────────────────────────────────────
@@ -2066,11 +2021,11 @@ export class GameScene extends Phaser.Scene {
     };
 
     foreignTroopViolationSystem.onWarning((event) => {
-      eventLog.log(
-        `${event.offendedNationName} warned ${event.violatingNationName} about ${event.warning.unitCount} military units inside ${event.offendedNationName} territory.`,
-        [event.warning.offendedNationId, event.warning.violatingNationId],
-        event.warning.lastSeenRound,
-      );
+      logManager.info({
+        nationIds: [event.warning.offendedNationId, event.warning.violatingNationId],
+        category: 'diplomacy',
+        message: `${event.offendedNationName} warned ${event.violatingNationName} about ${event.warning.unitCount} military units inside ${event.offendedNationName} territory.`,
+      });
 
       if (event.warning.violatingNationId !== humanNationIdForDiplomacy) return;
       if (isAutoplayActive()) return;
@@ -2103,20 +2058,20 @@ export class GameScene extends Phaser.Scene {
     });
 
     foreignTroopViolationSystem.onEscalation((event) => {
-      eventLog.log(
-        `${event.offendedNationName} relations worsened with ${event.violatingNationName} due to continued military presence inside ${event.offendedNationName} territory (${formatSignedDeltaLabel(event.delta.trust)}trust, ${formatSignedDeltaLabel(event.delta.hostility)}hostility).`,
-        [event.warning.offendedNationId, event.warning.violatingNationId],
-        event.warning.lastSeenRound,
-      );
+      logManager.info({
+        nationIds: [event.warning.offendedNationId, event.warning.violatingNationId],
+        category: 'diplomacy',
+        message: `${event.offendedNationName} relations worsened with ${event.violatingNationName} due to continued military presence inside ${event.offendedNationName} territory (${formatSignedDeltaLabel(event.delta.trust)}trust, ${formatSignedDeltaLabel(event.delta.hostility)}hostility).`,
+      });
       rightPanel?.requestRefresh();
     });
 
     foreignTroopViolationSystem.onCleared((event) => {
-      eventLog.log(
-        `${event.offendedNationName} reports that ${event.violatingNationName} withdrew its troops from ${event.offendedNationName} territory.`,
-        [event.warning.offendedNationId, event.warning.violatingNationId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationIds: [event.warning.offendedNationId, event.warning.violatingNationId],
+        category: 'diplomacy',
+        message: `${event.offendedNationName} reports that ${event.violatingNationName} withdrew its troops from ${event.offendedNationName} territory.`,
+      });
     });
 
     turnManager.on('roundEnd', (event) => {
@@ -2220,12 +2175,13 @@ export class GameScene extends Phaser.Scene {
       const nameA = nationManager.getNation(nationA)?.name ?? nationA;
       const nameB = nationManager.getNation(nationB)?.name ?? nationB;
       console.log(`[Diplomacy] Peace established: ${nameA} / ${nameB}`);
-      const aiActor = isAINation(nationA) ? nationA : isAINation(nationB) ? nationB : null;
-      eventLog.log(
-        aiActor ? formatLog(aiActor, `peace was made between ${nameA} and ${nameB}.`) : `Peace was made between ${nameA} and ${nameB}.`,
-        [nationA, nationB],
-        turnManager.getCurrentRound(),
-      );
+      const aiActor = isAINation(nationA) ? nationA : isAINation(nationB) ? nationB : undefined;
+      logManager.info({
+        nationId: aiActor,
+        nationIds: [nationA, nationB],
+        category: 'diplomacy',
+        message: `peace was made between ${nameA} and ${nameB}.`,
+      });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -2234,12 +2190,12 @@ export class GameScene extends Phaser.Scene {
       const nameA = nationManager.getNation(aggressorId)?.name ?? aggressorId;
       const nameB = nationManager.getNation(targetId)?.name ?? targetId;
       console.log(`[Diplomacy] War declared: ${nameA} → ${nameB}`);
-      const text = `${nameA} declared war on ${nameB}.`;
-      eventLog.log(
-        isAINation(aggressorId) ? formatLog(aggressorId, `declared war on ${nameB}.`) : text,
-        [aggressorId, targetId],
-        turnManager.getCurrentRound(),
-      );
+      logManager.info({
+        nationId: isAINation(aggressorId) ? aggressorId : undefined,
+        nationIds: [aggressorId, targetId],
+        category: 'diplomacy',
+        message: `${nameA} declared war on ${nameB}.`,
+      });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });

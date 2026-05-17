@@ -579,9 +579,8 @@ export class AIOverseasExpansionSystem {
   }
 
   private log(nationId: string, message: string): void {
-    const formatted = this.formatLog(nationId, message);
-    console.log(formatted);
-    this.logStrategicEvent?.(nationId, formatted);
+    console.log(this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, message);
   }
 }
 

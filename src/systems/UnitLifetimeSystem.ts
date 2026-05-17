@@ -2,7 +2,7 @@ import type { Unit } from '../entities/Unit';
 import type { NationManager } from './NationManager';
 import type { UnitManager } from './UnitManager';
 
-type ExpirationLogger = (unit: Unit, message: string, round: number) => void;
+type ExpirationLogger = (nationId: string, message: string) => void;
 type BeforeExpireUnit = (unit: Unit) => void;
 
 export class UnitLifetimeSystem {
@@ -25,13 +25,8 @@ export class UnitLifetimeSystem {
     }
   }
 
-  private logExpiredUnit(unit: Unit, round: number): void {
+  private logExpiredUnit(unit: Unit, _round: number): void {
     if (!this.logExpiration) return;
-    const nationName = this.nationManager.getNation(unit.ownerId)?.name ?? unit.ownerId;
-    this.logExpiration(
-      unit,
-      `[r${round}] ${nationName} ${unit.name} expired after long exploration duty.`,
-      round,
-    );
+    this.logExpiration(unit.ownerId, `${unit.name} expired after long exploration duty.`);
   }
 }

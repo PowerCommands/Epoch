@@ -7,8 +7,6 @@ import type { Nation } from '../../entities/Nation';
 import type { CultureTreeNode } from '../culture/CultureSystem';
 import { HAPPINESS_STABLE_THRESHOLD } from '../culture/CultureEffectSystem';
 import { getBehaviorWeights } from '../AIStrategyService';
-import type { AILogFormatter } from './AILogFormatter';
-
 const PRIORITY_BONUS = 50;
 const LOW_HAPPINESS_EARLY_EMPIRE_BONUS = 30;
 
@@ -18,7 +16,6 @@ export interface AICulturePlanningContext {
   currentTurn: number;
   earlyGameTurnLimit?: number;
   netHappiness?: number;
-  formatLog?: AILogFormatter;
 }
 
 export function pickBestAICultureNode(context: AICulturePlanningContext): CultureTreeNode | undefined {
@@ -42,19 +39,11 @@ export function pickBestAICultureNode(context: AICulturePlanningContext): Cultur
       + getPersonalityModifier(context.nation.id, node.id);
 
     if (baselineScore > 0) {
-      console.debug(
-        context.formatLog?.(context.nation.id, `AI culture baseline priority applied: ${node.id} (+${baselineScore})`)
-          ?? `AI culture baseline priority applied for ${context.nation.name}: ${node.id} (+${baselineScore})`,
-      );
+      console.debug(`AI culture baseline priority applied for ${context.nation.name}: ${node.id} (+${baselineScore})`);
     }
 
     if (leaderPriorityScore > 0 || lowHappinessScore > 0) {
-      console.debug(
-        context.formatLog?.(
-          context.nation.id,
-          `AI culture priority applied: ${node.id} (+${leaderPriorityScore + lowHappinessScore}; reason: ${formatCulturePriorityReason(leaderPriorityScore, lowHappinessScore)})`,
-        ) ?? `AI culture priority applied for ${context.nation.name}: ${node.id} (+${leaderPriorityScore + lowHappinessScore}; reason: ${formatCulturePriorityReason(leaderPriorityScore, lowHappinessScore)})`,
-      );
+      console.debug(`AI culture priority applied for ${context.nation.name}: ${node.id} (+${leaderPriorityScore + lowHappinessScore}; reason: ${formatCulturePriorityReason(leaderPriorityScore, lowHappinessScore)})`);
     }
 
     if (score > bestScore) {
@@ -67,12 +56,7 @@ export function pickBestAICultureNode(context: AICulturePlanningContext): Cultur
     const leaderPriorityScore = getLeaderCulturePriorityModifier(context.nation.id, bestCandidate.id);
     const lowHappinessScore = getLowHappinessCultureModifier(context.netHappiness, bestCandidate.id);
     if (leaderPriorityScore > 0 || lowHappinessScore > 0) {
-      console.debug(
-        context.formatLog?.(
-          context.nation.id,
-          `prioritized ${bestCandidate.name} (reason: ${formatCulturePriorityReason(leaderPriorityScore, lowHappinessScore)})`,
-        ) ?? `${context.nation.name} prioritized ${bestCandidate.name} (reason: ${formatCulturePriorityReason(leaderPriorityScore, lowHappinessScore)})`,
-      );
+      console.debug(`${context.nation.name} prioritized ${bestCandidate.name} (reason: ${formatCulturePriorityReason(leaderPriorityScore, lowHappinessScore)})`);
     }
   }
 

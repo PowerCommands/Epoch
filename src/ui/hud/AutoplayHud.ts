@@ -172,7 +172,7 @@ export class AutoplayHud {
 
   private handleLog(e: AutoplayLogEvent): void {
     const line = document.createElement('div');
-    line.textContent = `[r${e.round}] ${e.message}`;
+    line.textContent = e.message;
     this.logBox.append(line);
     this.logLineCount += 1;
     this.logBox.scrollTop = this.logBox.scrollHeight;

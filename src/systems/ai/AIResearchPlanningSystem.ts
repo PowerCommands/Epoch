@@ -7,14 +7,11 @@ import type { Nation } from '../../entities/Nation';
 import type { AILeaderEraResearchWeights, AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
 import type { Technology } from '../ResearchSystem';
 import { getBehaviorWeights } from '../AIStrategyService';
-import type { AILogFormatter } from './AILogFormatter';
-
 export interface AIResearchPlanningContext {
   nation: Nation;
   availableTechnologies: Technology[];
   currentTurn: number;
   earlyGameTurnLimit?: number;
-  formatLog?: AILogFormatter;
   eraStrategy?: AILeaderEraStrategy;
 }
 
@@ -36,10 +33,7 @@ export function pickBestAIResearchTechnology(context: AIResearchPlanningContext)
       + getPersonalityModifier(context.nation.id, technology.id);
 
     if (baselineScore > 0) {
-      console.debug(
-        context.formatLog?.(context.nation.id, `AI research baseline priority applied: ${technology.id} (+${baselineScore})`)
-          ?? `AI research baseline priority applied for ${context.nation.name}: ${technology.id} (+${baselineScore})`,
-      );
+      console.debug(`AI research baseline priority applied for ${context.nation.name}: ${technology.id} (+${baselineScore})`);
     }
 
     if (score > bestScore) {

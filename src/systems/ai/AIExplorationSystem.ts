@@ -153,6 +153,7 @@ export class AIExplorationSystem {
     private readonly seaResourceMemorySystem: AISeaResourceMemorySystem = getSharedAISeaResourceMemorySystem(mapData),
     private readonly worldMarkerSystem?: WorldMarkerSystem,
     private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
+    private readonly logStrategicEvent?: (nationId: string, message: string) => void,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
   }
@@ -1003,7 +1004,11 @@ export class AIExplorationSystem {
   }
 
   private log(nationId: string, message: string): void {
-    this.eventLog.log(this.formatLog(nationId, message), [nationId], this.turnManager.getCurrentRound());
+    if (this.logStrategicEvent) {
+      this.logStrategicEvent(nationId, message);
+    } else {
+      this.eventLog.log(this.formatLog(nationId, message), [nationId], this.turnManager.getCurrentRound());
+    }
   }
 
   private smallRandom(unit: Unit, tile: Tile): number {
