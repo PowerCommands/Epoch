@@ -182,6 +182,14 @@ interface MilitaryStagingTarget {
   readonly stagingTile: GridCoord; // shared rally tile, MILITARY_STAGING_DISTANCE from enemyCity
 }
 
+interface PeacetimeMilitarySpreadState {
+  readonly excessUnitIds: Set<string>;
+  readonly ownTerritoryTiles: Tile[];
+  readonly ownCities: City[];
+  readonly friendlyMilitaryPositions: GridCoord[];
+  readonly claimedTargets: Set<string>;
+}
+
 interface LeaderEvacuationEligibility {
   readonly allowed: boolean;
   readonly cityHp: number;
@@ -372,6 +380,7 @@ export class AISystem {
   private readonly leaderEvacuationDecisionLog = new Map<string, string>();
   private readonly leaderEvacuationEligibilityByNation = new Map<string, LeaderEvacuationEligibility>();
   private readonly exposedLeaderTargetLoggedRound = new Map<string, number>();
+  private readonly peacetimeSpreadLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -1608,6 +1617,15 @@ export class AISystem {
     // so multiple ships spread out instead of stacking.
     const navalContext = this.buildNavalPatrolContext(nationId);
 
+    // Peacetime military spread: precomputed once so excess unit IDs and target
+    // claims are shared across the full unit loop (avoids multiple units picking
+    // the same coverage tile this turn).
+    const spreadState = this.isAtWarWithAnyone(nationId)
+      ? undefined
+      : this.buildPeacetimeMilitarySpreadState(nationId, units);
+
+    let spreadCount = 0;
+
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) continue;
@@ -1627,12 +1645,212 @@ export class AISystem {
         continue;
       }
 
+      // Peacetime spread: redirect excess city-clustered land military units to
+      // coverage positions before strategy scoring can pull them back.
+      if (spreadState?.excessUnitIds.has(unit.id)) {
+        if (this.tryPeacetimeMilitarySpread(unit, nationId, spreadState)) {
+          spreadCount += 1;
+          continue;
+        }
+      }
+
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
 
       if (this.moveTowardExposedLeader(unit, nationId)) continue;
       this.moveByStrategyScoring(unit, nationId, strategy);
     }
+
+    if (spreadCount > 0) this.logPeacetimeRedeployOnce(nationId, spreadCount);
   }
+
+  // ─── Peacetime military spread ───────────────────────────────────────────────
+
+  private buildPeacetimeMilitarySpreadState(nationId: string, allUnits: Unit[]): PeacetimeMilitarySpreadState {
+    const idleMilitary = allUnits.filter((u) => this.isIdlePeacetimeMilitaryLandUnit(u, nationId));
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    const excessUnitIds = this.findExcessClusteredUnitIds(idleMilitary, ownCities);
+    return {
+      excessUnitIds,
+      ownTerritoryTiles: this.getOwnLandTerritoryTiles(nationId),
+      ownCities,
+      friendlyMilitaryPositions: idleMilitary.map((u) => ({ x: u.tileX, y: u.tileY })),
+      claimedTargets: new Set<string>(),
+    };
+  }
+
+  private isIdlePeacetimeMilitaryLandUnit(unit: Unit, nationId: string): boolean {
+    if (unit.unitType.baseStrength <= 0) return false;
+    if (unit.unitType.isNaval) return false;
+    if (unit.unitType.category === 'recon') return false;
+    if (unit.unitType.category === 'naval_recon') return false;
+    if (unit.unitType.category === 'civilian') return false;
+    if (unit.unitType.category === 'leader') return false;
+    if (unit.unitType.canFound) return false;
+    if (unit.unitType.id === LEADER.id) return false;
+    if (unit.unitType.id === SCOUT.id) return false;
+    if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) return false;
+    if (unit.movementPoints <= 0) return false;
+    return true;
+  }
+
+  private findExcessClusteredUnitIds(idleUnits: Unit[], cities: City[]): Set<string> {
+    const claimedIds = new Set<string>();
+    const excessIds = new Set<string>();
+
+    for (const city of cities) {
+      const cityPos = { x: city.tileX, y: city.tileY };
+      const adjacent = idleUnits
+        .filter((u) => !claimedIds.has(u.id))
+        .filter((u) => this.gridSystem.getDistance({ x: u.tileX, y: u.tileY }, cityPos) <= 1);
+
+      if (adjacent.length === 0) continue;
+
+      adjacent.sort((a, b) => {
+        const strengthDelta = b.unitType.baseStrength - a.unitType.baseStrength;
+        if (strengthDelta !== 0) return strengthDelta;
+        return (b.health / b.unitType.baseHealth) - (a.health / a.unitType.baseHealth);
+      });
+
+      claimedIds.add(adjacent[0].id);
+      for (const unit of adjacent.slice(1)) excessIds.add(unit.id);
+    }
+
+    // A unit claimed as a defender by some city is never redeployed, even if
+    // it was also listed as excess for a different city.
+    for (const id of claimedIds) excessIds.delete(id);
+    return excessIds;
+  }
+
+  private getOwnLandTerritoryTiles(nationId: string): Tile[] {
+    const tiles: Tile[] = [];
+    for (let y = 0; y < this.mapData.height; y++) {
+      for (let x = 0; x < this.mapData.width; x++) {
+        const tile = this.mapData.tiles[y]?.[x];
+        if (!tile || tile.ownerId !== nationId) continue;
+        if (tile.type === TileType.Coast || tile.type === TileType.Ocean || tile.type === TileType.Ice) continue;
+        if (tile.type === TileType.Mountain) continue;
+        tiles.push(tile);
+      }
+    }
+    return tiles;
+  }
+
+  private tryPeacetimeMilitarySpread(
+    unit: Unit,
+    nationId: string,
+    state: PeacetimeMilitarySpreadState,
+  ): boolean {
+    const target = this.findCoverageTarget(unit, state);
+    if (!target) return false;
+
+    const path = this.pathfindingSystem.findPath(unit, target.x, target.y, { respectMovementPoints: false });
+    if (!path || path.length <= 1) return false;
+
+    this.movementSystem.moveAlongPath(unit, path);
+    state.claimedTargets.add(`${target.x},${target.y}`);
+    return true;
+  }
+
+  private findCoverageTarget(unit: Unit, state: PeacetimeMilitarySpreadState): GridCoord | undefined {
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const friendlyExcludingSelf = state.friendlyMilitaryPositions.filter(
+      (p) => !(p.x === unitPos.x && p.y === unitPos.y),
+    );
+
+    const candidates = state.ownTerritoryTiles
+      .filter((tile) => {
+        if (tile.x === unitPos.x && tile.y === unitPos.y) return false;
+        return this.unitManager.getUnitAt(tile.x, tile.y) === null;
+      })
+      .map((tile) => ({
+        tile,
+        score: this.scoreCoverageTile(tile, state.ownCities, friendlyExcludingSelf, state.claimedTargets),
+      }))
+      .filter(({ score }) => score > Number.NEGATIVE_INFINITY)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (a.tile.y - b.tile.y) || (a.tile.x - b.tile.x);
+      });
+
+    for (const { tile } of candidates.slice(0, 8)) {
+      const path = this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false });
+      if (path && path.length > 1) return { x: tile.x, y: tile.y };
+    }
+    return undefined;
+  }
+
+  private scoreCoverageTile(
+    tile: Tile,
+    ownCities: City[],
+    friendlyMilitaryPositions: GridCoord[],
+    claimedTargets: Set<string>,
+  ): number {
+    const pos = { x: tile.x, y: tile.y };
+
+    if (claimedTargets.has(`${tile.x},${tile.y}`)) return Number.NEGATIVE_INFINITY;
+
+    // Penalty: adjacent to a city center (want to avoid clustering)
+    const adjacentToCity = ownCities.some(
+      (city) => this.gridSystem.getDistance(pos, { x: city.tileX, y: city.tileY }) <= 1,
+    );
+    if (adjacentToCity) return Number.NEGATIVE_INFINITY;
+
+    let score = 0;
+
+    // Frontier and border bonuses — scan neighbours once
+    let adjForeign = false;
+    let adjUnowned = false;
+    let adjCoast = false;
+    let adjFriendly = false;
+    for (const adj of this.gridSystem.getAdjacentCoords(pos)) {
+      const adjTile = this.mapData.tiles[adj.y]?.[adj.x];
+      if (!adjTile) continue;
+      if (adjTile.ownerId !== undefined && adjTile.ownerId !== tile.ownerId) adjForeign = true;
+      if (adjTile.ownerId === undefined) adjUnowned = true;
+      if (adjTile.type === TileType.Coast || adjTile.type === TileType.Ocean) adjCoast = true;
+    }
+    if (adjForeign) score += 15;
+    if (adjUnowned) score += 20;
+
+    if (tile.resourceId !== undefined) score += 10;
+    if (tile.improvementId !== undefined) score += 10;
+    if (adjCoast) score += 8;
+
+    // Spread bonus: reward tiles far from other friendly military
+    if (friendlyMilitaryPositions.length > 0) {
+      const minFriendlyDist = Math.min(
+        ...friendlyMilitaryPositions.map((p) => this.gridSystem.getDistance(pos, p)),
+      );
+      if (minFriendlyDist <= 1) adjFriendly = true;
+      score += Math.min(minFriendlyDist * 4, 32);
+    } else {
+      score += 16;
+    }
+
+    if (adjFriendly) score -= 50;
+
+    // Proximity penalty: don't send units too far from nearest owned city
+    if (ownCities.length > 0) {
+      const minCityDist = Math.min(
+        ...ownCities.map((c) => this.gridSystem.getDistance(pos, { x: c.tileX, y: c.tileY })),
+      );
+      score -= Math.min(minCityDist * 2, 30);
+    }
+
+    return score;
+  }
+
+  private logPeacetimeRedeployOnce(nationId: string, count: number): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.peacetimeSpreadLoggedRound.get(nationId) === round) return;
+    this.peacetimeSpreadLoggedRound.set(nationId, round);
+    this.logStrategicEvent?.(
+      nationId,
+      `redeploying ${count} idle military unit${count === 1 ? '' : 's'} away from city cluster.`,
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   private moveTowardExposedLeader(unit: Unit, nationId: string): boolean {
     if (unit.unitType.baseStrength <= 0) return false;

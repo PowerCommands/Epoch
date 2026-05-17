@@ -68,6 +68,7 @@ const CARDINAL_DIRECTIONS: ReadonlyArray<Readonly<{ x: number; y: number }>> = [
 ];
 
 const SCOUT_VISION_RADIUS = 3;
+const MILITARY_OBSERVATION_RADIUS = 2;
 const MAX_TARGET_RADIUS = 12;
 const RECENT_HISTORY_LIMIT = 10;
 const EDGE_DISTANCE = 2;
@@ -137,6 +138,9 @@ export class AIExplorationSystem {
   private readonly enemyFocusLoggedKeys = new Map<string, Set<string>>();
   private readonly settlementCandidateLogRoundByNation = new Map<string, number>();
   private readonly seaResourceDiscoveryLoggedKeys = new Set<string>();
+  // Per nation+tile keys for military observation deduplication (lifetime of session).
+  private readonly militaryResourceLoggedKeys = new Set<string>();
+  private readonly militarySettlementLoggedTiles = new Set<string>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -301,6 +305,11 @@ export class AIExplorationSystem {
       }
     }
 
+    // Passive military observers widen visibility at a smaller radius, feeding
+    // the same settlement and resource memory that scouts use. Foreign detection
+    // below naturally picks up anything newly visible from military positions.
+    this.updateKnowledgeFromMilitaryObservers(nationId, knowledge);
+
     for (const city of this.cityManager.getAllCities()) {
       if (city.ownerId === nationId) continue;
       const tileIndex = this.getTileIndex(city.tileX, city.tileY);
@@ -318,6 +327,86 @@ export class AIExplorationSystem {
       this.logForeignDiscovery(nationId, unit.ownerId, unit.tileX, unit.tileY, knowledge);
     }
   }
+
+  // ─── Passive military observation ────────────────────────────────────────────
+
+  private getMilitaryObservers(nationId: string): Unit[] {
+    return this.unitManager.getUnitsByOwner(nationId).filter((unit) => {
+      if (unit.carriedByUnitId !== undefined) return false;
+      if (this.isExplorationUnit(unit)) return false;
+      if (unit.unitType.baseStrength <= 0) return false;
+      if (unit.unitType.isNaval) return false;
+      if (unit.unitType.canFound) return false;
+      if (unit.unitType.category === 'recon') return false;
+      if (unit.unitType.category === 'naval_recon') return false;
+      if (unit.unitType.category === 'civilian') return false;
+      if (unit.unitType.category === 'leader') return false;
+      if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) return false;
+      return true;
+    });
+  }
+
+  private updateKnowledgeFromMilitaryObservers(
+    nationId: string,
+    knowledge: NationExplorationKnowledge,
+  ): void {
+    for (const unit of this.getMilitaryObservers(nationId)) {
+      for (const tile of this.getTilesInRadius(unit.tileX, unit.tileY, MILITARY_OBSERVATION_RADIUS)) {
+        if (this.isWaterTile(tile)) continue;
+        const tileIndex = this.getTileIndex(tile.x, tile.y);
+        const isNew = !knowledge.knownTiles.has(tileIndex);
+
+        knowledge.visibleTiles.add(tileIndex);
+        knowledge.knownTiles.add(tileIndex);
+
+        if (tile.resourceId !== undefined && this.canSeeNaturalResource(nationId, tile.resourceId)) {
+          if (!knowledge.seenResources.has(tileIndex)) {
+            this.recordMilitaryResourceObservation(nationId, tile);
+          }
+          knowledge.seenResources.add(tileIndex);
+        }
+
+        if (isNew) {
+          this.rememberMilitarySettlementCandidate(nationId, tile);
+        }
+      }
+    }
+  }
+
+  private rememberMilitarySettlementCandidate(nationId: string, tile: Tile): void {
+    if (!this.settlementMemorySystem) return;
+    const evaluation = this.settlementMemorySystem.evaluateTile(
+      tile.x,
+      tile.y,
+      this.turnManager.getCurrentRound(),
+    );
+    if (evaluation === null) return;
+    const result = this.settlementMemorySystem.addCandidate(nationId, evaluation.candidate);
+    if (result !== 'added' && result !== 'replaced') return;
+
+    const key = `${nationId}:${tile.x},${tile.y}`;
+    if (this.militarySettlementLoggedTiles.has(key)) return;
+    this.militarySettlementLoggedTiles.add(key);
+    console.debug(this.formatLog(
+      nationId,
+      `military unit recorded settlement candidate near (${tile.x},${tile.y}) score: ${evaluation.candidate.scoreBase}`,
+    ));
+  }
+
+  private recordMilitaryResourceObservation(nationId: string, tile: Tile): void {
+    if (tile.resourceId === undefined) return;
+    const resource = getNaturalResourceById(tile.resourceId);
+    if (resource === undefined) return;
+    const key = `${nationId}:${tile.x},${tile.y}`;
+    if (this.militaryResourceLoggedKeys.has(key)) return;
+    this.militaryResourceLoggedKeys.add(key);
+    console.debug(this.formatLog(
+      nationId,
+      `military unit observed resource ${resource.id} near (${tile.x},${tile.y})`,
+    ));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   private rememberSettlementCandidate(nationId: string, tile: Tile): void {
     if (!this.settlementMemorySystem) return;

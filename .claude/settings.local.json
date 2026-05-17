@@ -32,7 +32,8 @@
       "Bash(python3 -c ' *)",
       "Bash(python3 scripts/generateWorldMap.py)",
       "Bash(python3 -)",
-      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(awk '/^  [a-zA-Z]/ && !/private/ && !/readonly/ {print NR\": \"$0}' /home/harri/projects/Epoch/src/systems/ai/AISettlementMemorySystem.ts)"
     ]
   }
 }

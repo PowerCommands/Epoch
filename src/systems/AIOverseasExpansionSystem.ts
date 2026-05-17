@@ -23,7 +23,9 @@ import { getEraIndex } from '../data/eraTimeline';
 
 const SAILING_TECH_ID = 'sailing';
 const ISLAND_DISCOVERY_MARKER_TYPE = 'islandDiscovery';
-const OVERSEAS_TARGET_SEARCH_RADIUS = 5;
+const LANDING_RADIUS_START = 3;
+const LANDING_RADIUS_EXPAND = 5;
+const LANDING_RADIUS_MAX = 8;
 
 interface MarkerTargetCoord {
   readonly x: number;
@@ -462,11 +464,6 @@ export class AIOverseasExpansionSystem {
       return;
     }
 
-    if (target.status === 'embarked') {
-      target.status = 'enRoute';
-      this.log(nationId, `${transport.unitType.name} sailing toward overseas expedition target ${target.name}.`);
-    }
-
     const immediateLanding = this.findLandingTile(nationId, target, settler, transport);
     if (immediateLanding) {
       this.completeLanding(nationId, target, settler, immediateLanding);
@@ -475,8 +472,17 @@ export class AIOverseasExpansionSystem {
 
     const destinationWaterTiles = this.getDestinationWaterTiles(nationId, target, settler, transport);
     if (destinationWaterTiles.length === 0) {
-      this.cancelExpedition(nationId, target, `no landing region found near ${target.name}`);
+      this.cancelExpedition(nationId, target, `no valid landing tile found near ${target.name} within radius ${LANDING_RADIUS_MAX}`);
       return;
+    }
+
+    if (target.status === 'embarked') {
+      target.status = 'enRoute';
+      const dest = destinationWaterTiles[0];
+      this.log(
+        nationId,
+        `${transport.unitType.name} sailing toward ${target.name} landing water tile (${dest.x},${dest.y}), target marker (${target.targetX},${target.targetY}).`,
+      );
     }
 
     const path = this.pathfindingSystem.findBestPathToAnyTarget(transport, destinationWaterTiles, {
@@ -493,7 +499,6 @@ export class AIOverseasExpansionSystem {
 
     const landingAfterMove = this.findLandingTile(nationId, target, settler, transport);
     if (landingAfterMove) {
-      this.log(nationId, `${transport.unitType.name} reached overseas target region ${target.name}.`);
       this.completeLanding(nationId, target, settler, landingAfterMove);
       return;
     }
@@ -517,15 +522,28 @@ export class AIOverseasExpansionSystem {
     landingTile: MarkerTargetCoord,
   ): void {
     if (!this.unitBoardingManager) return;
+    const targetCoord = { x: target.targetX, y: target.targetY };
+    const distance = this.gridSystem.getDistance(landingTile, targetCoord);
+    if (distance > LANDING_RADIUS_MAX) {
+      this.cancelExpedition(
+        nationId,
+        target,
+        `landing tile (${landingTile.x},${landingTile.y}) is outside target radius for ${target.name}`,
+      );
+      return;
+    }
     target.status = 'landing';
-    this.log(nationId, `selected landing tile (${landingTile.x},${landingTile.y}) near ${target.name}.`);
+    this.log(
+      nationId,
+      `selected landing tile for ${target.name} at (${landingTile.x},${landingTile.y}), distance ${distance} from target marker.`,
+    );
     if (!this.unitBoardingManager.unboard(settler, landingTile.x, landingTile.y)) {
       const reason = this.unitBoardingManager.getUnboardingFailureReason(settler, landingTile.x, landingTile.y);
       this.cancelExpedition(nationId, target, reason ? `landing failed near ${target.name}: ${reason}` : `landing failed near ${target.name}`);
       return;
     }
 
-    this.log(nationId, `Settler unboarded near ${target.name}.`);
+    this.log(nationId, `Settler unboarded near ${target.name} at (${landingTile.x},${landingTile.y}).`);
     target.status = 'completed';
     target.selected = false;
     target.assignedSettlerUnitId = undefined;
@@ -668,16 +686,28 @@ export class AIOverseasExpansionSystem {
   ): MarkerTargetCoord | undefined {
     if (!this.unitBoardingManager) return undefined;
     const targetCoord = { x: target.targetX, y: target.targetY };
-    return this.gridSystem.getAdjacentCoords({ x: transport.tileX, y: transport.tileY })
+
+    const candidates = this.gridSystem.getAdjacentCoords({ x: transport.tileX, y: transport.tileY })
       .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
       .filter((tile): tile is Tile => tile !== undefined)
       .filter((tile) => this.isCandidateLandingTile(nationId, settler, tile))
-      .filter((tile) => this.unitBoardingManager?.canUnboard(settler, tile.x, tile.y) === true)
-      .sort((a, b) => {
-        const scoreDelta = this.getLandingTileScore(a, targetCoord) - this.getLandingTileScore(b, targetCoord);
-        if (scoreDelta !== 0) return scoreDelta;
-        return (a.y - b.y) || (a.x - b.x);
-      })[0];
+      .filter((tile) => this.unitBoardingManager?.canUnboard(settler, tile.x, tile.y) === true);
+
+    const withinRadius: Tile[] = [];
+    for (const tile of candidates) {
+      const distance = this.gridSystem.getDistance(tile, targetCoord);
+      if (distance > LANDING_RADIUS_MAX) {
+        this.log(nationId, `rejected landing tile (${tile.x},${tile.y}) for ${target.name}: outside target radius.`);
+      } else {
+        withinRadius.push(tile);
+      }
+    }
+
+    return withinRadius.sort((a, b) => {
+      const scoreDelta = this.getLandingTileScore(a, targetCoord) - this.getLandingTileScore(b, targetCoord);
+      if (scoreDelta !== 0) return scoreDelta;
+      return (a.y - b.y) || (a.x - b.x);
+    })[0];
   }
 
   private getLandingRegionTiles(
@@ -685,19 +715,18 @@ export class AIOverseasExpansionSystem {
     target: OverseasSettlementTarget,
     settler: Unit,
   ): Tile[] {
-    return this.gridSystem.getTilesInRange(
-      { x: target.targetX, y: target.targetY },
-      OVERSEAS_TARGET_SEARCH_RADIUS,
-      this.mapData,
-      { includeCenter: true },
-    )
-      .filter((tile) => this.isCandidateLandingTile(nationId, settler, tile))
-      .sort((a, b) => {
-        const scoreDelta = this.getLandingTileScore(a, { x: target.targetX, y: target.targetY })
-          - this.getLandingTileScore(b, { x: target.targetX, y: target.targetY });
-        if (scoreDelta !== 0) return scoreDelta;
-        return (a.y - b.y) || (a.x - b.x);
-      });
+    const targetCoord = { x: target.targetX, y: target.targetY };
+    for (const radius of [LANDING_RADIUS_START, LANDING_RADIUS_EXPAND, LANDING_RADIUS_MAX]) {
+      const tiles = this.gridSystem.getTilesInRange(targetCoord, radius, this.mapData, { includeCenter: true })
+        .filter((tile) => this.isCandidateLandingTile(nationId, settler, tile))
+        .sort((a, b) => {
+          const scoreDelta = this.getLandingTileScore(a, targetCoord) - this.getLandingTileScore(b, targetCoord);
+          if (scoreDelta !== 0) return scoreDelta;
+          return (a.y - b.y) || (a.x - b.x);
+        });
+      if (tiles.length > 0) return tiles;
+    }
+    return [];
   }
 
   private isCandidateLandingTile(nationId: string, settler: Unit, tile: Tile): boolean {
