@@ -114,6 +114,8 @@ const MILITARY_STAGING_DISTANCE = 2;
 // Maximum extra outward steps when the geometric staging tile lands inside
 // enemy territory or off-map. Keeps the search bounded and deterministic.
 const MILITARY_STAGING_OUTWARD_RETRY = 3;
+const PROVOCATIVE_POSTURE_HOSTILITY_THRESHOLD = 70;
+const PROVOCATIVE_POSTURE_TRUST_THRESHOLD = 20;
 // AI nations below this city count are still in Foundation Phase: scouts,
 // settlers, and basic defense first; no offensive staging behavior yet.
 const FOUNDATION_PHASE_CITY_COUNT = 3;
@@ -361,6 +363,7 @@ export class AISystem {
   // Per-nation last round we logged the "holding position at staging
   // distance" line, also one-per-round.
   private readonly militaryHoldingLoggedRound = new Map<string, number>();
+  private readonly avoidedProvocativeMilitaryTileLoggedRound = new Map<string, number>();
   private readonly defensiveModeLoggedRound = new Map<string, number>();
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
   private readonly doctrineProductionLoggedRound = new Map<string, number>();
@@ -894,6 +897,7 @@ export class AISystem {
     for (const enemy of this.nationManager.getAllNations()) {
       if (enemy.id === nationId) continue;
       if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, enemy.id)) continue;
+      if (!this.isProvocativeMilitaryPosture(nationId, enemy.id)) continue;
 
       const enemyCities = this.cityManager.getCitiesByOwner(enemy.id);
       if (enemyCities.length === 0) continue;
@@ -1638,9 +1642,11 @@ export class AISystem {
     if (!target) return false;
     const path = this.findApproachPath(unit, { x: target.tileX, y: target.tileY });
     if (!path || path.length === 0) return false;
+    const disciplinedPath = this.getDisciplinedMilitaryPath(unit, path, true);
+    if (!disciplinedPath) return false;
 
     this.logExposedLeaderPriorityOnce(nationId, target.ownerId);
-    this.movementSystem.moveAlongPath(unit, path);
+    this.movementSystem.moveAlongPath(unit, disciplinedPath);
     return true;
   }
 
@@ -1693,7 +1699,7 @@ export class AISystem {
     // closes distance so the next turn's combat phase can finish the job.
     if (unit.unitType.baseStrength > 0) {
       const enemy = this.findHighPriorityNavalEnemy(unit, nationId, context.targets);
-      if (enemy && this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY })) return;
+      if (enemy && this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY }, true)) return;
     }
 
     // Offensive harassment along enemy coasts. Gated by:
@@ -1742,7 +1748,7 @@ export class AISystem {
       .sort((a, b) => a.dist - b.dist);
 
     for (const { enemy } of sorted) {
-      if (this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY })) {
+      if (this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY }, true)) {
         claimed.add(tileKey(enemy.tileX, enemy.tileY));
         return true;
       }
@@ -1769,7 +1775,7 @@ export class AISystem {
       }
     }
     if (!bestTile) return false;
-    if (!this.moveNavalUnitToward(unit, { x: bestTile.x, y: bestTile.y })) return false;
+    if (!this.moveNavalUnitToward(unit, { x: bestTile.x, y: bestTile.y }, true)) return false;
     claimed.add(tileKey(bestTile.x, bestTile.y));
     return true;
   }
@@ -1815,12 +1821,14 @@ export class AISystem {
     return false;
   }
 
-  private moveNavalUnitToward(unit: Unit, dest: GridCoord): boolean {
+  private moveNavalUnitToward(unit: Unit, dest: GridCoord, allowForeignTerritory = false): boolean {
     const path = this.pathfindingSystem.findPath(unit, dest.x, dest.y, {
       respectMovementPoints: false,
     });
     if (path !== null) {
-      this.movementSystem.moveAlongPath(unit, path);
+      const disciplinedPath = this.getDisciplinedMilitaryPath(unit, path, allowForeignTerritory);
+      if (!disciplinedPath) return false;
+      this.movementSystem.moveAlongPath(unit, disciplinedPath);
       return true;
     }
     // Land destinations (e.g. coastal city tiles) are unreachable for naval
@@ -1833,7 +1841,9 @@ export class AISystem {
         respectMovementPoints: false,
       });
       if (adjPath !== null) {
-        this.movementSystem.moveAlongPath(unit, adjPath);
+        const disciplinedPath = this.getDisciplinedMilitaryPath(unit, adjPath, allowForeignTerritory);
+        if (!disciplinedPath) continue;
+        this.movementSystem.moveAlongPath(unit, disciplinedPath);
         return true;
       }
     }
@@ -2073,6 +2083,7 @@ export class AISystem {
     let bestScore = 0;
     for (const tile of tilesInRange) {
       if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
+      if (!this.canMilitaryUnitStandOnTile(nationId, tile, false)) continue;
       const score = this.explorationMemorySystem.getExplorationScore(nationId, tile, currentTurn);
       if (score > bestScore) {
         bestScore = score;
@@ -2085,7 +2096,9 @@ export class AISystem {
       respectMovementPoints: false,
     });
     if (path === null) return;
-    this.movementSystem.moveAlongPath(unit, path);
+    const disciplinedPath = this.getDisciplinedMilitaryPath(unit, path, false);
+    if (!disciplinedPath) return;
+    this.movementSystem.moveAlongPath(unit, disciplinedPath);
   }
 
   // ─── Work boats ─────────────────────────────────────────────────────────────
@@ -2290,45 +2303,51 @@ export class AISystem {
     const choices: { candidate: AIMovementCandidate; path: Tile[] | null }[] = [];
     const unitPos = { x: unit.tileX, y: unit.tileY };
     const engageDistance = strategy.military.engageDistance;
+    const addChoice = (
+      destination: GridCoord,
+      kind: AIMovementCandidate['kind'],
+      distance: number,
+      path: Tile[] | null,
+      allowForeignTerritory = false,
+    ): void => {
+      const disciplinedPath = path
+        ? this.getDisciplinedMilitaryPath(unit, path, allowForeignTerritory)
+        : null;
+      if (path && !disciplinedPath) return;
+      choices.push({
+        candidate: this.buildMovementCandidate(
+          destination,
+          kind,
+          distance,
+          disciplinedPath,
+          nationId,
+        ),
+        path: disciplinedPath,
+      });
+    };
 
     // Enemy cities — approach via adjacent tile, gated by engageDistance.
     for (const city of this.cityManager.getAllCities()) {
       if (city.ownerId === nationId) continue;
+      if (!this.isAtWarOrProvocativeMilitaryPosture(nationId, city.ownerId)) continue;
       const dest = { x: city.tileX, y: city.tileY };
       const distance = this.gridSystem.getDistance(unitPos, dest);
       if (distance > engageDistance) continue;
 
       const path = this.findApproachPath(unit, dest);
-      choices.push({
-        candidate: this.buildMovementCandidate(
-          dest,
-          'enemyCity',
-          distance,
-          path,
-          nationId,
-        ),
-        path,
-      });
+      addChoice(dest, 'enemyCity', distance, path, true);
     }
 
     // Enemy units — approach adjacently, also gated by engageDistance.
     for (const enemy of this.unitManager.getAllUnits()) {
       if (enemy.ownerId === nationId) continue;
+      if (!this.isAtWarOrProvocativeMilitaryPosture(nationId, enemy.ownerId)) continue;
       const dest = { x: enemy.tileX, y: enemy.tileY };
       const distance = this.gridSystem.getDistance(unitPos, dest);
       if (distance > engageDistance) continue;
 
       const path = this.findApproachPath(unit, dest);
-      choices.push({
-        candidate: this.buildMovementCandidate(
-          dest,
-          'enemyUnit',
-          distance,
-          path,
-          nationId,
-        ),
-        path,
-      });
+      addChoice(dest, 'enemyUnit', distance, path, true);
     }
 
     // Own cities — useful for defensive strategies and pulling back to safety.
@@ -2338,16 +2357,7 @@ export class AISystem {
       const distance = this.gridSystem.getDistance(unitPos, dest);
 
       const path = this.findApproachPath(unit, dest);
-      choices.push({
-        candidate: this.buildMovementCandidate(
-          dest,
-          'ownCity',
-          distance,
-          path,
-          nationId,
-        ),
-        path,
-      });
+      addChoice(dest, 'ownCity', distance, path);
     }
 
     // Friendly settlers — escort opportunities for combat units.
@@ -2360,16 +2370,7 @@ export class AISystem {
         if (distance > engageDistance) continue;
 
         const path = this.findApproachPath(unit, dest);
-        choices.push({
-          candidate: this.buildMovementCandidate(
-            dest,
-            'settlerEscort',
-            distance,
-            path,
-            nationId,
-          ),
-          path,
-        });
+        addChoice(dest, 'settlerEscort', distance, path);
       }
     }
 
@@ -2389,16 +2390,7 @@ export class AISystem {
         if (entry.stagingTile.x === unitPos.x && entry.stagingTile.y === unitPos.y) continue;
         const path = this.findApproachPath(unit, entry.stagingTile);
         const distance = this.gridSystem.getDistance(unitPos, entry.stagingTile);
-        choices.push({
-          candidate: this.buildMovementCandidate(
-            entry.stagingTile,
-            'militaryInterest',
-            distance,
-            path,
-            nationId,
-          ),
-          path,
-        });
+        addChoice(entry.stagingTile, 'militaryInterest', distance, path, true);
       }
     }
 
@@ -2454,6 +2446,104 @@ export class AISystem {
     return this.pathfindingSystem.findBestPathToAnyTarget(unit, targets, {
       respectMovementPoints: false,
     });
+  }
+
+  private getDisciplinedMilitaryPath(
+    unit: Unit,
+    path: Tile[],
+    allowForeignTerritory: boolean,
+  ): Tile[] | null {
+    if (!this.isSovereigntyDisciplinedMilitaryUnit(unit)) return path;
+    if (path.length <= 1) return path;
+
+    let movementLeft = unit.movementPoints;
+    let lastReachableIndex = 0;
+    for (let i = 1; i < path.length; i++) {
+      const cost = getTileMovementCost(path[i]);
+      if (movementLeft < cost) break;
+      movementLeft -= cost;
+      lastReachableIndex = i;
+    }
+
+    for (let i = lastReachableIndex; i > 0; i--) {
+      if (this.canMilitaryUnitStandOnTile(unit.ownerId, path[i], allowForeignTerritory)) {
+        return path.slice(0, i + 1);
+      }
+    }
+
+    if (lastReachableIndex > 0) {
+      this.logAvoidedProvocativeMilitaryTileOncePerRound(unit.ownerId, path[lastReachableIndex]);
+    }
+    return null;
+  }
+
+  private isSovereigntyDisciplinedMilitaryUnit(unit: Unit): boolean {
+    if (unit.unitType.baseStrength <= 0) return false;
+    if (unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon') return false;
+    if (unit.unitType.category === 'civilian' || unit.unitType.category === 'leader') return false;
+    return true;
+  }
+
+  private canMilitaryUnitStandOnTile(
+    nationId: string,
+    tile: Tile,
+    allowForeignTerritory: boolean,
+  ): boolean {
+    const foreignOwnerId = this.getForeignTileOwner(nationId, tile);
+    if (foreignOwnerId !== null) {
+      if (this.isAtWarWith(nationId, foreignOwnerId)) return true;
+      return allowForeignTerritory && this.isProvocativeMilitaryPosture(nationId, foreignOwnerId);
+    }
+
+    for (const borderOwnerId of this.getAdjacentForeignBorderOwners(nationId, tile)) {
+      if (this.isAtWarWith(nationId, borderOwnerId)) continue;
+      if (!this.isProvocativeMilitaryPosture(nationId, borderOwnerId)) return false;
+    }
+
+    return true;
+  }
+
+  private getForeignTileOwner(nationId: string, tile: Tile): string | null {
+    if (tile.ownerId === undefined || tile.ownerId === nationId) return null;
+    return tile.ownerId;
+  }
+
+  private getAdjacentForeignBorderOwners(nationId: string, tile: Tile): Set<string> {
+    const owners = new Set<string>();
+    for (const adj of this.gridSystem.getAdjacentCoords({ x: tile.x, y: tile.y })) {
+      const ownerId = this.mapData.tiles[adj.y]?.[adj.x]?.ownerId;
+      if (ownerId !== undefined && ownerId !== nationId) owners.add(ownerId);
+    }
+    return owners;
+  }
+
+  private isAtWarWith(nationId: string, otherNationId: string): boolean {
+    return this.diplomacyManager?.getState(nationId, otherNationId) === 'WAR';
+  }
+
+  private isAtWarOrProvocativeMilitaryPosture(nationId: string, otherNationId: string): boolean {
+    return this.isAtWarWith(nationId, otherNationId)
+      || this.isProvocativeMilitaryPosture(nationId, otherNationId);
+  }
+
+  private isProvocativeMilitaryPosture(nationId: string, foreignNationId: string): boolean {
+    if (nationId === foreignNationId) return false;
+    const relation = this.diplomacyManager?.getRelation(nationId, foreignNationId);
+    if (!relation || relation.state === 'WAR') return false;
+    return relation.hostility >= PROVOCATIVE_POSTURE_HOSTILITY_THRESHOLD
+      || relation.trust <= PROVOCATIVE_POSTURE_TRUST_THRESHOLD;
+  }
+
+  private logAvoidedProvocativeMilitaryTileOncePerRound(nationId: string, tile: Tile): void {
+    const round = this.turnManager.getCurrentRound();
+    if (this.avoidedProvocativeMilitaryTileLoggedRound.get(nationId) === round) return;
+    this.avoidedProvocativeMilitaryTileLoggedRound.set(nationId, round);
+    const foreignNationId = this.getForeignTileOwner(nationId, tile)
+      ?? [...this.getAdjacentForeignBorderOwners(nationId, tile)][0];
+    const foreignName = foreignNationId
+      ? (this.nationManager.getNation(foreignNationId)?.name ?? foreignNationId)
+      : 'foreign territory';
+    console.debug(this.formatLog(nationId, `avoided provocative military tile near ${foreignName}.`));
   }
 
   private getPathCost(path: Tile[]): number {

@@ -192,6 +192,14 @@ export interface SavedDiscoveryEntry {
   nationB: string;
 }
 
+export interface SavedForeignTroopViolationWarning {
+  offendedNationId: string;
+  violatingNationId: string;
+  firstWarningRound: number;
+  lastSeenRound: number;
+  unitCount: number;
+}
+
 export interface SavedGameState {
   version: typeof SAVED_GAME_VERSION;
   savedAt: string;
@@ -216,4 +224,5 @@ export interface SavedGameState {
   exileProtectionAgreements?: ExileProtectionAgreement[];
   worldMarkers?: WorldMarker[];
   worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];
+  foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
 }

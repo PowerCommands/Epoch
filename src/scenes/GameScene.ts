@@ -18,6 +18,7 @@ import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
 import { BorderPressureSystem, type BorderPressureEvent } from '../systems/BorderPressureSystem';
+import { ForeignTroopViolationSystem } from '../systems/ForeignTroopViolationSystem';
 import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
@@ -460,6 +461,12 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       aiMilitaryEvaluationSystem,
       (a, b) => discoverySystem.hasMet(a, b),
+    );
+    const foreignTroopViolationSystem = new ForeignTroopViolationSystem(
+      diplomacyManager,
+      nationManager,
+      unitManager,
+      mapData,
     );
     const aiDiplomacySystem = new AIDiplomacySystem(
       diplomacyManager,
@@ -2058,6 +2065,64 @@ export class GameScene extends Phaser.Scene {
       document.body.appendChild(overlay);
     };
 
+    foreignTroopViolationSystem.onWarning((event) => {
+      eventLog.log(
+        `${event.offendedNationName} warned ${event.violatingNationName} about ${event.warning.unitCount} military units inside ${event.offendedNationName} territory.`,
+        [event.warning.offendedNationId, event.warning.violatingNationId],
+        event.warning.lastSeenRound,
+      );
+
+      if (event.warning.violatingNationId !== humanNationIdForDiplomacy) return;
+      if (isAutoplayActive()) return;
+
+      const offendedNation = nationManager.getNation(event.warning.offendedNationId);
+      if (!offendedNation) return;
+      const color = `#${offendedNation.color.toString(16).padStart(6, '0')}`;
+      showDiplomacyModal({
+        title: `${offendedNation.name} Warning`,
+        message: 'You have military units inside our territory. What are you doing?',
+        accentColor: color,
+        confirmLabel: 'They are only passing through.',
+        cancelLabel: 'That is none of your concern.',
+        onConfirm: () => {
+          foreignTroopViolationSystem.recordHumanResponse(
+            event.warning.offendedNationId,
+            event.warning.violatingNationId,
+            'passingThrough',
+          );
+        },
+        onCancel: () => {
+          foreignTroopViolationSystem.recordHumanResponse(
+            event.warning.offendedNationId,
+            event.warning.violatingNationId,
+            'defiant',
+          );
+          rightPanel?.requestRefresh();
+        },
+      });
+    });
+
+    foreignTroopViolationSystem.onEscalation((event) => {
+      eventLog.log(
+        `${event.offendedNationName} relations worsened with ${event.violatingNationName} due to continued military presence inside ${event.offendedNationName} territory (${formatSignedDeltaLabel(event.delta.trust)}trust, ${formatSignedDeltaLabel(event.delta.hostility)}hostility).`,
+        [event.warning.offendedNationId, event.warning.violatingNationId],
+        event.warning.lastSeenRound,
+      );
+      rightPanel?.requestRefresh();
+    });
+
+    foreignTroopViolationSystem.onCleared((event) => {
+      eventLog.log(
+        `${event.offendedNationName} reports that ${event.violatingNationName} withdrew its troops from ${event.offendedNationName} territory.`,
+        [event.warning.offendedNationId, event.warning.violatingNationId],
+        turnManager.getCurrentRound(),
+      );
+    });
+
+    turnManager.on('roundEnd', (event) => {
+      foreignTroopViolationSystem.handleRoundEnd(event.round);
+    });
+
     // War declaration modal when human tries to attack a nation at peace
     combatSystem.onWarRequired((e) => {
       if (e.source !== 'human-ui') return;
@@ -3585,6 +3650,7 @@ export class GameScene extends Phaser.Scene {
         exileProtectionSystem,
         corporationSystem,
         worldMarkerSystem,
+        foreignTroopViolationSystem,
       });
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
@@ -3649,6 +3715,7 @@ export class GameScene extends Phaser.Scene {
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
+          foreignTroopViolationSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -3687,6 +3754,7 @@ export class GameScene extends Phaser.Scene {
             exileProtectionSystem,
             corporationSystem,
             worldMarkerSystem,
+            foreignTroopViolationSystem,
           });
           downloadSaveFile(state);
           escapeMenu.close();

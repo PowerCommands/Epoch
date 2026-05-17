@@ -3,6 +3,7 @@ import type {
   SavedCity,
   SavedDiplomacyEntry,
   SavedDiscoveryEntry,
+  SavedForeignTroopViolationWarning,
   SavedGameState,
   SavedNation,
   SavedProducible,
@@ -28,6 +29,7 @@ import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
+import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -60,6 +62,7 @@ export interface SaveLoadContext {
   tradeDealSystem?: TradeDealSystem;
   exileProtectionSystem?: ExileProtectionSystem;
   worldMarkerSystem?: WorldMarkerSystem;
+  foreignTroopViolationSystem?: ForeignTroopViolationSystem;
 }
 
 /**
@@ -98,6 +101,7 @@ export class SaveLoadService {
       tradeDealSystem,
       exileProtectionSystem,
       worldMarkerSystem,
+      foreignTroopViolationSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -253,6 +257,9 @@ export class SaveLoadService {
       nationB: b,
     }));
 
+    const foreignTroopViolationWarnings: SavedForeignTroopViolationWarning[] | undefined =
+      foreignTroopViolationSystem?.getWarningsForSave();
+
     const wonders: SavedWonder[] = wonderSystem.getCompletedWonders().map((state) => ({
       wonderId: state.wonderId,
       cityId: state.cityId,
@@ -293,6 +300,7 @@ export class SaveLoadService {
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
       worldMarkers: worldMarkerSystem?.getAllMarkers(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
+      foreignTroopViolationWarnings,
     };
   }
 
@@ -387,6 +395,7 @@ export class SaveLoadService {
 
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
+    context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     if (context.worldMarkerSystem) {
