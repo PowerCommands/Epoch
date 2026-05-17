@@ -12,6 +12,7 @@ export class WorldMarkerRenderer {
   private readonly graphics: Phaser.GameObjects.Graphics;
   private readonly labels: Phaser.GameObjects.Text[] = [];
   private readonly unsubscribeVisibility: () => void;
+  private visible = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -23,8 +24,9 @@ export class WorldMarkerRenderer {
     this.unsubscribeVisibility = diagnosticSystem.subscribeVisibility((open) => {
       this.setVisible(open);
     });
+    this.visible = diagnosticSystem.isOpen();
     this.refresh();
-    this.setVisible(diagnosticSystem.isOpen());
+    this.setVisible(this.visible);
   }
 
   refresh(): void {
@@ -35,6 +37,7 @@ export class WorldMarkerRenderer {
     for (const marker of this.worldMarkerSystem.getAllMarkers()) {
       this.drawMarker(marker);
     }
+    this.setVisible(this.visible);
   }
 
   shutdown(): void {
@@ -45,6 +48,7 @@ export class WorldMarkerRenderer {
   }
 
   private setVisible(visible: boolean): void {
+    this.visible = visible;
     this.graphics.setVisible(visible);
     for (const label of this.labels) label.setVisible(visible);
   }

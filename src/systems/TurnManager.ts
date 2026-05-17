@@ -7,6 +7,9 @@ import type {
   RoundEndEvent,
 } from '../types/events';
 
+export const START_YEAR = -3700;
+export const YEARS_PER_ROUND = 30;
+
 /**
  * TurnManager hanterar turordning och varvräkning.
  *
@@ -98,6 +101,18 @@ export class TurnManager {
     return this.currentRound;
   }
 
+  getGlobalYear(): number {
+    return START_YEAR + ((this.currentRound - 1) * YEARS_PER_ROUND);
+  }
+
+  getGlobalYearLabel(): string {
+    return formatYear(this.getGlobalYear());
+  }
+
+  getGlobalTimeLabel(): string {
+    return `Year: ${this.getGlobalYearLabel()} (round:${this.currentRound})`;
+  }
+
   getCurrentTurnIndex(): number {
     return this.currentTurnIndex;
   }
@@ -150,4 +165,9 @@ export class TurnManager {
       }
     }
   }
+}
+
+export function formatYear(year: number): string {
+  if (year < 0) return `${Math.abs(year)} BC`;
+  return `${year} AD`;
 }

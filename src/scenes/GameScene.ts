@@ -10,6 +10,7 @@ import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
 import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
+import { UnitLifetimeSystem } from '../systems/UnitLifetimeSystem';
 import { WorldMarkerSystem } from '../systems/WorldMarkerSystem';
 import { WorldMarkerRenderer } from '../systems/WorldMarkerRenderer';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
@@ -94,8 +95,6 @@ import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOverlayRenderer';
 import { CultureLayerRenderer } from '../renderers/CultureLayerRenderer';
 import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
-import { TimeSystem } from '../systems/TimeSystem';
-import { getEstimatedEraFromProgress } from '../data/eraTimeline';
 import { WonderSystem } from '../systems/WonderSystem';
 import { CorporationSystem } from '../systems/CorporationSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
@@ -167,7 +166,6 @@ import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 export class GameScene extends Phaser.Scene {
   private cameraController!: CameraController;
   private diagnosticSystem!: DiagnosticSystem;
-  private timeSystem!: TimeSystem;
   private minimapHud: MinimapHud | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
 
@@ -271,6 +269,7 @@ export class GameScene extends Phaser.Scene {
 
     // 11. Turordning
     const turnManager = new TurnManager(nationManager);
+    unitManager.setCurrentRoundProvider(() => turnManager.getCurrentRound());
 
     // 11b. Discovery system — tracks which nations have met each other
     const discoverySystem = new DiscoverySystem(
@@ -302,13 +301,11 @@ export class GameScene extends Phaser.Scene {
       (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
     );
     const eraSystem = new EraSystem(nationManager);
-    this.timeSystem = new TimeSystem(gameSpeed);
     const formatLog = createAILogFormatter({
       nationManager,
       turnManager,
       eraSystem,
       happinessSystem,
-      timeSystem: this.timeSystem,
     });
     const isAINation = (nationId: string): boolean => nationManager.getNation(nationId)?.isHuman === false;
     const cultureSystem = new CultureSystem(
@@ -370,6 +367,18 @@ export class GameScene extends Phaser.Scene {
     const selectionManager = new SelectionManager(
       this, tileMap, this.cameraController, cityManager, unitManager, worldInputGate,
     );
+    const unitLifetimeSystem = new UnitLifetimeSystem(
+      unitManager,
+      nationManager,
+      (unit, message, round) => eventLog.log(message, [unit.ownerId], round),
+      (unit) => {
+        const selected = selectionManager.getSelected();
+        if (selected?.kind === 'unit' && selected.unit.id === unit.id) {
+          selectionManager.clearSelection();
+        }
+      },
+    );
+    turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem, nationManager);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
@@ -2251,6 +2260,9 @@ export class GameScene extends Phaser.Scene {
     const diagnosticDialog = new DiagnosticDialog(
       this.diagnosticSystem,
       () => [
+        `Round: ${turnManager.getCurrentRound()}`,
+        `Year: ${turnManager.getGlobalYearLabel()}`,
+        '',
         ...aiOverseasExpansionSystem.getDiagnosticLines(),
         '',
         ...aiSystem.getLeaderEvacuationDiagnosticLines(),
@@ -2299,15 +2311,6 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       cultureSystem,
       turnManager,
-      (turn) => {
-        const era = humanNationId
-          ? getEstimatedEraFromProgress({
-              researchedTechIds: nationManager.getNation(humanNationId)?.researchedTechIds ?? [],
-              unlockedCultureIds: cultureSystem.getUnlockedCultureNodes(humanNationId).map((node) => node.id),
-            })
-          : undefined;
-        return this.timeSystem.getLabelForTurn(turn, era);
-      },
       resourceAccessSystem,
       unitUpkeepSystem,
     );

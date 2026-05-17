@@ -14,7 +14,7 @@ import type { AILogFormatter } from './AILogFormatter';
 const SPECIALIZATION_POPULATION_THRESHOLD = 10;
 const CLEAR_DOMINANCE_RATIO = 1.35;
 
-const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 export class CityFocusSystem {
   constructor(

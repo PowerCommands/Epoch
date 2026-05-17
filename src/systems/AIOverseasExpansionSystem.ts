@@ -42,7 +42,7 @@ interface StagingPlan {
   readonly boardingTile?: MarkerTargetCoord;
 }
 
-const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 export class AIOverseasExpansionSystem {
   private readonly lastBlockedReasonByNation = new Map<string, string>();

@@ -94,7 +94,6 @@ export class NationHudDataProvider {
     private readonly researchSystem: ResearchSystem,
     private readonly cultureSystem: CultureSystem,
     private readonly turnManager: TurnManager,
-    private readonly getTurnLabel: (turn: number) => string,
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly unitUpkeepSystem?: UnitUpkeepSystem,
   ) {}
@@ -119,7 +118,7 @@ export class NationHudDataProvider {
       {
         key: 'turn',
         icon: '',
-        value: this.getTurnLabel(this.turnManager.getCurrentRound()),
+        value: this.turnManager.getGlobalTimeLabel(),
         delta: 0,
       },
       {

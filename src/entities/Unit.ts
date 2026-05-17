@@ -20,6 +20,8 @@ export interface UnitConfig {
   maxMovementPoints?: number;
   movementPoints?: number;
   improvementCharges?: number;
+  createdRound?: number;
+  expiresAtRound?: number;
 }
 
 /**
@@ -41,6 +43,8 @@ export class Unit {
   transportId?: string;
   isSleeping: boolean;
   improvementCharges?: number;
+  createdRound: number;
+  expiresAtRound?: number;
   actionStatus: UnitActionStatus;
   buildAction?: UnitBuildAction;
 
@@ -56,6 +60,8 @@ export class Unit {
     this.health = config.unitType.baseHealth;
     this.isSleeping = false;
     this.improvementCharges = config.improvementCharges ?? config.unitType.maxImprovementCharges;
+    this.createdRound = config.createdRound ?? 1;
+    this.expiresAtRound = config.expiresAtRound;
     this.actionStatus = 'active';
   }
 

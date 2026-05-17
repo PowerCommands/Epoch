@@ -26,6 +26,7 @@ export class AutoplayHud {
   private readonly pauseButton: HTMLButtonElement;
   private readonly resumeButton: HTMLButtonElement;
   private readonly stopButton: HTMLButtonElement;
+  private readonly copyButton: HTMLButtonElement;
   private readonly closeButton: HTMLButtonElement;
 
   private logLineCount = 0;
@@ -122,15 +123,17 @@ export class AutoplayHud {
     this.pauseButton = makeButton('Pause', '#f4d06f');
     this.resumeButton = makeButton('Resume', '#a7f3d0');
     this.stopButton = makeButton('Stop', '#f08a7e');
+    this.copyButton = makeButton('Copy', '#6ec6ff');
     this.closeButton = makeButton('Close', '#a7f3d0');
     this.pauseButton.addEventListener('click', () => this.autoplay.pause());
     this.resumeButton.addEventListener('click', () => this.autoplay.resume());
     this.stopButton.addEventListener('click', () => this.autoplay.stop());
+    this.copyButton.addEventListener('click', () => this.copyLogToClipboard());
     this.closeButton.addEventListener('click', () => {
       this.autoplay.reset();
       this.hide();
     });
-    buttonRow.append(this.pauseButton, this.resumeButton, this.stopButton, this.closeButton);
+    buttonRow.append(this.pauseButton, this.resumeButton, this.stopButton, this.copyButton, this.closeButton);
 
     this.root.append(header, progressBlock, this.logBox, buttonRow);
     document.body.appendChild(this.root);
@@ -195,6 +198,7 @@ export class AutoplayHud {
     this.pauseButton.style.display = running ? '' : 'none';
     this.resumeButton.style.display = paused ? '' : 'none';
     this.stopButton.style.display = running || paused ? '' : 'none';
+    this.copyButton.style.display = completed ? '' : 'none';
     this.closeButton.style.display = completed ? '' : 'none';
     this.pauseButton.disabled = completed;
     this.resumeButton.disabled = completed;

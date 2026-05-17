@@ -30,7 +30,7 @@ const PEACE_COOLDOWN = 5;
 const OPEN_BORDERS_COOLDOWN = 5;
 const NO_IMMEDIATE_PEACE_AFTER_WAR = 3;
 const NO_IMMEDIATE_WAR_AFTER_PEACE = 5;
-const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 export class AIDiplomacySystem {
   // AI diplomacy reason logging explains decisions without changing them.

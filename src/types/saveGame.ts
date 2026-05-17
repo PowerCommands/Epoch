@@ -107,6 +107,8 @@ export interface SavedUnit {
   tileY: number;
   health: number;
   movementPoints: number;
+  createdRound?: number;
+  expiresAtRound?: number;
   improvementCharges?: number;
   transportId?: string;
   isSleeping: boolean;
@@ -193,6 +195,7 @@ export interface SavedDiscoveryEntry {
 export interface SavedGameState {
   version: typeof SAVED_GAME_VERSION;
   savedAt: string;
+  worldYear?: number;
   mapKey: string;
   humanNationId: string;
   activeNationIds: string[];

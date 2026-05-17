@@ -92,7 +92,7 @@ const LOCAL_EXPLORATION_STEP_LIMIT = 12;
 // scout's last assigned target — encourages turning rather than re-targeting
 // the same wedge of the map.
 const SAME_DIRECTION_PENALTY = 1;
-const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 function getMarkerPriority(marker: WorldMarker): number {
   const priority = marker.metadata?.priority;

@@ -1,6 +1,6 @@
 import { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
-import { WARRIOR, getLegacyCompatibleUnitTypeById } from '../data/units';
+import { SCOUT, SCOUT_BOAT, WARRIOR, getLegacyCompatibleUnitTypeById } from '../data/units';
 import { MapData, TileType } from '../types/map';
 import type { ScenarioUnit } from '../types/scenario';
 import { CityManager } from './CityManager';
@@ -27,6 +27,8 @@ type UnitChangedListener = (event: UnitChangedEvent) => void;
 type CityLocator = (tileX: number, tileY: number) => string | undefined;
 
 const PRODUCED_UNIT_ID_PREFIX = 'unit_produced';
+export const SCOUT_LIFETIME_ROUNDS = 80;
+export const SCOUT_BOAT_LIFETIME_ROUNDS = 100;
 
 const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
   nation_england: 'Royal Guard',
@@ -46,6 +48,7 @@ export class UnitManager {
   private readonly unitGrid: (Unit | null)[];
   private readonly listeners: UnitChangedListener[] = [];
   private cityLocator: CityLocator | null = null;
+  private currentRoundProvider: () => number = () => 1;
   private nextProducedUnitId = 1;
 
   constructor(
@@ -60,7 +63,12 @@ export class UnitManager {
     this.cityLocator = locator;
   }
 
+  setCurrentRoundProvider(provider: () => number): void {
+    this.currentRoundProvider = provider;
+  }
+
   addUnit(unit: Unit): void {
+    this.applyLifetimeDefaults(unit);
     this.units.set(unit.id, unit);
     this.placeOnGrid(unit);
   }
@@ -73,6 +81,7 @@ export class UnitManager {
     movementPoints?: number;
     improvementCharges?: number;
   }): Unit {
+    const createdRound = this.currentRoundProvider();
     const unit = new Unit({
       id: this.createProducedUnitId(config.type.id, config.ownerId),
       name: config.type.name,
@@ -83,6 +92,8 @@ export class UnitManager {
       maxMovementPoints: this.getEffectiveMovementPoints(config.type),
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
+      createdRound,
+      expiresAtRound: this.getExpiresAtRound(config.type, createdRound),
     });
 
     this.units.set(unit.id, unit);
@@ -338,6 +349,8 @@ export class UnitManager {
     isSleeping: boolean;
     actionStatus?: import('../entities/Unit').UnitActionStatus;
     buildAction?: import('../entities/Unit').UnitBuildAction;
+    createdRound?: number;
+    expiresAtRound?: number;
   }): Unit {
     const unit = new Unit({
       id: config.id,
@@ -349,6 +362,8 @@ export class UnitManager {
       maxMovementPoints: this.getEffectiveMovementPoints(config.unitType),
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
+      createdRound: config.createdRound,
+      expiresAtRound: config.expiresAtRound,
     });
     unit.health = config.health;
     unit.transportId = config.transportId;
@@ -363,6 +378,7 @@ export class UnitManager {
       unit.buildAction = { ...config.buildAction };
       unit.actionStatus = 'building';
     }
+    this.applyLifetimeDefaults(unit);
 
     this.units.set(unit.id, unit);
     this.placeOnGrid(unit);
@@ -392,6 +408,17 @@ export class UnitManager {
 
   private getEffectiveMovementPoints(unitType: UnitType): number {
     return unitType.movementPoints + this.gameSpeed.movementBonus;
+  }
+
+  private applyLifetimeDefaults(unit: Unit): void {
+    if (!Number.isFinite(unit.createdRound)) unit.createdRound = 1;
+    unit.expiresAtRound ??= this.getExpiresAtRound(unit.unitType, unit.createdRound);
+  }
+
+  private getExpiresAtRound(unitType: UnitType, createdRound: number): number | undefined {
+    if (unitType.id === SCOUT.id) return createdRound + SCOUT_LIFETIME_ROUNDS;
+    if (unitType.id === SCOUT_BOAT.id) return createdRound + SCOUT_BOAT_LIFETIME_ROUNDS;
+    return undefined;
   }
 
   private placeOnGrid(unit: Unit): void {

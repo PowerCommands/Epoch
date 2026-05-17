@@ -8,6 +8,7 @@ import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, type GameSpeedId } from '../data/ga
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
+import { START_YEAR, YEARS_PER_ROUND, formatYear } from '../systems/TurnManager';
 import { bindMusicControls } from '../ui/MusicControls';
 import type { SavedGameState } from '../types/saveGame';
 
@@ -191,7 +192,7 @@ export class MainMenuScene extends Phaser.Scene {
 
         <footer class="mm-actions">
           <button id="mm-start-btn" class="mm-start-btn" type="button" disabled>Start Game</button>
-          <button id="mm-continue-btn" class="mm-continue-btn" type="button"${this.latestAutosave ? '' : ' hidden'}>Continue</button>
+          <button id="mm-continue-btn" class="mm-continue-btn" type="button"${this.latestAutosave ? '' : ' hidden'}${this.getContinueButtonTitleAttribute()}>Continue</button>
           <button id="mm-load-btn" class="mm-load-btn" type="button">Load Game</button>
           <button id="mm-editor-btn" class="mm-editor-btn" type="button">Editor</button>
           <input id="mm-load-input" type="file" accept="application/json,.json" hidden>
@@ -561,6 +562,24 @@ export class MainMenuScene extends Phaser.Scene {
       autofocusOnEndTurn: this.autofocusOnEndTurn,
       savedState,
     } satisfies GameConfig);
+  }
+
+  private getContinueButtonTitleAttribute(): string {
+    if (!this.latestAutosave) return '';
+    const round = this.latestAutosave.turn.currentRound;
+    const year = this.latestAutosave.worldYear ?? START_YEAR + ((round - 1) * YEARS_PER_ROUND);
+    const scenarioName = this.maps.find((map) => map.key === this.latestAutosave?.mapKey)?.label
+      ?? this.latestAutosave.mapKey;
+    const savedAt = new Date(this.latestAutosave.savedAt);
+    const savedAtLabel = Number.isNaN(savedAt.getTime())
+      ? this.latestAutosave.savedAt
+      : savedAt.toLocaleString();
+    return ` title="${escapeHtmlAttribute([
+      `Round ${round}`,
+      formatYear(year),
+      `Saved ${savedAtLabel}`,
+      scenarioName,
+    ].join(' - '))}"`;
   }
 
   private injectStyles(): void {
@@ -1263,6 +1282,14 @@ function toResourceAbundance(value: string): ResourceAbundance {
 function toGameSpeedId(value: string): GameSpeedId {
   if (value === 'quick' || value === 'standard' || value === 'epic' || value === 'marathon') return value;
   return DEFAULT_GAME_SPEED_ID;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function generateNewGameSeed(): string {

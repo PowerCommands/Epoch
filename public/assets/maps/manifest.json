@@ -11,14 +11,14 @@
       "file": "assets/maps/europeScenario.json"
     },
     {
-      "key": "map_simple_grassland_12x12",
-      "label": "Simple grassland 12x12",
-      "file": "assets/maps/simpleGrassland12x12.json"
-    },
-    {
       "key": "map_maritime_expansion",
       "label": "Maritime Expansion",
       "file": "assets/maps/maritimeExpansion.json"
+    },
+    {
+      "key": "map_simple_grassland_12x12",
+      "label": "Simple grassland 12x12",
+      "file": "assets/maps/simpleGrassland12x12.json"
     },
     {
       "key": "map_two_continents_scenario_i",

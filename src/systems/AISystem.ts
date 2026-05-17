@@ -136,7 +136,7 @@ const WARTIME_INFRASTRUCTURE_BUILDING_IDS = [
 ] as const;
 type AIPhase = 'FOUNDATION' | 'STRATEGY';
 type ProductionRhythmPhase = 'peace' | 'war';
-const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 // Structural type guard — Unit/City are imported as types, so `instanceof`
 // is unavailable. `unitType` is unique to Unit.
