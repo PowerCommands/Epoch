@@ -211,13 +211,19 @@ export class CityTerritorySystem {
    * worked-tile bookkeeping stay consistent with culture/purchase claims.
    *
    * Returns false when the tile is out of bounds, already owned by anyone,
-   * or already in this city's owned set.
+   * already in this city's owned set, or not contiguous with existing
+   * owned territory (unless it is the city center tile itself).
    */
   claimTileForCity(city: City, coord: CityTileCoord, mapData: MapData): boolean {
     const tile = this.getTile(mapData, coord.x, coord.y);
     if (!tile) return false;
     if (tile.ownerId !== undefined) return false;
     if (city.ownedTileCoords.some((existing) => existing.x === coord.x && existing.y === coord.y)) {
+      return false;
+    }
+    const isCityCenter = coord.x === city.tileX && coord.y === city.tileY;
+    if (!isCityCenter && !this.isAdjacentToOwnedTile(city, coord)) {
+      console.debug(`[CityTerritorySystem] Rejected disconnected territory claim for ${city.name} at (${coord.x},${coord.y})`);
       return false;
     }
     return this.applyClaimedTile(city, tile, mapData);
@@ -246,6 +252,11 @@ export class CityTerritorySystem {
   }
 
   private applyClaimedTile(city: City, tile: Tile, mapData: MapData): boolean {
+    const isCityCenter = tile.x === city.tileX && tile.y === city.tileY;
+    if (!isCityCenter && !this.isAdjacentToOwnedTile(city, { x: tile.x, y: tile.y })) {
+      console.debug(`[CityTerritorySystem] Rejected disconnected territory claim for ${city.name} at (${tile.x},${tile.y})`);
+      return false;
+    }
     tile.ownerId = city.ownerId;
     city.ownedTileCoords = this.normalizeCoords([
       ...city.ownedTileCoords,
@@ -306,6 +317,26 @@ export class CityTerritorySystem {
     const dr = a.y - b.y;
     const ds = -dq - dr;
     return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
+  }
+
+  private isAdjacentToOwnedTile(city: City, coord: CityTileCoord): boolean {
+    const ownedSet = new Set(city.ownedTileCoords.map((c) => this.getCoordKey(c.x, c.y)));
+    const neighbors = this.gridSystem
+      ? this.gridSystem.getAdjacentCoords(coord)
+      : this.getHexNeighborCoords(coord);
+    return neighbors.some((n) => ownedSet.has(this.getCoordKey(n.x, n.y)));
+  }
+
+  private getHexNeighborCoords(coord: CityTileCoord): CityTileCoord[] {
+    const { x, y } = coord;
+    return [
+      { x: x + 1, y },
+      { x: x - 1, y },
+      { x, y: y + 1 },
+      { x, y: y - 1 },
+      { x: x + 1, y: y - 1 },
+      { x: x - 1, y: y + 1 },
+    ];
   }
 
   private getCoordKey(x: number, y: number): string {
