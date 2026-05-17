@@ -214,6 +214,7 @@ function threatRank(level: ThreatLevel): number {
 }
 
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
+  unitType.category !== 'leader' &&
   unitType.baseStrength > 0
 ));
 // Score boost applied to naval candidates when a maritime doctrine is active
@@ -2620,10 +2621,10 @@ export class AISystem {
               : 'earlyTarget',
           );
         }
-        if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
+        if (choice.unitType.category !== 'leader' && choice.unitType.baseStrength > 0) plannedMilitaryCount++;
         if (choice.unitType.canFound === true) plannedSettlerCount++;
         if (choice.unitType.id === WORKER.id) plannedWorkerCount++;
-        if (choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
+        if (choice.unitType.category !== 'leader' && choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
           plannedNavalCount++;
         }
         if (choice.unitType.id === WORK_BOAT.id) plannedWorkBoatCount++;
@@ -2852,13 +2853,13 @@ export class AISystem {
 
   private countMilitary(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.baseStrength > 0)
+      .filter((u) => u.unitType.category !== 'leader' && u.unitType.baseStrength > 0)
       .length;
   }
 
   private countNavalUnits(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.isNaval === true && u.unitType.baseStrength > 0)
+      .filter((u) => u.unitType.category !== 'leader' && u.unitType.isNaval === true && u.unitType.baseStrength > 0)
       .length;
   }
 
@@ -3228,7 +3229,7 @@ export class AISystem {
     );
     const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
-      if (best.item.kind === 'unit' && best.item.unitType.baseStrength > 0) {
+      if (best.item.kind === 'unit' && best.item.unitType.category !== 'leader' && best.item.unitType.baseStrength > 0) {
         this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx);
       }
       if (cityFocus !== 'balanced') {
@@ -3628,7 +3629,7 @@ export class AISystem {
 
   private getNationMilitaryStrength(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
-      .filter((unit) => unit.unitType.baseStrength > 0)
+      .filter((unit) => unit.unitType.category !== 'leader' && unit.unitType.baseStrength > 0)
       .reduce((total, unit) => total + unit.unitType.baseStrength, 0);
   }
 
@@ -3682,6 +3683,7 @@ export class AISystem {
   ): UnitType | undefined {
     const candidates = ALL_UNIT_TYPES.filter((u) => (
       u.isNaval === true &&
+      u.category !== 'leader' &&
       u.baseStrength > 0 &&
       this.canBuildUnit(nationId, u.id) &&
       canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
@@ -4339,7 +4341,12 @@ export class AISystem {
 
     for (const pos of tilesToCheck) {
       const unit = this.unitManager.getUnitAt(pos.x, pos.y);
-      if (unit && unit.ownerId === nationId && unit.unitType.baseStrength > 0) return false;
+      if (
+        unit &&
+        unit.ownerId === nationId &&
+        unit.unitType.category !== 'leader' &&
+        unit.unitType.baseStrength > 0
+      ) return false;
     }
 
     return true;
@@ -4356,6 +4363,7 @@ export class AISystem {
       if (
         unit &&
         unit.ownerId === nationId &&
+        unit.unitType.category !== 'leader' &&
         unit.unitType.baseStrength > 0 &&
         !unit.unitType.isNaval &&
         (unit.unitType.range ?? 1) > 1

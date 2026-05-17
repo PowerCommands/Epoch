@@ -25,6 +25,7 @@ export class AIMilitaryEvaluationSystem {
   getMilitaryStrength(nationId: string): MilitaryStrengthBreakdown {
     let unitStrength = 0;
     for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
+      if (unit.unitType.category === 'leader') continue;
       const meleeStrength = unit.unitType.baseStrength;
       const rangedStrength = unit.unitType.rangedStrength ?? 0;
       const effectiveStrength = Math.max(meleeStrength, rangedStrength);

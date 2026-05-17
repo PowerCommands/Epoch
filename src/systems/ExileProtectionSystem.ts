@@ -291,6 +291,7 @@ export class ExileProtectionSystem {
     const residence = this.cityManager.getResidenceCapital(nationId);
     if (!residence || residence.ownerId !== nationId || residence.health <= 35) return true;
     return this.unitManager.getUnitsByOwner(enemyNationId).some((unit) => (
+      unit.unitType.category !== 'leader' &&
       unit.unitType.baseStrength > 0 &&
       Math.abs(unit.tileX - residence.tileX) + Math.abs(unit.tileY - residence.tileY) <= 5
     ));
@@ -301,6 +302,7 @@ export class ExileProtectionSystem {
       city.isResidenceCapital !== true &&
       city.health > 50 &&
       !this.unitManager.getUnitsByOwner(enemyNationId).some((unit) => (
+        unit.unitType.category !== 'leader' &&
         unit.unitType.baseStrength > 0 &&
         Math.abs(unit.tileX - city.tileX) + Math.abs(unit.tileY - city.tileY) <= 4
       ))

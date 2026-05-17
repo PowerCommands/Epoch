@@ -147,6 +147,9 @@ export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Crui
 
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2 });
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
+// Leader is a special strategic entity, not a normal producible unit.
+// It is intentionally excluded from ALL_UNIT_TYPES and may only be spawned by
+// dedicated political residence / evacuation systems.
 export const LEADER = unit({
   id: 'leader',
   name: 'Leader',
@@ -165,6 +168,10 @@ export const LEADER = unit({
 
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true });
 
+export const SPECIAL_UNIT_TYPES: UnitType[] = [
+  LEADER,
+];
+
 export const ALL_UNIT_TYPES: UnitType[] = [
   WARRIOR, SCOUT, SCOUT_BOAT, ARCHER, SPEARMAN, CHARIOT_ARCHER, WORK_BOAT, TRIREME, CARAVAN, CARGO_SHIP,
   HORSEMAN, COMPOSITE_BOWMAN, CATAPULT, SWORDSMAN,
@@ -176,11 +183,12 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   NUCLEAR_SUBMARINE, ATOMIC_BOMB, HELICOPTER_GUNSHIP, BAZOOKA,
   MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
-  WORKER, SETTLER, LEADER, TRANSPORT_SHIP,
+  WORKER, SETTLER, TRANSPORT_SHIP,
 ];
 
 export function getUnitTypeById(id: string): UnitType | undefined {
-  return ALL_UNIT_TYPES.find((unitType) => unitType.id === id);
+  return ALL_UNIT_TYPES.find((unitType) => unitType.id === id)
+    ?? SPECIAL_UNIT_TYPES.find((unitType) => unitType.id === id);
 }
 
 export function getLegacyCompatibleUnitTypeById(id: string): UnitType | undefined {

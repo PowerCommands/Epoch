@@ -148,6 +148,7 @@ export class UnitUpkeepSystem {
 
   private isDismissibleMilitaryUnit(unit: Unit, includeLoadedTransports: boolean): boolean {
     if (calculateUnitUpkeep(unit, this.mapData) <= 0) return false;
+    if (unit.unitType.category === 'leader') return false;
     if (unit.unitType.category === 'civilian' || unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon') return false;
     if (unit.unitType.canFound === true || unit.unitType.canBuildImprovements === true) return false;
     const isMilitary = unit.unitType.baseStrength > 0 || (unit.unitType.rangedStrength ?? 0) > 0;

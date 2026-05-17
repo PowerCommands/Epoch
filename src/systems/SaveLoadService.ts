@@ -716,6 +716,7 @@ function toSavedProducible(item: Producible): SavedProducible {
 function fromSavedProducible(item: SavedProducible): Producible | null {
   if (item.kind === 'unit') {
     const type = getLegacyCompatibleUnitTypeById(item.id);
+    if (type?.category === 'leader') return null;
     return type ? { kind: 'unit', unitType: type } : null;
   }
   if (item.kind === 'wonder') {

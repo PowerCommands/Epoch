@@ -2473,6 +2473,7 @@ export class GameScene extends Phaser.Scene {
     };
     const getCityViewUnitOptions = (city: City): CityViewUnitOption[] => (
       ALL_UNIT_TYPES
+        .filter((unitType) => unitType.category !== 'leader')
         .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
         .flatMap((unitType) => {
           const reason = getCityUnitProductionBlockReason(
@@ -2851,7 +2852,7 @@ export class GameScene extends Phaser.Scene {
     cityView.onUnitRequested((unitId) => {
       const city = getOpenCityViewCity();
       if (!city) return;
-      const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId);
+      const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId && candidate.category !== 'leader');
       if (!unitType) return;
       if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;

@@ -41,6 +41,10 @@ export function getCityUnitProductionBlockReason(
   gridSystem: IGridSystem,
   context: UnitProductionRuleContext = {},
 ): string | undefined {
+  if (unitType.category === 'leader') {
+    return 'Leader is managed by political evacuation systems';
+  }
+
   if (unitType.uniquePerNation === true && context.hasActiveUnitOfType?.(city.ownerId, unitType.id)) {
     return `Only one ${unitType.name} may be active`;
   }

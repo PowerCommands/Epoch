@@ -5,7 +5,7 @@ import { ALL_LEADERS } from '../data/leaders';
 import { NATURAL_RESOURCES } from '../data/naturalResources';
 import { ALL_POLICIES } from '../data/policies';
 import { ALL_TECHNOLOGIES } from '../data/technologies';
-import { ALL_UNIT_TYPES } from '../data/units';
+import { ALL_UNIT_TYPES, SPECIAL_UNIT_TYPES } from '../data/units';
 import { CORPORATIONS } from '../data/corporations';
 import {
   getCorporationSpriteKey,
@@ -60,7 +60,9 @@ export class BootScene extends Phaser.Scene {
     this.load.svg('action_dismiss', 'assets/sprites/actions/dismiss.svg', { width: 64, height: 64 });
 
     // Base unit images, keyed by unitType.id (e.g. worker, work_boat, settler).
-    for (const unitType of ALL_UNIT_TYPES) {
+    // Special units are preloaded for systems that spawn them directly, but
+    // remain outside normal production candidate lists.
+    for (const unitType of [...ALL_UNIT_TYPES, ...SPECIAL_UNIT_TYPES]) {
       this.load.image(getUnitSpriteKey(unitType.id), getUnitSpritePath(unitType.id));
     }
 

@@ -933,6 +933,7 @@ export class RightSidebarPanelDataProvider {
     );
     const rows: RightSidebarRow[] = [];
     for (const unitType of ALL_UNIT_TYPES) {
+      if (unitType.category === 'leader') continue;
       if (this.researchSystem && !this.researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
       const disabledReason = getCityUnitProductionBlockReason(
         city,

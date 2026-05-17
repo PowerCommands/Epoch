@@ -14,6 +14,7 @@ export function buildArmyRoleProfile(units: readonly Unit[]): ArmyRoleProfile {
   let totalCombatUnits = 0;
 
   for (const unit of units) {
+    if (unit.unitType.category === 'leader') continue;
     if (unit.unitType.baseStrength <= 0) continue;
     const role = getMilitaryUnitRole(unit.unitType);
     roleCounts[role] = (roleCounts[role] ?? 0) + 1;
