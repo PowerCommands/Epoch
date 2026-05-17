@@ -4,6 +4,24 @@ import type { AIGoal } from '../types/ai/AIGoal';
 import type { AINationalAgendaId } from '../types/aiNationalAgenda';
 import type { OverseasSettlementTarget } from '../types/ai/OverseasSettlementTarget';
 
+export type LeaderEvacuationStateId =
+  | 'insideCity'
+  | 'fleeing'
+  | 'returning'
+  | 'sheltered';
+export type LeaderEvacuationDestinationType = 'residence' | 'ownCity' | 'friendlyRefuge';
+
+export interface LeaderEvacuationState {
+  state: LeaderEvacuationStateId;
+  destinationX?: number;
+  destinationY?: number;
+  destinationCityId?: string;
+  destinationNationId?: string;
+  destinationType?: LeaderEvacuationDestinationType;
+  updatedTurn: number;
+  reason?: string;
+}
+
 export interface NationConfig {
   id: string;
   name: string;
@@ -48,6 +66,7 @@ export class Nation {
   cultureProgress: number;
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
+  leaderEvacuationState?: LeaderEvacuationState;
 
   constructor(config: NationConfig) {
     this.id = config.id;

@@ -7,6 +7,7 @@ import type { TradeDeal } from './tradeDeal';
 import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
 import type { WorldMarker, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
+import type { LeaderEvacuationState } from '../entities/Nation';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -67,6 +68,7 @@ export interface SavedNation {
   culture: number;
   influence?: number;
   knownIslandTargets?: OverseasSettlementTarget[];
+  leaderEvacuationState?: LeaderEvacuationState;
 }
 
 export interface SavedCity {

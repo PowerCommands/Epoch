@@ -120,6 +120,9 @@ export class SaveLoadService {
         culture: res.culture,
         influence: res.influence,
         knownIslandTargets: nation.knownIslandTargets?.map((target) => ({ ...target })),
+        leaderEvacuationState: nation.leaderEvacuationState
+          ? { ...nation.leaderEvacuationState }
+          : undefined,
       };
     });
 
@@ -531,6 +534,9 @@ export class SaveLoadService {
       nation.currentCultureNodeId = saved.currentCultureNodeId;
       nation.cultureProgress = saved.cultureProgress ?? 0;
       nation.knownIslandTargets = saved.knownIslandTargets?.map((target) => ({ ...target }));
+      nation.leaderEvacuationState = saved.leaderEvacuationState
+        ? { ...saved.leaderEvacuationState }
+        : undefined;
 
       const res = nationManager.getResources(saved.id);
       res.gold = saved.gold;

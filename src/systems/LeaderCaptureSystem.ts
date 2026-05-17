@@ -239,12 +239,12 @@ export class LeaderCaptureSystem {
   private formatExecutionMessage(context: LeaderCaptureContext): string {
     const attackerName = this.nationManager.getNation(context.attacker.ownerId)?.name ?? context.attacker.ownerId;
     const defeatedName = this.nationManager.getNation(context.defeatedNationId)?.name ?? context.defeatedNationId;
-    return `${attackerName} executed ${defeatedName}'s leader. ${defeatedName} collapsed.`;
+    return `${attackerName} captured ${defeatedName}'s leader and executed the leader. ${defeatedName} collapsed.`;
   }
 
   private formatRansomMessage(context: LeaderCaptureContext, ransomGold: number): string {
     const attackerName = this.nationManager.getNation(context.attacker.ownerId)?.name ?? context.attacker.ownerId;
     const defeatedName = this.nationManager.getNation(context.defeatedNationId)?.name ?? context.defeatedNationId;
-    return `${attackerName} ransomed ${defeatedName}'s leader for ${ransomGold} gold. ${defeatedName}'s leader escaped.`;
+    return `${attackerName} captured ${defeatedName}'s leader and ransomed the leader for ${ransomGold} gold. ${defeatedName}'s leader escaped.`;
   }
 }

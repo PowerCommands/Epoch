@@ -1275,6 +1275,7 @@ export class GameScene extends Phaser.Scene {
       (nationId, message) => eventLog.log(message, [nationId], turnManager.getCurrentRound()),
       cityDefenseSystem,
       aiOverseasExpansionSystem,
+      exileProtectionSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
@@ -2249,7 +2250,11 @@ export class GameScene extends Phaser.Scene {
     }));
     const diagnosticDialog = new DiagnosticDialog(
       this.diagnosticSystem,
-      () => aiOverseasExpansionSystem.getDiagnosticLines(),
+      () => [
+        ...aiOverseasExpansionSystem.getDiagnosticLines(),
+        '',
+        ...aiSystem.getLeaderEvacuationDiagnosticLines(),
+      ],
     );
     const worldMarkerRenderer = new WorldMarkerRenderer(this, tileMap, worldMarkerSystem, this.diagnosticSystem);
     const endHumanTurn = () => {
