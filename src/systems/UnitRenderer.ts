@@ -24,6 +24,8 @@ const NATION_RING_SEGMENTS = 12;
 const NATION_RING_OUTLINE_WIDTH = 2;
 
 const FALLBACK_TEXTURE_KEY = 'unit_warrior';
+const CARGO_BADGE_X = 13;
+const CARGO_BADGE_Y = -13;
 
 interface UnitVisual {
   container: Phaser.GameObjects.Container;
@@ -31,6 +33,7 @@ interface UnitVisual {
   maskGraphics: Phaser.GameObjects.Graphics;
   nationRing: Phaser.GameObjects.Graphics;
   progressText?: Phaser.GameObjects.Text;
+  cargoIndicator?: Phaser.GameObjects.Text;
 }
 
 /**
@@ -151,6 +154,8 @@ export class UnitRenderer {
     this.applyUnitTileSize(unit, visual.sprite);
     this.applyDerivedVisualState(unit, visual);
 
+    this.refreshCargoIndicator(unit, visual);
+
     if (unit.isBuildingImprovement() && unit.buildAction !== undefined) {
       const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
       const label = `${percent}%`;
@@ -268,8 +273,34 @@ export class UnitRenderer {
     sprite.setData('circleMask', mask);
   }
 
+  private refreshCargoIndicator(unit: Unit, visual: UnitVisual): void {
+    const count = unit.cargoUnitIds.filter((id) => this.unitManager.getUnit(id) !== undefined).length;
+    if (count === 0) {
+      if (visual.cargoIndicator) {
+        visual.cargoIndicator.destroy();
+        visual.cargoIndicator = undefined;
+      }
+      return;
+    }
+    if (!visual.cargoIndicator) {
+      const badge = this.scene.add.text(CARGO_BADGE_X, CARGO_BADGE_Y, String(count), {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '10px',
+        fontStyle: 'bold',
+        color: '#ffea00',
+        stroke: '#1a1200',
+        strokeThickness: 4,
+      }).setOrigin(0.5, 0.5).setDepth(UNIT_DEPTH + 1);
+      visual.container.add(badge);
+      visual.cargoIndicator = badge;
+    } else {
+      visual.cargoIndicator.setText(String(count));
+    }
+  }
+
   private destroyVisual(visual: UnitVisual): void {
     visual.sprite.clearMask(false);
+    visual.cargoIndicator?.destroy();
     visual.container.destroy();
     visual.maskGraphics.destroy();
   }

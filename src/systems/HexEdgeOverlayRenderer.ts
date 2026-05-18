@@ -3,6 +3,7 @@ import type { MapData } from '../types/map';
 import { TileType } from '../types/map';
 import type { TerrainEdgePass } from '../data/terrainEdges';
 import type { TileMap } from './TileMap';
+import { TerrainBaker } from './rendering/TerrainBaker';
 
 /**
  * Axial hex edge directions. Index N matches edge N in
@@ -37,7 +38,7 @@ const HEX_EDGE_DIRECTIONS: ReadonlyArray<{ x: number; y: number }> = [
  * identical and only the pass config differs.
  */
 export class HexEdgeOverlayRenderer {
-  private readonly gfx: Phaser.GameObjects.Graphics;
+  private bakedTextures: Phaser.GameObjects.RenderTexture[];
   private readonly passes: ReadonlyArray<TerrainEdgePass>;
 
   constructor(
@@ -46,33 +47,42 @@ export class HexEdgeOverlayRenderer {
     private readonly mapData: MapData,
     options: { depth: number; passes: ReadonlyArray<TerrainEdgePass> },
   ) {
-    this.gfx = scene.add.graphics().setDepth(options.depth);
     this.passes = options.passes;
-    this.render();
+    const { width: worldWidth, height: worldHeight } = this.tileMap.getWorldBounds();
+    this.bakedTextures = TerrainBaker.bake(
+      scene,
+      worldWidth,
+      worldHeight,
+      options.depth,
+      (g) => this.drawIntoGraphics(g),
+    );
   }
 
-  /** Redraw every configured edge pass across the whole map. */
-  render(): void {
-    this.gfx.clear();
+  shutdown(): void {
+    for (const rt of this.bakedTextures) rt.destroy();
+    this.bakedTextures = [];
+  }
+
+  private drawIntoGraphics(g: Phaser.GameObjects.Graphics): void {
     for (const pass of this.passes) {
       const strokes = pass.strokes ?? [pass];
       for (const stroke of strokes) {
-        this.gfx.lineStyle(stroke.lineWidth, stroke.color, stroke.alpha);
-        this.strokeEdgesForPass(pass);
+        g.lineStyle(stroke.lineWidth, stroke.color, stroke.alpha);
+        this.strokeEdgesForPass(g, pass);
       }
     }
   }
 
-  private strokeEdgesForPass(pass: TerrainEdgePass): void {
+  private strokeEdgesForPass(g: Phaser.GameObjects.Graphics, pass: TerrainEdgePass): void {
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (tile.type !== pass.ownerType) continue;
-        this.strokeMatchingEdges(tile.x, tile.y, pass.neighborTypes);
+        this.strokeMatchingEdges(g, tile.x, tile.y, pass.neighborTypes);
       }
     }
   }
 
-  private strokeMatchingEdges(x: number, y: number, neighborTypes: ReadonlySet<TileType>): void {
+  private strokeMatchingEdges(g: Phaser.GameObjects.Graphics, x: number, y: number, neighborTypes: ReadonlySet<TileType>): void {
     const outline = this.tileMap.getTileOutlinePoints(x, y);
     if (outline.length !== 6) return;
 
@@ -81,7 +91,7 @@ export class HexEdgeOverlayRenderer {
       if (nType === null || !neighborTypes.has(nType)) return;
       const start = outline[edgeIndex];
       const end = outline[(edgeIndex + 1) % outline.length];
-      this.gfx.lineBetween(start.x, start.y, end.x, end.y);
+      g.lineBetween(start.x, start.y, end.x, end.y);
     });
   }
 

@@ -246,11 +246,11 @@ export class GameScene extends Phaser.Scene {
 
     // 4b. Render coast edge overlays (depth 2) — shoreline strokes on coast
     // hex edges that face land neighbors. Sits above terrain, below territory.
-    new HexEdgeOverlayRenderer(this, tileMap, mapData, { depth: 2, passes: COAST_EDGE_PASSES });
+    const coastEdgeRenderer = new HexEdgeOverlayRenderer(this, tileMap, mapData, { depth: 2, passes: COAST_EDGE_PASSES });
 
     // 4c. Render biome edge overlays (depth 3) — forest tree-line against
     // plains and mountain ridge against surrounding non-mountain land.
-    new HexEdgeOverlayRenderer(this, tileMap, mapData, { depth: 3, passes: BIOME_EDGE_PASSES });
+    const biomeEdgeRenderer = new HexEdgeOverlayRenderer(this, tileMap, mapData, { depth: 3, passes: BIOME_EDGE_PASSES });
 
     // 4d. Render natural resources above terrain and below borders/units.
     const naturalResourceRenderer = new NaturalResourceRenderer(this, tileMap, mapData);
@@ -1120,6 +1120,7 @@ export class GameScene extends Phaser.Scene {
 
       const unit = currentSelection.unit;
       if (unit.ownerId !== humanNationId) return false;
+      if (unit.carriedByUnitId !== undefined) return false;
       if (improvementConstructionSystem.isUnitBusy(unit.id)) return true;
 
       const mode = unitActionToolbox.getMode();
@@ -1250,6 +1251,14 @@ export class GameScene extends Phaser.Scene {
       const targetTile = this.getTileForSelectable(tileMap, target);
       if (targetTile === null) return false;
       if (!reachableTiles.has(`${targetTile.x},${targetTile.y}`)) return false;
+
+      if (unit.carriedByUnitId !== undefined) {
+        if (!unitBoardingManager.canUnboard(unit, targetTile.x, targetTile.y)) return false;
+        reachableTiles = new Set<string>();
+        pathPreviewRenderer.clear();
+        unitBoardingManager.unboard(unit, targetTile.x, targetTile.y);
+        return true;
+      }
 
       const path = pathfindingSystem.findPath(unit, targetTile.x, targetTile.y);
       if (path === null) return false;
@@ -3540,6 +3549,7 @@ export class GameScene extends Phaser.Scene {
         && selection.unit.ownerId === humanNationId
         && !suppressPromote
         && turnManager.getCurrentNation().isHuman
+        && selection.unit.carriedByUnitId === undefined
       ) {
         turnOrderSystem.promoteTo(selection.unit.id);
       }
@@ -3618,6 +3628,11 @@ export class GameScene extends Phaser.Scene {
       }
 
       rangedPreviewRenderer.clearCurve();
+
+      if (selected.unit.carriedByUnitId !== undefined) {
+        pathPreviewRenderer.clearPath();
+        return;
+      }
 
       if (hoverTile === null || !reachableTiles.has(`${hoverTile.x},${hoverTile.y}`)) {
         pathPreviewRenderer.clearPath();
@@ -3722,6 +3737,9 @@ export class GameScene extends Phaser.Scene {
       document.removeEventListener('nationSelected', onNationSelected);
       document.removeEventListener('leaderSelected', onLeaderSelected);
       document.removeEventListener('diplomacyAction', onDiplomacyAction);
+      tileMap.shutdown();
+      coastEdgeRenderer.shutdown();
+      biomeEdgeRenderer.shutdown();
       hudLayer?.shutdown();
       rightPanel?.shutdown();
       diagnosticDialog.shutdown();
@@ -3965,9 +3983,30 @@ export class GameScene extends Phaser.Scene {
 
       const unit = selected.unit;
       const activeNation = turnManager.getCurrentNation();
+      if (!activeNation.isHuman || unit.ownerId !== activeNation.id) {
+        reachableTiles = new Set<string>();
+        pathPreviewRenderer.clear();
+        return;
+      }
+
+      if (unit.carriedByUnitId !== undefined) {
+        const transport = unitManager.getUnit(unit.carriedByUnitId);
+        const disembarkSet = new Set<string>();
+        if (transport) {
+          for (const coord of gridSystem.getAdjacentCoords({ x: transport.tileX, y: transport.tileY })) {
+            if (unitBoardingManager.canUnboard(unit, coord.x, coord.y)) {
+              disembarkSet.add(`${coord.x},${coord.y}`);
+            }
+          }
+        }
+        reachableTiles = disembarkSet;
+        if (disembarkSet.size > 0) pathPreviewRenderer.showReachableTiles(disembarkSet);
+        else pathPreviewRenderer.clear();
+        pathPreviewRenderer.clearPath();
+        return;
+      }
+
       if (
-        !activeNation.isHuman ||
-        unit.ownerId !== activeNation.id ||
         unit.movementPoints <= 0 ||
         improvementConstructionSystem.isUnitBusy(unit.id)
       ) {

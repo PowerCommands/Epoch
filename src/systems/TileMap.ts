@@ -3,6 +3,7 @@ import { MapData, Tile, TileType } from '../types/map';
 import { TerrainAutoTileResolver } from './TerrainAutoTileResolver';
 import type { IGridLayout, TileRect, WorldPoint } from './gridLayout/IGridLayout';
 import type { TerrainRenderStyle } from './TerrainAutoTileResolver';
+import { TerrainBaker } from './rendering/TerrainBaker';
 
 const TERRAIN_DEPTH = 0;
 const INNER_HEX_SCALE = 0.72;
@@ -18,11 +19,17 @@ const INNER_HEX_SCALE = 0.72;
 export class TileMap {
   private readonly data: MapData;
   private readonly layout: IGridLayout;
+  private bakedTextures: Phaser.GameObjects.RenderTexture[] = [];
 
   constructor(scene: Phaser.Scene, data: MapData, layout: IGridLayout) {
     this.data = data;
     this.layout = layout;
     this.render(scene);
+  }
+
+  shutdown(): void {
+    for (const rt of this.bakedTextures) rt.destroy();
+    this.bakedTextures = [];
   }
 
   /** Kartans totala pixelstorlek i världskoordinater. */
@@ -116,22 +123,30 @@ export class TileMap {
   }
 
   /**
-   * Renders terrain as true layout-provided hex polygons.
+   * Renders terrain as true layout-provided hex polygons, baked to static
+   * RenderTexture chunks to avoid per-frame GPU draw-call overhead.
    */
   private render(scene: Phaser.Scene): void {
-    const { width, height } = this.data;
-    const terrain = scene.add.graphics();
-    terrain.setDepth(TERRAIN_DEPTH);
+    const { width: worldWidth, height: worldHeight } = this.getWorldBounds();
+    this.bakedTextures = TerrainBaker.bake(
+      scene,
+      worldWidth,
+      worldHeight,
+      TERRAIN_DEPTH,
+      (g) => this.drawTerrainInto(g),
+    );
+  }
 
+  private drawTerrainInto(g: Phaser.GameObjects.Graphics): void {
+    const { width, height } = this.data;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        this.renderTerrainFill(terrain, x, y);
+        this.renderTerrainFill(g, x, y);
       }
     }
-
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        this.renderTerrainEdges(terrain, x, y);
+        this.renderTerrainEdges(g, x, y);
       }
     }
   }

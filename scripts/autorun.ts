@@ -85,6 +85,11 @@ async function main(): Promise<void> {
     browser = await chromium.launch({
       headless: !options.headed,
       executablePath: browserPath,
+      args: [
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+      ],
     });
     page = await browser.newPage();
     page.on('console', (message) => {

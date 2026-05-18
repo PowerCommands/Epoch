@@ -111,7 +111,14 @@ export class SelectionManager {
     const tile = this.tileMap.worldToTile(worldX, worldY);
     if (tile === null) return null;
 
-    const units = this.unitManager.getUnitsAt(tile.x, tile.y);
+    const nonCargo = this.unitManager.getUnitsAt(tile.x, tile.y);
+    const cargo: Unit[] = [];
+    for (const transport of nonCargo) {
+      if (transport.cargoUnitIds.length > 0) {
+        cargo.push(...this.unitManager.getCargoUnitsForTransport(transport));
+      }
+    }
+    const units = [...nonCargo, ...cargo];
     if (units.length > 0) {
       if (this.selected?.kind === 'unit') {
         const selectedUnitId = this.selected.unit.id;
