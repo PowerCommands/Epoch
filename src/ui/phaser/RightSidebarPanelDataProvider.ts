@@ -418,6 +418,15 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
+  getVisibleLogText(): string {
+    const entries = this.eventLog?.getVisibleEntries() ?? [];
+    return entries
+      .slice()
+      .reverse()
+      .map((entry) => `T${entry.round}: ${entry.text}`)
+      .join('\n');
+  }
+
   private getEmptyDetailsContent(): RightSidebarContent {
     return {
       title: 'Details',

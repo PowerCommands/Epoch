@@ -435,3 +435,6 @@ tools/rembg-pipeline/output/
 tools/rembg-pipeline/backup/
 tools/rembg-pipeline/preview/
 tools/rembg-pipeline/reports/
+
+# Local diagnostic autorun output
+autorun-output/

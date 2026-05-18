@@ -13,6 +13,17 @@ import { bindMusicControls } from '../ui/MusicControls';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
 
+interface EpochMainMenuDiagnostics {
+  listScenarios: () => Array<{ key: string; label: string; custom: boolean }>;
+  startNewGame: (options?: {
+    scenario?: string;
+    humanNationId?: string;
+    activeNationIds?: string[];
+    gameSpeedId?: GameSpeedId;
+    resourceAbundance?: ResourceAbundance;
+  }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
+}
+
 /**
  * MainMenuScene — HTML/CSS start screen for map, nation, and opponent setup.
  */
@@ -55,6 +66,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.music.playPlaylist('start');
 
     this.wireEvents();
+    this.installDiagnosticsHook();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
   }
 
@@ -74,6 +86,8 @@ export class MainMenuScene extends Phaser.Scene {
     this.overlay = null;
     const style = document.getElementById('main-menu-styles');
     style?.remove();
+    const diagnosticsWindow = window as Window & { __epochDiagnostics?: unknown };
+    if (isDevBuild()) delete diagnosticsWindow.__epochDiagnostics;
   }
 
   private syncOverlayBounds(): void {
@@ -230,6 +244,78 @@ export class MainMenuScene extends Phaser.Scene {
     if (!customScenario) return false;
     this.cache.json.add(mapKey, customScenario.scenario);
     return true;
+  }
+
+  private installDiagnosticsHook(): void {
+    if (!isDevBuild()) return;
+    const diagnosticsWindow = window as Window & { __epochDiagnostics?: EpochMainMenuDiagnostics };
+    diagnosticsWindow.__epochDiagnostics = {
+      listScenarios: () => [
+        ...this.maps.map((map) => ({ key: map.key, label: map.label, custom: false })),
+        ...this.customScenarios.map((entry) => ({
+          key: entry.metadata.id,
+          label: entry.metadata.name,
+          custom: true,
+        })),
+      ],
+      startNewGame: (options = {}) => this.startDiagnosticGame(options),
+    };
+  }
+
+  private startDiagnosticGame(options: {
+    scenario?: string;
+    humanNationId?: string;
+    activeNationIds?: string[];
+    gameSpeedId?: GameSpeedId;
+    resourceAbundance?: ResourceAbundance;
+  }): { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string } {
+    const scenarioKey = this.resolveDiagnosticScenarioKey(options.scenario);
+    if (!scenarioKey) return { ok: false, error: `Scenario not found: ${options.scenario ?? '(default)'}` };
+    if (!this.ensureScenarioCached(scenarioKey)) return { ok: false, error: `Scenario could not be loaded: ${scenarioKey}` };
+
+    const scenario = (this.getCustomScenario(scenarioKey)?.scenario ?? this.cache.json.get(scenarioKey)) as ScenarioData | undefined;
+    if (!scenario || scenario.nations.length === 0) return { ok: false, error: `Scenario has no nations: ${scenarioKey}` };
+
+    const humanNationId = options.humanNationId && scenario.nations.some((nation) => nation.id === options.humanNationId)
+      ? options.humanNationId
+      : scenario.nations[0].id;
+    const activeNationIds = (options.activeNationIds?.length
+      ? options.activeNationIds.filter((nationId) => scenario.nations.some((nation) => nation.id === nationId))
+      : scenario.nations.map((nation) => nation.id));
+    const finalActiveNationIds = activeNationIds.includes(humanNationId)
+      ? activeNationIds
+      : [humanNationId, ...activeNationIds];
+
+    this.cleanup();
+    this.scene.start('GameScene', {
+      mapKey: scenarioKey,
+      humanNationId,
+      activeNationIds: finalActiveNationIds,
+      resourceAbundance: options.resourceAbundance ?? 'normal',
+      gameSpeedId: options.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+      autofocusOnEndTurn: false,
+      worldSeed: generateNewGameSeed(),
+    } satisfies GameConfig);
+
+    return { ok: true, scenario: scenarioKey, humanNationId, activeNationIds: finalActiveNationIds };
+  }
+
+  private resolveDiagnosticScenarioKey(value: string | undefined): string | null {
+    if (!value) return this.maps[0]?.key ?? this.customScenarios[0]?.metadata.id ?? null;
+    const normalized = value.trim().toLowerCase();
+    const custom = this.customScenarios.find((entry) =>
+      entry.metadata.id.toLowerCase() === normalized ||
+      entry.metadata.name.toLowerCase() === normalized ||
+      entry.metadata.name.toLowerCase().includes(normalized)
+    );
+    if (custom) return custom.metadata.id;
+    const official = this.maps.find((map) =>
+      map.key.toLowerCase() === normalized ||
+      map.key.toLowerCase() === `map_${normalized}` ||
+      map.label.toLowerCase() === normalized ||
+      map.label.toLowerCase().includes(normalized)
+    );
+    return official?.key ?? null;
   }
 
   private wireEvents(): void {
@@ -1357,4 +1443,11 @@ function generateNewGameSeed(): string {
     | undefined;
   if (cryptoRef?.randomUUID) return cryptoRef.randomUUID();
   return `${Date.now()}-${Math.random()}`;
+}
+
+function isDevBuild(): boolean {
+  if (Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)) return true;
+  if (typeof window === 'undefined') return false;
+  const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  return isLocalHost && new URLSearchParams(window.location.search).get('epochDiagnostics') === '1';
 }

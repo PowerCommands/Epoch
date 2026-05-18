@@ -241,7 +241,7 @@ export class AutoplaySystem {
     }
     const scheduledRound = this.turnManager.getCurrentRound();
     const scheduledNation = this.turnManager.getCurrentNation();
-    console.debug(`[AUTOPLAY] Scheduling next step: Round ${scheduledRound} — ${scheduledNation.name}`);
+    console.debug(`[AUTOPLAY] Scheduling next step: Round ${scheduledRound} — ${scheduledNation?.name ?? 'between turns'}`);
     this.nextTurnTimer = setTimeout(() => {
       this.nextTurnTimer = null;
       if (!this.active || this.paused) {
@@ -250,7 +250,7 @@ export class AutoplaySystem {
       }
       const currentRound = this.turnManager.getCurrentRound();
       const currentNation = this.turnManager.getCurrentNation();
-      console.debug(`[AUTOPLAY] Advancing from Round ${currentRound} — ${currentNation.name}`);
+      console.debug(`[AUTOPLAY] Advancing from Round ${currentRound} — ${currentNation?.name ?? 'between turns'}`);
       this.runCurrentAutoplayTurn();
     }, TURN_DELAY_MS);
   }
@@ -280,11 +280,11 @@ export class AutoplaySystem {
     } catch (error) {
       const currentNation = this.turnManager.getCurrentNation();
       console.error(
-        `[AUTOPLAY] Turn transition failed. Current nation is now ${currentNation.name}.`,
+        `[AUTOPLAY] Turn transition failed. Current nation is now ${currentNation?.name ?? 'unknown'}.`,
         error,
       );
       this.logDiagnostic(
-        `ERROR: turn transition failed near ${currentNation.name}. Continuing autoplay; see browser console.`,
+        `ERROR: turn transition failed near ${currentNation?.name ?? 'unknown'}. Continuing autoplay; see browser console.`,
       );
     } finally {
       this.safeFlushEventLog();
@@ -421,7 +421,7 @@ export class AutoplaySystem {
     const payload: AutoplayProgressEvent = {
       completedRounds: this.completedRounds,
       requestedRounds: this.requestedRounds,
-      currentTurnLabel: `Round ${currentRound} — ${currentNation.name}`,
+      currentTurnLabel: `Round ${currentRound} — ${currentNation?.name ?? 'between turns'}`,
     };
     for (const cb of this.progressListeners) {
       try {

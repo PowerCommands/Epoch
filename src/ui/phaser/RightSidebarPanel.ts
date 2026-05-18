@@ -85,6 +85,8 @@ const LEADER_TAB_GAP = 8;
 const LEADER_TAB_HEIGHT = 34;
 const CONTENT_ICON_SIZE = 32;
 const CONTENT_ICON_GAP = 8;
+const LOG_COPY_BUTTON_WIDTH = 148;
+const LOG_COPY_BUTTON_HEIGHT = 40;
 
 const MODES: ModeDefinition[] = [
   { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
@@ -137,6 +139,9 @@ export class RightSidebarPanel {
   private readonly panelBackground: Phaser.GameObjects.Rectangle;
   private readonly panelHitArea: Phaser.GameObjects.Zone;
   private readonly titleText: Phaser.GameObjects.Text;
+  private readonly logCopyButtonBackground: Phaser.GameObjects.Rectangle;
+  private readonly logCopyButtonLabel: Phaser.GameObjects.Text;
+  private readonly logCopyButtonHitArea: Phaser.GameObjects.Zone;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
   private readonly contentMask: Phaser.Display.Masks.GeometryMask;
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
@@ -183,6 +188,9 @@ export class RightSidebarPanel {
   private focusSearchInputAfterRender = false;
   private diplomacyGraphFilters = new Set<DiplomacyRelationshipType>(['hasMet', 'openBorders', 'war']);
   private diplomacyGraphFocusNation: string | null = null;
+  private logCopyButtonHovered = false;
+  private logCopyButtonPressed = false;
+  private logCopyFeedbackTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -202,6 +210,19 @@ export class RightSidebarPanel {
       .setScrollFactor(0)
       .setInteractive();
     this.titleText = this.addText('Details', 26, '#f4f8ff', 'bold', CONTENT_WIDTH);
+    this.logCopyButtonBackground = this.addOwned(scene.add.rectangle(0, 0, LOG_COPY_BUTTON_WIDTH, LOG_COPY_BUTTON_HEIGHT, 0x1d6d90, 0.98))
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x6ec6ff, 0.7)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.logCopyButtonLabel = this.addText('Copy', 19, '#ffffff', 'normal', LOG_COPY_BUTTON_WIDTH - 16)
+      .setOrigin(0.5)
+      .setVisible(false);
+    this.logCopyButtonHitArea = this.addOwned(scene.add.zone(0, 0, LOG_COPY_BUTTON_WIDTH, LOG_COPY_BUTTON_HEIGHT))
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setInteractive({ cursor: 'pointer' })
+      .setVisible(false);
     this.contentMaskGraphics = this.addOwned(new Phaser.GameObjects.Graphics(scene).setScrollFactor(0));
     this.contentMask = this.contentMaskGraphics.createGeometryMask();
     this.scrollbarTrack = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, 100, 0x1d3142, 0.56))
@@ -228,6 +249,9 @@ export class RightSidebarPanel {
       this.panelBackground,
       this.panelHitArea,
       this.titleText,
+      this.logCopyButtonBackground,
+      this.logCopyButtonLabel,
+      this.logCopyButtonHitArea,
       this.scrollbarTrack,
       this.scrollbarThumb,
       this.collapseBackground,
@@ -239,6 +263,7 @@ export class RightSidebarPanel {
 
     this.modeButtons = MODES.map((definition) => this.createModeButton(definition));
     this.installPanelInput();
+    this.installLogCopyButtonInput();
     this.installScrollbarInput();
     // Collapse button replaced by mode-button toggle behavior — hide its visuals.
     this.collapseBackground.setVisible(false);
@@ -534,6 +559,7 @@ export class RightSidebarPanel {
 
     if (this.activeMode === 'diplomacy-graph') {
       this.titleText.setText('Diplomacy Graph');
+      this.refreshLogCopyButtonVisibility();
       this.destroyContentObjects();
       this.scrollableContentTop = CONTENT_TOP;
       this.buildDiplomacyGraphContent();
@@ -553,6 +579,7 @@ export class RightSidebarPanel {
       rows: content.sections.reduce((sum, section) => sum + section.rows.length, 0),
     });
     this.titleText.setText(content.title);
+    this.refreshLogCopyButtonVisibility();
     this.destroyContentObjects();
     this.contentHeight = this.buildContent(content);
     this.maxScroll = Math.max(0, this.contentHeight - this.getVisibleContentHeight());
@@ -1443,6 +1470,11 @@ export class RightSidebarPanel {
     this.panelBackground.setSize(PANEL_WIDTH, this.panelHeight).setPosition(0, 0);
     this.panelHitArea.setSize(PANEL_WIDTH, this.panelHeight).setPosition(0, 0);
     this.titleText.setPosition(PANEL_PADDING, PANEL_PADDING);
+    const copyX = PANEL_WIDTH - PANEL_PADDING - LOG_COPY_BUTTON_WIDTH;
+    const copyY = PANEL_PADDING - 4;
+    this.logCopyButtonBackground.setPosition(copyX, copyY);
+    this.logCopyButtonLabel.setPosition(copyX + LOG_COPY_BUTTON_WIDTH / 2, copyY + LOG_COPY_BUTTON_HEIGHT / 2);
+    this.logCopyButtonHitArea.setPosition(copyX, copyY);
     this.updateContentMask();
     this.updateScrollbar();
 
@@ -1585,7 +1617,85 @@ export class RightSidebarPanel {
 
   private refreshVisibility(): void {
     this.panelContainer.setVisible(!this.collapsed);
+    this.refreshLogCopyButtonVisibility();
     for (const input of this.contentInputs) this.positionContentInput(input);
+  }
+
+  private installLogCopyButtonInput(): void {
+    this.logCopyButtonHitArea.on(Phaser.Input.Events.POINTER_OVER, (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      this.logCopyButtonHovered = true;
+      this.refreshLogCopyButtonVisual();
+    });
+    this.logCopyButtonHitArea.on(Phaser.Input.Events.POINTER_OUT, (_pointer: Phaser.Input.Pointer, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      this.logCopyButtonHovered = false;
+      this.logCopyButtonPressed = false;
+      this.refreshLogCopyButtonVisual();
+    });
+    this.logCopyButtonHitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+      this.logCopyButtonPressed = true;
+      this.refreshLogCopyButtonVisual();
+    });
+    this.logCopyButtonHitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      const shouldClick = this.logCopyButtonPressed;
+      this.logCopyButtonPressed = false;
+      this.worldInputGate.releasePointer(pointer.id);
+      this.refreshLogCopyButtonVisual();
+      if (shouldClick) this.copyLogToClipboard();
+    });
+  }
+
+  private refreshLogCopyButtonVisibility(): void {
+    const visible = !this.collapsed && this.activeMode === 'log';
+    this.logCopyButtonBackground.setVisible(visible);
+    this.logCopyButtonLabel.setVisible(visible);
+    this.logCopyButtonHitArea.setVisible(visible);
+    if (visible) {
+      if (!this.logCopyButtonHitArea.input?.enabled) this.logCopyButtonHitArea.setInteractive({ cursor: 'pointer' });
+    } else {
+      this.logCopyButtonHitArea.disableInteractive();
+    }
+  }
+
+  private refreshLogCopyButtonVisual(): void {
+    const fillColor = this.logCopyButtonPressed
+      ? 0x2f6688
+      : this.logCopyButtonHovered
+        ? 0x1e789e
+        : 0x1d6d90;
+    this.logCopyButtonBackground
+      .setFillStyle(fillColor, 0.98)
+      .setStrokeStyle(1, 0x6ec6ff, this.logCopyButtonHovered ? 0.95 : 0.7);
+  }
+
+  private copyLogToClipboard(): void {
+    const fullLogText = this.dataProvider.getVisibleLogText();
+    if (!navigator.clipboard?.writeText) {
+      console.warn('[RightSidebarPanel] Clipboard API unavailable; log was not copied.');
+      return;
+    }
+    navigator.clipboard.writeText(fullLogText)
+      .then(() => this.showLogCopyFeedback())
+      .catch((error) => {
+        console.warn('[RightSidebarPanel] Clipboard copy failed; log was not copied.', error);
+      });
+  }
+
+  private showLogCopyFeedback(): void {
+    this.logCopyButtonLabel.setText('Copied');
+    this.logCopyFeedbackTimer?.remove(false);
+    this.logCopyFeedbackTimer = this.scene.time.delayedCall(1200, () => {
+      this.logCopyButtonLabel.setText('Copy');
+      this.logCopyFeedbackTimer = null;
+    });
   }
 
   private refreshButtonVisuals(): void {

@@ -161,6 +161,23 @@ import type { GameConfig } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 import { LogManager } from '../systems/LogManager';
 
+interface EpochGameDiagnostics {
+  startAutoplay: (rounds: number) => Promise<{ completedRounds: number }>;
+  stopAutoplay: () => void;
+  isAutoplayActive: () => boolean;
+  isAutoplayCompleted: () => boolean;
+  getEventLogEntries: () => Array<{ id: number; text: string; nationIds: string[]; round: number }>;
+  getEventLogText: () => string;
+  getStateSummary: () => {
+    currentRound: number;
+    currentNationId: string;
+    currentNationName: string;
+    nationCount: number;
+    cityCount: number;
+    unitCount: number;
+  };
+}
+
 /**
  * GameScene — huvudspelscenen.
  * Orkestrerar karta, nationer, städer, enheter, turordning, resurser,
@@ -3385,6 +3402,37 @@ export class GameScene extends Phaser.Scene {
 
     new CombatLog(this, combatSystem, nationManager);
     new AutoplayHud(autoplaySystem);
+    if (isDevBuild()) {
+      const diagnosticsWindow = window as Window & { __epochDiagnostics?: EpochGameDiagnostics };
+      diagnosticsWindow.__epochDiagnostics = {
+        startAutoplay: (rounds: number) => new Promise((resolve) => {
+          const requestedRounds = Math.max(1, Math.floor(rounds));
+          autoplaySystem.onCompleted((event) => resolve({ completedRounds: event.totalRounds }));
+          autoplaySystem.start(requestedRounds);
+        }),
+        stopAutoplay: () => autoplaySystem.stop(),
+        isAutoplayActive: () => autoplaySystem.isActive(),
+        isAutoplayCompleted: () => autoplaySystem.isCompleted(),
+        getEventLogEntries: () => eventLog.getAllEntries(),
+        getEventLogText: () => eventLog.getAllEntries()
+          .map((entry) => `T${entry.round}: ${entry.text}`)
+          .join('\n'),
+        getStateSummary: () => {
+          const currentNation = turnManager.getCurrentNation();
+          return {
+            currentRound: turnManager.getCurrentRound(),
+            currentNationId: currentNation.id,
+            currentNationName: currentNation.name,
+            nationCount: nationManager.getAllNations().length,
+            cityCount: cityManager.getAllCities().length,
+            unitCount: unitManager.getAllUnits().length,
+          };
+        },
+      };
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        delete diagnosticsWindow.__epochDiagnostics;
+      });
+    }
     const cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
@@ -4260,6 +4308,13 @@ function pruneBorderPressureLogCooldowns(round: number, recentLogs: Map<string, 
 
 function isUnitUpkeepAffordabilityReason(reason: string): boolean {
   return reason.startsWith('Not enough gold reserves to support this unit');
+}
+
+function isDevBuild(): boolean {
+  if (Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)) return true;
+  if (typeof window === 'undefined') return false;
+  const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  return isLocalHost && new URLSearchParams(window.location.search).get('epochDiagnostics') === '1';
 }
 
 function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' | 'gold_trade' | 'peace'): string {

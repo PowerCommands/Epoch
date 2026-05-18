@@ -9,6 +9,7 @@
     "predev": "npm run generate-manifests",
     "typecheck": "tsc --noEmit",
     "build": "tsc && vite build",
+    "autorun": "tsx scripts/autorun.ts",
     "prebuild": "npm run generate-manifests",
     "generate-manifests": "tsx scripts/generateSoundsManifest.ts && tsx scripts/generateMapManifest.ts && tsx scripts/generateNationManifest.ts && tsx scripts/generateNaturalResourceManifest.ts",
     "generate-sprites": "tsx scripts/generateSprites.ts",
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "playwright": "^1.60.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.2"
