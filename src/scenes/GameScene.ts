@@ -1436,7 +1436,14 @@ export class GameScene extends Phaser.Scene {
         aiSystem.runTurn(e.nation.id);
         aiExplorationSystem.runTurn(e.nation.id);
         territoryRenderer.invalidate();
-        turnManager.endCurrentTurn();
+
+        const endingNationId = e.nation.id;
+        this.time.delayedCall(AI_TURN_YIELD_MS, () => {
+          if (autoplaySystem.isActive()) return;
+          const current = turnManager.getCurrentNation();
+          if (current?.id !== endingNationId) return;
+          turnManager.endCurrentTurn();
+        });
       }
     });
 
@@ -4224,6 +4231,8 @@ const IDEOLOGICAL_DRIFT_LOG_COOLDOWN_ROUNDS = 20;
 const MAX_IDEOLOGICAL_DRIFT_SUMMARY_LINES = 8;
 const BORDER_PRESSURE_LOG_COOLDOWN_ROUNDS = 15;
 const MAX_BORDER_PRESSURE_SUMMARY_LINES = 8;
+/** Yield duration between AI nations. 0 ms is enough for the browser to paint and process input. */
+const AI_TURN_YIELD_MS = 0;
 
 function formatIdeologicalDriftSummary(
   round: number,
