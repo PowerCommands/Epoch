@@ -18,6 +18,8 @@ import {
   type MilitaryIntent,
 } from './utils/AIMilitaryUtils';
 import type { AILogFormatter } from './AILogFormatter';
+import type { PeaceTreatySystem } from '../PeaceTreatySystem';
+import { MIN_WAR_TURNS_FOR_PEACE } from '../DiplomacyManager';
 
 // AIDiplomacySystem v1:
 // Uses diplomatic attitude to trigger simple decisions.
@@ -46,6 +48,7 @@ export class AIDiplomacySystem {
     private readonly haveMet: (a: string, b: string) => boolean,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly getEraStrategy?: (nationId: string) => AILeaderEraStrategy | undefined,
+    private readonly peaceTreatySystem?: PeaceTreatySystem,
   ) {}
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
@@ -98,10 +101,17 @@ export class AIDiplomacySystem {
         (adjustedPeacePreference >= 70 && attitude !== 'hostile');
       if (
         wantsPeace &&
-        this.canProposePeace(selfId, otherId) &&
-        this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) >= PEACE_COOLDOWN &&
-        this.turnsSince(relation.lastWarDeclarationTurn, currentTurn) >= NO_IMMEDIATE_PEACE_AFTER_WAR
+        this.diplomacyManager.canProposePeace(selfId, otherId, currentTurn) &&
+        this.noPendingProposal(selfId, otherId) &&
+        this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) >= PEACE_COOLDOWN
       ) {
+        const treaty = this.peaceTreatySystem?.buildAIPeaceTreaty(selfId, otherId);
+        if (!treaty) {
+          // No non-capital city to offer — cannot propose peace; fight to the end.
+          const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
+          console.log(this.formatLog(selfId, `wants peace with ${otherName} but has no city to offer.`));
+          return;
+        }
         const reason = this.createDecisionReason(
           'proposePeace',
           selfId,
@@ -114,8 +124,14 @@ export class AIDiplomacySystem {
           evaluation,
           ideologyPeaceModifier,
         );
-        this.diplomacyManager.proposePeace(selfId, otherId);
+        this.diplomacyManager.proposePeace(selfId, otherId, treaty);
         this.emitDecision(reason);
+      } else if (wantsPeace && !this.diplomacyManager.canProposePeace(selfId, otherId, currentTurn)) {
+        const elapsed = this.diplomacyManager.getWarDuration(selfId, otherId, currentTurn);
+        const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
+        console.log(
+          this.formatLog(selfId, `cannot propose peace to ${otherName} yet (${elapsed}/${MIN_WAR_TURNS_FOR_PEACE} turns elapsed).`),
+        );
       }
       return; // never touch borders while at war
     }
@@ -202,8 +218,7 @@ export class AIDiplomacySystem {
     return currentTurn - lastTurn;
   }
 
-  private canProposePeace(fromId: string, toId: string): boolean {
-    // Skip if a proposal from us is already pending — avoids re-spamming.
+  private noPendingProposal(_fromId: string, toId: string): boolean {
     return this.diplomacyManager.getPendingProposal(toId) === null;
   }
 

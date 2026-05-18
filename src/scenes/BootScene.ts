@@ -10,6 +10,8 @@ import { CORPORATIONS } from '../data/corporations';
 import {
   getCorporationSpriteKey,
   getCorporationSpritePath,
+  getCitySpriteKey,
+  getCitySpritePath,
   getCultureSpriteKey,
   getCultureSpritePath,
   getPolicySpriteKey,
@@ -21,12 +23,25 @@ import {
   getUnitSpriteKey,
   getUnitSpritePath,
 } from '../utils/assetPaths';
+import type { Era } from '../data/technologies';
 
 // Action ids that have base-image overrides today. Only these are pre-loaded
 // so Phaser does not try to fetch missing optional files for every unit type.
 const UNIT_ACTION_PRELOAD: ReadonlyArray<{ unitTypeId: string; actionId: string }> = [
   { unitTypeId: 'worker', actionId: 'improvement' },
   { unitTypeId: 'work_boat', actionId: 'improvement' },
+];
+
+const CITY_SPRITE_ERAS: readonly Era[] = [
+  'ancient',
+  'classical',
+  'medieval',
+  'renaissance',
+  'industrial',
+  'modern',
+  'atomic',
+  'information',
+  'future',
 ];
 
 /**
@@ -49,7 +64,9 @@ export class BootScene extends Phaser.Scene {
     });
 
     // Sprite assets
-    this.load.image('city_default', 'assets/sprites/city_default.png');
+    for (const era of CITY_SPRITE_ERAS) {
+      this.load.image(getCitySpriteKey(era), getCitySpritePath(era));
+    }
     this.load.image('end_turn', 'assets/sprites/end_turn.png');
     this.load.image('action_move', 'assets/sprites/actions/move.png');
     this.load.image('action_attack', 'assets/sprites/actions/attack.png');

@@ -6,9 +6,11 @@ import type {
   RoundStartEvent,
   RoundEndEvent,
 } from '../types/events';
+import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 
-export const START_YEAR = -3700;
-export const YEARS_PER_ROUND = 30;
+export const START_YEAR = -4000;
+export const BASE_YEARS_PER_ROUND = 25;
+export const YEAR_PROGRESS_DECAY = 0.002677;
 
 /**
  * TurnManager hanterar turordning och varvräkning.
@@ -29,6 +31,7 @@ export class TurnManager {
   private readonly turnOrder: Nation[];
   private currentTurnIndex = 0;
   private stopped = false;
+  private readonly yearProgressionMultiplier: number;
 
   private readonly listeners = {
     turnStart:  [] as ((e: TurnStartEvent) => void)[],
@@ -37,8 +40,9 @@ export class TurnManager {
     roundEnd:   [] as ((e: RoundEndEvent) => void)[],
   };
 
-  constructor(nationManager: NationManager) {
+  constructor(nationManager: NationManager, gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined)) {
     this.turnOrder = nationManager.getAllNations();
+    this.yearProgressionMultiplier = gameSpeed.yearProgressionMultiplier;
   }
 
   /**
@@ -102,7 +106,7 @@ export class TurnManager {
   }
 
   getGlobalYear(): number {
-    return START_YEAR + ((this.currentRound - 1) * YEARS_PER_ROUND);
+    return calculateGlobalYear(this.currentRound, this.yearProgressionMultiplier);
   }
 
   getGlobalYearLabel(): string {
@@ -169,5 +173,11 @@ export class TurnManager {
 
 export function formatYear(year: number): string {
   if (year < 0) return `${Math.abs(year)} BC`;
-  return `${year} AD`;
+  return `${year}`;
+}
+
+export function calculateGlobalYear(round: number, yearProgressionMultiplier = 1): number {
+  const elapsedRounds = Math.max(0, round - 1) * yearProgressionMultiplier;
+  const progressedYears = (elapsedRounds * BASE_YEARS_PER_ROUND) / (1 + elapsedRounds * YEAR_PROGRESS_DECAY);
+  return START_YEAR + Math.round(progressedYears);
 }

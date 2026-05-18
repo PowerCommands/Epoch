@@ -2,7 +2,7 @@ import type { City } from '../../entities/City';
 import type { Unit } from '../../entities/Unit';
 import type { Tile } from '../../types/map';
 
-export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log';
+export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log' | 'diplomacy-graph';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';

@@ -4,6 +4,8 @@ import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { City } from '../entities/City';
 import { HexTileMaskHelper } from './HexTileMaskHelper';
+import type { Era } from '../data/technologies';
+import { getCitySpriteKey } from '../utils/assetPaths';
 
 const CITY_DEPTH = 15;
 const CITY_TILE_FILL_SCALE = 0.9;
@@ -14,7 +16,7 @@ const HIT_RADIUS = 20;
 /**
  * CityRenderer draws a sprite for each city on the map.
  *
- * Uses `city_default` texture with nation color tint.
+ * Uses an era-specific city texture based on the owning nation's current era.
  * Original and residence capitals use separate indicators so conquest
  * preserves historical identity without implying political control.
  */
@@ -23,6 +25,7 @@ export class CityRenderer {
   private readonly tileMap: TileMap;
   private readonly cityManager: CityManager;
   private readonly nationManager: NationManager;
+  private readonly getNationEra: (nationId: string) => Era;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
 
@@ -31,11 +34,13 @@ export class CityRenderer {
     tileMap: TileMap,
     cityManager: CityManager,
     nationManager: NationManager,
+    getNationEra: (nationId: string) => Era,
   ) {
     this.scene = scene;
     this.tileMap = tileMap;
     this.cityManager = cityManager;
     this.nationManager = nationManager;
+    this.getNationEra = getNationEra;
     this.hexTileMaskHelper = new HexTileMaskHelper(scene, tileMap);
 
     for (const city of cityManager.getAllCities()) {
@@ -89,7 +94,7 @@ export class CityRenderer {
     const { x: worldX, y: worldY } = this.tileMap.tileToWorld(city.tileX, city.tileY);
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
 
-    const sprite = this.scene.add.image(0, 0, 'city_default');
+    const sprite = this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId)));
     const scaleMultiplier = city.isResidenceCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
     sprite.setDisplaySize(
       rect.width * CITY_TILE_FILL_SCALE * scaleMultiplier,

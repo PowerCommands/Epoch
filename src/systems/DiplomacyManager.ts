@@ -35,6 +35,9 @@ export interface DiplomacyRelation {
   lastOpenBordersChangeTurn: number | null;
   lastEmbassyChangeTurn: number | null;
   lastTradeRelationsChangeTurn: number | null;
+
+  // Set when war is declared; preserved through the peace transition for treaty logic.
+  aggressorNationId?: string;
 }
 
 /**
@@ -49,6 +52,7 @@ export interface PartialDiplomacyRelationInput extends Partial<DiplomacyRelation
   lastWarTurn?: number | null;
   /** @deprecated renamed to lastPeaceProposalTurn. */
   lastPeaceTurn?: number | null;
+  aggressorNationId?: string;
 }
 
 export interface DiplomacyAgreementValidationContext {
@@ -64,6 +68,9 @@ export interface DiplomacyAgreementValidationResult {
 export interface PeaceProposal {
   fromNationId: string;
   toNationId: string;
+  offeredCityId?: string;
+  goldReparations?: number;
+  warDuration: number;
 }
 
 type PeaceProposedListener = (proposal: PeaceProposal) => void;
@@ -97,6 +104,7 @@ export const DEFAULT_TRUST = 50;
 export const DEFAULT_FEAR = 0;
 export const DEFAULT_HOSTILITY = 0;
 export const DEFAULT_AFFINITY = 0;
+export const MIN_WAR_TURNS_FOR_PEACE = 15;
 
 export function createDefaultRelation(): DiplomacyRelation {
   return {
@@ -148,6 +156,7 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
       partial.lastEmbassyChangeTurn ?? base.lastEmbassyChangeTurn,
     lastTradeRelationsChangeTurn:
       partial.lastTradeRelationsChangeTurn ?? base.lastTradeRelationsChangeTurn,
+    aggressorNationId: partial.aggressorNationId,
   };
 }
 
@@ -240,6 +249,7 @@ export class DiplomacyManager {
       // sources (events, AI, replays) should pass an explicit turn instead.
       lastWarDeclarationTurn:
         this.turnManager?.getCurrentRound() ?? previous?.lastWarDeclarationTurn ?? null,
+      aggressorNationId: aggressorId,
     });
     this.relations.set(key, next);
     // Clear any pending peace proposal between these nations
@@ -250,11 +260,37 @@ export class DiplomacyManager {
     this.notifyChanged(aggressorId, targetId);
   }
 
-  proposePeace(fromId: string, toId: string): void {
+  proposePeace(
+    fromId: string,
+    toId: string,
+    terms: { offeredCityId?: string; goldReparations?: number } = {},
+  ): void {
     if (this.getState(fromId, toId) !== 'WAR') return;
-    const proposal: PeaceProposal = { fromNationId: fromId, toNationId: toId };
+    const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
+    const warDuration = this.getWarDuration(fromId, toId, currentTurn);
+    const proposal: PeaceProposal = {
+      fromNationId: fromId,
+      toNationId: toId,
+      warDuration,
+      ...terms,
+    };
     this.pendingProposals.set(toId, proposal);
     for (const cb of this.proposedListeners) cb(proposal);
+  }
+
+  getWarDuration(a: string, b: string, currentTurn: number): number {
+    const relation = this.getRelation(a, b);
+    if (relation.state !== 'WAR' || relation.lastWarDeclarationTurn === null) return 0;
+    return currentTurn - relation.lastWarDeclarationTurn;
+  }
+
+  canProposePeace(a: string, b: string, currentTurn: number): boolean {
+    if (this.getState(a, b) !== 'WAR') return false;
+    return this.getWarDuration(a, b, currentTurn) >= MIN_WAR_TURNS_FOR_PEACE;
+  }
+
+  getAggressorNationId(a: string, b: string): string | undefined {
+    return this.relations.get(this.pairKey(a, b))?.aggressorNationId;
   }
 
   respondToPeace(fromId: string, toId: string, accept: boolean): void {

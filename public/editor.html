@@ -69,13 +69,19 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .nation-select-row img { width: 36px; height: 44px; border-radius: 3px; object-fit: cover; background: #333; }
 
 .toolbar-actions { display: flex; flex-direction: column; gap: 8px; }
-#save-btn, #exit-btn {
+#save-btn, #save-custom-btn, #exit-btn {
   padding: 10px; border: 1px solid #4a9; border-radius: 4px; background: #1a3a2a;
   color: #4a9; font: inherit; font-size: 13px; cursor: pointer; font-weight: bold;
 }
-#save-btn:hover { background: #2a4a3a; }
+#save-btn:hover, #save-custom-btn:hover { background: #2a4a3a; }
+#save-custom-btn { border-color: #7bbcff; background: #182f46; color: #9ed0ff; }
+#save-custom-btn:hover { background: #203d59; }
 #exit-btn { border-color: #777; background: #242424; color: #ddd; }
 #exit-btn:hover { background: #303030; border-color: #aaa; }
+.scenario-scope {
+  font-size: 11px; line-height: 1.35; color: #9ed0ff; background: #182638;
+  border: 1px solid #2d4b68; border-radius: 4px; padding: 7px 8px;
+}
 
 .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; font-size: 11px; color: #aaa; }
 .field input, .field select, .field textarea {
@@ -112,6 +118,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 <div id="app">
   <div id="toolbar">
     <h2>Map Editor</h2>
+    <div id="scenario-scope" class="scenario-scope">Loading scenario...</div>
 
     <div class="section">
       <div class="section-title">Tool</div>
@@ -229,6 +236,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 
     <div class="toolbar-actions">
       <button id="save-btn">Download scenario JSON</button>
+      <button id="save-custom-btn">Save As My Own Scenario</button>
       <button id="exit-btn">Exit to Start</button>
     </div>
     <div id="validation-warning" class="warning-box"></div>
@@ -260,6 +268,7 @@ const TILE_COLORS = {
 let scenario = null;
 let mapManifest = { maps: [] };
 let currentMap = null;
+let currentCustomEntry = null;
 let nationRegistry = { nations: [] };
 let naturalResourceManifest = { resources: [] };
 let tiles = null; // 2D array [r][q] of type strings
@@ -291,6 +300,9 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const viewport = document.getElementById('viewport');
 const resourceImages = new Map();
+const CUSTOM_SCENARIO_STORAGE_KEY = 'epoch.customScenarios';
+const CUSTOM_SCENARIO_ID_PREFIX = 'custom-';
+const CUSTOM_SCENARIO_NAME_MAX_LENGTH = 70;
 
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
@@ -306,12 +318,18 @@ async function init() {
     return;
   }
 
-  const res = await fetch(`/${currentMap.file}`);
-  scenario = await res.json();
+  if (currentMap.isCustom) {
+    currentCustomEntry = currentMap.customEntry;
+    scenario = structuredCloneCompat(currentCustomEntry.scenario);
+  } else {
+    const res = await fetch(`/${currentMap.file}`);
+    scenario = await res.json();
+  }
   if (!Array.isArray(scenario.worldMarkers)) scenario.worldMarkers = [];
   normalizeNationColors();
   document.title = `Map Editor — ${currentMap.label}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
+  updateScenarioScope();
 
   mapW = scenario.map.width;
   mapH = scenario.map.height;
@@ -429,12 +447,103 @@ async function loadNaturalResourceManifest() {
 }
 
 function resolveRequestedMap(manifest) {
-  const requestedKey = new URLSearchParams(window.location.search).get('map');
+  const params = new URLSearchParams(window.location.search);
+  const requestedCustomId = params.get('custom');
+  if (requestedCustomId) {
+    const customEntry = loadCustomScenarioEntries().find(entry => entry.metadata.id === requestedCustomId);
+    if (customEntry) {
+      return {
+        key: customEntry.metadata.id,
+        label: customEntry.metadata.name,
+        file: `${customEntry.metadata.id}.json`,
+        isCustom: true,
+        customEntry,
+      };
+    }
+    console.warn(`Custom scenario ${requestedCustomId} was not found or could not be loaded.`);
+  }
+
+  const requestedKey = params.get('map');
   return manifest.maps.find(map => map.key === requestedKey) ?? manifest.maps[0];
 }
 
 function getMapFilename(map) {
+  if (map?.isCustom) return `${safeFilename(map.label)}.json`;
   return map.file.split('/').pop() || 'scenario.json';
+}
+
+function updateScenarioScope() {
+  const scope = document.getElementById('scenario-scope');
+  if (!scope || !currentMap) return;
+  scope.textContent = currentMap.isCustom
+    ? `My Scenario: ${currentMap.label}`
+    : `Official Scenario: ${currentMap.label}`;
+}
+
+function loadCustomScenarioEntries() {
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_SCENARIO_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.entries)) return [];
+    return parsed.entries
+      .filter(isCustomScenarioEntry)
+      .sort((a, b) => b.metadata.updatedAt - a.metadata.updatedAt);
+  } catch (err) {
+    console.warn('Failed to load custom scenarios.', err);
+    return [];
+  }
+}
+
+function saveCustomScenarioEntry(entry) {
+  const entries = loadCustomScenarioEntries().filter(existing => existing.metadata.id !== entry.metadata.id);
+  window.localStorage.setItem(
+    CUSTOM_SCENARIO_STORAGE_KEY,
+    JSON.stringify({ version: 1, entries: [entry, ...entries] }),
+  );
+}
+
+function isCustomScenarioEntry(value) {
+  return value
+    && value.metadata
+    && typeof value.metadata.id === 'string'
+    && value.metadata.id.startsWith(CUSTOM_SCENARIO_ID_PREFIX)
+    && typeof value.metadata.name === 'string'
+    && typeof value.metadata.createdAt === 'number'
+    && typeof value.metadata.updatedAt === 'number'
+    && isScenarioData(value.scenario);
+}
+
+function isScenarioData(value) {
+  return value
+    && value.meta
+    && value.map
+    && typeof value.meta.name === 'string'
+    && typeof value.meta.version === 'number'
+    && typeof value.map.width === 'number'
+    && typeof value.map.height === 'number'
+    && typeof value.map.tileSize === 'number'
+    && Array.isArray(value.map.tiles)
+    && Array.isArray(value.nations)
+    && Array.isArray(value.cities)
+    && Array.isArray(value.units);
+}
+
+function generateCustomScenarioId() {
+  const uuid = window.crypto?.randomUUID
+    ? window.crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${CUSTOM_SCENARIO_ID_PREFIX}${uuid}`;
+}
+
+function structuredCloneCompat(value) {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  return JSON.parse(JSON.stringify(value));
+}
+
+function safeFilename(value) {
+  const clean = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return clean || 'scenario';
 }
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -1771,25 +1880,7 @@ function showValidationWarnings(warnings) {
 
 document.getElementById('save-btn').addEventListener('click', () => {
   showValidationWarnings(validateScenario());
-
-  // Rebuild flat q/r tiles array from 2D
-  const flatTiles = [];
-  for (let r = 0; r < mapH; r++) {
-    for (let q = 0; q < mapW; q++) {
-      const tile = { q, r, type: tiles[r][q] };
-      if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
-      flatTiles.push(tile);
-    }
-  }
-
-  const output = {
-    meta: scenario.meta,
-    map: { width: mapW, height: mapH, tileSize, tiles: flatTiles },
-    nations: scenario.nations,
-    cities: scenario.cities,
-    units: scenario.units,
-    worldMarkers: scenario.worldMarkers || [],
-  };
+  const output = buildScenarioOutput();
 
   const blob = new Blob([JSON.stringify(output)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1799,6 +1890,82 @@ document.getElementById('save-btn').addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(url);
 });
+
+document.getElementById('save-custom-btn').addEventListener('click', () => {
+  showValidationWarnings(validateScenario());
+
+  const defaultName = currentCustomEntry?.metadata.name || currentMap?.label || scenario?.meta?.name || 'My Scenario';
+  const enteredName = window.prompt('Scenario name', defaultName);
+  if (enteredName === null) return;
+
+  const name = enteredName.trim();
+  if (!name) {
+    window.alert('Scenario name cannot be empty.');
+    return;
+  }
+  if (name.length > CUSTOM_SCENARIO_NAME_MAX_LENGTH) {
+    window.alert(`Scenario name must be ${CUSTOM_SCENARIO_NAME_MAX_LENGTH} characters or fewer.`);
+    return;
+  }
+
+  const now = Date.now();
+  const existingMetadata = currentCustomEntry?.metadata;
+  const output = buildScenarioOutput();
+  output.meta = { ...output.meta, name };
+
+  const entry = {
+    metadata: {
+      id: existingMetadata?.id || generateCustomScenarioId(),
+      name,
+      createdAt: existingMetadata?.createdAt || now,
+      updatedAt: now,
+      sourceScenarioId: existingMetadata?.sourceScenarioId || (currentMap?.isCustom ? undefined : currentMap?.key),
+      sourceScenarioName: existingMetadata?.sourceScenarioName || (currentMap?.isCustom ? undefined : currentMap?.label),
+    },
+    scenario: output,
+  };
+
+  try {
+    saveCustomScenarioEntry(entry);
+  } catch (err) {
+    console.warn('Failed to save custom scenario.', err);
+    window.alert('Could not save this scenario locally. Browser storage may be full or unavailable.');
+    return;
+  }
+  currentCustomEntry = entry;
+  currentMap = {
+    key: entry.metadata.id,
+    label: entry.metadata.name,
+    file: `${entry.metadata.id}.json`,
+    isCustom: true,
+    customEntry: entry,
+  };
+  scenario = structuredCloneCompat(output);
+  document.title = `Map Editor — ${entry.metadata.name}`;
+  document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
+  updateScenarioScope();
+  document.getElementById('status-info').textContent = `Saved My Scenario: ${entry.metadata.name}`;
+});
+
+function buildScenarioOutput() {
+  const flatTiles = [];
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const tile = { q, r, type: tiles[r][q] };
+      if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
+      flatTiles.push(tile);
+    }
+  }
+
+  return {
+    meta: scenario.meta,
+    map: { width: mapW, height: mapH, tileSize, tiles: flatTiles },
+    nations: scenario.nations,
+    cities: scenario.cities,
+    units: scenario.units,
+    worldMarkers: scenario.worldMarkers || [],
+  };
+}
 
 document.getElementById('exit-btn').addEventListener('click', () => {
   window.location.href = '/';

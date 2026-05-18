@@ -13,12 +13,14 @@ import type {
   RightSidebarRow,
   RightSidebarSearchInputRow,
 } from './RightSidebarPanelTypes';
+import type { DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 
 interface ModeDefinition {
   mode: RightSidebarPanelMode;
   icon: string;
   label: string;
   accentColor: number;
+  diagnosticOnly?: boolean;
 }
 
 interface ModeButton {
@@ -30,6 +32,7 @@ interface ModeButton {
   hitArea: Phaser.GameObjects.Zone;
   hovered: boolean;
   pressed: boolean;
+  visible: boolean;
 }
 
 interface ContentButton {
@@ -57,7 +60,7 @@ const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
 const PANEL_PADDING = 24;
 const CONTENT_TOP = 74;
-const CONTENT_BOTTOM_GAP = 78;
+const CONTENT_BOTTOM_GAP = 16;
 const CONTENT_WIDTH = PANEL_WIDTH - PANEL_PADDING * 2;
 const BUTTON_DIAMETER = 64;
 const BUTTON_RADIUS = BUTTON_DIAMETER / 2;
@@ -87,6 +90,7 @@ const MODES: ModeDefinition[] = [
   { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
   { mode: 'leaderboard', icon: '🏆', label: 'Leaderboard', accentColor: 0xf4d06f },
   { mode: 'log', icon: '📄', label: 'Log', accentColor: 0xc7d2fe },
+  { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa, diagnosticOnly: true },
 ];
 
 const LEADERBOARD_CATEGORIES: Array<{
@@ -177,6 +181,8 @@ export class RightSidebarPanel {
   private lastDetailsCityId: string | null = null;
   private lastDetailsLeaderId: string | null = null;
   private focusSearchInputAfterRender = false;
+  private diplomacyGraphFilters = new Set<DiplomacyRelationshipType>(['hasMet', 'openBorders', 'war']);
+  private diplomacyGraphFocusNation: string | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -234,7 +240,10 @@ export class RightSidebarPanel {
     this.modeButtons = MODES.map((definition) => this.createModeButton(definition));
     this.installPanelInput();
     this.installScrollbarInput();
-    this.installCollapseInput();
+    // Collapse button replaced by mode-button toggle behavior — hide its visuals.
+    this.collapseBackground.setVisible(false);
+    this.collapseIcon.setVisible(false);
+    this.collapseLabel.setVisible(false);
 
     this.uiCamera = scene.cameras.add(0, 0, scene.scale.width, scene.scale.height);
     this.uiCamera.setScroll(0, 0);
@@ -300,6 +309,9 @@ export class RightSidebarPanel {
     if (mode === 'leaderboard' && this.activeMode !== 'leaderboard') {
       this.leaderboardCategory = 'domination';
     }
+    if (mode === 'diplomacy-graph' && this.activeMode !== 'diplomacy-graph') {
+      this.diplomacyGraphFocusNation = null;
+    }
     this.activeMode = mode;
     this.collapsed = false;
     this.scrollOffset = 0;
@@ -314,8 +326,29 @@ export class RightSidebarPanel {
 
   collapse(): void {
     this.collapsed = true;
+    this.destroyContentObjects();
     this.refreshVisibility();
     this.refreshButtonVisuals();
+  }
+
+  setDiagnosticsEnabled(enabled: boolean): void {
+    for (const button of this.modeButtons) {
+      if (!button.definition.diagnosticOnly) continue;
+      button.visible = enabled;
+      button.background.setVisible(enabled);
+      button.rim.setVisible(enabled);
+      button.icon.setVisible(enabled);
+      button.label.setVisible(enabled);
+      if (enabled) {
+        button.hitArea.setInteractive({ cursor: 'pointer' });
+      } else {
+        button.hitArea.disableInteractive();
+      }
+    }
+    if (!enabled && this.activeMode === 'diplomacy-graph') {
+      this.collapse();
+    }
+    this.layout();
   }
 
   setDetailsPlaceholder(): void {
@@ -355,7 +388,8 @@ export class RightSidebarPanel {
       .setDepth(DEPTH + 13)
       .setScrollFactor(0)
       .setInteractive({ cursor: 'pointer' });
-    const button: ModeButton = { definition, background, rim, icon, label, hitArea, hovered: false, pressed: false };
+    const visible = !definition.diagnosticOnly;
+    const button: ModeButton = { definition, background, rim, icon, label, hitArea, hovered: false, pressed: false, visible };
 
     hitArea.on(Phaser.Input.Events.POINTER_OVER, (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
@@ -383,12 +417,25 @@ export class RightSidebarPanel {
       const shouldShow = button.pressed;
       button.pressed = false;
       this.worldInputGate.releasePointer(pointer.id);
-      if (shouldShow) this.show(definition.mode);
+      if (shouldShow) {
+        if (this.activeMode === definition.mode && !this.collapsed) {
+          this.collapse();
+        } else {
+          this.show(definition.mode);
+        }
+      }
       this.refreshButtonVisual(button);
     });
 
     this.buttonContainer.add([background, rim, icon, label, hitArea]);
     this.refreshButtonVisual(button);
+    if (definition.diagnosticOnly) {
+      background.setVisible(false);
+      rim.setVisible(false);
+      icon.setVisible(false);
+      label.setVisible(false);
+      hitArea.disableInteractive();
+    }
     return button;
   }
 
@@ -484,6 +531,21 @@ export class RightSidebarPanel {
 
   private renderActiveContent(): void {
     if (!this.activeMode) return;
+
+    if (this.activeMode === 'diplomacy-graph') {
+      this.titleText.setText('Diplomacy Graph');
+      this.destroyContentObjects();
+      this.scrollableContentTop = CONTENT_TOP;
+      this.buildDiplomacyGraphContent();
+      this.contentHeight = 0;
+      this.maxScroll = 0;
+      this.scrollOffset = 0;
+      this.updateContentMask();
+      this.positionContentObjects();
+      this.updateScrollbar();
+      return;
+    }
+
     const content = this.ensureRenderableContent(this.getContentForMode(this.activeMode));
     console.debug('[RightSidebarPanel] render content', {
       mode: this.activeMode,
@@ -508,6 +570,8 @@ export class RightSidebarPanel {
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
       case 'log':
         return this.dataProvider.getLogContent();
+      case 'diplomacy-graph':
+        return { title: 'Diplomacy Graph', sections: [] };
     }
   }
 
@@ -557,6 +621,280 @@ export class RightSidebarPanel {
       y += SECTION_GAP;
     }
     return Math.max(0, y - scrollContentStartY);
+  }
+
+  private buildDiplomacyGraphContent(): void {
+    const graph = this.dataProvider.buildDiplomacyGraph();
+    const panelX = this.panelContainer.x;
+    const panelY = this.panelContainer.y;
+
+    const FILTER_GAP = 8;
+    const FILTER_H = 28;
+    const FILTER_DEFS: Array<{ type: DiplomacyRelationshipType; label: string; color: number }> = [
+      { type: 'hasMet', label: 'Have Met', color: 0x778899 },
+      { type: 'openBorders', label: 'Open Borders', color: 0x44bb77 },
+      { type: 'war', label: 'War', color: 0xcc3344 },
+    ];
+    const filterBtnWidth = (CONTENT_WIDTH - FILTER_GAP * (FILTER_DEFS.length - 1)) / FILTER_DEFS.length;
+
+    let filterX = PANEL_PADDING;
+    for (const fd of FILTER_DEFS) {
+      const active = this.diplomacyGraphFilters.has(fd.type);
+      const bg = this.addOwned(new Phaser.GameObjects.Rectangle(
+        this.scene, filterX, CONTENT_TOP, filterBtnWidth, FILTER_H,
+        active ? 0x1f4b62 : 0x143044, active ? 1 : 0.88,
+      ))
+        .setOrigin(0, 0)
+        .setStrokeStyle(active ? 2 : 1, fd.color, active ? 0.95 : 0.4)
+        .setScrollFactor(0);
+      bg.setData('baseY', CONTENT_TOP);
+      const lbl = this.addText(fd.label, 12, active ? '#ffffff' : '#b0c8e0', active ? 'bold' : 'normal');
+      lbl.setOrigin(0.5, 0.5);
+      lbl.setPosition(filterX + filterBtnWidth / 2, CONTENT_TOP + FILTER_H / 2);
+      lbl.setData('baseY', CONTENT_TOP + FILTER_H / 2);
+      const hit = this.addOwned(new Phaser.GameObjects.Zone(
+        this.scene, filterX, CONTENT_TOP, filterBtnWidth, FILTER_H,
+      ))
+        .setOrigin(0, 0)
+        .setScrollFactor(0)
+        .setInteractive({ cursor: 'pointer' });
+      hit.setData('baseY', CONTENT_TOP);
+      const filterType = fd.type;
+      hit.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        this.worldInputGate.claimPointer(pointer.id);
+        consumePointerEvent(pointer);
+      });
+      hit.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        consumePointerEvent(pointer);
+        this.worldInputGate.releasePointer(pointer.id);
+        if (this.diplomacyGraphFilters.has(filterType)) {
+          this.diplomacyGraphFilters.delete(filterType);
+        } else {
+          this.diplomacyGraphFilters.add(filterType);
+        }
+        this.renderActiveContent();
+      });
+      this.panelContainer.add([bg, lbl, hit]);
+      this.contentObjects.push(bg, lbl, hit);
+      bg.setMask(this.contentMask);
+      lbl.setMask(this.contentMask);
+      filterX += filterBtnWidth + FILTER_GAP;
+    }
+
+    let currentY = CONTENT_TOP + FILTER_H + 8;
+
+    if (this.diplomacyGraphFocusNation !== null) {
+      const focusedNode = graph.nodes.find((n) => n.nationId === this.diplomacyGraphFocusNation);
+      const focusLabel = focusedNode ? focusedNode.name : 'nation';
+      const showAllH = 26;
+      const showAllBg = this.addOwned(new Phaser.GameObjects.Rectangle(
+        this.scene, PANEL_PADDING, currentY, CONTENT_WIDTH, showAllH,
+        0x2a3a4a, 0.9,
+      ))
+        .setOrigin(0, 0)
+        .setStrokeStyle(1, 0x6ec6ff, 0.5)
+        .setScrollFactor(0);
+      showAllBg.setData('baseY', currentY);
+      const showAllLbl = this.addText(`${focusLabel} — Show All`, 13, '#a8d4f0');
+      showAllLbl.setOrigin(0, 0.5);
+      showAllLbl.setPosition(PANEL_PADDING + 10, currentY + showAllH / 2);
+      showAllLbl.setData('baseY', currentY + showAllH / 2);
+      const showAllHit = this.addOwned(new Phaser.GameObjects.Zone(
+        this.scene, PANEL_PADDING, currentY, CONTENT_WIDTH, showAllH,
+      ))
+        .setOrigin(0, 0)
+        .setScrollFactor(0)
+        .setInteractive({ cursor: 'pointer' });
+      showAllHit.setData('baseY', currentY);
+      showAllHit.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        this.worldInputGate.claimPointer(pointer.id);
+        consumePointerEvent(pointer);
+      });
+      showAllHit.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        consumePointerEvent(pointer);
+        this.worldInputGate.releasePointer(pointer.id);
+        this.diplomacyGraphFocusNation = null;
+        this.renderActiveContent();
+      });
+      this.panelContainer.add([showAllBg, showAllLbl, showAllHit]);
+      this.contentObjects.push(showAllBg, showAllLbl, showAllHit);
+      showAllBg.setMask(this.contentMask);
+      showAllLbl.setMask(this.contentMask);
+      currentY += showAllH + 6;
+    }
+
+    const graphTop = currentY;
+    const visibleHeight = this.getVisibleContentHeight();
+    const graphAreaHeight = Math.max(80, visibleHeight - (graphTop - CONTENT_TOP) - 8);
+    const graphCenterX = PANEL_PADDING + CONTENT_WIDTH / 2;
+    const graphCenterY = graphTop + graphAreaHeight / 2;
+    const nodeRadius = 10;
+    const labelOffset = nodeRadius + 3;
+    const layoutRadius = Math.max(30, Math.min(
+      CONTENT_WIDTH / 2 - nodeRadius - 40,
+      graphAreaHeight / 2 - nodeRadius - 18,
+    ));
+
+    const { nodes } = graph;
+    if (nodes.length === 0) {
+      const noDataText = this.addContentText('No diplomatic data available.', 15, '#c1cbd8');
+      noDataText.setPosition(PANEL_PADDING, graphTop);
+      noDataText.setData('baseY', graphTop);
+      return;
+    }
+
+    const nodePositions = new Map<string, { x: number; y: number }>();
+    nodes.forEach((node, i) => {
+      const angle = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
+      nodePositions.set(node.nationId, {
+        x: graphCenterX + Math.cos(angle) * layoutRadius,
+        y: graphCenterY + Math.sin(angle) * layoutRadius,
+      });
+    });
+
+    const focusId = this.diplomacyGraphFocusNation;
+    const visibleEdges = graph.edges.filter((edge) => {
+      if (!this.diplomacyGraphFilters.has(edge.type)) return false;
+      if (focusId !== null) {
+        return edge.fromNationId === focusId || edge.toNationId === focusId;
+      }
+      return true;
+    });
+
+    const connectedNodeIds = new Set<string>();
+    if (focusId !== null) {
+      connectedNodeIds.add(focusId);
+      for (const edge of visibleEdges) {
+        connectedNodeIds.add(edge.fromNationId);
+        connectedNodeIds.add(edge.toNationId);
+      }
+    }
+
+    const edgeGfx = this.addOwned(new Phaser.GameObjects.Graphics(this.scene)
+      .setScrollFactor(0)
+      .setDepth(DEPTH + 1));
+    this.scene.add.existing(edgeGfx);
+    edgeGfx.setMask(this.contentMask);
+
+    for (const edge of visibleEdges) {
+      if (edge.type !== 'hasMet') continue;
+      const from = nodePositions.get(edge.fromNationId);
+      const to = nodePositions.get(edge.toNationId);
+      if (!from || !to) continue;
+      edgeGfx.lineStyle(1, 0x778899, 0.3);
+      edgeGfx.beginPath();
+      edgeGfx.moveTo(panelX + from.x, panelY + from.y);
+      edgeGfx.lineTo(panelX + to.x, panelY + to.y);
+      edgeGfx.strokePath();
+    }
+    for (const edge of visibleEdges) {
+      if (edge.type !== 'openBorders') continue;
+      const from = nodePositions.get(edge.fromNationId);
+      const to = nodePositions.get(edge.toNationId);
+      if (!from || !to) continue;
+      edgeGfx.lineStyle(1.5, 0x44bb77, 0.75);
+      edgeGfx.beginPath();
+      edgeGfx.moveTo(panelX + from.x, panelY + from.y);
+      edgeGfx.lineTo(panelX + to.x, panelY + to.y);
+      edgeGfx.strokePath();
+    }
+    for (const edge of visibleEdges) {
+      if (edge.type !== 'war') continue;
+      const from = nodePositions.get(edge.fromNationId);
+      const to = nodePositions.get(edge.toNationId);
+      if (!from || !to) continue;
+      edgeGfx.lineStyle(2, 0xcc3344, 0.9);
+      edgeGfx.beginPath();
+      edgeGfx.moveTo(panelX + from.x, panelY + from.y);
+      edgeGfx.lineTo(panelX + to.x, panelY + to.y);
+      edgeGfx.strokePath();
+    }
+    this.contentObjects.push(edgeGfx);
+
+    const nodeGfx = this.addOwned(new Phaser.GameObjects.Graphics(this.scene)
+      .setScrollFactor(0)
+      .setDepth(DEPTH + 2));
+    this.scene.add.existing(nodeGfx);
+    nodeGfx.setMask(this.contentMask);
+
+    for (const node of nodes) {
+      const pos = nodePositions.get(node.nationId);
+      if (!pos) continue;
+      const isFocused = node.nationId === focusId;
+      const isConnectedOrAll = focusId === null || connectedNodeIds.has(node.nationId);
+      const r = isFocused ? nodeRadius + 3 : nodeRadius;
+      nodeGfx.fillStyle(node.color, isConnectedOrAll ? 0.88 : 0.2);
+      nodeGfx.fillCircle(panelX + pos.x, panelY + pos.y, r);
+      if (isFocused) {
+        nodeGfx.lineStyle(2, 0xffffff, 0.9);
+        nodeGfx.strokeCircle(panelX + pos.x, panelY + pos.y, r);
+      }
+    }
+    this.contentObjects.push(nodeGfx);
+
+    for (const node of nodes) {
+      const pos = nodePositions.get(node.nationId);
+      if (!pos) continue;
+      const isFocused = node.nationId === focusId;
+      const isConnectedOrAll = focusId === null || connectedNodeIds.has(node.nationId);
+      const shortName = node.name.length > 10 ? `${node.name.substring(0, 10)}…` : node.name;
+      const labelColor = isConnectedOrAll ? (isFocused ? '#ffffff' : '#c8dff0') : '#3a4d5e';
+
+      const label = this.addOwned(new Phaser.GameObjects.Text(this.scene,
+        panelX + pos.x, panelY + pos.y + labelOffset, shortName,
+        {
+          fontFamily: 'Arial, sans-serif',
+          fontSize: '9px',
+          color: labelColor,
+          fontStyle: isFocused ? 'bold' : 'normal',
+        },
+      ))
+        .setOrigin(0.5, 0)
+        .setScrollFactor(0)
+        .setDepth(DEPTH + 3)
+        .setResolution(getHudTextResolution());
+      this.scene.add.existing(label);
+      label.setMask(this.contentMask);
+      this.contentObjects.push(label);
+
+      const hitSize = (nodeRadius + 5) * 2;
+      const hit = this.addOwned(new Phaser.GameObjects.Zone(
+        this.scene,
+        panelX + pos.x,
+        panelY + pos.y,
+        hitSize,
+        hitSize,
+      ))
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(DEPTH + 4)
+        .setInteractive({ cursor: 'pointer' });
+      this.scene.add.existing(hit);
+      const nationId = node.nationId;
+      hit.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        this.worldInputGate.claimPointer(pointer.id);
+        consumePointerEvent(pointer);
+      });
+      hit.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        consumePointerEvent(pointer);
+        this.worldInputGate.releasePointer(pointer.id);
+        this.diplomacyGraphFocusNation = this.diplomacyGraphFocusNation === nationId ? null : nationId;
+        this.renderActiveContent();
+      });
+      this.contentObjects.push(hit);
+    }
   }
 
   private addLeaderboardTabs(y: number): number {
@@ -1108,10 +1446,13 @@ export class RightSidebarPanel {
     this.updateContentMask();
     this.updateScrollbar();
 
-    const buttonRowWidth = (BUTTON_DIAMETER * this.modeButtons.length) + (BUTTON_GAP * (this.modeButtons.length - 1));
+    const visibleButtons = this.modeButtons.filter((b) => b.visible);
+    const buttonRowWidth = visibleButtons.length > 0
+      ? (BUTTON_DIAMETER * visibleButtons.length) + (BUTTON_GAP * (visibleButtons.length - 1))
+      : 0;
     let buttonX = panelX + PANEL_WIDTH - buttonRowWidth + BUTTON_RADIUS;
     const buttonY = BUTTON_ROW_TOP + BUTTON_RADIUS;
-    for (const button of this.modeButtons) {
+    for (const button of visibleButtons) {
       button.background.setPosition(buttonX, buttonY);
       button.rim.setPosition(buttonX, buttonY);
       button.icon.setPosition(buttonX, buttonY - 1);
@@ -1301,7 +1642,7 @@ export class RightSidebarPanel {
       this.panelHeight,
     );
     if (!this.collapsed && panelBounds.contains(screenX, screenY)) return true;
-    return this.modeButtons.some((button) => button.hitArea.getBounds().contains(screenX, screenY));
+    return this.modeButtons.filter((b) => b.visible).some((button) => button.hitArea.getBounds().contains(screenX, screenY));
   }
 }
 

@@ -59,7 +59,8 @@ import {
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
-import { DiplomacyManager } from '../systems/DiplomacyManager';
+import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE } from '../systems/DiplomacyManager';
+import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
@@ -244,6 +245,7 @@ export class GameScene extends Phaser.Scene {
 
     // 6. Create cities from scenario (filtered)
     const cityManager = CityManager.loadFromScenario(activeCities, mapData);
+    const eraSystem = new EraSystem(nationManager);
     const culturalSphereSystem = new CulturalSphereSystem();
     for (const city of cityManager.getAllCities()) {
       cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
@@ -261,7 +263,7 @@ export class GameScene extends Phaser.Scene {
     const worldInputGate = new WorldInputGate();
     this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
     // 8. Rendera städer (depth 15)
-    const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager);
+    const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager, (nationId) => eraSystem.getNationEra(nationId));
 
     // 9. Rendera enheter (depth 18)
     const unitRenderer = new UnitRenderer(this, tileMap, unitManager, nationManager, mapData);
@@ -271,7 +273,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.centerOn(worldWidth / 2, worldHeight / 2);
 
     // 11. Turordning
-    const turnManager = new TurnManager(nationManager);
+    const turnManager = new TurnManager(nationManager, gameSpeed);
     unitManager.setCurrentRoundProvider(() => turnManager.getCurrentRound());
 
     // 11b. Discovery system — tracks which nations have met each other
@@ -303,7 +305,6 @@ export class GameScene extends Phaser.Scene {
       (nationId) => cultureEffectSystem?.getCultureHappinessBonus(nationId) ?? 0,
       (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
     );
-    const eraSystem = new EraSystem(nationManager);
     const formatLog = createAILogFormatter({
       nationManager,
       turnManager,
@@ -467,6 +468,19 @@ export class GameScene extends Phaser.Scene {
       unitManager,
       mapData,
     );
+    const peaceTreatySystem = new PeaceTreatySystem(
+      cityManager,
+      nationManager,
+      resourceSystem,
+      diplomacyManager,
+      mapData,
+      gridSystem,
+      productionSystem,
+      aiMilitaryEvaluationSystem,
+      aiMilitaryThreatEvaluationSystem,
+      diplomaticEvaluationSystem,
+    );
+
     const aiDiplomacySystem = new AIDiplomacySystem(
       diplomacyManager,
       diplomaticEvaluationSystem,
@@ -480,6 +494,7 @@ export class GameScene extends Phaser.Scene {
         getLeaderByNationId(nationId)?.id,
         eraSystem.getNationEra(nationId),
       ),
+      peaceTreatySystem,
     );
     const tradeDealSystem = new TradeDealSystem(
       diplomacyManager,
@@ -555,22 +570,42 @@ export class GameScene extends Phaser.Scene {
 
     turnManager.on('turnStart', (e) => diplomaticProposalSystem.update(e.round));
 
-    const shouldAutoplayAcceptPeace = (fromNationId: string, toNationId: string): boolean => {
-      const evaluation = diplomaticEvaluationSystem.evaluateRelation(toNationId, fromNationId);
-      const militaryComparison = aiMilitaryEvaluationSystem.compareMilitaryStrength(toNationId, fromNationId);
-      const threatLevel = aiMilitaryThreatEvaluationSystem.getThreatLevel(toNationId, fromNationId);
-      const personality = getLeaderPersonalityByNationId(toNationId);
-      return threatLevel === 'high'
-        || evaluation.attitude === 'afraid'
-        || militaryComparison === 'weaker'
-        || (personality.peacePreference >= 70 && evaluation.attitude !== 'hostile');
+    const shouldAutoplayAcceptPeace = (proposal: { fromNationId: string; toNationId: string; offeredCityId?: string; goldReparations?: number; warDuration: number }): boolean => {
+      return peaceTreatySystem.aiShouldAcceptTreaty(proposal, proposal.toNationId);
     };
 
-    const logAutoplayPeaceResolution = (fromNationId: string, toNationId: string, accepted: boolean): void => {
-      const fromName = nationManager.getNation(fromNationId)?.name ?? fromNationId;
-      const toName = nationManager.getNation(toNationId)?.name ?? toNationId;
+    const logTreatyDetails = (proposal: { fromNationId: string; toNationId: string; offeredCityId?: string; goldReparations?: number; warDuration: number }): void => {
+      const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
+      const toName = nationManager.getNation(proposal.toNationId)?.name ?? proposal.toNationId;
       logManager.info({
-        nationIds: [fromNationId, toNationId],
+        nationIds: [proposal.fromNationId, proposal.toNationId],
+        category: 'diplomacy',
+        message: `${fromName} proposed peace to ${toName} after ${proposal.warDuration} turn${proposal.warDuration === 1 ? '' : 's'} of war.`,
+      });
+      if (proposal.offeredCityId) {
+        const city = cityManager.getCity(proposal.offeredCityId);
+        if (city) {
+          logManager.info({
+            nationIds: [proposal.fromNationId, proposal.toNationId],
+            category: 'diplomacy',
+            message: `${fromName} offered city ${city.name} to ${toName} as part of the peace treaty.`,
+          });
+        }
+      }
+      if (proposal.goldReparations && proposal.goldReparations > 0) {
+        logManager.info({
+          nationIds: [proposal.fromNationId, proposal.toNationId],
+          category: 'diplomacy',
+          message: `${fromName} offered ${proposal.goldReparations} gold in war reparations to ${toName}.`,
+        });
+      }
+    };
+
+    const logAutoplayPeaceResolution = (proposal: { fromNationId: string; toNationId: string; offeredCityId?: string; goldReparations?: number; warDuration: number }, accepted: boolean): void => {
+      const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
+      const toName = nationManager.getNation(proposal.toNationId)?.name ?? proposal.toNationId;
+      logManager.info({
+        nationIds: [proposal.fromNationId, proposal.toNationId],
         category: 'diplomacy',
         message: `${toName} ${accepted ? 'accepted' : 'rejected'} ${fromName}'s peace offer during autoplay.`,
       });
@@ -580,10 +615,12 @@ export class GameScene extends Phaser.Scene {
       if (proposal.toNationId !== humanNationIdForDiplomacy) return;
       if (isAutoplayActive()) {
         if (proposal.payload.kind === 'peace') {
-          const accepted = shouldAutoplayAcceptPeace(proposal.fromNationId, proposal.toNationId);
+          const peaceProposal = diplomacyManager.getPendingProposal(proposal.toNationId)
+            ?? { fromNationId: proposal.fromNationId, toNationId: proposal.toNationId, warDuration: 0 };
+          const accepted = shouldAutoplayAcceptPeace(peaceProposal);
           if (accepted) diplomaticProposalSystem.acceptProposal(proposal.id);
           else diplomaticProposalSystem.rejectProposal(proposal.id);
-          logAutoplayPeaceResolution(proposal.fromNationId, proposal.toNationId, accepted);
+          logAutoplayPeaceResolution(peaceProposal, accepted);
         }
         return;
       }
@@ -2143,7 +2180,7 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
-    // AI proposes peace when all units lost
+    // AI proposes peace when all units lost (subject to normal peace rules)
     unitManager.onUnitChanged((event) => {
       if (event.reason !== 'removed') return;
       const deadOwnerId = event.unit.ownerId;
@@ -2151,17 +2188,36 @@ export class GameScene extends Phaser.Scene {
       if (!nation || nation.isHuman) return;
       if (diplomacyManager.getState(deadOwnerId, humanNationIdForDiplomacy) !== 'WAR') return;
       if (unitManager.getUnitsByOwner(deadOwnerId).length > 0) return;
-      diplomacyManager.proposePeace(deadOwnerId, humanNationIdForDiplomacy);
+      const currentTurn = turnManager.getCurrentRound();
+      if (!diplomacyManager.canProposePeace(deadOwnerId, humanNationIdForDiplomacy, currentTurn)) return;
+      const treaty = peaceTreatySystem.buildAIPeaceTreaty(deadOwnerId, humanNationIdForDiplomacy);
+      if (!treaty) return; // capital-only nation — fight to the end
+      diplomacyManager.proposePeace(deadOwnerId, humanNationIdForDiplomacy, treaty);
     });
 
     // Peace proposal modal (incoming from AI only)
     diplomacyManager.onPeaceProposed((proposal) => {
       // Skip modal if human is the proposer (already handled via diplomacyAction)
       if (proposal.fromNationId === humanNationIdForDiplomacy) return;
-      if (isAutoplayActive()) {
-        const accepted = shouldAutoplayAcceptPeace(proposal.fromNationId, proposal.toNationId);
+
+      // AI-to-AI peace: the receiving AI auto-evaluates without showing a player modal.
+      if (proposal.toNationId !== humanNationIdForDiplomacy) {
+        const accepted = peaceTreatySystem.aiShouldAcceptTreaty(proposal, proposal.toNationId);
+        if (accepted) {
+          logTreatyDetails(proposal);
+          peaceTreatySystem.executeTreaty(proposal);
+        }
         diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
-        logAutoplayPeaceResolution(proposal.fromNationId, proposal.toNationId, accepted);
+        rightPanel?.requestRefresh();
+        return;
+      }
+
+      if (isAutoplayActive()) {
+        const accepted = shouldAutoplayAcceptPeace(proposal);
+        logTreatyDetails(proposal);
+        if (accepted) peaceTreatySystem.executeTreaty(proposal);
+        diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
+        logAutoplayPeaceResolution(proposal, accepted);
         rightPanel?.requestRefresh();
         return;
       }
@@ -2170,13 +2226,22 @@ export class GameScene extends Phaser.Scene {
       if (!nation) return;
       const color = `#${nation.color.toString(16).padStart(6, '0')}`;
 
+      const offeredCity = proposal.offeredCityId ? cityManager.getCity(proposal.offeredCityId) : undefined;
+      const cityLine = offeredCity ? `\nOffers city: ${offeredCity.name}` : '';
+      const goldLine = proposal.goldReparations && proposal.goldReparations > 0
+        ? `\nWar reparations: ${proposal.goldReparations} gold`
+        : '';
+      const durationLine = `\nWar duration: ${proposal.warDuration} turn${proposal.warDuration === 1 ? '' : 's'}`;
+
       showDiplomacyModal({
         title: 'Peace Proposal',
-        message: `${nation.name} sues for peace. Accept?`,
+        message: `${nation.name} proposes peace.${durationLine}${cityLine}${goldLine}\n\nAccept?`,
         accentColor: color,
         confirmLabel: 'Accept',
         cancelLabel: 'Decline',
         onConfirm: () => {
+          logTreatyDetails(proposal);
+          peaceTreatySystem.executeTreaty(proposal);
           diplomacyManager.respondToPeace(proposal.fromNationId, humanNationIdForDiplomacy, true);
           rightPanel?.refreshCurrent();
         },
@@ -2244,16 +2309,45 @@ export class GameScene extends Phaser.Scene {
           onCancel: () => {},
         });
       } else if (action === 'proposePeace') {
+        const currentTurn = turnManager.getCurrentRound();
+        if (!diplomacyManager.canProposePeace(humanNationIdForDiplomacy, targetNationId, currentTurn)) return;
+        const offeredCity = peaceTreatySystem.selectPeaceOfferCity(humanNationIdForDiplomacy);
+        if (!offeredCity) return; // capital-only — cannot propose peace
+        const aggressorId = diplomacyManager.getAggressorNationId(humanNationIdForDiplomacy, targetNationId);
+        const isAggressor = aggressorId === humanNationIdForDiplomacy;
+        const goldReparations = isAggressor ? peaceTreatySystem.calculateReparations(humanNationIdForDiplomacy) : undefined;
+
+        const cityLine = `\nOffering city: ${offeredCity.name}`;
+        const goldLine = goldReparations && goldReparations > 0 ? `\nWar reparations: ${goldReparations} gold` : '';
+        const warDuration = diplomacyManager.getWarDuration(humanNationIdForDiplomacy, targetNationId, currentTurn);
+        const durationLine = `\nWar duration: ${warDuration} turn${warDuration === 1 ? '' : 's'}`;
+
         showDiplomacyModal({
           title: 'Propose Peace',
-          message: `Propose peace to ${targetNation.name}?`,
+          message: `Propose peace to ${targetNation.name}?${durationLine}${cityLine}${goldLine}`,
           accentColor: color,
           confirmLabel: 'Propose',
           cancelLabel: 'Cancel',
           onConfirm: () => {
-            // AI always accepts human peace proposals
-            diplomacyManager.proposePeace(humanNationIdForDiplomacy, targetNationId);
-            diplomacyManager.respondToPeace(humanNationIdForDiplomacy, targetNationId, true);
+            const treaty = { offeredCityId: offeredCity.id, goldReparations };
+            diplomacyManager.proposePeace(humanNationIdForDiplomacy, targetNationId, treaty);
+            const pendingProposal = diplomacyManager.getPendingProposal(targetNationId);
+            const accepted = pendingProposal
+              ? peaceTreatySystem.aiShouldAcceptTreaty(pendingProposal, targetNationId)
+              : false;
+            if (accepted && pendingProposal) {
+              logTreatyDetails(pendingProposal);
+              peaceTreatySystem.executeTreaty(pendingProposal);
+            }
+            diplomacyManager.respondToPeace(humanNationIdForDiplomacy, targetNationId, accepted);
+            if (!accepted) {
+              const toName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+              logManager.info({
+                nationIds: [humanNationIdForDiplomacy, targetNationId],
+                category: 'diplomacy',
+                message: `${toName} rejected the peace offer.`,
+              });
+            }
             rightPanel?.refreshCurrent();
           },
           onCancel: () => {},
@@ -2425,7 +2519,11 @@ export class GameScene extends Phaser.Scene {
       unitUpkeepSystem,
     );
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
+    this.diagnosticSystem.subscribeVisibility((open) => {
+      this.rightSidebarPanel?.setDiagnosticsEnabled(open);
+    });
     rightPanel.setDiplomacyManager(diplomacyManager);
+    rightPanel.setCurrentTurnGetter(() => turnManager.getCurrentRound());
     rightPanel.setDiplomaticEvaluationSystem(diplomaticEvaluationSystem);
     rightPanel.setBorderPressureSystem(borderPressureSystem);
     rightPanel.setMilitaryEvaluationSystem(aiMilitaryEvaluationSystem);
@@ -3248,6 +3346,9 @@ export class GameScene extends Phaser.Scene {
     researchSystem.onCompleted((event) => {
       if (event.nationId === humanNationId && isNaturalResourceRevealTechnology(event.technologyId)) {
         naturalResourceRenderer.rebuildAll();
+      }
+      for (const city of cityManager.getCitiesByOwner(event.nationId)) {
+        cityRenderer.refreshCity(city);
       }
       resourceSystem.recalculateForNation(event.nationId);
       happinessSystem.recalculateNation(event.nationId);

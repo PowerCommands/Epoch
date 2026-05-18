@@ -1,3 +1,13 @@
+import type { Era } from '../data/technologies';
+
+export function getCitySpriteKey(era: Era): string {
+  return `city_${era}`;
+}
+
+export function getCitySpritePath(era: Era): string {
+  return `assets/sprites/city_${era}.png`;
+}
+
 export function getUnitSpritePath(unitId: string): string {
   if (unitId === 'leader') return 'assets/sprites/units/leaders.png';
   return `assets/sprites/units/${unitId}.png`;

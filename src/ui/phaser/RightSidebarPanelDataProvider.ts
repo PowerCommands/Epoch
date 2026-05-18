@@ -20,6 +20,7 @@ import { calculateCityEconomy } from '../../systems/CityEconomy';
 import type { CityManager } from '../../systems/CityManager';
 import type { CityTerritorySystem } from '../../systems/CityTerritorySystem';
 import type { DiplomacyManager } from '../../systems/DiplomacyManager';
+import { MIN_WAR_TURNS_FOR_PEACE } from '../../systems/DiplomacyManager';
 import type { DiscoverySystem } from '../../systems/DiscoverySystem';
 import type { EventLogSystem } from '../../systems/EventLogSystem';
 import type { EraSystem } from '../../systems/EraSystem';
@@ -50,7 +51,7 @@ import type { Producible } from '../../types/producible';
 import type { LeaderDefinition } from '../../types/leader';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
-import { getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
+import { getCitySpritePath, getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
 import type {
   LeaderRelationRow,
   RightSidebarContent,
@@ -62,6 +63,7 @@ import type {
   RightSidebarRow,
   RightSidebarSection,
 } from './RightSidebarPanelTypes';
+import type { DiplomacyGraph, DiplomacyGraphEdge, DiplomacyGraphNode, DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 import { RafScheduler } from '../../utils/RafScheduler';
 
 type ChangedListener = () => void;
@@ -71,8 +73,6 @@ type BuildingPlacementRequestHandler = (city: City, buildingId: string) => Build
 type WonderPlacementRequestHandler = (city: City, wonderId: string) => BuildingPlacementRequestResult;
 type WonderPlacementAvailabilityProvider = (city: City, wonderId: string) => boolean;
 type BuyProductionRequestHandler = (city: City, index: number) => void;
-
-const CITY_SPRITE_PATH = 'assets/sprites/city_default.png';
 
 interface LeaderboardEntry {
   nationId: string;
@@ -87,6 +87,7 @@ export class RightSidebarPanelDataProvider {
   private readonly scheduler = new RafScheduler();
   private readonly listeners: ChangedListener[] = [];
   private diplomacyManager: DiplomacyManager | null = null;
+  private getCurrentTurn: (() => number) | null = null;
   private diplomaticEvaluationSystem: DiplomaticEvaluationSystem | null = null;
   private borderPressureSystem: BorderPressureSystem | null = null;
   private militaryEvaluationSystem: AIMilitaryEvaluationSystem | null = null;
@@ -139,6 +140,10 @@ export class RightSidebarPanelDataProvider {
 
   setDiplomacyManager(dm: DiplomacyManager): void {
     this.diplomacyManager = dm;
+  }
+
+  setCurrentTurnGetter(fn: () => number): void {
+    this.getCurrentTurn = fn;
   }
 
   setDiplomaticEvaluationSystem(system: DiplomaticEvaluationSystem): void {
@@ -368,6 +373,38 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
+  buildDiplomacyGraph(): DiplomacyGraph {
+    const nations = this.nationManager.getAllNations();
+    const nodes: DiplomacyGraphNode[] = nations.map((nation) => ({
+      nationId: nation.id,
+      name: nation.name,
+      color: nation.color,
+    }));
+    const edges: DiplomacyGraphEdge[] = [];
+    for (let i = 0; i < nations.length; i++) {
+      for (let j = i + 1; j < nations.length; j++) {
+        const a = nations[i];
+        const b = nations[j];
+        const met = this.discoverySystem ? this.discoverySystem.hasMet(a.id, b.id) : true;
+        if (!met) continue;
+        let type: DiplomacyRelationshipType = 'hasMet';
+        if (this.diplomacyManager) {
+          if (
+            this.diplomacyManager.isOpenBorderGrantedFrom(a.id, b.id)
+            || this.diplomacyManager.isOpenBorderGrantedFrom(b.id, a.id)
+          ) {
+            type = 'openBorders';
+          }
+          if (this.diplomacyManager.getState(a.id, b.id) === 'WAR') {
+            type = 'war';
+          }
+        }
+        edges.push({ fromNationId: a.id, toNationId: b.id, type });
+      }
+    }
+    return { nodes, edges };
+  }
+
   getLogContent(): RightSidebarContent {
     const entries = this.eventLog?.getVisibleEntries() ?? [];
     return {
@@ -454,7 +491,7 @@ export class RightSidebarPanelDataProvider {
         },
         0x7fb4d5,
         '🗺️',
-        CITY_SPRITE_PATH,
+        this.getCitySpritePath(result.city.ownerId),
       );
     }
 
@@ -1193,9 +1230,13 @@ export class RightSidebarPanelDataProvider {
         },
         undefined,
         undefined,
-        CITY_SPRITE_PATH,
+        this.getCitySpritePath(city.ownerId),
       );
     });
+  }
+
+  private getCitySpritePath(nationId: string): string {
+    return getCitySpritePath(this.eraSystem?.getNationEra(nationId) ?? 'ancient');
   }
 
   private getDiplomacySection(nationId: string): RightSidebarSection {
@@ -1262,11 +1303,23 @@ export class RightSidebarPanelDataProvider {
       hasTradeRelations ? 0xb86767 : nation?.color,
     ));
     if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
-    rows.push(buttonRow(relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace', () => {
-      document.dispatchEvent(new CustomEvent('diplomacyAction', {
-        detail: { action: relation.state === 'PEACE' ? 'declareWar' : 'proposePeace', targetNationId: nationId },
-      }));
-    }, relation.state === 'PEACE' ? 0xb86767 : nation?.color));
+    const isAtWar = relation.state === 'WAR';
+    const currentTurn = this.getCurrentTurn?.() ?? 0;
+    const warDuration = isAtWar && dm ? dm.getWarDuration(humanId, nationId, currentTurn) : 0;
+    const peaceUnavailableReason = isAtWar && dm && !dm.canProposePeace(humanId, nationId, currentTurn)
+      ? `Peace cannot be proposed until ${MIN_WAR_TURNS_FOR_PEACE} turns of war have passed (${warDuration}/${MIN_WAR_TURNS_FOR_PEACE}).`
+      : undefined;
+    rows.push(disabledReasonButtonRow(
+      relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace',
+      isAtWar ? peaceUnavailableReason : undefined,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: relation.state === 'PEACE' ? 'declareWar' : 'proposePeace', targetNationId: nationId },
+        }));
+      },
+      relation.state === 'PEACE' ? 0xb86767 : nation?.color,
+    ));
+    if (peaceUnavailableReason) rows.push(textRow(peaceUnavailableReason, true));
     return { title: 'Diplomacy', rows };
   }
 

@@ -588,6 +588,8 @@ export class AIOverseasExpansionSystem {
     }
 
     this.log(nationId, `Settler unboarded near ${target.name} at (${landingTile.x},${landingTile.y}).`);
+
+    const transportId = target.assignedTransportUnitId;
     target.status = 'completed';
     target.selected = false;
     target.assignedSettlerUnitId = undefined;
@@ -595,6 +597,16 @@ export class AIOverseasExpansionSystem {
     target.settlerRequested = false;
     target.transportRequested = false;
     target.requestedTransportUnitTypeId = undefined;
+
+    if (transportId) {
+      const transport = this.unitManager.getUnit(transportId);
+      if (transport && transport.cargoUnitIds.length === 0) {
+        const nation = this.nationManager.getNation(nationId);
+        this.log(nationId, `[Expedition] ${nation?.name ?? nationId} retired expedition transport near ${target.name} after successful settler landing.`);
+        this.unitManager.removeUnit(transportId);
+      }
+    }
+
     this.log(nationId, `Overseas expedition to ${target.name} completed.`);
   }
 

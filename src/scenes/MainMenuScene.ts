@@ -4,13 +4,14 @@ import type { MapDefinition } from '../data/maps';
 import { getLeaderByNationId } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { GameConfig, ResourceAbundance } from '../types/gameConfig';
-import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, type GameSpeedId } from '../data/gameSpeeds';
+import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
-import { START_YEAR, YEARS_PER_ROUND, formatYear } from '../systems/TurnManager';
+import { calculateGlobalYear, formatYear } from '../systems/TurnManager';
 import { bindMusicControls } from '../ui/MusicControls';
 import type { SavedGameState } from '../types/saveGame';
+import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
 
 /**
  * MainMenuScene — HTML/CSS start screen for map, nation, and opponent setup.
@@ -18,6 +19,7 @@ import type { SavedGameState } from '../types/saveGame';
 export class MainMenuScene extends Phaser.Scene {
   private overlay: HTMLDivElement | null = null;
   private maps: MapDefinition[] = [];
+  private customScenarios: CustomScenarioEntry[] = [];
   private currentMapKey = '';
   private nations: ScenarioNation[] = [];
   private selectedNationId: string | null = null;
@@ -37,6 +39,7 @@ export class MainMenuScene extends Phaser.Scene {
 
   create(): void {
     this.maps = parseMapManifest(this.cache.json.get(MAP_MANIFEST_CACHE_KEY)).maps;
+    this.customScenarios = CustomScenarioStorage.loadAll();
     this.latestAutosave = this.readLatestAutosave();
     this.overlay = document.createElement('div');
     this.overlay.id = 'main-menu-overlay';
@@ -86,9 +89,7 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private buildHTML(): string {
-    const mapOptions = this.maps
-      .map(m => `<option value="${m.key}">${m.label}</option>`)
-      .join('');
+    const mapOptions = this.buildMapOptionsHTML();
     const gameSpeedOptions = GAME_SPEEDS
       .map(speed => `<option value="${speed.id}"${speed.id === DEFAULT_GAME_SPEED_ID ? ' selected' : ''}>${speed.name}</option>`)
       .join('');
@@ -201,6 +202,36 @@ export class MainMenuScene extends Phaser.Scene {
     `;
   }
 
+  private buildMapOptionsHTML(): string {
+    const officialOptions = this.maps
+      .map((map) => `<option value="${escapeHtmlAttribute(map.key)}">${escapeHtmlText(map.label)}</option>`)
+      .join('');
+    const customOptions = this.customScenarios
+      .map((entry) => {
+        const edited = new Date(entry.metadata.updatedAt).toLocaleDateString();
+        return `<option class="custom-scenario-option" value="${escapeHtmlAttribute(entry.metadata.id)}">${escapeHtmlText(entry.metadata.name)} (edited ${escapeHtmlText(edited)})</option>`;
+      })
+      .join('');
+
+    if (!customOptions) return `<optgroup label="Official Scenarios">${officialOptions}</optgroup>`;
+    return `
+      <optgroup label="Official Scenarios">${officialOptions}</optgroup>
+      <optgroup label="My Scenarios">${customOptions}</optgroup>
+    `;
+  }
+
+  private getCustomScenario(mapKey: string): CustomScenarioEntry | undefined {
+    return this.customScenarios.find((entry) => entry.metadata.id === mapKey);
+  }
+
+  private ensureScenarioCached(mapKey: string): boolean {
+    if (this.cache.json.has(mapKey)) return true;
+    const customScenario = this.getCustomScenario(mapKey);
+    if (!customScenario) return false;
+    this.cache.json.add(mapKey, customScenario.scenario);
+    return true;
+  }
+
   private wireEvents(): void {
     const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement;
     mapSelect.addEventListener('change', () => this.onMapChanged(mapSelect.value));
@@ -257,7 +288,9 @@ export class MainMenuScene extends Phaser.Scene {
 
     document.getElementById('mm-editor-btn')!.addEventListener('click', () => {
       const mapKey = this.currentMapKey || this.maps[0]?.key;
-      const query = mapKey ? `?map=${encodeURIComponent(mapKey)}` : '';
+      const query = this.getCustomScenario(mapKey)
+        ? `?custom=${encodeURIComponent(mapKey)}`
+        : mapKey ? `?map=${encodeURIComponent(mapKey)}` : '';
       window.location.href = `/editor.html${query}`;
     });
 
@@ -284,7 +317,8 @@ export class MainMenuScene extends Phaser.Scene {
     this.currentMapKey = mapKey;
     this.selectedNationId = null;
 
-    const json = this.cache.json.get(mapKey) as ScenarioData | undefined;
+    const customScenario = this.getCustomScenario(mapKey);
+    const json = customScenario?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined;
     if (!json) {
       this.nations = [];
       this.selectedOpponentIds = new Set();
@@ -491,6 +525,10 @@ export class MainMenuScene extends Phaser.Scene {
 
   private startGame(): void {
     if (!this.selectedNationId) return;
+    if (!this.ensureScenarioCached(this.currentMapKey)) {
+      window.alert('Could not load the selected scenario.');
+      return;
+    }
 
     const config: GameConfig = {
       mapKey: this.currentMapKey,
@@ -515,6 +553,10 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       const savedState = result.state;
+      if (!this.ensureScenarioCached(savedState.mapKey)) {
+        window.alert('Could not load the scenario for this save. The custom scenario may have been deleted.');
+        return;
+      }
       this.cleanup();
       this.scene.start('GameScene', {
         mapKey: savedState.mapKey,
@@ -551,6 +593,10 @@ export class MainMenuScene extends Phaser.Scene {
   private continueLatestAutosave(): void {
     const savedState = this.latestAutosave ?? this.readLatestAutosave();
     if (!savedState) return;
+    if (!this.ensureScenarioCached(savedState.mapKey)) {
+      window.alert('Could not load the scenario for this save. The custom scenario may have been deleted.');
+      return;
+    }
 
     this.cleanup();
     this.scene.start('GameScene', {
@@ -567,8 +613,10 @@ export class MainMenuScene extends Phaser.Scene {
   private getContinueButtonTitleAttribute(): string {
     if (!this.latestAutosave) return '';
     const round = this.latestAutosave.turn.currentRound;
-    const year = this.latestAutosave.worldYear ?? START_YEAR + ((round - 1) * YEARS_PER_ROUND);
+    const fallbackSpeed = getGameSpeedById(this.latestAutosave.gameSpeedId ?? DEFAULT_GAME_SPEED_ID);
+    const year = this.latestAutosave.worldYear ?? calculateGlobalYear(round, fallbackSpeed.yearProgressionMultiplier);
     const scenarioName = this.maps.find((map) => map.key === this.latestAutosave?.mapKey)?.label
+      ?? this.customScenarios.find((entry) => entry.metadata.id === this.latestAutosave?.mapKey)?.metadata.name
       ?? this.latestAutosave.mapKey;
     const savedAt = new Date(this.latestAutosave.savedAt);
     const savedAtLabel = Number.isNaN(savedAt.getTime())
@@ -1028,6 +1076,10 @@ export class MainMenuScene extends Phaser.Scene {
         outline-offset: 2px;
       }
 
+      .mm-select option.custom-scenario-option {
+        font-style: italic;
+      }
+
       .mm-opponent-summary {
         margin-top: 4px;
       }
@@ -1288,6 +1340,13 @@ function escapeHtmlAttribute(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
