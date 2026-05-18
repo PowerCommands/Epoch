@@ -257,7 +257,7 @@ export class GameScene extends Phaser.Scene {
 
     // 5. Render border-only territory visualization.
     const territoryRenderer = new TerritoryRenderer(this, tileMap, nationManager, mapData, gridSystem);
-    territoryRenderer.render();
+    territoryRenderer.invalidate();
 
     // 5b. Culture overlay renderer (hidden until the player toggles the lens).
     const cultureLayerRenderer = new CultureLayerRenderer(this, tileMap, nationManager, mapData);
@@ -1374,7 +1374,7 @@ export class GameScene extends Phaser.Scene {
       aiDiplomacySystem.runTurn(nation.id);
       aiSystem.runTurn(nation.id);
       aiExplorationSystem.runTurn(nation.id);
-      territoryRenderer.render();
+      territoryRenderer.invalidate();
 
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -1435,7 +1435,7 @@ export class GameScene extends Phaser.Scene {
         aiDiplomacySystem.runTurn(e.nation.id);
         aiSystem.runTurn(e.nation.id);
         aiExplorationSystem.runTurn(e.nation.id);
-        territoryRenderer.render();
+        territoryRenderer.invalidate();
         turnManager.endCurrentTurn();
       }
     });
@@ -1688,7 +1688,7 @@ export class GameScene extends Phaser.Scene {
           resourceSystem.recalculateForNation(nation.id);
         }
         if (expansion.claimedCoords.length > 0) {
-          territoryRenderer.render();
+          territoryRenderer.invalidate();
           this.minimapHud?.rebuild();
         }
         logManager.info({ nationId: city.ownerId, category: 'wonder', message: `completed the ${item.wonderType.name} in ${city.name}.` });
@@ -1834,7 +1834,7 @@ export class GameScene extends Phaser.Scene {
       unitRenderer.rebuildAll();
       cityRenderer.rebuildAll();
       cityBannerRenderer.rebuildAll();
-      territoryRenderer.render();
+      territoryRenderer.invalidate();
       this.minimapHud?.rebuild();
       refreshCultureOverlay();
       resourceSystem.recalculateForNation(event.attacker.ownerId);
@@ -1970,7 +1970,7 @@ export class GameScene extends Phaser.Scene {
         cityRenderer.refreshCity(e.city);
         cityBannerRenderer.refreshCity(e.city);
         // Territory borders och minimap behöver ritas om efter ownerId-transfer.
-        territoryRenderer.render();
+        territoryRenderer.invalidate();
         this.minimapHud?.rebuild();
         refreshCultureOverlay();
         hudLayer?.refresh();
@@ -2011,7 +2011,7 @@ export class GameScene extends Phaser.Scene {
         cityBannerRenderer.refreshCity(city);
       }
       unitRenderer.rebuildAll();
-      territoryRenderer.render();
+      territoryRenderer.invalidate();
       this.minimapHud?.rebuild();
       refreshCultureOverlay();
       if (event.conquerorNationId) resourceSystem.recalculateForNation(event.conquerorNationId);
@@ -3510,7 +3510,7 @@ export class GameScene extends Phaser.Scene {
       console.log(`[autorun] Turn ${event.round} | cities: ${cities} | units: ${units}`);
     });
     resourceSystem.on(() => {
-      territoryRenderer.render();
+      territoryRenderer.invalidate();
       this.minimapHud?.rebuild();
       cityBannerRenderer.rebuildAll();
       hudLayer?.refresh();
@@ -3740,6 +3740,7 @@ export class GameScene extends Phaser.Scene {
       tileMap.shutdown();
       coastEdgeRenderer.shutdown();
       biomeEdgeRenderer.shutdown();
+      territoryRenderer.shutdown();
       hudLayer?.shutdown();
       rightPanel?.shutdown();
       diagnosticDialog.shutdown();
@@ -3853,7 +3854,7 @@ export class GameScene extends Phaser.Scene {
       tileBuildingRenderer.rebuildAll();
       tileImprovementOverlayRenderer.rebuildAll();
       unitRenderer.rebuildAll();
-      territoryRenderer.render();
+      territoryRenderer.invalidate();
       refreshCultureOverlay();
       worldMarkerRenderer.refresh();
       leaderStrip?.rebuild();

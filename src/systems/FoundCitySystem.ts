@@ -117,7 +117,7 @@ export class FoundCitySystem {
     this.unitManager.removeUnit(unit.id);
 
     // Refresh rendering
-    this.territoryRenderer.render();
+    this.territoryRenderer.invalidate();
     this.cityRenderer.refreshCity(city);
 
     // Recalculate resources for nation (new city adds income)
