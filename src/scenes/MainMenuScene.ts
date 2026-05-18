@@ -22,6 +22,7 @@ interface EpochMainMenuDiagnostics {
     gameSpeedId?: GameSpeedId;
     resourceAbundance?: ResourceAbundance;
   }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
+  startSavedGame: (savedState: unknown) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string };
 }
 
 /**
@@ -259,6 +260,7 @@ export class MainMenuScene extends Phaser.Scene {
         })),
       ],
       startNewGame: (options = {}) => this.startDiagnosticGame(options),
+      startSavedGame: (savedState) => this.startDiagnosticSavedGame(savedState),
     };
   }
 
@@ -298,6 +300,36 @@ export class MainMenuScene extends Phaser.Scene {
     } satisfies GameConfig);
 
     return { ok: true, scenario: scenarioKey, humanNationId, activeNationIds: finalActiveNationIds };
+  }
+
+  private startDiagnosticSavedGame(savedStateInput: unknown): { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string } {
+    const result = SaveLoadService.validate(savedStateInput);
+    if (!result.ok) return { ok: false, error: result.error };
+
+    const savedState = result.state;
+    if (!this.ensureScenarioCached(savedState.mapKey)) {
+      return { ok: false, error: `Scenario could not be loaded for save: ${savedState.mapKey}` };
+    }
+
+    this.cleanup();
+    this.scene.start('GameScene', {
+      mapKey: savedState.mapKey,
+      humanNationId: savedState.humanNationId,
+      activeNationIds: savedState.activeNationIds,
+      resourceAbundance: 'normal',
+      gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+      autofocusOnEndTurn: false,
+      savedState,
+    } satisfies GameConfig);
+
+    return {
+      ok: true,
+      scenario: savedState.mapKey,
+      humanNationId: savedState.humanNationId,
+      activeNationIds: savedState.activeNationIds,
+      startingTurn: savedState.turn.currentRound,
+      startingYear: savedState.worldYear,
+    };
   }
 
   private resolveDiagnosticScenarioKey(value: string | undefined): string | null {

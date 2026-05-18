@@ -1,7 +1,6 @@
 import { chromium, type Browser, type Page } from 'playwright';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs/promises';
-import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -13,6 +12,7 @@ interface AutorunOptions {
   headed: boolean;
   timeoutMs: number;
   browserPath?: string;
+  savePath?: string;
 }
 
 interface AutorunMetadata {
@@ -23,12 +23,18 @@ interface AutorunMetadata {
   success: boolean;
   durationMs: number;
   port: number;
+  savePath?: string;
+  outputSavePath?: string;
+  startingTurn?: number;
+  startingYear?: number;
+  finalTurn?: number;
+  finalYear?: number;
   browserPath?: string;
   error?: string;
   stateSummary?: unknown;
 }
 
-const DEFAULT_PORT = 4175;
+const DEFAULT_PORT = 4173;
 const DEFAULT_TURNS = 10;
 const DEFAULT_SCENARIO = 'map_europe';
 const DEFAULT_OUTPUT_DIR = 'autorun-output';
@@ -46,9 +52,11 @@ async function main(): Promise<void> {
   const timestamp = new Date().toISOString();
   const outputDir = path.resolve(process.cwd(), options.outputDir);
   const screenshotsDir = path.join(outputDir, 'screenshots');
+  const savePath = options.savePath ? path.resolve(process.cwd(), options.savePath) : undefined;
   await fs.mkdir(outputDir, { recursive: true });
   await fs.mkdir(screenshotsDir, { recursive: true });
-  const port = await findAvailablePort(options.port);
+  await fs.mkdir(path.resolve(process.cwd(), 'autorun-input'), { recursive: true });
+  const port = options.port;
 
   let server: ChildProcessWithoutNullStreams | null = null;
   let browser: Browser | null = null;
@@ -58,10 +66,19 @@ async function main(): Promise<void> {
   let errorMessage: string | undefined;
   let logText = '';
   let stateSummary: unknown;
+  let saveState: unknown;
+  let startScenario = options.scenario;
+  let startingTurn: number | undefined;
+  let startingYear: number | undefined;
   let browserPath = options.browserPath;
   const browserMessages: string[] = [];
 
   try {
+    const savedState = savePath ? await readSaveState(savePath) : undefined;
+    startingTurn = getSavedTurn(savedState);
+    startingYear = getSavedYear(savedState);
+    startScenario = getSavedScenario(savedState) ?? options.scenario;
+
     await runNpmCommand(['run', 'build']);
     server = startPreviewServer(port);
     browserPath = browserPath ?? await findSystemBrowserPath();
@@ -74,6 +91,7 @@ async function main(): Promise<void> {
       const text = `[browser:${message.type()}] ${message.text()}`;
       browserMessages.push(text);
       if (message.type() === 'error') console.warn(text);
+      else if (message.type() === 'log') console.log(text);
     });
     page.on('pageerror', (error) => {
       const text = `[browser:pageerror] ${error.message}`;
@@ -83,15 +101,20 @@ async function main(): Promise<void> {
 
     await gotoWithRetry(page, `http://127.0.0.1:${port}/?epochDiagnostics=1`, options.timeoutMs);
     await page.waitForFunction(
-      () => typeof window.__epochDiagnostics?.startNewGame === 'function',
-      undefined,
+      (useSave) => useSave
+        ? typeof window.__epochDiagnostics?.startSavedGame === 'function'
+        : typeof window.__epochDiagnostics?.startNewGame === 'function',
+      Boolean(savedState),
       { timeout: options.timeoutMs },
     );
 
-    const startResult = await page.evaluate((scenario) => {
-      return window.__epochDiagnostics!.startNewGame({ scenario });
-    }, options.scenario);
+    const startResult = savedState
+      ? await page.evaluate((state) => window.__epochDiagnostics!.startSavedGame!(state), savedState)
+      : await page.evaluate((scenario) => window.__epochDiagnostics!.startNewGame({ scenario }), options.scenario);
     if (!startResult.ok) throw new Error(startResult.error);
+    startScenario = startResult.scenario;
+    startingTurn = startResult.startingTurn ?? startingTurn;
+    startingYear = startResult.startingYear ?? startingYear;
 
     await page.waitForFunction(
       () => typeof window.__epochDiagnostics?.startAutoplay === 'function',
@@ -107,6 +130,7 @@ async function main(): Promise<void> {
     completedTurns = autoplayResult.completedRounds;
     logText = await page.evaluate(() => window.__epochDiagnostics!.getEventLogText());
     stateSummary = await page.evaluate(() => window.__epochDiagnostics!.getStateSummary());
+    saveState = await page.evaluate(() => window.__epochDiagnostics!.getSaveState?.());
     success = completedTurns >= options.turns;
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : String(error);
@@ -121,18 +145,25 @@ async function main(): Promise<void> {
     }
   } finally {
     await browser?.close();
-    stopDevServer(server);
+    stopPreviewServer(server);
   }
 
   const durationMs = Date.now() - startedAt;
+  const outputSavePath = path.join(outputDir, 'latest-save.json');
+  const finalState = stateSummary as { currentRound?: number } | undefined;
   const metadata: AutorunMetadata = {
-    scenario: options.scenario,
+    scenario: startScenario,
     requestedTurns: options.turns,
     completedTurns,
     timestamp,
     success,
     durationMs,
     port,
+    savePath,
+    outputSavePath: saveState ? path.relative(process.cwd(), outputSavePath) : undefined,
+    startingTurn,
+    startingYear,
+    finalTurn: finalState?.currentRound,
     browserPath,
     error: errorMessage,
     stateSummary,
@@ -142,6 +173,9 @@ async function main(): Promise<void> {
   await fs.writeFile(path.join(outputDir, 'latest-log.txt'), logText || '(no log entries)\n', 'utf8');
   await fs.writeFile(path.join(outputDir, 'latest-summary.md'), summary, 'utf8');
   await fs.writeFile(path.join(outputDir, 'latest-metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+  if (saveState) {
+    await fs.writeFile(outputSavePath, `${JSON.stringify(saveState, null, 2)}\n`, 'utf8');
+  }
 
   if (!success) {
     console.error(`Autorun failed: ${errorMessage ?? 'completed fewer turns than requested'}`);
@@ -176,8 +210,8 @@ function parseArgs(args: string[]): AutorunOptions {
     } else if (arg === '--output' && next) {
       options.outputDir = next;
       i++;
-    } else if (arg === '--port' && next) {
-      options.port = Number.parseInt(next, 10);
+    } else if (arg === '--save' && next) {
+      options.savePath = next;
       i++;
     } else if (arg === '--timeout-ms' && next) {
       options.timeoutMs = Number.parseInt(next, 10);
@@ -227,7 +261,7 @@ function runNpmCommand(args: string[]): Promise<void> {
   });
 }
 
-function stopDevServer(server: ChildProcessWithoutNullStreams | null): void {
+function stopPreviewServer(server: ChildProcessWithoutNullStreams | null): void {
   if (!server || server.killed) return;
   if (process.platform !== 'win32' && server.pid) {
     try {
@@ -281,6 +315,11 @@ function buildSummary(metadata: AutorunMetadata, browserMessages: string[]): str
     `- Timestamp: ${metadata.timestamp}`,
     `- Port: ${metadata.port}`,
   ];
+  if (metadata.savePath) lines.push(`- Input save: ${metadata.savePath}`);
+  if (metadata.outputSavePath) lines.push(`- Output save: ${metadata.outputSavePath}`);
+  if (metadata.startingTurn !== undefined) lines.push(`- Starting turn: ${metadata.startingTurn}`);
+  if (metadata.finalTurn !== undefined) lines.push(`- Final turn: ${metadata.finalTurn}`);
+  if (metadata.startingYear !== undefined) lines.push(`- Starting year: ${metadata.startingYear}`);
   if (metadata.error) lines.push(`- Error: ${metadata.error}`);
   if (metadata.browserPath) lines.push(`- Browser: ${metadata.browserPath}`);
   if (browserMessages.length > 0) {
@@ -307,22 +346,31 @@ async function findSystemBrowserPath(): Promise<string | undefined> {
   return undefined;
 }
 
-async function findAvailablePort(startPort: number): Promise<number> {
-  for (let port = startPort; port < startPort + 50; port++) {
-    if (await isPortAvailable(port)) return port;
+async function readSaveState(savePath: string): Promise<unknown> {
+  const raw = await fs.readFile(savePath, 'utf8');
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not parse save file ${savePath}: ${message}`);
   }
-  throw new Error(`No available port found from ${startPort} to ${startPort + 49}`);
 }
 
-function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', () => resolve(false));
-    server.once('listening', () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, '127.0.0.1');
-  });
+function getSavedScenario(savedState: unknown): string | undefined {
+  return isRecord(savedState) && typeof savedState.mapKey === 'string' ? savedState.mapKey : undefined;
+}
+
+function getSavedTurn(savedState: unknown): number | undefined {
+  if (!isRecord(savedState) || !isRecord(savedState.turn)) return undefined;
+  return typeof savedState.turn.currentRound === 'number' ? savedState.turn.currentRound : undefined;
+}
+
+function getSavedYear(savedState: unknown): number | undefined {
+  return isRecord(savedState) && typeof savedState.worldYear === 'number' ? savedState.worldYear : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 main().catch((error) => {
@@ -341,12 +389,21 @@ declare global {
         gameSpeedId?: string;
         resourceAbundance?: string;
       }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
+      startSavedGame?: (savedState: unknown) => {
+        ok: true;
+        scenario: string;
+        humanNationId: string;
+        activeNationIds: string[];
+        startingTurn: number;
+        startingYear?: number;
+      } | { ok: false; error: string };
       startAutoplay?: (rounds: number) => Promise<{ completedRounds: number }>;
       stopAutoplay?: () => void;
       isAutoplayActive?: () => boolean;
       isAutoplayCompleted?: () => boolean;
       getEventLogText?: () => string;
       getStateSummary?: () => unknown;
+      getSaveState?: () => unknown;
     };
   }
 }

@@ -119,6 +119,7 @@ import { CORPORATIONS, getCorporationById } from '../data/corporations';
 import { getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
+import { Tooltip } from '../ui/hud/Tooltip';
 import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
 import { UnitHoverDiagnosticHud } from '../ui/hud/UnitHoverDiagnosticHud';
 import { MinimapHud } from '../ui/hud/MinimapHud';
@@ -176,6 +177,7 @@ interface EpochGameDiagnostics {
     cityCount: number;
     unitCount: number;
   };
+  getSaveState: () => SavedGameState;
 }
 
 /**
@@ -401,6 +403,7 @@ export class GameScene extends Phaser.Scene {
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
+    const cityBannerTooltip = new Tooltip(this, (obj) => { this.add.existing(obj); return obj; });
     const cityBannerRenderer = new CityBannerRenderer(
       this,
       tileMap,
@@ -408,6 +411,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       productionSystem,
       wonderSystem,
+      cityBannerTooltip,
     );
     let rangedTargets = new Set<string>();
     const cityWorkTileRenderer = new CityWorkTileRenderer(this, tileMap, cityManager, mapData, gridSystem);
@@ -3407,6 +3411,7 @@ export class GameScene extends Phaser.Scene {
       diagnosticsWindow.__epochDiagnostics = {
         startAutoplay: (rounds: number) => new Promise((resolve) => {
           const requestedRounds = Math.max(1, Math.floor(rounds));
+          this.diagnosticSystem.enableTurnLogging();
           autoplaySystem.onCompleted((event) => resolve({ completedRounds: event.totalRounds }));
           autoplaySystem.start(requestedRounds);
         }),
@@ -3428,6 +3433,28 @@ export class GameScene extends Phaser.Scene {
             unitCount: unitManager.getAllUnits().length,
           };
         },
+        getSaveState: () => SaveLoadService.serialize({
+          mapKey: data.mapKey,
+          humanNationId: data.humanNationId,
+          activeNationIds: data.activeNationIds,
+          gameSpeedId: gameSpeed.id,
+          mapData,
+          nationManager,
+          cityManager,
+          unitManager,
+          productionSystem,
+          diplomacyManager,
+          discoverySystem,
+          turnManager,
+          gridSystem,
+          wonderSystem,
+          policySystem,
+          tradeDealSystem,
+          exileProtectionSystem,
+          corporationSystem,
+          worldMarkerSystem,
+          foreignTroopViolationSystem,
+        }),
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
         delete diagnosticsWindow.__epochDiagnostics;
@@ -3467,6 +3494,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
     turnManager.on('roundStart', () => hudLayer?.refresh());
+    turnManager.on('roundStart', (event) => {
+      if (!this.diagnosticSystem.isTurnLoggingEnabled()) return;
+      const cities = cityManager.getAllCities().length;
+      const units = unitManager.getAllUnits().length;
+      console.log(`[autorun] Turn ${event.round} | cities: ${cities} | units: ${units}`);
+    });
     resourceSystem.on(() => {
       territoryRenderer.render();
       this.minimapHud?.rebuild();

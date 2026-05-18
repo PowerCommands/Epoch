@@ -33,7 +33,12 @@
       "Bash(python3 scripts/generateWorldMap.py)",
       "Bash(python3 -)",
       "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
-      "Bash(awk '/^  [a-zA-Z]/ && !/private/ && !/readonly/ {print NR\": \"$0}' /home/harri/projects/Epoch/src/systems/ai/AISettlementMemorySystem.ts)"
+      "Bash(awk '/^  [a-zA-Z]/ && !/private/ && !/readonly/ {print NR\": \"$0}' /home/harri/projects/Epoch/src/systems/ai/AISettlementMemorySystem.ts)",
+      "Bash(find /home/harri -maxdepth 4 -name \"colosseum.png\" -o -name \"temple.png\" 2>/dev/null)",
+      "Read(//home/harri/**)",
+      "Bash(python process.py)",
+      "Bash(convert --version)",
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL ok'\\)\")"
     ]
   }
 }

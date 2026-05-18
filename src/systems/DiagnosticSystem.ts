@@ -15,6 +15,12 @@ const DEFAULT_SNAPSHOT: DiagnosticSnapshot = {
 
 export class DiagnosticSystem {
   private openState = false;
+  private turnLoggingState = false;
+
+  enableTurnLogging(): void { this.turnLoggingState = true; }
+  disableTurnLogging(): void { this.turnLoggingState = false; }
+  toggleTurnLogging(): void { this.turnLoggingState = !this.turnLoggingState; }
+  isTurnLoggingEnabled(): boolean { return this.turnLoggingState; }
   private snapshot: DiagnosticSnapshot = { ...DEFAULT_SNAPSHOT };
   private cameraProvider: (() => { zoom: number; scrollX: number; scrollY: number }) | null = null;
   private readonly listeners = new Set<DiagnosticListener>();

@@ -228,6 +228,18 @@ export class CheatSystem {
     });
 
     this.register({
+      name: 'turnlog',
+      description: 'Toggle per-turn console logging.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: turnlog';
+        context.diagnosticSystem.toggleTurnLogging();
+        return context.diagnosticSystem.isTurnLoggingEnabled()
+          ? 'Turn logging enabled.'
+          : 'Turn logging disabled.';
+      },
+    });
+
+    this.register({
       name: 'leaders reveal',
       description: 'Reveal one leader with "leaders reveal <name>" or every leader with "leaders reveal all".',
       execute: (args, context) => {

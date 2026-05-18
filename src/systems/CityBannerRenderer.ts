@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
 import type { Producible } from '../types/producible';
+import type { Tooltip } from '../ui/hud/Tooltip';
 import { getBuildingSpritePath, getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
@@ -35,6 +36,11 @@ const NAME_FONT_SIZE = 13;
 const NAME_MIN_FONT_SIZE = 9;
 const POPULATION_FONT_SIZE = 13;
 const PRODUCTION_ICON_INSET = 2;
+const RING_RADIUS_OFFSET = 4;
+const RING_LINE_WIDTH = 3;
+const RING_MUTED_COLOR = 0x4a4a5a;
+const RING_MUTED_ALPHA = 0.4;
+const RING_START_ANGLE = -Math.PI / 2;
 
 interface CityBannerView {
   container: Phaser.GameObjects.Container;
@@ -44,6 +50,8 @@ interface CityBannerView {
   productionImage: Phaser.GameObjects.Image;
   productionMask: Phaser.GameObjects.Graphics;
   productionFallbackText: Phaser.GameObjects.Text;
+  productionRing: Phaser.GameObjects.Graphics;
+  productionZone: Phaser.GameObjects.Zone;
 }
 
 export class CityBannerRenderer {
@@ -58,6 +66,7 @@ export class CityBannerRenderer {
     private readonly nationManager: NationManager,
     private readonly productionSystem: ProductionSystem,
     private readonly wonderSystem?: WonderSystem,
+    private readonly tooltip?: Tooltip,
   ) {
     this.rebuildAll();
   }
@@ -127,6 +136,8 @@ export class CityBannerRenderer {
     view.populationText.setPosition(populationCenterX, 0);
     this.refreshProductionMask(view, world.x + slotCenterX, world.y + CITY_BANNER_OFFSET_Y);
     this.refreshProductionSlot(view, production, slotCenterX);
+    this.refreshProductionRing(view, city.id, slotCenterX);
+    view.productionZone.setPosition(slotCenterX, 0);
   }
 
   rebuildAll(): void {
@@ -201,12 +212,33 @@ export class CityBannerRenderer {
       align: 'center',
     }).setOrigin(0.5, 0.5);
 
+    const productionRing = this.scene.add.graphics();
+
+    const productionZone = this.scene.add.zone(0, 0, RIGHT_SLOT_SIZE, RIGHT_SLOT_SIZE)
+      .setInteractive();
+
+    if (this.tooltip) {
+      const tooltip = this.tooltip;
+      productionZone.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        const queue = this.productionSystem.getQueue(cityId);
+        if (queue.length === 0) return;
+        const entry = queue[0];
+        if (!entry) return;
+        tooltip.show(`${getItemName(entry.item)} (${getKindLabel(entry.item.kind)})`, pointer);
+      });
+      productionZone.on('pointerout', () => {
+        tooltip.hide();
+      });
+    }
+
     container.add([
       chrome,
       nameText,
       populationText,
+      productionRing,
       productionImage,
       productionFallbackText,
+      productionZone,
     ]);
 
     const view: CityBannerView = {
@@ -217,9 +249,35 @@ export class CityBannerRenderer {
       productionImage,
       productionMask,
       productionFallbackText,
+      productionRing,
+      productionZone,
     };
     this.banners.set(cityId, view);
     return view;
+  }
+
+  private refreshProductionRing(view: CityBannerView, cityId: string, slotCenterX: number): void {
+    view.productionRing.clear();
+    view.productionRing.setPosition(slotCenterX, 0);
+
+    const queue = this.productionSystem.getQueue(cityId);
+    const entry = queue.length > 0 ? queue[0] : undefined;
+    if (!entry || entry.cost <= 0) return;
+
+    const fraction = Phaser.Math.Clamp(entry.progress / entry.cost, 0, 1);
+    const ringRadius = RIGHT_SLOT_RADIUS + RING_RADIUS_OFFSET;
+
+    view.productionRing.lineStyle(RING_LINE_WIDTH, RING_MUTED_COLOR, RING_MUTED_ALPHA);
+    view.productionRing.beginPath();
+    view.productionRing.arc(0, 0, ringRadius, RING_START_ANGLE, RING_START_ANGLE + Math.PI * 2, false);
+    view.productionRing.strokePath();
+
+    if (fraction <= 0) return;
+
+    view.productionRing.lineStyle(RING_LINE_WIDTH, getProgressRingColor(fraction), 0.95);
+    view.productionRing.beginPath();
+    view.productionRing.arc(0, 0, ringRadius, RING_START_ANGLE, RING_START_ANGLE + Math.PI * 2 * fraction, false);
+    view.productionRing.strokePath();
   }
 
   private drawChrome(
@@ -458,6 +516,31 @@ function darkenColor(color: number, factor: number): number {
 
 function toCssColor(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
+}
+
+function getProgressRingColor(fraction: number): number {
+  if (fraction <= 0.25) return 0xc44444;
+  if (fraction <= 0.5) return 0xe87020;
+  if (fraction <= 0.75) return 0xecd020;
+  return 0x5cae0d;
+}
+
+function getKindLabel(kind: Producible['kind']): string {
+  switch (kind) {
+    case 'unit': return 'Unit';
+    case 'building': return 'Building';
+    case 'wonder': return 'Wonder';
+    case 'corporation': return 'Corporation';
+  }
+}
+
+function getItemName(item: Producible): string {
+  switch (item.kind) {
+    case 'unit': return item.unitType.name;
+    case 'building': return item.buildingType.name;
+    case 'wonder': return item.wonderType.name;
+    case 'corporation': return item.corporationType.name;
+  }
 }
 
 function getAbbreviation(name: string): string {
