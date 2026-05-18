@@ -1,8 +1,10 @@
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
+import type { Era } from '../data/technologies';
 import { TileType, type MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
+import { getEraRank } from './EraSystem';
 
 export interface UnitProductionRuleContext {
   strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
@@ -12,6 +14,30 @@ export interface UnitProductionRuleContext {
   upkeepAffordabilityTurns?: number;
   hasActiveUnitOfType?: (nationId: string, unitTypeId: string) => boolean;
   isResidenceCapital?: (city: City) => boolean;
+  getNationEra?: (nationId: string) => Era;
+  onObsoleteUnitBlocked?: (city: City, unitType: UnitType, nationEra: Era) => void;
+}
+
+const ERA_OBSOLESCENCE_GRACE = 1;
+const ERA_OBSOLESCENCE_MILITARY_CATEGORIES = new Set<UnitType['category']>([
+  'melee',
+  'ranged',
+  'mounted',
+  'siege',
+  'naval_melee',
+  'naval_ranged',
+  'air',
+]);
+
+export function isUnitObsoleteForNationEra(
+  unitEra: Era,
+  nationEra: Era,
+): boolean {
+  return getEraRank(unitEra) < getEraRank(nationEra) - ERA_OBSOLESCENCE_GRACE;
+}
+
+export function isMilitaryProductionUnit(unitType: UnitType): boolean {
+  return ERA_OBSOLESCENCE_MILITARY_CATEGORIES.has(unitType.category);
 }
 
 export function cityHasWaterTile(
@@ -51,6 +77,16 @@ export function getCityUnitProductionBlockReason(
 
   if (unitType.residenceCapitalOnly === true && context.isResidenceCapital?.(city) !== true) {
     return `${unitType.name} may only be produced in the residence capital`;
+  }
+
+  const nationEra = context.getNationEra?.(city.ownerId);
+  if (
+    nationEra !== undefined &&
+    isMilitaryProductionUnit(unitType) &&
+    isUnitObsoleteForNationEra(unitType.era, nationEra)
+  ) {
+    context.onObsoleteUnitBlocked?.(city, unitType, nationEra);
+    return `${unitType.name} is obsolete for ${nationEra} era production`;
   }
 
   if (unitType.isNaval === true) {

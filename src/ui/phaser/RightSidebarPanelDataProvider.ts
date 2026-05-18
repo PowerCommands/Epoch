@@ -991,6 +991,7 @@ export class RightSidebarPanelDataProvider {
           strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
           unitUpkeepAffordability: this.unitUpkeepSystem,
           upkeepAffordabilityTurns: 10,
+          getNationEra: (nationId) => this.eraSystem?.getNationEra(nationId) ?? 'ancient',
         },
       );
       if (disabledReason && !unitType.requiredResource && !isUnitUpkeepAffordabilityReason(disabledReason)) continue;
@@ -1013,6 +1014,7 @@ export class RightSidebarPanelDataProvider {
               strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
               unitUpkeepAffordability: this.unitUpkeepSystem,
               upkeepAffordabilityTurns: 10,
+              getNationEra: (nationId) => this.eraSystem?.getNationEra(nationId) ?? 'ancient',
             },
           )) return;
         this.productionSystem.enqueue(city.id, item);

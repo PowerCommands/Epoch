@@ -549,6 +549,7 @@ export class GameScene extends Phaser.Scene {
       hasActiveUnitOfType: (nationId: string, unitTypeId: string) =>
         unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
       isResidenceCapital: (city: City) => city.isResidenceCapital,
+      getNationEra: (nationId: string) => eraSystem.getNationEra(nationId),
     };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
@@ -1371,6 +1372,7 @@ export class GameScene extends Phaser.Scene {
       wonderPlacementSystem,
       buildingPlacementSystem,
       (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
+      () => isAutoplayActive() || this.diagnosticSystem?.isTurnLoggingEnabled() === true,
       cityDefenseSystem,
       aiOverseasExpansionSystem,
       exileProtectionSystem,

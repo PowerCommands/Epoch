@@ -19,7 +19,7 @@ import { TurnManager } from './TurnManager';
 import { getTileMovementCost, MovementSystem } from './MovementSystem';
 import { CombatSystem } from './CombatSystem';
 import { ProductionSystem } from './ProductionSystem';
-import { canCityProduceUnit, cityHasWaterTile } from './ProductionRules';
+import { canCityProduceUnit, cityHasWaterTile, type UnitProductionRuleContext } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import type { BuilderSystem } from './BuilderSystem';
@@ -392,6 +392,7 @@ export class AISystem {
     };
   });
   private readonly cityFocusSystem: CityFocusSystem;
+  private readonly obsoleteUnitProductionBlockLogKeys = new Set<string>();
 
   constructor(
     unitManager: UnitManager,
@@ -426,6 +427,7 @@ export class AISystem {
     private readonly wonderPlacementSystem?: WonderPlacementSystem,
     private readonly buildingPlacementSystem?: BuildingPlacementSystem,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
+    private readonly shouldLogObsoleteUnitProductionBlocks: () => boolean = () => false,
     private readonly cityDefenseSystem?: CityDefenseSystem,
     private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
     private readonly exileProtectionSystem?: ExileProtectionSystem,
@@ -4408,13 +4410,7 @@ export class AISystem {
     return this.unitUpkeepSystem?.getUnitUpkeepAffordabilityReason(nationId, unitType, 10) === undefined;
   }
 
-  private getUnitProductionRuleContext(): {
-    strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
-    unitUpkeepAffordability?: UnitUpkeepSystem;
-    upkeepAffordabilityTurns: number;
-    hasActiveUnitOfType?: (nationId: string, unitTypeId: string) => boolean;
-    isResidenceCapital?: (city: City) => boolean;
-  } {
+  private getUnitProductionRuleContext(): UnitProductionRuleContext {
     return {
       strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
       unitUpkeepAffordability: this.unitUpkeepSystem,
@@ -4422,6 +4418,17 @@ export class AISystem {
       hasActiveUnitOfType: (nationId, unitTypeId) =>
         this.unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
       isResidenceCapital: (city) => city.isResidenceCapital,
+      getNationEra: (nationId) => this.getNationEra(nationId),
+      onObsoleteUnitBlocked: (city, unitType, nationEra) => {
+        if (!this.shouldLogObsoleteUnitProductionBlocks()) return;
+        const key = `${this.turnManager.getCurrentRound()}:${city.ownerId}:${unitType.id}`;
+        if (this.obsoleteUnitProductionBlockLogKeys.has(key)) return;
+        this.obsoleteUnitProductionBlockLogKeys.add(key);
+        this.logStrategicEvent?.(
+          city.ownerId,
+          `blocked obsolete unit production: ${unitType.name} (${unitType.era}) while nation era is ${nationEra}.`,
+        );
+      },
     };
   }
 
