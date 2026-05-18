@@ -52,6 +52,7 @@ const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nat
 
 export class AIOverseasExpansionSystem {
   private readonly lastBlockedReasonByNation = new Map<string, string>();
+  private readonly lastExpeditionStateByNation = new Map<string, string>();
 
   constructor(
     private readonly worldMarkerSystem: WorldMarkerSystem,
@@ -97,15 +98,18 @@ export class AIOverseasExpansionSystem {
     const selectedKey = this.targetKey(selected);
     if (previousSelectedKey === selectedKey) {
       this.updateExpeditionIntent(nationId, selected);
+      this.logExpeditionStateOnce(nationId, selected);
       return;
     }
 
     this.lastBlockedReasonByNation.delete(nationId);
+    this.lastExpeditionStateByNation.delete(nationId);
     this.log(
       nationId,
       `selected overseas expedition target ${selected.name} at (${selected.targetX},${selected.targetY})`,
     );
     this.updateExpeditionIntent(nationId, selected);
+    this.logExpeditionStateOnce(nationId, selected);
   }
 
   registerDiscoveredIslandMarker(nationId: string, markerId: string): boolean {
@@ -412,6 +416,7 @@ export class AIOverseasExpansionSystem {
       if (!mutableTarget.assignedTransportUnitId && !mutableTarget.transportRequested) {
         mutableTarget.transportRequested = true;
         mutableTarget.status = 'transportRequested';
+        this.log(nationId, `wants Transport for overseas expedition target ${mutableTarget.name}.`);
       }
     } else if (mutableTarget.status === 'settlerRequested' || mutableTarget.status === 'selected') {
       this.log(nationId, `does not require Transport for ${mutableTarget.name} because land embarkation is available.`);
@@ -877,14 +882,15 @@ export class AIOverseasExpansionSystem {
       respectMovementPoints: false,
     });
     if (!path) {
-      this.log(unit.ownerId, `${unitLabel} could not find path to overseas expedition ${targetName} ${destinationLabel} (${target.x},${target.y}).`);
+      this.log(unit.ownerId, `${unitLabel} at (${unit.tileX},${unit.tileY}) could not find path to overseas expedition ${targetName} ${destinationLabel} (${target.x},${target.y}).`);
       return;
     }
     const beforeX = unit.tileX;
     const beforeY = unit.tileY;
     this.movementSystem.moveAlongPath(unit, path);
     if (unit.tileX === beforeX && unit.tileY === beforeY) {
-      this.log(unit.ownerId, `${unitLabel} could not move toward overseas expedition ${targetName} ${destinationLabel} (${target.x},${target.y}).`);
+      const mp = unit.movementPoints;
+      this.log(unit.ownerId, `${unitLabel} at (${beforeX},${beforeY}) could not move toward overseas expedition ${targetName} ${destinationLabel} (${target.x},${target.y})${mp <= 0 ? ' (no movement points)' : ''}.`);
       return;
     }
     this.log(unit.ownerId, `moved ${unitLabel} toward ${destinationLabel} (${target.x},${target.y}).`);
@@ -954,6 +960,46 @@ export class AIOverseasExpansionSystem {
     if (this.lastBlockedReasonByNation.get(nationId) === key) return;
     this.lastBlockedReasonByNation.set(nationId, key);
     this.log(nationId, `overseas expedition target pending: ${reason}`);
+  }
+
+  private buildExpeditionStateSummary(nationId: string, target: OverseasSettlementTarget): string {
+    const parts: string[] = [];
+
+    if (target.assignedSettlerUnitId && this.unitManager.getUnit(target.assignedSettlerUnitId)) {
+      parts.push('settler=assigned');
+    } else if (this.hasQueuedUnit(nationId, SETTLER.id)) {
+      parts.push('settler=in-queue');
+    } else if (target.settlerRequested) {
+      parts.push('settler=requested(not-in-queue)');
+    } else {
+      parts.push('settler=needed');
+    }
+
+    if (this.requiresTransportForOverseasExpansion(nationId)) {
+      if (target.assignedTransportUnitId && this.unitManager.getUnit(target.assignedTransportUnitId)) {
+        parts.push('transport=assigned');
+      } else if (this.hasQueuedSettlerTransport(nationId)) {
+        parts.push('transport=in-queue');
+      } else if (target.transportRequested) {
+        const coastalCityCount = this.cityManager.getCitiesByOwner(nationId)
+          .filter((c) => cityHasWaterTile(c, this.mapData)).length;
+        parts.push(`transport=requested(not-in-queue, ${coastalCityCount} coastal cities)`);
+      } else {
+        parts.push('transport=needed');
+      }
+    } else {
+      parts.push('transport=not-required');
+    }
+
+    return `expedition ${target.name} [${target.status}]: ${parts.join(', ')}`;
+  }
+
+  private logExpeditionStateOnce(nationId: string, target: OverseasSettlementTarget): void {
+    const summary = this.buildExpeditionStateSummary(nationId, target);
+    const key = `${this.targetKey(target)}:${summary}`;
+    if (this.lastExpeditionStateByNation.get(nationId) === key) return;
+    this.lastExpeditionStateByNation.set(nationId, key);
+    this.log(nationId, summary);
   }
 
   private log(nationId: string, message: string): void {

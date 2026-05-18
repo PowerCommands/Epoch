@@ -80,6 +80,7 @@ interface LeaderboardEntry {
   color: number;
   score: number;
   detail: string;
+  secondaryScore?: number;
 }
 
 export class RightSidebarPanelDataProvider {
@@ -1427,9 +1428,28 @@ export class RightSidebarPanelDataProvider {
 
   private getDominationLeaderboard(): LeaderboardEntry[] {
     const capitals = this.cityManager.getAllCities().filter((city) => city.isCapital);
-    return this.sortLeaderboard(this.nationManager.getAllNations().map((nation) => {
+    const nations = this.nationManager.getAllNations();
+
+    const strengthByNation = new Map<string, number>();
+    let totalWorldStrength = 0;
+    for (const nation of nations) {
+      const strength = this.militaryEvaluationSystem?.getMilitaryStrength(nation.id).totalStrength ?? 0;
+      strengthByNation.set(nation.id, strength);
+      totalWorldStrength += strength;
+    }
+
+    return this.sortLeaderboard(nations.map((nation) => {
       const score = capitals.filter((city) => city.ownerId === nation.id).length;
-      return { nationId: nation.id, name: nation.name, color: nation.color, score, detail: `${score}/${capitals.length} capitals` };
+      const milStrength = strengthByNation.get(nation.id) ?? 0;
+      const milPct = totalWorldStrength > 0 ? Math.round(milStrength / totalWorldStrength * 100) : 0;
+      return {
+        nationId: nation.id,
+        name: nation.name,
+        color: nation.color,
+        score,
+        detail: `${score}/${capitals.length} caps, mil ${milPct}%`,
+        secondaryScore: milStrength,
+      };
     }));
   }
 
@@ -1466,7 +1486,11 @@ export class RightSidebarPanelDataProvider {
   }
 
   private sortLeaderboard(entries: LeaderboardEntry[]): LeaderboardEntry[] {
-    return entries.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    return entries.sort(
+      (a, b) => b.score - a.score
+        || (b.secondaryScore ?? 0) - (a.secondaryScore ?? 0)
+        || a.name.localeCompare(b.name),
+    );
   }
 
   private isNationKnown(nationId: string): boolean {
