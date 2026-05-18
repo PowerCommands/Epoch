@@ -38,6 +38,9 @@ export interface DiplomacyRelation {
 
   // Set when war is declared; preserved through the peace transition for treaty logic.
   aggressorNationId?: string;
+
+  // While set, neither side may declare war until the current turn reaches this value.
+  peaceTreatyUntilTurn?: number | null;
 }
 
 /**
@@ -105,6 +108,7 @@ export const DEFAULT_FEAR = 0;
 export const DEFAULT_HOSTILITY = 0;
 export const DEFAULT_AFFINITY = 0;
 export const MIN_WAR_TURNS_FOR_PEACE = 15;
+export const PEACE_TREATY_COOLDOWN_TURNS = 20;
 
 export function createDefaultRelation(): DiplomacyRelation {
   return {
@@ -123,6 +127,7 @@ export function createDefaultRelation(): DiplomacyRelation {
     lastOpenBordersChangeTurn: null,
     lastEmbassyChangeTurn: null,
     lastTradeRelationsChangeTurn: null,
+    peaceTreatyUntilTurn: null,
   };
 }
 
@@ -157,6 +162,7 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
     lastTradeRelationsChangeTurn:
       partial.lastTradeRelationsChangeTurn ?? base.lastTradeRelationsChangeTurn,
     aggressorNationId: partial.aggressorNationId,
+    peaceTreatyUntilTurn: partial.peaceTreatyUntilTurn ?? base.peaceTreatyUntilTurn,
   };
 }
 
@@ -232,9 +238,11 @@ export class DiplomacyManager {
     return this.readDirectionalGrant(fromNationId, toNationId, relation);
   }
 
-  declareWar(aggressorId: string, targetId: string): void {
+  declareWar(aggressorId: string, targetId: string): boolean {
     const key = this.pairKey(aggressorId, targetId);
-    if (this.relations.get(key)?.state === 'WAR') return;
+    if (this.relations.get(key)?.state === 'WAR') return false;
+    const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
+    if (this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
     const previous = this.relations.get(key);
     const next = normalizeRelation({
       ...previous,
@@ -258,6 +266,7 @@ export class DiplomacyManager {
     for (const cb of this.warDeclaredListeners) cb(aggressorId, targetId);
     this.memoryHook?.onDeclareWar(aggressorId, targetId);
     this.notifyChanged(aggressorId, targetId);
+    return true;
   }
 
   proposePeace(
@@ -289,6 +298,17 @@ export class DiplomacyManager {
     return this.getWarDuration(a, b, currentTurn) >= MIN_WAR_TURNS_FOR_PEACE;
   }
 
+  isPeaceTreatyActive(a: string, b: string, currentTurn: number): boolean {
+    const untilTurn = this.getRelation(a, b).peaceTreatyUntilTurn;
+    return untilTurn !== undefined && untilTurn !== null && currentTurn < untilTurn;
+  }
+
+  getPeaceTreatyRemainingTurns(a: string, b: string, currentTurn: number): number {
+    const untilTurn = this.getRelation(a, b).peaceTreatyUntilTurn;
+    if (untilTurn === undefined || untilTurn === null) return 0;
+    return Math.max(0, untilTurn - currentTurn);
+  }
+
   getAggressorNationId(a: string, b: string): string | undefined {
     return this.relations.get(this.pairKey(a, b))?.aggressorNationId;
   }
@@ -298,6 +318,7 @@ export class DiplomacyManager {
     if (accept) {
       const key = this.pairKey(fromId, toId);
       const previous = this.relations.get(key);
+      const currentTurn = this.turnManager?.getCurrentRound() ?? previous?.lastPeaceProposalTurn ?? 0;
       const next = normalizeRelation({
         ...previous,
         state: 'PEACE',
@@ -307,8 +328,8 @@ export class DiplomacyManager {
         tradeRelations: false,
         // TODO: same as declareWar — stamp explicitly when the manager
         // doesn't have access to a TurnManager.
-        lastPeaceProposalTurn:
-          this.turnManager?.getCurrentRound() ?? previous?.lastPeaceProposalTurn ?? null,
+        lastPeaceProposalTurn: currentTurn,
+        peaceTreatyUntilTurn: currentTurn + PEACE_TREATY_COOLDOWN_TURNS,
       });
       this.relations.set(key, next);
       for (const cb of this.acceptedListeners) cb(fromId, toId);
@@ -482,7 +503,8 @@ export class DiplomacyManager {
         relation.lastPeaceProposalTurn === defaults.lastPeaceProposalTurn &&
         relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn &&
         relation.lastEmbassyChangeTurn === defaults.lastEmbassyChangeTurn &&
-        relation.lastTradeRelationsChangeTurn === defaults.lastTradeRelationsChangeTurn
+        relation.lastTradeRelationsChangeTurn === defaults.lastTradeRelationsChangeTurn &&
+        relation.peaceTreatyUntilTurn === defaults.peaceTreatyUntilTurn
       ) {
         continue;
       }

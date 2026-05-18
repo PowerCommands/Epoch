@@ -252,6 +252,7 @@ export class SaveLoadService {
       lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
       lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
       lastTradeRelationsChangeTurn: entry.relation.lastTradeRelationsChangeTurn,
+      peaceTreatyUntilTurn: entry.relation.peaceTreatyUntilTurn,
     }));
 
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
@@ -705,6 +706,7 @@ export class SaveLoadService {
         lastOpenBordersChangeTurn: entry.lastOpenBordersChangeTurn,
         lastEmbassyChangeTurn: entry.lastEmbassyChangeTurn,
         lastTradeRelationsChangeTurn: entry.lastTradeRelationsChangeTurn,
+        peaceTreatyUntilTurn: entry.peaceTreatyUntilTurn,
         lastWarTurn: entry.lastWarTurn,
         lastPeaceTurn: entry.lastPeaceTurn,
       });

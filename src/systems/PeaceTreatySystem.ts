@@ -82,13 +82,12 @@ export class PeaceTreatySystem {
   }
 
   aiShouldAcceptTreaty(proposal: PeaceProposal, receiverNationId: string): boolean {
+    if (proposal.offeredCityId) return true;
+
     let score = 0;
 
     // Long wars favor acceptance regardless of other factors.
     score += proposal.warDuration / 2;
-
-    // Receiving a city is a strong incentive.
-    if (proposal.offeredCityId) score += 40;
 
     // Reparations add proportional value.
     if (proposal.goldReparations && proposal.goldReparations > 0) {

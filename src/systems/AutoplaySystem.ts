@@ -433,7 +433,9 @@ export class AutoplaySystem {
   }
 
   private focusTile(tileX: number, tileY: number): void {
-    const { x, y } = this.tileMap.tileToWorld(tileX, tileY);
-    this.cameraController.focusOn(x, y, 1.5);
+    // Autoplay intentionally avoids camera movement; the final visible state is
+    // refreshed by GameScene when autoplay stops or completes.
+    void tileX;
+    void tileY;
   }
 }

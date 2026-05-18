@@ -59,7 +59,7 @@ import {
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
-import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE } from '../systems/DiplomacyManager';
+import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
@@ -191,6 +191,7 @@ export class GameScene extends Phaser.Scene {
   private diagnosticSystem!: DiagnosticSystem;
   private minimapHud: MinimapHud | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
+  private isAutoplayActiveForVisuals: () => boolean = () => false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -199,6 +200,7 @@ export class GameScene extends Phaser.Scene {
   create(data: GameConfig): void {
     this.minimapHud = null;
     this.rightSidebarPanel = null;
+    this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
 
     // 1. Parse scenario using map key from config
@@ -354,6 +356,10 @@ export class GameScene extends Phaser.Scene {
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     let refreshCultureOverlay = (): void => {};
     let isAutoplayActive = (): boolean => false;
+    const rebuildMinimapForGameplay = (): void => {
+      if (isAutoplayActive()) return;
+      this.minimapHud?.rebuild();
+    };
     const resourceSystem = new ResourceSystem(
       nationManager,
       cityManager,
@@ -575,7 +581,9 @@ export class GameScene extends Phaser.Scene {
       if (borderPressureSummary) {
         logManager.info({ nationIds: borderPressureSummary.nationIds, category: 'diplomacy', message: borderPressureSummary.text });
       }
-      if (ideologicalDriftEvents.length > 0 || borderPressureEvents.length > 0) rightPanel?.requestRefresh();
+      if ((ideologicalDriftEvents.length > 0 || borderPressureEvents.length > 0) && !isAutoplayActive()) {
+        rightPanel?.requestRefresh();
+      }
     });
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
@@ -583,6 +591,7 @@ export class GameScene extends Phaser.Scene {
     tradeDealSystem.onChanged((event) => {
       resourceSystem.recalculateForNation(event.deal.sellerNationId);
       resourceSystem.recalculateForNation(event.deal.buyerNationId);
+      if (isAutoplayActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -1374,10 +1383,6 @@ export class GameScene extends Phaser.Scene {
       aiDiplomacySystem.runTurn(nation.id);
       aiSystem.runTurn(nation.id);
       aiExplorationSystem.runTurn(nation.id);
-      territoryRenderer.invalidate();
-
-      hudLayer?.refresh();
-      rightPanel?.requestRefresh();
     };
 
     const autoplaySystem = new AutoplaySystem(
@@ -1391,15 +1396,28 @@ export class GameScene extends Phaser.Scene {
       runAutoplayNationTurn,
     );
     isAutoplayActive = () => autoplaySystem.isActive();
+    this.isAutoplayActiveForVisuals = () => autoplaySystem.isActive();
 
     // Humans pick their own initial research via the HUD research panel.
     // AI nations keep the deterministic auto-pick so they never stall.
     const refreshPolicyDerivedState = (nationId: string): void => {
       happinessSystem.recalculateNation(nationId);
       resourceSystem.recalculateForNation(nationId);
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     };
+
+    const refreshGameplayAfterAutoplay = (): void => {
+      territoryRenderer.invalidate();
+      this.minimapHud?.rebuild();
+      this.minimapHud?.update();
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    };
+    autoplaySystem.onCompleted(refreshGameplayAfterAutoplay);
+    autoplaySystem.onStopped(refreshGameplayAfterAutoplay);
 
     turnManager.on('turnStart', (e) => {
       const isAutoplay = autoplaySystem.isActive();
@@ -1601,6 +1619,7 @@ export class GameScene extends Phaser.Scene {
       const nameB = nationManager.getNation(b)?.name ?? b;
       logManager.info({ nationIds: [a, b], category: 'diplomacy', message: `${nameA} has met ${nameB}.` });
       // New nation may now be visible in the UI.
+      if (isAutoplayActive()) return;
       hudLayer?.refresh();
       leaderStrip?.rebuild();
       rightPanel?.requestRefresh();
@@ -1696,7 +1715,7 @@ export class GameScene extends Phaser.Scene {
         }
         if (expansion.claimedCoords.length > 0) {
           territoryRenderer.invalidate();
-          this.minimapHud?.rebuild();
+          rebuildMinimapForGameplay();
         }
         logManager.info({ nationId: city.ownerId, category: 'wonder', message: `completed the ${item.wonderType.name} in ${city.name}.` });
         if (expansion.claimedCoords.length > 0) {
@@ -1842,7 +1861,7 @@ export class GameScene extends Phaser.Scene {
       cityRenderer.rebuildAll();
       cityBannerRenderer.rebuildAll();
       territoryRenderer.invalidate();
-      this.minimapHud?.rebuild();
+      rebuildMinimapForGameplay();
       refreshCultureOverlay();
       resourceSystem.recalculateForNation(event.attacker.ownerId);
       if (nationManager.getNation(event.defeatedNationId)) {
@@ -1978,7 +1997,7 @@ export class GameScene extends Phaser.Scene {
         cityBannerRenderer.refreshCity(e.city);
         // Territory borders och minimap behöver ritas om efter ownerId-transfer.
         territoryRenderer.invalidate();
-        this.minimapHud?.rebuild();
+        rebuildMinimapForGameplay();
         refreshCultureOverlay();
         hudLayer?.refresh();
         // Recalculate resources for both old and new owner
@@ -2019,7 +2038,7 @@ export class GameScene extends Phaser.Scene {
       }
       unitRenderer.rebuildAll();
       territoryRenderer.invalidate();
-      this.minimapHud?.rebuild();
+      rebuildMinimapForGameplay();
       refreshCultureOverlay();
       if (event.conquerorNationId) resourceSystem.recalculateForNation(event.conquerorNationId);
       happinessSystem.recalculateAll();
@@ -2167,6 +2186,30 @@ export class GameScene extends Phaser.Scene {
       foreignTroopViolationSystem.handleRoundEnd(event.round);
     });
 
+    const getPeaceTreatyBlockReason = (targetNationId: string): string | null => {
+      const remaining = diplomacyManager.getPeaceTreatyRemainingTurns(
+        humanNationIdForDiplomacy,
+        targetNationId,
+        turnManager.getCurrentRound(),
+      );
+      return remaining > 0 ? `Peace treaty active for ${remaining} more turn${remaining === 1 ? '' : 's'}.` : null;
+    };
+    const logBlockedHumanWarDeclaration = (targetNationId: string): void => {
+      const remaining = diplomacyManager.getPeaceTreatyRemainingTurns(
+        humanNationIdForDiplomacy,
+        targetNationId,
+        turnManager.getCurrentRound(),
+      );
+      if (remaining <= 0) return;
+      const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+      const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      logManager.info({
+        nationIds: [humanNationIdForDiplomacy, targetNationId],
+        category: 'diplomacy',
+        message: `${humanName} cannot declare war on ${targetName} for ${remaining} more turn${remaining === 1 ? '' : 's'} due to active peace treaty.`,
+      });
+    };
+
     // War declaration modal when human tries to attack a nation at peace
     combatSystem.onWarRequired((e) => {
       if (e.source !== 'human-ui') return;
@@ -2174,6 +2217,11 @@ export class GameScene extends Phaser.Scene {
 
       const targetNation = nationManager.getNation(e.targetNationId);
       if (!targetNation) return;
+      if (getPeaceTreatyBlockReason(e.targetNationId)) {
+        logBlockedHumanWarDeclaration(e.targetNationId);
+        rightPanel?.refreshCurrent();
+        return;
+      }
       const color = `#${targetNation.color.toString(16).padStart(6, '0')}`;
 
       showDiplomacyModal({
@@ -2183,7 +2231,11 @@ export class GameScene extends Phaser.Scene {
         confirmLabel: 'Declare War!',
         cancelLabel: 'Cancel',
         onConfirm: () => {
-          diplomacyManager.declareWar(humanNationIdForDiplomacy, e.targetNationId);
+          if (!diplomacyManager.declareWar(humanNationIdForDiplomacy, e.targetNationId)) {
+            logBlockedHumanWarDeclaration(e.targetNationId);
+            rightPanel?.refreshCurrent();
+            return;
+          }
           // Re-attempt attack now that war is declared
           combatSystem.tryAttack(e.attacker, e.tileX, e.tileY, { source: 'human-ui' });
           rightPanel?.refreshCurrent();
@@ -2198,6 +2250,11 @@ export class GameScene extends Phaser.Scene {
 
       const targetNation = nationManager.getNation(e.targetNationId);
       if (!targetNation) return;
+      if (getPeaceTreatyBlockReason(e.targetNationId)) {
+        logBlockedHumanWarDeclaration(e.targetNationId);
+        rightPanel?.refreshCurrent();
+        return;
+      }
 
       showDiplomacyModal({
         title: 'Declare War',
@@ -2206,7 +2263,11 @@ export class GameScene extends Phaser.Scene {
         confirmLabel: 'Declare War!',
         cancelLabel: 'Cancel',
         onConfirm: () => {
-          diplomacyManager.declareWar(humanNationIdForDiplomacy, e.targetNationId);
+          if (!diplomacyManager.declareWar(humanNationIdForDiplomacy, e.targetNationId)) {
+            logBlockedHumanWarDeclaration(e.targetNationId);
+            rightPanel?.refreshCurrent();
+            return;
+          }
           const targetTile = tileMap.getTileAt(e.tileX, e.tileY);
           if (targetTile !== null) {
             movementSystem.moveAlongPath(e.unit, [targetTile], { source: 'human-ui' });
@@ -2245,7 +2306,7 @@ export class GameScene extends Phaser.Scene {
           peaceTreatySystem.executeTreaty(proposal);
         }
         diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
-        rightPanel?.requestRefresh();
+        if (!isAutoplayActive()) rightPanel?.requestRefresh();
         return;
       }
 
@@ -2255,7 +2316,6 @@ export class GameScene extends Phaser.Scene {
         if (accepted) peaceTreatySystem.executeTreaty(proposal);
         diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
         logAutoplayPeaceResolution(proposal, accepted);
-        rightPanel?.requestRefresh();
         return;
       }
 
@@ -2299,6 +2359,11 @@ export class GameScene extends Phaser.Scene {
         category: 'diplomacy',
         message: `peace was made between ${nameA} and ${nameB}.`,
       });
+      logManager.info({
+        nationIds: [nationA, nationB],
+        category: 'diplomacy',
+        message: `${nameA} and ${nameB} entered enforced peace treaty for ${PEACE_TREATY_COOLDOWN_TURNS} turns.`,
+      });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -2333,6 +2398,12 @@ export class GameScene extends Phaser.Scene {
       };
 
       if (action === 'declareWar') {
+        const peaceTreatyReason = getPeaceTreatyBlockReason(targetNationId);
+        if (peaceTreatyReason) {
+          logBlockedHumanWarDeclaration(targetNationId);
+          rightPanel?.refreshCurrent();
+          return;
+        }
         showDiplomacyModal({
           title: 'Declare War',
           message: `Declare war on ${targetNation.name}?`,
@@ -2340,7 +2411,9 @@ export class GameScene extends Phaser.Scene {
           confirmLabel: 'Declare War!',
           cancelLabel: 'Cancel',
           onConfirm: () => {
-            diplomacyManager.declareWar(humanNationIdForDiplomacy, targetNationId);
+            if (!diplomacyManager.declareWar(humanNationIdForDiplomacy, targetNationId)) {
+              logBlockedHumanWarDeclaration(targetNationId);
+            }
             rightPanel?.refreshCurrent();
           },
           onCancel: () => {},
@@ -3377,6 +3450,7 @@ export class GameScene extends Phaser.Scene {
     });
     unitActionToolbox.onChanged(() => hudLayer?.refresh());
     researchSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -3395,10 +3469,12 @@ export class GameScene extends Phaser.Scene {
           hudLayer?.enqueueDiscovery(buildTechnologyDiscoveryPopupData(technology));
         }
       }
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
     cultureSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
@@ -3410,11 +3486,13 @@ export class GameScene extends Phaser.Scene {
       if (event.nationId === humanNationId && !autoplaySystem.isActive()) {
         hudLayer?.enqueueDiscovery(buildCultureDiscoveryPopupData(event.cultureNode));
       }
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
     happinessSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
@@ -3496,6 +3574,7 @@ export class GameScene extends Phaser.Scene {
 
     turnManager.on('turnStart', () => {
       clearTemporaryMapReveal();
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       const activeNation = turnManager.getCurrentNation();
       hudLayer?.setEndTurnEnabled(activeNation.isHuman);
@@ -3509,7 +3588,10 @@ export class GameScene extends Phaser.Scene {
         rightPanel.refreshNationView();
       }
     });
-    turnManager.on('roundStart', () => hudLayer?.refresh());
+    turnManager.on('roundStart', () => {
+      if (autoplaySystem.isActive()) return;
+      hudLayer?.refresh();
+    });
     turnManager.on('roundStart', (event) => {
       if (!this.diagnosticSystem.isTurnLoggingEnabled()) return;
       const cities = cityManager.getAllCities().length;
@@ -3517,8 +3599,9 @@ export class GameScene extends Phaser.Scene {
       console.log(`[autorun] Turn ${event.round} | cities: ${cities} | units: ${units}`);
     });
     resourceSystem.on(() => {
+      if (autoplaySystem.isActive()) return;
       territoryRenderer.invalidate();
-      this.minimapHud?.rebuild();
+      rebuildMinimapForGameplay();
       cityBannerRenderer.rebuildAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -3526,6 +3609,7 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     });
     unitManager.onUnitChanged((event) => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       if (
         rightPanel &&
@@ -4087,7 +4171,9 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     if (!this.cameraController) return;
     this.cameraController.update(delta);
-    this.minimapHud?.update();
+    if (!this.isAutoplayActiveForVisuals()) {
+      this.minimapHud?.update();
+    }
     this.diagnosticSystem.update();
   }
 

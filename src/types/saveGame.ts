@@ -185,6 +185,7 @@ export interface SavedDiplomacyEntry {
   lastOpenBordersChangeTurn?: number | null;
   lastEmbassyChangeTurn?: number | null;
   lastTradeRelationsChangeTurn?: number | null;
+  peaceTreatyUntilTurn?: number | null;
   /** @deprecated renamed to lastWarDeclarationTurn. */
   lastWarTurn?: number | null;
   /** @deprecated renamed to lastPeaceProposalTurn. */

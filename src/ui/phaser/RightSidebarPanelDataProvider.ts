@@ -1314,13 +1314,20 @@ export class RightSidebarPanelDataProvider {
     if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
     const isAtWar = relation.state === 'WAR';
     const currentTurn = this.getCurrentTurn?.() ?? 0;
+    const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);
+    const peaceTreatyReason = peaceTreatyRemaining > 0
+      ? `Peace treaty active for ${peaceTreatyRemaining} more turn${peaceTreatyRemaining === 1 ? '' : 's'}.`
+      : undefined;
+    if (peaceTreatyRemaining > 0) {
+      rows.push(textRow(`Peace Treaty: ${peaceTreatyRemaining} turn${peaceTreatyRemaining === 1 ? '' : 's'} remaining`));
+    }
     const warDuration = isAtWar && dm ? dm.getWarDuration(humanId, nationId, currentTurn) : 0;
     const peaceUnavailableReason = isAtWar && dm && !dm.canProposePeace(humanId, nationId, currentTurn)
       ? `Peace cannot be proposed until ${MIN_WAR_TURNS_FOR_PEACE} turns of war have passed (${warDuration}/${MIN_WAR_TURNS_FOR_PEACE}).`
       : undefined;
     rows.push(disabledReasonButtonRow(
       relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace',
-      isAtWar ? peaceUnavailableReason : undefined,
+      isAtWar ? peaceUnavailableReason : peaceTreatyReason,
       () => {
         document.dispatchEvent(new CustomEvent('diplomacyAction', {
           detail: { action: relation.state === 'PEACE' ? 'declareWar' : 'proposePeace', targetNationId: nationId },
@@ -1328,6 +1335,7 @@ export class RightSidebarPanelDataProvider {
       },
       relation.state === 'PEACE' ? 0xb86767 : nation?.color,
     ));
+    if (peaceTreatyReason) rows.push(textRow(peaceTreatyReason, true));
     if (peaceUnavailableReason) rows.push(textRow(peaceUnavailableReason, true));
     return { title: 'Diplomacy', rows };
   }

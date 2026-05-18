@@ -139,6 +139,7 @@ export class AIDiplomacySystem {
     // PEACE branch — hostile escalates to war (which itself clears border
     // grants), friendly opens borders, anything else stays put.
     if (attitude === 'hostile') {
+      if (this.diplomacyManager.isPeaceTreatyActive(selfId, otherId, currentTurn)) return;
       // Don't pick a fight we'll obviously lose, or while the enemy is
       // already threatening our cities.
       if (comparison === 'weaker' || threat === 'high') return;
