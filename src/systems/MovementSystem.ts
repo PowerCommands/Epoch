@@ -10,7 +10,7 @@ import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { NationManager } from './NationManager';
 import type { UnitBoardingManager } from './UnitBoardingManager';
-import { canUnitEndMovementOnTile, canUnitEnterTile } from './UnitMovementRules';
+import { canUnitEndMovementOnTile, canUnitEnterTile, isWaterTile } from './UnitMovementRules';
 
 /** Return movement cost for entering a tile. */
 export function getTileMovementCost(tile: Tile): number {
@@ -219,6 +219,7 @@ export class MovementSystem {
   }
 
   private getClosedBorderOwner(unit: Unit, tile: Tile): string | null {
+    if (unit.unitType.isNaval === true && isWaterTile(tile)) return null;
     if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
     if (this.diplomacyManager === undefined) return null;
 

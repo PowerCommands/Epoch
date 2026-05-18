@@ -790,18 +790,23 @@ export class AIOverseasExpansionSystem {
     settler: Unit,
     transport: Unit | undefined,
   ): StagingPlan | undefined {
+    const transportPos = transport ? { x: transport.tileX, y: transport.tileY } : undefined;
     const candidates = this.getFriendlyCoastalStagingTiles(nationId, settler.id)
-      .map((coastalTile) => ({
-        coastalTile,
-        boardingTile: this.getBestBoardingTile(coastalTile, transport?.id),
-        distance: this.gridSystem.getDistance(
+      .map((coastalTile) => {
+        const boardingTile = this.getBestBoardingTile(coastalTile, transport?.id, transportPos);
+        const settlerDistance = this.gridSystem.getDistance(
           { x: settler.tileX, y: settler.tileY },
           { x: coastalTile.x, y: coastalTile.y },
-        ),
-      }))
+        );
+        const transportDistance = transportPos && boardingTile
+          ? this.gridSystem.getDistance(transportPos, boardingTile)
+          : 0;
+        return { coastalTile, boardingTile, settlerDistance, transportDistance };
+      })
       .filter((candidate) => !this.requiresTransportForOverseasExpansion(nationId) || candidate.boardingTile !== undefined)
       .sort((a, b) => {
-        if (a.distance !== b.distance) return a.distance - b.distance;
+        if (a.settlerDistance !== b.settlerDistance) return a.settlerDistance - b.settlerDistance;
+        if (a.transportDistance !== b.transportDistance) return a.transportDistance - b.transportDistance;
         if (a.coastalTile.y !== b.coastalTile.y) return a.coastalTile.y - b.coastalTile.y;
         return a.coastalTile.x - b.coastalTile.x;
       });
@@ -830,7 +835,11 @@ export class AIOverseasExpansionSystem {
     return result;
   }
 
-  private getBestBoardingTile(coastalTile: MarkerTargetCoord, carrierUnitId: string | undefined): MarkerTargetCoord | undefined {
+  private getBestBoardingTile(
+    coastalTile: MarkerTargetCoord,
+    carrierUnitId: string | undefined,
+    transportPos?: MarkerTargetCoord,
+  ): MarkerTargetCoord | undefined {
     return this.gridSystem.getAdjacentCoords(coastalTile)
       .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
       .filter((tile) => {
@@ -839,7 +848,14 @@ export class AIOverseasExpansionSystem {
         const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
         return occupant === null || occupant.id === carrierUnitId;
       })
-      .sort((a, b) => (a.y - b.y) || (a.x - b.x))[0];
+      .sort((a, b) => {
+        if (transportPos) {
+          const distA = this.gridSystem.getDistance({ x: a.x, y: a.y }, transportPos);
+          const distB = this.gridSystem.getDistance({ x: b.x, y: b.y }, transportPos);
+          if (distA !== distB) return distA - distB;
+        }
+        return (a.y - b.y) || (a.x - b.x);
+      })[0];
   }
 
   private hasAdjacentWaterTile(x: number, y: number): boolean {
