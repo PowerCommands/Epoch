@@ -53,6 +53,7 @@ export class City {
   nextExpansionTileCoord: { x: number; y: number } | undefined;
   lastTurnAttacked: number | null = null;
   lastTilePurchaseTurn?: number;
+  recentlyConqueredTurnsRemaining = 0;
   focus?: CityFocusType;
   productionRhythm: CityProductionRhythm;
 

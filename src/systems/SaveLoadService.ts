@@ -170,6 +170,9 @@ export class SaveLoadService {
           : undefined,
         lastTurnAttacked: city.lastTurnAttacked,
         lastTilePurchaseTurn: city.lastTilePurchaseTurn,
+        recentlyConqueredTurnsRemaining: city.recentlyConqueredTurnsRemaining > 0
+          ? city.recentlyConqueredTurnsRemaining
+          : undefined,
         buildings,
         productionQueue,
       };
@@ -606,6 +609,7 @@ export class SaveLoadService {
         lastTurnAttacked: saved.lastTurnAttacked,
         lastTilePurchaseTurn: saved.lastTilePurchaseTurn,
       });
+      city.recentlyConqueredTurnsRemaining = saved.recentlyConqueredTurnsRemaining ?? 0;
 
       if (saved.ownedTileCoords && saved.ownedTileCoords.length > 0) {
         city.ownedTileCoords = saved.ownedTileCoords.map((coord) => ({ ...coord }));

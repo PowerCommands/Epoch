@@ -36,8 +36,9 @@ interface AutorunMetadata {
 
 const DEFAULT_PORT = 4173;
 const DEFAULT_TURNS = 10;
-const DEFAULT_SCENARIO = 'map_europe';
+const DEFAULT_SCENARIO = 'map_maritime_expansion';
 const DEFAULT_OUTPUT_DIR = 'autorun-output';
+const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 const SYSTEM_BROWSER_CANDIDATES = [
   '/usr/bin/google-chrome',
   '/usr/bin/google-chrome-stable',
@@ -116,10 +117,14 @@ async function main(): Promise<void> {
     const startResult = savedState
       ? await page.evaluate((state) => window.__epochDiagnostics!.startSavedGame!(state), savedState)
       : await page.evaluate((scenario) => window.__epochDiagnostics!.startNewGame({ scenario }), options.scenario);
-    if (!startResult.ok) throw new Error(startResult.error);
+    if (startResult.ok !== true) throw new Error(startResult.error);
     startScenario = startResult.scenario;
-    startingTurn = startResult.startingTurn ?? startingTurn;
-    startingYear = startResult.startingYear ?? startingYear;
+    if ('startingTurn' in startResult && typeof startResult.startingTurn === 'number') {
+      startingTurn = startResult.startingTurn;
+    }
+    if ('startingYear' in startResult && typeof startResult.startingYear === 'number') {
+      startingYear = startResult.startingYear;
+    }
 
     await page.waitForFunction(
       () => typeof window.__epochDiagnostics?.startAutoplay === 'function',
@@ -199,7 +204,7 @@ function parseArgs(args: string[]): AutorunOptions {
     outputDir: DEFAULT_OUTPUT_DIR,
     port: DEFAULT_PORT,
     headed: false,
-    timeoutMs: 120_000,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
     browserPath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
   };
 

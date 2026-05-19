@@ -95,6 +95,7 @@ export interface SavedCity {
   nextExpansionTileCoord?: { x: number; y: number };
   lastTurnAttacked: number | null;
   lastTilePurchaseTurn?: number;
+  recentlyConqueredTurnsRemaining?: number;
   buildings: string[];
   productionQueue: SavedQueueEntry[];
 }

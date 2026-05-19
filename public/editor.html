@@ -19,6 +19,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 #toolbar h2 { font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
 
 .section { background: #222; border: 1px solid #333; border-radius: 4px; padding: 8px; }
+#nation-section { position: relative; }
 .section-title { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 6px; }
 
 .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -67,6 +68,51 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .nation-color-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .nation-select-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 8px; align-items: center; }
 .nation-select-row img { width: 36px; height: 44px; border-radius: 3px; object-fit: cover; background: #333; }
+.tech-trigger-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 6px; padding: 5px 6px; border: 1px solid #333; border-radius: 3px;
+  background: #1a1a1a; color: #ddd; font-size: 11px;
+}
+.tech-trigger-row.disabled { color: #666; opacity: 0.65; }
+.tech-trigger-row .small-btn { width: auto; padding: 4px 7px; font-size: 11px; flex-shrink: 0; }
+.tech-trigger-count { color: #aaa; }
+.tech-popover {
+  position: absolute; z-index: 20; width: 280px; height: 400px;
+  display: flex; flex-direction: column; background: #1a1a1a;
+  border: 1px solid #444; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  color: #ddd; overflow: hidden;
+}
+.tech-popover-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px; border-bottom: 1px solid #333; background: #202020;
+  font-size: 12px; font-weight: bold;
+}
+.tech-popover-header button {
+  width: 24px; height: 24px; border: 1px solid #555; border-radius: 3px;
+  background: #2a2a2a; color: #ddd; cursor: pointer; font: inherit;
+}
+.tech-popover-body { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.tech-popover-era-group { border-bottom: 1px solid #2c2c2c; padding: 4px 0; }
+.tech-popover-era-group:last-child { border-bottom: 0; }
+.tech-popover-era-header {
+  cursor: pointer; color: #aaa; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 4px 0;
+}
+.tech-popover-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 0;
+  font-size: 11px; line-height: 1.25;
+}
+.tech-popover-row input { flex-shrink: 0; }
+.tech-popover-footer {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+  padding: 8px; border-top: 1px solid #333; background: #202020;
+}
+.tech-popover-footer button {
+  border: 1px solid #555; border-radius: 3px; padding: 5px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 10px; cursor: pointer;
+}
+.tech-popover-footer button:hover { border-color: #888; background: #333; }
+.tech-popover-status { grid-column: 1 / -1; color: #aaa; font-size: 10px; }
 
 .toolbar-actions { display: flex; flex-direction: column; gap: 8px; }
 #save-btn, #save-custom-btn, #exit-btn {
@@ -145,6 +191,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
           Secondary
           <input id="nation-secondary-color" type="color">
         </label>
+      </div>
+      <div class="tech-trigger-row disabled" id="nation-tech-row">
+        <span>Technologies <span class="tech-trigger-count" id="nation-tech-count">(0 selected)</span></span>
+        <button class="small-btn" id="manage-tech-btn" type="button" disabled>Manage…</button>
+      </div>
+      <div class="tech-trigger-row disabled" id="nation-culture-row">
+        <span>Cultures <span class="tech-trigger-count" id="nation-culture-count">(0 selected)</span></span>
+        <button class="small-btn" id="manage-culture-btn" type="button" disabled>Manage…</button>
       </div>
       <div class="section-title" style="margin-top:8px">Add Nation</div>
       <label class="field">
@@ -265,6 +319,8 @@ let currentCustomEntry = null;
 let nationRegistry = { nations: [] };
 let naturalResourceManifest = { resources: [] };
 let unitManifest = { units: [] };
+let technologyManifest = { technologies: [] };
+let cultureTreeManifest = { cultureNodes: [] };
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let mapW = 0, mapH = 0, tileSize = 0;
@@ -289,6 +345,7 @@ let selectedEntity = null; // { kind: 'city'|'unit', index: number }
 let selectedMarkerIndex = null;
 let selectedNationId = null;
 let isPainting = false;
+let activeTechPopover = null;
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -301,11 +358,13 @@ const CUSTOM_SCENARIO_NAME_MAX_LENGTH = 70;
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest] = await Promise.all([
+  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, technologyManifest, cultureTreeManifest] = await Promise.all([
     loadMapManifest(),
     loadNationRegistry(),
     loadNaturalResourceManifest(),
     loadUnitManifest(),
+    loadTechnologyManifest(),
+    loadCultureTreeManifest(),
   ]);
   buildUnitTypeSelect();
   currentMap = resolveRequestedMap(mapManifest);
@@ -463,6 +522,50 @@ async function loadUnitManifest() {
   }
 
   return { units: [] };
+}
+
+async function loadTechnologyManifest() {
+  try {
+    const res = await fetch('/assets/data/technologies-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`technology manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.technologies)) {
+      return {
+        technologies: manifest.technologies.filter(technology =>
+          technology
+          && typeof technology.id === 'string'
+          && typeof technology.name === 'string'
+          && typeof technology.era === 'string'
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load technology manifest.', err);
+  }
+
+  return { technologies: [] };
+}
+
+async function loadCultureTreeManifest() {
+  try {
+    const res = await fetch('/assets/data/culture-tree-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`culture tree manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.cultureNodes)) {
+      return {
+        cultureNodes: manifest.cultureNodes.filter(cultureNode =>
+          cultureNode
+          && typeof cultureNode.id === 'string'
+          && typeof cultureNode.name === 'string'
+          && typeof cultureNode.era === 'string'
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load culture tree manifest.', err);
+  }
+
+  return { cultureNodes: [] };
 }
 
 function buildUnitTypeSelect() {
@@ -839,8 +942,15 @@ function normalizeNationColors() {
       ...nation,
       color: primaryColor,
       secondaryColor: nation.secondaryColor || registryNation?.secondaryColor || primaryColor,
+      researchedTechIds: normalizeIdList(nation.researchedTechIds),
+      unlockedCultureNodeIds: normalizeIdList(nation.unlockedCultureNodeIds),
     };
   });
+}
+
+function normalizeIdList(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(id => typeof id === 'string' && id.length > 0))];
 }
 
 function getAvailableRegistryNations() {
@@ -910,6 +1020,7 @@ function buildNationList() {
 }
 
 function selectNation(nationId) {
+  closeTechPopover();
   selectedNationId = nationId;
   buildNationList();
   render();
@@ -924,6 +1035,12 @@ function updateSelectedNationInfo() {
   const removeBtn = document.getElementById('remove-nation-btn');
   const primaryInput = document.getElementById('nation-primary-color');
   const secondaryInput = document.getElementById('nation-secondary-color');
+  const techRow = document.getElementById('nation-tech-row');
+  const cultureRow = document.getElementById('nation-culture-row');
+  const techBtn = document.getElementById('manage-tech-btn');
+  const cultureBtn = document.getElementById('manage-culture-btn');
+  const techCount = document.getElementById('nation-tech-count');
+  const cultureCount = document.getElementById('nation-culture-count');
   const nation = getSelectedNation();
   if (!nation) {
     el.textContent = 'No nation selected.';
@@ -932,9 +1049,17 @@ function updateSelectedNationInfo() {
     secondaryInput.disabled = true;
     primaryInput.value = '#888888';
     secondaryInput.value = '#888888';
+    techRow.classList.add('disabled');
+    cultureRow.classList.add('disabled');
+    techBtn.disabled = true;
+    cultureBtn.disabled = true;
+    techCount.textContent = '(0 selected)';
+    cultureCount.textContent = '(0 selected)';
     return;
   }
 
+  const researchedTechIds = ensureNationIdArray(nation, 'researchedTechIds');
+  const unlockedCultureNodeIds = ensureNationIdArray(nation, 'unlockedCultureNodeIds');
   const center = nation.startTerritoryCenter;
   const registryNation = getRegistryNation(nation.id);
   el.textContent = `Selected: ${getNationDisplayName(nation)} (${nation.id})` +
@@ -945,6 +1070,17 @@ function updateSelectedNationInfo() {
   secondaryInput.disabled = false;
   primaryInput.value = nation.color;
   secondaryInput.value = nation.secondaryColor || nation.color;
+  techRow.classList.remove('disabled');
+  cultureRow.classList.remove('disabled');
+  techBtn.disabled = false;
+  cultureBtn.disabled = false;
+  techCount.textContent = `(${researchedTechIds.length} selected)`;
+  cultureCount.textContent = `(${unlockedCultureNodeIds.length} selected)`;
+}
+
+function ensureNationIdArray(nation, fieldName) {
+  nation[fieldName] = normalizeIdList(nation[fieldName]);
+  return nation[fieldName];
 }
 
 document.getElementById('nation-primary-color').addEventListener('input', (event) => {
@@ -964,6 +1100,176 @@ document.getElementById('nation-secondary-color').addEventListener('input', (eve
   render();
 });
 
+document.getElementById('manage-tech-btn').addEventListener('click', () => {
+  openProgressionPopover('technology', document.getElementById('nation-tech-row'));
+});
+
+document.getElementById('manage-culture-btn').addEventListener('click', () => {
+  openProgressionPopover('culture', document.getElementById('nation-culture-row'));
+});
+
+function openProgressionPopover(kind, anchorEl) {
+  const nation = getSelectedNation();
+  if (!nation) return;
+  closeTechPopover();
+
+  const config = kind === 'technology'
+    ? {
+        title: 'Technologies',
+        fieldName: 'researchedTechIds',
+        entries: technologyManifest.technologies,
+        emptyText: 'No technology manifest loaded.',
+      }
+    : {
+        title: 'Cultures',
+        fieldName: 'unlockedCultureNodeIds',
+        entries: cultureTreeManifest.cultureNodes,
+        emptyText: 'No culture tree manifest loaded.',
+      };
+  const selectedIds = ensureNationIdArray(nation, config.fieldName);
+  const section = document.getElementById('nation-section');
+  const sectionRect = section.getBoundingClientRect();
+  const anchorRect = anchorEl.getBoundingClientRect();
+  const popover = document.createElement('div');
+  popover.className = 'tech-popover';
+  popover.style.left = '8px';
+  popover.style.top = `${anchorRect.bottom - sectionRect.top + 4}px`;
+
+  let activeEra = getGroupedManifestEntries(config.entries)[0]?.era ?? '';
+  const status = document.createElement('div');
+  status.className = 'tech-popover-status';
+
+  const header = document.createElement('div');
+  header.className = 'tech-popover-header';
+  const title = document.createElement('span');
+  title.textContent = `${config.title} — ${getNationDisplayName(nation)}`;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', closeTechPopover);
+  header.append(title, closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'tech-popover-body';
+  if (config.entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hint';
+    empty.textContent = config.emptyText;
+    body.appendChild(empty);
+  } else {
+    for (const group of getGroupedManifestEntries(config.entries)) {
+      const details = document.createElement('details');
+      details.className = 'tech-popover-era-group';
+      details.open = true;
+
+      const summary = document.createElement('summary');
+      summary.className = 'tech-popover-era-header';
+      summary.textContent = formatEraName(group.era);
+      summary.addEventListener('click', () => {
+        activeEra = group.era;
+        updatePopoverStatus();
+      });
+      details.appendChild(summary);
+
+      for (const entry of group.entries) {
+        const label = document.createElement('label');
+        label.className = 'tech-popover-row';
+        label.dataset.entryId = entry.id;
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = selectedIds.includes(entry.id);
+        checkbox.addEventListener('change', () => {
+          activeEra = entry.era;
+          const currentIds = ensureNationIdArray(nation, config.fieldName);
+          if (checkbox.checked && !currentIds.includes(entry.id)) currentIds.push(entry.id);
+          if (!checkbox.checked) nation[config.fieldName] = currentIds.filter(id => id !== entry.id);
+          updateSelectedNationInfo();
+          updatePopoverStatus();
+        });
+        const name = document.createElement('span');
+        name.textContent = entry.name;
+        label.append(checkbox, name);
+        details.appendChild(label);
+      }
+
+      body.appendChild(details);
+    }
+  }
+
+  const footer = document.createElement('div');
+  footer.className = 'tech-popover-footer';
+  const selectEraBtn = document.createElement('button');
+  selectEraBtn.type = 'button';
+  selectEraBtn.textContent = 'Select all in era';
+  selectEraBtn.addEventListener('click', () => {
+    const idsInEra = config.entries.filter(entry => entry.era === activeEra).map(entry => entry.id);
+    nation[config.fieldName] = [...new Set([...ensureNationIdArray(nation, config.fieldName), ...idsInEra])];
+    syncPopoverCheckboxes(popover, nation[config.fieldName]);
+    updateSelectedNationInfo();
+    updatePopoverStatus();
+  });
+  const clearAllBtn = document.createElement('button');
+  clearAllBtn.type = 'button';
+  clearAllBtn.textContent = 'Clear all';
+  clearAllBtn.addEventListener('click', () => {
+    nation[config.fieldName] = [];
+    syncPopoverCheckboxes(popover, nation[config.fieldName]);
+    updateSelectedNationInfo();
+    updatePopoverStatus();
+  });
+  footer.append(selectEraBtn, clearAllBtn, status);
+
+  function updatePopoverStatus() {
+    const count = ensureNationIdArray(nation, config.fieldName).length;
+    status.textContent = `${count} selected • Era: ${activeEra ? formatEraName(activeEra) : 'none'}`;
+  }
+
+  popover.append(header, body, footer);
+  section.appendChild(popover);
+  updatePopoverStatus();
+
+  const outsideHandler = (event) => {
+    if (!popover.contains(event.target) && !anchorEl.contains(event.target)) closeTechPopover();
+  };
+  const keyHandler = (event) => {
+    if (event.key === 'Escape') closeTechPopover();
+  };
+  activeTechPopover = { element: popover, outsideHandler, keyHandler };
+  setTimeout(() => {
+    if (activeTechPopover?.element === popover) document.addEventListener('pointerdown', outsideHandler);
+  }, 0);
+  document.addEventListener('keydown', keyHandler);
+}
+
+function closeTechPopover() {
+  if (!activeTechPopover) return;
+  document.removeEventListener('pointerdown', activeTechPopover.outsideHandler);
+  document.removeEventListener('keydown', activeTechPopover.keyHandler);
+  activeTechPopover.element.remove();
+  activeTechPopover = null;
+}
+
+function syncPopoverCheckboxes(popover, selectedIds) {
+  const selected = new Set(selectedIds);
+  popover.querySelectorAll('.tech-popover-row input[type="checkbox"]').forEach((checkbox) => {
+    const label = checkbox.closest('.tech-popover-row');
+    checkbox.checked = selected.has(label?.dataset.entryId);
+  });
+}
+
+function getGroupedManifestEntries(entries) {
+  const byEra = new Map();
+  for (const entry of entries) {
+    if (!byEra.has(entry.era)) byEra.set(entry.era, []);
+    byEra.get(entry.era).push(entry);
+  }
+  return [...byEra.entries()].map(([era, groupEntries]) => ({ era, entries: groupEntries }));
+}
+
+function formatEraName(era) {
+  return era ? era.charAt(0).toUpperCase() + era.slice(1) : '';
+}
+
 document.getElementById('add-nation-btn').addEventListener('click', () => {
   const select = document.getElementById('nation-registry-select');
   const registryNation = getRegistryNation(select.value);
@@ -979,6 +1285,8 @@ document.getElementById('add-nation-btn').addEventListener('click', () => {
     secondaryColor: registryNation.secondaryColor,
     isHuman: false,
     startTerritoryCenter: { q: 0, r: 0 },
+    researchedTechIds: [],
+    unlockedCultureNodeIds: [],
   });
   selectedNationId = registryNation.nationId;
   setStatusInfo(`Added nation ${registryNation.nationName}. Use Set Start Position next.`);
@@ -999,6 +1307,7 @@ document.getElementById('remove-nation-btn').addEventListener('click', () => {
 function removeNation(nationId) {
   const nation = scenario.nations.find(n => n.id === nationId);
   if (!nation) return;
+  closeTechPopover();
 
   scenario.nations = scenario.nations.filter(n => n.id !== nationId);
   scenario.cities = scenario.cities.filter(c => c.nationId !== nationId);
@@ -1882,9 +2191,25 @@ function validateScenario() {
   const warnings = [];
   const registryIds = new Set(nationRegistry.nations.map(nation => nation.nationId));
   const activeIds = new Set(scenario.nations.map(nation => nation.id));
+  const knownTechnologyIds = technologyManifest.technologies.length > 0
+    ? new Set(technologyManifest.technologies.map(technology => technology.id))
+    : null;
+  const knownCultureNodeIds = cultureTreeManifest.cultureNodes.length > 0
+    ? new Set(cultureTreeManifest.cultureNodes.map(cultureNode => cultureNode.id))
+    : null;
 
   for (const nation of scenario.nations) {
     if (!registryIds.has(nation.id)) warnings.push(`${nation.name} has unknown nation ID ${nation.id}`);
+    for (const techId of normalizeIdList(nation.researchedTechIds)) {
+      if (knownTechnologyIds && !knownTechnologyIds.has(techId)) {
+        warnings.push(`${nation.name} references unknown technology ${techId}`);
+      }
+    }
+    for (const cultureNodeId of normalizeIdList(nation.unlockedCultureNodeIds)) {
+      if (knownCultureNodeIds && !knownCultureNodeIds.has(cultureNodeId)) {
+        warnings.push(`${nation.name} references unknown culture node ${cultureNodeId}`);
+      }
+    }
     const cities = scenario.cities.filter(c => c.nationId === nation.id);
     const capitals = cities.filter(c => c.isCapital);
     const settlers = scenario.units.filter(u => u.nationId === nation.id && u.unitTypeId === 'settler');

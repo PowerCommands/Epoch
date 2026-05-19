@@ -1,4 +1,5 @@
 import type { UnitType } from '../entities/UnitType';
+import type { AIMilitaryDoctrineRole } from '../types/aiMilitaryDoctrine';
 
 export type MilitaryUnitRole =
   | 'melee'
@@ -89,4 +90,16 @@ export function isMilitaryUnitType(unitType: UnitType): boolean {
   const { category } = unitType;
   if (category === 'leader' || category === 'civilian' || category === 'recon' || category === 'naval_recon') return false;
   return unitType.baseStrength > 0 || (unitType.rangedStrength ?? 0) > 0;
+}
+
+/**
+ * Authoritative mapping from a UnitType to its military doctrine role.
+ * Returns null for non-combat units and units with no classified role.
+ * This is the single source of truth for role classification in doctrine-aware systems.
+ */
+export function getUnitDoctrineRole(unitType: UnitType): AIMilitaryDoctrineRole | null {
+  if (!isMilitaryUnitType(unitType)) return null;
+  const role = getMilitaryUnitRole(unitType);
+  if (role === 'unknown') return null;
+  return role as AIMilitaryDoctrineRole;
 }

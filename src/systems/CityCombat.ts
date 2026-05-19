@@ -40,6 +40,10 @@ export function captureCity(
   // HP återställs till 25% av max
   city.health = Math.round(CITY_BASE_HEALTH * CITY_CAPTURE_HEALTH_FRACTION);
 
+  // Mark the city as recently conquered so the happiness system applies the
+  // unrest penalty for the next 30 rounds.
+  city.recentlyConqueredTurnsRemaining = 30;
+
   // Erövrande enheten flyttas in på stadens tile
   unitManager.moveUnit(attacker.id, city.tileX, city.tileY);
 }

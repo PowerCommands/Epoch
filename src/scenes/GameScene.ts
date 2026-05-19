@@ -25,6 +25,9 @@ import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
 import { MilitaryUnhappinessSystem } from '../systems/MilitaryUnhappinessSystem';
+import { ImperialOverstretchSystem } from '../systems/ImperialOverstretchSystem';
+import { ConqueredCityUnhappinessSystem } from '../systems/ConqueredCityUnhappinessSystem';
+import { WarWearinessSystem } from '../systems/WarWearinessSystem';
 import { CultureSystem } from '../systems/culture/CultureSystem';
 import { CultureEffectSystem } from '../systems/culture/CultureEffectSystem';
 import { PolicySystem } from '../systems/PolicySystem';
@@ -315,6 +318,10 @@ export class GameScene extends Phaser.Scene {
     ) => ReadonlyArray<{ readonly resourceId: string; readonly quantity: number }> = () => [];
     let cultureEffectSystem: CultureEffectSystem;
     let getMilitaryUnhappiness: (nationId: string) => number = () => 0;
+    let getCityCountPressure: (nationId: string) => number = () => 0;
+    let getDistancePressure: (nationId: string) => number = () => 0;
+    let getConqueredCityUnhappiness: (nationId: string) => number = () => 0;
+    let getWarWeariness: (nationId: string) => number = () => 0;
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
@@ -324,6 +331,10 @@ export class GameScene extends Phaser.Scene {
       (nationId) => cultureEffectSystem?.getCultureHappinessBonus(nationId) ?? 0,
       (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
       (nationId) => getMilitaryUnhappiness(nationId),
+      (nationId) => getCityCountPressure(nationId),
+      (nationId) => getDistancePressure(nationId),
+      (nationId) => getConqueredCityUnhappiness(nationId),
+      (nationId) => getWarWeariness(nationId),
     );
     const formatLog = createAILogFormatter({
       nationManager,
@@ -586,6 +597,17 @@ export class GameScene extends Phaser.Scene {
     });
     const militaryUnhappinessSystem = new MilitaryUnhappinessSystem(unitManager, diplomacyManager, nationManager);
     getMilitaryUnhappiness = (nationId) => militaryUnhappinessSystem.getUnhappiness(nationId);
+
+    const imperialOverstretchSystem = new ImperialOverstretchSystem(cityManager, gridSystem);
+    getCityCountPressure = (nationId) => imperialOverstretchSystem.getCityCountPressure(nationId);
+    getDistancePressure = (nationId) => imperialOverstretchSystem.getDistancePressure(nationId);
+
+    const conqueredCityUnhappinessSystem = new ConqueredCityUnhappinessSystem(cityManager);
+    getConqueredCityUnhappiness = (nationId) => conqueredCityUnhappinessSystem.getUnhappiness(nationId);
+    turnManager.on('roundStart', () => conqueredCityUnhappinessSystem.handleRoundStart());
+
+    const warWearinessSystem = new WarWearinessSystem(nationManager, diplomacyManager, () => turnManager.getCurrentRound());
+    getWarWeariness = (nationId) => warWearinessSystem.getWarWeariness(nationId);
 
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');

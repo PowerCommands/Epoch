@@ -63,6 +63,18 @@ export function buildHappinessTooltip(happiness: Readonly<NationHappiness>): str
   if (happiness.unhappinessFromMilitary > 0) {
     lines.push(`Military units: -${happiness.unhappinessFromMilitary}`);
   }
+  if (happiness.unhappinessFromCityCountPressure > 0) {
+    lines.push(`Imperial overstretch (cities): -${happiness.unhappinessFromCityCountPressure}`);
+  }
+  if (happiness.unhappinessFromDistancePressure > 0) {
+    lines.push(`Imperial overstretch (distance): -${happiness.unhappinessFromDistancePressure}`);
+  }
+  if (happiness.unhappinessFromConqueredCities > 0) {
+    lines.push(`Conquered cities: -${happiness.unhappinessFromConqueredCities}`);
+  }
+  if (happiness.unhappinessFromWarWeariness > 0) {
+    lines.push(`War weariness: -${happiness.unhappinessFromWarWeariness}`);
+  }
   lines.push('');
   lines.push('Effects:');
   lines.push(`Growth: ${formatPercent(happiness.growthModifier)}`);

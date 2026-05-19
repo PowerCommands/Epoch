@@ -80,7 +80,9 @@ import {
   isMaritimeDoctrine,
   type ArmyRoleProfile,
 } from './ai/AIMilitaryDoctrineScoring';
-import type { AIMilitaryDoctrine } from '../types/aiMilitaryDoctrine';
+import type { AIMilitaryDoctrine, AIMilitaryDoctrineRole } from '../types/aiMilitaryDoctrine';
+import { AIMilitaryDoctrineEvaluator } from './ai/AIMilitaryDoctrineEvaluator';
+import { getUnitDoctrineRole } from '../utils/unitRoleUtils';
 import {
   getModernizationGoldReserve,
   getModernizationMaxUpgrades,
@@ -373,6 +375,8 @@ export class AISystem {
   private readonly militaryHoldingLoggedRound = new Map<string, number>();
   private readonly avoidedProvocativeMilitaryTileLoggedRound = new Map<string, number>();
   private readonly defensiveModeLoggedRound = new Map<string, number>();
+  private readonly militaryBudgetLoggedRound = new Map<string, number>();
+  private readonly doctrinePressureLoggedRound = new Map<string, number>();
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
   private readonly doctrineProductionLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
@@ -393,6 +397,14 @@ export class AISystem {
   });
   private readonly cityFocusSystem: CityFocusSystem;
   private readonly obsoleteUnitProductionBlockLogKeys = new Set<string>();
+  private readonly doctrineEvaluator: AIMilitaryDoctrineEvaluator;
+  private readonly militaryPickRationaleByNation = new Map<string, {
+    role: AIMilitaryDoctrineRole | null;
+    preferredWeight: number;
+    deficitMultiplier: number;
+    finalScore: number;
+    unitName: string;
+  }>();
 
   constructor(
     unitManager: UnitManager,
@@ -444,6 +456,7 @@ export class AISystem {
     this.settlementMemorySystem = settlementMemorySystem ?? getSharedAISettlementMemorySystem(mapData);
     this.seaResourceMemorySystem = seaResourceMemorySystem ?? getSharedAISeaResourceMemorySystem(mapData);
     this.mapData = mapData;
+    this.doctrineEvaluator = new AIMilitaryDoctrineEvaluator(unitManager);
     this.cityFocusSystem = new CityFocusSystem(
       this.cityManager,
       this.nationManager,
@@ -2868,6 +2881,19 @@ export class AISystem {
     let plannedWorkBoatCount = this.countWorkBoats(nationId) + this.countQueuedWorkBoats(nationId);
     const coastalCityCount = this.countCoastalCities(nationId);
 
+    const doctrineBudget = this.doctrineEvaluator.getDesiredMilitaryBudget(nationId);
+    const doctrine = this.doctrineEvaluator.getDoctrine(nationId);
+    const effectiveMaxUnits = Math.max(
+      Math.ceil(strategy.military.maxUnits * doctrineBudget.maxUnitsMultiplier),
+      1,
+    );
+    this.logMilitaryBudgetStatusOnce(nationId, doctrine.id, plannedMilitaryCount, effectiveMaxUnits, strategy.military.maxUnits);
+
+    const currentRound = this.turnManager.getCurrentRound();
+    if (currentRound % 25 === 0) {
+      this.logPeriodicDoctrineStatus(nationId);
+    }
+
     for (const city of cities) {
       if (this.productionSystem.getProduction(city.id)) continue;
 
@@ -2882,6 +2908,7 @@ export class AISystem {
         coastalCityCount,
         strategy,
         eraStrategy,
+        effectiveMaxUnits,
       );
 
       let usedFallback = false;
@@ -3249,6 +3276,7 @@ export class AISystem {
     coastalCityCount: number,
     strategy: AIStrategy,
     eraStrategy: AILeaderEraStrategy,
+    effectiveMaxUnits: number = strategy.military.maxUnits,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
     const economy = calculateCityEconomy(
@@ -3285,8 +3313,13 @@ export class AISystem {
       );
       return { kind: 'building', buildingType: happinessBuilding };
     }
-    const canBuildMilitary = plannedMilitaryCount < strategy.military.maxUnits;
     const defensivePressure = this.isDefensivePressureActive(nationId);
+    const doctrineBudget = this.doctrineEvaluator.getDesiredMilitaryBudget(nationId);
+    const isOverBudget = plannedMilitaryCount >= effectiveMaxUnits;
+    // General military gate: allow production unless over budget, or budget cap
+    // is waived by threat when doctrine permits overbuilding when threatened.
+    const canBuildGeneralMilitary = !isOverBudget ||
+      (defensivePressure && doctrineBudget.allowOverbuildingWhenThreatened);
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
     const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
     const canProduceSettler =
@@ -3307,7 +3340,8 @@ export class AISystem {
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
 
-    const acuteDefenderNeeded = canBuildMilitary && this.needsDefender(city, nationId);
+    // Defenders bypass the budget gate — emergency defense is always permitted.
+    const acuteDefenderNeeded = this.needsDefender(city, nationId);
     if (acuteDefenderNeeded) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
@@ -3365,7 +3399,7 @@ export class AISystem {
       });
     }
 
-    if (canBuildMilitary) {
+    if (canBuildGeneralMilitary) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
@@ -3377,7 +3411,7 @@ export class AISystem {
     }
 
     if (
-      canBuildMilitary &&
+      canBuildGeneralMilitary &&
       coastalCityCount > 0 &&
       cityHasWaterTile(city, this.mapData) &&
       plannedNavalCount < coastalCityCount
@@ -3503,7 +3537,7 @@ export class AISystem {
     }
 
     // Fallback so the city always has something to do when room is left.
-    if (canBuildMilitary) {
+    if (canBuildGeneralMilitary) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
@@ -3544,7 +3578,8 @@ export class AISystem {
     const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
       if (best.item.kind === 'unit' && best.item.unitType.category !== 'leader' && best.item.unitType.baseStrength > 0) {
-        this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx);
+        this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx, city.name);
+        this.logDoctrineToleranceIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx.doctrine, city.name);
       }
       if (cityFocus !== 'balanced') {
         const itemName = this.foundationProducibleName(best.item);
@@ -3851,6 +3886,68 @@ export class AISystem {
     };
   }
 
+  private logDoctrineToleranceIfMaterial(nationId: string, unitType: UnitType, doctrine: AIMilitaryDoctrine, cityName: string): void {
+    const netHappiness = this.happinessSystem?.getNetHappiness(nationId);
+    const gold = this.nationManager.getResources(nationId).gold;
+    const warWeariness = this.happinessSystem?.getNationState(nationId)?.unhappinessFromWarWeariness ?? 0;
+    const modifier = this.doctrineEvaluator.getMilitaryProductionPressureModifier(nationId, {
+      happiness: netHappiness,
+      gold,
+      warWeariness,
+      isThreatened: false,
+    });
+    if (modifier >= 1.0) return;
+
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.doctrinePressureLoggedRound.get(nationId) === currentRound) return;
+    this.doctrinePressureLoggedRound.set(nationId, currentRound);
+
+    const tol = doctrine.strategicTolerance;
+    const reasons: string[] = [];
+    if (netHappiness !== undefined && netHappiness < tol.minHappinessForMilitaryBuilds) {
+      reasons.push(`happiness ${netHappiness} below threshold ${tol.minHappinessForMilitaryBuilds}`);
+    }
+    if (gold < tol.minGoldReserveForMilitaryBuilds) {
+      reasons.push(`gold ${gold} below threshold ${tol.minGoldReserveForMilitaryBuilds}`);
+    }
+    if (!tol.tolerateWarWeariness && warWeariness > 0) {
+      reasons.push(`war weariness ${warWeariness}`);
+    }
+    console.log(this.formatLog(
+      nationId,
+      `doctrine discouraged ${unitType.name} production in ${cityName} (${doctrine.id}): ${reasons.join(', ')}, pressure x${modifier.toFixed(2)}.`,
+    ));
+  }
+
+  private logPeriodicDoctrineStatus(nationId: string): void {
+    const status = this.doctrineEvaluator.explainDoctrineState(nationId);
+    console.log(this.formatLog(nationId, `doctrine status: ${status}`));
+  }
+
+  private logMilitaryBudgetStatusOnce(
+    nationId: string,
+    doctrineId: string,
+    currentCount: number,
+    effectiveMax: number,
+    baseMax: number,
+  ): void {
+    if (effectiveMax === baseMax) return;
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.militaryBudgetLoggedRound.get(nationId) === currentRound) return;
+    this.militaryBudgetLoggedRound.set(nationId, currentRound);
+    if (currentCount >= effectiveMax) {
+      console.log(this.formatLog(
+        nationId,
+        `doctrine reduced military production (${doctrineId}): current units ${currentCount} exceeds effective max ${effectiveMax}.`,
+      ));
+    } else {
+      console.log(this.formatLog(
+        nationId,
+        `doctrine allows larger army (${doctrineId}): current units ${currentCount} / effective max ${effectiveMax}.`,
+      ));
+    }
+  }
+
   private logDoctrineProductionOnce(nationId: string, message: string): void {
     const currentRound = this.turnManager.getCurrentRound();
     if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
@@ -3862,24 +3959,49 @@ export class AISystem {
     nationId: string,
     unitType: UnitType,
     ctx: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+    cityName: string,
   ): void {
     const { doctrine } = ctx;
+    const rationale = this.militaryPickRationaleByNation.get(nationId);
+
+    if (rationale && (rationale.deficitMultiplier !== 1.0 || rationale.role !== null)) {
+      const currentRound = this.turnManager.getCurrentRound();
+      if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
+      this.doctrineProductionLoggedRound.set(nationId, currentRound);
+
+      const role = rationale.role ?? 'none';
+      const preferred = rationale.preferredWeight.toFixed(2);
+      const deficit = rationale.deficitMultiplier.toFixed(2);
+      const score = Math.round(rationale.finalScore);
+      const netHappiness = this.happinessSystem?.getNetHappiness(nationId);
+      const gold = this.nationManager.getResources(nationId).gold;
+      const warWeariness = this.happinessSystem?.getNationState(nationId)?.unhappinessFromWarWeariness ?? 0;
+      const pressure = this.doctrineEvaluator.getMilitaryProductionPressureModifier(nationId, {
+        happiness: netHappiness, gold, warWeariness, isThreatened: false,
+      });
+      console.log(this.formatLog(
+        nationId,
+        `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): role ${role}, preferred x${preferred}, deficit x${deficit}, budget x1.00, pressure x${pressure.toFixed(2)}, final score ${score}.`,
+      ));
+      return;
+    }
+
+    // Fallback: legacy role-based logging for non-evaluator paths.
     if (doctrine.id === 'balanced') return;
-    const unitEraIndex = getEraIndex(unitType.era);
-    const eraGap = ctx.nationEraIndex - unitEraIndex;
     const isNaval = unitType.isNaval === true;
     const isMountedUnit = ['horseman', 'knight', 'lancer', 'cavalry', 'landship', 'tank', 'modern_armor'].includes(unitType.id);
     const isRangedOrSiege = ['ranged', 'siege'].includes(unitType.category);
     const isHighQuality = unitType.baseStrength >= 20;
+    const eraGap = ctx.nationEraIndex - getEraIndex(unitType.era);
 
     if (isNaval && isMaritimeDoctrine(doctrine)) {
-      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) favored naval production (${unitType.name}).`);
+      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): naval favored.`);
     } else if (isMountedUnit && doctrine.preferredRoles.mounted >= 1.5) {
-      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) favored mounted unit production (${unitType.name}).`);
+      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): mounted favored.`);
     } else if ((isRangedOrSiege) && (doctrine.preferredRoles.ranged >= 1.2 || doctrine.preferredRoles.siege >= 1.1)) {
-      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) favored ranged/siege production (${unitType.name}).`);
+      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): ranged/siege favored.`);
     } else if (isHighQuality && doctrine.qualityBias >= 1.3 && eraGap === 0) {
-      this.logDoctrineProductionOnce(nationId, `military doctrine (${doctrine.id}) preferred high-quality production (${unitType.name}).`);
+      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): high quality favored.`);
     }
   }
 
@@ -3896,12 +4018,28 @@ export class AISystem {
       }
       return baseScore / Math.max(eraStrategy.productionWeights.military, 0.1);
     }
-    const threshold = eraStrategy.happinessBehavior?.stabilizationThreshold;
+
     const netHappiness = this.happinessSystem?.getNetHappiness(nationId);
-    if (threshold !== undefined && netHappiness !== undefined && netHappiness < threshold) {
-      return baseScore * 0.65;
-    }
-    return baseScore;
+    const gold = this.nationManager.getResources(nationId).gold;
+    const warWeariness = this.happinessSystem?.getNationState(nationId)?.unhappinessFromWarWeariness ?? 0;
+
+    // Era-strategy happiness threshold (existing behavior).
+    const threshold = eraStrategy.happinessBehavior?.stabilizationThreshold;
+    const eraModifier = (threshold !== undefined && netHappiness !== undefined && netHappiness < threshold)
+      ? 0.65
+      : 1.0;
+
+    // Doctrine strategic tolerance modifier. isThreatened is false here because
+    // defensivePressure already returned the boosted score above.
+    const toleranceModifier = this.doctrineEvaluator.getMilitaryProductionPressureModifier(nationId, {
+      happiness: netHappiness,
+      gold,
+      warWeariness,
+      isThreatened: false,
+    });
+
+    // Use the stronger discouragement signal without double-stacking.
+    return baseScore * Math.min(eraModifier, toleranceModifier);
   }
 
   private isDefensivePressureActive(nationId: string): boolean {
@@ -4006,12 +4144,53 @@ export class AISystem {
 
     if (doctrineCtx) {
       const { doctrine, nationEraIndex, armyProfile } = doctrineCtx;
-      let best: UnitType = candidates[0];
-      let bestScore = -Infinity;
+
+      let maxDeficit = -Infinity;
+      const unitDeficits = new Map<string, number>();
       for (const u of candidates) {
-        const s = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
-        if (s > bestScore) { best = u; bestScore = s; }
+        const role = getUnitDoctrineRole(u);
+        if (role !== null) {
+          const deficit = this.doctrineEvaluator.getRoleDeficit(nationId, role);
+          unitDeficits.set(u.id, deficit);
+          if (deficit > maxDeficit) maxDeficit = deficit;
+        }
       }
+
+      let best: UnitType = candidates[0];
+      let bestFinalScore = -Infinity;
+      let bestDeficitMultiplier = 1.0;
+      let bestRole: AIMilitaryDoctrineRole | null = null;
+      let bestPreferredWeight = 1.0;
+
+      for (const u of candidates) {
+        let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
+        const role = getUnitDoctrineRole(u);
+        const deficitMultiplier = role !== null
+          ? this.doctrineEvaluator.getRoleDeficitMultiplier(nationId, role)
+          : 1.0;
+        score *= deficitMultiplier;
+
+        if (deficitMultiplier < 0.75 && (unitDeficits.get(u.id) ?? -Infinity) < maxDeficit) {
+          score *= 0.75;
+        }
+
+        if (score > bestFinalScore) {
+          best = u;
+          bestFinalScore = score;
+          bestDeficitMultiplier = deficitMultiplier;
+          bestRole = role;
+          bestPreferredWeight = role !== null ? (doctrine.preferredRoles[role] ?? 1.0) : 1.0;
+        }
+      }
+
+      this.militaryPickRationaleByNation.set(nationId, {
+        role: bestRole,
+        preferredWeight: bestPreferredWeight,
+        deficitMultiplier: bestDeficitMultiplier,
+        finalScore: bestFinalScore,
+        unitName: best.name,
+      });
+
       return best;
     }
 
@@ -4051,12 +4230,55 @@ export class AISystem {
 
     if (doctrineCtx) {
       const { doctrine, nationEraIndex, armyProfile } = doctrineCtx;
-      let best: UnitType = available[0];
-      let bestScore = -Infinity;
+
+      // Pre-compute deficits so the dampening rule can detect better alternatives.
+      let maxDeficit = -Infinity;
+      const unitDeficits = new Map<string, number>();
       for (const u of available) {
-        const s = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
-        if (s > bestScore) { best = u; bestScore = s; }
+        const role = getUnitDoctrineRole(u);
+        if (role !== null) {
+          const deficit = this.doctrineEvaluator.getRoleDeficit(nationId, role);
+          unitDeficits.set(u.id, deficit);
+          if (deficit > maxDeficit) maxDeficit = deficit;
+        }
       }
+
+      let best: UnitType = available[0];
+      let bestFinalScore = -Infinity;
+      let bestDeficitMultiplier = 1.0;
+      let bestRole: AIMilitaryDoctrineRole | null = null;
+      let bestPreferredWeight = 1.0;
+
+      for (const u of available) {
+        let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
+        const role = getUnitDoctrineRole(u);
+        const deficitMultiplier = role !== null
+          ? this.doctrineEvaluator.getRoleDeficitMultiplier(nationId, role)
+          : 1.0;
+        score *= deficitMultiplier;
+
+        // Dampen overrepresented candidates when at least one better-deficit alternative exists.
+        if (deficitMultiplier < 0.75 && (unitDeficits.get(u.id) ?? -Infinity) < maxDeficit) {
+          score *= 0.75;
+        }
+
+        if (score > bestFinalScore) {
+          best = u;
+          bestFinalScore = score;
+          bestDeficitMultiplier = deficitMultiplier;
+          bestRole = role;
+          bestPreferredWeight = role !== null ? (doctrine.preferredRoles[role] ?? 1.0) : 1.0;
+        }
+      }
+
+      this.militaryPickRationaleByNation.set(nationId, {
+        role: bestRole,
+        preferredWeight: bestPreferredWeight,
+        deficitMultiplier: bestDeficitMultiplier,
+        finalScore: bestFinalScore,
+        unitName: best.name,
+      });
+
       return best;
     }
 

@@ -1,6 +1,39 @@
-import type { AIMilitaryDoctrine } from '../types/aiMilitaryDoctrine';
+import type {
+  AIMilitaryDoctrine,
+  AIMilitaryDoctrineMillitaryBudget,
+  AIMilitaryDoctrineProductionBehavior,
+  AIMilitaryDoctrineStrategicTolerance,
+  AIMilitaryDoctrineTargetComposition,
+} from '../types/aiMilitaryDoctrine';
 
 export const DEFAULT_AI_MILITARY_DOCTRINE_ID = 'balanced';
+
+export const DEFAULT_TARGET_COMPOSITION: AIMilitaryDoctrineTargetComposition = {
+  melee: 0.25,
+  ranged: 0.25,
+  mounted: 0.2,
+  siege: 0.15,
+  navalMelee: 0.075,
+  navalRanged: 0.075,
+};
+
+export const DEFAULT_MILITARY_BUDGET: AIMilitaryDoctrineMillitaryBudget = {
+  strengthMultiplier: 1.0,
+  maxUnitsMultiplier: 1.0,
+  allowOverbuildingWhenThreatened: true,
+};
+
+export const DEFAULT_STRATEGIC_TOLERANCE: AIMilitaryDoctrineStrategicTolerance = {
+  minHappinessForMilitaryBuilds: 0,
+  minGoldReserveForMilitaryBuilds: 0,
+  tolerateWarWeariness: true,
+};
+
+export const DEFAULT_PRODUCTION_BEHAVIOR: AIMilitaryDoctrineProductionBehavior = {
+  modernizationBias: 1.0,
+  quantityBias: 1.0,
+  qualityBias: 1.0,
+};
 
 export const BALANCED_DOCTRINE: AIMilitaryDoctrine = {
   id: 'balanced',
@@ -18,6 +51,10 @@ export const BALANCED_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 1.0,
     air: 1.0,
   },
+  targetComposition: { ...DEFAULT_TARGET_COMPOSITION },
+  militaryBudget: { ...DEFAULT_MILITARY_BUDGET },
+  strategicTolerance: { ...DEFAULT_STRATEGIC_TOLERANCE },
+  productionBehavior: { modernizationBias: 1.0, quantityBias: 1.0, qualityBias: 1.0 },
 };
 
 export const STEPPE_HORDE_DOCTRINE: AIMilitaryDoctrine = {
@@ -36,6 +73,10 @@ export const STEPPE_HORDE_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 0.25,
     air: 0.8,
   },
+  targetComposition: { melee: 0.2, ranged: 0.3, mounted: 0.35, siege: 0.1, navalMelee: 0.025, navalRanged: 0.025 },
+  militaryBudget: { strengthMultiplier: 1.4, maxUnitsMultiplier: 1.5, allowOverbuildingWhenThreatened: true },
+  strategicTolerance: { minHappinessForMilitaryBuilds: -5, minGoldReserveForMilitaryBuilds: 0, tolerateWarWeariness: true },
+  productionBehavior: { modernizationBias: 0.85, quantityBias: 1.35, qualityBias: 0.8 },
 };
 
 export const NAVAL_POWER_DOCTRINE: AIMilitaryDoctrine = {
@@ -54,6 +95,10 @@ export const NAVAL_POWER_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 1.9,
     air: 1.0,
   },
+  targetComposition: { melee: 0.2, ranged: 0.2, mounted: 0.1, siege: 0.1, navalMelee: 0.2, navalRanged: 0.2 },
+  militaryBudget: { strengthMultiplier: 1.1, maxUnitsMultiplier: 1.1, allowOverbuildingWhenThreatened: true },
+  strategicTolerance: { minHappinessForMilitaryBuilds: 0, minGoldReserveForMilitaryBuilds: 10, tolerateWarWeariness: false },
+  productionBehavior: { modernizationBias: 1.2, quantityBias: 0.9, qualityBias: 1.15 },
 };
 
 export const CULTURAL_DEFENSE_DOCTRINE: AIMilitaryDoctrine = {
@@ -72,6 +117,10 @@ export const CULTURAL_DEFENSE_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 0.8,
     air: 1.0,
   },
+  targetComposition: { melee: 0.15, ranged: 0.35, mounted: 0.1, siege: 0.25, navalMelee: 0.075, navalRanged: 0.075 },
+  militaryBudget: { strengthMultiplier: 0.8, maxUnitsMultiplier: 0.7, allowOverbuildingWhenThreatened: false },
+  strategicTolerance: { minHappinessForMilitaryBuilds: 5, minGoldReserveForMilitaryBuilds: 20, tolerateWarWeariness: false },
+  productionBehavior: { modernizationBias: 1.35, quantityBias: 0.65, qualityBias: 1.45 },
 };
 
 export const DEFENSIVE_MODERN_DOCTRINE: AIMilitaryDoctrine = {
@@ -90,6 +139,10 @@ export const DEFENSIVE_MODERN_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 0.8,
     air: 1.0,
   },
+  targetComposition: { melee: 0.15, ranged: 0.4, mounted: 0.1, siege: 0.15, navalMelee: 0.1, navalRanged: 0.1 },
+  militaryBudget: { strengthMultiplier: 0.7, maxUnitsMultiplier: 0.6, allowOverbuildingWhenThreatened: false },
+  strategicTolerance: { minHappinessForMilitaryBuilds: 10, minGoldReserveForMilitaryBuilds: 30, tolerateWarWeariness: false },
+  productionBehavior: { modernizationBias: 1.25, quantityBias: 0.55, qualityBias: 1.35 },
 };
 
 export const IMPERIAL_COMBINED_ARMS_DOCTRINE: AIMilitaryDoctrine = {
@@ -108,6 +161,10 @@ export const IMPERIAL_COMBINED_ARMS_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 0.75,
     air: 1.0,
   },
+  targetComposition: { melee: 0.3, ranged: 0.25, mounted: 0.15, siege: 0.2, navalMelee: 0.05, navalRanged: 0.05 },
+  militaryBudget: { strengthMultiplier: 1.2, maxUnitsMultiplier: 1.1, allowOverbuildingWhenThreatened: true },
+  strategicTolerance: { minHappinessForMilitaryBuilds: 0, minGoldReserveForMilitaryBuilds: 10, tolerateWarWeariness: true },
+  productionBehavior: { modernizationBias: 1.15, quantityBias: 0.95, qualityBias: 1.15 },
 };
 
 export const MARITIME_RAIDER_DOCTRINE: AIMilitaryDoctrine = {
@@ -126,6 +183,10 @@ export const MARITIME_RAIDER_DOCTRINE: AIMilitaryDoctrine = {
     navalRanged: 1.5,
     air: 1.0,
   },
+  targetComposition: { melee: 0.25, ranged: 0.2, mounted: 0.1, siege: 0.1, navalMelee: 0.175, navalRanged: 0.175 },
+  militaryBudget: { strengthMultiplier: 1.15, maxUnitsMultiplier: 1.2, allowOverbuildingWhenThreatened: true },
+  strategicTolerance: { minHappinessForMilitaryBuilds: -5, minGoldReserveForMilitaryBuilds: 0, tolerateWarWeariness: true },
+  productionBehavior: { modernizationBias: 1.1, quantityBias: 1.0, qualityBias: 1.05 },
 };
 
 export const AI_MILITARY_DOCTRINES: readonly AIMilitaryDoctrine[] = [

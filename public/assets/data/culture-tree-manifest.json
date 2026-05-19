@@ -1,0 +1,194 @@
+{
+  "cultureNodes": [
+    {
+      "id": "code_of_laws",
+      "name": "Code of Laws",
+      "era": "ancient"
+    },
+    {
+      "id": "craftsmanship",
+      "name": "Craftsmanship",
+      "era": "ancient"
+    },
+    {
+      "id": "foreign_trade",
+      "name": "Foreign Trade",
+      "era": "ancient"
+    },
+    {
+      "id": "early_empire",
+      "name": "Early Empire",
+      "era": "ancient"
+    },
+    {
+      "id": "state_workforce",
+      "name": "State Workforce",
+      "era": "ancient"
+    },
+    {
+      "id": "mysticism",
+      "name": "Mysticism",
+      "era": "ancient"
+    },
+    {
+      "id": "military_tradition",
+      "name": "Military Tradition",
+      "era": "classical"
+    },
+    {
+      "id": "political_philosophy",
+      "name": "Political Philosophy",
+      "era": "classical"
+    },
+    {
+      "id": "drama_civics",
+      "name": "Drama and Poetry",
+      "era": "classical"
+    },
+    {
+      "id": "games_recreation",
+      "name": "Games and Recreation",
+      "era": "classical"
+    },
+    {
+      "id": "defensive_tactics",
+      "name": "Defensive Tactics",
+      "era": "classical"
+    },
+    {
+      "id": "recorded_history",
+      "name": "Recorded History",
+      "era": "classical"
+    },
+    {
+      "id": "theology_civics",
+      "name": "Theology",
+      "era": "medieval"
+    },
+    {
+      "id": "feudalism",
+      "name": "Feudalism",
+      "era": "medieval"
+    },
+    {
+      "id": "civil_service_civics",
+      "name": "Civil Service",
+      "era": "medieval"
+    },
+    {
+      "id": "mercenaries",
+      "name": "Mercenaries",
+      "era": "medieval"
+    },
+    {
+      "id": "medieval_faires",
+      "name": "Medieval Faires",
+      "era": "medieval"
+    },
+    {
+      "id": "guilds",
+      "name": "Guilds",
+      "era": "medieval"
+    },
+    {
+      "id": "diplomatic_service",
+      "name": "Diplomatic Service",
+      "era": "renaissance"
+    },
+    {
+      "id": "exploration",
+      "name": "Exploration",
+      "era": "renaissance"
+    },
+    {
+      "id": "humanism",
+      "name": "Humanism",
+      "era": "renaissance"
+    },
+    {
+      "id": "reformed_church",
+      "name": "Reformed Church",
+      "era": "renaissance"
+    },
+    {
+      "id": "mercantilism",
+      "name": "Mercantilism",
+      "era": "renaissance"
+    },
+    {
+      "id": "enlightenment",
+      "name": "The Enlightenment",
+      "era": "industrial"
+    },
+    {
+      "id": "colonialism",
+      "name": "Colonialism",
+      "era": "industrial"
+    },
+    {
+      "id": "civil_engineering",
+      "name": "Civil Engineering",
+      "era": "industrial"
+    },
+    {
+      "id": "nationalism",
+      "name": "Nationalism",
+      "era": "industrial"
+    },
+    {
+      "id": "urbanization",
+      "name": "Urbanization",
+      "era": "modern"
+    },
+    {
+      "id": "ideology",
+      "name": "Ideology",
+      "era": "modern"
+    },
+    {
+      "id": "suffrage",
+      "name": "Suffrage",
+      "era": "modern"
+    },
+    {
+      "id": "totalitarianism",
+      "name": "Totalitarianism",
+      "era": "modern"
+    },
+    {
+      "id": "class_struggle",
+      "name": "Class Struggle",
+      "era": "modern"
+    },
+    {
+      "id": "mobilization",
+      "name": "Mobilization",
+      "era": "atomic"
+    },
+    {
+      "id": "cold_war",
+      "name": "Cold War",
+      "era": "atomic"
+    },
+    {
+      "id": "professional_sports",
+      "name": "Professional Sports",
+      "era": "atomic"
+    },
+    {
+      "id": "globalization",
+      "name": "Globalization",
+      "era": "information"
+    },
+    {
+      "id": "social_media",
+      "name": "Social Media",
+      "era": "information"
+    },
+    {
+      "id": "near_future_governance",
+      "name": "Near-Future Governance",
+      "era": "future"
+    }
+  ]
+}

@@ -1,0 +1,414 @@
+{
+  "technologies": [
+    {
+      "id": "agriculture",
+      "name": "Agriculture",
+      "era": "ancient"
+    },
+    {
+      "id": "pottery",
+      "name": "Pottery",
+      "era": "ancient"
+    },
+    {
+      "id": "animal_husbandry",
+      "name": "Animal Husbandry",
+      "era": "ancient"
+    },
+    {
+      "id": "archery",
+      "name": "Archery",
+      "era": "ancient"
+    },
+    {
+      "id": "mining",
+      "name": "Mining",
+      "era": "ancient"
+    },
+    {
+      "id": "sailing",
+      "name": "Sailing",
+      "era": "ancient"
+    },
+    {
+      "id": "calendar",
+      "name": "Calendar",
+      "era": "ancient"
+    },
+    {
+      "id": "writing",
+      "name": "Writing",
+      "era": "ancient"
+    },
+    {
+      "id": "trapping",
+      "name": "Trapping",
+      "era": "ancient"
+    },
+    {
+      "id": "the_wheel",
+      "name": "The Wheel",
+      "era": "ancient"
+    },
+    {
+      "id": "masonry",
+      "name": "Masonry",
+      "era": "ancient"
+    },
+    {
+      "id": "bronze_working",
+      "name": "Bronze Working",
+      "era": "ancient"
+    },
+    {
+      "id": "optics",
+      "name": "Optics",
+      "era": "classical"
+    },
+    {
+      "id": "philosophy",
+      "name": "Philosophy",
+      "era": "classical"
+    },
+    {
+      "id": "drama_and_poetry",
+      "name": "Drama and Poetry",
+      "era": "classical"
+    },
+    {
+      "id": "foreign_trade",
+      "name": "Foreign Trade",
+      "era": "classical"
+    },
+    {
+      "id": "horseback_riding",
+      "name": "Horseback Riding",
+      "era": "classical"
+    },
+    {
+      "id": "mathematics",
+      "name": "Mathematics",
+      "era": "classical"
+    },
+    {
+      "id": "construction",
+      "name": "Construction",
+      "era": "classical"
+    },
+    {
+      "id": "iron_working",
+      "name": "Iron Working",
+      "era": "classical"
+    },
+    {
+      "id": "theology",
+      "name": "Theology",
+      "era": "medieval"
+    },
+    {
+      "id": "civil_service",
+      "name": "Civil Service",
+      "era": "medieval"
+    },
+    {
+      "id": "currency",
+      "name": "Currency",
+      "era": "medieval"
+    },
+    {
+      "id": "engineering",
+      "name": "Engineering",
+      "era": "medieval"
+    },
+    {
+      "id": "metal_casting",
+      "name": "Metal Casting",
+      "era": "medieval"
+    },
+    {
+      "id": "compass",
+      "name": "Compass",
+      "era": "medieval"
+    },
+    {
+      "id": "guilds",
+      "name": "Guilds",
+      "era": "medieval"
+    },
+    {
+      "id": "education",
+      "name": "Education",
+      "era": "medieval"
+    },
+    {
+      "id": "chivalry",
+      "name": "Chivalry",
+      "era": "medieval"
+    },
+    {
+      "id": "machinery",
+      "name": "Machinery",
+      "era": "medieval"
+    },
+    {
+      "id": "physics",
+      "name": "Physics",
+      "era": "medieval"
+    },
+    {
+      "id": "steel",
+      "name": "Steel",
+      "era": "medieval"
+    },
+    {
+      "id": "astronomy",
+      "name": "Astronomy",
+      "era": "renaissance"
+    },
+    {
+      "id": "acoustics",
+      "name": "Acoustics",
+      "era": "renaissance"
+    },
+    {
+      "id": "banking",
+      "name": "Banking",
+      "era": "renaissance"
+    },
+    {
+      "id": "printing_press",
+      "name": "Printing Press",
+      "era": "renaissance"
+    },
+    {
+      "id": "gunpowder",
+      "name": "Gunpowder",
+      "era": "renaissance"
+    },
+    {
+      "id": "navigation",
+      "name": "Navigation",
+      "era": "renaissance"
+    },
+    {
+      "id": "economics",
+      "name": "Economics",
+      "era": "renaissance"
+    },
+    {
+      "id": "chemistry",
+      "name": "Chemistry",
+      "era": "renaissance"
+    },
+    {
+      "id": "metallurgy",
+      "name": "Metallurgy",
+      "era": "renaissance"
+    },
+    {
+      "id": "architecture",
+      "name": "Architecture",
+      "era": "renaissance"
+    },
+    {
+      "id": "archaeology",
+      "name": "Archaeology",
+      "era": "renaissance"
+    },
+    {
+      "id": "scientific_theory",
+      "name": "Scientific Theory",
+      "era": "renaissance"
+    },
+    {
+      "id": "military_science",
+      "name": "Military Science",
+      "era": "renaissance"
+    },
+    {
+      "id": "fertilizer",
+      "name": "Fertilizer",
+      "era": "renaissance"
+    },
+    {
+      "id": "rifling",
+      "name": "Rifling",
+      "era": "renaissance"
+    },
+    {
+      "id": "biology",
+      "name": "Biology",
+      "era": "industrial"
+    },
+    {
+      "id": "steam_power",
+      "name": "Steam Power",
+      "era": "industrial"
+    },
+    {
+      "id": "industrialization",
+      "name": "Industrialization",
+      "era": "industrial"
+    },
+    {
+      "id": "dynamite",
+      "name": "Dynamite",
+      "era": "industrial"
+    },
+    {
+      "id": "electricity",
+      "name": "Electricity",
+      "era": "industrial"
+    },
+    {
+      "id": "replaceable_parts",
+      "name": "Replaceable Parts",
+      "era": "industrial"
+    },
+    {
+      "id": "railroad",
+      "name": "Railroad",
+      "era": "industrial"
+    },
+    {
+      "id": "refrigeration",
+      "name": "Refrigeration",
+      "era": "industrial"
+    },
+    {
+      "id": "radio",
+      "name": "Radio",
+      "era": "industrial"
+    },
+    {
+      "id": "flight",
+      "name": "Flight",
+      "era": "industrial"
+    },
+    {
+      "id": "combustion",
+      "name": "Combustion",
+      "era": "industrial"
+    },
+    {
+      "id": "ballistics",
+      "name": "Ballistics",
+      "era": "modern"
+    },
+    {
+      "id": "plastics",
+      "name": "Plastics",
+      "era": "modern"
+    },
+    {
+      "id": "penicillin",
+      "name": "Penicillin",
+      "era": "modern"
+    },
+    {
+      "id": "electronics",
+      "name": "Electronics",
+      "era": "modern"
+    },
+    {
+      "id": "radar",
+      "name": "Radar",
+      "era": "modern"
+    },
+    {
+      "id": "atomic_theory",
+      "name": "Atomic Theory",
+      "era": "modern"
+    },
+    {
+      "id": "ecology",
+      "name": "Ecology",
+      "era": "modern"
+    },
+    {
+      "id": "combined_arms",
+      "name": "Combined Arms",
+      "era": "atomic"
+    },
+    {
+      "id": "computers",
+      "name": "Computers",
+      "era": "modern"
+    },
+    {
+      "id": "rocketry",
+      "name": "Rocketry",
+      "era": "modern"
+    },
+    {
+      "id": "lasers",
+      "name": "Lasers",
+      "era": "modern"
+    },
+    {
+      "id": "nuclear_fission",
+      "name": "Nuclear Fission",
+      "era": "modern"
+    },
+    {
+      "id": "globalization",
+      "name": "Globalization",
+      "era": "modern"
+    },
+    {
+      "id": "robotics",
+      "name": "Robotics",
+      "era": "modern"
+    },
+    {
+      "id": "mobile_tactics",
+      "name": "Mobile Tactics",
+      "era": "information"
+    },
+    {
+      "id": "satellites",
+      "name": "Satellites",
+      "era": "modern"
+    },
+    {
+      "id": "stealth",
+      "name": "Stealth",
+      "era": "modern"
+    },
+    {
+      "id": "advanced_ballistics",
+      "name": "Advanced Ballistics",
+      "era": "modern"
+    },
+    {
+      "id": "telecommunications",
+      "name": "Telecommunications",
+      "era": "information"
+    },
+    {
+      "id": "particle_physics",
+      "name": "Particle Physics",
+      "era": "future"
+    },
+    {
+      "id": "nuclear_fusion",
+      "name": "Nuclear Fusion",
+      "era": "future"
+    },
+    {
+      "id": "nanotechnology",
+      "name": "Nanotechnology",
+      "era": "future"
+    },
+    {
+      "id": "the_internet",
+      "name": "The Internet",
+      "era": "information"
+    },
+    {
+      "id": "future_tech",
+      "name": "Future Tech",
+      "era": "future"
+    }
+  ]
+}
