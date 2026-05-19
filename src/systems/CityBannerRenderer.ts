@@ -11,7 +11,7 @@ import { TileMap } from './TileMap';
 import type { WonderSystem } from './WonderSystem';
 
 const CITY_BANNER_DEPTH = 17;
-const CITY_BANNER_OFFSET_Y = -30;
+const CITY_BANNER_OFFSET_Y = -42;
 const PANEL_HEIGHT = 32;
 const PANEL_RADIUS = 16;
 const PANEL_BORDER_COLOR = 0xd9c58b;
