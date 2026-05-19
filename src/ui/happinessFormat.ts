@@ -60,6 +60,9 @@ export function buildHappinessTooltip(happiness: Readonly<NationHappiness>): str
   lines.push('Unhappiness:');
   lines.push(`Cities: -${happiness.unhappinessFromCities}`);
   lines.push(`Population: -${happiness.unhappinessFromPopulation}`);
+  if (happiness.unhappinessFromMilitary > 0) {
+    lines.push(`Military units: -${happiness.unhappinessFromMilitary}`);
+  }
   lines.push('');
   lines.push('Effects:');
   lines.push(`Growth: ${formatPercent(happiness.growthModifier)}`);

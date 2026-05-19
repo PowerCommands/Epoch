@@ -44,6 +44,10 @@ export class SetupMusicManager {
   private tracks: string[] = [];
   private trackIndex = 0;
 
+  // Temporary session suppression used during autorun/diagnostic modes.
+  // Does NOT touch `enabled` or localStorage.
+  private sessionMuted = false;
+
   private pendingUserGestureRetry = false;
   private userGestureHandler: (() => void) | null = null;
 
@@ -104,6 +108,20 @@ export class SetupMusicManager {
   onSettingsChanged(listener: SettingsChangedListener): () => void {
     this.settingsChangedListeners.add(listener);
     return () => this.settingsChangedListeners.delete(listener);
+  }
+
+  muteForSession(): void {
+    if (this.sessionMuted) return;
+    this.sessionMuted = true;
+    this.stopPlayback();
+  }
+
+  unmuteForSession(): void {
+    if (!this.sessionMuted) return;
+    this.sessionMuted = false;
+    if (this.enabled) {
+      this.playPlaylist(this.requestedKey);
+    }
   }
 
   /** Stop playback and release listeners. Call on scene shutdown. */

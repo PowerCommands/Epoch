@@ -24,6 +24,7 @@ import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
 import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
+import { MilitaryUnhappinessSystem } from '../systems/MilitaryUnhappinessSystem';
 import { CultureSystem } from '../systems/culture/CultureSystem';
 import { CultureEffectSystem } from '../systems/culture/CultureEffectSystem';
 import { PolicySystem } from '../systems/PolicySystem';
@@ -312,19 +313,17 @@ export class GameScene extends Phaser.Scene {
     let getAvailableLuxuryResourceQuantities: (
       nationId: string,
     ) => ReadonlyArray<{ readonly resourceId: string; readonly quantity: number }> = () => [];
-    let getCityFoodSurplus: (
-      city: City,
-    ) => number = () => 0;
     let cultureEffectSystem: CultureEffectSystem;
+    let getMilitaryUnhappiness: (nationId: string) => number = () => 0;
     const happinessSystem = new HappinessSystem(
       nationManager,
       cityManager,
       (nationId) => wonderSystem.getNationModifiers(nationId),
       (nationId) => getAvailableLuxuryResourceQuantities(nationId),
-      (city) => getCityFoodSurplus(city),
       policySystem,
       (nationId) => cultureEffectSystem?.getCultureHappinessBonus(nationId) ?? 0,
       (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
+      (nationId) => getMilitaryUnhappiness(nationId),
     );
     const formatLog = createAILogFormatter({
       nationManager,
@@ -377,7 +376,6 @@ export class GameScene extends Phaser.Scene {
       wonderSystem,
       () => refreshCultureOverlay(),
     );
-    getCityFoodSurplus = (city) => resourceSystem.getFoodSurplus(city);
     const unitUpkeepSystem = new UnitUpkeepSystem(
       nationManager,
       unitManager,
@@ -586,6 +584,9 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.requestRefresh();
       }
     });
+    const militaryUnhappinessSystem = new MilitaryUnhappinessSystem(unitManager, diplomacyManager, nationManager);
+    getMilitaryUnhappiness = (nationId) => militaryUnhappinessSystem.getUnhappiness(nationId);
+
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
       // Snapshot military strength at war start so war-exhaustion ratios are meaningful.
@@ -1243,19 +1244,23 @@ export class GameScene extends Phaser.Scene {
           selectionManager.clearSelection();
         }
       }
-      rightPanel?.requestRefresh();
-      hudLayer?.refresh();
-      refreshOpenCityView();
-      tileBuildingRenderer.rebuildAll();
-      tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
-      turnOrderSystem.refreshActive();
+      if (!autoplaySystem.isActive()) {
+        rightPanel?.requestRefresh();
+        hudLayer?.refresh();
+        refreshOpenCityView();
+        tileBuildingRenderer.rebuildAll();
+        tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
+        turnOrderSystem.refreshActive();
+      }
     });
     improvementConstructionSystem.onCancelled((event) => {
-      rightPanel?.requestRefresh();
-      hudLayer?.refresh();
-      refreshOpenCityView();
-      tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
-      turnOrderSystem.refreshActive();
+      if (!autoplaySystem.isActive()) {
+        rightPanel?.requestRefresh();
+        hudLayer?.refresh();
+        refreshOpenCityView();
+        tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
+        turnOrderSystem.refreshActive();
+      }
     });
     selectionManager.onSelectionTarget((target, currentSelection) => {
       if (currentSelection?.kind !== 'unit') return false;
@@ -1306,8 +1311,9 @@ export class GameScene extends Phaser.Scene {
     // Log city founded and re-scan discovery (new city may trigger encounters).
     foundCitySystem.onCityFounded((city) => {
       logManager.info({ nationId: city.ownerId, category: 'city', message: `${city.name} was founded.` });
-      cityBannerRenderer.refreshCity(city);
       discoverySystem.scan();
+      if (autoplaySystem.isActive()) return;
+      cityBannerRenderer.refreshCity(city);
       refreshCultureOverlay();
     });
 
@@ -1420,9 +1426,20 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
+      // Rebuild renderers that may have been suppressed during autoplay.
+      cityBannerRenderer.rebuildAll();
+      tileBuildingRenderer.rebuildAll();
+      tileImprovementOverlayRenderer.rebuildAll();
     };
     autoplaySystem.onCompleted(refreshGameplayAfterAutoplay);
     autoplaySystem.onStopped(refreshGameplayAfterAutoplay);
+
+    autoplaySystem.onStarted(() => {
+      if (!autoplaySystem.isVisualSuppressionEnabled()) return;
+      SetupMusicManager.getShared().muteForSession();
+    });
+    autoplaySystem.onCompleted(() => SetupMusicManager.getShared().unmuteForSession());
+    autoplaySystem.onStopped(() => SetupMusicManager.getShared().unmuteForSession());
 
     turnManager.on('turnStart', (e) => {
       const isAutoplay = autoplaySystem.isActive();
@@ -2621,10 +2638,12 @@ export class GameScene extends Phaser.Scene {
       nationManager,
     );
     researchSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
     cultureSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -3525,19 +3544,22 @@ export class GameScene extends Phaser.Scene {
     new CombatLog(this, combatSystem, nationManager);
     new AutoplayHud(autoplaySystem);
     if (isDevBuild()) {
+      // Enable the unbounded full-session log immediately so every entry from
+      // game start is captured. The UI still uses the capped getAllEntries() buffer.
+      eventLog.enableFullLog();
       const diagnosticsWindow = window as Window & { __epochDiagnostics?: EpochGameDiagnostics };
       diagnosticsWindow.__epochDiagnostics = {
         startAutoplay: (rounds: number) => new Promise((resolve) => {
           const requestedRounds = Math.max(1, Math.floor(rounds));
           this.diagnosticSystem.enableTurnLogging();
           autoplaySystem.onCompleted((event) => resolve({ completedRounds: event.totalRounds }));
-          autoplaySystem.start(requestedRounds);
+          autoplaySystem.start(requestedRounds, { suppressVisuals: true });
         }),
         stopAutoplay: () => autoplaySystem.stop(),
         isAutoplayActive: () => autoplaySystem.isActive(),
         isAutoplayCompleted: () => autoplaySystem.isCompleted(),
-        getEventLogEntries: () => eventLog.getAllEntries(),
-        getEventLogText: () => eventLog.getAllEntries()
+        getEventLogEntries: () => eventLog.getFullLogEntries(),
+        getEventLogText: () => eventLog.getFullLogEntries()
           .map((entry) => `T${entry.round}: ${entry.text}`)
           .join('\n'),
         getStateSummary: () => {
@@ -3644,6 +3666,7 @@ export class GameScene extends Phaser.Scene {
       refreshMovePreview();
     });
     productionSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
       cityBannerRenderer.rebuildAll();

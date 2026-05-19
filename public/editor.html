@@ -189,14 +189,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div class="section-title">Unit Type</div>
       <label class="field">
         Type
-        <select id="unit-type-select">
-          <option value="warrior">warrior</option>
-          <option value="archer">archer</option>
-          <option value="cavalry">cavalry</option>
-          <option value="settler">settler</option>
-          <option value="work_boat">work_boat</option>
-          <option value="transport_ship">transport_ship</option>
-        </select>
+        <select id="unit-type-select"></select>
       </label>
     </div>
 
@@ -271,6 +264,7 @@ let currentMap = null;
 let currentCustomEntry = null;
 let nationRegistry = { nations: [] };
 let naturalResourceManifest = { resources: [] };
+let unitManifest = { units: [] };
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let mapW = 0, mapH = 0, tileSize = 0;
@@ -307,11 +301,13 @@ const CUSTOM_SCENARIO_NAME_MAX_LENGTH = 70;
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  [mapManifest, nationRegistry, naturalResourceManifest] = await Promise.all([
+  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest] = await Promise.all([
     loadMapManifest(),
     loadNationRegistry(),
     loadNaturalResourceManifest(),
+    loadUnitManifest(),
   ]);
+  buildUnitTypeSelect();
   currentMap = resolveRequestedMap(mapManifest);
   if (!currentMap) {
     document.getElementById('status-info').textContent = 'No maps available. Regenerate assets/maps/manifest.json.';
@@ -444,6 +440,60 @@ async function loadNaturalResourceManifest() {
   }
 
   return { resources: [] };
+}
+
+async function loadUnitManifest() {
+  try {
+    const res = await fetch('/assets/data/units-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`unit manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.units)) {
+      return {
+        units: manifest.units.filter(u =>
+          u
+          && typeof u.id === 'string'
+          && typeof u.name === 'string'
+          && typeof u.era === 'string'
+          && typeof u.category === 'string'
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load unit manifest.', err);
+  }
+
+  return { units: [] };
+}
+
+function buildUnitTypeSelect() {
+  const select = document.getElementById('unit-type-select');
+  select.innerHTML = '';
+
+  if (unitManifest.units.length === 0) {
+    const option = document.createElement('option');
+    option.value = 'warrior';
+    option.textContent = 'warrior (manifest unavailable)';
+    select.appendChild(option);
+    return;
+  }
+
+  const byEra = new Map();
+  for (const u of unitManifest.units) {
+    if (!byEra.has(u.era)) byEra.set(u.era, []);
+    byEra.get(u.era).push(u);
+  }
+
+  for (const [era, units] of byEra) {
+    const group = document.createElement('optgroup');
+    group.label = era.charAt(0).toUpperCase() + era.slice(1);
+    for (const u of units) {
+      const option = document.createElement('option');
+      option.value = u.id;
+      option.textContent = u.isNaval ? `${u.name} (Naval)` : u.name;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
 }
 
 function resolveRequestedMap(manifest) {
@@ -1847,8 +1897,27 @@ function validateScenario() {
     if (!activeIds.has(city.nationId)) warnings.push(`${city.name} references inactive or unknown nation ${city.nationId}`);
   }
 
+  const knownUnitTypeIds = unitManifest.units.length > 0
+    ? new Set(unitManifest.units.map(u => u.id))
+    : null;
+  const navalUnitTypeIds = unitManifest.units.length > 0
+    ? new Set(unitManifest.units.filter(u => u.isNaval).map(u => u.id))
+    : null;
+  const WATER_TILES = new Set(['ocean', 'coast']);
+
   for (const unit of scenario.units) {
     if (!activeIds.has(unit.nationId)) warnings.push(`${unit.unitTypeId} at (${unit.q},${unit.r}) references inactive or unknown nation ${unit.nationId}`);
+    if (knownUnitTypeIds && !knownUnitTypeIds.has(unit.unitTypeId)) {
+      warnings.push(`Unknown unit type "${unit.unitTypeId}" at (${unit.q},${unit.r})`);
+    } else if (knownUnitTypeIds && tiles[unit.r]?.[unit.q]) {
+      const tileType = tiles[unit.r][unit.q];
+      const isNaval = navalUnitTypeIds.has(unit.unitTypeId);
+      if (isNaval && !WATER_TILES.has(tileType)) {
+        warnings.push(`Naval unit "${unit.unitTypeId}" at (${unit.q},${unit.r}) is on land tile "${tileType}" — it will be skipped at game start`);
+      } else if (!isNaval && WATER_TILES.has(tileType)) {
+        warnings.push(`Land unit "${unit.unitTypeId}" at (${unit.q},${unit.r}) is on water tile "${tileType}" — it will be skipped at game start`);
+      }
+    }
   }
 
   for (let r = 0; r < mapH; r++) {

@@ -67,6 +67,7 @@ export class AutoplaySystem {
   private nextTurnTimer: ReturnType<typeof setTimeout> | null = null;
   private hasPendingResume = false;
   private readonly originalIsHuman = new Map<string, boolean>();
+  private suppressVisuals = false;
 
   private lastSeenEventLogId = 0;
   private hooksInstalled = false;
@@ -94,7 +95,7 @@ export class AutoplaySystem {
 
   // ─── Public API ────────────────────────────────────────────────────────────
 
-  start(rounds: number): void {
+  start(rounds: number, options?: { suppressVisuals?: boolean }): void {
     if (!Number.isFinite(rounds) || rounds <= 0) {
       console.log(`[AUTOPLAY] Invalid round count: ${rounds}`);
       return;
@@ -106,6 +107,7 @@ export class AutoplaySystem {
 
     this.installEventHooksOnce();
 
+    this.suppressVisuals = options?.suppressVisuals ?? false;
     this.requestedRounds = Math.floor(rounds);
     this.completedRounds = 0;
     this.completed = false;
@@ -168,6 +170,7 @@ export class AutoplaySystem {
     this.active = false;
     this.paused = false;
     this.completed = false;
+    this.suppressVisuals = false;
     this.hasPendingResume = false;
     if (this.nextTurnTimer !== null) {
       clearTimeout(this.nextTurnTimer);
@@ -188,6 +191,7 @@ export class AutoplaySystem {
   isPaused(): boolean { return this.active && this.paused; }
   isActive(): boolean { return this.active; }
   isCompleted(): boolean { return this.completed; }
+  isVisualSuppressionEnabled(): boolean { return this.suppressVisuals; }
   getRequestedRounds(): number { return this.requestedRounds; }
   getCompletedRounds(): number { return this.completedRounds; }
   getRemainingRounds(): number { return Math.max(0, this.requestedRounds - this.completedRounds); }
@@ -196,6 +200,7 @@ export class AutoplaySystem {
     this.active = false;
     this.paused = false;
     this.completed = false;
+    this.suppressVisuals = false;
     this.completedRounds = 0;
     this.requestedRounds = 0;
     this.hasPendingResume = false;
@@ -433,8 +438,8 @@ export class AutoplaySystem {
   }
 
   private focusTile(tileX: number, tileY: number): void {
-    // Autoplay intentionally avoids camera movement; the final visible state is
-    // refreshed by GameScene when autoplay stops or completes.
+    // Camera focus is always suppressed during autoplay. Visual suppression
+    // mode (used by autorun) adds on top of this by also skipping renderer refreshes.
     void tileX;
     void tileY;
   }

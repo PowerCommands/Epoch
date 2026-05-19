@@ -23,7 +23,6 @@ export class NationHappiness {
   happinessFromBuildings: number;
   happinessFromWonders: number;
   happinessFromLuxuryResources: number;
-  happinessFromFoodSurplus: number;
   happinessFromPolicies: number;
   happinessFromCultureEffects: number;
   happinessFromCorporations: number;
@@ -31,6 +30,7 @@ export class NationHappiness {
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
+  unhappinessFromMilitary: number;
   unhappinessFromPolicyCityModifiers: number;
   unhappinessFromPolicyPopulationModifiers: number;
 
@@ -49,7 +49,6 @@ export class NationHappiness {
     this.happinessFromBuildings = 0;
     this.happinessFromWonders = 0;
     this.happinessFromLuxuryResources = 0;
-    this.happinessFromFoodSurplus = 0;
     this.happinessFromPolicies = 0;
     this.happinessFromCultureEffects = 0;
     this.happinessFromCorporations = 0;
@@ -57,6 +56,7 @@ export class NationHappiness {
     this.availableLuxuryResourceQuantities = [];
     this.unhappinessFromCities = 0;
     this.unhappinessFromPopulation = 0;
+    this.unhappinessFromMilitary = 0;
     this.unhappinessFromPolicyCityModifiers = 0;
     this.unhappinessFromPolicyPopulationModifiers = 0;
     this.state = 'stable';

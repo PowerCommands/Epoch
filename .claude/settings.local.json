@@ -38,7 +38,11 @@
       "Read(//home/harri/**)",
       "Bash(python process.py)",
       "Bash(convert --version)",
-      "Bash(python3 -c \"from PIL import Image; print\\('PIL ok'\\)\")"
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL ok'\\)\")",
+      "Bash(grep \"\\\\.ts$\")",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/home/harri/projects/Epoch/public/assets/maps/europeScenario.json'\\)\\); print\\('units count:', len\\(d['units']\\)\\); print\\('first 3:', d['units'][:3]\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts', {}\\), indent=2\\)\\)\")",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/home/harri/projects/Epoch/public/assets/data/units-manifest.json'\\)\\); [print\\(u['era'], u['id'], u['name'], '\\(naval\\)' if u['isNaval'] else ''\\) for u in d['units'][:10]]\")"
     ]
   }
 }
