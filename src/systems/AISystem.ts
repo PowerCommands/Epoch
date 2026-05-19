@@ -75,10 +75,8 @@ import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryD
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { getEraIndex } from '../data/eraTimeline';
 import {
-  buildArmyRoleProfile,
   scoreMilitaryUnitCandidate,
   isMaritimeDoctrine,
-  type ArmyRoleProfile,
 } from './ai/AIMilitaryDoctrineScoring';
 import type { AIMilitaryDoctrine, AIMilitaryDoctrineRole } from '../types/aiMilitaryDoctrine';
 import { AIMilitaryDoctrineEvaluator } from './ai/AIMilitaryDoctrineEvaluator';
@@ -3877,12 +3875,10 @@ export class AISystem {
   private buildMilitaryDoctrineContext(nationId: string): {
     doctrine: AIMilitaryDoctrine;
     nationEraIndex: number;
-    armyProfile: ArmyRoleProfile;
   } {
     return {
       doctrine: getLeaderMilitaryDoctrineByNationId(nationId),
       nationEraIndex: getEraIndex(this.getNationEra(nationId)),
-      armyProfile: buildArmyRoleProfile(this.unitManager.getUnitsByOwner(nationId)),
     };
   }
 
@@ -3913,15 +3909,16 @@ export class AISystem {
     if (!tol.tolerateWarWeariness && warWeariness > 0) {
       reasons.push(`war weariness ${warWeariness}`);
     }
-    console.log(this.formatLog(
-      nationId,
-      `doctrine discouraged ${unitType.name} production in ${cityName} (${doctrine.id}): ${reasons.join(', ')}, pressure x${modifier.toFixed(2)}.`,
-    ));
+    const toleranceMsg = `doctrine discouraged ${unitType.name} production in ${cityName} (${doctrine.id}): ${reasons.join(', ')}, pressure x${modifier.toFixed(2)}.`;
+    console.log(this.formatLog(nationId, toleranceMsg));
+    this.logStrategicEvent?.(nationId, toleranceMsg);
   }
 
   private logPeriodicDoctrineStatus(nationId: string): void {
     const status = this.doctrineEvaluator.explainDoctrineState(nationId);
-    console.log(this.formatLog(nationId, `doctrine status: ${status}`));
+    const message = `doctrine status: ${status}`;
+    console.log(this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, message);
   }
 
   private logMilitaryBudgetStatusOnce(
@@ -3931,21 +3928,13 @@ export class AISystem {
     effectiveMax: number,
     baseMax: number,
   ): void {
-    if (effectiveMax === baseMax) return;
+    if (effectiveMax === baseMax || currentCount < effectiveMax) return;
     const currentRound = this.turnManager.getCurrentRound();
     if (this.militaryBudgetLoggedRound.get(nationId) === currentRound) return;
     this.militaryBudgetLoggedRound.set(nationId, currentRound);
-    if (currentCount >= effectiveMax) {
-      console.log(this.formatLog(
-        nationId,
-        `doctrine reduced military production (${doctrineId}): current units ${currentCount} exceeds effective max ${effectiveMax}.`,
-      ));
-    } else {
-      console.log(this.formatLog(
-        nationId,
-        `doctrine allows larger army (${doctrineId}): current units ${currentCount} / effective max ${effectiveMax}.`,
-      ));
-    }
+    const budgetMsg = `doctrine reduced military production (${doctrineId}): current units ${currentCount} / effective max ${effectiveMax}.`;
+    console.log(this.formatLog(nationId, budgetMsg));
+    this.logStrategicEvent?.(nationId, budgetMsg);
   }
 
   private logDoctrineProductionOnce(nationId: string, message: string): void {
@@ -3958,7 +3947,7 @@ export class AISystem {
   private logDoctrineProductionIfMaterial(
     nationId: string,
     unitType: UnitType,
-    ctx: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+    ctx: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
     cityName: string,
   ): void {
     const { doctrine } = ctx;
@@ -3979,10 +3968,9 @@ export class AISystem {
       const pressure = this.doctrineEvaluator.getMilitaryProductionPressureModifier(nationId, {
         happiness: netHappiness, gold, warWeariness, isThreatened: false,
       });
-      console.log(this.formatLog(
-        nationId,
-        `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): role ${role}, preferred x${preferred}, deficit x${deficit}, budget x1.00, pressure x${pressure.toFixed(2)}, final score ${score}.`,
-      ));
+      const selectionMsg = `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): role ${role}, preferred x${preferred}, deficit x${deficit}, budget x1.00, pressure x${pressure.toFixed(2)}, final score ${score}.`;
+      console.log(this.formatLog(nationId, selectionMsg));
+      this.logStrategicEvent?.(nationId, selectionMsg);
       return;
     }
 
@@ -4131,7 +4119,7 @@ export class AISystem {
   private pickNavalUnitForCity(
     city: City,
     nationId: string,
-    doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+    doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
   ): UnitType | undefined {
     const candidates = ALL_UNIT_TYPES.filter((u) => (
       u.isNaval === true &&
@@ -4143,7 +4131,7 @@ export class AISystem {
     if (candidates.length === 0) return undefined;
 
     if (doctrineCtx) {
-      const { doctrine, nationEraIndex, armyProfile } = doctrineCtx;
+      const { doctrine, nationEraIndex } = doctrineCtx;
 
       let maxDeficit = -Infinity;
       const unitDeficits = new Map<string, number>();
@@ -4163,7 +4151,7 @@ export class AISystem {
       let bestPreferredWeight = 1.0;
 
       for (const u of candidates) {
-        let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
+        let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex);
         const role = getUnitDoctrineRole(u);
         const deficitMultiplier = role !== null
           ? this.doctrineEvaluator.getRoleDeficitMultiplier(nationId, role)
@@ -4219,7 +4207,7 @@ export class AISystem {
   private pickMilitaryUnitForCity(
     city: City,
     nationId: string,
-    doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number; armyProfile: ArmyRoleProfile },
+    doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
   ): UnitType | undefined {
     const available = MILITARY_OPTIONS.filter((u) => (
       u.isNaval !== true &&
@@ -4229,7 +4217,7 @@ export class AISystem {
     if (available.length === 0) return undefined;
 
     if (doctrineCtx) {
-      const { doctrine, nationEraIndex, armyProfile } = doctrineCtx;
+      const { doctrine, nationEraIndex } = doctrineCtx;
 
       // Pre-compute deficits so the dampening rule can detect better alternatives.
       let maxDeficit = -Infinity;
@@ -4250,7 +4238,7 @@ export class AISystem {
       let bestPreferredWeight = 1.0;
 
       for (const u of available) {
-        let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex, armyProfile);
+        let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex);
         const role = getUnitDoctrineRole(u);
         const deficitMultiplier = role !== null
           ? this.doctrineEvaluator.getRoleDeficitMultiplier(nationId, role)

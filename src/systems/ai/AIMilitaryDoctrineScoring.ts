@@ -1,28 +1,7 @@
 import type { UnitType } from '../../entities/UnitType';
-import type { Unit } from '../../entities/Unit';
 import type { AIMilitaryDoctrine } from '../../types/aiMilitaryDoctrine';
 import { getMilitaryUnitRole, type MilitaryUnitRole } from '../../utils/unitRoleUtils';
 import { getEraIndex } from '../../data/eraTimeline';
-
-export interface ArmyRoleProfile {
-  readonly roleCounts: Partial<Record<MilitaryUnitRole, number>>;
-  readonly totalCombatUnits: number;
-}
-
-export function buildArmyRoleProfile(units: readonly Unit[]): ArmyRoleProfile {
-  const roleCounts: Partial<Record<MilitaryUnitRole, number>> = {};
-  let totalCombatUnits = 0;
-
-  for (const unit of units) {
-    if (unit.unitType.category === 'leader') continue;
-    if (unit.unitType.baseStrength <= 0) continue;
-    const role = getMilitaryUnitRole(unit.unitType);
-    roleCounts[role] = (roleCounts[role] ?? 0) + 1;
-    totalCombatUnits++;
-  }
-
-  return { roleCounts, totalCombatUnits };
-}
 
 export function getDoctrineRoleWeight(doctrine: AIMilitaryDoctrine, role: MilitaryUnitRole): number {
   switch (role) {
@@ -39,13 +18,12 @@ export function getDoctrineRoleWeight(doctrine: AIMilitaryDoctrine, role: Milita
 
 /**
  * Returns a relative score for selecting between military unit candidates.
- * Higher scores indicate better fit given the nation's doctrine, current era, and army composition.
+ * Composition-awareness is handled externally via AIMilitaryDoctrineEvaluator.getRoleDeficitMultiplier.
  */
 export function scoreMilitaryUnitCandidate(
   unitType: UnitType,
   doctrine: AIMilitaryDoctrine,
   nationEraIndex: number,
-  armyProfile: ArmyRoleProfile,
 ): number {
   const role = getMilitaryUnitRole(unitType);
   const roleWeight = getDoctrineRoleWeight(doctrine, role);
@@ -64,26 +42,9 @@ export function scoreMilitaryUnitCandidate(
   // Old units become progressively less attractive; never impossible to build
   const eraMultiplier = eraGap > 0 ? Math.max(0.15, 1 - eraGap * 0.35) : 1.0;
 
-  const compositionMultiplier = getCompositionMultiplier(role, armyProfile);
-
   return roleWeight
     * (qualityScore * 0.7 + quantityScore * 0.3)
-    * eraMultiplier
-    * compositionMultiplier;
-}
-
-function getCompositionMultiplier(
-  role: MilitaryUnitRole,
-  { roleCounts, totalCombatUnits }: ArmyRoleProfile,
-): number {
-  if (totalCombatUnits === 0) return 1.0;
-  const roleCount = roleCounts[role] ?? 0;
-  const roleShare = roleCount / totalCombatUnits;
-  // Heavily over-represented role gets penalized
-  if (roleShare > 0.6) return 0.7;
-  // Missing role gets a slight boost to encourage diversity
-  if (roleCount === 0) return 1.4;
-  return 1.0;
+    * eraMultiplier;
 }
 
 /** True for doctrines that strongly prefer naval units. */

@@ -60,8 +60,8 @@ export class AIMilitaryDoctrineEvaluator {
 
   getRoleDeficitMultiplier(nationId: string, role: AIMilitaryDoctrineRole): number {
     const deficit = this.getRoleDeficit(nationId, role);
-    if (deficit > 0) return 1 + Math.min(deficit * 3, 2);
-    if (deficit < 0) return Math.max(0.35, 1 + deficit * 2);
+    if (deficit > 0) return 1 + Math.min(deficit * 4, 2.5);
+    if (deficit < 0) return Math.max(0.25, 1 + deficit * 2);
     return 1;
   }
 

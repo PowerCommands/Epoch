@@ -1459,6 +1459,15 @@ export class GameScene extends Phaser.Scene {
     autoplaySystem.onStarted(() => {
       if (!autoplaySystem.isVisualSuppressionEnabled()) return;
       SetupMusicManager.getShared().muteForSession();
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        if (typeof args[0] === 'string' && args[0].startsWith('[autorun]')) {
+          originalConsoleLog(...args);
+        }
+      };
+      const restoreConsole = () => { console.log = originalConsoleLog; };
+      autoplaySystem.onCompleted(restoreConsole);
+      autoplaySystem.onStopped(restoreConsole);
     });
     autoplaySystem.onCompleted(() => SetupMusicManager.getShared().unmuteForSession());
     autoplaySystem.onStopped(() => SetupMusicManager.getShared().unmuteForSession());
