@@ -28,6 +28,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: -5,
       warTolerance: 75,
       peacePreference: 30,
+      minimumUnitsLostBeforePeace: 6,
+      casualtyToleranceRatio: 0.55,
     },
   },
   {
@@ -49,6 +51,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 12,
       warTolerance: 30,
       peacePreference: 75,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.25,
     },
   },
   {
@@ -67,6 +71,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 10,
       warTolerance: 40,
       peacePreference: 65,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.30,
     },
   },
   {
@@ -86,6 +92,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 0,
       warTolerance: 55,
       peacePreference: 45,
+      minimumUnitsLostBeforePeace: 3,
+      casualtyToleranceRatio: 0.40,
     },
   },
   {
@@ -104,6 +112,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: -2,
       warTolerance: 60,
       peacePreference: 45,
+      minimumUnitsLostBeforePeace: 4,
+      casualtyToleranceRatio: 0.45,
     },
   },
   {
@@ -122,6 +132,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 8,
       warTolerance: 35,
       peacePreference: 70,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.25,
     },
   },
   {
@@ -140,6 +152,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: -10,
       warTolerance: 85,
       peacePreference: 20,
+      minimumUnitsLostBeforePeace: 8,
+      casualtyToleranceRatio: 0.70,
     },
   },
   {
@@ -159,6 +173,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 5,
       warTolerance: 55,
       peacePreference: 55,
+      minimumUnitsLostBeforePeace: 3,
+      casualtyToleranceRatio: 0.40,
     },
   },
   {
@@ -177,6 +193,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 4,
       warTolerance: 50,
       peacePreference: 55,
+      minimumUnitsLostBeforePeace: 3,
+      casualtyToleranceRatio: 0.35,
     },
   },
   {
@@ -196,6 +214,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 8,
       warTolerance: 50,
       peacePreference: 60,
+      minimumUnitsLostBeforePeace: 3,
+      casualtyToleranceRatio: 0.35,
     },
   },
   {
@@ -216,6 +236,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 15,
       warTolerance: 20,
       peacePreference: 85,
+      minimumUnitsLostBeforePeace: 1,
+      casualtyToleranceRatio: 0.20,
     },
   },
   {
@@ -236,6 +258,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: -3,
       warTolerance: 55,
       peacePreference: 45,
+      minimumUnitsLostBeforePeace: 4,
+      casualtyToleranceRatio: 0.45,
     },
   },
   {
@@ -256,6 +280,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 10,
       warTolerance: 45,
       peacePreference: 65,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.30,
     },
   },
   {
@@ -275,6 +301,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 10,
       warTolerance: 40,
       peacePreference: 70,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.30,
     },
   },
   {
@@ -293,6 +321,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: 8,
       warTolerance: 35,
       peacePreference: 70,
+      minimumUnitsLostBeforePeace: 2,
+      casualtyToleranceRatio: 0.25,
     },
   },
   {
@@ -313,6 +343,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: -10,
       warTolerance: 85,
       peacePreference: 20,
+      minimumUnitsLostBeforePeace: 8,
+      casualtyToleranceRatio: 0.70,
     },
   },
   {
@@ -332,6 +364,8 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       diplomacyBias: -5,
       warTolerance: 70,
       peacePreference: 35,
+      minimumUnitsLostBeforePeace: 5,
+      casualtyToleranceRatio: 0.55,
     },
   },
 ];

@@ -93,6 +93,28 @@ const LOCAL_EXPLORATION_STEP_LIMIT = 12;
 // scout's last assigned target — encourages turning rather than re-targeting
 // the same wedge of the map.
 const SAME_DIRECTION_PENALTY = 1;
+
+// ─── Directional exploration ──────────────────────────────────────────────────
+
+// Six axial hex directions in clockwise order starting from East.
+// Index i+1 (mod 6) is one step clockwise; i-1 (mod 6) is one step counter-clockwise.
+//   0: east  {+1, 0}   1: north-east {+1,-1}   2: north-west {0,-1}
+//   3: west  {-1, 0}   4: south-west {-1,+1}   5: south-east {0,+1}
+const HEX_AXIAL_DIRECTIONS: ReadonlyArray<Readonly<GridCoord>> = [
+  { x: 1, y: 0 },
+  { x: 1, y: -1 },
+  { x: 0, y: -1 },
+  { x: -1, y: 0 },
+  { x: -1, y: 1 },
+  { x: 0, y: 1 },
+];
+const DIRECTION_NAMES = [
+  'east', 'north-east', 'north-west', 'west', 'south-west', 'south-east',
+] as const;
+// After boundary-following this many turns without resuming the original
+// heading, assume the scout is looping inside a bay or peninsula and pick
+// a fresh random heading.
+const MAX_BOUNDARY_FOLLOW_TURNS = 10;
 const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 function getMarkerPriority(marker: WorldMarker): number {
@@ -141,6 +163,16 @@ export class AIExplorationSystem {
   // Per nation+tile keys for military observation deduplication (lifetime of session).
   private readonly militaryResourceLoggedKeys = new Set<string>();
   private readonly militarySettlementLoggedTiles = new Set<string>();
+
+  // ─── Directional exploration state (per scout unit) ───────────────────────
+  // Persistent heading as an index into HEX_AXIAL_DIRECTIONS (0–5).
+  private readonly explorationHeadingIdx = new Map<UnitId, number>();
+  // Which side of an obstacle the scout is following when blocked.
+  private readonly boundaryFollowSide = new Map<UnitId, 'left' | 'right'>();
+  // Whether the scout is currently in boundary-follow mode.
+  private readonly isBoundaryFollowing = new Map<UnitId, boolean>();
+  // How many consecutive turns the scout has spent in boundary-follow mode.
+  private readonly boundaryFollowTurns = new Map<UnitId, number>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -197,6 +229,13 @@ export class AIExplorationSystem {
   }
 
   private handleUnitChanged(event: UnitChangedEvent): void {
+    if (event.reason === 'removed') {
+      this.explorationHeadingIdx.delete(event.unit.id);
+      this.boundaryFollowSide.delete(event.unit.id);
+      this.isBoundaryFollowing.delete(event.unit.id);
+      this.boundaryFollowTurns.delete(event.unit.id);
+      return;
+    }
     if (event.reason !== 'moved' && event.reason !== 'created') return;
     if (!this.isExplorationUnit(event.unit)) return;
     this.getKnowledge(event.unit.ownerId).knownTiles.add(this.getTileIndex(event.unit.tileX, event.unit.tileY));
@@ -248,7 +287,7 @@ export class AIExplorationSystem {
 
     this.explorationTargets.set(unit.id, null);
     this.lastTargetDirectionByUnit.delete(unit.id);
-    this.exploreLocally(unit);
+    this.exploreDirectionally(unit);
   }
 
   // Emits "focusing exploration near enemy at (x,y)" once per (nation, enemy
@@ -826,6 +865,187 @@ export class AIExplorationSystem {
     return this.pathfindingSystem.findBestPathToAnyTarget(unit, approachTiles, {
       respectMovementPoints: false,
     });
+  }
+
+  // ─── Directional exploration ─────────────────────────────────────────────
+
+  /**
+   * Boundary-following directional exploration. The scout persists a heading
+   * across turns and follows it until blocked, at which point it hugs the
+   * obstacle edge (coastline, mountain range, foreign border) until the
+   * original heading clears again. Falls back to exploreLocally() only when
+   * completely surrounded.
+   */
+  private exploreDirectionally(unit: Unit): void {
+    let headingIdx = this.explorationHeadingIdx.get(unit.id);
+    if (headingIdx === undefined) {
+      headingIdx = this.assignExplorationHeading(unit);
+    }
+
+    const side = this.boundaryFollowSide.get(unit.id) ?? 'right';
+    const visitedThisTurn = new Set<TileIndex>();
+    visitedThisTurn.add(this.getTileIndex(unit.tileX, unit.tileY));
+    let tilesMoved = 0;
+
+    while (unit.movementPoints > 0 && tilesMoved < LOCAL_EXPLORATION_STEP_LIMIT) {
+      const step = this.pickDirectionalStep(unit, headingIdx, side, visitedThisTurn);
+      if (step === null) break;
+
+      if (step.enterBoundary) {
+        this.isBoundaryFollowing.set(unit.id, true);
+        this.logDiagnostic(unit.ownerId,
+          `${this.getScoutLogName(unit)} entered coastline-follow mode (${side} side)`);
+      } else if (step.exitBoundary) {
+        this.isBoundaryFollowing.set(unit.id, false);
+        this.boundaryFollowTurns.delete(unit.id);
+        this.logDiagnostic(unit.ownerId,
+          `${this.getScoutLogName(unit)} resumed directional exploration`);
+      }
+
+      const dir = HEX_AXIAL_DIRECTIONS[step.dirIdx];
+      const tile = this.mapData.tiles[unit.tileY + dir.y]?.[unit.tileX + dir.x];
+      if (!tile) break;
+
+      const fromX = unit.tileX;
+      const fromY = unit.tileY;
+      this.movementSystem.moveAlongPath(unit, [tile]);
+      if (unit.tileX === fromX && unit.tileY === fromY) break;
+
+      this.rememberVisit(unit.id, unit.tileX, unit.tileY);
+      visitedThisTurn.add(this.getTileIndex(unit.tileX, unit.tileY));
+      tilesMoved++;
+    }
+
+    // Increment boundary-follow turn counter and check for stuck.
+    if (this.isBoundaryFollowing.get(unit.id) === true) {
+      const newTurns = (this.boundaryFollowTurns.get(unit.id) ?? 0) + 1;
+      this.boundaryFollowTurns.set(unit.id, newTurns);
+      if (newTurns >= MAX_BOUNDARY_FOLLOW_TURNS) {
+        this.logDiagnostic(unit.ownerId,
+          `${this.getScoutLogName(unit)} reset exploration heading after stuck detection`);
+        this.explorationHeadingIdx.delete(unit.id);
+        this.isBoundaryFollowing.delete(unit.id);
+        this.boundaryFollowTurns.delete(unit.id);
+      }
+    }
+
+    if (tilesMoved > 0) {
+      this.log(unit.ownerId,
+        `${this.getScoutLogName(unit)} directional exploration (${tilesMoved} tile${tilesMoved !== 1 ? 's' : ''})`);
+    } else {
+      // Completely stuck — fall back to local exploration as a last resort.
+      this.exploreLocally(unit);
+    }
+  }
+
+  /**
+   * Assigns a deterministic-random exploration heading to the unit and
+   * initialises its boundary-follow side. Logs the choice.
+   */
+  private assignExplorationHeading(unit: Unit): number {
+    const round = this.turnManager.getCurrentRound();
+    const hash = this.fnv1a(`${unit.id}:${round}:dir`);
+    const headingIdx = (hash >>> 0) % 6;
+    this.explorationHeadingIdx.set(unit.id, headingIdx);
+    if (!this.boundaryFollowSide.has(unit.id)) {
+      this.boundaryFollowSide.set(unit.id, ((hash >>> 3) & 1) === 0 ? 'left' : 'right');
+    }
+    this.logDiagnostic(unit.ownerId,
+      `${this.getScoutLogName(unit)} selected exploration heading ${DIRECTION_NAMES[headingIdx]}`);
+    return headingIdx;
+  }
+
+  /**
+   * Picks the next single-step move direction for a directional scout.
+   * Returns null if no valid move exists (completely surrounded).
+   *
+   * Normal mode: if heading tile is passable, go straight.
+   *              If blocked, immediately enter boundary-follow mode.
+   * Boundary mode: if heading tile has become passable again, resume it.
+   *                Otherwise follow the obstacle edge in the chosen side.
+   */
+  private pickDirectionalStep(
+    unit: Unit,
+    headingIdx: number,
+    side: 'left' | 'right',
+    visitedThisTurn: Set<TileIndex>,
+  ): { dirIdx: number; enterBoundary?: boolean; exitBoundary?: boolean } | null {
+    const inBoundary = this.isBoundaryFollowing.get(unit.id) === true;
+    const headingPassable = this.isCandidatePassable(unit, headingIdx, visitedThisTurn);
+
+    if (inBoundary) {
+      if (headingPassable) {
+        return { dirIdx: headingIdx, exitBoundary: true };
+      }
+      for (const idx of this.getBoundaryFollowDirections(headingIdx, side)) {
+        if (this.isCandidatePassable(unit, idx, visitedThisTurn)) return { dirIdx: idx };
+      }
+      return null;
+    }
+
+    if (headingPassable) {
+      return { dirIdx: headingIdx };
+    }
+
+    // Heading blocked — enter boundary-follow mode and pick a wall-following step.
+    for (const idx of this.getBoundaryFollowDirections(headingIdx, side)) {
+      if (this.isCandidatePassable(unit, idx, visitedThisTurn)) {
+        return { dirIdx: idx, enterBoundary: true };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Returns candidate direction indices for boundary-follow mode, ordered from
+   * most to least preferred.
+   *
+   * With 'right' side: try clockwise turns first (hug wall on the right).
+   * With 'left' side: try counter-clockwise turns first.
+   *
+   * Clockwise step:         (i + 5) % 6  (equivalent to -1 mod 6)
+   * Counter-clockwise step: (i + 1) % 6
+   */
+  private getBoundaryFollowDirections(headingIdx: number, side: 'left' | 'right'): number[] {
+    const cw  = (i: number) => (i + 5) % 6;
+    const ccw = (i: number) => (i + 1) % 6;
+    const a = side === 'right' ? cw : ccw;   // primary rotation
+    const b = side === 'right' ? ccw : cw;   // secondary rotation
+    return [
+      a(headingIdx),           // 60° in preferred direction
+      a(a(headingIdx)),        // 120° in preferred direction
+      headingIdx,              // retry original heading
+      b(headingIdx),           // 60° opposite
+      b(b(headingIdx)),        // 120° opposite
+      (headingIdx + 3) % 6,    // reverse (last resort)
+    ];
+  }
+
+  private isCandidatePassable(
+    unit: Unit,
+    dirIdx: number,
+    visitedThisTurn: Set<TileIndex>,
+  ): boolean {
+    const dir = HEX_AXIAL_DIRECTIONS[dirIdx];
+    const tile = this.mapData.tiles[unit.tileY + dir.y]?.[unit.tileX + dir.x];
+    if (!tile) return false;
+    if (visitedThisTurn.has(this.getTileIndex(tile.x, tile.y))) return false;
+    return this.movementSystem.canMoveUnitTo(unit, tile.x, tile.y);
+  }
+
+  /** Emits only in diagnostic/autorun mode (when logStrategicEvent is wired). */
+  private logDiagnostic(nationId: string, message: string): void {
+    this.logStrategicEvent?.(nationId, message);
+  }
+
+  /** FNV-1a 32-bit hash — same algorithm as smallRandom, used for heading selection. */
+  private fnv1a(input: string): number {
+    let hash = 2166136261;
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
   }
 
   private exploreLocally(unit: Unit): void {

@@ -41,6 +41,17 @@ export interface DiplomacyRelation {
 
   // While set, neither side may declare war until the current turn reaches this value.
   peaceTreatyUntilTurn?: number | null;
+
+  // Per-war loss counters. Reset each time war is declared. A/B follow the
+  // alphabetical pairKey ordering (same as openBordersFromAToB etc.).
+  militaryUnitsLostA: number;
+  militaryUnitsLostB: number;
+  citiesLostA: number;
+  citiesLostB: number;
+  // Snapshot of each side's total military strength when this war started.
+  // 0 means no snapshot was taken yet (e.g. loaded from an older save).
+  militaryStrengthAtWarStartA: number;
+  militaryStrengthAtWarStartB: number;
 }
 
 /**
@@ -128,6 +139,12 @@ export function createDefaultRelation(): DiplomacyRelation {
     lastEmbassyChangeTurn: null,
     lastTradeRelationsChangeTurn: null,
     peaceTreatyUntilTurn: null,
+    militaryUnitsLostA: 0,
+    militaryUnitsLostB: 0,
+    citiesLostA: 0,
+    citiesLostB: 0,
+    militaryStrengthAtWarStartA: 0,
+    militaryStrengthAtWarStartB: 0,
   };
 }
 
@@ -163,6 +180,12 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
       partial.lastTradeRelationsChangeTurn ?? base.lastTradeRelationsChangeTurn,
     aggressorNationId: partial.aggressorNationId,
     peaceTreatyUntilTurn: partial.peaceTreatyUntilTurn ?? base.peaceTreatyUntilTurn,
+    militaryUnitsLostA: partial.militaryUnitsLostA ?? base.militaryUnitsLostA,
+    militaryUnitsLostB: partial.militaryUnitsLostB ?? base.militaryUnitsLostB,
+    citiesLostA: partial.citiesLostA ?? base.citiesLostA,
+    citiesLostB: partial.citiesLostB ?? base.citiesLostB,
+    militaryStrengthAtWarStartA: partial.militaryStrengthAtWarStartA ?? base.militaryStrengthAtWarStartA,
+    militaryStrengthAtWarStartB: partial.militaryStrengthAtWarStartB ?? base.militaryStrengthAtWarStartB,
   };
 }
 
@@ -258,6 +281,13 @@ export class DiplomacyManager {
       lastWarDeclarationTurn:
         this.turnManager?.getCurrentRound() ?? previous?.lastWarDeclarationTurn ?? null,
       aggressorNationId: aggressorId,
+      // Reset per-war loss counters for the new conflict.
+      militaryUnitsLostA: 0,
+      militaryUnitsLostB: 0,
+      citiesLostA: 0,
+      citiesLostB: 0,
+      militaryStrengthAtWarStartA: 0,
+      militaryStrengthAtWarStartB: 0,
     });
     this.relations.set(key, next);
     // Clear any pending peace proposal between these nations
@@ -296,6 +326,57 @@ export class DiplomacyManager {
   canProposePeace(a: string, b: string, currentTurn: number): boolean {
     if (this.getState(a, b) !== 'WAR') return false;
     return this.getWarDuration(a, b, currentTurn) >= MIN_WAR_TURNS_FOR_PEACE;
+  }
+
+  recordWarUnitLoss(nationId: string, opposingNationId: string): void {
+    const key = this.pairKey(nationId, opposingNationId);
+    const current = this.relations.get(key);
+    if (!current || current.state !== 'WAR') return;
+    const [a] = this.sortedPair(nationId, opposingNationId);
+    const isA = nationId === a;
+    this.relations.set(key, {
+      ...current,
+      militaryUnitsLostA: isA ? current.militaryUnitsLostA + 1 : current.militaryUnitsLostA,
+      militaryUnitsLostB: isA ? current.militaryUnitsLostB : current.militaryUnitsLostB + 1,
+    });
+  }
+
+  recordWarCityLoss(losingNationId: string, opposingNationId: string): void {
+    const key = this.pairKey(losingNationId, opposingNationId);
+    const current = this.relations.get(key);
+    if (!current || current.state !== 'WAR') return;
+    const [a] = this.sortedPair(losingNationId, opposingNationId);
+    const isA = losingNationId === a;
+    this.relations.set(key, {
+      ...current,
+      citiesLostA: isA ? current.citiesLostA + 1 : current.citiesLostA,
+      citiesLostB: isA ? current.citiesLostB : current.citiesLostB + 1,
+    });
+  }
+
+  snapshotWarStartStrength(nationId: string, opposingNationId: string, strength: number): void {
+    const key = this.pairKey(nationId, opposingNationId);
+    const current = this.relations.get(key);
+    if (!current) return;
+    const [a] = this.sortedPair(nationId, opposingNationId);
+    const isA = nationId === a;
+    this.relations.set(key, {
+      ...current,
+      militaryStrengthAtWarStartA: isA ? strength : current.militaryStrengthAtWarStartA,
+      militaryStrengthAtWarStartB: isA ? current.militaryStrengthAtWarStartB : strength,
+    });
+  }
+
+  getWarExhaustion(nationId: string, opposingNationId: string): { unitsLost: number; citiesLost: number; startStrength: number } {
+    const key = this.pairKey(nationId, opposingNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    const [a] = this.sortedPair(nationId, opposingNationId);
+    const isA = nationId === a;
+    return {
+      unitsLost: isA ? current.militaryUnitsLostA : current.militaryUnitsLostB,
+      citiesLost: isA ? current.citiesLostA : current.citiesLostB,
+      startStrength: isA ? current.militaryStrengthAtWarStartA : current.militaryStrengthAtWarStartB,
+    };
   }
 
   isPeaceTreatyActive(a: string, b: string, currentTurn: number): boolean {

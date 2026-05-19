@@ -253,6 +253,12 @@ export class SaveLoadService {
       lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
       lastTradeRelationsChangeTurn: entry.relation.lastTradeRelationsChangeTurn,
       peaceTreatyUntilTurn: entry.relation.peaceTreatyUntilTurn,
+      militaryUnitsLostA: entry.relation.militaryUnitsLostA,
+      militaryUnitsLostB: entry.relation.militaryUnitsLostB,
+      citiesLostA: entry.relation.citiesLostA,
+      citiesLostB: entry.relation.citiesLostB,
+      militaryStrengthAtWarStartA: entry.relation.militaryStrengthAtWarStartA,
+      militaryStrengthAtWarStartB: entry.relation.militaryStrengthAtWarStartB,
     }));
 
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
@@ -709,6 +715,12 @@ export class SaveLoadService {
         peaceTreatyUntilTurn: entry.peaceTreatyUntilTurn,
         lastWarTurn: entry.lastWarTurn,
         lastPeaceTurn: entry.lastPeaceTurn,
+        militaryUnitsLostA: entry.militaryUnitsLostA,
+        militaryUnitsLostB: entry.militaryUnitsLostB,
+        citiesLostA: entry.citiesLostA,
+        citiesLostB: entry.citiesLostB,
+        militaryStrengthAtWarStartA: entry.militaryStrengthAtWarStartA,
+        militaryStrengthAtWarStartB: entry.militaryStrengthAtWarStartB,
       });
     }
   }

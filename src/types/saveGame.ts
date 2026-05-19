@@ -190,6 +190,13 @@ export interface SavedDiplomacyEntry {
   lastWarTurn?: number | null;
   /** @deprecated renamed to lastPeaceProposalTurn. */
   lastPeaceTurn?: number | null;
+  // War exhaustion counters — optional so older saves load cleanly.
+  militaryUnitsLostA?: number;
+  militaryUnitsLostB?: number;
+  citiesLostA?: number;
+  citiesLostB?: number;
+  militaryStrengthAtWarStartA?: number;
+  militaryStrengthAtWarStartB?: number;
 }
 
 export interface SavedDiscoveryEntry {

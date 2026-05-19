@@ -95,10 +95,11 @@ export class AIDiplomacySystem {
       // materially outmatched and the relation is already strained.
       const adjustedPeacePreference = personality.peacePreference + ideologyPeaceModifier;
       const wantsPeace =
-        threat === 'high' ||
-        attitude === 'afraid' ||
-        comparison === 'weaker' ||
-        (adjustedPeacePreference >= 70 && attitude !== 'hostile');
+        (threat === 'high' ||
+         attitude === 'afraid' ||
+         comparison === 'weaker' ||
+         (adjustedPeacePreference >= 70 && attitude !== 'hostile'))
+        && this.shouldNationConsiderPeace(selfId, otherId, personality);
       if (
         wantsPeace &&
         this.diplomacyManager.canProposePeace(selfId, otherId, currentTurn) &&
@@ -212,6 +213,34 @@ export class AIDiplomacySystem {
         );
       }
     }
+  }
+
+  /**
+   * Gates peace consideration behind war-exhaustion thresholds. A nation must
+   * have lost at least `minimumUnitsLostBeforePeace` military units, AND — if
+   * a starting-strength snapshot exists — at least `casualtyToleranceRatio`
+   * of that strength, before its other peace conditions are evaluated.
+   */
+  private shouldNationConsiderPeace(selfId: string, otherId: string, personality: AILeaderPersonality): boolean {
+    const exhaustion = this.diplomacyManager.getWarExhaustion(selfId, otherId);
+    if (exhaustion.unitsLost < personality.minimumUnitsLostBeforePeace) {
+      const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
+      console.log(
+        this.formatLog(selfId, `war exhaustion gate: only ${exhaustion.unitsLost}/${personality.minimumUnitsLostBeforePeace} units lost vs ${otherName} — not ready for peace.`),
+      );
+      return false;
+    }
+    if (exhaustion.startStrength > 0) {
+      const ratio = exhaustion.unitsLost / exhaustion.startStrength;
+      if (ratio < personality.casualtyToleranceRatio) {
+        const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
+        console.log(
+          this.formatLog(selfId, `war exhaustion gate: casualty ratio ${ratio.toFixed(2)} < tolerance ${personality.casualtyToleranceRatio} vs ${otherName} — not ready for peace.`),
+        );
+        return false;
+      }
+    }
+    return true;
   }
 
   private turnsSince(lastTurn: number | null, currentTurn: number): number {

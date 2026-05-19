@@ -588,6 +588,9 @@ export class GameScene extends Phaser.Scene {
     });
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
+      // Snapshot military strength at war start so war-exhaustion ratios are meaningful.
+      diplomacyManager.snapshotWarStartStrength(aggressorId, targetId, aiMilitaryEvaluationSystem.getMilitaryStrength(aggressorId).totalStrength);
+      diplomacyManager.snapshotWarStartStrength(targetId, aggressorId, aiMilitaryEvaluationSystem.getMilitaryStrength(targetId).totalStrength);
     });
     tradeDealSystem.onChanged((event) => {
       resourceSystem.recalculateForNation(event.deal.sellerNationId);
@@ -1963,6 +1966,15 @@ export class GameScene extends Phaser.Scene {
         if (e.result.defenderDied) unitRenderer.removeUnit(e.defender.id);
         else unitRenderer.refreshUnitPosition(e.defender.id);
       }
+      // Record per-war unit losses for military units (baseStrength > 0).
+      if (diplomacyManager.getState(e.attacker.ownerId, e.defender.ownerId) === 'WAR') {
+        if (e.result.attackerDied && e.attacker.unitType.baseStrength > 0) {
+          diplomacyManager.recordWarUnitLoss(e.attacker.ownerId, e.defender.ownerId);
+        }
+        if (e.result.defenderDied && e.defender.unitType.baseStrength > 0) {
+          diplomacyManager.recordWarUnitLoss(e.defender.ownerId, e.attacker.ownerId);
+        }
+      }
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -1982,6 +1994,16 @@ export class GameScene extends Phaser.Scene {
       } else {
         // Uppdatera attackerarens HP-bar
         unitRenderer.refreshUnitPosition(e.attacker.id);
+      }
+
+      // Record per-war losses for city combat.
+      if (diplomacyManager.getState(e.attacker.ownerId, e.city.ownerId) === 'WAR') {
+        if (e.result.attackerDied && e.attacker.unitType.baseStrength > 0) {
+          diplomacyManager.recordWarUnitLoss(e.attacker.ownerId, e.city.ownerId);
+        }
+        if (e.captured && e.previousOwnerId) {
+          diplomacyManager.recordWarCityLoss(e.previousOwnerId, e.attacker.ownerId);
+        }
       }
 
       // Om staden erövrades

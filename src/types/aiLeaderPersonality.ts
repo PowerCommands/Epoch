@@ -6,6 +6,10 @@ export interface AILeaderPersonality {
   readonly diplomacyBias: number;
   readonly warTolerance: number;
   readonly peacePreference: number;
+  /** Minimum own military units lost in a war before this leader will consider suing for peace. */
+  readonly minimumUnitsLostBeforePeace: number;
+  /** Fraction of war-start military strength that must be lost before peace is considered (0–1). */
+  readonly casualtyToleranceRatio: number;
 }
 
 export const DEFAULT_AI_LEADER_PERSONALITY: AILeaderPersonality = {
@@ -16,4 +20,6 @@ export const DEFAULT_AI_LEADER_PERSONALITY: AILeaderPersonality = {
   diplomacyBias: 0,
   warTolerance: 50,
   peacePreference: 50,
+  minimumUnitsLostBeforePeace: 3,
+  casualtyToleranceRatio: 0.40,
 };
