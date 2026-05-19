@@ -58,6 +58,10 @@ export class AIMilitaryDoctrineEvaluator {
     return target - current;
   }
 
+  getPreferredRoleMultiplier(nationId: string, role: AIMilitaryDoctrineRole): number {
+    return this.getDoctrine(nationId).preferredRoles[role] ?? 1.0;
+  }
+
   getRoleDeficitMultiplier(nationId: string, role: AIMilitaryDoctrineRole): number {
     const deficit = this.getRoleDeficit(nationId, role);
     if (deficit > 0) return 1 + Math.min(deficit * 4, 2.5);

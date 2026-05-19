@@ -78,7 +78,7 @@ import {
   scoreMilitaryUnitCandidate,
   isMaritimeDoctrine,
 } from './ai/AIMilitaryDoctrineScoring';
-import type { AIMilitaryDoctrine, AIMilitaryDoctrineRole } from '../types/aiMilitaryDoctrine';
+import type { AIMilitaryDoctrine, AIMilitaryDoctrineRole, DoctrineProductionScoreBreakdown } from '../types/aiMilitaryDoctrine';
 import { AIMilitaryDoctrineEvaluator } from './ai/AIMilitaryDoctrineEvaluator';
 import { getUnitDoctrineRole } from '../utils/unitRoleUtils';
 import {
@@ -398,10 +398,9 @@ export class AISystem {
   private readonly doctrineEvaluator: AIMilitaryDoctrineEvaluator;
   private readonly militaryPickRationaleByNation = new Map<string, {
     role: AIMilitaryDoctrineRole | null;
-    preferredWeight: number;
-    deficitMultiplier: number;
+    preferredRoleMultiplier: number;
+    roleDeficitMultiplier: number;
     finalScore: number;
-    unitName: string;
   }>();
 
   constructor(
@@ -3937,60 +3936,41 @@ export class AISystem {
     this.logStrategicEvent?.(nationId, budgetMsg);
   }
 
-  private logDoctrineProductionOnce(nationId: string, message: string): void {
-    const currentRound = this.turnManager.getCurrentRound();
-    if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
-    this.doctrineProductionLoggedRound.set(nationId, currentRound);
-    console.debug(this.formatLog(nationId, message));
-  }
-
   private logDoctrineProductionIfMaterial(
     nationId: string,
     unitType: UnitType,
     ctx: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
     cityName: string,
   ): void {
-    const { doctrine } = ctx;
     const rationale = this.militaryPickRationaleByNation.get(nationId);
+    if (!rationale) return;
+    if (rationale.roleDeficitMultiplier === 1.0 && rationale.role === null && rationale.preferredRoleMultiplier === 1.0) return;
 
-    if (rationale && (rationale.deficitMultiplier !== 1.0 || rationale.role !== null)) {
-      const currentRound = this.turnManager.getCurrentRound();
-      if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
-      this.doctrineProductionLoggedRound.set(nationId, currentRound);
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
+    this.doctrineProductionLoggedRound.set(nationId, currentRound);
 
-      const role = rationale.role ?? 'none';
-      const preferred = rationale.preferredWeight.toFixed(2);
-      const deficit = rationale.deficitMultiplier.toFixed(2);
-      const score = Math.round(rationale.finalScore);
-      const netHappiness = this.happinessSystem?.getNetHappiness(nationId);
-      const gold = this.nationManager.getResources(nationId).gold;
-      const warWeariness = this.happinessSystem?.getNationState(nationId)?.unhappinessFromWarWeariness ?? 0;
-      const pressure = this.doctrineEvaluator.getMilitaryProductionPressureModifier(nationId, {
-        happiness: netHappiness, gold, warWeariness, isThreatened: false,
-      });
-      const selectionMsg = `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): role ${role}, preferred x${preferred}, deficit x${deficit}, budget x1.00, pressure x${pressure.toFixed(2)}, final score ${score}.`;
-      console.log(this.formatLog(nationId, selectionMsg));
-      this.logStrategicEvent?.(nationId, selectionMsg);
-      return;
-    }
+    const netHappiness = this.happinessSystem?.getNetHappiness(nationId);
+    const gold = this.nationManager.getResources(nationId).gold;
+    const warWeariness = this.happinessSystem?.getNationState(nationId)?.unhappinessFromWarWeariness ?? 0;
+    const pressureModifier = this.doctrineEvaluator.getMilitaryProductionPressureModifier(nationId, {
+      happiness: netHappiness, gold, warWeariness, isThreatened: false,
+    });
 
-    // Fallback: legacy role-based logging for non-evaluator paths.
-    if (doctrine.id === 'balanced') return;
-    const isNaval = unitType.isNaval === true;
-    const isMountedUnit = ['horseman', 'knight', 'lancer', 'cavalry', 'landship', 'tank', 'modern_armor'].includes(unitType.id);
-    const isRangedOrSiege = ['ranged', 'siege'].includes(unitType.category);
-    const isHighQuality = unitType.baseStrength >= 20;
-    const eraGap = ctx.nationEraIndex - getEraIndex(unitType.era);
+    const breakdown: DoctrineProductionScoreBreakdown = {
+      doctrineId: ctx.doctrine.id,
+      role: rationale.role,
+      preferredRoleMultiplier: rationale.preferredRoleMultiplier,
+      roleDeficitMultiplier: rationale.roleDeficitMultiplier,
+      pressureModifier,
+      reasonParts: [],
+    };
 
-    if (isNaval && isMaritimeDoctrine(doctrine)) {
-      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): naval favored.`);
-    } else if (isMountedUnit && doctrine.preferredRoles.mounted >= 1.5) {
-      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): mounted favored.`);
-    } else if ((isRangedOrSiege) && (doctrine.preferredRoles.ranged >= 1.2 || doctrine.preferredRoles.siege >= 1.1)) {
-      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): ranged/siege favored.`);
-    } else if (isHighQuality && doctrine.qualityBias >= 1.3 && eraGap === 0) {
-      this.logDoctrineProductionOnce(nationId, `doctrine selected ${unitType.name} in ${cityName} (${doctrine.id}): high quality favored.`);
-    }
+    const role = breakdown.role ?? 'none';
+    const score = Math.round(rationale.finalScore);
+    const selectionMsg = `doctrine selected ${unitType.name} in ${cityName}: ${breakdown.doctrineId}, role ${role}, preferred x${breakdown.preferredRoleMultiplier.toFixed(2)}, deficit x${breakdown.roleDeficitMultiplier.toFixed(2)}, budget x1.00, pressure x${breakdown.pressureModifier.toFixed(2)}, final score ${score}.`;
+    console.log(this.formatLog(nationId, selectionMsg));
+    this.logStrategicEvent?.(nationId, selectionMsg);
   }
 
   private getMilitaryProductionScore(
@@ -4146,37 +4126,38 @@ export class AISystem {
 
       let best: UnitType = candidates[0];
       let bestFinalScore = -Infinity;
-      let bestDeficitMultiplier = 1.0;
+      let bestRoleDeficitMultiplier = 1.0;
       let bestRole: AIMilitaryDoctrineRole | null = null;
-      let bestPreferredWeight = 1.0;
+      let bestPreferredRoleMultiplier = 1.0;
 
       for (const u of candidates) {
         let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex);
         const role = getUnitDoctrineRole(u);
-        const deficitMultiplier = role !== null
+        const roleDeficitMultiplier = role !== null
           ? this.doctrineEvaluator.getRoleDeficitMultiplier(nationId, role)
           : 1.0;
-        score *= deficitMultiplier;
+        score *= roleDeficitMultiplier;
 
-        if (deficitMultiplier < 0.75 && (unitDeficits.get(u.id) ?? -Infinity) < maxDeficit) {
+        if (roleDeficitMultiplier < 0.75 && (unitDeficits.get(u.id) ?? -Infinity) < maxDeficit) {
           score *= 0.75;
         }
 
         if (score > bestFinalScore) {
           best = u;
           bestFinalScore = score;
-          bestDeficitMultiplier = deficitMultiplier;
+          bestRoleDeficitMultiplier = roleDeficitMultiplier;
           bestRole = role;
-          bestPreferredWeight = role !== null ? (doctrine.preferredRoles[role] ?? 1.0) : 1.0;
+          bestPreferredRoleMultiplier = role !== null
+            ? this.doctrineEvaluator.getPreferredRoleMultiplier(nationId, role)
+            : 1.0;
         }
       }
 
       this.militaryPickRationaleByNation.set(nationId, {
         role: bestRole,
-        preferredWeight: bestPreferredWeight,
-        deficitMultiplier: bestDeficitMultiplier,
+        preferredRoleMultiplier: bestPreferredRoleMultiplier,
+        roleDeficitMultiplier: bestRoleDeficitMultiplier,
         finalScore: bestFinalScore,
-        unitName: best.name,
       });
 
       return best;
@@ -4233,38 +4214,39 @@ export class AISystem {
 
       let best: UnitType = available[0];
       let bestFinalScore = -Infinity;
-      let bestDeficitMultiplier = 1.0;
+      let bestRoleDeficitMultiplier = 1.0;
       let bestRole: AIMilitaryDoctrineRole | null = null;
-      let bestPreferredWeight = 1.0;
+      let bestPreferredRoleMultiplier = 1.0;
 
       for (const u of available) {
         let score = scoreMilitaryUnitCandidate(u, doctrine, nationEraIndex);
         const role = getUnitDoctrineRole(u);
-        const deficitMultiplier = role !== null
+        const roleDeficitMultiplier = role !== null
           ? this.doctrineEvaluator.getRoleDeficitMultiplier(nationId, role)
           : 1.0;
-        score *= deficitMultiplier;
+        score *= roleDeficitMultiplier;
 
         // Dampen overrepresented candidates when at least one better-deficit alternative exists.
-        if (deficitMultiplier < 0.75 && (unitDeficits.get(u.id) ?? -Infinity) < maxDeficit) {
+        if (roleDeficitMultiplier < 0.75 && (unitDeficits.get(u.id) ?? -Infinity) < maxDeficit) {
           score *= 0.75;
         }
 
         if (score > bestFinalScore) {
           best = u;
           bestFinalScore = score;
-          bestDeficitMultiplier = deficitMultiplier;
+          bestRoleDeficitMultiplier = roleDeficitMultiplier;
           bestRole = role;
-          bestPreferredWeight = role !== null ? (doctrine.preferredRoles[role] ?? 1.0) : 1.0;
+          bestPreferredRoleMultiplier = role !== null
+            ? this.doctrineEvaluator.getPreferredRoleMultiplier(nationId, role)
+            : 1.0;
         }
       }
 
       this.militaryPickRationaleByNation.set(nationId, {
         role: bestRole,
-        preferredWeight: bestPreferredWeight,
-        deficitMultiplier: bestDeficitMultiplier,
+        preferredRoleMultiplier: bestPreferredRoleMultiplier,
+        roleDeficitMultiplier: bestRoleDeficitMultiplier,
         finalScore: bestFinalScore,
-        unitName: best.name,
       });
 
       return best;

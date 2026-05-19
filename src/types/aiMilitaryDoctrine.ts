@@ -37,6 +37,15 @@ export interface AIMilitaryRolePreferences {
   readonly air: number;
 }
 
+export interface DoctrineProductionScoreBreakdown {
+  readonly doctrineId: string;
+  readonly role: AIMilitaryDoctrineRole | null;
+  readonly preferredRoleMultiplier: number;
+  readonly roleDeficitMultiplier: number;
+  readonly pressureModifier: number;
+  readonly reasonParts: readonly string[];
+}
+
 export interface AIMilitaryDoctrine {
   readonly id: string;
   readonly name: string;
