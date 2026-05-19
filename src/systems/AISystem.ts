@@ -374,6 +374,7 @@ export class AISystem {
   private readonly avoidedProvocativeMilitaryTileLoggedRound = new Map<string, number>();
   private readonly defensiveModeLoggedRound = new Map<string, number>();
   private readonly militaryBudgetLoggedRound = new Map<string, number>();
+  private readonly budgetAllowedLoggedRound = new Map<string, number>();
   private readonly doctrinePressureLoggedRound = new Map<string, number>();
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
   private readonly doctrineProductionLoggedRound = new Map<string, number>();
@@ -2884,7 +2885,7 @@ export class AISystem {
       Math.ceil(strategy.military.maxUnits * doctrineBudget.maxUnitsMultiplier),
       1,
     );
-    this.logMilitaryBudgetStatusOnce(nationId, doctrine.id, plannedMilitaryCount, effectiveMaxUnits, strategy.military.maxUnits);
+    this.logMilitaryBudgetStatusOnce(nationId, doctrine.id, plannedMilitaryCount, effectiveMaxUnits, strategy.military.maxUnits, this.computeBudgetModifier(plannedMilitaryCount, effectiveMaxUnits));
 
     const currentRound = this.turnManager.getCurrentRound();
     if (currentRound % 25 === 0) {
@@ -3313,6 +3314,9 @@ export class AISystem {
     const defensivePressure = this.isDefensivePressureActive(nationId);
     const doctrineBudget = this.doctrineEvaluator.getDesiredMilitaryBudget(nationId);
     const isOverBudget = plannedMilitaryCount >= effectiveMaxUnits;
+    // Score multiplier for non-emergency military when over doctrine budget.
+    // Shrinks fast so buildings almost always win; emergency defenders bypass this.
+    const budgetModifier = this.computeBudgetModifier(plannedMilitaryCount, effectiveMaxUnits);
     // General military gate: allow production unless over budget, or budget cap
     // is waived by threat when doctrine permits overbuilding when threatened.
     const canBuildGeneralMilitary = !isOverBudget ||
@@ -3401,7 +3405,7 @@ export class AISystem {
       if (militaryUnit) {
         candidates.push({
           item: { kind: 'unit', unitType: militaryUnit },
-          baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure),
+          baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure) * budgetModifier,
           category: 'military',
         });
       }
@@ -3420,7 +3424,7 @@ export class AISystem {
           : 1.0;
         candidates.push({
           item: { kind: 'unit', unitType: navalUnit },
-          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure) * navalUrgency,
+          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure) * navalUrgency * budgetModifier,
           category: 'military',
         });
       }
@@ -3539,7 +3543,7 @@ export class AISystem {
       if (militaryUnit) {
         candidates.push({
           item: { kind: 'unit', unitType: militaryUnit },
-          baseScore: this.getMilitaryProductionScore(SCORE_FALLBACK, nationId, eraStrategy, defensivePressure),
+          baseScore: this.getMilitaryProductionScore(SCORE_FALLBACK, nationId, eraStrategy, defensivePressure) * budgetModifier,
           category: 'military',
         });
       }
@@ -3575,8 +3579,11 @@ export class AISystem {
     const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
       if (best.item.kind === 'unit' && best.item.unitType.category !== 'leader' && best.item.unitType.baseStrength > 0) {
-        this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx, city.name);
+        this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx, city.name, budgetModifier);
         this.logDoctrineToleranceIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx.doctrine, city.name);
+        if (budgetModifier < 1.0 && acuteDefenderNeeded) {
+          this.logBudgetAllowedForDefenderOnce(nationId, militaryDoctrineCtx.doctrine.id, city.name);
+        }
       }
       if (cityFocus !== 'balanced') {
         const itemName = this.foundationProducibleName(best.item);
@@ -3871,6 +3878,13 @@ export class AISystem {
     return baseScore * 0.55;
   }
 
+  private computeBudgetModifier(currentUnits: number, effectiveMax: number): number {
+    if (effectiveMax <= 0 || currentUnits <= effectiveMax) return 1.0;
+    if (currentUnits >= effectiveMax * 3) return 0.02;
+    if (currentUnits >= effectiveMax * 2) return 0.05;
+    return 0.15;
+  }
+
   private buildMilitaryDoctrineContext(nationId: string): {
     doctrine: AIMilitaryDoctrine;
     nationEraIndex: number;
@@ -3926,12 +3940,13 @@ export class AISystem {
     currentCount: number,
     effectiveMax: number,
     baseMax: number,
+    budgetModifier: number,
   ): void {
     if (effectiveMax === baseMax || currentCount < effectiveMax) return;
     const currentRound = this.turnManager.getCurrentRound();
     if (this.militaryBudgetLoggedRound.get(nationId) === currentRound) return;
     this.militaryBudgetLoggedRound.set(nationId, currentRound);
-    const budgetMsg = `doctrine reduced military production (${doctrineId}): current units ${currentCount} / effective max ${effectiveMax}.`;
+    const budgetMsg = `doctrine reduced military production: ${doctrineId}, current units ${currentCount} / effective max ${effectiveMax}, budget x${budgetModifier.toFixed(2)}.`;
     console.log(this.formatLog(nationId, budgetMsg));
     this.logStrategicEvent?.(nationId, budgetMsg);
   }
@@ -3941,10 +3956,16 @@ export class AISystem {
     unitType: UnitType,
     ctx: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
     cityName: string,
+    budgetModifier: number = 1.0,
   ): void {
     const rationale = this.militaryPickRationaleByNation.get(nationId);
     if (!rationale) return;
-    if (rationale.roleDeficitMultiplier === 1.0 && rationale.role === null && rationale.preferredRoleMultiplier === 1.0) return;
+    if (
+      rationale.roleDeficitMultiplier === 1.0 &&
+      rationale.role === null &&
+      rationale.preferredRoleMultiplier === 1.0 &&
+      budgetModifier === 1.0
+    ) return;
 
     const currentRound = this.turnManager.getCurrentRound();
     if (this.doctrineProductionLoggedRound.get(nationId) === currentRound) return;
@@ -3968,9 +3989,18 @@ export class AISystem {
 
     const role = breakdown.role ?? 'none';
     const score = Math.round(rationale.finalScore);
-    const selectionMsg = `doctrine selected ${unitType.name} in ${cityName}: ${breakdown.doctrineId}, role ${role}, preferred x${breakdown.preferredRoleMultiplier.toFixed(2)}, deficit x${breakdown.roleDeficitMultiplier.toFixed(2)}, budget x1.00, pressure x${breakdown.pressureModifier.toFixed(2)}, final score ${score}.`;
+    const selectionMsg = `doctrine selected ${unitType.name} in ${cityName}: ${breakdown.doctrineId}, role ${role}, preferred x${breakdown.preferredRoleMultiplier.toFixed(2)}, deficit x${breakdown.roleDeficitMultiplier.toFixed(2)}, budget x${budgetModifier.toFixed(2)}, pressure x${breakdown.pressureModifier.toFixed(2)}, final score ${score}.`;
     console.log(this.formatLog(nationId, selectionMsg));
     this.logStrategicEvent?.(nationId, selectionMsg);
+  }
+
+  private logBudgetAllowedForDefenderOnce(nationId: string, doctrineId: string, cityName: string): void {
+    const currentRound = this.turnManager.getCurrentRound();
+    if (this.budgetAllowedLoggedRound.get(nationId) === currentRound) return;
+    this.budgetAllowedLoggedRound.set(nationId, currentRound);
+    const msg = `doctrine allowed military despite budget: ${doctrineId}, city ${cityName} needs defender.`;
+    console.log(this.formatLog(nationId, msg));
+    this.logStrategicEvent?.(nationId, msg);
   }
 
   private getMilitaryProductionScore(

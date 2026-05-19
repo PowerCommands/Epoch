@@ -63,6 +63,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/sigismund.png`,
     description: 'An imperial broker balancing crowns, councils, and competing princes.',
     ideologyId: 'conservatism',
+    aiMilitaryDoctrineId: 'religiousMilitia',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
@@ -104,6 +105,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/vytautas-the-great.png`,
     description: 'An ambitious grand duke whose realm looks across the eastern frontier.',
     ideologyId: 'nationalism',
+    aiMilitaryDoctrineId: 'economicMinimalArmy',
     aiPersonality: {
       aggressionBias: 8,
       expansionBias: 12,
@@ -124,6 +126,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/marfa-boretskaya.png`,
     description: 'A formidable civic figure standing for Novgorod tradition and autonomy.',
     ideologyId: 'conservatism',
+    aiMilitaryDoctrineId: 'disciplinedInfantry',
     aiPersonality: {
       aggressionBias: -8,
       expansionBias: -5,
@@ -144,6 +147,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/mehmed-i.png`,
     description: 'A conqueror-sultan with a taste for decisive campaigns and imperial ambition.',
     ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'mountedAggression',
     aiPersonality: {
       aggressionBias: 20,
       expansionBias: 15,
@@ -164,7 +168,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/isabella.png`,
     description: 'A dynastic ruler focused on unity, faith, and royal authority.',
     ideologyId: 'traditionalism',
-    aiMilitaryDoctrineId: 'imperialCombinedArms',
+    aiMilitaryDoctrineId: 'cheapInfantrySwarm',
     aiPersonality: {
       aggressionBias: 5,
       expansionBias: 5,
@@ -185,6 +189,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/abu-al-hasan.png`,
     description: 'A Maghrebi ruler anchoring Moroccan power across western trade routes.',
     ideologyId: 'globalism',
+    aiMilitaryDoctrineId: 'religiousMilitia',
     aiPersonality: {
       aggressionBias: 0,
       expansionBias: 5,
@@ -205,7 +210,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/george-washington.png`,
     description: 'A visionary founding father focused on liberty, stability, and national unity.',
     ideologyId: 'liberalism',
-    aiMilitaryDoctrineId: 'imperialCombinedArms',
+    aiMilitaryDoctrineId: 'eliteArmy',
     aiPersonality: {
       aggressionBias: -2,
       expansionBias: 8,
@@ -292,7 +297,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/dom-pedro-ii.png`,
     description: 'An enlightened monarch focused on scientific progress, cultural growth, and diplomatic stability.',
     ideologyId: 'progressivism',
-    aiMilitaryDoctrineId: 'balanced',
+    aiMilitaryDoctrineId: 'fortifiedDefense',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
@@ -313,6 +318,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     image: `${LEADER_IMAGE_BASE}/mansa-musa.png`,
     description: 'A legendary sovereign focused on immense wealth, trans-Saharan trade, and intellectual enlightenment.',
     ideologyId: 'globalism',
+    aiMilitaryDoctrineId: 'disciplinedInfantry',
     aiPersonality: {
       aggressionBias: -5,
       expansionBias: 0,
