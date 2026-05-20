@@ -33,7 +33,14 @@ export function scoreUpgradeCandidate(
   const newEra = getEraIndex(target.era);
   const eraGap = newEra - oldEra;
 
+  const rangedStrGain = (target.rangedStrength ?? 0) - (unit.unitType.rangedStrength ?? 0);
+  const rangeGain = (target.range ?? 1) - (unit.unitType.range ?? 1);
+  const movementGain = target.movementPoints - unit.unitType.movementPoints;
+
   let score = strengthRatio * 40 + strengthGain * 0.5 + eraGap * 25;
+  score += rangedStrGain * UPGRADE_RANGED_STR_WEIGHT
+    + rangeGain * UPGRADE_RANGE_WEIGHT
+    + movementGain * UPGRADE_MOVEMENT_WEIGHT;
   score *= doctrine.modernizationBias * doctrine.qualityBias / Math.max(0.5, doctrine.quantityBias);
 
   const role = getMilitaryUnitRole(unit.unitType);
@@ -42,3 +49,7 @@ export function scoreUpgradeCandidate(
 
   return score;
 }
+
+const UPGRADE_RANGED_STR_WEIGHT = 3.0;
+const UPGRADE_RANGE_WEIGHT = 2.0;
+const UPGRADE_MOVEMENT_WEIGHT = 0.5;

@@ -252,6 +252,10 @@ const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
 // Score boost applied to naval candidates when a maritime doctrine is active
 // and the nation has fewer naval units than coastal cities.
 const MARITIME_NAVAL_URGENCY_MULTIPLIER = 1.5;
+// Heavy suppression applied to melee naval candidates once a ranged naval
+// ship is available — maritime doctrines should converge on the strongest
+// ranged option rather than accumulating melee fallbacks.
+const NAVAL_MELEE_SUPPRESSION_MULTIPLIER = 0.1;
 
 function luxuryRank(resourceId: string): number {
   return getNaturalResourceById(resourceId)?.category === 'luxury' ? 1 : 0;
@@ -3254,7 +3258,7 @@ export class AISystem {
 
       let usedFallback = false;
       if (!choice) {
-        choice = this.pickFallbackProduction(city, nationId, strategy, plannedSettlerCount);
+        choice = this.pickFallbackProduction(city, nationId, strategy, plannedSettlerCount, doctrine);
         usedFallback = choice !== undefined;
       }
 
@@ -3336,9 +3340,14 @@ export class AISystem {
       const fromName = candidate.unit.unitType.name;
       if (this.unitUpgradeSystem.upgradeUnit(candidate.unit, nationId)) {
         upgraded++;
-        const isNaval = doctrine.preferredRoles.navalMelee > 1.3 || doctrine.preferredRoles.navalRanged > 1.3;
-        const tag = isNaval ? ' [naval]' : '';
-        console.log(this.formatLog(nationId, `upgraded${tag} ${fromName} → ${candidate.target.name} for ${candidate.cost} gold (doctrine: ${doctrine.id})`));
+        const navalDoctrine = isMaritimeDoctrine(doctrine);
+        const upgradeToNavalRanged = navalDoctrine && candidate.target.category === 'naval_ranged';
+        if (upgradeToNavalRanged) {
+          console.log(this.formatLog(nationId, `upgraded naval unit ${fromName} → ${candidate.target.name} for navalPower ranged fleet (doctrine: ${doctrine.id})`));
+        } else {
+          const tag = navalDoctrine ? ' [naval]' : '';
+          console.log(this.formatLog(nationId, `upgraded${tag} ${fromName} → ${candidate.target.name} for ${candidate.cost} gold (doctrine: ${doctrine.id})`));
+        }
       }
     }
   }
@@ -3475,11 +3484,12 @@ export class AISystem {
     nationId: string,
     strategy: AIStrategy,
     plannedSettlerCount: number,
+    doctrine?: AIMilitaryDoctrine,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
 
     // 1. Defender if no friendly combat unit at or adjacent to the city.
-    if (this.needsDefender(city, nationId)) {
+    if (this.needsDefender(city, nationId, doctrine)) {
       const defender = this.pickAnyValidMilitaryForCity(city, nationId);
       if (defender) return { kind: 'unit', unitType: defender };
     }
@@ -3504,12 +3514,16 @@ export class AISystem {
     }
 
     // 6-7. Warrior, then Archer if the city can actually build them.
-    for (const unitType of [WARRIOR, ARCHER]) {
-      if (
-        this.canBuildUnit(nationId, unitType.id) &&
-        canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
-      ) {
-        return { kind: 'unit', unitType };
+    // Skip for maritime doctrines: capability scoring via pickAnyValidMilitaryForCity
+    // naturally selects naval units rather than forcing land defenders.
+    if (!doctrine || !isMaritimeDoctrine(doctrine)) {
+      for (const unitType of [WARRIOR, ARCHER]) {
+        if (
+          this.canBuildUnit(nationId, unitType.id) &&
+          canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+        ) {
+          return { kind: 'unit', unitType };
+        }
       }
     }
 
@@ -3685,7 +3699,7 @@ export class AISystem {
     const candidates: AIProductionCandidate[] = [];
 
     // Defenders bypass the budget gate — emergency defense is always permitted.
-    const acuteDefenderNeeded = this.needsDefender(city, nationId);
+    const acuteDefenderNeeded = this.needsDefender(city, nationId, militaryDoctrineCtx?.doctrine);
     if (acuteDefenderNeeded) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
@@ -4086,7 +4100,7 @@ export class AISystem {
     const phase = this.getProductionRhythmPhase(city, nationId, eraStrategy);
     if (!phase) return undefined;
 
-    if (phase === 'war' && this.needsDefender(city, nationId)) return undefined;
+    if (phase === 'war' && this.needsDefender(city, nationId, this.doctrineEvaluator.getDoctrine(nationId))) return undefined;
 
     this.logProductionRhythm(
       nationId,
@@ -4586,8 +4600,9 @@ export class AISystem {
     nationId: string,
     doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
   ): UnitType | undefined {
+    const maritime = doctrineCtx !== undefined && isMaritimeDoctrine(doctrineCtx.doctrine);
     const available = MILITARY_OPTIONS.filter((u) => (
-      u.isNaval !== true &&
+      (!u.isNaval || maritime) &&
       this.canBuildUnit(nationId, u.id) &&
       canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
@@ -4595,6 +4610,13 @@ export class AISystem {
 
     if (doctrineCtx) {
       const { doctrine, nationEraIndex } = doctrineCtx;
+
+      // Once any ranged naval ship is buildable, melee naval units become a
+      // heavy-suppressed fallback — maritime doctrines should converge on the
+      // strongest ranged option rather than accumulating obsolete melee ships.
+      const hasRangedNavalOption = maritime && available.some(
+        (u) => u.isNaval === true && (u.rangedStrength ?? 0) > 0,
+      );
 
       // Pre-compute deficits so the dampening rule can detect better alternatives.
       let maxDeficit = -Infinity;
@@ -4627,6 +4649,11 @@ export class AISystem {
           score *= 0.75;
         }
 
+        // Suppress melee naval candidates when a ranged naval option exists.
+        if (hasRangedNavalOption && u.isNaval && (u.rangedStrength ?? 0) === 0) {
+          score *= NAVAL_MELEE_SUPPRESSION_MULTIPLIER;
+        }
+
         if (score > bestFinalScore) {
           best = u;
           bestFinalScore = score;
@@ -4644,6 +4671,16 @@ export class AISystem {
         roleDeficitMultiplier: bestRoleDeficitMultiplier,
         finalScore: bestFinalScore,
       });
+
+      // Log once when a ranged naval unit won over suppressed melee naval options.
+      if (
+        hasRangedNavalOption &&
+        best.isNaval &&
+        (best.rangedStrength ?? 0) > 0 &&
+        available.some((u) => u.isNaval && (u.rangedStrength ?? 0) === 0 && u.baseStrength > 0)
+      ) {
+        console.debug(this.formatLog(nationId, `doctrine preferred ranged naval ${best.name} over weaker naval option for ${doctrine.id}.`));
+      }
 
       return best;
     }
@@ -5240,11 +5277,9 @@ export class AISystem {
     return item.buildingType.name;
   }
 
-  private needsDefender(city: City, nationId: string): boolean {
-    const tilesToCheck = [
-      { x: city.tileX, y: city.tileY },
-      ...this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY }),
-    ];
+  private needsDefender(city: City, nationId: string, doctrine?: AIMilitaryDoctrine): boolean {
+    const cityPos = { x: city.tileX, y: city.tileY };
+    const tilesToCheck = [cityPos, ...this.gridSystem.getAdjacentCoords(cityPos)];
 
     for (const pos of tilesToCheck) {
       const unit = this.unitManager.getUnitAt(pos.x, pos.y);
@@ -5254,6 +5289,18 @@ export class AISystem {
         unit.unitType.category !== 'leader' &&
         unit.unitType.baseStrength > 0
       ) return false;
+    }
+
+    // For maritime doctrines, a ranged naval unit within its attack range of a
+    // coastal city counts as a defender — a warship parked offshore satisfies
+    // the "city needs defender" pressure without requiring a land garrison.
+    if (doctrine && isMaritimeDoctrine(doctrine) && this.isCoastalFoundingTile(city.tileX, city.tileY)) {
+      for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
+        if (unit.unitType.isNaval && (unit.unitType.rangedStrength ?? 0) > 0) {
+          const dist = this.gridSystem.getDistance(cityPos, { x: unit.tileX, y: unit.tileY });
+          if (dist <= (unit.unitType.range ?? 1)) return false;
+        }
+      }
     }
 
     return true;

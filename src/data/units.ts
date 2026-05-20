@@ -85,7 +85,7 @@ export const ARCHER = unit({ id: 'archer', name: 'Archer', era: 'ancient', cost:
 export const SPEARMAN = unit({ id: 'spearman', name: 'Spearman', era: 'ancient', cost: 56, combatStrength: 11, movement: 2, category: 'melee', upkeepGold: 3, upgradeToUnitId: 'pikeman' });
 export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer', era: 'ancient', cost: 56, combatStrength: 6, rangedStrength: 10, range: 2, movement: 4, category: 'mounted' , upkeepGold: 3, upgradeToUnitId: 'horseman' });
 export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 1, isNaval: true });
-export const TRIREME = unit({ id: 'trireme', name: 'Trireme', era: 'ancient', cost: 45, combatStrength: 10, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'caravel' });
+export const TRIREME = unit({ id: 'trireme', name: 'Trireme', era: 'ancient', cost: 45, combatStrength: 10, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'archer_galley' });
 export const CARAVAN = unit({ id: 'caravan', name: 'Caravan', era: 'ancient', cost: 75, combatStrength: 0, movement: 1, category: 'civilian' });
 export const CARGO_SHIP = unit({ id: 'cargo_ship', name: 'Cargo Ship', era: 'ancient', cost: 100, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 1, allowedCargoCategories: ['civilian'] });
 
