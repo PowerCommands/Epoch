@@ -57,6 +57,13 @@
       "isNaval": true
     },
     {
+      "id": "archer_galley",
+      "name": "Archer Galley",
+      "era": "classical",
+      "category": "naval_ranged",
+      "isNaval": true
+    },
+    {
       "id": "caravan",
       "name": "Caravan",
       "era": "ancient",
