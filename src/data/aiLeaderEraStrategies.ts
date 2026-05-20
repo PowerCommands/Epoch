@@ -617,6 +617,18 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
       ancient: 'coastalTechEconomy',
     },
   },
+  {
+    leaderId: 'leader_gustav_vasa',
+    strategiesByEra: {
+      ancient: 'coastalTechEconomy',
+    },
+  },
+  {
+    leaderId: 'leader_henry_v',
+    strategiesByEra: {
+      ancient: 'coastalFoundation',
+    },
+  },
 ];
 
 const ERA_ORDER: readonly Era[] = [
