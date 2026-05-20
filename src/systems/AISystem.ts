@@ -3322,12 +3322,33 @@ export class AISystem {
     const maxUpgrades = getModernizationMaxUpgrades(doctrine);
     const resources = this.nationManager.getResources(nationId);
 
+    const navalDoctrine = isMaritimeDoctrine(doctrine);
+    // Maritime doctrines keep a smaller reserve for naval combat upgrades so
+    // Triremes upgrade to ranged ships as soon as the nation can afford them,
+    // rather than waiting to accumulate the full general reserve on top.
+    const navalUpgradeReserve = Math.max(50, Math.round(reserve * 0.35));
+
     const candidates = this.unitManager.getUnitsByOwner(nationId)
       .map((unit) => {
+        const isNavalCombat = unit.unitType.isNaval === true && unit.unitType.baseStrength > 0;
+        const effectiveReserve = (navalDoctrine && isNavalCombat) ? navalUpgradeReserve : reserve;
         const preview = this.unitUpgradeSystem?.getUpgradePreview(unit, nationId);
-        if (!preview?.canUpgrade || !preview.target || preview.cost === undefined) return null;
-        if (resources.gold - preview.cost < reserve) return null;
+        if (!preview?.canUpgrade || !preview.target || preview.cost === undefined) {
+          if (navalDoctrine && isNavalCombat && preview) {
+            console.debug(this.formatLog(nationId, `navalPower upgrade check: ${unit.unitType.name} → ${preview.target?.name ?? '?'} blocked: ${preview.reason ?? 'unknown'}`));
+          }
+          return null;
+        }
+        if (resources.gold - preview.cost < effectiveReserve) {
+          if (navalDoctrine && isNavalCombat) {
+            console.debug(this.formatLog(nationId, `navalPower upgrade check: ${unit.unitType.name} → ${preview.target.name} blocked: upgrade cost ${preview.cost} exceeds available spendable gold ${resources.gold - effectiveReserve} (reserve ${effectiveReserve})`));
+          }
+          return null;
+        }
         const score = scoreUpgradeCandidate(unit, preview.target, doctrine);
+        if (navalDoctrine && isNavalCombat) {
+          console.debug(this.formatLog(nationId, `navalPower upgrade check: ${unit.unitType.name} → ${preview.target.name} candidate score ${score.toFixed(1)}`));
+        }
         return { unit, target: preview.target, cost: preview.cost, score };
       })
       .filter((c): c is { unit: Unit; target: UnitType; cost: number; score: number } => c !== null)
@@ -3336,11 +3357,12 @@ export class AISystem {
     let upgraded = 0;
     for (const candidate of candidates) {
       if (upgraded >= maxUpgrades) break;
-      if (resources.gold - candidate.cost < reserve) continue;
+      const isNavalCombatCandidate = candidate.unit.unitType.isNaval === true && candidate.unit.unitType.baseStrength > 0;
+      const effectiveReserveForCandidate = (navalDoctrine && isNavalCombatCandidate) ? navalUpgradeReserve : reserve;
+      if (resources.gold - candidate.cost < effectiveReserveForCandidate) continue;
       const fromName = candidate.unit.unitType.name;
       if (this.unitUpgradeSystem.upgradeUnit(candidate.unit, nationId)) {
         upgraded++;
-        const navalDoctrine = isMaritimeDoctrine(doctrine);
         const upgradeToNavalRanged = navalDoctrine && candidate.target.category === 'naval_ranged';
         if (upgradeToNavalRanged) {
           console.log(this.formatLog(nationId, `upgraded naval unit ${fromName} → ${candidate.target.name} for navalPower ranged fleet (doctrine: ${doctrine.id})`));

@@ -175,7 +175,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Refines lenses, coastal markers, and sea navigation. Unlocks Lighthouses for cities built around the water.',
     prerequisites: ['sailing'],
     leadsTo: ['compass'],
-    unlocks: [{ kind: 'building', id: 'lighthouse' }],
+    unlocks: [{ kind: 'building', id: 'lighthouse' }, { kind: 'unit', id: 'archer_galley' }],
     // TODO: unlocks unit embarkation.
   },
   {

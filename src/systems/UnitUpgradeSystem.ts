@@ -6,18 +6,18 @@ import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
 import type { UnitManager } from './UnitManager';
 
-const BASE_UPGRADE_FEE = 25;
+const BASE_UPGRADE_FEE = 5;
 
 const ERA_MULTIPLIER: Record<Era, number> = {
   ancient: 1,
-  classical: 2,
-  medieval: 4,
-  renaissance: 8,
-  industrial: 16,
-  modern: 32,
-  atomic: 64,
-  information: 128,
-  future: 256,
+  classical: 1,
+  medieval: 1,
+  renaissance: 2,
+  industrial: 4,
+  modern: 4,
+  atomic: 4,
+  information: 8,
+  future: 10,
 };
 
 const ERA_ORDER: Record<Era, number> = {
