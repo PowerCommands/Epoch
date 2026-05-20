@@ -55,6 +55,12 @@ export class MinimapHud {
   private worldToMiniOffsetX = 0;
   private worldToMiniOffsetY = 0;
   private isExpanded = false;
+  private _dirty = true;
+  private _lastScrollX = NaN;
+  private _lastScrollY = NaN;
+  private _lastZoom = NaN;
+  private _lastViewW = NaN;
+  private _lastViewH = NaN;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -181,7 +187,12 @@ export class MinimapHud {
     return this.isExpanded ? NORMAL_PANEL_HEIGHT * ENLARGED_SCALE : NORMAL_PANEL_HEIGHT;
   }
 
+  markDirty(): void {
+    this._dirty = true;
+  }
+
   rebuild(): void {
+    this._dirty = true;
     this.mapGfx.clear();
     this.mapGfx.fillStyle(0x0c1520, 1);
     this.mapGfx.fillRect(this.mapArea.x, this.mapArea.y, this.mapArea.width, this.mapArea.height);
@@ -215,11 +226,31 @@ export class MinimapHud {
 
   update(): void {
     const camera = this.scene.cameras.main;
-    const left = camera.scrollX;
-    const top = camera.scrollY;
-    const width = camera.width / camera.zoom;
-    const height = camera.height / camera.zoom;
-    const topLeft = this.worldToMini(left, top);
+    const scrollX = camera.scrollX;
+    const scrollY = camera.scrollY;
+    const zoom = camera.zoom;
+    const viewW = camera.width;
+    const viewH = camera.height;
+
+    if (!this._dirty
+      && scrollX === this._lastScrollX
+      && scrollY === this._lastScrollY
+      && zoom === this._lastZoom
+      && viewW === this._lastViewW
+      && viewH === this._lastViewH) {
+      return;
+    }
+
+    this._dirty = false;
+    this._lastScrollX = scrollX;
+    this._lastScrollY = scrollY;
+    this._lastZoom = zoom;
+    this._lastViewW = viewW;
+    this._lastViewH = viewH;
+
+    const width = viewW / zoom;
+    const height = viewH / zoom;
+    const topLeft = this.worldToMini(scrollX, scrollY);
 
     this.viewportGfx.clear();
     this.viewportGfx.lineStyle(2, 0xfff5b8, 0.96);

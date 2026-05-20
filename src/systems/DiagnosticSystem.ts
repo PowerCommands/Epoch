@@ -72,6 +72,7 @@ export class DiagnosticSystem {
   }
 
   update(): void {
+    if (!this.openState) return;
     if (!this.cameraProvider) return;
 
     const camera = this.cameraProvider();

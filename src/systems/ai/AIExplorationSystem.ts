@@ -30,6 +30,14 @@ type TileIndex = number;
 type UnitId = string;
 type PointOfInterestType = 'foreignCity' | 'foreignUnit' | 'resource' | 'seaResource' | 'frontier';
 type ScoutPhase = 'EXPANSION' | 'ENEMY_FOCUS';
+
+export interface IslandDiscoveredEvent {
+  readonly nationId: string;
+  readonly markerId: string;
+  readonly markerName: string;
+}
+
+type IslandDiscoveredListener = (event: IslandDiscoveredEvent) => void;
 type ResourceVisibilityPredicate = (nationId: string, resourceId: string) => boolean;
 
 interface NationExplorationKnowledge {
@@ -162,6 +170,7 @@ export class AIExplorationSystem {
   private readonly seaResourceDiscoveryLoggedKeys = new Set<string>();
   // Per nation+tile keys for military observation deduplication (lifetime of session).
   private readonly militaryResourceLoggedKeys = new Set<string>();
+  private readonly islandDiscoveredListeners: IslandDiscoveredListener[] = [];
   private readonly militarySettlementLoggedTiles = new Set<string>();
 
   // ─── Directional exploration state (per scout unit) ───────────────────────
@@ -192,6 +201,10 @@ export class AIExplorationSystem {
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
+  }
+
+  onIslandDiscovered(callback: IslandDiscoveredListener): void {
+    this.islandDiscoveredListeners.push(callback);
   }
 
   runTurn(nationId: string): void {
@@ -237,14 +250,14 @@ export class AIExplorationSystem {
       return;
     }
     if (event.reason !== 'moved' && event.reason !== 'created') return;
-    if (!this.isExplorationUnit(event.unit)) return;
-    this.getKnowledge(event.unit.ownerId).knownTiles.add(this.getTileIndex(event.unit.tileX, event.unit.tileY));
+    if (this.isExplorationUnit(event.unit)) {
+      this.getKnowledge(event.unit.ownerId).knownTiles.add(this.getTileIndex(event.unit.tileX, event.unit.tileY));
+    }
     if (event.reason === 'moved') this.discoverNearbyWorldMarkers(event.unit);
   }
 
   private discoverNearbyWorldMarkers(unit: Unit): void {
     if (!this.worldMarkerSystem) return;
-    if (!this.isNavalReconUnit(unit)) return;
 
     const markers = this.worldMarkerSystem.getMarkersNear(unit.tileX, unit.tileY, SCOUT_VISION_RADIUS)
       .filter((marker) => marker.type === 'islandDiscovery')
@@ -261,6 +274,8 @@ export class AIExplorationSystem {
       const markerLabel = marker.name ?? marker.id;
       this.log(unit.ownerId, `discovered island opportunity: ${markerLabel}`);
       this.overseasExpansionSystem?.registerDiscoveredIslandMarker(unit.ownerId, marker.id);
+      const event: IslandDiscoveredEvent = { nationId: unit.ownerId, markerId: marker.id, markerName: markerLabel };
+      for (const cb of this.islandDiscoveredListeners) cb(event);
     }
   }
 

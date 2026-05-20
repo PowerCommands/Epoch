@@ -5,27 +5,18 @@
       "Bash(npm run:*)",
       "Bash(sed *)",
       "Bash(npx vite:*)",
-      "Bash(curl *",
       "Bash(kill %1)",
       "Bash(npx tsc:*)",
-      "Bash(node *",
       "Bash(npx tsx *)",
       "Bash(pkill -f \"vite\")",
       "Bash(docker stop *)",
       "Bash(docker start *)",
       "Bash(docker run *)",
-      "Bash(echo *",
-      "Bash(docker exec *)",      
+      "Bash(docker exec *)",
       "Bash([ -f \"public/assets/sprites/units/$u.png\" ])",
       "Read(//tmp/**)",
-      "Bash(grep *",      
-      "Bash(python3 *",
-      "Bash(git *",      
-      "Bash(awk *",
-      "Bash(find *",
       "Read(//home/harri/**)",
-      "Bash(python *",
-      "Bash(convert *"      
+      "Bash(grep *)"
     ]
   }
 }

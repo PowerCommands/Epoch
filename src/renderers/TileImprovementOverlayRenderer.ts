@@ -14,7 +14,6 @@ const SEGMENT_LENGTH = 0.24;
 
 interface TileImprovementOverlay {
   graphics: Phaser.GameObjects.Graphics;
-  pulse?: Phaser.Tweens.Tween;
 }
 
 export class TileImprovementOverlayRenderer {
@@ -79,19 +78,7 @@ export class TileImprovementOverlayRenderer {
 
     this.drawDashedHex(graphics, this.tileMap.getTileOutlinePoints(tile.x, tile.y));
 
-    const overlay: TileImprovementOverlay = { graphics };
-    if (constructing) {
-      overlay.pulse = this.scene.tweens.add({
-        targets: graphics,
-        alpha: { from: 0.3, to: 0.7 },
-        duration: 900,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
-    }
-
-    this.overlays.set(key, overlay);
+    this.overlays.set(key, { graphics });
   }
 
   private drawDashedHex(graphics: Phaser.GameObjects.Graphics, points: WorldPoint[]): void {
@@ -128,7 +115,6 @@ export class TileImprovementOverlayRenderer {
     const overlay = this.overlays.get(key);
     if (overlay === undefined) return;
 
-    overlay.pulse?.stop();
     overlay.graphics.destroy();
     this.overlays.delete(key);
   }

@@ -21,6 +21,10 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   height,
   backgroundColor: '#2d2d2d',
   parent: 'game-container',
+  fps: {
+    target: 30,
+    forceSetTimeOut: false,
+  },
   scale: {
     mode: Phaser.Scale.NONE,
   },

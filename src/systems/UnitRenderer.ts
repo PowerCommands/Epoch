@@ -97,6 +97,16 @@ export class UnitRenderer {
     return this.visuals.get(unitId)?.container;
   }
 
+  flashUnitRed(unitId: string, duration: number, tint: number): void {
+    const visual = this.visuals.get(unitId);
+    if (!visual) return;
+    visual.sprite.setTint(tint);
+    this.scene.time.delayedCall(duration, () => {
+      if (!this.visuals.has(unitId)) return;
+      if (visual.sprite.active) visual.sprite.clearTint();
+    });
+  }
+
   /**
    * Destroy every rendered container + HP bar and re-render from the
    * live UnitManager. Used after a save is loaded, when the unit set

@@ -93,6 +93,7 @@ import { CityDefenseSystem } from '../systems/CityDefenseSystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
+import { CombatAnimationSystem } from '../systems/CombatAnimationSystem';
 import { AutoplayHud } from '../ui/hud/AutoplayHud';
 import { DiagnosticSystem } from '../systems/DiagnosticSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
@@ -1431,6 +1432,20 @@ export class GameScene extends Phaser.Scene {
     isAutoplayActive = () => autoplaySystem.isActive();
     this.isAutoplayActiveForVisuals = () => autoplaySystem.isActive();
 
+    const combatAnimationSystem = new CombatAnimationSystem(this, tileMap, unitRenderer, autoplaySystem);
+
+    aiExplorationSystem.onIslandDiscovered((e) => {
+      if (e.nationId !== humanNationId) return;
+      if (autoplaySystem.isActive()) return;
+      hudLayer?.enqueueDiscovery({
+        title: `You discovered ${e.markerName}!`,
+        imageKey: getUnitSpriteKey('scout_boat'),
+        description: 'An overseas settlement opportunity has been revealed.',
+        unlockRows: [],
+        leadsToRows: [],
+      });
+    });
+
     // Humans pick their own initial research via the HUD research panel.
     // AI nations keep the deterministic auto-pick so they never stall.
     const refreshPolicyDerivedState = (nationId: string): void => {
@@ -2001,7 +2016,13 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
 
-    combatSystem.on((e) => {
+    combatSystem.on(async (e) => {
+      const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
+      if (isRanged) {
+        await combatAnimationSystem.playRangedAttack(e.attacker, e.defender.tileX, e.defender.tileY, e.defender.id);
+      } else {
+        await combatAnimationSystem.playMeleeAttack(e.attacker, e.defender.tileX, e.defender.tileY, e.defender.id);
+      }
       if (e.result.defenderDied) {
         leaderCaptureSystem.handleUnitDefeated(e.attacker, e.defender);
       }
@@ -2027,7 +2048,13 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
 
-    combatSystem.onCityCombat((e) => {
+    combatSystem.onCityCombat(async (e) => {
+      const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
+      if (isRanged) {
+        await combatAnimationSystem.playRangedAttack(e.attacker, e.city.tileX, e.city.tileY);
+      } else {
+        await combatAnimationSystem.playMeleeAttack(e.attacker, e.city.tileX, e.city.tileY);
+      }
       // Uppdatera stadsrendering
       cityRenderer.refreshCity(e.city);
       cityBannerRenderer.refreshCity(e.city);
