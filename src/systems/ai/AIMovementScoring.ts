@@ -102,16 +102,20 @@ export function scoreMovementCandidate(
 /**
  * Returns the highest-scoring movement candidate. Ties resolve by destination
  * coordinate (y, then x) so movement choices stay deterministic across runs.
+ *
+ * Pass an optional `bonusScorer` to layer additional additive modifiers (e.g.
+ * role-based position adjustments) on top of the base strategy score.
  */
 export function pickBestMovementCandidate(
   candidates: readonly AIMovementCandidate[],
   strategy: AIStrategy,
+  bonusScorer?: (candidate: AIMovementCandidate) => number,
 ): AIMovementCandidate | undefined {
   if (candidates.length === 0) return undefined;
 
   const scored = candidates.map((candidate) => ({
     candidate,
-    score: scoreMovementCandidate(candidate, strategy),
+    score: scoreMovementCandidate(candidate, strategy) + (bonusScorer?.(candidate) ?? 0),
   }));
 
   scored.sort((a, b) => {

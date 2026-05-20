@@ -70,6 +70,26 @@ import {
   pickBestMovementCandidate,
   type AIMovementCandidate,
 } from './ai/AIMovementScoring';
+import {
+  getMilitaryRole,
+  scoreRoleBasedTarget,
+  scoreRoleBasedPosition,
+  type RolePositionContext,
+} from './ai/MilitaryRoleBehavior';
+import {
+  isLandTacticsEligible,
+  scoreFocusFireTarget,
+  estimateAttackRisk,
+  scoreRetreatPosition,
+  RANGED_RETREAT_HP,
+  MELEE_RETREAT_HP,
+} from './ai/TacticalAwareness';
+import {
+  OffensiveOperationSystem,
+  scoreOffensivePosition,
+  OFFENSIVE_STAGING_RADIUS,
+  type OffensiveOperation,
+} from './ai/OffensiveOperationSystem';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
@@ -384,6 +404,10 @@ export class AISystem {
   private readonly leaderEvacuationEligibilityByNation = new Map<string, LeaderEvacuationEligibility>();
   private readonly exposedLeaderTargetLoggedRound = new Map<string, number>();
   private readonly peacetimeSpreadLoggedRound = new Map<string, number>();
+  private readonly offensiveOperationSystem = new OffensiveOperationSystem();
+  private readonly offensiveTargetLoggedKeys = new Set<string>();
+  private readonly offensiveCommitLoggedRound = new Map<string, number>();
+  private readonly offensiveAdvanceLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -844,6 +868,49 @@ export class AISystem {
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') return true;
     }
     return false;
+  }
+
+  private getOffensiveOperation(nationId: string, strategy: AIStrategy): OffensiveOperation | null {
+    const round = this.turnManager.getCurrentRound();
+    const warEnemyIds = this.nationManager.getAllNations()
+      .filter((n) => n.id !== nationId && this.isAtWarWith(nationId, n.id))
+      .map((n) => n.id);
+    if (warEnemyIds.length === 0) return null;
+
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    if (ownCities.length === 0) return null;
+
+    const ownAnchor = { x: ownCities[0].tileX, y: ownCities[0].tileY };
+    const ownLandCombatUnits = this.unitManager.getUnitsByOwner(nationId)
+      .filter((u) => !u.unitType.isNaval && u.unitType.baseStrength > 0);
+
+    const op = this.offensiveOperationSystem.getOperation({
+      nationId,
+      round,
+      warEnemyNationIds: warEnemyIds,
+      allCities: this.cityManager.getAllCities(),
+      ownAnchor,
+      ownLandCombatUnits,
+      aggression: strategy.military.aggression,
+      distanceFn: (a, b) => this.gridSystem.getDistance(a, b),
+    });
+
+    if (op) {
+      const logKey = `${nationId}:${op.targetCityId}`;
+      if (!this.offensiveTargetLoggedKeys.has(logKey)) {
+        this.offensiveTargetLoggedKeys.add(logKey);
+        console.log(this.formatLog(nationId, `selected ${op.targetName} as offensive target.`));
+      }
+      if (op.committed) {
+        const lastRound = this.offensiveCommitLoggedRound.get(nationId) ?? -1;
+        if (lastRound !== round) {
+          this.offensiveCommitLoggedRound.set(nationId, round);
+          console.log(this.formatLog(nationId, `began coordinated push toward ${op.targetName} (${op.unitsNearTarget} units staged).`));
+        }
+      }
+    }
+
+    return op;
   }
 
   private isNationAtWar(nationId: string): boolean {
@@ -1512,14 +1579,40 @@ export class AISystem {
 
     const intent = getMilitaryIntent(this.nationManager.getNation(nationId)?.aiGoals);
 
-    const scored: { x: number; y: number; score: number }[] = [];
+    const isLandTactics = isLandTacticsEligible(unit, this.mapData);
+    const ownLandUnits = isLandTactics
+      ? this.unitManager.getUnitsByOwner(nationId).filter((u) => !u.unitType.isNaval)
+      : [];
+    const enemyLandUnits = isLandTactics
+      ? this.unitManager.getAllUnits().filter((u) => u.ownerId !== nationId && !u.unitType.isNaval)
+      : [];
+
+    const scored: { x: number; y: number; score: number; roleBonus: number; hadVulnerable: boolean }[] = [];
     for (const tile of tiles) {
       const target = this.findEnemyTargetAt(tile.x, tile.y, nationId);
       if (!target) continue;
 
       const context = this.buildCombatContext(unit, target, nationId, tile.x, tile.y);
-      const score = scoreCombatTarget(context, strategy, intent);
-      scored.push({ x: tile.x, y: tile.y, score });
+      const baseScore = scoreCombatTarget(context, strategy, intent);
+      const roleBonus = scoreRoleBasedTarget(unit, context);
+
+      let tacBonus = 0;
+      let hadVulnerable = false;
+      if (isLandTactics) {
+        const targetPos = { x: tile.x, y: tile.y };
+        hadVulnerable = ownLandUnits.some((u) => {
+          const r = getMilitaryRole(u);
+          return (r === 'ranged' || r === 'siege')
+            && this.gridSystem.getDistance({ x: u.tileX, y: u.tileY }, targetPos) <= FRIENDLY_SUPPORT_DISTANCE;
+        });
+        const enemyAllyCount = enemyLandUnits.filter(
+          (u) => this.gridSystem.getDistance({ x: u.tileX, y: u.tileY }, targetPos) <= FRIENDLY_SUPPORT_DISTANCE,
+        ).length;
+        tacBonus = scoreFocusFireTarget(context, hadVulnerable, enemyAllyCount)
+          + estimateAttackRisk(context);
+      }
+
+      scored.push({ x: tile.x, y: tile.y, score: baseScore + roleBonus + tacBonus, roleBonus, hadVulnerable });
     }
 
     if (scored.length === 0) return false;
@@ -1529,7 +1622,14 @@ export class AISystem {
 
     for (const candidate of scored) {
       if (candidate.score < 0) break;
-      if (this.combatSystem.tryAttack(unit, candidate.x, candidate.y)) return true;
+      if (this.combatSystem.tryAttack(unit, candidate.x, candidate.y)) {
+        if (candidate.roleBonus < 0) {
+          console.debug(this.formatLog(nationId, `${unit.unitType.name} attacked adjacent (no safe range available).`));
+        } else if (candidate.hadVulnerable) {
+          console.debug(this.formatLog(nationId, `${unit.unitType.name} protected nearby ranged unit.`));
+        }
+        return true;
+      }
     }
     return false;
   }
@@ -2499,7 +2599,62 @@ export class AISystem {
     if (choices.length === 0) return; // fallback: hold position
 
     const candidates = choices.map((choice) => choice.candidate);
-    const best = pickBestMovementCandidate(candidates, strategy);
+
+    const isLandTactics = isLandTacticsEligible(unit, this.mapData);
+    const friendlyLandCombatUnits = isLandTactics
+      ? this.unitManager.getUnitsByOwner(nationId)
+          .filter((u) => u.id !== unit.id && !u.unitType.isNaval && u.unitType.baseStrength > 0)
+      : [];
+    const enemyLandUnits = isLandTactics
+      ? this.unitManager.getAllUnits().filter((u) => u.ownerId !== nationId && !u.unitType.isNaval)
+      : [];
+
+    const roleCtx: RolePositionContext = { threatActive: this.isAtWarWithAnyone(nationId) };
+
+    // Offensive operation context: computed once per nation per round, cheap on repeated calls.
+    const offensiveOp = (isLandTactics && roleCtx.threatActive)
+      ? this.getOffensiveOperation(nationId, strategy)
+      : null;
+    const localSupportCount = offensiveOp
+      ? friendlyLandCombatUnits.filter(
+          (u) => this.gridSystem.getDistance(
+            { x: u.tileX, y: u.tileY },
+            { x: unit.tileX, y: unit.tileY },
+          ) <= FRIENDLY_SUPPORT_DISTANCE,
+        ).length
+      : 0;
+
+    const bonusScorer = (c: AIMovementCandidate): number => {
+      let bonus = scoreRoleBasedPosition(unit, c, roleCtx);
+      if (!isLandTactics) return bonus;
+
+      // Retreat: damaged units prefer safety over advancing.
+      const hasFriendlySupport = friendlyLandCombatUnits.some(
+        (u) => this.gridSystem.getDistance({ x: u.tileX, y: u.tileY }, c.destination) <= FRIENDLY_SUPPORT_DISTANCE,
+      );
+      bonus += scoreRetreatPosition(unit, c, hasFriendlySupport);
+
+      // Avoid positions contested by multiple enemies unless aggressive and healthy.
+      if (c.isNearEnemyUnit) {
+        const threatCount = enemyLandUnits.filter(
+          (u) => this.gridSystem.getDistance({ x: u.tileX, y: u.tileY }, c.destination) <= FRIENDLY_SUPPORT_DISTANCE,
+        ).length;
+        if (threatCount >= 2) {
+          const healthRatio = unit.health / unit.unitType.baseHealth;
+          if (healthRatio < 0.8 || strategy.military.aggression < 1.5) {
+            bonus -= (threatCount - 1) * 10;
+          }
+        }
+      }
+
+      // Offensive operation: push committed units toward target; penalise isolated city charges.
+      if (offensiveOp) {
+        bonus += scoreOffensivePosition(unit, c, offensiveOp, localSupportCount);
+      }
+
+      return bonus;
+    };
+    const best = pickBestMovementCandidate(candidates, strategy, bonusScorer);
     if (!best) return;
 
     const chosen = choices.find((c) => c.candidate === best);
@@ -2523,6 +2678,53 @@ export class AISystem {
 
     if (chosen.candidate.kind === 'militaryInterest') {
       this.logStagingAdvanceOncePerRound(nationId);
+    }
+
+    // Offensive operation: log once per nation per round when a unit advances toward the target.
+    if (
+      offensiveOp?.committed
+      && best.kind === 'enemyCity'
+      && best.destination.x === offensiveOp.targetPos.x
+      && best.destination.y === offensiveOp.targetPos.y
+    ) {
+      const round = this.turnManager.getCurrentRound();
+      const lastRound = this.offensiveAdvanceLoggedRound.get(nationId) ?? -1;
+      if (lastRound !== round) {
+        this.offensiveAdvanceLoggedRound.set(nationId, round);
+        console.debug(this.formatLog(nationId, `${unit.unitType.name} advancing toward ${offensiveOp.targetName}.`));
+      }
+    }
+
+    // Log when role behavior visibly steered the movement decision.
+    const roleBonus = scoreRoleBasedPosition(unit, best, roleCtx);
+    if (roleBonus !== 0) {
+      const role = getMilitaryRole(unit);
+      if (role === 'melee' && best.isNearOwnCity) {
+        const nearCity = this.cityManager.getCitiesByOwner(nationId)
+          .find((c) => this.gridSystem.getDistance(
+            { x: c.tileX, y: c.tileY },
+            best.destination,
+          ) <= NEAR_OWN_CITY_DISTANCE);
+        if (nearCity) {
+          console.debug(this.formatLog(nationId, `${unit.unitType.name} moved to block approach to ${nearCity.name}.`));
+        }
+      } else if (role === 'ranged' && !best.isNearEnemyUnit && best.isNearOwnCity) {
+        console.debug(this.formatLog(nationId, `${unit.unitType.name} repositioned to maintain range near friendly city.`));
+      } else if (role === 'ranged' && roleBonus < 0) {
+        console.debug(this.formatLog(nationId, `${unit.unitType.name} avoided adjacent enemy threat.`));
+      }
+    } else if (isLandTactics && best.isNearOwnCity) {
+      // Retreat log: only fires when role behavior was not the primary driver.
+      const healthRatio = unit.health / unit.unitType.baseHealth;
+      const retreatThreshold = getMilitaryRole(unit) === 'ranged' ? RANGED_RETREAT_HP : MELEE_RETREAT_HP;
+      if (healthRatio < retreatThreshold) {
+        const nearCity = this.cityManager.getCitiesByOwner(nationId)
+          .find((c) => this.gridSystem.getDistance(
+            { x: c.tileX, y: c.tileY },
+            best.destination,
+          ) <= NEAR_OWN_CITY_DISTANCE);
+        console.debug(this.formatLog(nationId, `${unit.unitType.name} retreated toward ${nearCity?.name ?? 'friendly city'}.`));
+      }
     }
   }
 
