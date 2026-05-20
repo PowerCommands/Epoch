@@ -40,6 +40,7 @@ export class SelectionManager {
   private readonly selectionGfx: Phaser.GameObjects.Graphics;
 
   private readonly selectionCallbacks: SelectionCallback[] = [];
+  private readonly directCityViewCallbacks: ((city: City) => void)[] = [];
   private readonly targetCallbacks: SelectionTargetCallback[] = [];
   private readonly hoverCallbacks: HoverCallback[] = [];
 
@@ -101,6 +102,15 @@ export class SelectionManager {
     this.setSelection(null);
   }
 
+  /**
+   * Registers a callback invoked when the player Shift+clicks a tile that
+   * contains a city. Bypasses normal unit-priority resolution so city view
+   * can always be opened even when a unit occupies the same tile.
+   */
+  onDirectCityViewRequested(callback: (city: City) => void): void {
+    this.directCityViewCallbacks.push(callback);
+  }
+
   // ─── Privata metoder ───────────────────────────────────────────────────────
 
   /**
@@ -157,6 +167,21 @@ export class SelectionManager {
         if (this.cameraController.wasDragging()) return;
 
         const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+
+        // Shift+click: bypass unit-priority resolution and open city view
+        // directly. Works even when one or more units occupy the same tile.
+        if ((pointer.event as PointerEvent).shiftKey) {
+          const tile = this.tileMap.worldToTile(wp.x, wp.y);
+          if (tile !== null) {
+            const city = this.cityManager.getCityAt(tile.x, tile.y);
+            if (city !== undefined) {
+              for (const cb of this.directCityViewCallbacks) cb(city);
+              return;
+            }
+          }
+          // No city on this tile — fall through to normal click handling.
+        }
+
         const target = this.resolve(wp.x, wp.y);
 
         if (this.notifySelectionTarget(target)) return;

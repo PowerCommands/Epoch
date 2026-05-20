@@ -184,10 +184,12 @@ interface CoastalDefenseTargets {
 }
 
 interface EnemyCoastalTargets {
-  readonly zone: Set<string>;                  // tile keys across all war enemies
-  readonly zoneTiles: readonly Tile[];          // patrol-pressure water tiles
-  readonly navalUnits: readonly Unit[];         // priority 1: enemy ships in zone
-  readonly coastAdjacentUnits: readonly Unit[]; // priority 3: enemy land near coast
+  readonly zone: Set<string>;                   // tile keys across all war enemies
+  readonly zoneTiles: readonly Tile[];           // patrol-pressure water tiles
+  readonly navalUnits: readonly Unit[];          // priority 1: enemy ships in zone
+  readonly enemyCities: readonly City[];         // all war-enemy cities (ranged: geometry filters per unit)
+  readonly allEnemyLandUnits: readonly Unit[];   // all enemy land combat units (ranged: firing-pos calc)
+  readonly coastAdjacentUnits: readonly Unit[];  // melee naval: land units directly adjacent to coast
 }
 
 interface NavalPatrolContext {
@@ -311,6 +313,16 @@ const MAX_EARLY_WORK_BOATS_COASTAL_FOUNDATION = 2;
 // already be in/near an enemy coastal zone, so this primarily limits per-unit
 // engagement range from current position.
 const NAVAL_MAX_OFFENSIVE_REACH = 8;
+// Extra production urgency multiplier for maritime-doctrine nations once
+// ranged naval units (e.g. Galleass, Frigate) become researchable.
+const NAVAL_RANGED_CAPABILITY_BOOST = 1.4;
+// Scoring weights for per-unit naval bombardment position evaluation.
+const BOMBARD_CITY_VALUE = 20;
+const BOMBARD_UNIT_VALUE = 12;
+const BOMBARD_DAMAGED_BONUS = 10;     // extra value for targets below 60 % HP
+const BOMBARD_IMMEDIATE_BONUS = 15;   // bonus when firing position reachable this turn
+const BOMBARD_DISTANCE_WEIGHT = 2;    // score -= distFromUnit * weight
+const BOMBARD_ADJ_ENEMY_NAVAL_PENALTY = 8; // per adjacent enemy naval unit at firing tile
 
 // Happiness thresholds drive both production prioritization and trade
 // evaluation. Below LOW the AI starts preferring happiness buildings and
@@ -2054,13 +2066,101 @@ export class AISystem {
 
   private tryOffensiveNavalMove(unit: Unit, context: NavalPatrolContext): boolean {
     const { enemyTargets, claimedNavalTiles } = context;
-    // Priority 1 → Priority 3: enemy ships in zone, then exposed land units.
-    // (Priority 2 — embarked units — does not apply: this game has no embarkation.)
-    if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.navalUnits, claimedNavalTiles)) return true;
-    if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.coastAdjacentUnits, claimedNavalTiles)) return true;
 
-    // Priority 4: patrol-pressure on enemy coast.
+    // Priority 1: enemy naval units in zone (both melee and ranged naval).
+    if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.navalUnits, claimedNavalTiles)) return true;
+
+    // Priority 2: ranged naval finds an optimal firing position for
+    // cities and land targets using the unit's actual attack range.
+    // Melee naval falls back to coast-adjacent land unit targeting.
+    if ((unit.unitType.rangedStrength ?? 0) > 0) {
+      if (this.tryRangedNavalBombardmentMove(unit, enemyTargets, claimedNavalTiles)) return true;
+    } else {
+      if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.coastAdjacentUnits, claimedNavalTiles)) return true;
+    }
+
+    // Final fallback: patrol-pressure on enemy coast.
     return this.tryMoveTowardNearestZoneTile(unit, enemyTargets.zoneTiles, claimedNavalTiles);
+  }
+
+  /**
+   * For a ranged naval unit, finds the highest-scoring (target, firing-position)
+   * pair across all war-enemy cities and land units, then moves toward that tile.
+   *
+   * Firing positions are water/coast tiles within the unit's actual attack range
+   * of the target. Each position is scored by:
+   *   - Distance from current ship position (prefer closer)
+   *   - Whether the position is reachable this turn (immediate-attack bonus)
+   *   - Safety (penalise tiles adjacent to enemy naval units)
+   * Combined with target value (city > damaged unit > healthy unit).
+   *
+   * No fixed reach constant is used; only the unit's own `range` governs
+   * what firing positions are geometrically valid.
+   */
+  private tryRangedNavalBombardmentMove(
+    unit: Unit,
+    enemyTargets: EnemyCoastalTargets,
+    claimed: Set<string>,
+  ): boolean {
+    const unitRange = unit.unitType.range ?? 1;
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+
+    const enemyNavalKeys = new Set(
+      enemyTargets.navalUnits.map((u) => tileKey(u.tileX, u.tileY)),
+    );
+
+    let bestFiringPos: GridCoord | null = null;
+    let bestTargetKey = '';
+    let bestScore = -Infinity;
+
+    const evaluateTarget = (targetPos: GridCoord, targetValue: number, targetKey: string): void => {
+      if (claimed.has(targetKey)) return;
+
+      for (const tile of this.gridSystem.getTilesInRange(
+        targetPos, unitRange, this.mapData, { includeCenter: false },
+      )) {
+        if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
+        const posKey = tileKey(tile.x, tile.y);
+        if (claimed.has(posKey)) continue;
+
+        const tilePos = { x: tile.x, y: tile.y };
+        const distFromUnit = this.gridSystem.getDistance(unitPos, tilePos);
+
+        let posScore = -distFromUnit * BOMBARD_DISTANCE_WEIGHT;
+        if (distFromUnit <= unit.movementPoints) posScore += BOMBARD_IMMEDIATE_BONUS;
+
+        const adjEnemyNaval = this.gridSystem
+          .getAdjacentCoords(tilePos)
+          .filter((adj) => enemyNavalKeys.has(tileKey(adj.x, adj.y))).length;
+        posScore -= adjEnemyNaval * BOMBARD_ADJ_ENEMY_NAVAL_PENALTY;
+
+        const totalScore = targetValue + posScore;
+        if (totalScore > bestScore) {
+          bestScore = totalScore;
+          bestFiringPos = tilePos;
+          bestTargetKey = targetKey;
+        }
+      }
+    };
+
+    for (const city of enemyTargets.enemyCities) {
+      const healthRatio = city.health / CITY_BASE_HEALTH;
+      const cityValue = BOMBARD_CITY_VALUE + Math.round((1 - healthRatio) * BOMBARD_DAMAGED_BONUS);
+      evaluateTarget({ x: city.tileX, y: city.tileY }, cityValue, tileKey(city.tileX, city.tileY));
+    }
+
+    for (const enemy of enemyTargets.allEnemyLandUnits) {
+      const healthRatio = enemy.health / enemy.unitType.baseHealth;
+      const unitValue = BOMBARD_UNIT_VALUE + (healthRatio < 0.6 ? BOMBARD_DAMAGED_BONUS : 0);
+      evaluateTarget({ x: enemy.tileX, y: enemy.tileY }, unitValue, tileKey(enemy.tileX, enemy.tileY));
+    }
+
+    if (!bestFiringPos) return false;
+    if (!this.moveNavalUnitToward(unit, bestFiringPos, true)) return false;
+
+    claimed.add(tileKey((bestFiringPos as GridCoord).x, (bestFiringPos as GridCoord).y));
+    claimed.add(bestTargetKey);
+    return true;
   }
 
   private tryMoveTowardNearestEnemyUnit(
@@ -2081,6 +2181,31 @@ export class AISystem {
     for (const { enemy } of sorted) {
       if (this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY }, true)) {
         claimed.add(tileKey(enemy.tileX, enemy.tileY));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private tryMoveTowardNearestEnemyCity(
+    unit: Unit,
+    cities: readonly City[],
+    claimed: Set<string>,
+  ): boolean {
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const sorted = cities
+      .map((c) => ({
+        city: c,
+        dist: this.gridSystem.getDistance(unitPos, { x: c.tileX, y: c.tileY }),
+      }))
+      .filter(({ dist }) => dist <= NAVAL_MAX_OFFENSIVE_REACH)
+      .sort((a, b) => a.dist - b.dist);
+
+    for (const { city } of sorted) {
+      const cityKey = tileKey(city.tileX, city.tileY);
+      if (claimed.has(cityKey)) continue;
+      if (this.moveNavalUnitToward(unit, { x: city.tileX, y: city.tileY }, true)) {
+        claimed.add(cityKey);
         return true;
       }
     }
@@ -2231,6 +2356,8 @@ export class AISystem {
       zone: new Set(),
       zoneTiles: [],
       navalUnits: [],
+      enemyCities: [],
+      allEnemyLandUnits: [],
       coastAdjacentUnits: [],
     };
     if (!this.diplomacyManager) return empty;
@@ -2278,27 +2405,41 @@ export class AISystem {
 
     if (zone.size === 0) return empty;
 
+    // All war-enemy cities — per-unit firing-position geometry determines which
+    // are actually reachable; no distance pre-filter is applied here.
+    const enemyCities: City[] = [];
+    for (const enemyId of warEnemyIds) {
+      for (const city of this.cityManager.getCitiesByOwner(enemyId)) {
+        enemyCities.push(city);
+      }
+    }
+
     const navalUnits: Unit[] = [];
     const coastAdjacentUnits: Unit[] = [];
+    const allEnemyLandUnits: Unit[] = [];
     for (const enemy of this.unitManager.getAllUnits()) {
       if (!warEnemyIds.has(enemy.ownerId)) continue;
       if (!dm.canAttack(nationId, enemy.ownerId)) continue;
 
-      const enemyKey = tileKey(enemy.tileX, enemy.tileY);
       if (enemy.unitType.isNaval === true) {
-        if (zone.has(enemyKey)) navalUnits.push(enemy);
+        if (zone.has(tileKey(enemy.tileX, enemy.tileY))) navalUnits.push(enemy);
         continue;
       }
 
-      // Land unit: count it only if it sits on a tile adjacent to a
-      // zone water tile, i.e. exposed to naval attack.
+      // Skip non-combat land units (settlers, workers) as bombardment targets.
+      if (enemy.unitType.baseStrength <= 0 && (enemy.unitType.rangedStrength ?? 0) <= 0) continue;
+
+      // Track coast-adjacent units separately for melee naval movement.
       const adjacentToZone = this.gridSystem
         .getAdjacentCoords({ x: enemy.tileX, y: enemy.tileY })
         .some((adj) => zone.has(tileKey(adj.x, adj.y)));
       if (adjacentToZone) coastAdjacentUnits.push(enemy);
+
+      // All land combat units — ranged naval uses firing-position geometry.
+      allEnemyLandUnits.push(enemy);
     }
 
-    return { zone, zoneTiles, navalUnits, coastAdjacentUnits };
+    return { zone, zoneTiles, navalUnits, enemyCities, allEnemyLandUnits, coastAdjacentUnits };
   }
 
   /**
@@ -3613,16 +3754,31 @@ export class AISystem {
       }
     }
 
+    const maritime = isMaritimeDoctrine(militaryDoctrineCtx.doctrine);
+    const navalCap = maritime
+      ? Math.max(
+          coastalCityCount,
+          Math.floor(
+            effectiveMaxUnits
+            * ((militaryDoctrineCtx.doctrine.targetComposition.navalMelee ?? 0)
+              + (militaryDoctrineCtx.doctrine.targetComposition.navalRanged ?? 0)),
+          ),
+        )
+      : coastalCityCount;
+
     if (
       canBuildGeneralMilitary &&
       coastalCityCount > 0 &&
       cityHasWaterTile(city, this.mapData) &&
-      plannedNavalCount < coastalCityCount
+      plannedNavalCount < navalCap
     ) {
       const navalUnit = this.pickNavalUnitForCity(city, nationId, militaryDoctrineCtx);
       if (navalUnit) {
-        const navalUrgency = isMaritimeDoctrine(militaryDoctrineCtx.doctrine)
-          ? MARITIME_NAVAL_URGENCY_MULTIPLIER
+        const capabilityBoost = maritime && this.hasRangedNavalCapability(nationId)
+          ? NAVAL_RANGED_CAPABILITY_BOOST
+          : 1.0;
+        const navalUrgency = maritime
+          ? MARITIME_NAVAL_URGENCY_MULTIPLIER * capabilityBoost
           : 1.0;
         candidates.push({
           item: { kind: 'unit', unitType: navalUnit },
@@ -4325,6 +4481,14 @@ export class AISystem {
         nationId,
         `AI delayed settler production under ${eraStrategy.id} due to low happiness (${netHappiness ?? 'unknown'}).`,
       ),
+    );
+  }
+
+  private hasRangedNavalCapability(nationId: string): boolean {
+    return ALL_UNIT_TYPES.some(
+      (u) => u.isNaval === true
+        && (u.rangedStrength ?? 0) > 0
+        && this.canBuildUnit(nationId, u.id),
     );
   }
 

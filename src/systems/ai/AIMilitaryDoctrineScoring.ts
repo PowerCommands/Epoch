@@ -33,7 +33,12 @@ export function scoreMilitaryUnitCandidate(
   const upkeep = unitType.upkeepGold ?? 1;
   const strengthEfficiency = effectiveStrength / Math.max(1, upkeep);
 
-  const qualityScore = strengthEfficiency * doctrine.qualityBias;
+  let qualityScore = strengthEfficiency * doctrine.qualityBias;
+  if (role === 'navalRanged') {
+    const rangedStr = unitType.rangedStrength ?? 0;
+    const attackRange = unitType.range ?? 1;
+    qualityScore += rangedStr * NAVAL_RANGED_STR_WEIGHT + attackRange * NAVAL_RANGE_WEIGHT;
+  }
   // Scale by 100 so quantity and quality are in comparable ranges
   const quantityScore = (100 / Math.max(1, unitType.productionCost)) * doctrine.quantityBias;
 
@@ -46,6 +51,9 @@ export function scoreMilitaryUnitCandidate(
     * (qualityScore * 0.7 + quantityScore * 0.3)
     * eraMultiplier;
 }
+
+const NAVAL_RANGED_STR_WEIGHT = 0.2;
+const NAVAL_RANGE_WEIGHT = 1.0;
 
 /** True for doctrines that strongly prefer naval units. */
 export function isMaritimeDoctrine(doctrine: AIMilitaryDoctrine): boolean {

@@ -99,7 +99,7 @@ export const CROSSBOWMAN = unit({ id: 'crossbowman', name: 'Crossbowman', era: '
 export const LONGSWORDSMAN = unit({ id: 'longswordsman', name: 'Longswordsman', era: 'medieval', cost: 120, combatStrength: 21, movement: 2, category: 'melee', requiredResource: { resourceId: 'iron', amount: 1 }, upkeepGold: 6, upgradeToUnitId: 'musketman' });
 export const KNIGHT = unit({ id: 'knight', name: 'Knight', era: 'medieval', cost: 120, combatStrength: 20, movement: 4, category: 'mounted', requiredResource: { resourceId: 'horses', amount: 1 }, upkeepGold: 6, upgradeToUnitId: 'lancer' });
 export const TREBUCHET = unit({ id: 'trebuchet', name: 'Trebuchet', era: 'medieval', cost: 120, combatStrength: 12, rangedStrength: 14, range: 5, movement: 2, category: 'siege' , upkeepGold: 3, upgradeToUnitId: 'cannon' });
-export const GALLEASS = unit({ id: 'galleass', name: 'Galleass', era: 'medieval', cost: 100, combatStrength: 16, rangedStrength: 17, range: 5, movement: 3, category: 'naval_ranged', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'frigate' });
+export const GALLEASS = unit({ id: 'galleass', name: 'Galleass', era: 'medieval', cost: 100, combatStrength: 16, rangedStrength: 17, range: 6, movement: 3, category: 'naval_ranged', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'frigate' });
 
 export const MUSKETMAN = unit({ id: 'musketman', name: 'Musketman', era: 'renaissance', cost: 150, combatStrength: 32, movement: 2, category: 'melee' , upkeepGold: 6, upgradeToUnitId: 'rifleman' });
 export const CARAVEL = unit({ id: 'caravel', name: 'Caravel', era: 'renaissance', cost: 120, combatStrength: 25, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'privateer' });

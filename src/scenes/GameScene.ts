@@ -3801,6 +3801,14 @@ export class GameScene extends Phaser.Scene {
       refreshMovePreview();
     });
 
+    // Shift+click on a tile with a city opens city view directly, bypassing
+    // unit-priority tile resolution so it works even when units occupy the tile.
+    selectionManager.onDirectCityViewRequested((city) => {
+      if (city.ownerId === humanNationId) cityViewDismissedCityId = null;
+      selectionManager.clearSelection();
+      selectionManager.selectCity(city);
+    });
+
     selectionManager.onHoverChanged((hovered) => {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'unit') {
@@ -3878,7 +3886,17 @@ export class GameScene extends Phaser.Scene {
       const city = cityManager.getCity(cityId);
       if (!city) return;
 
-      focusOnCity(city);
+      if (city.ownerId === humanNationId) {
+        // Clear any dismissed state so city view opens unconditionally.
+        // clearSelection ensures onSelectionChanged fires even if the city
+        // is already selected, guaranteeing city view opens.
+        cityViewDismissedCityId = null;
+        selectionManager.clearSelection();
+        selectionManager.selectCity(city);
+        // openCityView is called by onSelectionChanged; it handles camera focus.
+      } else {
+        focusOnCity(city);
+      }
     };
     window.addEventListener('leaderCityFocusRequested', onLeaderCityFocusRequested);
 
