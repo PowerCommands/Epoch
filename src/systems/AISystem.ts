@@ -271,6 +271,12 @@ const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
 // Score boost applied to naval candidates when a maritime doctrine is active
 // and the nation has fewer naval units than coastal cities.
 const MARITIME_NAVAL_URGENCY_MULTIPLIER = 1.5;
+const NAVAL_POWER_UNITS_PER_COASTAL_CITY = 4;
+const NAVAL_POWER_UNITS_PER_ACTIVE_WAR = 6;
+const NAVAL_POWER_SOFT_SATURATION_RATIO = 0.85;
+const NAVAL_POWER_SATURATION_MODERATE_MULTIPLIER = 0.65;
+const NAVAL_POWER_SATURATION_HIGH_MULTIPLIER = 0.35;
+const NAVAL_POWER_SATURATION_EXTREME_MULTIPLIER = 0.2;
 // Heavy suppression applied to melee naval candidates once a ranged naval
 // ship is available — maritime doctrines should converge on the strongest
 // ranged option rather than accumulating melee fallbacks.
@@ -443,6 +449,7 @@ export class AISystem {
   private readonly doctrinePressureLoggedRound = new Map<string, number>();
   private readonly settlerHappinessDelayLoggedRound = new Map<string, number>();
   private readonly doctrineProductionLoggedRound = new Map<string, number>();
+  private readonly navalSaturationLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
   private readonly longTermExpansionLoggedRound = new Map<string, number>();
   private readonly leaderEvacuationDecisionLog = new Map<string, string>();
@@ -3768,7 +3775,7 @@ export class AISystem {
     const eraStrategy = this.getActiveEraStrategy(nationId);
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
-    let plannedNavalCount = this.countNavalUnits(nationId);
+    let plannedNavalCount = this.countNavalUnits(nationId) + this.countQueuedNavalCombatUnits(nationId);
     let plannedWorkerCount = this.countWorkers(nationId) + this.countQueuedWorkers(nationId);
     let plannedWorkBoatCount = this.countWorkBoats(nationId) + this.countQueuedWorkBoats(nationId);
     const coastalCityCount = this.countCoastalCities(nationId);
@@ -4120,8 +4127,28 @@ export class AISystem {
 
   private countNavalUnits(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.category !== 'leader' && u.unitType.isNaval === true && u.unitType.baseStrength > 0)
+      .filter((u) => this.isNavalCombatUnitType(u.unitType))
       .length;
+  }
+
+  private countQueuedNavalCombatUnits(nationId: string): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const current = this.productionSystem.getProduction(city.id);
+      if (
+        current?.item.kind === 'unit' &&
+        this.isNavalCombatUnitType(current.item.unitType)
+      ) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private isNavalCombatUnitType(unitType: UnitType): boolean {
+    if (unitType.isNaval !== true) return false;
+    if (unitType.category === 'leader' || unitType.category === 'civilian' || unitType.category === 'naval_recon') return false;
+    return unitType.baseStrength > 0 || (unitType.rangedStrength ?? 0) > 0;
   }
 
   private countNavalReconUnits(nationId: string): number {
@@ -4329,9 +4356,16 @@ export class AISystem {
     if (canBuildGeneralMilitary) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
+        const navalSaturationModifier = this.getNavalSaturationUrgencyModifier(
+          nationId,
+          militaryDoctrineCtx.doctrine,
+          militaryUnit,
+          plannedNavalCount,
+          coastalCityCount,
+        );
         candidates.push({
           item: { kind: 'unit', unitType: militaryUnit },
-          baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure) * budgetModifier,
+          baseScore: this.getMilitaryProductionScore(SCORE_MILITARY, nationId, eraStrategy, defensivePressure) * budgetModifier * navalSaturationModifier,
           category: 'military',
         });
       }
@@ -4363,9 +4397,16 @@ export class AISystem {
         const navalUrgency = maritime
           ? MARITIME_NAVAL_URGENCY_MULTIPLIER * capabilityBoost
           : 1.0;
+        const navalSaturationModifier = this.getNavalSaturationUrgencyModifier(
+          nationId,
+          militaryDoctrineCtx.doctrine,
+          navalUnit,
+          plannedNavalCount,
+          coastalCityCount,
+        );
         candidates.push({
           item: { kind: 'unit', unitType: navalUnit },
-          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure) * navalUrgency * budgetModifier,
+          baseScore: this.getMilitaryProductionScore(SCORE_NAVAL, nationId, eraStrategy, defensivePressure) * navalUrgency * budgetModifier * navalSaturationModifier,
           category: 'military',
         });
       }
@@ -4582,6 +4623,63 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private getNavalSaturationUrgencyModifier(
+    nationId: string,
+    doctrine: AIMilitaryDoctrine,
+    unitType: UnitType,
+    plannedNavalCombatUnits: number,
+    coastalCityCount: number,
+  ): number {
+    if (doctrine.id !== 'navalPower') return 1.0;
+    if (!this.isNavalCombatUnitType(unitType)) return 1.0;
+
+    const activeWars = this.countActiveWars(nationId);
+    const desiredNavalUnits = Math.max(
+      1,
+      coastalCityCount * NAVAL_POWER_UNITS_PER_COASTAL_CITY
+        + activeWars * NAVAL_POWER_UNITS_PER_ACTIVE_WAR,
+    );
+    const ratio = plannedNavalCombatUnits / desiredNavalUnits;
+
+    let modifier = 1.0;
+    if (ratio > 1.5) {
+      modifier = NAVAL_POWER_SATURATION_EXTREME_MULTIPLIER;
+    } else if (ratio > 1.0) {
+      modifier = NAVAL_POWER_SATURATION_HIGH_MULTIPLIER;
+    } else if (ratio > NAVAL_POWER_SOFT_SATURATION_RATIO) {
+      modifier = NAVAL_POWER_SATURATION_MODERATE_MULTIPLIER;
+    }
+
+    if (modifier < 1.0) {
+      this.logNavalSaturationOnce(nationId, plannedNavalCombatUnits, desiredNavalUnits, modifier);
+    }
+    return modifier;
+  }
+
+  private countActiveWars(nationId: string): number {
+    if (!this.diplomacyManager) return 0;
+    return this.nationManager.getAllNations()
+      .filter((nation) => nation.id !== nationId && this.diplomacyManager?.getState(nationId, nation.id) === 'WAR')
+      .length;
+  }
+
+  private logNavalSaturationOnce(
+    nationId: string,
+    navalCombatUnits: number,
+    desiredNavalUnits: number,
+    modifier: number,
+  ): void {
+    const currentRound = this.turnManager.getCurrentRound();
+    const lastRound = this.navalSaturationLoggedRound.get(nationId) ?? -Infinity;
+    if (currentRound - lastRound < 10) return;
+
+    this.navalSaturationLoggedRound.set(nationId, currentRound);
+    console.log(this.formatLog(
+      nationId,
+      `naval saturation detected: ${navalCombatUnits} naval units vs desired ${desiredNavalUnits}, urgency reduced to x${modifier.toFixed(2)}`,
+    ));
   }
 
   private getSettlerProductionPlan(
