@@ -90,6 +90,10 @@ import {
   OFFENSIVE_STAGING_RADIUS,
   type OffensiveOperation,
 } from './ai/OffensiveOperationSystem';
+import {
+  NavalExpeditionTargetingSystem,
+  type NavalExpeditionTarget,
+} from './ai/NavalExpeditionTargetingSystem';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
@@ -195,8 +199,23 @@ interface EnemyCoastalTargets {
 interface NavalPatrolContext {
   readonly targets: CoastalDefenseTargets;
   readonly enemyTargets: EnemyCoastalTargets;
+  readonly expeditionTarget: NavalExpeditionTarget | null;
+  readonly expeditionAssignment: NavalExpeditionAssignment | null;
+  readonly expeditionAdvancedUnitIds: Set<string>;
   readonly claimedNavalTiles: Set<string>;
   readonly ownZoneHasEnemy: boolean;
+}
+
+interface NavalExpeditionAssignment {
+  readonly nationId: string;
+  readonly targetCityId: string;
+  readonly targetCityName: string;
+  readonly targetOwnerNationId: string;
+  readonly targetPos: GridCoord;
+  readonly targetScore: number;
+  readonly assignedUnitIds: readonly string[];
+  readonly createdTurn: number;
+  readonly lastUpdatedTurn: number;
 }
 
 interface MilitaryStagingTarget {
@@ -327,6 +346,16 @@ const BOMBARD_DAMAGED_BONUS = 10;     // extra value for targets below 60 % HP
 const BOMBARD_IMMEDIATE_BONUS = 15;   // bonus when firing position reachable this turn
 const BOMBARD_DISTANCE_WEIGHT = 2;    // score -= distFromUnit * weight
 const BOMBARD_ADJ_ENEMY_NAVAL_PENALTY = 8; // per adjacent enemy naval unit at firing tile
+const NAVAL_EXPEDITION_MAX_SHIPS = 4;
+const NAVAL_EXPEDITION_MIN_SHIPS = 2;
+const NAVAL_EXPEDITION_HOME_RESERVE = 1;
+const NAVAL_EXPEDITION_CRITICAL_HEALTH_RATIO = 0.45;
+const NAVAL_EXPEDITION_RETARGET_SCORE_DELTA = 35;
+const NAVAL_EXPEDITION_COMMITTED_DISTANCE = 8;
+const NAVAL_EXPEDITION_THREAT_RADIUS = 4;
+const NAVAL_EXPEDITION_COASTAL_UNIT_RADIUS = 2;
+const NAVAL_EXPEDITION_DAMAGED_FLEET_RATIO = 0.55;
+const NAVAL_EXPEDITION_TARGET_DEFENSE_RADIUS = 3;
 
 // Happiness thresholds drive both production prioritization and trade
 // evaluation. Below LOW the AI starts preferring happiness buildings and
@@ -421,9 +450,15 @@ export class AISystem {
   private readonly exposedLeaderTargetLoggedRound = new Map<string, number>();
   private readonly peacetimeSpreadLoggedRound = new Map<string, number>();
   private readonly offensiveOperationSystem = new OffensiveOperationSystem();
+  private readonly navalExpeditionTargetingSystem = new NavalExpeditionTargetingSystem();
   private readonly offensiveTargetLoggedKeys = new Set<string>();
   private readonly offensiveCommitLoggedRound = new Map<string, number>();
   private readonly offensiveAdvanceLoggedRound = new Map<string, number>();
+  private readonly navalExpeditionTargetLoggedKeys = new Set<string>();
+  private readonly navalExpeditionNoTargetLoggedRound = new Map<string, number>();
+  private readonly navalExpeditionAssignments = new Map<string, NavalExpeditionAssignment>();
+  private readonly navalExpeditionMoveLoggedRound = new Map<string, number>();
+  private readonly navalExpeditionAttackLoggedRound = new Map<string, number>();
   private readonly aiGoalSystem = new AIGoalSystem((nation) => {
     const resources = this.nationManager.getResources(nation.id);
     return {
@@ -1562,6 +1597,7 @@ export class AISystem {
   private runCombat(nationId: string): void {
     const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
     const strategy = this.getStrategy(nationId);
+    const navalContext = this.buildNavalPatrolContext(nationId);
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
@@ -1570,6 +1606,7 @@ export class AISystem {
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
+      if (this.tryNavalExpeditionAttack(unit, nationId, navalContext)) continue;
       this.tryAttackBestTarget(unit, nationId, strategy);
     }
   }
@@ -1648,6 +1685,180 @@ export class AISystem {
       }
     }
     return false;
+  }
+
+  private tryNavalExpeditionAttack(
+    unit: Unit,
+    nationId: string,
+    context: NavalPatrolContext,
+  ): boolean {
+    const assignment = context.expeditionAssignment;
+    if (!assignment || !assignment.assignedUnitIds.includes(unit.id)) return false;
+    if (context.ownZoneHasEnemy) return false;
+    if (!this.isNavalExpeditionEligibleUnit(unit)) return false;
+
+    if ((unit.unitType.rangedStrength ?? 0) > 0) {
+      return this.tryRangedNavalExpeditionAttack(unit, nationId, assignment);
+    }
+    return this.tryMeleeNavalExpeditionAttack(unit, nationId, assignment);
+  }
+
+  private tryRangedNavalExpeditionAttack(
+    unit: Unit,
+    nationId: string,
+    assignment: NavalExpeditionAssignment,
+  ): boolean {
+    const target = this.pickRangedNavalExpeditionTarget(unit, nationId, assignment);
+    if (!target) return false;
+
+    if (!this.combatSystem.tryAttack(unit, target.x, target.y)) return false;
+    this.logNavalExpeditionAttack(nationId, assignment, target.logMessage);
+    return true;
+  }
+
+  private tryMeleeNavalExpeditionAttack(
+    unit: Unit,
+    nationId: string,
+    assignment: NavalExpeditionAssignment,
+  ): boolean {
+    const adjacentThreats = this.getExpeditionEnemyNavalThreats(nationId, assignment)
+      .filter((enemy) => this.gridSystem.isAdjacent(
+        { x: unit.tileX, y: unit.tileY },
+        { x: enemy.tileX, y: enemy.tileY },
+      ))
+      .sort((a, b) => (
+        a.health / a.unitType.baseHealth - b.health / b.unitType.baseHealth
+        || a.id.localeCompare(b.id)
+      ));
+
+    for (const enemy of adjacentThreats) {
+      if (this.combatSystem.tryAttack(unit, enemy.tileX, enemy.tileY)) {
+        this.logNavalExpeditionAttack(nationId, assignment, `naval expedition engaged enemy ship near ${assignment.targetCityName}`);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private pickRangedNavalExpeditionTarget(
+    unit: Unit,
+    nationId: string,
+    assignment: NavalExpeditionAssignment,
+  ): { x: number; y: number; score: number; logMessage: string } | null {
+    const range = unit.unitType.range ?? 1;
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    const candidates: { x: number; y: number; score: number; logMessage: string }[] = [];
+
+    for (const enemy of this.getExpeditionEnemyNavalThreats(nationId, assignment)) {
+      const dist = this.gridSystem.getDistance(unitPos, { x: enemy.tileX, y: enemy.tileY });
+      if (dist > range) continue;
+      candidates.push({
+        x: enemy.tileX,
+        y: enemy.tileY,
+        score: 500 + Math.round((1 - enemy.health / enemy.unitType.baseHealth) * 50) - dist,
+        logMessage: `naval expedition engaged enemy ship near ${assignment.targetCityName}`,
+      });
+    }
+
+    const targetCity = this.cityManager.getCity(assignment.targetCityId);
+    if (
+      targetCity &&
+      targetCity.ownerId === assignment.targetOwnerNationId &&
+      (this.diplomacyManager?.canAttack(nationId, targetCity.ownerId) ?? true)
+    ) {
+      const cityDist = this.gridSystem.getDistance(unitPos, assignment.targetPos);
+      if (cityDist <= range) {
+        candidates.push({
+          x: targetCity.tileX,
+          y: targetCity.tileY,
+          score: 420 + Math.round((1 - targetCity.health / CITY_BASE_HEALTH) * 40) - cityDist,
+          logMessage: `naval expedition bombarded ${targetCity.name} with ${unit.unitType.name}`,
+        });
+      }
+    }
+
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (enemy.ownerId === nationId) continue;
+      if (enemy.unitType.isNaval === true) continue;
+      if (enemy.unitType.baseStrength <= 0 && (enemy.unitType.rangedStrength ?? 0) <= 0) continue;
+      if (!(this.diplomacyManager?.canAttack(nationId, enemy.ownerId) ?? true)) continue;
+
+      const enemyPos = { x: enemy.tileX, y: enemy.tileY };
+      const dist = this.gridSystem.getDistance(unitPos, enemyPos);
+      if (dist > range) continue;
+      if (!this.isCoastalBombardmentLandTarget(enemyPos)) continue;
+      if (this.gridSystem.getDistance(enemyPos, assignment.targetPos) > Math.max(range, NAVAL_EXPEDITION_COASTAL_UNIT_RADIUS + 2)) continue;
+
+      const isRangedOrSiege = enemy.unitType.category === 'ranged' || enemy.unitType.category === 'siege';
+      const isDamaged = enemy.health / enemy.unitType.baseHealth < 0.6;
+      candidates.push({
+        x: enemy.tileX,
+        y: enemy.tileY,
+        score: (isRangedOrSiege ? 330 : 250)
+          + (isDamaged ? 45 : 0)
+          + Math.round((1 - enemy.health / enemy.unitType.baseHealth) * 30)
+          - dist,
+        logMessage: `naval expedition attacked coastal unit near ${assignment.targetCityName}`,
+      });
+    }
+
+    candidates.sort((a, b) => b.score - a.score || a.y - b.y || a.x - b.x);
+    return candidates[0] ?? null;
+  }
+
+  private getExpeditionEnemyNavalThreats(
+    nationId: string,
+    assignment: NavalExpeditionAssignment,
+  ): Unit[] {
+    const assignedShips = assignment.assignedUnitIds
+      .map((unitId) => this.unitManager.getUnit(unitId))
+      .filter((ship): ship is Unit => ship !== undefined);
+
+    return this.unitManager.getAllUnits()
+      .filter((enemy) => enemy.ownerId !== nationId)
+      .filter((enemy) => enemy.unitType.isNaval === true)
+      .filter((enemy) => enemy.unitType.baseStrength > 0 || (enemy.unitType.rangedStrength ?? 0) > 0)
+      .filter((enemy) => this.diplomacyManager?.canAttack(nationId, enemy.ownerId) ?? true)
+      .filter((enemy) => {
+        const enemyPos = { x: enemy.tileX, y: enemy.tileY };
+        if (this.gridSystem.getDistance(enemyPos, assignment.targetPos) <= NAVAL_EXPEDITION_THREAT_RADIUS) return true;
+        return assignedShips.some((ship) => this.gridSystem.getDistance(
+          enemyPos,
+          { x: ship.tileX, y: ship.tileY },
+        ) <= NAVAL_EXPEDITION_THREAT_RADIUS);
+      })
+      .sort((a, b) => (
+        this.gridSystem.getDistance({ x: a.tileX, y: a.tileY }, assignment.targetPos)
+        - this.gridSystem.getDistance({ x: b.tileX, y: b.tileY }, assignment.targetPos)
+        || a.id.localeCompare(b.id)
+      ));
+  }
+
+  private isCoastalBombardmentLandTarget(pos: GridCoord): boolean {
+    const tile = this.mapData.tiles[pos.y]?.[pos.x];
+    if (!tile || tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
+
+    for (const nearby of this.gridSystem.getTilesInRange(
+      pos,
+      NAVAL_EXPEDITION_COASTAL_UNIT_RADIUS,
+      this.mapData,
+      { includeCenter: false },
+    )) {
+      if (nearby.type === TileType.Coast || nearby.type === TileType.Ocean) return true;
+    }
+    return false;
+  }
+
+  private logNavalExpeditionAttack(
+    nationId: string,
+    assignment: NavalExpeditionAssignment,
+    message: string,
+  ): void {
+    const round = this.turnManager.getCurrentRound();
+    const key = `${nationId}:${assignment.targetCityId}:${message}`;
+    if (this.navalExpeditionAttackLoggedRound.get(key) === round) return;
+    this.navalExpeditionAttackLoggedRound.set(key, round);
+    console.log(this.formatLog(nationId, message));
   }
 
   private findAttackableExposedLeaderTarget(unit: Unit, nationId: string): Unit | undefined {
@@ -1790,6 +2001,7 @@ export class AISystem {
     }
 
     if (spreadCount > 0) this.logPeacetimeRedeployOnce(nationId, spreadCount);
+    this.logNavalExpeditionMovement(nationId, navalContext);
   }
 
   // ─── Peacetime military spread ───────────────────────────────────────────────
@@ -2026,13 +2238,297 @@ export class AISystem {
     const targets = this.getCoastalDefenseTargets(nationId);
     const enemyTargets = this.getEnemyCoastalTargets(nationId);
     const ownZoneHasEnemy = this.ownCoastalZoneHasEnemy(nationId, targets);
+    const expeditionTarget = this.getNavalExpeditionTarget(nationId, ownZoneHasEnemy);
+    const expeditionAssignment = this.getNavalExpeditionAssignment(nationId, expeditionTarget, ownZoneHasEnemy);
     // Pre-claim tiles that own naval units already occupy so other ships
     // don't try to converge onto a tile they can't enter (no stacking).
     const claimedNavalTiles = new Set<string>();
     for (const u of this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit))) {
       if (u.unitType.isNaval) claimedNavalTiles.add(tileKey(u.tileX, u.tileY));
     }
-    return { targets, enemyTargets, claimedNavalTiles, ownZoneHasEnemy };
+    return {
+      targets,
+      enemyTargets,
+      expeditionTarget,
+      expeditionAssignment,
+      expeditionAdvancedUnitIds: new Set<string>(),
+      claimedNavalTiles,
+      ownZoneHasEnemy,
+    };
+  }
+
+  private getNavalExpeditionTarget(nationId: string, homeUnderThreat: boolean): NavalExpeditionTarget | null {
+    const doctrine = getLeaderMilitaryDoctrineByNationId(nationId);
+    if (doctrine.id !== 'navalPower') return null;
+    if (!this.diplomacyManager) return null;
+
+    const warEnemyIds = this.nationManager.getAllNations()
+      .filter((nation) => nation.id !== nationId && this.diplomacyManager?.getState(nationId, nation.id) === 'WAR')
+      .map((nation) => nation.id);
+    if (warEnemyIds.length === 0) return null;
+
+    const target = this.navalExpeditionTargetingSystem.getBestTarget({
+      nationId,
+      warEnemyNationIds: warEnemyIds,
+      allCities: this.cityManager.getAllCities(),
+      allUnits: this.unitManager.getAllUnits(),
+      mapData: this.mapData,
+      gridSystem: this.gridSystem,
+      homeUnderThreat,
+      hasRangedNavalCapability: this.hasRangedNavalUnitAvailableOrProducible(nationId),
+    });
+
+    if (target) {
+      const logKey = `${nationId}:${target.cityId}:${target.score}`;
+      if (!this.navalExpeditionTargetLoggedKeys.has(logKey)) {
+        this.navalExpeditionTargetLoggedKeys.add(logKey);
+        console.log(this.formatLog(
+          nationId,
+          `selected naval expedition target: ${target.cityName}, score ${target.score}, reasons: ${target.reasons.slice(0, 4).join(', ')}`,
+        ));
+      }
+      return target;
+    }
+
+    const round = this.turnManager.getCurrentRound();
+    const lastLogged = this.navalExpeditionNoTargetLoggedRound.get(nationId) ?? -Infinity;
+    if (round - lastLogged >= 10) {
+      this.navalExpeditionNoTargetLoggedRound.set(nationId, round);
+      console.debug(this.formatLog(nationId, `no valid naval expedition target for ${doctrine.id}.`));
+    }
+    return null;
+  }
+
+  private getNavalExpeditionAssignment(
+    nationId: string,
+    target: NavalExpeditionTarget | null,
+    homeUnderThreat: boolean,
+  ): NavalExpeditionAssignment | null {
+    const existing = this.navalExpeditionAssignments.get(nationId);
+    const cancellationReason = this.getNavalExpeditionCancellationReason(nationId, existing, homeUnderThreat);
+    if (existing && cancellationReason) {
+      this.navalExpeditionAssignments.delete(nationId);
+      console.log(this.formatLog(nationId, `cancelled naval expedition toward ${existing.targetCityName}: ${cancellationReason}`));
+    }
+
+    if (!target) return this.navalExpeditionAssignments.get(nationId) ?? null;
+    if (homeUnderThreat) return null;
+
+    const current = this.navalExpeditionAssignments.get(nationId);
+    if (current) {
+      if (
+        current.targetCityId === target.cityId ||
+        !this.shouldRetargetNavalExpedition(current, target)
+      ) {
+        const refreshed = this.refreshNavalExpeditionAssignment(current, target);
+        this.navalExpeditionAssignments.set(nationId, refreshed);
+        return refreshed;
+      }
+      this.navalExpeditionAssignments.delete(nationId);
+      console.log(this.formatLog(nationId, `cancelled naval expedition toward ${current.targetCityName}: better target identified`));
+    }
+
+    const assignment = this.formNavalExpeditionAssignment(nationId, target);
+    if (assignment) {
+      this.navalExpeditionAssignments.set(nationId, assignment);
+      console.log(this.formatLog(nationId, `formed naval expedition toward ${assignment.targetCityName} with ${assignment.assignedUnitIds.length} ships`));
+    }
+    return assignment;
+  }
+
+  private getNavalExpeditionCancellationReason(
+    nationId: string,
+    assignment: NavalExpeditionAssignment | undefined,
+    homeUnderThreat: boolean,
+  ): string | null {
+    if (!assignment) return null;
+    if (homeUnderThreat) return 'home coast threatened';
+
+    const city = this.cityManager.getCity(assignment.targetCityId);
+    if (!city) return 'target city unavailable';
+    if (city.ownerId !== assignment.targetOwnerNationId) return 'target city changed hands';
+    if (this.diplomacyManager?.getState(nationId, city.ownerId) !== 'WAR') return 'war ended';
+
+    const assignedUnits = assignment.assignedUnitIds
+      .map((unitId) => this.unitManager.getUnit(unitId))
+      .filter((unit): unit is Unit => unit !== undefined && this.isNavalExpeditionEligibleUnit(unit));
+    if (assignedUnits.length < NAVAL_EXPEDITION_MIN_SHIPS) return 'not enough assigned ships remain';
+    if (!assignedUnits.some((unit) => (unit.unitType.rangedStrength ?? 0) > 0)) return 'no ranged naval unit remains';
+
+    const averageHealthRatio = assignedUnits.reduce(
+      (sum, unit) => sum + unit.health / unit.unitType.baseHealth,
+      0,
+    ) / assignedUnits.length;
+    if (averageHealthRatio < NAVAL_EXPEDITION_DAMAGED_FLEET_RATIO) return 'fleet too damaged';
+    if (this.isNavalExpeditionTargetHeavilyDefended(nationId, assignment, assignedUnits.length)) {
+      return 'target heavily defended';
+    }
+
+    return null;
+  }
+
+  private isNavalExpeditionTargetHeavilyDefended(
+    nationId: string,
+    assignment: NavalExpeditionAssignment,
+    assignedShipCount: number,
+  ): boolean {
+    let nearbyDefenders = 0;
+    for (const enemy of this.unitManager.getAllUnits()) {
+      if (enemy.ownerId === nationId) continue;
+      if (!(this.diplomacyManager?.canAttack(nationId, enemy.ownerId) ?? true)) continue;
+      if (enemy.unitType.baseStrength <= 0 && (enemy.unitType.rangedStrength ?? 0) <= 0) continue;
+      const dist = this.gridSystem.getDistance(
+        { x: enemy.tileX, y: enemy.tileY },
+        assignment.targetPos,
+      );
+      if (dist <= NAVAL_EXPEDITION_TARGET_DEFENSE_RADIUS) nearbyDefenders += 1;
+    }
+    return nearbyDefenders >= assignedShipCount + 3;
+  }
+
+  private refreshNavalExpeditionAssignment(
+    assignment: NavalExpeditionAssignment,
+    target: NavalExpeditionTarget,
+  ): NavalExpeditionAssignment {
+    const assignedUnitIds = assignment.assignedUnitIds.filter((unitId) => {
+      const unit = this.unitManager.getUnit(unitId);
+      return unit !== undefined && this.isNavalExpeditionEligibleUnit(unit);
+    });
+    return {
+      ...assignment,
+      targetCityName: target.cityName,
+      targetOwnerNationId: target.ownerNationId,
+      targetPos: { x: target.x, y: target.y },
+      targetScore: target.score,
+      assignedUnitIds,
+      lastUpdatedTurn: this.turnManager.getCurrentRound(),
+    };
+  }
+
+  private shouldRetargetNavalExpedition(
+    assignment: NavalExpeditionAssignment,
+    candidate: NavalExpeditionTarget,
+  ): boolean {
+    if (candidate.score < assignment.targetScore + NAVAL_EXPEDITION_RETARGET_SCORE_DELTA) return false;
+
+    const assignedUnits = assignment.assignedUnitIds
+      .map((unitId) => this.unitManager.getUnit(unitId))
+      .filter((unit): unit is Unit => unit !== undefined);
+    const committed = assignedUnits.some((unit) => (
+      this.gridSystem.getDistance(
+        { x: unit.tileX, y: unit.tileY },
+        assignment.targetPos,
+      ) <= NAVAL_EXPEDITION_COMMITTED_DISTANCE
+    ));
+    return !committed;
+  }
+
+  private formNavalExpeditionAssignment(
+    nationId: string,
+    target: NavalExpeditionTarget,
+  ): NavalExpeditionAssignment | null {
+    const combatShips = this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => this.isNavalExpeditionEligibleUnit(unit));
+    if (combatShips.length < NAVAL_EXPEDITION_MIN_SHIPS + NAVAL_EXPEDITION_HOME_RESERVE) return null;
+
+    const reservedUnitIds = this.getNavalHomeReserveUnitIds(nationId, combatShips);
+    const candidates = combatShips
+      .filter((unit) => !reservedUnitIds.has(unit.id))
+      .filter((unit) => this.hasNavalPathToExpeditionTarget(unit, target));
+
+    const ranged = candidates
+      .filter((unit) => (unit.unitType.rangedStrength ?? 0) > 0)
+      .sort((a, b) => this.compareNavalExpeditionCandidates(a, b, target))
+      .slice(0, 2);
+    const rangedIds = new Set(ranged.map((unit) => unit.id));
+    const screens = candidates
+      .filter((unit) => !rangedIds.has(unit.id))
+      .filter((unit) => (unit.unitType.rangedStrength ?? 0) <= 0)
+      .sort((a, b) => this.compareNavalExpeditionCandidates(a, b, target))
+      .slice(0, Math.max(0, NAVAL_EXPEDITION_MAX_SHIPS - ranged.length));
+
+    const selected = [...ranged, ...screens].slice(0, NAVAL_EXPEDITION_MAX_SHIPS);
+    if (selected.length < NAVAL_EXPEDITION_MIN_SHIPS) return null;
+
+    const round = this.turnManager.getCurrentRound();
+    return {
+      nationId,
+      targetCityId: target.cityId,
+      targetCityName: target.cityName,
+      targetOwnerNationId: target.ownerNationId,
+      targetPos: { x: target.x, y: target.y },
+      targetScore: target.score,
+      assignedUnitIds: selected.map((unit) => unit.id),
+      createdTurn: round,
+      lastUpdatedTurn: round,
+    };
+  }
+
+  private isNavalExpeditionEligibleUnit(unit: Unit): boolean {
+    if (this.isCargoUnit(unit)) return false;
+    if (unit.unitType.isNaval !== true) return false;
+    if (unit.unitType.category === 'civilian' || unit.unitType.category === 'naval_recon') return false;
+    if (unit.unitType.baseStrength <= 0 && (unit.unitType.rangedStrength ?? 0) <= 0) return false;
+    return unit.health / unit.unitType.baseHealth >= NAVAL_EXPEDITION_CRITICAL_HEALTH_RATIO;
+  }
+
+  private getNavalHomeReserveUnitIds(nationId: string, ships: readonly Unit[]): Set<string> {
+    const coastalCities = this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => cityHasWaterTile(city, this.mapData));
+    const reserved = new Set<string>();
+    if (coastalCities.length === 0) return reserved;
+
+    const sorted = ships
+      .map((unit) => ({
+        unit,
+        distance: this.getMinDistanceToCities(unit, coastalCities),
+      }))
+      .sort((a, b) => a.distance - b.distance || a.unit.id.localeCompare(b.unit.id));
+
+    for (const entry of sorted.slice(0, NAVAL_EXPEDITION_HOME_RESERVE)) {
+      reserved.add(entry.unit.id);
+    }
+    return reserved;
+  }
+
+  private compareNavalExpeditionCandidates(a: Unit, b: Unit, target: NavalExpeditionTarget): number {
+    const aRanged = (a.unitType.rangedStrength ?? 0) > 0 ? 0 : 1;
+    const bRanged = (b.unitType.rangedStrength ?? 0) > 0 ? 0 : 1;
+    if (aRanged !== bRanged) return aRanged - bRanged;
+
+    const targetPos = { x: target.x, y: target.y };
+    const aDist = this.gridSystem.getDistance({ x: a.tileX, y: a.tileY }, targetPos);
+    const bDist = this.gridSystem.getDistance({ x: b.tileX, y: b.tileY }, targetPos);
+    return aDist - bDist || a.id.localeCompare(b.id);
+  }
+
+  private getMinDistanceToCities(unit: Unit, cities: readonly City[]): number {
+    let best = Infinity;
+    for (const city of cities) {
+      const dist = this.gridSystem.getDistance(
+        { x: unit.tileX, y: unit.tileY },
+        { x: city.tileX, y: city.tileY },
+      );
+      if (dist < best) best = dist;
+    }
+    return best;
+  }
+
+  private hasNavalPathToExpeditionTarget(unit: Unit, target: NavalExpeditionTarget): boolean {
+    const directPath = this.pathfindingSystem.findPath(unit, target.x, target.y, {
+      respectMovementPoints: false,
+    });
+    if (directPath !== null) return true;
+
+    for (const adj of this.gridSystem.getAdjacentCoords({ x: target.x, y: target.y })) {
+      const tile = this.mapData.tiles[adj.y]?.[adj.x];
+      if (!tile || (tile.type !== TileType.Coast && tile.type !== TileType.Ocean)) continue;
+      const path = this.pathfindingSystem.findPath(unit, adj.x, adj.y, {
+        respectMovementPoints: false,
+      });
+      if (path !== null) return true;
+    }
+    return false;
   }
 
   private moveNavalUnitForPatrol(
@@ -2048,6 +2544,12 @@ export class AISystem {
       const enemy = this.findHighPriorityNavalEnemy(unit, nationId, context.targets);
       if (enemy && this.moveNavalUnitToward(unit, { x: enemy.tileX, y: enemy.tileY }, true)) return;
     }
+
+    if (
+      unit.unitType.baseStrength > 0 &&
+      !context.ownZoneHasEnemy &&
+      this.tryMoveAssignedNavalExpeditionUnit(unit, context)
+    ) return;
 
     // Offensive harassment along enemy coasts. Gated by:
     //  - combat naval only (no work boats / cargo)
@@ -2078,13 +2580,56 @@ export class AISystem {
     // cities and land targets using the unit's actual attack range.
     // Melee naval falls back to coast-adjacent land unit targeting.
     if ((unit.unitType.rangedStrength ?? 0) > 0) {
-      if (this.tryRangedNavalBombardmentMove(unit, enemyTargets, claimedNavalTiles)) return true;
+      if (this.tryRangedNavalBombardmentMove(unit, enemyTargets, claimedNavalTiles, context.expeditionTarget)) return true;
     } else {
       if (this.tryMoveTowardNearestEnemyUnit(unit, enemyTargets.coastAdjacentUnits, claimedNavalTiles)) return true;
     }
 
     // Final fallback: patrol-pressure on enemy coast.
     return this.tryMoveTowardNearestZoneTile(unit, enemyTargets.zoneTiles, claimedNavalTiles);
+  }
+
+  private tryMoveAssignedNavalExpeditionUnit(unit: Unit, context: NavalPatrolContext): boolean {
+    const assignment = context.expeditionAssignment;
+    if (!assignment || !assignment.assignedUnitIds.includes(unit.id)) return false;
+
+    const targetPos = assignment.targetPos;
+    const distanceToTarget = this.gridSystem.getDistance(
+      { x: unit.tileX, y: unit.tileY },
+      targetPos,
+    );
+
+    if ((unit.unitType.rangedStrength ?? 0) > 0 && distanceToTarget <= (unit.unitType.range ?? 1)) {
+      return true;
+    }
+    if ((unit.unitType.rangedStrength ?? 0) <= 0 && distanceToTarget <= 1) {
+      return true;
+    }
+
+    const before = { x: unit.tileX, y: unit.tileY };
+    if (!this.moveNavalUnitToward(unit, targetPos, true)) return false;
+
+    context.claimedNavalTiles.add(tileKey(unit.tileX, unit.tileY));
+    if (before.x !== unit.tileX || before.y !== unit.tileY) {
+      context.expeditionAdvancedUnitIds.add(unit.id);
+    }
+    return true;
+  }
+
+  private logNavalExpeditionMovement(nationId: string, context: NavalPatrolContext): void {
+    const assignment = context.expeditionAssignment;
+    if (!assignment || context.expeditionAdvancedUnitIds.size === 0) return;
+
+    const round = this.turnManager.getCurrentRound();
+    const key = `${nationId}:${assignment.targetCityId}`;
+    const lastRound = this.navalExpeditionMoveLoggedRound.get(key) ?? -1;
+    if (lastRound === round) return;
+
+    this.navalExpeditionMoveLoggedRound.set(key, round);
+    console.log(this.formatLog(
+      nationId,
+      `naval expedition moving toward ${assignment.targetCityName}: ${context.expeditionAdvancedUnitIds.size} ships advanced`,
+    ));
   }
 
   /**
@@ -2105,6 +2650,7 @@ export class AISystem {
     unit: Unit,
     enemyTargets: EnemyCoastalTargets,
     claimed: Set<string>,
+    expeditionTarget: NavalExpeditionTarget | null = null,
   ): boolean {
     const unitRange = unit.unitType.range ?? 1;
     const unitPos = { x: unit.tileX, y: unit.tileY };
@@ -2149,7 +2695,8 @@ export class AISystem {
 
     for (const city of enemyTargets.enemyCities) {
       const healthRatio = city.health / CITY_BASE_HEALTH;
-      const cityValue = BOMBARD_CITY_VALUE + Math.round((1 - healthRatio) * BOMBARD_DAMAGED_BONUS);
+      const expeditionBonus = expeditionTarget?.cityId === city.id ? Math.max(10, Math.round(expeditionTarget.score / 4)) : 0;
+      const cityValue = BOMBARD_CITY_VALUE + expeditionBonus + Math.round((1 - healthRatio) * BOMBARD_DAMAGED_BONUS);
       evaluateTarget({ x: city.tileX, y: city.tileY }, cityValue, tileKey(city.tileX, city.tileY));
     }
 
@@ -4526,6 +5073,28 @@ export class AISystem {
         && (u.rangedStrength ?? 0) > 0
         && this.canBuildUnit(nationId, u.id),
     );
+  }
+
+  private hasRangedNavalUnitAvailableOrProducible(nationId: string): boolean {
+    if (this.unitManager.getUnitsByOwner(nationId).some((unit) => (
+      unit.unitType.isNaval === true &&
+      (unit.unitType.rangedStrength ?? 0) > 0
+    ))) {
+      return true;
+    }
+
+    const coastalCities = this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => cityHasWaterTile(city, this.mapData));
+    if (coastalCities.length === 0) return false;
+
+    return ALL_UNIT_TYPES.some((unitType) => (
+      unitType.isNaval === true &&
+      (unitType.rangedStrength ?? 0) > 0 &&
+      this.canBuildUnit(nationId, unitType.id) &&
+      coastalCities.some((city) => (
+        canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      ))
+    ));
   }
 
   private pickNavalUnitForCity(
