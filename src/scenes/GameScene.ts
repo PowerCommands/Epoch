@@ -403,18 +403,6 @@ export class GameScene extends Phaser.Scene {
     const selectionManager = new SelectionManager(
       this, tileMap, this.cameraController, cityManager, unitManager, worldInputGate,
     );
-    const unitLifetimeSystem = new UnitLifetimeSystem(
-      unitManager,
-      nationManager,
-      (nationId, message) => logManager.info({ nationId, category: 'unit', message }),
-      (unit) => {
-        const selected = selectionManager.getSelected();
-        if (selected?.kind === 'unit' && selected.unit.id === unit.id) {
-          selectionManager.clearSelection();
-        }
-      },
-    );
-    turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem, nationManager);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
@@ -480,6 +468,19 @@ export class GameScene extends Phaser.Scene {
 
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager(turnManager);
+    const unitLifetimeSystem = new UnitLifetimeSystem(
+      unitManager,
+      nationManager,
+      diplomacyManager,
+      (nationId, message) => logManager.info({ nationId, category: 'unit', message }),
+      (unit) => {
+        const selected = selectionManager.getSelected();
+        if (selected?.kind === 'unit' && selected.unit.id === unit.id) {
+          selectionManager.clearSelection();
+        }
+      },
+    );
+    turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
     const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(diplomacyManager);

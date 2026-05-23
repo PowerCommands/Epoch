@@ -41,4 +41,5 @@ export interface UnitType {
     readonly resourceId: string;
     readonly amount: number;
   };
+  readonly serviceLifeRounds?: number;
 }

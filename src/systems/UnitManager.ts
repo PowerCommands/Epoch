@@ -1,6 +1,6 @@
 import { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
-import { SCOUT, SCOUT_BOAT, WARRIOR, canCarryUnitType, getLegacyCompatibleUnitTypeById } from '../data/units';
+import { WARRIOR, canCarryUnitType, getLegacyCompatibleUnitTypeById } from '../data/units';
 import { MapData, TileType } from '../types/map';
 import type { ScenarioUnit } from '../types/scenario';
 import { CityManager } from './CityManager';
@@ -27,8 +27,6 @@ type UnitChangedListener = (event: UnitChangedEvent) => void;
 type CityLocator = (tileX: number, tileY: number) => string | undefined;
 
 const PRODUCED_UNIT_ID_PREFIX = 'unit_produced';
-export const SCOUT_LIFETIME_ROUNDS = 80;
-export const SCOUT_BOAT_LIFETIME_ROUNDS = 100;
 
 const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
   nation_england: 'Royal Guard',
@@ -485,9 +483,8 @@ export class UnitManager {
   }
 
   private getExpiresAtRound(unitType: UnitType, createdRound: number): number | undefined {
-    if (unitType.id === SCOUT.id) return createdRound + SCOUT_LIFETIME_ROUNDS;
-    if (unitType.id === SCOUT_BOAT.id) return createdRound + SCOUT_BOAT_LIFETIME_ROUNDS;
-    return undefined;
+    if (unitType.serviceLifeRounds === undefined) return undefined;
+    return createdRound + unitType.serviceLifeRounds;
   }
 
   private placeOnGrid(unit: Unit): void {
