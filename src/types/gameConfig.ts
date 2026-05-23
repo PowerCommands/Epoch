@@ -3,6 +3,15 @@ import type { GameSpeedId } from '../data/gameSpeeds';
 
 export type ResourceAbundance = 'scarce' | 'normal' | 'abundant';
 
+export interface ScienceVictoryConfig {
+  enabled: boolean;
+  requiredAerospaceParts: number;
+}
+
+export interface VictoryConditionsConfig {
+  science?: Partial<ScienceVictoryConfig>;
+}
+
 export interface GameConfig {
   mapKey: string;
   humanNationId: string;
@@ -24,4 +33,9 @@ export interface GameConfig {
    * running session. Populated by the Load Game flow.
    */
   savedState?: SavedGameState;
+  /**
+   * Per-scenario victory condition overrides. Absent fields use
+   * VictorySystem defaults (science enabled, 5 aerospace parts).
+   */
+  victoryConditions?: VictoryConditionsConfig;
 }

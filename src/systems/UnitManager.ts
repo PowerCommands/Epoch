@@ -382,6 +382,7 @@ export class UnitManager {
     buildAction?: import('../entities/Unit').UnitBuildAction;
     createdRound?: number;
     expiresAtRound?: number;
+    queuedDestination?: { x: number; y: number };
   }): Unit {
     const unit = new Unit({
       id: config.id,
@@ -398,6 +399,7 @@ export class UnitManager {
       createdRound: config.createdRound,
       expiresAtRound: config.expiresAtRound,
     });
+    unit.queuedDestination = config.queuedDestination;
     unit.health = config.health;
     unit.isSleeping = config.isSleeping;
 

@@ -1100,6 +1100,7 @@ export class GameScene extends Phaser.Scene {
         requireMovement: true,
       });
       if (!result) return false;
+      unit.queuedDestination = undefined;
 
       const locationLabel = result.city ? `near ${result.city.name}` : 'on a sea resource';
       logManager.info({
@@ -1125,6 +1126,7 @@ export class GameScene extends Phaser.Scene {
       if (!hasEnemyTarget) return false;
 
       if (combatSystem.tryAttack(unit, targetTile.x, targetTile.y, { source: 'human-ui' })) {
+        unit.queuedDestination = undefined;
         return true;
       }
 
@@ -1140,6 +1142,7 @@ export class GameScene extends Phaser.Scene {
       });
       if (path === null) return false;
 
+      unit.queuedDestination = undefined;
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
       movementSystem.moveAlongPath(unit, path, { source: 'human-ui' });
@@ -1185,6 +1188,7 @@ export class GameScene extends Phaser.Scene {
           const key = `${tile.x},${tile.y}`;
           if (!rangedTargets.has(key)) return true;
           if (unit.isSleeping) unit.isSleeping = false;
+          unit.queuedDestination = undefined;
           combatSystem.tryAttack(unit, tile.x, tile.y, { source: 'human-ui' });
           rangedTargets = new Set<string>();
           rangedPreviewRenderer.clear();
@@ -1292,23 +1296,43 @@ export class GameScene extends Phaser.Scene {
       const unit = currentSelection.unit;
       const targetTile = this.getTileForSelectable(tileMap, target);
       if (targetTile === null) return false;
-      if (!reachableTiles.has(`${targetTile.x},${targetTile.y}`)) return false;
+
+      const inReachable = reachableTiles.has(`${targetTile.x},${targetTile.y}`);
 
       if (unit.carriedByUnitId !== undefined) {
+        if (!inReachable) return false;
         if (!unitBoardingManager.canUnboard(unit, targetTile.x, targetTile.y)) return false;
+        unit.queuedDestination = undefined;
         reachableTiles = new Set<string>();
         pathPreviewRenderer.clear();
         unitBoardingManager.unboard(unit, targetTile.x, targetTile.y);
         return true;
       }
 
-      const path = pathfindingSystem.findPath(unit, targetTile.x, targetTile.y);
-      if (path === null) return false;
+      if (inReachable) {
+        const path = pathfindingSystem.findPath(unit, targetTile.x, targetTile.y);
+        if (path === null) return false;
+        unit.queuedDestination = undefined;
+        if (unit.isSleeping) unit.isSleeping = false;
+        reachableTiles = new Set<string>();
+        pathPreviewRenderer.clear();
+        movementSystem.moveAlongPath(unit, path, { source: 'human-ui' });
+        return true;
+      }
 
+      // Far tile: set queued destination and begin moving this turn
+      if (unit.movementPoints <= 0) return false;
+      const fullPath = pathfindingSystem.findPath(unit, targetTile.x, targetTile.y, { respectMovementPoints: false });
+      if (fullPath === null) return false;
+
+      unit.queuedDestination = { x: targetTile.x, y: targetTile.y };
       if (unit.isSleeping) unit.isSleeping = false;
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
-      movementSystem.moveAlongPath(unit, path, { source: 'human-ui' });
+      movementSystem.moveAlongPath(unit, fullPath, { source: 'human-ui' });
+      if (unit.tileX === targetTile.x && unit.tileY === targetTile.y) {
+        unit.queuedDestination = undefined;
+      }
       return true;
     });
 
@@ -1323,7 +1347,16 @@ export class GameScene extends Phaser.Scene {
     const healingSystem = new HealingSystem(unitManager, cityManager, turnManager);
 
     // 17. Victory system
-    const victorySystem = new VictorySystem(cityManager, nationManager, turnManager);
+    const victorySystem = new VictorySystem(
+      cityManager,
+      nationManager,
+      turnManager,
+      resourceAccessSystem,
+      { science: data.victoryConditions?.science },
+      (nationId, message) => logManager.info({ nationId, category: 'victory', message }),
+      researchSystem,
+      corporationSystem,
+    );
 
     // 18. Stadsgrundningssystem
     foundCitySystem = new FoundCitySystem(
@@ -1576,6 +1609,31 @@ export class GameScene extends Phaser.Scene {
       unitActionToolbox.resetMode();
       refreshMovePreview();
     };
+
+    // Continue queued long-distance movement at the start of each human turn.
+    // Runs after MovementSystem resets MP (registered later) but before TurnOrderSystem
+    // refreshes the active unit queue (done inside the next turnStart listener below).
+    turnManager.on('turnStart', (e) => {
+      if (!e.nation.isHuman || isAutoplayActive()) return;
+      for (const unit of unitManager.getAllUnits()) {
+        if (unit.ownerId !== e.nation.id) continue;
+        if (!unit.queuedDestination) continue;
+        if (unit.carriedByUnitId !== undefined) continue;
+        if (unit.isSleeping) continue;
+        if (unit.actionStatus === 'building') continue;
+        if (unit.movementPoints <= 0) continue;
+        const dest = unit.queuedDestination;
+        const path = pathfindingSystem.findPath(unit, dest.x, dest.y, { respectMovementPoints: false });
+        if (path === null) {
+          unit.queuedDestination = undefined;
+          continue;
+        }
+        movementSystem.moveAlongPath(unit, path, { source: 'human-ui' });
+        if (unit.tileX === dest.x && unit.tileY === dest.y) {
+          unit.queuedDestination = undefined;
+        }
+      }
+    });
 
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) return;
@@ -3510,6 +3568,7 @@ export class GameScene extends Phaser.Scene {
         }
         selection.unit.isSleeping = !selection.unit.isSleeping;
         selection.unit.actionStatus = selection.unit.isSleeping ? 'sleep' : 'active';
+        if (selection.unit.isSleeping) selection.unit.queuedDestination = undefined;
         unitActionToolbox.refresh();
         turnOrderSystem.refreshActive();
         hudLayer?.refresh();
@@ -3839,12 +3898,20 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (hoverTile === null || !reachableTiles.has(`${hoverTile.x},${hoverTile.y}`)) {
+      if (hoverTile === null) {
         pathPreviewRenderer.clearPath();
         return;
       }
 
-      const path = pathfindingSystem.findPath(selected.unit, hoverTile.x, hoverTile.y);
+      const inReachable = reachableTiles.has(`${hoverTile.x},${hoverTile.y}`);
+      if (!inReachable && selected.unit.movementPoints <= 0) {
+        pathPreviewRenderer.clearPath();
+        return;
+      }
+
+      const path = inReachable
+        ? pathfindingSystem.findPath(selected.unit, hoverTile.x, hoverTile.y)
+        : pathfindingSystem.findPath(selected.unit, hoverTile.x, hoverTile.y, { respectMovementPoints: false });
       if (path === null) {
         pathPreviewRenderer.clearPath();
         return;
@@ -3976,7 +4043,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Victory overlay
-    victorySystem.onVictory((nationId) => {
+    victorySystem.onVictory((nationId, type) => {
       turnManager.stop();
 
       const nation = nationManager.getNation(nationId);
@@ -3989,8 +4056,11 @@ export class GameScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(200);
 
-      this.add.text(width / 2, height / 2 - 30,
-        `${nationName} has conquered all capitals!\nVICTORY`, {
+      const victoryText = type === 'science'
+        ? `Science Victory\n${nationName} has completed its aerospace program.`
+        : `${nationName} has conquered all capitals!\nVICTORY`;
+
+      this.add.text(width / 2, height / 2 - 30, victoryText, {
           fontSize: '32px',
           fontStyle: 'bold',
           color: nationColor,
@@ -4011,6 +4081,19 @@ export class GameScene extends Phaser.Scene {
 
       // Block further input on the overlay
       overlay.setInteractive();
+
+      // Human science victory: also show the modal popup
+      if (type === 'science' && !isAutoplayActive() && nationId === humanNationId) {
+        showDiplomacyModal({
+          title: 'Science Victory',
+          message: `${nationName} has completed its aerospace program.`,
+          accentColor: '#4af',
+          confirmLabel: 'Continue',
+          cancelLabel: '',
+          onConfirm: () => {},
+          onCancel: () => {},
+        });
+      }
     });
 
     // Apply a saved snapshot (if loading) before the turn manager starts
@@ -4233,7 +4316,19 @@ export class GameScene extends Phaser.Scene {
 
       reachableTiles = pathfindingSystem.getReachableTiles(unit);
       pathPreviewRenderer.showReachableTiles(reachableTiles);
-      pathPreviewRenderer.clearPath();
+
+      if (unit.queuedDestination) {
+        const dest = unit.queuedDestination;
+        const queuedPath = pathfindingSystem.findPath(unit, dest.x, dest.y, { respectMovementPoints: false });
+        if (queuedPath !== null) {
+          pathPreviewRenderer.showPath(queuedPath);
+        } else {
+          unit.queuedDestination = undefined;
+          pathPreviewRenderer.clearPath();
+        }
+      } else {
+        pathPreviewRenderer.clearPath();
+      }
     }
 
     function refreshSelectedCityOverlays(): void {

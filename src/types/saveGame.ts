@@ -111,6 +111,7 @@ export interface SavedUnit {
   movementPoints: number;
   createdRound?: number;
   expiresAtRound?: number;
+  queuedDestination?: { x: number; y: number };
   improvementCharges?: number;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];

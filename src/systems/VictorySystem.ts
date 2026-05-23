@@ -1,38 +1,157 @@
-import { CityManager } from './CityManager';
-import { NationManager } from './NationManager';
-import { TurnManager } from './TurnManager';
+import type { CityManager } from './CityManager';
+import type { CorporationSystem } from './CorporationSystem';
+import type { NationManager } from './NationManager';
+import type { ResearchSystem } from './ResearchSystem';
+import type { ResourceAccessSystem } from './ResourceAccessSystem';
+import type { TurnManager } from './TurnManager';
 
-type VictoryListener = (nationId: string) => void;
+export type VictoryType = 'domination' | 'science';
+
+type VictoryListener = (nationId: string, type: VictoryType) => void;
+type VictoryLogger = (nationId: string, message: string) => void;
+
+interface ScienceVictorySettings {
+  enabled: boolean;
+  requiredAerospaceParts: number;
+}
+
+interface VictoryConditionsConfig {
+  science?: Partial<ScienceVictorySettings>;
+}
+
+export interface ScienceVictoryProgress {
+  nationId: string;
+  aerospaceParts: number;
+  requiredAerospaceParts: number;
+  hasFlight: boolean;
+  hasAluminum: boolean;
+  hasFactory: boolean;
+  hasAerospaceIndustries: boolean;
+  fulfilledMilestones: number;
+  scienceScore: number;
+  researchPerTurn: number;
+  researchedTechnologyCount: number;
+}
+
+const AEROSPACE_PARTS_ID = 'aerospace_parts';
+const AEROSPACE_CORP_ID = 'aerospace_industries';
+const SCIENCE_PROGRESS_INTERVAL = 25;
 
 /**
- * VictorySystem checks for win condition after each turn end.
- * Domination victory: one nation owns every active nation's capital.
+ * VictorySystem checks for win conditions after each turn end.
+ * Domination: one nation owns every active nation's original capital.
+ * Science: one nation produces enough aerospace_parts.
  */
 export class VictorySystem {
-  private readonly cityManager: CityManager;
-  private readonly nationManager: NationManager;
   private readonly listeners: VictoryListener[] = [];
   private won = false;
+  private readonly science: ScienceVictorySettings;
+  private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
 
   constructor(
-    cityManager: CityManager,
-    nationManager: NationManager,
+    private readonly cityManager: CityManager,
+    private readonly nationManager: NationManager,
     turnManager: TurnManager,
+    private readonly resourceAccessSystem?: ResourceAccessSystem,
+    conditions: VictoryConditionsConfig = {},
+    private readonly log?: VictoryLogger,
+    private readonly researchSystem?: ResearchSystem,
+    private readonly corporationSystem?: CorporationSystem,
   ) {
-    this.cityManager = cityManager;
-    this.nationManager = nationManager;
+    this.science = {
+      enabled: conditions.science?.enabled ?? true,
+      requiredAerospaceParts: conditions.science?.requiredAerospaceParts ?? 5,
+    };
 
-    turnManager.on('turnEnd', () => {
+    turnManager.on('turnEnd', (e) => {
       if (this.won) return;
-      const winner = this.checkVictory();
-      if (winner) {
+
+      const scienceWinner = this.checkScienceVictory();
+      if (scienceWinner) {
         this.won = true;
-        for (const cb of this.listeners) cb(winner);
+        this.logScienceVictory(scienceWinner, e.round);
+        for (const cb of this.listeners) cb(scienceWinner, 'science');
+        return;
       }
+
+      const dominationWinner = this.checkDominationVictory();
+      if (dominationWinner) {
+        this.won = true;
+        for (const cb of this.listeners) cb(dominationWinner, 'domination');
+      }
+    });
+
+    turnManager.on('roundEnd', (e) => {
+      if (this.won || !this.science.enabled || !this.resourceAccessSystem) return;
+      if (e.round - this.lastProgressRound < SCIENCE_PROGRESS_INTERVAL) return;
+      this.lastProgressRound = e.round;
+      this.logScienceProgress(e.round);
     });
   }
 
+  /** Public entry point kept for external callers. Checks domination only. */
   checkVictory(): string | null {
+    return this.checkDominationVictory();
+  }
+
+  getScienceVictoryProgress(nationId: string): ScienceVictoryProgress {
+    const aerospaceParts = this.resourceAccessSystem?.getManufacturedResourceSourceCount(
+      nationId,
+      AEROSPACE_PARTS_ID,
+    ) ?? 0;
+
+    const hasFlight = this.researchSystem?.isResearched(nationId, 'flight') ?? false;
+    const hasAluminum = this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false;
+    const hasFactory = this.cityManager.getCitiesByOwner(nationId).some(
+      (city) => this.cityManager.getBuildings(city.id).has('factory'),
+    );
+    const hasAerospaceIndustries = this.corporationSystem
+      ?.getFoundedCorporationsForNation(nationId)
+      .some((c) => c.corporationId === AEROSPACE_CORP_ID) ?? false;
+
+    const fulfilledMilestones = [hasFlight, hasAluminum, hasFactory, hasAerospaceIndustries]
+      .filter(Boolean).length;
+
+    const researchedTechnologyCount = this.researchSystem
+      ?.getResearchedTechnologies(nationId).length ?? 0;
+    const researchPerTurn = this.researchSystem?.getResearchPerTurn(nationId) ?? 0;
+
+    const researchProgress = this.researchSystem?.getResearchProgress(nationId) ?? 0;
+    const currentTech = this.researchSystem?.getCurrentResearch(nationId);
+    const techCost = currentTech
+      ? Math.max(1, this.researchSystem!.getEffectiveCost(currentTech.id))
+      : 1;
+    const scienceScore = researchedTechnologyCount * 100
+      + (currentTech ? Math.round((researchProgress / techCost) * 100) : 0);
+
+    return {
+      nationId,
+      aerospaceParts,
+      requiredAerospaceParts: this.science.requiredAerospaceParts,
+      hasFlight,
+      hasAluminum,
+      hasFactory,
+      hasAerospaceIndustries,
+      fulfilledMilestones,
+      scienceScore,
+      researchPerTurn,
+      researchedTechnologyCount,
+    };
+  }
+
+  getScienceVictoryRanking(): ScienceVictoryProgress[] {
+    return this.nationManager.getAllNations()
+      .map((n) => this.getScienceVictoryProgress(n.id))
+      .sort((a, b) => {
+        if (b.aerospaceParts !== a.aerospaceParts) return b.aerospaceParts - a.aerospaceParts;
+        if (b.fulfilledMilestones !== a.fulfilledMilestones) return b.fulfilledMilestones - a.fulfilledMilestones;
+        if (b.scienceScore !== a.scienceScore) return b.scienceScore - a.scienceScore;
+        if (b.researchPerTurn !== a.researchPerTurn) return b.researchPerTurn - a.researchPerTurn;
+        return b.researchedTechnologyCount - a.researchedTechnologyCount;
+      });
+  }
+
+  private checkDominationVictory(): string | null {
     const activeNations = this.nationManager.getAllNations();
     if (activeNations.length < 2) return null;
 
@@ -44,6 +163,45 @@ export class VictorySystem {
     const owners = new Set(capitals.map((c) => c.ownerId));
     if (owners.size === 1) return capitals[0].ownerId;
     return null;
+  }
+
+  private checkScienceVictory(): string | null {
+    if (!this.science.enabled || !this.resourceAccessSystem) return null;
+
+    for (const nation of this.nationManager.getAllNations()) {
+      const count = this.resourceAccessSystem.getManufacturedResourceSourceCount(
+        nation.id,
+        AEROSPACE_PARTS_ID,
+      );
+      if (count >= this.science.requiredAerospaceParts) return nation.id;
+    }
+    return null;
+  }
+
+  private logScienceVictory(nationId: string, round: number): void {
+    if (!this.log || !this.resourceAccessSystem) return;
+    const nation = this.nationManager.getNation(nationId);
+    const name = nation?.name ?? nationId;
+    const count = this.resourceAccessSystem.getManufacturedResourceSourceCount(
+      nationId,
+      AEROSPACE_PARTS_ID,
+    );
+    this.log(nationId, `[r${round}] ${name} achieved Science Victory with ${count} aerospace parts.`);
+  }
+
+  private logScienceProgress(round: number): void {
+    if (!this.log) return;
+    const ranking = this.getScienceVictoryRanking();
+    if (ranking.length === 0) return;
+
+    const req = this.science.requiredAerospaceParts;
+    const lines = [`[r${round}] Science Victory progress:`];
+    for (const p of ranking) {
+      const nation = this.nationManager.getNation(p.nationId);
+      const name = nation?.name ?? p.nationId;
+      lines.push(`- ${name}: ${p.aerospaceParts}/${req} parts, ${p.fulfilledMilestones}/4 milestones, science score ${p.scienceScore}`);
+    }
+    this.log(ranking[0].nationId, lines.join('\n'));
   }
 
   onVictory(callback: VictoryListener): void {

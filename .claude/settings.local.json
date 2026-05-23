@@ -11,12 +11,14 @@
       "Bash(pkill -f \"vite\")",
       "Bash(docker stop *)",
       "Bash(docker start *)",
+      "Bash(find *)",
       "Bash(docker run *)",
       "Bash(docker exec *)",
       "Bash([ -f \"public/assets/sprites/units/$u.png\" ])",
       "Read(//tmp/**)",
       "Read(//home/harri/**)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(xargs *)"
     ]
   }
 }

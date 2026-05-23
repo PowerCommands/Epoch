@@ -130,7 +130,7 @@ export class MainMenuScene extends Phaser.Scene {
           <button class="mm-victory-card active" type="button" data-victory="science">
             <span class="mm-victory-check" aria-hidden="true"></span>
             <span class="mm-victory-title">Science</span>
-            <span class="mm-victory-copy">Outpace every age.</span>
+            <span class="mm-victory-copy">Win space race</span>
           </button>
           <button class="mm-victory-card active" type="button" data-victory="cultural">
             <span class="mm-victory-check" aria-hidden="true"></span>

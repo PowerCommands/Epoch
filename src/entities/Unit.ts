@@ -48,6 +48,7 @@ export class Unit {
   improvementCharges?: number;
   createdRound: number;
   expiresAtRound?: number;
+  queuedDestination?: { x: number; y: number };
   actionStatus: UnitActionStatus;
   buildAction?: UnitBuildAction;
 
