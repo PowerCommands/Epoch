@@ -3466,6 +3466,10 @@ export class GameScene extends Phaser.Scene {
 
     // Phaser-side leader portrait strip (replaces the old left-panel leader list)
     leaderStrip = new LeaderPortraitStrip(this, nationManager, discoverySystem, humanNationId);
+    if (this.rightSidebarPanel) {
+      const panel = this.rightSidebarPanel;
+      leaderStrip.setRightBoundaryProvider(() => panel.getButtonRowLeftX());
+    }
     const computeRangedTargets = (unit: Unit): Set<string> => {
       const range = unit.unitType.range ?? 1;
       if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();

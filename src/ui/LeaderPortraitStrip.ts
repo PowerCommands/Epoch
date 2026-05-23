@@ -14,6 +14,8 @@ const PORTRAIT_HEIGHT = Math.round(82 * PORTRAIT_SCALE);
 const PORTRAIT_SPACING = Math.round(10 * PORTRAIT_SCALE);
 const STRIP_TOP_OFFSET = Math.round(16 * PORTRAIT_SCALE);
 const STRIP_DEPTH = 100;
+const PORTRAIT_RIGHT_MARGIN = 16;
+const PORTRAIT_BUTTON_GAP = 12;
 const BG_COLOR = 0x151515;
 const FRAME_COLOR = 0x4a3a2a;
 
@@ -48,6 +50,7 @@ export class LeaderPortraitStrip {
 
   private entries: PortraitEntry[] = [];
   private selectedNationId: string | null = null;
+  private getRightBoundaryX: (() => number) | undefined;
   private readonly onResize: () => void;
   private readonly onAddedToScene: (go: Phaser.GameObjects.GameObject) => void;
 
@@ -120,9 +123,14 @@ export class LeaderPortraitStrip {
     return obj;
   }
 
+  setRightBoundaryProvider(fn: () => number): void {
+    this.getRightBoundaryX = fn;
+    this.layout();
+  }
+
   rebuild(): void {
     this.destroyEntries();
-    for (const nation of this.getVisibleNations()) {
+    for (const nation of this.getOrderedVisibleNations()) {
       this.entries.push(this.createEntry(nation, getLeaderByNationId(nation.id)));
     }
     this.layout();
@@ -164,11 +172,16 @@ export class LeaderPortraitStrip {
     this.entries = [];
   }
 
-  private getVisibleNations(): Nation[] {
+  private getOrderedVisibleNations(): Nation[] {
     const all = this.nationManager.getAllNations();
-    if (!this.discoverySystem || !this.humanNationId) return all;
-    const humanId = this.humanNationId;
-    return all.filter((n) => this.discoverySystem!.hasMet(humanId, n.id));
+    const visible = (!this.discoverySystem || !this.humanNationId)
+      ? all
+      : all.filter((n) => this.discoverySystem!.hasMet(this.humanNationId!, n.id));
+    const human = visible.filter((n) => n.id === this.humanNationId);
+    const others = visible
+      .filter((n) => n.id !== this.humanNationId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...human, ...others];
   }
 
   private createEntry(nation: Nation, leader: LeaderDefinition | undefined): PortraitEntry {
@@ -283,7 +296,10 @@ export class LeaderPortraitStrip {
 
     const viewportWidth = this.scene.scale.width;
     const totalWidth = count * PORTRAIT_WIDTH + (count - 1) * PORTRAIT_SPACING;
-    const startX = viewportWidth / 2 - totalWidth / 2 + PORTRAIT_WIDTH / 2;
+    const boundaryX = this.getRightBoundaryX
+      ? this.getRightBoundaryX() - PORTRAIT_BUTTON_GAP
+      : viewportWidth - PORTRAIT_RIGHT_MARGIN;
+    const startX = boundaryX - totalWidth + PORTRAIT_WIDTH / 2;
     const y = STRIP_TOP_OFFSET + PORTRAIT_HEIGHT / 2;
 
     for (let i = 0; i < count; i++) {

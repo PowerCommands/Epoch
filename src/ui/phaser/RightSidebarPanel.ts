@@ -349,6 +349,17 @@ export class RightSidebarPanel {
     this.show('details');
   }
 
+  /** Returns the screen-space X of the leftmost action button's left edge. */
+  getButtonRowLeftX(): number {
+    const viewportWidth = this.scene.scale.width;
+    const panelX = viewportWidth - PANEL_WIDTH - EDGE_MARGIN;
+    const visibleCount = this.modeButtons.filter((b) => b.visible).length;
+    const buttonRowWidth = visibleCount > 0
+      ? BUTTON_DIAMETER * visibleCount + BUTTON_GAP * (visibleCount - 1)
+      : 0;
+    return panelX + PANEL_WIDTH - buttonRowWidth;
+  }
+
   collapse(): void {
     this.collapsed = true;
     this.destroyContentObjects();
