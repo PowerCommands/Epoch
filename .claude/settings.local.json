@@ -18,7 +18,8 @@
       "Read(//tmp/**)",
       "Read(//home/harri/**)",
       "Bash(grep *)",
-      "Bash(xargs *)"
+      "Bash(xargs *)",
+      "Bash(tee *)"
     ]
   }
 }

@@ -9,6 +9,26 @@ import type { PolicySystem } from './PolicySystem';
 import type { ResourceSystem } from './ResourceSystem';
 import type { UnitManager } from './UnitManager';
 
+// Progressive army oversize upkeep config — tune these to adjust military density pressure.
+//
+// Free army limit = freeArmyBase + (cityCount × freeArmyPerCity).
+//   e.g. 5-city empire → 4 + 15 = 19 free military units
+//        10-city empire → 4 + 30 = 34 free military units
+//
+// Beyond the free limit: total upkeep multiplier = 1 + (overage/freeLimit)^exponent × scale
+//   overage  50% above limit → ~1.2–1.4×  (noticeable but manageable)
+//   overage 100% above limit → ~1.5–2.0×  (expensive; plan around it)
+//   overage 200%+ above limit → 3×+        (economically painful; forces disbanding)
+//
+// Raise oversizeScale or lower oversizeExponent to increase pressure.
+// Raise freeArmyPerCity to give larger empires more breathing room.
+export const ARMY_UPKEEP_CONFIG = {
+  freeArmyBase: 4,       // Minimum free military units for every nation
+  freeArmyPerCity: 3,    // Extra free units per owned city
+  oversizeExponent: 1.5, // Curve steepness — higher means faster escalation
+  oversizeScale: 0.5,    // Overall penalty strength — raise to increase pressure
+} as const;
+
 export interface UnitUpkeepEnforcementResult {
   readonly chargedUpkeep: number;
   readonly dismissedUnits: readonly Unit[];
@@ -68,9 +88,19 @@ export class UnitUpkeepSystem {
     const baseUpkeep = this.unitManager
       .getUnitsByOwner(nationId)
       .reduce((sum, unit) => sum + calculateUnitUpkeep(unit, this.mapData), 0);
+    const oversizeMultiplier = this.calculateMilitaryOversizeMultiplier(nationId);
     const upkeepPercent = this.policySystem?.getUnitUpkeepPercentModifier(nationId) ?? 0;
-    const multiplier = Math.max(0, 1 + (upkeepPercent / 100));
-    return Math.max(0, Math.floor(baseUpkeep * multiplier));
+    const policyMultiplier = Math.max(0, 1 + (upkeepPercent / 100));
+    return Math.max(0, Math.floor(baseUpkeep * oversizeMultiplier * policyMultiplier));
+  }
+
+  getMilitaryOversizeInfo(nationId: string): { militaryCount: number; freeLimit: number; multiplier: number } {
+    const units = this.unitManager.getUnitsByOwner(nationId);
+    const militaryCount = units.filter(u => (u.unitType.upkeepGold ?? 0) > 0).length;
+    const cities = this.cityManager?.getCitiesByOwner(nationId) ?? [];
+    const freeLimit = ARMY_UPKEEP_CONFIG.freeArmyBase + cities.length * ARMY_UPKEEP_CONFIG.freeArmyPerCity;
+    const multiplier = this.calculateMilitaryOversizeMultiplier(nationId);
+    return { militaryCount, freeLimit, multiplier };
   }
 
   canAffordUnitUpkeepForTurns(nationId: string, unitTypeId: string, turns: number): boolean {
@@ -128,6 +158,22 @@ export class UnitUpkeepSystem {
       this.logDismissals(nationId, dismissedUnits);
     }
     return dismissedUnits;
+  }
+
+  // Multiplier > 1.0 when the nation's paid military exceeds its free army limit.
+  // Scales smoothly with how far over the limit the army is — see ARMY_UPKEEP_CONFIG.
+  private calculateMilitaryOversizeMultiplier(nationId: string): number {
+    const units = this.unitManager.getUnitsByOwner(nationId);
+    const militaryCount = units.filter(u => (u.unitType.upkeepGold ?? 0) > 0).length;
+
+    const cities = this.cityManager?.getCitiesByOwner(nationId) ?? [];
+    const freeLimit = ARMY_UPKEEP_CONFIG.freeArmyBase + cities.length * ARMY_UPKEEP_CONFIG.freeArmyPerCity;
+
+    if (militaryCount <= freeLimit) return 1.0;
+
+    const overageRatio = (militaryCount - freeLimit) / freeLimit;
+    const extra = Math.pow(overageRatio, ARMY_UPKEEP_CONFIG.oversizeExponent) * ARMY_UPKEEP_CONFIG.oversizeScale;
+    return 1.0 + extra;
   }
 
   private getDismissalOrder(nationId: string, includeLoadedTransports: boolean): Unit[] {

@@ -1,5 +1,6 @@
 import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../../data/gameSpeeds';
+import { getEraPacingMultiplier } from '../../data/eraPacingMultipliers';
 import type { CultureNode } from '../../types/CultureNode';
 import type { NationManager } from '../NationManager';
 import { pickBestAICultureNode } from '../ai/AICulturePlanningSystem';
@@ -152,7 +153,9 @@ export class CultureSystem {
 
   getEffectiveCost(nodeId: string): number {
     const node = getCultureNodeById(nodeId);
-    return node ? scaleGameSpeedCost(node.cost, this.gameSpeed) : 0;
+    if (!node) return 0;
+    const base = scaleGameSpeedCost(node.cost, this.gameSpeed);
+    return Math.max(1, Math.round(base * getEraPacingMultiplier(node.era)));
   }
 
   getMissingPrerequisiteIds(nationId: string, nodeId: string): string[] {

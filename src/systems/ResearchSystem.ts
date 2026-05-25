@@ -1,6 +1,7 @@
 import type { TechnologyDefinition } from '../data/technologies';
 import { ALL_TECHNOLOGIES, getTechnologyById } from '../data/technologies';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
+import { getEraPacingMultiplier } from '../data/eraPacingMultipliers';
 import { getLeaderByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import type { CityManager } from './CityManager';
@@ -260,7 +261,9 @@ export class ResearchSystem {
 
   getEffectiveCost(techId: string): number {
     const technology = getTechnologyById(techId);
-    return technology ? scaleGameSpeedCost(technology.cost, this.gameSpeed) : 0;
+    if (!technology) return 0;
+    const base = scaleGameSpeedCost(technology.cost, this.gameSpeed);
+    return Math.max(1, Math.round(base * getEraPacingMultiplier(technology.era)));
   }
 
   private logResearchDiscovery(nationId: string, technologyName: string): void {
