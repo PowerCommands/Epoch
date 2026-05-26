@@ -100,6 +100,7 @@ export class NationHudDataProvider {
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
     const nationResources = this.nationManager.getResources(nationId);
+    if (!nationResources) return [];
     const productionPerTurn = this.cityManager.getCitiesByOwner(nationId)
       .reduce((sum, city) => sum + this.cityManager.getResources(city.id).productionPerTurn, 0);
     const researchProgress = this.researchSystem.getResearchProgress(nationId);

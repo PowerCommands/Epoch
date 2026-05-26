@@ -521,6 +521,7 @@ export class RightSidebarPanelDataProvider {
   private getCityContent(city: City, tab: RightSidebarCityDetailsTab): RightSidebarContent {
     const nation = this.nationManager.getNation(city.ownerId);
     const resources = this.cityManager.getResources(city.id);
+    if (!resources) return this.getEmptyDetailsContent();
     const garrison = this.unitManager.getUnitAt(city.tileX, city.tileY);
     const buildings = this.cityManager.getBuildings(city.id).getAll();
     const economy = calculateCityEconomy(
