@@ -12,21 +12,26 @@ import type { UnitManager } from './UnitManager';
 // Progressive army oversize upkeep config — tune these to adjust military density pressure.
 //
 // Free army limit = freeArmyBase + (cityCount × freeArmyPerCity).
-//   e.g. 5-city empire → 4 + 15 = 19 free military units
-//        10-city empire → 4 + 30 = 34 free military units
+//   e.g.  2-city empire →  4 free military units  (early game, defensible)
+//         5-city empire →  7 free military units  (mid-game, compact army)
+//        10-city empire → 12 free military units  (large empire, must be selective)
+//        15-city empire → 17 free military units  (huge empire, tight limit)
 //
 // Beyond the free limit: total upkeep multiplier = 1 + (overage/freeLimit)^exponent × scale
-//   overage  50% above limit → ~1.2–1.4×  (noticeable but manageable)
-//   overage 100% above limit → ~1.5–2.0×  (expensive; plan around it)
-//   overage 200%+ above limit → 3×+        (economically painful; forces disbanding)
+//   overage  30% above limit → ~1.35×  (noticeable — start pruning obsolete units)
+//   overage  75% above limit → ~1.9×   (expensive — real economic drag)
+//   overage 100% above limit → ~2.5×   (forces meaningful disbanding)
+//   overage 200%+ above limit → ~4.5×  (economically painful — carpet armies collapse)
 //
-// Raise oversizeScale or lower oversizeExponent to increase pressure.
-// Raise freeArmyPerCity to give larger empires more breathing room.
+// Primary tuning knobs:
+//   freeArmyPerCity  — lower = tighter free allowance, the most impactful lever
+//   oversizeScale    — raise to steepen the overall penalty curve
+//   oversizeExponent — lower makes pressure ramp earlier at moderate overages
 export const ARMY_UPKEEP_CONFIG = {
-  freeArmyBase: 4,       // Minimum free military units for every nation
-  freeArmyPerCity: 3,    // Extra free units per owned city
-  oversizeExponent: 1.5, // Curve steepness — higher means faster escalation
-  oversizeScale: 0.5,    // Overall penalty strength — raise to increase pressure
+  freeArmyBase: 2,       // Minimum free military units (independent of cities)
+  freeArmyPerCity: 1,    // Free units per owned city — halved to tighten large-empire armies
+  oversizeExponent: 1.2, // Slightly lower so pressure ramps in at moderate overages
+  oversizeScale: 1.5,    // Raised from 1.0 — late-game carpet armies now face severe economic pain
 } as const;
 
 export interface UnitUpkeepEnforcementResult {
