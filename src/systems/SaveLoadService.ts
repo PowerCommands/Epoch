@@ -19,6 +19,7 @@ import { getLegacyCompatibleUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
 import type { Producible } from '../types/producible';
+import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { CityManager } from './CityManager';
 import type { City } from '../entities/City';
 import type { DiplomacyManager } from './DiplomacyManager';
@@ -27,6 +28,7 @@ import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
+import type { TradeConnectionSystem } from './TradeConnectionSystem';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
@@ -60,6 +62,7 @@ export interface SaveLoadContext {
   wonderSystem: WonderSystem;
   corporationSystem?: CorporationSystem;
   tradeDealSystem?: TradeDealSystem;
+  tradeConnectionSystem?: TradeConnectionSystem;
   exileProtectionSystem?: ExileProtectionSystem;
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
@@ -99,6 +102,7 @@ export class SaveLoadService {
       wonderSystem,
       corporationSystem,
       tradeDealSystem,
+      tradeConnectionSystem,
       exileProtectionSystem,
       worldMarkerSystem,
       foreignTroopViolationSystem,
@@ -310,6 +314,7 @@ export class SaveLoadService {
       wonders,
       corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
+      tradeConnections: tradeConnectionSystem?.getAllConnections(),
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
       worldMarkers: worldMarkerSystem?.getAllMarkersForSave(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
@@ -411,6 +416,7 @@ export class SaveLoadService {
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
+    context.tradeConnectionSystem?.restoreConnections(state.tradeConnections ?? []);
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     if (context.worldMarkerSystem) {
       context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());
@@ -751,10 +757,30 @@ function toSavedProducible(item: Producible): SavedProducible {
       return { kind: 'wonder', id: item.wonderType.id };
     case 'corporation':
       return { kind: 'corporation', id: item.corporationType.id };
+    case 'tradeRoute':
+      return {
+        kind: 'tradeRoute',
+        id: item.connectionId,
+        fromCityId: item.fromCityId,
+        toCityId: item.toCityId,
+        targetNationId: item.targetNationId,
+        displayName: item.displayName,
+      };
   }
 }
 
 function fromSavedProducible(item: SavedProducible): Producible | null {
+  if (item.kind === 'tradeRoute') {
+    return {
+      kind: 'tradeRoute',
+      connectionId: item.id,
+      fromCityId: item.fromCityId ?? '',
+      toCityId: item.toCityId ?? '',
+      targetNationId: item.targetNationId ?? '',
+      displayName: item.displayName ?? 'Trade Route',
+      productionCost: TRADE_ROUTE_PRODUCTION_COST,
+    };
+  }
   if (item.kind === 'unit') {
     const type = getLegacyCompatibleUnitTypeById(item.id);
     if (type?.category === 'leader') return null;

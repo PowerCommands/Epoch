@@ -4,6 +4,7 @@ import type { CityProductionRhythm } from '../entities/City';
 import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
+import type { TradeConnection } from './tradeConnection';
 import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
@@ -20,8 +21,13 @@ import type { LeaderEvacuationState } from '../entities/Nation';
 export const SAVED_GAME_VERSION = 4 as const;
 
 export interface SavedProducible {
-  kind: 'unit' | 'building' | 'wonder' | 'corporation';
+  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'tradeRoute';
   id: string;
+  /** Extra fields for tradeRoute queue entries. Optional for backward compat. */
+  fromCityId?: string;
+  toCityId?: string;
+  targetNationId?: string;
+  displayName?: string;
 }
 
 export interface SavedWonder {
@@ -235,6 +241,7 @@ export interface SavedGameState {
   wonders: SavedWonder[];
   corporations?: SavedCorporation[];
   tradeDeals?: TradeDeal[];
+  tradeConnections?: TradeConnection[];
   exileProtectionAgreements?: ExileProtectionAgreement[];
   worldMarkers?: WorldMarker[];
   worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];

@@ -38,6 +38,8 @@ import type { DiplomacyManager } from './DiplomacyManager';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { HappinessSystem } from './HappinessSystem';
 import type { TradeDealSystem } from './TradeDealSystem';
+import type { TradeConnectionSystem } from './TradeConnectionSystem';
+import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
@@ -384,6 +386,7 @@ function describeProducible(item: Producible): string {
     case 'building': return `building:${item.buildingType.name}`;
     case 'wonder': return `wonder:${item.wonderType.name}`;
     case 'corporation': return `corporation:${item.corporationType.name}`;
+    case 'tradeRoute': return `tradeRoute:${item.displayName}`;
   }
 }
 
@@ -523,6 +526,7 @@ export class AISystem {
     private readonly cityDefenseSystem?: CityDefenseSystem,
     private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
     private readonly exileProtectionSystem?: ExileProtectionSystem,
+    private readonly tradeConnectionSystem?: TradeConnectionSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -606,6 +610,7 @@ export class AISystem {
     this.runProduction(nationId);
     this.runDiplomacyForNation(nationId);
     this.runTradeForNation(nationId);
+    this.runTradeRoutesForNation(nationId);
 
     if (nation?.aiGoals && nation.aiGoals.length > 0) {
       console.log(
@@ -841,6 +846,77 @@ export class AISystem {
 
     if (dealsCreated > 1) {
       console.debug(this.formatLog(nationId, `AI created ${dealsCreated} trade deals due to trade weight ${weights.trade}.`));
+    }
+  }
+
+  // ─── Trade route creation ────────────────────────────────────────────────────
+
+  private runTradeRoutesForNation(nationId: string): void {
+    if (!this.tradeConnectionSystem || !this.diplomacyManager) return;
+    if (this.turnManager.getCurrentRound() % 10 !== 0) return;
+
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation || nation.isHuman) return;
+
+    // Skip if nation is too poor
+    if (this.nationManager.getResources(nationId).gold < -50) return;
+
+    // Skip if nation already has a building connection in progress
+    const alreadyBuilding = this.tradeConnectionSystem.getAllConnections()
+      .some((c) => (c.nationAId === nationId || c.nationBId === nationId) && c.status === 'building');
+    if (alreadyBuilding) return;
+
+    // Own cities with available trade capacity
+    const ownCities = this.cityManager.getCitiesByOwner(nationId)
+      .filter((c) => this.tradeConnectionSystem!.getCityAvailableTradeCapacity(c.id) > 0);
+    if (ownCities.length === 0) return;
+
+    for (const other of this.nationManager.getAllNations()) {
+      if (other.id === nationId) continue;
+      if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, other.id)) continue;
+      if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') continue;
+      if (!this.diplomacyManager.hasTradeRelations(nationId, other.id)) continue;
+
+      // Skip hostile relations
+      const relation = this.diplomacyManager.getRelation(nationId, other.id);
+      if (relation.hostility >= 50) continue;
+
+      // Skip if already have any connection between these nations
+      const hasExisting = this.tradeConnectionSystem.getAllConnections().some(
+        (c) => (c.nationAId === nationId && c.nationBId === other.id) ||
+               (c.nationAId === other.id && c.nationBId === nationId),
+      );
+      if (hasExisting) continue;
+
+      // Target cities with available capacity
+      const targetCities = this.cityManager.getCitiesByOwner(other.id)
+        .filter((c) => this.tradeConnectionSystem!.getCityAvailableTradeCapacity(c.id) > 0);
+      if (targetCities.length === 0) continue;
+
+      // Pick best own city (prefer capital)
+      const fromCity = ownCities.find((c) => c.isResidenceCapital) ?? ownCities[0];
+      // Pick best target city (prefer capital)
+      const toCity = targetCities.find((c) => c.isResidenceCapital) ?? targetCities[0];
+      if (!fromCity || !toCity) continue;
+
+      const validation = this.tradeConnectionSystem.canCreateTradeConnection(fromCity.id, toCity.id);
+      if (!validation.ok) continue;
+
+      const connection = this.tradeConnectionSystem.createTradeConnectionDraft(
+        fromCity.id, toCity.id, this.turnManager.getCurrentRound(),
+      );
+      const tradeRouteItem: Producible = {
+        kind: 'tradeRoute',
+        connectionId: connection.id,
+        fromCityId: fromCity.id,
+        toCityId: toCity.id,
+        targetNationId: other.id,
+        displayName: `Trade Route to ${toCity.name}`,
+        productionCost: TRADE_ROUTE_PRODUCTION_COST,
+      };
+      this.productionSystem.enqueue(fromCity.id, tradeRouteItem);
+      console.debug(this.formatLog(nationId, `AI started trade route project ${fromCity.name} ↔ ${toCity.name}.`));
+      break; // One route per evaluation
     }
   }
 
@@ -4897,6 +4973,8 @@ export class AISystem {
         return `unit:${item.unitType.name}`;
       case 'corporation':
         return `corporation:${item.corporationType.name}`;
+      case 'tradeRoute':
+        return `tradeRoute:${item.displayName}`;
     }
   }
 
@@ -5949,6 +6027,7 @@ export class AISystem {
     }
     if (item.kind === 'wonder') return 'wonder';
     if (item.kind === 'corporation') return 'corporation';
+    if (item.kind === 'tradeRoute') return 'infrastructure';
     const bt = item.buildingType;
     if ((bt.modifiers.happinessPerTurn ?? 0) > 0) return 'low happiness';
     if (bt.id === GRANARY.id) return 'city growth';
@@ -5963,6 +6042,7 @@ export class AISystem {
     if (item.kind === 'unit') return item.unitType.name;
     if (item.kind === 'wonder') return item.wonderType.name;
     if (item.kind === 'corporation') return item.corporationType.name;
+    if (item.kind === 'tradeRoute') return item.displayName;
     return item.buildingType.name;
   }
 

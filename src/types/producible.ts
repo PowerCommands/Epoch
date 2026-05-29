@@ -11,4 +11,5 @@ export type Producible =
   | { kind: 'unit'; unitType: UnitType }
   | { kind: 'building'; buildingType: BuildingType }
   | { kind: 'wonder'; wonderType: WonderType }
-  | { kind: 'corporation'; corporationType: CorporationDefinition };
+  | { kind: 'corporation'; corporationType: CorporationDefinition }
+  | { kind: 'tradeRoute'; connectionId: string; fromCityId: string; toCityId: string; targetNationId: string; displayName: string; productionCost: number };

@@ -16,6 +16,8 @@ import { WorldMarkerSystem } from '../systems/WorldMarkerSystem';
 import { WorldMarkerRenderer } from '../systems/WorldMarkerRenderer';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
+import { TradeConnectionSystem } from '../systems/TradeConnectionSystem';
+import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
 import { BorderPressureSystem, type BorderPressureEvent } from '../systems/BorderPressureSystem';
@@ -547,6 +549,12 @@ export class GameScene extends Phaser.Scene {
     );
     getTradeGoldPerTurnDelta = (nationId) =>
       tradeDealSystem.getGoldPerTurnDeltaForNation(nationId);
+    const tradeConnectionSystem = new TradeConnectionSystem(
+      cityManager,
+      diplomacyManager,
+      nationManager,
+      (message, nationId) => logManager.info({ nationId, category: 'diplomacy', message }),
+    );
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
     const resourceCitySearchSystem = new ResourceCitySearchSystem(mapData, cityManager, nationManager);
     getAvailableLuxuryResourceQuantities = (nationId) =>
@@ -564,6 +572,9 @@ export class GameScene extends Phaser.Scene {
     };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
+    );
+    tradeDealSystem.setConnectionCapacityProvider((a, b) =>
+      tradeConnectionSystem.getActiveDealCapacityBetweenNations(a, b),
     );
     turnManager.on('turnStart', (e) => tradeDealSystem.advanceTurnForNation(e.nation.id));
     const ideologicalDriftEvents: IdeologicalDriftEvent[] = [];
@@ -613,6 +624,24 @@ export class GameScene extends Phaser.Scene {
 
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
+      const cancelledConns = tradeConnectionSystem.cancelConnectionsBetweenNations(aggressorId, targetId);
+      for (const conn of cancelledConns) {
+        const fromCity = cityManager.getCity(conn.cityAId);
+        const toCity = cityManager.getCity(conn.cityBId);
+        const routeLabel = `${fromCity?.name ?? conn.cityAId} ↔ ${toCity?.name ?? conn.cityBId}`;
+        logManager.info({
+          nationIds: [aggressorId, targetId],
+          category: 'diplomacy',
+          message: `Trade connection ${routeLabel} was severed by war.`,
+        });
+        // Remove any building queue item that referenced this connection
+        const queue = productionSystem.getQueue(conn.cityAId);
+        const idx = queue.findIndex((e) => {
+          const item = e.item;
+          return item.kind === 'tradeRoute' && item.connectionId === conn.id;
+        });
+        if (idx >= 0) productionSystem.removeFromQueue(conn.cityAId, idx);
+      }
       // Snapshot military strength at war start so war-exhaustion ratios are meaningful.
       diplomacyManager.snapshotWarStartStrength(aggressorId, targetId, aiMilitaryEvaluationSystem.getMilitaryStrength(aggressorId).totalStrength);
       diplomacyManager.snapshotWarStartStrength(targetId, aggressorId, aiMilitaryEvaluationSystem.getMilitaryStrength(targetId).totalStrength);
@@ -1442,6 +1471,7 @@ export class GameScene extends Phaser.Scene {
       cityDefenseSystem,
       aiOverseasExpansionSystem,
       exileProtectionSystem,
+      tradeConnectionSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
@@ -1884,6 +1914,30 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
 
+      if (item.kind === 'tradeRoute') {
+        const conn = tradeConnectionSystem.getConnection(item.connectionId);
+        if (!conn) return; // Already cancelled externally — allow item removal
+        const connFromCity = cityManager.getCity(conn.cityAId);
+        const connToCity = cityManager.getCity(conn.cityBId);
+        const connNationA = nationManager.getNation(conn.nationAId);
+        const connNationB = nationManager.getNation(conn.nationBId);
+        const atWar = diplomacyManager.getState(conn.nationAId, conn.nationBId) === 'WAR';
+        const routeName = `${connFromCity?.name ?? conn.cityAId} ↔ ${connToCity?.name ?? conn.cityBId}`;
+        if (!connFromCity || !connToCity || !connNationA || !connNationB || atWar) {
+          tradeConnectionSystem.cancelConnection(item.connectionId);
+          const reason = atWar ? 'the nations are now at war' : 'a city or nation no longer exists';
+          logManager.info({
+            nationIds: [conn.nationAId, conn.nationBId],
+            category: 'diplomacy',
+            message: `Trade route ${routeName} was cancelled because ${reason}.`,
+          });
+          return; // Allow item to be removed from queue (connection already cancelled)
+        }
+        tradeConnectionSystem.activateTradeConnection(item.connectionId);
+        rightPanel?.requestRefresh();
+        return; // Allow item to be removed from queue
+      }
+
       const placement = this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
       if (placement === null) return false;
       const unitBlockReason = getCityUnitProductionBlockReason(
@@ -1915,6 +1969,19 @@ export class GameScene extends Phaser.Scene {
       }
       if (entry.item.kind === 'building') {
         buildingPlacementSystem.releaseCityBuildingReservation(cityId, entry.item.buildingType.id, mapData);
+      }
+      if (entry.item.kind === 'tradeRoute') {
+        const conn = tradeConnectionSystem.getConnection(entry.item.connectionId);
+        if (conn && conn.status === 'building') {
+          tradeConnectionSystem.cancelConnection(entry.item.connectionId);
+          const fromCity = cityManager.getCity(entry.item.fromCityId);
+          const toCity = cityManager.getCity(entry.item.toCityId);
+          logManager.info({
+            nationIds: [conn.nationAId, conn.nationBId],
+            category: 'diplomacy',
+            message: `Trade route project ${fromCity?.name ?? entry.item.fromCityId} ↔ ${toCity?.name ?? entry.item.toCityId} was cancelled.`,
+          });
+        }
       }
     });
 
@@ -2546,7 +2613,7 @@ export class GameScene extends Phaser.Scene {
 
     // Diplomacy actions from right-side details buttons
     const onDiplomacyAction = (event: Event) => {
-      const { action, targetNationId } = (event as CustomEvent<{ action: string; targetNationId: string }>).detail;
+      const { action, targetNationId } = (event as CustomEvent<{ action: string; targetNationId: string; fromCityId?: string; toCityId?: string; setupPaymentGold?: number }>).detail;
       const targetNation = nationManager.getNation(targetNationId);
       if (!targetNation) return;
       const color = `#${targetNation.color.toString(16).padStart(6, '0')}`;
@@ -2642,6 +2709,65 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.refreshCurrent();
       } else if (action === 'cancelTradeRelations') {
         diplomacyManager.cancelTradeRelations(humanNationIdForDiplomacy, targetNationId);
+        rightPanel?.refreshCurrent();
+      } else if (action === 'proposeTradeRoute') {
+        const detail = (event as CustomEvent).detail as { fromCityId: string; toCityId: string; setupPaymentGold: number };
+        const { fromCityId, toCityId, setupPaymentGold } = detail;
+        if (!fromCityId || !toCityId) return;
+
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+        const fromCity = cityManager.getCity(fromCityId);
+        const toCity = cityManager.getCity(toCityId);
+        if (!fromCity || !toCity) return;
+
+        const validation = tradeConnectionSystem.canCreateTradeConnection(fromCityId, toCityId);
+        if (!validation.ok) return;
+
+        const humanResources = nationManager.getResources(humanNationIdForDiplomacy);
+        if (humanResources.gold < setupPaymentGold) return;
+
+        const targetAttitude = diplomaticEvaluationSystem?.evaluateAttitude(targetNationId, humanNationIdForDiplomacy) ?? 'neutral';
+        const accepted = targetAttitude !== 'hostile';
+
+        const routeLabel = `${fromCity.name} ↔ ${toCity.name}`;
+        logManager.info({
+          nationIds: [humanNationIdForDiplomacy, targetNationId],
+          category: 'diplomacy',
+          message: `${humanName} proposed trade route ${routeLabel} to ${targetNation.name}${setupPaymentGold > 0 ? ` for ${setupPaymentGold} gold` : ''}.`,
+        });
+
+        if (accepted) {
+          humanResources.gold -= setupPaymentGold;
+          nationManager.getResources(targetNationId).gold += setupPaymentGold;
+          const connection = tradeConnectionSystem.createTradeConnectionDraft(fromCityId, toCityId, turnManager.getCurrentRound());
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${targetNation.name} accepted trade route ${routeLabel}.`,
+          });
+          const tradeRouteItem: Producible = {
+            kind: 'tradeRoute',
+            connectionId: connection.id,
+            fromCityId,
+            toCityId,
+            targetNationId,
+            displayName: `Trade Route to ${toCity.name}`,
+            productionCost: TRADE_ROUTE_PRODUCTION_COST,
+          };
+          productionSystem.enqueue(fromCityId, tradeRouteItem);
+          logManager.info({
+            nationId: humanNationIdForDiplomacy,
+            category: 'diplomacy',
+            message: `${fromCity.name} queued Trade Route to ${toCity.name}.`,
+          });
+          hudLayer?.refresh();
+        } else {
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${targetNation.name} rejected the trade route proposal.`,
+          });
+        }
         rightPanel?.refreshCurrent();
       }
     };
@@ -2803,6 +2929,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setTradeDealSystem(tradeDealSystem);
+    rightPanel.setTradeConnectionSystem(tradeConnectionSystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
     rightPanel.setResourceCitySearchSystem(resourceCitySearchSystem);
     rightPanel.setEraSystem(eraSystem);
@@ -3712,6 +3839,7 @@ export class GameScene extends Phaser.Scene {
           wonderSystem,
           policySystem,
           tradeDealSystem,
+          tradeConnectionSystem,
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
@@ -4121,6 +4249,7 @@ export class GameScene extends Phaser.Scene {
         wonderSystem,
         policySystem,
         tradeDealSystem,
+        tradeConnectionSystem,
         exileProtectionSystem,
         corporationSystem,
         worldMarkerSystem,
@@ -4186,6 +4315,7 @@ export class GameScene extends Phaser.Scene {
           wonderSystem,
           policySystem,
           tradeDealSystem,
+          tradeConnectionSystem,
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
@@ -4225,6 +4355,7 @@ export class GameScene extends Phaser.Scene {
             wonderSystem,
             policySystem,
             tradeDealSystem,
+            tradeConnectionSystem,
             exileProtectionSystem,
             corporationSystem,
             worldMarkerSystem,
@@ -4498,6 +4629,8 @@ function getProducibleName(item: Producible): string {
       return item.wonderType.name;
     case 'corporation':
       return item.corporationType.name;
+    case 'tradeRoute':
+      return item.displayName;
   }
 }
 

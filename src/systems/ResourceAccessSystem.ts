@@ -97,22 +97,16 @@ export class ResourceAccessSystem {
   getResourceSourceCount(nationId: string, resourceId: string): number {
     const manufacturedProduced = this.getManufacturedResourceSourceCount(nationId, resourceId);
     if (manufacturedProduced > 0 || getManufacturedResourceById(resourceId)) {
-      return Math.max(
-        0,
-        manufacturedProduced - this.getExportedResourceSourceCount(nationId, resourceId),
-      ) + this.getRawImportedResourceSourceCount(nationId, resourceId);
+      // Export does not reduce the seller's own access; just add imports on top.
+      return manufacturedProduced + this.getRawImportedResourceSourceCount(nationId, resourceId);
     }
     return this.getMapOrImportedResourceSourceCount(nationId, resourceId);
   }
 
   getMapOrImportedResourceSourceCount(nationId: string, resourceId: string): number {
     if (!this.canUseResource(nationId, resourceId)) return 0;
-    const ownedRaw = this.countOwnedTiles(nationId, resourceId);
-    const retainedOwnedSources = Math.max(
-      0,
-      ownedRaw - this.getExportedResourceSourceCount(nationId, resourceId),
-    );
-    return retainedOwnedSources + this.getRawImportedResourceSourceCount(nationId, resourceId);
+    // Export does not reduce the seller's own tile access; imports add on top.
+    return this.countOwnedTiles(nationId, resourceId) + this.getRawImportedResourceSourceCount(nationId, resourceId);
   }
 
   getImportedResources(nationId: string): string[] {
@@ -207,13 +201,9 @@ export class ResourceAccessSystem {
   }
 
   canExportResource(sellerNationId: string, resourceId: string): boolean {
-    const manufacturedQuantity = this.getManufacturedResourceSourceCount(sellerNationId, resourceId);
-    if (manufacturedQuantity > 0 || getManufacturedResourceById(resourceId)) {
-      return manufacturedQuantity > this.getExportedResourceSourceCount(sellerNationId, resourceId);
-    }
-    if (!this.canUseResource(sellerNationId, resourceId)) return false;
-    return this.countOwnedTiles(sellerNationId, resourceId)
-      > this.getExportedResourceSourceCount(sellerNationId, resourceId);
+    // A nation can export any resource it has access to. Exporting does not
+    // reduce the seller's own access — connection capacity limits deal count.
+    return this.getOwnedResourceSourceCount(sellerNationId, resourceId) > 0;
   }
 
   getExportableResourceQuantities(nationId: string): ReadonlyArray<{
@@ -224,8 +214,7 @@ export class ResourceAccessSystem {
     const entries: { resourceId: string; quantity: number }[] = [];
 
     for (const resourceId of ids) {
-      const producedOrOwned = this.getOwnedResourceSourceCount(nationId, resourceId);
-      const available = Math.max(0, producedOrOwned - this.getExportedResourceSourceCount(nationId, resourceId));
+      const available = this.getOwnedResourceSourceCount(nationId, resourceId);
       if (available <= 0) continue;
       entries.push({ resourceId, quantity: available });
     }

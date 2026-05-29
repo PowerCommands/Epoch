@@ -869,6 +869,8 @@ function producibleName(item: Producible): string {
       return item.wonderType.name;
     case 'corporation':
       return item.corporationType.name;
+    case 'tradeRoute':
+      return item.displayName;
   }
 }
 

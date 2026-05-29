@@ -27,6 +27,8 @@ export class TradeDealSystem {
   private readonly deals = new Map<string, TradeDeal>();
   private nextDealNumber = 1;
   private canExportResource: TradeDealCanExportResource = () => false;
+  /** Returns total active connection capacity between two nations. Defaults to Infinity for backward compat. */
+  private connectionCapacityProvider: (nationA: string, nationB: string) => number = () => Infinity;
 
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
@@ -37,6 +39,10 @@ export class TradeDealSystem {
 
   setCanExportResource(canExport: TradeDealCanExportResource): void {
     this.canExportResource = canExport;
+  }
+
+  setConnectionCapacityProvider(fn: (nationA: string, nationB: string) => number): void {
+    this.connectionCapacityProvider = fn;
   }
 
   createDeal(input: CreateTradeDealInput): TradeDealResult {
@@ -181,6 +187,14 @@ export class TradeDealSystem {
     );
     if (alreadyImportingFromSeller) {
       return { ok: false, reason: 'Buyer is already importing that resource from this seller.' };
+    }
+    const totalCapacity = this.connectionCapacityProvider(input.sellerNationId, input.buyerNationId);
+    const usedCapacity = Array.from(this.deals.values()).filter(
+      (d) => (d.sellerNationId === input.sellerNationId && d.buyerNationId === input.buyerNationId) ||
+             (d.sellerNationId === input.buyerNationId && d.buyerNationId === input.sellerNationId),
+    ).length;
+    if (usedCapacity >= totalCapacity) {
+      return { ok: false, reason: 'No active trade route with available capacity.' };
     }
     return { ok: true };
   }

@@ -41,6 +41,7 @@ import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
+import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
@@ -99,7 +100,9 @@ export class RightSidebarPanelDataProvider {
   private wonderSystem: WonderSystem | null = null;
   private corporationSystem: CorporationSystem | null = null;
   private tradeDealSystem: TradeDealSystem | null = null;
+  private tradeConnectionSystem: TradeConnectionSystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
+  private tradeRouteProposal: { targetNationId: string; fromCityId: string | null; toCityId: string | null } | null = null;
   private resourceCitySearchSystem: ResourceCitySearchSystem | null = null;
   private detailsSearchQuery = '';
   private eraSystem: EraSystem | null = null;
@@ -180,6 +183,10 @@ export class RightSidebarPanelDataProvider {
 
   setTradeDealSystem(tradeDealSystem: TradeDealSystem): void {
     this.tradeDealSystem = tradeDealSystem;
+  }
+
+  setTradeConnectionSystem(system: TradeConnectionSystem): void {
+    this.tradeConnectionSystem = system;
   }
 
   setResourceAccessSystem(resourceAccessSystem: ResourceAccessSystem): void {
@@ -1340,7 +1347,145 @@ export class RightSidebarPanelDataProvider {
     ));
     if (peaceTreatyReason) rows.push(textRow(peaceTreatyReason, true));
     if (peaceUnavailableReason) rows.push(textRow(peaceUnavailableReason, true));
+    rows.push({ kind: 'separator' });
+    rows.push(...this.buildTradeRouteProposalRows(nationId, nation?.color));
     return { title: 'Diplomacy', rows };
+  }
+
+  private computeTradeRouteSetupPayment(targetNationId: string): number | null {
+    if (!this.diplomaticEvaluationSystem || !this.humanNationId) return 25;
+    const attitude = this.diplomaticEvaluationSystem.evaluateAttitude(targetNationId, this.humanNationId);
+    switch (attitude) {
+      case 'friendly': return 0;
+      case 'neutral': return 25;
+      case 'afraid': return 75;
+      case 'hostile': return null;
+    }
+  }
+
+  private buildTradeRouteProposalRows(targetNationId: string, accentColor?: number): RightSidebarRow[] {
+    const rows: RightSidebarRow[] = [];
+    if (!this.tradeConnectionSystem || !this.humanNationId) return rows;
+
+    const humanId = this.humanNationId;
+    const dm = this.diplomacyManager;
+    const isAtWar = dm?.getState(humanId, targetNationId) === 'WAR';
+    const hasTradeRelations = dm?.hasTradeRelations(humanId, targetNationId) ?? false;
+    const setupPayment = this.computeTradeRouteSetupPayment(targetNationId);
+    const proposalOpen = this.tradeRouteProposal?.targetNationId === targetNationId;
+
+    if (!proposalOpen) {
+      let disabledReason: string | undefined;
+      if (isAtWar) disabledReason = 'Unavailable during war.';
+      else if (!hasTradeRelations) disabledReason = 'Requires active Trade Relations.';
+      else if (setupPayment === null) disabledReason = 'Relations too hostile to propose a trade route.';
+
+      rows.push(disabledReasonButtonRow(
+        'Propose Trade Route',
+        disabledReason,
+        () => {
+          this.tradeRouteProposal = { targetNationId, fromCityId: null, toCityId: null };
+          this.requestRefresh();
+        },
+        accentColor,
+      ));
+      if (disabledReason) rows.push(textRow(disabledReason, true));
+      return rows;
+    }
+
+    rows.push(textRow('Propose Trade Route', false, true));
+
+    const humanCities = this.cityManager.getCitiesByOwner(humanId);
+    const targetCities = this.cityManager.getCitiesByOwner(targetNationId);
+    const fromCityId = this.tradeRouteProposal!.fromCityId;
+    const toCityId = this.tradeRouteProposal!.toCityId;
+
+    rows.push(textRow('Your city:'));
+    if (humanCities.length === 0) {
+      rows.push(textRow('No cities available.', true));
+    } else {
+      for (const city of humanCities) {
+        const total = this.tradeConnectionSystem.getCityTradeCapacity(city.id);
+        const available = this.tradeConnectionSystem.getCityAvailableTradeCapacity(city.id);
+        rows.push({
+          kind: 'button',
+          text: `${city.name}: ${available}/${total} capacity`,
+          disabled: available < 1,
+          selected: city.id === fromCityId,
+          accentColor,
+          onClick: () => {
+            if (this.tradeRouteProposal) {
+              this.tradeRouteProposal = { ...this.tradeRouteProposal, fromCityId: city.id };
+              this.requestRefresh();
+            }
+          },
+        });
+      }
+    }
+
+    rows.push(textRow('Their city:'));
+    if (targetCities.length === 0) {
+      rows.push(textRow('No cities available.', true));
+    } else {
+      for (const city of targetCities) {
+        const total = this.tradeConnectionSystem.getCityTradeCapacity(city.id);
+        const available = this.tradeConnectionSystem.getCityAvailableTradeCapacity(city.id);
+        rows.push({
+          kind: 'button',
+          text: `${city.name}: ${available}/${total} capacity`,
+          disabled: available < 1,
+          selected: city.id === toCityId,
+          accentColor,
+          onClick: () => {
+            if (this.tradeRouteProposal) {
+              this.tradeRouteProposal = { ...this.tradeRouteProposal, toCityId: city.id };
+              this.requestRefresh();
+            }
+          },
+        });
+      }
+    }
+
+    rows.push({ kind: 'separator' });
+
+    if (!fromCityId || !toCityId) {
+      rows.push(textRow('Select cities above to propose a route.', true));
+    } else {
+      const validation = this.tradeConnectionSystem.canCreateTradeConnection(fromCityId, toCityId);
+      rows.push(textRow(validation.ok ? 'Valid route.' : `Cannot create route: ${validation.reason}`, !validation.ok));
+
+      const paymentGold = setupPayment ?? 0;
+      rows.push(textRow(paymentGold === 0 ? 'Setup payment: Free' : `Setup payment: ${paymentGold} gold`));
+      const humanGold = this.nationManager.getResources(humanId).gold;
+      if (setupPayment !== null && humanGold < paymentGold) {
+        rows.push(textRow(`Insufficient gold (have ${Math.floor(humanGold)}, need ${paymentGold}).`, true));
+      }
+
+      const canConfirm = validation.ok && setupPayment !== null && humanGold >= paymentGold;
+      rows.push(disabledReasonButtonRow(
+        'Confirm Proposal',
+        canConfirm ? undefined : 'Route not valid.',
+        () => {
+          if (!canConfirm || !fromCityId || !toCityId || setupPayment === null) return;
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'proposeTradeRoute', targetNationId, fromCityId, toCityId, setupPaymentGold: setupPayment },
+          }));
+          this.tradeRouteProposal = null;
+        },
+        accentColor,
+      ));
+    }
+
+    rows.push({
+      kind: 'button',
+      text: 'Cancel',
+      onClick: () => {
+        this.tradeRouteProposal = null;
+        this.requestRefresh();
+      },
+    });
+
+    return rows;
   }
 
   private getDiplomaticBreakdownRows(viewerNationId: string, targetNationId: string): RightSidebarRow[] {
@@ -1639,6 +1784,8 @@ function getProducibleName(item: Producible): string {
       return item.wonderType.name;
     case 'corporation':
       return item.corporationType.name;
+    case 'tradeRoute':
+      return item.displayName;
   }
 }
 
@@ -1651,6 +1798,7 @@ function getProducibleSpritePath(item: Producible): string | undefined {
     case 'corporation':
       return getCorporationSpritePath(item.corporationType.id);
     case 'building':
+    case 'tradeRoute':
       return undefined;
   }
 }

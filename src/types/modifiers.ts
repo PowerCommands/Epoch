@@ -10,6 +10,7 @@ export interface ModifierSet {
   goldPercent?: number;
   sciencePercent?: number;
   culturePercent?: number;
+  tradeCapacity?: number;
 }
 
 export const EMPTY_MODIFIERS: Readonly<ModifierSet> = Object.freeze({});

@@ -373,6 +373,8 @@ export class ProductionSystem {
         return item.wonderType.productionCost;
       case 'corporation':
         return item.corporationType.productionCost;
+      case 'tradeRoute':
+        return item.productionCost;
     }
   }
 
@@ -388,6 +390,8 @@ export class ProductionSystem {
         return 'Wonder already completed';
       case 'corporation':
         return 'Corporation already founded or requirements no longer met';
+      case 'tradeRoute':
+        return undefined;
     }
   }
 
