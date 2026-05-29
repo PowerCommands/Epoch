@@ -208,6 +208,10 @@ export class ProposalDialog {
       case 'resource_trade': {
         const resource = this.context.getResourceName(proposal.payload.resourceId);
         const totalGold = proposal.payload.goldPerTurn * proposal.payload.turns;
+        const humanIsSeller = proposal.payload.sellerNationId === proposal.toNationId;
+        if (humanIsSeller) {
+          return `${fromName} wishes to buy:\n+ ${resource} (${proposal.payload.turns} turns)\nOffer:\n+ ${totalGold} gold (${proposal.payload.goldPerTurn}/turn)`;
+        }
         return `${fromName} offers:\n+ ${resource} (${proposal.payload.turns} turns)\nFor:\n- ${totalGold} gold (${proposal.payload.goldPerTurn}/turn)`;
       }
       case 'gold_trade':

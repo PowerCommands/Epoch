@@ -42,6 +42,7 @@ import type { WonderSystem } from '../../systems/WonderSystem';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
+import type { TradeDiplomacySystem } from '../../systems/diplomacy/TradeDiplomacySystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
@@ -101,6 +102,7 @@ export class RightSidebarPanelDataProvider {
   private corporationSystem: CorporationSystem | null = null;
   private tradeDealSystem: TradeDealSystem | null = null;
   private tradeConnectionSystem: TradeConnectionSystem | null = null;
+  private tradeDiplomacySystem: TradeDiplomacySystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
   private tradeRouteProposal: { targetNationId: string; fromCityId: string | null; toCityId: string | null } | null = null;
   private resourceCitySearchSystem: ResourceCitySearchSystem | null = null;
@@ -187,6 +189,10 @@ export class RightSidebarPanelDataProvider {
 
   setTradeConnectionSystem(system: TradeConnectionSystem): void {
     this.tradeConnectionSystem = system;
+  }
+
+  setTradeDiplomacySystem(system: TradeDiplomacySystem): void {
+    this.tradeDiplomacySystem = system;
   }
 
   setResourceAccessSystem(resourceAccessSystem: ResourceAccessSystem): void {
@@ -1501,12 +1507,22 @@ export class RightSidebarPanelDataProvider {
       ? formatIdeologyCompatibilityLabel(evaluation.ideologyCompatibilityLabel)
       : 'Unknown';
 
+    const tradeHistory = this.tradeDiplomacySystem?.getTradeHistory(viewerNationId, targetNationId);
+    const tradeHistoryRows: ReturnType<typeof textRow>[] = [];
+    if (tradeHistory && tradeHistory.tradeTrustBonus > 0) {
+      tradeHistoryRows.push(textRow(`Trade Route History: +${tradeHistory.tradeTrustBonus} Trust`, true));
+    }
+    if (tradeHistory && tradeHistory.tradeAffinityBonus > 0) {
+      tradeHistoryRows.push(textRow(`Trade Cooperation: +${tradeHistory.tradeAffinityBonus} Affinity`, true));
+    }
+
     return [
       textRow('Relations', false, true),
       textRow(`Trust: ${Math.round(relation.trust)}`),
       textRow(`Fear: ${Math.round(relation.fear)}`),
       textRow(`Hostility: ${Math.round(relation.hostility)}`),
       textRow(`Affinity: ${Math.round(relation.affinity)}`),
+      ...tradeHistoryRows,
       textRow(`Ideology: ${ideologyScore === undefined ? '?' : formatSigned(ideologyScore)} (${ideologyLabel})`),
       textRow(`Border pressure: ${formatBorderPressureLevel(borderPressureLevel)}`),
       textRow(`Military balance: ${formatMilitaryComparison(militaryComparison)}`),

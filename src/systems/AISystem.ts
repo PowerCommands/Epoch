@@ -39,6 +39,7 @@ import type { DiscoverySystem } from './DiscoverySystem';
 import type { HappinessSystem } from './HappinessSystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { TradeConnectionSystem } from './TradeConnectionSystem';
+import type { DiplomaticProposalSystem } from './diplomacy/DiplomaticProposalSystem';
 import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
@@ -380,6 +381,20 @@ const SCORE_HAPPINESS_BUILDING_LOW = SCORE_FOOD_BUILDING * 1.5;
 const LUXURY_VALUE_MULTIPLIER_LOW = 1.5;
 const LUXURY_VALUE_MULTIPLIER_CRITICAL = 2.0;
 
+const HUMAN_PLAYER_TRADE_PRIORITY = 50;
+const TRADE_PROPOSAL_EXPIRY_TURNS = 5;
+const TRADE_PROPOSAL_CADENCE = 10;
+
+function getProposalGoldPerTurn(resourceId: string, luxuryMultiplier: number): number {
+  const resource = getNaturalResourceById(resourceId);
+  if (!resource) return 4;
+  switch (resource.category) {
+    case 'luxury': return Math.round(5 * luxuryMultiplier);
+    case 'strategic': return 8;
+    default: return 2; // bonus resources
+  }
+}
+
 function describeProducible(item: Producible): string {
   switch (item.kind) {
     case 'unit': return `unit:${item.unitType.name}`;
@@ -454,6 +469,7 @@ export class AISystem {
   private readonly doctrineProductionLoggedRound = new Map<string, number>();
   private readonly navalSaturationLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
+  private readonly lastTradeProposalTurnByNation = new Map<string, number>();
   private readonly longTermExpansionLoggedRound = new Map<string, number>();
   private readonly leaderEvacuationDecisionLog = new Map<string, string>();
   private readonly leaderEvacuationEligibilityByNation = new Map<string, LeaderEvacuationEligibility>();
@@ -527,6 +543,7 @@ export class AISystem {
     private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
     private readonly exileProtectionSystem?: ExileProtectionSystem,
     private readonly tradeConnectionSystem?: TradeConnectionSystem,
+    private readonly diplomaticProposalSystem?: DiplomaticProposalSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -808,11 +825,85 @@ export class AISystem {
       );
     }
 
-    outer: for (const other of this.nationManager.getAllNations()) {
-      if (other.id === nationId) continue;
-      if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') continue;
-      if (!this.diplomacyManager.hasTradeRelations(nationId, other.id)) continue;
+    // Score potential sellers: base = trust toward them, +50 bonus for human player.
+    const currentRound = this.turnManager.getCurrentRound();
+    const scoredSellers = this.nationManager.getAllNations()
+      .filter((other) => {
+        if (other.id === nationId) return false;
+        if (this.diplomacyManager!.getState(nationId, other.id) === 'WAR') return false;
+        if (!this.diplomacyManager!.hasTradeRelations(nationId, other.id)) return false;
+        return true;
+      })
+      .map((other) => {
+        const relation = this.diplomacyManager!.getRelation(nationId, other.id);
+        const humanBonus = other.isHuman ? HUMAN_PLAYER_TRADE_PRIORITY : 0;
+        return { nation: other, score: relation.trust + humanBonus };
+      })
+      .sort((a, b) => b.score - a.score);
 
+    outer: for (const { nation: other } of scoredSellers) {
+      // Human player: generate a proposal instead of creating a deal directly
+      if (other.isHuman && this.diplomaticProposalSystem) {
+        const humanId = other.id;
+        const lastProposal = this.lastTradeProposalTurnByNation.get(nationId) ?? -999;
+        if (currentRound - lastProposal < TRADE_PROPOSAL_CADENCE) continue;
+        const alreadyHasPending = this.diplomaticProposalSystem
+          .getPendingProposalsForNation(humanId)
+          .some((p) => p.fromNationId === nationId && p.payload.kind === 'resource_trade');
+        if (alreadyHasPending) continue;
+
+        // Check connection capacity exists between these nations
+        const connCapacity = this.tradeConnectionSystem?.getActiveDealCapacityBetweenNations(nationId, humanId) ?? 0;
+        const connUsed = this.tradeDealSystem.getDealsBetween(nationId, humanId).length;
+        if (connCapacity <= connUsed) continue;
+
+        // Try "buy from human": human sells a resource this AI lacks
+        const humanResources = this.resourceAccessSystem.getOwnedNaturalResources(humanId);
+        for (const resourceId of humanResources) {
+          if (available.has(resourceId)) continue;
+          const alreadyImporting = this.tradeDealSystem.getDealsBetween(nationId, humanId)
+            .some((d) => d.sellerNationId === humanId && d.resourceId === resourceId);
+          if (alreadyImporting) continue;
+          const gpt = getProposalGoldPerTurn(resourceId, luxuryValueMultiplier);
+          if (this.nationManager.getResources(nationId).gold < gpt) continue;
+          this.diplomaticProposalSystem.createProposal({
+            fromNationId: nationId,
+            toNationId: humanId,
+            kind: 'resource_trade',
+            payload: { kind: 'resource_trade', resourceId, turns: dealTurns, goldPerTurn: gpt, sellerNationId: humanId, buyerNationId: nationId },
+            createdTurn: currentRound,
+            expiresTurn: currentRound + TRADE_PROPOSAL_EXPIRY_TURNS,
+          });
+          this.lastTradeProposalTurnByNation.set(nationId, currentRound);
+          console.debug(this.formatLog(nationId, `AI proposed to buy ${resourceId} from human player.`));
+          break outer;
+        }
+
+        // Try "sell to human": AI offers a resource the human lacks
+        const humanAvailable = new Set(this.resourceAccessSystem.getAvailableResources(humanId));
+        const aiResources = this.resourceAccessSystem.getOwnedNaturalResources(nationId);
+        for (const resourceId of aiResources) {
+          if (humanAvailable.has(resourceId)) continue;
+          const alreadySelling = this.tradeDealSystem.getDealsBetween(nationId, humanId)
+            .some((d) => d.sellerNationId === nationId && d.resourceId === resourceId);
+          if (alreadySelling) continue;
+          const gpt = getProposalGoldPerTurn(resourceId, luxuryValueMultiplier);
+          this.diplomaticProposalSystem.createProposal({
+            fromNationId: nationId,
+            toNationId: humanId,
+            kind: 'resource_trade',
+            payload: { kind: 'resource_trade', resourceId, turns: dealTurns, goldPerTurn: gpt },
+            createdTurn: currentRound,
+            expiresTurn: currentRound + TRADE_PROPOSAL_EXPIRY_TURNS,
+          });
+          this.lastTradeProposalTurnByNation.set(nationId, currentRound);
+          console.debug(this.formatLog(nationId, `AI proposed to sell ${resourceId} to human player.`));
+          break outer;
+        }
+        continue; // No suitable proposal found; try next seller (AI)
+      }
+
+      // Non-human: direct deal (existing behavior)
       const ownedResources = this.resourceAccessSystem.getOwnedNaturalResources(other.id);
       const orderedResources = luxuryValueMultiplier > 1.0
         ? [...ownedResources].sort((a, b) => luxuryRank(b) - luxuryRank(a))

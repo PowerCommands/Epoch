@@ -5,6 +5,7 @@ import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
+import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacySystem';
 import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
@@ -242,6 +243,7 @@ export interface SavedGameState {
   corporations?: SavedCorporation[];
   tradeDeals?: TradeDeal[];
   tradeConnections?: TradeConnection[];
+  tradeHistory?: SavedTradeHistoryEntry[];
   exileProtectionAgreements?: ExileProtectionAgreement[];
   worldMarkers?: WorldMarker[];
   worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];

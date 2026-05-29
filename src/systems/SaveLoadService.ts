@@ -29,6 +29,7 @@ import type { ProductionSystem } from './ProductionSystem';
 import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { TradeConnectionSystem } from './TradeConnectionSystem';
+import type { TradeDiplomacySystem } from './diplomacy/TradeDiplomacySystem';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
@@ -63,6 +64,7 @@ export interface SaveLoadContext {
   corporationSystem?: CorporationSystem;
   tradeDealSystem?: TradeDealSystem;
   tradeConnectionSystem?: TradeConnectionSystem;
+  tradeDiplomacySystem?: TradeDiplomacySystem;
   exileProtectionSystem?: ExileProtectionSystem;
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
@@ -103,6 +105,7 @@ export class SaveLoadService {
       corporationSystem,
       tradeDealSystem,
       tradeConnectionSystem,
+      tradeDiplomacySystem,
       exileProtectionSystem,
       worldMarkerSystem,
       foreignTroopViolationSystem,
@@ -315,6 +318,7 @@ export class SaveLoadService {
       corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       tradeConnections: tradeConnectionSystem?.getAllConnections(),
+      tradeHistory: tradeDiplomacySystem?.getAllEntries(),
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
       worldMarkers: worldMarkerSystem?.getAllMarkersForSave(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
@@ -417,6 +421,7 @@ export class SaveLoadService {
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     context.tradeConnectionSystem?.restoreConnections(state.tradeConnections ?? []);
+    context.tradeDiplomacySystem?.restoreEntries(state.tradeHistory ?? []);
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     if (context.worldMarkerSystem) {
       context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());

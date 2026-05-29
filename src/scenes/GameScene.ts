@@ -68,6 +68,7 @@ import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/
 import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
+import { TradeDiplomacySystem } from '../systems/diplomacy/TradeDiplomacySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
 import { IdeologicalDriftSystem, type IdeologicalDriftEvent } from '../systems/diplomacy/IdeologicalDriftSystem';
@@ -485,6 +486,7 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
+    const tradeDiplomacySystem = new TradeDiplomacySystem(diplomacyManager);
     const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(diplomacyManager);
     const ideologicalDriftSystem = new IdeologicalDriftSystem(
       diplomacyManager,
@@ -618,6 +620,13 @@ export class GameScene extends Phaser.Scene {
     const conqueredCityUnhappinessSystem = new ConqueredCityUnhappinessSystem(cityManager);
     getConqueredCityUnhappiness = (nationId) => conqueredCityUnhappinessSystem.getUnhappiness(nationId);
     turnManager.on('roundStart', () => conqueredCityUnhappinessSystem.handleRoundStart());
+    turnManager.on('roundStart', (event) => {
+      tradeDiplomacySystem.onRoundEnd(
+        event.round,
+        tradeConnectionSystem.getAllConnections(),
+        tradeDealSystem.getAllDeals(),
+      );
+    });
 
     const warWearinessSystem = new WarWearinessSystem(nationManager, diplomacyManager, () => turnManager.getCurrentRound());
     getWarWeariness = (nationId) => warWearinessSystem.getWarWeariness(nationId);
@@ -625,6 +634,9 @@ export class GameScene extends Phaser.Scene {
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
       const cancelledConns = tradeConnectionSystem.cancelConnectionsBetweenNations(aggressorId, targetId);
+      if (cancelledConns.length > 0) {
+        tradeDiplomacySystem.onWarWithTrade(aggressorId, targetId);
+      }
       for (const conn of cancelledConns) {
         const fromCity = cityManager.getCity(conn.cityAId);
         const toCity = cityManager.getCity(conn.cityBId);
@@ -738,13 +750,16 @@ export class GameScene extends Phaser.Scene {
           break;
         }
         case 'resource_trade': {
+          const sellerNationId = proposal.payload.sellerNationId ?? fromId;
+          const buyerNationId = proposal.payload.buyerNationId ?? toId;
           tradeDealSystem.createDeal({
-            sellerNationId: fromId,
-            buyerNationId: toId,
+            sellerNationId,
+            buyerNationId,
             resourceId: proposal.payload.resourceId,
             turns: proposal.payload.turns,
             goldPerTurn: proposal.payload.goldPerTurn,
           });
+          tradeDiplomacySystem.onTradeProposalAccepted(fromId, toId);
           break;
         }
         case 'gold_trade': {
@@ -773,6 +788,20 @@ export class GameScene extends Phaser.Scene {
         nationIds: [proposal.fromNationId, proposal.toNationId],
         category: 'diplomacy',
         message: `${toName} rejected ${formatProposalKind(proposal.payload.kind)} from ${fromName}.`,
+      });
+    });
+
+    diplomaticProposalSystem.onCreated((proposal) => {
+      if (proposal.payload.kind !== 'resource_trade') return;
+      if (proposal.toNationId !== humanNationIdForDiplomacy) return;
+      const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
+      const resourceName = proposal.payload.resourceId;
+      const humanIsSeller = proposal.payload.sellerNationId === proposal.toNationId;
+      const action = humanIsSeller ? `offered to buy ${resourceName} trade from` : `offered ${resourceName} trade to`;
+      logManager.info({
+        nationIds: [proposal.fromNationId, proposal.toNationId],
+        category: 'diplomacy',
+        message: `${fromName} ${action} you.`,
       });
     });
     aiDiplomacySystem.onDecision((reason) => {
@@ -1472,6 +1501,7 @@ export class GameScene extends Phaser.Scene {
       aiOverseasExpansionSystem,
       exileProtectionSystem,
       tradeConnectionSystem,
+      diplomaticProposalSystem,
     );
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
@@ -1934,6 +1964,17 @@ export class GameScene extends Phaser.Scene {
           return; // Allow item to be removed from queue (connection already cancelled)
         }
         tradeConnectionSystem.activateTradeConnection(item.connectionId);
+        const activated = tradeConnectionSystem.getConnection(item.connectionId);
+        if (activated) {
+          tradeDiplomacySystem.onTradeRouteActivated(activated.nationAId, activated.nationBId);
+          const nameA = nationManager.getNation(activated.nationAId)?.name ?? activated.nationAId;
+          const nameB = nationManager.getNation(activated.nationBId)?.name ?? activated.nationBId;
+          logManager.info({
+            nationIds: [activated.nationAId, activated.nationBId],
+            category: 'diplomacy',
+            message: `${nameA} and ${nameB} strengthened relations through a new trade route.`,
+          });
+        }
         rightPanel?.requestRefresh();
         return; // Allow item to be removed from queue
       }
@@ -2930,6 +2971,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setTradeConnectionSystem(tradeConnectionSystem);
+    rightPanel.setTradeDiplomacySystem(tradeDiplomacySystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
     rightPanel.setResourceCitySearchSystem(resourceCitySearchSystem);
     rightPanel.setEraSystem(eraSystem);
@@ -3840,6 +3882,7 @@ export class GameScene extends Phaser.Scene {
           policySystem,
           tradeDealSystem,
           tradeConnectionSystem,
+          tradeDiplomacySystem,
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
@@ -4250,6 +4293,7 @@ export class GameScene extends Phaser.Scene {
         policySystem,
         tradeDealSystem,
         tradeConnectionSystem,
+        tradeDiplomacySystem,
         exileProtectionSystem,
         corporationSystem,
         worldMarkerSystem,
@@ -4316,6 +4360,7 @@ export class GameScene extends Phaser.Scene {
           policySystem,
           tradeDealSystem,
           tradeConnectionSystem,
+          tradeDiplomacySystem,
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
@@ -4356,6 +4401,7 @@ export class GameScene extends Phaser.Scene {
             policySystem,
             tradeDealSystem,
             tradeConnectionSystem,
+            tradeDiplomacySystem,
             exileProtectionSystem,
             corporationSystem,
             worldMarkerSystem,
