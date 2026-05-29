@@ -37,6 +37,7 @@ export interface GameContext {
   unitManager: UnitManager;
   autoplaySystem: AutoplaySystem;
   revealMapResourcesTemporarily: () => void;
+  setFogEnabled: (enabled: boolean) => void;
 }
 
 export interface CheatCommand {
@@ -236,6 +237,26 @@ export class CheatSystem {
         return context.diagnosticSystem.isTurnLoggingEnabled()
           ? 'Turn logging enabled.'
           : 'Turn logging disabled.';
+      },
+    });
+
+    this.register({
+      name: 'fog',
+      description: 'Toggle fog of war with "fog on" or "fog off".',
+      execute: (args, context) => {
+        if (args.length !== 1 || (args[0] !== 'on' && args[0] !== 'off')) {
+          return 'Usage: fog <on|off>';
+        }
+        const enabled = args[0] === 'on';
+        context.setFogEnabled(enabled);
+        return enabled ? 'Fog of war enabled.' : 'Fog of war disabled.';
+      },
+      complete: (args) => {
+        if (args.length > 1) return [];
+        return matchLiteralSuggestions(args[0] ?? '', [
+          { value: 'on', description: 'Enable fog of war.' },
+          { value: 'off', description: 'Disable fog of war (reveal whole map).' },
+        ]);
       },
     });
 

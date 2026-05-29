@@ -1336,6 +1336,18 @@ export class RightSidebarPanelDataProvider {
       hasTradeRelations ? 0xb86767 : nation?.color,
     ));
     if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
+    // Exchange Maps: one-time intelligence sharing. AI accepts unless hostile
+    // or at war; repeatable as both sides discover more of the world.
+    rows.push(disabledReasonButtonRow(
+      'Exchange Maps',
+      relation.state === 'WAR' ? 'Unavailable during war.' : undefined,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'exchangeMaps', targetNationId: nationId },
+        }));
+      },
+      nation?.color,
+    ));
     const isAtWar = relation.state === 'WAR';
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);

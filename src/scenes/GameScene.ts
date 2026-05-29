@@ -161,8 +161,8 @@ import {
 } from '../utils/assetPaths';
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems/ProductionRules';
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
-import { TileType } from '../types/map';
-import type { ScenarioData } from '../types/scenario';
+import { TileType, type Tile, type MapData } from '../types/map';
+import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { City } from '../entities/City';
 import type { Nation } from '../entities/Nation';
 import type { Unit } from '../entities/Unit';
@@ -292,6 +292,14 @@ export class GameScene extends Phaser.Scene {
     // Enrich unit events with cityId (used by right-side details refreshes).
     unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
 
+    // 7b. Give every nation a starting Scout to accelerate early-game
+    // exploration, discovery and diplomacy. New games only — loaded saves
+    // already contain their units. Scenarios that explicitly place a Scout for
+    // a nation keep theirs (duplicate protection below).
+    if (!data.savedState) {
+      this.spawnStartingScouts(activeNations, unitManager, gridSystem, mapData);
+    }
+
     // Assigned once all object renderers exist (see fog wiring below). Lets
     // updateFog() re-cull cities/units/borders/resources/improvements after a
     // visibility recompute. No-op until then so early calls stay safe.
@@ -301,6 +309,8 @@ export class GameScene extends Phaser.Scene {
       const humanCities = cityManager.getCitiesByOwner(humanNationId);
       const humanUnits = unitManager.getUnitsByOwner(humanNationId);
       visibilitySystem.update(humanCities, humanUnits);
+      // Any city now in vision becomes permanently known (city + surroundings).
+      visibilitySystem.recordVisibleCities(cityManager.getAllCities());
       fogOfWarRenderer.refresh(humanCities, humanUnits);
       applyFogToRenderers();
     };
@@ -1075,8 +1085,16 @@ export class GameScene extends Phaser.Scene {
     // generate vision, so they remain visible after each recompute.
     const canSeeTile = (tileX: number, tileY: number): boolean =>
       visibilitySystem.canRenderObjectAt(tileX, tileY);
-    cityRenderer.setVisibilityPredicate(canSeeTile);
-    cityBannerRenderer.setVisibilityPredicate(canSeeTile);
+    // Cities are permanent intelligence: a discovered city stays on the map even
+    // when it leaves vision. Other objects (units, borders, resources,
+    // improvements) still require current vision.
+    const canShowCity = (tileX: number, tileY: number): boolean => {
+      if (visibilitySystem.canRenderObjectAt(tileX, tileY)) return true;
+      const city = cityManager.getCityAt(tileX, tileY);
+      return city !== undefined && visibilitySystem.isKnownCity(city.id);
+    };
+    cityRenderer.setVisibilityPredicate(canShowCity);
+    cityBannerRenderer.setVisibilityPredicate(canShowCity);
     unitRenderer.setVisibilityPredicate(canSeeTile);
     territoryRenderer.setVisibilityPredicate(canSeeTile);
     tileBuildingRenderer.setVisibilityPredicate(canSeeTile);
@@ -2826,6 +2844,34 @@ export class GameScene extends Phaser.Scene {
       } else if (action === 'cancelTradeRelations') {
         diplomacyManager.cancelTradeRelations(humanNationIdForDiplomacy, targetNationId);
         rightPanel?.refreshCurrent();
+      } else if (action === 'exchangeMaps') {
+        const leaderName = getLeaderByNationId(targetNationId)?.name ?? targetNation.name;
+        const atWar = diplomacyManager.getState(humanNationIdForDiplomacy, targetNationId) === 'WAR';
+        const attitude = diplomaticEvaluationSystem?.evaluateAttitude(targetNationId, humanNationIdForDiplomacy) ?? 'neutral';
+        const accepted = !atWar && attitude !== 'hostile';
+
+        if (accepted) {
+          // Reuse the normal city-discovery path for every current AI city.
+          // Already-known cities are ignored by discoverCity().
+          for (const city of cityManager.getCitiesByOwner(targetNationId)) {
+            visibilitySystem.discoverCity(city);
+          }
+          diplomacyManager.recordMapExchange(humanNationIdForDiplomacy, targetNationId);
+          updateFog();
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${leaderName} agrees to exchange maps.`,
+          });
+        } else {
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${leaderName} refuses to exchange maps.`,
+          });
+        }
+        hudLayer?.refresh();
+        rightPanel?.refreshCurrent();
       } else if (action === 'proposeTradeRoute') {
         const detail = (event as CustomEvent).detail as { fromCityId: string; toCityId: string; setupPaymentGold: number };
         const { fromCityId, toCityId, setupPaymentGold } = detail;
@@ -3019,6 +3065,10 @@ export class GameScene extends Phaser.Scene {
     this.minimapHud.setVisibilityPredicates(
       (x, y) => visibilitySystem.isTileVisibleToHuman(x, y),
       (x, y) => visibilitySystem.isTileExploredByHuman(x, y),
+      (x, y) => {
+        const city = cityManager.getCityAt(x, y);
+        return city !== undefined && visibilitySystem.isKnownCity(city.id);
+      },
     );
     // Stack the lens toggle above the minimap panel.
     hudLayer.setMapLensBottomReserved(236);
@@ -3990,6 +4040,11 @@ export class GameScene extends Phaser.Scene {
       unitManager,
       autoplaySystem,
       revealMapResourcesTemporarily,
+      setFogEnabled: (enabled: boolean): void => {
+        visibilitySystem.setEnabled(enabled);
+        fogOfWarRenderer.setVisible(enabled);
+        updateFog();
+      },
     }));
 
     turnManager.on('turnStart', () => {
@@ -4695,6 +4750,65 @@ export class GameScene extends Phaser.Scene {
       return candidate;
     }
 
+    return null;
+  }
+
+  /**
+   * Spawn one starting Scout per nation, using the normal unit creation path.
+   * Each Scout is anchored on the nation's scenario start position
+   * (`startTerritoryCenter`) — the same point the settler and initial territory
+   * derive from — which is stable regardless of whether the nation begins with
+   * a settler or a city. Nations that already own a Scout (e.g. one placed
+   * explicitly by a scenario) are skipped, so scenarios can override this.
+   */
+  private spawnStartingScouts(
+    nations: ReadonlyArray<ScenarioNation>,
+    unitManager: UnitManager,
+    gridSystem: IGridSystem,
+    mapData: MapData,
+  ): void {
+    const scoutType = getUnitTypeById('scout');
+    if (!scoutType) return;
+
+    for (const nation of nations) {
+      // Duplicate protection: respect a Scout the scenario already placed.
+      if (unitManager.getUnitsByOwner(nation.id).some((unit) => unit.unitType.id === 'scout')) continue;
+
+      const anchor = { x: nation.startTerritoryCenter.q, y: nation.startTerritoryCenter.r };
+      const tile = this.findStartingScoutTile(anchor, unitManager, gridSystem, mapData);
+      if (tile === null) continue;
+
+      unitManager.createUnit({ type: scoutType, ownerId: nation.id, tileX: tile.x, tileY: tile.y });
+    }
+  }
+
+  /**
+   * Find a spawn tile for a starting Scout: the anchor tile when free,
+   * otherwise the nearest free land tile expanding outward ring by ring.
+   */
+  private findStartingScoutTile(
+    center: { x: number; y: number },
+    unitManager: UnitManager,
+    gridSystem: IGridSystem,
+    mapData: MapData,
+  ): Tile | null {
+    const isLandAndFree = (tile: Tile | undefined): tile is Tile =>
+      tile !== undefined
+      && tile.type !== TileType.Ocean
+      && tile.type !== TileType.Coast
+      && unitManager.getUnitAt(tile.x, tile.y) === null;
+
+    const centerTile = mapData.tiles[center.y]?.[center.x];
+    if (isLandAndFree(centerTile)) return centerTile;
+
+    const MAX_RADIUS = 4;
+    for (let radius = 1; radius <= MAX_RADIUS; radius++) {
+      const ring = gridSystem
+        .getTilesInRange(center, radius, mapData)
+        .filter((tile) => gridSystem.getDistance(center, { x: tile.x, y: tile.y }) === radius)
+        .filter(isLandAndFree);
+      if (ring.length > 0) return ring[0]!;
+    }
     return null;
   }
 

@@ -44,6 +44,13 @@ const DELTA_CITY_CAPTURED: MemoryDelta = {
   trust: -20,
 };
 
+// A friendly intelligence-sharing gesture. Smaller than major agreements but
+// enough to matter, and stacks modestly across repeated exchanges.
+const DELTA_EXCHANGE_MAPS: MemoryDelta = {
+  trust: 5,
+  affinity: 2,
+};
+
 export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
   constructor(private readonly diplomacyManager: DiplomacyManager) {}
 
@@ -65,6 +72,10 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
 
   onCityCaptured(attacker: string, defender: string): void {
     this.adjustRelation(attacker, defender, DELTA_CITY_CAPTURED);
+  }
+
+  onExchangeMaps(a: string, b: string): void {
+    this.adjustRelation(a, b, DELTA_EXCHANGE_MAPS);
   }
 
   /**

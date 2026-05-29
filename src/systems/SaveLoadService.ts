@@ -322,7 +322,12 @@ export class SaveLoadService {
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       tradeConnections: tradeConnectionSystem?.getAllConnections(),
       tradeHistory: tradeDiplomacySystem?.getAllEntries(),
-      fogOfWar: visibilitySystem ? { explored: visibilitySystem.getExploredTileCoords() } : undefined,
+      fogOfWar: visibilitySystem
+        ? {
+            explored: visibilitySystem.getExploredTileCoords(),
+            knownCityIds: visibilitySystem.getKnownCityIds(),
+          }
+        : undefined,
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
       worldMarkers: worldMarkerSystem?.getAllMarkersForSave(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
@@ -428,6 +433,7 @@ export class SaveLoadService {
     context.tradeDiplomacySystem?.restoreEntries(state.tradeHistory ?? []);
     if (state.fogOfWar && context.visibilitySystem) {
       context.visibilitySystem.restoreExplored(state.fogOfWar.explored);
+      context.visibilitySystem.restoreKnownCities(state.fogOfWar.knownCityIds ?? []);
     }
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     if (context.worldMarkerSystem) {

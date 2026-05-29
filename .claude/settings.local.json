@@ -1,5 +1,4 @@
 {
-  "model": "claude-opus-4-8",
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
@@ -16,7 +15,9 @@
       "Bash(grep *)",
       "Bash(xargs *)",
       "Bash(tee *)",
-      "Bash(claude --version)"
+      "Bash(claude --version)",
+      "Bash(node *)"
     ]
-  }
+  },
+  "model": "claude-opus-4-8"
 }

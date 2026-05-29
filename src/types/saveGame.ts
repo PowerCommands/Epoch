@@ -255,4 +255,6 @@ export interface SavedGameState {
 /** Sparse list of tiles the human player has explored or seen. */
 export interface SavedFogOfWar {
   explored: Array<{ q: number; r: number }>;
+  /** Ids of cities the human has permanently discovered (intelligence). */
+  knownCityIds?: string[];
 }

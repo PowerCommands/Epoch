@@ -107,6 +107,7 @@ export interface DiplomaticMemoryHook {
   onOpenBorders(from: string, to: string): void;
   onCancelOpenBorders(from: string, to: string): void;
   onCityCaptured(attacker: string, defender: string): void;
+  onExchangeMaps(a: string, b: string): void;
 }
 
 export interface DiplomaticMemoryValues {
@@ -611,6 +612,16 @@ export class DiplomacyManager {
    * given pair. Quiet — no listeners fire. The memory system clamps before
    * calling so the manager only stores valid 0–100 values.
    */
+  /**
+   * Record a successful map exchange as a friendly diplomatic gesture. Applies
+   * the relationship bonus via the memory system and notifies listeners so the
+   * diplomacy UI refreshes. Does not change relation state (PEACE/WAR).
+   */
+  recordMapExchange(a: string, b: string): void {
+    this.memoryHook?.onExchangeMaps(a, b);
+    this.notifyChanged(a, b);
+  }
+
   setMemoryValues(a: string, b: string, values: DiplomaticMemoryValues): void {
     const key = this.pairKey(a, b);
     const current = this.relations.get(key) ?? createDefaultRelation();

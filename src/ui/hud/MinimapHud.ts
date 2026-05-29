@@ -57,6 +57,7 @@ export class MinimapHud {
   private isExpanded = false;
   private isTileVisible: (tileX: number, tileY: number) => boolean = () => true;
   private isTileExplored: (tileX: number, tileY: number) => boolean = () => true;
+  private isKnownCityTile: (tileX: number, tileY: number) => boolean = () => false;
   private _dirty = true;
   private _lastScrollX = NaN;
   private _lastScrollY = NaN;
@@ -201,9 +202,11 @@ export class MinimapHud {
   setVisibilityPredicates(
     isTileVisible: (tileX: number, tileY: number) => boolean,
     isTileExplored: (tileX: number, tileY: number) => boolean,
+    isKnownCityTile: (tileX: number, tileY: number) => boolean = () => false,
   ): void {
     this.isTileVisible = isTileVisible;
     this.isTileExplored = isTileExplored;
+    this.isKnownCityTile = isKnownCityTile;
     this.rebuild();
   }
 
@@ -225,9 +228,11 @@ export class MinimapHud {
         if (outline.length < 3) continue;
 
         // Explored-but-not-visible tiles show remembered terrain only — no
-        // nation/city ownership colours that would reveal enemy positions.
+        // nation/city ownership colours that would reveal enemy positions —
+        // except permanently known city centres, which stay marked.
         if (!this.isTileVisible(tile.x, tile.y)) {
-          this.mapGfx.fillStyle(TERRAIN_COLORS[tile.type], 1);
+          const knownCityColor = this.getKnownCityColor(tile.x, tile.y);
+          this.mapGfx.fillStyle(knownCityColor ?? TERRAIN_COLORS[tile.type], knownCityColor !== undefined ? CITY_TILE_ALPHA : 1);
           this.fillPolygon(this.mapGfx, outline);
           continue;
         }
@@ -407,6 +412,18 @@ export class MinimapHud {
     }
     graphics.closePath();
     graphics.fillPath();
+  }
+
+  /**
+   * Owner colour for a permanently known city centred on this tile, or
+   * undefined when there is no known city here. Used to keep discovered cities
+   * marked on the minimap even when they are outside current vision.
+   */
+  private getKnownCityColor(tileX: number, tileY: number): number | undefined {
+    if (!this.isKnownCityTile(tileX, tileY)) return undefined;
+    const city = this.cityManager.getCityAt(tileX, tileY);
+    if (city === undefined) return undefined;
+    return this.nationManager.getNation(city.ownerId)?.color;
   }
 
   private collectCityOwnedTiles(): Map<string, string> {
