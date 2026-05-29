@@ -29,6 +29,12 @@ export class TradeDealSystem {
   private canExportResource: TradeDealCanExportResource = () => false;
   /** Returns total active connection capacity between two nations. Defaults to Infinity for backward compat. */
   private connectionCapacityProvider: (nationA: string, nationB: string) => number = () => Infinity;
+  /**
+   * Whether a nation has the Trade Networks technology (practical commercial
+   * infrastructure). At least one party must have it to build a connection.
+   * Defaults to true so existing tests/back-compat paths are unaffected.
+   */
+  private hasTradeNetworks: (nationId: string) => boolean = () => true;
 
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
@@ -43,6 +49,10 @@ export class TradeDealSystem {
 
   setConnectionCapacityProvider(fn: (nationA: string, nationB: string) => number): void {
     this.connectionCapacityProvider = fn;
+  }
+
+  setHasTradeNetworks(fn: (nationId: string) => boolean): void {
+    this.hasTradeNetworks = fn;
   }
 
   createDeal(input: CreateTradeDealInput): TradeDealResult {
@@ -176,6 +186,11 @@ export class TradeDealSystem {
     }
     if (!this.diplomacyManager.hasTradeRelations(input.sellerNationId, input.buyerNationId)) {
       return { ok: false, reason: 'Active Trade Relations are required.' };
+    }
+    // Practical trade needs commercial infrastructure: at least one party must
+    // have the Trade Networks technology to build the connection.
+    if (!this.hasTradeNetworks(input.sellerNationId) && !this.hasTradeNetworks(input.buyerNationId)) {
+      return { ok: false, reason: 'Requires at least one nation to know Trade Networks.' };
     }
     if (!this.canExportResource(input.sellerNationId, input.resourceId)) {
       return { ok: false, reason: 'Seller does not currently have access to that resource.' };

@@ -908,6 +908,12 @@ export class RightSidebarPanelDataProvider {
       rows.push(textRow('Trade requires active Trade Relations.', true));
       return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
     }
+    const humanHasTradeNetworks = this.researchSystem?.isResearched(this.humanNationId, 'trade_networks') ?? false;
+    const otherHasTradeNetworks = this.researchSystem?.isResearched(leader.nationId, 'trade_networks') ?? false;
+    if (!humanHasTradeNetworks && !otherHasTradeNetworks) {
+      rows.push(textRow('Requires at least one nation to know Trade Networks.', true));
+      return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
+    }
     rows.push(...this.getTradeTabRows(leader.nationId));
     return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
   }
@@ -1273,6 +1279,8 @@ export class RightSidebarPanelDataProvider {
       haveMet: (a: string, b: string): boolean => this.discoverySystem?.hasMet(a, b) ?? true,
       hasTechnology: (targetNationId: string, techId: string): boolean =>
         this.researchSystem?.isResearched(targetNationId, techId) ?? false,
+      hasCulture: (targetNationId: string, cultureId: string): boolean =>
+        this.cultureSystem?.isUnlocked(targetNationId, cultureId) ?? false,
     };
     // Open borders are now directional: this row reflects whether the human
     // has granted the other nation passage. The toggle below flips that grant.

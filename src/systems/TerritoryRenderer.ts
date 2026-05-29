@@ -17,6 +17,9 @@ interface Point {
 
 interface ActiveSegment {
   ownerId: string;
+  /** Tile that "owns" this border segment (used for fog-of-war culling). */
+  tileX: number;
+  tileY: number;
   ax: number;
   ay: number;
   bx: number;
@@ -86,6 +89,13 @@ export class TerritoryRenderer {
     this.mapData = mapData;
     this.borderGfx = scene.add.graphics().setDepth(BORDER_DEPTH);
     this.ownerSnapshot = new Int32Array(mapData.width * mapData.height).fill(-1);
+  }
+
+  private visibilityPredicate: ((tileX: number, tileY: number) => boolean) | null = null;
+
+  /** Set a predicate that gates which territory segments are painted. */
+  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visibilityPredicate = predicate;
   }
 
   /**
@@ -195,8 +205,11 @@ export class TerritoryRenderer {
       );
 
       if (segmentOwnerId !== undefined) {
+        const ownerIsTile = segmentOwnerId === tileOwnerId;
         this.activeSegments.set(key, {
           ownerId: segmentOwnerId,
+          tileX: ownerIsTile ? x : neighbor.x,
+          tileY: ownerIsTile ? y : neighbor.y,
           ax: edgePoints[0].x,
           ay: edgePoints[0].y,
           bx: edgePoints[1].x,
@@ -211,6 +224,7 @@ export class TerritoryRenderer {
   private repaintFromActiveSegments(): void {
     this.borderGfx.clear();
     for (const segment of this.activeSegments.values()) {
+      if (this.visibilityPredicate && !this.visibilityPredicate(segment.tileX, segment.tileY)) continue;
       const nationColor = this.nationManager.getNation(segment.ownerId)?.color ?? 0x111111;
       this.borderGfx.lineStyle(this.getBorderWidth(), nationColor, this.getBorderAlpha());
       this.borderGfx.lineBetween(segment.ax, segment.ay, segment.bx, segment.by);

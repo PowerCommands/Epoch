@@ -72,6 +72,8 @@ export interface PartialDiplomacyRelationInput extends Partial<DiplomacyRelation
 export interface DiplomacyAgreementValidationContext {
   haveMet(a: string, b: string): boolean;
   hasTechnology(nationId: string, techId: string): boolean;
+  /** True when the nation has unlocked the given culture node. */
+  hasCulture(nationId: string, cultureId: string): boolean;
 }
 
 export interface DiplomacyAgreementValidationResult {
@@ -490,8 +492,10 @@ export class DiplomacyManager {
   ): DiplomacyAgreementValidationResult {
     if (nationAId === nationBId) return { ok: false, reason: 'Cannot trade with yourself.' };
     if (!context.haveMet(nationAId, nationBId)) return { ok: false, reason: 'You have not met this nation.' };
-    if (!context.hasTechnology(nationAId, 'foreign_trade') || !context.hasTechnology(nationBId, 'foreign_trade')) {
-      return { ok: false, reason: 'Requires both nations to know Foreign Trade.' };
+    // Trade Relations are a diplomatic/cultural permission: both nations need
+    // the culture node Foreign Trade (NOT the technology Trade Networks).
+    if (!context.hasCulture(nationAId, 'foreign_trade') || !context.hasCulture(nationBId, 'foreign_trade')) {
+      return { ok: false, reason: 'Requires both nations to have Foreign Trade culture.' };
     }
     if (this.getState(nationAId, nationBId) === 'WAR') return { ok: false, reason: 'Unavailable during war.' };
     if (!this.hasMutualEmbassies(nationAId, nationBId)) return { ok: false, reason: 'Requires mutual embassies.' };

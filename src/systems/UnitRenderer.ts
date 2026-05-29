@@ -50,6 +50,7 @@ export class UnitRenderer {
   private readonly nationManager: NationManager;
   private readonly visuals = new Map<string, UnitVisual>();
   private readonly hpBars = new Map<string, Phaser.GameObjects.Graphics>();
+  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
 
   constructor(
     scene: Phaser.Scene,
@@ -91,6 +92,22 @@ export class UnitRenderer {
         this.refreshUnitVisual(event.unit.id);
       }
     });
+  }
+
+  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visibilityPredicate = predicate;
+  }
+
+  /** Update visibility of all unit containers without rebuilding them. */
+  refreshAllVisibility(): void {
+    for (const [unitId, visual] of this.visuals) {
+      const unit = this.unitManager.getUnit(unitId);
+      if (unit) {
+        const vis = this.visibilityPredicate(unit.tileX, unit.tileY);
+        visual.container.setVisible(vis);
+        this.hpBars.get(unitId)?.setVisible(vis);
+      }
+    }
   }
 
   getUnitContainer(unitId: string): Phaser.GameObjects.Container | undefined {
@@ -141,9 +158,16 @@ export class UnitRenderer {
     visual.maskGraphics.setPosition(x, y);
     visual.maskGraphics.setScale(1);
 
+    // Re-evaluate fog visibility at the new tile so e.g. an enemy unit moving
+    // into the player's fog is hidden even though the player's own vision
+    // (and thus updateFog) did not change this turn.
+    const vis = this.visibilityPredicate(unit.tileX, unit.tileY);
+    visual.container.setVisible(vis);
+
     const hpBar = this.hpBars.get(unitId);
     if (hpBar) {
       hpBar.setPosition(x, y);
+      hpBar.setVisible(vis);
     }
   }
 
@@ -241,6 +265,7 @@ export class UnitRenderer {
     const visual: UnitVisual = { container, sprite, maskGraphics, nationRing };
     this.visuals.set(unit.id, visual);
 
+    container.setVisible(this.visibilityPredicate(unit.tileX, unit.tileY));
     this.refreshUnitVisual(unit.id);
   }
 

@@ -28,6 +28,7 @@ export class CityRenderer {
   private readonly getNationEra: (nationId: string) => Era;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
+  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
 
   constructor(
     scene: Phaser.Scene,
@@ -50,6 +51,17 @@ export class CityRenderer {
 
   getCityContainer(cityId: string): Phaser.GameObjects.Container | undefined {
     return this.containers.get(cityId);
+  }
+
+  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visibilityPredicate = predicate;
+  }
+
+  /** Update visibility of all city containers without rebuilding them. */
+  refreshAllVisibility(): void {
+    for (const city of this.cityManager.getAllCities()) {
+      this.containers.get(city.id)?.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
+    }
   }
 
   /**
@@ -120,6 +132,7 @@ export class CityRenderer {
       Phaser.Geom.Circle.Contains,
     );
 
+    container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
     this.containers.set(city.id, container);
   }
 

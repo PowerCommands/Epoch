@@ -105,6 +105,8 @@ import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { TileBuildingRenderer } from '../systems/TileBuildingRenderer';
 import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOverlayRenderer';
 import { CultureLayerRenderer } from '../renderers/CultureLayerRenderer';
+import { FogOfWarRenderer } from '../renderers/FogOfWarRenderer';
+import { VisibilitySystem } from '../systems/VisibilitySystem';
 import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { WonderSystem } from '../systems/WonderSystem';
 import { CorporationSystem } from '../systems/CorporationSystem';
@@ -272,6 +274,10 @@ export class GameScene extends Phaser.Scene {
     // 5b. Culture overlay renderer (hidden until the player toggles the lens).
     const cultureLayerRenderer = new CultureLayerRenderer(this, tileMap, nationManager, mapData);
 
+    // 5c. Fog of war — depth 7 (above borders/resources, below cities and units).
+    const visibilitySystem = new VisibilitySystem(mapData, gridSystem);
+    const fogOfWarRenderer = new FogOfWarRenderer(this, tileMap, mapData, visibilitySystem);
+
     // 6. Create cities from scenario (filtered)
     const cityManager = CityManager.loadFromScenario(activeCities, mapData);
     const eraSystem = new EraSystem(nationManager);
@@ -285,6 +291,19 @@ export class GameScene extends Phaser.Scene {
     const unitManager = UnitManager.loadFromScenario(activeUnits, mapData, gameSpeed);
     // Enrich unit events with cityId (used by right-side details refreshes).
     unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
+
+    // Assigned once all object renderers exist (see fog wiring below). Lets
+    // updateFog() re-cull cities/units/borders/resources/improvements after a
+    // visibility recompute. No-op until then so early calls stay safe.
+    let applyFogToRenderers: () => void = () => {};
+    const updateFog = (): void => {
+      if (!humanNationId) return;
+      const humanCities = cityManager.getCitiesByOwner(humanNationId);
+      const humanUnits = unitManager.getUnitsByOwner(humanNationId);
+      visibilitySystem.update(humanCities, humanUnits);
+      fogOfWarRenderer.refresh(humanCities, humanUnits);
+      applyFogToRenderers();
+    };
 
     // 7. Kamerakontroll
     const { width: worldWidth, height: worldHeight } = tileMap.getWorldBounds();
@@ -310,6 +329,7 @@ export class GameScene extends Phaser.Scene {
       nationManager, cityManager, unitManager, gridSystem,
     );
     discoverySystem.scan();
+    updateFog();
 
     // 11c. Event log — strategic history filtered by discovery
     const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
@@ -620,6 +640,7 @@ export class GameScene extends Phaser.Scene {
     const conqueredCityUnhappinessSystem = new ConqueredCityUnhappinessSystem(cityManager);
     getConqueredCityUnhappiness = (nationId) => conqueredCityUnhappinessSystem.getUnhappiness(nationId);
     turnManager.on('roundStart', () => conqueredCityUnhappinessSystem.handleRoundStart());
+    turnManager.on('roundStart', () => updateFog());
     turnManager.on('roundStart', (event) => {
       tradeDiplomacySystem.onRoundEnd(
         event.round,
@@ -829,6 +850,10 @@ export class GameScene extends Phaser.Scene {
       undefined,
       (nationId, message) => logManager.info({ nationId, category: 'research', message }),
     );
+    // Practical trade connections require Trade Networks on at least one side.
+    tradeDealSystem.setHasTradeNetworks((nationId) =>
+      researchSystem.isResearched(nationId, 'trade_networks'),
+    );
     corporationSystem = new CorporationSystem(
       nationManager,
       cityManager,
@@ -1005,9 +1030,11 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       policySystem,
     );
-    // Temporary debug reveal: only natural resource icons for now. This can
-    // later expand to fog-of-war once an exploration visibility layer exists.
+    // `diagnostic`/cheat map reveal forces every resource icon visible,
+    // bypassing both the reveal-tech gate and fog of war.
     let isMapRevealActive = false;
+    // Tech-gate only: whether the human nation has researched the reveal tech
+    // for a given resource. Fog of war is applied separately below.
     const isNaturalResourceVisibleToHuman = (resourceId: string): boolean => {
       if (isMapRevealActive) return true;
 
@@ -1016,6 +1043,16 @@ export class GameScene extends Phaser.Scene {
       if (!resource.revealTechId) return true;
       if (!humanNationId) return false;
       return researchSystem.isResearched(humanNationId, resource.revealTechId);
+    };
+    // Combined predicate the renderer actually uses: the resource must pass the
+    // reveal-tech gate AND sit on a tile the human can currently see. Resources
+    // are hidden on explored-but-not-visible tiles (fog of war rule).
+    const isResourceTileVisibleToHuman = (tileX: number, tileY: number): boolean => {
+      const resourceId = mapData.tiles[tileY]?.[tileX]?.resourceId;
+      if (!resourceId) return false;
+      if (!isNaturalResourceVisibleToHuman(resourceId)) return false;
+      if (isMapRevealActive) return true;
+      return visibilitySystem.canRenderObjectAt(tileX, tileY);
     };
     const revealMapResourcesTemporarily = (): void => {
       isMapRevealActive = true;
@@ -1029,8 +1066,39 @@ export class GameScene extends Phaser.Scene {
     const isNaturalResourceRevealTechnology = (technologyId: string): boolean => (
       NATURAL_RESOURCES.some((resource) => resource.revealTechId === technologyId)
     );
-    naturalResourceRenderer.setVisibilityPredicate(isNaturalResourceVisibleToHuman);
+    naturalResourceRenderer.setVisibilityPredicate(isResourceTileVisibleToHuman);
     naturalResourceRenderer.rebuildAll();
+
+    // ── Fog of war: gate every map object by current human visibility ──────────
+    // Cities, units, borders, tile buildings and improvements only render on
+    // tiles the human player can currently see. Human-owned cities/units always
+    // generate vision, so they remain visible after each recompute.
+    const canSeeTile = (tileX: number, tileY: number): boolean =>
+      visibilitySystem.canRenderObjectAt(tileX, tileY);
+    cityRenderer.setVisibilityPredicate(canSeeTile);
+    cityBannerRenderer.setVisibilityPredicate(canSeeTile);
+    unitRenderer.setVisibilityPredicate(canSeeTile);
+    territoryRenderer.setVisibilityPredicate(canSeeTile);
+    tileBuildingRenderer.setVisibilityPredicate(canSeeTile);
+    tileImprovementOverlayRenderer.setVisibilityPredicate(canSeeTile);
+    selectionManager.setVisibilityPredicates(
+      (x, y) => visibilitySystem.isTileVisibleToHuman(x, y),
+      (x, y) => visibilitySystem.isTileExploredByHuman(x, y),
+    );
+
+    // Re-cull all fog-dependent renderers after a visibility recompute.
+    applyFogToRenderers = (): void => {
+      cityRenderer.refreshAllVisibility();
+      cityBannerRenderer.refreshAllVisibility();
+      unitRenderer.refreshAllVisibility();
+      territoryRenderer.invalidate();
+      naturalResourceRenderer.rebuildAll();
+      tileBuildingRenderer.rebuildAll();
+      tileImprovementOverlayRenderer.rebuildAll();
+      this.minimapHud?.rebuild();
+    };
+    // Apply fog now that all renderers and predicates are wired.
+    updateFog();
 
     resourceAccessSystem.setResourceUsabilityPredicate((nationId, resourceId) => {
       const resource = getNaturalResourceById(resourceId);
@@ -1427,6 +1495,7 @@ export class GameScene extends Phaser.Scene {
     foundCitySystem.onCityFounded((city) => {
       logManager.info({ nationId: city.ownerId, category: 'city', message: `${city.name} was founded.` });
       discoverySystem.scan();
+      if (city.ownerId === humanNationId) updateFog();
       if (autoplaySystem.isActive()) return;
       cityBannerRenderer.refreshCity(city);
       refreshCultureOverlay();
@@ -1503,6 +1572,7 @@ export class GameScene extends Phaser.Scene {
       tradeConnectionSystem,
       diplomaticProposalSystem,
     );
+    aiSystem.setCultureSystem(cultureSystem);
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
     const runAutoplayNationTurn = (nation: Nation): void => {
@@ -1794,6 +1864,9 @@ export class GameScene extends Phaser.Scene {
     unitManager.onUnitChanged((event) => {
       if (event.reason === 'moved' || event.reason === 'created') {
         discoverySystem.scan();
+        if (event.unit.ownerId === humanNationId) {
+          updateFog();
+        }
       }
     });
 
@@ -2277,6 +2350,7 @@ export class GameScene extends Phaser.Scene {
         }
         // A conquered city may introduce new encounters
         discoverySystem.scan();
+        if (e.attacker.ownerId === humanNationId) updateFog();
       }
 
       rightPanel?.requestRefresh();
@@ -2661,6 +2735,7 @@ export class GameScene extends Phaser.Scene {
       const validationContext = {
         haveMet: (a: string, b: string): boolean => discoverySystem.hasMet(a, b),
         hasTechnology: (nationId: string, techId: string): boolean => researchSystem.isResearched(nationId, techId),
+        hasCulture: (nationId: string, cultureId: string): boolean => cultureSystem.isUnlocked(nationId, cultureId),
       };
 
       if (action === 'declareWar') {
@@ -2939,6 +3014,11 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       this.cameraController,
       worldInputGate,
+    );
+    // Fog of war: gate minimap ownership colours by human visibility.
+    this.minimapHud.setVisibilityPredicates(
+      (x, y) => visibilitySystem.isTileVisibleToHuman(x, y),
+      (x, y) => visibilitySystem.isTileExploredByHuman(x, y),
     );
     // Stack the lens toggle above the minimap panel.
     hudLayer.setMapLensBottomReserved(236);
@@ -3883,6 +3963,7 @@ export class GameScene extends Phaser.Scene {
           tradeDealSystem,
           tradeConnectionSystem,
           tradeDiplomacySystem,
+          visibilitySystem,
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
@@ -4294,11 +4375,13 @@ export class GameScene extends Phaser.Scene {
         tradeDealSystem,
         tradeConnectionSystem,
         tradeDiplomacySystem,
+        visibilitySystem,
         exileProtectionSystem,
         corporationSystem,
         worldMarkerSystem,
         foreignTroopViolationSystem,
       });
+      updateFog();
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
       improvementConstructionSystem.syncUnitsFromTiles();
@@ -4361,6 +4444,7 @@ export class GameScene extends Phaser.Scene {
           tradeDealSystem,
           tradeConnectionSystem,
           tradeDiplomacySystem,
+          visibilitySystem,
           exileProtectionSystem,
           corporationSystem,
           worldMarkerSystem,
@@ -4402,6 +4486,7 @@ export class GameScene extends Phaser.Scene {
             tradeDealSystem,
             tradeConnectionSystem,
             tradeDiplomacySystem,
+            visibilitySystem,
             exileProtectionSystem,
             corporationSystem,
             worldMarkerSystem,

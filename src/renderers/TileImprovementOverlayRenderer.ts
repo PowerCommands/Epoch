@@ -18,6 +18,7 @@ interface TileImprovementOverlay {
 
 export class TileImprovementOverlayRenderer {
   private readonly overlays = new Map<string, TileImprovementOverlay>();
+  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -25,12 +26,17 @@ export class TileImprovementOverlayRenderer {
     private readonly mapData: MapData,
   ) {}
 
+  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visibilityPredicate = predicate;
+  }
+
   rebuildAll(): void {
     const seen = new Set<string>();
 
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (!this.hasOverlay(tile)) continue;
+        if (!this.visibilityPredicate(tile.x, tile.y)) continue;
         const key = this.coordKey(tile.x, tile.y);
         seen.add(key);
         this.renderTile(tile);
@@ -44,7 +50,7 @@ export class TileImprovementOverlayRenderer {
 
   refreshTile(tileX: number, tileY: number): void {
     const tile = this.mapData.tiles[tileY]?.[tileX];
-    if (tile === undefined || !this.hasOverlay(tile)) {
+    if (tile === undefined || !this.hasOverlay(tile) || !this.visibilityPredicate(tileX, tileY)) {
       this.clearTile(tileX, tileY);
       return;
     }

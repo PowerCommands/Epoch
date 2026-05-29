@@ -7,7 +7,8 @@ import { TileMap } from './TileMap';
 const RESOURCE_DEPTH = 5.5;
 const RESOURCE_TILE_FILL_SCALE = 0.9;
 
-export type ResourceVisibilityPredicate = (resourceId: string) => boolean;
+/** Predicate that controls whether a resource at a tile should be rendered. */
+export type ResourceVisibilityPredicate = (tileX: number, tileY: number) => boolean;
 
 export class NaturalResourceRenderer {
   private readonly sprites = new Map<string, Phaser.GameObjects.Image>();
@@ -25,8 +26,8 @@ export class NaturalResourceRenderer {
   }
 
   /**
-   * Set the visibility predicate. Caller is responsible for invoking
-   * `rebuildAll()` afterwards to apply the change.
+   * Set the tile-coordinate visibility predicate. Caller is responsible for
+   * invoking `rebuildAll()` afterwards to apply the change.
    */
   setVisibilityPredicate(predicate: ResourceVisibilityPredicate): void {
     this.visibilityPredicate = predicate;
@@ -38,7 +39,7 @@ export class NaturalResourceRenderer {
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (!tile.resourceId) continue;
-        if (!this.visibilityPredicate(tile.resourceId)) continue;
+        if (!this.visibilityPredicate(tile.x, tile.y)) continue;
         const key = this.coordKey(tile.x, tile.y);
         seen.add(key);
         this.renderTile(tile);
@@ -60,7 +61,7 @@ export class NaturalResourceRenderer {
   refreshTile(tileX: number, tileY: number): void {
     const tile = this.mapData.tiles[tileY]?.[tileX];
     const key = this.coordKey(tileX, tileY);
-    const visible = !!tile?.resourceId && this.visibilityPredicate(tile.resourceId);
+    const visible = !!tile?.resourceId && this.visibilityPredicate(tileX, tileY);
     if (!visible) {
       const existing = this.sprites.get(key);
       if (existing) this.destroyTileSprite(key, existing);

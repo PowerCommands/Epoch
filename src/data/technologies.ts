@@ -115,7 +115,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     cost: 55,
     description: 'Records laws, discoveries, and accounts for future scholars. Unlocks Libraries and pushes the empire toward formal learning.',
     prerequisites: ['pottery'],
-    leadsTo: ['philosophy', 'drama_and_poetry', 'foreign_trade'],
+    leadsTo: ['philosophy', 'drama_and_poetry', 'trade_networks'],
     unlocks: [{ kind: 'building', id: 'library' }],
     // TODO: unlocks Great Library wonder and open border agreements.
   },
@@ -201,14 +201,14 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     // TODO: unlocks Amphitheater and Writers' Guild when those buildings exist.
   },
   {
-    id: 'foreign_trade',
-    name: 'Foreign Trade',
+    id: 'trade_networks',
+    name: 'Trade Networks',
     era: 'classical',
     cost: 105,
-    description: 'Connects cities to goods, routes, and distant demand. Leads the economy toward currency and broader commerce.',
+    description: 'Develops roads, routes, merchants, and commercial infrastructure that turn distant exchange into organized economic networks. Unlocks Markets and enables nations to establish trade connections.',
     prerequisites: ['writing'],
     leadsTo: ['currency'],
-    unlocks: [],
+    unlocks: [{ kind: 'building', id: 'market' }],
   },
   {
     id: 'horseback_riding',
@@ -288,10 +288,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Currency',
     era: 'medieval',
     cost: 275,
-    description: 'Standardizes money, prices, and market exchange. Unlocks Markets and Mints for stronger city economies.',
+    description: 'Standardizes money, prices, and monetary exchange. Unlocks Mints for stronger city economies.',
     prerequisites: ['mathematics'],
     leadsTo: ['civil_service', 'guilds'],
-    unlocks: [{ kind: 'building', id: 'mint' }, { kind: 'building', id: 'market' }],
+    unlocks: [{ kind: 'building', id: 'mint' }],
     // TODO: unlocks National Treasury, Machu Picchu and Wealth conversion.
   },
   {

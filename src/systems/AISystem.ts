@@ -34,6 +34,7 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { CityDefenseSystem } from './CityDefenseSystem';
 import { EMPTY_MODIFIERS } from '../types/modifiers';
 import type { ResearchSystem } from './ResearchSystem';
+import type { CultureSystem } from './culture/CultureSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { HappinessSystem } from './HappinessSystem';
@@ -573,6 +574,16 @@ export class AISystem {
     });
   }
 
+  /**
+   * Optional culture system, injected after construction. Used to check
+   * cultural permissions (e.g. Foreign Trade) during diplomacy validation.
+   */
+  private cultureSystem?: CultureSystem;
+
+  setCultureSystem(cultureSystem: CultureSystem): void {
+    this.cultureSystem = cultureSystem;
+  }
+
   isHuman(nationId: string): boolean {
     const nation = this.nationManager.getNation(nationId);
     return nation?.isHuman ?? false;
@@ -775,6 +786,8 @@ export class AISystem {
       haveMet: (a: string, b: string): boolean => this.discoverySystem?.hasMet(a, b) ?? true,
       hasTechnology: (target: string, techId: string): boolean =>
         this.researchSystem?.isResearched(target, techId) ?? false,
+      hasCulture: (target: string, cultureId: string): boolean =>
+        this.cultureSystem?.isUnlocked(target, cultureId) ?? false,
     };
 
     for (const other of this.nationManager.getAllNations()) {

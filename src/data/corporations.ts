@@ -29,7 +29,7 @@ export const CORPORATIONS: CorporationDefinition[] = [
     id: 'silk_road_consortium',
     name: 'Silk Road Consortium',
     description: 'Links luxury silk routes into durable trade goods.',
-    requiredTechIds: ['foreign_trade'],
+    requiredTechIds: ['trade_networks'],
     requiredResourceIds: ['silk'],
     requiredBuildingIds: ['market'],
     happinessBonus: 2,

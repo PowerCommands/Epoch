@@ -89,7 +89,7 @@ function getTechnologyResearchCategory(techId: string): keyof AILeaderEraResearc
     case 'machinery':
       return 'production';
     case 'currency':
-    case 'foreign_trade':
+    case 'trade_networks':
       return 'economy';
     case 'writing':
     case 'education':

@@ -55,6 +55,8 @@ export class MinimapHud {
   private worldToMiniOffsetX = 0;
   private worldToMiniOffsetY = 0;
   private isExpanded = false;
+  private isTileVisible: (tileX: number, tileY: number) => boolean = () => true;
+  private isTileExplored: (tileX: number, tileY: number) => boolean = () => true;
   private _dirty = true;
   private _lastScrollX = NaN;
   private _lastScrollY = NaN;
@@ -191,6 +193,20 @@ export class MinimapHud {
     this._dirty = true;
   }
 
+  /**
+   * Install fog-of-war gates and redraw. Unexplored tiles stay dark, explored
+   * tiles show remembered terrain only, and currently-visible tiles show
+   * nation/city ownership colours.
+   */
+  setVisibilityPredicates(
+    isTileVisible: (tileX: number, tileY: number) => boolean,
+    isTileExplored: (tileX: number, tileY: number) => boolean,
+  ): void {
+    this.isTileVisible = isTileVisible;
+    this.isTileExplored = isTileExplored;
+    this.rebuild();
+  }
+
   rebuild(): void {
     this._dirty = true;
     this.mapGfx.clear();
@@ -201,9 +217,20 @@ export class MinimapHud {
 
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
+        // Fog of war: unexplored tiles stay dark (background shows through).
+        if (!this.isTileExplored(tile.x, tile.y)) continue;
+
         const outline = this.tileMap.getTileOutlinePoints(tile.x, tile.y)
           .map((point) => this.worldToMini(point.x, point.y));
         if (outline.length < 3) continue;
+
+        // Explored-but-not-visible tiles show remembered terrain only — no
+        // nation/city ownership colours that would reveal enemy positions.
+        if (!this.isTileVisible(tile.x, tile.y)) {
+          this.mapGfx.fillStyle(TERRAIN_COLORS[tile.type], 1);
+          this.fillPolygon(this.mapGfx, outline);
+          continue;
+        }
 
         const cityOwnerId = cityOwnedTiles.get(coordKey(tile.x, tile.y));
         if (cityOwnerId !== undefined) {

@@ -249,4 +249,10 @@ export interface SavedGameState {
   worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];
   worldMarkerClaims?: WorldMarkerClaimEntry[];
   foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
+  fogOfWar?: SavedFogOfWar;
+}
+
+/** Sparse list of tiles the human player has explored or seen. */
+export interface SavedFogOfWar {
+  explored: Array<{ q: number; r: number }>;
 }

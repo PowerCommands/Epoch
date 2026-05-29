@@ -36,6 +36,10 @@ export class SelectionManager {
   private hovered: Selectable | null = null;
   private selected: Selectable | null = null;
 
+  // Fog of war gates. Default to always-on so non-fog contexts are unaffected.
+  private isTileVisible: (tileX: number, tileY: number) => boolean = () => true;
+  private isTileExplored: (tileX: number, tileY: number) => boolean = () => true;
+
   private readonly hoverGfx: Phaser.GameObjects.Graphics;
   private readonly selectionGfx: Phaser.GameObjects.Graphics;
 
@@ -68,6 +72,19 @@ export class SelectionManager {
       this.drawHover();
       this.drawSelection();
     });
+  }
+
+  /**
+   * Install fog-of-war gates. `isTileVisible` controls whether on-tile objects
+   * (units, cities) may be hovered/selected; `isTileExplored` controls whether
+   * an unseen tile can be targeted at all.
+   */
+  setVisibilityPredicates(
+    isTileVisible: (tileX: number, tileY: number) => boolean,
+    isTileExplored: (tileX: number, tileY: number) => boolean,
+  ): void {
+    this.isTileVisible = isTileVisible;
+    this.isTileExplored = isTileExplored;
   }
 
   onSelectionChanged(callback: SelectionCallback): void {
@@ -121,6 +138,16 @@ export class SelectionManager {
     const tile = this.tileMap.worldToTile(worldX, worldY);
     if (tile === null) return null;
 
+    // Fog of war: unseen tiles expose no information and cannot be targeted.
+    if (!this.isTileExplored(tile.x, tile.y)) return null;
+
+    // On explored-but-not-currently-visible tiles only the remembered terrain
+    // is selectable — enemy units/cities there are not rendered, so skip object
+    // resolution and fall through to the tile.
+    if (!this.isTileVisible(tile.x, tile.y)) {
+      return { kind: 'tile', tile };
+    }
+
     const nonCargo = this.unitManager.getUnitsAt(tile.x, tile.y);
     const cargo: Unit[] = [];
     for (const transport of nonCargo) {
@@ -172,7 +199,7 @@ export class SelectionManager {
         // directly. Works even when one or more units occupy the same tile.
         if ((pointer.event as PointerEvent).shiftKey) {
           const tile = this.tileMap.worldToTile(wp.x, wp.y);
-          if (tile !== null) {
+          if (tile !== null && this.isTileVisible(tile.x, tile.y)) {
             const city = this.cityManager.getCityAt(tile.x, tile.y);
             if (city !== undefined) {
               for (const cb of this.directCityViewCallbacks) cb(city);

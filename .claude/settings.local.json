@@ -1,4 +1,5 @@
 {
+  "model": "claude-opus-4-8",
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
@@ -6,15 +7,16 @@
       "Bash(sed *)",
       "Bash(npx vite:*)",
       "Bash(kill %)",
-      "Bash(npx *)",      
-      "Bash(docker *)",      
-      "Bash(find *)",      
+      "Bash(npx *)",
+      "Bash(docker *)",
+      "Bash(find *)",
       "Bash([ -f \"public/assets/sprites/units/$u.png\" ])",
       "Read(//tmp/**)",
       "Read(//home/harri/**)",
       "Bash(grep *)",
       "Bash(xargs *)",
-      "Bash(tee *)"
+      "Bash(tee *)",
+      "Bash(claude --version)"
     ]
   }
 }

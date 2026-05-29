@@ -19,6 +19,11 @@ export class TileBuildingRenderer {
   private readonly loadingTextures = new Set<string>();
   private readonly missingTextures = new Set<string>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
+  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
+
+  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visibilityPredicate = predicate;
+  }
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -36,6 +41,7 @@ export class TileBuildingRenderer {
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (!this.getTileVisual(tile)) continue;
+        if (!this.visibilityPredicate(tile.x, tile.y)) continue;
         const key = this.getCoordKey(tile.x, tile.y);
         seen.add(key);
         this.renderTile(tile);
@@ -57,7 +63,7 @@ export class TileBuildingRenderer {
     const tile = this.mapData.tiles[tileY]?.[tileX];
     const key = this.getCoordKey(tileX, tileY);
 
-    if (!tile || !this.getTileVisual(tile)) {
+    if (!tile || !this.getTileVisual(tile) || !this.visibilityPredicate(tileX, tileY)) {
       const existing = this.sprites.get(key);
       if (existing) {
         this.destroyTileSprite(key, existing);

@@ -30,6 +30,7 @@ import type { PolicySystem } from './PolicySystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { TradeConnectionSystem } from './TradeConnectionSystem';
 import type { TradeDiplomacySystem } from './diplomacy/TradeDiplomacySystem';
+import type { VisibilitySystem } from './VisibilitySystem';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
@@ -65,6 +66,7 @@ export interface SaveLoadContext {
   tradeDealSystem?: TradeDealSystem;
   tradeConnectionSystem?: TradeConnectionSystem;
   tradeDiplomacySystem?: TradeDiplomacySystem;
+  visibilitySystem?: VisibilitySystem;
   exileProtectionSystem?: ExileProtectionSystem;
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
@@ -106,6 +108,7 @@ export class SaveLoadService {
       tradeDealSystem,
       tradeConnectionSystem,
       tradeDiplomacySystem,
+      visibilitySystem,
       exileProtectionSystem,
       worldMarkerSystem,
       foreignTroopViolationSystem,
@@ -319,6 +322,7 @@ export class SaveLoadService {
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       tradeConnections: tradeConnectionSystem?.getAllConnections(),
       tradeHistory: tradeDiplomacySystem?.getAllEntries(),
+      fogOfWar: visibilitySystem ? { explored: visibilitySystem.getExploredTileCoords() } : undefined,
       exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
       worldMarkers: worldMarkerSystem?.getAllMarkersForSave(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
@@ -422,6 +426,9 @@ export class SaveLoadService {
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     context.tradeConnectionSystem?.restoreConnections(state.tradeConnections ?? []);
     context.tradeDiplomacySystem?.restoreEntries(state.tradeHistory ?? []);
+    if (state.fogOfWar && context.visibilitySystem) {
+      context.visibilitySystem.restoreExplored(state.fogOfWar.explored);
+    }
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     if (context.worldMarkerSystem) {
       context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());
@@ -557,6 +564,30 @@ export class SaveLoadService {
     }
   }
 
+  /**
+   * Maps renamed technology ids from older saves to their current ids. The
+   * technology `foreign_trade` was renamed to `trade_networks`; the culture
+   * node `foreign_trade` is unaffected (cultures use a separate id list).
+   */
+  private static readonly RENAMED_TECH_IDS: Readonly<Record<string, string>> = {
+    foreign_trade: 'trade_networks',
+  };
+
+  private static migrateTechId(techId: string | undefined): string | undefined {
+    if (techId === undefined) return undefined;
+    return SaveLoadService.RENAMED_TECH_IDS[techId] ?? techId;
+  }
+
+  /** Migrate a list of researched tech ids, de-duplicating after renames. */
+  private static migrateTechIds(techIds: readonly string[]): string[] {
+    const migrated: string[] = [];
+    for (const techId of techIds) {
+      const next = SaveLoadService.RENAMED_TECH_IDS[techId] ?? techId;
+      if (!migrated.includes(next)) migrated.push(next);
+    }
+    return migrated;
+  }
+
   private static applyNations(nations: SavedNation[], nationManager: NationManager): void {
     for (const saved of nations) {
       const nation = nationManager.getNation(saved.id);
@@ -565,8 +596,8 @@ export class SaveLoadService {
       nation.aiStrategyStartedTurn = saved.aiStrategyStartedTurn ?? 0;
       nation.previousAiStrategyId = saved.previousAiStrategyId;
       nation.aiNationalAgendaId = saved.aiNationalAgendaId ?? BALANCED_AGENDA_ID;
-      nation.researchedTechIds = [...saved.researchedTechIds];
-      nation.currentResearchTechId = saved.currentResearchTechId;
+      nation.researchedTechIds = SaveLoadService.migrateTechIds(saved.researchedTechIds);
+      nation.currentResearchTechId = SaveLoadService.migrateTechId(saved.currentResearchTechId);
       nation.researchProgress = saved.researchProgress;
       nation.unlockedCultureNodeIds = [...(saved.unlockedCultureNodeIds ?? [])];
       nation.currentCultureNodeId = saved.currentCultureNodeId;

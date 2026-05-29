@@ -58,6 +58,19 @@ export class CityBannerRenderer {
   private readonly banners = new Map<string, CityBannerView>();
   private readonly loadingTextures = new Set<string>();
   private readonly missingTextures = new Set<string>();
+  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
+
+  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visibilityPredicate = predicate;
+  }
+
+  /** Update banner visibility without rebuilding the graphic objects. */
+  refreshAllVisibility(): void {
+    for (const city of this.cityManager.getAllCities()) {
+      const view = this.banners.get(city.id);
+      if (view) view.container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
+    }
+  }
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -138,6 +151,7 @@ export class CityBannerRenderer {
     this.refreshProductionSlot(view, production, slotCenterX);
     this.refreshProductionRing(view, city.id, slotCenterX);
     view.productionZone.setPosition(slotCenterX, 0);
+    view.container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
   }
 
   rebuildAll(): void {
