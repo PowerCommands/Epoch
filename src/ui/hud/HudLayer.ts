@@ -8,6 +8,7 @@ import type { UnitActionToolbox } from '../UnitActionToolbox';
 import { CultureHudPanel } from './CultureHudPanel';
 import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
+import { IdleCitiesHudIndicator } from './IdleCitiesHudIndicator';
 import { MapLensToggleHud } from './MapLensToggleHud';
 import type { NationHudDataProvider } from './NationHudDataProvider';
 import { PolicyDialog } from './PolicyDialog';
@@ -24,6 +25,8 @@ interface HudLayerConfig {
   worldInputGate: WorldInputGate;
   proposalContext: ProposalDialogContext;
   onEndTurn: () => void;
+  getIdleCityIds: () => string[];
+  onOpenIdleCity: (cityId: string) => void;
   onSelectResearch: (technologyId: string) => boolean;
   onSelectCultureNode: (nodeId: string) => boolean;
   onPoliciesChanged: (nationId: string) => void;
@@ -40,6 +43,7 @@ export class HudLayer {
   private readonly onAddedToScene: (go: Phaser.GameObjects.GameObject) => void;
   private readonly scheduler = new RafScheduler();
   private readonly endTurnButton: EndTurnHudButton;
+  private readonly idleCitiesIndicator: IdleCitiesHudIndicator;
   private readonly topResourceBar: TopResourceBar;
   private readonly researchPanel: ResearchHudPanel;
   private readonly culturePanel: CultureHudPanel;
@@ -51,6 +55,9 @@ export class HudLayer {
   private mapLensBottomReserved = 0;
   private readonly proposalQueue: DiplomaticProposal[] = [];
   private readonly discoveryQueue: DiscoveryPopupData[] = [];
+  private idleCityIds: string[] = [];
+  private idleCityCursor = 0;
+  private nextIdleCityId: string | null = null;
   private readonly handlePointerRelease = (pointer: Phaser.Input.Pointer): void => {
     this.config.worldInputGate.releasePointer(pointer.id);
   };
@@ -77,6 +84,8 @@ export class HudLayer {
 
     this.endTurnButton = new EndTurnHudButton(scene, (object) => this.addOwned(object), this.config.worldInputGate);
     this.endTurnButton.setOnClick(() => this.config.onEndTurn());
+    this.idleCitiesIndicator = new IdleCitiesHudIndicator(scene, (object) => this.addOwned(object), this.config.worldInputGate);
+    this.idleCitiesIndicator.setOnClick(() => this.openNextIdleCity());
 
     this.topResourceBar = new TopResourceBar(scene, (object) => this.addOwned(object));
 
@@ -196,6 +205,8 @@ export class HudLayer {
   setMapLensBottomReserved(pixels: number): void {
     if (this.mapLensBottomReserved === pixels) return;
     this.mapLensBottomReserved = pixels;
+    this.researchPanel.setBottomReserved(pixels);
+    this.culturePanel.setBottomReserved(pixels);
     this.layout();
   }
 
@@ -261,6 +272,7 @@ export class HudLayer {
     this.scene.input.off(Phaser.Input.Events.POINTER_UP, this.handlePointerRelease);
     this.scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerRelease);
     this.endTurnButton.destroy();
+    this.idleCitiesIndicator.destroy();
     this.topResourceBar.destroy();
     this.researchPanel.destroy();
     this.culturePanel.destroy();
@@ -278,7 +290,10 @@ export class HudLayer {
 
   private refreshNow(): void {
     const nationId = this.config.humanNationId;
-    if (!nationId) return;
+    if (!nationId) {
+      this.setIdleCityIds([]);
+      return;
+    }
 
     this.topResourceBar.setEntries(this.config.dataProvider.getResourceEntries(nationId));
     this.researchPanel.setState(this.config.dataProvider.getResearchState(nationId));
@@ -286,6 +301,7 @@ export class HudLayer {
     this.policyDialog.refresh();
     this.unitActionHudToolbox.refresh();
     this.endTurnButton.setEnabled(this.endTurnEnabled);
+    this.setIdleCityIds(this.config.getIdleCityIds());
     this.layout();
   }
 
@@ -296,6 +312,7 @@ export class HudLayer {
     this.culturePanel.layout(width, height);
     this.endTurnButton.layout(width, height);
     const endTurnLayout = this.endTurnButton.getLayout();
+    this.idleCitiesIndicator.layout(endTurnLayout);
     this.unitActionHudToolbox.layout(endTurnLayout.centerX, endTurnLayout.centerY, endTurnLayout.radius);
     this.proposalDialog.layout();
     this.discoveryPopup.layout();
@@ -311,6 +328,39 @@ export class HudLayer {
     }
     const discovery = this.discoveryQueue.shift();
     if (discovery) this.discoveryPopup.show(discovery);
+  }
+
+  private setIdleCityIds(cityIds: string[]): void {
+    const nextIds = [...cityIds];
+    const changed = nextIds.length !== this.idleCityIds.length
+      || nextIds.some((cityId, index) => cityId !== this.idleCityIds[index]);
+    this.idleCityIds = nextIds;
+
+    if (this.idleCityIds.length === 0) {
+      this.idleCityCursor = 0;
+      this.nextIdleCityId = null;
+    } else if (this.nextIdleCityId !== null) {
+      const nextIndex = this.idleCityIds.indexOf(this.nextIdleCityId);
+      if (nextIndex >= 0) {
+        this.idleCityCursor = nextIndex;
+      } else {
+        this.idleCityCursor %= this.idleCityIds.length;
+        this.nextIdleCityId = this.idleCityIds[this.idleCityCursor] ?? null;
+      }
+    } else if (this.idleCityCursor >= this.idleCityIds.length) {
+      this.idleCityCursor = 0;
+    }
+
+    if (changed) this.idleCitiesIndicator.setCount(this.idleCityIds.length);
+  }
+
+  private openNextIdleCity(): void {
+    if (this.idleCityIds.length === 0) return;
+    const index = this.idleCityCursor % this.idleCityIds.length;
+    const cityId = this.idleCityIds[index];
+    this.idleCityCursor = (index + 1) % this.idleCityIds.length;
+    this.nextIdleCityId = this.idleCityIds[this.idleCityCursor] ?? null;
+    this.config.onOpenIdleCity(cityId);
   }
 
   private addOwned<T extends Phaser.GameObjects.GameObject>(object: T): T {

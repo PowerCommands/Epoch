@@ -3401,6 +3401,9 @@ export class GameScene extends Phaser.Scene {
         const allianceContext = {
           haveMet: (a: string, b: string): boolean => discoverySystem.hasMet(a, b),
           isAtWar: (a: string, b: string): boolean => diplomacyManager.getState(a, b) === 'WAR',
+          hasOpenBorders: (a: string, b: string): boolean => diplomacyManager.isOpenBorderGrantedFrom(a, b),
+          hasEmbassy: (a: string, b: string): boolean => diplomacyManager.hasEmbassy(a, b),
+          hasTradeRelations: (a: string, b: string): boolean => diplomacyManager.hasTradeRelations(a, b),
         };
         const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
         // Default generated name for v1 — the proposer's leader name.
@@ -3620,6 +3623,20 @@ export class GameScene extends Phaser.Scene {
         getResourceName: (resourceId) => getResourceDisplayName(resourceId),
       },
       onEndTurn: endHumanTurn,
+      getIdleCityIds: () => (
+        humanNationId
+          ? cityManager.getCitiesByOwner(humanNationId)
+            .filter((city) => productionSystem.getQueue(city.id).length === 0)
+            .map((city) => city.id)
+          : []
+      ),
+      onOpenIdleCity: (cityId) => {
+        const city = cityManager.getCity(cityId);
+        if (!city || city.ownerId !== humanNationId) return;
+        cityViewDismissedCityId = null;
+        selectionManager.clearSelection();
+        selectionManager.selectCity(city);
+      },
       onSelectResearch: (technologyId) => {
         if (!humanNationId) return false;
         const started = researchSystem.startResearch(humanNationId, technologyId);

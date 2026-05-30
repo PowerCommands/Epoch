@@ -73,6 +73,9 @@ export class AllianceManager {
     if (context.isAtWar(proposerId, targetId)) return { ok: false, reason: 'Cannot form an alliance during war.' };
     if (this.isInAlliance(proposerId)) return { ok: false, reason: 'You are already in an alliance.' };
     if (this.isInAlliance(targetId)) return { ok: false, reason: 'They are already in an alliance.' };
+    if (!context.hasOpenBorders(proposerId, targetId)) return { ok: false, reason: 'Requires Open Borders.' };
+    if (!context.hasEmbassy(proposerId, targetId)) return { ok: false, reason: 'Requires an established Embassy.' };
+    if (!context.hasTradeRelations(proposerId, targetId)) return { ok: false, reason: 'Requires active Trade Relations.' };
     return { ok: true };
   }
 

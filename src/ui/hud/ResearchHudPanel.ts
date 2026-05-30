@@ -81,6 +81,7 @@ export class ResearchHudPanel {
   private dragStartScrollOffset = 0;
   private scrollOffset = 0;
   private maxScroll = 0;
+  private bottomReserved = 0;
   private panelBounds = new Phaser.Geom.Rectangle();
   private state: HudResearchState = {
     currentName: 'None',
@@ -259,6 +260,13 @@ export class ResearchHudPanel {
     return !this.collapsed;
   }
 
+  setBottomReserved(pixels: number): void {
+    const reserved = Math.max(0, pixels);
+    if (this.bottomReserved === reserved) return;
+    this.bottomReserved = reserved;
+    this.layout(this.scene.scale.width, this.scene.scale.height);
+  }
+
   layout(viewportWidth: number, viewportHeight: number): void {
     const toggleX = EDGE_MARGIN;
     const toggleY = TOGGLE_BASE_Y;
@@ -270,7 +278,8 @@ export class ResearchHudPanel {
 
     const panelX = EDGE_MARGIN;
     const panelY = SHARED_PANEL_Y;
-    const availableHeight = Math.max(PANEL_MIN_HEIGHT, viewportHeight - panelY - EDGE_MARGIN);
+    const bottomPadding = Math.max(EDGE_MARGIN, this.bottomReserved + EDGE_MARGIN);
+    const availableHeight = Math.max(PANEL_MIN_HEIGHT, viewportHeight - panelY - bottomPadding);
     this.panelBounds.setTo(panelX, panelY, PANEL_WIDTH, availableHeight);
 
     const innerX = panelX + PANEL_INNER_PADDING;

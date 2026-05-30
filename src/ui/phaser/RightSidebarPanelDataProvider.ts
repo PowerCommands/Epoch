@@ -406,8 +406,12 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
-  buildDiplomacyGraph(): DiplomacyGraph {
-    const nations = this.nationManager.getAllNations();
+  buildDiplomacyGraph(options: { revealAll?: boolean } = {}): DiplomacyGraph {
+    const allNations = this.nationManager.getAllNations();
+    const includedNationIds = options.revealAll
+      ? new Set(allNations.map((nation) => nation.id))
+      : this.getKnownDiplomacyGraphNationIds();
+    const nations = allNations.filter((nation) => includedNationIds.has(nation.id));
     const nodes: DiplomacyGraphNode[] = nations.map((nation) => ({
       nationId: nation.id,
       name: nation.name,
@@ -418,33 +422,46 @@ export class RightSidebarPanelDataProvider {
       for (let j = i + 1; j < nations.length; j++) {
         const a = nations[i];
         const b = nations[j];
-        const met = this.discoverySystem ? this.discoverySystem.hasMet(a.id, b.id) : true;
-        if (!met) continue;
-        let type: DiplomacyRelationshipType = 'hasMet';
-        if (this.diplomacyManager) {
-          if (this.diplomacyManager.hasEmbassy(a.id, b.id) || this.diplomacyManager.hasEmbassy(b.id, a.id)) {
-            type = 'embassy';
-          }
-          if (
-            this.diplomacyManager.isOpenBorderGrantedFrom(a.id, b.id)
-            || this.diplomacyManager.isOpenBorderGrantedFrom(b.id, a.id)
-          ) {
-            type = 'openBorders';
-          }
-          if (this.diplomacyManager.hasTradeRelations(a.id, b.id)) {
-            type = 'trade';
-          }
-          if (this.allianceManager?.areAllied(a.id, b.id)) {
-            type = 'ally';
-          }
-          if (this.diplomacyManager.getState(a.id, b.id) === 'WAR') {
-            type = 'war';
-          }
-        }
+        const type = this.getDiplomacyGraphRelationshipType(a.id, b.id);
+        if (!type) continue;
         edges.push({ fromNationId: a.id, toNationId: b.id, type });
       }
     }
     return { nodes, edges };
+  }
+
+  private getKnownDiplomacyGraphNationIds(): Set<string> {
+    if (!this.humanNationId) return new Set();
+    const known = new Set<string>([this.humanNationId]);
+    for (const nationId of this.discoverySystem?.getMetNations(this.humanNationId) ?? []) {
+      known.add(nationId);
+    }
+    return known;
+  }
+
+  private getDiplomacyGraphRelationshipType(a: string, b: string): DiplomacyRelationshipType | null {
+    let type: DiplomacyRelationshipType | null = (this.discoverySystem?.hasMet(a, b) ?? true) ? 'hasMet' : null;
+    if (this.diplomacyManager) {
+      if (this.diplomacyManager.hasEmbassy(a, b) || this.diplomacyManager.hasEmbassy(b, a)) {
+        type = 'embassy';
+      }
+      if (
+        this.diplomacyManager.isOpenBorderGrantedFrom(a, b)
+        || this.diplomacyManager.isOpenBorderGrantedFrom(b, a)
+      ) {
+        type = 'openBorders';
+      }
+      if (this.diplomacyManager.hasTradeRelations(a, b)) {
+        type = 'trade';
+      }
+      if (this.allianceManager?.areAllied(a, b)) {
+        type = 'ally';
+      }
+      if (this.diplomacyManager.getState(a, b) === 'WAR') {
+        type = 'war';
+      }
+    }
+    return type;
   }
 
   getLogContent(): RightSidebarContent {
@@ -1571,6 +1588,9 @@ export class RightSidebarPanelDataProvider {
     return {
       haveMet: (a, b) => this.discoverySystem?.hasMet(a, b) ?? true,
       isAtWar: (a, b) => this.diplomacyManager?.getState(a, b) === 'WAR',
+      hasOpenBorders: (a, b) => this.diplomacyManager?.isOpenBorderGrantedFrom(a, b) ?? false,
+      hasEmbassy: (a, b) => this.diplomacyManager?.hasEmbassy(a, b) ?? false,
+      hasTradeRelations: (a, b) => this.diplomacyManager?.hasTradeRelations(a, b) ?? false,
     };
   }
 

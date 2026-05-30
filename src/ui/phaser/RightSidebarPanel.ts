@@ -92,7 +92,7 @@ const MODES: ModeDefinition[] = [
   { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
   { mode: 'leaderboard', icon: '🏆', label: 'Leaderboard', accentColor: 0xf4d06f },
   { mode: 'log', icon: '📄', label: 'Log', accentColor: 0xc7d2fe },
-  { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa, diagnosticOnly: true },
+  { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa },
 ];
 
 const LEADERBOARD_CATEGORIES: Array<{
@@ -188,6 +188,7 @@ export class RightSidebarPanel {
   private focusSearchInputAfterRender = false;
   private diplomacyGraphFilters = new Set<DiplomacyRelationshipType>(['hasMet', 'embassy', 'openBorders', 'trade', 'ally', 'war']);
   private diplomacyGraphFocusNation: string | null = null;
+  private diagnosticsEnabled = false;
   private logCopyButtonHovered = false;
   private logCopyButtonPressed = false;
   private logCopyFeedbackTimer: Phaser.Time.TimerEvent | null = null;
@@ -368,6 +369,7 @@ export class RightSidebarPanel {
   }
 
   setDiagnosticsEnabled(enabled: boolean): void {
+    this.diagnosticsEnabled = enabled;
     for (const button of this.modeButtons) {
       if (!button.definition.diagnosticOnly) continue;
       button.visible = enabled;
@@ -381,8 +383,8 @@ export class RightSidebarPanel {
         button.hitArea.disableInteractive();
       }
     }
-    if (!enabled && this.activeMode === 'diplomacy-graph') {
-      this.collapse();
+    if (this.activeMode === 'diplomacy-graph' && !this.collapsed) {
+      this.renderActiveContent();
     }
     this.layout();
   }
@@ -662,7 +664,7 @@ export class RightSidebarPanel {
   }
 
   private buildDiplomacyGraphContent(): void {
-    const graph = this.dataProvider.buildDiplomacyGraph();
+    const graph = this.dataProvider.buildDiplomacyGraph({ revealAll: this.diagnosticsEnabled });
     const panelX = this.panelContainer.x;
     const panelY = this.panelContainer.y;
 

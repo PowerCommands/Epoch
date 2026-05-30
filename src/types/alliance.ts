@@ -30,4 +30,7 @@ export interface AllianceValidationResult {
 export interface AllianceProposalContext {
   haveMet(a: string, b: string): boolean;
   isAtWar(a: string, b: string): boolean;
+  hasOpenBorders(a: string, b: string): boolean;
+  hasEmbassy(a: string, b: string): boolean;
+  hasTradeRelations(a: string, b: string): boolean;
 }
