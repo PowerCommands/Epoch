@@ -108,6 +108,11 @@ export interface DiplomaticMemoryHook {
   onCancelOpenBorders(from: string, to: string): void;
   onCityCaptured(attacker: string, defender: string): void;
   onExchangeMaps(a: string, b: string): void;
+  onFormAlliance(a: string, b: string): void;
+  onJointWarAgreement(a: string, b: string): void;
+  onAllianceDeparture(a: string, b: string): void;
+  onProposalApproved(a: string, b: string): void;
+  onProposalRejected(a: string, b: string): void;
 }
 
 export interface DiplomaticMemoryValues {
@@ -208,10 +213,20 @@ export class DiplomacyManager {
   private readonly warDeclaredListeners: WarDeclaredListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
+  private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
 
   // Optional so older callers/tests still work; when present, war/peace
   // transitions get stamped with the current round.
   constructor(private readonly turnManager?: TurnManager) {}
+
+  /**
+   * Register a predicate that blocks war declarations between two nations
+   * (e.g. alliance partners). Centralizes the rule so every caller — human and
+   * AI — is covered without UI-level checks. Returns true to block.
+   */
+  setAllianceGuard(guard: (aggressorId: string, targetId: string) => boolean): void {
+    this.allianceGuard = guard;
+  }
 
   /**
    * Attach the memory system that mirrors transitions onto trust/fear/etc.
@@ -265,8 +280,11 @@ export class DiplomacyManager {
   }
 
   declareWar(aggressorId: string, targetId: string): boolean {
+    if (aggressorId === targetId) return false;
     const key = this.pairKey(aggressorId, targetId);
     if (this.relations.get(key)?.state === 'WAR') return false;
+    // Alliance partners cannot declare war on each other (covers human + AI).
+    if (this.allianceGuard?.(aggressorId, targetId)) return false;
     const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
     if (this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
     const previous = this.relations.get(key);
@@ -619,6 +637,49 @@ export class DiplomacyManager {
    */
   recordMapExchange(a: string, b: string): void {
     this.memoryHook?.onExchangeMaps(a, b);
+    this.notifyChanged(a, b);
+  }
+
+  /**
+   * Record a newly formed alliance as a friendly diplomatic milestone. Applies
+   * the relationship bonus via the memory system and notifies listeners so the
+   * diplomacy UI refreshes. Alliance membership itself lives in AllianceManager;
+   * this only updates the shared relation values.
+   */
+  recordAllianceFormed(a: string, b: string): void {
+    this.memoryHook?.onFormAlliance(a, b);
+    this.notifyChanged(a, b);
+  }
+
+  /**
+   * Record that two nations agreed to a joint war — a friendly act of military
+   * cooperation that moderately improves their relation. War declarations
+   * against the shared target are handled separately by the caller.
+   */
+  recordJointWarAgreement(a: string, b: string): void {
+    this.memoryHook?.onJointWarAgreement(a, b);
+    this.notifyChanged(a, b);
+  }
+
+  /**
+   * Record that one nation left a shared alliance — a moderate relationship
+   * penalty. Relations are symmetric in this model, so a single write covers
+   * both directions between the departing nation and a remaining member.
+   */
+  recordAllianceDeparture(a: string, b: string): void {
+    this.memoryHook?.onAllianceDeparture(a, b);
+    this.notifyChanged(a, b);
+  }
+
+  /** Small positive bump when a member approves another's council proposal. */
+  recordProposalApproved(a: string, b: string): void {
+    this.memoryHook?.onProposalApproved(a, b);
+    this.notifyChanged(a, b);
+  }
+
+  /** Small friction when a member vetoes another's council proposal. */
+  recordProposalRejected(a: string, b: string): void {
+    this.memoryHook?.onProposalRejected(a, b);
     this.notifyChanged(a, b);
   }
 

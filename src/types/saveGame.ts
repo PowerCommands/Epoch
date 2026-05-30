@@ -1,4 +1,5 @@
 import type { GameSpeedId } from '../data/gameSpeeds';
+import type { Alliance } from './alliance';
 import type { CityFocusType } from '../entities/City';
 import type { CityProductionRhythm } from '../entities/City';
 import type { ActivePolicyAssignment } from '../entities/NationPolicies';
@@ -240,6 +241,8 @@ export interface SavedGameState {
   diplomacy: SavedDiplomacyEntry[];
   discovery: SavedDiscoveryEntry[];
   wonders: SavedWonder[];
+  /** Alliance Core v1. Optional so older saves load with no alliances. */
+  alliances?: Alliance[];
   corporations?: SavedCorporation[];
   tradeDeals?: TradeDeal[];
   tradeConnections?: TradeConnection[];

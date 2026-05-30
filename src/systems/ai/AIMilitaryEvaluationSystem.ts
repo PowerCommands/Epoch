@@ -1,5 +1,7 @@
 import type { UnitManager } from '../UnitManager';
 import type { CityManager } from '../CityManager';
+import type { DiplomacyManager } from '../DiplomacyManager';
+import type { AllianceManager } from '../diplomacy/AllianceManager';
 import { CITY_BASE_HEALTH, CITY_BASE_DEFENSE } from '../../data/cities';
 
 // Military evaluation gives diplomacy a basic sense of relative power.
@@ -13,6 +15,18 @@ export interface MilitaryStrengthBreakdown {
   readonly totalStrength: number;
 }
 
+/**
+ * Alliance-aware defensive strength a would-be attacker must reckon with:
+ * the defender plus the ally that defensive alliance activation would pull in.
+ */
+export interface DefensiveWarPowerBreakdown {
+  readonly defenderPower: number;
+  readonly alliancePower: number;
+  readonly totalDefensivePower: number;
+  readonly allianceName: string | null;
+  readonly allyNationId: string | null;
+}
+
 const STRONGER_RATIO = 1.25;
 const WEAKER_RATIO = 0.75;
 
@@ -20,6 +34,10 @@ export class AIMilitaryEvaluationSystem {
   constructor(
     private readonly unitManager: UnitManager,
     private readonly cityManager: CityManager,
+    // Optional so existing callers/tests keep working; when present they make
+    // war evaluation account for the defender's alliance.
+    private readonly allianceManager?: AllianceManager,
+    private readonly diplomacyManager?: DiplomacyManager,
   ) {}
 
   getMilitaryStrength(nationId: string): MilitaryStrengthBreakdown {
@@ -47,17 +65,86 @@ export class AIMilitaryEvaluationSystem {
     };
   }
 
+  /** Deterministic three-way strength comparison (see {@link classifyStrength}). */
+  compareMilitaryStrength(a: string, b: string): MilitaryComparison {
+    return this.classifyStrength(
+      this.getMilitaryStrength(a).totalStrength,
+      this.getMilitaryStrength(b).totalStrength,
+    );
+  }
+
+  /**
+   * Total defensive power `attackerNationId` would face by declaring war on
+   * `defenderNationId`: the defender plus its alliance partner when defensive
+   * alliance activation would pull that ally in.
+   */
+  getDefensiveWarPowerAgainst(attackerNationId: string, defenderNationId: string): number {
+    return this.getDefensiveWarPowerBreakdown(attackerNationId, defenderNationId).totalDefensivePower;
+  }
+
+  /** Detailed breakdown of {@link getDefensiveWarPowerAgainst}, for logging. */
+  getDefensiveWarPowerBreakdown(attackerNationId: string, defenderNationId: string): DefensiveWarPowerBreakdown {
+    const defenderPower = this.getMilitaryStrength(defenderNationId).totalStrength;
+    const allyNationId = this.allianceManager?.getAllyNationId(defenderNationId) ?? null;
+
+    if (allyNationId && this.shouldIncludeAlly(attackerNationId, defenderNationId, allyNationId)) {
+      const alliancePower = this.getMilitaryStrength(allyNationId).totalStrength;
+      return {
+        defenderPower,
+        alliancePower,
+        totalDefensivePower: defenderPower + alliancePower,
+        allianceName: this.allianceManager?.getAllianceForNation(defenderNationId)?.name ?? null,
+        allyNationId,
+      };
+    }
+
+    return {
+      defenderPower,
+      alliancePower: 0,
+      totalDefensivePower: defenderPower,
+      allianceName: null,
+      allyNationId: null,
+    };
+  }
+
+  /**
+   * Alliance-aware variant of {@link compareMilitaryStrength}: compares the
+   * attacker against the defender's full defensive (alliance) power.
+   */
+  compareMilitaryStrengthForWar(attackerNationId: string, defenderNationId: string): MilitaryComparison {
+    return this.classifyStrength(
+      this.getMilitaryStrength(attackerNationId).totalStrength,
+      this.getDefensiveWarPowerAgainst(attackerNationId, defenderNationId),
+    );
+  }
+
+  /**
+   * Include the defender's ally in defensive power only when defensive alliance
+   * activation would actually pull it into the war: a distinct, living nation
+   * (not the attacker) that is not already at war with the attacker.
+   */
+  private shouldIncludeAlly(attackerNationId: string, defenderNationId: string, allyNationId: string): boolean {
+    if (allyNationId === attackerNationId || allyNationId === defenderNationId) return false;
+    if (!this.isNationActive(allyNationId)) return false;
+    if (this.diplomacyManager?.getState(allyNationId, attackerNationId) === 'WAR') return false;
+    return true;
+  }
+
+  /** A nation still in the game: it has at least one city or one combat unit. */
+  isNationActive(nationId: string): boolean {
+    if (this.cityManager.getCitiesByOwner(nationId).length > 0) return true;
+    return this.unitManager.getUnitsByOwner(nationId)
+      .some((unit) => unit.unitType.category !== 'leader');
+  }
+
   /**
    * Deterministic three-way comparison. Edge cases:
    *   - both zero → 'equal'
-   *   - one zero, other positive → the positive side is 'stronger'
-   * Otherwise we lean on the STRONGER/WEAKER ratio thresholds so small
-   * fluctuations do not flip the verdict.
+   *   - one zero, other positive → the positive side is 'stronger'/'weaker'
+   * Otherwise the STRONGER/WEAKER ratio thresholds keep small fluctuations
+   * from flipping the verdict.
    */
-  compareMilitaryStrength(a: string, b: string): MilitaryComparison {
-    const aStrength = this.getMilitaryStrength(a).totalStrength;
-    const bStrength = this.getMilitaryStrength(b).totalStrength;
-
+  private classifyStrength(aStrength: number, bStrength: number): MilitaryComparison {
     if (aStrength === 0 && bStrength === 0) return 'equal';
     if (bStrength === 0) return 'stronger';
     if (aStrength === 0) return 'weaker';

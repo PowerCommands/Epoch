@@ -23,6 +23,7 @@ import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { CityManager } from './CityManager';
 import type { City } from '../entities/City';
 import type { DiplomacyManager } from './DiplomacyManager';
+import type { AllianceManager } from './diplomacy/AllianceManager';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
@@ -58,6 +59,7 @@ export interface SaveLoadContext {
   productionSystem: ProductionSystem;
   policySystem: PolicySystem;
   diplomacyManager: DiplomacyManager;
+  allianceManager?: AllianceManager;
   discoverySystem: DiscoverySystem;
   turnManager: TurnManager;
   gridSystem: IGridSystem;
@@ -101,6 +103,7 @@ export class SaveLoadService {
       productionSystem,
       policySystem,
       diplomacyManager,
+      allianceManager,
       discoverySystem,
       turnManager,
       wonderSystem,
@@ -318,6 +321,10 @@ export class SaveLoadService {
       diplomacy,
       discovery,
       wonders,
+      alliances: allianceManager?.getAllAlliances().map((alliance) => ({
+        ...alliance,
+        memberNationIds: [...alliance.memberNationIds],
+      })),
       corporations,
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       tradeConnections: tradeConnectionSystem?.getAllConnections(),
@@ -427,6 +434,7 @@ export class SaveLoadService {
 
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
+    context.allianceManager?.restoreAlliances(state.alliances);
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     context.tradeConnectionSystem?.restoreConnections(state.tradeConnections ?? []);

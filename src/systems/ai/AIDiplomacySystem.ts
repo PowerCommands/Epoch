@@ -141,9 +141,22 @@ export class AIDiplomacySystem {
     // grants), friendly opens borders, anything else stays put.
     if (attitude === 'hostile') {
       if (this.diplomacyManager.isPeaceTreatyActive(selfId, otherId, currentTurn)) return;
+      // Alliance-aware: attacking an allied target means facing the defender
+      // plus the ally that defensive alliance activation would pull in. Price
+      // the war against that combined strength, not the isolated target.
+      const warComparison = this.militaryEvaluationSystem.compareMilitaryStrengthForWar(selfId, otherId);
+      const defensiveBreakdown = this.militaryEvaluationSystem.getDefensiveWarPowerBreakdown(selfId, otherId);
+      if (defensiveBreakdown.allyNationId) {
+        const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
+        const allyName = this.nationManager.getNation(defensiveBreakdown.allyNationId)?.name ?? defensiveBreakdown.allyNationId;
+        console.log(this.formatLog(
+          selfId,
+          `evaluated war against ${targetName}: defender power ${Math.round(defensiveBreakdown.defenderPower)} + alliance ${allyName} ${Math.round(defensiveBreakdown.alliancePower)} = ${Math.round(defensiveBreakdown.totalDefensivePower)} (Alliance: ${defensiveBreakdown.allianceName}).`,
+        ));
+      }
       // Don't pick a fight we'll obviously lose, or while the enemy is
       // already threatening our cities.
-      if (comparison === 'weaker' || threat === 'high') return;
+      if (warComparison === 'weaker' || threat === 'high') return;
       const adjustedWarTolerance = personality.warTolerance + ideologyWarModifier;
       const personalityWantsWar = adjustedWarTolerance >= 50 || personality.aggressionBias > 0;
 
@@ -152,8 +165,8 @@ export class AIDiplomacySystem {
       // when its personality alone would not, but only if the existing
       // cooldowns and military checks already permit it.
       let warScore = intent.aggression * 0.3;
-      if (comparison === 'stronger') warScore += 0.4;
-      else if (comparison === 'equal') warScore += 0.2;
+      if (warComparison === 'stronger') warScore += 0.4;
+      else if (warComparison === 'equal') warScore += 0.2;
       if (threat === 'low' || threat === 'medium') warScore += 0.3;
       warScore += ideologyWarModifier / 100;
       const personalityFactor = getNationPersonalityFactor(selfId);
@@ -183,7 +196,7 @@ export class AIDiplomacySystem {
           otherId,
           relation,
           attitude,
-          comparison,
+          warComparison,
           threat,
           personality,
           evaluation,

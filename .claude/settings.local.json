@@ -15,8 +15,10 @@
       "Bash(grep *)",
       "Bash(xargs *)",
       "Bash(tee *)",
+      "Bash(cd *)",
       "Bash(claude --version)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(awk *)"
     ]
   },
   "model": "claude-opus-4-8"

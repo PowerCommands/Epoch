@@ -21,6 +21,10 @@ import type { CityManager } from '../../systems/CityManager';
 import type { CityTerritorySystem } from '../../systems/CityTerritorySystem';
 import type { DiplomacyManager } from '../../systems/DiplomacyManager';
 import { MIN_WAR_TURNS_FOR_PEACE } from '../../systems/DiplomacyManager';
+import type { AllianceManager } from '../../systems/diplomacy/AllianceManager';
+import type { AllianceProposalContext } from '../../types/alliance';
+import type { JointWarSystem } from '../../systems/diplomacy/JointWarSystem';
+import type { JointWarKind } from '../../types/jointWar';
 import type { DiscoverySystem } from '../../systems/DiscoverySystem';
 import type { EventLogSystem } from '../../systems/EventLogSystem';
 import type { EraSystem } from '../../systems/EraSystem';
@@ -89,6 +93,9 @@ export class RightSidebarPanelDataProvider {
   private readonly scheduler = new RafScheduler();
   private readonly listeners: ChangedListener[] = [];
   private diplomacyManager: DiplomacyManager | null = null;
+  private allianceManager: AllianceManager | null = null;
+  private jointWarSystem: JointWarSystem | null = null;
+  private jointWarProposal: { receiverNationId: string; kind: JointWarKind; targetNationId: string | null } | null = null;
   private getCurrentTurn: (() => number) | null = null;
   private diplomaticEvaluationSystem: DiplomaticEvaluationSystem | null = null;
   private borderPressureSystem: BorderPressureSystem | null = null;
@@ -142,6 +149,14 @@ export class RightSidebarPanelDataProvider {
 
   onChanged(listener: ChangedListener): void {
     this.listeners.push(listener);
+  }
+
+  setAllianceManager(am: AllianceManager): void {
+    this.allianceManager = am;
+  }
+
+  setJointWarSystem(system: JointWarSystem): void {
+    this.jointWarSystem = system;
   }
 
   setDiplomacyManager(dm: DiplomacyManager): void {
@@ -1340,6 +1355,7 @@ export class RightSidebarPanelDataProvider {
     if (peaceTreatyRemaining > 0) {
       rows.push(textRow(`Peace Treaty: ${peaceTreatyRemaining} turn${peaceTreatyRemaining === 1 ? '' : 's'} remaining`));
     }
+    rows.push(...this.getAllianceFactRows(nationId));
 
     const deals = this.tradeDealSystem?.getDealsBetween(humanId, nationId) ?? [];
     if (deals.length > 0) {
@@ -1365,6 +1381,10 @@ export class RightSidebarPanelDataProvider {
     const humanId = this.humanNationId;
     const relation = dm.getRelation(humanId, nationId);
     const rows: RightSidebarRow[] = [textRow(relation.state === 'WAR' ? 'At War' : 'At Peace')];
+    const alliance = this.allianceManager?.getAllianceForNation(humanId);
+    if (alliance && this.allianceManager?.areAllied(humanId, nationId)) {
+      rows.push(textRow(`Allied — ${alliance.name}`));
+    }
     if (dm.isOpenBorderGrantedFrom(humanId, nationId)) rows.push(textRow('Open Borders granted'));
     if (dm.hasEmbassy(humanId, nationId)) rows.push(textRow('Embassy established'));
     if (dm.hasTradeRelations(humanId, nationId)) rows.push(textRow('Trade Relations active'));
@@ -1457,6 +1477,8 @@ export class RightSidebarPanelDataProvider {
       },
       nation?.color,
     ));
+    rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
+    rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
     const isAtWar = relation.state === 'WAR';
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);
@@ -1467,9 +1489,16 @@ export class RightSidebarPanelDataProvider {
     const peaceUnavailableReason = isAtWar && !dm.canProposePeace(humanId, nationId, currentTurn)
       ? `Peace cannot be proposed until ${MIN_WAR_TURNS_FOR_PEACE} turns of war have passed (${warDuration}/${MIN_WAR_TURNS_FOR_PEACE}).`
       : undefined;
+    // Alliance partners cannot declare war on each other.
+    const alliancePartnerReason = this.allianceManager?.areAllied(humanId, nationId)
+      ? 'You cannot declare war on an alliance partner.'
+      : undefined;
+    const warPeaceReason = relation.state === 'PEACE'
+      ? (alliancePartnerReason ?? peaceTreatyReason)
+      : peaceUnavailableReason;
     rows.push(disabledReasonButtonRow(
       relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace',
-      isAtWar ? peaceUnavailableReason : peaceTreatyReason,
+      warPeaceReason,
       () => {
         document.dispatchEvent(new CustomEvent('diplomacyAction', {
           detail: { action: relation.state === 'PEACE' ? 'declareWar' : 'proposePeace', targetNationId: nationId },
@@ -1477,11 +1506,155 @@ export class RightSidebarPanelDataProvider {
       },
       relation.state === 'PEACE' ? 0xb86767 : nation?.color,
     ));
-    if (peaceTreatyReason) rows.push(textRow(peaceTreatyReason, true));
+    if (alliancePartnerReason) rows.push(textRow(alliancePartnerReason, true));
+    if (peaceTreatyReason && !alliancePartnerReason) rows.push(textRow(peaceTreatyReason, true));
     if (peaceUnavailableReason) rows.push(textRow(peaceUnavailableReason, true));
     rows.push({ kind: 'separator' });
     rows.push(...this.buildTradeRouteProposalRows(nationId, nation?.color));
     return rows;
+  }
+
+  /**
+   * "Propose Alliance" control for the audience chamber. Reflects every v1
+   * alliance rule via AllianceManager — the UI never re-implements them. When
+   * already allied it shows a disabled, informative state instead.
+   */
+  private buildAllianceActionRows(nationId: string, accentColor?: number): RightSidebarRow[] {
+    if (!this.allianceManager || !this.humanNationId) return [];
+    const humanId = this.humanNationId;
+
+    if (this.allianceManager.isInAlliance(humanId)) {
+      const isThisAlly = this.allianceManager.areAllied(humanId, nationId);
+      return [disabledReasonButtonRow(
+        isThisAlly ? 'Allied' : 'Propose Alliance',
+        isThisAlly ? 'You are already allied with this nation.' : 'You are already in an alliance.',
+        () => {},
+        accentColor,
+      )];
+    }
+
+    const validation = this.allianceManager.canProposeAlliance(humanId, nationId, this.allianceProposalContext());
+    const rows: RightSidebarRow[] = [disabledReasonButtonRow(
+      'Propose Alliance',
+      validation.ok ? undefined : validation.reason,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'proposeAlliance', targetNationId: nationId },
+        }));
+      },
+      accentColor,
+    )];
+    if (!validation.ok && validation.reason) rows.push(textRow(validation.reason, true));
+    return rows;
+  }
+
+  private allianceProposalContext(): AllianceProposalContext {
+    return {
+      haveMet: (a, b) => this.discoverySystem?.hasMet(a, b) ?? true,
+      isAtWar: (a, b) => this.diplomacyManager?.getState(a, b) === 'WAR',
+    };
+  }
+
+  /**
+   * "Request Joint War" / "Ask to Join War" controls for the audience chamber.
+   * Opening one enters a target-selection sub-flow (mirroring the trade-route
+   * proposal pattern); confirming dispatches a diplomacyAction with the chosen
+   * third-party target. All target-validity rules come from JointWarSystem.
+   */
+  private buildJointWarActionRows(receiverNationId: string, accentColor?: number): RightSidebarRow[] {
+    if (!this.jointWarSystem || !this.humanNationId) return [];
+    const humanId = this.humanNationId;
+    const proposalOpen = this.jointWarProposal?.receiverNationId === receiverNationId;
+
+    if (!proposalOpen) {
+      const rows: RightSidebarRow[] = [];
+      for (const kind of ['request', 'join'] as const) {
+        const hasTargets = this.jointWarSystem.getValidJointWarTargets(humanId, receiverNationId, kind).length > 0;
+        const disabledReason = hasTargets
+          ? undefined
+          : (kind === 'request'
+            ? 'No nation is available for a coordinated war.'
+            : 'You are not at war with any nation they could join against.');
+        rows.push(disabledReasonButtonRow(
+          kind === 'request' ? 'Request Joint War' : 'Ask to Join War',
+          disabledReason,
+          () => {
+            this.jointWarProposal = { receiverNationId, kind, targetNationId: null };
+            this.requestRefresh();
+          },
+          accentColor,
+        ));
+      }
+      return rows;
+    }
+
+    const proposal = this.jointWarProposal!;
+    const kind = proposal.kind;
+    const rows: RightSidebarRow[] = [
+      textRow(kind === 'request' ? 'Request Joint War' : 'Ask to Join War', false, true),
+      textRow('Select a target nation:'),
+    ];
+    const targetIds = this.jointWarSystem.getValidJointWarTargets(humanId, receiverNationId, kind);
+    if (targetIds.length === 0) {
+      rows.push(textRow('No valid target nations.', true));
+    } else {
+      for (const targetId of targetIds) {
+        const targetName = this.nationManager.getNation(targetId)?.name ?? targetId;
+        rows.push({
+          kind: 'button',
+          text: targetName,
+          selected: targetId === proposal.targetNationId,
+          accentColor,
+          onClick: () => {
+            if (this.jointWarProposal) {
+              this.jointWarProposal = { ...this.jointWarProposal, targetNationId: targetId };
+              this.requestRefresh();
+            }
+          },
+        });
+      }
+    }
+
+    rows.push({ kind: 'separator' });
+    const chosenTargetId = proposal.targetNationId;
+    rows.push(disabledReasonButtonRow(
+      'Confirm',
+      chosenTargetId ? undefined : 'Select a target nation first.',
+      () => {
+        if (!chosenTargetId) return;
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: {
+            action: kind === 'request' ? 'requestJointWar' : 'askToJoinWar',
+            targetNationId: receiverNationId,
+            jointWarTargetNationId: chosenTargetId,
+          },
+        }));
+        this.jointWarProposal = null;
+      },
+      accentColor,
+    ));
+    rows.push({
+      kind: 'button',
+      text: 'Cancel',
+      onClick: () => {
+        this.jointWarProposal = null;
+        this.requestRefresh();
+      },
+    });
+    return rows;
+  }
+
+  /** Read-only alliance facts for a nation, for the informational views. */
+  private getAllianceFactRows(nationId: string): RightSidebarRow[] {
+    if (!this.allianceManager) return [];
+    const alliance = this.allianceManager.getAllianceForNation(nationId);
+    if (!alliance) return [];
+    const allyId = this.allianceManager.getAllyNationId(nationId);
+    const allyName = allyId ? (this.nationManager.getNation(allyId)?.name ?? allyId) : 'Unknown';
+    return [
+      textRow(`Alliance: ${alliance.name}`),
+      textRow(`Ally: ${allyName}`),
+    ];
   }
 
   private computeTradeRouteSetupPayment(targetNationId: string): number | null {

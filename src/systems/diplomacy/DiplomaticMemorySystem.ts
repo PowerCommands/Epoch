@@ -51,6 +51,41 @@ const DELTA_EXCHANGE_MAPS: MemoryDelta = {
   affinity: 2,
 };
 
+// Forming a formal alliance is a significant friendly milestone — a moderate
+// mutual boost to trust and affinity.
+const DELTA_FORM_ALLIANCE: MemoryDelta = {
+  trust: 10,
+  affinity: 8,
+};
+
+// Agreeing to a joint war is a moderate act of military cooperation between
+// the proposer and receiver (the relation hit toward the shared target comes
+// from the war declaration itself).
+const DELTA_JOINT_WAR: MemoryDelta = {
+  trust: 8,
+  affinity: 6,
+};
+
+// Leaving a shared alliance is a moderate slight to the remaining member.
+const DELTA_ALLIANCE_DEPARTURE: MemoryDelta = {
+  trust: -10,
+  affinity: -8,
+  hostility: 6,
+};
+
+// Council proposal politics — small, deliberately mild so friction builds
+// without tearing alliances apart.
+const DELTA_PROPOSAL_APPROVED: MemoryDelta = {
+  trust: 3,
+  affinity: 2,
+};
+
+const DELTA_PROPOSAL_REJECTED: MemoryDelta = {
+  trust: -4,
+  affinity: -2,
+  hostility: 2,
+};
+
 export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
   constructor(private readonly diplomacyManager: DiplomacyManager) {}
 
@@ -76,6 +111,26 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
 
   onExchangeMaps(a: string, b: string): void {
     this.adjustRelation(a, b, DELTA_EXCHANGE_MAPS);
+  }
+
+  onFormAlliance(a: string, b: string): void {
+    this.adjustRelation(a, b, DELTA_FORM_ALLIANCE);
+  }
+
+  onJointWarAgreement(a: string, b: string): void {
+    this.adjustRelation(a, b, DELTA_JOINT_WAR);
+  }
+
+  onAllianceDeparture(a: string, b: string): void {
+    this.adjustRelation(a, b, DELTA_ALLIANCE_DEPARTURE);
+  }
+
+  onProposalApproved(a: string, b: string): void {
+    this.adjustRelation(a, b, DELTA_PROPOSAL_APPROVED);
+  }
+
+  onProposalRejected(a: string, b: string): void {
+    this.adjustRelation(a, b, DELTA_PROPOSAL_REJECTED);
   }
 
   /**

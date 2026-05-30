@@ -68,6 +68,12 @@ import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/
 import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
+import { AllianceManager } from '../systems/diplomacy/AllianceManager';
+import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
+import { JointWarSystem } from '../systems/diplomacy/JointWarSystem';
+import type { JointWarKind } from '../types/jointWar';
+import { AllianceCouncilManager } from '../systems/diplomacy/AllianceCouncilManager';
+import { AllianceCouncilDialog } from '../ui/AllianceCouncilDialog';
 import { TradeDiplomacySystem } from '../systems/diplomacy/TradeDiplomacySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
@@ -519,6 +525,9 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
+    const allianceManager = new AllianceManager();
+    // Alliance partners cannot declare war on each other (central rule).
+    diplomacyManager.setAllianceGuard((a, b) => allianceManager.areAllied(a, b));
     const tradeDiplomacySystem = new TradeDiplomacySystem(diplomacyManager);
     const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(diplomacyManager);
     const ideologicalDriftSystem = new IdeologicalDriftSystem(
@@ -526,8 +535,16 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       (a, b) => discoverySystem.hasMet(a, b),
     );
-    const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager);
+    const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager, allianceManager, diplomacyManager);
     const aiMilitaryThreatEvaluationSystem = new AIMilitaryThreatEvaluationSystem(unitManager, cityManager, gridSystem);
+    const jointWarSystem = new JointWarSystem(
+      diplomacyManager,
+      diplomaticEvaluationSystem,
+      aiMilitaryEvaluationSystem,
+      allianceManager,
+      nationManager,
+      (a, b) => discoverySystem.hasMet(a, b),
+    );
     const borderPressureSystem = new BorderPressureSystem(
       diplomacyManager,
       cityManager,
@@ -1600,6 +1617,7 @@ export class GameScene extends Phaser.Scene {
       discoverySystem.scan();
 
       aiDiplomacySystem.runTurn(nation.id);
+      maybeProposeAIJointWar(nation.id);
       aiSystem.runTurn(nation.id);
       aiExplorationSystem.runTurn(nation.id);
     };
@@ -1704,6 +1722,7 @@ export class GameScene extends Phaser.Scene {
         // AI turn (settlers, combat, movement, production) reads the freshly
         // adjusted state.
         aiDiplomacySystem.runTurn(e.nation.id);
+        maybeProposeAIJointWar(e.nation.id);
         aiSystem.runTurn(e.nation.id);
         aiExplorationSystem.runTurn(e.nation.id);
         territoryRenderer.invalidate();
@@ -2483,11 +2502,151 @@ export class GameScene extends Phaser.Scene {
       };
 
       btnContainer.appendChild(makeBtn(opts.confirmLabel, true, opts.onConfirm));
-      btnContainer.appendChild(makeBtn(opts.cancelLabel, false, opts.onCancel));
+      // An empty cancel label renders a single-button (acknowledge-only) modal.
+      if (opts.cancelLabel) btnContainer.appendChild(makeBtn(opts.cancelLabel, false, opts.onCancel));
       box.appendChild(btnContainer);
       overlay.appendChild(box);
       document.body.appendChild(overlay);
     };
+
+    // ─── Joint War Requests ──────────────────────────────────────────────────
+    // Execution + side effects orchestrated here; validation and AI acceptance
+    // live in JointWarSystem, war state goes through the central diplomacy
+    // system (so defensive alliance activation fires automatically).
+    const jointWarLastProposalTurn = new Map<string, number>();
+    const JOINT_WAR_PROPOSAL_COOLDOWN = 12;
+
+    const formatJointWarProposalLog = (proposerId: string, receiverId: string, targetId: string, kind: JointWarKind): string => {
+      const p = nationManager.getNation(proposerId)?.name ?? proposerId;
+      const r = nationManager.getNation(receiverId)?.name ?? receiverId;
+      const t = nationManager.getNation(targetId)?.name ?? targetId;
+      return kind === 'join'
+        ? `${p} asked ${r} to join the war against ${t}.`
+        : `${p} proposed a joint war with ${r} against ${t}.`;
+    };
+
+    const executeJointWar = (proposerId: string, receiverId: string, targetId: string, kind: JointWarKind): void => {
+      // Request: both co-declare. Join: only the receiver does (proposer already
+      // at war). Defensive alliance activation fires from declareWar listeners.
+      if (kind === 'request') diplomacyManager.declareWar(proposerId, targetId);
+      diplomacyManager.declareWar(receiverId, targetId);
+      diplomacyManager.recordJointWarAgreement(proposerId, receiverId);
+    };
+
+    const finalizeJointWar = (proposerId: string, receiverId: string, targetId: string, kind: JointWarKind, accepted: boolean): void => {
+      const p = nationManager.getNation(proposerId)?.name ?? proposerId;
+      const r = nationManager.getNation(receiverId)?.name ?? receiverId;
+      const t = nationManager.getNation(targetId)?.name ?? targetId;
+      if (accepted) {
+        // State may have shifted between proposal and a delayed human accept.
+        if (!jointWarSystem.canRequestJointWar(proposerId, receiverId, targetId, kind).ok) {
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+          return;
+        }
+        executeJointWar(proposerId, receiverId, targetId, kind);
+        logManager.info({
+          nationIds: [proposerId, receiverId, targetId],
+          category: 'diplomacy',
+          message: kind === 'join'
+            ? `${r} accepted and entered the war against ${t}.`
+            : `${r} accepted. ${p} and ${r} declared war on ${t}.`,
+        });
+      } else {
+        logManager.info({
+          nationIds: [proposerId, receiverId, targetId],
+          category: 'diplomacy',
+          message: kind === 'join'
+            ? `${r} rejected ${p}'s request to join the war against ${t}.`
+            : `${r} rejected ${p}'s joint war proposal against ${t}.`,
+        });
+      }
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    };
+
+    // AI-initiated joint-war proposals, cooldown-gated so they stay rare.
+    const maybeProposeAIJointWar = (proposerId: string): void => {
+      const self = nationManager.getNation(proposerId);
+      if (!self || self.isHuman) return;
+      const currentTurn = turnManager.getCurrentRound();
+      const last = jointWarLastProposalTurn.get(proposerId);
+      if (last !== undefined && currentTurn - last < JOINT_WAR_PROPOSAL_COOLDOWN) return;
+
+      const proposal = jointWarSystem.findAIProposal(proposerId);
+      if (!proposal) return;
+      jointWarLastProposalTurn.set(proposerId, currentTurn);
+
+      const { receiverNationId, targetNationId: jointTargetId, kind } = proposal;
+      logManager.info({
+        nationIds: [proposerId, receiverNationId, jointTargetId],
+        category: 'diplomacy',
+        message: formatJointWarProposalLog(proposerId, receiverNationId, jointTargetId, kind),
+      });
+
+      // Ask the human explicitly; never auto-accept on their behalf.
+      if (receiverNationId === humanNationIdForDiplomacy && !isAutoplayActive()) {
+        const p = self.name;
+        const t = nationManager.getNation(jointTargetId)?.name ?? jointTargetId;
+        const accentColor = `#${(self.color ?? 0xcccccc).toString(16).padStart(6, '0')}`;
+        showDiplomacyModal({
+          title: 'Joint War Request',
+          message: kind === 'join'
+            ? `${p} is at war with ${t} and asks you to join the war against ${t}.`
+            : `${p} proposes a joint war against ${t}. Both of you would declare war on ${t}.`,
+          accentColor,
+          confirmLabel: 'Accept',
+          cancelLabel: 'Reject',
+          onConfirm: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, true),
+          onCancel: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, false),
+        });
+        return;
+      }
+
+      const accepted = jointWarSystem.shouldAccept(receiverNationId, proposerId, jointTargetId, kind);
+      finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, accepted);
+    };
+
+    // ─── Alliance Council (Phases 1–3) ───────────────────────────────────────
+    const allianceCouncilDialog = new AllianceCouncilDialog();
+    const allianceCouncilManager = new AllianceCouncilManager(
+      allianceManager,
+      nationManager,
+      diplomacyManager,
+      aiMilitaryEvaluationSystem,
+      diplomaticEvaluationSystem,
+      (a, b) => discoverySystem.hasMet(a, b),
+      {
+        getCurrentRound: () => turnManager.getCurrentRound(),
+        isHuman: (nationId) => nationManager.getNation(nationId)?.isHuman === true,
+        isAutoplayActive: () => isAutoplayActive(),
+        log: (nationIds, message) => logManager.info({ nationIds, category: 'diplomacy', message }),
+        openCouncilDialog: (view) => allianceCouncilDialog.show(view),
+        closeCouncilDialog: () => allianceCouncilDialog.hide(),
+        requestHumanInviteResponse: (allianceName, proposerName, onAccept, onReject) => {
+          showDiplomacyModal({
+            title: 'Alliance Invitation',
+            message: `${proposerName}'s council invites you to join ${allianceName}.`,
+            accentColor: '#c9a227',
+            confirmLabel: 'Accept',
+            cancelLabel: 'Reject',
+            onConfirm: onAccept,
+            onCancel: onReject,
+          });
+        },
+        embargoTrade: (memberId, targetId) => {
+          diplomacyManager.cancelTradeRelations(memberId, targetId);
+          tradeDealSystem.cancelDealsBetween(memberId, targetId, 'cancelled');
+          tradeConnectionSystem.cancelConnectionsBetweenNations(memberId, targetId);
+        },
+        onChanged: () => {
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        },
+      },
+    );
+    turnManager.on('roundStart', () => allianceCouncilManager.update());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => allianceCouncilDialog.hide());
 
     foreignTroopViolationSystem.onWarning((event) => {
       logManager.info({
@@ -2729,7 +2888,12 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
 
+    // Assigned just below; declared first so the war-log listener can ask
+    // whether the current declaration is a defensive ally join (logged
+    // separately with alliance context, so the generic line is skipped).
+    let allianceWarSystem: AllianceWarSystem | null = null;
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
+      if (allianceWarSystem?.isActivating()) return;
       const nameA = nationManager.getNation(aggressorId)?.name ?? aggressorId;
       const nameB = nationManager.getNation(targetId)?.name ?? targetId;
       console.log(`[Diplomacy] War declared: ${nameA} → ${nameB}`);
@@ -2745,6 +2909,47 @@ export class GameScene extends Phaser.Scene {
     diplomacyManager.onDiplomacyChanged(() => {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
+    });
+
+    // Defensive Alliance Activation: when an alliance member is attacked, its
+    // ally automatically joins the war. Registered after the generic war-log
+    // listener so the original declaration is logged first.
+    allianceWarSystem = new AllianceWarSystem(diplomacyManager, allianceManager);
+    allianceWarSystem.onActivation(({ attackerNationId, defenderNationId, joiningNationId, allianceName }) => {
+      const attackerName = nationManager.getNation(attackerNationId)?.name ?? attackerNationId;
+      const defenderName = nationManager.getNation(defenderNationId)?.name ?? defenderNationId;
+      const joiningName = nationManager.getNation(joiningNationId)?.name ?? joiningNationId;
+
+      logManager.info({
+        nationId: isAINation(joiningNationId) ? joiningNationId : undefined,
+        nationIds: [joiningNationId, attackerNationId],
+        category: 'diplomacy',
+        message: `${joiningName} entered the war against ${attackerName} (Alliance: ${allianceName}).`,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+
+      if (isAutoplayActive()) return;
+      const human = humanNationIdForDiplomacy;
+      let message: string | null = null;
+      if (joiningNationId === human) {
+        message = `${attackerName} has declared war on your ally ${defenderName}.\nAccording to the ${allianceName}, you have entered the war against ${attackerName}.`;
+      } else if (defenderNationId === human) {
+        message = `${attackerName} has declared war on you.\nYour ally ${joiningName} has entered the war against ${attackerName}.`;
+      } else if (attackerNationId === human) {
+        message = `You declared war on ${defenderName}.\n${defenderName}'s ally ${joiningName} has entered the war against you.`;
+      }
+      if (message === null) return;
+      const accentColor = `#${(nationManager.getNation(attackerNationId)?.color ?? 0xcc4444).toString(16).padStart(6, '0')}`;
+      showDiplomacyModal({
+        title: 'Alliance Activated',
+        message,
+        accentColor,
+        confirmLabel: 'Understood',
+        cancelLabel: '',
+        onConfirm: () => {},
+        onCancel: () => {},
+      });
     });
 
     // Diplomacy actions from right-side details buttons
@@ -2874,6 +3079,90 @@ export class GameScene extends Phaser.Scene {
           });
         }
         hudLayer?.refresh();
+        rightPanel?.refreshCurrent();
+      } else if (action === 'proposeAlliance') {
+        // Alliance Core v1: human proposes, AI accepts deterministically.
+        const allianceContext = {
+          haveMet: (a: string, b: string): boolean => discoverySystem.hasMet(a, b),
+          isAtWar: (a: string, b: string): boolean => diplomacyManager.getState(a, b) === 'WAR',
+        };
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+        // Default generated name for v1 — the proposer's leader name.
+        const proposerLeaderName = getLeaderByNationId(humanNationIdForDiplomacy)?.name ?? humanName;
+
+        if (!allianceManager.canProposeAlliance(humanNationIdForDiplomacy, targetNationId, allianceContext).ok) {
+          rightPanel?.refreshCurrent();
+          return;
+        }
+
+        const relation = diplomacyManager.getRelation(humanNationIdForDiplomacy, targetNationId);
+        const accepted = allianceManager.shouldAcceptAlliance(
+          humanNationIdForDiplomacy,
+          targetNationId,
+          allianceContext,
+          { trust: relation.trust, hostility: relation.hostility },
+        );
+
+        if (accepted) {
+          const alliance = allianceManager.createAlliance(
+            humanNationIdForDiplomacy,
+            targetNationId,
+            `${proposerLeaderName} Alliance`,
+            turnManager.getCurrentRound(),
+          );
+          if (alliance) {
+            diplomacyManager.recordAllianceFormed(humanNationIdForDiplomacy, targetNationId);
+            logManager.info({
+              nationIds: [humanNationIdForDiplomacy, targetNationId],
+              category: 'diplomacy',
+              message: `${humanName} and ${targetNation.name} formed ${alliance.name}.`,
+            });
+          }
+        } else {
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${targetNation.name} rejected an alliance proposal from ${humanName}.`,
+          });
+        }
+        hudLayer?.refresh();
+        rightPanel?.refreshCurrent();
+      } else if (action === 'requestJointWar' || action === 'askToJoinWar') {
+        // Human (proposer) asks the viewed nation (receiver) to start/join a
+        // war against a chosen third-party target.
+        const kind: JointWarKind = action === 'requestJointWar' ? 'request' : 'join';
+        const jointDetail = (event as CustomEvent).detail as { jointWarTargetNationId?: string };
+        const jointTargetId = jointDetail.jointWarTargetNationId;
+        const receiverId = targetNationId;
+        const proposerId = humanNationIdForDiplomacy;
+        if (!jointTargetId || !jointWarSystem.canRequestJointWar(proposerId, receiverId, jointTargetId, kind).ok) {
+          rightPanel?.refreshCurrent();
+          return;
+        }
+        logManager.info({
+          nationIds: [proposerId, receiverId, jointTargetId],
+          category: 'diplomacy',
+          message: formatJointWarProposalLog(proposerId, receiverId, jointTargetId, kind),
+        });
+        const accepted = jointWarSystem.shouldAccept(receiverId, proposerId, jointTargetId, kind);
+        finalizeJointWar(proposerId, receiverId, jointTargetId, kind, accepted);
+        if (!isAutoplayActive()) {
+          const receiverName = targetNation.name;
+          const jointTargetName = nationManager.getNation(jointTargetId)?.name ?? jointTargetId;
+          showDiplomacyModal({
+            title: 'Joint War',
+            message: accepted
+              ? (kind === 'join'
+                ? `${receiverName} agreed to join the war against ${jointTargetName}.`
+                : `${receiverName} agreed to a joint war against ${jointTargetName}.`)
+              : `${receiverName} declined your request regarding ${jointTargetName}.`,
+            accentColor: color,
+            confirmLabel: 'Understood',
+            cancelLabel: '',
+            onConfirm: () => {},
+            onCancel: () => {},
+          });
+        }
         rightPanel?.refreshCurrent();
       } else if (action === 'proposeTradeRoute') {
         const detail = (event as CustomEvent).detail as { fromCityId: string; toCityId: string; setupPaymentGold: number };
@@ -3093,6 +3382,8 @@ export class GameScene extends Phaser.Scene {
       this.rightSidebarPanel?.setDiagnosticsEnabled(open);
     });
     rightPanel.setDiplomacyManager(diplomacyManager);
+    rightPanel.setAllianceManager(allianceManager);
+    rightPanel.setJointWarSystem(jointWarSystem);
     rightPanel.setCurrentTurnGetter(() => turnManager.getCurrentRound());
     rightPanel.setDiplomaticEvaluationSystem(diplomaticEvaluationSystem);
     rightPanel.setBorderPressureSystem(borderPressureSystem);
@@ -4033,6 +4324,7 @@ export class GameScene extends Phaser.Scene {
           unitManager,
           productionSystem,
           diplomacyManager,
+          allianceManager,
           discoverySystem,
           turnManager,
           gridSystem,
@@ -4452,6 +4744,7 @@ export class GameScene extends Phaser.Scene {
         unitManager,
         productionSystem,
         diplomacyManager,
+        allianceManager,
         discoverySystem,
         turnManager,
         gridSystem,
@@ -4521,6 +4814,7 @@ export class GameScene extends Phaser.Scene {
           unitManager,
           productionSystem,
           diplomacyManager,
+          allianceManager,
           discoverySystem,
           turnManager,
           gridSystem,
@@ -4563,6 +4857,7 @@ export class GameScene extends Phaser.Scene {
             unitManager,
             productionSystem,
             diplomacyManager,
+            allianceManager,
             discoverySystem,
             turnManager,
             gridSystem,
