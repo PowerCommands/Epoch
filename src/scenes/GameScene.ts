@@ -169,6 +169,7 @@ import {
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems/ProductionRules';
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
 import { TileType, type Tile, type MapData } from '../types/map';
+import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { City } from '../entities/City';
 import type { Nation } from '../entities/Nation';
@@ -2952,6 +2953,319 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
+    const refreshAfterGift = (fromNationId: string, toNationId: string): void => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      leaderStrip?.rebuild();
+      resourceSystem.recalculateForNation(fromNationId);
+      resourceSystem.recalculateForNation(toNationId);
+      happinessSystem.recalculateNation(fromNationId);
+      happinessSystem.recalculateNation(toNationId);
+    };
+
+    const transferGiftCity = (city: City, toNationId: string): void => {
+      city.occupiedOriginalNationId = city.originNationId !== toNationId
+        ? city.originNationId
+        : undefined;
+      cityManager.transferOwnership(city.id, toNationId, productionSystem);
+      cityTerritorySystem.transferCityTerritory(city, toNationId, mapData);
+      culturalSphereSystem.claimInitialCityCulture(city, mapData, gridSystem);
+      cityRenderer.refreshCity(city);
+      cityBannerRenderer.refreshCity(city);
+      territoryRenderer.invalidate();
+      rebuildMinimapForGameplay();
+      refreshCultureOverlay();
+      discoverySystem.scan();
+      updateFog();
+    };
+
+    const showGiftDialog = (targetNationId: string): void => {
+      const targetNation = nationManager.getNation(targetNationId);
+      const humanNation = nationManager.getNation(humanNationIdForDiplomacy);
+      if (!targetNation || !humanNation) return;
+
+      const existing = document.getElementById('diplomatic-gift-modal');
+      existing?.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'diplomatic-gift-modal';
+      overlay.style.position = 'fixed';
+      overlay.style.inset = '0';
+      overlay.style.zIndex = '10000';
+      overlay.style.background = 'rgba(0,0,0,0.62)';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.fontFamily = 'sans-serif';
+      overlay.style.color = '#edf4ff';
+
+      const panel = document.createElement('div');
+      panel.style.width = 'min(760px, calc(100vw - 32px))';
+      panel.style.maxHeight = 'min(760px, calc(100vh - 32px))';
+      panel.style.overflow = 'auto';
+      panel.style.background = '#111923';
+      panel.style.border = `2px solid #${targetNation.color.toString(16).padStart(6, '0')}`;
+      panel.style.borderRadius = '6px';
+      panel.style.boxShadow = '0 24px 80px rgba(0,0,0,0.55)';
+      panel.style.padding = '20px';
+      overlay.appendChild(panel);
+
+      const title = document.createElement('h2');
+      title.textContent = `Give Gift to ${targetNation.name}`;
+      title.style.margin = '0 0 12px';
+      title.style.fontSize = '22px';
+      panel.appendChild(title);
+
+      const message = document.createElement('div');
+      message.style.minHeight = '20px';
+      message.style.marginBottom = '12px';
+      message.style.color = '#aebdd0';
+      panel.appendChild(message);
+
+      const form = document.createElement('div');
+      form.style.display = 'grid';
+      form.style.gap = '12px';
+      panel.appendChild(form);
+
+      const makeSection = (label: string): HTMLDivElement => {
+        const section = document.createElement('div');
+        section.style.border = '1px solid rgba(143,163,190,0.35)';
+        section.style.borderRadius = '6px';
+        section.style.padding = '12px';
+        const header = document.createElement('label');
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.style.gap = '8px';
+        header.style.fontWeight = '700';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'gift-kind';
+        radio.value = label.toLowerCase();
+        header.appendChild(radio);
+        header.append(label);
+        section.appendChild(header);
+        form.appendChild(section);
+        return section;
+      };
+
+      const goldSection = makeSection('Gold');
+      const goldRadio = goldSection.querySelector('input[type="radio"]') as HTMLInputElement;
+      goldRadio.checked = true;
+      const availableGold = Math.max(0, Math.floor(nationManager.getResources(humanNationIdForDiplomacy).gold));
+      const goldInput = document.createElement('input');
+      goldInput.type = 'number';
+      goldInput.min = '1';
+      goldInput.max = String(availableGold);
+      goldInput.step = '1';
+      goldInput.value = String(Math.min(50, Math.max(1, availableGold)));
+      goldInput.style.marginTop = '10px';
+      goldInput.style.width = '160px';
+      goldInput.style.padding = '8px';
+      goldInput.style.background = '#0b1118';
+      goldInput.style.color = '#edf4ff';
+      goldInput.style.border = '1px solid rgba(143,163,190,0.55)';
+      goldInput.style.borderRadius = '4px';
+      goldSection.appendChild(goldInput);
+      goldInput.addEventListener('focus', () => {
+        goldRadio.checked = true;
+        updateValidation();
+      });
+      const goldHint = document.createElement('div');
+      goldHint.textContent = `Available gold: ${availableGold}`;
+      goldHint.style.marginTop = '6px';
+      goldHint.style.color = '#aebdd0';
+      goldSection.appendChild(goldHint);
+
+      const unitSection = makeSection('Military Units');
+      const unitRadio = unitSection.querySelector('input[type="radio"]') as HTMLInputElement;
+      const unitList = document.createElement('div');
+      unitList.style.marginTop = '10px';
+      unitList.style.display = 'grid';
+      unitList.style.gap = '6px';
+      const unitGiftWarBlocked = diplomacyManager.getState(humanNationIdForDiplomacy, targetNationId) === 'WAR';
+      const giftableUnits = unitGiftWarBlocked
+        ? []
+        : unitManager.getUnitsByOwner(humanNationIdForDiplomacy)
+          .filter((unit) => isMilitaryUnitType(unit.unitType))
+          .filter((unit) => unit.carriedByUnitId === undefined)
+          .filter((unit) => unit.cargoUnitIds.length === 0);
+      for (const unit of giftableUnits) {
+        const row = document.createElement('label');
+        row.style.display = 'flex';
+        row.style.gap = '8px';
+        row.style.alignItems = 'center';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.value = unit.id;
+        row.appendChild(box);
+        const power = Math.max(unit.unitType.baseStrength, unit.unitType.rangedStrength ?? 0);
+        row.append(`${unit.unitType.name} at (${unit.tileX},${unit.tileY})  Power ${power}`);
+        unitList.appendChild(row);
+      }
+      if (unitGiftWarBlocked || giftableUnits.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = unitGiftWarBlocked ? 'Cannot gift units during war.' : 'No military units available.';
+        empty.style.color = '#aebdd0';
+        unitList.appendChild(empty);
+      }
+      unitSection.appendChild(unitList);
+      unitList.addEventListener('change', () => {
+        unitRadio.checked = true;
+        updateValidation();
+      });
+
+      const citySection = makeSection('City');
+      const cityRadio = citySection.querySelector('input[type="radio"]') as HTMLInputElement;
+      const cityList = document.createElement('div');
+      cityList.style.marginTop = '10px';
+      cityList.style.display = 'grid';
+      cityList.style.gap = '6px';
+      const humanCities = cityManager.getCitiesByOwner(humanNationIdForDiplomacy);
+      const giftableCities = humanCities.filter((city) => !city.isCapital && !city.isResidenceCapital && humanCities.length > 1);
+      for (const city of giftableCities) {
+        const row = document.createElement('label');
+        row.style.display = 'flex';
+        row.style.gap = '8px';
+        row.style.alignItems = 'center';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'gift-city-id';
+        radio.value = city.id;
+        row.appendChild(radio);
+        row.append(`${city.name}  Pop ${city.population}`);
+        cityList.appendChild(row);
+      }
+      if (giftableCities.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = humanCities.length <= 1 ? 'Cannot gift your last remaining city.' : 'Cannot gift capital.';
+        empty.style.color = '#aebdd0';
+        cityList.appendChild(empty);
+      }
+      citySection.appendChild(cityList);
+      cityList.addEventListener('change', () => {
+        cityRadio.checked = true;
+        updateValidation();
+      });
+
+      const controls = document.createElement('div');
+      controls.style.display = 'flex';
+      controls.style.justifyContent = 'flex-end';
+      controls.style.gap = '10px';
+      controls.style.marginTop = '16px';
+      panel.appendChild(controls);
+
+      const cancelButton = document.createElement('button');
+      cancelButton.textContent = 'Cancel';
+      const confirmButton = document.createElement('button');
+      confirmButton.textContent = 'Confirm Gift';
+      for (const button of [cancelButton, confirmButton]) {
+        button.style.padding = '9px 14px';
+        button.style.borderRadius = '4px';
+        button.style.border = '1px solid rgba(143,163,190,0.55)';
+        button.style.background = '#1a2b38';
+        button.style.color = '#edf4ff';
+        button.style.fontWeight = '700';
+      }
+      controls.append(cancelButton, confirmButton);
+
+      const getGiftKind = (): 'gold' | 'military units' | 'city' => (
+        (form.querySelector('input[name="gift-kind"]:checked') as HTMLInputElement | null)?.value as 'gold' | 'military units' | 'city'
+      ) ?? 'gold';
+
+      const getValidationMessage = (): string | null => {
+        const kind = getGiftKind();
+        if (kind === 'gold') {
+          const amount = Math.floor(Number(goldInput.value));
+          if (!Number.isFinite(amount) || amount <= 0) return 'Enter a positive gold amount.';
+          if (amount > nationManager.getResources(humanNationIdForDiplomacy).gold) return 'Not enough gold.';
+          return null;
+        }
+        if (kind === 'military units') {
+          if (unitGiftWarBlocked) return 'Cannot gift units during war.';
+          const selected = unitList.querySelectorAll('input[type="checkbox"]:checked');
+          if (selected.length === 0) return 'Select at least one military unit.';
+          return null;
+        }
+        const cityId = (cityList.querySelector('input[name="gift-city-id"]:checked') as HTMLInputElement | null)?.value;
+        if (!cityId) return giftableCities.length === 0 ? 'No giftable city available.' : 'Select a city.';
+        return null;
+      };
+
+      const updateValidation = (): void => {
+        const reason = getValidationMessage();
+        confirmButton.disabled = reason !== null;
+        confirmButton.style.opacity = reason ? '0.5' : '1';
+        confirmButton.style.cursor = reason ? 'not-allowed' : 'pointer';
+        message.textContent = reason ?? 'Choose a gift and confirm.';
+      };
+
+      form.addEventListener('input', updateValidation);
+      form.addEventListener('change', updateValidation);
+      cancelButton.onclick = () => overlay.remove();
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) overlay.remove();
+      });
+      confirmButton.onclick = () => {
+        if (getValidationMessage()) {
+          updateValidation();
+          return;
+        }
+        const kind = getGiftKind();
+        if (kind === 'gold') {
+          const amount = Math.floor(Number(goldInput.value));
+          resourceSystem.addGold(humanNationIdForDiplomacy, -amount);
+          resourceSystem.addGold(targetNationId, amount);
+          diplomacyManager.recordGoldGift(humanNationIdForDiplomacy, targetNationId, amount);
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${humanNation.name} gave ${amount} gold to ${targetNation.name}.`,
+          });
+        } else if (kind === 'military units') {
+          const selectedIds = Array.from(unitList.querySelectorAll('input[type="checkbox"]:checked'))
+            .map((input) => (input as HTMLInputElement).value);
+          let powerValue = 0;
+          let transferred = 0;
+          for (const unitId of selectedIds) {
+            const unit = unitManager.getUnit(unitId);
+            if (!unit || unit.ownerId !== humanNationIdForDiplomacy || !isMilitaryUnitType(unit.unitType)) continue;
+            powerValue += Math.max(unit.unitType.baseStrength, unit.unitType.rangedStrength ?? 0);
+            if (unitManager.transferOwnership(unit.id, targetNationId)) transferred++;
+          }
+          if (transferred > 0) {
+            diplomacyManager.recordUnitGift(humanNationIdForDiplomacy, targetNationId, transferred, powerValue);
+            discoverySystem.scan();
+            updateFog();
+            logManager.info({
+              nationIds: [humanNationIdForDiplomacy, targetNationId],
+              category: 'diplomacy',
+              message: `${humanNation.name} gifted ${transferred} military unit${transferred === 1 ? '' : 's'} to ${targetNation.name}.`,
+            });
+          }
+        } else {
+          const cityId = (cityList.querySelector('input[name="gift-city-id"]:checked') as HTMLInputElement | null)?.value;
+          const city = cityId ? cityManager.getCity(cityId) : undefined;
+          if (!city || city.ownerId !== humanNationIdForDiplomacy || city.isCapital || city.isResidenceCapital || humanCities.length <= 1) {
+            updateValidation();
+            return;
+          }
+          transferGiftCity(city, targetNationId);
+          diplomacyManager.recordCityGift(humanNationIdForDiplomacy, targetNationId, city.id);
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${humanNation.name} gifted ${city.name} to ${targetNation.name}.`,
+          });
+        }
+        refreshAfterGift(humanNationIdForDiplomacy, targetNationId);
+        overlay.remove();
+      };
+
+      document.body.appendChild(overlay);
+      updateValidation();
+      goldInput.focus();
+    };
+
     // Diplomacy actions from right-side details buttons
     const onDiplomacyAction = (event: Event) => {
       const { action, targetNationId } = (event as CustomEvent<{ action: string; targetNationId: string; fromCityId?: string; toCityId?: string; setupPaymentGold?: number }>).detail;
@@ -3080,6 +3394,8 @@ export class GameScene extends Phaser.Scene {
         }
         hudLayer?.refresh();
         rightPanel?.refreshCurrent();
+      } else if (action === 'giveGift') {
+        showGiftDialog(targetNationId);
       } else if (action === 'proposeAlliance') {
         // Alliance Core v1: human proposes, AI accepts deterministically.
         const allianceContext = {
@@ -3857,6 +4173,7 @@ export class GameScene extends Phaser.Scene {
       if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
       productionSystem.enqueue(city.id, { kind: 'unit', unitType });
+      cityView.switchToQueueMode();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
@@ -3931,6 +4248,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       productionSystem.enqueue(city.id, { kind: 'corporation', corporationType });
+      cityView.switchToQueueMode();
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
@@ -3957,6 +4275,7 @@ export class GameScene extends Phaser.Scene {
                 { kind: 'wonder', wonderType },
                 { placement: { tileX: result.coord.x, tileY: result.coord.y } },
               );
+              cityView.switchToQueueMode();
             }
           }
           cityView.hideTooltip();
@@ -3972,6 +4291,7 @@ export class GameScene extends Phaser.Scene {
           const buildingDef = getBuildingById(result.buildingId);
           if (buildingDef && !isBuildingQueued(city.id, result.buildingId)) {
             productionSystem.enqueue(city.id, { kind: 'building', buildingType: buildingDef });
+            cityView.switchToQueueMode();
           }
           cityTerritorySystem.updateWorkedTiles(city, mapData);
           resourceSystem.recalculateForNation(city.ownerId);
@@ -5013,6 +5333,9 @@ export class GameScene extends Phaser.Scene {
 
     const openCityView = (city: City): void => {
       unbindGameplayHotkeys();
+      const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
+      this.cameraController.focusOn(x, y, 2.0);
+      const screenPosition = worldToScreen(this.cameras.main, x, y);
       cityView.show(
         city,
         getCityViewUnitOptions(city),
@@ -5022,14 +5345,13 @@ export class GameScene extends Phaser.Scene {
         getCityViewWonderOptions(city),
         getCityViewCorporationOptions(city),
         getCityViewQueueItems(city),
+        screenPosition,
       );
       cityViewRenderer.showWithState(
         city,
         cityViewInteraction.getRenderState(),
         getCityViewPlacementRenderState(city),
       );
-      const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
-      this.cameraController.focusOn(x, y, 2.0);
     };
   }
 
@@ -5402,6 +5724,17 @@ function pruneBorderPressureLogCooldowns(round: number, recentLogs: Map<string, 
 
 function isUnitUpkeepAffordabilityReason(reason: string): boolean {
   return reason.startsWith('Not enough gold reserves to support this unit');
+}
+
+function worldToScreen(
+  camera: Phaser.Cameras.Scene2D.Camera,
+  worldX: number,
+  worldY: number,
+): { screenX: number; screenY: number } {
+  return {
+    screenX: camera.x + (worldX - camera.scrollX) * camera.zoom,
+    screenY: camera.y + (worldY - camera.scrollY) * camera.zoom,
+  };
 }
 
 function isDevBuild(): boolean {

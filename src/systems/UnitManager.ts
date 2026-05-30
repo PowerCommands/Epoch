@@ -257,6 +257,18 @@ export class UnitManager {
     return true;
   }
 
+  transferOwnership(unitId: string, newOwnerId: string): boolean {
+    const unit = this.units.get(unitId);
+    if (unit === undefined || unit.ownerId === newOwnerId) return false;
+    unit.ownerId = newOwnerId;
+    for (const cargo of this.getCargoUnitsForTransport(unit)) {
+      cargo.ownerId = newOwnerId;
+      this.notify({ unit: cargo, reason: 'actionChanged' });
+    }
+    this.notify({ unit, reason: 'actionChanged' });
+    return true;
+  }
+
   notifyActionChanged(unitId: string): void {
     const unit = this.units.get(unitId);
     if (unit === undefined) return;

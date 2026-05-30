@@ -44,6 +44,31 @@ const DELTA_CITY_CAPTURED: MemoryDelta = {
   trust: -20,
 };
 
+function goldGiftDelta(amount: number): MemoryDelta {
+  const scaled = Math.min(1, Math.max(0, Math.log1p(amount) / Math.log1p(120)));
+  return {
+    trust: Math.round(2 + scaled * 16),
+    affinity: Math.round(1 + scaled * 12),
+    hostility: -Math.round(1 + scaled * 6),
+  };
+}
+
+function unitGiftDelta(unitCount: number, powerValue = 0): MemoryDelta {
+  const countScore = Math.min(18, unitCount * 7);
+  const powerScore = Math.min(14, Math.floor(powerValue / 18));
+  return {
+    trust: 8 + countScore + Math.floor(powerScore / 2),
+    affinity: 6 + Math.floor(countScore * 0.75) + Math.floor(powerScore / 2),
+    hostility: -Math.min(16, 4 + unitCount * 3 + Math.floor(powerScore / 3)),
+  };
+}
+
+const DELTA_CITY_GIFT: MemoryDelta = {
+  trust: 35,
+  affinity: 30,
+  hostility: -28,
+};
+
 // A friendly intelligence-sharing gesture. Smaller than major agreements but
 // enough to matter, and stacks modestly across repeated exchanges.
 const DELTA_EXCHANGE_MAPS: MemoryDelta = {
@@ -107,6 +132,18 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
 
   onCityCaptured(attacker: string, defender: string): void {
     this.adjustRelation(attacker, defender, DELTA_CITY_CAPTURED);
+  }
+
+  onGoldGift(from: string, to: string, amount: number): void {
+    this.adjustRelation(from, to, goldGiftDelta(amount));
+  }
+
+  onUnitGift(from: string, to: string, unitCount: number, powerValue?: number): void {
+    this.adjustRelation(from, to, unitGiftDelta(unitCount, powerValue));
+  }
+
+  onCityGift(from: string, to: string, _cityId: string): void {
+    this.adjustRelation(from, to, DELTA_CITY_GIFT);
   }
 
   onExchangeMaps(a: string, b: string): void {

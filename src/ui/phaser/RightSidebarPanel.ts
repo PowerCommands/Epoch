@@ -186,7 +186,7 @@ export class RightSidebarPanel {
   private lastDetailsCityId: string | null = null;
   private lastDetailsLeaderId: string | null = null;
   private focusSearchInputAfterRender = false;
-  private diplomacyGraphFilters = new Set<DiplomacyRelationshipType>(['hasMet', 'openBorders', 'war']);
+  private diplomacyGraphFilters = new Set<DiplomacyRelationshipType>(['hasMet', 'embassy', 'openBorders', 'trade', 'ally', 'war']);
   private diplomacyGraphFocusNation: string | null = null;
   private logCopyButtonHovered = false;
   private logCopyButtonPressed = false;
@@ -669,8 +669,11 @@ export class RightSidebarPanel {
     const FILTER_GAP = 8;
     const FILTER_H = 28;
     const FILTER_DEFS: Array<{ type: DiplomacyRelationshipType; label: string; color: number }> = [
-      { type: 'hasMet', label: 'Have Met', color: 0x778899 },
-      { type: 'openBorders', label: 'Open Borders', color: 0x44bb77 },
+      { type: 'hasMet', label: 'Met', color: 0x778899 },
+      { type: 'embassy', label: 'Embassy', color: 0x6ec6ff },
+      { type: 'openBorders', label: 'Borders', color: 0x44bb77 },
+      { type: 'trade', label: 'Trade', color: 0xf0c66a },
+      { type: 'ally', label: 'Ally', color: 0xb060ff },
       { type: 'war', label: 'War', color: 0xcc3344 },
     ];
     const filterBtnWidth = (CONTENT_WIDTH - FILTER_GAP * (FILTER_DEFS.length - 1)) / FILTER_DEFS.length;
@@ -822,39 +825,25 @@ export class RightSidebarPanel {
     this.scene.add.existing(edgeGfx);
     edgeGfx.setMask(this.contentMask);
 
-    for (const edge of visibleEdges) {
-      if (edge.type !== 'hasMet') continue;
-      const from = nodePositions.get(edge.fromNationId);
-      const to = nodePositions.get(edge.toNationId);
-      if (!from || !to) continue;
-      edgeGfx.lineStyle(1, 0x778899, 0.3);
-      edgeGfx.beginPath();
-      edgeGfx.moveTo(panelX + from.x, panelY + from.y);
-      edgeGfx.lineTo(panelX + to.x, panelY + to.y);
-      edgeGfx.strokePath();
-    }
-    for (const edge of visibleEdges) {
-      if (edge.type !== 'openBorders') continue;
-      const from = nodePositions.get(edge.fromNationId);
-      const to = nodePositions.get(edge.toNationId);
-      if (!from || !to) continue;
-      edgeGfx.lineStyle(1.5, 0x44bb77, 0.75);
-      edgeGfx.beginPath();
-      edgeGfx.moveTo(panelX + from.x, panelY + from.y);
-      edgeGfx.lineTo(panelX + to.x, panelY + to.y);
-      edgeGfx.strokePath();
-    }
-    for (const edge of visibleEdges) {
-      if (edge.type !== 'war') continue;
-      const from = nodePositions.get(edge.fromNationId);
-      const to = nodePositions.get(edge.toNationId);
-      if (!from || !to) continue;
-      edgeGfx.lineStyle(2, 0xcc3344, 0.9);
-      edgeGfx.beginPath();
-      edgeGfx.moveTo(panelX + from.x, panelY + from.y);
-      edgeGfx.lineTo(panelX + to.x, panelY + to.y);
-      edgeGfx.strokePath();
-    }
+    const drawEdgeType = (type: DiplomacyRelationshipType, width: number, color: number, alpha: number): void => {
+      for (const edge of visibleEdges) {
+        if (edge.type !== type) continue;
+        const from = nodePositions.get(edge.fromNationId);
+        const to = nodePositions.get(edge.toNationId);
+        if (!from || !to) continue;
+        edgeGfx.lineStyle(width, color, alpha);
+        edgeGfx.beginPath();
+        edgeGfx.moveTo(panelX + from.x, panelY + from.y);
+        edgeGfx.lineTo(panelX + to.x, panelY + to.y);
+        edgeGfx.strokePath();
+      }
+    };
+    drawEdgeType('hasMet', 1, 0x778899, 0.3);
+    drawEdgeType('embassy', 1.25, 0x6ec6ff, 0.62);
+    drawEdgeType('openBorders', 1.5, 0x44bb77, 0.75);
+    drawEdgeType('trade', 2, 0xf0c66a, 0.78);
+    drawEdgeType('ally', 5.5, 0xb060ff, 0.95);
+    drawEdgeType('war', 2.5, 0xcc3344, 0.92);
     this.contentObjects.push(edgeGfx);
 
     const nodeGfx = this.addOwned(new Phaser.GameObjects.Graphics(this.scene)

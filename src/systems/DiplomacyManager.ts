@@ -107,6 +107,9 @@ export interface DiplomaticMemoryHook {
   onOpenBorders(from: string, to: string): void;
   onCancelOpenBorders(from: string, to: string): void;
   onCityCaptured(attacker: string, defender: string): void;
+  onGoldGift(from: string, to: string, amount: number): void;
+  onUnitGift(from: string, to: string, unitCount: number, powerValue?: number): void;
+  onCityGift(from: string, to: string, cityId: string): void;
   onExchangeMaps(a: string, b: string): void;
   onFormAlliance(a: string, b: string): void;
   onJointWarAgreement(a: string, b: string): void;
@@ -659,6 +662,24 @@ export class DiplomacyManager {
   recordJointWarAgreement(a: string, b: string): void {
     this.memoryHook?.onJointWarAgreement(a, b);
     this.notifyChanged(a, b);
+  }
+
+  recordGoldGift(fromNationId: string, toNationId: string, amount: number): void {
+    if (fromNationId === toNationId || amount <= 0) return;
+    this.memoryHook?.onGoldGift(fromNationId, toNationId, amount);
+    this.notifyChanged(fromNationId, toNationId);
+  }
+
+  recordUnitGift(fromNationId: string, toNationId: string, unitCount: number, powerValue?: number): void {
+    if (fromNationId === toNationId || unitCount <= 0) return;
+    this.memoryHook?.onUnitGift(fromNationId, toNationId, unitCount, powerValue);
+    this.notifyChanged(fromNationId, toNationId);
+  }
+
+  recordCityGift(fromNationId: string, toNationId: string, cityId: string): void {
+    if (fromNationId === toNationId || cityId.length === 0) return;
+    this.memoryHook?.onCityGift(fromNationId, toNationId, cityId);
+    this.notifyChanged(fromNationId, toNationId);
   }
 
   /**

@@ -7,7 +7,7 @@ import type { MapData } from '../types/map';
 // Depth: above terrain/resources/borders (≤6), below cities (15) and units (18).
 const DEPTH = 7;
 
-const ALPHA_UNSEEN = 0.9;
+const ALPHA_UNSEEN = 0.99;
 const ALPHA_EXPLORED = 0.5;
 
 /**

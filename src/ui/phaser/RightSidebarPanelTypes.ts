@@ -37,6 +37,7 @@ export interface RightSidebarButtonRow {
   kind: 'button';
   text: string;
   disabled?: boolean;
+  disabledReason?: string;
   selected?: boolean;
   accentColor?: number;
   spritePath?: string;

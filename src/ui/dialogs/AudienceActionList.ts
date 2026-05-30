@@ -10,7 +10,9 @@ interface ListButton {
   row: RightSidebarButtonRow;
   background: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  reasonLabel?: Phaser.GameObjects.Text;
   hitArea: Phaser.GameObjects.Zone;
+  height: number;
   hovered: boolean;
   pressed: boolean;
 }
@@ -18,6 +20,7 @@ interface ListButton {
 const LEFT_PAD = 4;
 const ROW_GAP = 8;
 const BUTTON_HEIGHT = 34;
+const DISABLED_BUTTON_HEIGHT = 50;
 const SEPARATOR_HEIGHT = 16;
 const PROGRESS_HEIGHT = 22;
 const SCROLL_STEP = 48;
@@ -163,17 +166,23 @@ export class AudienceActionList {
 
   private renderButton(row: RightSidebarButtonRow, x: number, y: number, width: number): number {
     const w = width - LEFT_PAD * 2;
-    const background = this.track(new Phaser.GameObjects.Rectangle(this.scene, x + LEFT_PAD, y, w, BUTTON_HEIGHT, 0x0f2635, 0.98).setOrigin(0, 0));
+    const height = row.disabled && row.disabledReason ? DISABLED_BUTTON_HEIGHT : BUTTON_HEIGHT;
+    const background = this.track(new Phaser.GameObjects.Rectangle(this.scene, x + LEFT_PAD, y, w, height, 0x0f2635, 0.98).setOrigin(0, 0));
     const label = this.track(this.makeText(row.text, 15, '#ffffff', 'bold'));
     label.setWordWrapWidth(w - 20, true);
-    label.setPosition(x + LEFT_PAD + 11, y + (BUTTON_HEIGHT - label.height) / 2);
-    const hitArea = this.track(new Phaser.GameObjects.Zone(this.scene, x + LEFT_PAD, y, w, BUTTON_HEIGHT).setOrigin(0, 0).setScrollFactor(0));
+    label.setPosition(x + LEFT_PAD + 11, y + (row.disabled && row.disabledReason ? 7 : (height - label.height) / 2));
+    const reasonLabel = row.disabled && row.disabledReason
+      ? this.track(this.makeText(row.disabledReason, 12, '#b8c0ca', 'normal'))
+      : undefined;
+    reasonLabel?.setWordWrapWidth(w - 20, true);
+    reasonLabel?.setPosition(x + LEFT_PAD + 11, y + 27);
+    const hitArea = this.track(new Phaser.GameObjects.Zone(this.scene, x + LEFT_PAD, y, w, height).setOrigin(0, 0).setScrollFactor(0));
 
-    const button: ListButton = { row, background, label, hitArea, hovered: false, pressed: false };
+    const button: ListButton = { row, background, label, reasonLabel, hitArea, height, hovered: false, pressed: false };
     this.buttons.push(button);
     this.installButtonInput(button);
     this.refreshButtonVisual(button);
-    return y + BUTTON_HEIGHT + ROW_GAP;
+    return y + height + ROW_GAP;
   }
 
   private renderProgress(label: string, current: number, max: number, x: number, y: number, width: number): number {
@@ -224,7 +233,7 @@ export class AudienceActionList {
     // button scrolled outside the region must have its zone disabled to avoid
     // an invisible, mis-placed click target.
     const top = button.background.y;
-    const withinRegion = top + BUTTON_HEIGHT > this.region.y && top < this.region.y + this.region.height;
+    const withinRegion = top + button.height > this.region.y && top < this.region.y + this.region.height;
     if (this.visible && !button.row.disabled && withinRegion) {
       if (!button.hitArea.input?.enabled) button.hitArea.setInteractive({ cursor: 'pointer' });
     } else {
@@ -234,22 +243,25 @@ export class AudienceActionList {
 
   private refreshButtonVisual(button: ListButton): void {
     const { row } = button;
-    const fillColor = button.pressed
-      ? 0x2f6688
-      : button.hovered
-        ? 0x1e4c66
-        : row.selected
-          ? 0x225872
-          : 0x0f2635;
-    button.background.setFillStyle(fillColor, row.disabled ? 0.72 : 0.98);
+    const fillColor = row.disabled
+      ? 0x2a3038
+      : button.pressed
+        ? 0x2f6688
+        : button.hovered
+          ? 0x1e4c66
+          : row.selected
+            ? 0x225872
+            : 0x0f2635;
+    button.background.setFillStyle(fillColor, row.disabled ? 0.52 : 0.98);
     button.background.setStrokeStyle(
       row.selected ? 2 : 1,
-      row.accentColor ?? 0x6fb2d4,
-      button.hovered || row.selected ? 0.95 : row.disabled ? 0.42 : 0.68,
+      row.disabled ? 0x69717c : row.accentColor ?? 0x6fb2d4,
+      row.disabled ? 0.38 : button.hovered || row.selected ? 0.95 : 0.68,
     );
     button.label
-      .setColor(row.disabled ? '#dbe6f5' : '#ffffff')
-      .setAlpha(row.disabled ? 0.96 : 1);
+      .setColor(row.disabled ? '#b8c0ca' : '#ffffff')
+      .setAlpha(row.disabled ? 0.82 : 1);
+    button.reasonLabel?.setAlpha(row.disabled ? 0.86 : 0);
   }
 
   private makeText(text: string, size: number, color: string, style: 'normal' | 'bold'): Phaser.GameObjects.Text {

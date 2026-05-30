@@ -15,6 +15,11 @@ type QueueBuyRequestCallback = (index: number) => void;
 type CityViewMode = 'production' | 'queue';
 type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations';
 
+export interface CityViewAnchor {
+  screenX: number;
+  screenY: number;
+}
+
 export interface CityViewBuildingOption {
   id: string;
   name: string;
@@ -121,6 +126,8 @@ export class CityView {
   private dragging = false;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private userPositioned = false;
+  private anchor: CityViewAnchor | null = null;
   private editingTitleCityId: string | null = null;
   private lastRenderState: {
     city: City;
@@ -260,6 +267,7 @@ export class CityView {
     this.headerEl.addEventListener('mousedown', this.handleHeaderMouseDown);
     document.addEventListener('mousemove', this.handleDocumentMouseMove);
     document.addEventListener('mouseup', this.handleDocumentMouseUp);
+    window.addEventListener('resize', this.handleWindowResize);
   }
 
   onCloseRequested(callback: CloseCallback): void {
@@ -310,6 +318,12 @@ export class CityView {
     return this.open ? this.currentCityId : null;
   }
 
+  switchToQueueMode(): void {
+    this.mode = 'queue';
+    this.syncModeButtons();
+    this.renderLastState();
+  }
+
   show(
     city: City,
     unitOptions: CityViewUnitOption[],
@@ -319,12 +333,18 @@ export class CityView {
     wonderOptions: CityViewWonderOption[],
     corporationOptions: CityViewCorporationOption[],
     queueItems: CityViewQueueItem[],
+    anchor?: CityViewAnchor,
   ): void {
-    if (this.currentCityId !== city.id) this.resetViewState();
+    if (this.currentCityId !== city.id) {
+      this.resetViewState();
+      this.userPositioned = false;
+    }
+    this.anchor = anchor ?? null;
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
     this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, queueItems);
+    this.positionNearAnchor();
   }
 
   refresh(
@@ -348,6 +368,8 @@ export class CityView {
     this.stopTitleEditing(false);
     this.root.style.display = 'none';
     this.dragging = false;
+    this.anchor = null;
+    this.userPositioned = false;
     this.hideTooltip();
   }
 
@@ -355,6 +377,7 @@ export class CityView {
     this.headerEl.removeEventListener('mousedown', this.handleHeaderMouseDown);
     document.removeEventListener('mousemove', this.handleDocumentMouseMove);
     document.removeEventListener('mouseup', this.handleDocumentMouseUp);
+    window.removeEventListener('resize', this.handleWindowResize);
     this.titleInputEl.removeEventListener('keydown', this.handleTitleInputKeyDown);
     this.titleInputEl.removeEventListener('blur', this.handleTitleInputBlur);
     this.renameButton.removeEventListener('click', this.handleRenameButtonClick);
@@ -402,6 +425,7 @@ export class CityView {
 
     const rect = this.root.getBoundingClientRect();
     this.dragging = true;
+    this.userPositioned = true;
     this.dragOffsetX = event.clientX - rect.left;
     this.dragOffsetY = event.clientY - rect.top;
     event.preventDefault();
@@ -419,6 +443,61 @@ export class CityView {
   private readonly handleDocumentMouseUp = (): void => {
     this.dragging = false;
   };
+
+  private readonly handleWindowResize = (): void => {
+    this.positionNearAnchor();
+  };
+
+  private positionNearAnchor(): void {
+    if (!this.open || this.userPositioned || this.anchor === null) return;
+
+    requestAnimationFrame(() => {
+      if (!this.open || this.userPositioned || this.anchor === null) return;
+
+      const margin = 24;
+      const gap = 28;
+      const cityRadius = 34;
+      const viewportW = window.innerWidth;
+      const viewportH = window.innerHeight;
+      const rect = this.root.getBoundingClientRect();
+      const panelW = rect.width;
+      const panelH = rect.height;
+      const anchorX = clamp(this.anchor.screenX, margin, viewportW - margin);
+      const anchorY = clamp(this.anchor.screenY, margin, viewportH - margin);
+      const preferRight = anchorX < viewportW / 2;
+      const rawY = anchorY - panelH / 2;
+
+      const candidates = [
+        { x: preferRight ? anchorX + gap + cityRadius : anchorX - panelW - gap - cityRadius, y: rawY, priority: 0 },
+        { x: preferRight ? anchorX - panelW - gap - cityRadius : anchorX + gap + cityRadius, y: rawY, priority: 1 },
+        { x: anchorX - panelW / 2, y: anchorY + gap + cityRadius, priority: 2 },
+        { x: anchorX - panelW / 2, y: anchorY - panelH - gap - cityRadius, priority: 3 },
+      ].map((candidate) => ({
+        ...candidate,
+        x: clamp(candidate.x, margin, Math.max(margin, viewportW - panelW - margin)),
+        y: clamp(candidate.y, margin, Math.max(margin, viewportH - panelH - margin)),
+      }));
+
+      const cityRect = {
+        left: anchorX - cityRadius,
+        top: anchorY - cityRadius,
+        right: anchorX + cityRadius,
+        bottom: anchorY + cityRadius,
+      };
+      const best = candidates
+        .map((candidate) => ({
+          ...candidate,
+          overlap: rectOverlapArea(
+            { left: candidate.x, top: candidate.y, right: candidate.x + panelW, bottom: candidate.y + panelH },
+            cityRect,
+          ),
+        }))
+        .sort((a, b) => a.overlap - b.overlap || a.priority - b.priority)[0] ?? candidates[0];
+
+      this.root.style.left = `${Math.round(best.x)}px`;
+      this.root.style.top = `${Math.round(best.y)}px`;
+    });
+  }
 
   private readonly handleRenameButtonClick = (): void => {
     if (!this.currentCityId) return;
@@ -951,4 +1030,13 @@ function escapeHtml(value: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function rectOverlapArea(
+  a: { left: number; top: number; right: number; bottom: number },
+  b: { left: number; top: number; right: number; bottom: number },
+): number {
+  const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  return width * height;
 }

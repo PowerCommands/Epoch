@@ -422,11 +422,20 @@ export class RightSidebarPanelDataProvider {
         if (!met) continue;
         let type: DiplomacyRelationshipType = 'hasMet';
         if (this.diplomacyManager) {
+          if (this.diplomacyManager.hasEmbassy(a.id, b.id) || this.diplomacyManager.hasEmbassy(b.id, a.id)) {
+            type = 'embassy';
+          }
           if (
             this.diplomacyManager.isOpenBorderGrantedFrom(a.id, b.id)
             || this.diplomacyManager.isOpenBorderGrantedFrom(b.id, a.id)
           ) {
             type = 'openBorders';
+          }
+          if (this.diplomacyManager.hasTradeRelations(a.id, b.id)) {
+            type = 'trade';
+          }
+          if (this.allianceManager?.areAllied(a.id, b.id)) {
+            type = 'ally';
           }
           if (this.diplomacyManager.getState(a.id, b.id) === 'WAR') {
             type = 'war';
@@ -1477,6 +1486,16 @@ export class RightSidebarPanelDataProvider {
       },
       nation?.color,
     ));
+    rows.push(disabledReasonButtonRow(
+      'Give Gift',
+      undefined,
+      () => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'giveGift', targetNationId: nationId },
+        }));
+      },
+      nation?.color,
+    ));
     rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
     rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
     const isAtWar = relation.state === 'WAR';
@@ -2084,6 +2103,7 @@ function disabledReasonButtonRow(
     kind: 'button',
     text,
     disabled: disabledReason !== undefined,
+    disabledReason,
     accentColor,
     onClick,
   };

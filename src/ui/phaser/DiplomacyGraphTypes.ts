@@ -1,4 +1,4 @@
-export type DiplomacyRelationshipType = 'hasMet' | 'openBorders' | 'war';
+export type DiplomacyRelationshipType = 'hasMet' | 'embassy' | 'openBorders' | 'trade' | 'ally' | 'war';
 
 export interface DiplomacyGraphNode {
   nationId: string;

@@ -35,7 +35,7 @@ export interface UnitConfig {
 export class Unit {
   readonly id: string;
   name: string;
-  readonly ownerId: string;
+  ownerId: string;
   unitType: UnitType;
   tileX: number;
   tileY: number;
