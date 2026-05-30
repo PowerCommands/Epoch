@@ -136,6 +136,7 @@ import { MinimapHud } from '../ui/hud/MinimapHud';
 import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { RightSidebarPanel } from '../ui/phaser/RightSidebarPanel';
 import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDataProvider';
+import { LeaderAudienceDialog } from '../ui/dialogs/LeaderAudienceDialog';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState } from '../types/saveGame';
@@ -201,6 +202,7 @@ export class GameScene extends Phaser.Scene {
   private diagnosticSystem!: DiagnosticSystem;
   private minimapHud: MinimapHud | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
+  private leaderAudienceDialog: LeaderAudienceDialog | null = null;
   private isAutoplayActiveForVisuals: () => boolean = () => false;
 
   constructor() {
@@ -210,6 +212,7 @@ export class GameScene extends Phaser.Scene {
   create(data: GameConfig): void {
     this.minimapHud = null;
     this.rightSidebarPanel = null;
+    this.leaderAudienceDialog = null;
     this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
 
@@ -3769,6 +3772,31 @@ export class GameScene extends Phaser.Scene {
       const panel = this.rightSidebarPanel;
       leaderStrip.setRightBoundaryProvider(() => panel.getButtonRowLeftX());
     }
+
+    // Audience chamber: opened from the leader Details view to meet a foreign
+    // leader. Created after every other screen-space panel so its UI camera is
+    // the last one added and therefore renders on top of the whole HUD.
+    this.leaderAudienceDialog = new LeaderAudienceDialog(this, worldInputGate, {
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      getNationColor: (nationId) => nationManager.getNation(nationId)?.color ?? 0xf4f1e7,
+      getNationSecondaryColor: (nationId) => nationManager.getNation(nationId)?.secondaryColor ?? 0x9a7b3a,
+      getRelationshipSummary: (nationId) => {
+        if (!humanNationId || nationId === humanNationId) return 'Your nation';
+        if (diplomacyManager.getState(humanNationId, nationId) === 'WAR') return 'At War';
+        const attitude = diplomaticEvaluationSystem.evaluateAttitude(nationId, humanNationId);
+        switch (attitude) {
+          case 'friendly': return 'Friendly';
+          case 'hostile': return 'Hostile';
+          case 'afraid': return 'Suspicious';
+          case 'neutral': return 'Neutral';
+        }
+      },
+      getStatusRows: (nationId) => rightPanel?.getAudienceStatusRows(nationId) ?? [],
+      getDiplomacyActionRows: (nationId) => rightPanel?.getAudienceDiplomacyActionRows(nationId) ?? [],
+      getTradeRows: (nationId) => rightPanel?.getAudienceTradeRows(nationId) ?? [],
+      onChanged: (listener) => rightPanel?.onChanged(listener),
+    });
+    rightPanel.setArrangeAudienceHandler((leaderId) => this.leaderAudienceDialog?.open(leaderId));
     const computeRangedTargets = (unit: Unit): Set<string> => {
       const range = unit.unitType.range ?? 1;
       if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();
@@ -4349,6 +4377,8 @@ export class GameScene extends Phaser.Scene {
       this.minimapHud = null;
       this.rightSidebarPanel?.shutdown();
       this.rightSidebarPanel = null;
+      this.leaderAudienceDialog?.destroy();
+      this.leaderAudienceDialog = null;
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });

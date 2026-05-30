@@ -12,6 +12,9 @@ import {
   getCorporationSpritePath,
   getCitySpriteKey,
   getCitySpritePath,
+  getLeaderPortraitKey,
+  getLeaderRoomImagePath,
+  getLeaderRoomKey,
   getCultureSpriteKey,
   getCultureSpritePath,
   getPolicySpriteKey,
@@ -112,9 +115,11 @@ export class BootScene extends Phaser.Scene {
       this.load.image(getPolicySpriteKey(policy.id), getPolicySpritePath(policy.id));
     }
 
-    // Leader portraits (used by the Phaser-side leader strip in GameScene)
+    // Leader portraits (used by the Phaser-side leader strip in GameScene) and
+    // throne-room backgrounds (used by the LeaderAudienceDialog).
     for (const leader of ALL_LEADERS) {
-      this.load.image(`leader_${leader.id}`, leader.image);
+      this.load.image(getLeaderPortraitKey(leader.id), leader.image);
+      this.load.image(getLeaderRoomKey(leader.id), getLeaderRoomImagePath(leader.image));
     }
   }
 

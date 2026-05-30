@@ -41,6 +41,24 @@ export function getWonderSpriteKey(wonderId: string): string {
   return `wonder_${wonderId}`;
 }
 
+export function getLeaderPortraitKey(leaderId: string): string {
+  return `leader_${leaderId}`;
+}
+
+export function getLeaderRoomKey(leaderId: string): string {
+  return `leader_room_${leaderId}`;
+}
+
+/**
+ * Derive the throne-room background path from a leader's portrait path by
+ * inserting the `-room` suffix before the extension. Follows the naming
+ * convention `<leader>.png` → `<leader>-room.png` for all current and future
+ * leaders, so no per-leader configuration is required.
+ */
+export function getLeaderRoomImagePath(leaderImagePath: string): string {
+  return leaderImagePath.replace(/\.png$/i, '-room.png');
+}
+
 export function getCorporationSpritePath(corporationId: string): string {
   return `assets/sprites/corporations/${corporationId}.png`;
 }

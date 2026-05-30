@@ -272,7 +272,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     name: 'Koxinga',
     nationId: 'nation_taiwan',
     title: 'Zheng Chenggong',
-    image: `${LEADER_IMAGE_BASE}/leader_koxinga.png`,
+    image: `${LEADER_IMAGE_BASE}/koxinga.png`,
     description: 'A maritime commander focused on trade, diplomacy, technology, and resilient island defense.',
     ideologyId: 'globalism',
     aiMilitaryDoctrineId: 'maritimeRaider',
