@@ -92,7 +92,6 @@ export const SPEARMAN = unit({ id: 'spearman', name: 'Spearman', era: 'ancient',
 export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer', era: 'ancient', cost: 56, combatStrength: 6, rangedStrength: 10, range: 2, movement: 4, category: 'mounted' , upkeepGold: 3, upgradeToUnitId: 'horseman', serviceLifeRounds: 100 });
 export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 1, isNaval: true });
 export const TRIREME = unit({ id: 'trireme', name: 'Trireme', era: 'ancient', cost: 45, combatStrength: 10, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'archer_galley', serviceLifeRounds: 100 });
-export const CARAVAN = unit({ id: 'caravan', name: 'Caravan', era: 'ancient', cost: 75, combatStrength: 0, movement: 1, category: 'civilian' });
 export const CARGO_SHIP = unit({ id: 'cargo_ship', name: 'Cargo Ship', era: 'ancient', cost: 100, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 1, allowedCargoCategories: ['civilian'] });
 
 export const ARCHER_GALLEY = unit({ id: 'archer_galley', name: 'Archer Galley', era: 'classical', cost: 50, combatStrength: 10, rangedStrength: 12, range: 4, movement: 3, category: 'naval_ranged', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'galleass', serviceLifeRounds: 120 }); // raised: align with classical standard
@@ -184,7 +183,7 @@ export const SPECIAL_UNIT_TYPES: UnitType[] = [
 ];
 
 export const ALL_UNIT_TYPES: UnitType[] = [
-  WARRIOR, SCOUT, SCOUT_BOAT, ARCHER, SPEARMAN, CHARIOT_ARCHER, WORK_BOAT, TRIREME, ARCHER_GALLEY, CARAVAN, CARGO_SHIP,
+  WARRIOR, SCOUT, SCOUT_BOAT, ARCHER, SPEARMAN, CHARIOT_ARCHER, WORK_BOAT, TRIREME, ARCHER_GALLEY, CARGO_SHIP,
   HORSEMAN, COMPOSITE_BOWMAN, CATAPULT, SWORDSMAN,
   PIKEMAN, CROSSBOWMAN, LONGSWORDSMAN, KNIGHT, TREBUCHET, GALLEASS,
   MUSKETMAN, CARAVEL, FRIGATE, PRIVATEER, CANNON, LANCER,
@@ -212,6 +211,7 @@ export function canCarryUnitType(transportType: UnitType, passengerType: UnitTyp
 }
 
 export function getLegacyCompatibleUnitTypeById(id: string): UnitType | undefined {
+  if (id === 'caravan') return undefined;
   const normalizedId = id === 'fishing_boat' ? 'work_boat' : id;
   return getUnitTypeById(normalizedId);
 }

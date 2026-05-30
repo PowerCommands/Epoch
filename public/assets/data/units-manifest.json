@@ -64,13 +64,6 @@
       "isNaval": true
     },
     {
-      "id": "caravan",
-      "name": "Caravan",
-      "era": "ancient",
-      "category": "civilian",
-      "isNaval": false
-    },
-    {
       "id": "cargo_ship",
       "name": "Cargo Ship",
       "era": "ancient",

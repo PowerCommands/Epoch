@@ -53,10 +53,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Animal Husbandry',
     era: 'ancient',
     cost: 35,
-    description: 'Domesticates herds for food, labor, and movement. Opens pasture improvements and early caravan trade.',
+    description: 'Domesticates herds for food, labor, and movement. Opens pasture improvements.',
     prerequisites: [],
     leadsTo: ['trapping', 'the_wheel'],
-    unlocks: [{ kind: 'unit', id: 'caravan' }, { kind: 'improvement', id: 'pasture' }],
+    unlocks: [{ kind: 'improvement', id: 'pasture' }],
     // TODO: reveals Horses.
   },
   {
