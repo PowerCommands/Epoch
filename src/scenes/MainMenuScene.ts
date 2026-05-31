@@ -790,12 +790,12 @@ export class MainMenuScene extends Phaser.Scene {
       #main-menu-overlay::before {
         content: '';
         position: absolute;
-        inset: -3%;
+        inset: -5%;
         background-image: url('/assets/background.svg'), url('/assets/background.png');
         background-size: cover;
         background-position: center;
-        transform: scale(1.035) translate3d(-0.6%, -0.4%, 0);
-        animation: mm-background-drift 64s ease-in-out infinite alternate;
+        transform: scale(1.045) translate3d(-1.8%, -1%, 0);
+        animation: mm-background-drift 42s ease-in-out infinite alternate;
         will-change: transform;
       }
 
@@ -806,15 +806,29 @@ export class MainMenuScene extends Phaser.Scene {
         background:
           linear-gradient(90deg, rgba(34, 24, 15, 0.54), rgba(255, 246, 224, 0.3) 45%, rgba(31, 22, 15, 0.52)),
           linear-gradient(180deg, rgba(255, 248, 229, 0.52), rgba(42, 31, 21, 0.36));
+        background-size: 120% 100%, 100% 120%;
+        background-position: 0% 50%, 50% 0%;
+        animation: mm-atmosphere-drift 36s ease-in-out infinite alternate;
+        will-change: background-position;
       }
 
       @keyframes mm-background-drift {
         from {
-          transform: scale(1.035) translate3d(-0.6%, -0.4%, 0);
+          transform: scale(1.045) translate3d(-1.8%, -1%, 0);
         }
 
         to {
-          transform: scale(1.055) translate3d(0.7%, 0.45%, 0);
+          transform: scale(1.085) translate3d(1.8%, 1.1%, 0);
+        }
+      }
+
+      @keyframes mm-atmosphere-drift {
+        from {
+          background-position: 0% 50%, 50% 0%;
+        }
+
+        to {
+          background-position: 100% 50%, 50% 100%;
         }
       }
 

@@ -3,7 +3,7 @@ import type { NationManager } from './NationManager';
 import type { UnitManager } from './UnitManager';
 import type { IGridSystem } from './grid/IGridSystem';
 
-export const DISCOVERY_RADIUS = 20;
+export const DISCOVERY_RADIUS = 17;
 
 type NationsMetListener = (nationA: string, nationB: string) => void;
 
