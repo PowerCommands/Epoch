@@ -480,10 +480,10 @@ export class AllianceCouncilManager {
     const targetId = candidate.targetNationId;
     const attitude = this.diplomaticEvaluationSystem.evaluateAttitude(proposerId, targetId);
     const relation = this.diplomacyManager.getRelation(proposerId, targetId);
-    let chance = 0.12; // low base
+    let chance = 0.05; // low base — councils should usually stay quiet for AI members
     switch (candidate.type) {
       case 'startWar':
-        chance += 0.25 + (attitude === 'hostile' ? 0.2 : 0);
+        chance += 0.1 + (attitude === 'hostile' ? 0.1 : 0);
         break;
       case 'tradeEmbargo':
         chance += 0.15 + (attitude === 'hostile' || attitude === 'afraid' ? 0.15 : 0) + relation.fear / 300;
@@ -583,6 +583,7 @@ export class AllianceCouncilManager {
     if (!this.militaryEvaluationSystem.isNationActive(targetId)) return false;
     for (const member of this.currentMembers(session.allianceId)) {
       if (this.allianceManager.areAllied(member, targetId)) return false; // target allied with a member
+      if (this.diplomacyManager.getState(member, targetId) === 'WAR') return false; // a member already at war — no duplicate war proposal
     }
     return true;
   }
