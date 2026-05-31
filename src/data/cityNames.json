@@ -375,5 +375,27 @@
     "Khovd",
     "Kharkhorin",
     "Baganuur"
+  ],
+  "nation_denmark": [
+    "Copenhagen",
+    "Aarhus",
+    "Odense",
+    "Aalborg",
+    "Esbjerg",
+    "Randers",
+    "Kolding",
+    "Horsens",
+    "Vejle",
+    "Roskilde",
+    "Helsingør",
+    "Næstved",
+    "Viborg",
+    "Fredericia",
+    "Køge",
+    "Holstebro",
+    "Slagelse",
+    "Hillerød",
+    "Sønderborg",
+    "Frederikshavn"
   ]
 }

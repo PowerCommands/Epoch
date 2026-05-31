@@ -1,0 +1,20 @@
+{
+  "templates": [
+    {
+      "name": "Asia",
+      "file": "assets/maps/templates/Asia.png"
+    },
+    {
+      "name": "Europe",
+      "file": "assets/maps/templates/Europe.png"
+    },
+    {
+      "name": "Scandinavia",
+      "file": "assets/maps/templates/Scandinavia.png"
+    },
+    {
+      "name": "World",
+      "file": "assets/maps/templates/World.png"
+    }
+  ]
+}

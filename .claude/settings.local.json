@@ -19,7 +19,8 @@
       "Bash(claude --version)",
       "Bash(node *)",
       "Bash(awk *)",
-      "Bash(node -e \" *)"
+      "Bash(node -e \" *)",
+      "Bash(python3 *)"
     ],
     "additionalDirectories": [
       "/tmp"

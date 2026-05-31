@@ -4,6 +4,12 @@ import type { WorldMarker } from './WorldMarker';
 export interface ScenarioMeta {
   name: string;
   version: number;
+  /**
+   * Optional editor-only background template name (e.g. "Europe"). Pure visual
+   * tracing aid for the scenario editor; the game loader ignores it, so it never
+   * influences gameplay or simulation.
+   */
+  template?: string;
 }
 
 export interface ScenarioMap {

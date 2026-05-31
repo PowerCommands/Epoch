@@ -374,6 +374,30 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       casualtyToleranceRatio: 0.55,
     },
   },
+  {
+    // First-pass Denmark: mirrors Japan's (Oda Nobunaga's) doctrine, agenda,
+    // ideology, and AI personality. Only the nation, leader, and assets differ.
+    // Denmark-specific behaviour will be introduced later.
+    id: 'leader_christian-iv',
+    name: 'Christian IV',
+    nationId: 'nation_denmark',
+    title: 'King of Denmark and Norway',
+    image: `${LEADER_IMAGE_BASE}/christian-iv.png`,
+    description: 'An ambitious builder-king, balancing martial prowess with disciplined defense.',
+    ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'maritimeRaider',
+    aiPersonality: {
+      aggressionBias: 15,
+      expansionBias: 8,
+      economyBias: 5,
+      cultureBias: 5,
+      diplomacyBias: -5,
+      warTolerance: 70,
+      peacePreference: 35,
+      minimumUnitsLostBeforePeace: 5,
+      casualtyToleranceRatio: 0.55,
+    },
+  },
 ];
 
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {

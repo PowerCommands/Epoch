@@ -39,8 +39,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   padding: 6px 8px; background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px;
   cursor: pointer; display: flex; align-items: center; gap: 7px; text-align: left;
 }
-.mode-btn:hover { border-color: #666; }
+.mode-btn:hover:not(:disabled) { border-color: #666; }
 .mode-btn.active { border-color: #fff; background: #333; }
+.mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .mode-icon { font-size: 14px; line-height: 1; }
 
 .tool-btns { display: flex; flex-direction: column; gap: 4px; }
@@ -302,6 +303,16 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
           <span>Resource</span>
         </button>
       </div>
+      <div class="palette-tabs">
+        <button class="mode-btn" id="undo-btn" type="button" title="Undo (Ctrl+Z)" disabled>
+          <span class="mode-icon" aria-hidden="true">&#8630;</span>
+          <span>Undo</span>
+        </button>
+        <button class="mode-btn" id="redo-btn" type="button" title="Redo (Ctrl+Shift+Z)" disabled>
+          <span class="mode-icon" aria-hidden="true">&#8631;</span>
+          <span>Redo</span>
+        </button>
+      </div>
       <button class="mode-btn" id="pan-mode-btn" type="button" aria-pressed="false">
         <span class="mode-icon" aria-hidden="true">&#9995;</span>
         <span>Pan Camera</span>
@@ -403,6 +414,20 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div id="landing-scenario-list" class="landing-list"></div>
     </div>
 
+    <div id="landing-template" class="landing-view" style="display:none">
+      <div class="landing-view-header">
+        <button class="landing-back" type="button" data-landing-back>&larr; Back</button>
+        <h2>Background Template</h2>
+      </div>
+      <div class="landing-empty" id="open-template-scenario" style="color:#ccc"></div>
+      <label class="landing-field">
+        Background Template
+        <select id="open-template-select"></select>
+      </label>
+      <div class="hint" style="color:#777; font-size:11px">Optional editor tracing aid. Choose None to remove any stored template.</div>
+      <button class="landing-create-submit" id="open-template-confirm" type="button">Open Editor</button>
+    </div>
+
     <div id="landing-create" class="landing-view" style="display:none">
       <div class="landing-view-header">
         <button class="landing-back" type="button" data-landing-back>&larr; Back</button>
@@ -437,6 +462,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         Tile size (Experimental)
         <input id="create-tilesize-input" type="number" min="1" step="1" value="48">
       </label>
+      <label class="landing-field">
+        Background Template
+        <select id="create-template-select"></select>
+      </label>
       <div class="landing-field">
         Nations
         <div class="landing-nation-list" id="create-nation-list"></div>
@@ -469,6 +498,10 @@ let naturalResourceManifest = { resources: [] };
 let unitManifest = { units: [] };
 let technologyManifest = { technologies: [] };
 let cultureTreeManifest = { cultureNodes: [] };
+let templateManifest = { templates: [] };
+// Editor-only background tracing image (never part of scenario gameplay data).
+let templateName = null;
+let templateImage = null;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let mapW = 0, mapH = 0, tileSize = 0;
@@ -506,13 +539,14 @@ const CUSTOM_SCENARIO_NAME_MAX_LENGTH = 70;
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, technologyManifest, cultureTreeManifest] = await Promise.all([
+  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, technologyManifest, cultureTreeManifest, templateManifest] = await Promise.all([
     loadMapManifest(),
     loadNationRegistry(),
     loadNaturalResourceManifest(),
     loadUnitManifest(),
     loadTechnologyManifest(),
     loadCultureTreeManifest(),
+    loadTemplateManifest(),
   ]);
   buildUnitTypeSelect();
   // The map/scenario selected on the main menu (via ?map / ?custom) becomes the
@@ -531,6 +565,8 @@ function startEditor(map, scenarioData, customEntry) {
   currentMap = map;
   currentCustomEntry = customEntry ?? null;
   scenario = scenarioData;
+
+  loadTemplateImage(scenario.meta?.template ?? null);
 
   if (!Array.isArray(scenario.worldMarkers)) scenario.worldMarkers = [];
   normalizeNationColors();
@@ -582,9 +618,37 @@ function startEditor(map, scenarioData, customEntry) {
   buildMarkerList();
   updateMarkerForm();
   updateToolPanels();
+  resetUndoHistory();
   resizeCanvas();
   render();
   document.getElementById('status-info').textContent = `${currentMap.label}: ${mapW}x${mapH} q/r hexes loaded`;
+}
+
+/**
+ * Resolve and load the editor-only background template image. The name maps to
+ * /assets/maps/templates/<name>.png. Missing/unknown templates fall back to no
+ * background without crashing. The image is reference material only.
+ */
+function loadTemplateImage(name) {
+  templateName = name || null;
+  templateImage = null;
+  if (!templateName) return;
+
+  const entry = templateManifest.templates.find(template => template.name === templateName);
+  if (!entry) {
+    console.warn(`Background template "${templateName}" not found; falling back to no background.`);
+    templateName = null;
+    return;
+  }
+
+  const image = new Image();
+  image.addEventListener('load', () => { if (templateImage === image) render(); }, { once: true });
+  image.addEventListener('error', () => {
+    console.warn(`Failed to load background template image "${entry.file}".`);
+    if (templateImage === image) { templateImage = null; templateName = null; }
+  }, { once: true });
+  image.src = `/${entry.file}`;
+  templateImage = image;
 }
 
 // ─── Landing page ────────────────────────────────────────────────────────────
@@ -610,17 +674,19 @@ function setupLanding() {
   });
   document.getElementById('landing-create-btn').addEventListener('click', () => {
     buildCreateNationList();
+    buildCreateTemplateSelect();
     showLandingView('landing-create');
   });
   document.querySelectorAll('[data-landing-back]').forEach((btn) => {
     btn.addEventListener('click', () => showLandingView('landing-home'));
   });
+  document.getElementById('open-template-confirm').addEventListener('click', confirmOpenTemplate);
 
   setupCreateWizard();
 }
 
 function showLandingView(viewId) {
-  ['landing-home', 'landing-load', 'landing-create'].forEach((id) => {
+  ['landing-home', 'landing-load', 'landing-create', 'landing-template'].forEach((id) => {
     document.getElementById(id).style.display = id === viewId ? '' : 'none';
   });
 }
@@ -630,20 +696,63 @@ function hideLanding() {
   if (landing) landing.style.display = 'none';
 }
 
-/** Resolve a scenario's ScenarioData and hand it to the editor. */
+/** Resolve a scenario's ScenarioData, then offer a background template before opening. */
 async function openMap(map) {
   if (map.isCustom) {
-    startEditor(map, structuredCloneCompat(map.customEntry.scenario), map.customEntry);
+    showTemplatePrompt(map, structuredCloneCompat(map.customEntry.scenario), map.customEntry);
     return;
   }
   try {
     const res = await fetch(`/${map.file}`);
     if (!res.ok) throw new Error(`scenario fetch failed: ${res.status}`);
-    startEditor(map, await res.json(), null);
+    showTemplatePrompt(map, await res.json(), null);
   } catch (err) {
     console.warn('Failed to load scenario.', err);
     window.alert(`Could not load scenario "${map.label}".`);
   }
+}
+
+// Scenario resolved and awaiting a background-template choice before the editor opens.
+let pendingOpen = null;
+
+/** Fill a <select> with None + every discovered template, defaulting to selectedValue. */
+function populateTemplateSelect(select, selectedValue) {
+  select.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'None';
+  select.appendChild(none);
+  for (const template of templateManifest.templates) {
+    const option = document.createElement('option');
+    option.value = template.name;
+    option.textContent = template.name;
+    select.appendChild(option);
+  }
+  const hasSelected = selectedValue && templateManifest.templates.some(t => t.name === selectedValue);
+  select.value = hasSelected ? selectedValue : '';
+}
+
+/** Show the optional background-template selector for an already-loaded scenario. */
+function showTemplatePrompt(map, scenarioData, customEntry) {
+  pendingOpen = { map, scenarioData, customEntry };
+  document.getElementById('open-template-scenario').textContent = `Scenario: ${map.label}`;
+  populateTemplateSelect(document.getElementById('open-template-select'), scenarioData.meta?.template ?? '');
+  showLandingView('landing-template');
+}
+
+/** Apply the chosen template to the scenario (or clear it) and open the editor. */
+function confirmOpenTemplate() {
+  if (!pendingOpen) return;
+  const { map, scenarioData, customEntry } = pendingOpen;
+  pendingOpen = null;
+
+  const value = document.getElementById('open-template-select').value || null;
+  if (!scenarioData.meta || typeof scenarioData.meta !== 'object') scenarioData.meta = {};
+  // Persist on the scenario object so saving preserves it; None removes the field.
+  if (value) scenarioData.meta.template = value;
+  else delete scenarioData.meta.template;
+
+  startEditor(map, scenarioData, customEntry);
 }
 
 function customMapDescriptor(entry) {
@@ -748,6 +857,10 @@ function buildCreateNationList() {
   }
 }
 
+function buildCreateTemplateSelect() {
+  populateTemplateSelect(document.getElementById('create-template-select'), '');
+}
+
 function getSelectedCreateNationIds() {
   return [...document.querySelectorAll('#create-nation-list input[type="checkbox"]:checked')].map(cb => cb.value);
 }
@@ -781,8 +894,10 @@ function submitCreateWizard() {
   const nationIds = getSelectedCreateNationIds();
   if (nationIds.length === 0) { errorEl.textContent = 'Select at least one nation.'; return; }
 
+  const selectedTemplate = document.getElementById('create-template-select').value || null;
+
   errorEl.textContent = '';
-  const scenarioData = buildBlankScenario(name, nationIds, width, height, tileSizeValue);
+  const scenarioData = buildBlankScenario(name, nationIds, width, height, tileSizeValue, selectedTemplate);
   const map = { key: undefined, label: name, file: `${safeFilename(name)}.json`, isCustom: false, isNew: true };
   startEditor(map, scenarioData, null);
 }
@@ -792,7 +907,7 @@ function submitCreateWizard() {
  * ocean in the editor), the chosen nations with placeholder start centers, and
  * no cities/units/markers. The first selected nation is flagged human.
  */
-function buildBlankScenario(name, nationIds, width, height, tileSizeValue) {
+function buildBlankScenario(name, nationIds, width, height, tileSizeValue, template) {
   const nations = nationIds.map((id, index) => {
     const registryNation = getRegistryNation(id);
     const primaryColor = registryNation?.color || '#888888';
@@ -808,8 +923,12 @@ function buildBlankScenario(name, nationIds, width, height, tileSizeValue) {
     };
   });
 
+  const meta = { name, version: 1 };
+  // Editor-only background tracing aid; omitted entirely when "None" is chosen.
+  if (template) meta.template = template;
+
   return {
-    meta: { name, version: 1 },
+    meta,
     map: { width, height, tileSize: tileSizeValue, tiles: [] },
     nations,
     cities: [],
@@ -835,6 +954,25 @@ async function loadMapManifest() {
   }
 
   return { maps: [] };
+}
+
+async function loadTemplateManifest() {
+  try {
+    const res = await fetch('/assets/maps/templates/manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`template manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.templates)) {
+      return {
+        templates: manifest.templates.filter(template =>
+          template && typeof template.name === 'string' && typeof template.file === 'string'
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load template manifest.', err);
+  }
+
+  return { templates: [] };
 }
 
 async function loadNationRegistry() {
@@ -1935,6 +2073,90 @@ function isResourceAllowedOnTile(resourceId, tileType) {
   return !!resource && resource.allowedTileTypes.includes(tileType);
 }
 
+// ─── Undo / redo (brush painting only) ───────────────────────────────────────
+//
+// One undoable action = one continuous brush stroke (mouse down → up). Each
+// action stores only the changed tiles, with before/after terrain + resource.
+// During a stroke each tile's "before" is captured once (on first touch) and
+// its "after" is read from the live arrays at commit, so repeated painting of
+// the same tile collapses into a single change with the original before-state.
+
+const undoStack = [];
+const redoStack = [];
+let currentStrokeChanges = null; // Map<"q,r", {q, r, prevType, prevResource}> while a stroke is active
+
+function beginBrushStroke() {
+  currentStrokeChanges = new Map();
+}
+
+/** Snapshot a tile's pre-mutation state once per stroke. Call before mutating it. */
+function recordTileBefore(q, r) {
+  if (!currentStrokeChanges) return;
+  const key = `${q},${r}`;
+  if (currentStrokeChanges.has(key)) return;
+  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q] });
+}
+
+function commitBrushStroke() {
+  if (!currentStrokeChanges) return;
+  const changes = [];
+  for (const before of currentStrokeChanges.values()) {
+    const nextType = tiles[before.r][before.q];
+    const nextResource = tileResources[before.r][before.q];
+    if (before.prevType === nextType && before.prevResource === nextResource) continue; // no-op tile
+    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource });
+  }
+  currentStrokeChanges = null;
+  if (changes.length === 0) return; // empty / no-op stroke: nothing to undo
+  undoStack.push({ changes });
+  redoStack.length = 0; // a new stroke invalidates the redo history
+  updateUndoRedoButtons();
+}
+
+function applyTileChanges(changes, useNext) {
+  for (const change of changes) {
+    tiles[change.r][change.q] = useNext ? change.nextType : change.prevType;
+    tileResources[change.r][change.q] = useNext ? change.nextResource : change.prevResource;
+  }
+}
+
+function undo() {
+  const action = undoStack.pop();
+  if (!action) return;
+  applyTileChanges(action.changes, false);
+  redoStack.push(action);
+  render();
+  updateUndoRedoButtons();
+  setStatusInfo(`Undid paint stroke (${action.changes.length} tile${action.changes.length === 1 ? '' : 's'})`);
+}
+
+function redo() {
+  const action = redoStack.pop();
+  if (!action) return;
+  applyTileChanges(action.changes, true);
+  undoStack.push(action);
+  render();
+  updateUndoRedoButtons();
+  setStatusInfo(`Redid paint stroke (${action.changes.length} tile${action.changes.length === 1 ? '' : 's'})`);
+}
+
+function resetUndoHistory() {
+  undoStack.length = 0;
+  redoStack.length = 0;
+  currentStrokeChanges = null;
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+  const undoBtn = document.getElementById('undo-btn');
+  const redoBtn = document.getElementById('redo-btn');
+  if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+  if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+}
+
+document.getElementById('undo-btn').addEventListener('click', undo);
+document.getElementById('redo-btn').addEventListener('click', redo);
+
 function clearInvalidResourceForTerrain(q, r) {
   const resourceId = tileResources[r][q];
   if (resourceId && !isResourceAllowedOnTile(resourceId, tiles[r][q])) {
@@ -1963,6 +2185,7 @@ function paintAt(q, r) {
       const pr = r + dr;
       if (pq < 0 || pr < 0 || pq >= mapW || pr >= mapH) continue;
       if (tiles[pr][pq] !== currentTerrain) {
+        recordTileBefore(pq, pr); // captures terrain + any resource cleared below
         tiles[pr][pq] = currentTerrain;
         if (clearInvalidResourceForTerrain(pq, pr)) cleared += 1;
         changed = true;
@@ -1989,6 +2212,7 @@ function paintResourceAt(q, r) {
 
       if (currentResourceId === null) {
         if (tileResources[pr][pq] !== undefined) {
+          recordTileBefore(pq, pr);
           tileResources[pr][pq] = undefined;
           changed = true;
         }
@@ -2001,6 +2225,7 @@ function paintResourceAt(q, r) {
       }
 
       if (tileResources[pr][pq] !== currentResourceId) {
+        recordTileBefore(pq, pr);
         tileResources[pr][pq] = currentResourceId;
         changed = true;
       }
@@ -2155,6 +2380,7 @@ viewport.addEventListener('mousedown', (e) => {
     const pos = screenToTile(e.clientX, e.clientY);
     if (pos) {
       isPainting = true;
+      beginBrushStroke();
       paintAt(pos.q, pos.r);
     }
     e.preventDefault();
@@ -2250,6 +2476,7 @@ viewport.addEventListener('mousemove', (e) => {
 window.addEventListener('mouseup', (e) => {
   if (e.button === 0 && isPainting) {
     isPainting = false;
+    commitBrushStroke();
     return;
   }
 
@@ -2303,17 +2530,36 @@ function resizeCanvas() {
 
 window.addEventListener('resize', () => { resizeCanvas(); render(); });
 
+/**
+ * Draw the background template stretched across the map's world bounds, so it
+ * scales and pans/zooms with the map. Non-interactive (drawn to the same canvas;
+ * never intercepts pointer events). Returns true when an image was drawn.
+ */
+function drawTemplateBackground() {
+  if (!templateImage || !templateImage.complete || templateImage.naturalWidth === 0) return false;
+  if (worldBounds.width <= 0 || worldBounds.height <= 0) return false;
+  const x = (0 - camX) * zoom;
+  const y = (0 - camY) * zoom;
+  ctx.drawImage(templateImage, x, y, worldBounds.width * zoom, worldBounds.height * zoom);
+  return true;
+}
+
 function render() {
   if (!tiles) return;
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
+
+  // Background tracing template, behind all editable content.
+  const templateActive = drawTemplateBackground();
 
   const viewLeft = camX;
   const viewTop = camY;
   const viewRight = camX + w / zoom;
   const viewBottom = camY + h / zoom;
 
-  // Draw tiles
+  // Draw tiles. When a template is active, terrain is drawn semi-transparently
+  // so the background image shows through for tracing, while staying visible.
+  if (templateActive) ctx.globalAlpha = 0.6;
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
       const rect = hexRect(q, r);
@@ -2324,6 +2570,7 @@ function render() {
       drawHex(q, r, TILE_COLORS[tiles[r][q]] || '#ff00ff');
     }
   }
+  ctx.globalAlpha = 1;
 
   // Grid lines (only if zoomed in enough)
   if (zoom > 0.3) {
@@ -2767,6 +3014,14 @@ function isTypingTarget(target) {
 
 window.addEventListener('keydown', (e) => {
   if (isTypingTarget(e.target)) return;
+
+  // Undo: Ctrl/Cmd+Z · Redo: Ctrl/Cmd+Shift+Z
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redo();
+    else undo();
+    return;
+  }
 
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(e.key)) {
     heldKeys.add(e.key.toLowerCase());
