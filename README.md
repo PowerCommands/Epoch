@@ -18,6 +18,17 @@ npm run dev
 | `npm run build` | Bygg produktionsversion till `dist/` |
 | `npm run preview` | Förhandsgranska produktionsbygget lokalt |
 
+### Docker
+
+Produktionsbygget kan köras som en statisk nginx-container:
+
+```bash
+docker build -t epoch:local .
+docker run --rm -p 8080:80 epoch:local
+```
+
+Öppna sedan `http://localhost:8080`. Se även [docs/docker.md](docs/docker.md).
+
 ## Teknikstack
 
 - **Phaser 3** — spelmotor
