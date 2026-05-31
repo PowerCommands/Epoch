@@ -51,3 +51,9 @@ src/
 └── types/
     └── index.ts         # Delade TypeScript-typer
 ```
+
+## Publish Docker container with Dockube 
+
+```bash
+build https://github.com/PowerCommands/Epoch.git "epoch" --publish --platform=linux/amd64
+```
