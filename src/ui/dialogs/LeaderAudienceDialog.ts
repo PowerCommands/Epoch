@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getLeaderById } from '../../data/leaders';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
-import { getLeaderRoomKey } from '../../utils/assetPaths';
+import { getLeaderRoomImagePath, getLeaderRoomKey } from '../../utils/assetPaths';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 import type { RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
 import { AudienceActionList } from './AudienceActionList';
@@ -94,6 +94,8 @@ export class LeaderAudienceDialog {
   private currentLeaderId: string | null = null;
   private roomVisible = false;
   private destroyed = false;
+  /** Room-image keys currently being fetched, to avoid duplicate load requests. */
+  private readonly pendingRoomLoads = new Set<string>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -200,10 +202,36 @@ export class LeaderAudienceDialog {
 
     const roomKey = getLeaderRoomKey(leaderId);
     this.roomVisible = this.scene.textures.exists(roomKey);
-    if (this.roomVisible) this.roomImage.setTexture(roomKey);
+    if (this.roomVisible) {
+      this.roomImage.setTexture(roomKey);
+    } else {
+      this.ensureRoomTexture(leaderId, roomKey, leader.image);
+    }
 
     this.actionList.setRows(this.buildRows(leader.nationId));
     this.layout();
+  }
+
+  /**
+   * Throne-room backdrops are large (~24 MB each) and only needed once a leader
+   * audience is actually opened, so they are not preloaded at boot. Fetch the
+   * texture on demand the first time a leader is viewed; when it arrives, show
+   * it only if that same leader is still on screen.
+   */
+  private ensureRoomTexture(leaderId: string, roomKey: string, leaderImagePath: string): void {
+    if (this.pendingRoomLoads.has(roomKey)) return;
+    this.pendingRoomLoads.add(roomKey);
+
+    const loader = this.scene.load;
+    loader.image(roomKey, getLeaderRoomImagePath(leaderImagePath));
+    loader.once(`filecomplete-image-${roomKey}`, () => {
+      this.pendingRoomLoads.delete(roomKey);
+      if (this.destroyed || this.currentLeaderId !== leaderId) return;
+      this.roomImage.setTexture(roomKey);
+      this.roomVisible = true;
+      this.layout();
+    });
+    loader.start();
   }
 
   close(): void {

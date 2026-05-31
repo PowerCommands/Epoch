@@ -2,19 +2,19 @@
   "templates": [
     {
       "name": "Asia",
-      "file": "assets/maps/templates/Asia.png"
+      "file": "assets/maps/templates/Asia.webp"
     },
     {
       "name": "Europe",
-      "file": "assets/maps/templates/Europe.png"
+      "file": "assets/maps/templates/Europe.webp"
     },
     {
       "name": "Scandinavia",
-      "file": "assets/maps/templates/Scandinavia.png"
+      "file": "assets/maps/templates/Scandinavia.webp"
     },
     {
       "name": "World",
-      "file": "assets/maps/templates/World.png"
+      "file": "assets/maps/templates/World.webp"
     }
   ]
 }

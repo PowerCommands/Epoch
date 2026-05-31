@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * Scans public/assets/maps/templates/ for *.png background templates and writes
- * a manifest consumed by the standalone editor's "Create New" dialog. Dropping a
- * new PNG into the folder makes it appear in the editor with no code changes —
- * the manifest is regenerated automatically on predev/prebuild.
+ * Scans public/assets/maps/templates/ for *.webp / *.png background templates
+ * and writes a manifest consumed by the standalone editor's "Create New" dialog.
+ * Dropping a new image into the folder makes it appear in the editor with no
+ * code changes — the manifest is regenerated automatically on predev/prebuild.
+ * Templates are stored as web-optimised WebP (full resolution, so the editor's
+ * Magic Wand colour sampler keeps its precision).
  */
 
 const projectRoot = path.resolve(process.cwd());
@@ -34,7 +36,7 @@ if (!fs.existsSync(templatesDir)) {
 
 const files = fs
   .readdirSync(templatesDir)
-  .filter(file => file.toLowerCase().endsWith('.png'))
+  .filter(file => /\.(webp|png)$/i.test(file))
   .sort((a, b) => a.localeCompare(b));
 
 for (const file of files) {

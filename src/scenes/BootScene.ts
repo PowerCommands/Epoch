@@ -13,8 +13,6 @@ import {
   getCitySpriteKey,
   getCitySpritePath,
   getLeaderPortraitKey,
-  getLeaderRoomImagePath,
-  getLeaderRoomKey,
   getCultureSpriteKey,
   getCultureSpritePath,
   getPolicySpriteKey,
@@ -115,11 +113,12 @@ export class BootScene extends Phaser.Scene {
       this.load.image(getPolicySpriteKey(policy.id), getPolicySpritePath(policy.id));
     }
 
-    // Leader portraits (used by the Phaser-side leader strip in GameScene) and
-    // throne-room backgrounds (used by the LeaderAudienceDialog).
+    // Leader portraits (used by the Phaser-side leader strip in GameScene).
+    // The throne-room backgrounds are large (~24 MB each) and only needed once
+    // a leader audience is opened, so they are loaded on demand by the
+    // LeaderAudienceDialog rather than blocking startup here.
     for (const leader of ALL_LEADERS) {
       this.load.image(getLeaderPortraitKey(leader.id), leader.image);
-      this.load.image(getLeaderRoomKey(leader.id), getLeaderRoomImagePath(leader.image));
     }
   }
 

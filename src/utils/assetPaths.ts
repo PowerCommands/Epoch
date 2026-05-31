@@ -51,12 +51,13 @@ export function getLeaderRoomKey(leaderId: string): string {
 
 /**
  * Derive the throne-room background path from a leader's portrait path by
- * inserting the `-room` suffix before the extension. Follows the naming
- * convention `<leader>.png` → `<leader>-room.png` for all current and future
- * leaders, so no per-leader configuration is required.
+ * inserting the `-room` suffix before the extension. Room backdrops are stored
+ * as web-optimised WebP (the portraits stay PNG), following the convention
+ * `<leader>.png` → `<leader>-room.webp` for all current and future leaders, so
+ * no per-leader configuration is required.
  */
 export function getLeaderRoomImagePath(leaderImagePath: string): string {
-  return leaderImagePath.replace(/\.png$/i, '-room.png');
+  return leaderImagePath.replace(/\.png$/i, '-room.webp');
 }
 
 export function getCorporationSpritePath(corporationId: string): string {

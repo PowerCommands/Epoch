@@ -7,8 +7,8 @@
     },
     {
       "key": "map_europe",
-      "label": "Europe 1400",
-      "file": "assets/maps/europeScenario.json"
+      "label": "Europe - Wide",
+      "file": "assets/maps/europe-wide.json"
     },
     {
       "key": "map_maritime_expansion",
