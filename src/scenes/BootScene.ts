@@ -124,6 +124,22 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.generateExploreIcon();
     this.scene.start('MainMenuScene');
+  }
+
+  /**
+   * Auto Explore has no PNG asset, so draw a simple magnifying-glass icon as a
+   * texture once at boot. White on transparent so the HUD's white tint keeps it
+   * crisp; matches the 64px action icon footprint.
+   */
+  private generateExploreIcon(): void {
+    if (this.textures.exists('action_explore')) return;
+    const g = this.make.graphics({ x: 0, y: 0 }, false);
+    g.lineStyle(6, 0xffffff, 1);
+    g.strokeCircle(26, 26, 15);
+    g.lineBetween(37, 37, 54, 54);
+    g.generateTexture('action_explore', 64, 64);
+    g.destroy();
   }
 }

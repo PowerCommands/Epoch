@@ -1406,7 +1406,7 @@ export class GameScene extends Phaser.Scene {
       unitManager,
       turnManager,
       humanNationId,
-      (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
+      (unit) => improvementConstructionSystem.isUnitBusy(unit.id) || unit.automation === 'explore',
     );
     turnManager.on('turnStart', (e) => improvementConstructionSystem.handleTurnStart(e));
     improvementConstructionSystem.onCompleted((event) => {
@@ -1780,6 +1780,23 @@ export class GameScene extends Phaser.Scene {
       unitActionToolbox.resetMode();
       refreshMovePreview();
     };
+
+    // Auto-explore human recon units at the start of their owner's turn, after MP
+    // reset and before the turn queue is built (so spent scouts are skipped like
+    // sleeping ones). Reuses the AI scouting behavior via exploreUnit().
+    turnManager.on('turnStart', (e) => {
+      if (!e.nation.isHuman || isAutoplayActive()) return;
+      for (const unit of unitManager.getUnitsByOwner(e.nation.id)) {
+        if (unit.automation !== 'explore') continue;
+        if (unit.carriedByUnitId !== undefined) continue;
+        if (!aiExplorationSystem.canAutoExplore(unit)) {
+          unit.automation = undefined; // unit is no longer a recon type (e.g. upgraded)
+          continue;
+        }
+        aiExplorationSystem.exploreUnit(unit);
+      }
+      territoryRenderer.invalidate();
+    });
 
     // Continue queued long-distance movement at the start of each human turn.
     // Runs after MovementSystem resets MP (registered later) but before TurnOrderSystem
@@ -4507,6 +4524,31 @@ export class GameScene extends Phaser.Scene {
         if (selection?.kind !== 'unit') return;
         rangedTargets = computeRangedTargets(selection.unit);
         rangedPreviewRenderer.showTargets(rangedTargets);
+        return;
+      }
+
+      if (mode === 'explore') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit'
+          || selection.unit.ownerId !== humanNationId
+          || !aiExplorationSystem.canAutoExplore(selection.unit)) {
+          unitActionToolbox.resetMode();
+          return;
+        }
+        const unit = selection.unit;
+        // Enable automation and clear conflicting state, then explore right away
+        // this turn using the shared AI scouting behavior.
+        unit.automation = 'explore';
+        unit.isSleeping = false;
+        unit.actionStatus = 'active';
+        unit.queuedDestination = undefined;
+        aiExplorationSystem.exploreUnit(unit);
+        territoryRenderer.invalidate();
+        unitActionToolbox.resetMode();
+        unitActionToolbox.refresh();
+        turnOrderSystem.refreshActive();
+        hudLayer?.refresh();
+        rightPanel?.requestRefresh();
         return;
       }
 

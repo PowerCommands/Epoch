@@ -392,6 +392,7 @@ export class UnitManager {
     isSleeping: boolean;
     actionStatus?: import('../entities/Unit').UnitActionStatus;
     buildAction?: import('../entities/Unit').UnitBuildAction;
+    automation?: import('../entities/Unit').UnitAutomation;
     createdRound?: number;
     expiresAtRound?: number;
     queuedDestination?: { x: number; y: number };
@@ -414,6 +415,7 @@ export class UnitManager {
     unit.queuedDestination = config.queuedDestination;
     unit.health = config.health;
     unit.isSleeping = config.isSleeping;
+    unit.automation = config.automation;
 
     if (config.actionStatus !== undefined) {
       unit.actionStatus = config.actionStatus;

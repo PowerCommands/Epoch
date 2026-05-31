@@ -227,6 +227,29 @@ export class AIExplorationSystem {
     }
   }
 
+  /** True for Scout / Scout Boat (and any future recon units) — auto-explore eligible. */
+  canAutoExplore(unit: Unit): boolean {
+    return this.isExplorationUnit(unit);
+  }
+
+  /**
+   * Run one unit's exploration turn using the exact same target selection and
+   * movement the AI uses (moveScout). Drives human auto-exploration without
+   * duplicating any AI logic. No-op if the unit is gone, not a recon unit, or
+   * has no movement left.
+   */
+  exploreUnit(unit: Unit): void {
+    if (this.unitManager.getUnit(unit.id) === undefined) return;
+    if (unit.carriedByUnitId !== undefined) return;
+    if (!this.isExplorationUnit(unit)) return;
+    this.updateNationKnowledge(unit.ownerId);
+    this.updateScoutPhase(unit.ownerId);
+    if (unit.movementPoints <= 0) return;
+    this.moveScout(unit);
+    this.updateNationKnowledge(unit.ownerId);
+    this.updateScoutPhase(unit.ownerId);
+  }
+
   private updateScoutPhase(nationId: string): void {
     const knowledge = this.getKnowledge(nationId);
     const next = this.computeScoutPhase(knowledge);

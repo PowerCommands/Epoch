@@ -2,7 +2,12 @@ import type { Unit } from '../entities/Unit';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss';
+export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore';
+
+/** Recon unit types eligible for Auto Explore (Scout, Scout Boat, and future recon). */
+function isReconUnit(unit: Unit): boolean {
+  return unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon';
+}
 
 export interface UnitActionDefinition {
   mode: UnitActionMode;
@@ -24,6 +29,14 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     mode: 'move',
     label: 'Move',
     isAvailable: () => true,
+  },
+  {
+    mode: 'explore',
+    label: 'Auto Explore',
+    // Scout / Scout Boat only. Available even at 0 movement: automation starts
+    // and the unit explores on its next turn.
+    isAvailable: (unit) => isReconUnit(unit),
+    isToggledOn: (unit) => unit.automation === 'explore',
   },
   {
     mode: 'found',
@@ -72,7 +85,7 @@ type DismissAvailabilityProvider = {
 };
 type UpgradeAvailabilityProvider = Pick<UnitUpgradeSystem, 'getUpgradePreview'>;
 
-const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'found', 'dismiss'];
+export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'found', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -149,7 +162,10 @@ export class UnitActionToolbox {
     if (!unit) return;
     const action = ACTIONS.find((a) => a.mode === mode);
     if (!action || !this.isActionAvailable(action, unit)) return;
-    if (mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade') {
+    // Any explicit non-explore action cancels auto-exploration immediately;
+    // selecting the unit alone (no action) does not reach here.
+    if (mode !== 'explore') unit.automation = undefined;
+    if (mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade' || mode === 'explore') {
       this.triggerMode(mode);
       return;
     }
@@ -164,33 +180,34 @@ export class UnitActionToolbox {
     this.changedListeners.push(listener);
   }
 
+  /**
+   * Returns only the actions actually available for the currently selected human
+   * unit (empty when no unit is selected), so the HUD renders just the usable
+   * buttons rather than greying out unavailable ones.
+   */
   getHudActions(): UnitActionViewState[] {
     const unit = this.selectedUnit;
-    return HUD_ACTION_ORDER.map((mode) => {
+    if (!unit) return [];
+
+    const states: UnitActionViewState[] = [];
+    for (const mode of HUD_ACTION_ORDER) {
       const action = ACTIONS.find((candidate) => candidate.mode === mode);
-      if (!action) {
-        return { mode, label: mode, isAvailable: false, isActive: false };
-      }
+      if (!action) continue;
 
-      const preview = unit !== null && action.mode === 'build'
-        ? this.getBuildPreview(unit)
-        : undefined;
-      const upgradePreview = unit !== null && action.mode === 'upgrade'
-        ? this.getUpgradePreview(unit)
-        : undefined;
-      const isAvailable = unit !== null && this.isActionAvailable(action, unit, preview, upgradePreview);
-      const isActive = unit !== null && isAvailable && (
-        this.mode === action.mode || action.isToggledOn?.(unit) === true
-      );
+      const preview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined;
+      const upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined;
+      if (!this.isActionAvailable(action, unit, preview, upgradePreview)) continue;
 
-      return {
+      const isActive = this.mode === action.mode || action.isToggledOn?.(unit) === true;
+      states.push({
         mode,
         label: this.getActionLabel(action, upgradePreview),
-        isAvailable,
+        isAvailable: true,
         isActive,
         tooltip: this.getActionTooltip(action, preview, upgradePreview),
-      };
-    });
+      });
+    }
+    return states;
   }
 
   hasSelectedUnit(): boolean {
@@ -313,6 +330,11 @@ export class UnitActionToolbox {
         return `Upgrade to ${upgradePreview.target.name} for ${upgradePreview.cost} gold.`;
       }
       return upgradePreview?.reason ?? 'Cannot upgrade this unit.';
+    }
+    if (action.mode === 'explore') {
+      return this.selectedUnit?.automation === 'explore'
+        ? 'Auto exploring — choose another action to stop.'
+        : 'Automatically explore the map (continues each turn).';
     }
     if (action.mode !== 'build') return undefined;
     if (buildPreview?.canBuild) return 'Build improvement';

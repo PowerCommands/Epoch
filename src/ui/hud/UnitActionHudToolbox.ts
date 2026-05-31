@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { UnitActionMode, UnitActionToolbox, UnitActionViewState } from '../UnitActionToolbox';
+import { HUD_ACTION_ORDER } from '../UnitActionToolbox';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 import { Tooltip } from './Tooltip';
@@ -15,6 +16,7 @@ const CLUSTER_GAP = 12;
 
 const ACTION_ICON_KEYS: Record<UnitActionMode, string> = {
   move: 'action_move',
+  explore: 'action_explore',
   attack: 'action_attack',
   ranged: 'action_ranged_attack',
   sleep: 'action_sleep',
@@ -48,7 +50,12 @@ export class UnitActionHudToolbox {
   ) {
     this.tooltip = new Tooltip(scene, addOwned);
 
-    for (const state of this.toolbox.getHudActions()) {
+    // Build a fixed pool of buttons (one per possible HUD action). getHudActions()
+    // now returns only the currently-available actions, so refresh() assigns those
+    // states to the first N pooled buttons and hides the rest. Each button's icon
+    // is (re)assigned per refresh since pooled buttons map to different actions.
+    for (const mode of HUD_ACTION_ORDER) {
+      const initialState: UnitActionViewState = { mode, label: mode, isAvailable: false, isActive: false };
       const background = addOwned(new Phaser.GameObjects.Arc(scene, 0, 0, ACTION_RADIUS, 0, 360, false, 0x12202d, 0.94))
         .setDepth(DEPTH + 1)
         .setScrollFactor(0)
@@ -59,7 +66,7 @@ export class UnitActionHudToolbox {
         .setStrokeStyle(2, 0x6f89a2, 0.35)
         .setVisible(false);
 
-      const icon = addOwned(new Phaser.GameObjects.Image(scene, 0, 0, ACTION_ICON_KEYS[state.mode]))
+      const icon = addOwned(new Phaser.GameObjects.Image(scene, 0, 0, ACTION_ICON_KEYS[mode]))
         .setOrigin(0.5)
         .setDepth(DEPTH + 3)
         .setScrollFactor(0)
@@ -73,10 +80,10 @@ export class UnitActionHudToolbox {
         .setDepth(DEPTH + 4)
         .setScrollFactor(0)
         .setVisible(false)
-        .setInteractive({ useHandCursor: state.isAvailable });
+        .setInteractive({ useHandCursor: false });
 
       const button: ToolboxButtonView = {
-        state,
+        state: initialState,
         background,
         ring,
         icon,
@@ -146,36 +153,50 @@ export class UnitActionHudToolbox {
   }
 
   refresh(): void {
+    // Only the available actions are returned, so the first N pooled buttons take
+    // those states and the remainder are hidden. layout() (always called right
+    // after refresh) repositions just the visible buttons.
     const states = this.toolbox.getHudActions();
-    this.visible = this.toolbox.hasSelectedUnit();
+    this.visible = this.toolbox.hasSelectedUnit() && states.length > 0;
+    this.tooltip.hide(); // avoid a stale tooltip after a button is reassigned/hidden
 
     for (let index = 0; index < this.buttons.length; index += 1) {
       const button = this.buttons[index];
-      button.state = states[index];
-      const isVisible = this.visible;
+      const state = states[index];
+      const isVisible = state !== undefined;
+
+      if (state) {
+        button.state = state;
+        if (button.icon.texture.key !== ACTION_ICON_KEYS[state.mode]) {
+          button.icon.setTexture(ACTION_ICON_KEYS[state.mode]);
+        }
+      }
       button.background.setVisible(isVisible);
       button.ring.setVisible(isVisible);
       button.icon.setVisible(isVisible);
       button.hitArea.setVisible(isVisible);
       button.hovered = isVisible ? button.hovered : false;
       button.pressed = isVisible ? button.pressed : false;
-      if (!isVisible || !button.state.tooltip) this.tooltip.hide();
       button.hitArea.disableInteractive();
       if (isVisible) {
-        button.hitArea.setInteractive({ useHandCursor: button.state.isAvailable });
-        button.hitArea.input!.cursor = button.state.isAvailable ? 'pointer' : 'default';
+        button.hitArea.setInteractive({ useHandCursor: state.isAvailable });
+        button.hitArea.input!.cursor = state.isAvailable ? 'pointer' : 'default';
+        this.refreshButtonVisual(button);
       }
-      this.refreshButtonVisual(button);
     }
   }
 
   layout(endTurnCenterX: number, endTurnCenterY: number, endTurnRadius: number): void {
-    const totalWidth = this.buttons.length * ACTION_SIZE + (this.buttons.length - 1) * ACTION_SPACING;
+    const visibleButtons = this.buttons.filter((button) => button.background.visible);
+    const count = visibleButtons.length;
+    if (count === 0) return;
+
+    const totalWidth = count * ACTION_SIZE + (count - 1) * ACTION_SPACING;
     const startCenterX = endTurnCenterX - endTurnRadius - CLUSTER_GAP - totalWidth + ACTION_RADIUS;
     const centerY = endTurnCenterY;
 
     let centerX = startCenterX;
-    for (const button of this.buttons) {
+    for (const button of visibleButtons) {
       button.background.setPosition(centerX, centerY).setRadius(ACTION_RADIUS);
       button.ring.setPosition(centerX, centerY).setRadius(ACTION_RADIUS + 3);
       button.icon.setPosition(centerX, centerY).setDisplaySize(ACTION_SIZE, ACTION_SIZE);

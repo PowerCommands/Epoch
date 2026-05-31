@@ -150,6 +150,9 @@ export class MovementSystem {
 
   moveAlongPath(unit: Unit, path: Tile[], options: MovementActionOptions = {}): void {
     if (path.length === 0) return;
+    // A player-issued move cancels any automation (auto-explore moves use the
+    // default 'system' source and are unaffected).
+    if (options.source === 'human-ui') unit.automation = undefined;
     const destination = path[path.length - 1];
     if (!canUnitEndMovementOnTile(unit, destination, this.nationManager.getNation(unit.ownerId))) return;
 

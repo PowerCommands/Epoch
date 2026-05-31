@@ -209,6 +209,7 @@ export class SaveLoadService {
       isSleeping: unit.isSleeping,
       actionStatus: unit.actionStatus,
       buildAction: unit.buildAction ? { ...unit.buildAction } : undefined,
+      automation: unit.automation,
     }));
 
     const tiles: SavedTile[] = [];
@@ -743,6 +744,7 @@ export class SaveLoadService {
         isSleeping: saved.isSleeping,
         actionStatus: saved.actionStatus,
         buildAction: saved.buildAction ? { ...saved.buildAction } : undefined,
+        automation: saved.automation,
       });
     }
     unitManager.normalizeCargoLinks();

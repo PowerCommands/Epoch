@@ -2,6 +2,9 @@ import type { UnitType } from './UnitType';
 
 export type UnitActionStatus = 'active' | 'sleep' | 'building';
 
+/** Persistent player-set automation. 'explore' = auto-exploration for recon units. */
+export type UnitAutomation = 'explore';
+
 export interface UnitBuildAction {
   improvementId: string;
   tileX: number;
@@ -51,6 +54,8 @@ export class Unit {
   queuedDestination?: { x: number; y: number };
   actionStatus: UnitActionStatus;
   buildAction?: UnitBuildAction;
+  /** When set, the unit is under player-enabled automation (e.g. auto-explore). */
+  automation?: UnitAutomation;
 
   constructor(config: UnitConfig) {
     this.id = config.id;

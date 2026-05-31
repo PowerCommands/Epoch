@@ -136,6 +136,8 @@ export interface SavedUnit {
     progress: number;
     requiredProgress: number;
   };
+  /** Player-enabled automation (e.g. auto-explore). Absent in older saves. */
+  automation?: 'explore';
 }
 
 export interface SavedTile {
