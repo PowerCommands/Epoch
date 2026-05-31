@@ -110,7 +110,22 @@ export class MainMenuScene extends Phaser.Scene {
       .join('');
 
     return `
-      <div class="mm-container">
+      <div class="mm-root" data-screen="landing">
+        <section class="mm-landing-screen" aria-label="Main menu">
+          <header class="mm-header mm-landing-header">
+            <h1 class="mm-title">Epochs of Time</h1>
+            <p class="mm-subtitle">Lead your people through the ages, from humble beginnings to world dominance.</p>
+          </header>
+
+          <nav class="mm-landing-actions" aria-label="Main menu actions">
+            <button id="mm-new-game-btn" class="mm-menu-btn primary" type="button">New Game</button>
+            <button id="mm-continue-btn" class="mm-menu-btn" type="button"${this.latestAutosave ? '' : ' hidden'}${this.getContinueButtonTitleAttribute()}>Continue</button>
+            <button id="mm-load-btn" class="mm-menu-btn" type="button">Load Game</button>
+            <button id="mm-editor-btn" class="mm-menu-btn" type="button">Editor</button>
+          </nav>
+        </section>
+
+        <div class="mm-container mm-setup-screen" aria-label="Game setup">
         <header class="mm-header">
           <h1 class="mm-title">Epochs of Time</h1>
           <p class="mm-subtitle">Lead your people through the ages, from humble beginnings to world dominance.</p>
@@ -208,12 +223,10 @@ export class MainMenuScene extends Phaser.Scene {
 
         <footer class="mm-actions">
           <button id="mm-start-btn" class="mm-start-btn" type="button" disabled>Start Game</button>
-          <button id="mm-continue-btn" class="mm-continue-btn" type="button"${this.latestAutosave ? '' : ' hidden'}${this.getContinueButtonTitleAttribute()}>Continue</button>
-          <button id="mm-load-btn" class="mm-load-btn" type="button">Load Game</button>
-          <button id="mm-editor-btn" class="mm-editor-btn" type="button">Editor</button>
-          <input id="mm-load-input" type="file" accept="application/json,.json" hidden>
         </footer>
       </div>
+      <input id="mm-load-input" type="file" accept="application/json,.json" hidden>
+    </div>
     `;
   }
 
@@ -351,6 +364,10 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private wireEvents(): void {
+    document.getElementById('mm-new-game-btn')!.addEventListener('click', () => {
+      this.showSetupScreen();
+    });
+
     const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement;
     mapSelect.addEventListener('change', () => this.onMapChanged(mapSelect.value));
     const resourceAbundanceSelect = document.getElementById('mm-resource-abundance-select') as HTMLSelectElement;
@@ -419,6 +436,11 @@ export class MainMenuScene extends Phaser.Scene {
     this.wireMusicControls();
 
     this.onMapChanged(mapSelect.value);
+  }
+
+  private showSetupScreen(): void {
+    const root = this.overlay?.querySelector('.mm-root') as HTMLDivElement | null;
+    root?.setAttribute('data-screen', 'setup');
   }
 
   private wireMusicControls(): void {
@@ -768,11 +790,13 @@ export class MainMenuScene extends Phaser.Scene {
       #main-menu-overlay::before {
         content: '';
         position: absolute;
-        inset: 0;
+        inset: -3%;
         background-image: url('/assets/background.svg'), url('/assets/background.png');
         background-size: cover;
         background-position: center;
-        transform: scale(1.02);
+        transform: scale(1.035) translate3d(-0.6%, -0.4%, 0);
+        animation: mm-background-drift 64s ease-in-out infinite alternate;
+        will-change: transform;
       }
 
       #main-menu-overlay::after {
@@ -784,9 +808,92 @@ export class MainMenuScene extends Phaser.Scene {
           linear-gradient(180deg, rgba(255, 248, 229, 0.52), rgba(42, 31, 21, 0.36));
       }
 
-      .mm-container {
+      @keyframes mm-background-drift {
+        from {
+          transform: scale(1.035) translate3d(-0.6%, -0.4%, 0);
+        }
+
+        to {
+          transform: scale(1.055) translate3d(0.7%, 0.45%, 0);
+        }
+      }
+
+      .mm-root {
         position: relative;
         z-index: 1;
+        width: 100%;
+        height: 100%;
+      }
+
+      .mm-root[data-screen="landing"] .mm-setup-screen,
+      .mm-root[data-screen="setup"] .mm-landing-screen {
+        display: none;
+      }
+
+      .mm-landing-screen {
+        width: min(var(--mm-shell-width), calc(100vw - 32px));
+        height: calc(100vh - 32px);
+        margin-left: max(16px, var(--mm-shell-left));
+        margin-top: 16px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        justify-items: center;
+        box-sizing: border-box;
+        padding: 34px 28px 54px;
+      }
+
+      .mm-landing-header {
+        padding: 0 18px 14px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, rgba(255, 245, 219, 0.32), rgba(255, 245, 219, 0));
+        text-shadow: 0 2px 18px rgba(255, 244, 214, 0.36);
+      }
+
+      .mm-landing-actions {
+        align-self: end;
+        display: grid;
+        gap: 12px;
+        width: min(360px, calc(100vw - 54px));
+        padding: 14px;
+        border: 1px solid rgba(255, 238, 198, 0.24);
+        border-radius: 8px;
+        background: rgba(32, 24, 17, 0.34);
+        box-shadow: 0 18px 44px rgba(21, 15, 10, 0.26);
+        backdrop-filter: blur(2px);
+      }
+
+      .mm-menu-btn {
+        min-height: 54px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 238, 201, 0.34);
+        color: #fff8e8;
+        background: linear-gradient(180deg, rgba(74, 51, 30, 0.84), rgba(41, 29, 19, 0.86));
+        font-family: inherit;
+        font-size: 21px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 24px rgba(21, 15, 10, 0.22);
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+      }
+
+      .mm-menu-btn.primary {
+        min-height: 62px;
+        background: linear-gradient(180deg, rgba(206, 129, 43, 0.94), rgba(142, 75, 19, 0.96));
+        border-color: rgba(255, 236, 193, 0.48);
+        font-size: 24px;
+      }
+
+      .mm-menu-btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255, 239, 204, 0.72);
+        background: linear-gradient(180deg, rgba(96, 66, 38, 0.9), rgba(49, 34, 22, 0.92));
+      }
+
+      .mm-menu-btn.primary:hover {
+        background: linear-gradient(180deg, rgba(222, 146, 52, 0.96), rgba(157, 84, 22, 0.98));
+      }
+
+      .mm-container {
         width: min(var(--mm-shell-width), calc(100vw - 32px));
         height: calc(100vh - 32px);
         margin-left: max(16px, var(--mm-shell-left));
@@ -838,9 +945,6 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-victory-card,
       .mm-nation-card,
       .mm-start-btn,
-      .mm-continue-btn,
-      .mm-load-btn,
-      .mm-editor-btn,
       .mm-change-nation-btn {
         font-family: inherit;
       }
@@ -1333,16 +1437,13 @@ export class MainMenuScene extends Phaser.Scene {
 
       .mm-actions {
         display: grid;
-        grid-template-columns: minmax(260px, 390px) repeat(3, 150px);
+        grid-template-columns: minmax(260px, 390px);
         gap: 14px;
         justify-content: center;
         align-items: center;
       }
 
-      .mm-start-btn,
-      .mm-continue-btn,
-      .mm-load-btn,
-      .mm-editor-btn {
+      .mm-start-btn {
         border-radius: 8px;
         font-weight: 700;
         cursor: pointer;
@@ -1358,10 +1459,7 @@ export class MainMenuScene extends Phaser.Scene {
         font-size: 23px;
       }
 
-      .mm-start-btn:hover:not(:disabled),
-      .mm-continue-btn:hover,
-      .mm-load-btn:hover,
-      .mm-editor-btn:hover {
+      .mm-start-btn:hover:not(:disabled) {
         transform: translateY(-1px);
       }
 
@@ -1370,24 +1468,14 @@ export class MainMenuScene extends Phaser.Scene {
         cursor: not-allowed;
       }
 
-      .mm-load-btn,
-      .mm-continue-btn,
-      .mm-editor-btn {
-        min-height: 48px;
-        color: #5f3c16;
-        background: rgba(255, 252, 244, 0.74);
-        border: 1px solid rgba(117, 86, 56, 0.38);
-        font-size: 17px;
-      }
-
-      .mm-load-btn:hover,
-      .mm-continue-btn:hover,
-      .mm-editor-btn:hover {
-        background: rgba(255, 248, 229, 0.9);
-        border-color: rgba(176, 101, 24, 0.7);
-      }
-
       @media (max-width: 1180px) {
+        .mm-landing-screen {
+          width: calc(100vw - 24px);
+          height: calc(100vh - 24px);
+          margin: 12px;
+          padding: 28px 18px 40px;
+        }
+
         .mm-container {
           width: calc(100vw - 24px);
           height: calc(100vh - 24px);
@@ -1411,6 +1499,15 @@ export class MainMenuScene extends Phaser.Scene {
       @media (max-width: 900px) {
         #main-menu-overlay {
           overflow: auto;
+        }
+
+        .mm-root {
+          min-height: 100%;
+        }
+
+        .mm-landing-screen {
+          min-height: calc(100vh - 24px);
+          height: auto;
         }
 
         .mm-container {
