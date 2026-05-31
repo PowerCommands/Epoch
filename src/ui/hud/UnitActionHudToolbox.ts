@@ -202,14 +202,7 @@ export class UnitActionHudToolbox {
   private refreshButtonVisual(button: ToolboxButtonView): void {
     const { isAvailable, isActive } = button.state;
 
-    const isDismiss = button.state.mode === 'dismiss';
-    const fillColor = isDismiss && isAvailable
-      ? button.pressed
-        ? 0x743039
-        : button.hovered
-          ? 0x4b2831
-          : 0x2a2028
-      : !isAvailable
+    const fillColor = !isAvailable
       ? 0x1c2630
       : button.pressed
         ? 0x7c4e17
@@ -218,11 +211,7 @@ export class UnitActionHudToolbox {
           : button.hovered
             ? 0x244052
             : 0x132330;
-    const strokeColor = isDismiss && isAvailable
-      ? button.hovered
-        ? 0xe78d92
-        : 0xb7656d
-      : isActive
+    const strokeColor = isActive
       ? 0xf3d48d
       : !isAvailable
         ? 0x52606d

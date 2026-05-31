@@ -236,6 +236,52 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 }
 .landing-create-submit:hover { background: #2a4a3a; }
 .landing-create-error { font-size: 11px; color: #f3ca72; min-height: 14px; }
+
+/* ─── Magic Wand (auto paint) ──────────────────────────────────────────── */
+#magic-wand-btn {
+  padding: 10px; border: 1px solid #9b7bd4; border-radius: 4px; background: #2a2140;
+  color: #cdb6ff; font: inherit; font-size: 13px; cursor: pointer; font-weight: bold;
+}
+#magic-wand-btn:hover { background: #36295a; border-color: #b89cf0; }
+#magic-wand-panel {
+  position: fixed; top: 16px; right: 16px; bottom: 16px; width: 290px; z-index: 60;
+  display: none; flex-direction: column; gap: 12px;
+  background: #141a26; border: 1px solid #2c3a52; border-radius: 8px; padding: 14px;
+  color: #dde6f2; overflow-y: auto; box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+}
+#magic-wand-panel.open { display: flex; }
+.mw-title { font-size: 13px; font-weight: bold; letter-spacing: 0.06em; text-transform: uppercase; color: #aeb9c9; }
+.mw-subtitle { font-size: 11px; color: #8b97a8; }
+.mw-rules { display: flex; flex-direction: column; gap: 6px; }
+.mw-rule {
+  display: grid; grid-template-columns: 26px 1fr 46px 22px; gap: 6px; align-items: center;
+}
+.mw-rule input[type="color"] { width: 26px; height: 26px; padding: 1px; border: 1px solid #3a4a63; border-radius: 4px; background: #0e131c; }
+.mw-rule select, .mw-rule input[type="number"] {
+  background: #0e131c; border: 1px solid #3a4a63; border-radius: 4px;
+  color: #dde6f2; font: inherit; font-size: 12px; padding: 4px;
+}
+.mw-rule-remove {
+  border: 1px solid #54343a; border-radius: 4px; background: #2a1a1e; color: #e08a8a;
+  font: inherit; font-size: 13px; line-height: 1; cursor: pointer; padding: 3px 0;
+}
+.mw-rule-remove:hover { background: #3a2226; }
+.mw-add {
+  width: 100%; border: 1px dashed #4a5b78; border-radius: 4px; padding: 6px;
+  background: transparent; color: #9fb0c8; font: inherit; font-size: 12px; cursor: pointer;
+}
+.mw-add:hover { border-color: #6f86ad; color: #cdd9ea; }
+.mw-options { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2c3a52; padding-top: 10px; }
+.mw-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #aeb9c9; }
+.mw-row input[type="range"] { flex: 1; }
+.mw-row select { flex: 1; background: #0e131c; border: 1px solid #3a4a63; border-radius: 4px; color: #dde6f2; font: inherit; font-size: 12px; padding: 4px; }
+.mw-row .mw-num { width: 34px; text-align: right; color: #dde6f2; }
+.mw-actions { display: flex; gap: 8px; margin-top: 4px; }
+.mw-actions button { flex: 1; border-radius: 4px; padding: 9px; font: inherit; font-size: 13px; font-weight: bold; cursor: pointer; }
+#mw-apply { border: 1px solid #4a9; background: #1a3a2a; color: #6fe0a8; }
+#mw-apply:hover { background: #224a34; }
+#mw-cancel { border: 1px solid #777; background: #242424; color: #ddd; }
+#mw-cancel:hover { background: #303030; }
 </style>
 </head>
 <body>
@@ -317,6 +363,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <span class="mode-icon" aria-hidden="true">&#9995;</span>
         <span>Pan Camera</span>
       </button>
+      <button class="mode-btn" id="spray-mode-btn" type="button" aria-pressed="false" title="Paint only tiles that haven't been deliberately painted yet">
+        <span class="mode-icon" aria-hidden="true">&#10052;</span>
+        <span>Spray Unpainted Tiles</span>
+      </button>
       <div class="palette-grid" id="palette"></div>
     </div>
 
@@ -370,6 +420,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     </div>
 
     <div class="toolbar-actions">
+      <button id="magic-wand-btn" type="button" title="Auto-paint terrain from the background image">&#10024; Magic Wand (Auto Paint)</button>
       <button id="save-btn">Download scenario JSON</button>
       <button id="save-custom-btn">Save As My Own Scenario</button>
       <button id="exit-btn">Exit to Start</button>
@@ -385,6 +436,39 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   <span id="status-pos">—</span>
   <span id="status-tile">—</span>
   <span id="status-info">Loading...</span>
+</div>
+
+<div id="magic-wand-panel" aria-label="Auto Paint Settings">
+  <div class="mw-title">Auto Paint Settings</div>
+  <div class="mw-subtitle">Maps background colors to terrain. Adjust rules, then preview and apply.</div>
+  <div class="mw-title" style="font-size:11px; color:#8b97a8; text-transform:none; letter-spacing:0;">Color &rarr; Terrain Rules</div>
+  <div class="mw-rules" id="mw-rules"></div>
+  <button class="mw-add" id="mw-add-rule" type="button">+ Add Rule</button>
+  <div class="mw-options">
+    <div class="mw-title" style="font-size:11px;">Options</div>
+    <label class="mw-row">Tolerance
+      <input type="range" id="mw-tolerance" min="1" max="100" value="28">
+      <span class="mw-num" id="mw-tolerance-val">28</span>
+    </label>
+    <label class="mw-row">Smoothing
+      <select id="mw-smoothing">
+        <option value="off">Off</option>
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
+    <label class="mw-row" style="gap:6px;">
+      <input type="checkbox" id="mw-add-coast" checked> Add coast where sea meets land
+    </label>
+    <label class="mw-row" style="gap:6px;">
+      <input type="checkbox" id="mw-preview" checked> Preview Only
+    </label>
+  </div>
+  <div class="mw-actions">
+    <button id="mw-apply" type="button">Apply</button>
+    <button id="mw-cancel" type="button">Cancel</button>
+  </div>
 </div>
 
 <div id="editor-landing">
@@ -491,6 +575,19 @@ const TILE_COLORS = {
   meadow:   '#9bcf74',
 };
 
+// Spray Mode overlay colors (editor-only; never saved).
+const SPRAY_UNPAINTED_FILL = '#ff2fd6';    // high-contrast placeholder for unpainted tiles
+const SPRAY_UNPAINTED_OUTLINE = '#fff7a8'; // subtle bright outline around unpainted tiles
+
+/** Mute a '#rrggbb' terrain color toward its grey luminance, for "already painted" tiles. */
+function desaturateHex(hex) {
+  const c = parseInt(hex.slice(1), 16);
+  const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+  const lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  const mix = (ch) => Math.round(ch * 0.22 + lum * 0.78);
+  return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+}
+
 let scenario = null;
 let mapManifest = { maps: [] };
 let currentMap = null;
@@ -506,6 +603,7 @@ let templateName = null;
 let templateImage = null;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
+let paintedTiles = null; // 2D array [r][q] of booleans: has the user/scenario deliberately painted this tile? (editor-only, never saved)
 let mapW = 0, mapH = 0, tileSize = 0;
 let hexSize = 0;
 let worldBounds = { width: 0, height: 0 };
@@ -529,6 +627,7 @@ let selectedMarkerIndex = null;
 let selectedNationId = null;
 let isPainting = false;
 let activeTechPopover = null;
+let sprayMode = false; // editor-only: when on, terrain paint only fills unpainted tiles and the map highlights coverage gaps
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -567,6 +666,8 @@ function startEditor(map, scenarioData, customEntry) {
   currentMap = map;
   currentCustomEntry = customEntry ?? null;
   scenario = scenarioData;
+  sprayMode = false; // each scenario session starts in normal paint mode
+  closeMagicWand(); // dismiss any open auto-paint preview from a previous scenario
 
   loadTemplateImage(scenario.meta?.template ?? null);
 
@@ -583,20 +684,27 @@ function startEditor(map, scenarioData, customEntry) {
   tileSize = scenario.map.tileSize;
   hexSize = tileSize / 2;
 
-  // Build 2D q/r tile array
+  // Build 2D q/r tile array. paintedTiles starts all-false: a blank scenario's
+  // default ocean fill is "unpainted" until the user (or scenario data) sets it.
   tiles = [];
   tileResources = [];
+  paintedTiles = [];
   for (let r = 0; r < mapH; r++) {
     const row = [];
     const resourceRow = [];
+    const paintedRow = [];
     for (let q = 0; q < mapW; q++) row.push('ocean');
     for (let q = 0; q < mapW; q++) resourceRow.push(undefined);
+    for (let q = 0; q < mapW; q++) paintedRow.push(false);
     tiles.push(row);
     tileResources.push(resourceRow);
+    paintedTiles.push(paintedRow);
   }
   for (const t of scenario.map.tiles) {
     if (tiles[t.r]) {
       tiles[t.r][t.q] = t.type;
+      // Any tile authored in the scenario with a valid terrain type counts as painted.
+      if (TILE_TYPES.includes(t.type)) paintedTiles[t.r][t.q] = true;
       if (typeof t.resourceId === 'string' && t.resourceId.length > 0) {
         tileResources[t.r][t.q] = t.resourceId;
       }
@@ -1305,8 +1413,10 @@ document.getElementById('terrain-paint-mode-btn').addEventListener('click', () =
 
 document.getElementById('resource-paint-mode-btn').addEventListener('click', () => {
   currentPaintMode = 'resource';
+  sprayMode = false; // Spray is terrain-only.
   buildPalette();
   updateInteractionModeUI();
+  render();
 });
 
 // ─── Entity lists ───────────────────────────────────────────────────────────
@@ -1890,6 +2000,7 @@ document.getElementById('tool-btns').addEventListener('click', (e) => {
   if (!btn) return;
   currentTool = btn.dataset.tool;
   if (currentTool === 'paint') setInteractionMode('paint');
+  else sprayMode = false; // Spray is a terrain-paint sub-mode; leaving the paint tool exits it.
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b === btn));
   updateToolPanels();
   selectedEntity = null;
@@ -1924,9 +2035,28 @@ document.getElementById('add-marker-btn').addEventListener('click', () => {
 
 function setInteractionMode(mode) {
   interactionMode = mode;
+  if (mode === 'pan') sprayMode = false; // Pan and Spray are mutually exclusive.
   updateInteractionModeUI();
   updateViewportCursor();
 }
+
+function toggleSprayMode() {
+  sprayMode = !sprayMode;
+  if (sprayMode) {
+    // Spray is terrain-only and needs the paint tool; force a clean terrain-paint state.
+    currentTool = 'paint';
+    currentPaintMode = 'terrain';
+    interactionMode = 'paint';
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
+    updateToolPanels();
+    buildPalette();
+  }
+  updateInteractionModeUI();
+  updateViewportCursor();
+  render();
+}
+
+document.getElementById('spray-mode-btn').addEventListener('click', toggleSprayMode);
 
 function updateInteractionModeUI() {
   const panModeBtn = document.getElementById('pan-mode-btn');
@@ -1941,6 +2071,11 @@ function updateInteractionModeUI() {
     const active = currentTool === 'paint' && currentPaintMode === 'resource';
     resourceModeBtn.classList.toggle('active', active);
     resourceModeBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  const sprayModeBtn = document.getElementById('spray-mode-btn');
+  if (sprayModeBtn) {
+    sprayModeBtn.classList.toggle('active', sprayMode);
+    sprayModeBtn.setAttribute('aria-pressed', sprayMode ? 'true' : 'false');
   }
   if (!panModeBtn) return;
   const isPanMode = currentTool === 'paint' && interactionMode === 'pan';
@@ -2096,7 +2231,7 @@ function recordTileBefore(q, r) {
   if (!currentStrokeChanges) return;
   const key = `${q},${r}`;
   if (currentStrokeChanges.has(key)) return;
-  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q] });
+  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q], prevPainted: paintedTiles[r][q] });
 }
 
 function commitBrushStroke() {
@@ -2105,8 +2240,9 @@ function commitBrushStroke() {
   for (const before of currentStrokeChanges.values()) {
     const nextType = tiles[before.r][before.q];
     const nextResource = tileResources[before.r][before.q];
-    if (before.prevType === nextType && before.prevResource === nextResource) continue; // no-op tile
-    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource });
+    const nextPainted = paintedTiles[before.r][before.q];
+    if (before.prevType === nextType && before.prevResource === nextResource && before.prevPainted === nextPainted) continue; // no-op tile
+    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource, prevPainted: before.prevPainted, nextPainted });
   }
   currentStrokeChanges = null;
   if (changes.length === 0) return; // empty / no-op stroke: nothing to undo
@@ -2119,6 +2255,7 @@ function applyTileChanges(changes, useNext) {
   for (const change of changes) {
     tiles[change.r][change.q] = useNext ? change.nextType : change.prevType;
     tileResources[change.r][change.q] = useNext ? change.nextResource : change.prevResource;
+    paintedTiles[change.r][change.q] = useNext ? change.nextPainted : change.prevPainted;
   }
 }
 
@@ -2186,12 +2323,19 @@ function paintAt(q, r) {
       const pq = q + dq;
       const pr = r + dr;
       if (pq < 0 || pr < 0 || pq >= mapW || pr >= mapH) continue;
-      if (tiles[pr][pq] !== currentTerrain) {
-        recordTileBefore(pq, pr); // captures terrain + any resource cleared below
+      // Spray Mode only fills tiles the user hasn't deliberately painted yet,
+      // protecting finished work from accidental repaint.
+      if (sprayMode && paintedTiles[pr][pq]) continue;
+      const willChangeTerrain = tiles[pr][pq] !== currentTerrain;
+      const willMarkPainted = !paintedTiles[pr][pq];
+      if (!willChangeTerrain && !willMarkPainted) continue; // nothing to do on this tile
+      recordTileBefore(pq, pr); // captures terrain + resource + painted flag
+      if (willChangeTerrain) {
         tiles[pr][pq] = currentTerrain;
         if (clearInvalidResourceForTerrain(pq, pr)) cleared += 1;
-        changed = true;
       }
+      paintedTiles[pr][pq] = true; // any terrain paint marks the tile as deliberately painted
+      changed = true;
     }
   }
   if (cleared > 0) setStatusInfo(`Cleared ${cleared} incompatible resource${cleared === 1 ? '' : 's'}`);
@@ -2522,6 +2666,321 @@ viewport.addEventListener('wheel', (e) => {
   render();
 }, { passive: false });
 
+// ─── Magic Wand (auto paint from background) ─────────────────────────────────
+//
+// Samples the visible background template per hex, classifies each sampled color
+// to a terrain via nearest user-defined reference color (within tolerance), runs
+// an optional majority smoothing pass, previews the result, and applies it as a
+// single undoable action. Editor-only; never touches saved metadata beyond terrain.
+
+const MAGIC_WAND_DEFAULT_RULES = [
+  { color: '#1a557d', terrain: 'ocean',    tolerance: 20 },
+  { color: '#e4d6a0', terrain: 'beach',    tolerance: 25 },
+  { color: '#83b865', terrain: 'plains',   tolerance: 30 },
+  { color: '#9bcf74', terrain: 'meadow',   tolerance: 30 },
+  { color: '#2f7440', terrain: 'forest',   tolerance: 25 },
+  { color: '#777b7b', terrain: 'mountain', tolerance: 35 },
+  { color: '#4f8da7', terrain: 'coast',    tolerance: 25 },
+];
+const MW_HEX_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+const MW_SMOOTHING_PASSES = { off: 0, low: 1, medium: 2, high: 3 };
+
+let magicWandRules = [];
+let magicWandActive = false;
+let magicWandPreviewOn = true;
+let magicWandPreview = null;  // 2D terrain-string grid (full map) while previewing/applying
+let magicWandSampler = null;  // { data, width, height } pixels of the template image
+let magicWandTolerance = 28;  // global slider; scales every rule's per-rule tolerance
+let magicWandSmoothing = 'medium';
+let magicWandAddCoast = true;  // ensure a coast buffer wherever ocean meets land
+
+function openMagicWand() {
+  if (!templateImage || !templateImage.complete || templateImage.naturalWidth === 0) {
+    setStatusInfo('Magic Wand needs a background template. Choose one when creating/opening a scenario.');
+    return;
+  }
+  if (!buildMagicWandSampler()) {
+    setStatusInfo('Magic Wand could not read the background image pixels.');
+    return;
+  }
+  magicWandActive = true;
+  sprayMode = false; // mutually exclusive with the spray overlay
+  if (magicWandRules.length === 0) magicWandRules = MAGIC_WAND_DEFAULT_RULES.map(rule => ({ ...rule }));
+  renderMagicWandRules();
+  document.getElementById('mw-tolerance').value = String(magicWandTolerance);
+  document.getElementById('mw-tolerance-val').textContent = String(magicWandTolerance);
+  document.getElementById('mw-smoothing').value = magicWandSmoothing;
+  document.getElementById('mw-add-coast').checked = magicWandAddCoast;
+  document.getElementById('mw-preview').checked = magicWandPreviewOn;
+  document.getElementById('magic-wand-panel').classList.add('open');
+  recomputeMagicWandPreview();
+  updateInteractionModeUI();
+  render();
+}
+
+function closeMagicWand() {
+  magicWandActive = false;
+  magicWandPreview = null;
+  magicWandSampler = null;
+  document.getElementById('magic-wand-panel').classList.remove('open');
+  updateInteractionModeUI();
+  render();
+}
+
+function buildMagicWandSampler() {
+  try {
+    const off = document.createElement('canvas');
+    off.width = templateImage.naturalWidth;
+    off.height = templateImage.naturalHeight;
+    const offCtx = off.getContext('2d', { willReadFrequently: true });
+    offCtx.drawImage(templateImage, 0, 0);
+    const img = offCtx.getImageData(0, 0, off.width, off.height);
+    magicWandSampler = { data: img.data, width: off.width, height: off.height };
+    return true;
+  } catch (err) {
+    console.warn('Magic Wand: failed to read background image pixels.', err);
+    magicWandSampler = null;
+    return false;
+  }
+}
+
+/** Average a small box of background pixels under the given hex's world center. */
+function sampleTileColor(q, r) {
+  if (!magicWandSampler || worldBounds.width <= 0 || worldBounds.height <= 0) return null;
+  const { data, width, height } = magicWandSampler;
+  const center = tileToWorld(q, r);
+  const cx = (center.x / worldBounds.width) * width;
+  const cy = (center.y / worldBounds.height) * height;
+  const boxPx = Math.max(1, Math.round((hexSize / worldBounds.width) * width * 0.5));
+  let rs = 0, gs = 0, bs = 0, n = 0;
+  for (let dy = -boxPx; dy <= boxPx; dy += boxPx) {
+    for (let dx = -boxPx; dx <= boxPx; dx += boxPx) {
+      const px = Math.round(cx + dx), py = Math.round(cy + dy);
+      if (px < 0 || py < 0 || px >= width || py >= height) continue;
+      const i = (py * width + px) * 4;
+      if (data[i + 3] === 0) continue; // skip transparent pixels
+      rs += data[i]; gs += data[i + 1]; bs += data[i + 2]; n += 1;
+    }
+  }
+  if (n === 0) return null;
+  return { r: rs / n, g: gs / n, b: bs / n };
+}
+
+function mwHexToRgb(hex) {
+  const c = parseInt(hex.slice(1), 16);
+  return { r: (c >> 16) & 255, g: (c >> 8) & 255, b: c & 255 };
+}
+
+/**
+ * Pick the best-matching terrain for a sampled color.
+ *
+ * Photographic backgrounds are far from the flat palette reference colors, so a
+ * hard "within tolerance else nothing" filter leaves almost everything unmatched
+ * (and falling back to ocean). Instead: the nearest reference wins, with each
+ * rule's per-rule tolerance acting as an attraction radius (a higher tolerance
+ * grabs more colors). The global Tolerance slider is an absolute confidence
+ * cutoff — only colors farther than it from every reference are left unpainted
+ * (returns null), so a low slider paints only confident tiles and a high one
+ * paints everything.
+ */
+function classifyColor(color) {
+  let best = null;
+  let bestScore = Infinity;
+  let bestDist = Infinity;
+  for (const rule of magicWandRules) {
+    if (!TILE_TYPES.includes(rule.terrain)) continue;
+    const ref = mwHexToRgb(rule.color);
+    const dr = color.r - ref.r, dg = color.g - ref.g, db = color.b - ref.b;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+    const score = dist / Math.max(1, rule.tolerance); // tolerance = attraction radius
+    if (score < bestScore) {
+      bestScore = score;
+      bestDist = dist;
+      best = rule.terrain;
+    }
+  }
+  if (best === null) return null;
+  // Global slider (1–100) → absolute RGB-distance cutoff (~4–400; RGB max ≈ 441).
+  const cutoff = magicWandTolerance * 4;
+  return bestDist <= cutoff ? best : null;
+}
+
+function computeMagicWandPreview() {
+  const grid = [];
+  for (let r = 0; r < mapH; r++) {
+    const row = [];
+    for (let q = 0; q < mapW; q++) {
+      const color = sampleTileColor(q, r);
+      const terrain = color ? classifyColor(color) : null;
+      row.push(terrain ?? tiles[r][q]); // keep current terrain where nothing matches
+    }
+    grid.push(row);
+  }
+  const passes = MW_SMOOTHING_PASSES[magicWandSmoothing] ?? 0;
+  let result = passes > 0 ? smoothTerrainGrid(grid, passes) : grid;
+  if (magicWandAddCoast) result = addCoastBorder(result);
+  return result;
+}
+
+/** A terrain counts as land for coast purposes when it is neither ocean nor coast. */
+function isLandTerrain(terrain) {
+  return terrain !== 'ocean' && terrain !== 'coast';
+}
+
+/**
+ * Ensure ocean never touches land directly: every ocean tile adjacent to a land
+ * tile becomes coast. Neighbor checks use the input grid so it converts exactly
+ * the one ocean ring around each landmass in a single pass. Coast already next to
+ * land is left as-is; nothing is removed.
+ */
+function addCoastBorder(grid) {
+  const out = grid.map(row => row.slice());
+  for (let r = 0; r < mapH; r += 1) {
+    for (let q = 0; q < mapW; q += 1) {
+      if (grid[r][q] !== 'ocean') continue;
+      for (const [dq, dr] of MW_HEX_DIRS) {
+        const nq = q + dq, nr = r + dr;
+        if (nq < 0 || nr < 0 || nq >= mapW || nr >= mapH) continue;
+        if (isLandTerrain(grid[nr][nq])) { out[r][q] = 'coast'; break; }
+      }
+    }
+  }
+  return out;
+}
+
+/** Majority filter over the 6 hex neighbors; removes noise and softens borders. */
+function smoothTerrainGrid(grid, passes) {
+  let cur = grid;
+  for (let p = 0; p < passes; p += 1) {
+    const next = cur.map(row => row.slice());
+    for (let r = 0; r < mapH; r += 1) {
+      for (let q = 0; q < mapW; q += 1) {
+        const counts = {};
+        for (const [dq, dr] of MW_HEX_DIRS) {
+          const nq = q + dq, nr = r + dr;
+          if (nq < 0 || nr < 0 || nq >= mapW || nr >= mapH) continue;
+          const t = cur[nr][nq];
+          counts[t] = (counts[t] || 0) + 1;
+        }
+        let topT = null, topC = 0;
+        for (const t in counts) if (counts[t] > topC) { topC = counts[t]; topT = t; }
+        if (topT && topC >= 4 && topT !== cur[r][q]) next[r][q] = topT;
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+let mwRecomputeTimer = null;
+// Debounced so dragging the tolerance slider / editing rules on a large map stays responsive.
+function recomputeMagicWandPreview() {
+  if (!magicWandActive) return;
+  if (mwRecomputeTimer !== null) clearTimeout(mwRecomputeTimer);
+  mwRecomputeTimer = setTimeout(() => {
+    mwRecomputeTimer = null;
+    if (!magicWandActive) return;
+    magicWandPreview = computeMagicWandPreview();
+    if (magicWandPreviewOn) render();
+  }, 50);
+}
+
+function applyMagicWand() {
+  if (!magicWandActive) return;
+  magicWandPreview = computeMagicWandPreview(); // always apply the latest settings
+  beginBrushStroke();
+  let changed = 0;
+  for (let r = 0; r < mapH; r += 1) {
+    for (let q = 0; q < mapW; q += 1) {
+      const terrain = magicWandPreview[r][q];
+      const terrainChanged = tiles[r][q] !== terrain;
+      const markPainted = !paintedTiles[r][q];
+      if (!terrainChanged && !markPainted) continue;
+      recordTileBefore(q, r);
+      if (terrainChanged) {
+        tiles[r][q] = terrain;
+        clearInvalidResourceForTerrain(q, r);
+        changed += 1;
+      }
+      paintedTiles[r][q] = true;
+    }
+  }
+  commitBrushStroke();
+  closeMagicWand();
+  setStatusInfo(`Magic Wand painted ${changed} tile${changed === 1 ? '' : 's'} from the background.`);
+}
+
+function mwNormalizeHex(hex) {
+  return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#888888';
+}
+
+function renderMagicWandRules() {
+  const container = document.getElementById('mw-rules');
+  container.innerHTML = '';
+  magicWandRules.forEach((rule, index) => {
+    const row = document.createElement('div');
+    row.className = 'mw-rule';
+
+    const color = document.createElement('input');
+    color.type = 'color';
+    color.value = mwNormalizeHex(rule.color);
+    color.addEventListener('input', () => { rule.color = color.value; recomputeMagicWandPreview(); });
+
+    const select = document.createElement('select');
+    for (const t of TILE_TYPES) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+      if (t === rule.terrain) opt.selected = true;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => { rule.terrain = select.value; recomputeMagicWandPreview(); });
+
+    const tol = document.createElement('input');
+    tol.type = 'number';
+    tol.min = '1';
+    tol.max = '255';
+    tol.value = String(rule.tolerance);
+    tol.addEventListener('input', () => { rule.tolerance = Math.max(1, parseInt(tol.value, 10) || 1); recomputeMagicWandPreview(); });
+
+    const remove = document.createElement('button');
+    remove.className = 'mw-rule-remove';
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.title = 'Remove rule';
+    remove.addEventListener('click', () => { magicWandRules.splice(index, 1); renderMagicWandRules(); recomputeMagicWandPreview(); });
+
+    row.append(color, select, tol, remove);
+    container.appendChild(row);
+  });
+}
+
+document.getElementById('magic-wand-btn').addEventListener('click', openMagicWand);
+document.getElementById('mw-add-rule').addEventListener('click', () => {
+  magicWandRules.push({ color: '#888888', terrain: 'plains', tolerance: 28 });
+  renderMagicWandRules();
+  recomputeMagicWandPreview();
+});
+document.getElementById('mw-tolerance').addEventListener('input', (e) => {
+  magicWandTolerance = parseInt(e.target.value, 10) || 1;
+  document.getElementById('mw-tolerance-val').textContent = String(magicWandTolerance);
+  recomputeMagicWandPreview();
+});
+document.getElementById('mw-smoothing').addEventListener('change', (e) => {
+  magicWandSmoothing = e.target.value;
+  recomputeMagicWandPreview();
+});
+document.getElementById('mw-add-coast').addEventListener('change', (e) => {
+  magicWandAddCoast = e.target.checked;
+  recomputeMagicWandPreview();
+});
+document.getElementById('mw-preview').addEventListener('change', (e) => {
+  magicWandPreviewOn = e.target.checked;
+  render();
+});
+document.getElementById('mw-apply').addEventListener('click', applyMagicWand);
+document.getElementById('mw-cancel').addEventListener('click', () => { closeMagicWand(); setStatusInfo('Magic Wand cancelled.'); });
+
 // ─── Rendering ──────────────────────────────────────────────────────────────
 
 function resizeCanvas() {
@@ -2551,8 +3010,12 @@ function render() {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  // Background tracing template, behind all editable content.
-  const templateActive = drawTemplateBackground();
+  // Magic Wand preview: render the proposed auto-paint result instead of the map.
+  const mwPreviewing = magicWandActive && magicWandPreviewOn && magicWandPreview !== null;
+
+  // Background tracing template, behind all editable content. Hidden in Spray
+  // Mode and during Magic Wand preview so the result is the only thing on screen.
+  const templateActive = !sprayMode && !mwPreviewing && drawTemplateBackground();
 
   const viewLeft = camX;
   const viewTop = camY;
@@ -2569,10 +3032,29 @@ function render() {
         continue;
       }
 
-      drawHex(q, r, TILE_COLORS[tiles[r][q]] || '#ff00ff');
+      if (sprayMode) {
+        // Painted tiles greyed out; unpainted tiles in a high-contrast placeholder.
+        drawHex(q, r, paintedTiles[r][q] ? desaturateHex(TILE_COLORS[tiles[r][q]] || '#888888') : SPRAY_UNPAINTED_FILL);
+      } else if (mwPreviewing) {
+        drawHex(q, r, TILE_COLORS[magicWandPreview[r][q]] || '#ff00ff');
+      } else {
+        drawHex(q, r, TILE_COLORS[tiles[r][q]] || '#ff00ff');
+      }
     }
   }
   ctx.globalAlpha = 1;
+
+  // Spray Mode: outline the still-unpainted tiles so gaps are obvious at a glance.
+  if (sprayMode) {
+    for (let r = 0; r < mapH; r++) {
+      for (let q = 0; q < mapW; q++) {
+        if (paintedTiles[r][q]) continue;
+        const rect = hexRect(q, r);
+        if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) continue;
+        strokeHex(q, r, SPRAY_UNPAINTED_OUTLINE, 2);
+      }
+    }
+  }
 
   // Grid lines (only if zoomed in enough)
   if (zoom > 0.3) {

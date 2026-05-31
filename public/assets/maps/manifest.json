@@ -26,9 +26,9 @@
       "file": "assets/maps/twoContinentsScenarioI.json"
     },
     {
-      "key": "map_world",
-      "label": "World 1400",
-      "file": "assets/maps/worldScenario.json"
+      "key": "map_scandinavia",
+      "label": "Scandinavia",
+      "file": "assets/maps/scandinavia.json"
     }
   ]
 }
