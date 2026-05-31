@@ -18,7 +18,11 @@
       "Bash(cd *)",
       "Bash(claude --version)",
       "Bash(node *)",
-      "Bash(awk *)"
+      "Bash(awk *)",
+      "Bash(node -e \" *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   },
   "model": "claude-opus-4-8"

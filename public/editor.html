@@ -159,6 +159,82 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   background: #1a1a1a; border-top: 1px solid #333; padding: 0 12px;
   font-size: 11px; color: #888; display: flex; align-items: center; gap: 16px;
 }
+
+/* ─── Landing page ─────────────────────────────────────────────────────── */
+#editor-landing {
+  position: fixed; inset: 0; z-index: 100; background: #0d0d0d;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.landing-card {
+  width: 100%; max-width: 560px; max-height: calc(100vh - 48px);
+  display: flex; flex-direction: column; gap: 16px;
+  background: #181818; border: 1px solid #333; border-radius: 8px; padding: 24px;
+  overflow-y: auto;
+}
+.landing-card h1 { font-size: 20px; color: #ddd; letter-spacing: 1px; text-transform: uppercase; }
+.landing-card h2 { font-size: 15px; color: #ccc; }
+.landing-view { display: flex; flex-direction: column; gap: 10px; }
+.landing-view-header { display: flex; align-items: center; gap: 12px; }
+.landing-back {
+  border: 1px solid #555; border-radius: 4px; padding: 5px 10px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px; cursor: pointer;
+}
+.landing-back:hover { border-color: #888; background: #333; }
+.landing-option {
+  display: flex; flex-direction: column; gap: 4px; text-align: left;
+  border: 1px solid #3a3a3a; border-radius: 6px; padding: 14px 16px;
+  background: #222; color: #ddd; font: inherit; cursor: pointer;
+}
+.landing-option:hover:not(:disabled) { border-color: #4a9; background: #1e2a24; }
+.landing-option:disabled { opacity: 0.4; cursor: not-allowed; }
+.landing-option-title { font-size: 14px; font-weight: bold; }
+.landing-option-sub { font-size: 11px; color: #888; }
+.landing-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.landing-list-group-title {
+  font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.08em;
+  margin: 8px 0 2px;
+}
+.landing-list-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: 1px solid #333; border-radius: 4px; padding: 9px 12px;
+  background: #222; color: #ddd; font: inherit; font-size: 12px; cursor: pointer; text-align: left;
+}
+.landing-list-row:hover { border-color: #7bbcff; background: #1c2733; }
+.landing-list-row .meta { font-size: 10px; color: #888; }
+.landing-empty { font-size: 12px; color: #777; padding: 8px 2px; }
+.landing-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #aaa; }
+.landing-field input[type="text"], .landing-field input[type="number"], .landing-field select {
+  background: #151515; border: 1px solid #444; border-radius: 3px;
+  color: #ddd; font: inherit; font-size: 13px; padding: 7px;
+}
+.landing-size-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.landing-size-option {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  border: 1px solid #3a3a3a; border-radius: 5px; padding: 9px 11px;
+  background: #222; color: #ddd; font: inherit; cursor: pointer;
+}
+.landing-size-option:hover { border-color: #666; }
+.landing-size-option.active { border-color: #4a9; background: #1e2a24; }
+.landing-size-option strong { font-size: 12px; }
+.landing-size-option span { font-size: 10px; color: #888; }
+.landing-custom-size { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.landing-nation-list {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  max-height: 200px; overflow-y: auto;
+  border: 1px solid #333; border-radius: 4px; padding: 8px; background: #1a1a1a;
+}
+.landing-nation-row {
+  display: flex; align-items: center; gap: 7px; font-size: 11px; color: #ddd;
+  padding: 3px 4px; border-radius: 3px; cursor: pointer;
+}
+.landing-nation-row:hover { background: #262626; }
+.landing-nation-row img { width: 22px; height: 27px; border-radius: 2px; object-fit: cover; background: #333; flex-shrink: 0; }
+.landing-create-submit {
+  border: 1px solid #4a9; border-radius: 4px; padding: 11px;
+  background: #1a3a2a; color: #4a9; font: inherit; font-size: 13px; font-weight: bold; cursor: pointer;
+}
+.landing-create-submit:hover { background: #2a4a3a; }
+.landing-create-error { font-size: 11px; color: #f3ca72; min-height: 14px; }
 </style>
 </head>
 <body>
@@ -300,6 +376,77 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   <span id="status-info">Loading...</span>
 </div>
 
+<div id="editor-landing">
+  <div class="landing-card">
+    <h1>Map Editor</h1>
+
+    <div id="landing-home" class="landing-view">
+      <button id="landing-edit-btn" class="landing-option" type="button">
+        <span class="landing-option-title" id="landing-edit-title">Edit current scenario</span>
+        <span class="landing-option-sub" id="landing-edit-sub">Loading…</span>
+      </button>
+      <button id="landing-load-btn" class="landing-option" type="button">
+        <span class="landing-option-title">Load Scenario</span>
+        <span class="landing-option-sub">Open an official or saved scenario</span>
+      </button>
+      <button id="landing-create-btn" class="landing-option" type="button">
+        <span class="landing-option-title">Create New</span>
+        <span class="landing-option-sub">Start a blank scenario from scratch</span>
+      </button>
+    </div>
+
+    <div id="landing-load" class="landing-view" style="display:none">
+      <div class="landing-view-header">
+        <button class="landing-back" type="button" data-landing-back>&larr; Back</button>
+        <h2>Load Scenario</h2>
+      </div>
+      <div id="landing-scenario-list" class="landing-list"></div>
+    </div>
+
+    <div id="landing-create" class="landing-view" style="display:none">
+      <div class="landing-view-header">
+        <button class="landing-back" type="button" data-landing-back>&larr; Back</button>
+        <h2>Create New Scenario</h2>
+      </div>
+      <label class="landing-field">
+        Scenario name
+        <input id="create-name-input" type="text" placeholder="My Scenario" maxlength="70">
+      </label>
+      <div class="landing-field">
+        Map size
+        <div class="landing-size-grid" id="create-size-grid">
+          <button class="landing-size-option active" type="button" data-size="wide" data-w="300" data-h="100">
+            <strong>Wide</strong><span>300 × 100</span>
+          </button>
+          <button class="landing-size-option" type="button" data-size="medium" data-w="200" data-h="75">
+            <strong>Medium</strong><span>200 × 75</span>
+          </button>
+          <button class="landing-size-option" type="button" data-size="small" data-w="100" data-h="50">
+            <strong>Small</strong><span>100 × 50</span>
+          </button>
+          <button class="landing-size-option" type="button" data-size="custom">
+            <strong>Custom</strong><span>Set width &amp; height</span>
+          </button>
+        </div>
+      </div>
+      <div class="landing-custom-size" id="create-custom-size" style="display:none">
+        <label class="landing-field">Width<input id="create-width-input" type="number" min="1" step="1" value="100"></label>
+        <label class="landing-field">Height<input id="create-height-input" type="number" min="1" step="1" value="50"></label>
+      </div>
+      <label class="landing-field">
+        Tile size (Experimental)
+        <input id="create-tilesize-input" type="number" min="1" step="1" value="48">
+      </label>
+      <div class="landing-field">
+        Nations
+        <div class="landing-nation-list" id="create-nation-list"></div>
+      </div>
+      <div class="landing-create-error" id="create-error"></div>
+      <button class="landing-create-submit" id="create-submit-btn" type="button">Create &amp; Open Editor</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert'];
 const TILE_COLORS = {
@@ -368,24 +515,30 @@ async function init() {
     loadCultureTreeManifest(),
   ]);
   buildUnitTypeSelect();
+  // The map/scenario selected on the main menu (via ?map / ?custom) becomes the
+  // "Edit current scenario" target. The actual editor only starts once the user
+  // chooses an option on the landing page.
   currentMap = resolveRequestedMap(mapManifest);
-  if (!currentMap) {
-    document.getElementById('status-info').textContent = 'No maps available. Regenerate assets/maps/manifest.json.';
-    return;
-  }
+  setupLanding();
+}
 
-  if (currentMap.isCustom) {
-    currentCustomEntry = currentMap.customEntry;
-    scenario = structuredCloneCompat(currentCustomEntry.scenario);
-  } else {
-    const res = await fetch(`/${currentMap.file}`);
-    scenario = await res.json();
-  }
+/**
+ * Loads the chosen scenario into the editor and initializes all editor state.
+ * `map` is a manifest-style descriptor (official, custom, or a freshly created
+ * in-memory scenario); `scenarioData` is its ScenarioData payload.
+ */
+function startEditor(map, scenarioData, customEntry) {
+  currentMap = map;
+  currentCustomEntry = customEntry ?? null;
+  scenario = scenarioData;
+
   if (!Array.isArray(scenario.worldMarkers)) scenario.worldMarkers = [];
   normalizeNationColors();
   document.title = `Map Editor — ${currentMap.label}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
   updateScenarioScope();
+
+  hideLanding();
 
   mapW = scenario.map.width;
   mapH = scenario.map.height;
@@ -432,6 +585,237 @@ async function init() {
   resizeCanvas();
   render();
   document.getElementById('status-info').textContent = `${currentMap.label}: ${mapW}x${mapH} q/r hexes loaded`;
+}
+
+// ─── Landing page ────────────────────────────────────────────────────────────
+
+function setupLanding() {
+  const editBtn = document.getElementById('landing-edit-btn');
+  const editTitle = document.getElementById('landing-edit-title');
+  const editSub = document.getElementById('landing-edit-sub');
+  if (currentMap) {
+    editTitle.textContent = `Edit ${currentMap.label}`;
+    editSub.textContent = currentMap.isCustom ? 'Your saved scenario' : 'Official scenario';
+    editBtn.disabled = false;
+  } else {
+    editTitle.textContent = 'Edit current scenario';
+    editSub.textContent = 'No scenario selected — load or create one instead';
+    editBtn.disabled = true;
+  }
+
+  editBtn.addEventListener('click', () => { if (currentMap) openMap(currentMap); });
+  document.getElementById('landing-load-btn').addEventListener('click', () => {
+    buildScenarioList();
+    showLandingView('landing-load');
+  });
+  document.getElementById('landing-create-btn').addEventListener('click', () => {
+    buildCreateNationList();
+    showLandingView('landing-create');
+  });
+  document.querySelectorAll('[data-landing-back]').forEach((btn) => {
+    btn.addEventListener('click', () => showLandingView('landing-home'));
+  });
+
+  setupCreateWizard();
+}
+
+function showLandingView(viewId) {
+  ['landing-home', 'landing-load', 'landing-create'].forEach((id) => {
+    document.getElementById(id).style.display = id === viewId ? '' : 'none';
+  });
+}
+
+function hideLanding() {
+  const landing = document.getElementById('editor-landing');
+  if (landing) landing.style.display = 'none';
+}
+
+/** Resolve a scenario's ScenarioData and hand it to the editor. */
+async function openMap(map) {
+  if (map.isCustom) {
+    startEditor(map, structuredCloneCompat(map.customEntry.scenario), map.customEntry);
+    return;
+  }
+  try {
+    const res = await fetch(`/${map.file}`);
+    if (!res.ok) throw new Error(`scenario fetch failed: ${res.status}`);
+    startEditor(map, await res.json(), null);
+  } catch (err) {
+    console.warn('Failed to load scenario.', err);
+    window.alert(`Could not load scenario "${map.label}".`);
+  }
+}
+
+function customMapDescriptor(entry) {
+  return {
+    key: entry.metadata.id,
+    label: entry.metadata.name,
+    file: `${entry.metadata.id}.json`,
+    isCustom: true,
+    customEntry: entry,
+  };
+}
+
+function buildScenarioList() {
+  const list = document.getElementById('landing-scenario-list');
+  list.innerHTML = '';
+
+  const officialMaps = mapManifest.maps;
+  if (officialMaps.length > 0) {
+    const title = document.createElement('div');
+    title.className = 'landing-list-group-title';
+    title.textContent = 'Official scenarios';
+    list.appendChild(title);
+    for (const map of officialMaps) {
+      list.appendChild(makeScenarioRow(map.label, '', () => openMap(map)));
+    }
+  }
+
+  const customEntries = loadCustomScenarioEntries();
+  if (customEntries.length > 0) {
+    const title = document.createElement('div');
+    title.className = 'landing-list-group-title';
+    title.textContent = 'My scenarios';
+    list.appendChild(title);
+    for (const entry of customEntries) {
+      const when = new Date(entry.metadata.updatedAt).toLocaleDateString();
+      list.appendChild(makeScenarioRow(entry.metadata.name, `Updated ${when}`, () => openMap(customMapDescriptor(entry))));
+    }
+  }
+
+  if (officialMaps.length === 0 && customEntries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'landing-empty';
+    empty.textContent = 'No scenarios available. Create a new one to get started.';
+    list.appendChild(empty);
+  }
+}
+
+function makeScenarioRow(label, meta, onClick) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'landing-list-row';
+  row.innerHTML = `<span>${label}</span>${meta ? `<span class="meta">${meta}</span>` : ''}`;
+  row.addEventListener('click', onClick);
+  return row;
+}
+
+// ─── Create New wizard ───────────────────────────────────────────────────────
+
+let createMapSize = { mode: 'wide', width: 300, height: 100 };
+
+function setupCreateWizard() {
+  const grid = document.getElementById('create-size-grid');
+  const customSize = document.getElementById('create-custom-size');
+  grid.querySelectorAll('.landing-size-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      grid.querySelectorAll('.landing-size-option').forEach(b => b.classList.toggle('active', b === btn));
+      const mode = btn.dataset.size;
+      if (mode === 'custom') {
+        customSize.style.display = '';
+        createMapSize = {
+          mode,
+          width: parseInt(document.getElementById('create-width-input').value, 10) || 1,
+          height: parseInt(document.getElementById('create-height-input').value, 10) || 1,
+        };
+      } else {
+        customSize.style.display = 'none';
+        createMapSize = { mode, width: parseInt(btn.dataset.w, 10), height: parseInt(btn.dataset.h, 10) };
+      }
+    });
+  });
+
+  document.getElementById('create-submit-btn').addEventListener('click', submitCreateWizard);
+}
+
+function buildCreateNationList() {
+  const container = document.getElementById('create-nation-list');
+  container.innerHTML = '';
+  if (nationRegistry.nations.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'landing-empty';
+    empty.textContent = 'No nations available in the registry.';
+    container.appendChild(empty);
+    return;
+  }
+  for (const nation of nationRegistry.nations) {
+    const row = document.createElement('label');
+    row.className = 'landing-nation-row';
+    row.innerHTML = `<input type="checkbox" value="${nation.nationId}">
+      <img src="${nation.leaderImage}" alt="">
+      <span>${nation.nationName}</span>`;
+    container.appendChild(row);
+  }
+}
+
+function getSelectedCreateNationIds() {
+  return [...document.querySelectorAll('#create-nation-list input[type="checkbox"]:checked')].map(cb => cb.value);
+}
+
+function submitCreateWizard() {
+  const errorEl = document.getElementById('create-error');
+  const name = document.getElementById('create-name-input').value.trim();
+  if (!name) { errorEl.textContent = 'Enter a scenario name.'; return; }
+  if (name.length > CUSTOM_SCENARIO_NAME_MAX_LENGTH) {
+    errorEl.textContent = `Name must be ${CUSTOM_SCENARIO_NAME_MAX_LENGTH} characters or fewer.`;
+    return;
+  }
+
+  let width = createMapSize.width;
+  let height = createMapSize.height;
+  if (createMapSize.mode === 'custom') {
+    width = parseInt(document.getElementById('create-width-input').value, 10);
+    height = parseInt(document.getElementById('create-height-input').value, 10);
+  }
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+    errorEl.textContent = 'Map width and height must be positive numbers.';
+    return;
+  }
+
+  const tileSizeValue = parseInt(document.getElementById('create-tilesize-input').value, 10);
+  if (!Number.isFinite(tileSizeValue) || tileSizeValue < 1) {
+    errorEl.textContent = 'Tile size must be a positive number.';
+    return;
+  }
+
+  const nationIds = getSelectedCreateNationIds();
+  if (nationIds.length === 0) { errorEl.textContent = 'Select at least one nation.'; return; }
+
+  errorEl.textContent = '';
+  const scenarioData = buildBlankScenario(name, nationIds, width, height, tileSizeValue);
+  const map = { key: undefined, label: name, file: `${safeFilename(name)}.json`, isCustom: false, isNew: true };
+  startEditor(map, scenarioData, null);
+}
+
+/**
+ * Build an empty, editor-ready ScenarioData: an all-ocean map (tiles default to
+ * ocean in the editor), the chosen nations with placeholder start centers, and
+ * no cities/units/markers. The first selected nation is flagged human.
+ */
+function buildBlankScenario(name, nationIds, width, height, tileSizeValue) {
+  const nations = nationIds.map((id, index) => {
+    const registryNation = getRegistryNation(id);
+    const primaryColor = registryNation?.color || '#888888';
+    return {
+      id,
+      name: registryNation?.nationName || id,
+      color: primaryColor,
+      secondaryColor: registryNation?.secondaryColor || primaryColor,
+      isHuman: index === 0,
+      startTerritoryCenter: { q: 0, r: 0 },
+      researchedTechIds: [],
+      unlockedCultureNodeIds: [],
+    };
+  });
+
+  return {
+    meta: { name, version: 1 },
+    map: { width, height, tileSize: tileSizeValue, tiles: [] },
+    nations,
+    cities: [],
+    units: [],
+    worldMarkers: [],
+  };
 }
 
 async function loadMapManifest() {
@@ -629,9 +1013,13 @@ function getMapFilename(map) {
 function updateScenarioScope() {
   const scope = document.getElementById('scenario-scope');
   if (!scope || !currentMap) return;
-  scope.textContent = currentMap.isCustom
-    ? `My Scenario: ${currentMap.label}`
-    : `Official Scenario: ${currentMap.label}`;
+  if (currentMap.isNew) {
+    scope.textContent = `New Scenario: ${currentMap.label} (unsaved — use "Save As My Own Scenario")`;
+  } else {
+    scope.textContent = currentMap.isCustom
+      ? `My Scenario: ${currentMap.label}`
+      : `Official Scenario: ${currentMap.label}`;
+  }
 }
 
 function loadCustomScenarioEntries() {
@@ -2317,8 +2705,8 @@ document.getElementById('save-custom-btn').addEventListener('click', () => {
       name,
       createdAt: existingMetadata?.createdAt || now,
       updatedAt: now,
-      sourceScenarioId: existingMetadata?.sourceScenarioId || (currentMap?.isCustom ? undefined : currentMap?.key),
-      sourceScenarioName: existingMetadata?.sourceScenarioName || (currentMap?.isCustom ? undefined : currentMap?.label),
+      sourceScenarioId: existingMetadata?.sourceScenarioId || (currentMap?.isCustom || currentMap?.isNew ? undefined : currentMap?.key),
+      sourceScenarioName: existingMetadata?.sourceScenarioName || (currentMap?.isCustom || currentMap?.isNew ? undefined : currentMap?.label),
     },
     scenario: output,
   };
