@@ -11,7 +11,7 @@ export interface TileImprovementDefinition {
 export const FARM: TileImprovementDefinition = {
   id: 'farm',
   name: 'Farm',
-  allowedTileTypes: [TileType.Plains],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow],
   yieldBonus: { food: 2, production: 0, gold: 0 },
 };
 
@@ -25,28 +25,28 @@ export const LUMBER_MILL: TileImprovementDefinition = {
 export const PLANTATION: TileImprovementDefinition = {
   id: 'plantation',
   name: 'Plantation',
-  allowedTileTypes: [TileType.Plains, TileType.Forest, TileType.Jungle],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Jungle],
   yieldBonus: { food: 2, production: 0, gold: 0 },
 };
 
 export const MINE: TileImprovementDefinition = {
   id: 'mine',
   name: 'Mine',
-  allowedTileTypes: [TileType.Plains, TileType.Forest, TileType.Mountain, TileType.Ice, TileType.Desert],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Mountain, TileType.Ice, TileType.Desert],
   yieldBonus: { food: 0, production: 2, gold: 0 },
 };
 
 export const PASTURE: TileImprovementDefinition = {
   id: 'pasture',
   name: 'Pasture',
-  allowedTileTypes: [TileType.Plains, TileType.Forest],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest],
   yieldBonus: { food: 1, production: 1, gold: 0 },
 };
 
 export const OIL_WELL: TileImprovementDefinition = {
   id: 'oil_well',
   name: 'Oil Well',
-  allowedTileTypes: [TileType.Plains, TileType.Desert, TileType.Ice],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Desert, TileType.Ice],
   yieldBonus: { food: 0, production: 3, gold: 0 },
 };
 

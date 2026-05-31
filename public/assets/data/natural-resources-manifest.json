@@ -5,7 +5,9 @@
       "name": "Wheat",
       "category": "bonus",
       "allowedTileTypes": [
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/wheat.png"
     },
@@ -14,7 +16,9 @@
       "name": "Rice",
       "category": "bonus",
       "allowedTileTypes": [
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/rice.png"
     },
@@ -23,7 +27,9 @@
       "name": "Cattle",
       "category": "bonus",
       "allowedTileTypes": [
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/cattle.png"
     },
@@ -32,7 +38,9 @@
       "name": "Sheep",
       "category": "bonus",
       "allowedTileTypes": [
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/sheep.png"
     },
@@ -70,6 +78,8 @@
       "category": "bonus",
       "allowedTileTypes": [
         "plains",
+        "beach",
+        "meadow",
         "mountain"
       ],
       "iconPath": "/assets/sprites/resources/copper.png"
@@ -89,6 +99,8 @@
       "category": "bonus",
       "allowedTileTypes": [
         "plains",
+        "beach",
+        "meadow",
         "mountain"
       ],
       "iconPath": "/assets/sprites/resources/stone.png"
@@ -98,7 +110,9 @@
       "name": "Wine",
       "category": "luxury",
       "allowedTileTypes": [
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/wine.png"
     },
@@ -166,6 +180,8 @@
       "category": "luxury",
       "allowedTileTypes": [
         "plains",
+        "beach",
+        "meadow",
         "forest"
       ],
       "iconPath": "/assets/sprites/resources/ivory.png"
@@ -175,7 +191,9 @@
       "name": "Horses",
       "category": "strategic",
       "allowedTileTypes": [
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/horses.png"
     },
@@ -185,7 +203,9 @@
       "category": "strategic",
       "allowedTileTypes": [
         "mountain",
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/iron.png"
     },
@@ -195,6 +215,8 @@
       "category": "strategic",
       "allowedTileTypes": [
         "plains",
+        "beach",
+        "meadow",
         "desert"
       ],
       "iconPath": "/assets/sprites/resources/niter.png"
@@ -217,7 +239,9 @@
         "desert",
         "ocean",
         "ice",
-        "plains"
+        "plains",
+        "beach",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/oil.png"
     },
@@ -227,6 +251,8 @@
       "category": "strategic",
       "allowedTileTypes": [
         "plains",
+        "beach",
+        "meadow",
         "desert",
         "ice"
       ],

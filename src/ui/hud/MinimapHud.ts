@@ -30,6 +30,8 @@ const TERRAIN_COLORS: Record<TileType, number> = {
   [TileType.Ice]: 0xc8e6e8,
   [TileType.Jungle]: 0x236f50,
   [TileType.Desert]: 0xcdb65e,
+  [TileType.Beach]: 0xe4d6a0,
+  [TileType.Meadow]: 0x9bcf74,
 };
 
 export class MinimapHud {

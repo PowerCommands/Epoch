@@ -16,6 +16,8 @@ const TYPE_MAP: Record<string, TileType> = {
   ice: TileType.Ice,
   jungle: TileType.Jungle,
   desert: TileType.Desert,
+  beach: TileType.Beach,
+  meadow: TileType.Meadow,
 };
 
 export interface ParsedScenario {

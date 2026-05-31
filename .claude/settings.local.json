@@ -1,26 +1,9 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(npm install:*)",
-      "Bash(npm run:*)",
-      "Bash(sed *)",
-      "Bash(npx vite:*)",
-      "Bash(kill %)",
-      "Bash(npx *)",
-      "Bash(docker *)",
-      "Bash(find *)",
-      "Bash([ -f \"public/assets/sprites/units/$u.png\" ])",
+    "allow": [      
+      "Bash(*)",      
       "Read(//tmp/**)",
-      "Read(//home/harri/**)",
-      "Bash(grep *)",
-      "Bash(xargs *)",
-      "Bash(tee *)",
-      "Bash(cd *)",
-      "Bash(claude --version)",
-      "Bash(node *)",
-      "Bash(awk *)",
-      "Bash(node -e \" *)",
-      "Bash(python3 *)"
+      "Read(//home/harri/**)"      
     ],
     "additionalDirectories": [
       "/tmp"

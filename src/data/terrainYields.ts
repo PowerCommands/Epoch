@@ -15,6 +15,9 @@ export const TERRAIN_YIELDS: Record<TileType, TileYield> = {
   [TileType.Desert]: { food: 0, production: 0, gold: 0 },
   [TileType.Coast]: { food: 2, production: 1, gold: 1 },
   [TileType.Ocean]: { food: 1, production: 0, gold: 0 },
+  // Visual variants of Plains — identical yields.
+  [TileType.Beach]: { food: 2, production: 1, gold: 0 },
+  [TileType.Meadow]: { food: 2, production: 1, gold: 0 },
 };
 
 export function getTerrainYield(tileType: TileType): TileYield {

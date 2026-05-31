@@ -34,6 +34,8 @@ const FOUNDABLE_LAND_TYPES = new Set<TileType>([
   TileType.Mountain,
   TileType.Jungle,
   TileType.Desert,
+  TileType.Beach,
+  TileType.Meadow,
 ]);
 const AXIAL_DIRECTIONS: ReadonlyArray<Readonly<{ x: number; y: number }>> = [
   { x: 1, y: 0 },

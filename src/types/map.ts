@@ -7,6 +7,10 @@ export enum TileType {
   Ice = 'ice',
   Jungle = 'jungle',
   Desert = 'desert',
+  // Visual variants of Plains. Gameplay-identical to Plains for now; added for
+  // map variety. Keep their rules mirrored on Plains wherever Plains is handled.
+  Beach = 'beach',
+  Meadow = 'meadow',
 }
 
 export interface TileBuildingConstruction {

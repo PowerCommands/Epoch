@@ -83,6 +83,25 @@ const DEFAULT_TERRAIN_STYLES: Record<TileType, TerrainRenderStyle> = {
     textureColor: 0x9b7a39,
     textureAlpha: 0.2,
   },
+  // Visual variants of Plains — gameplay-identical, distinct tints for variety.
+  [TileType.Beach]: {
+    fillColor: 0xe4d6a0,
+    borderColor: 0xc2b075,
+    borderAlpha: 0.34,
+    innerColor: 0xf0e6bd,
+    innerAlpha: 0.16,
+    textureColor: 0xcdbf85,
+    textureAlpha: 0.22,
+  },
+  [TileType.Meadow]: {
+    fillColor: 0x9bcf74,
+    borderColor: 0x6f9a52,
+    borderAlpha: 0.34,
+    innerColor: 0xb6e08c,
+    innerAlpha: 0.16,
+    textureColor: 0xd8e295,
+    textureAlpha: 0.22,
+  },
 };
 
 /**

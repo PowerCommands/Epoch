@@ -210,7 +210,11 @@ export class TileMap {
         this.drawSandMarks(graphics, x, y, center, radius);
         break;
       case TileType.Plains:
+      case TileType.Meadow:
         this.drawGrassMarks(graphics, x, y, center, radius);
+        break;
+      case TileType.Beach:
+        this.drawSandMarks(graphics, x, y, center, radius);
         break;
       case TileType.Forest:
         this.drawCanopyMarks(graphics, x, y, center, radius, 3);

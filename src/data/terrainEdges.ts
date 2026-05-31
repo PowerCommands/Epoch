@@ -23,7 +23,7 @@ export interface TerrainEdgePass {
 }
 
 const LAND_TYPES: ReadonlySet<TileType> = new Set([
-  TileType.Plains,
+  TileType.Plains, TileType.Beach, TileType.Meadow,
   TileType.Forest,
   TileType.Mountain,
   TileType.Ice,
@@ -59,7 +59,7 @@ export const BIOME_EDGE_PASSES: ReadonlyArray<TerrainEdgePass> = [
   {
     label: 'forest→plains',
     ownerType: TileType.Forest,
-    neighborTypes: new Set([TileType.Plains]),
+    neighborTypes: new Set([TileType.Plains, TileType.Beach, TileType.Meadow]),
     lineWidth: 2,
     color: 0x214f2c,
     alpha: 0.78,
@@ -73,7 +73,7 @@ export const BIOME_EDGE_PASSES: ReadonlyArray<TerrainEdgePass> = [
     label: 'mountain→land',
     ownerType: TileType.Mountain,
     neighborTypes: new Set([
-      TileType.Plains,
+      TileType.Plains, TileType.Beach, TileType.Meadow,
       TileType.Forest,
       TileType.Jungle,
       TileType.Desert,

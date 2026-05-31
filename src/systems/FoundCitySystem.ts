@@ -20,6 +20,8 @@ const FOUNDABLE_TYPES = new Set<TileType>([
   TileType.Mountain,
   TileType.Jungle,
   TileType.Desert,
+  TileType.Beach,
+  TileType.Meadow,
 ]);
 
 const CITY_NAME_POOLS: Record<string, string[]> = cityNamePoolsJson;

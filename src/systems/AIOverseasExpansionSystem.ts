@@ -796,7 +796,7 @@ export class AIOverseasExpansionSystem {
 
   private getLandingTileScore(tile: Tile, target: MarkerTargetCoord): number {
     let score = this.gridSystem.getDistance(tile, target) * 100;
-    if (tile.type === TileType.Plains || tile.type === TileType.Forest || tile.type === TileType.Jungle) score -= 20;
+    if (tile.type === TileType.Plains || tile.type === TileType.Beach || tile.type === TileType.Meadow || tile.type === TileType.Forest || tile.type === TileType.Jungle) score -= 20;
     if (tile.resourceId !== undefined) score -= 10;
     if (this.hasAdjacentWaterTile(tile.x, tile.y)) score -= 5;
     return score;
