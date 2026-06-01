@@ -3196,10 +3196,30 @@ export class GameScene extends Phaser.Scene {
         return section;
       };
 
+      const availableGold = Math.max(0, Math.floor(nationManager.getResources(humanNationIdForDiplomacy).gold));
+
+      // Symbolic gift of gesture — listed first. It may be given only once per
+      // nation, so once presented the option is omitted from the dialog entirely.
+      const symbolicAlreadyGiven = symbolicGiftRegistry.hasGivenSymbolic(humanNationIdForDiplomacy, targetNationId);
+      if (!symbolicAlreadyGiven) {
+        const canAffordSymbolic = availableGold >= SYMBOLIC_GIFT_COST;
+        const symbolicSection = makeSection(`${SYMBOLIC_GIFT_SYMBOL} Symbolic gift of gesture (${SYMBOLIC_GIFT_COST} gold)`, 'symbolic');
+        const symbolicRadio = symbolicSection.querySelector('input[type="radio"]') as HTMLInputElement;
+        symbolicRadio.disabled = !canAffordSymbolic;
+        symbolicSection.style.opacity = canAffordSymbolic ? '1' : '0.5';
+        const symbolicHint = document.createElement('div');
+        symbolicHint.style.marginTop = '8px';
+        symbolicHint.style.color = '#aebdd0';
+        symbolicHint.style.fontSize = '13px';
+        symbolicHint.textContent = canAffordSymbolic
+          ? 'A formal gesture of respect and friendliness. No gold changes hands.'
+          : `Requires ${SYMBOLIC_GIFT_COST} gold.`;
+        symbolicSection.appendChild(symbolicHint);
+      }
+
       const goldSection = makeSection('Gold');
       const goldRadio = goldSection.querySelector('input[type="radio"]') as HTMLInputElement;
       goldRadio.checked = true;
-      const availableGold = Math.max(0, Math.floor(nationManager.getResources(humanNationIdForDiplomacy).gold));
       const goldInput = document.createElement('input');
       goldInput.type = 'number';
       goldInput.min = '1';
@@ -3294,26 +3314,6 @@ export class GameScene extends Phaser.Scene {
         cityRadio.checked = true;
         updateValidation();
       });
-
-      // Symbolic gift of gesture: a formal courtesy. Costs the giver
-      // SYMBOLIC_GIFT_COST gold and transfers nothing; rewarded once per leader.
-      const symbolicAlreadyGiven = symbolicGiftRegistry.hasGivenSymbolic(humanNationIdForDiplomacy, targetNationId);
-      const canAffordSymbolic = availableGold >= SYMBOLIC_GIFT_COST;
-      const symbolicSelectable = canAffordSymbolic && !symbolicAlreadyGiven;
-      const symbolicSection = makeSection(`${SYMBOLIC_GIFT_SYMBOL} Symbolic gift of gesture (${SYMBOLIC_GIFT_COST} gold)`, 'symbolic');
-      const symbolicRadio = symbolicSection.querySelector('input[type="radio"]') as HTMLInputElement;
-      symbolicRadio.disabled = !symbolicSelectable;
-      symbolicSection.style.opacity = symbolicSelectable ? '1' : '0.5';
-      const symbolicHint = document.createElement('div');
-      symbolicHint.style.marginTop = '8px';
-      symbolicHint.style.color = '#aebdd0';
-      symbolicHint.style.fontSize = '13px';
-      symbolicHint.textContent = symbolicAlreadyGiven
-        ? `You have already presented a symbolic gift to ${targetNation.name}.`
-        : canAffordSymbolic
-          ? 'A formal gesture of respect and friendliness. No gold changes hands.'
-          : `Requires ${SYMBOLIC_GIFT_COST} gold.`;
-      symbolicSection.appendChild(symbolicHint);
 
       const controls = document.createElement('div');
       controls.style.display = 'flex';

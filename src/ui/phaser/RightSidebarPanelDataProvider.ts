@@ -1491,11 +1491,20 @@ export class RightSidebarPanelDataProvider {
       hasTradeRelations ? 0xb86767 : nation?.color,
     ));
     if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
-    // Exchange Maps: one-time intelligence sharing. AI accepts unless hostile
-    // or at war; repeatable as both sides discover more of the world.
+    // Exchange Maps: one-time intelligence sharing. Tied directly to Writing —
+    // it only requires that the human knows Writing, the two nations have met,
+    // and they are not at war (no embassy or other diplomatic prerequisites).
+    // AI acceptance (handled elsewhere) still depends on attitude.
+    const exchangeMapsReason = relation.state === 'WAR'
+      ? 'Unavailable during war.'
+      : !validationContext.haveMet(humanId, nationId)
+        ? 'You have not met this nation.'
+        : !validationContext.hasTechnology(humanId, 'writing')
+          ? 'Requires Writing.'
+          : undefined;
     rows.push(disabledReasonButtonRow(
       'Exchange Maps',
-      relation.state === 'WAR' ? 'Unavailable during war.' : undefined,
+      exchangeMapsReason,
       () => {
         document.dispatchEvent(new CustomEvent('diplomacyAction', {
           detail: { action: 'exchangeMaps', targetNationId: nationId },
@@ -1503,6 +1512,7 @@ export class RightSidebarPanelDataProvider {
       },
       nation?.color,
     ));
+    if (exchangeMapsReason) rows.push(textRow(exchangeMapsReason, true));
     rows.push(disabledReasonButtonRow(
       'Give Gift',
       undefined,
