@@ -4470,14 +4470,11 @@ window.addEventListener('keydown', (e) => {
     render();
   }
 
-  // Escape deselects entity
+  // Escape returns to the editor landing menu (same as the "Back to Menu" button).
   if (e.key === 'Escape') {
-    selectedEntity = null;
-    selectedMarkerIndex = null;
-    updateEntityHighlights();
-    buildMarkerList();
-    updateMarkerForm();
-    render();
+    e.preventDefault();
+    showLanding();
+    return;
   }
 
   // +/- for brush size
