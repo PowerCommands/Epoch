@@ -51,6 +51,15 @@ export interface ScenarioNation {
   aiStrategyId?: string;
   aiNationalAgendaId?: AINationalAgendaId;
   startTerritoryCenter: { q: number; r: number };
+  /**
+   * Editor-authored leader name. Empty/absent falls back to the hardcoded leader
+   * name from {@link getLeaderByNationId}.
+   */
+  leaderName?: string;
+  /** Editor-authored leader description. Empty/absent falls back to the hardcoded one. */
+  leaderDescription?: string;
+  /** Starting treasury (gold) for this nation. Defaults to 0. */
+  gold?: number;
   researchedTechIds?: string[];
   currentResearchTechId?: string;
   researchProgress?: number;

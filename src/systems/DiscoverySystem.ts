@@ -5,6 +5,14 @@ import type { IGridSystem } from './grid/IGridSystem';
 
 export const DISCOVERY_RADIUS = 17;
 
+/**
+ * Hex radius at which a unit encountering a *foreign unit* counts as meeting that
+ * nation. Deliberately tighter than {@link DISCOVERY_RADIUS}: cities are large,
+ * fixed landmarks you spot from afar, whereas running into a roaming unit should
+ * require getting close.
+ */
+export const UNIT_ENCOUNTER_RADIUS = 6;
+
 type NationsMetListener = (nationA: string, nationB: string) => void;
 
 /**
@@ -13,7 +21,7 @@ type NationsMetListener = (nationA: string, nationB: string) => void;
  * A nation is considered to have met another when:
  * - any of its units is within hex radius {@link DISCOVERY_RADIUS} of
  *   any city of the other nation, OR
- * - any of its units is within hex radius {@link DISCOVERY_RADIUS} of
+ * - any of its units is within hex radius {@link UNIT_ENCOUNTER_RADIUS} of
  *   any unit of the other nation.
  *
  * Detection is symmetric: if A meets B, then B has also met A.
@@ -99,7 +107,7 @@ export class DiscoverySystem {
           { x: a.tileX, y: a.tileY },
           { x: b.tileX, y: b.tileY },
         );
-        if (dist <= DISCOVERY_RADIUS) {
+        if (dist <= UNIT_ENCOUNTER_RADIUS) {
           this.recordMet(a.ownerId, b.ownerId);
         }
       }

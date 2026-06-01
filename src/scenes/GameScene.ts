@@ -90,7 +90,7 @@ import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { EraSystem } from '../systems/EraSystem';
 import { AISystem } from '../systems/AISystem';
-import { getLeaderByNationId, getLeaderPersonalityByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem } from '../systems/VictorySystem';
@@ -225,6 +225,10 @@ export class GameScene extends Phaser.Scene {
 
     // 1. Parse scenario using map key from config
     const scenarioJson = this.cache.json.get(data.mapKey) as ScenarioData;
+    // Install scenario-authored leader name/description overrides before any
+    // system or UI reads leaders, so the override flows through the whole game.
+    setScenarioLeaderOverrides(scenarioJson.nations);
+
     const scenario = ScenarioLoader.parse(scenarioJson);
     const mapData = scenario.mapData;
     const worldMarkerSystem = new WorldMarkerSystem(data.savedState?.worldMarkers ?? scenario.worldMarkers);

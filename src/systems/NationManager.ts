@@ -132,6 +132,12 @@ export class NationManager {
         cultureProgress: cfg.cultureProgress,
       });
       manager.addNation(nation);
+      // Seed the scenario-authored starting treasury. Loaded saves overwrite this
+      // later from the saved gold, so it only takes effect on a fresh game start.
+      const startingGold = typeof cfg.gold === 'number' && Number.isFinite(cfg.gold)
+        ? Math.max(0, Math.floor(cfg.gold))
+        : 0;
+      if (startingGold > 0) manager.getResources(cfg.id).gold = startingGold;
       if (!cfg.isHuman) {
         if (!nation.aiGoals) {
           nation.aiGoals = [

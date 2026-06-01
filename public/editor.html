@@ -2434,10 +2434,70 @@ function renderNationDetail() {
     return;
   }
   detail.append(
+    buildLeaderSection(nation),
     buildProgressionSection('technology'),
     buildProgressionSection('culture'),
     buildDiplomacySection(),
   );
+}
+
+/**
+ * Leader widget: edit the scenario-authored leader name, description and starting
+ * gold. Name and description are stored on the nation only when non-empty; an
+ * empty value means "use the game's built-in leader name/description". Gold is
+ * always stored and defaults to 0. Values are written straight onto the nation
+ * object, so they serialize into the scenario's `nations` array on save.
+ */
+function buildLeaderSection(nation) {
+  const registryNation = getRegistryNation(nation.id);
+
+  const section = ndEl('div', 'nd-section');
+  section.appendChild(ndEl('h3', undefined, 'Leader'));
+  const body = ndEl('div', 'nd-section-body');
+
+  // Leader name — placeholder shows the built-in name used when left blank.
+  const nameField = ndEl('label', 'field', 'Leader name');
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.maxLength = 120;
+  nameInput.value = typeof nation.leaderName === 'string' ? nation.leaderName : '';
+  nameInput.placeholder = registryNation?.leaderName ? `${registryNation.leaderName} (built-in)` : 'Built-in leader name';
+  nameInput.addEventListener('input', () => {
+    const value = nameInput.value.trim();
+    if (value) nation.leaderName = value;
+    else delete nation.leaderName;
+  });
+  nameField.appendChild(nameInput);
+
+  // Leader description — blank means the built-in description is used in-game.
+  const descField = ndEl('label', 'field', 'Description');
+  const descInput = document.createElement('textarea');
+  descInput.maxLength = 600;
+  descInput.value = typeof nation.leaderDescription === 'string' ? nation.leaderDescription : '';
+  descInput.placeholder = 'Leave empty to use the built-in description.';
+  descInput.addEventListener('input', () => {
+    const value = descInput.value.trim();
+    if (value) nation.leaderDescription = value;
+    else delete nation.leaderDescription;
+  });
+  descField.appendChild(descInput);
+
+  // Starting gold (treasury) — non-negative integer, defaults to 0.
+  const goldField = ndEl('label', 'field', 'Starting gold');
+  const goldInput = document.createElement('input');
+  goldInput.type = 'number';
+  goldInput.min = '0';
+  goldInput.step = '1';
+  goldInput.value = String(typeof nation.gold === 'number' && nation.gold > 0 ? Math.floor(nation.gold) : 0);
+  goldInput.addEventListener('input', () => {
+    const parsed = parseInt(goldInput.value, 10);
+    nation.gold = Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+  });
+  goldField.appendChild(goldInput);
+
+  body.append(nameField, descField, goldField);
+  section.appendChild(body);
+  return section;
 }
 
 function buildProgressionSection(kind) {

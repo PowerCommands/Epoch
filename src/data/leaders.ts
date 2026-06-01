@@ -400,12 +400,58 @@ export const ALL_LEADERS: LeaderDefinition[] = [
   },
 ];
 
+/**
+ * Per-scenario leader overrides, keyed by nationId. Installed once at game start
+ * via {@link setScenarioLeaderOverrides} and applied transparently by every
+ * leader accessor below, so a scenario-authored leader name/description flows
+ * through the whole game without each call site knowing about it.
+ */
+const scenarioLeaderOverrides = new Map<string, { name?: string; description?: string }>();
+
+/** Minimal shape needed from a scenario nation to derive a leader override. */
+interface ScenarioLeaderSource {
+  id: string;
+  leaderName?: string;
+  leaderDescription?: string;
+}
+
+/**
+ * Replace the active scenario leader overrides from the given nations. Empty /
+ * whitespace-only values are ignored, so the built-in leader name/description is
+ * used as the fallback. Call once when a scenario becomes active (game start or
+ * setup-screen selection); it clears any previously installed overrides first.
+ */
+export function setScenarioLeaderOverrides(nations: readonly ScenarioLeaderSource[]): void {
+  scenarioLeaderOverrides.clear();
+  for (const nation of nations) {
+    const name = nation.leaderName?.trim();
+    const description = nation.leaderDescription?.trim();
+    if (!name && !description) continue;
+    scenarioLeaderOverrides.set(nation.id, {
+      ...(name ? { name } : {}),
+      ...(description ? { description } : {}),
+    });
+  }
+}
+
+/** Apply any installed override to a leader, returning an overridden copy. */
+function applyLeaderOverride(leader: LeaderDefinition | undefined): LeaderDefinition | undefined {
+  if (!leader) return leader;
+  const override = scenarioLeaderOverrides.get(leader.nationId);
+  if (!override) return leader;
+  return {
+    ...leader,
+    name: override.name ?? leader.name,
+    description: override.description ?? leader.description,
+  };
+}
+
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {
-  return ALL_LEADERS.find((leader) => leader.nationId === nationId);
+  return applyLeaderOverride(ALL_LEADERS.find((leader) => leader.nationId === nationId));
 }
 
 export function getLeaderById(leaderId: string): LeaderDefinition | undefined {
-  return ALL_LEADERS.find((leader) => leader.id === leaderId);
+  return applyLeaderOverride(ALL_LEADERS.find((leader) => leader.id === leaderId));
 }
 
 export function getLeaderIdeologyByNationId(nationId: string): IdeologyDefinition {

@@ -843,6 +843,11 @@ export class AISystem {
     const scoredSellers = this.nationManager.getAllNations()
       .filter((other) => {
         if (other.id === nationId) return false;
+        // Never reach out to a nation we have not actually discovered yet —
+        // consistent with every other AI diplomacy decision. Without this, a
+        // scenario-configured (or otherwise pre-seeded) trade relation would let
+        // the AI message the human before the two have met.
+        if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, other.id)) return false;
         if (this.diplomacyManager!.getState(nationId, other.id) === 'WAR') return false;
         if (!this.diplomacyManager!.hasTradeRelations(nationId, other.id)) return false;
         return true;

@@ -778,8 +778,18 @@ export class SaveLoadService {
     for (const entry of entries) {
       const { nationA, nationB } = entry;
       if (nationA === nationB) continue;
-      // A configured relationship implies the nations know one another.
-      discoverySystem.restoreMet(nationA, nationB);
+      // Only an actual relationship (war, alliance, open borders, embassy or
+      // trade) implies the nations have met. A pure memory-tuning entry — PEACE
+      // with no agreements, just pre-seeded trust/fear/hostility/affinity — must
+      // NOT pre-mark them as met, or the AI would open diplomacy/trade with the
+      // human before either side has actually discovered the other.
+      const impliesContact =
+        entry.state === 'WAR' ||
+        entry.state === 'ALLIANCE' ||
+        entry.tradeRelations ||
+        entry.embassyFromAToB || entry.embassyFromBToA ||
+        entry.openBordersFromAToB || entry.openBordersFromBToA;
+      if (impliesContact) discoverySystem.restoreMet(nationA, nationB);
 
       const isAlliance = entry.state === 'ALLIANCE';
       // ALLIANCE is an editor concept layered on PEACE; the relation itself is

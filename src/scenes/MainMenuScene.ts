@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
-import { getLeaderByNationId } from '../data/leaders';
+import { getLeaderByNationId, setScenarioLeaderOverrides } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import {
   resolveScenarioMeta,
@@ -517,6 +517,7 @@ export class MainMenuScene extends Phaser.Scene {
     const customScenario = this.getCustomScenario(mapKey);
     const json = customScenario?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined;
     if (!json) {
+      setScenarioLeaderOverrides([]);
       this.nations = [];
       this.selectedOpponentIds = new Set();
       this.renderNationList();
@@ -525,6 +526,8 @@ export class MainMenuScene extends Phaser.Scene {
       this.updateScenarioDetails(null);
       return;
     }
+    // Keep the menu's leader accessors consistent with the chosen scenario.
+    setScenarioLeaderOverrides(json.nations);
     this.nations = json.nations;
     this.selectedOpponentIds = new Set(this.nations.map(n => n.id));
 
@@ -604,17 +607,23 @@ export class MainMenuScene extends Phaser.Scene {
 
       const leaderName = document.createElement('span');
       leaderName.className = 'mm-card-leader';
-      leaderName.textContent = leader?.name ?? 'Unknown leader';
+      leaderName.textContent = nation.leaderName?.trim() || leader?.name || 'Unknown leader';
 
       const description = document.createElement('span');
       description.className = 'mm-card-description';
-      description.textContent = leader?.description ?? 'A capable ruler ready to shape the age.';
+      description.textContent = nation.leaderDescription?.trim()
+        || leader?.description
+        || 'A capable ruler ready to shape the age.';
+
+      const gold = document.createElement('span');
+      gold.className = 'mm-card-gold';
+      gold.textContent = `💰 ${nation.gold ?? 0} starting gold`;
 
       const state = document.createElement('span');
       state.className = 'mm-card-state';
       state.textContent = isSelectedPlayer ? 'Player' : isOpponent ? 'Opponent' : 'Excluded';
 
-      copy.append(name, leaderName, description);
+      copy.append(name, leaderName, description, gold);
       card.append(portrait, dot, copy, state);
       card.addEventListener('click', () => this.handleNationCardClick(nation.id));
       container.appendChild(card);
@@ -1417,6 +1426,12 @@ export class MainMenuScene extends Phaser.Scene {
         overflow: hidden;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
+      }
+
+      .mm-card-gold {
+        font-weight: 600;
+        color: #8a6a1f !important;
+        white-space: nowrap;
       }
 
       .mm-card-portrait {
