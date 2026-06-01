@@ -29,6 +29,15 @@ export interface LeaderAudienceContext {
   onChanged(listener: () => void): void;
 }
 
+/**
+ * Optional open/close notifications, used by the GameScene to play the visited
+ * leader's nation music while the chamber is open and restore it on close.
+ */
+export interface LeaderAudienceLifecycleHooks {
+  onOpened?: (nationId: string) => void;
+  onClosed?: (nationId: string) => void;
+}
+
 interface DialogButton {
   background: Phaser.GameObjects.Rectangle;
   text: Phaser.GameObjects.Text;
@@ -101,6 +110,7 @@ export class LeaderAudienceDialog {
     private readonly scene: Phaser.Scene,
     private readonly worldInputGate: WorldInputGate,
     private readonly context: LeaderAudienceContext,
+    private readonly lifecycleHooks: LeaderAudienceLifecycleHooks = {},
   ) {
     this.backdrop = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x000000, BACKDROP_ALPHA))
       .setOrigin(0, 0).setDepth(DEPTH).setScrollFactor(0);
@@ -210,6 +220,8 @@ export class LeaderAudienceDialog {
 
     this.actionList.setRows(this.buildRows(leader.nationId));
     this.layout();
+
+    this.lifecycleHooks.onOpened?.(leader.nationId);
   }
 
   /**
@@ -235,8 +247,13 @@ export class LeaderAudienceDialog {
   }
 
   close(): void {
+    const closingLeaderId = this.currentLeaderId;
     this.currentLeaderId = null;
     this.setVisible(false);
+    if (closingLeaderId) {
+      const nationId = getLeaderById(closingLeaderId)?.nationId;
+      if (nationId) this.lifecycleHooks.onClosed?.(nationId);
+    }
   }
 
   destroy(): void {

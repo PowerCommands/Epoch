@@ -110,6 +110,7 @@ export interface DiplomaticMemoryHook {
   onGoldGift(from: string, to: string, amount: number): void;
   onUnitGift(from: string, to: string, unitCount: number, powerValue?: number): void;
   onCityGift(from: string, to: string, cityId: string): void;
+  onSymbolicGift(from: string, to: string): void;
   onExchangeMaps(a: string, b: string): void;
   onFormAlliance(a: string, b: string): void;
   onJointWarAgreement(a: string, b: string): void;
@@ -679,6 +680,17 @@ export class DiplomacyManager {
   recordCityGift(fromNationId: string, toNationId: string, cityId: string): void {
     if (fromNationId === toNationId || cityId.length === 0) return;
     this.memoryHook?.onCityGift(fromNationId, toNationId, cityId);
+    this.notifyChanged(fromNationId, toNationId);
+  }
+
+  /**
+   * Record a "symbolic gift of gesture" — a formal, no-value courtesy that
+   * costs the giver but transfers no resources. Applies a modest goodwill
+   * boost; the one-time-only rule lives with the caller (SymbolicGiftRegistry).
+   */
+  recordSymbolicGift(fromNationId: string, toNationId: string): void {
+    if (fromNationId === toNationId) return;
+    this.memoryHook?.onSymbolicGift(fromNationId, toNationId);
     this.notifyChanged(fromNationId, toNationId);
   }
 

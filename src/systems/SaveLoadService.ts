@@ -26,6 +26,7 @@ import type { City } from '../entities/City';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { AllianceManager } from './diplomacy/AllianceManager';
 import type { DiscoverySystem } from './DiscoverySystem';
+import type { SymbolicGiftRegistry } from './diplomacy/SymbolicGiftRegistry';
 import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { PolicySystem } from './PolicySystem';
@@ -62,6 +63,7 @@ export interface SaveLoadContext {
   diplomacyManager: DiplomacyManager;
   allianceManager?: AllianceManager;
   discoverySystem: DiscoverySystem;
+  symbolicGiftRegistry?: SymbolicGiftRegistry;
   turnManager: TurnManager;
   gridSystem: IGridSystem;
   wonderSystem: WonderSystem;
@@ -106,6 +108,7 @@ export class SaveLoadService {
       diplomacyManager,
       allianceManager,
       discoverySystem,
+      symbolicGiftRegistry,
       turnManager,
       wonderSystem,
       corporationSystem,
@@ -322,6 +325,7 @@ export class SaveLoadService {
       units,
       diplomacy,
       discovery,
+      symbolicGifts: symbolicGiftRegistry?.serialize(),
       wonders,
       alliances: allianceManager?.getAllAlliances().map((alliance) => ({
         ...alliance,
@@ -452,6 +456,7 @@ export class SaveLoadService {
       context.worldMarkerSystem.restoreClaims(state.worldMarkerClaims ?? []);
     }
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
+    context.symbolicGiftRegistry?.restore(state.symbolicGifts);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,
       state.turn.currentTurnIndex,

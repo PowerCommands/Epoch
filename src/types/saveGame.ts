@@ -216,6 +216,16 @@ export interface SavedDiscoveryEntry {
   nationB: string;
 }
 
+/**
+ * One-time symbolic-gift milestones. `givers` holds directed `${from}->${to}`
+ * keys (a nation has presented its gift); `reciprocated` holds unordered
+ * `${a}|${b}` pair keys (the first-meeting courtesy has been exchanged).
+ */
+export interface SavedSymbolicGifts {
+  givers: string[];
+  reciprocated: string[];
+}
+
 export interface SavedForeignTroopViolationWarning {
   offendedNationId: string;
   violatingNationId: string;
@@ -242,6 +252,8 @@ export interface SavedGameState {
   units: SavedUnit[];
   diplomacy: SavedDiplomacyEntry[];
   discovery: SavedDiscoveryEntry[];
+  /** One-time symbolic-gift milestones. Optional so pre-feature saves still load. */
+  symbolicGifts?: SavedSymbolicGifts;
   wonders: SavedWonder[];
   /** Alliance Core v1. Optional so older saves load with no alliances. */
   alliances?: Alliance[];

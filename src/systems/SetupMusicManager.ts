@@ -68,6 +68,15 @@ export class SetupMusicManager {
     return this.volume;
   }
 
+  /**
+   * The playlist key currently playing (or requested if playback has not yet
+   * started). Lets callers capture the current music so they can restore it
+   * after temporarily switching playlists (e.g. a leader audience).
+   */
+  getCurrentPlaylistKey(): string {
+    return this.activeKey ?? this.requestedKey;
+  }
+
   /** Switch to a playlist by key. Falls back to the start playlist if missing/empty. */
   playPlaylist(key: string): void {
     this.requestedKey = key;

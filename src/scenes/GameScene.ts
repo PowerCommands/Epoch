@@ -68,6 +68,7 @@ import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/
 import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
+import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
 import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
 import { JointWarSystem } from '../systems/diplomacy/JointWarSystem';
@@ -530,6 +531,9 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
+    // Tracks one-time symbolic-gift milestones (player's gift reward + the AI's
+    // reciprocal first-meeting courtesy) per nation pair.
+    const symbolicGiftRegistry = new SymbolicGiftRegistry();
     const allianceManager = new AllianceManager();
     // Alliance partners cannot declare war on each other (central rule).
     diplomacyManager.setAllianceGuard((a, b) => allianceManager.areAllied(a, b));
@@ -1935,6 +1939,44 @@ export class GameScene extends Phaser.Scene {
     // Log city founded events — covers both human and AI via FoundCitySystem.
     // Wired after foundCitySystem is constructed; see below.
 
+    // ─── Leader audience coordinator (auto-meet + music) ─────────────────────
+    // Meeting a new leader automatically opens their audience chamber. Several
+    // first contacts in one turn are shown one at a time via a small queue. The
+    // visited nation's music plays while the chamber is open and the previous
+    // playlist is restored once the last queued audience closes.
+    const audienceMusic = SetupMusicManager.getShared();
+    let musicKeyBeforeAudience: string | null = null;
+    const pendingAudienceLeaderIds: string[] = [];
+
+    const processAudienceQueue = (): void => {
+      const dialog = this.leaderAudienceDialog;
+      if (!dialog || dialog.isOpen()) return;
+      const nextLeaderId = pendingAudienceLeaderIds.shift();
+      if (nextLeaderId) dialog.open(nextLeaderId);
+    };
+    const enqueueAudienceForNation = (nationId: string): void => {
+      const leaderId = getLeaderByNationId(nationId)?.id;
+      if (!leaderId) return;
+      if (this.leaderAudienceDialog?.getCurrentLeaderId() === leaderId) return;
+      if (pendingAudienceLeaderIds.includes(leaderId)) return;
+      pendingAudienceLeaderIds.push(leaderId);
+      processAudienceQueue();
+    };
+    const onAudienceOpened = (nationId: string): void => {
+      if (musicKeyBeforeAudience === null) musicKeyBeforeAudience = audienceMusic.getCurrentPlaylistKey();
+      audienceMusic.playPlaylist(nationId);
+    };
+    const onAudienceClosed = (): void => {
+      // Chain straight into the next queued audience (which switches the music
+      // to that nation); only restore the prior playlist once none remain.
+      if (pendingAudienceLeaderIds.length > 0) {
+        processAudienceQueue();
+      } else if (musicKeyBeforeAudience !== null) {
+        audienceMusic.playPlaylist(musicKeyBeforeAudience);
+        musicKeyBeforeAudience = null;
+      }
+    };
+
     // Log discovery events, and refresh UI when a new nation becomes visible.
     discoverySystem.onNationsMet((a, b) => {
       const nameA = nationManager.getNation(a)?.name ?? a;
@@ -1945,6 +1987,10 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       leaderStrip?.rebuild();
       rightPanel?.requestRefresh();
+      // Automatically grant the player an audience with a newly met AI leader.
+      if (humanNationId && (a === humanNationId || b === humanNationId)) {
+        enqueueAudienceForNation(a === humanNationId ? b : a);
+      }
     });
 
     const updateCityProductionRhythm = (city: City, item: Producible): void => {
@@ -3000,6 +3046,87 @@ export class GameScene extends Phaser.Scene {
       updateFog();
     };
 
+    // Cost of a "symbolic gift of gesture" and its UI symbol. The gift transfers
+    // no value — only the giver pays — and is a one-time courtesy per leader.
+    const SYMBOLIC_GIFT_COST = 100;
+    const SYMBOLIC_GIFT_SYMBOL = '🎁';
+
+    /** Small modal acknowledging a gift, with the leader's heraldic framing. */
+    const showLeaderResponsePopup = (targetNationId: string, title: string, lines: string[]): void => {
+      const targetNation = nationManager.getNation(targetNationId);
+      if (!targetNation) return;
+      document.getElementById('diplomatic-gift-response')?.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'diplomatic-gift-response';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.62);'
+        + 'display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#edf4ff;';
+
+      const panel = document.createElement('div');
+      panel.style.cssText = 'width:min(460px,calc(100vw - 32px));background:#111923;border-radius:6px;'
+        + 'box-shadow:0 24px 80px rgba(0,0,0,0.55);padding:20px;'
+        + `border:2px solid #${targetNation.color.toString(16).padStart(6, '0')};`;
+      overlay.appendChild(panel);
+
+      const heading = document.createElement('h2');
+      heading.textContent = title;
+      heading.style.cssText = 'margin:0 0 12px;font-size:20px;';
+      panel.appendChild(heading);
+
+      for (const line of lines) {
+        const p = document.createElement('div');
+        p.textContent = line;
+        p.style.cssText = 'margin-bottom:8px;color:#cbd8ea;line-height:1.4;';
+        panel.appendChild(p);
+      }
+
+      const controls = document.createElement('div');
+      controls.style.cssText = 'display:flex;justify-content:flex-end;margin-top:16px;';
+      const okButton = document.createElement('button');
+      okButton.textContent = 'Close';
+      okButton.style.cssText = 'padding:9px 16px;border-radius:4px;border:1px solid rgba(143,163,190,0.55);'
+        + 'background:#1a2b38;color:#edf4ff;font-weight:700;cursor:pointer;';
+      okButton.onclick = () => overlay.remove();
+      controls.appendChild(okButton);
+      panel.appendChild(controls);
+
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) overlay.remove();
+      });
+      document.body.appendChild(overlay);
+      okButton.focus();
+    };
+
+    /**
+     * Acknowledge a gift the player just gave: the leader thanks them, and at a
+     * first meeting (not at war, AI can afford it) returns its own symbolic gift
+     * of gesture — applied once per pair.
+     */
+    const showLeaderGiftResponse = (targetNationId: string): void => {
+      const targetNation = nationManager.getNation(targetNationId);
+      if (!targetNation) return;
+      const human = humanNationIdForDiplomacy;
+      const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetNation.name;
+      const lines: string[] = [`${aiLeaderName} accepts your gift and thanks you.`];
+
+      const notAtWar = diplomacyManager.getState(human, targetNationId) !== 'WAR';
+      const aiGold = nationManager.getResources(targetNationId).gold;
+      if (notAtWar && aiGold >= SYMBOLIC_GIFT_COST && !symbolicGiftRegistry.hasReciprocated(human, targetNationId)) {
+        resourceSystem.addGold(targetNationId, -SYMBOLIC_GIFT_COST);
+        diplomacyManager.recordSymbolicGift(targetNationId, human);
+        symbolicGiftRegistry.markReciprocated(human, targetNationId);
+        lines.push(`${aiLeaderName} gives you a symbolic gift of gesture.`);
+        logManager.info({
+          nationIds: [human, targetNationId],
+          category: 'diplomacy',
+          message: `${targetNation.name} returned a symbolic gift of gesture.`,
+        });
+        refreshAfterGift(human, targetNationId);
+      }
+
+      showLeaderResponsePopup(targetNationId, aiLeaderName, lines);
+    };
+
     const showGiftDialog = (targetNationId: string): void => {
       const targetNation = nationManager.getNation(targetNationId);
       const humanNation = nationManager.getNation(humanNationIdForDiplomacy);
@@ -3048,7 +3175,7 @@ export class GameScene extends Phaser.Scene {
       form.style.gap = '12px';
       panel.appendChild(form);
 
-      const makeSection = (label: string): HTMLDivElement => {
+      const makeSection = (label: string, value?: string): HTMLDivElement => {
         const section = document.createElement('div');
         section.style.border = '1px solid rgba(143,163,190,0.35)';
         section.style.borderRadius = '6px';
@@ -3061,7 +3188,7 @@ export class GameScene extends Phaser.Scene {
         const radio = document.createElement('input');
         radio.type = 'radio';
         radio.name = 'gift-kind';
-        radio.value = label.toLowerCase();
+        radio.value = value ?? label.toLowerCase();
         header.appendChild(radio);
         header.append(label);
         section.appendChild(header);
@@ -3168,6 +3295,26 @@ export class GameScene extends Phaser.Scene {
         updateValidation();
       });
 
+      // Symbolic gift of gesture: a formal courtesy. Costs the giver
+      // SYMBOLIC_GIFT_COST gold and transfers nothing; rewarded once per leader.
+      const symbolicAlreadyGiven = symbolicGiftRegistry.hasGivenSymbolic(humanNationIdForDiplomacy, targetNationId);
+      const canAffordSymbolic = availableGold >= SYMBOLIC_GIFT_COST;
+      const symbolicSelectable = canAffordSymbolic && !symbolicAlreadyGiven;
+      const symbolicSection = makeSection(`${SYMBOLIC_GIFT_SYMBOL} Symbolic gift of gesture (${SYMBOLIC_GIFT_COST} gold)`, 'symbolic');
+      const symbolicRadio = symbolicSection.querySelector('input[type="radio"]') as HTMLInputElement;
+      symbolicRadio.disabled = !symbolicSelectable;
+      symbolicSection.style.opacity = symbolicSelectable ? '1' : '0.5';
+      const symbolicHint = document.createElement('div');
+      symbolicHint.style.marginTop = '8px';
+      symbolicHint.style.color = '#aebdd0';
+      symbolicHint.style.fontSize = '13px';
+      symbolicHint.textContent = symbolicAlreadyGiven
+        ? `You have already presented a symbolic gift to ${targetNation.name}.`
+        : canAffordSymbolic
+          ? 'A formal gesture of respect and friendliness. No gold changes hands.'
+          : `Requires ${SYMBOLIC_GIFT_COST} gold.`;
+      symbolicSection.appendChild(symbolicHint);
+
       const controls = document.createElement('div');
       controls.style.display = 'flex';
       controls.style.justifyContent = 'flex-end';
@@ -3189,8 +3336,9 @@ export class GameScene extends Phaser.Scene {
       }
       controls.append(cancelButton, confirmButton);
 
-      const getGiftKind = (): 'gold' | 'military units' | 'city' => (
-        (form.querySelector('input[name="gift-kind"]:checked') as HTMLInputElement | null)?.value as 'gold' | 'military units' | 'city'
+      type GiftKind = 'gold' | 'military units' | 'city' | 'symbolic';
+      const getGiftKind = (): GiftKind => (
+        (form.querySelector('input[name="gift-kind"]:checked') as HTMLInputElement | null)?.value as GiftKind
       ) ?? 'gold';
 
       const getValidationMessage = (): string | null => {
@@ -3199,6 +3347,13 @@ export class GameScene extends Phaser.Scene {
           const amount = Math.floor(Number(goldInput.value));
           if (!Number.isFinite(amount) || amount <= 0) return 'Enter a positive gold amount.';
           if (amount > nationManager.getResources(humanNationIdForDiplomacy).gold) return 'Not enough gold.';
+          return null;
+        }
+        if (kind === 'symbolic') {
+          if (symbolicAlreadyGiven) return `Already presented to ${targetNation.name}.`;
+          if (nationManager.getResources(humanNationIdForDiplomacy).gold < SYMBOLIC_GIFT_COST) {
+            return `Requires ${SYMBOLIC_GIFT_COST} gold.`;
+          }
           return null;
         }
         if (kind === 'military units') {
@@ -3263,6 +3418,18 @@ export class GameScene extends Phaser.Scene {
               message: `${humanNation.name} gifted ${transferred} military unit${transferred === 1 ? '' : 's'} to ${targetNation.name}.`,
             });
           }
+        } else if (kind === 'symbolic') {
+          // A formal courtesy: the giver pays, the recipient receives no gold.
+          resourceSystem.addGold(humanNationIdForDiplomacy, -SYMBOLIC_GIFT_COST);
+          if (!symbolicGiftRegistry.hasGivenSymbolic(humanNationIdForDiplomacy, targetNationId)) {
+            diplomacyManager.recordSymbolicGift(humanNationIdForDiplomacy, targetNationId);
+            symbolicGiftRegistry.markGivenSymbolic(humanNationIdForDiplomacy, targetNationId);
+          }
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: `${humanNation.name} presented a symbolic gift of gesture to ${targetNation.name}.`,
+          });
         } else {
           const cityId = (cityList.querySelector('input[name="gift-city-id"]:checked') as HTMLInputElement | null)?.value;
           const city = cityId ? cityManager.getCity(cityId) : undefined;
@@ -3280,6 +3447,7 @@ export class GameScene extends Phaser.Scene {
         }
         refreshAfterGift(humanNationIdForDiplomacy, targetNationId);
         overlay.remove();
+        showLeaderGiftResponse(targetNationId);
       };
 
       document.body.appendChild(overlay);
@@ -4444,6 +4612,9 @@ export class GameScene extends Phaser.Scene {
       getDiplomacyActionRows: (nationId) => rightPanel?.getAudienceDiplomacyActionRows(nationId) ?? [],
       getTradeRows: (nationId) => rightPanel?.getAudienceTradeRows(nationId) ?? [],
       onChanged: (listener) => rightPanel?.onChanged(listener),
+    }, {
+      onOpened: (nationId) => onAudienceOpened(nationId),
+      onClosed: () => onAudienceClosed(),
     });
     rightPanel.setArrangeAudienceHandler((leaderId) => this.leaderAudienceDialog?.open(leaderId));
     const computeRangedTargets = (unit: Unit): Set<string> => {
@@ -4709,6 +4880,7 @@ export class GameScene extends Phaser.Scene {
           diplomacyManager,
           allianceManager,
           discoverySystem,
+          symbolicGiftRegistry,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -5129,6 +5301,7 @@ export class GameScene extends Phaser.Scene {
         diplomacyManager,
         allianceManager,
         discoverySystem,
+        symbolicGiftRegistry,
         turnManager,
         gridSystem,
         wonderSystem,
@@ -5213,6 +5386,7 @@ export class GameScene extends Phaser.Scene {
           diplomacyManager,
           allianceManager,
           discoverySystem,
+          symbolicGiftRegistry,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -5256,6 +5430,7 @@ export class GameScene extends Phaser.Scene {
             diplomacyManager,
             allianceManager,
             discoverySystem,
+            symbolicGiftRegistry,
             turnManager,
             gridSystem,
             wonderSystem,

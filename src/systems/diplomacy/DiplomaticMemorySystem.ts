@@ -69,6 +69,16 @@ const DELTA_CITY_GIFT: MemoryDelta = {
   hostility: -28,
 };
 
+// A symbolic gift of gesture: a formal courtesy that costs gold but transfers
+// no value. The point is goodwill, so it leans on affinity with a little trust
+// and a small easing of hostility — modest, since it is meant as a friendly
+// signal rather than a substantive concession.
+const DELTA_SYMBOLIC_GIFT: MemoryDelta = {
+  trust: 6,
+  affinity: 12,
+  hostility: -5,
+};
+
 // A friendly intelligence-sharing gesture. Smaller than major agreements but
 // enough to matter, and stacks modestly across repeated exchanges.
 const DELTA_EXCHANGE_MAPS: MemoryDelta = {
@@ -144,6 +154,10 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
 
   onCityGift(from: string, to: string, _cityId: string): void {
     this.adjustRelation(from, to, DELTA_CITY_GIFT);
+  }
+
+  onSymbolicGift(from: string, to: string): void {
+    this.adjustRelation(from, to, DELTA_SYMBOLIC_GIFT);
   }
 
   onExchangeMaps(a: string, b: string): void {
