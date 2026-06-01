@@ -7,10 +7,16 @@ import type {
   RoundEndEvent,
 } from '../types/events';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
+import type { ScenarioMeta } from '../types/scenario';
+import { resolveScenarioMeta, type ResolvedScenarioMeta } from '../data/scenarioMeta';
+import {
+  computeGameDate,
+  formatGameDate,
+  autoProgressedYears,
+  type GameDate,
+} from './GameDate';
 
 export const START_YEAR = -4000;
-export const BASE_YEARS_PER_ROUND = 25;
-export const YEAR_PROGRESS_DECAY = 0.002677;
 
 /**
  * TurnManager hanterar turordning och varvräkning.
@@ -32,6 +38,7 @@ export class TurnManager {
   private currentTurnIndex = 0;
   private stopped = false;
   private readonly yearProgressionMultiplier: number;
+  private readonly scenarioMeta: ResolvedScenarioMeta;
 
   private readonly listeners = {
     turnStart:  [] as ((e: TurnStartEvent) => void)[],
@@ -40,9 +47,14 @@ export class TurnManager {
     roundEnd:   [] as ((e: RoundEndEvent) => void)[],
   };
 
-  constructor(nationManager: NationManager, gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined)) {
+  constructor(
+    nationManager: NationManager,
+    gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
+    scenarioMeta?: ScenarioMeta,
+  ) {
     this.turnOrder = nationManager.getAllNations();
     this.yearProgressionMultiplier = gameSpeed.yearProgressionMultiplier;
+    this.scenarioMeta = resolveScenarioMeta(scenarioMeta);
   }
 
   /**
@@ -105,16 +117,31 @@ export class TurnManager {
     return this.currentRound;
   }
 
-  getGlobalYear(): number {
-    return calculateGlobalYear(this.currentRound, this.yearProgressionMultiplier);
+  /** Full scenario-driven display date for the current round. */
+  getGameDate(): GameDate {
+    return computeGameDate(this.scenarioMeta, this.currentRound, this.yearProgressionMultiplier);
   }
 
+  /** Formatted date, e.g. "January 4000 BC" / "February 1939 AD". */
+  getGameDateLabel(): string {
+    return formatGameDate(this.getGameDate());
+  }
+
+  /**
+   * Signed historical year (negative BC, positive AD, never zero). Retained for
+   * the legacy `worldYear` save field; display should use {@link getGameDate}.
+   */
+  getGlobalYear(): number {
+    return this.getGameDate().signedYear;
+  }
+
+  /** Formatted current date — used by logs and diagnostics. */
   getGlobalYearLabel(): string {
-    return formatYear(this.getGlobalYear());
+    return this.getGameDateLabel();
   }
 
   getGlobalTimeLabel(): string {
-    return `Year: ${this.getGlobalYearLabel()} (round:${this.currentRound})`;
+    return `${this.getGameDateLabel()} (round:${this.currentRound})`;
   }
 
   getCurrentTurnIndex(): number {
@@ -176,8 +203,11 @@ export function formatYear(year: number): string {
   return `${year}`;
 }
 
+/**
+ * Legacy Auto-mode signed year from the default 4000 BC start. Kept for callers
+ * that still work with the old `worldYear` number; scenario-aware display goes
+ * through {@link TurnManager.getGameDate} instead.
+ */
 export function calculateGlobalYear(round: number, yearProgressionMultiplier = 1): number {
-  const elapsedRounds = Math.max(0, round - 1) * yearProgressionMultiplier;
-  const progressedYears = (elapsedRounds * BASE_YEARS_PER_ROUND) / (1 + elapsedRounds * YEAR_PROGRESS_DECAY);
-  return START_YEAR + Math.round(progressedYears);
+  return START_YEAR + autoProgressedYears(round, yearProgressionMultiplier);
 }

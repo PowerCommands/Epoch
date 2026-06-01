@@ -341,7 +341,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.centerOn(worldWidth / 2, worldHeight / 2);
 
     // 11. Turordning
-    const turnManager = new TurnManager(nationManager, gameSpeed);
+    const turnManager = new TurnManager(nationManager, gameSpeed, scenarioJson.meta);
     unitManager.setCurrentRoundProvider(() => turnManager.getCurrentRound());
 
     // 11b. Discovery system — tracks which nations have met each other

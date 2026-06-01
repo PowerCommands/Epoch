@@ -2,17 +2,17 @@
   "maps": [
     {
       "key": "map_asia",
-      "label": "Asia simple Map",
-      "file": "assets/maps/asiaScenario.json"
+      "label": "Asia",
+      "file": "assets/maps/asia.json"
     },
     {
       "key": "map_europe_wide",
-      "label": "Europe Wide",
+      "label": "Europe",
       "file": "assets/maps/europe-wide.json"
     },
     {
       "key": "map_europe",
-      "label": "Europe 1400",
+      "label": "Europe alternativ",
       "file": "assets/maps/europeScenario.json"
     },
     {
@@ -27,18 +27,18 @@
     },
     {
       "key": "map_simple_grassland_12x12",
-      "label": "Simple grassland 12x12",
+      "label": "The Duel",
       "file": "assets/maps/simpleGrassland12x12.json"
     },
     {
       "key": "map_two_continents_scenario_i",
-      "label": "Two Continents Scenario I",
+      "label": "Two Continents test scenario",
       "file": "assets/maps/twoContinentsScenarioI.json"
     },
     {
       "key": "map_world",
-      "label": "World 1400",
-      "file": "assets/maps/worldScenario.json"
+      "label": "World",
+      "file": "assets/maps/world.json"
     }
   ]
 }

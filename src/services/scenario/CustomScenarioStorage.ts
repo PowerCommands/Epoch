@@ -68,14 +68,12 @@ export class CustomScenarioStorage {
       metadata,
       scenario: cloneScenario(options.scenario),
     };
-    const nextEntries = [
-      saved,
-      ...entries.filter((entry) => entry.metadata.id !== id),
-    ];
 
+    // The browser holds a single custom scenario at a time (a temporary slot):
+    // saving overwrites any previously stored one, silently and by design.
     window.localStorage.setItem(
       CUSTOM_SCENARIO_STORAGE_KEY,
-      JSON.stringify({ version: 1, entries: nextEntries }),
+      JSON.stringify({ version: 1, entries: [saved] }),
     );
 
     return saved;
@@ -87,6 +85,24 @@ export class CustomScenarioStorage {
       CUSTOM_SCENARIO_STORAGE_KEY,
       JSON.stringify({ version: 1, entries }),
     );
+  }
+
+  /**
+   * Parse and validate raw JSON text as a scenario definition (e.g. a file the
+   * user downloaded from the editor). Returns the scenario on success so callers
+   * can persist it via {@link save}.
+   */
+  static parseScenario(text: string): { ok: true; scenario: ScenarioDefinition } | { ok: false; error: string } {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { ok: false, error: 'File is not valid JSON.' };
+    }
+    if (!isScenarioData(parsed)) {
+      return { ok: false, error: 'File is not a valid scenario.' };
+    }
+    return { ok: true, scenario: parsed };
   }
 
   static generateId(): string {

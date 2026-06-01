@@ -3,15 +3,24 @@ import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
 import { getLeaderByNationId } from '../data/leaders';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
+import {
+  resolveScenarioMeta,
+  formatScenarioStartYear,
+  formatScenarioTimeProgression,
+} from '../data/scenarioMeta';
+import { renderScenarioMinimap } from '../ui/ScenarioMinimapRenderer';
 import type { GameConfig, ResourceAbundance } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
-import { calculateGlobalYear, formatYear } from '../systems/TurnManager';
+import { computeGameDateFromMeta, formatGameDate } from '../systems/GameDate';
 import { bindMusicControls } from '../ui/MusicControls';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
+
+/** Sentinel value for the "Load scenario…" entry in the scenario dropdown. */
+const LOAD_SCENARIO_OPTION_VALUE = '__load_scenario__';
 
 interface EpochMainMenuDiagnostics {
   listScenarios: () => Array<{ key: string; label: string; custom: boolean }>;
@@ -176,10 +185,11 @@ export class MainMenuScene extends Phaser.Scene {
 
             <div id="mm-selected-display" class="mm-selected-display"></div>
 
-            <label class="mm-field-label" for="mm-map-select">Map</label>
+            <label class="mm-field-label" for="mm-map-select">Scenario</label>
             <select id="mm-map-select" class="mm-select">
               ${mapOptions}
             </select>
+            <input id="mm-scenario-input" type="file" accept="application/json,.json" hidden>
 
             <label class="mm-field-label" for="mm-resource-abundance-select">Resource Abundance</label>
             <select id="mm-resource-abundance-select" class="mm-select">
@@ -221,6 +231,17 @@ export class MainMenuScene extends Phaser.Scene {
 
             <button id="mm-change-nation-btn" class="mm-change-nation-btn" type="button" disabled>Change player nation</button>
           </aside>
+
+          <aside class="mm-scenario-panel" aria-label="Scenario details">
+            <div class="mm-panel-heading stacked">
+              <span class="mm-eyebrow">Scenario</span>
+              <h2>Scenario Details</h2>
+            </div>
+            <div class="mm-scenario-preview">
+              <canvas id="mm-scenario-minimap" class="mm-scenario-minimap"></canvas>
+            </div>
+            <dl id="mm-scenario-details" class="mm-scenario-details"></dl>
+          </aside>
         </main>
 
         <footer class="mm-actions">
@@ -258,10 +279,14 @@ export class MainMenuScene extends Phaser.Scene {
       })
       .join('');
 
-    if (!customOptions) return `<optgroup label="Official Scenarios">${officialOptions}</optgroup>`;
+    const loadOption = `<option value="${LOAD_SCENARIO_OPTION_VALUE}">Load scenario…</option>`;
+    if (!customOptions) {
+      return `<optgroup label="Official Scenarios">${officialOptions}</optgroup>${loadOption}`;
+    }
     return `
       <optgroup label="Official Scenarios">${officialOptions}</optgroup>
       <optgroup label="My Scenarios">${customOptions}</optgroup>
+      ${loadOption}
     `;
   }
 
@@ -386,7 +411,22 @@ export class MainMenuScene extends Phaser.Scene {
     });
 
     const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement;
-    mapSelect.addEventListener('change', () => this.onMapChanged(mapSelect.value));
+    const scenarioInput = document.getElementById('mm-scenario-input') as HTMLInputElement;
+    mapSelect.addEventListener('change', () => {
+      if (mapSelect.value === LOAD_SCENARIO_OPTION_VALUE) {
+        // Not a real selection — restore the previous one and open the file picker.
+        mapSelect.value = this.currentMapKey;
+        scenarioInput.value = '';
+        scenarioInput.click();
+        return;
+      }
+      this.onMapChanged(mapSelect.value);
+    });
+    scenarioInput.addEventListener('change', () => {
+      const file = scenarioInput.files?.[0];
+      if (!file) return;
+      void this.importScenarioFile(file);
+    });
     const resourceAbundanceSelect = document.getElementById('mm-resource-abundance-select') as HTMLSelectElement;
     resourceAbundanceSelect.addEventListener('change', () => {
       this.selectedResourceAbundance = toResourceAbundance(resourceAbundanceSelect.value);
@@ -482,6 +522,7 @@ export class MainMenuScene extends Phaser.Scene {
       this.renderNationList();
       this.updateSetupPanel();
       this.updateStartButton();
+      this.updateScenarioDetails(null);
       return;
     }
     this.nations = json.nations;
@@ -490,7 +531,45 @@ export class MainMenuScene extends Phaser.Scene {
     this.renderNationList();
     this.updateSetupPanel();
     this.updateStartButton();
+    this.updateScenarioDetails(json);
     this.music?.playPlaylist('start');
+  }
+
+  /** Refresh the read-only Scenario Details widget and its minimap preview. */
+  private updateScenarioDetails(scenario: ScenarioData | null): void {
+    const preview = document.querySelector<HTMLElement>('.mm-scenario-preview');
+    const canvas = document.getElementById('mm-scenario-minimap') as HTMLCanvasElement | null;
+    const details = document.getElementById('mm-scenario-details');
+    if (!preview || !canvas || !details) return;
+
+    if (!scenario) {
+      preview.classList.add('is-empty');
+      canvas.hidden = true;
+      details.innerHTML = '<p class="mm-scenario-empty">Select a scenario to see its details.</p>';
+      return;
+    }
+
+    preview.classList.remove('is-empty');
+    canvas.hidden = false;
+    renderScenarioMinimap(canvas, scenario);
+
+    const meta = resolveScenarioMeta(scenario.meta);
+    const rows: Array<{ label: string; value: string }> = [
+      { label: 'Name', value: meta.name },
+    ];
+    if (meta.author) rows.push({ label: 'Author', value: meta.author });
+    if (meta.description) rows.push({ label: 'Description', value: meta.description });
+    rows.push({ label: 'Start year', value: formatScenarioStartYear(meta) });
+    rows.push({ label: 'Time progression', value: formatScenarioTimeProgression(meta.timeProgression) });
+    rows.push({ label: 'Map size', value: `${scenario.map.width} × ${scenario.map.height}` });
+
+    details.innerHTML = rows
+      .map((row) => `
+        <div class="mm-scenario-detail">
+          <dt>${escapeHtmlText(row.label)}</dt>
+          <dd>${escapeHtmlText(row.value)}</dd>
+        </div>`)
+      .join('');
   }
 
   private renderNationList(): void {
@@ -701,6 +780,39 @@ export class MainMenuScene extends Phaser.Scene {
     this.scene.start('GameScene', config);
   }
 
+  /**
+   * Import a scenario JSON file the user previously downloaded from the editor,
+   * persist it as a custom scenario in the browser, and select it. Reuses the
+   * same storage path the editor's "Save As My Own Scenario" uses.
+   */
+  private async importScenarioFile(file: File): Promise<void> {
+    let text: string;
+    try {
+      text = await file.text();
+    } catch (err: unknown) {
+      window.alert(`Could not read scenario file: ${(err as Error).message}`);
+      return;
+    }
+
+    const result = CustomScenarioStorage.parseScenario(text);
+    if (!result.ok) {
+      window.alert(`Could not load scenario: ${result.error}`);
+      return;
+    }
+
+    const name = result.scenario.meta?.name?.trim() || 'Imported Scenario';
+    const saved = CustomScenarioStorage.save({ name, scenario: result.scenario });
+
+    // Refresh the in-memory list + dropdown so the new scenario is selectable.
+    this.customScenarios = CustomScenarioStorage.loadAll();
+    const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement | null;
+    if (mapSelect) {
+      mapSelect.innerHTML = this.buildMapOptionsHTML();
+      mapSelect.value = saved.metadata.id;
+    }
+    this.onMapChanged(saved.metadata.id);
+  }
+
   private loadGame(file: File): void {
     file.text().then((text) => {
       const result = SaveLoadService.parse(text);
@@ -770,18 +882,24 @@ export class MainMenuScene extends Phaser.Scene {
   private getContinueButtonTitleAttribute(): string {
     if (!this.latestAutosave) return '';
     const round = this.latestAutosave.turn.currentRound;
-    const fallbackSpeed = getGameSpeedById(this.latestAutosave.gameSpeedId ?? DEFAULT_GAME_SPEED_ID);
-    const year = this.latestAutosave.worldYear ?? calculateGlobalYear(round, fallbackSpeed.yearProgressionMultiplier);
-    const scenarioName = this.maps.find((map) => map.key === this.latestAutosave?.mapKey)?.label
-      ?? this.customScenarios.find((entry) => entry.metadata.id === this.latestAutosave?.mapKey)?.metadata.name
-      ?? this.latestAutosave.mapKey;
+    const gameSpeed = getGameSpeedById(this.latestAutosave.gameSpeedId ?? DEFAULT_GAME_SPEED_ID);
+    const mapKey = this.latestAutosave.mapKey;
+    // Prefer deriving the date from scenario metadata + round so non-Auto
+    // scenarios show the correct date; fall back to the saved worldYear.
+    const scenarioMeta = (this.getCustomScenario(mapKey)?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined)?.meta;
+    const dateLabel = scenarioMeta
+      ? formatGameDate(computeGameDateFromMeta(scenarioMeta, round, gameSpeed.yearProgressionMultiplier))
+      : `Year ${this.latestAutosave.worldYear ?? '?'}`;
+    const scenarioName = this.maps.find((map) => map.key === mapKey)?.label
+      ?? this.customScenarios.find((entry) => entry.metadata.id === mapKey)?.metadata.name
+      ?? mapKey;
     const savedAt = new Date(this.latestAutosave.savedAt);
     const savedAtLabel = Number.isNaN(savedAt.getTime())
       ? this.latestAutosave.savedAt
       : savedAt.toLocaleString();
     return ` title="${escapeHtmlAttribute([
       `Round ${round}`,
-      formatYear(year),
+      dateLabel,
       `Saved ${savedAtLabel}`,
       scenarioName,
     ].join(' - '))}"`;
@@ -1070,18 +1188,86 @@ export class MainMenuScene extends Phaser.Scene {
 
       .mm-main {
         display: grid;
-        grid-template-columns: minmax(0, 7fr) minmax(310px, 3fr);
+        grid-template-columns: minmax(0, 6fr) minmax(280px, 3fr) minmax(260px, 3fr);
         gap: 18px;
         min-height: 0;
       }
 
       .mm-nations-panel,
-      .mm-setup-panel {
+      .mm-setup-panel,
+      .mm-scenario-panel {
         min-height: 0;
         background: rgba(248, 245, 235, 0.84);
         border: 1px solid rgba(118, 84, 49, 0.32);
         border-radius: 8px;
         box-shadow: 0 14px 32px rgba(40, 30, 18, 0.12);
+      }
+
+      .mm-scenario-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 20px;
+        overflow-y: auto;
+      }
+
+      .mm-scenario-preview {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: rgba(26, 85, 125, 0.12);
+        border: 1px solid rgba(118, 84, 49, 0.24);
+        border-radius: 6px;
+        padding: 8px;
+      }
+
+      .mm-scenario-minimap {
+        display: block;
+        width: 100%;
+        max-width: 500px;
+        height: auto;
+        image-rendering: pixelated;
+        border-radius: 3px;
+      }
+
+      .mm-scenario-preview.is-empty {
+        min-height: 80px;
+        color: #7a6a52;
+        font-size: 13px;
+      }
+
+      .mm-scenario-details {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .mm-scenario-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .mm-scenario-detail dt {
+        color: #7f4c15;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0;
+      }
+
+      .mm-scenario-detail dd {
+        margin: 0;
+        color: #1f160f;
+        font-size: 14px;
+        line-height: 1.4;
+        white-space: pre-wrap;
+      }
+
+      .mm-scenario-empty {
+        color: #7a6a52;
+        font-size: 13px;
       }
 
       .mm-nations-panel {
@@ -1536,7 +1722,7 @@ export class MainMenuScene extends Phaser.Scene {
         }
 
         .mm-main {
-          grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+          grid-template-columns: minmax(0, 1fr) minmax(240px, 0.5fr) minmax(220px, 0.5fr);
         }
       }
 

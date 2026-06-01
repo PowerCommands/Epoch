@@ -1,6 +1,19 @@
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { WorldMarker } from './WorldMarker';
 
+/**
+ * How in-game time advances per turn. Stored on the scenario and surfaced in the
+ * setup screen. NOTE: for now this is metadata only — the gameplay date/year
+ * calculation does not consult it yet.
+ */
+export type ScenarioTimeProgressionMode = 'auto' | 'staticYear' | 'monthly';
+
+export interface ScenarioTimeProgression {
+  mode: ScenarioTimeProgressionMode;
+  /** Years advanced per turn when mode is "staticYear". Ignored otherwise. */
+  staticYearStep?: number;
+}
+
 export interface ScenarioMeta {
   name: string;
   version: number;
@@ -10,6 +23,16 @@ export interface ScenarioMeta {
    * influences gameplay or simulation.
    */
   template?: string;
+  /** Free-text historical context shown in the setup screen. */
+  description?: string;
+  /** Scenario author, shown in the setup screen when present. */
+  author?: string;
+  /** Starting year magnitude (always positive); BC/AD is carried by startYearIsBC. */
+  startYear?: number;
+  /** True when startYear is BC, false when AD. */
+  startYearIsBC?: boolean;
+  /** Time progression setup (metadata only for now). */
+  timeProgression?: ScenarioTimeProgression;
 }
 
 export interface ScenarioMap {

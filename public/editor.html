@@ -376,6 +376,36 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   font-size: 10px; color: #f3ca72; background: #302615; border: 1px solid #6c5420;
   border-radius: 3px; padding: 6px 8px; margin-top: 8px; line-height: 1.4;
 }
+#scenario-details-overlay {
+  position: fixed; inset: 0; z-index: 85; background: rgba(0,0,0,0.62);
+  display: none; align-items: center; justify-content: center; padding: 28px;
+}
+#scenario-details-overlay.open { display: flex; }
+.sd-dialog {
+  width: 100%; max-width: 460px; display: flex; flex-direction: column;
+  background: #181818; border: 1px solid #333; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+}
+.sd-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid #333; background: #202020;
+}
+.sd-header h2 { font-size: 15px; color: #ddd; letter-spacing: 0.5px; text-transform: uppercase; }
+.sd-header-actions { display: flex; gap: 8px; }
+.sd-header-actions button {
+  border: 1px solid #555; border-radius: 4px; padding: 6px 12px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px; cursor: pointer;
+}
+.sd-header-actions button:hover { border-color: #888; background: #333; }
+.sd-header-actions .sd-primary { border-color: #3a6b48; background: #234a30; color: #cde6d4; }
+.sd-header-actions .sd-primary:hover { border-color: #4f9863; background: #2a5a3a; }
+.sd-body { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.sd-year-row { display: flex; gap: 12px; align-items: flex-end; }
+.sd-checkbox {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ddd;
+  padding-bottom: 11px; white-space: nowrap;
+}
+.sd-error { color: #f0a0a0; font-size: 11px; min-height: 14px; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -384,6 +414,8 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   <div id="toolbar">
     <h2>Map Editor</h2>
     <div id="scenario-scope" class="scenario-scope">Loading scenario...</div>
+
+    <button class="small-btn" id="open-scenario-details-btn" type="button" style="margin-top:8px">Scenario details…</button>
 
     <div class="section">
       <div class="section-title">Tool</div>
@@ -566,6 +598,48 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   </div>
 </div>
 
+<div id="scenario-details-overlay" aria-label="Scenario Details">
+  <div class="sd-dialog">
+    <div class="sd-header">
+      <h2>Scenario Details</h2>
+      <div class="sd-header-actions">
+        <button id="scenario-details-cancel-btn" type="button">Cancel</button>
+        <button id="scenario-details-save-btn" type="button" class="sd-primary">Save</button>
+      </div>
+    </div>
+    <div class="sd-body">
+      <label class="field">Name
+        <input id="sd-name" type="text" maxlength="120">
+      </label>
+      <label class="field">Description
+        <textarea id="sd-description" rows="4"></textarea>
+      </label>
+      <label class="field">Author
+        <input id="sd-author" type="text" maxlength="120">
+      </label>
+      <div class="sd-year-row">
+        <label class="field" style="flex:1">Start year
+          <input id="sd-start-year" type="number" min="1" step="1">
+        </label>
+        <label class="sd-checkbox">
+          <input id="sd-start-year-bc" type="checkbox"> BC
+        </label>
+      </div>
+      <label class="field">Time progression
+        <select id="sd-time-mode">
+          <option value="auto">Auto</option>
+          <option value="staticYear">Static year</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+      <label class="field" id="sd-static-step-field">Years per turn
+        <input id="sd-static-step" type="number" min="1" step="1">
+      </label>
+      <div id="sd-error" class="sd-error"></div>
+    </div>
+  </div>
+</div>
+
 <div id="magic-wand-panel" aria-label="Auto Paint Settings">
   <div class="mw-title">Auto Paint Settings</div>
   <div class="mw-subtitle">Maps background colors to terrain. Adjust rules, then preview and apply.</div>
@@ -711,6 +785,40 @@ const TILE_COLORS = {
   meadow:   '#9bcf74',
 };
 
+// Scenario Details metadata defaults. Mirrors src/data/scenarioMeta.ts so older
+// scenarios that predate these fields load with sensible values.
+const DEFAULT_SCENARIO_START_YEAR = 4000;
+const DEFAULT_SCENARIO_START_YEAR_IS_BC = true;
+const DEFAULT_SCENARIO_TIME_PROGRESSION_MODE = 'auto';
+const SCENARIO_TIME_PROGRESSION_MODES = ['auto', 'staticYear', 'monthly'];
+
+/**
+ * Ensure scenario.meta carries every Scenario Details field, filling defaults
+ * for scenarios authored before they existed. Mutates and returns scenario.meta.
+ */
+function normalizeScenarioMeta() {
+  if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
+  const meta = scenario.meta;
+  if (typeof meta.description !== 'string') meta.description = '';
+  if (typeof meta.author !== 'string') meta.author = '';
+  if (typeof meta.startYear !== 'number' || !(meta.startYear > 0)) meta.startYear = DEFAULT_SCENARIO_START_YEAR;
+  else meta.startYear = Math.floor(meta.startYear);
+  if (typeof meta.startYearIsBC !== 'boolean') meta.startYearIsBC = DEFAULT_SCENARIO_START_YEAR_IS_BC;
+
+  const progression = meta.timeProgression && typeof meta.timeProgression === 'object' ? meta.timeProgression : {};
+  const mode = SCENARIO_TIME_PROGRESSION_MODES.includes(progression.mode)
+    ? progression.mode
+    : DEFAULT_SCENARIO_TIME_PROGRESSION_MODE;
+  const normalized = { mode };
+  if (mode === 'staticYear') {
+    normalized.staticYearStep = typeof progression.staticYearStep === 'number' && progression.staticYearStep > 0
+      ? Math.floor(progression.staticYearStep)
+      : 1;
+  }
+  meta.timeProgression = normalized;
+  return meta;
+}
+
 // Spray Mode overlay colors (editor-only; never saved).
 const SPRAY_UNPAINTED_FILL = '#ff2fd6';    // high-contrast placeholder for unpainted tiles
 const SPRAY_UNPAINTED_OUTLINE = '#fff7a8'; // subtle bright outline around unpainted tiles
@@ -817,6 +925,7 @@ function startEditor(map, scenarioData, customEntry) {
   sprayMode = false; // each scenario session starts in normal paint mode
   closeMagicWand(); // dismiss any open auto-paint preview from a previous scenario
 
+  normalizeScenarioMeta();
   loadTemplateImage(scenario.meta?.template ?? null);
   refreshBackgroundTemplateSelect();
   refreshBackgroundZoomSlider();
@@ -1530,10 +1639,11 @@ function loadCustomScenarioEntries() {
 }
 
 function saveCustomScenarioEntry(entry) {
-  const entries = loadCustomScenarioEntries().filter(existing => existing.metadata.id !== entry.metadata.id);
+  // The browser holds a single custom scenario at a time (a temporary slot):
+  // saving here overwrites any previously stored one, silently and by design.
   window.localStorage.setItem(
     CUSTOM_SCENARIO_STORAGE_KEY,
-    JSON.stringify({ version: 1, entries: [entry, ...entries] }),
+    JSON.stringify({ version: 1, entries: [entry] }),
   );
 }
 
@@ -4413,6 +4523,83 @@ function buildScenarioOutput() {
   };
 }
 
+// ─── Scenario Details dialog ─────────────────────────────────────────────────
+
+function isScenarioDetailsOpen() {
+  return document.getElementById('scenario-details-overlay').classList.contains('open');
+}
+
+/** Show/hide the "Years per turn" field based on the selected progression mode. */
+function updateScenarioDetailsStaticVisibility() {
+  const mode = document.getElementById('sd-time-mode').value;
+  document.getElementById('sd-static-step-field').style.display = mode === 'staticYear' ? '' : 'none';
+}
+
+function openScenarioDetails() {
+  if (!scenario) return;
+  const meta = normalizeScenarioMeta();
+  document.getElementById('sd-name').value = meta.name ?? '';
+  document.getElementById('sd-description').value = meta.description ?? '';
+  document.getElementById('sd-author').value = meta.author ?? '';
+  document.getElementById('sd-start-year').value = String(meta.startYear);
+  document.getElementById('sd-start-year-bc').checked = !!meta.startYearIsBC;
+  document.getElementById('sd-time-mode').value = meta.timeProgression.mode;
+  document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
+  document.getElementById('sd-error').textContent = '';
+  updateScenarioDetailsStaticVisibility();
+  document.getElementById('scenario-details-overlay').classList.add('open');
+  document.getElementById('sd-name').focus();
+}
+
+function closeScenarioDetails() {
+  document.getElementById('scenario-details-overlay').classList.remove('open');
+}
+
+/** Validate inputs and commit them to scenario.meta. Returns true on success. */
+function saveScenarioDetails() {
+  const errorEl = document.getElementById('sd-error');
+  const name = document.getElementById('sd-name').value.trim();
+  if (!name) { errorEl.textContent = 'Name must not be empty.'; return false; }
+
+  const startYear = parseInt(document.getElementById('sd-start-year').value, 10);
+  if (!Number.isInteger(startYear) || startYear <= 0) {
+    errorEl.textContent = 'Start year must be a positive integer.';
+    return false;
+  }
+
+  const mode = document.getElementById('sd-time-mode').value;
+  const timeProgression = { mode };
+  if (mode === 'staticYear') {
+    const step = parseInt(document.getElementById('sd-static-step').value, 10);
+    if (!Number.isInteger(step) || step <= 0) {
+      errorEl.textContent = 'Years per turn must be a positive integer.';
+      return false;
+    }
+    timeProgression.staticYearStep = step;
+  }
+
+  if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
+  scenario.meta.name = name;
+  scenario.meta.description = document.getElementById('sd-description').value.trim();
+  scenario.meta.author = document.getElementById('sd-author').value.trim();
+  scenario.meta.startYear = startYear;
+  scenario.meta.startYearIsBC = document.getElementById('sd-start-year-bc').checked;
+  scenario.meta.timeProgression = timeProgression;
+
+  writeEditorAutosave();
+  closeScenarioDetails();
+  setStatusInfo(`Scenario details updated: ${name}`);
+  return true;
+}
+
+document.getElementById('open-scenario-details-btn').addEventListener('click', openScenarioDetails);
+document.getElementById('scenario-details-cancel-btn').addEventListener('click', closeScenarioDetails);
+document.getElementById('scenario-details-save-btn').addEventListener('click', saveScenarioDetails);
+document.getElementById('sd-time-mode').addEventListener('change', updateScenarioDetailsStaticVisibility);
+document.getElementById('scenario-details-overlay').addEventListener('mousedown', (event) => {
+  if (event.target === event.currentTarget) closeScenarioDetails();
+});
+
 document.getElementById('back-to-menu-btn').addEventListener('click', () => {
   showLanding();
 });
@@ -4430,6 +4617,14 @@ function isTypingTarget(target) {
 }
 
 window.addEventListener('keydown', (e) => {
+  // While the Scenario Details dialog is open, swallow editor shortcuts; Escape
+  // cancels, Enter (outside the textarea) saves.
+  if (isScenarioDetailsOpen()) {
+    if (e.key === 'Escape') { closeScenarioDetails(); e.preventDefault(); }
+    else if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement)) { saveScenarioDetails(); e.preventDefault(); }
+    return;
+  }
+
   // While the Nation Details dialog is open, swallow editor shortcuts; Escape closes it.
   if (isNationDetailsOpen()) {
     if (e.key === 'Escape') { closeNationDetails(); e.preventDefault(); }
