@@ -57,6 +57,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.overlay.id = 'main-menu-overlay';
     this.overlay.innerHTML = this.buildHTML();
     document.body.appendChild(this.overlay);
+    void this.loadGameVersion();
     this.injectStyles();
     this.syncOverlayBounds();
 
@@ -111,6 +112,7 @@ export class MainMenuScene extends Phaser.Scene {
 
     return `
       <div class="mm-root" data-screen="landing">
+        <div id="mm-version-label" class="mm-version-label">Version: 1.0.0</div>
         <section class="mm-landing-screen" aria-label="Main menu">
           <header class="mm-header mm-landing-header">
             <h1 class="mm-title">Epochs of Time</h1>
@@ -228,6 +230,21 @@ export class MainMenuScene extends Phaser.Scene {
       <input id="mm-load-input" type="file" accept="application/json,.json" hidden>
     </div>
     `;
+  }
+
+  private async loadGameVersion(): Promise<void> {
+    try {
+      const response = await fetch('/version.json');
+      if (!response.ok) return;
+
+      const version = await response.json() as { game?: unknown };
+      if (typeof version.game !== 'string') return;
+
+      const label = this.overlay?.querySelector<HTMLElement>('#mm-version-label');
+      if (label) label.textContent = `Version: ${version.game}`;
+    } catch {
+      // The inline fallback keeps the version visible if the config cannot load.
+    }
   }
 
   private buildMapOptionsHTML(): string {
@@ -837,6 +854,19 @@ export class MainMenuScene extends Phaser.Scene {
         z-index: 1;
         width: 100%;
         height: 100%;
+      }
+
+      .mm-version-label {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        z-index: 4;
+        color: rgba(255, 248, 232, 0.78);
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1;
+        pointer-events: none;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
       }
 
       .mm-root[data-screen="landing"] .mm-setup-screen,
