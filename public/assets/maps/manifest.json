@@ -6,9 +6,14 @@
       "file": "assets/maps/asiaScenario.json"
     },
     {
-      "key": "map_europe",
-      "label": "Europe - Wide",
+      "key": "map_europe_wide",
+      "label": "Europe Wide",
       "file": "assets/maps/europe-wide.json"
+    },
+    {
+      "key": "map_europe",
+      "label": "Europe 1400",
+      "file": "assets/maps/europeScenario.json"
     },
     {
       "key": "map_maritime_expansion",
