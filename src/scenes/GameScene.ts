@@ -1323,8 +1323,72 @@ export class GameScene extends Phaser.Scene {
       return true;
     };
 
+    // ─── Free Selection Mode ─────────────────────────────────────────────────
+    // A temporary "look but don't move" state. Entered by clicking the already-
+    // selected (human) unit again while in the default move mode. While active,
+    // a click selects/inspects whatever is under it instead of issuing a move
+    // order. It only suppresses the default move workflow — explicit action
+    // modes (Found/Build/Attack/Ranged) and embark/debark are untouched, since
+    // those only run when free mode is off (the move handlers below bail out
+    // while it is on). The mode ends as soon as the selection changes, the same
+    // unit is re-clicked, or an explicit action mode takes over.
+    let freeSelectionMode = false;
+    const setFreeSelectionMode = (active: boolean): void => {
+      if (freeSelectionMode === active) return;
+      freeSelectionMode = active;
+      selectionManager.setFreeSelectionMode(active);
+      this.input.setDefaultCursor(active ? 'help' : 'default');
+    };
+
+    selectionManager.onSelectionTarget((target, currentSelection) => {
+      if (!freeSelectionMode) {
+        // Enter: clicking the already-selected human unit again (default mode only).
+        if (
+          currentSelection?.kind === 'unit' &&
+          target?.kind === 'unit' &&
+          target.unit.id === currentSelection.unit.id &&
+          currentSelection.unit.ownerId === humanNationId &&
+          unitActionToolbox.getMode() === 'move'
+        ) {
+          setFreeSelectionMode(true);
+          return true; // consume: keep the unit selected, issue no order
+        }
+        return false;
+      }
+
+      // An explicit action mode takes precedence over free selection.
+      if (unitActionToolbox.getMode() !== 'move') {
+        setFreeSelectionMode(false);
+        return false;
+      }
+      // Re-clicking the same unit exits free mode but keeps it selected.
+      if (
+        target?.kind === 'unit' &&
+        currentSelection?.kind === 'unit' &&
+        target.unit.id === currentSelection.unit.id
+      ) {
+        setFreeSelectionMode(false);
+        return true; // consume: no toggle-deselect, no move
+      }
+      // Any other click performs normal selection/inspection. Leave the flag set
+      // so the move handlers stay suppressed for this click; the resulting
+      // selection change exits free mode (see onSelectionChanged below).
+      return false;
+    });
+
+    // Selecting anything else naturally ends Free Selection Mode.
+    selectionManager.onSelectionChanged(() => {
+      if (freeSelectionMode) setFreeSelectionMode(false);
+    });
+    // Activating any explicit action mode (Found/Build/Attack/Ranged/Sleep/…)
+    // takes over from free selection immediately.
+    unitActionToolbox.onModeChanged((mode) => {
+      if (mode !== 'move' && freeSelectionMode) setFreeSelectionMode(false);
+    });
+
     selectionManager.onSelectionTarget((target, currentSelection) => {
       if (currentSelection?.kind !== 'unit') return false;
+      if (freeSelectionMode) return false;
 
       const targetTile = this.getTileForSelectable(tileMap, target);
       if (targetTile === null) return false;
@@ -1465,6 +1529,7 @@ export class GameScene extends Phaser.Scene {
     });
     selectionManager.onSelectionTarget((target, currentSelection) => {
       if (currentSelection?.kind !== 'unit') return false;
+      if (freeSelectionMode) return false;
 
       const unit = currentSelection.unit;
       const targetTile = this.getTileForSelectable(tileMap, target);
@@ -3723,12 +3788,27 @@ export class GameScene extends Phaser.Scene {
             message: `${fromCity.name} queued Trade Route to ${toCity.name}.`,
           });
           hudLayer?.refresh();
+
+          // Estimate completion using the city's normal production logic so the
+          // figure matches what the player will see in the production queue.
+          const estimatedTurns = productionSystem.getTurnsEstimate(fromCityId, tradeRouteItem);
+          showLeaderResponsePopup(targetNationId, 'Trade Route Accepted', [
+            `${targetNation.name} has accepted the proposal.`,
+            `A trade route between ${fromCity.name} and ${toCity.name} has been established.`,
+            `${fromCity.name} will now begin constructing the trade route.`,
+            `Estimated completion time: ${estimatedTurns} turn${estimatedTurns === 1 ? '' : 's'}.`,
+            `The trade route has been added to ${fromCity.name}'s production queue.`,
+          ]);
         } else {
           logManager.info({
             nationIds: [humanNationIdForDiplomacy, targetNationId],
             category: 'diplomacy',
             message: `${targetNation.name} rejected the trade route proposal.`,
           });
+          showLeaderResponsePopup(targetNationId, 'Trade Route Rejected', [
+            `${targetNation.name} has declined the proposal.`,
+            'Reason: relations are too poor.',
+          ]);
         }
         rightPanel?.refreshCurrent();
       }
@@ -5057,6 +5137,13 @@ export class GameScene extends Phaser.Scene {
 
     selectionManager.onHoverChanged((hovered) => {
       const selected = selectionManager.getSelected();
+      // Free Selection Mode: stop the move-path line from following the pointer.
+      // It resumes once a unit is activated again (free mode ends).
+      if (freeSelectionMode) {
+        pathPreviewRenderer.clearPath();
+        rangedPreviewRenderer.clearCurve();
+        return;
+      }
       if (selected?.kind !== 'unit') {
         pathPreviewRenderer.clearPath();
         rangedPreviewRenderer.clearCurve();

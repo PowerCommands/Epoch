@@ -36,6 +36,11 @@ export class SelectionManager {
   private hovered: Selectable | null = null;
   private selected: Selectable | null = null;
 
+  // Visual hint only: when Free Selection Mode is active the selected unit's
+  // ring is drawn in a distinct colour to signal that clicks inspect/select
+  // rather than issue move orders. The mode's logic lives in GameScene.
+  private freeSelectionMode = false;
+
   // Fog of war gates. Default to always-on so non-fog contexts are unaffected.
   private isTileVisible: (tileX: number, tileY: number) => boolean = () => true;
   private isTileExplored: (tileX: number, tileY: number) => boolean = () => true;
@@ -101,6 +106,13 @@ export class SelectionManager {
 
   getSelected(): Selectable | null {
     return this.selected;
+  }
+
+  /** Toggle the Free Selection Mode highlight on the current selection. */
+  setFreeSelectionMode(active: boolean): void {
+    if (this.freeSelectionMode === active) return;
+    this.freeSelectionMode = active;
+    this.drawSelection();
   }
 
   selectCity(city: City): void {
@@ -314,13 +326,19 @@ export class SelectionManager {
       this.selectionGfx.lineStyle(3, 0xffdd44, 0.9);
       this.selectionGfx.strokeCircle(x, y, 22);
     } else {
-      // Unit — gul ring runt enhetssymbolen
+      // Unit — gul ring runt enhetssymbolen. I Free Selection Mode ritas den i
+      // en avvikande färg plus en yttre ring för att signalera "inspektera, inte flytta".
       const { x, y } = this.tileMap.tileToWorld(
         this.selected.unit.tileX,
         this.selected.unit.tileY,
       );
-      this.selectionGfx.lineStyle(3, 0xffdd44, 0.95);
+      const ringColor = this.freeSelectionMode ? 0x66ccff : 0xffdd44;
+      this.selectionGfx.lineStyle(3, ringColor, 0.95);
       this.selectionGfx.strokeCircle(x, y, 19);
+      if (this.freeSelectionMode) {
+        this.selectionGfx.lineStyle(2, 0x66ccff, 0.55);
+        this.selectionGfx.strokeCircle(x, y, 25);
+      }
     }
   }
 

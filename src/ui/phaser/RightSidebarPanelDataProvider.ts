@@ -46,6 +46,7 @@ import type { WonderSystem } from '../../systems/WonderSystem';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
+import type { TradeConnection } from '../../types/tradeConnection';
 import type { TradeDiplomacySystem } from '../../systems/diplomacy/TradeDiplomacySystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
@@ -68,6 +69,7 @@ import type {
   RightSidebarLeaderboardCategory,
   RightSidebarRow,
   RightSidebarSection,
+  CityPickerItem,
 } from './RightSidebarPanelTypes';
 import type { DiplomacyGraph, DiplomacyGraphEdge, DiplomacyGraphNode, DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 import { RafScheduler } from '../../utils/RafScheduler';
@@ -1754,51 +1756,35 @@ export class RightSidebarPanelDataProvider {
     const fromCityId = this.tradeRouteProposal!.fromCityId;
     const toCityId = this.tradeRouteProposal!.toCityId;
 
-    rows.push(textRow('Your city:'));
-    if (humanCities.length === 0) {
-      rows.push(textRow('No cities available.', true));
-    } else {
-      for (const city of humanCities) {
-        const total = this.tradeConnectionSystem.getCityTradeCapacity(city.id);
-        const available = this.tradeConnectionSystem.getCityAvailableTradeCapacity(city.id);
-        rows.push({
-          kind: 'button',
-          text: `${city.name}: ${available}/${total} capacity`,
-          disabled: available < 1,
-          selected: city.id === fromCityId,
-          accentColor,
-          onClick: () => {
-            if (this.tradeRouteProposal) {
-              this.tradeRouteProposal = { ...this.tradeRouteProposal, fromCityId: city.id };
-              this.requestRefresh();
-            }
-          },
-        });
-      }
-    }
+    // Two-column selector: pick one of your cities (left) and one of theirs
+    // (right). The selected pair is the proposed connection.
+    const toPickerItem = (city: City, selectedId: string | null, isFrom: boolean): CityPickerItem => {
+      const total = this.tradeConnectionSystem!.getCityTradeCapacity(city.id);
+      const available = this.tradeConnectionSystem!.getCityAvailableTradeCapacity(city.id);
+      return {
+        id: city.id,
+        label: `${city.name}  ${available}/${total}`,
+        disabled: available < 1,
+        selected: city.id === selectedId,
+        onClick: () => {
+          if (!this.tradeRouteProposal) return;
+          this.tradeRouteProposal = isFrom
+            ? { ...this.tradeRouteProposal, fromCityId: city.id }
+            : { ...this.tradeRouteProposal, toCityId: city.id };
+          this.requestRefresh();
+        },
+      };
+    };
 
-    rows.push(textRow('Their city:'));
-    if (targetCities.length === 0) {
-      rows.push(textRow('No cities available.', true));
-    } else {
-      for (const city of targetCities) {
-        const total = this.tradeConnectionSystem.getCityTradeCapacity(city.id);
-        const available = this.tradeConnectionSystem.getCityAvailableTradeCapacity(city.id);
-        rows.push({
-          kind: 'button',
-          text: `${city.name}: ${available}/${total} capacity`,
-          disabled: available < 1,
-          selected: city.id === toCityId,
-          accentColor,
-          onClick: () => {
-            if (this.tradeRouteProposal) {
-              this.tradeRouteProposal = { ...this.tradeRouteProposal, toCityId: city.id };
-              this.requestRefresh();
-            }
-          },
-        });
-      }
-    }
+    rows.push({
+      kind: 'cityPairPicker',
+      leftHeader: 'Your cities',
+      rightHeader: this.nationManager.getNation(targetNationId)?.name ?? 'Their cities',
+      leftItems: humanCities.map((city) => toPickerItem(city, fromCityId, true)),
+      rightItems: targetCities.map((city) => toPickerItem(city, toCityId, false)),
+      emptyLabel: 'No cities available.',
+      accentColor,
+    });
 
     rows.push({ kind: 'separator' });
 
@@ -1896,6 +1882,9 @@ export class RightSidebarPanelDataProvider {
         .map((deal) => deal.resourceId),
     );
 
+    rows.push(...this.buildTradeRoutesOverviewRows(otherNationId));
+    rows.push({ kind: 'separator' });
+
     rows.push(textRow(`${otherNation?.name ?? otherNationId} can sell to you`, false, true));
     if (otherOwned.length === 0) {
       rows.push(textRow('No resources to sell.', true));
@@ -1940,6 +1929,62 @@ export class RightSidebarPanelDataProvider {
       rows.push(textRow(message, true));
     }
     return rows;
+  }
+
+  /**
+   * Read-only overview of the trade routes between the human and `otherNationId`,
+   * covering both routes still under construction ("In progress") and completed
+   * ("Active") ones. Visibility only — no trade-route logic is touched here.
+   */
+  private buildTradeRoutesOverviewRows(otherNationId: string): RightSidebarRow[] {
+    const rows: RightSidebarRow[] = [];
+    if (!this.tradeConnectionSystem || !this.humanNationId) return rows;
+    const humanId = this.humanNationId;
+
+    const connections = this.tradeConnectionSystem.getAllConnections().filter((conn) =>
+      (conn.nationAId === humanId && conn.nationBId === otherNationId) ||
+      (conn.nationAId === otherNationId && conn.nationBId === humanId),
+    );
+
+    rows.push(textRow('Trade Routes', false, true));
+    if (connections.length === 0) {
+      rows.push(textRow('No trade routes yet.', true));
+      return rows;
+    }
+
+    // Show routes still being built first, then completed (active) ones.
+    connections.sort((a, b) => Number(a.status === 'active') - Number(b.status === 'active'));
+
+    for (const conn of connections) {
+      const humanIsA = conn.nationAId === humanId;
+      const humanCityName = this.cityManager.getCity(humanIsA ? conn.cityAId : conn.cityBId)?.name
+        ?? (humanIsA ? conn.cityAId : conn.cityBId);
+      const foreignCityName = this.cityManager.getCity(humanIsA ? conn.cityBId : conn.cityAId)?.name
+        ?? (humanIsA ? conn.cityBId : conn.cityAId);
+
+      rows.push(textRow(`${humanCityName} → ${foreignCityName}`));
+      if (conn.status === 'active') {
+        rows.push(textRow('Active · —', true));
+      } else {
+        const turns = this.getTradeRouteTurnsRemaining(conn);
+        rows.push(textRow(
+          turns !== null ? `In progress · ${turns} turn${turns === 1 ? '' : 's'} remaining` : 'In progress',
+          true,
+        ));
+      }
+    }
+    return rows;
+  }
+
+  /**
+   * Turns left to finish a building route, read from the production queue entry
+   * that builds it (lives in the initiating city, `cityAId`). Null if not found.
+   */
+  private getTradeRouteTurnsRemaining(conn: TradeConnection): number | null {
+    const entry = this.productionSystem.getQueue(conn.cityAId).find(
+      (e) => e.item.kind === 'tradeRoute' && e.item.connectionId === conn.id,
+    );
+    return entry ? entry.turnsRemaining : null;
   }
 
   private createTradeDealRequest(

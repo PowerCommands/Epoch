@@ -77,13 +77,38 @@ export interface RightSidebarRelationsTableRow {
   rows: RelationsTableRowCells[];
 }
 
+/** One selectable city in a {@link RightSidebarCityPairPickerRow} column. */
+export interface CityPickerItem {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  selected?: boolean;
+  onClick: () => void;
+}
+
+/**
+ * Side-by-side city selector for proposing a trade route: the human's cities on
+ * the left, the target nation's cities on the right. The player picks one from
+ * each column, making the proposed connection visually obvious.
+ */
+export interface RightSidebarCityPairPickerRow {
+  kind: 'cityPairPicker';
+  leftHeader: string;
+  rightHeader: string;
+  leftItems: CityPickerItem[];
+  rightItems: CityPickerItem[];
+  emptyLabel: string;
+  accentColor?: number;
+}
+
 export type RightSidebarRow =
   | RightSidebarTextRow
   | RightSidebarButtonRow
   | RightSidebarProgressRow
   | RightSidebarSeparatorRow
   | RightSidebarSearchInputRow
-  | RightSidebarRelationsTableRow;
+  | RightSidebarRelationsTableRow
+  | RightSidebarCityPairPickerRow;
 
 export interface RightSidebarSection {
   title: string;

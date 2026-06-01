@@ -10,6 +10,8 @@ import type {
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
   RightSidebarRelationsTableRow,
+  RightSidebarCityPairPickerRow,
+  CityPickerItem,
   RightSidebarRow,
   RightSidebarSearchInputRow,
 } from './RightSidebarPanelTypes';
@@ -1142,7 +1144,59 @@ export class RightSidebarPanel {
         return this.addSearchInputRow(row, y);
       case 'relationsTable':
         return this.addRelationsTableRow(row, y);
+      case 'cityPairPicker':
+        return this.addCityPairPickerRow(row, y);
     }
+  }
+
+  /**
+   * Two-column city selector: human cities on the left, target nation cities on
+   * the right. Each cell is a standard content button (so selection highlight,
+   * hover, disabled state and scrolling all behave like other buttons), letting
+   * the player pick one city per column to define the proposed trade route.
+   */
+  private addCityPairPickerRow(row: RightSidebarCityPairPickerRow, y: number): number {
+    const COLUMN_GAP = 12;
+    const colWidth = Math.floor((CONTENT_WIDTH - COLUMN_GAP) / 2);
+    const leftX = PANEL_PADDING;
+    const rightX = PANEL_PADDING + colWidth + COLUMN_GAP;
+
+    // Column headers.
+    const leftHeader = this.addContentText(row.leftHeader, 14, '#a8b6c8', 'bold', colWidth);
+    leftHeader.setPosition(leftX, y);
+    leftHeader.setData('baseY', y);
+    const rightHeader = this.addContentText(row.rightHeader, 14, '#a8b6c8', 'bold', colWidth);
+    rightHeader.setPosition(rightX, y);
+    rightHeader.setData('baseY', y);
+
+    let cursorY = y + Math.max(leftHeader.height, rightHeader.height) + 6;
+
+    const toButtonRow = (item: CityPickerItem): RightSidebarButtonRow => ({
+      kind: 'button',
+      text: item.label,
+      disabled: item.disabled,
+      selected: item.selected,
+      accentColor: row.accentColor,
+      onClick: item.onClick,
+    });
+
+    const rowCount = Math.max(row.leftItems.length, row.rightItems.length);
+    if (rowCount === 0) {
+      const empty = this.addContentText(row.emptyLabel, 15, '#c1cbd8', 'normal');
+      empty.setPosition(PANEL_PADDING, cursorY);
+      empty.setData('baseY', cursorY);
+      return cursorY + empty.height + ROW_GAP;
+    }
+
+    for (let i = 0; i < rowCount; i++) {
+      const left = row.leftItems[i];
+      const right = row.rightItems[i];
+      const leftNextY = left ? this.addContentButton(toButtonRow(left), cursorY, leftX, colWidth) : cursorY;
+      const rightNextY = right ? this.addContentButton(toButtonRow(right), cursorY, rightX, colWidth) : cursorY;
+      cursorY = Math.max(leftNextY, rightNextY);
+    }
+
+    return cursorY;
   }
 
   private addSearchInputRow(row: RightSidebarSearchInputRow, y: number): number {
@@ -1266,20 +1320,20 @@ export class RightSidebarPanel {
     return cursorY + (ROW_GAP - rowVerticalPadding);
   }
 
-  private addContentButton(row: RightSidebarButtonRow, y: number): number {
+  private addContentButton(row: RightSidebarButtonRow, y: number, x = PANEL_PADDING, width = CONTENT_WIDTH): number {
     const hasIcon = Boolean(row.spritePath && this.canUseContentIcon(row.spritePath));
     const height = hasIcon ? 40 : 34;
-    const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y, CONTENT_WIDTH, height, 0x0f2635, row.disabled ? 0.72 : 0.98))
+    const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y, width, height, 0x0f2635, row.disabled ? 0.72 : 0.98))
       .setOrigin(0, 0)
       .setStrokeStyle(1, row.accentColor ?? 0x6fb2d4, row.disabled ? 0.42 : 0.68)
       .setScrollFactor(0);
     background.setData('baseY', y);
     const trailingWidth = row.trailingIcon ? 40 : 0;
-    const icon = hasIcon && row.spritePath ? this.addContentIcon(row.spritePath, PANEL_PADDING + 9, y + 4) : null;
+    const icon = hasIcon && row.spritePath ? this.addContentIcon(row.spritePath, x + 9, y + 4) : null;
     const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
-    const label = this.addText(row.text, 15, row.disabled ? '#dbe6f5' : '#ffffff', 'bold', CONTENT_WIDTH - 22 - trailingWidth - iconWidth)
+    const label = this.addText(row.text, 15, row.disabled ? '#dbe6f5' : '#ffffff', 'bold', width - 22 - trailingWidth - iconWidth)
       .setAlpha(row.disabled ? 0.96 : 1);
-    label.setPosition(PANEL_PADDING + 11 + iconWidth, y + (height - label.height) / 2);
+    label.setPosition(x + 11 + iconWidth, y + (height - label.height) / 2);
     label.setData('baseY', y + (height - label.height) / 2);
     const trailingLabel = row.trailingIcon
       ? this.addText(row.trailingIcon, 18, '#ffffff', 'normal', trailingWidth)
@@ -1287,10 +1341,10 @@ export class RightSidebarPanel {
         .setAlpha(row.disabled ? 0.96 : 1)
       : null;
     if (trailingLabel) {
-      trailingLabel.setPosition(PANEL_PADDING + CONTENT_WIDTH - 12, y + 6);
+      trailingLabel.setPosition(x + width - 12, y + 6);
       trailingLabel.setData('baseY', y + 6);
     }
-    const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, PANEL_PADDING, y, CONTENT_WIDTH, height))
+    const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, x, y, width, height))
       .setOrigin(0, 0)
       .setScrollFactor(0);
     hitArea.setData('baseY', y);
