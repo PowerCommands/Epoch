@@ -14,6 +14,7 @@ import type {
   SavedCorporation,
 } from '../types/saveGame';
 import { SAVED_GAME_VERSION } from '../types/saveGame';
+import type { ScenarioInitialDiplomacyEntry } from '../types/scenario';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { getLegacyCompatibleUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
@@ -748,6 +749,61 @@ export class SaveLoadService {
       });
     }
     unitManager.normalizeCargoLinks();
+  }
+
+  /**
+   * Apply a scenario's pre-configured diplomacy when starting a fresh game
+   * (NOT loading a save — saves carry their own diplomacy snapshot). Reuses the
+   * same normalization/restoration path as save-load so missing values get
+   * normal diplomacy defaults, and applies states directly without triggering
+   * war-declaration side effects, notifications, penalties, or AI reactions.
+   *
+   * Editor-level "ALLIANCE" is not a relation state: such pairs are set to PEACE
+   * with the alliance prerequisites enabled (mutual open borders, mutual
+   * embassies, trade relations) and a real alliance is formed through
+   * AllianceManager — the engine's single source of truth for alliances.
+   */
+  static applyScenarioDiplomacy(
+    entries: ScenarioInitialDiplomacyEntry[],
+    context: {
+      diplomacyManager: DiplomacyManager;
+      discoverySystem: DiscoverySystem;
+      allianceManager?: AllianceManager;
+      turnManager?: TurnManager;
+      nationName?: (nationId: string) => string;
+    },
+  ): void {
+    const { diplomacyManager, discoverySystem, allianceManager, turnManager, nationName } = context;
+    const currentTurn = turnManager?.getCurrentRound() ?? 0;
+    for (const entry of entries) {
+      const { nationA, nationB } = entry;
+      if (nationA === nationB) continue;
+      // A configured relationship implies the nations know one another.
+      discoverySystem.restoreMet(nationA, nationB);
+
+      const isAlliance = entry.state === 'ALLIANCE';
+      // ALLIANCE is an editor concept layered on PEACE; the relation itself is
+      // only ever WAR or PEACE.
+      diplomacyManager.restoreState(nationA, nationB, {
+        state: entry.state === 'WAR' ? 'WAR' : 'PEACE',
+        // Alliances require mutual open borders, mutual embassies and trade.
+        openBordersFromAToB: isAlliance ? true : entry.openBordersFromAToB,
+        openBordersFromBToA: isAlliance ? true : entry.openBordersFromBToA,
+        embassyFromAToB: isAlliance ? true : entry.embassyFromAToB,
+        embassyFromBToA: isAlliance ? true : entry.embassyFromBToA,
+        tradeRelations: isAlliance ? true : entry.tradeRelations,
+        trust: entry.trust,
+        fear: entry.fear,
+        hostility: entry.hostility,
+        affinity: entry.affinity,
+        aggressorNationId: entry.state === 'WAR' ? nationA : undefined,
+      });
+
+      if (isAlliance && allianceManager) {
+        const name = `${nationName?.(nationA) ?? nationA}–${nationName?.(nationB) ?? nationB} Alliance`;
+        allianceManager.createAlliance(nationA, nationB, name, currentTurn);
+      }
+    }
   }
 
   private static applyDiplomacy(

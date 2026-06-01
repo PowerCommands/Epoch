@@ -282,6 +282,94 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 #mw-apply:hover { background: #224a34; }
 #mw-cancel { border: 1px solid #777; background: #242424; color: #ddd; }
 #mw-cancel:hover { background: #303030; }
+
+/* ─── Nation Details dialog ────────────────────────────────────────────────── */
+#nation-details-overlay {
+  position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,0.62);
+  display: none; align-items: center; justify-content: center; padding: 28px;
+}
+#nation-details-overlay.open { display: flex; }
+.nd-dialog {
+  width: 100%; max-width: 940px; height: 100%; max-height: 760px;
+  display: flex; flex-direction: column;
+  background: #181818; border: 1px solid #333; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+}
+.nd-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid #333; background: #202020;
+}
+.nd-header h2 { font-size: 15px; color: #ddd; letter-spacing: 0.5px; text-transform: uppercase; }
+.nd-header button {
+  border: 1px solid #555; border-radius: 4px; padding: 6px 12px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 12px; cursor: pointer;
+}
+.nd-header button:hover { border-color: #888; background: #333; }
+.nd-body { flex: 1; display: grid; grid-template-columns: 220px 1fr; min-height: 0; }
+.nd-nation-list {
+  border-right: 1px solid #333; overflow-y: auto; padding: 8px;
+  display: flex; flex-direction: column; gap: 4px; background: #161616;
+}
+.nd-nation-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px;
+  border: 1px solid transparent; cursor: pointer; font-size: 12px; color: #ddd; text-align: left;
+  background: #222;
+}
+.nd-nation-row:hover { border-color: #666; }
+.nd-nation-row.active { border-color: #7bbcff; background: #1c2733; }
+.nd-nation-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+.nd-detail { overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.nd-detail-empty { color: #777; font-size: 13px; }
+.nd-section { border: 1px solid #2c2c2c; border-radius: 6px; background: #1d1d1d; }
+.nd-section > h3 {
+  font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 9px 12px; border-bottom: 1px solid #2c2c2c;
+}
+.nd-section-body { padding: 10px 12px; }
+.nd-prog-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+.nd-prog-toolbar button {
+  border: 1px solid #555; border-radius: 3px; padding: 4px 8px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 11px; cursor: pointer;
+}
+.nd-prog-toolbar button:hover { border-color: #888; background: #333; }
+.nd-prog-count { margin-left: auto; align-self: center; font-size: 11px; color: #888; }
+.nd-era-group { border-top: 1px solid #262626; padding: 4px 0; }
+.nd-era-group:first-child { border-top: 0; }
+.nd-era-header { cursor: pointer; color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0; }
+.nd-prog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; padding: 2px 0 6px; }
+.nd-prog-row { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.3; color: #ddd; }
+.nd-diplo-layout { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
+.nd-diplo-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.nd-diplo-nation {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 6px 8px; border-radius: 4px; border: 1px solid transparent; cursor: pointer;
+  background: #222; font-size: 11px; color: #ddd; text-align: left;
+}
+.nd-diplo-nation:hover { border-color: #666; }
+.nd-diplo-nation.active { border-color: #7bbcff; background: #1c2733; }
+.nd-diplo-badge { font-size: 9px; padding: 1px 5px; border-radius: 8px; flex-shrink: 0; }
+.nd-badge-peace { background: #234a30; color: #8fe0a8; }
+.nd-badge-war { background: #4a2323; color: #f0a0a0; }
+.nd-badge-alliance { background: #2a3b5a; color: #9ec0ff; }
+.nd-pair-panel { border: 1px solid #2c2c2c; border-radius: 6px; background: #161616; padding: 12px; }
+.nd-pair-empty { color: #777; font-size: 12px; }
+.nd-pair-title { font-size: 12px; color: #ddd; margin-bottom: 10px; }
+.nd-field-group { margin-bottom: 12px; }
+.nd-field-group > label.nd-group-label { display: block; font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+.nd-state-options { display: flex; gap: 6px; }
+.nd-state-options label {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 6px; border: 1px solid #3a3a3a; border-radius: 4px; cursor: pointer; font-size: 11px; color: #ddd;
+}
+.nd-state-options label:hover { border-color: #666; }
+.nd-check-row { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #ddd; padding: 3px 0; }
+.nd-slider-row { display: grid; grid-template-columns: 70px 1fr 36px; gap: 8px; align-items: center; font-size: 11px; color: #ddd; padding: 2px 0; }
+.nd-slider-row input[type="range"] { width: 100%; }
+.nd-slider-num { text-align: right; color: #cfe3ff; }
+.nd-prereq-note {
+  font-size: 10px; color: #f3ca72; background: #302615; border: 1px solid #6c5420;
+  border-radius: 3px; padding: 6px 8px; margin-top: 8px; line-height: 1.4;
+}
 </style>
 </head>
 <body>
@@ -316,14 +404,8 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
           <input id="nation-secondary-color" type="color">
         </label>
       </div>
-      <div class="tech-trigger-row disabled" id="nation-tech-row">
-        <span>Technologies <span class="tech-trigger-count" id="nation-tech-count">(0 selected)</span></span>
-        <button class="small-btn" id="manage-tech-btn" type="button" disabled>Manage…</button>
-      </div>
-      <div class="tech-trigger-row disabled" id="nation-culture-row">
-        <span>Cultures <span class="tech-trigger-count" id="nation-culture-count">(0 selected)</span></span>
-        <button class="small-btn" id="manage-culture-btn" type="button" disabled>Manage…</button>
-      </div>
+      <button class="small-btn" id="open-nation-details-btn" type="button" style="margin-top:8px">Nation Details…</button>
+      <div class="hint">Configure starting technologies, culture unlocks and diplomacy per nation.</div>
       <div class="section-title" style="margin-top:8px">Add Nation</div>
       <label class="field">
         Registry Nation
@@ -367,6 +449,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <span class="mode-icon" aria-hidden="true">&#128506;</span>
         <span>Move Background</span>
       </button>
+      <label style="font-size:12px; display:flex; align-items:center; gap:6px; margin:2px 0 4px;" title="Zoom the background so a region (e.g. Africa) fills the workspace; combine with Move Background to position it">
+        Bg Zoom: <input type="range" id="background-zoom" min="10" max="1200" step="5" value="100" style="flex:1">
+        <span id="background-zoom-label">1.0×</span>
+      </label>
+      <label class="field" style="margin:2px 0 4px">
+        Background Template
+        <select id="background-template-select" title="Switch or remove the editor background tracing image"></select>
+      </label>
       <button class="mode-btn" id="spray-mode-btn" type="button" aria-pressed="false" title="Paint only tiles that haven't been deliberately painted yet">
         <span class="mode-icon" aria-hidden="true">&#10052;</span>
         <span>Spray Unpainted Tiles</span>
@@ -425,6 +515,17 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       </label>
     </div>
 
+    <div class="section" id="workspace-size-section">
+      <div class="section-title">Workspace Size</div>
+      <div class="landing-custom-size">
+        <label class="field">Width<input id="workspace-width-input" type="number" min="1" step="1"></label>
+        <label class="field">Height<input id="workspace-height-input" type="number" min="1" step="1"></label>
+      </div>
+      <label class="field">Tile size<input id="workspace-tilesize-input" type="number" min="1" step="1"></label>
+      <button class="small-btn" id="resize-workspace-btn" type="button" title="Apply width / height / tile size and redraw the workspace">&#128259; Resize Workspace</button>
+      <div class="hint">Growing keeps existing tiles; shrinking discards tiles, cities, units and markers outside the new bounds.</div>
+    </div>
+
     <div class="toolbar-actions">
       <button id="magic-wand-btn" type="button" title="Auto-paint terrain from the background image">&#10024; Magic Wand (Auto Paint)</button>
       <button id="save-btn">Download scenario JSON</button>
@@ -443,6 +544,19 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   <span id="status-pos">—</span>
   <span id="status-tile">—</span>
   <span id="status-info">Loading...</span>
+</div>
+
+<div id="nation-details-overlay" aria-label="Nation Details">
+  <div class="nd-dialog">
+    <div class="nd-header">
+      <h2>Nation Details</h2>
+      <button id="nation-details-close-btn" type="button">Done</button>
+    </div>
+    <div class="nd-body">
+      <div class="nd-nation-list" id="nd-nation-list"></div>
+      <div class="nd-detail" id="nd-detail"></div>
+    </div>
+  </div>
 </div>
 
 <div id="magic-wand-panel" aria-label="Auto Paint Settings">
@@ -483,6 +597,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     <h1>Map Editor</h1>
 
     <div id="landing-home" class="landing-view">
+      <button id="landing-continue-btn" class="landing-option" type="button" style="display:none">
+        <span class="landing-option-title">Continue</span>
+        <span class="landing-option-sub" id="landing-continue-sub">Resume your last editing session</span>
+      </button>
       <button id="landing-edit-btn" class="landing-option" type="button">
         <span class="landing-option-title" id="landing-edit-title">Edit current scenario</span>
         <span class="landing-option-sub" id="landing-edit-sub">Loading…</span>
@@ -494,6 +612,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <button id="landing-create-btn" class="landing-option" type="button">
         <span class="landing-option-title">Create New</span>
         <span class="landing-option-sub">Start a blank scenario from scratch</span>
+      </button>
+      <button id="landing-exit-btn" class="landing-option" type="button">
+        <span class="landing-option-title">Exit</span>
+        <span class="landing-option-sub">Leave the editor and return to the game's start page</span>
       </button>
     </div>
 
@@ -611,6 +733,11 @@ let templateImage = null;
 // Editor-only world-space offset for the background tracing image, so it can be
 // nudged to line up with the tile grid. Never saved to the scenario.
 let templateOffsetX = 0, templateOffsetY = 0;
+// Editor-only scale for the background image (1 = stretched across the whole
+// map). Higher values zoom into a region so a sub-area (e.g. Africa) can fill
+// the workspace. Never saved to the scenario.
+let templateScale = 1;
+const MIN_TEMPLATE_SCALE = 0.1, MAX_TEMPLATE_SCALE = 12;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let paintedTiles = null; // 2D array [r][q] of booleans: has the user/scenario deliberately painted this tile? (editor-only, never saved)
@@ -636,7 +763,6 @@ let selectedEntity = null; // { kind: 'city'|'unit', index: number }
 let selectedMarkerIndex = null;
 let selectedNationId = null;
 let isPainting = false;
-let activeTechPopover = null;
 let sprayMode = false; // editor-only: when on, terrain paint only fills unpainted tiles and the map highlights coverage gaps
 
 const canvas = document.getElementById('canvas');
@@ -646,6 +772,11 @@ const resourceImages = new Map();
 const CUSTOM_SCENARIO_STORAGE_KEY = 'epoch.customScenarios';
 const CUSTOM_SCENARIO_ID_PREFIX = 'custom-';
 const CUSTOM_SCENARIO_NAME_MAX_LENGTH = 70;
+// Rolling autosave of the in-progress editing session (the "Continue" entry).
+const EDITOR_AUTOSAVE_STORAGE_KEY = 'epoch.editorAutosave';
+const EDITOR_AUTOSAVE_INTERVAL_MS = 4000;
+let lastEditorAutosaveJson = null;   // last payload written, to skip no-op writes
+let editorAutosaveQuotaWarned = false;
 
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
@@ -680,9 +811,14 @@ function startEditor(map, scenarioData, customEntry) {
   closeMagicWand(); // dismiss any open auto-paint preview from a previous scenario
 
   loadTemplateImage(scenario.meta?.template ?? null);
+  refreshBackgroundTemplateSelect();
+  refreshBackgroundZoomSlider();
 
   if (!Array.isArray(scenario.worldMarkers)) scenario.worldMarkers = [];
   normalizeNationColors();
+  migrateNationDetails();
+  nationDetailsSelectedId = null;
+  nationDetailsDiplomacyPartnerId = null;
   document.title = `Map Editor — ${currentMap.label}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
   updateScenarioScope();
@@ -693,6 +829,7 @@ function startEditor(map, scenarioData, customEntry) {
   mapH = scenario.map.height;
   tileSize = scenario.map.tileSize;
   hexSize = tileSize / 2;
+  refreshWorkspaceSizeInputs();
 
   // Build 2D q/r tile array. paintedTiles starts all-false: a blank scenario's
   // default ocean fill is "unpainted" until the user (or scenario data) sets it.
@@ -741,6 +878,10 @@ function startEditor(map, scenarioData, customEntry) {
   resetUndoHistory();
   resizeCanvas();
   render();
+  // Snapshot the freshly opened session immediately so "Continue" works even if
+  // the user closes the tab right away (force a write past the no-op guard).
+  lastEditorAutosaveJson = null;
+  writeEditorAutosave();
   document.getElementById('status-info').textContent = `${currentMap.label}: ${mapW}x${mapH} q/r hexes loaded`;
 }
 
@@ -754,6 +895,7 @@ function loadTemplateImage(name) {
   templateImage = null;
   templateOffsetX = 0;
   templateOffsetY = 0;
+  templateScale = 1;
   if (!templateName) return;
 
   const entry = templateManifest.templates.find(template => template.name === templateName);
@@ -772,6 +914,66 @@ function loadTemplateImage(name) {
   image.src = `/${entry.file}`;
   templateImage = image;
 }
+
+/** Sync the in-editor background template dropdown with the active template. */
+function refreshBackgroundTemplateSelect() {
+  const select = document.getElementById('background-template-select');
+  if (select) populateTemplateSelect(select, templateName ?? '');
+}
+
+/** Sync the background zoom slider + label with the current templateScale. */
+function refreshBackgroundZoomSlider() {
+  const slider = document.getElementById('background-zoom');
+  const label = document.getElementById('background-zoom-label');
+  if (slider) slider.value = String(Math.round(templateScale * 100));
+  if (label) label.textContent = `${templateScale.toFixed(templateScale < 1 ? 2 : 1)}×`;
+}
+
+/**
+ * Set the background image scale, anchoring the zoom on the current viewport
+ * center so the region under it stays put (then the user fine-tunes with Move
+ * Background). Updates the offset accordingly and re-renders.
+ */
+function setTemplateScale(newScale) {
+  const clamped = Math.max(MIN_TEMPLATE_SCALE, Math.min(MAX_TEMPLATE_SCALE, newScale));
+  if (worldBounds.width > 0 && worldBounds.height > 0) {
+    // World point at the viewport center, kept fixed across the scale change.
+    const cwx = camX + viewport.clientWidth / (2 * zoom);
+    const cwy = camY + viewport.clientHeight / (2 * zoom);
+    const u = (cwx - templateOffsetX) / (worldBounds.width * templateScale);
+    const v = (cwy - templateOffsetY) / (worldBounds.height * templateScale);
+    templateScale = clamped;
+    templateOffsetX = cwx - u * worldBounds.width * templateScale;
+    templateOffsetY = cwy - v * worldBounds.height * templateScale;
+  } else {
+    templateScale = clamped;
+  }
+  refreshBackgroundZoomSlider();
+  render();
+}
+
+document.getElementById('background-zoom').addEventListener('input', (event) => {
+  setTemplateScale((parseInt(event.target.value, 10) || 100) / 100);
+});
+
+// Switch or remove the background tracing image while the editor is open. The
+// choice is persisted on scenario.meta.template so saving keeps it (None clears
+// the field), mirroring the landing-page template prompt.
+document.getElementById('background-template-select').addEventListener('change', (event) => {
+  if (!scenario) return;
+  const value = event.target.value || null;
+  if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
+  if (value) scenario.meta.template = value;
+  else delete scenario.meta.template;
+
+  loadTemplateImage(value);
+  refreshBackgroundZoomSlider(); // loadTemplateImage resets scale to 1
+  // Removing the background can't leave "Move Background" mode active.
+  if (!templateImage && interactionMode === 'moveBackground') setInteractionMode('paint');
+  updateInteractionModeUI();
+  render();
+  setStatusInfo(value ? `Background template set to "${value}".` : 'Background template removed.');
+});
 
 // ─── Landing page ────────────────────────────────────────────────────────────
 
@@ -794,7 +996,9 @@ function refreshLandingEditButton() {
 
 function setupLanding() {
   refreshLandingEditButton();
+  refreshLandingContinueButton();
 
+  document.getElementById('landing-continue-btn').addEventListener('click', continueEditorAutosave);
   document.getElementById('landing-edit-btn').addEventListener('click', () => { if (currentMap) openMap(currentMap); });
   document.getElementById('landing-load-btn').addEventListener('click', () => {
     buildScenarioList();
@@ -804,6 +1008,9 @@ function setupLanding() {
     buildCreateNationList();
     buildCreateTemplateSelect();
     showLandingView('landing-create');
+  });
+  document.getElementById('landing-exit-btn').addEventListener('click', () => {
+    window.location.href = '/';
   });
   document.querySelectorAll('[data-landing-back]').forEach((btn) => {
     btn.addEventListener('click', () => showLandingView('landing-home'));
@@ -826,8 +1033,10 @@ function hideLanding() {
 
 /** Re-show the editor landing overlay on its home view (load / create / edit). */
 function showLanding() {
+  writeEditorAutosave(); // capture the latest state before leaving the editor
   closeMagicWand(); // dismiss any open auto-paint overlay before leaving the editor
   refreshLandingEditButton();
+  refreshLandingContinueButton();
   showLandingView('landing-home');
   const landing = document.getElementById('editor-landing');
   if (landing) landing.style.display = '';
@@ -1055,8 +1264,6 @@ function buildBlankScenario(name, nationIds, width, height, tileSizeValue, templ
       secondaryColor: registryNation?.secondaryColor || primaryColor,
       isHuman: index === 0,
       startTerritoryCenter: { q: 0, r: 0 },
-      researchedTechIds: [],
-      unlockedCultureNodeIds: [],
     };
   });
 
@@ -1071,6 +1278,9 @@ function buildBlankScenario(name, nationIds, width, height, tileSizeValue, templ
     cities: [],
     units: [],
     worldMarkers: [],
+    // Nation-specific setup (tech/culture) and pair diplomacy live here.
+    nationDetails: {},
+    initialDiplomacy: [],
   };
 }
 
@@ -1318,6 +1528,104 @@ function saveCustomScenarioEntry(entry) {
     CUSTOM_SCENARIO_STORAGE_KEY,
     JSON.stringify({ version: 1, entries: [entry, ...entries] }),
   );
+}
+
+// ─── Editor session autosave ("Continue") ───────────────────────────────────
+//
+// While a scenario is open, its current state is mirrored to localStorage so the
+// landing page can offer "Continue". Writes are skipped when nothing changed.
+
+/** Build the autosave payload from the live editing session, or null if idle. */
+function buildEditorAutosavePayload() {
+  if (!scenario || !currentMap) return null;
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    map: {
+      key: currentMap.key,
+      label: currentMap.label,
+      file: currentMap.file,
+      isCustom: !!currentMap.isCustom,
+      isNew: !!currentMap.isNew,
+    },
+    // The originating custom entry (if any) is re-resolved by id on Continue, so
+    // we only store its id rather than duplicating the scenario payload.
+    customEntryId: currentCustomEntry?.metadata?.id ?? null,
+    scenario: buildScenarioOutput(),
+  };
+}
+
+/** Persist the current session to localStorage (no-op when unchanged or idle). */
+function writeEditorAutosave() {
+  const payload = buildEditorAutosavePayload();
+  if (!payload) return;
+  let json;
+  try {
+    json = JSON.stringify(payload);
+  } catch (err) {
+    console.warn('Editor autosave: failed to serialize scenario.', err);
+    return;
+  }
+  if (json === lastEditorAutosaveJson) return;
+  try {
+    window.localStorage.setItem(EDITOR_AUTOSAVE_STORAGE_KEY, json);
+    lastEditorAutosaveJson = json;
+  } catch (err) {
+    if (!editorAutosaveQuotaWarned) {
+      console.warn('Editor autosave: could not write to localStorage (quota?).', err);
+      editorAutosaveQuotaWarned = true;
+    }
+  }
+}
+
+function loadEditorAutosave() {
+  try {
+    const raw = window.localStorage.getItem(EDITOR_AUTOSAVE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.scenario && parsed.map && isScenarioData(parsed.scenario)) return parsed;
+  } catch (err) {
+    console.warn('Editor autosave: failed to read saved session.', err);
+  }
+  return null;
+}
+
+/** Show/enable the landing "Continue" button when a saved session exists. */
+function refreshLandingContinueButton() {
+  const btn = document.getElementById('landing-continue-btn');
+  const sub = document.getElementById('landing-continue-sub');
+  if (!btn) return;
+  const autosave = loadEditorAutosave();
+  if (!autosave) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = '';
+  const label = autosave.map?.label || autosave.scenario?.meta?.name || 'Untitled scenario';
+  const when = Number.isFinite(autosave.savedAt) ? new Date(autosave.savedAt).toLocaleString() : '';
+  sub.textContent = `Resume “${label}”${when ? ` • saved ${when}` : ''}`;
+}
+
+/** Resume the most recent autosaved session. */
+function continueEditorAutosave() {
+  const autosave = loadEditorAutosave();
+  if (!autosave) {
+    refreshLandingContinueButton();
+    return;
+  }
+  const map = {
+    key: autosave.map?.key,
+    label: autosave.map?.label || autosave.scenario?.meta?.name || 'Untitled scenario',
+    file: autosave.map?.file || `${safeFilename(autosave.scenario?.meta?.name || 'scenario')}.json`,
+    isCustom: !!autosave.map?.isCustom,
+    isNew: !!autosave.map?.isNew,
+  };
+  // Re-link the originating custom entry (for "Save As" defaults/overwrite).
+  const customEntry = autosave.customEntryId
+    ? loadCustomScenarioEntries().find(entry => entry.metadata.id === autosave.customEntryId) ?? null
+    : null;
+  if (customEntry) map.customEntry = customEntry;
+  startEditor(map, structuredCloneCompat(autosave.scenario), customEntry);
 }
 
 function isCustomScenarioEntry(value) {
@@ -1694,7 +2002,6 @@ function buildNationList() {
 }
 
 function selectNation(nationId) {
-  closeTechPopover();
   selectedNationId = nationId;
   buildNationList();
   render();
@@ -1709,12 +2016,6 @@ function updateSelectedNationInfo() {
   const removeBtn = document.getElementById('remove-nation-btn');
   const primaryInput = document.getElementById('nation-primary-color');
   const secondaryInput = document.getElementById('nation-secondary-color');
-  const techRow = document.getElementById('nation-tech-row');
-  const cultureRow = document.getElementById('nation-culture-row');
-  const techBtn = document.getElementById('manage-tech-btn');
-  const cultureBtn = document.getElementById('manage-culture-btn');
-  const techCount = document.getElementById('nation-tech-count');
-  const cultureCount = document.getElementById('nation-culture-count');
   const nation = getSelectedNation();
   if (!nation) {
     el.textContent = 'No nation selected.';
@@ -1723,17 +2024,9 @@ function updateSelectedNationInfo() {
     secondaryInput.disabled = true;
     primaryInput.value = '#888888';
     secondaryInput.value = '#888888';
-    techRow.classList.add('disabled');
-    cultureRow.classList.add('disabled');
-    techBtn.disabled = true;
-    cultureBtn.disabled = true;
-    techCount.textContent = '(0 selected)';
-    cultureCount.textContent = '(0 selected)';
     return;
   }
 
-  const researchedTechIds = ensureNationIdArray(nation, 'researchedTechIds');
-  const unlockedCultureNodeIds = ensureNationIdArray(nation, 'unlockedCultureNodeIds');
   const center = nation.startTerritoryCenter;
   const registryNation = getRegistryNation(nation.id);
   el.textContent = `Selected: ${getNationDisplayName(nation)} (${nation.id})` +
@@ -1744,12 +2037,6 @@ function updateSelectedNationInfo() {
   secondaryInput.disabled = false;
   primaryInput.value = nation.color;
   secondaryInput.value = nation.secondaryColor || nation.color;
-  techRow.classList.remove('disabled');
-  cultureRow.classList.remove('disabled');
-  techBtn.disabled = false;
-  cultureBtn.disabled = false;
-  techCount.textContent = `(${researchedTechIds.length} selected)`;
-  cultureCount.textContent = `(${unlockedCultureNodeIds.length} selected)`;
 }
 
 function ensureNationIdArray(nation, fieldName) {
@@ -1774,165 +2061,478 @@ document.getElementById('nation-secondary-color').addEventListener('input', (eve
   render();
 });
 
-document.getElementById('manage-tech-btn').addEventListener('click', () => {
-  openProgressionPopover('technology', document.getElementById('nation-tech-row'));
-});
+// ─── Nation Details dialog ───────────────────────────────────────────────────
+//
+// Advanced per-nation scenario setup: starting technologies, starting culture
+// unlocks and initial diplomacy. Uses the engine's diplomacy model directly —
+// directional open borders / embassies, mutual trade, and trust/fear/hostility/
+// affinity on the same 0–100 scale and defaults the game uses.
 
-document.getElementById('manage-culture-btn').addEventListener('click', () => {
-  openProgressionPopover('culture', document.getElementById('nation-culture-row'));
-});
+// Engine prerequisites (reused — do not invent new rules):
+const EMBASSY_REQUIRED_TECH_ID = 'writing';       // both nations must know Writing
+const TRADE_REQUIRED_CULTURE_ID = 'foreign_trade'; // both nations must have Foreign Trade
+// Diplomacy memory defaults mirror DiplomacyManager (DEFAULT_TRUST etc.).
+const DIPLOMACY_MEMORY_DEFAULTS = { trust: 50, fear: 0, hostility: 0, affinity: 0 };
+const DIPLOMACY_MEMORY_FIELDS = [
+  { key: 'trust', label: 'Trust' },
+  { key: 'fear', label: 'Fear' },
+  { key: 'hostility', label: 'Hostility' },
+  { key: 'affinity', label: 'Affinity' },
+];
 
-function openProgressionPopover(kind, anchorEl) {
-  const nation = getSelectedNation();
-  if (!nation) return;
-  if (activeTechPopover?.kind === kind && activeTechPopover?.nationId === nation.id) {
-    closeTechPopover();
+let nationDetailsSelectedId = null;        // nation whose details are shown
+let nationDetailsDiplomacyPartnerId = null; // selected diplomacy pair partner
+
+function ndEl(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// ── Data-model helpers (nationDetails + initialDiplomacy) ────────────────────
+
+function ensureScenarioDetailContainers() {
+  if (!scenario.nationDetails || typeof scenario.nationDetails !== 'object') scenario.nationDetails = {};
+  if (!Array.isArray(scenario.initialDiplomacy)) scenario.initialDiplomacy = [];
+}
+
+function getNationDetails(nationId) {
+  ensureScenarioDetailContainers();
+  let details = scenario.nationDetails[nationId];
+  if (!details || typeof details !== 'object') {
+    details = { researchedTechIds: [], unlockedCultureNodeIds: [] };
+    scenario.nationDetails[nationId] = details;
+  }
+  details.researchedTechIds = normalizeIdList(details.researchedTechIds);
+  details.unlockedCultureNodeIds = normalizeIdList(details.unlockedCultureNodeIds);
+  return details;
+}
+
+function sortedPairIds(a, b) {
+  return a < b ? [a, b] : [b, a];
+}
+
+function findDiplomacyEntry(a, b) {
+  const [na, nb] = sortedPairIds(a, b);
+  return scenario.initialDiplomacy.find(entry => entry.nationA === na && entry.nationB === nb) || null;
+}
+
+function ensureDiplomacyEntry(a, b) {
+  ensureScenarioDetailContainers();
+  const [na, nb] = sortedPairIds(a, b);
+  let entry = findDiplomacyEntry(na, nb);
+  if (!entry) {
+    entry = {
+      nationA: na,
+      nationB: nb,
+      state: 'PEACE',
+      openBordersFromAToB: false,
+      openBordersFromBToA: false,
+      embassyFromAToB: false,
+      embassyFromBToA: false,
+      tradeRelations: false,
+      ...DIPLOMACY_MEMORY_DEFAULTS,
+    };
+    scenario.initialDiplomacy.push(entry);
+  }
+  return entry;
+}
+
+function isDefaultDiplomacyEntry(entry) {
+  return entry.state === 'PEACE'
+    && !entry.openBordersFromAToB && !entry.openBordersFromBToA
+    && !entry.embassyFromAToB && !entry.embassyFromBToA
+    && !entry.tradeRelations
+    && entry.trust === DIPLOMACY_MEMORY_DEFAULTS.trust
+    && entry.fear === DIPLOMACY_MEMORY_DEFAULTS.fear
+    && entry.hostility === DIPLOMACY_MEMORY_DEFAULTS.hostility
+    && entry.affinity === DIPLOMACY_MEMORY_DEFAULTS.affinity;
+}
+
+function clampMemoryValue(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+function techIdExists(id) {
+  return technologyManifest.technologies.some(tech => tech.id === id);
+}
+
+function cultureIdExists(id) {
+  return cultureTreeManifest.cultureNodes.some(node => node.id === id);
+}
+
+function ensureNationHasTech(nationId, techId) {
+  if (!techIdExists(techId)) return;
+  const details = getNationDetails(nationId);
+  if (!details.researchedTechIds.includes(techId)) details.researchedTechIds.push(techId);
+}
+
+function ensureNationHasCulture(nationId, nodeId) {
+  if (!cultureIdExists(nodeId)) return;
+  const details = getNationDetails(nationId);
+  if (!details.unlockedCultureNodeIds.includes(nodeId)) details.unlockedCultureNodeIds.push(nodeId);
+}
+
+/**
+ * Enforce the engine's diplomacy prerequisites on a pair entry, auto-unlocking
+ * the technologies / culture nodes the configured agreements require. Mirrors
+ * DiplomacyManager / AllianceManager validation so scenario creators never have
+ * to wire prerequisites by hand.
+ */
+function applyDiplomacyPrerequisites(entry) {
+  const { nationA, nationB } = entry;
+
+  if (entry.state === 'WAR') {
+    // War clears active agreements, exactly like declareWar() does.
+    entry.openBordersFromAToB = false;
+    entry.openBordersFromBToA = false;
+    entry.embassyFromAToB = false;
+    entry.embassyFromBToA = false;
+    entry.tradeRelations = false;
+  } else if (entry.state === 'ALLIANCE') {
+    // Alliances require mutual open borders, mutual embassies and trade.
+    entry.openBordersFromAToB = true;
+    entry.openBordersFromBToA = true;
+    entry.embassyFromAToB = true;
+    entry.embassyFromBToA = true;
+    entry.tradeRelations = true;
+  }
+
+  // Trade relations require mutual embassies (engine rule).
+  if (entry.tradeRelations) {
+    entry.embassyFromAToB = true;
+    entry.embassyFromBToA = true;
+  }
+  // Embassies require both nations to know Writing.
+  if (entry.embassyFromAToB || entry.embassyFromBToA) {
+    ensureNationHasTech(nationA, EMBASSY_REQUIRED_TECH_ID);
+    ensureNationHasTech(nationB, EMBASSY_REQUIRED_TECH_ID);
+  }
+  // Trade relations require both nations to have the Foreign Trade culture.
+  if (entry.tradeRelations) {
+    ensureNationHasCulture(nationA, TRADE_REQUIRED_CULTURE_ID);
+    ensureNationHasCulture(nationB, TRADE_REQUIRED_CULTURE_ID);
+  }
+}
+
+/**
+ * Migrate any legacy per-nation researchedTechIds/unlockedCultureNodeIds into
+ * nationDetails, then strip them from the nation objects so nationDetails is the
+ * single source of truth. Also prunes diplomacy entries for unknown nations.
+ */
+function migrateNationDetails() {
+  ensureScenarioDetailContainers();
+  for (const nation of scenario.nations) {
+    const details = getNationDetails(nation.id);
+    const legacyTech = normalizeIdList(nation.researchedTechIds);
+    const legacyCulture = normalizeIdList(nation.unlockedCultureNodeIds);
+    if (details.researchedTechIds.length === 0 && legacyTech.length > 0) details.researchedTechIds = legacyTech;
+    if (details.unlockedCultureNodeIds.length === 0 && legacyCulture.length > 0) details.unlockedCultureNodeIds = legacyCulture;
+    delete nation.researchedTechIds;
+    delete nation.unlockedCultureNodeIds;
+  }
+  const validIds = new Set(scenario.nations.map(nation => nation.id));
+  for (const id of Object.keys(scenario.nationDetails)) {
+    if (!validIds.has(id)) delete scenario.nationDetails[id];
+  }
+  scenario.initialDiplomacy = scenario.initialDiplomacy
+    .filter(entry => entry && validIds.has(entry.nationA) && validIds.has(entry.nationB) && entry.nationA !== entry.nationB)
+    .map((entry) => {
+      const [na, nb] = sortedPairIds(entry.nationA, entry.nationB);
+      const flipped = na !== entry.nationA; // sorting reversed A/B → swap directional grants
+      return {
+        nationA: na,
+        nationB: nb,
+        state: ['PEACE', 'WAR', 'ALLIANCE'].includes(entry.state) ? entry.state : 'PEACE',
+        openBordersFromAToB: !!(flipped ? entry.openBordersFromBToA : entry.openBordersFromAToB),
+        openBordersFromBToA: !!(flipped ? entry.openBordersFromAToB : entry.openBordersFromBToA),
+        embassyFromAToB: !!(flipped ? entry.embassyFromBToA : entry.embassyFromAToB),
+        embassyFromBToA: !!(flipped ? entry.embassyFromAToB : entry.embassyFromBToA),
+        tradeRelations: !!entry.tradeRelations,
+        trust: clampMemoryValue(entry.trust ?? DIPLOMACY_MEMORY_DEFAULTS.trust),
+        fear: clampMemoryValue(entry.fear ?? DIPLOMACY_MEMORY_DEFAULTS.fear),
+        hostility: clampMemoryValue(entry.hostility ?? DIPLOMACY_MEMORY_DEFAULTS.hostility),
+        affinity: clampMemoryValue(entry.affinity ?? DIPLOMACY_MEMORY_DEFAULTS.affinity),
+      };
+    });
+}
+
+// ── Dialog open / close ──────────────────────────────────────────────────────
+
+function openNationDetails() {
+  ensureScenarioDetailContainers();
+  if (!nationDetailsSelectedId || !scenario.nations.some(n => n.id === nationDetailsSelectedId)) {
+    nationDetailsSelectedId = selectedNationId ?? scenario.nations[0]?.id ?? null;
+  }
+  nationDetailsDiplomacyPartnerId = null;
+  document.getElementById('nation-details-overlay').classList.add('open');
+  renderNationDetailsList();
+  renderNationDetail();
+}
+
+function closeNationDetails() {
+  document.getElementById('nation-details-overlay').classList.remove('open');
+}
+
+function isNationDetailsOpen() {
+  return document.getElementById('nation-details-overlay').classList.contains('open');
+}
+
+// ── Left column: nation list ─────────────────────────────────────────────────
+
+function renderNationDetailsList() {
+  const list = document.getElementById('nd-nation-list');
+  list.innerHTML = '';
+  if (scenario.nations.length === 0) {
+    list.appendChild(ndEl('div', 'nd-detail-empty', 'No nations in this scenario.'));
     return;
   }
-  closeTechPopover();
+  for (const nation of scenario.nations) {
+    const row = ndEl('button', 'nd-nation-row' + (nation.id === nationDetailsSelectedId ? ' active' : ''));
+    row.type = 'button';
+    const swatch = ndEl('span', 'nd-nation-swatch');
+    swatch.style.background = getNationSwatchStyle(nation.color, nation.secondaryColor);
+    row.append(swatch, ndEl('span', undefined, getNationDisplayName(nation)));
+    row.addEventListener('click', () => {
+      nationDetailsSelectedId = nation.id;
+      nationDetailsDiplomacyPartnerId = null;
+      renderNationDetailsList();
+      renderNationDetail();
+    });
+    list.appendChild(row);
+  }
+}
 
+// ── Right column: selected nation detail ─────────────────────────────────────
+
+function renderNationDetail() {
+  const detail = document.getElementById('nd-detail');
+  detail.innerHTML = '';
+  const nation = scenario.nations.find(n => n.id === nationDetailsSelectedId);
+  if (!nation) {
+    detail.appendChild(ndEl('div', 'nd-detail-empty', 'Select a nation to configure its details.'));
+    return;
+  }
+  detail.append(
+    buildProgressionSection('technology'),
+    buildProgressionSection('culture'),
+    buildDiplomacySection(),
+  );
+}
+
+function buildProgressionSection(kind) {
   const config = kind === 'technology'
-    ? {
-        title: 'Technologies',
-        fieldName: 'researchedTechIds',
-        entries: technologyManifest.technologies,
-        emptyText: 'No technology manifest loaded.',
-      }
-    : {
-        title: 'Cultures',
-        fieldName: 'unlockedCultureNodeIds',
-        entries: cultureTreeManifest.cultureNodes,
-        emptyText: 'No culture tree manifest loaded.',
-      };
-  const selectedIds = ensureNationIdArray(nation, config.fieldName);
-  const section = document.getElementById('nation-section');
-  const sectionRect = section.getBoundingClientRect();
-  const anchorRect = anchorEl.getBoundingClientRect();
-  const popover = document.createElement('div');
-  popover.className = 'tech-popover';
-  popover.style.left = '8px';
-  popover.style.top = `${anchorRect.bottom - sectionRect.top + 4}px`;
+    ? { title: 'Technologies', field: 'researchedTechIds', entries: technologyManifest.technologies, empty: 'No technology manifest loaded.' }
+    : { title: 'Culture Unlocks', field: 'unlockedCultureNodeIds', entries: cultureTreeManifest.cultureNodes, empty: 'No culture tree manifest loaded.' };
+  const details = getNationDetails(nationDetailsSelectedId);
 
-  let activeEra = getGroupedManifestEntries(config.entries)[0]?.era ?? '';
-  const status = document.createElement('div');
-  status.className = 'tech-popover-status';
+  const section = ndEl('div', 'nd-section');
+  section.appendChild(ndEl('h3', undefined, config.title));
+  const body = ndEl('div', 'nd-section-body');
 
-  const header = document.createElement('div');
-  header.className = 'tech-popover-header';
-  const title = document.createElement('span');
-  title.textContent = config.title;
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.textContent = '×';
-  closeBtn.addEventListener('click', closeTechPopover);
-  header.append(title, closeBtn);
-
-  const body = document.createElement('div');
-  body.className = 'tech-popover-body';
   if (config.entries.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'hint';
-    empty.textContent = config.emptyText;
-    body.appendChild(empty);
-  } else {
-    for (const group of getGroupedManifestEntries(config.entries)) {
-      const details = document.createElement('details');
-      details.className = 'tech-popover-era-group';
+    body.appendChild(ndEl('div', 'nd-detail-empty', config.empty));
+    section.appendChild(body);
+    return section;
+  }
 
-      const summary = document.createElement('summary');
-      summary.className = 'tech-popover-era-header';
-      summary.textContent = formatEraName(group.era);
-      summary.addEventListener('click', () => {
-        activeEra = group.era;
-        updatePopoverStatus();
+  const toolbar = ndEl('div', 'nd-prog-toolbar');
+  const clearBtn = ndEl('button', undefined, 'Clear all');
+  clearBtn.type = 'button';
+  clearBtn.addEventListener('click', () => {
+    details[config.field] = [];
+    renderNationDetail();
+  });
+  const count = ndEl('span', 'nd-prog-count', `${details[config.field].length} selected`);
+  toolbar.append(clearBtn, count);
+  body.appendChild(toolbar);
+
+  for (const group of getGroupedManifestEntries(config.entries)) {
+    const groupEl = ndEl('details', 'nd-era-group');
+    groupEl.open = true;
+    const summary = ndEl('summary', 'nd-era-header', formatEraName(group.era));
+    groupEl.appendChild(summary);
+    const grid = ndEl('div', 'nd-prog-grid');
+    for (const entry of group.entries) {
+      const label = ndEl('label', 'nd-prog-row');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = details[config.field].includes(entry.id);
+      checkbox.addEventListener('change', () => {
+        const ids = getNationDetails(nationDetailsSelectedId)[config.field];
+        if (checkbox.checked && !ids.includes(entry.id)) ids.push(entry.id);
+        else if (!checkbox.checked) {
+          getNationDetails(nationDetailsSelectedId)[config.field] = ids.filter(id => id !== entry.id);
+        }
+        count.textContent = `${getNationDetails(nationDetailsSelectedId)[config.field].length} selected`;
       });
-      details.appendChild(summary);
-
-      for (const entry of group.entries) {
-        const label = document.createElement('label');
-        label.className = 'tech-popover-row';
-        label.dataset.entryId = entry.id;
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = selectedIds.includes(entry.id);
-        checkbox.addEventListener('change', () => {
-          activeEra = entry.era;
-          const currentIds = ensureNationIdArray(nation, config.fieldName);
-          if (checkbox.checked && !currentIds.includes(entry.id)) currentIds.push(entry.id);
-          if (!checkbox.checked) nation[config.fieldName] = currentIds.filter(id => id !== entry.id);
-          updateSelectedNationInfo();
-          updatePopoverStatus();
-        });
-        const name = document.createElement('span');
-        name.textContent = entry.name;
-        label.append(checkbox, name);
-        details.appendChild(label);
-      }
-
-      body.appendChild(details);
+      label.append(checkbox, ndEl('span', undefined, entry.name));
+      grid.appendChild(label);
     }
+    groupEl.appendChild(grid);
+    body.appendChild(groupEl);
   }
 
-  const footer = document.createElement('div');
-  footer.className = 'tech-popover-footer';
-  const selectEraBtn = document.createElement('button');
-  selectEraBtn.type = 'button';
-  selectEraBtn.textContent = 'Select all in era';
-  selectEraBtn.addEventListener('click', () => {
-    const idsInEra = config.entries.filter(entry => entry.era === activeEra).map(entry => entry.id);
-    nation[config.fieldName] = [...new Set([...ensureNationIdArray(nation, config.fieldName), ...idsInEra])];
-    syncPopoverCheckboxes(popover, nation[config.fieldName]);
-    updateSelectedNationInfo();
-    updatePopoverStatus();
-  });
-  const clearAllBtn = document.createElement('button');
-  clearAllBtn.type = 'button';
-  clearAllBtn.textContent = 'Clear all';
-  clearAllBtn.addEventListener('click', () => {
-    nation[config.fieldName] = [];
-    syncPopoverCheckboxes(popover, nation[config.fieldName]);
-    updateSelectedNationInfo();
-    updatePopoverStatus();
-  });
-  footer.append(selectEraBtn, clearAllBtn, status);
+  section.appendChild(body);
+  return section;
+}
 
-  function updatePopoverStatus() {
-    const count = ensureNationIdArray(nation, config.fieldName).length;
-    status.textContent = `${count} selected • Era: ${activeEra ? formatEraName(activeEra) : 'none'}`;
+function buildDiplomacySection() {
+  const section = ndEl('div', 'nd-section');
+  section.appendChild(ndEl('h3', undefined, 'Initial Diplomacy'));
+  const body = ndEl('div', 'nd-section-body');
+
+  const others = scenario.nations.filter(n => n.id !== nationDetailsSelectedId);
+  if (others.length === 0) {
+    body.appendChild(ndEl('div', 'nd-detail-empty', 'No other nations to configure diplomacy with.'));
+    section.appendChild(body);
+    return section;
   }
 
-  popover.append(header, body, footer);
-  section.appendChild(popover);
-  updatePopoverStatus();
+  const layout = ndEl('div', 'nd-diplo-layout');
+  const list = ndEl('div', 'nd-diplo-list');
+  for (const other of others) {
+    const entry = findDiplomacyEntry(nationDetailsSelectedId, other.id);
+    const state = entry?.state ?? 'PEACE';
+    const row = ndEl('button', 'nd-diplo-nation' + (other.id === nationDetailsDiplomacyPartnerId ? ' active' : ''));
+    row.type = 'button';
+    row.append(ndEl('span', undefined, getNationDisplayName(other)));
+    const badgeClass = state === 'WAR' ? 'nd-badge-war' : state === 'ALLIANCE' ? 'nd-badge-alliance' : 'nd-badge-peace';
+    row.append(ndEl('span', `nd-diplo-badge ${badgeClass}`, state));
+    row.addEventListener('click', () => {
+      nationDetailsDiplomacyPartnerId = other.id;
+      renderNationDetail();
+    });
+    list.appendChild(row);
+  }
+  layout.appendChild(list);
+  layout.appendChild(buildDiplomacyPairPanel());
+  body.appendChild(layout);
+  section.appendChild(body);
+  return section;
+}
 
-  const outsideHandler = (event) => {
-    if (!popover.contains(event.target) && !anchorEl.contains(event.target)) closeTechPopover();
+function buildDiplomacyPairPanel() {
+  const panel = ndEl('div', 'nd-pair-panel');
+  const partner = scenario.nations.find(n => n.id === nationDetailsDiplomacyPartnerId);
+  if (!partner) {
+    panel.appendChild(ndEl('div', 'nd-pair-empty', 'Select a nation to configure the relationship.'));
+    return panel;
+  }
+
+  const selfId = nationDetailsSelectedId;
+  const entry = ensureDiplomacyEntry(selfId, partner.id);
+  const nameA = getNationNameById(entry.nationA);
+  const nameB = getNationNameById(entry.nationB);
+
+  panel.appendChild(ndEl('div', 'nd-pair-title', `${nameA} ↔ ${nameB}`));
+
+  const refresh = () => {
+    applyDiplomacyPrerequisites(entry);
+    renderNationDetail();
   };
-  const keyHandler = (event) => {
-    if (event.key === 'Escape') closeTechPopover();
-  };
-  activeTechPopover = { element: popover, outsideHandler, keyHandler, kind, nationId: nation.id };
-  setTimeout(() => {
-    if (activeTechPopover?.element === popover) document.addEventListener('pointerdown', outsideHandler);
-  }, 0);
-  document.addEventListener('keydown', keyHandler);
+
+  // Diplomatic state (Peace / War / Alliance) — engine state plus editor alliance.
+  const stateGroup = ndEl('div', 'nd-field-group');
+  stateGroup.appendChild(ndEl('label', 'nd-group-label', 'Diplomatic State'));
+  const stateOptions = ndEl('div', 'nd-state-options');
+  for (const value of ['PEACE', 'WAR', 'ALLIANCE']) {
+    const label = ndEl('label');
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = `nd-state-${entry.nationA}-${entry.nationB}`;
+    radio.value = value;
+    radio.checked = entry.state === value;
+    radio.addEventListener('change', () => {
+      if (radio.checked) { entry.state = value; refresh(); }
+    });
+    label.append(radio, ndEl('span', undefined, value.charAt(0) + value.slice(1).toLowerCase()));
+    stateOptions.appendChild(label);
+  }
+  stateGroup.appendChild(stateOptions);
+  panel.appendChild(stateGroup);
+
+  const locked = entry.state !== 'PEACE'; // War/Alliance fully determine the agreements.
+
+  // Open Borders (directional).
+  const obGroup = ndEl('div', 'nd-field-group');
+  obGroup.appendChild(ndEl('label', 'nd-group-label', 'Open Borders'));
+  obGroup.appendChild(buildPairCheckbox(`Open Borders ${nameA} → ${nameB}`, entry.openBordersFromAToB, locked, (checked) => { entry.openBordersFromAToB = checked; refresh(); }));
+  obGroup.appendChild(buildPairCheckbox(`Open Borders ${nameB} → ${nameA}`, entry.openBordersFromBToA, locked, (checked) => { entry.openBordersFromBToA = checked; refresh(); }));
+  panel.appendChild(obGroup);
+
+  // Embassies (directional).
+  const embGroup = ndEl('div', 'nd-field-group');
+  embGroup.appendChild(ndEl('label', 'nd-group-label', 'Embassies'));
+  embGroup.appendChild(buildPairCheckbox(`Embassy ${nameA} → ${nameB}`, entry.embassyFromAToB, locked, (checked) => { entry.embassyFromAToB = checked; refresh(); }));
+  embGroup.appendChild(buildPairCheckbox(`Embassy ${nameB} → ${nameA}`, entry.embassyFromBToA, locked, (checked) => { entry.embassyFromBToA = checked; refresh(); }));
+  panel.appendChild(embGroup);
+
+  // Trade Relations (mutual).
+  const tradeGroup = ndEl('div', 'nd-field-group');
+  tradeGroup.appendChild(ndEl('label', 'nd-group-label', 'Trade Relations'));
+  tradeGroup.appendChild(buildPairCheckbox('Trade Relations (mutual)', entry.tradeRelations, locked, (checked) => { entry.tradeRelations = checked; refresh(); }));
+  panel.appendChild(tradeGroup);
+
+  // Relationship memory values (0–100, engine scale).
+  const memGroup = ndEl('div', 'nd-field-group');
+  memGroup.appendChild(ndEl('label', 'nd-group-label', 'Relationship Memory'));
+  for (const field of DIPLOMACY_MEMORY_FIELDS) {
+    const row = ndEl('div', 'nd-slider-row');
+    row.appendChild(ndEl('span', undefined, field.label));
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.step = '1';
+    slider.value = String(entry[field.key]);
+    const num = ndEl('span', 'nd-slider-num', String(entry[field.key]));
+    slider.addEventListener('input', () => {
+      entry[field.key] = clampMemoryValue(slider.value);
+      num.textContent = String(entry[field.key]);
+    });
+    row.append(slider, num);
+    memGroup.appendChild(row);
+  }
+  panel.appendChild(memGroup);
+
+  // Auto-prerequisite note.
+  const notes = [];
+  if (entry.state === 'ALLIANCE') notes.push('Alliance auto-enables mutual open borders, embassies and trade.');
+  if (entry.embassyFromAToB || entry.embassyFromBToA) notes.push('Embassies auto-grant both nations the Writing technology.');
+  if (entry.tradeRelations) notes.push('Trade Relations auto-grant Foreign Trade culture and mutual embassies.');
+  if (entry.state === 'WAR') notes.push('War clears any open borders, embassies and trade.');
+  if (notes.length > 0) {
+    panel.appendChild(ndEl('div', 'nd-prereq-note', notes.join(' ')));
+  }
+
+  return panel;
 }
 
-function closeTechPopover() {
-  if (!activeTechPopover) return;
-  document.removeEventListener('pointerdown', activeTechPopover.outsideHandler);
-  document.removeEventListener('keydown', activeTechPopover.keyHandler);
-  activeTechPopover.element.remove();
-  activeTechPopover = null;
+function buildPairCheckbox(labelText, checked, disabled, onChange) {
+  const label = ndEl('label', 'nd-check-row');
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = checked;
+  checkbox.disabled = disabled;
+  checkbox.addEventListener('change', () => onChange(checkbox.checked));
+  label.append(checkbox, ndEl('span', undefined, labelText));
+  return label;
 }
 
-function syncPopoverCheckboxes(popover, selectedIds) {
-  const selected = new Set(selectedIds);
-  popover.querySelectorAll('.tech-popover-row input[type="checkbox"]').forEach((checkbox) => {
-    const label = checkbox.closest('.tech-popover-row');
-    checkbox.checked = selected.has(label?.dataset.entryId);
-  });
+function getNationNameById(nationId) {
+  const nation = scenario.nations.find(n => n.id === nationId);
+  return nation ? getNationDisplayName(nation) : nationId;
 }
+
+document.getElementById('open-nation-details-btn').addEventListener('click', openNationDetails);
+document.getElementById('nation-details-close-btn').addEventListener('click', closeNationDetails);
+document.getElementById('nation-details-overlay').addEventListener('mousedown', (event) => {
+  if (event.target === event.currentTarget) closeNationDetails();
+});
 
 function getGroupedManifestEntries(entries) {
   const byEra = new Map();
@@ -1962,9 +2562,8 @@ document.getElementById('add-nation-btn').addEventListener('click', () => {
     secondaryColor: registryNation.secondaryColor,
     isHuman: false,
     startTerritoryCenter: { q: 0, r: 0 },
-    researchedTechIds: [],
-    unlockedCultureNodeIds: [],
   });
+  getNationDetails(registryNation.nationId); // ensure a (blank) details entry exists
   selectedNationId = registryNation.nationId;
   setStatusInfo(`Added nation ${registryNation.nationName}. Use Set Start Position next.`);
   buildNationList();
@@ -1984,17 +2583,26 @@ document.getElementById('remove-nation-btn').addEventListener('click', () => {
 function removeNation(nationId) {
   const nation = scenario.nations.find(n => n.id === nationId);
   if (!nation) return;
-  closeTechPopover();
 
   scenario.nations = scenario.nations.filter(n => n.id !== nationId);
   scenario.cities = scenario.cities.filter(c => c.nationId !== nationId);
   scenario.units = scenario.units.filter(u => u.nationId !== nationId);
+
+  // Drop the removed nation's per-nation setup and any diplomacy pairs with it.
+  ensureScenarioDetailContainers();
+  delete scenario.nationDetails[nationId];
+  scenario.initialDiplomacy = scenario.initialDiplomacy.filter(
+    entry => entry.nationA !== nationId && entry.nationB !== nationId,
+  );
 
   if (selectedEntity) {
     selectedEntity = null;
     updateEntityHighlights();
   }
   if (selectedNationId === nationId) selectedNationId = scenario.nations[0]?.id ?? null;
+  if (nationDetailsSelectedId === nationId) nationDetailsSelectedId = scenario.nations[0]?.id ?? null;
+  if (nationDetailsDiplomacyPartnerId === nationId) nationDetailsDiplomacyPartnerId = null;
+  if (isNationDetailsOpen()) { renderNationDetailsList(); renderNationDetail(); }
 
   setStatusInfo(`Removed ${getNationDisplayName(nation)} and its cities/units.`);
   buildNationList();
@@ -2124,6 +2732,8 @@ function updateInteractionModeUI() {
     moveBgBtn.setAttribute('aria-pressed', isMoveBgMode ? 'true' : 'false');
     moveBgBtn.disabled = !templateImage;
   }
+  const zoomSlider = document.getElementById('background-zoom');
+  if (zoomSlider) zoomSlider.disabled = !templateImage;
   if (!panModeBtn) return;
   const isPanMode = currentTool === 'paint' && interactionMode === 'pan';
   panModeBtn.classList.toggle('active', isPanMode);
@@ -2150,6 +2760,107 @@ const brushLabel = document.getElementById('brush-size-label');
 brushInput.addEventListener('input', () => {
   brushSize = parseInt(brushInput.value);
   brushLabel.textContent = brushSize;
+});
+
+// ─── Workspace size ──────────────────────────────────────────────────────────
+
+/** Reflect the live map dimensions in the Workspace Size inputs. */
+function refreshWorkspaceSizeInputs() {
+  const w = document.getElementById('workspace-width-input');
+  const h = document.getElementById('workspace-height-input');
+  const t = document.getElementById('workspace-tilesize-input');
+  if (w) w.value = String(mapW);
+  if (h) h.value = String(mapH);
+  if (t) t.value = String(tileSize);
+}
+
+/**
+ * Resize the editing workspace to new width / height / tile size. Existing tiles
+ * (terrain, resources, painted state) are preserved in the overlapping region;
+ * shrinking discards tiles, cities, units and markers that fall outside the new
+ * bounds. Tile size is purely visual scaling. Resets undo history and any open
+ * Magic Wand preview, since both are tied to the old grid dimensions.
+ */
+function resizeWorkspace(newWidth, newHeight, newTileSize) {
+  if (![newWidth, newHeight, newTileSize].every(v => Number.isFinite(v) && v >= 1)) {
+    setStatusInfo('Workspace size needs positive width, height and tile size.');
+    return;
+  }
+  newWidth = Math.floor(newWidth);
+  newHeight = Math.floor(newHeight);
+  newTileSize = Math.floor(newTileSize);
+
+  closeMagicWand(); // preview grid is sized to the old map
+
+  // Rebuild the grids, copying anything that still fits.
+  const nextTiles = [];
+  const nextResources = [];
+  const nextPainted = [];
+  for (let r = 0; r < newHeight; r++) {
+    const row = [], resourceRow = [], paintedRow = [];
+    for (let q = 0; q < newWidth; q++) {
+      const inOld = r < mapH && q < mapW;
+      row.push(inOld ? tiles[r][q] : 'ocean');
+      resourceRow.push(inOld ? tileResources[r][q] : undefined);
+      paintedRow.push(inOld ? paintedTiles[r][q] : false);
+    }
+    nextTiles.push(row);
+    nextResources.push(resourceRow);
+    nextPainted.push(paintedRow);
+  }
+  tiles = nextTiles;
+  tileResources = nextResources;
+  paintedTiles = nextPainted;
+
+  // Drop entities outside the new bounds.
+  const inBounds = (q, r) => q >= 0 && q < newWidth && r >= 0 && r < newHeight;
+  const beforeCounts = { cities: scenario.cities.length, units: scenario.units.length, markers: scenario.worldMarkers.length };
+  scenario.cities = scenario.cities.filter(c => inBounds(c.q, c.r));
+  scenario.units = scenario.units.filter(u => inBounds(u.q, u.r));
+  scenario.worldMarkers = scenario.worldMarkers.filter(m => inBounds(m.x, m.y));
+  const dropped = (beforeCounts.cities - scenario.cities.length)
+    + (beforeCounts.units - scenario.units.length)
+    + (beforeCounts.markers - scenario.worldMarkers.length);
+
+  mapW = newWidth;
+  mapH = newHeight;
+  tileSize = newTileSize;
+  hexSize = tileSize / 2;
+  scenario.map.width = mapW;
+  scenario.map.height = mapH;
+  scenario.map.tileSize = tileSize;
+
+  // Re-center the camera on the resized world, like opening a scenario does.
+  worldBounds = getWorldBounds();
+  const vw = viewport.clientWidth;
+  const vh = viewport.clientHeight;
+  zoom = Math.min(vw / worldBounds.width, vh / worldBounds.height);
+  camX = worldBounds.width / 2 - vw / (2 * zoom);
+  camY = worldBounds.height / 2 - vh / (2 * zoom);
+  clampCamera();
+
+  // Entity selection / index may now be stale.
+  selectedEntity = null;
+  selectedMarkerIndex = null;
+
+  resetUndoHistory();
+  refreshWorkspaceSizeInputs();
+  buildEntityLists();
+  buildMarkerList();
+  updateMarkerForm();
+  updateEntityHighlights();
+  resizeCanvas();
+  render();
+  setStatusInfo(`Workspace resized to ${mapW}×${mapH}, tile ${tileSize}px` + (dropped > 0 ? ` (${dropped} out-of-bounds item${dropped === 1 ? '' : 's'} removed)` : ''));
+}
+
+document.getElementById('resize-workspace-btn').addEventListener('click', () => {
+  if (!scenario) return;
+  resizeWorkspace(
+    parseInt(document.getElementById('workspace-width-input').value, 10),
+    parseInt(document.getElementById('workspace-height-input').value, 10),
+    parseInt(document.getElementById('workspace-tilesize-input').value, 10),
+  );
 });
 
 // ─── Coordinate helpers ─────────────────────────────────────────────────────
@@ -2929,10 +3640,14 @@ function sampleTileColor(q, r) {
   if (!magicWandSampler || worldBounds.width <= 0 || worldBounds.height <= 0) return null;
   const { data, width, height } = magicWandSampler;
   const center = tileToWorld(q, r);
-  // Account for any editor repositioning of the background image.
-  const cx = ((center.x - templateOffsetX) / worldBounds.width) * width;
-  const cy = ((center.y - templateOffsetY) / worldBounds.height) * height;
-  const boxPx = Math.max(1, Math.round((hexSize / worldBounds.width) * width * 0.5));
+  // Account for any editor repositioning + zoom of the background image. The
+  // image spans worldBounds * templateScale in world units, anchored at the
+  // offset, so map the tile's world center back into 0..1 image space.
+  const spanX = worldBounds.width * templateScale;
+  const spanY = worldBounds.height * templateScale;
+  const cx = ((center.x - templateOffsetX) / spanX) * width;
+  const cy = ((center.y - templateOffsetY) / spanY) * height;
+  const boxPx = Math.max(1, Math.round((hexSize / spanX) * width * 0.5));
   let rs = 0, gs = 0, bs = 0, n = 0;
   for (let dy = -boxPx; dy <= boxPx; dy += boxPx) {
     for (let dx = -boxPx; dx <= boxPx; dx += boxPx) {
@@ -3182,7 +3897,9 @@ function drawTemplateBackground() {
   if (worldBounds.width <= 0 || worldBounds.height <= 0) return false;
   const x = (templateOffsetX - camX) * zoom;
   const y = (templateOffsetY - camY) * zoom;
-  ctx.drawImage(templateImage, x, y, worldBounds.width * zoom, worldBounds.height * zoom);
+  // The image spans worldBounds * templateScale in world units; higher scale
+  // zooms into a region. camera zoom then maps world units to screen pixels.
+  ctx.drawImage(templateImage, x, y, worldBounds.width * templateScale * zoom, worldBounds.height * templateScale * zoom);
   return true;
 }
 
@@ -3655,13 +4372,37 @@ function buildScenarioOutput() {
     }
   }
 
+  ensureScenarioDetailContainers();
+  const validIds = new Set(scenario.nations.map(nation => nation.id));
+
+  // nationDetails: only emit nations that actually have starting tech/culture.
+  const nationDetails = {};
+  for (const nation of scenario.nations) {
+    const details = scenario.nationDetails[nation.id];
+    const techIds = normalizeIdList(details?.researchedTechIds);
+    const cultureIds = normalizeIdList(details?.unlockedCultureNodeIds);
+    if (techIds.length > 0 || cultureIds.length > 0) {
+      nationDetails[nation.id] = { researchedTechIds: techIds, unlockedCultureNodeIds: cultureIds };
+    }
+  }
+
+  // initialDiplomacy: only pairs among present nations that differ from defaults.
+  const initialDiplomacy = scenario.initialDiplomacy
+    .filter(entry => validIds.has(entry.nationA) && validIds.has(entry.nationB) && !isDefaultDiplomacyEntry(entry))
+    .map(entry => ({ ...entry }));
+
+  // Nations no longer carry per-nation tech/culture — that lives in nationDetails.
+  const nations = scenario.nations.map(({ researchedTechIds, unlockedCultureNodeIds, ...rest }) => rest);
+
   return {
     meta: scenario.meta,
     map: { width: mapW, height: mapH, tileSize, tiles: flatTiles },
-    nations: scenario.nations,
+    nations,
     cities: scenario.cities,
     units: scenario.units,
     worldMarkers: scenario.worldMarkers || [],
+    nationDetails,
+    initialDiplomacy,
   };
 }
 
@@ -3682,6 +4423,12 @@ function isTypingTarget(target) {
 }
 
 window.addEventListener('keydown', (e) => {
+  // While the Nation Details dialog is open, swallow editor shortcuts; Escape closes it.
+  if (isNationDetailsOpen()) {
+    if (e.key === 'Escape') { closeNationDetails(); e.preventDefault(); }
+    return;
+  }
+
   if (isTypingTarget(e.target)) return;
 
   // Undo: Ctrl/Cmd+Z · Redo: Ctrl/Cmd+Shift+Z
@@ -3774,6 +4521,11 @@ function setStatusInfo(message) {
 
 init();
 requestAnimationFrame(updateCameraFrame);
+
+// Keep the "Continue" session fresh: periodically while editing, and right
+// before the tab unloads. Writes are skipped when nothing changed.
+window.setInterval(writeEditorAutosave, EDITOR_AUTOSAVE_INTERVAL_MS);
+window.addEventListener('beforeunload', writeEditorAutosave);
 </script>
 </body>
 </html>

@@ -5178,6 +5178,20 @@ export class GameScene extends Phaser.Scene {
       }
       happinessSystem.recalculateAll();
       refreshOpenCityView();
+    } else {
+      // Fresh game from a scenario: apply the editor-configured starting
+      // diplomacy (wars, alliances, open borders, embassies, trade, memory
+      // values). Saves carry their own diplomacy and take the branch above.
+      const activeDiplomacy = scenario.initialDiplomacy.filter(
+        (entry) => activeSet.has(entry.nationA) && activeSet.has(entry.nationB),
+      );
+      SaveLoadService.applyScenarioDiplomacy(activeDiplomacy, {
+        diplomacyManager,
+        discoverySystem,
+        allianceManager,
+        turnManager,
+        nationName: (id) => nationManager.getNation(id)?.name ?? id,
+      });
     }
 
     const writeLatestAutosave = (): void => {

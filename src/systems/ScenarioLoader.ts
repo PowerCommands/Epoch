@@ -4,6 +4,7 @@ import type {
   ScenarioNation,
   ScenarioCity,
   ScenarioUnit,
+  ScenarioInitialDiplomacyEntry,
 } from '../types/scenario';
 import type { WorldMarker } from '../types/WorldMarker';
 
@@ -26,6 +27,8 @@ export interface ParsedScenario {
   cities: ScenarioCity[];
   units: ScenarioUnit[];
   worldMarkers: WorldMarker[];
+  /** Pre-configured diplomacy pairs, applied by the game when starting fresh. */
+  initialDiplomacy: ScenarioInitialDiplomacyEntry[];
 }
 
 /**
@@ -57,12 +60,27 @@ export class ScenarioLoader {
       }
     }
 
+    // Merge the editor's Nation Details setup onto each nation. Nation-specific
+    // tech/culture now lives in `nationDetails` (keyed by id); when present it
+    // is authoritative, otherwise the legacy per-nation fields are kept.
+    const nationDetails = json.nationDetails ?? {};
+    const nations = json.nations.map((nation) => {
+      const details = nationDetails[nation.id];
+      if (!details) return nation;
+      return {
+        ...nation,
+        researchedTechIds: [...(details.researchedTechIds ?? [])],
+        unlockedCultureNodeIds: [...(details.unlockedCultureNodeIds ?? [])],
+      };
+    });
+
     return {
       mapData: { width, height, tileSize, tiles },
-      nations: json.nations,
+      nations,
       cities: json.cities,
       units: json.units,
       worldMarkers: json.worldMarkers ?? [],
+      initialDiplomacy: json.initialDiplomacy ?? [],
     };
   }
 }

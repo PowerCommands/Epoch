@@ -55,6 +55,43 @@ export interface ScenarioUnit {
   r: number;
 }
 
+/**
+ * Per-nation starting setup configured in the editor's Nation Details dialog.
+ * Keyed by nation id in {@link ScenarioData.nationDetails}. Applied to the
+ * matching nation before gameplay begins. Nation-specific setup lives here and
+ * is NOT duplicated under each diplomacy pair.
+ */
+export interface ScenarioNationDetails {
+  researchedTechIds: string[];
+  unlockedCultureNodeIds: string[];
+}
+
+/**
+ * One pre-configured diplomatic relationship between a pair of nations. Stored
+ * once per pair following DiplomacyManager's A/B convention (nationA sorts
+ * before nationB alphabetically), so the directional grants below match the
+ * manager's `*FromAToB` / `*FromBToA` ordering exactly.
+ *
+ * `state` adds an editor-level "ALLIANCE" on top of the engine's PEACE/WAR. At
+ * load time an ALLIANCE entry sets the relation to PEACE and forms a real
+ * alliance through AllianceManager — there is no separate alliance state on the
+ * relation itself.
+ */
+export interface ScenarioInitialDiplomacyEntry {
+  nationA: string;
+  nationB: string;
+  state: 'PEACE' | 'WAR' | 'ALLIANCE';
+  openBordersFromAToB: boolean;
+  openBordersFromBToA: boolean;
+  embassyFromAToB: boolean;
+  embassyFromBToA: boolean;
+  tradeRelations: boolean;
+  trust: number;
+  fear: number;
+  hostility: number;
+  affinity: number;
+}
+
 export interface ScenarioData {
   meta: ScenarioMeta;
   map: ScenarioMap;
@@ -62,4 +99,8 @@ export interface ScenarioData {
   cities: ScenarioCity[];
   units: ScenarioUnit[];
   worldMarkers?: WorldMarker[];
+  /** Per-nation starting tech/culture setup, keyed by nation id. */
+  nationDetails: Record<string, ScenarioNationDetails>;
+  /** Pre-configured diplomacy, one entry per nation pair. */
+  initialDiplomacy: ScenarioInitialDiplomacyEntry[];
 }
