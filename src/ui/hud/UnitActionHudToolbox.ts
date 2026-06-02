@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { ScreenRect } from '../../types/screenRect';
 import type { UnitActionMode, UnitActionToolbox, UnitActionViewState } from '../UnitActionToolbox';
 import { HUD_ACTION_ORDER } from '../UnitActionToolbox';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
@@ -206,6 +207,22 @@ export class UnitActionHudToolbox {
       button.iconMask.fillCircle(centerX, centerY, ACTION_RADIUS);
       centerX += ACTION_SIZE + ACTION_SPACING;
     }
+  }
+
+  /**
+   * Screen-space rectangle of a visible action button (e.g. 'found', 'explore'),
+   * or null when that action is not currently shown for the selected unit.
+   */
+  getButtonRect(mode: UnitActionMode): ScreenRect | null {
+    const button = this.buttons.find((candidate) => candidate.background.visible && candidate.state.mode === mode);
+    if (!button) return null;
+    // Action backgrounds are arcs centered on their x/y.
+    return {
+      centerX: button.background.x,
+      centerY: button.background.y,
+      width: ACTION_SIZE,
+      height: ACTION_SIZE,
+    };
   }
 
   destroy(): void {

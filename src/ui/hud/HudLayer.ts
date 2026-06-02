@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import type { ScreenRect } from '../../types/screenRect';
+import type { UnitActionMode } from '../UnitActionToolbox';
+import type { HudResourceEntry } from './NationHudDataProvider';
 import type { DiplomaticProposal } from '../../systems/diplomacy/DiplomaticProposal';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import type { PolicySystem } from '../../systems/PolicySystem';
@@ -263,6 +266,30 @@ export class HudLayer {
    */
   getOwnedObjectAttacher(): <T extends Phaser.GameObjects.GameObject>(object: T) => T {
     return (object) => this.addOwned(object);
+  }
+
+  /**
+   * Screen-space rectangle of a resource entry in the top bar (e.g. 'gold'), or
+   * null when not shown. Exposed so overlays can anchor to live HUD positions.
+   */
+  getResourceEntryRect(key: HudResourceEntry['key']): ScreenRect | null {
+    return this.topResourceBar.getEntryRect(key);
+  }
+
+  /** Screen-space rectangle of a visible unit-action button, or null when not shown. */
+  getUnitActionButtonRect(mode: UnitActionMode): ScreenRect | null {
+    return this.unitActionHudToolbox.getButtonRect(mode);
+  }
+
+  /** Screen-space rectangle of the End Turn button. */
+  getEndTurnButtonRect(): ScreenRect {
+    const layout = this.endTurnButton.getLayout();
+    return {
+      centerX: layout.centerX,
+      centerY: layout.centerY,
+      width: layout.radius * 2,
+      height: layout.radius * 2,
+    };
   }
 
   shutdown(): void {

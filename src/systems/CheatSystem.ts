@@ -38,6 +38,13 @@ export interface GameContext {
   autoplaySystem: AutoplaySystem;
   revealMapResourcesTemporarily: () => void;
   setFogEnabled: (enabled: boolean) => void;
+  /**
+   * Force an alliance between the human player and `targetNationId`, running the
+   * same alliance-formation code path (manager, relation updates, event log, UI
+   * refresh) used when the human negotiates one through diplomacy. Returns
+   * 'exists' when they are already allied (no-op), otherwise 'created'.
+   */
+  formHumanAlliance: (targetNationId: string) => 'created' | 'exists';
 }
 
 export interface CheatCommand {
@@ -328,6 +335,45 @@ export class CheatSystem {
     });
 
     this.register({
+      name: 'alliance',
+      description: 'Ally the human player with one or more nations. Usage: "alliance <nation> [nation ...]". The human player is always included.',
+      execute: (args, context) => {
+        if (!context.humanNationId) return 'No human player';
+        if (args.length === 0) return 'Usage: alliance <nation> [nation ...]';
+
+        const lines: string[] = [];
+        const processedNationIds = new Set<string>();
+        for (const arg of args) {
+          const resolved = resolveNationId(arg, context);
+          if (!resolved.ok) continue; // ignore invalid / unknown nation names
+          if (resolved.nationId === context.humanNationId) continue; // skip the human player
+          if (processedNationIds.has(resolved.nationId)) continue; // no duplicate participants
+          processedNationIds.add(resolved.nationId);
+
+          const result = context.formHumanAlliance(resolved.nationId);
+          lines.push(result === 'created'
+            ? `Alliance created with ${resolved.label}.`
+            : `Alliance already exists with ${resolved.label}.`);
+        }
+
+        if (lines.length === 0) return 'No valid nations specified.';
+        return lines.join('\n');
+      },
+      complete: (args, context) => {
+        if (args.length === 0) return [];
+        // Suggest nation names for the argument being typed, excluding the human
+        // player and any nations already chosen in earlier arguments.
+        const excludedNationIds = new Set<string>();
+        if (context.humanNationId) excludedNationIds.add(context.humanNationId);
+        for (let index = 0; index < args.length - 1; index += 1) {
+          const earlier = resolveNationId(args[index], context);
+          if (earlier.ok) excludedNationIds.add(earlier.nationId);
+        }
+        return completeNation(args[args.length - 1], context, excludedNationIds);
+      },
+    });
+
+    this.register({
       name: 'map reveal',
       description: 'Temporarily reveal all natural resource icons until the next turn transition.',
       execute: (args, context) => {
@@ -569,6 +615,26 @@ export class CheatSystem {
   register(command: CheatCommand): void {
     this.commands.push(command);
     this.commands.sort((a, b) => b.name.length - a.name.length);
+  }
+
+  /** Name + description for every registered command (excluding `help`). */
+  getCommandSummaries(): { name: string; description: string }[] {
+    return this.commands
+      .filter((command) => normalizeCommand(command.name) !== 'help')
+      .map((command) => ({ name: command.name, description: command.description }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Enumerates the canonical cheat command set without a live game context, for
+   * documentation (e.g. the Tutorial view). The constructor only registers
+   * command metadata and never touches the context, so a no-op proxy context is
+   * safe purely for reading names/descriptions. Keeping this the single source
+   * of truth means the docs cannot drift from the real commands.
+   */
+  static getDocumentedCommands(): { name: string; description: string }[] {
+    const proxyContext = new Proxy({}, { get: () => () => undefined }) as unknown as GameContext;
+    return new CheatSystem(proxyContext).getCommandSummaries();
   }
 
   private findCommand(normalizedInput: string): CheatCommand | undefined {

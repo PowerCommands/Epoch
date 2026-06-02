@@ -45,6 +45,8 @@ import { UnitRenderer } from '../systems/UnitRenderer';
 import { MovementSystem } from '../systems/MovementSystem';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
 import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
+import { InvalidTileFeedbackRenderer } from '../renderers/InvalidTileFeedbackRenderer';
+import { canUnitEnterTile } from '../systems/UnitMovementRules';
 import { RangedPreviewRenderer } from '../systems/RangedPreviewRenderer';
 import { TurnOrderSystem } from '../systems/TurnOrderSystem';
 import { CombatSystem } from '../systems/CombatSystem';
@@ -128,6 +130,7 @@ import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
+import { TutorialView } from '../ui/TutorialView';
 import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
@@ -136,6 +139,9 @@ import { CORPORATIONS, getCorporationById } from '../data/corporations';
 import { getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
+import { TutorialWizard, type TutorialStep } from '../ui/hud/TutorialWizard';
+import { isTutorialDontShowAgain, setTutorialDontShowAgain } from '../systems/TutorialSettings';
+import type { ScreenRect } from '../types/screenRect';
 import { Tooltip } from '../ui/hud/Tooltip';
 import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
 import { UnitHoverDiagnosticHud } from '../ui/hud/UnitHoverDiagnosticHud';
@@ -209,6 +215,7 @@ export class GameScene extends Phaser.Scene {
   private cameraController!: CameraController;
   private diagnosticSystem!: DiagnosticSystem;
   private minimapHud: MinimapHud | null = null;
+  private tutorialWizard: TutorialWizard | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
   private leaderAudienceDialog: LeaderAudienceDialog | null = null;
   private isAutoplayActiveForVisuals: () => boolean = () => false;
@@ -221,6 +228,7 @@ export class GameScene extends Phaser.Scene {
     this.minimapHud = null;
     this.rightSidebarPanel = null;
     this.leaderAudienceDialog = null;
+    this.tutorialWizard = null;
     this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
 
@@ -453,6 +461,7 @@ export class GameScene extends Phaser.Scene {
     );
     const pathfindingSystem = new PathfindingSystem(mapData, unitManager, gridSystem, nationManager);
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
+    const invalidTileFeedbackRenderer = new InvalidTileFeedbackRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
     const cityBannerTooltip = new Tooltip(this, (obj) => { this.add.existing(obj); return obj; });
@@ -1527,13 +1536,19 @@ export class GameScene extends Phaser.Scene {
         turnOrderSystem.refreshActive();
       }
     });
-    selectionManager.onSelectionTarget((target, currentSelection) => {
+    selectionManager.onSelectionTarget((target, currentSelection, clickedTile) => {
       if (currentSelection?.kind !== 'unit') return false;
       if (freeSelectionMode) return false;
 
       const unit = currentSelection.unit;
-      const targetTile = this.getTileForSelectable(tileMap, target);
+      // Prefer the resolved selectable's tile, but fall back to the raw clicked
+      // tile so move orders can be issued into fog of war (unexplored tiles
+      // resolve to a null target). Fog never blocks issuing a move order.
+      const targetTile = this.getTileForSelectable(tileMap, target) ?? clickedTile;
       if (targetTile === null) return false;
+
+      const destTile = tileMap.getTileAt(targetTile.x, targetTile.y);
+      if (destTile === null) return false;
 
       const inReachable = reachableTiles.has(`${targetTile.x},${targetTile.y}`);
 
@@ -1544,6 +1559,16 @@ export class GameScene extends Phaser.Scene {
         reachableTiles = new Set<string>();
         pathPreviewRenderer.clear();
         unitBoardingManager.unboard(unit, targetTile.x, targetTile.y);
+        return true;
+      }
+
+      // Terrain validation: a destination the unit can never occupy (land unit →
+      // water without embarkation, naval unit → land) is fundamentally invalid.
+      // canUnitEnterTile encodes the embark rules, so embark-capable land units
+      // still pass and follow the existing embarkation logic. Flash red and
+      // consume the click without issuing an order.
+      if (!canUnitEnterTile(unit, destTile, nationManager.getNation(unit.ownerId))) {
+        invalidTileFeedbackRenderer.flash(targetTile.x, targetTile.y);
         return true;
       }
 
@@ -3966,6 +3991,23 @@ export class GameScene extends Phaser.Scene {
     );
     // Stack the lens toggle above the minimap panel.
     hudLayer.setMapLensBottomReserved(236);
+
+    // ─── New-game tutorial wizard ────────────────────────────────────────────
+    // New players get a guided overlay that points at their starting units and
+    // the core HUD controls. It auto-launches on every new game unless the
+    // player ticks "Don't show again"; the framework is generic so future
+    // scripted tutorials can reuse it by supplying their own step list.
+    this.setupTutorialWizard({
+      humanNationId,
+      unitManager,
+      tileMap,
+      hudLayer,
+      worldInputGate,
+      selectionManager,
+      focusUnit,
+      isFreshGame: data.savedState === undefined,
+    });
+
     rightPanel = new RightSidebarPanelDataProvider(
       productionSystem,
       cityManager,
@@ -4979,6 +5021,56 @@ export class GameScene extends Phaser.Scene {
         delete diagnosticsWindow.__epochDiagnostics;
       });
     }
+    // Force an alliance between the human player and a target nation, reusing the
+    // exact alliance-formation side effects of a successful negotiated alliance:
+    // AllianceManager state (create the alliance, or grow the human's existing
+    // one via addMember), DiplomacyManager relation updates, the event log, and
+    // a HUD/sidebar refresh. No cheat-only alliance storage or rules.
+    const formHumanAllianceForCheat = (targetNationId: string): 'created' | 'exists' => {
+      if (!humanNationId) return 'exists';
+      if (allianceManager.areAllied(humanNationId, targetNationId)) return 'exists';
+      // v1 rule: a nation can only belong to one alliance. If the target is
+      // already committed to a different alliance, make no change.
+      if (allianceManager.isInAlliance(targetNationId)) return 'exists';
+
+      const humanName = nationManager.getNation(humanNationId)?.name ?? humanNationId;
+      const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      const existingAlliance = allianceManager.getAllianceForNation(humanNationId);
+
+      if (!existingAlliance) {
+        const proposerLeaderName = getLeaderByNationId(humanNationId)?.name ?? humanName;
+        const alliance = allianceManager.createAlliance(
+          humanNationId,
+          targetNationId,
+          `${proposerLeaderName} Alliance`,
+          turnManager.getCurrentRound(),
+        );
+        if (!alliance) return 'exists';
+        diplomacyManager.recordAllianceFormed(humanNationId, targetNationId);
+        logManager.info({
+          nationIds: [humanNationId, targetNationId],
+          category: 'diplomacy',
+          message: `${humanName} and ${targetName} formed ${alliance.name}.`,
+        });
+      } else {
+        // Human already in an alliance: grow it, mirroring the council invite path.
+        const existingMembers = existingAlliance.memberNationIds.slice();
+        allianceManager.addMember(existingAlliance.id, targetNationId);
+        for (const memberId of existingMembers) {
+          diplomacyManager.recordAllianceFormed(targetNationId, memberId);
+        }
+        logManager.info({
+          nationIds: [targetNationId, ...existingMembers],
+          category: 'diplomacy',
+          message: `${targetName} joined ${existingAlliance.name}.`,
+        });
+      }
+
+      hudLayer?.refresh();
+      rightPanel?.refreshCurrent();
+      return 'created';
+    };
+
     const cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
@@ -5000,6 +5092,7 @@ export class GameScene extends Phaser.Scene {
         fogOfWarRenderer.setVisible(enabled);
         updateFog();
       },
+      formHumanAlliance: formHumanAllianceForCheat,
     }));
 
     turnManager.on('turnStart', () => {
@@ -5135,7 +5228,7 @@ export class GameScene extends Phaser.Scene {
       selectionManager.selectCity(city);
     });
 
-    selectionManager.onHoverChanged((hovered) => {
+    selectionManager.onHoverChanged((_hovered, hoveredTile) => {
       const selected = selectionManager.getSelected();
       // Free Selection Mode: stop the move-path line from following the pointer.
       // It resumes once a unit is activated again (free mode ends).
@@ -5150,7 +5243,10 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      const hoverTile = this.getTileForSelectable(tileMap, hovered);
+      // Use the fog-independent hovered tile so the move-path preview follows the
+      // pointer into unexplored territory (matching that move orders may target
+      // fog). For visible tiles this equals the resolved hover's tile.
+      const hoverTile = hoveredTile;
       if (unitActionToolbox.getMode() === 'ranged') {
         pathPreviewRenderer.clearPath();
         if (hoverTile === null || !rangedTargets.has(`${hoverTile.x},${hoverTile.y}`)) {
@@ -5307,6 +5403,7 @@ export class GameScene extends Phaser.Scene {
       naturalResourceRenderer.shutdown();
       tileBuildingRenderer.shutdown();
       tileImprovementOverlayRenderer.shutdown();
+      invalidTileFeedbackRenderer.shutdown();
       this.minimapHud?.shutdown();
       this.minimapHud = null;
       this.rightSidebarPanel?.shutdown();
@@ -5501,6 +5598,7 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Escape menu ─────────────────────────────────────────────────────────
 
+    const tutorialView = new TutorialView();
     const escapeMenu = new EscapeMenu(
       {
         onSave: () => {
@@ -5560,6 +5658,11 @@ export class GameScene extends Phaser.Scene {
           escapeMenu.close();
           this.scene.start('MainMenuScene');
         },
+        onTutorial: () => {
+          // Open the manual on top of the pause menu; leave the pause menu open
+          // underneath so closing the tutorial returns the player to it.
+          tutorialView.show();
+        },
       },
       { music: SetupMusicManager.getShared() },
     );
@@ -5572,6 +5675,7 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', onKeyEscape);
       escapeMenu.shutdown();
+      tutorialView.shutdown();
     });
 
     // Starta turordningen — sist, efter att alla lyssnare kopplats
@@ -5700,7 +5804,157 @@ export class GameScene extends Phaser.Scene {
     if (!this.isAutoplayActiveForVisuals()) {
       this.minimapHud?.update();
     }
+    // Re-anchor the tutorial overlay so it tracks units / HUD as the camera moves.
+    this.tutorialWizard?.update();
     this.diagnosticSystem.update();
+  }
+
+  /**
+   * Builds the first-time tutorial step list and auto-launches the wizard on new
+   * games. GameScene stays orchestration-only: every step supplies a closure
+   * that resolves its live screen-space target (units via the camera transform,
+   * HUD controls via HudLayer accessors) and optional selection side effects.
+   * The wizard itself owns no game knowledge, so the same framework can drive
+   * future tutorials with a different step list.
+   */
+  private setupTutorialWizard(deps: {
+    humanNationId: string | undefined;
+    unitManager: UnitManager;
+    tileMap: TileMap;
+    hudLayer: HudLayer;
+    worldInputGate: WorldInputGate;
+    selectionManager: SelectionManager;
+    focusUnit: (unit: Unit) => void;
+    isFreshGame: boolean;
+  }): void {
+    const { humanNationId, unitManager, tileMap, hudLayer, worldInputGate, selectionManager, focusUnit, isFreshGame } = deps;
+    if (humanNationId === undefined) return;
+
+    const humanUnits = unitManager.getUnitsByOwner(humanNationId);
+    const startingSettlerId = humanUnits.find((u) => u.unitType.canFound)?.id;
+    const startingScoutId = humanUnits.find(
+      (u) => u.unitType.category === 'recon' || u.unitType.category === 'naval_recon',
+    )?.id;
+
+    // Without a starting settler there's nothing meaningful to teach; bail out.
+    if (startingSettlerId === undefined) return;
+
+    const camera = this.cameras.main;
+    const unitTargetRect = (unitId: string | undefined): ScreenRect | null => {
+      if (unitId === undefined) return null;
+      const unit = unitManager.getUnit(unitId);
+      if (!unit) return null; // founded/dismissed — target no longer exists
+      const world = tileMap.tileToWorld(unit.tileX, unit.tileY);
+      const view = camera.worldView;
+      const centerX = (world.x - view.x) * camera.zoom;
+      const centerY = (world.y - view.y) * camera.zoom;
+      const size = Math.max(tileMap.getTileSize() * camera.zoom, 32);
+      // Drop the arrow when the unit is well outside the viewport.
+      if (
+        centerX < -size || centerY < -size
+        || centerX > this.scale.width + size || centerY > this.scale.height + size
+      ) {
+        return null;
+      }
+      return { centerX, centerY, width: size, height: size };
+    };
+
+    const selectUnitById = (unitId: string | undefined): void => {
+      if (unitId === undefined) return;
+      const unit = unitManager.getUnit(unitId);
+      if (!unit || unit.ownerId !== humanNationId) return;
+      // SelectionManager no-ops when re-selecting the already-selected unit, so
+      // onSelectionChanged (which wires the unit-action toolbox) would not fire
+      // and the action buttons could stay hidden. Clear first when the unit is
+      // already selected so focusUnit re-triggers selection and the Found City
+      // button reliably appears on the relevant step.
+      const current = selectionManager.getSelected();
+      if (current?.kind === 'unit' && current.unit.id === unit.id) {
+        selectionManager.clearSelection();
+      }
+      focusUnit(unit);
+    };
+
+    const steps: TutorialStep[] = [
+      {
+        title: 'Your Settler',
+        text: 'This is your Settler. Settlers are used to found new cities and begin expanding your civilization.',
+        targetType: 'unit',
+        placement: 'auto',
+        onEnter: () => selectUnitById(startingSettlerId),
+        resolveTarget: () => unitTargetRect(startingSettlerId),
+      },
+      {
+        title: 'Found City',
+        text: 'Units have different action buttons depending on what they are capable of doing. The Settler can found a city.',
+        targetType: 'ui-element',
+        placement: 'auto',
+        onEnter: () => selectUnitById(startingSettlerId),
+        resolveTarget: () => hudLayer.getUnitActionButtonRect('found'),
+      },
+      {
+        title: 'Your Scout',
+        text: 'Scouts are used to explore the world and discover cities, resources, natural wonders and other civilizations. Scouts can also be automated.',
+        targetType: 'unit',
+        placement: 'auto',
+        onEnter: () => selectUnitById(startingScoutId),
+        resolveTarget: () => unitTargetRect(startingScoutId),
+      },
+      {
+        title: 'Automated Scouting',
+        text: 'Automated scouting allows the Scout to explore on its own using the same exploration logic used by AI scouts.',
+        targetType: 'ui-element',
+        placement: 'auto',
+        onEnter: () => selectUnitById(startingScoutId),
+        resolveTarget: () => hudLayer.getUnitActionButtonRect('explore'),
+      },
+      {
+        title: 'Next Turn',
+        text: 'End your current turn and allow all other civilizations to act. You can also press Return / Enter to advance to the next turn.',
+        targetType: 'ui-element',
+        placement: 'auto',
+        resolveTarget: () => hudLayer.getEndTurnButtonRect(),
+      },
+      {
+        title: 'Gold',
+        text: 'Gold is used to support your civilization. Military units require maintenance, so running out of gold can become a serious problem.',
+        targetType: 'ui-element',
+        placement: 'below',
+        resolveTarget: () => hudLayer.getResourceEntryRect('gold'),
+      },
+      {
+        title: 'Unit Focus',
+        text: 'Clicking the active unit toggles unit focus on and off. When a unit is inactive you can freely inspect cities, tiles and other units without issuing movement orders.',
+        targetType: 'unit',
+        placement: 'auto',
+        onEnter: () => selectUnitById(startingSettlerId),
+        resolveTarget: () => unitTargetRect(startingSettlerId),
+      },
+    ];
+
+    this.tutorialWizard = new TutorialWizard(
+      this,
+      hudLayer.getOwnedObjectAttacher(),
+      worldInputGate,
+      {
+        // Close (any step): persist the player's "Don't show again" choice
+        // verbatim (only a ticked checkbox suppresses future runs), then return
+        // focus to the Settler so the player resumes with it selected and active.
+        onClose: (dontShowAgain) => {
+          setTutorialDontShowAgain(dontShowAgain);
+          selectUnitById(startingSettlerId);
+        },
+      },
+    );
+
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.tutorialWizard?.destroy();
+      this.tutorialWizard = null;
+    });
+
+    if (isFreshGame && !isTutorialDontShowAgain()) {
+      this.tutorialWizard.start(steps);
+    }
   }
 
   private findUnitPlacementTile(

@@ -16,6 +16,7 @@ import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import { computeGameDateFromMeta, formatGameDate } from '../systems/GameDate';
 import { bindMusicControls } from '../ui/MusicControls';
+import { TutorialView } from '../ui/TutorialView';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
 
@@ -53,6 +54,7 @@ export class MainMenuScene extends Phaser.Scene {
   private resizeHandler: (() => void) | null = null;
   private music: SetupMusicManager | null = null;
   private unbindMusicControls: (() => void) | null = null;
+  private tutorialView: TutorialView | null = null;
 
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -95,10 +97,17 @@ export class MainMenuScene extends Phaser.Scene {
 
     this.overlay?.remove();
     this.overlay = null;
+    this.tutorialView?.shutdown();
+    this.tutorialView = null;
     const style = document.getElementById('main-menu-styles');
     style?.remove();
     const diagnosticsWindow = window as Window & { __epochDiagnostics?: unknown };
     if (isDevBuild()) delete diagnosticsWindow.__epochDiagnostics;
+  }
+
+  private openTutorial(): void {
+    if (!this.tutorialView) this.tutorialView = new TutorialView();
+    this.tutorialView.show();
   }
 
   private syncOverlayBounds(): void {
@@ -132,6 +141,7 @@ export class MainMenuScene extends Phaser.Scene {
             <button id="mm-new-game-btn" class="mm-menu-btn primary" type="button">New Game</button>
             <button id="mm-continue-btn" class="mm-menu-btn" type="button"${this.latestAutosave ? '' : ' hidden'}${this.getContinueButtonTitleAttribute()}>Continue</button>
             <button id="mm-load-btn" class="mm-menu-btn" type="button">Load Game</button>
+            <button id="mm-tutorial-btn" class="mm-menu-btn" type="button">Tutorial</button>
             <button id="mm-editor-btn" class="mm-menu-btn" type="button">Editor</button>
           </nav>
         </section>
@@ -476,6 +486,10 @@ export class MainMenuScene extends Phaser.Scene {
       const file = loadInput.files?.[0];
       if (!file) return;
       this.loadGame(file);
+    });
+
+    document.getElementById('mm-tutorial-btn')!.addEventListener('click', () => {
+      this.openTutorial();
     });
 
     document.getElementById('mm-editor-btn')!.addEventListener('click', () => {

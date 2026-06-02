@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { ScreenRect } from '../../types/screenRect';
 import type { HudResourceEntry } from './NationHudDataProvider';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
@@ -108,6 +109,29 @@ export class TopResourceBar {
       x += width + ENTRY_GAP;
     }
     this.refreshTooltip();
+  }
+
+  /**
+   * Screen-space rectangle of a visible resource entry (e.g. 'gold'), or null
+   * when that entry is not currently shown. Lets overlays anchor to the live
+   * laid-out position instead of recomputing it.
+   */
+  getEntryRect(key: HudResourceEntry['key']): ScreenRect | null {
+    for (let index = 0; index < this.entries.length; index += 1) {
+      const value = this.values[index];
+      const view = this.entries[index];
+      if (value?.key !== key || !view.background.visible) continue;
+      const width = view.background.displayWidth;
+      const height = view.background.displayHeight;
+      // Entry backgrounds use a (0,0) origin, so x/y is the top-left corner.
+      return {
+        centerX: view.background.x + width / 2,
+        centerY: view.background.y + height / 2,
+        width,
+        height,
+      };
+    }
+    return null;
   }
 
   destroy(): void {

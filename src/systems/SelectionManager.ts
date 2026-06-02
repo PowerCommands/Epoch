@@ -11,11 +11,25 @@ import type { Unit } from '../entities/Unit';
 import type { Tile } from '../types/map';
 
 type SelectionCallback = (selection: Selectable | null) => void;
+/**
+ * `clickedTile` is the fog-independent tile under the pointer (null only when
+ * off-map). It lets handlers (e.g. human move orders) act on the clicked
+ * coordinate even when fog of war hides what is there, so `target` is null.
+ */
 type SelectionTargetCallback = (
   target: Selectable | null,
   currentSelection: Selectable | null,
+  clickedTile: { x: number; y: number } | null,
 ) => boolean | void;
-type HoverCallback = (hovered: Selectable | null) => void;
+/**
+ * `hoveredTile` is the fog-independent tile under the pointer (null only when
+ * off-map). It tracks the pointer even across unexplored tiles, where `hovered`
+ * is null, so the move-path preview can follow the cursor into fog of war.
+ */
+type HoverCallback = (
+  hovered: Selectable | null,
+  hoveredTile: { x: number; y: number } | null,
+) => void;
 
 /**
  * SelectionManager hanterar hover- och selection-state för alla valbara
@@ -34,6 +48,10 @@ export class SelectionManager {
   private readonly unitManager: UnitManager;
 
   private hovered: Selectable | null = null;
+  // Fog-independent tile under the pointer, tracked separately from `hovered`
+  // (which is null over unexplored tiles) so previews can follow the cursor
+  // into fog of war.
+  private hoveredTile: { x: number; y: number } | null = null;
   private selected: Selectable | null = null;
 
   // Visual hint only: when Free Selection Mode is active the selected unit's
@@ -193,7 +211,7 @@ export class SelectionManager {
         // prevents world systems from processing pointer sequences claimed by HUD controls.
         if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
         const wp = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
-        this.setHover(this.resolve(wp.x, wp.y));
+        this.setHover(this.resolve(wp.x, wp.y), this.tileMap.worldToTile(wp.x, wp.y));
       },
     );
 
@@ -222,8 +240,11 @@ export class SelectionManager {
         }
 
         const target = this.resolve(wp.x, wp.y);
+        // Resolve the raw clicked tile independently of fog so move handlers can
+        // issue orders into unexplored territory (target is null there).
+        const clickedTile = this.tileMap.worldToTile(wp.x, wp.y);
 
-        if (this.notifySelectionTarget(target)) return;
+        if (this.notifySelectionTarget(target, clickedTile)) return;
 
         if (target === null) {
           this.setSelection(null);
@@ -237,12 +258,20 @@ export class SelectionManager {
     );
   }
 
-  private setHover(next: Selectable | null): void {
-    if (this.sameSelectable(this.hovered, next)) return;
+  private setHover(next: Selectable | null, nextTile: { x: number; y: number } | null): void {
+    const selectableChanged = !this.sameSelectable(this.hovered, next);
+    const tileChanged = this.hoveredTile?.x !== nextTile?.x || this.hoveredTile?.y !== nextTile?.y;
+    // Fire when either the resolved object OR the raw tile changes, so previews
+    // keep updating as the pointer moves between unexplored tiles (where the
+    // resolved hover stays null).
+    if (!selectableChanged && !tileChanged) return;
     this.hovered = next;
-    this.drawHover();
+    this.hoveredTile = nextTile;
+    // The white hover highlight only reflects the resolved object, so redraw it
+    // solely on selectable changes (it stays cleared over fog).
+    if (selectableChanged) this.drawHover();
     for (const cb of this.hoverCallbacks) {
-      cb(this.hovered);
+      cb(this.hovered, this.hoveredTile);
     }
   }
 
@@ -255,9 +284,12 @@ export class SelectionManager {
     }
   }
 
-  private notifySelectionTarget(target: Selectable | null): boolean {
+  private notifySelectionTarget(
+    target: Selectable | null,
+    clickedTile: { x: number; y: number } | null,
+  ): boolean {
     for (const cb of this.targetCallbacks) {
-      if (cb(target, this.selected) === true) return true;
+      if (cb(target, this.selected, clickedTile) === true) return true;
     }
     return false;
   }

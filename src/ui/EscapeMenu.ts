@@ -5,6 +5,7 @@ export interface EscapeMenuCallbacks {
   onSave: () => void;
   onLoad: (file: File) => void;
   onQuit: () => void;
+  onTutorial: () => void;
 }
 
 export interface EscapeMenuOptions {
@@ -123,6 +124,10 @@ export class EscapeMenu {
       this.clearError();
       this.fileInput.click();
     });
+    const tutorialBtn = makeButton('Tutorial', '#4a90d9', () => {
+      this.clearError();
+      this.callbacks.onTutorial();
+    });
     const quitBtn = makeButton('Quit', '#c44', () => {
       this.clearError();
       this.callbacks.onQuit();
@@ -131,6 +136,7 @@ export class EscapeMenu {
 
     buttonRow.appendChild(saveBtn);
     buttonRow.appendChild(loadBtn);
+    buttonRow.appendChild(tutorialBtn);
     buttonRow.appendChild(quitBtn);
     buttonRow.appendChild(resumeBtn);
     box.appendChild(buttonRow);
