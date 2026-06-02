@@ -37,6 +37,7 @@ import type { VisibilitySystem } from './VisibilitySystem';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
+import type { HistoricalTimelineService } from './HistoricalTimelineService';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -75,6 +76,7 @@ export interface SaveLoadContext {
   exileProtectionSystem?: ExileProtectionSystem;
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
+  historicalTimeline?: HistoricalTimelineService;
 }
 
 /**
@@ -119,6 +121,7 @@ export class SaveLoadService {
       exileProtectionSystem,
       worldMarkerSystem,
       foreignTroopViolationSystem,
+      historicalTimeline,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -346,6 +349,7 @@ export class SaveLoadService {
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
       worldMarkerClaims: worldMarkerSystem?.getClaimEntries(),
       foreignTroopViolationWarnings,
+      historicalTimeline: historicalTimeline?.serialize(),
     };
   }
 
@@ -450,6 +454,7 @@ export class SaveLoadService {
       context.visibilitySystem.restoreKnownCities(state.fogOfWar.knownCityIds ?? []);
     }
     context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
+    context.historicalTimeline?.restore(state.historicalTimeline);
     if (context.worldMarkerSystem) {
       context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());
       context.worldMarkerSystem.restoreDiscovery(state.worldMarkerDiscoveries ?? []);

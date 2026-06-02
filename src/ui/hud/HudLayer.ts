@@ -179,6 +179,11 @@ export class HudLayer {
     this.endTurnButton.setEnabled(enabled);
   }
 
+  /** Show/hide the rotating "AI is taking its turn" spinner on the End Turn button. */
+  setEndTurnBusy(busy: boolean): void {
+    this.endTurnButton.setBusy(busy);
+  }
+
   openResearchPanel(): void {
     this.culturePanel.setCollapsed(true);
     this.policyDialog.close();

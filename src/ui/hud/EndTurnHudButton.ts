@@ -9,6 +9,9 @@ const END_TURN_SIZE = 128;
 const END_TURN_RADIUS = END_TURN_SIZE / 2;
 const END_TURN_HIT_SIZE = 168;
 const HUD_MARGIN = 20;
+const SPINNER_RADIUS = END_TURN_RADIUS + 9;
+const SPINNER_ARC_DEG = 270; // leaves a gap so the rotation reads clearly
+const SPINNER_DURATION_MS = 1100;
 
 export class EndTurnHudButton {
   private readonly background: Phaser.GameObjects.Arc;
@@ -16,10 +19,13 @@ export class EndTurnHudButton {
   private readonly sprite: Phaser.GameObjects.Image;
   private readonly hitArea: Phaser.GameObjects.Zone;
   private readonly spriteMask: Phaser.GameObjects.Graphics;
+  private readonly spinner: Phaser.GameObjects.Graphics;
 
   private enabled = true;
   private hovered = false;
   private pressed = false;
+  private busy = false;
+  private spinTween: Phaser.Tweens.Tween | null = null;
   private clickHandler: (() => void) | null = null;
   private centerX = 0;
   private centerY = 0;
@@ -43,6 +49,14 @@ export class EndTurnHudButton {
       .setScrollFactor(0);
     this.spriteMask = new Phaser.GameObjects.Graphics(scene);
     this.sprite.setMask(this.spriteMask.createGeometryMask());
+
+    // A partial ring just outside the rim, rotated by an infinite tween to show
+    // the AI is taking its turn. Hidden while it is the player's turn.
+    this.spinner = addOwned(new Phaser.GameObjects.Graphics(scene))
+      .setDepth(DEPTH + 4)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.drawSpinner();
 
     this.hitArea = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, END_TURN_HIT_SIZE, END_TURN_HIT_SIZE))
       .setDepth(DEPTH + 3)
@@ -123,6 +137,31 @@ export class EndTurnHudButton {
     this.clickHandler = handler;
   }
 
+  /**
+   * Toggle the "AI is taking its turn" spinner. While busy, a ring around the
+   * button rotates continuously (an infinite Phaser tween); turning it off stops
+   * and hides it.
+   */
+  setBusy(busy: boolean): void {
+    if (this.busy === busy) return;
+    this.busy = busy;
+    this.spinTween?.remove();
+    this.spinTween = null;
+    this.spinner.angle = 0;
+    if (busy) {
+      this.spinner.setVisible(true);
+      this.spinTween = this.scene.tweens.add({
+        targets: this.spinner,
+        angle: 360,
+        duration: SPINNER_DURATION_MS,
+        repeat: -1,
+        ease: 'Linear',
+      });
+    } else {
+      this.spinner.setVisible(false);
+    }
+  }
+
   layout(viewportWidth: number, viewportHeight: number): void {
     const x = viewportWidth - HUD_MARGIN - END_TURN_RADIUS;
     const y = viewportHeight - HUD_MARGIN - END_TURN_RADIUS;
@@ -136,8 +175,19 @@ export class EndTurnHudButton {
     this.spriteMask.clear();
     this.spriteMask.fillStyle(0xffffff, 1);
     this.spriteMask.fillCircle(x, y, END_TURN_RADIUS);
+    // The spinner arc is drawn around its own origin, so it just needs centering;
+    // rotation is driven by the tween on `angle`.
+    this.spinner.setPosition(x, y);
 
     this.refreshVisualState();
+  }
+
+  private drawSpinner(): void {
+    this.spinner.clear();
+    this.spinner.lineStyle(5, 0xf4dfaa, 0.95);
+    this.spinner.beginPath();
+    this.spinner.arc(0, 0, SPINNER_RADIUS, 0, Phaser.Math.DegToRad(SPINNER_ARC_DEG), false);
+    this.spinner.strokePath();
   }
 
   getLayout(): { centerX: number; centerY: number; radius: number } {
@@ -149,6 +199,9 @@ export class EndTurnHudButton {
   }
 
   destroy(): void {
+    this.spinTween?.remove();
+    this.spinTween = null;
+    this.spinner.destroy();
     this.background.destroy();
     this.rim.destroy();
     this.sprite.clearMask(true);

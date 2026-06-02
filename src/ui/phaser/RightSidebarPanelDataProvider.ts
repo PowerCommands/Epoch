@@ -26,7 +26,7 @@ import type { AllianceProposalContext } from '../../types/alliance';
 import type { JointWarSystem } from '../../systems/diplomacy/JointWarSystem';
 import type { JointWarKind } from '../../types/jointWar';
 import type { DiscoverySystem } from '../../systems/DiscoverySystem';
-import type { EventLogSystem } from '../../systems/EventLogSystem';
+import type { HistoricalTimelineService } from '../../systems/HistoricalTimelineService';
 import type { EraSystem } from '../../systems/EraSystem';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import { formatPercent, formatHappinessStateLabel, luxuryResourceLabels } from '../happinessFormat';
@@ -83,6 +83,9 @@ type WonderPlacementRequestHandler = (city: City, wonderId: string) => BuildingP
 type WonderPlacementAvailabilityProvider = (city: City, wonderId: string) => boolean;
 type BuyProductionRequestHandler = (city: City, index: number) => void;
 
+/** Most recent timeline entries rendered in the History panel (older ones stay saved). */
+const TIMELINE_RENDER_LIMIT = 200;
+
 interface LeaderboardEntry {
   nationId: string;
   name: string;
@@ -105,7 +108,7 @@ export class RightSidebarPanelDataProvider {
   private militaryEvaluationSystem: AIMilitaryEvaluationSystem | null = null;
   private threatEvaluationSystem: AIMilitaryThreatEvaluationSystem | null = null;
   private discoverySystem: DiscoverySystem | null = null;
-  private eventLog: EventLogSystem | null = null;
+  private timelineService: HistoricalTimelineService | null = null;
   private researchSystem: ResearchSystem | null = null;
   private cultureSystem: CultureSystem | null = null;
   private wonderSystem: WonderSystem | null = null;
@@ -230,9 +233,9 @@ export class RightSidebarPanelDataProvider {
     this.discoverySystem = ds;
   }
 
-  setEventLog(log: EventLogSystem): void {
-    this.eventLog = log;
-    log.onChanged(() => this.notifyChanged());
+  setTimelineService(timeline: HistoricalTimelineService): void {
+    this.timelineService = timeline;
+    timeline.onChanged(() => this.notifyChanged());
   }
 
   setBuilderHintProvider(provider: BuilderHintProvider): void {
@@ -467,26 +470,40 @@ export class RightSidebarPanelDataProvider {
     return type;
   }
 
-  getLogContent(): RightSidebarContent {
-    const entries = this.eventLog?.getVisibleEntries() ?? [];
+  getTimelineContent(): RightSidebarContent {
+    const events = this.timelineService?.getEvents() ?? [];
+    if (events.length === 0) {
+      return {
+        title: 'History',
+        sections: [{ title: 'The History of the World So Far', rows: [textRow('History has yet to be written.', true)] }],
+      };
+    }
+
+    // Newest first; cap the rendered entries so very long games stay responsive
+    // (older entries remain stored and persist with the save).
+    const rows: RightSidebarRow[] = [];
+    const recent = events.slice(-TIMELINE_RENDER_LIMIT).reverse();
+    for (const event of recent) {
+      rows.push(textRow(`${event.dateLabel} (Round ${event.round})`, true));
+      rows.push(textRow(`${event.icon} ${event.text}`));
+    }
+    if (events.length > TIMELINE_RENDER_LIMIT) {
+      rows.push(textRow(`… ${events.length - TIMELINE_RENDER_LIMIT} earlier events`, true));
+    }
+
     return {
-      title: 'Log',
-      sections: [{
-        title: 'Recent Events',
-        rows: entries.length === 0
-          ? [textRow('No events yet.', true)]
-          : entries.slice().reverse().map((entry) => textRow(`T${entry.round}: ${entry.text}`)),
-      }],
+      title: 'History',
+      sections: [{ title: 'The History of the World So Far', rows }],
     };
   }
 
-  getVisibleLogText(): string {
-    const entries = this.eventLog?.getVisibleEntries() ?? [];
-    return entries
+  getTimelineText(): string {
+    const events = this.timelineService?.getEvents() ?? [];
+    return events
       .slice()
       .reverse()
-      .map((entry) => `T${entry.round}: ${entry.text}`)
-      .join('\n');
+      .map((event) => `${event.dateLabel} (Round ${event.round})\n${event.icon} ${event.text}`)
+      .join('\n\n');
   }
 
   private getEmptyDetailsContent(): RightSidebarContent {

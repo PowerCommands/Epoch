@@ -17,6 +17,7 @@ export const BASE_CITY_TRADE_CAPACITY = 1;
 
 export class TradeConnectionSystem {
   private readonly connections = new Map<string, TradeConnection>();
+  private readonly activatedListeners: ((connection: TradeConnection) => void)[] = [];
   private nextConnectionNumber = 1;
 
   constructor(
@@ -133,6 +134,13 @@ export class TradeConnectionSystem {
       `${nationName} activated trade connection ${cityAName} ↔ ${cityBName}.`,
       conn.nationAId,
     );
+
+    for (const cb of this.activatedListeners) cb(updated);
+  }
+
+  /** Notified when a trade connection finishes construction and becomes active. */
+  onConnectionActivated(listener: (connection: TradeConnection) => void): void {
+    this.activatedListeners.push(listener);
   }
 
   getActiveConnectionsBetweenNations(nationAId: string, nationBId: string): TradeConnection[] {

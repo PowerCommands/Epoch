@@ -91,6 +91,8 @@ import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreat
 import { createAILogFormatter } from '../systems/ai/AILogFormatter';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
+import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
+import { TimelinePanel } from '../ui/TimelinePanel';
 import { EraSystem } from '../systems/EraSystem';
 import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
@@ -360,6 +362,19 @@ export class GameScene extends Phaser.Scene {
     // 11. Turordning
     const turnManager = new TurnManager(nationManager, gameSpeed, scenarioJson.meta);
     unitManager.setCurrentRoundProvider(() => turnManager.getCurrentRound());
+
+    // World chronicle (History panel). Records major events as they happen and
+    // persists with the save. Subscriptions to game events are wired below once
+    // the source systems exist.
+    const historicalTimeline = new HistoricalTimelineService(
+      () => turnManager.getCurrentRound(),
+      () => turnManager.getGameDateLabel(),
+    );
+    const timelineNationName = (nationId: string): string =>
+      nationManager.getNation(nationId)?.name ?? nationId;
+    // Permanent right-side History panel (always present, collapsible).
+    const timelinePanel = new TimelinePanel(historicalTimeline);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => timelinePanel.shutdown());
 
     // 11b. Discovery system — tracks which nations have met each other
     const discoverySystem = new DiscoverySystem(
@@ -2081,6 +2096,9 @@ export class GameScene extends Phaser.Scene {
       // the camera stranded far out. Re-focus the active unit or capital using
       // the same routine as turn-start / the C key.
       onKeyCenter();
+      // Also close the Leader Details sidebar so the player returns straight to
+      // the game instead of being left on the leader's panel.
+      this.rightSidebarPanel?.collapse();
     };
 
     // Log discovery events, and refresh UI when a new nation becomes visible.
@@ -3993,6 +4011,7 @@ export class GameScene extends Phaser.Scene {
       onToggleMapLens: toggleMapLens,
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
+    hudLayer.setEndTurnBusy(!turnManager.getCurrentNation().isHuman);
     hudLayer.refresh();
     applyMapLensMode();
 
@@ -4064,6 +4083,9 @@ export class GameScene extends Phaser.Scene {
       unitUpkeepSystem,
     );
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
+    // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
+    // area as the permanent History panel, so hide History while it is open.
+    this.rightSidebarPanel.setOnExpandedChanged((expanded) => timelinePanel.setHidden(expanded));
     this.diagnosticSystem.subscribeVisibility((open) => {
       this.rightSidebarPanel?.setDiagnosticsEnabled(open);
     });
@@ -4086,7 +4108,113 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setResourceCitySearchSystem(resourceCitySearchSystem);
     rightPanel.setEraSystem(eraSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
-    rightPanel.setEventLog(eventLog);
+    // ─── Historical timeline: subscribe to existing game events ──────────────
+    foundCitySystem.onCityFounded((city) => {
+      const capital = city.isCapital || city.isResidenceCapital || city.isOriginalCapital;
+      historicalTimeline.record({
+        type: 'cityFounded',
+        icon: '🏠',
+        text: capital
+          ? `${timelineNationName(city.ownerId)} founded its capital ${city.name}`
+          : `${timelineNationName(city.ownerId)} founded ${city.name}`,
+        eventNationIds: [city.ownerId],
+      });
+    });
+    discoverySystem.onNationsMet((a, b) => {
+      historicalTimeline.record({
+        type: 'firstContact',
+        icon: '🧑‍🤝‍🧑',
+        text: `${timelineNationName(a)} met ${timelineNationName(b)}`,
+        eventNationIds: [a, b],
+      });
+    });
+    diplomacyManager.onWarDeclared((aggressorId, targetId) => {
+      // If the target was already at war with another nation, this reads as
+      // joining an existing war rather than starting a fresh one.
+      const targetAlreadyAtWar = nationManager.getAllNations().some((nation) =>
+        nation.id !== aggressorId && nation.id !== targetId
+        && diplomacyManager.getState(targetId, nation.id) === 'WAR');
+      historicalTimeline.record(targetAlreadyAtWar
+        ? {
+          type: 'joinedWar',
+          icon: '⚔',
+          text: `${timelineNationName(aggressorId)} joined the war against ${timelineNationName(targetId)}`,
+          eventNationIds: [aggressorId, targetId],
+        }
+        : {
+          type: 'warDeclared',
+          icon: '⚔',
+          text: `${timelineNationName(aggressorId)} declared war on ${timelineNationName(targetId)}`,
+          eventNationIds: [aggressorId, targetId],
+        });
+    });
+    diplomacyManager.onPeaceAccepted((a, b) => {
+      historicalTimeline.record({
+        type: 'peace',
+        icon: '🕊',
+        text: `${timelineNationName(a)} and ${timelineNationName(b)} signed peace`,
+        eventNationIds: [a, b],
+      });
+    });
+    diplomacyManager.onEmbassyEstablished((from, to) => {
+      historicalTimeline.record({
+        type: 'embassyEstablished',
+        icon: '🏛',
+        text: `${timelineNationName(from)} established an embassy in ${timelineNationName(to)}`,
+        eventNationIds: [from, to],
+      });
+    });
+    diplomacyManager.onTradeRelationsEstablished((a, b) => {
+      historicalTimeline.record({
+        type: 'tradeRelations',
+        icon: '💰',
+        text: `${timelineNationName(a)} and ${timelineNationName(b)} established trade relations`,
+        eventNationIds: [a, b],
+      });
+    });
+    diplomacyManager.onAllianceFormed((a, b) => {
+      historicalTimeline.record({
+        type: 'allianceFormed',
+        icon: '🤝',
+        text: `${timelineNationName(a)} and ${timelineNationName(b)} became allies`,
+        eventNationIds: [a, b],
+      });
+    });
+    combatSystem.onCityCombat((event) => {
+      if (!event.captured || !event.previousOwnerId) return;
+      historicalTimeline.record({
+        type: 'cityCaptured',
+        icon: '🏴',
+        text: `${timelineNationName(event.city.ownerId)} captured ${event.city.name} from ${timelineNationName(event.previousOwnerId)}`,
+        eventNationIds: [event.city.ownerId, event.previousOwnerId],
+      });
+    });
+    tradeConnectionSystem.onConnectionActivated((connection) => {
+      const cityAName = cityManager.getCity(connection.cityAId)?.name ?? connection.cityAId;
+      const cityBName = cityManager.getCity(connection.cityBId)?.name ?? connection.cityBId;
+      historicalTimeline.record({
+        type: 'tradeRouteCompleted',
+        icon: '🚚',
+        text: `Trade route completed between ${cityAName} and ${cityBName}`,
+        eventNationIds: [connection.nationAId, connection.nationBId],
+      });
+    });
+    wonderSystem.onWonderCompleted((state, wonderType) => {
+      historicalTimeline.record({
+        type: 'wonderBuilt',
+        icon: '🏛',
+        text: `${timelineNationName(state.ownerId)} completed ${wonderType.name}`,
+        eventNationIds: [state.ownerId],
+      });
+    });
+    corporationSystem?.onCorporationFounded((result) => {
+      historicalTimeline.record({
+        type: 'corporationFounded',
+        icon: '🏢',
+        text: `${timelineNationName(result.founded.founderNationId)} founded ${result.definition.name}`,
+        eventNationIds: [result.founded.founderNationId],
+      });
+    });
     rightPanel.setBuilderHintProvider((tile) => {
       if (!selectedBuilderForHints) return null;
       return builderSystem.getBuildPreview(selectedBuilderForHints, tile);
@@ -4543,8 +4671,12 @@ export class GameScene extends Phaser.Scene {
       if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
       productionSystem.enqueue(city.id, { kind: 'unit', unitType });
-      cityView.switchToQueueMode();
       rightPanel?.requestRefresh();
+      if (cityView.isAutoCloseEnabled()) {
+        closeOpenCityView();
+        return;
+      }
+      cityView.switchToQueueMode();
       refreshOpenCityView();
     });
     cityView.onQueueRemoveRequested((index) => {
@@ -4618,8 +4750,12 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       productionSystem.enqueue(city.id, { kind: 'corporation', corporationType });
-      cityView.switchToQueueMode();
       rightPanel?.requestRefresh();
+      if (cityView.isAutoCloseEnabled()) {
+        closeOpenCityView();
+        return;
+      }
+      cityView.switchToQueueMode();
       refreshOpenCityView();
     });
 
@@ -4635,6 +4771,7 @@ export class GameScene extends Phaser.Scene {
         const result = wonderPlacementSystem.selectTile(city, coord, mapData);
         if (result.status === 'reserved') {
           const wonderType = getWonderById(result.wonderId);
+          let enqueued = false;
           if (wonderType) {
             const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
               entry.item.kind === 'wonder' && entry.item.wonderType.id === result.wonderId
@@ -4645,12 +4782,19 @@ export class GameScene extends Phaser.Scene {
                 { kind: 'wonder', wonderType },
                 { placement: { tileX: result.coord.x, tileY: result.coord.y } },
               );
-              cityView.switchToQueueMode();
+              enqueued = true;
             }
           }
           cityView.hideTooltip();
-          refreshOpenCityView();
           rightPanel?.requestRefresh();
+          // Auto Close: a tile was successfully chosen for the wonder, so close
+          // the dialog (the same flow as adding a unit).
+          if (cityView.isAutoCloseEnabled()) {
+            closeOpenCityView();
+            return;
+          }
+          if (enqueued) cityView.switchToQueueMode();
+          refreshOpenCityView();
           return;
         }
         if (result.status === 'invalid') return;
@@ -4659,16 +4803,24 @@ export class GameScene extends Phaser.Scene {
         const result = buildingPlacementSystem.selectTile(city, coord, mapData);
         if (result.status === 'reserved') {
           const buildingDef = getBuildingById(result.buildingId);
+          let enqueued = false;
           if (buildingDef && !isBuildingQueued(city.id, result.buildingId)) {
             productionSystem.enqueue(city.id, { kind: 'building', buildingType: buildingDef });
-            cityView.switchToQueueMode();
+            enqueued = true;
           }
           cityTerritorySystem.updateWorkedTiles(city, mapData);
           resourceSystem.recalculateForNation(city.ownerId);
           tileBuildingRenderer.refreshTile(result.coord.x, result.coord.y);
           cityView.hideTooltip();
-          refreshOpenCityView();
           rightPanel?.requestRefresh();
+          // Auto Close: a tile was successfully chosen for the building, so close
+          // the dialog (the same flow as adding a unit).
+          if (cityView.isAutoCloseEnabled()) {
+            closeOpenCityView();
+            return;
+          }
+          if (enqueued) cityView.switchToQueueMode();
+          refreshOpenCityView();
           return;
         }
         if (result.status === 'invalid') return;
@@ -5057,6 +5209,7 @@ export class GameScene extends Phaser.Scene {
           corporationSystem,
           worldMarkerSystem,
           foreignTroopViolationSystem,
+          historicalTimeline,
         }),
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -5143,6 +5296,8 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       const activeNation = turnManager.getCurrentNation();
       hudLayer?.setEndTurnEnabled(activeNation.isHuman);
+      // Spin the End Turn button while the AI is taking its turn.
+      hudLayer?.setEndTurnBusy(!activeNation.isHuman);
       const selectedCity = rightPanel?.getCurrentCity();
       if (selectedCity) {
         rightPanel!.refreshProductionQueue(selectedCity.id);
@@ -5544,6 +5699,7 @@ export class GameScene extends Phaser.Scene {
         corporationSystem,
         worldMarkerSystem,
         foreignTroopViolationSystem,
+        historicalTimeline,
       });
       updateFog();
       // Older saves only persist tile.improvementConstruction; recompute
@@ -5629,6 +5785,7 @@ export class GameScene extends Phaser.Scene {
           corporationSystem,
           worldMarkerSystem,
           foreignTroopViolationSystem,
+          historicalTimeline,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -5680,6 +5837,7 @@ export class GameScene extends Phaser.Scene {
             corporationSystem,
             worldMarkerSystem,
             foreignTroopViolationSystem,
+            historicalTimeline,
           });
           downloadSaveFile(state);
           escapeMenu.close();

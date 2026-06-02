@@ -93,6 +93,7 @@ type PeaceProposedListener = (proposal: PeaceProposal) => void;
 type PeaceAcceptedListener = (nationA: string, nationB: string) => void;
 type PeaceDeclinedListener = (nationA: string, nationB: string) => void;
 type WarDeclaredListener = (aggressorId: string, targetId: string) => void;
+type DiplomacyPairListener = (nationA: string, nationB: string) => void;
 type DiplomacyChangedListener = (nationA: string, nationB: string, relation: DiplomacyRelation) => void;
 
 /**
@@ -215,6 +216,10 @@ export class DiplomacyManager {
   private readonly acceptedListeners: PeaceAcceptedListener[] = [];
   private readonly declinedListeners: PeaceDeclinedListener[] = [];
   private readonly warDeclaredListeners: WarDeclaredListener[] = [];
+  private readonly embassyEstablishedListeners: DiplomacyPairListener[] = [];
+  private readonly tradeRelationsEstablishedListeners: DiplomacyPairListener[] = [];
+  private readonly allianceFormedListeners: DiplomacyPairListener[] = [];
+  private readonly jointWarAgreementListeners: DiplomacyPairListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
@@ -504,6 +509,7 @@ export class DiplomacyManager {
     next.lastEmbassyChangeTurn =
       this.turnManager?.getCurrentRound() ?? current.lastEmbassyChangeTurn ?? null;
     this.relations.set(key, next);
+    for (const cb of this.embassyEstablishedListeners) cb(fromNationId, toNationId);
     this.notifyChanged(fromNationId, toNationId);
     return true;
   }
@@ -538,6 +544,7 @@ export class DiplomacyManager {
         this.turnManager?.getCurrentRound() ?? current.lastTradeRelationsChangeTurn ?? null,
     };
     this.relations.set(key, next);
+    for (const cb of this.tradeRelationsEstablishedListeners) cb(nationAId, nationBId);
     this.notifyChanged(nationAId, nationBId);
     return true;
   }
@@ -580,6 +587,22 @@ export class DiplomacyManager {
 
   onWarDeclared(callback: WarDeclaredListener): void {
     this.warDeclaredListeners.push(callback);
+  }
+
+  onEmbassyEstablished(callback: DiplomacyPairListener): void {
+    this.embassyEstablishedListeners.push(callback);
+  }
+
+  onTradeRelationsEstablished(callback: DiplomacyPairListener): void {
+    this.tradeRelationsEstablishedListeners.push(callback);
+  }
+
+  onAllianceFormed(callback: DiplomacyPairListener): void {
+    this.allianceFormedListeners.push(callback);
+  }
+
+  onJointWarAgreement(callback: DiplomacyPairListener): void {
+    this.jointWarAgreementListeners.push(callback);
   }
 
   onDiplomacyChanged(callback: DiplomacyChangedListener): void {
@@ -652,6 +675,7 @@ export class DiplomacyManager {
    */
   recordAllianceFormed(a: string, b: string): void {
     this.memoryHook?.onFormAlliance(a, b);
+    for (const cb of this.allianceFormedListeners) cb(a, b);
     this.notifyChanged(a, b);
   }
 
@@ -662,6 +686,7 @@ export class DiplomacyManager {
    */
   recordJointWarAgreement(a: string, b: string): void {
     this.memoryHook?.onJointWarAgreement(a, b);
+    for (const cb of this.jointWarAgreementListeners) cb(a, b);
     this.notifyChanged(a, b);
   }
 

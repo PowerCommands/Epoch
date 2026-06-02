@@ -6,6 +6,7 @@ import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { TradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
+import type { HistoricalEvent } from './historicalTimeline';
 import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacySystem';
 import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
@@ -267,6 +268,7 @@ export interface SavedGameState {
   worldMarkerClaims?: WorldMarkerClaimEntry[];
   foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
   fogOfWar?: SavedFogOfWar;
+  historicalTimeline?: HistoricalEvent[];
 }
 
 /** Sparse list of tiles the human player has explored or seen. */

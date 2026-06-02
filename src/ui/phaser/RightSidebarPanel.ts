@@ -94,7 +94,6 @@ const LOG_COPY_BUTTON_HEIGHT = 40;
 const MODES: ModeDefinition[] = [
   { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
   { mode: 'leaderboard', icon: '🏆', label: 'Leaderboard', accentColor: 0xf4d06f },
-  { mode: 'log', icon: '📄', label: 'Log', accentColor: 0xc7d2fe },
   { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa },
 ];
 
@@ -171,6 +170,7 @@ export class RightSidebarPanel {
   ) => void;
 
   private activeMode: RightSidebarPanelMode | null = null;
+  private onExpandedChanged: ((expanded: boolean) => void) | null = null;
   private collapsed = true;
   private collapseHovered = false;
   private collapsePressed = false;
@@ -347,10 +347,16 @@ export class RightSidebarPanel {
     this.renderActiveContent();
     this.refreshVisibility();
     this.refreshButtonVisuals();
+    this.onExpandedChanged?.(true);
   }
 
   showDetails(): void {
     this.show('details');
+  }
+
+  /** Notified when the panel expands (true) or collapses (false). */
+  setOnExpandedChanged(callback: (expanded: boolean) => void): void {
+    this.onExpandedChanged = callback;
   }
 
   /** Returns the screen-space X of the leftmost action button's left edge. */
@@ -369,6 +375,7 @@ export class RightSidebarPanel {
     this.destroyContentObjects();
     this.refreshVisibility();
     this.refreshButtonVisuals();
+    this.onExpandedChanged?.(false);
   }
 
   setDiagnosticsEnabled(enabled: boolean): void {
@@ -611,8 +618,8 @@ export class RightSidebarPanel {
         return this.dataProvider.getDetailsContent(this.cityDetailsTab, this.leaderDetailsTab);
       case 'leaderboard':
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
-      case 'log':
-        return this.dataProvider.getLogContent();
+      case 'timeline':
+        return this.dataProvider.getTimelineContent();
       case 'diplomacy-graph':
         return { title: 'Diplomacy Graph', sections: [] };
     }
@@ -1733,7 +1740,7 @@ export class RightSidebarPanel {
   }
 
   private refreshLogCopyButtonVisibility(): void {
-    const visible = !this.collapsed && this.activeMode === 'log';
+    const visible = !this.collapsed && this.activeMode === 'timeline';
     this.logCopyButtonBackground.setVisible(visible);
     this.logCopyButtonLabel.setVisible(visible);
     this.logCopyButtonHitArea.setVisible(visible);
@@ -1756,9 +1763,9 @@ export class RightSidebarPanel {
   }
 
   private copyLogToClipboard(): void {
-    const fullLogText = this.dataProvider.getVisibleLogText();
+    const fullLogText = this.dataProvider.getTimelineText();
     if (!navigator.clipboard?.writeText) {
-      console.warn('[RightSidebarPanel] Clipboard API unavailable; log was not copied.');
+      console.warn('[RightSidebarPanel] Clipboard API unavailable; timeline was not copied.');
       return;
     }
     navigator.clipboard.writeText(fullLogText)

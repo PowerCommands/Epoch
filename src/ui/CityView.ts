@@ -101,6 +101,7 @@ export class CityView {
   private readonly modeButtonsEl: HTMLDivElement;
   private readonly productionModeButton: HTMLButtonElement;
   private readonly queueModeButton: HTMLButtonElement;
+  private readonly autoCloseCheckbox: HTMLInputElement;
   private readonly modeContentEl: HTMLDivElement;
   private readonly placementStatusEl: HTMLDivElement;
   private readonly tooltipEl: HTMLDivElement;
@@ -229,7 +230,21 @@ export class CityView {
 
     this.productionModeButton = this.createModeButton('production', 'Production');
     this.queueModeButton = this.createModeButton('queue', 'Queue');
-    this.modeButtonsEl.append(this.productionModeButton, this.queueModeButton);
+
+    // "Auto Close" sits to the right of the Queue button (pushed right via
+    // margin-left:auto). When checked (default), choosing an item that gets
+    // added to the queue closes the dialog for smoother flow; uncheck it to keep
+    // the dialog open and keep working on the queue.
+    const autoCloseLabel = document.createElement('label');
+    autoCloseLabel.className = 'city-view-auto-close';
+    this.autoCloseCheckbox = document.createElement('input');
+    this.autoCloseCheckbox.type = 'checkbox';
+    this.autoCloseCheckbox.checked = true;
+    const autoCloseText = document.createElement('span');
+    autoCloseText.textContent = 'Auto Close';
+    autoCloseLabel.append(this.autoCloseCheckbox, autoCloseText);
+
+    this.modeButtonsEl.append(this.productionModeButton, this.queueModeButton, autoCloseLabel);
 
     this.modeContentEl = document.createElement('div');
     this.modeContentEl.className = 'city-view-mode-content';
@@ -312,6 +327,11 @@ export class CityView {
 
   isOpenForCity(cityId: string): boolean {
     return this.open && this.currentCityId === cityId;
+  }
+
+  /** Whether "Auto Close" is ticked, so adding an item to the queue should close the dialog. */
+  isAutoCloseEnabled(): boolean {
+    return this.autoCloseCheckbox.checked;
   }
 
   getOpenCityId(): string | null {
