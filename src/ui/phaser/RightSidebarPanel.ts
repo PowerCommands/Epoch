@@ -106,6 +106,7 @@ const LEADERBOARD_CATEGORIES: Array<{
   { id: 'diplomacy', label: '🕊️ Diplomacy', accentColor: 0xa7f3d0 },
   { id: 'research', label: '🔬 Research', accentColor: 0x6ec6ff },
   { id: 'culture', label: '⭐ Culture', accentColor: 0xc084fc },
+  { id: 'cultural', label: '🏛️ Cultural', accentColor: 0xf4d06f },
 ];
 
 const CITY_DETAIL_TABS: Array<{

@@ -1619,6 +1619,7 @@ export class GameScene extends Phaser.Scene {
       (nationId, message) => logManager.info({ nationId, category: 'victory', message }),
       researchSystem,
       corporationSystem,
+      wonderSystem,
     );
 
     // 18. Stadsgrundningssystem
@@ -5430,7 +5431,9 @@ export class GameScene extends Phaser.Scene {
 
       const victoryText = type === 'science'
         ? `Science Victory\n${nationName} has completed its aerospace program.`
-        : `${nationName} has conquered all capitals!\nVICTORY`;
+        : type === 'cultural'
+          ? `Cultural Victory\n${nationName} commands the world's World Wonders.`
+          : `${nationName} has conquered all capitals!\nVICTORY`;
 
       this.add.text(width / 2, height / 2 - 30, victoryText, {
           fontSize: '32px',
@@ -5454,12 +5457,14 @@ export class GameScene extends Phaser.Scene {
       // Block further input on the overlay
       overlay.setInteractive();
 
-      // Human science victory: also show the modal popup
-      if (type === 'science' && !isAutoplayActive() && nationId === humanNationId) {
+      // Human science / cultural victory: also show the modal popup
+      if ((type === 'science' || type === 'cultural') && !isAutoplayActive() && nationId === humanNationId) {
         showDiplomacyModal({
-          title: 'Science Victory',
-          message: `${nationName} has completed its aerospace program.`,
-          accentColor: '#4af',
+          title: type === 'science' ? 'Science Victory' : 'Cultural Victory',
+          message: type === 'science'
+            ? `${nationName} has completed its aerospace program.`
+            : `${nationName} commands the world's World Wonders.`,
+          accentColor: type === 'science' ? '#4af' : '#c084fc',
           confirmLabel: 'Continue',
           cancelLabel: '',
           onConfirm: () => {},

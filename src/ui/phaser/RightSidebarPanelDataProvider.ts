@@ -59,6 +59,7 @@ import type { LeaderDefinition } from '../../types/leader';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
 import { getCitySpritePath, getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
+import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from '../../systems/CulturalVictory';
 import type {
   LeaderRelationRow,
   RightSidebarContent,
@@ -2054,7 +2055,58 @@ export class RightSidebarPanelDataProvider {
         return this.getLeaderboardSection('🔬 Research', this.getResearchLeaderboard());
       case 'culture':
         return this.getLeaderboardSection('⭐ Culture', this.getCultureLeaderboard());
+      case 'cultural':
+        return this.getCulturalVictorySection();
     }
+  }
+
+  /**
+   * Cultural Victory ranking: nations ranked by owned World Wonders, with a
+   * header showing the dynamically-calculated win threshold. The denominator is
+   * always the required count, so players see "owned / required".
+   */
+  private getCulturalVictorySection(): RightSidebarSection {
+    const required = getRequiredCulturalVictoryWonderCount();
+    const entries = this.getCulturalVictoryLeaderboard();
+    const headerRow = textRow(
+      `Cultural Victory — own ${required} of ${ALL_WONDERS.length} World Wonders to win.`,
+      true,
+    );
+    const rows: RightSidebarRow[] = entries.length === 0
+      ? [textRow('No leaderboard data available.', true)]
+      : entries.map((entry, index) => textRow(
+        `${index + 1}. ${entry.name}: ${entry.detail}`,
+        false,
+        false,
+        entry.color,
+      ));
+    return { title: '🏛️ World Wonders', rows: [headerRow, ...rows] };
+  }
+
+  private getCulturalVictoryLeaderboard(): LeaderboardEntry[] {
+    if (!this.wonderSystem) return [];
+    const required = getRequiredCulturalVictoryWonderCount();
+    return this.sortLeaderboard(this.nationManager.getAllNations().map((nation) => {
+      const owned = getOwnedWonderCount(nation.id, this.wonderSystem!, this.cityManager);
+      return {
+        nationId: nation.id,
+        name: nation.name,
+        color: nation.color,
+        score: owned,
+        detail: `${owned} / ${required} World Wonders`,
+        // Tie-break: accumulated culture (the same metric the Culture board uses).
+        secondaryScore: this.getCultureScore(nation.id),
+      };
+    }));
+  }
+
+  private getCultureScore(nationId: string): number {
+    const unlocked = this.cultureSystem?.getUnlockedCultureNodes(nationId).length ?? 0;
+    const current = this.cultureSystem?.getCurrentCultureNode(nationId);
+    const progress = current && this.cultureSystem
+      ? Math.round((this.cultureSystem.getCultureProgress(nationId) / Math.max(1, this.cultureSystem.getEffectiveCost(current.id))) * 100)
+      : 0;
+    return unlocked * 100 + progress;
   }
 
   private getDominationLeaderboard(): LeaderboardEntry[] {

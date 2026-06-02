@@ -4,8 +4,10 @@ import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { TurnManager } from './TurnManager';
+import type { WonderSystem } from './WonderSystem';
+import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from './CulturalVictory';
 
-export type VictoryType = 'domination' | 'science';
+export type VictoryType = 'domination' | 'science' | 'cultural';
 
 type VictoryListener = (nationId: string, type: VictoryType) => void;
 type VictoryLogger = (nationId: string, message: string) => void;
@@ -33,20 +35,30 @@ export interface ScienceVictoryProgress {
   researchedTechnologyCount: number;
 }
 
+export interface CulturalVictoryProgress {
+  nationId: string;
+  ownedWonders: number;
+  requiredWonders: number;
+}
+
 const AEROSPACE_PARTS_ID = 'aerospace_parts';
 const AEROSPACE_CORP_ID = 'aerospace_industries';
 const SCIENCE_PROGRESS_INTERVAL = 25;
+const CULTURAL_PROGRESS_INTERVAL = 25;
 
 /**
  * VictorySystem checks for win conditions after each turn end.
  * Domination: one nation owns every active nation's original capital.
  * Science: one nation produces enough aerospace_parts.
+ * Cultural: one nation owns at least 75% of all World Wonders (ownership is
+ * derived from current city ownership, so conquest transfers it).
  */
 export class VictorySystem {
   private readonly listeners: VictoryListener[] = [];
   private won = false;
   private readonly science: ScienceVictorySettings;
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
+  private lastCulturalProgressRound = -CULTURAL_PROGRESS_INTERVAL;
 
   constructor(
     private readonly cityManager: CityManager,
@@ -57,6 +69,7 @@ export class VictorySystem {
     private readonly log?: VictoryLogger,
     private readonly researchSystem?: ResearchSystem,
     private readonly corporationSystem?: CorporationSystem,
+    private readonly wonderSystem?: WonderSystem,
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
@@ -74,6 +87,14 @@ export class VictorySystem {
         return;
       }
 
+      const culturalWinner = this.checkCulturalVictory();
+      if (culturalWinner) {
+        this.won = true;
+        this.logCulturalVictory(culturalWinner, e.round);
+        for (const cb of this.listeners) cb(culturalWinner, 'cultural');
+        return;
+      }
+
       const dominationWinner = this.checkDominationVictory();
       if (dominationWinner) {
         this.won = true;
@@ -86,6 +107,13 @@ export class VictorySystem {
       if (e.round - this.lastProgressRound < SCIENCE_PROGRESS_INTERVAL) return;
       this.lastProgressRound = e.round;
       this.logScienceProgress(e.round);
+    });
+
+    turnManager.on('roundEnd', (e) => {
+      if (this.won || !this.wonderSystem) return;
+      if (e.round - this.lastCulturalProgressRound < CULTURAL_PROGRESS_INTERVAL) return;
+      this.lastCulturalProgressRound = e.round;
+      this.logCulturalProgress(e.round);
     });
   }
 
@@ -151,6 +179,35 @@ export class VictorySystem {
       });
   }
 
+  getCulturalVictoryProgress(nationId: string): CulturalVictoryProgress {
+    const ownedWonders = this.wonderSystem
+      ? getOwnedWonderCount(nationId, this.wonderSystem, this.cityManager)
+      : 0;
+    return {
+      nationId,
+      ownedWonders,
+      requiredWonders: getRequiredCulturalVictoryWonderCount(),
+    };
+  }
+
+  /** Ranked by owned World Wonders (descending). UI ranking applies its own culture tie-break. */
+  getCulturalVictoryRanking(): CulturalVictoryProgress[] {
+    return this.nationManager.getAllNations()
+      .map((n) => this.getCulturalVictoryProgress(n.id))
+      .sort((a, b) => b.ownedWonders - a.ownedWonders);
+  }
+
+  private checkCulturalVictory(): string | null {
+    if (!this.wonderSystem) return null;
+    const required = getRequiredCulturalVictoryWonderCount();
+    for (const nation of this.nationManager.getAllNations()) {
+      if (getOwnedWonderCount(nation.id, this.wonderSystem, this.cityManager) >= required) {
+        return nation.id;
+      }
+    }
+    return null;
+  }
+
   private checkDominationVictory(): string | null {
     const activeNations = this.nationManager.getAllNations();
     if (activeNations.length < 2) return null;
@@ -200,6 +257,27 @@ export class VictorySystem {
       const nation = this.nationManager.getNation(p.nationId);
       const name = nation?.name ?? p.nationId;
       lines.push(`- ${name}: ${p.aerospaceParts}/${req} parts, ${p.fulfilledMilestones}/4 milestones, science score ${p.scienceScore}`);
+    }
+    this.log(ranking[0].nationId, lines.join('\n'));
+  }
+
+  private logCulturalVictory(nationId: string, round: number): void {
+    if (!this.log) return;
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const { ownedWonders, requiredWonders } = this.getCulturalVictoryProgress(nationId);
+    this.log(nationId, `[r${round}] ${name} achieved Cultural Victory with ${ownedWonders}/${requiredWonders} World Wonders.`);
+  }
+
+  private logCulturalProgress(round: number): void {
+    if (!this.log) return;
+    const ranking = this.getCulturalVictoryRanking();
+    if (ranking.length === 0) return;
+
+    const required = getRequiredCulturalVictoryWonderCount();
+    const lines = [`[r${round}] Cultural Victory progress (own ${required} World Wonders to win):`];
+    for (const p of ranking) {
+      const name = this.nationManager.getNation(p.nationId)?.name ?? p.nationId;
+      lines.push(`- ${name}: ${p.ownedWonders}/${required} World Wonders`);
     }
     this.log(ranking[0].nationId, lines.join('\n'));
   }

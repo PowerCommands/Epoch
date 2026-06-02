@@ -69,6 +69,78 @@ export const ORACLE: WonderType = {
   scope: 'nation',
 };
 
+export const STONEHENGE: WonderType = {
+  id: 'stonehenge',
+  name: 'Stonehenge',
+  era: 'ancient',
+  productionCost: 180,
+  description: 'Ancient standing stones that strengthen early cultural identity.',
+  modifiers: { culturePerTurn: 2, happinessPerTurn: 1 },
+  requiredTechnologyId: 'calendar',
+  scope: 'nation',
+  placement: { landOnly: true },
+};
+
+export const ANGKOR_WAT: WonderType = {
+  id: 'angkor-wat',
+  name: 'Angkor Wat',
+  era: 'medieval',
+  productionCost: 300,
+  description: 'A vast temple complex that projects faith, order, and cultural authority.',
+  modifiers: { culturePerTurn: 2, foodPerTurn: 1, happinessPerTurn: 1 },
+  requiredTechnologyId: 'theology',
+  scope: 'nation',
+  placement: { landOnly: true },
+};
+
+export const HAGIA_SOPHIA: WonderType = {
+  id: 'hagia-sophia',
+  name: 'Hagia Sophia',
+  era: 'medieval',
+  productionCost: 320,
+  description: 'A monumental holy site where architecture, faith, and imperial prestige meet.',
+  modifiers: { culturePerTurn: 2, sciencePerTurn: 1, happinessPerTurn: 1 },
+  requiredTechnologyId: 'theology',
+  scope: 'nation',
+  placement: { landOnly: true },
+};
+
+export const MACHU_PICCHU: WonderType = {
+  id: 'machu-picchu',
+  name: 'Machu Picchu',
+  era: 'medieval',
+  productionCost: 325,
+  description: 'A mountain sanctuary that turns remote terrain into cultural and economic prestige.',
+  modifiers: { goldPerTurn: 2, culturePerTurn: 1, productionPerTurn: 1 },
+  requiredTechnologyId: 'currency',
+  scope: 'nation',
+  placement: { landOnly: true },
+};
+
+export const FORBIDDEN_CITY: WonderType = {
+  id: 'forbidden-city',
+  name: 'Forbidden City',
+  era: 'renaissance',
+  productionCost: 450,
+  description: 'An imperial palace complex that concentrates administration, ceremony, and authority.',
+  modifiers: { culturePerTurn: 2, goldPerTurn: 2, happinessPerTurn: 1 },
+  requiredTechnologyId: 'banking',
+  scope: 'nation',
+  placement: { landOnly: true },
+};
+
+export const TAJ_MAHAL: WonderType = {
+  id: 'taj-mahal',
+  name: 'Taj Mahal',
+  era: 'renaissance',
+  productionCost: 475,
+  description: 'A marble monument of dynastic memory, prestige, and cultural splendor.',
+  modifiers: { culturePerTurn: 3, happinessPerTurn: 2 },
+  requiredTechnologyId: 'printing_press',
+  scope: 'nation',
+  placement: { landOnly: true },
+};
+
 export const ALL_WONDERS: WonderType[] = [
   PYRAMIDS,
   GREAT_LIGHTHOUSE,
@@ -76,6 +148,12 @@ export const ALL_WONDERS: WonderType[] = [
   HANGING_GARDENS,
   GREAT_WALL,
   ORACLE,
+  STONEHENGE,
+  ANGKOR_WAT,
+  HAGIA_SOPHIA,
+  MACHU_PICCHU,
+  FORBIDDEN_CITY,
+  TAJ_MAHAL,
 ];
 
 export function getWonderById(id: string): WonderType | undefined {

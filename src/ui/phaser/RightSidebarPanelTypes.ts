@@ -4,7 +4,7 @@ import type { Tile } from '../../types/map';
 
 export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log' | 'diplomacy-graph';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
-export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture';
+export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture' | 'cultural';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';
 export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'trade' | 'deals';
 

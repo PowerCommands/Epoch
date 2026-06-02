@@ -102,11 +102,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Calendar',
     era: 'ancient',
     cost: 90,
-    description: 'Organizes seasons, festivals, and plantation harvests. Helps cities work luxury crops and build stronger stone industries.',
+    description: 'Organizes seasons, festivals, and plantation harvests. Helps cities work luxury crops and build stronger stone industries, and raises Stonehenge.',
     prerequisites: ['pottery'],
     leadsTo: ['philosophy'],
-    unlocks: [{ kind: 'building', id: 'stone_works' }, { kind: 'improvement', id: 'plantation' }],
-    // TODO: unlocks Stonehenge wonder.
+    unlocks: [{ kind: 'building', id: 'stone_works' }, { kind: 'improvement', id: 'plantation' }, { kind: 'wonder', id: 'stonehenge' }],
   },
   {
     id: 'writing',
@@ -266,11 +265,11 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Theology',
     era: 'medieval',
     cost: 320,
-    description: 'Organizes doctrine, sacred study, and cultivated retreat. Unlocks Gardens and leads toward medieval scholarship.',
+    description: 'Organizes doctrine, sacred study, and cultivated retreat. Unlocks Gardens, raises Angkor Wat and Hagia Sophia, and leads toward medieval scholarship.',
     prerequisites: ['drama_and_poetry', 'philosophy'],
     leadsTo: ['education', 'compass'],
-    unlocks: [{ kind: 'building', id: 'garden' }],
-    // TODO: unlocks Monastery, Angkor Wat and Hagia Sophia.
+    unlocks: [{ kind: 'building', id: 'garden' }, { kind: 'wonder', id: 'angkor-wat' }, { kind: 'wonder', id: 'hagia-sophia' }],
+    // TODO: unlocks Monastery.
   },
   {
     id: 'civil_service',
@@ -288,11 +287,11 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Currency',
     era: 'medieval',
     cost: 375,
-    description: 'Standardizes money, prices, and monetary exchange. Unlocks Mints for stronger city economies.',
+    description: 'Standardizes money, prices, and monetary exchange. Unlocks Mints for stronger city economies and raises Machu Picchu.',
     prerequisites: ['mathematics'],
     leadsTo: ['civil_service', 'guilds'],
-    unlocks: [{ kind: 'building', id: 'mint' }],
-    // TODO: unlocks National Treasury, Machu Picchu and Wealth conversion.
+    unlocks: [{ kind: 'building', id: 'mint' }, { kind: 'wonder', id: 'machu-picchu' }],
+    // TODO: unlocks National Treasury and Wealth conversion.
   },
   {
     id: 'engineering',
@@ -417,22 +416,21 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Banking',
     era: 'renaissance',
     cost: 980,
-    description: 'Develops credit, deposits, and larger financial networks. Unlocks Banks to deepen a city economy.',
+    description: 'Develops credit, deposits, and larger financial networks. Unlocks Banks to deepen a city economy and raises the Forbidden City.',
     prerequisites: ['education', 'chivalry'],
     leadsTo: ['economics', 'architecture'],
-    unlocks: [{ kind: 'building', id: 'bank' }],
-    // TODO: unlocks Forbidden Palace wonder.
+    unlocks: [{ kind: 'building', id: 'bank' }, { kind: 'wonder', id: 'forbidden-city' }],
   },
   {
     id: 'printing_press',
     name: 'Printing Press',
     era: 'renaissance',
     cost: 980,
-    description: 'Spreads records, news, and public knowledge at new speed. Unlocks the Zoo as part of expanding civic infrastructure.',
+    description: 'Spreads records, news, and public knowledge at new speed. Unlocks the Zoo as part of expanding civic infrastructure, and raises the Taj Mahal.',
     prerequisites: ['machinery', 'physics', 'chivalry'],
     leadsTo: ['economics', 'metallurgy'],
-    unlocks: [{ kind: 'building', id: 'zoo' }],
-    // TODO: unlocks Taj Mahal wonder and World Congress.
+    unlocks: [{ kind: 'building', id: 'zoo' }, { kind: 'wonder', id: 'taj-mahal' }],
+    // TODO: unlocks World Congress.
   },
   {
     id: 'gunpowder',
