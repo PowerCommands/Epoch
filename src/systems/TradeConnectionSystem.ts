@@ -8,6 +8,13 @@ export type TradeConnectionValidationResult =
   | { ok: true }
   | { ok: false; reason: string };
 
+/**
+ * Trade capacity every city has before any buildings, so early trade and
+ * diplomacy are reachable without first constructing commercial/port buildings.
+ * Building bonuses (Market, Harbor, Seaport, Stock Exchange) add on top.
+ */
+export const BASE_CITY_TRADE_CAPACITY = 1;
+
 export class TradeConnectionSystem {
   private readonly connections = new Map<string, TradeConnection>();
   private nextConnectionNumber = 1;
@@ -20,13 +27,16 @@ export class TradeConnectionSystem {
   ) {}
 
   getCityTradeCapacity(cityId: string): number {
+    if (!this.cityManager.getCity(cityId)) return 0;
+    // Base capacity for every city, plus any building modifiers on top.
+    let capacity = BASE_CITY_TRADE_CAPACITY;
     const buildings = this.cityManager.getBuildings(cityId);
-    if (!buildings) return 0;
-    let capacity = 0;
-    for (const id of buildings.getAll()) {
-      const def = getBuildingById(id);
-      if (def?.modifiers.tradeCapacity) {
-        capacity += def.modifiers.tradeCapacity;
+    if (buildings) {
+      for (const id of buildings.getAll()) {
+        const def = getBuildingById(id);
+        if (def?.modifiers.tradeCapacity) {
+          capacity += def.modifiers.tradeCapacity;
+        }
       }
     }
     return capacity;

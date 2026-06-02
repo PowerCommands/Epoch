@@ -15,8 +15,8 @@ import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import { computeGameDateFromMeta, formatGameDate } from '../systems/GameDate';
-import { bindMusicControls } from '../ui/MusicControls';
 import { TutorialView } from '../ui/TutorialView';
+import { SettingsDialog } from '../ui/SettingsDialog';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
 
@@ -48,13 +48,13 @@ export class MainMenuScene extends Phaser.Scene {
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
   private selectedGameSpeedId: GameSpeedId = DEFAULT_GAME_SPEED_ID;
-  private autofocusOnEndTurn = true;
   private latestAutosave: SavedGameState | null = null;
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
+  private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
   private music: SetupMusicManager | null = null;
-  private unbindMusicControls: (() => void) | null = null;
   private tutorialView: TutorialView | null = null;
+  private settingsDialog: SettingsDialog | null = null;
 
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -75,6 +75,18 @@ export class MainMenuScene extends Phaser.Scene {
     this.resizeHandler = () => this.syncOverlayBounds();
     window.addEventListener('resize', this.resizeHandler);
 
+    // Escape backs out of the Game Setup screen to the landing page. (When the
+    // tutorial overlay is open it intercepts Escape first, so it takes priority.)
+    this.keydownHandler = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const root = this.overlay?.querySelector('.mm-root') as HTMLDivElement | null;
+      if (root?.getAttribute('data-screen') === 'setup') {
+        event.preventDefault();
+        this.showLandingScreen();
+      }
+    };
+    window.addEventListener('keydown', this.keydownHandler);
+
     this.music = SetupMusicManager.getShared();
     this.music.playPlaylist('start');
 
@@ -88,17 +100,21 @@ export class MainMenuScene extends Phaser.Scene {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
+    if (this.keydownHandler) {
+      window.removeEventListener('keydown', this.keydownHandler);
+      this.keydownHandler = null;
+    }
 
     // Release the local reference but do NOT dispose — the current nation
     // playlist must keep looping after the scene transitions to GameScene.
-    this.unbindMusicControls?.();
-    this.unbindMusicControls = null;
     this.music = null;
 
     this.overlay?.remove();
     this.overlay = null;
     this.tutorialView?.shutdown();
     this.tutorialView = null;
+    this.settingsDialog?.shutdown();
+    this.settingsDialog = null;
     const style = document.getElementById('main-menu-styles');
     style?.remove();
     const diagnosticsWindow = window as Window & { __epochDiagnostics?: unknown };
@@ -142,6 +158,7 @@ export class MainMenuScene extends Phaser.Scene {
             <button id="mm-continue-btn" class="mm-menu-btn" type="button"${this.latestAutosave ? '' : ' hidden'}${this.getContinueButtonTitleAttribute()}>Continue</button>
             <button id="mm-load-btn" class="mm-menu-btn" type="button">Load Game</button>
             <button id="mm-tutorial-btn" class="mm-menu-btn" type="button">Tutorial</button>
+            <button id="mm-settings-btn" class="mm-menu-btn" type="button">Settings</button>
             <button id="mm-editor-btn" class="mm-menu-btn" type="button">Editor</button>
           </nav>
         </section>
@@ -213,11 +230,6 @@ export class MainMenuScene extends Phaser.Scene {
               ${gameSpeedOptions}
             </select>
 
-            <label class="mm-option-toggle">
-              <input id="mm-autofocus-toggle" type="checkbox" ${this.autofocusOnEndTurn ? 'checked' : ''} />
-              <span>Autofocus on end turn</span>
-            </label>
-
             <div class="mm-opponent-summary">
               <span class="mm-field-label">Opponents</span>
               <strong id="mm-opponent-count">0 enabled</strong>
@@ -225,19 +237,6 @@ export class MainMenuScene extends Phaser.Scene {
             </div>
 
             <div id="mm-opponent-list" class="mm-opponent-list"></div>
-
-            <div class="mm-audio-group">
-              <span class="mm-field-label">Audio</span>
-              <label class="mm-audio-toggle">
-                <input id="mm-music-toggle" type="checkbox" />
-                <span>Music</span>
-              </label>
-              <div class="mm-volume-row">
-                <span class="mm-audio-sublabel">Volume</span>
-                <input id="mm-music-volume" class="mm-audio-slider" type="range" min="0" max="1" step="0.05" />
-                <span id="mm-music-volume-value" class="mm-audio-value"></span>
-              </div>
-            </div>
 
             <button id="mm-change-nation-btn" class="mm-change-nation-btn" type="button" disabled>Change player nation</button>
           </aside>
@@ -445,9 +444,8 @@ export class MainMenuScene extends Phaser.Scene {
     gameSpeedSelect.addEventListener('change', () => {
       this.selectedGameSpeedId = toGameSpeedId(gameSpeedSelect.value);
     });
-    const autofocusToggle = document.getElementById('mm-autofocus-toggle') as HTMLInputElement;
-    autofocusToggle.addEventListener('change', () => {
-      this.autofocusOnEndTurn = autofocusToggle.checked;
+    document.getElementById('mm-settings-btn')!.addEventListener('click', () => {
+      this.openSettings();
     });
 
     document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
@@ -504,9 +502,14 @@ export class MainMenuScene extends Phaser.Scene {
       this.clearPlayerNation();
     });
 
-    this.wireMusicControls();
-
     this.onMapChanged(mapSelect.value);
+  }
+
+  private openSettings(): void {
+    if (!this.settingsDialog) {
+      this.settingsDialog = new SettingsDialog({ music: SetupMusicManager.getShared() });
+    }
+    this.settingsDialog.show();
   }
 
   private showSetupScreen(): void {
@@ -514,14 +517,9 @@ export class MainMenuScene extends Phaser.Scene {
     root?.setAttribute('data-screen', 'setup');
   }
 
-  private wireMusicControls(): void {
-    if (!this.music) return;
-
-    const toggle = document.getElementById('mm-music-toggle') as HTMLInputElement;
-    const slider = document.getElementById('mm-music-volume') as HTMLInputElement;
-    const valueLabel = document.getElementById('mm-music-volume-value') as HTMLSpanElement;
-
-    this.unbindMusicControls = bindMusicControls(this.music, { toggle, slider, valueLabel });
+  private showLandingScreen(): void {
+    const root = this.overlay?.querySelector('.mm-root') as HTMLDivElement | null;
+    root?.setAttribute('data-screen', 'landing');
   }
 
   private onMapChanged(mapKey: string): void {
@@ -795,7 +793,6 @@ export class MainMenuScene extends Phaser.Scene {
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
-      autofocusOnEndTurn: this.autofocusOnEndTurn,
       worldSeed: generateNewGameSeed(),
     };
 
@@ -856,7 +853,6 @@ export class MainMenuScene extends Phaser.Scene {
         activeNationIds: savedState.activeNationIds,
         resourceAbundance: 'normal',
         gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
-        autofocusOnEndTurn: true,
         savedState,
       } satisfies GameConfig);
     }).catch((err: unknown) => {
@@ -897,7 +893,6 @@ export class MainMenuScene extends Phaser.Scene {
       activeNationIds: savedState.activeNationIds,
       resourceAbundance: 'normal',
       gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
-      autofocusOnEndTurn: this.autofocusOnEndTurn,
       savedState,
     } satisfies GameConfig);
   }

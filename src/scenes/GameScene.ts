@@ -131,6 +131,8 @@ import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
 import { TutorialView } from '../ui/TutorialView';
+import { SettingsDialog } from '../ui/SettingsDialog';
+import { isAutofocusOnEndTurn, isAutoEndTurn } from '../systems/PlayerSettings';
 import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
@@ -245,7 +247,9 @@ export class GameScene extends Phaser.Scene {
     const gridLayout = new HexGridLayout();
     const resourceAbundance = data.resourceAbundance ?? 'normal';
     const gameSpeed = getGameSpeedById(data.savedState?.gameSpeedId ?? data.gameSpeedId ?? DEFAULT_GAME_SPEED_ID);
-    const autofocusOnEndTurn = data.autofocusOnEndTurn ?? true;
+    // Read autofocus live so the in-game Settings dialog applies immediately. An
+    // explicit config value (e.g. diagnostic runs) still overrides the setting.
+    const autofocusEnabled = (): boolean => data.autofocusOnEndTurn ?? isAutofocusOnEndTurn();
 
     // 2. Filter to active nations only, set isHuman from config
     const activeSet = new Set(data.activeNationIds);
@@ -646,6 +650,8 @@ export class GameScene extends Phaser.Scene {
     tradeDealSystem.setConnectionCapacityProvider((a, b) =>
       tradeConnectionSystem.getActiveDealCapacityBetweenNations(a, b),
     );
+    // Human deals use directional import/export capacity (see TradeDealSystem).
+    tradeDealSystem.setHumanNationId(humanNationId);
     turnManager.on('turnStart', (e) => tradeDealSystem.advanceTurnForNation(e.nation.id));
     const ideologicalDriftEvents: IdeologicalDriftEvent[] = [];
     const ideologicalDriftLogCooldowns = new Map<string, number>();
@@ -1928,14 +1934,15 @@ export class GameScene extends Phaser.Scene {
       const active = turnOrderSystem.getActive();
       if (!active) {
         selectionManager.clearSelection();
-        if (autofocusOnEndTurn) {
+        if (autofocusEnabled()) {
           focusHumanCapital();
         }
+        maybeAutoEndTurn();
         return;
       }
       // Force-focus even if the active id is unchanged since last turn —
       // refreshActive() skips the listener in that case.
-      if (autofocusOnEndTurn) {
+      if (autofocusEnabled()) {
         focusUnit(active);
       } else {
         selectActiveUnitWithoutCamera(active);
@@ -1952,9 +1959,10 @@ export class GameScene extends Phaser.Scene {
       if (!turnManager.getCurrentNation().isHuman) return;
       if (!unit) {
         selectionManager.clearSelection();
+        maybeAutoEndTurn();
         return;
       }
-      if (autofocusOnEndTurn) {
+      if (autofocusEnabled()) {
         focusUnit(unit);
       } else {
         selectActiveUnitWithoutCamera(unit);
@@ -2062,10 +2070,17 @@ export class GameScene extends Phaser.Scene {
       // to that nation); only restore the prior playlist once none remain.
       if (pendingAudienceLeaderIds.length > 0) {
         processAudienceQueue();
-      } else if (musicKeyBeforeAudience !== null) {
+        return;
+      }
+      if (musicKeyBeforeAudience !== null) {
         audienceMusic.playPlaylist(musicKeyBeforeAudience);
         musicKeyBeforeAudience = null;
       }
+      // Audiences open over the world (often while zoomed out to the overview
+      // after a fresh meeting), so closing the last one would otherwise leave
+      // the camera stranded far out. Re-focus the active unit or capital using
+      // the same routine as turn-start / the C key.
+      onKeyCenter();
     };
 
     // Log discovery events, and refresh UI when a new nation becomes visible.
@@ -3866,6 +3881,32 @@ export class GameScene extends Phaser.Scene {
       if (hudLayer?.hasBlockingModal()) return;
       turnManager.endCurrentTurn();
     };
+    // Auto End Turn: when enabled and no human unit still needs orders, advance
+    // the turn automatically — reusing endHumanTurn (the same path as the End
+    // Turn button), never a second turn-advancement route. Whether a unit needs
+    // orders is decided by the existing turn queue (sleeping/fortified/exploring/
+    // done units are already excluded), so this just reacts to getActive() == null.
+    let autoEndTurnPending = false;
+    const maybeAutoEndTurn = (): void => {
+      if (autoEndTurnPending) return;
+      if (!isAutoEndTurn()) return;
+      if (!turnManager.getCurrentNation().isHuman) return;
+      if (isAutoplayActive()) return;
+      if (hudLayer?.hasBlockingModal()) return;
+      if (turnOrderSystem.getActive()) return;
+      // Defer so it doesn't re-enter the turn/active-unit listeners and so the
+      // player can glance at the board; re-check every guard when it fires.
+      autoEndTurnPending = true;
+      this.time.delayedCall(AUTO_END_TURN_DELAY_MS, () => {
+        autoEndTurnPending = false;
+        if (!isAutoEndTurn()) return;
+        if (!turnManager.getCurrentNation().isHuman) return;
+        if (isAutoplayActive()) return;
+        if (hudLayer?.hasBlockingModal()) return;
+        if (turnOrderSystem.getActive()) return;
+        endHumanTurn();
+      });
+    };
     const isFocusedElementEditingText = (): boolean => {
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return false;
@@ -5604,6 +5645,12 @@ export class GameScene extends Phaser.Scene {
     // ─── Escape menu ─────────────────────────────────────────────────────────
 
     const tutorialView = new TutorialView();
+    const settingsDialog = new SettingsDialog({
+      music: SetupMusicManager.getShared(),
+      // Enabling Auto End Turn mid-turn should take effect right away if nothing
+      // currently needs orders.
+      onAutoEndTurnChanged: () => maybeAutoEndTurn(),
+    });
     const escapeMenu = new EscapeMenu(
       {
         onSave: () => {
@@ -5652,7 +5699,6 @@ export class GameScene extends Phaser.Scene {
               activeNationIds: savedState.activeNationIds,
               resourceAbundance: 'normal',
               gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
-              autofocusOnEndTurn,
               savedState,
             });
           }).catch((err: unknown) => {
@@ -5668,19 +5714,51 @@ export class GameScene extends Phaser.Scene {
           // underneath so closing the tutorial returns the player to it.
           tutorialView.show();
         },
+        onSettings: () => {
+          // Open Settings over the pause menu; closing it returns to the menu.
+          settingsDialog.show();
+        },
       },
-      { music: SetupMusicManager.getShared() },
     );
 
     const onKeyEscape = () => {
+      // An open menu always closes first.
+      if (escapeMenu.isOpen()) {
+        escapeMenu.close();
+        return;
+      }
+      if (closeOpenCityView()) return;
+      // If a human unit is in focus (selected, default move mode, not already in
+      // free selection mode), Escape first "frees" it into inspect mode — the
+      // same as clicking the active unit — instead of opening the menu. A second
+      // Escape (no unit in focus) then opens the menu.
+      const selection = selectionManager.getSelected();
+      if (
+        !freeSelectionMode &&
+        selection?.kind === 'unit' &&
+        selection.unit.ownerId === humanNationId &&
+        unitActionToolbox.getMode() === 'move'
+      ) {
+        setFreeSelectionMode(true);
+        return;
+      }
+      escapeMenu.toggle();
+    };
+    // Ctrl+Q is a second shortcut that always opens/toggles the game menu.
+    const onKeyCtrlQ = (event: KeyboardEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
       if (closeOpenCityView()) return;
       escapeMenu.toggle();
     };
     this.input.keyboard?.on('keydown-ESC', onKeyEscape);
+    this.input.keyboard?.on('keydown-Q', onKeyCtrlQ);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', onKeyEscape);
+      this.input.keyboard?.off('keydown-Q', onKeyCtrlQ);
       escapeMenu.shutdown();
       tutorialView.shutdown();
+      settingsDialog.shutdown();
     });
 
     // Starta turordningen — sist, efter att alla lyssnare kopplats
@@ -5915,7 +5993,7 @@ export class GameScene extends Phaser.Scene {
       },
       {
         title: 'Next Turn',
-        text: 'End your current turn and allow all other civilizations to act. You can also press Return / Enter to advance to the next turn.',
+        text: 'End your current turn and let all other civilizations act. Normally you press this once you have finished giving orders (or press Return / Enter). If you prefer, enable Auto End Turn in Settings — then the game advances the turn for you automatically once no units need orders.',
         targetType: 'ui-element',
         placement: 'auto',
         resolveTarget: () => hudLayer.getEndTurnButtonRect(),
@@ -6165,6 +6243,8 @@ const BORDER_PRESSURE_LOG_COOLDOWN_ROUNDS = 15;
 const MAX_BORDER_PRESSURE_SUMMARY_LINES = 8;
 /** Yield duration between AI nations. 0 ms is enough for the browser to paint and process input. */
 const AI_TURN_YIELD_MS = 0;
+/** Small pause before Auto End Turn fires, so the player can glance at the board. */
+const AUTO_END_TURN_DELAY_MS = 350;
 
 function formatIdeologicalDriftSummary(
   round: number,

@@ -35,6 +35,12 @@ export class TradeDealSystem {
    * Defaults to true so existing tests/back-compat paths are unaffected.
    */
   private hasTradeNetworks: (nationId: string) => boolean = () => true;
+  /**
+   * The human player's nation, if any. When a deal involves the human, trade
+   * capacity is counted directionally (separate import/export slots). Undefined
+   * leaves every deal on the original combined-capacity path. Human-only scope.
+   */
+  private humanNationId: string | undefined = undefined;
 
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
@@ -53,6 +59,10 @@ export class TradeDealSystem {
 
   setHasTradeNetworks(fn: (nationId: string) => boolean): void {
     this.hasTradeNetworks = fn;
+  }
+
+  setHumanNationId(nationId: string | undefined): void {
+    this.humanNationId = nationId;
   }
 
   createDeal(input: CreateTradeDealInput): TradeDealResult {
@@ -204,14 +214,41 @@ export class TradeDealSystem {
       return { ok: false, reason: 'Buyer is already importing that resource from this seller.' };
     }
     const totalCapacity = this.connectionCapacityProvider(input.sellerNationId, input.buyerNationId);
-    const usedCapacity = Array.from(this.deals.values()).filter(
-      (d) => (d.sellerNationId === input.sellerNationId && d.buyerNationId === input.buyerNationId) ||
-             (d.sellerNationId === input.buyerNationId && d.buyerNationId === input.sellerNationId),
-    ).length;
-    if (usedCapacity >= totalCapacity) {
+    if (this.countUsedCapacity(input) >= totalCapacity) {
       return { ok: false, reason: 'No active trade route with available capacity.' };
     }
     return { ok: true };
+  }
+
+  /**
+   * Trade slots already used between the two nations of `input`.
+   *
+   * Deals that involve the human player are counted *directionally*: only deals
+   * in the same direction relative to the human (imports into the human, or
+   * exports out of the human) share a slot pool. This lets the human run one
+   * import and one export simultaneously over a single route. AI-to-AI deals
+   * keep the original combined (both-direction) count, so AI trade behaviour is
+   * unchanged.
+   */
+  private countUsedCapacity(input: CreateTradeDealInput): number {
+    const humanId = this.humanNationId;
+    const involvesHuman = humanId !== undefined
+      && (input.sellerNationId === humanId || input.buyerNationId === humanId);
+
+    if (involvesHuman) {
+      const otherId = input.sellerNationId === humanId ? input.buyerNationId : input.sellerNationId;
+      const humanIsBuyer = input.buyerNationId === humanId; // import into the human
+      return Array.from(this.deals.values()).filter((deal) => {
+        const between = (deal.sellerNationId === humanId && deal.buyerNationId === otherId)
+          || (deal.sellerNationId === otherId && deal.buyerNationId === humanId);
+        return between && (deal.buyerNationId === humanId) === humanIsBuyer; // same direction only
+      }).length;
+    }
+
+    return Array.from(this.deals.values()).filter(
+      (deal) => (deal.sellerNationId === input.sellerNationId && deal.buyerNationId === input.buyerNationId)
+        || (deal.sellerNationId === input.buyerNationId && deal.buyerNationId === input.sellerNationId),
+    ).length;
   }
 
   private cancelDeal(dealId: string, reason: TradeDealEndReason): void {

@@ -4,7 +4,7 @@ import type { Tile } from '../../types/map';
 
 export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'log' | 'diplomacy-graph';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
-export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'culture' | 'cultural';
+export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'cultural';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';
 export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'trade' | 'deals';
 
@@ -45,6 +45,20 @@ export interface RightSidebarButtonRow {
   onClick: () => void;
 }
 
+/** One button inside a {@link RightSidebarButtonGroupRow}. */
+export interface ButtonGroupItem {
+  text: string;
+  disabled?: boolean;
+  accentColor?: number;
+  onClick: () => void;
+}
+
+/** Several buttons rendered side by side on a single row (evenly splitting the width). */
+export interface RightSidebarButtonGroupRow {
+  kind: 'buttonGroup';
+  buttons: ButtonGroupItem[];
+}
+
 export interface RightSidebarProgressRow {
   kind: 'progress';
   label: string;
@@ -82,6 +96,8 @@ export interface CityPickerItem {
   id: string;
   label: string;
   disabled?: boolean;
+  /** Shown on disabled cities to explain why they cannot be selected. */
+  disabledReason?: string;
   selected?: boolean;
   onClick: () => void;
 }
@@ -104,6 +120,7 @@ export interface RightSidebarCityPairPickerRow {
 export type RightSidebarRow =
   | RightSidebarTextRow
   | RightSidebarButtonRow
+  | RightSidebarButtonGroupRow
   | RightSidebarProgressRow
   | RightSidebarSeparatorRow
   | RightSidebarSearchInputRow

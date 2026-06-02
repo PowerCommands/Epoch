@@ -11,6 +11,7 @@ import type {
   RightSidebarPanelMode,
   RightSidebarRelationsTableRow,
   RightSidebarCityPairPickerRow,
+  RightSidebarButtonGroupRow,
   CityPickerItem,
   RightSidebarRow,
   RightSidebarSearchInputRow,
@@ -104,8 +105,7 @@ const LEADERBOARD_CATEGORIES: Array<{
 }> = [
   { id: 'domination', label: '⚔️ Domination', accentColor: 0xf08a7e },
   { id: 'diplomacy', label: '🕊️ Diplomacy', accentColor: 0xa7f3d0 },
-  { id: 'research', label: '🔬 Research', accentColor: 0x6ec6ff },
-  { id: 'culture', label: '⭐ Culture', accentColor: 0xc084fc },
+  { id: 'research', label: '💡 Research', accentColor: 0x6ec6ff },
   { id: 'cultural', label: '🏛️ Cultural', accentColor: 0xf4d06f },
 ];
 
@@ -1129,6 +1129,8 @@ export class RightSidebarPanel {
       }
       case 'button':
         return this.addContentButton(row, y);
+      case 'buttonGroup':
+        return this.addButtonGroupRow(row, y);
       case 'progress':
         return this.addProgressRow(row.label, row.current, row.max, y);
       case 'separator': {
@@ -1363,6 +1365,26 @@ export class RightSidebarPanel {
     this.contentButtons.push(button);
     this.refreshContentButtonVisual(button);
     return y + height + ROW_GAP;
+  }
+
+  private addButtonGroupRow(row: RightSidebarButtonGroupRow, y: number): number {
+    const buttons = row.buttons;
+    if (buttons.length === 0) return y;
+    const GAP = 8;
+    const colWidth = Math.floor((CONTENT_WIDTH - GAP * (buttons.length - 1)) / buttons.length);
+    let maxNextY = y;
+    let x = PANEL_PADDING;
+    for (const btn of buttons) {
+      const nextY = this.addContentButton(
+        { kind: 'button', text: btn.text, disabled: btn.disabled, accentColor: btn.accentColor, onClick: btn.onClick },
+        y,
+        x,
+        colWidth,
+      );
+      maxNextY = Math.max(maxNextY, nextY);
+      x += colWidth + GAP;
+    }
+    return maxNextY;
   }
 
   private addContentIcon(spritePath: string, x: number, y: number): Phaser.GameObjects.Image | null {

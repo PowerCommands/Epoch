@@ -1,8 +1,13 @@
 import { ALL_WONDERS } from '../data/wonders';
 import type { WonderSystem } from './WonderSystem';
 
-/** Fraction of all World Wonders a nation must own to win a Cultural Victory. */
-export const CULTURAL_VICTORY_WONDER_FRACTION = 0.75;
+/**
+ * Fraction of all World Wonders a nation must own to win a Cultural Victory.
+ * Tuned to 0.74 with a floor so the canonical 12-wonder set requires 8
+ * (floor(12 * 0.74) = 8) — "roughly three quarters" while keeping the magic
+ * number a clean 8.
+ */
+export const CULTURAL_VICTORY_WONDER_FRACTION = 0.74;
 
 /** Minimal city-ownership lookup, satisfied by CityManager. */
 interface CityOwnerLookup {
@@ -10,13 +15,13 @@ interface CityOwnerLookup {
 }
 
 /**
- * World Wonders required to win a Cultural Victory: ceil(75% of all defined
- * wonders). Derived from `ALL_WONDERS` so adding wonders raises the threshold
- * automatically. This is the single source of truth — use it everywhere instead
- * of duplicating the calculation.
+ * World Wonders required to win a Cultural Victory: floor(74% of all defined
+ * wonders) — 8 for the current 12. Derived from `ALL_WONDERS` so adding wonders
+ * raises the threshold automatically. This is the single source of truth — use
+ * it everywhere instead of duplicating the calculation.
  */
 export function getRequiredCulturalVictoryWonderCount(): number {
-  return Math.ceil(ALL_WONDERS.length * CULTURAL_VICTORY_WONDER_FRACTION);
+  return Math.floor(ALL_WONDERS.length * CULTURAL_VICTORY_WONDER_FRACTION);
 }
 
 /**

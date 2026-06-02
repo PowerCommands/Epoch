@@ -181,9 +181,12 @@ export class UnitActionToolbox {
   }
 
   /**
-   * Returns only the actions actually available for the currently selected human
-   * unit (empty when no unit is selected), so the HUD renders just the usable
-   * buttons rather than greying out unavailable ones.
+   * Returns the actions the HUD should render for the currently selected human
+   * unit (empty when no unit is selected). Unavailable actions are hidden, with
+   * one deliberate exception: the build/improve action stays visible but
+   * disabled for units that *can* build improvements yet not on the current tile
+   * (e.g. forest needing a tech). That way the player sees the button greyed out
+   * with a tooltip explaining why, instead of it silently disappearing.
    */
   getHudActions(): UnitActionViewState[] {
     const unit = this.selectedUnit;
@@ -196,13 +199,18 @@ export class UnitActionToolbox {
 
       const preview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined;
       const upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined;
-      if (!this.isActionAvailable(action, unit, preview, upgradePreview)) continue;
+      const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview);
+
+      // Keep the build action on screen (greyed out) for capable builders so the
+      // tooltip can explain why it can't build here; hide every other unavailable action.
+      const keepDisabled = action.mode === 'build' && action.isAvailable(unit);
+      if (!isAvailable && !keepDisabled) continue;
 
       const isActive = this.mode === action.mode || action.isToggledOn?.(unit) === true;
       states.push({
         mode,
         label: this.getActionLabel(action, upgradePreview),
-        isAvailable: true,
+        isAvailable,
         isActive,
         tooltip: this.getActionTooltip(action, preview, upgradePreview),
       });

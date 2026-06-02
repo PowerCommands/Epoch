@@ -1,15 +1,9 @@
-import type { SetupMusicManager } from '../systems/SetupMusicManager';
-import { bindMusicControls } from './MusicControls';
-
 export interface EscapeMenuCallbacks {
   onSave: () => void;
   onLoad: (file: File) => void;
   onQuit: () => void;
   onTutorial: () => void;
-}
-
-export interface EscapeMenuOptions {
-  music?: SetupMusicManager;
+  onSettings: () => void;
 }
 
 /**
@@ -17,23 +11,21 @@ export interface EscapeMenuOptions {
  *
  * Pinned full-viewport at z-index 10000 so no map/unit clicks leak
  * through while it is open. Styling mirrors the diplomacy modal used
- * elsewhere in the scene.
+ * elsewhere in the scene. Audio and player preferences live in the
+ * shared Settings dialog, reachable via the Settings button.
  */
 export class EscapeMenu {
   private readonly overlay: HTMLDivElement;
   private readonly fileInput: HTMLInputElement;
   private readonly errorText: HTMLDivElement;
-  private readonly unbindMusicControls: (() => void) | null;
   private open = false;
 
   constructor(
     private readonly callbacks: EscapeMenuCallbacks,
-    private readonly options: EscapeMenuOptions = {},
   ) {
     this.overlay = this.buildOverlay();
     this.fileInput = this.buildFileInput();
     this.errorText = this.overlay.querySelector<HTMLDivElement>('.escape-menu-error')!;
-    this.unbindMusicControls = this.bindAudioControls();
     document.body.appendChild(this.overlay);
     document.body.appendChild(this.fileInput);
   }
@@ -68,7 +60,6 @@ export class EscapeMenu {
   }
 
   shutdown(): void {
-    this.unbindMusicControls?.();
     this.overlay.remove();
     this.fileInput.remove();
   }
@@ -99,8 +90,6 @@ export class EscapeMenu {
       'font-size: 14px; text-transform: uppercase; letter-spacing: 2px; color: #aaa; margin-bottom: 20px;';
     box.appendChild(title);
 
-    box.appendChild(this.buildAudioControls());
-
     const buttonRow = document.createElement('div');
     buttonRow.style.cssText = 'display: flex; flex-direction: column; gap: 12px;';
 
@@ -128,6 +117,10 @@ export class EscapeMenu {
       this.clearError();
       this.callbacks.onTutorial();
     });
+    const settingsBtn = makeButton('Settings', '#4a90d9', () => {
+      this.clearError();
+      this.callbacks.onSettings();
+    });
     const quitBtn = makeButton('Quit', '#c44', () => {
       this.clearError();
       this.callbacks.onQuit();
@@ -136,6 +129,7 @@ export class EscapeMenu {
 
     buttonRow.appendChild(saveBtn);
     buttonRow.appendChild(loadBtn);
+    buttonRow.appendChild(settingsBtn);
     buttonRow.appendChild(tutorialBtn);
     buttonRow.appendChild(quitBtn);
     buttonRow.appendChild(resumeBtn);
@@ -154,64 +148,6 @@ export class EscapeMenu {
 
     overlay.appendChild(box);
     return overlay;
-  }
-
-  private buildAudioControls(): HTMLDivElement {
-    const group = document.createElement('div');
-    group.className = 'escape-audio-group';
-    group.style.cssText = `
-      margin-bottom: 18px; padding: 12px;
-      border: 1px solid rgba(255,255,255,0.18); border-radius: 8px;
-      background: rgba(255,255,255,0.05); text-align: left;
-      display: grid; gap: 10px;
-    `;
-
-    const label = document.createElement('label');
-    label.style.cssText = 'display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;';
-
-    const toggle = document.createElement('input');
-    toggle.className = 'escape-music-toggle';
-    toggle.type = 'checkbox';
-    toggle.style.cssText = 'width: 16px; height: 16px; accent-color: #4a90d9; cursor: pointer;';
-
-    const toggleText = document.createElement('span');
-    toggleText.textContent = 'Music';
-    label.append(toggle, toggleText);
-
-    const row = document.createElement('div');
-    row.style.cssText = 'display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px;';
-
-    const volumeText = document.createElement('span');
-    volumeText.textContent = 'Volume';
-    volumeText.style.cssText = 'font-size: 13px; color: #aaa;';
-
-    const slider = document.createElement('input');
-    slider.className = 'escape-music-volume';
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = '1';
-    slider.step = '0.05';
-    slider.style.cssText = 'width: 100%; accent-color: #4a90d9; cursor: pointer;';
-
-    const value = document.createElement('span');
-    value.className = 'escape-music-volume-value';
-    value.style.cssText = 'font-size: 13px; color: #ccc; min-width: 34px; text-align: right;';
-
-    row.append(volumeText, slider, value);
-    group.append(label, row);
-    return group;
-  }
-
-  private bindAudioControls(): (() => void) | null {
-    const music = this.options.music;
-    if (!music) return null;
-
-    const toggle = this.overlay.querySelector<HTMLInputElement>('.escape-music-toggle');
-    const slider = this.overlay.querySelector<HTMLInputElement>('.escape-music-volume');
-    const valueLabel = this.overlay.querySelector<HTMLSpanElement>('.escape-music-volume-value');
-    if (!toggle || !slider || !valueLabel) return null;
-
-    return bindMusicControls(music, { toggle, slider, valueLabel });
   }
 
   private buildFileInput(): HTMLInputElement {

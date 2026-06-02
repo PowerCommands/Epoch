@@ -123,7 +123,7 @@ export class CultureHudPanel {
       depth: DEPTH,
       diameter: TOGGLE_SIZE,
       hitDiameter: TOGGLE_HIT_SIZE,
-      icon: '⭐',
+      icon: '🏛️',
       iconSize: 39,
       progressColor: 0xb56cff,
       accentColor: 0xb39cff,

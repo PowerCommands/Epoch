@@ -141,14 +141,14 @@ export class NationHudDataProvider {
       },
       {
         key: 'science',
-        icon: '🔬',
+        icon: '💡',
         value: researchProgress,
         delta: researchPerTurn,
         tooltip: researchTooltip,
       },
       {
         key: 'culture',
-        icon: '⭐',
+        icon: '🏛️',
         value: nationResources.culture,
         delta: nationResources.culturePerTurn,
         tooltip: cultureTooltip,

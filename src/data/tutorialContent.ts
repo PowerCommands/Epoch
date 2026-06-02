@@ -16,6 +16,7 @@ export type TutorialBlock =
   | { kind: 'heading'; text: string }
   | { kind: 'list'; items: string[] }
   | { kind: 'note'; text: string }
+  | { kind: 'image'; src: string; alt: string }
   | { kind: 'cheat-commands' };
 
 export interface TutorialSection {
@@ -192,6 +193,19 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'The route becomes active and starts generating benefits',
         ],
       },
+      { kind: 'heading', text: 'Trade Capacity' },
+      { kind: 'paragraph', text: 'A city must have available Trade Capacity to create a trade route. Each route consumes one capacity in both participating cities, so a city with none cannot start (or be the target of) a new route.' },
+      { kind: 'paragraph', text: 'Trade Capacity comes from commercial and port buildings:' },
+      {
+        kind: 'list',
+        items: [
+          'Market: +1 Trade Capacity',
+          'Harbor: +2 Trade Capacity',
+          'Seaport: +3 Trade Capacity',
+          'Stock Exchange: +2 Trade Capacity',
+        ],
+      },
+      { kind: 'note', text: 'If a city is shown disabled in the trade route proposal table, it usually means it has no available Trade Capacity. Build commercial or port buildings there to unlock more routes.' },
       { kind: 'heading', text: 'In Progress' },
       { kind: 'paragraph', text: 'The trade route is still being established and is not yet producing benefits.' },
       { kind: 'heading', text: 'Active' },
@@ -281,6 +295,103 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         ],
       },
       { kind: 'paragraph', text: 'The real goal is to create a successful civilization and enjoy the history you make along the way.' },
+    ],
+  },
+  {
+    id: 'scenario-editor',
+    title: 'Scenario Editor',
+    blocks: [
+      { kind: 'heading', text: '1. Introduction to the Editor' },
+      { kind: 'paragraph', text: 'The Scenario Editor lets you create your own custom scenarios to play.' },
+      { kind: 'paragraph', text: 'A scenario can contain a custom map, nations, resources, cities and starting positions. The editor is built so you can gradually shape a whole world from scratch — start small and build it up.' },
+
+      { kind: 'heading', text: '2. Drawing Terrain' },
+      { kind: 'paragraph', text: 'Painting terrain is the foundation of every scenario — it comes first, before anything else.' },
+      {
+        kind: 'list',
+        items: [
+          'Pick a terrain type, then paint it onto the map with the terrain brush',
+          'Drag across the map to lay down land, ocean, hills, forest and more',
+          'Zoom and pan to move around the map while you work',
+          'Increase the brush size to cover large areas quickly',
+        ],
+      },
+
+      { kind: 'heading', text: '3. Resources and Placement' },
+      { kind: 'paragraph', text: 'Once the terrain exists, you can place resources on top of it.' },
+      {
+        kind: 'list',
+        items: [
+          'Place resources where they make geographic sense (e.g. fish at sea, ore in hills)',
+          'Strategic resources matter a lot later during gameplay — they unlock advanced units',
+        ],
+      },
+
+      { kind: 'heading', text: '4. Nations and Starting Positions' },
+      { kind: 'paragraph', text: 'Nations are placed on the map, and their starting positions decide where each civilization begins play.' },
+      { kind: 'paragraph', text: 'Use Nation Details to customize the nations in your scenario and their relationships.' },
+
+      { kind: 'heading', text: '5. Magic Wand' },
+      { kind: 'paragraph', text: 'The Magic Wand is designed to dramatically speed up map creation.' },
+      { kind: 'image', src: 'assets/editor.webp', alt: 'The Scenario Editor showing the Magic Wand tool' },
+      { kind: 'paragraph', text: 'Magic Wand analyzes the background image and attempts to automatically generate terrain from it. Instead of manually painting every tile, the tool can create a first draft of the map based on the shapes and colors found in the source image.' },
+      {
+        kind: 'list',
+        items: [
+          'It is intended as a starting point, not a finished map',
+          'Manual adjustments are usually still needed afterwards',
+          'It can save many hours when creating large maps',
+          'Best results come from clear, well-defined map images',
+        ],
+      },
+
+      { kind: 'heading', text: '6. Spray Mode' },
+      { kind: 'paragraph', text: 'Spray Mode highlights only the tiles that have not been painted yet; already-painted tiles become visually de-emphasized.' },
+      {
+        kind: 'list',
+        items: [
+          'Great for finishing large maps — it makes gaps and missing terrain obvious',
+          'Especially useful right after using Magic Wand, to spot what it missed',
+        ],
+      },
+
+      { kind: 'heading', text: '7. Undo and Redo' },
+      {
+        kind: 'list',
+        items: [
+          'Undo (Ctrl + Z) reverses your most recent brush stroke',
+          'Redo (Ctrl + Shift + Z) restores an undone action',
+        ],
+      },
+      { kind: 'note', text: 'Undo support makes long terrain-editing sessions much safer — experiment freely, knowing you can always step back.' },
+
+      { kind: 'heading', text: '8. Scenario Details' },
+      { kind: 'paragraph', text: 'Finally, give your scenario its identity in Scenario Details:' },
+      {
+        kind: 'list',
+        items: [
+          'Scenario name',
+          'Scenario description',
+          'Start year',
+          'Other scenario metadata',
+        ],
+      },
+      { kind: 'paragraph', text: 'This information is shown to players when they browse and select scenarios.' },
+
+      { kind: 'heading', text: 'Putting It Together' },
+      { kind: 'paragraph', text: 'A typical editor workflow:' },
+      {
+        kind: 'list',
+        items: [
+          'Draw the terrain',
+          'Place resources',
+          'Configure nations and starting positions',
+          'Use Magic Wand to accelerate map creation',
+          'Use Spray Mode to locate unfinished areas',
+          'Use Undo/Redo while refining the map',
+        ],
+      },
+      { kind: 'note', text: 'There is no single right way to build a scenario — experiment and iterate. The best maps come from trying things, refining, and trying again.' },
     ],
   },
   {

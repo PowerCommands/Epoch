@@ -115,7 +115,7 @@ export class ResearchHudPanel {
       depth: DEPTH,
       diameter: TOGGLE_SIZE,
       hitDiameter: TOGGLE_HIT_SIZE,
-      icon: '🔬',
+      icon: '💡',
       iconSize: 39,
       progressColor: 0x38bdf8,
       accentColor: 0x68a9d5,

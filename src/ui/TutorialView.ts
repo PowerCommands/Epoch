@@ -39,7 +39,7 @@ export class TutorialView {
     const panel = document.createElement('div');
     panel.style.cssText = `
       display: flex; flex-direction: column;
-      width: min(1040px, 92vw); height: min(780px, 90vh);
+      width: clamp(640px, 50vw, 96vw); height: 90vh;
       background: #121a26; border: 1px solid #33465c; border-radius: 10px;
       box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55); overflow: hidden;
     `;
@@ -214,6 +214,22 @@ export class TutorialView {
           background: rgba(242, 196, 107, 0.10); color: #f3e6c6; font-size: 14px;
         `;
         return el;
+      }
+      case 'image': {
+        const figure = document.createElement('div');
+        figure.style.cssText = 'margin: 6px 0 16px; text-align: center;';
+        const img = document.createElement('img');
+        img.src = block.src;
+        img.alt = block.alt;
+        // Fit within the content column, preserve aspect ratio, and never
+        // overflow the dialog (cap height to most of the viewport too).
+        img.style.cssText = `
+          display: block; margin: 0 auto;
+          max-width: 100%; height: auto; max-height: 60vh; object-fit: contain;
+          border: 1px solid #25344a; border-radius: 6px;
+        `;
+        figure.appendChild(img);
+        return figure;
       }
       case 'cheat-commands':
         return this.renderCheatCommands();

@@ -176,7 +176,7 @@ export class CityViewRenderer {
     if (tile.food > 0) entries.push('🌾');
     if (tile.production > 0) entries.push('⚙️');
     if (tile.gold > 0) entries.push('💰');
-    if (tile.science > 0) entries.push('🔬');
+    if (tile.science > 0) entries.push('💡');
     if (tile.culture > 0) entries.push('⭐');
     if (tile.happiness > 0) entries.push('😀');
     return entries;

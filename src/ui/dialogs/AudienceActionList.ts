@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
-import type { RightSidebarButtonRow, RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
+import type { CityPickerItem, RightSidebarButtonGroupRow, RightSidebarButtonRow, RightSidebarCityPairPickerRow, RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 type RemoveOwned = (object: Phaser.GameObjects.GameObject) => void;
@@ -139,12 +139,16 @@ export class AudienceActionList {
         return this.renderText(row.text, row.muted ?? false, row.large ?? false, row.color, x, y, width);
       case 'button':
         return this.renderButton(row, x, y, width);
+      case 'buttonGroup':
+        return this.renderButtonGroup(row, x, y, width);
       case 'separator': {
         this.track(new Phaser.GameObjects.Rectangle(this.scene, x + LEFT_PAD, y + 6, width - LEFT_PAD * 2, 1, 0x7f8b99, 0.28).setOrigin(0, 0));
         return y + SEPARATOR_HEIGHT;
       }
       case 'progress':
         return this.renderProgress(row.label, row.current, row.max, x, y, width);
+      case 'cityPairPicker':
+        return this.renderCityPairPicker(row, x, y, width);
       default:
         return y;
     }
@@ -165,24 +169,109 @@ export class AudienceActionList {
   }
 
   private renderButton(row: RightSidebarButtonRow, x: number, y: number, width: number): number {
-    const w = width - LEFT_PAD * 2;
+    return this.renderButtonAt(row, x + LEFT_PAD, y, width - LEFT_PAD * 2);
+  }
+
+  /**
+   * Render a button at an explicit background x / width. Extracted from
+   * {@link renderButton} so the two-column city picker can place buttons inside
+   * its columns while reusing all the hover/disabled/selected behaviour.
+   */
+  private renderButtonAt(row: RightSidebarButtonRow, bgX: number, y: number, w: number): number {
     const height = row.disabled && row.disabledReason ? DISABLED_BUTTON_HEIGHT : BUTTON_HEIGHT;
-    const background = this.track(new Phaser.GameObjects.Rectangle(this.scene, x + LEFT_PAD, y, w, height, 0x0f2635, 0.98).setOrigin(0, 0));
+    const background = this.track(new Phaser.GameObjects.Rectangle(this.scene, bgX, y, w, height, 0x0f2635, 0.98).setOrigin(0, 0));
     const label = this.track(this.makeText(row.text, 15, '#ffffff', 'bold'));
     label.setWordWrapWidth(w - 20, true);
-    label.setPosition(x + LEFT_PAD + 11, y + (row.disabled && row.disabledReason ? 7 : (height - label.height) / 2));
+    label.setPosition(bgX + 11, y + (row.disabled && row.disabledReason ? 7 : (height - label.height) / 2));
     const reasonLabel = row.disabled && row.disabledReason
       ? this.track(this.makeText(row.disabledReason, 12, '#b8c0ca', 'normal'))
       : undefined;
     reasonLabel?.setWordWrapWidth(w - 20, true);
-    reasonLabel?.setPosition(x + LEFT_PAD + 11, y + 27);
-    const hitArea = this.track(new Phaser.GameObjects.Zone(this.scene, x + LEFT_PAD, y, w, height).setOrigin(0, 0).setScrollFactor(0));
+    reasonLabel?.setPosition(bgX + 11, y + 27);
+    const hitArea = this.track(new Phaser.GameObjects.Zone(this.scene, bgX, y, w, height).setOrigin(0, 0).setScrollFactor(0));
 
     const button: ListButton = { row, background, label, reasonLabel, hitArea, height, hovered: false, pressed: false };
     this.buttons.push(button);
     this.installButtonInput(button);
     this.refreshButtonVisual(button);
     return y + height + ROW_GAP;
+  }
+
+  /**
+   * Render several buttons side by side on one row, splitting the available
+   * width evenly (with a small gap). Used to keep the Buy (10/20 turns) options
+   * on a single line; degrades to narrower buttons on small sidebar widths.
+   */
+  private renderButtonGroup(row: RightSidebarButtonGroupRow, x: number, y: number, width: number): number {
+    const buttons = row.buttons;
+    if (buttons.length === 0) return y;
+    const GAP = 8;
+    const innerX = x + LEFT_PAD;
+    const innerWidth = width - LEFT_PAD * 2;
+    const colWidth = Math.floor((innerWidth - GAP * (buttons.length - 1)) / buttons.length);
+    let maxNextY = y;
+    let colX = innerX;
+    for (const btn of buttons) {
+      const nextY = this.renderButtonAt(
+        { kind: 'button', text: btn.text, disabled: btn.disabled, accentColor: btn.accentColor, onClick: btn.onClick },
+        colX,
+        y,
+        colWidth,
+      );
+      maxNextY = Math.max(maxNextY, nextY);
+      colX += colWidth + GAP;
+    }
+    return maxNextY;
+  }
+
+  /**
+   * Two-column city selector (human cities left, target nation cities right).
+   * Every city is rendered — cities without trade capacity appear disabled with
+   * their reason — so the table is always visible regardless of selection state.
+   */
+  private renderCityPairPicker(row: RightSidebarCityPairPickerRow, x: number, y: number, width: number): number {
+    const COLUMN_GAP = 10;
+    const innerX = x + LEFT_PAD;
+    const innerWidth = width - LEFT_PAD * 2;
+    const colWidth = Math.floor((innerWidth - COLUMN_GAP) / 2);
+    const leftX = innerX;
+    const rightX = innerX + colWidth + COLUMN_GAP;
+
+    const leftHeader = this.track(this.makeText(row.leftHeader, 14, '#a8b6c8', 'bold'));
+    leftHeader.setWordWrapWidth(colWidth, true);
+    leftHeader.setPosition(leftX, y);
+    const rightHeader = this.track(this.makeText(row.rightHeader, 14, '#a8b6c8', 'bold'));
+    rightHeader.setWordWrapWidth(colWidth, true);
+    rightHeader.setPosition(rightX, y);
+
+    let cursorY = y + Math.max(leftHeader.height, rightHeader.height) + 6;
+
+    const rowCount = Math.max(row.leftItems.length, row.rightItems.length);
+    if (rowCount === 0) {
+      const empty = this.track(this.makeText(row.emptyLabel, 15, '#c1cbd8', 'normal'));
+      empty.setWordWrapWidth(innerWidth, true);
+      empty.setPosition(innerX, cursorY);
+      return cursorY + empty.height + ROW_GAP;
+    }
+
+    const toButtonRow = (item: CityPickerItem): RightSidebarButtonRow => ({
+      kind: 'button',
+      text: item.label,
+      disabled: item.disabled,
+      disabledReason: item.disabledReason,
+      selected: item.selected,
+      accentColor: row.accentColor,
+      onClick: item.onClick,
+    });
+
+    for (let i = 0; i < rowCount; i++) {
+      const left = row.leftItems[i];
+      const right = row.rightItems[i];
+      const leftNextY = left ? this.renderButtonAt(toButtonRow(left), leftX, cursorY, colWidth) : cursorY;
+      const rightNextY = right ? this.renderButtonAt(toButtonRow(right), rightX, cursorY, colWidth) : cursorY;
+      cursorY = Math.max(leftNextY, rightNextY);
+    }
+    return cursorY;
   }
 
   private renderProgress(label: string, current: number, max: number, x: number, y: number, width: number): number {

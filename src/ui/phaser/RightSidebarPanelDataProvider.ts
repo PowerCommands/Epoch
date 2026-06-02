@@ -1762,10 +1762,12 @@ export class RightSidebarPanelDataProvider {
     const toPickerItem = (city: City, selectedId: string | null, isFrom: boolean): CityPickerItem => {
       const total = this.tradeConnectionSystem!.getCityTradeCapacity(city.id);
       const available = this.tradeConnectionSystem!.getCityAvailableTradeCapacity(city.id);
+      const hasCapacity = available >= 1;
       return {
         id: city.id,
         label: `${city.name}  ${available}/${total}`,
-        disabled: available < 1,
+        disabled: !hasCapacity,
+        disabledReason: hasCapacity ? undefined : 'No trade capacity',
         selected: city.id === selectedId,
         onClick: () => {
           if (!this.tradeRouteProposal) return;
@@ -1882,14 +1884,34 @@ export class RightSidebarPanelDataProvider {
         .filter((deal) => deal.sellerNationId === otherNationId && deal.buyerNationId === playerId)
         .map((deal) => deal.resourceId),
     );
+    const exportedToBuyer = new Set(
+      existingDeals
+        .filter((deal) => deal.sellerNationId === playerId && deal.buyerNationId === otherNationId)
+        .map((deal) => deal.resourceId),
+    );
 
     rows.push(...this.buildTradeRoutesOverviewRows(otherNationId));
     rows.push({ kind: 'separator' });
+
+    // A deal needs an active trade route with a free slot between the nations
+    // (mirrors TradeDealSystem.validateDeal). Human deals use directional slots:
+    // imports (buying) and exports (selling) each get their own pool, so the
+    // player can run one of each over a single route. Buttons render disabled
+    // with an explanation when their direction has no free slot, instead of
+    // clicks failing silently.
+    const dealCapacityTotal = this.tradeConnectionSystem?.getActiveDealCapacityBetweenNations(playerId, otherNationId) ?? 0;
+    const importsUsed = existingDeals.filter((deal) => deal.buyerNationId === playerId && deal.sellerNationId === otherNationId).length;
+    const exportsUsed = existingDeals.filter((deal) => deal.sellerNationId === playerId && deal.buyerNationId === otherNationId).length;
+    const hasImportCapacity = importsUsed < dealCapacityTotal;
+    const hasExportCapacity = exportsUsed < dealCapacityTotal;
 
     rows.push(textRow(`${otherNation?.name ?? otherNationId} can sell to you`, false, true));
     if (otherOwned.length === 0) {
       rows.push(textRow('No resources to sell.', true));
     } else {
+      if (interactive && !hasImportCapacity) {
+        rows.push(textRow('An active trade route with available import capacity is required before resources can be traded.', true));
+      }
       for (const { resourceId, quantity } of otherOwned) {
         const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
         rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
@@ -1898,19 +1920,25 @@ export class RightSidebarPanelDataProvider {
           if (alreadyImporting) rows.push(textRow('Currently importing', true));
           continue;
         }
+        const buyDisabled = alreadyImporting || !hasImportCapacity;
+        const twentyTurnGold = Math.max(1, tradeGold - 1);
+        // Buy: seller = AI nation, buyer = human. Both durations on one row.
         rows.push({
-          kind: 'button',
-          text: alreadyImporting ? 'Already importing' : `Buy (10 turns) — ${tradeGold} gold/turn`,
-          accentColor: otherNation?.color,
-          disabled: alreadyImporting,
-          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 10, tradeGold),
-        });
-        rows.push({
-          kind: 'button',
-          text: alreadyImporting ? 'Already importing' : `Buy (20 turns) — ${Math.max(1, tradeGold - 1)} gold/turn`,
-          accentColor: otherNation?.color,
-          disabled: alreadyImporting,
-          onClick: () => this.createTradeDealRequest(otherNationId, resourceId, 20, Math.max(1, tradeGold - 1)),
+          kind: 'buttonGroup',
+          buttons: [
+            {
+              text: alreadyImporting ? 'Already importing' : `Buy 10t — ${tradeGold}g/turn`,
+              accentColor: otherNation?.color,
+              disabled: buyDisabled,
+              onClick: () => this.createTradeDealRequest(otherNationId, playerId, resourceId, 10, tradeGold),
+            },
+            {
+              text: alreadyImporting ? 'Already importing' : `Buy 20t — ${twentyTurnGold}g/turn`,
+              accentColor: otherNation?.color,
+              disabled: buyDisabled,
+              onClick: () => this.createTradeDealRequest(otherNationId, playerId, resourceId, 20, twentyTurnGold),
+            },
+          ],
         });
       }
     }
@@ -1920,8 +1948,37 @@ export class RightSidebarPanelDataProvider {
     if (playerOwned.length === 0) {
       rows.push(textRow('You have no resources to offer.', true));
     } else {
+      if (interactive && !hasExportCapacity) {
+        rows.push(textRow('No available export capacity to this nation.', true));
+      }
       for (const { resourceId, quantity } of playerOwned) {
+        const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
         rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
+        const alreadyExporting = exportedToBuyer.has(resourceId);
+        if (!interactive) {
+          if (alreadyExporting) rows.push(textRow('Currently exporting', true));
+          continue;
+        }
+        const sellDisabled = alreadyExporting || !hasExportCapacity;
+        const twentyTurnGold = Math.max(1, tradeGold - 1);
+        // Sell: seller = human, buyer = AI nation. Mirrors the Buy controls.
+        rows.push({
+          kind: 'buttonGroup',
+          buttons: [
+            {
+              text: alreadyExporting ? 'Already exporting' : `Sell 10t — ${tradeGold}g/turn`,
+              accentColor: otherNation?.color,
+              disabled: sellDisabled,
+              onClick: () => this.createTradeDealRequest(playerId, otherNationId, resourceId, 10, tradeGold),
+            },
+            {
+              text: alreadyExporting ? 'Already exporting' : `Sell 20t — ${twentyTurnGold}g/turn`,
+              accentColor: otherNation?.color,
+              disabled: sellDisabled,
+              onClick: () => this.createTradeDealRequest(playerId, otherNationId, resourceId, 20, twentyTurnGold),
+            },
+          ],
+        });
       }
     }
 
@@ -1990,23 +2047,27 @@ export class RightSidebarPanelDataProvider {
 
   private createTradeDealRequest(
     sellerNationId: string,
+    buyerNationId: string,
     resourceId: string,
     turns: number,
     goldPerTurn: number,
   ): void {
     if (!this.tradeDealSystem || !this.humanNationId) return;
+    // The "other" nation (whose audience tab this is) keys the status message,
+    // regardless of trade direction.
+    const otherNationId = sellerNationId === this.humanNationId ? buyerNationId : sellerNationId;
     const result = this.tradeDealSystem.createDeal({
       sellerNationId,
-      buyerNationId: this.humanNationId,
+      buyerNationId,
       resourceId,
       turns,
       goldPerTurn,
     });
     if (result.ok) {
-      this.tradeMessages.delete(sellerNationId);
+      this.tradeMessages.delete(otherNationId);
       return;
     }
-    this.tradeMessages.set(sellerNationId, result.reason ?? 'Trade deal failed.');
+    this.tradeMessages.set(otherNationId, result.reason ?? 'Trade deal failed.');
     this.requestRefresh();
   }
 
@@ -2052,9 +2113,7 @@ export class RightSidebarPanelDataProvider {
       case 'diplomacy':
         return this.getLeaderboardSection('🕊️ Diplomacy', this.getDiplomacyLeaderboard());
       case 'research':
-        return this.getLeaderboardSection('🔬 Research', this.getResearchLeaderboard());
-      case 'culture':
-        return this.getLeaderboardSection('⭐ Culture', this.getCultureLeaderboard());
+        return this.getLeaderboardSection('💡 Research', this.getResearchLeaderboard());
       case 'cultural':
         return this.getCulturalVictorySection();
     }
@@ -2144,17 +2203,6 @@ export class RightSidebarPanelDataProvider {
         ? Math.round((this.researchSystem.getResearchProgress(nation.id) / Math.max(1, this.researchSystem.getEffectiveCost(current.id))) * 100)
         : 0;
       return { nationId: nation.id, name: nation.name, color: nation.color, score: researched * 100 + progress, detail: `${researched} techs${current ? `, ${progress}% ${current.name}` : ''}` };
-    }));
-  }
-
-  private getCultureLeaderboard(): LeaderboardEntry[] {
-    return this.sortLeaderboard(this.nationManager.getAllNations().map((nation) => {
-      const unlocked = this.cultureSystem?.getUnlockedCultureNodes(nation.id).length ?? 0;
-      const current = this.cultureSystem?.getCurrentCultureNode(nation.id);
-      const progress = current && this.cultureSystem
-        ? Math.round((this.cultureSystem.getCultureProgress(nation.id) / Math.max(1, this.cultureSystem.getEffectiveCost(current.id))) * 100)
-        : 0;
-      return { nationId: nation.id, name: nation.name, color: nation.color, score: unlocked * 100 + progress, detail: `${unlocked} civics${current ? `, ${progress}% ${current.name}` : ''}` };
     }));
   }
 
