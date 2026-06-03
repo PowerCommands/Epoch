@@ -57,6 +57,7 @@ import {
   getStrategyDisplayName,
 } from './ai/AIStrategyEvaluationSystem';
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
+import type { AIExplorationSystem } from './ai/AIExplorationSystem';
 import {
   pickBestAIProductionCandidate,
   scoreAIProductionCandidate,
@@ -560,6 +561,7 @@ export class AISystem {
     private readonly exileProtectionSystem?: ExileProtectionSystem,
     private readonly tradeConnectionSystem?: TradeConnectionSystem,
     private readonly diplomaticProposalSystem?: DiplomaticProposalSystem,
+    private readonly aiExplorationSystem?: AIExplorationSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -3348,7 +3350,17 @@ export class AISystem {
         requireReachable: true,
         includeAssigned: false,
       })[0] ?? null;
-      if (target === null) return;
+      if (target === null) {
+        // No known reachable sea-resource target: fall back to Scout-Boat-style
+        // water exploration so the boat actively searches the coast/ocean instead
+        // of idling. Discovery feeds the shared sea-resource memory, so a later
+        // turn assigns this boat a real target through the branch above and it
+        // resumes normal build behavior. Only when it still has movement.
+        if (unit.movementPoints > 0) {
+          this.aiExplorationSystem?.exploreNavalUtilityUnit(unit);
+        }
+        return;
+      }
       this.workBoatTargetsByUnit.set(unit.id, tileKey(target.x, target.y));
       console.log(
         this.formatLog(

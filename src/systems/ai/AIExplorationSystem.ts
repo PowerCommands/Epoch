@@ -1,5 +1,5 @@
 import { getNaturalResourceById } from '../../data/naturalResources';
-import { SCOUT, SCOUT_BOAT } from '../../data/units';
+import { SCOUT, SCOUT_BOAT, WORK_BOAT } from '../../data/units';
 import type { Unit } from '../../entities/Unit';
 import type { GridCoord } from '../../types/grid';
 import type { MapData, Tile } from '../../types/map';
@@ -182,6 +182,11 @@ export class AIExplorationSystem {
   private readonly isBoundaryFollowing = new Map<UnitId, boolean>();
   // How many consecutive turns the scout has spent in boundary-follow mode.
   private readonly boundaryFollowTurns = new Map<UnitId, number>();
+  // Non-recon naval units (AI Work Boats) currently borrowing Scout Boat
+  // exploration as a fallback. Marked only for the duration of one exploration
+  // call so it never leaks into human auto-explore eligibility or unit
+  // categorization — see exploreNavalUtilityUnit / isNavalReconUnit.
+  private readonly navalUtilityExplorerIds = new Set<UnitId>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -248,6 +253,32 @@ export class AIExplorationSystem {
     this.moveScout(unit);
     this.updateNationKnowledge(unit.ownerId);
     this.updateScoutPhase(unit.ownerId);
+  }
+
+  /**
+   * AI-only fallback: run one exploration turn for a non-recon naval utility unit
+   * (a Work Boat with no valid sea-resource target) using the exact same naval
+   * Scout Boat behavior — water-only movement, coastline-follow, frontier search
+   * and sea-resource discovery into shared memory. The unit is treated as a naval
+   * explorer only for the duration of this call, so it never becomes a recon unit
+   * for production/UI/combat or human auto-explore eligibility.
+   */
+  exploreNavalUtilityUnit(unit: Unit): void {
+    if (this.unitManager.getUnit(unit.id) === undefined) return;
+    if (unit.carriedByUnitId !== undefined) return;
+    if (unit.unitType.isNaval !== true) return; // safety: water units only
+    if (unit.movementPoints <= 0) return;
+
+    this.navalUtilityExplorerIds.add(unit.id);
+    try {
+      this.updateNationKnowledge(unit.ownerId);
+      this.updateScoutPhase(unit.ownerId);
+      this.moveScout(unit);
+      this.updateNationKnowledge(unit.ownerId);
+      this.updateScoutPhase(unit.ownerId);
+    } finally {
+      this.navalUtilityExplorerIds.delete(unit.id);
+    }
   }
 
   private updateScoutPhase(nationId: string): void {
@@ -1341,10 +1372,15 @@ export class AIExplorationSystem {
   }
 
   private isNavalReconUnit(unit: Unit): boolean {
-    return unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon';
+    return unit.unitType.id === SCOUT_BOAT.id
+      || unit.unitType.category === 'naval_recon'
+      // AI Work Boats temporarily explore using naval-recon movement (water-only,
+      // coastline-follow, frontier). Scoped to the active exploration call only.
+      || this.navalUtilityExplorerIds.has(unit.id);
   }
 
   private getScoutLogName(unit: Unit): string {
+    if (unit.unitType.id === WORK_BOAT.id) return 'Work Boat scouting';
     return this.isNavalReconUnit(unit) ? 'Scout Boat' : 'Scout';
   }
 

@@ -1763,6 +1763,7 @@ export class GameScene extends Phaser.Scene {
       exileProtectionSystem,
       tradeConnectionSystem,
       diplomaticProposalSystem,
+      aiExplorationSystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
