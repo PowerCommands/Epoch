@@ -1,4 +1,4 @@
-import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
+import { CULTURE_TREE, getCultureNodeById, getRequiredCultureNodeForUnit } from '../../data/cultureTree';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../../data/gameSpeeds';
 import { getEraPacingMultiplier } from '../../data/eraPacingMultipliers';
 import type { CultureNode } from '../../types/CultureNode';
@@ -136,6 +136,17 @@ export class CultureSystem {
   isUnlocked(nationId: string, nodeId: string): boolean {
     const nation = this.nationManager.getNation(nationId);
     return nation?.unlockedCultureNodeIds.includes(nodeId) ?? false;
+  }
+
+  /**
+   * Whether `nationId` satisfies the culture requirement for building `unitId`.
+   * True when the unit is not gated by a culture node, or that node is unlocked.
+   * (e.g. Rebels require the Nationalism culture node.)
+   */
+  isUnitCultureUnlocked(nationId: string, unitId: string): boolean {
+    const node = getRequiredCultureNodeForUnit(unitId);
+    if (!node) return true;
+    return this.isUnlocked(nationId, node.id);
   }
 
   getCurrentCultureNode(nationId: string): CultureNode | undefined {

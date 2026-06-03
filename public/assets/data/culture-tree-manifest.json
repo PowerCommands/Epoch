@@ -116,6 +116,11 @@
       "era": "renaissance"
     },
     {
+      "id": "nationalism",
+      "name": "Nationalism",
+      "era": "renaissance"
+    },
+    {
       "id": "enlightenment",
       "name": "The Enlightenment",
       "era": "industrial"
@@ -128,11 +133,6 @@
     {
       "id": "civil_engineering",
       "name": "Civil Engineering",
-      "era": "industrial"
-    },
-    {
-      "id": "nationalism",
-      "name": "Nationalism",
       "era": "industrial"
     },
     {

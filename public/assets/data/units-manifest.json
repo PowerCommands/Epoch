@@ -461,6 +461,34 @@
       "era": "renaissance",
       "category": "civilian",
       "isNaval": true
+    },
+    {
+      "id": "spy",
+      "name": "Spy",
+      "era": "medieval",
+      "category": "covert",
+      "isNaval": false
+    },
+    {
+      "id": "agent",
+      "name": "Agent",
+      "era": "industrial",
+      "category": "covert",
+      "isNaval": false
+    },
+    {
+      "id": "rebels",
+      "name": "Rebels",
+      "era": "renaissance",
+      "category": "covert",
+      "isNaval": false
+    },
+    {
+      "id": "partisans",
+      "name": "Partisans",
+      "era": "modern",
+      "category": "covert",
+      "isNaval": false
     }
   ]
 }

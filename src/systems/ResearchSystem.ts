@@ -205,10 +205,24 @@ export class ResearchSystem {
     return this.isResearched(nationId, requiredTechnology.id);
   }
 
+  /**
+   * Optional resolver for culture-gated units (e.g. Rebels → Nationalism). Set by
+   * GameScene once the CultureSystem exists. Returns whether `nationId` satisfies
+   * the unit's culture requirement (true when there is none). Culture gating only
+   * applies to units with no unlocking technology, so tech-unlocked units (e.g.
+   * Horseman, which culture also references decoratively) are unaffected.
+   */
+  private cultureUnitUnlockResolver?: (nationId: string, unitId: string) => boolean;
+
+  setCultureUnitUnlockResolver(resolver: (nationId: string, unitId: string) => boolean): void {
+    this.cultureUnitUnlockResolver = resolver;
+  }
+
   isUnitUnlocked(nationId: string, unitId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForUnit(unitId);
-    if (!requiredTechnology) return true;
-    return this.isResearched(nationId, requiredTechnology.id);
+    if (requiredTechnology) return this.isResearched(nationId, requiredTechnology.id);
+    // No unlocking tech: the unit may instead be gated by a culture node.
+    return this.cultureUnitUnlockResolver?.(nationId, unitId) ?? true;
   }
 
   isBuildingUnlocked(nationId: string, buildingId: string): boolean {

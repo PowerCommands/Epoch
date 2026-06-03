@@ -11,7 +11,11 @@ export type UnitCategory =
   | 'air'
   | 'civilian'
   | 'recon'
-  | 'leader';
+  | 'leader'
+  // Special-purpose units operating outside normal diplomacy/warfare (Spy,
+  // Agent, Rebels, Partisans). Kept separate from civilian/military/naval/air
+  // for future UI filtering and behavior.
+  | 'covert';
 
 /**
  * Describes how a unit relates to a nation, independent of its combat category.
@@ -32,6 +36,8 @@ export interface UnitType {
   readonly name: string;
   readonly era: Era;
   readonly category: UnitCategory;
+  /** Short flavor/role text for unit info / future Civilopedia. */
+  readonly description?: string;
   /**
    * Allegiance model for the unit, separate from its combat {@link category}.
    * Optional for backward compatibility; treat a missing value as
@@ -61,6 +67,17 @@ export interface UnitType {
   readonly mustEndOnLand?: boolean;
   readonly uniquePerNation?: boolean;
   readonly residenceCapitalOnly?: boolean;
+  // ─── Covert-unit capability flags (placeholders; no behavior yet) ──────────
+  /** Covert unit can gather intelligence (behavior added later). */
+  readonly canGatherIntel?: boolean;
+  /** Covert unit can sabotage tile improvements (behavior added later). */
+  readonly canSabotageImprovements?: boolean;
+  /** Covert unit can sabotage buildings (behavior added later). */
+  readonly canSabotageBuildings?: boolean;
+  /** Covert unit can assassinate enemy workers (behavior added later). */
+  readonly canAssassinateWorkers?: boolean;
+  /** Marks an insurgent proxy force (Rebels, Partisans). Behavior added later. */
+  readonly isInsurgentForce?: boolean;
   readonly requiredResource?: {
     readonly resourceId: string;
     readonly amount: number;

@@ -355,7 +355,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Blends mounted warfare, feudal duty, and fortified rule. Unlocks Knights and Castles for medieval power.',
     prerequisites: ['civil_service', 'guilds'],
     leadsTo: ['banking', 'printing_press'],
-    unlocks: [{ kind: 'unit', id: 'knight' }, { kind: 'building', id: 'castle' }],
+    unlocks: [{ kind: 'unit', id: 'knight' }, { kind: 'building', id: 'castle' }, { kind: 'unit', id: 'spy' }],
     // TODO: unlocks Himeji Castle and defensive pacts.
   },
   {
@@ -644,7 +644,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Broadcasts sound and information across entire nations. Unlocks Broadcast Towers for modern communication.',
     prerequisites: ['electricity'],
     leadsTo: ['plastics'],
-    unlocks: [{ kind: 'building', id: 'broadcast_tower' }],
+    unlocks: [{ kind: 'building', id: 'broadcast_tower' }, { kind: 'unit', id: 'agent' }],
     // TODO: unlocks Eiffel Tower wonder.
   },
   {
@@ -716,7 +716,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Detects aircraft and threats before they arrive. Unlocks Fighters, Bombers, and Paratroopers.',
     prerequisites: ['ballistics', 'electronics'],
     leadsTo: ['rocketry', 'nuclear_fission', 'computers'],
-    unlocks: [{ kind: 'unit', id: 'fighter' }, { kind: 'unit', id: 'bomber' }, { kind: 'unit', id: 'paratrooper' }],
+    unlocks: [{ kind: 'unit', id: 'fighter' }, { kind: 'unit', id: 'bomber' }, { kind: 'unit', id: 'paratrooper' }, { kind: 'unit', id: 'partisans' }],
     // TODO: unlocks Pentagon wonder.
   },
   {

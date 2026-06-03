@@ -7,6 +7,7 @@ interface UnitDefinitionInput {
   name: string;
   era: Era;
   cost: number;
+  description?: string;
   upkeepGold?: number;
   upgradeToUnitId?: string;
   cargoCapacity?: number;
@@ -26,6 +27,11 @@ interface UnitDefinitionInput {
   mustEndOnLand?: boolean;
   uniquePerNation?: boolean;
   residenceCapitalOnly?: boolean;
+  canGatherIntel?: boolean;
+  canSabotageImprovements?: boolean;
+  canSabotageBuildings?: boolean;
+  canAssassinateWorkers?: boolean;
+  isInsurgentForce?: boolean;
   requiredResource?: {
     readonly resourceId: string;
     readonly amount: number;
@@ -42,7 +48,9 @@ const RENAISSANCE_ERA_INDEX = getEraIndex('renaissance');
  * even though the Leader has combat strength.
  */
 function isMilitaryUnit(input: UnitDefinitionInput): boolean {
-  if (input.category === 'civilian' || input.category === 'leader') return false;
+  // Covert units are excluded too: their sabotage is a separate (future) mechanic
+  // via their own flags, so they must not auto-gain the generic destroy actions.
+  if (input.category === 'civilian' || input.category === 'leader' || input.category === 'covert') return false;
   return input.combatStrength > 0 || (input.rangedStrength ?? 0) > 0;
 }
 
@@ -53,6 +61,7 @@ function unit(input: UnitDefinitionInput): UnitType {
     name: input.name,
     era: input.era,
     category: input.category,
+    description: input.description,
     allegianceType: input.allegianceType,
     // All military units can raze improvements; Renaissance-era and later
     // military units can also raze buildings. Non-military units get neither.
@@ -77,6 +86,11 @@ function unit(input: UnitDefinitionInput): UnitType {
     mustEndOnLand: input.mustEndOnLand,
     uniquePerNation: input.uniquePerNation,
     residenceCapitalOnly: input.residenceCapitalOnly,
+    canGatherIntel: input.canGatherIntel,
+    canSabotageImprovements: input.canSabotageImprovements,
+    canSabotageBuildings: input.canSabotageBuildings,
+    canAssassinateWorkers: input.canAssassinateWorkers,
+    isInsurgentForce: input.isInsurgentForce,
     requiredResource: input.requiredResource,
     serviceLifeRounds: input.serviceLifeRounds,
   };
@@ -199,6 +213,34 @@ export const LEADER = unit({
 
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 3, allowedCargoCategories: ['civilian', 'melee', 'ranged', 'mounted', 'siege'] });
 
+// ─── Covert units (hidden-nation special-purpose; behavior added in later tasks) ──
+// All use allegianceType 'hiddenNation' and the dedicated 'covert' category.
+// Capability flags below are placeholders only — no behavior yet.
+export const SPY = unit({
+  id: 'spy', name: 'Spy', era: 'medieval', cost: 90, combatStrength: 8, movement: 2,
+  category: 'covert', allegianceType: 'hiddenNation', upgradeToUnitId: 'agent',
+  canGatherIntel: true, canSabotageImprovements: true,
+  description: 'A covert operative skilled in intelligence gathering and quiet sabotage.',
+});
+export const AGENT = unit({
+  id: 'agent', name: 'Agent', era: 'industrial', cost: 250, combatStrength: 32, rangedStrength: 32, range: 5, movement: 2,
+  category: 'covert', allegianceType: 'hiddenNation',
+  canGatherIntel: true, canSabotageImprovements: true, canSabotageBuildings: true, canAssassinateWorkers: true,
+  description: 'An advanced covert operative trained for high-level intelligence and covert operations.',
+});
+export const REBELS = unit({
+  id: 'rebels', name: 'Rebels', era: 'renaissance', cost: 450, combatStrength: 32, movement: 2,
+  category: 'covert', allegianceType: 'hiddenNation', upgradeToUnitId: 'partisans',
+  isInsurgentForce: true,
+  description: 'An insurgent proxy force used to wage deniable, irregular warfare.',
+}); // cost ≈ 3× Musketman (150)
+export const PARTISANS = unit({
+  id: 'partisans', name: 'Partisans', era: 'modern', cost: 1125, combatStrength: 102, movement: 2,
+  category: 'covert', allegianceType: 'hiddenNation',
+  isInsurgentForce: true,
+  description: 'A modern insurgent army that wages irregular warfare behind enemy lines.',
+}); // cost ≈ 3× Tank (375)
+
 export const SPECIAL_UNIT_TYPES: UnitType[] = [
   LEADER,
 ];
@@ -215,6 +257,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
   MECHANIZED_INFANTRY, MODERN_ARMOR, JET_FIGHTER, STEALTH_BOMBER, GUIDED_MISSILE, NUCLEAR_MISSILE, XCOM_SQUAD,
   GIANT_DEATH_ROBOT, MISSILE_CRUISER,
   WORKER, SETTLER, TRANSPORT_SHIP,
+  SPY, AGENT, REBELS, PARTISANS,
 ];
 
 export function getUnitTypeById(id: string): UnitType | undefined {

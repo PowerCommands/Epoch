@@ -921,6 +921,12 @@ export class GameScene extends Phaser.Scene {
       undefined,
       (nationId, message) => logManager.info({ nationId, category: 'research', message }),
     );
+    // Culture-gated units (e.g. Rebels → Nationalism) are unlocked via the
+    // culture tree rather than a technology; route that check through the shared
+    // unit-availability gate so human and AI production both respect it.
+    researchSystem.setCultureUnitUnlockResolver((nationId, unitId) =>
+      cultureSystem.isUnitCultureUnlocked(nationId, unitId),
+    );
     // Practical trade connections require Trade Networks on at least one side.
     tradeDealSystem.setHasTradeNetworks((nationId) =>
       researchSystem.isResearched(nationId, 'trade_networks'),
