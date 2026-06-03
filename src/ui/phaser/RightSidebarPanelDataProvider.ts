@@ -428,9 +428,11 @@ export class RightSidebarPanelDataProvider {
       for (let j = i + 1; j < nations.length; j++) {
         const a = nations[i];
         const b = nations[j];
-        const type = this.getDiplomacyGraphRelationshipType(a.id, b.id);
-        if (!type) continue;
-        edges.push({ fromNationId: a.id, toNationId: b.id, type });
+        // Relationships are not mutually exclusive: emit one edge per active
+        // relationship type so the graph can show them all simultaneously.
+        for (const type of this.getDiplomacyGraphRelationshipTypes(a.id, b.id)) {
+          edges.push({ fromNationId: a.id, toNationId: b.id, type });
+        }
       }
     }
     return { nodes, edges };
@@ -445,29 +447,30 @@ export class RightSidebarPanelDataProvider {
     return known;
   }
 
-  private getDiplomacyGraphRelationshipType(a: string, b: string): DiplomacyRelationshipType | null {
-    let type: DiplomacyRelationshipType | null = (this.discoverySystem?.hasMet(a, b) ?? true) ? 'hasMet' : null;
+  /**
+   * All active diplomatic relationship types between two nations, in center-out
+   * priority order (Met/Embassy first → War/Alliance last). Relationships are
+   * independent, so several can be active at once. Read-only — reflects existing
+   * diplomacy state without changing it.
+   */
+  private getDiplomacyGraphRelationshipTypes(a: string, b: string): DiplomacyRelationshipType[] {
+    const types: DiplomacyRelationshipType[] = [];
+    if (this.discoverySystem?.hasMet(a, b) ?? true) types.push('hasMet');
     if (this.diplomacyManager) {
       if (this.diplomacyManager.hasEmbassy(a, b) || this.diplomacyManager.hasEmbassy(b, a)) {
-        type = 'embassy';
+        types.push('embassy');
       }
       if (
         this.diplomacyManager.isOpenBorderGrantedFrom(a, b)
         || this.diplomacyManager.isOpenBorderGrantedFrom(b, a)
       ) {
-        type = 'openBorders';
+        types.push('openBorders');
       }
-      if (this.diplomacyManager.hasTradeRelations(a, b)) {
-        type = 'trade';
-      }
-      if (this.allianceManager?.areAllied(a, b)) {
-        type = 'ally';
-      }
-      if (this.diplomacyManager.getState(a, b) === 'WAR') {
-        type = 'war';
-      }
+      if (this.diplomacyManager.hasTradeRelations(a, b)) types.push('trade');
+      if (this.allianceManager?.areAllied(a, b)) types.push('ally');
+      if (this.diplomacyManager.getState(a, b) === 'WAR') types.push('war');
     }
-    return type;
+    return types;
   }
 
   getTimelineContent(): RightSidebarContent {

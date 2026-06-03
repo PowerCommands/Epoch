@@ -837,25 +837,63 @@ export class RightSidebarPanel {
     this.scene.add.existing(edgeGfx);
     edgeGfx.setMask(this.contentMask);
 
-    const drawEdgeType = (type: DiplomacyRelationshipType, width: number, color: number, alpha: number): void => {
-      for (const edge of visibleEdges) {
-        if (edge.type !== type) continue;
-        const from = nodePositions.get(edge.fromNationId);
-        const to = nodePositions.get(edge.toNationId);
-        if (!from || !to) continue;
-        edgeGfx.lineStyle(width, color, alpha);
-        edgeGfx.beginPath();
-        edgeGfx.moveTo(panelX + from.x, panelY + from.y);
-        edgeGfx.lineTo(panelX + to.x, panelY + to.y);
-        edgeGfx.strokePath();
-      }
+    // Relationships are not mutually exclusive: a pair of nations can have several
+    // visible edges at once. Render them as parallel lines offset perpendicular to
+    // the centerline so none overlap. Center-out priority keeps Met/Embassy nearest
+    // the centerline and War/Alliance outermost.
+    const EDGE_STYLE: Record<DiplomacyRelationshipType, { width: number; color: number; alpha: number }> = {
+      hasMet: { width: 1, color: 0x778899, alpha: 0.3 },
+      embassy: { width: 1.25, color: 0x6ec6ff, alpha: 0.62 },
+      openBorders: { width: 1.5, color: 0x44bb77, alpha: 0.75 },
+      trade: { width: 2, color: 0xf0c66a, alpha: 0.78 },
+      ally: { width: 5.5, color: 0xb060ff, alpha: 0.95 },
+      war: { width: 2.5, color: 0xcc3344, alpha: 0.92 },
     };
-    drawEdgeType('hasMet', 1, 0x778899, 0.3);
-    drawEdgeType('embassy', 1.25, 0x6ec6ff, 0.62);
-    drawEdgeType('openBorders', 1.5, 0x44bb77, 0.75);
-    drawEdgeType('trade', 2, 0xf0c66a, 0.78);
-    drawEdgeType('ally', 5.5, 0xb060ff, 0.95);
-    drawEdgeType('war', 2.5, 0xcc3344, 0.92);
+    const CENTER_OUT_PRIORITY: DiplomacyRelationshipType[] = [
+      'hasMet', 'embassy', 'openBorders', 'trade', 'ally', 'war',
+    ];
+    const PARALLEL_EDGE_SPACING = 6;
+
+    // Group visible edges by unordered nation pair.
+    const edgesByPair = new Map<string, typeof visibleEdges>();
+    for (const edge of visibleEdges) {
+      const key = [edge.fromNationId, edge.toNationId].sort().join('|');
+      const list = edgesByPair.get(key);
+      if (list) list.push(edge);
+      else edgesByPair.set(key, [edge]);
+    }
+
+    for (const pairEdges of edgesByPair.values()) {
+      const from = nodePositions.get(pairEdges[0].fromNationId);
+      const to = nodePositions.get(pairEdges[0].toNationId);
+      if (!from || !to) continue;
+
+      // Order edges center-out so Met/Embassy take the innermost offset slots.
+      pairEdges.sort((a, b) =>
+        CENTER_OUT_PRIORITY.indexOf(a.type) - CENTER_OUT_PRIORITY.indexOf(b.type));
+      const count = pairEdges.length;
+      // Symmetric offsets around the centerline, sorted by distance from center
+      // (innermost first) so the center-out edge order maps to inner→outer slots.
+      const offsetSlots = Array.from({ length: count }, (_, i) => (i - (count - 1) / 2) * PARALLEL_EDGE_SPACING)
+        .sort((a, b) => Math.abs(a) - Math.abs(b));
+
+      // Perpendicular unit vector to the centerline (screen space).
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.hypot(dx, dy) || 1;
+      const perpX = -dy / length;
+      const perpY = dx / length;
+
+      pairEdges.forEach((edge, index) => {
+        const offset = offsetSlots[index];
+        const style = EDGE_STYLE[edge.type];
+        edgeGfx.lineStyle(style.width, style.color, style.alpha);
+        edgeGfx.beginPath();
+        edgeGfx.moveTo(panelX + from.x + perpX * offset, panelY + from.y + perpY * offset);
+        edgeGfx.lineTo(panelX + to.x + perpX * offset, panelY + to.y + perpY * offset);
+        edgeGfx.strokePath();
+      });
+    }
     this.contentObjects.push(edgeGfx);
 
     const nodeGfx = this.addOwned(new Phaser.GameObjects.Graphics(this.scene)

@@ -107,6 +107,7 @@ import { CityDefenseSystem } from '../systems/CityDefenseSystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { InfrastructureSabotageSystem, IMPROVEMENT_DESTRUCTION_LOOT_GOLD } from '../systems/InfrastructureSabotageSystem';
 import { InfrastructureRepairSystem } from '../systems/InfrastructureRepairSystem';
+import { InsurgentBehaviorSystem } from '../systems/InsurgentBehaviorSystem';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
 import { CombatAnimationSystem } from '../systems/CombatAnimationSystem';
@@ -1473,6 +1474,10 @@ export class GameScene extends Phaser.Scene {
       const mode = unitActionToolbox.getMode();
       if (unit.isSleeping) unit.isSleeping = false;
       if (mode === 'move') {
+        // Insurgents are relocation-only for the player: never initiate combat
+        // manually. Returning false routes to the default movement (relocation),
+        // and autonomy resumes from the new position.
+        if (unit.unitType.isInsurgentForce === true) return false;
         if (unit.unitType.baseStrength <= 0) return false;
         return tryActionAttack(unit, tile);
       }
@@ -1538,6 +1543,20 @@ export class GameScene extends Phaser.Scene {
       (unit, territoryOwnerId) => exileProtectionSystem.canLeaderEnterTerritory(unit, territoryOwnerId),
       unitBoardingManager,
     );
+
+    // Insurgent forces (Rebels, Partisans) act autonomously at the start of each
+    // nation's turn — human- and AI-owned alike. The owner relocates them; they
+    // choose how they fight. (AISystem.runMovement skips insurgents so there is
+    // exactly one autonomy pass per unit per turn.)
+    const insurgentBehaviorSystem = new InsurgentBehaviorSystem(
+      unitManager,
+      cityManager,
+      gridSystem,
+      pathfindingSystem,
+      movementSystem,
+      combatSystem,
+    );
+    turnManager.on('turnStart', (e) => insurgentBehaviorSystem.runForNation(e.nation.id));
 
     // Turn order: built AFTER MovementSystem so MovementSystem's turnStart
     // reset fires before TurnOrderSystem auto-selects the active unit.
@@ -2548,7 +2567,11 @@ export class GameScene extends Phaser.Scene {
         else unitRenderer.refreshUnitPosition(e.defender.id);
       }
       // Record per-war unit losses for military units (baseStrength > 0).
-      if (diplomacyManager.getState(e.attacker.ownerId, e.defender.ownerId) === 'WAR') {
+      // Combat involving insurgents (Rebels, Partisans) is outside diplomacy and
+      // must never create diplomatic penalties, so it is excluded entirely.
+      const involvesInsurgent = e.attacker.unitType.isInsurgentForce === true
+        || e.defender.unitType.isInsurgentForce === true;
+      if (!involvesInsurgent && diplomacyManager.getState(e.attacker.ownerId, e.defender.ownerId) === 'WAR') {
         if (e.result.attackerDied && e.attacker.unitType.baseStrength > 0) {
           diplomacyManager.recordWarUnitLoss(e.attacker.ownerId, e.defender.ownerId);
         }

@@ -175,10 +175,16 @@ export class CombatSystem {
       // requirement for unit targets — no war is declared and no diplomatic
       // values change. Combat itself resolves through the normal pipeline.
       const isHiddenNationAttack = getAllegianceType(attacker.unitType) === 'hiddenNation';
+      // A hidden-nation defender (Privateer, Spy, Agent, Rebels, Partisans) can be
+      // attacked freely by anyone: no war required, declared, or triggered. This
+      // makes insurgents permanently valid combatants for all nations.
+      const targetIsHiddenNation = getAllegianceType(targetUnit.unitType) === 'hiddenNation';
       if (isHiddenNationAttack) {
         console.info(
           `${attacker.unitType.name} attacked ${targetUnit.ownerId}'s ${targetUnit.unitType.name} while operating under hidden allegiance.`,
         );
+      } else if (targetIsHiddenNation) {
+        // Deniable/insurgent target — no war check.
       } else if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
         this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY, options.source ?? 'system');
         return false;

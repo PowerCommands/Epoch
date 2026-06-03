@@ -1,6 +1,7 @@
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
+import { getAllegianceType } from '../entities/UnitType';
 import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
@@ -2115,9 +2116,14 @@ export class AISystem {
     const isTargetUnit = isUnit(target);
     const isTargetCity = !isTargetUnit;
 
-    const canAttack = this.diplomacyManager
-      ? this.diplomacyManager.canAttack(nationId, target.ownerId)
-      : true;
+    // Hidden-nation units (insurgents, privateers, spies, agents) are freely
+    // attackable by anyone without a war — matching CombatSystem's war bypass.
+    const targetIsHiddenNation = isUnit(target) && getAllegianceType(target.unitType) === 'hiddenNation';
+    const canAttack = targetIsHiddenNation
+      ? true
+      : this.diplomacyManager
+        ? this.diplomacyManager.canAttack(nationId, target.ownerId)
+        : true;
 
     const targetHealthRatio = isTargetUnit
       ? target.health / target.unitType.baseHealth
@@ -2182,6 +2188,7 @@ export class AISystem {
       if (unit.unitType.id === LEADER.id) continue; // leaders use evacuation movement only
       if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
       if (unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon') continue;
+      if (unit.unitType.isInsurgentForce === true) continue; // insurgents use InsurgentBehaviorSystem
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
       if (unit.unitType.id === WORK_BOAT.id) {

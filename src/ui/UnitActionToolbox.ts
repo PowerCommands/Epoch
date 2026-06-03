@@ -235,8 +235,14 @@ export class UnitActionToolbox {
     const unit = this.selectedUnit;
     if (!unit) return [];
 
+    // Insurgent forces (Rebels, Partisans) are semi-autonomous: the player may
+    // only relocate (Move) or Dismiss them. Combat and everything else is
+    // AI-driven, so all other actions are hidden.
+    const insurgent = unit.unitType.isInsurgentForce === true;
+
     const states: UnitActionViewState[] = [];
     for (const mode of HUD_ACTION_ORDER) {
+      if (insurgent && mode !== 'move' && mode !== 'dismiss') continue;
       const action = ACTIONS.find((candidate) => candidate.mode === mode);
       if (!action) continue;
 

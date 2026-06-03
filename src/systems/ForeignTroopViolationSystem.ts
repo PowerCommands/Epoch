@@ -1,4 +1,5 @@
 import type { Unit } from '../entities/Unit';
+import { getAllegianceType } from '../entities/UnitType';
 import type { MapData } from '../types/map';
 import type { SavedForeignTroopViolationWarning } from '../types/saveGame';
 import type { DiplomacyManager, DiplomaticMemoryValues } from './DiplomacyManager';
@@ -181,6 +182,10 @@ export class ForeignTroopViolationSystem {
     if (unit.unitType.baseStrength <= 0) return false;
     if (unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon') return false;
     if (unit.unitType.category === 'civilian' || unit.unitType.category === 'leader') return false;
+    // Hidden-nation units (Privateers, Spies, Agents, Rebels, Partisans) operate
+    // incognito: their presence on foreign territory never triggers the
+    // "foreign troops on your land" warning or its diplomatic penalties.
+    if (getAllegianceType(unit.unitType) === 'hiddenNation') return false;
     return true;
   }
 

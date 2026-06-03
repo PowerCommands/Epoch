@@ -222,6 +222,9 @@ export class MovementSystem {
   }
 
   private getClosedBorderOwner(unit: Unit, tile: Tile): string | null {
+    // Insurgent forces (Rebels, Partisans) infiltrate freely: they ignore closed
+    // borders and never trigger the war-required flow when entering foreign land.
+    if (unit.unitType.isInsurgentForce === true) return null;
     if (unit.unitType.isNaval === true && isWaterTile(tile)) return null;
     if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
     if (this.diplomacyManager === undefined) return null;
