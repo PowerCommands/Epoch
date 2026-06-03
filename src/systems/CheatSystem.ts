@@ -45,6 +45,13 @@ export interface GameContext {
    * 'exists' when they are already allied (no-op), otherwise 'created'.
    */
   formHumanAlliance: (targetNationId: string) => 'created' | 'exists';
+  /**
+   * Experimental developer hook: reload the current game with `targetNationId`
+   * as the human player. Implementations show a confirmation modal and only
+   * reload the scene on confirm; selecting the current human is a no-op. Returns
+   * a short status message for the cheat console.
+   */
+  switchHumanPlayer: (targetNationId: string) => string;
 }
 
 export interface CheatCommand {
@@ -534,6 +541,23 @@ export class CheatSystem {
         // Restarts cleanly if already active (start() handles the stop internally).
         autoplay.start(rounds);
         return `Autoplay started for ${rounds} round(s).`;
+      },
+    });
+
+    this.register({
+      name: 'playas',
+      description: 'Experimental: reload the current game with another nation as the human player. Usage: "playas <nation>".',
+      execute: (args, context) => {
+        if (args.length !== 1) return 'Usage: playas <nation>';
+
+        const target = resolveNationId(args[0], context);
+        if (!target.ok) return target.message;
+
+        return context.switchHumanPlayer(target.nationId);
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeNation(args[0], context);
+        return [];
       },
     });
 

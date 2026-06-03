@@ -27,6 +27,50 @@ export interface TutorialSection {
 
 export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
   {
+    id: 'keyboard-shortcuts',
+    title: 'Keyboard Shortcuts',
+    blocks: [
+      { kind: 'paragraph', text: 'Epoch can be played almost entirely from the keyboard. The shortcuts below cover normal play, the cheat panel and the scenario editor.' },
+      { kind: 'heading', text: 'During Play' },
+      {
+        kind: 'list',
+        items: [
+          'Enter / Return (or Numpad Enter) — End the current turn',
+          'Space — Skip the active unit and move to the next unit in the turn queue',
+          'C — Center the camera on the active unit, or on your capital if no unit is active',
+          'M — Put the selected unit into Move mode',
+          'A — Put the selected unit into Attack mode',
+          'R — Put the selected unit into Ranged Attack mode',
+          'S — Put the selected unit to Sleep; on a working unit it cancels the current build instead',
+          'Tab — While a city is open, jump to your next city (Shift + Tab for the previous one)',
+          'Esc — Release a focused unit into inspect mode, close an open panel, or open the game menu',
+          'Ctrl + Q — Open or close the game menu',
+          'Ctrl + S — Open the Save Game dialog',
+        ],
+      },
+      { kind: 'note', text: 'While you are typing in a text field (for example renaming a city), shortcuts are paused so your keystrokes go to the field.' },
+      { kind: 'heading', text: 'Cheat Panel' },
+      {
+        kind: 'list',
+        items: [
+          'Ctrl + Shift + C — Open or close the cheat panel',
+          'Enter — Run the typed command',
+          'Tab — Autocomplete the current command',
+          'Arrow Up / Arrow Down — Browse previously entered commands',
+          'Esc — Close the cheat panel',
+        ],
+      },
+      { kind: 'heading', text: 'Scenario Editor' },
+      {
+        kind: 'list',
+        items: [
+          'Ctrl + Z — Undo your most recent brush stroke',
+          'Ctrl + Shift + Z — Redo an undone action',
+        ],
+      },
+    ],
+  },
+  {
     id: 'introduction',
     title: 'Introduction',
     blocks: [

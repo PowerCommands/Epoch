@@ -956,7 +956,7 @@ export class MainMenuScene extends Phaser.Scene {
         content: '';
         position: absolute;
         inset: -5%;
-        background-image: url('/assets/background.svg'), url('/assets/background.png');
+        background-image: url('/assets/background.webp');
         background-size: cover;
         background-position: center;
         transform: scale(1.045) translate3d(-1.8%, -1%, 0);

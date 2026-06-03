@@ -359,7 +359,7 @@ export class LeaderAudienceDialog {
   }
 
   private layoutCloseButton(dialogX: number, dialogY: number, dialogW: number): void {
-    const x = dialogX + dialogW - PANEL_PADDING - CLOSE_BUTTON_WIDTH;
+    const x = dialogX + dialogW - PANEL_PADDING - CLOSE_BUTTON_WIDTH - 50;
     const y = dialogY + PANEL_PADDING - 8;
     this.placeButton(this.closeButton, x, y, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT);
   }

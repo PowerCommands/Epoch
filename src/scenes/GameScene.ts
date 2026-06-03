@@ -137,6 +137,8 @@ import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
+import { SaveGameDialog } from '../ui/SaveGameDialog';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { TutorialView } from '../ui/TutorialView';
 import { SettingsDialog } from '../ui/SettingsDialog';
 import { isAutofocusOnEndTurn, isAutoEndTurn } from '../systems/PlayerSettings';
@@ -2100,7 +2102,11 @@ export class GameScene extends Phaser.Scene {
     const onKeyMove = () => activateActionIfHumanTurn('move');
     const onKeyAttack = () => activateActionIfHumanTurn('attack');
     const onKeyRanged = () => activateActionIfHumanTurn('ranged');
-    const onKeySleep = () => activateActionIfHumanTurn('sleep');
+    // Plain S sleeps; Ctrl+S is reserved for the save dialog.
+    const onKeySleep = (event: KeyboardEvent) => {
+      if (event.ctrlKey) return;
+      activateActionIfHumanTurn('sleep');
+    };
     const bindGameplayHotkeys = (): void => {
       this.input.keyboard?.on('keydown-SPACE', onSpaceSkip);
       this.input.keyboard?.on('keydown-C', onKeyCenter);
@@ -5476,6 +5482,55 @@ export class GameScene extends Phaser.Scene {
       return 'created';
     };
 
+    // Experimental developer cheat: reload the game as another nation. Shows a
+    // confirmation modal first and only reloads the scene on confirm — it never
+    // switches ownership live (see `playas` in CheatSystem).
+    const switchHumanPlayerConfirmDialog = new ConfirmDialog();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => switchHumanPlayerConfirmDialog.shutdown());
+    const switchHumanPlayerForCheat = (targetNationId: string): string => {
+      const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      if (targetNationId === humanNationId) {
+        return `Already playing as ${targetName}.`;
+      }
+      const currentName = humanNationId
+        ? nationManager.getNation(humanNationId)?.name ?? humanNationId
+        : 'observer';
+
+      switchHumanPlayerConfirmDialog.show({
+        title: 'Switch Human Player',
+        body: [
+          'This is an experimental developer feature.',
+          `The current game will be reloaded and you will continue playing as ${targetName}.`,
+          'This functionality is intended for testing and debugging purposes and may expose edge cases that are not normally encountered during gameplay.',
+          'Do you want to continue?',
+        ],
+        confirmLabel: 'Continue',
+        cancelLabel: 'Cancel',
+        onConfirm: () => {
+          const saved = serializeCurrentGame();
+          const switched: SavedGameState = {
+            ...saved,
+            humanNationId: targetNationId,
+            nations: saved.nations.map((nation) => ({
+              ...nation,
+              isHuman: nation.id === targetNationId,
+            })),
+          };
+          console.log(`Developer action: Human player switched from ${currentName} to ${targetName}.`);
+          this.scene.start('GameScene', {
+            mapKey: switched.mapKey,
+            humanNationId: switched.humanNationId,
+            activeNationIds: switched.activeNationIds,
+            resourceAbundance: 'normal',
+            gameSpeedId: switched.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+            savedState: switched,
+          });
+        },
+      });
+
+      return `Confirm to switch human player to ${targetName}.`;
+    };
+
     const cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
@@ -5498,6 +5553,7 @@ export class GameScene extends Phaser.Scene {
         updateFog();
       },
       formHumanAlliance: formHumanAllianceForCheat,
+      switchHumanPlayer: switchHumanPlayerForCheat,
     }));
 
     turnManager.on('turnStart', () => {
@@ -6018,39 +6074,52 @@ export class GameScene extends Phaser.Scene {
       // currently needs orders.
       onAutoEndTurnChanged: () => maybeAutoEndTurn(),
     });
+    // All manual save triggers (Escape menu, Ctrl+S) route through a single
+    // shared flow: serialize the live game, then download under the name the
+    // player confirms in the dialog.
+    const serializeCurrentGame = (): SavedGameState =>
+      SaveLoadService.serialize({
+        mapKey: data.mapKey,
+        humanNationId: data.humanNationId,
+        activeNationIds: data.activeNationIds,
+        gameSpeedId: gameSpeed.id,
+        mapData,
+        nationManager,
+        cityManager,
+        unitManager,
+        productionSystem,
+        diplomacyManager,
+        allianceManager,
+        discoverySystem,
+        symbolicGiftRegistry,
+        turnManager,
+        gridSystem,
+        wonderSystem,
+        policySystem,
+        tradeDealSystem,
+        tradeConnectionSystem,
+        tradeDiplomacySystem,
+        visibilitySystem,
+        exileProtectionSystem,
+        corporationSystem,
+        worldMarkerSystem,
+        foreignTroopViolationSystem,
+        historicalTimeline,
+      });
+    const saveGameDialog = new SaveGameDialog({
+      onConfirm: (filename) => {
+        downloadCurrentSaveGame(serializeCurrentGame(), filename);
+      },
+    });
+    const openSaveGameDialog = (): void => {
+      if (saveGameDialog.isOpen()) return;
+      saveGameDialog.show(buildDefaultSaveFilename(data.mapKey));
+    };
     const escapeMenu = new EscapeMenu(
       {
         onSave: () => {
-          const state = SaveLoadService.serialize({
-            mapKey: data.mapKey,
-            humanNationId: data.humanNationId,
-            activeNationIds: data.activeNationIds,
-            gameSpeedId: gameSpeed.id,
-            mapData,
-            nationManager,
-            cityManager,
-            unitManager,
-            productionSystem,
-            diplomacyManager,
-            allianceManager,
-            discoverySystem,
-            symbolicGiftRegistry,
-            turnManager,
-            gridSystem,
-            wonderSystem,
-            policySystem,
-            tradeDealSystem,
-            tradeConnectionSystem,
-            tradeDiplomacySystem,
-            visibilitySystem,
-            exileProtectionSystem,
-            corporationSystem,
-            worldMarkerSystem,
-            foreignTroopViolationSystem,
-            historicalTimeline,
-          });
-          downloadSaveFile(state);
-          escapeMenu.close();
+          // Leave the menu open behind the dialog so Cancel returns to it.
+          openSaveGameDialog();
         },
         onLoad: (file) => {
           file.text().then((text) => {
@@ -6119,12 +6188,22 @@ export class GameScene extends Phaser.Scene {
       if (closeOpenCityView()) return;
       escapeMenu.toggle();
     };
+    // Ctrl+S opens the same save dialog as the Escape menu's save action.
+    // preventDefault stops the browser's "save page" dialog.
+    const onKeyCtrlS = (event: KeyboardEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      openSaveGameDialog();
+    };
     this.input.keyboard?.on('keydown-ESC', onKeyEscape);
     this.input.keyboard?.on('keydown-Q', onKeyCtrlQ);
+    this.input.keyboard?.on('keydown-S', onKeyCtrlS);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ESC', onKeyEscape);
       this.input.keyboard?.off('keydown-Q', onKeyCtrlQ);
+      this.input.keyboard?.off('keydown-S', onKeyCtrlS);
       escapeMenu.shutdown();
+      saveGameDialog.shutdown();
       tutorialView.shutdown();
       settingsDialog.shutdown();
     });
@@ -6530,12 +6609,17 @@ function generateWorldSeed(): string {
   return `${Date.now()}-${Math.random()}`;
 }
 
-function downloadSaveFile(state: SavedGameState): void {
+/** Default filename proposed in the save dialog and used as fallback. */
+function buildDefaultSaveFilename(mapKey: string): string {
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  return `epoch-save-${mapKey}-${ts}.json`;
+}
+
+/** Serialize-free download of an already-built save state under a chosen name. */
+function downloadCurrentSaveGame(state: SavedGameState, filename: string): void {
   const json = JSON.stringify(state, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `epoch-save-${state.mapKey}-${ts}.json`;
 
   const anchor = document.createElement('a');
   anchor.href = url;
