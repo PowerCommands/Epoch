@@ -11,6 +11,7 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { NationManager } from './NationManager';
 import type { UnitBoardingManager } from './UnitBoardingManager';
 import { canUnitEndMovementOnTile, canUnitEnterTile, isWaterTile } from './UnitMovementRules';
+import { isCovertOperative } from '../utils/unitRoleUtils';
 
 /** Return movement cost for entering a tile. */
 export function getTileMovementCost(tile: Tile): number {
@@ -106,6 +107,12 @@ export class MovementSystem {
     const cost = getTileMovementCost(targetTile);
     if (unit.movementPoints < cost) return false;
 
+    // Covert operatives (Spy/Agent) stack freely and ignore other units — except
+    // a tile holding a hostile covert operative, which must be defeated first.
+    if (isCovertOperative(unit.unitType)) {
+      return !this.hasHostileCovertOperative(unit, tileX, tileY);
+    }
+
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
     if (occupyingUnit !== null && occupyingUnit.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
 
@@ -197,6 +204,12 @@ export class MovementSystem {
     const cost = getTileMovementCost(targetTile);
     if (unit.movementPoints < cost) return false;
 
+    // Covert operatives (Spy/Agent) stack freely and ignore other units — except
+    // a tile holding a hostile covert operative, which must be defeated first.
+    if (isCovertOperative(unit.unitType)) {
+      return !this.hasHostileCovertOperative(unit, tileX, tileY);
+    }
+
     const occupyingUnit = this.unitManager.getUnitAt(tileX, tileY);
     if (occupyingUnit !== null && occupyingUnit.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
 
@@ -221,10 +234,18 @@ export class MovementSystem {
     return occupyingUnit;
   }
 
+  /** True if a tile holds a covert operative belonging to a different nation than `unit`. */
+  private hasHostileCovertOperative(unit: Unit, tileX: number, tileY: number): boolean {
+    return this.unitManager.getCovertOperativesAt(tileX, tileY)
+      .some((other) => other.id !== unit.id && other.ownerId !== unit.ownerId);
+  }
+
   private getClosedBorderOwner(unit: Unit, tile: Tile): string | null {
     // Insurgent forces (Rebels, Partisans) infiltrate freely: they ignore closed
     // borders and never trigger the war-required flow when entering foreign land.
     if (unit.unitType.isInsurgentForce === true) return null;
+    // Covert operatives (Spy/Agent) likewise infiltrate foreign territory freely.
+    if (isCovertOperative(unit.unitType)) return null;
     if (unit.unitType.isNaval === true && isWaterTile(tile)) return null;
     if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
     if (this.diplomacyManager === undefined) return null;

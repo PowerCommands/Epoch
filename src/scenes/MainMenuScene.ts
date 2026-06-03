@@ -16,6 +16,7 @@ import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import { computeGameDateFromMeta, formatGameDate } from '../systems/GameDate';
 import { TutorialView } from '../ui/TutorialView';
+import { WhatsNewDialog } from '../ui/WhatsNewDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
@@ -54,6 +55,7 @@ export class MainMenuScene extends Phaser.Scene {
   private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
   private music: SetupMusicManager | null = null;
   private tutorialView: TutorialView | null = null;
+  private whatsNewDialog: WhatsNewDialog | null = null;
   private settingsDialog: SettingsDialog | null = null;
 
   constructor() {
@@ -126,6 +128,11 @@ export class MainMenuScene extends Phaser.Scene {
     this.tutorialView.show();
   }
 
+  private openWhatsNew(): void {
+    if (!this.whatsNewDialog) this.whatsNewDialog = new WhatsNewDialog();
+    void this.whatsNewDialog.show();
+  }
+
   private syncOverlayBounds(): void {
     if (!this.overlay) return;
 
@@ -160,6 +167,7 @@ export class MainMenuScene extends Phaser.Scene {
             <button id="mm-tutorial-btn" class="mm-menu-btn" type="button">Tutorial</button>
             <button id="mm-settings-btn" class="mm-menu-btn" type="button">Settings</button>
             <button id="mm-editor-btn" class="mm-menu-btn" type="button">Editor</button>
+            <button id="mm-whats-new-btn" class="mm-menu-btn" type="button">What's New</button>
           </nav>
         </section>
 
@@ -488,6 +496,10 @@ export class MainMenuScene extends Phaser.Scene {
 
     document.getElementById('mm-tutorial-btn')!.addEventListener('click', () => {
       this.openTutorial();
+    });
+
+    document.getElementById('mm-whats-new-btn')!.addEventListener('click', () => {
+      this.openWhatsNew();
     });
 
     document.getElementById('mm-editor-btn')!.addEventListener('click', () => {

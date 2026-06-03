@@ -108,6 +108,8 @@ import { BuilderSystem } from '../systems/BuilderSystem';
 import { InfrastructureSabotageSystem, IMPROVEMENT_DESTRUCTION_LOOT_GOLD } from '../systems/InfrastructureSabotageSystem';
 import { InfrastructureRepairSystem } from '../systems/InfrastructureRepairSystem';
 import { InsurgentBehaviorSystem } from '../systems/InsurgentBehaviorSystem';
+import { IntelReportDialog } from '../ui/IntelReportDialog';
+import { isCovertOperative } from '../utils/unitRoleUtils';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
 import { CombatAnimationSystem } from '../systems/CombatAnimationSystem';
@@ -1313,6 +1315,14 @@ export class GameScene extends Phaser.Scene {
       ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
     );
     unitActionToolbox.setRepairAvailabilityProvider(infrastructureRepairSystem);
+    // Intel (Spy/Agent) is available only while standing on a foreign city center.
+    const intelReportDialog = new IntelReportDialog();
+    const canGatherIntelHere = (unit: Unit): boolean => {
+      if (unit.unitType.canGatherIntel !== true) return false;
+      const city = cityManager.getCityAt(unit.tileX, unit.tileY);
+      return city !== undefined && city.ownerId !== unit.ownerId;
+    };
+    unitActionToolbox.setIntelAvailabilityProvider({ canGatherIntel: canGatherIntelHere });
     let foundCitySystem: FoundCitySystem;
     let movementSystem: MovementSystem;
     let selectedBuilderForHints: Unit | null = null;
@@ -1363,7 +1373,13 @@ export class GameScene extends Phaser.Scene {
     const tryActionAttack = (unit: Unit, targetTile: { x: number; y: number }): boolean => {
       const targetUnit = unitManager.getUnitAt(targetTile.x, targetTile.y);
       const targetCity = cityManager.getCityAt(targetTile.x, targetTile.y);
+      // Covert operatives (Spy/Agent) engage only hostile covert operatives, which
+      // getUnitAt excludes — so detect them explicitly.
+      const hasCovertTarget = isCovertOperative(unit.unitType)
+        && unitManager.getCovertOperativesAt(targetTile.x, targetTile.y)
+          .some((other) => other.ownerId !== unit.ownerId);
       const hasEnemyTarget =
+        hasCovertTarget ||
         (targetUnit !== null && targetUnit.ownerId !== unit.ownerId) ||
         (targetCity !== undefined && targetCity.ownerId !== unit.ownerId);
       if (!hasEnemyTarget) return false;
@@ -1478,6 +1494,14 @@ export class GameScene extends Phaser.Scene {
         // manually. Returning false routes to the default movement (relocation),
         // and autonomy resumes from the new position.
         if (unit.unitType.isInsurgentForce === true) return false;
+        // Covert operatives (Spy/Agent) coexist with other units: relocate onto
+        // any tile (including garrisoned foreign cities). The only combat they
+        // initiate is against a hostile covert operative occupying the target.
+        if (isCovertOperative(unit.unitType)) {
+          const hasCovertDefender = unitManager.getCovertOperativesAt(tile.x, tile.y)
+            .some((other) => other.ownerId !== unit.ownerId);
+          return hasCovertDefender ? tryActionAttack(unit, tile) : false;
+        }
         if (unit.unitType.baseStrength <= 0) return false;
         return tryActionAttack(unit, tile);
       }
@@ -5236,6 +5260,20 @@ export class GameScene extends Phaser.Scene {
           turnOrderSystem.refreshActive();
           hudLayer?.refresh();
           rightPanel?.requestRefresh();
+        }
+        unitActionToolbox.resetMode();
+        return;
+      }
+
+      if (mode === 'intel') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind === 'unit' && selection.unit.ownerId === humanNationId) {
+          const unit = selection.unit;
+          const city = cityManager.getCityAt(unit.tileX, unit.tileY);
+          // Read-only report on the infiltrated city's owning civilization.
+          if (rightPanel && city && city.ownerId !== unit.ownerId && unit.unitType.canGatherIntel === true) {
+            intelReportDialog.show(rightPanel.buildIntelReport(city.ownerId));
+          }
         }
         unitActionToolbox.resetMode();
         return;

@@ -6,6 +6,7 @@ import type { ScenarioUnit } from '../types/scenario';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
+import { isCovertOperative } from '../utils/unitRoleUtils';
 
 export type UnitChangedReason =
   | 'created'
@@ -131,9 +132,18 @@ export class UnitManager {
   getUnitAt(tileX: number, tileY: number): Unit | null {
     const key = this.gridKey(tileX, tileY);
     if (key === null) return null;
+    // Covert operatives (Spy/Agent) never occupy the collision slot and are
+    // excluded here, so they never block movement/combat targeting. They stack
+    // freely with other units and are found via getUnitsAt / getCovertOperativesAt.
     return this.unitGrid[key] ?? this.getAllUnits().find((unit) => (
       unit.carriedByUnitId === undefined && unit.tileX === tileX && unit.tileY === tileY
+      && !isCovertOperative(unit.unitType)
     )) ?? null;
+  }
+
+  /** Covert operatives (Spy/Agent) standing on a tile (ignores carried units). */
+  getCovertOperativesAt(tileX: number, tileY: number): Unit[] {
+    return this.getUnitsAt(tileX, tileY).filter((unit) => isCovertOperative(unit.unitType));
   }
 
   getUnitsAt(tileX: number, tileY: number): Unit[] {
@@ -507,6 +517,10 @@ export class UnitManager {
     if (unit.carriedByUnitId !== undefined) return;
     const key = this.gridKey(unit.tileX, unit.tileY);
     if (key === null) return;
+    // Covert operatives never take the collision slot so they neither block nor
+    // are blocked by other units (they stack freely; only hostile covert vs
+    // covert is resolved through combat).
+    if (isCovertOperative(unit.unitType)) return;
     if (unit.unitType.ignoresUnitCollision === true && this.unitGrid[key] !== null) return;
     this.unitGrid[key] = unit;
   }

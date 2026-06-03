@@ -28,6 +28,7 @@ const ACTION_ICON_KEYS: Record<UnitActionMode, string> = {
   destroyBuilding: 'action_demolish',
   // No dedicated repair art yet; reuse the improve icon (Worker build action).
   repair: 'action_improve',
+  intel: 'action_intel',
   dismiss: 'action_dismiss',
 };
 

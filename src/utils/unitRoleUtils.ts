@@ -93,6 +93,16 @@ export function isMilitaryUnitType(unitType: UnitType): boolean {
 }
 
 /**
+ * A covert operative (Spy / Agent): a covert-category unit that is not an
+ * insurgent force. These units infiltrate rather than fight conventionally —
+ * they stack freely with other units, never block movement/production, and only
+ * engage in combat against hostile covert operatives.
+ */
+export function isCovertOperative(unitType: UnitType): boolean {
+  return unitType.category === 'covert' && unitType.isInsurgentForce !== true;
+}
+
+/**
  * Authoritative mapping from a UnitType to its military doctrine role.
  * Returns null for non-combat units and units with no classified role.
  * This is the single source of truth for role classification in doctrine-aware systems.

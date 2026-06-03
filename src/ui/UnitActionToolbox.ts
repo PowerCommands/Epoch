@@ -2,7 +2,7 @@ import type { Unit } from '../entities/Unit';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair';
+export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel';
 
 /** Recon unit types eligible for Auto Explore (Scout, Scout Boat, and future recon). */
 function isReconUnit(unit: Unit): boolean {
@@ -60,6 +60,14 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     isToggledOn: (unit) => unit.isBuildingImprovement(),
   },
   {
+    mode: 'intel',
+    label: 'Intel',
+    // Capability gate only (Spy / Agent); the "is on a foreign city center" check
+    // is applied via the intel availability provider, so the button is hidden
+    // unless the unit is infiltrating a foreign city.
+    isAvailable: (unit) => unit.unitType.canGatherIntel === true,
+  },
+  {
     mode: 'repair',
     label: 'Repair',
     // Capability gate only (Worker / Work Boat); the "is there a broken own
@@ -112,8 +120,11 @@ type SabotageAvailabilityProvider = {
 type RepairAvailabilityProvider = {
   canRepair(unit: Unit): boolean;
 };
+type IntelAvailabilityProvider = {
+  canGatherIntel(unit: Unit): boolean;
+};
 
-export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'repair', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
+export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'repair', 'intel', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -127,6 +138,7 @@ export class UnitActionToolbox {
   private upgradeAvailabilityProvider: UpgradeAvailabilityProvider | null = null;
   private sabotageAvailabilityProvider: SabotageAvailabilityProvider | null = null;
   private repairAvailabilityProvider: RepairAvailabilityProvider | null = null;
+  private intelAvailabilityProvider: IntelAvailabilityProvider | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
   private readonly changedListeners: ChangedListener[] = [];
 
@@ -154,6 +166,11 @@ export class UnitActionToolbox {
 
   setRepairAvailabilityProvider(provider: RepairAvailabilityProvider): void {
     this.repairAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setIntelAvailabilityProvider(provider: IntelAvailabilityProvider): void {
+    this.intelAvailabilityProvider = provider;
     this.refresh();
   }
 
@@ -208,6 +225,7 @@ export class UnitActionToolbox {
     if (
       mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade' || mode === 'explore'
       || mode === 'destroyImprovement' || mode === 'destroyBuilding' || mode === 'repair'
+      || mode === 'intel'
     ) {
       this.triggerMode(mode);
       return;
@@ -355,6 +373,10 @@ export class UnitActionToolbox {
     // Repair stays hidden unless the unit stands on a broken own structure.
     if (action.mode === 'repair') {
       return this.repairAvailabilityProvider?.canRepair(unit) === true;
+    }
+    // Intel stays hidden unless a Spy/Agent stands on a foreign city center.
+    if (action.mode === 'intel') {
+      return this.intelAvailabilityProvider?.canGatherIntel(unit) === true;
     }
     if (action.mode !== 'build') return true;
     return buildPreview?.canBuild === true;

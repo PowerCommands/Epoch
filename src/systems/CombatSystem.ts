@@ -1,6 +1,7 @@
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import { getAllegianceType } from '../entities/UnitType';
+import { isCovertOperative } from '../utils/unitRoleUtils';
 import {
   resolveCombat,
   resolveUnitVsCity,
@@ -158,6 +159,16 @@ export class CombatSystem {
     } else {
       // Ranged: active-grid range distance
       if (dist < 1 || dist > range) return false;
+    }
+
+    // 5a. Covert operatives (Spy/Agent) only engage hostile covert operatives
+    // (spy-vs-spy). They never attack cities or conventional units. Combat needs
+    // no war (both sides are hidden-nation) and creates no diplomatic effects.
+    if (isCovertOperative(attacker.unitType)) {
+      const covertDefender = this.unitManager.getCovertOperativesAt(tileX, tileY)
+        .find((other) => other.ownerId !== attacker.ownerId);
+      if (covertDefender === undefined) return false;
+      return this.executeUnitCombat(attacker, covertDefender, isRanged);
     }
 
     // 5. Find target: garrison unit first, then city

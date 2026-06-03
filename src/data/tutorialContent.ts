@@ -247,6 +247,36 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     ],
   },
   {
+    id: 'espionage',
+    title: 'Espionage & Insurgency',
+    blocks: [
+      { kind: 'paragraph', text: 'Not all conflicts are fought by conventional armies.' },
+      { kind: 'heading', text: 'Spy' },
+      { kind: 'paragraph', text: 'Available in the Medieval Era.' },
+      { kind: 'paragraph', text: 'Spies can infiltrate foreign cities to gather intelligence about rival nations. They can also sabotage improvements without declaring war. Spies can only be detected and defeated by other Spies or Agents.' },
+      { kind: 'heading', text: 'Agent' },
+      { kind: 'paragraph', text: 'Available in the Industrial Era.' },
+      { kind: 'paragraph', text: 'Agents are more advanced operatives that perform the same tasks as Spies but are better suited for modern covert operations. Agents can counter enemy Spies and Agents while gathering intelligence and conducting sabotage missions.' },
+      { kind: 'heading', text: 'Partisan' },
+      { kind: 'paragraph', text: 'Partisans are irregular fighters that operate behind enemy lines. They belong to a hidden nation and can engage in combat without formally representing another civilization. Partisans automatically seek out enemies and fight on their own, although human players may relocate them if desired.' },
+      { kind: 'heading', text: 'Rebel' },
+      { kind: 'paragraph', text: 'Rebels represent local uprisings and resistance movements. Like Partisans, they operate independently and belong to a hidden nation. Rebels automatically engage nearby enemies and continue fighting without direct control.' },
+      { kind: 'heading', text: 'Intel Operations' },
+      { kind: 'paragraph', text: 'When a Spy or Agent enters a foreign city, the Intel action becomes available.' },
+      { kind: 'paragraph', text: 'Intel reveals:' },
+      {
+        kind: 'list',
+        items: [
+          "The target nation's cities",
+          'Current production in each city',
+          'Strategic information about the rival civilization',
+        ],
+      },
+      { kind: 'heading', text: 'Counter Intelligence' },
+      { kind: 'paragraph', text: 'Enemy Spies and Agents can block intelligence gathering by occupying the same city. Covert units are the only units capable of detecting and fighting other covert units.' },
+    ],
+  },
+  {
     id: 'culture',
     title: 'Culture',
     blocks: [

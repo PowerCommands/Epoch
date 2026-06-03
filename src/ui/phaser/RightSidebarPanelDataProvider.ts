@@ -75,6 +75,21 @@ import type {
 import type { DiplomacyGraph, DiplomacyGraphEdge, DiplomacyGraphNode, DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 import { RafScheduler } from '../../utils/RafScheduler';
 
+/** One city's entry in a covert intelligence report. */
+export interface IntelReportCity {
+  name: string;
+  population: number;
+  production: string | null;
+  turnsRemaining: number | null;
+}
+
+/** A covert intelligence report on a nation's cities and current production. */
+export interface IntelReport {
+  nationId: string;
+  nationName: string;
+  cities: IntelReportCity[];
+}
+
 type ChangedListener = () => void;
 type BuilderHintProvider = (tile: Tile) => BuildImprovementPreview | null;
 type BuildingPlacementRequestResult = { ok: boolean; message?: string };
@@ -436,6 +451,26 @@ export class RightSidebarPanelDataProvider {
       }
     }
     return { nodes, edges };
+  }
+
+  /**
+   * Read-only intelligence report on a nation: every city it owns with the
+   * current production and turns remaining. Generated from live game state (no
+   * persistent espionage storage), reusing the same city/production data as the
+   * city and production screens.
+   */
+  buildIntelReport(nationId: string): IntelReport {
+    const nation = this.nationManager.getNation(nationId);
+    const cities: IntelReportCity[] = this.cityManager.getCitiesByOwner(nationId).map((city) => {
+      const active = this.productionSystem.getQueue(city.id)[0];
+      return {
+        name: city.name,
+        population: city.population,
+        production: active ? getProducibleName(active.item) : null,
+        turnsRemaining: active ? active.turnsRemaining : null,
+      };
+    });
+    return { nationId, nationName: nation?.name ?? nationId, cities };
   }
 
   private getKnownDiplomacyGraphNationIds(): Set<string> {
