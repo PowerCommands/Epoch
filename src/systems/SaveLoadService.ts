@@ -153,7 +153,11 @@ export class SaveLoadService {
 
     const cities: SavedCity[] = cityManager.getAllCities().map((city) => {
       const queue = productionSystem.getQueue(city.id);
-      const buildings = cityManager.getBuildings(city.id).getAll();
+      // Serialize working buildings as plain ids (keeps saves compact and
+      // readable by older parsers) and only broken ones as objects.
+      const buildings = cityManager.getBuildings(city.id).getAllEntries().map((entry) =>
+        entry.broken ? { buildingId: entry.buildingId, broken: true } : entry.buildingId,
+      );
 
       const productionQueue: SavedQueueEntry[] = queue.map((view) => ({
         item: toSavedProducible(view.item),
@@ -301,6 +305,7 @@ export class SaveLoadService {
       tileX: state.tileX,
       tileY: state.tileY,
       completedTurn: state.completedTurn,
+      broken: state.broken === true ? true : undefined,
     }));
 
     const corporations: SavedCorporation[] = corporationSystem?.getFoundedCorporations().map((state) => ({
@@ -478,6 +483,7 @@ export class SaveLoadService {
         tileX: saved.tileX,
         tileY: saved.tileY,
         completedTurn: saved.completedTurn,
+        broken: saved.broken === true ? true : undefined,
       });
     }
   }
@@ -699,9 +705,13 @@ export class SaveLoadService {
       cityTerritorySystem.refreshNextExpansionTile(city, mapData);
 
       const buildings = cityManager.getBuildings(saved.id);
-      for (const id of saved.buildings) {
+      for (const entry of saved.buildings) {
+        // Backward-compatible: a plain string is a working building; an object
+        // carries the broken flag. Unknown ids are skipped silently.
+        const id = typeof entry === 'string' ? entry : entry.buildingId;
+        const broken = typeof entry === 'string' ? false : entry.broken === true;
         const def = getBuildingById(id) ?? ALL_BUILDINGS.find((b) => b.id === id);
-        if (def) buildings.add(def);
+        if (def) buildings.addEntry(def.id, broken);
       }
 
       const queueEntries: QueueEntry[] = [];

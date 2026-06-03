@@ -2,7 +2,7 @@ import type { Unit } from '../entities/Unit';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore';
+export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair';
 
 /** Recon unit types eligible for Auto Explore (Scout, Scout Boat, and future recon). */
 function isReconUnit(unit: Unit): boolean {
@@ -60,9 +60,30 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     isToggledOn: (unit) => unit.isBuildingImprovement(),
   },
   {
+    mode: 'repair',
+    label: 'Repair',
+    // Capability gate only (Worker / Work Boat); the "is there a broken own
+    // target here" check is applied via the repair availability provider, so the
+    // button is hidden unless the unit stands on a repairable structure.
+    isAvailable: (unit) => unit.unitType.canBuildImprovements === true,
+  },
+  {
     mode: 'upgrade',
     label: 'Upgrade',
     isAvailable: (unit) => unit.unitType.upgradeToUnitId !== undefined,
+  },
+  {
+    mode: 'destroyImprovement',
+    label: 'Raze Improvement',
+    // Capability gate only; the actual "is there an enemy improvement here"
+    // check is applied via the sabotage availability provider, so the button is
+    // hidden unless the unit is standing on a valid target.
+    isAvailable: (unit) => unit.unitType.canDestroyImprovement === true,
+  },
+  {
+    mode: 'destroyBuilding',
+    label: 'Raze Building',
+    isAvailable: (unit) => unit.unitType.canDestroyBuilding === true,
   },
   {
     mode: 'sleep',
@@ -84,8 +105,15 @@ type DismissAvailabilityProvider = {
   getCargoForTransport(unit: Unit): Unit | undefined;
 };
 type UpgradeAvailabilityProvider = Pick<UnitUpgradeSystem, 'getUpgradePreview'>;
+type SabotageAvailabilityProvider = {
+  canDestroyImprovement(unit: Unit): boolean;
+  canDestroyBuilding(unit: Unit): boolean;
+};
+type RepairAvailabilityProvider = {
+  canRepair(unit: Unit): boolean;
+};
 
-export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'found', 'dismiss'];
+export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'repair', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -97,6 +125,8 @@ export class UnitActionToolbox {
   private buildAvailabilityProvider: BuildAvailabilityProvider | null = null;
   private dismissAvailabilityProvider: DismissAvailabilityProvider | null = null;
   private upgradeAvailabilityProvider: UpgradeAvailabilityProvider | null = null;
+  private sabotageAvailabilityProvider: SabotageAvailabilityProvider | null = null;
+  private repairAvailabilityProvider: RepairAvailabilityProvider | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
   private readonly changedListeners: ChangedListener[] = [];
 
@@ -114,6 +144,16 @@ export class UnitActionToolbox {
 
   setUpgradeAvailabilityProvider(provider: UpgradeAvailabilityProvider): void {
     this.upgradeAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setSabotageAvailabilityProvider(provider: SabotageAvailabilityProvider): void {
+    this.sabotageAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setRepairAvailabilityProvider(provider: RepairAvailabilityProvider): void {
+    this.repairAvailabilityProvider = provider;
     this.refresh();
   }
 
@@ -165,7 +205,10 @@ export class UnitActionToolbox {
     // Any explicit non-explore action cancels auto-exploration immediately;
     // selecting the unit alone (no action) does not reach here.
     if (mode !== 'explore') unit.automation = undefined;
-    if (mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade' || mode === 'explore') {
+    if (
+      mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade' || mode === 'explore'
+      || mode === 'destroyImprovement' || mode === 'destroyBuilding' || mode === 'repair'
+    ) {
       this.triggerMode(mode);
       return;
     }
@@ -296,6 +339,17 @@ export class UnitActionToolbox {
       return false;
     }
     if (action.mode === 'upgrade') return upgradePreview?.canUpgrade === true;
+    // Destroy actions stay hidden unless the unit stands on a valid enemy target.
+    if (action.mode === 'destroyImprovement') {
+      return this.sabotageAvailabilityProvider?.canDestroyImprovement(unit) === true;
+    }
+    if (action.mode === 'destroyBuilding') {
+      return this.sabotageAvailabilityProvider?.canDestroyBuilding(unit) === true;
+    }
+    // Repair stays hidden unless the unit stands on a broken own structure.
+    if (action.mode === 'repair') {
+      return this.repairAvailabilityProvider?.canRepair(unit) === true;
+    }
     if (action.mode !== 'build') return true;
     return buildPreview?.canBuild === true;
   }

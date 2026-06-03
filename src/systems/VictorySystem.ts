@@ -131,7 +131,7 @@ export class VictorySystem {
     const hasFlight = this.researchSystem?.isResearched(nationId, 'flight') ?? false;
     const hasAluminum = this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false;
     const hasFactory = this.cityManager.getCitiesByOwner(nationId).some(
-      (city) => this.cityManager.getBuildings(city.id).has('factory'),
+      (city) => this.cityManager.getBuildings(city.id).hasActive('factory'),
     );
     const hasAerospaceIndustries = this.corporationSystem
       ?.getFoundedCorporationsForNation(nationId)

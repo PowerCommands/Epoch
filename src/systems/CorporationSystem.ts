@@ -97,7 +97,7 @@ export class CorporationSystem {
     if (!corporation) return blockers;
 
     const cityBuildings = this.cityManager.getBuildings(city.id);
-    if (!cityBuildings.has(corporation.productionBuildingId)) {
+    if (!cityBuildings.hasActive(corporation.productionBuildingId)) {
       blockers.push(`city missing production building: ${corporation.productionBuildingId}`);
     }
 
@@ -194,7 +194,7 @@ export class CorporationSystem {
     corporation: CorporationDefinition,
   ): number {
     const producingCityCount = this.cityManager.getCitiesByOwner(nationId).filter((city) =>
-      this.cityManager.getBuildings(city.id).has(corporation.productionBuildingId),
+      this.cityManager.getBuildings(city.id).hasActive(corporation.productionBuildingId),
     ).length;
     return producingCityCount * corporation.resourcePerBuilding;
   }
@@ -240,7 +240,7 @@ export class CorporationSystem {
 
   private hasNationBuilding(nationId: string, buildingId: string): boolean {
     return this.cityManager.getCitiesByOwner(nationId).some((city) =>
-      this.cityManager.getBuildings(city.id).has(buildingId),
+      this.cityManager.getBuildings(city.id).hasActive(buildingId),
     );
   }
 

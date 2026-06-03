@@ -12,6 +12,12 @@ const ICON_SIZE = 20;
 const ICON_TEXT_GAP = 6;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
+// Gold reward emphasis (count-up + temporary highlight) tuning.
+const GOLD_COUNT_UP_MS = 700;
+const GOLD_HIGHLIGHT_HOLD_MS = 3000;
+const GOLD_HIGHLIGHT_SCALE = 1.18;
+const GOLD_HIGHLIGHT_COLOR = '#ffe27a';
+
 interface ResourceEntryView {
   background: Phaser.GameObjects.Rectangle;
   icon: Phaser.GameObjects.Image;
@@ -24,6 +30,10 @@ export class TopResourceBar {
   private readonly tooltipBackground: Phaser.GameObjects.Rectangle;
   private readonly tooltipText: Phaser.GameObjects.Text;
   private hoveredIndex: number | null = null;
+  // While a gold reward animation owns the gold entry's text/style, setEntries
+  // updates the stored value but leaves the visible text to the animation so the
+  // count-up/highlight isn't clobbered by a routine HUD refresh.
+  private goldRewardActive = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -73,9 +83,12 @@ export class TopResourceBar {
       } else {
         view.icon.setVisible(false);
       }
-      view.text.setText(formatEntryText(value));
-      view.text.setColor(value.textColor ?? '#f4f1e7');
       view.text.setVisible(true);
+      // The gold reward animation owns the gold text + color while it runs.
+      if (!(this.goldRewardActive && value.key === 'gold')) {
+        view.text.setText(formatEntryText(value));
+        view.text.setColor(value.textColor ?? '#f4f1e7');
+      }
       if (value.tooltip) {
         if (!view.background.input?.enabled) view.background.setInteractive({ cursor: 'help' });
       } else {
@@ -134,6 +147,62 @@ export class TopResourceBar {
     return null;
   }
 
+  /**
+   * Plays the gold-gain feedback on the existing gold entry: the displayed value
+   * counts up from (current - amount) to the current value, and the text is
+   * emphasized (scale + highlight color) for ~3s before reverting. Safe no-op if
+   * the gold entry is not currently shown. Reuses the live gold text object — no
+   * parallel indicator is created.
+   */
+  playGoldReward(amount: number): void {
+    const index = this.findEntryIndex('gold');
+    if (index === null) return;
+    const view = this.entries[index];
+    const value = this.values[index];
+    const target = typeof value.value === 'number' ? value.value : Number(value.value) || 0;
+    const start = Math.max(0, target - amount);
+
+    this.goldRewardActive = true;
+    view.text.setColor(GOLD_HIGHLIGHT_COLOR);
+
+    // Count the visible number up to its new value.
+    const counter = { n: start };
+    this.scene.tweens.add({
+      targets: counter,
+      n: target,
+      duration: GOLD_COUNT_UP_MS,
+      ease: 'Cubic.out',
+      onUpdate: () => {
+        const current = this.values[index];
+        if (current?.key !== 'gold') return;
+        view.text.setText(formatEntryText({ ...current, value: Math.round(counter.n) }));
+      },
+      onComplete: () => {
+        const current = this.values[index];
+        if (current?.key === 'gold') view.text.setText(formatEntryText(current));
+      },
+    });
+
+    // Briefly emphasize, then ease back to normal scale/color after ~3s.
+    this.scene.tweens.add({
+      targets: view.text,
+      scale: GOLD_HIGHLIGHT_SCALE,
+      duration: 180,
+      ease: 'Sine.out',
+      yoyo: true,
+      hold: GOLD_HIGHLIGHT_HOLD_MS,
+      onComplete: () => {
+        view.text.setScale(1);
+        this.goldRewardActive = false;
+        const current = this.values[index];
+        if (current?.key === 'gold') {
+          view.text.setColor(current.textColor ?? '#f4f1e7');
+          view.text.setText(formatEntryText(current));
+        }
+      },
+    });
+  }
+
   destroy(): void {
     for (const entry of this.entries) {
       entry.background.destroy();
@@ -142,6 +211,13 @@ export class TopResourceBar {
     }
     this.tooltipBackground.destroy();
     this.tooltipText.destroy();
+  }
+
+  private findEntryIndex(key: HudResourceEntry['key']): number | null {
+    for (let index = 0; index < this.values.length; index += 1) {
+      if (this.values[index]?.key === key && this.entries[index]?.background.visible) return index;
+    }
+    return null;
   }
 
   private refreshTooltip(): void {

@@ -48,6 +48,21 @@ export class WonderSystem {
     return [...this.completed.values()].filter((state) => state.cityId === cityId);
   }
 
+  isWonderBroken(wonderId: string): boolean {
+    return this.completed.get(wonderId)?.broken === true;
+  }
+
+  /**
+   * Set the broken status of a completed wonder. Returns true if the wonder
+   * exists and the status actually changed.
+   */
+  setWonderBroken(wonderId: string, broken: boolean): boolean {
+    const state = this.completed.get(wonderId);
+    if (state === undefined || (state.broken === true) === broken) return false;
+    this.completed.set(wonderId, { ...state, broken });
+    return true;
+  }
+
   canCityBuildWonder(
     city: City,
     wonderType: WonderType,
@@ -112,6 +127,7 @@ export class WonderSystem {
     const sets: ModifierSet[] = [];
     for (const state of this.completed.values()) {
       if (state.cityId !== cityId) continue;
+      if (state.broken) continue; // broken wonders provide no effects
       const wonder = getWonderById(state.wonderId);
       if (!wonder || wonder.scope !== 'city') continue;
       sets.push(wonder.modifiers);
@@ -124,6 +140,7 @@ export class WonderSystem {
     const sets: ModifierSet[] = [];
     for (const state of this.completed.values()) {
       if (state.ownerId !== nationId) continue;
+      if (state.broken) continue; // broken wonders provide no effects
       const wonder = getWonderById(state.wonderId);
       if (!wonder) continue;
       if (wonder.scope === 'nation' || wonder.scope === 'global') {

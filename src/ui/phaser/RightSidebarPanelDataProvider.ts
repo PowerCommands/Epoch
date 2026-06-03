@@ -602,7 +602,12 @@ export class RightSidebarPanelDataProvider {
     const resources = this.cityManager.getResources(city.id);
     if (!resources) return this.getEmptyDetailsContent();
     const garrison = this.unitManager.getUnitAt(city.tileX, city.tileY);
-    const buildings = this.cityManager.getBuildings(city.id).getAll();
+    // Show all buildings (broken ones stay visible, flagged) for the city panel.
+    const buildingEntries = this.cityManager.getBuildings(city.id).getAllEntries();
+    const buildings = buildingEntries.map((entry) => {
+      const name = getBuildingById(entry.buildingId)?.name ?? entry.buildingId;
+      return entry.broken ? `${name} (broken)` : name;
+    });
     const economy = calculateCityEconomy(
       city,
       this.mapData,
@@ -669,7 +674,7 @@ export class RightSidebarPanelDataProvider {
                 textRow(`Science: +${resources.sciencePerTurn}/turn`),
                 textRow(`Culture per turn: +${resources.culturePerTurn}/turn`),
                 textRow(`Happiness: +${resources.happinessPerTurn}/turn`),
-                textRow(`Buildings: ${buildings.length > 0 ? buildings.map((id) => getBuildingById(id)?.name ?? id).join(', ') : 'none'}`),
+                textRow(`Buildings: ${buildings.length > 0 ? buildings.join(', ') : 'none'}`),
               ],
             },
             this.getProductionQueueSection(city, isHuman),

@@ -30,4 +30,10 @@ export interface WonderState {
   readonly tileX?: number;
   readonly tileY?: number;
   readonly completedTurn: number;
+  /**
+   * When true the wonder is damaged and provides no effects (modifiers, culture,
+   * victory/ranking) until repaired. It still physically exists, so it cannot be
+   * rebuilt. Absent/false in old saves => working normally.
+   */
+  broken?: boolean;
 }

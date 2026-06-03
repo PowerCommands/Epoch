@@ -1,5 +1,6 @@
-import type { UnitCategory, UnitType } from '../entities/UnitType';
+import type { AllegianceType, UnitCategory, UnitType } from '../entities/UnitType';
 import type { Era } from './technologies';
+import { getEraIndex } from './eraTimeline';
 
 interface UnitDefinitionInput {
   id: string;
@@ -15,6 +16,7 @@ interface UnitDefinitionInput {
   range?: number;
   movement: number;
   category: UnitCategory;
+  allegianceType?: AllegianceType;
   canFound?: boolean;
   canBuildImprovements?: boolean;
   maxImprovementCharges?: number;
@@ -31,12 +33,31 @@ interface UnitDefinitionInput {
   serviceLifeRounds?: number;
 }
 
+const RENAISSANCE_ERA_INDEX = getEraIndex('renaissance');
+
+/**
+ * Conservative "is this a normal military unit" test, driven by existing combat
+ * stats rather than {@link UnitCategory}. Civilians (Settler, Worker, Work Boat,
+ * Cargo Ship, Transport Ship, Archaeologist) and the special Leader are excluded
+ * even though the Leader has combat strength.
+ */
+function isMilitaryUnit(input: UnitDefinitionInput): boolean {
+  if (input.category === 'civilian' || input.category === 'leader') return false;
+  return input.combatStrength > 0 || (input.rangedStrength ?? 0) > 0;
+}
+
 function unit(input: UnitDefinitionInput): UnitType {
+  const military = isMilitaryUnit(input);
   return {
     id: input.id,
     name: input.name,
     era: input.era,
     category: input.category,
+    allegianceType: input.allegianceType,
+    // All military units can raze improvements; Renaissance-era and later
+    // military units can also raze buildings. Non-military units get neither.
+    canDestroyImprovement: military ? true : undefined,
+    canDestroyBuilding: military && getEraIndex(input.era) >= RENAISSANCE_ERA_INDEX ? true : undefined,
     productionCost: input.cost,
     upkeepGold: input.upkeepGold ?? getDefaultUpkeepGold(input.category, input.era),
     upgradeToUnitId: input.upgradeToUnitId,
@@ -90,7 +111,7 @@ export const SCOUT_BOAT = unit({ id: 'scout_boat', name: 'Scout Boat', era: 'anc
 export const ARCHER = unit({ id: 'archer', name: 'Archer', era: 'ancient', cost: 40, combatStrength: 5, rangedStrength: 7, range: 2, movement: 2, category: 'ranged', upkeepGold: 3, upgradeToUnitId: 'composite_bowman', serviceLifeRounds: 100 });
 export const SPEARMAN = unit({ id: 'spearman', name: 'Spearman', era: 'ancient', cost: 56, combatStrength: 11, movement: 2, category: 'melee', upkeepGold: 3, upgradeToUnitId: 'pikeman', serviceLifeRounds: 110 });
 export const CHARIOT_ARCHER = unit({ id: 'chariot_archer', name: 'Chariot Archer', era: 'ancient', cost: 56, combatStrength: 6, rangedStrength: 10, range: 2, movement: 4, category: 'mounted' , upkeepGold: 3, upgradeToUnitId: 'horseman', serviceLifeRounds: 100 });
-export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 1, isNaval: true });
+export const WORK_BOAT = unit({ id: 'work_boat', name: 'Work Boat', era: 'ancient', cost: 50, combatStrength: 0, movement: 4, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 1, isNaval: true, serviceLifeRounds: 50 }); // expires for AI nations after 50 rounds so stranded boats (small lakes/islands) don't loiter forever
 export const TRIREME = unit({ id: 'trireme', name: 'Trireme', era: 'ancient', cost: 45, combatStrength: 10, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 3, upgradeToUnitId: 'archer_galley', serviceLifeRounds: 100 });
 export const CARGO_SHIP = unit({ id: 'cargo_ship', name: 'Cargo Ship', era: 'ancient', cost: 100, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 1, allowedCargoCategories: ['civilian'] });
 
@@ -110,7 +131,7 @@ export const GALLEASS = unit({ id: 'galleass', name: 'Galleass', era: 'medieval'
 export const MUSKETMAN = unit({ id: 'musketman', name: 'Musketman', era: 'renaissance', cost: 150, combatStrength: 32, movement: 2, category: 'melee' , upkeepGold: 6, upgradeToUnitId: 'rifleman' });
 export const CARAVEL = unit({ id: 'caravel', name: 'Caravel', era: 'renaissance', cost: 120, combatStrength: 25, movement: 4, category: 'naval_melee', isNaval: true, upkeepGold: 4, upgradeToUnitId: 'privateer' }); // raised: renaissance warship
 export const FRIGATE = unit({ id: 'frigate', name: 'Frigate', era: 'renaissance', cost: 185, combatStrength: 25, rangedStrength: 28, range: 7, movement: 5, category: 'naval_ranged', isNaval: true, upkeepGold: 6, upgradeToUnitId: 'battleship' }); // raised: capital ship of the age, 3→6
-export const PRIVATEER = unit({ id: 'privateer', name: 'Privateer', era: 'renaissance', cost: 150, combatStrength: 30, movement: 5, category: 'naval_melee', isNaval: true, upkeepGold: 5, upgradeToUnitId: 'ironclad' }); // raised: strong fast raider
+export const PRIVATEER = unit({ id: 'privateer', name: 'Privateer', era: 'renaissance', cost: 150, combatStrength: 30, movement: 5, category: 'naval_melee', allegianceType: 'hiddenNation', isNaval: true, upkeepGold: 5, upgradeToUnitId: 'ironclad' }); // raised: strong fast raider, hidden-nation allegiance
 export const CANNON = unit({ id: 'cannon', name: 'Cannon', era: 'renaissance', cost: 185, combatStrength: 18, rangedStrength: 20, range: 2, movement: 2, category: 'siege', upkeepGold: 6, upgradeToUnitId: 'artillery' });
 export const LANCER = unit({ id: 'lancer', name: 'Lancer', era: 'renaissance', cost: 185, combatStrength: 30, movement: 4, category: 'mounted', upkeepGold: 6, upgradeToUnitId: 'cavalry' });
 
@@ -155,7 +176,7 @@ export const XCOM_SQUAD = unit({ id: 'xcom_squad', name: 'XCOM Squad', era: 'inf
 export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant Death Robot', era: 'information', cost: 425, combatStrength: 150, movement: 5, category: 'mounted', upkeepGold: 30 });
 export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 83, rangedStrength: 100, range: 13, movement: 7, category: 'naval_ranged', isNaval: true, upkeepGold: 15 }); // raised: top-tier naval ranged should match battleship/carrier tier, 9→15
 
-export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2 });
+export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2, serviceLifeRounds: 50 }); // expires for AI nations after 50 rounds so stranded workers (small lakes/islands) don't loiter forever
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
 // Leader is a special strategic entity, not a normal producible unit.
 // It is intentionally excluded from ALL_UNIT_TYPES and may only be spawned by

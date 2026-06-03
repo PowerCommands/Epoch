@@ -105,6 +105,8 @@ import { NationCollapseSystem } from '../systems/NationCollapseSystem';
 import { ExileProtectionSystem, type ExileProtectionChoiceRequest } from '../systems/ExileProtectionSystem';
 import { CityDefenseSystem } from '../systems/CityDefenseSystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
+import { InfrastructureSabotageSystem, IMPROVEMENT_DESTRUCTION_LOOT_GOLD } from '../systems/InfrastructureSabotageSystem';
+import { InfrastructureRepairSystem } from '../systems/InfrastructureRepairSystem';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
 import { CombatAnimationSystem } from '../systems/CombatAnimationSystem';
@@ -1157,6 +1159,21 @@ export class GameScene extends Phaser.Scene {
     unitRenderer.setVisibilityPredicate(canSeeTile);
     territoryRenderer.setVisibilityPredicate(canSeeTile);
     tileBuildingRenderer.setVisibilityPredicate(canSeeTile);
+    // Broken buildings/wonders render faded + with a ⚠️ marker. Improvements,
+    // units and cities are never treated as broken.
+    tileBuildingRenderer.setBrokenPredicate((tileX, tileY) => {
+      const tile = mapData.tiles[tileY]?.[tileX];
+      if (!tile) return false;
+      if (tile.wonderId !== undefined) return wonderSystem.isWonderBroken(tile.wonderId);
+      if (tile.buildingId !== undefined) {
+        const owningCity = cityManager.getAllCities().find((candidate) =>
+          candidate.ownedTileCoords.some((coord) => coord.x === tileX && coord.y === tileY),
+        );
+        return owningCity !== undefined
+          && cityManager.getBuildings(owningCity.id).isBroken(tile.buildingId);
+      }
+      return false;
+    });
     tileImprovementOverlayRenderer.setVisibilityPredicate(canSeeTile);
     selectionManager.setVisibilityPredicates(
       (x, y) => visibilitySystem.isTileVisibleToHuman(x, y),
@@ -1273,6 +1290,22 @@ export class GameScene extends Phaser.Scene {
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     unitActionToolbox.setDismissAvailabilityProvider(unitManager);
     unitActionToolbox.setUpgradeAvailabilityProvider(unitUpgradeSystem);
+    const infrastructureSabotageSystem = new InfrastructureSabotageSystem(
+      mapData,
+      cityManager,
+      wonderSystem,
+      nationManager,
+      ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
+    );
+    unitActionToolbox.setSabotageAvailabilityProvider(infrastructureSabotageSystem);
+    const infrastructureRepairSystem = new InfrastructureRepairSystem(
+      mapData,
+      cityManager,
+      wonderSystem,
+      nationManager,
+      ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
+    );
+    unitActionToolbox.setRepairAvailabilityProvider(infrastructureRepairSystem);
     let foundCitySystem: FoundCitySystem;
     let movementSystem: MovementSystem;
     let selectedBuilderForHints: Unit | null = null;
@@ -4988,6 +5021,7 @@ export class GameScene extends Phaser.Scene {
         },
       });
     };
+
     unitActionToolbox.onModeChanged((mode) => {
       hudLayer?.refresh();
       rangedTargets = new Set();
@@ -5065,6 +5099,114 @@ export class GameScene extends Phaser.Scene {
         turnOrderSystem.refreshActive();
         hudLayer?.refresh();
         rightPanel?.requestRefresh();
+        unitActionToolbox.resetMode();
+        return;
+      }
+
+      if (mode === 'destroyImprovement' || mode === 'destroyBuilding') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) {
+          unitActionToolbox.resetMode();
+          return;
+        }
+        const unit = selection.unit;
+        const kind = mode === 'destroyImprovement' ? 'improvement' : 'building';
+
+        // Razing infrastructure executes the destroy and refreshes the affected
+        // visuals; reused both for the direct path and after a war declaration.
+        const executeDestroy = (): void => {
+          const tileX = unit.tileX;
+          const tileY = unit.tileY;
+          const razed = mode === 'destroyImprovement'
+            ? infrastructureSabotageSystem.destroyImprovement(unit)
+            : infrastructureSabotageSystem.destroyBuilding(unit);
+          if (razed) {
+            if (mode === 'destroyImprovement') {
+              tileImprovementOverlayRenderer.refreshTile(tileX, tileY);
+            } else {
+              tileBuildingRenderer.refreshTile(tileX, tileY);
+            }
+            unitActionToolbox.refresh();
+            turnOrderSystem.refreshActive();
+            hudLayer?.refresh();
+            rightPanel?.requestRefresh();
+
+            // Destroying an improvement grants the destroyer loot gold (done in
+            // the sabotage system, for human and AI alike). The gold count-up
+            // feedback is human-manual-play only: never for AI and never during
+            // autoplay/autorun/diagnostic autoplay.
+            if (mode === 'destroyImprovement' && !isAutoplayActive()) {
+              hudLayer?.playGoldReward(IMPROVEMENT_DESTRUCTION_LOOT_GOLD);
+            }
+          }
+        };
+
+        // Razing another nation's infrastructure is an act of war for normal
+        // (visible) units — even under open borders. hiddenNation units act
+        // deniably (getActOfWarTarget returns undefined), and an existing war
+        // needs no fresh declaration: both fall through to a direct destroy.
+        const warTarget = infrastructureSabotageSystem.getActOfWarTarget(unit, kind);
+        const needsWar = warTarget !== undefined
+          && warTarget !== humanNationId
+          && !diplomacyManager.canAttack(humanNationId, warTarget);
+
+        if (needsWar) {
+          const targetNation = nationManager.getNation(warTarget);
+          if (!targetNation) {
+            unitActionToolbox.resetMode();
+            return;
+          }
+          if (getPeaceTreatyBlockReason(warTarget)) {
+            logBlockedHumanWarDeclaration(warTarget);
+            rightPanel?.refreshCurrent();
+            unitActionToolbox.resetMode();
+            return;
+          }
+          const targetLabel = kind === 'improvement' ? 'improvement' : 'building';
+          showDiplomacyModal({
+            title: 'Act of War',
+            message: `Destroying ${targetNation.name}'s ${targetLabel} will declare war on ${targetNation.name}. Continue?`,
+            accentColor: '#c44',
+            confirmLabel: 'Declare War & Destroy',
+            cancelLabel: 'Cancel',
+            onConfirm: () => {
+              if (!diplomacyManager.declareWar(humanNationId, warTarget)) {
+                logBlockedHumanWarDeclaration(warTarget);
+                rightPanel?.refreshCurrent();
+                return;
+              }
+              executeDestroy();
+              rightPanel?.refreshCurrent();
+            },
+            onCancel: () => {},
+          });
+          unitActionToolbox.resetMode();
+          return;
+        }
+
+        executeDestroy();
+        unitActionToolbox.resetMode();
+        return;
+      }
+
+      if (mode === 'repair') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) {
+          unitActionToolbox.resetMode();
+          return;
+        }
+        const unit = selection.unit;
+        const tileX = unit.tileX;
+        const tileY = unit.tileY;
+        if (infrastructureRepairSystem.repair(unit)) {
+          // Building/wonder stays on the tile; refresh in case visuals reflect
+          // the restored (working) state, plus city yields and HUD.
+          tileBuildingRenderer.refreshTile(tileX, tileY);
+          unitActionToolbox.refresh();
+          turnOrderSystem.refreshActive();
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        }
         unitActionToolbox.resetMode();
         return;
       }

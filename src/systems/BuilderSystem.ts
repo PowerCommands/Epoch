@@ -53,6 +53,34 @@ export class BuilderSystem {
     return this.getCurrentTileBuildPreview(unit).canBuild;
   }
 
+  /**
+   * Position-independent buildability query for AI target selection: would
+   * `nationId` be able to build a valid, tech-unlocked land improvement on this
+   * owned tile if a Worker were standing on it? Mirrors the land branch of
+   * {@link evaluateBuild} but skips the unit-bound gates (standing on the tile,
+   * movement points, charges, whose turn it is). Sea tiles always return false —
+   * those stay the Work Boat's responsibility.
+   */
+  canNationImproveLandTile(nationId: string, tile: Tile): boolean {
+    if (this.isSeaTile(tile)) return false;
+    if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
+    if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return false;
+    if (tile.ownerId !== nationId) return false;
+    if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, nationId) === null) return false;
+
+    const improvement = this.resolveImprovementForTile(tile);
+    if (improvement === undefined) return false;
+
+    const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
+    if (
+      requiredTechnology !== undefined &&
+      !this.researchSystem?.isImprovementUnlocked(nationId, improvement.id)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
   getCurrentTileBuildPreview(unit: Unit): BuildImprovementPreview {
     const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
     if (tile === undefined) return { canBuild: false, reason: 'Invalid tile' };

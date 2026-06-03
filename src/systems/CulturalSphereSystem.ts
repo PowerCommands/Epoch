@@ -67,7 +67,8 @@ export class CulturalSphereSystem {
       rate.percentModifier += building.modifiers.culturePercent ?? 0;
     }
 
-    rate.flatPerTurn += context.wonderSystem.getCompletedWondersForCity(city.id).length
+    rate.flatPerTurn += context.wonderSystem.getCompletedWondersForCity(city.id)
+      .filter((state) => !state.broken).length // broken wonders provide no culture
       * WORLD_WONDER_RECURRING_CULTURE_BONUS;
 
     return rate;

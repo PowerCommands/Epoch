@@ -33,6 +33,11 @@ export interface SavedProducible {
   displayName?: string;
 }
 
+export interface SavedBuilding {
+  buildingId: string;
+  broken?: boolean;
+}
+
 export interface SavedWonder {
   wonderId: string;
   cityId: string;
@@ -40,6 +45,7 @@ export interface SavedWonder {
   tileX?: number;
   tileY?: number;
   completedTurn: number;
+  broken?: boolean;
 }
 
 export interface SavedCorporation {
@@ -105,7 +111,9 @@ export interface SavedCity {
   lastTurnAttacked: number | null;
   lastTilePurchaseTurn?: number;
   recentlyConqueredTurnsRemaining?: number;
-  buildings: string[];
+  // Backward-compatible: old saves store plain building ids; newer saves may
+  // store objects carrying broken state. Strings load as working (not broken).
+  buildings: Array<string | SavedBuilding>;
   productionQueue: SavedQueueEntry[];
 }
 

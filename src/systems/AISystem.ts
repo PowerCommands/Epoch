@@ -311,6 +311,18 @@ const SCORE_FALLBACK = 25;
 const SCORE_NAVAL = 40;
 const SCORE_WORK_BOAT = 42;
 const SCORE_WORKER = 62;
+// Caps how many ranked land-improvement candidates a Worker will pathfind to
+// when searching for a reachable target, so an idle/boxed-in Worker can't
+// trigger a full-territory pathfinding scan every turn.
+const MAX_WORKER_REACHABILITY_CHECKS = 8;
+// A Worker only considers improvement targets within this many tiles of itself.
+// This keeps reachability pathfinding local and cheap (no cross-continent paths
+// to far-away cities) and stops Workers wandering across the map.
+const MAX_WORKER_TARGET_DISTANCE = 12;
+// When a Worker has no local target and roams toward another city, it only tries
+// to path to the nearest few candidate cities so an unreachable (e.g. overseas)
+// city can't trigger repeated expensive full-map pathfinding.
+const MAX_WORKER_RELOCATION_CITY_CHECKS = 3;
 const LOW_GOLD_PER_TURN = 0;
 const POST_TARGET_SETTLER_DEFAULT_INTERVAL = 8;
 const POST_TARGET_SETTLER_MIN_GOLD = 25;
@@ -430,6 +442,9 @@ export class AISystem {
   private readonly mapData: MapData;
   private readonly workBoatTargetsByUnit = new Map<string, string>();
   private readonly workBoatMovementLogKeyByUnit = new Map<string, string>();
+  private readonly workerTargetsByUnit = new Map<string, string>();
+  private readonly workerMovementLogKeyByUnit = new Map<string, string>();
+  private readonly workerNoTargetLoggedUnits = new Set<string>();
   private readonly coastalSpacingLoggedBySettler = new Set<string>();
   private readonly strategySelector = new AIStrategySelector();
   private readonly strategyEvaluationSystem = new AIStrategyEvaluationSystem();
@@ -2172,6 +2187,11 @@ export class AISystem {
         continue;
       }
 
+      if (unit.unitType.id === WORKER.id) {
+        this.runWorker(unit, nationId);
+        continue;
+      }
+
       if (unit.unitType.isNaval) {
         this.moveNavalUnitForPatrol(unit, nationId, strategy, navalContext);
         continue;
@@ -3474,6 +3494,233 @@ export class AISystem {
     if (ownerNationId === undefined) score += 4;
     else if (ownerNationId === nationId) score += 2;
     return score;
+  }
+
+  // ─── AI Worker land improvement ──────────────────────────────────────────────
+  // Land counterpart to runWorkBoat: AI Workers improve owned land tiles using
+  // the shared BuilderSystem rules. Target selection is deterministic and Workers
+  // never leave their own territory (every candidate is an owned land tile).
+  private runWorker(unit: Unit, nationId: string): void {
+    if (!this.builderSystem) return;
+    if (unit.unitType.canBuildImprovements !== true || unit.unitType.isNaval === true) return;
+    if (unit.isBuildingImprovement()) return; // multi-turn build already in progress
+
+    let target = this.getAssignedWorkerTarget(unit, nationId);
+    if (target === null) {
+      // An idle Worker keeps searching for a target every turn until it finds a
+      // suitable tile. The distance and reachability caps in the search itself
+      // keep this cheap (it only ever considers nearby tiles).
+      target = this.pickReachableWorkerTarget(nationId, unit);
+      if (target === null) {
+        // Nothing improvable within the local radius: roam toward another of this
+        // nation's cities (like a scout heading somewhere useful) so the Worker
+        // ends up near tiles it can improve there, instead of standing idle.
+        if (this.relocateWorkerTowardOtherCity(unit, nationId)) {
+          this.workerNoTargetLoggedUnits.delete(unit.id);
+          return;
+        }
+        // Truly nowhere to go (e.g. single city, or other cities unreachable).
+        // Log once per unit until it gets an assignment, so it doesn't spam.
+        if (!this.workerNoTargetLoggedUnits.has(unit.id)) {
+          this.workerNoTargetLoggedUnits.add(unit.id);
+          console.debug(
+            this.formatLog(nationId, `Worker at (${unit.tileX},${unit.tileY}) found no valid land improvement target`),
+          );
+        }
+        return;
+      }
+      this.workerTargetsByUnit.set(unit.id, tileKey(target.x, target.y));
+      this.workerNoTargetLoggedUnits.delete(unit.id);
+    }
+
+    const tile = this.mapData.tiles[target.y]?.[target.x];
+    if (!tile) {
+      this.clearWorkerAssignment(unit.id);
+      return;
+    }
+
+    if (unit.tileX === target.x && unit.tileY === target.y) {
+      this.tryBuildWorkerImprovement(unit, nationId, tile);
+      return;
+    }
+
+    const path = this.pathfindingSystem.findPath(unit, target.x, target.y, {
+      respectMovementPoints: false,
+    });
+    if (path === null) {
+      this.clearWorkerAssignment(unit.id);
+      return;
+    }
+
+    const fromX = unit.tileX;
+    const fromY = unit.tileY;
+    this.movementSystem.moveAlongPath(unit, path);
+    if (unit.tileX === fromX && unit.tileY === fromY) return;
+
+    // Arrived this turn with movement to spare: commit the build immediately,
+    // mirroring how a player can move-then-build in one turn.
+    if (unit.tileX === target.x && unit.tileY === target.y && unit.movementPoints > 0) {
+      this.tryBuildWorkerImprovement(unit, nationId, tile);
+      return;
+    }
+
+    const logKey = `${target.x},${target.y}:${unit.tileX},${unit.tileY}`;
+    if (this.workerMovementLogKeyByUnit.get(unit.id) !== logKey) {
+      this.workerMovementLogKeyByUnit.set(unit.id, logKey);
+      console.log(
+        this.formatLog(nationId, `Worker moved toward (${target.x},${target.y}) to build improvement`),
+      );
+    }
+  }
+
+  private tryBuildWorkerImprovement(unit: Unit, nationId: string, tile: Tile): void {
+    const result = this.builderSystem?.build(unit, tile, {
+      consumeMovement: true,
+      requireMovement: true,
+    });
+    if (result == null) return;
+    this.clearWorkerAssignment(unit.id);
+    console.log(
+      this.formatLog(nationId, `Worker improved ${tile.type} at (${tile.x},${tile.y}) with ${result.improvement.name}`),
+    );
+  }
+
+  private clearWorkerAssignment(unitId: string): void {
+    this.workerTargetsByUnit.delete(unitId);
+    this.workerMovementLogKeyByUnit.delete(unitId);
+  }
+
+  private getAssignedWorkerTarget(unit: Unit, nationId: string): { x: number; y: number } | null {
+    const key = this.workerTargetsByUnit.get(unit.id);
+    if (key === undefined) return null;
+    const [xRaw, yRaw] = key.split(',');
+    const x = Number(xRaw);
+    const y = Number(yRaw);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      this.clearWorkerAssignment(unit.id);
+      return null;
+    }
+    const tile = this.mapData.tiles[y]?.[x];
+    // Drop the assignment if the tile is no longer a valid target (e.g. someone
+    // else improved it, or it left our territory).
+    if (!tile || !this.builderSystem?.canNationImproveLandTile(nationId, tile)) {
+      this.clearWorkerAssignment(unit.id);
+      return null;
+    }
+    return { x, y };
+  }
+
+  /**
+   * Picks the best reachable land improvement target for a Worker. Candidate
+   * ranking is cheap (tile checks only); pathfinding — which is comparatively
+   * expensive — is done lazily over the ranked list and capped at
+   * {@link MAX_WORKER_REACHABILITY_CHECKS} attempts so a boxed-in Worker can't
+   * trigger a full-territory pathfinding scan every turn.
+   */
+  private pickReachableWorkerTarget(nationId: string, unit: Unit): { x: number; y: number } | null {
+    const ranked = this.getRankedWorkerLandCandidates(nationId, unit);
+    const limit = Math.min(ranked.length, MAX_WORKER_REACHABILITY_CHECKS);
+    for (let index = 0; index < limit; index += 1) {
+      const candidate = ranked[index];
+      if (this.pathfindingSystem.findPath(unit, candidate.x, candidate.y, { respectMovementPoints: false }) !== null) {
+        return { x: candidate.x, y: candidate.y };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Moves an idle Worker toward another of its nation's cities when there is no
+   * improvable tile within the local search radius — so it heads somewhere it can
+   * be useful instead of standing still. Considers the nearest cities beyond the
+   * search radius first (their territory hasn't been searched from here) and only
+   * attempts a few, so an unreachable (e.g. overseas) city can't cause repeated
+   * expensive pathfinding. Returns true if the Worker actually moved.
+   */
+  private relocateWorkerTowardOtherCity(unit: Unit, nationId: string): boolean {
+    const from = { x: unit.tileX, y: unit.tileY };
+    const destinations = this.cityManager.getCitiesByOwner(nationId)
+      .map((city) => ({ city, distance: this.gridSystem.getDistance(from, { x: city.tileX, y: city.tileY }) }))
+      // Skip cities whose territory is already within local search range.
+      .filter((entry) => entry.distance > MAX_WORKER_TARGET_DISTANCE)
+      .sort((a, b) => a.distance - b.distance || a.city.tileY - b.city.tileY || a.city.tileX - b.city.tileX)
+      .slice(0, MAX_WORKER_RELOCATION_CITY_CHECKS);
+
+    for (const { city } of destinations) {
+      const path = this.pathfindingSystem.findPath(unit, city.tileX, city.tileY, { respectMovementPoints: false });
+      if (path === null) continue;
+
+      this.movementSystem.moveAlongPath(unit, path);
+      if (unit.tileX === from.x && unit.tileY === from.y) return false; // blocked, no progress
+
+      const logKey = `relocate:${city.tileX},${city.tileY}:${unit.tileX},${unit.tileY}`;
+      if (this.workerMovementLogKeyByUnit.get(unit.id) !== logKey) {
+        this.workerMovementLogKeyByUnit.set(unit.id, logKey);
+        console.log(
+          this.formatLog(nationId, `Worker roaming toward city at (${city.tileX},${city.tileY}) to find improvement work`),
+        );
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Deterministically ranked owned land tiles this nation could improve, best
+   * first. Priority: resource tiles, then high-yield tiles, then proximity to a
+   * city, then a stable (y, x) tiebreak. Tiles already claimed by another Worker
+   * this turn are skipped so two Workers don't converge on one tile. This does
+   * NOT check reachability (no pathfinding) — see {@link pickReachableWorkerTarget}.
+   */
+  private getRankedWorkerLandCandidates(nationId: string, unit: Unit): Array<{ x: number; y: number }> {
+    if (!this.builderSystem) return [];
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    if (ownCities.length === 0) return [];
+
+    const assignedKeys = new Set(this.workerTargetsByUnit.values());
+    const selfKey = this.workerTargetsByUnit.get(unit.id);
+    const seen = new Set<string>();
+    const candidates: Array<{ x: number; y: number; score: number }> = [];
+
+    for (const city of ownCities) {
+      for (const coord of city.ownedTileCoords) {
+        const key = tileKey(coord.x, coord.y);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (assignedKeys.has(key) && key !== selfKey) continue;
+
+        const tile = this.mapData.tiles[coord.y]?.[coord.x];
+        if (!tile) continue;
+        // Only consider tiles near the Worker so reachability pathfinding stays
+        // local and cheap, and Workers don't trek to distant overseas cities.
+        if (this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, { x: tile.x, y: tile.y }) > MAX_WORKER_TARGET_DISTANCE) {
+          continue;
+        }
+        if (!this.builderSystem.canNationImproveLandTile(nationId, tile)) continue;
+        candidates.push({ x: tile.x, y: tile.y, score: this.scoreWorkerTile(tile, ownCities) });
+      }
+    }
+
+    candidates.sort((a, b) => b.score - a.score || a.y - b.y || a.x - b.x);
+    return candidates.map(({ x, y }) => ({ x, y }));
+  }
+
+  private scoreWorkerTile(tile: Tile, ownCities: City[]): number {
+    let score = 0;
+    if (tile.resourceId !== undefined) score += 1000; // resource tiles first
+    const yields = getTileYield(tile);
+    score += (yields.food + yields.production + yields.gold) * 10; // high-yield next
+    score -= this.distanceToNearestCity(tile, ownCities); // prefer near a city
+    return score;
+  }
+
+  private distanceToNearestCity(tile: Tile, ownCities: City[]): number {
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const city of ownCities) {
+      const distance = this.gridSystem.getDistance({ x: tile.x, y: tile.y }, { x: city.tileX, y: city.tileY });
+      if (distance < nearest) nearest = distance;
+    }
+    return Number.isFinite(nearest) ? nearest : 0;
   }
 
   // Strategy-based movement scoring shapes where AI units want to go,

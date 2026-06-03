@@ -1,5 +1,6 @@
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
+import { getAllegianceType } from '../entities/UnitType';
 import {
   resolveCombat,
   resolveUnitVsCity,
@@ -169,7 +170,16 @@ export class CombatSystem {
         this.notifyWarRequired(attacker, protectorNationId, tileX, tileY, options.source ?? 'system');
         return false;
       }
-      if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
+      // hiddenNation units (e.g. Privateers) perform deniable attacks: they may
+      // strike enemy units without a formal war. This bypasses only the war
+      // requirement for unit targets — no war is declared and no diplomatic
+      // values change. Combat itself resolves through the normal pipeline.
+      const isHiddenNationAttack = getAllegianceType(attacker.unitType) === 'hiddenNation';
+      if (isHiddenNationAttack) {
+        console.info(
+          `${attacker.unitType.name} attacked ${targetUnit.ownerId}'s ${targetUnit.unitType.name} while operating under hidden allegiance.`,
+        );
+      } else if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
         this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY, options.source ?? 'system');
         return false;
       }

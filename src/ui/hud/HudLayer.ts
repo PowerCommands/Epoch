@@ -281,6 +281,11 @@ export class HudLayer {
     return this.topResourceBar.getEntryRect(key);
   }
 
+  /** Plays the gold-gain count-up + temporary highlight on the gold indicator. */
+  playGoldReward(amount: number): void {
+    this.topResourceBar.playGoldReward(amount);
+  }
+
   /** Screen-space rectangle of a visible unit-action button, or null when not shown. */
   getUnitActionButtonRect(mode: UnitActionMode): ScreenRect | null {
     return this.unitActionHudToolbox.getButtonRect(mode);

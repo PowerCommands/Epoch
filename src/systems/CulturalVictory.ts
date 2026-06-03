@@ -37,6 +37,7 @@ export function getOwnedWonderCount(
 ): number {
   let owned = 0;
   for (const state of wonderSystem.getCompletedWonders()) {
+    if (state.broken) continue; // broken wonders don't count toward cultural victory/ranking
     const city = cityLookup.getCity(state.cityId);
     if (city && city.ownerId === nationId) owned += 1;
   }

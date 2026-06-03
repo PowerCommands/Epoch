@@ -9,6 +9,16 @@ const TILE_BUILDING_DEPTH = 14;
 const TILE_BUILDING_TEXT_DEPTH = 14.5;
 const TILE_BUILDING_SCALE = 0.9;
 
+// Broken (damaged, inactive) structures are faded and desaturated, with a
+// warning marker floating above them.
+const BROKEN_OVERLAY_DEPTH = 14.6;
+const BROKEN_ALPHA = 0.5;
+const BROKEN_TINT = 0x8a8a8a;
+// Warning marker sits this fraction of a tile height above the tile centre so it
+// floats just above the structure without overlapping it.
+const BROKEN_WARNING_OFFSET_FACTOR = 0.62;
+const BROKEN_WARNING_TEXT = '⚠️';
+
 type TileConstructionVisual =
   | { kind: 'building'; id: string; cityId?: string; constructing: boolean }
   | { kind: 'wonder'; id: string; cityId?: string; constructing: boolean };
@@ -16,13 +26,25 @@ type TileConstructionVisual =
 export class TileBuildingRenderer {
   private readonly sprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly labels = new Map<string, Phaser.GameObjects.Text>();
+  // Broken-state overlay markers (⚠️). Kept in a separate map so future damage
+  // overlays (smoke, fire, cracks, ruins) can be added in updateBrokenOverlay
+  // without touching the core building sprite logic. Only broken structures get
+  // an entry, so there is no cost when nothing is broken.
+  private readonly warnings = new Map<string, Phaser.GameObjects.Text>();
   private readonly loadingTextures = new Set<string>();
   private readonly missingTextures = new Set<string>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
+  // Returns true when the finished building/wonder on a tile is broken. Defaults
+  // to "never broken" so the renderer behaves exactly as before until wired.
+  private brokenPredicate: (tileX: number, tileY: number) => boolean = () => false;
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
     this.visibilityPredicate = predicate;
+  }
+
+  setBrokenPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.brokenPredicate = predicate;
   }
 
   constructor(
@@ -89,6 +111,10 @@ export class TileBuildingRenderer {
       label.destroy();
     }
     this.labels.clear();
+    for (const marker of this.warnings.values()) {
+      marker.destroy();
+    }
+    this.warnings.clear();
     this.hexTileMaskHelper.destroy();
   }
 
@@ -118,8 +144,19 @@ export class TileBuildingRenderer {
     sprite.setTexture(textureKey);
     sprite.setPosition(x, y);
     sprite.setDisplaySize(rect.width * TILE_BUILDING_SCALE, rect.height * TILE_BUILDING_SCALE);
-    sprite.setAlpha(visual.constructing ? 0.6 : 1);
+
+    // A finished structure can be broken (damaged & inactive). Show it faded and
+    // desaturated; construction keeps its existing translucent look.
+    const broken = !visual.constructing && this.brokenPredicate(tile.x, tile.y);
+    if (broken) {
+      sprite.setAlpha(BROKEN_ALPHA);
+      sprite.setTint(BROKEN_TINT);
+    } else {
+      sprite.setAlpha(visual.constructing ? 0.6 : 1);
+      sprite.clearTint();
+    }
     this.hexTileMaskHelper.applyHexMask(sprite, tile.x, tile.y);
+    this.updateBrokenOverlay(coordKey, broken, x, y, rect.height);
 
     const label = this.labels.get(coordKey);
     if (!visual.constructing) {
@@ -228,10 +265,49 @@ export class TileBuildingRenderer {
     return null;
   }
 
+  /**
+   * Broken-state overlay layer. Renders the warning marker for a broken
+   * structure (and is the single place to add future damage overlays such as
+   * smoke, fire, cracks or ruins). Removes the marker when the structure is not
+   * broken, so there is no overlay cost unless something is actually broken.
+   */
+  private updateBrokenOverlay(coordKey: string, broken: boolean, x: number, y: number, tileHeight: number): void {
+    if (!broken) {
+      this.removeWarning(coordKey);
+      return;
+    }
+
+    const markerY = y - tileHeight * BROKEN_WARNING_OFFSET_FACTOR;
+    let marker = this.warnings.get(coordKey);
+    if (!marker) {
+      marker = this.scene.add.text(x, markerY, BROKEN_WARNING_TEXT, {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '20px',
+        align: 'center',
+      });
+      marker.setOrigin(0.5, 0.5);
+      marker.setDepth(BROKEN_OVERLAY_DEPTH);
+      // Purely decorative: never intercept pointer events / unit selection.
+      marker.disableInteractive();
+      this.warnings.set(coordKey, marker);
+    }
+    marker.setPosition(x, markerY);
+    marker.setVisible(true);
+  }
+
+  private removeWarning(coordKey: string): void {
+    const marker = this.warnings.get(coordKey);
+    if (marker) {
+      marker.destroy();
+      this.warnings.delete(coordKey);
+    }
+  }
+
   private destroyTileSprite(key: string, sprite: Phaser.GameObjects.Image): void {
     this.hexTileMaskHelper.clearMask(sprite);
     sprite.destroy();
     this.sprites.delete(key);
+    this.removeWarning(key);
   }
 
   private getCoordKey(x: number, y: number): string {
