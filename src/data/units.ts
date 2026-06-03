@@ -209,9 +209,3 @@ export function canCarryUnitType(transportType: UnitType, passengerType: UnitTyp
   return hasCargoCapacity(transportType)
     && (transportType.allowedCargoCategories ?? []).includes(passengerType.category);
 }
-
-export function getLegacyCompatibleUnitTypeById(id: string): UnitType | undefined {
-  if (id === 'caravan') return undefined;
-  const normalizedId = id === 'fishing_boat' ? 'work_boat' : id;
-  return getUnitTypeById(normalizedId);
-}

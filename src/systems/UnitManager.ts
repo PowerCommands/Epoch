@@ -1,6 +1,6 @@
 import { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
-import { WARRIOR, canCarryUnitType, getLegacyCompatibleUnitTypeById } from '../data/units';
+import { WARRIOR, canCarryUnitType, getUnitTypeById } from '../data/units';
 import { MapData, TileType } from '../types/map';
 import type { ScenarioUnit } from '../types/scenario';
 import { CityManager } from './CityManager';
@@ -331,7 +331,7 @@ export class UnitManager {
     let idx = 0;
 
     for (const cfg of units) {
-      const unitType = getLegacyCompatibleUnitTypeById(cfg.unitTypeId);
+      const unitType = getUnitTypeById(cfg.unitTypeId);
       if (!unitType) {
         console.warn(`[UnitManager] Unknown unitTypeId: ${cfg.unitTypeId}`);
         continue;

@@ -16,7 +16,7 @@ import type {
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import type { ScenarioInitialDiplomacyEntry } from '../types/scenario';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
-import { getLegacyCompatibleUnitTypeById } from '../data/units';
+import { getUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
 import type { Producible } from '../types/producible';
@@ -732,7 +732,7 @@ export class SaveLoadService {
     unitManager.clearAllSilently();
 
     for (const saved of units) {
-      const type = getLegacyCompatibleUnitTypeById(saved.unitTypeId);
+      const type = getUnitTypeById(saved.unitTypeId);
       if (!type) {
         console.warn(`[SaveLoadService] Unknown unit type: ${saved.unitTypeId}`);
         continue;
@@ -910,7 +910,7 @@ function fromSavedProducible(item: SavedProducible): Producible | null {
     };
   }
   if (item.kind === 'unit') {
-    const type = getLegacyCompatibleUnitTypeById(item.id);
+    const type = getUnitTypeById(item.id);
     if (type?.category === 'leader') return null;
     return type ? { kind: 'unit', unitType: type } : null;
   }
