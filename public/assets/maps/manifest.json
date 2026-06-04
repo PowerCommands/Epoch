@@ -26,9 +26,14 @@
       "file": "assets/maps/scandinavia.json"
     },
     {
-      "key": "map_simple_grassland_12x12",
+      "key": "the-duel",
       "label": "The Duel",
-      "file": "assets/maps/simpleGrassland12x12.json"
+      "file": "assets/maps/the-duel.json"
+    },
+    {
+      "key": "the-caribian",
+      "label": "The Caribian",
+      "file": "assets/maps/caribian.json"
     },
     {
       "key": "map_two_continents_scenario_i",
