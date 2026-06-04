@@ -1,42 +1,81 @@
 # What's New
 
-## Covert Operations Added
+## New Leader: Hermann the Cheruscan
 
-- Added Spy units that can gather intelligence and perform covert actions.
-- Added Agent units as an advanced upgrade to Spies.
-- Added Intel missions that reveal information about foreign cities.
+Germany now has a new historical leader. Hermann adds more variety to leader selection, AI personalities and the shape of each campaign.
 
-## Insurgency System
+## Covert Operations Expanded
 
-- Added Partisan units that fight independently behind enemy lines.
-- Added Rebel units that represent local resistance movements.
-- Hidden nation units now support autonomous insurgent behavior.
+Covert warfare has grown into a larger hidden-strategy layer.
 
-## Naval Improvements
+New covert unit types:
 
-- Added Privateer units.
-- Privateers can operate as hidden naval raiders.
+- Spy
+- Agent
+- Rebels
+- Partisans
 
-## Worker Boat Improvements
+These units can gather intelligence, sabotage enemies, support insurgencies and disrupt rivals without acting like conventional armies.
 
-- Worker Boats now explore automatically when idle.
+## Suspicion & Covert Diplomacy
 
-## Unit Management
+Nations now develop suspicions about covert activity.
 
-- Improved unit action buttons and interaction flow.
-- Improved handling of hidden-nation units.
+Hidden operations may:
 
-## Economy & Warfare
+- Reduce trust
+- Damage diplomatic relations
+- Increase hostility
+- Contribute to future conflicts
 
-- Improvements can now be pillaged for gold.
-- Destroyed buildings now display a damaged visual state.
+Covert warfare is no longer invisible to the political world.
 
-## Artificial Intelligence
+## Covert Personalities
 
-- Improved worker automation.
-- Improved worker boat automation.
-- Added first version of Unit Alignment behavior.
+Leaders now have distinct covert-operation personalities.
 
-## General
+Some leaders may be:
 
-- Various bug fixes and gameplay improvements.
+- Cautious
+- Opportunistic
+- Aggressive
+- Fanatical
+- Paranoid
+- Mercantile
+
+This creates more varied diplomatic and espionage behavior between nations.
+
+## Barbarian Camps
+
+Barbarian camps have been introduced to the world.
+
+Barbarians can:
+
+- Establish camps across the map
+- Spawn military units
+- Create local threats
+- Reward exploration and military preparedness
+
+## Cultural Victory
+
+A new Cultural Victory condition has been added. A nation can now win by controlling 75% of all World Wonders in the game.
+
+## Improved Wonder Priorities
+
+Nations with cultural ambitions now value World Wonders much more highly and will actively pursue cultural dominance.
+
+## New Cheat Features
+
+The cheat system has been expanded with additional commands for testing diplomacy, alliances and gameplay scenarios.
+
+## Numerous AI Improvements
+
+Several AI systems have been refined, including:
+
+- Diplomacy
+- Covert operations
+- Suspicion handling
+- Cultural strategy
+- Wonder prioritization
+
+The result is a more dynamic and unpredictable world.

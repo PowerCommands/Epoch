@@ -200,7 +200,9 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
     // Older saves/scenarios predate suspicion → default to 0. Clamp to 0–100.
     suspicion: partial.suspicion === undefined ? base.suspicion : clampSuspicion(partial.suspicion),
     lastWarDeclarationTurn:
-      partial.lastWarDeclarationTurn ?? partial.lastWarTurn ?? base.lastWarDeclarationTurn,
+      partial.lastWarDeclarationTurn
+      ?? partial.lastWarTurn
+      ?? (partial.state === 'WAR' ? 0 : base.lastWarDeclarationTurn),
     lastPeaceProposalTurn:
       partial.lastPeaceProposalTurn ?? partial.lastPeaceTurn ?? base.lastPeaceProposalTurn,
     lastOpenBordersChangeTurn:
@@ -327,8 +329,8 @@ export class DiplomacyManager {
       embassyFromAToB: false,
       embassyFromBToA: false,
       tradeRelations: false,
-      // TODO: when TurnManager is unavailable the stamp stays null — future
-      // sources (events, AI, replays) should pass an explicit turn instead.
+      // If TurnManager is unavailable, normalizeRelation falls back to turn 0
+      // for WAR so peace-duration logic still advances instead of freezing.
       lastWarDeclarationTurn:
         this.turnManager?.getCurrentRound() ?? previous?.lastWarDeclarationTurn ?? null,
       aggressorNationId: aggressorId,

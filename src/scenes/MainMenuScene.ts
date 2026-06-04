@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
 import { getLeaderByNationId, setScenarioLeaderOverrides } from '../data/leaders';
+import { getTechnologyById } from '../data/technologies';
+import { getCultureNodeById } from '../data/cultureTree';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import {
   resolveScenarioMeta,
@@ -657,7 +659,7 @@ export class MainMenuScene extends Phaser.Scene {
       state.className = 'mm-card-state';
       state.textContent = isSelectedPlayer ? 'Player' : isOpponent ? 'Opponent' : 'Excluded';
 
-      copy.append(name, leaderName, description, gold);
+      copy.append(name, leaderName, description, gold, this.createNationScenarioInfo(nation));
       card.append(portrait, dot, copy, state);
       card.addEventListener('click', () => this.handleNationCardClick(nation.id));
       container.appendChild(card);
@@ -773,6 +775,68 @@ export class MainMenuScene extends Phaser.Scene {
 
     wrapper.append(dot, name, leader);
     return wrapper;
+  }
+
+  private createNationScenarioInfo(nation: ScenarioNation): HTMLElement {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'mm-card-setup-info';
+
+    const scenario = this.getCurrentScenario();
+    if (!scenario) return wrapper;
+
+    const details = scenario.nationDetails?.[nation.id];
+    const techIds = uniqueStrings([
+      ...(details?.researchedTechIds ?? []),
+      ...(nation.researchedTechIds ?? []),
+    ]);
+    const cultureIds = uniqueStrings([
+      ...(details?.unlockedCultureNodeIds ?? []),
+      ...(nation.unlockedCultureNodeIds ?? []),
+    ]);
+
+    const technologyNames = techIds.map((id) => getTechnologyById(id)?.name ?? formatScenarioId(id));
+    const cultureNames = cultureIds.map((id) => getCultureNodeById(id)?.name ?? formatScenarioId(id));
+    const relationLabels = this.getScenarioRelationLabels(nation.id, scenario);
+
+    const lines = [
+      this.createInfoLine('Tech', technologyNames),
+      this.createInfoLine('Culture', cultureNames),
+      this.createInfoLine('Relations', relationLabels),
+    ].filter((line): line is HTMLElement => Boolean(line));
+
+    wrapper.append(...lines);
+    return wrapper;
+  }
+
+  private createInfoLine(label: string, values: string[]): HTMLElement | null {
+    if (values.length === 0) return null;
+
+    const line = document.createElement('span');
+    line.className = 'mm-card-info-line';
+    const text = `${label}: ${values.join(', ')}`;
+    line.textContent = text;
+    line.title = text;
+    return line;
+  }
+
+  private getScenarioRelationLabels(nationId: string, scenario: ScenarioData): string[] {
+    return (scenario.initialDiplomacy ?? [])
+      .filter((entry) => entry.state === 'WAR' || entry.state === 'ALLIANCE')
+      .filter((entry) => entry.nationA === nationId || entry.nationB === nationId)
+      .map((entry) => {
+        const otherNationId = entry.nationA === nationId ? entry.nationB : entry.nationA;
+        const otherNation = this.nations.find((nation) => nation.id === otherNationId)
+          ?? scenario.nations.find((nation) => nation.id === otherNationId);
+        const state = entry.state === 'WAR' ? 'War' : 'Alliance';
+        return `${state}: ${otherNation?.name ?? formatScenarioId(otherNationId)}`;
+      });
+  }
+
+  private getCurrentScenario(): ScenarioData | null {
+    if (!this.currentMapKey) return null;
+    return (this.getCustomScenario(this.currentMapKey)?.scenario
+      ?? this.cache.json.get(this.currentMapKey) as ScenarioData | undefined)
+      ?? null;
   }
 
   private getEnabledOpponentIds(): string[] {
@@ -1466,6 +1530,23 @@ export class MainMenuScene extends Phaser.Scene {
         white-space: nowrap;
       }
 
+      .mm-card-setup-info {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .mm-card-info-line {
+        display: block;
+        max-width: 100%;
+        color: rgba(38, 26, 16, 0.66) !important;
+        font-size: 12px !important;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       .mm-card-portrait {
         width: 48px;
         height: 58px;
@@ -1871,6 +1952,18 @@ function escapeHtmlText(value: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function formatScenarioId(id: string): string {
+  return id
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
 }
 
 function generateNewGameSeed(): string {

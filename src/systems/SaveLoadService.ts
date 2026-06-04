@@ -788,8 +788,10 @@ export class SaveLoadService {
    * Apply a scenario's pre-configured diplomacy when starting a fresh game
    * (NOT loading a save — saves carry their own diplomacy snapshot). Reuses the
    * same normalization/restoration path as save-load so missing values get
-   * normal diplomacy defaults, and applies states directly without triggering
-   * war-declaration side effects, notifications, penalties, or AI reactions.
+   * normal diplomacy defaults. Scenario-authored wars are stamped as starting
+   * on the current round, so normal minimum-war-duration peace rules advance
+   * from game start without triggering declaration side effects, notifications,
+   * penalties, or AI reactions.
    *
    * Editor-level "ALLIANCE" is not a relation state: such pairs are set to PEACE
    * with the alliance prerequisites enabled (mutual open borders, mutual
@@ -825,22 +827,32 @@ export class SaveLoadService {
       if (impliesContact) discoverySystem.restoreMet(nationA, nationB);
 
       const isAlliance = entry.state === 'ALLIANCE';
+      const isWar = entry.state === 'WAR';
       // ALLIANCE is an editor concept layered on PEACE; the relation itself is
       // only ever WAR or PEACE.
       diplomacyManager.restoreState(nationA, nationB, {
-        state: entry.state === 'WAR' ? 'WAR' : 'PEACE',
+        state: isWar ? 'WAR' : 'PEACE',
+        // War starts from a clean diplomatic break, matching declareWar.
         // Alliances require mutual open borders, mutual embassies and trade.
-        openBordersFromAToB: isAlliance ? true : entry.openBordersFromAToB,
-        openBordersFromBToA: isAlliance ? true : entry.openBordersFromBToA,
-        embassyFromAToB: isAlliance ? true : entry.embassyFromAToB,
-        embassyFromBToA: isAlliance ? true : entry.embassyFromBToA,
-        tradeRelations: isAlliance ? true : entry.tradeRelations,
+        openBordersFromAToB: isWar ? false : isAlliance ? true : entry.openBordersFromAToB,
+        openBordersFromBToA: isWar ? false : isAlliance ? true : entry.openBordersFromBToA,
+        embassyFromAToB: isWar ? false : isAlliance ? true : entry.embassyFromAToB,
+        embassyFromBToA: isWar ? false : isAlliance ? true : entry.embassyFromBToA,
+        tradeRelations: isWar ? false : isAlliance ? true : entry.tradeRelations,
         trust: entry.trust,
         fear: entry.fear,
         hostility: entry.hostility,
         affinity: entry.affinity,
         suspicion: entry.suspicion,
-        aggressorNationId: entry.state === 'WAR' ? nationA : undefined,
+        lastWarDeclarationTurn: isWar ? currentTurn : null,
+        aggressorNationId: isWar ? nationA : undefined,
+        peaceTreatyUntilTurn: null,
+        militaryUnitsLostA: 0,
+        militaryUnitsLostB: 0,
+        citiesLostA: 0,
+        citiesLostB: 0,
+        militaryStrengthAtWarStartA: 0,
+        militaryStrengthAtWarStartB: 0,
       });
 
       if (isAlliance && allianceManager) {

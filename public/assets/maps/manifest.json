@@ -4,7 +4,7 @@
       "key": "map_asia",
       "label": "Asia",
       "file": "assets/maps/asia.json"
-    },
+    },    
     {
       "key": "map_caribian",
       "label": "Caribian",
@@ -31,9 +31,19 @@
       "file": "assets/maps/scandinavia.json"
     },
     {
+      "key": "map_spy_agents_rebels_and_partisans",
+      "label": "Spy, agents, rebels and partisans",
+      "file": "assets/maps/spy-agents-rebels-and-partisans.json"
+    },
+    {
       "key": "map_the_duel",
       "label": "The Duel test map",
       "file": "assets/maps/the-duel.json"
+    },
+    {
+      "key": "map_the_great_war",
+      "label": "The great war",
+      "file": "assets/maps/the-great-war.json"
     },
     {
       "key": "map_two_continents_scenario_i",
@@ -42,7 +52,7 @@
     },
     {
       "key": "map_world",
-      "label": "Two Continents test scenario",
+      "label": "World",
       "file": "assets/maps/world.json"
     }
   ]
