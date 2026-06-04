@@ -6,6 +6,11 @@
       "file": "assets/maps/asia.json"
     },
     {
+      "key": "map_caribian",
+      "label": "Caribian",
+      "file": "assets/maps/caribian.json"
+    },
+    {
       "key": "map_europe_wide",
       "label": "Europe",
       "file": "assets/maps/europe-wide.json"
@@ -26,14 +31,9 @@
       "file": "assets/maps/scandinavia.json"
     },
     {
-      "key": "the-duel",
-      "label": "The Duel",
+      "key": "map_the_duel",
+      "label": "The Duel test map",
       "file": "assets/maps/the-duel.json"
-    },
-    {
-      "key": "the-caribian",
-      "label": "The Caribian",
-      "file": "assets/maps/caribian.json"
     },
     {
       "key": "map_two_continents_scenario_i",
@@ -42,7 +42,7 @@
     },
     {
       "key": "map_world",
-      "label": "World",
+      "label": "Two Continents test scenario",
       "file": "assets/maps/world.json"
     }
   ]

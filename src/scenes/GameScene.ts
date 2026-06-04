@@ -166,7 +166,7 @@ import { LeaderAudienceDialog } from '../ui/dialogs/LeaderAudienceDialog';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState } from '../types/saveGame';
-import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { ALL_BUILDINGS, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { CULTURE_TREE } from '../data/cultureTree';
 import { getImprovementById } from '../data/improvements';
 import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
@@ -253,6 +253,19 @@ export class GameScene extends Phaser.Scene {
 
     const scenario = ScenarioLoader.parse(scenarioJson);
     const mapData = scenario.mapData;
+    // "No barbarians" setup option: strip every Barbarian Camp from the scenario
+    // up front, as if it never had any. Done before any system/renderer reads the
+    // map. Only relevant on fresh starts (loaded saves carry their own map state).
+    if (data.noBarbarians && !data.savedState) {
+      for (const row of mapData.tiles) {
+        for (const tile of row) {
+          if (isBarbarianCamp(tile.buildingId)) {
+            tile.buildingId = undefined;
+            tile.buildingBroken = undefined;
+          }
+        }
+      }
+    }
     const worldMarkerSystem = new WorldMarkerSystem(data.savedState?.worldMarkers ?? scenario.worldMarkers);
     const gridSystem = new HexGridSystem();
     const gridLayout = new HexGridLayout();

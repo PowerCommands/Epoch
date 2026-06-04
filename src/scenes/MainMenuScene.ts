@@ -49,6 +49,8 @@ export class MainMenuScene extends Phaser.Scene {
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
   private selectedGameSpeedId: GameSpeedId = DEFAULT_GAME_SPEED_ID;
+  /** "No barbarians" setup toggle — strips all Barbarian Camps from the scenario. */
+  private noBarbarians = false;
   private latestAutosave: SavedGameState | null = null;
   private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
@@ -237,6 +239,10 @@ export class MainMenuScene extends Phaser.Scene {
             <select id="mm-game-speed-select" class="mm-select">
               ${gameSpeedOptions}
             </select>
+
+            <label class="mm-no-barbarians" for="mm-no-barbarians-checkbox">
+              <input type="checkbox" id="mm-no-barbarians-checkbox"> No barbarians
+            </label>
 
             <div class="mm-opponent-summary">
               <span class="mm-field-label">Opponents</span>
@@ -451,6 +457,10 @@ export class MainMenuScene extends Phaser.Scene {
     const gameSpeedSelect = document.getElementById('mm-game-speed-select') as HTMLSelectElement;
     gameSpeedSelect.addEventListener('change', () => {
       this.selectedGameSpeedId = toGameSpeedId(gameSpeedSelect.value);
+    });
+    const noBarbariansCheckbox = document.getElementById('mm-no-barbarians-checkbox') as HTMLInputElement;
+    noBarbariansCheckbox.addEventListener('change', () => {
+      this.noBarbarians = noBarbariansCheckbox.checked;
     });
     document.getElementById('mm-settings-btn')!.addEventListener('click', () => {
       this.openSettings();
@@ -806,6 +816,7 @@ export class MainMenuScene extends Phaser.Scene {
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
       worldSeed: generateNewGameSeed(),
+      noBarbarians: this.noBarbarians,
     };
 
     this.cleanup();
@@ -1707,6 +1718,36 @@ export class MainMenuScene extends Phaser.Scene {
         gap: 14px;
         justify-content: center;
         align-items: center;
+      }
+
+      .mm-no-barbarians {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 16px;
+        padding: 10px 12px;
+        color: #261a10;
+        font-size: 15px;
+        font-weight: 600;
+        background: rgba(255, 252, 244, 0.88);
+        border: 1px solid rgba(117, 86, 56, 0.42);
+        border-radius: 8px;
+        cursor: pointer;
+        user-select: none;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+
+      .mm-no-barbarians:hover {
+        border-color: rgba(117, 86, 56, 0.7);
+        background: rgba(255, 252, 244, 1);
+      }
+
+      .mm-no-barbarians input {
+        width: 17px;
+        height: 17px;
+        cursor: pointer;
+        accent-color: #7f4c15;
+        margin: 0;
       }
 
       .mm-start-btn {

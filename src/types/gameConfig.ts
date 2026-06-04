@@ -28,6 +28,12 @@ export interface GameConfig {
    */
   worldSeed?: string;
   /**
+   * When true, all Barbarian Camps are stripped from the scenario at game start,
+   * as if the scenario never had any. Set from the "No barbarians" setup option.
+   * Loaded saves carry their own map state, so this only affects fresh starts.
+   */
+  noBarbarians?: boolean;
+  /**
    * When present, {@link GameScene} applies this snapshot after its
    * normal scenario-based initialization, yielding a fully-restored
    * running session. Populated by the Load Game flow.
