@@ -11,6 +11,7 @@ const IDEOLOGY_IDS: readonly IdeologyId[] = [
   'militarism',
   'traditionalism',
   'progressivism',
+  'freebooters',
 ];
 const IDEOLOGY_ID_SET: ReadonlySet<string> = new Set(IDEOLOGY_IDS);
 
@@ -77,6 +78,20 @@ const IDEOLOGY_COMPATIBILITY: IdeologyCompatibilityMatrix = {
     militarism: -28,
     traditionalism: -26,
     progressivism: 30,
+    freebooters: -24,
+  },
+  // Freebooters answer to no crown: they tolerate fellow aggressors and
+  // independence-minded nationalists, but clash with centralized, diplomatic,
+  // and order-prizing ideologies.
+  freebooters: {
+    liberalism: -22,
+    conservatism: -18,
+    nationalism: 6,
+    globalism: -30,
+    militarism: 10,
+    traditionalism: -14,
+    progressivism: -24,
+    freebooters: 28,
   },
 };
 

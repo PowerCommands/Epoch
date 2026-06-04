@@ -79,6 +79,21 @@ export class MovementSystem {
     return this.canMoveUnitToInternal(unit, tileX, tileY, true);
   }
 
+  /**
+   * Run `fn` with the movement system treating `nationId` as the active mover,
+   * restoring the previous active nation afterwards. Used by the barbarian
+   * driver, which moves units outside the normal participant turn order.
+   */
+  withActiveNation<T>(nationId: string, fn: () => T): T {
+    const previous = this.activeNationId;
+    this.activeNationId = nationId;
+    try {
+      return fn();
+    } finally {
+      this.activeNationId = previous;
+    }
+  }
+
   onWarRequired(listener: MovementWarRequiredListener): void {
     this.warRequiredListeners.push(listener);
   }

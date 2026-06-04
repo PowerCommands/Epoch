@@ -80,6 +80,21 @@ export const IDEOLOGIES: readonly IdeologyDefinition[] = [
     cultureResistance: 4,
     expansionBias: -2,
   },
+  {
+    id: 'freebooters',
+    name: 'Freebooters',
+    description:
+      'A loose brotherhood of captains, smugglers and raiders who answer to no crown. Prizes independence, opportunism, and naval dominance over bureaucracy, diplomacy, or centralized government.',
+    // Answers to no crown: scorns diplomacy and centralized order, but thrives on
+    // opportunistic raiding (high war) and smuggling (modest trade). Expansion is
+    // negative — Freebooters hold a single harbor and rove the seas instead.
+    diplomacyBias: -16,
+    tradeBias: 10,
+    warBias: 26,
+    openBordersBias: -8,
+    cultureResistance: 8,
+    expansionBias: -10,
+  },
 ];
 
 export function getIdeologyById(id: string | undefined): IdeologyDefinition {

@@ -33,6 +33,12 @@ export interface ScenarioMeta {
   startYearIsBC?: boolean;
   /** Time progression setup (metadata only for now). */
   timeProgression?: ScenarioTimeProgression;
+  /**
+   * Rounds between barbarian unit spawns from each (scenario-placed) Barbarian
+   * Camp. Authored in the Editor's Scenario Details. Absent/invalid falls back to
+   * DEFAULT_BARBARIAN_SPAWN_INTERVAL (10).
+   */
+  barbarianSpawnInterval?: number;
 }
 
 export interface ScenarioMap {

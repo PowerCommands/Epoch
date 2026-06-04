@@ -43,6 +43,7 @@ export interface Tile {
   improvementId?: string; // optional tile improvement; undefined = none
   improvementConstruction?: TileImprovementConstruction; // in-progress worker improvement
   buildingId?: string; // finished tile building; undefined = none
+  buildingBroken?: boolean; // true = the tile's standalone buildingId is broken/ruined (e.g. a razed Barbarian Camp). City buildings track broken state in CityBuildings, not here.
   buildingConstruction?: TileBuildingConstruction; // reserved/under-construction tile building
   wonderId?: string; // finished wonder; undefined = none
   wonderConstruction?: TileWonderConstruction; // reserved/under-construction wonder

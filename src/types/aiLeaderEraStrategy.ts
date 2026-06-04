@@ -14,7 +14,8 @@ export type AILeaderEraStrategyId =
   | 'scientificDevelopment'
   | 'civicDevelopment'
   | 'culturalDominance'
-  | 'tallGrowth';
+  | 'tallGrowth'
+  | 'seaWolf';
 
 export interface AILeaderEraProductionWeights {
   settler: number;

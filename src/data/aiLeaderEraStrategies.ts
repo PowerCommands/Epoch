@@ -548,6 +548,81 @@ export const CIVIC_DEVELOPMENT_STRATEGY: AILeaderEraStrategy = {
   militaryBehavior: { ...NEUTRAL_MILITARY },
 };
 
+/**
+ * Sea Wolf — Mad Jack's signature naval-raider profile. Spans every era as a
+ * single coherent posture (the era progression itself supplies the "phases":
+ * explore early, raid once Privateers unlock). Heavily favours naval production
+ * and research, sea-resource exploitation, and coastal sites, while actively
+ * suppressing settlers, wonders, and culture. Land and infrastructure exist only
+ * to keep the home port afloat.
+ */
+export const SEA_WOLF_STRATEGY: AILeaderEraStrategy = {
+  id: 'seaWolf',
+  name: 'Sea Wolf',
+  description:
+    'Aggressive one-port naval-raider strategy: explore coastlines, exploit every sea resource, and flood the oceans with warships and Privateers while neglecting territory, culture, and wonders.',
+  productionWeights: {
+    settler: 0.1,
+    scout: 1.3,
+    military: 1.2,
+    melee: 0.55,
+    ranged: 0.6,
+    naval: 2.4,
+    foodBuilding: 1.0,
+    productionBuilding: 1.1,
+    scienceBuilding: 0.85,
+    cultureBuilding: 0.4,
+    goldBuilding: 1.25,
+    happinessBuilding: 1.0,
+    wonder: 0.25,
+    worker: 0.9,
+    workBoat: 2.0,
+  },
+  researchWeights: {
+    food: 0.9,
+    production: 1.0,
+    military: 1.1,
+    naval: 2.2,
+    economy: 1.2,
+    science: 0.85,
+    expansion: 0.7,
+    culture: 0.4,
+    wonder: 0.35,
+  },
+  cultureWeights: {
+    expansion: 0.7,
+    diplomacy: 0.6,
+    military: 1.2,
+    happiness: 1.0,
+    economy: 1.2,
+  },
+  diplomacyWeights: {
+    openBorders: 0.8,
+    embassy: 0.7,
+    trade: 1.0,
+    war: 1.4,
+  },
+  militaryBehavior: {
+    prepareForWar: true,
+    targetWeakNeighbor: true,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 1.2,
+  },
+  foundingPreferences: {
+    strategicResource: 0.8,
+    luxuryResource: 1.0,
+    coastalAccess: 2.5,
+    waterResource: 2.2,
+    foodYield: 1.0,
+    productionYield: 1.0,
+    distancePenalty: 0.6,
+  },
+  resourcePriorities: {
+    seaResourceExploitation: 2.5,
+    workBoatProduction: 2.2,
+  },
+};
+
 export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   FRONTIER_EXPANSION_STRATEGY,
   COASTAL_FOUNDATION_STRATEGY,
@@ -562,6 +637,7 @@ export const ALL_AI_LEADER_ERA_STRATEGIES: readonly AILeaderEraStrategy[] = [
   SCIENTIFIC_DEVELOPMENT_STRATEGY,
   CIVIC_DEVELOPMENT_STRATEGY,
   CULTURAL_DOMINANCE_ERA_STRATEGY,
+  SEA_WOLF_STRATEGY,
 ];
 
 const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
@@ -578,6 +654,7 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
   scientificDevelopment: SCIENTIFIC_DEVELOPMENT_STRATEGY,
   civicDevelopment: CIVIC_DEVELOPMENT_STRATEGY,
   culturalDominance: CULTURAL_DOMINANCE_ERA_STRATEGY,
+  seaWolf: SEA_WOLF_STRATEGY,
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
@@ -627,6 +704,14 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
     leaderId: 'leader_henry_v',
     strategiesByEra: {
       ancient: 'coastalFoundation',
+    },
+  },
+  {
+    // Mad Jack runs the Sea Wolf posture across every era; the era progression
+    // itself supplies the phases (explore → naval economy → Privateer raids).
+    leaderId: 'leader_mad_jack',
+    strategiesByEra: {
+      ancient: 'seaWolf',
     },
   },
 ];

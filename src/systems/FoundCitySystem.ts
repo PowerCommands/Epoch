@@ -12,6 +12,7 @@ import { ResourceSystem } from './ResourceSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { CulturalSphereSystem } from './CulturalSphereSystem';
+import { isBarbarianCamp } from '../data/buildings';
 import cityNamePoolsJson from '../data/cityNames.json';
 
 const FOUNDABLE_TYPES = new Set<TileType>([
@@ -80,6 +81,10 @@ export class FoundCitySystem {
     if (!FOUNDABLE_TYPES.has(tile.type)) return false;
 
     if (this.cityManager.getCityAt(unit.tileX, unit.tileY) !== undefined) return false;
+
+    // A Barbarian Camp locks its tile: no nation may found a city on it while the
+    // camp exists. The camp must be destroyed (which removes it) to free the tile.
+    if (isBarbarianCamp(tile.buildingId)) return false;
 
     return true;
   }

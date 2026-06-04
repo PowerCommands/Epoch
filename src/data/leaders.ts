@@ -398,6 +398,37 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       casualtyToleranceRatio: 0.55,
     },
   },
+  {
+    // Mad Jack — a fantasy one-city pirate warlord. Not balanced for victory:
+    // a maritime wildcard meant to harass stronger powers. Expansion is
+    // intentionally suppressed (maxPreferredCities: 1); his naval identity comes
+    // from the Pirate Code doctrine + Sea Wolf era strategy + Freebooters ideology.
+    id: 'leader_mad_jack',
+    name: 'Mad Jack',
+    nationId: 'nation_pirate',
+    title: 'Pirate Lord of the Free Seas',
+    image: `${LEADER_IMAGE_BASE}/pirate.png`,
+    description: 'A roguish freebooter who answers to no crown — dominating shipping lanes, plundering coasts, and sowing chaos wherever stronger powers grow comfortable.',
+    ideologyId: 'freebooters',
+    aiMilitaryDoctrineId: 'pirateCode',
+    aiNationalAgendaId: 'naval_power',
+    // Pirates care nothing for high culture; only a single early node nudges the tree.
+    culturePriorities: ['foreign_trade'],
+    maxPreferredCities: 1,
+    aiPersonality: {
+      // Aggressive, opportunistic, and fickle: quick to war, slow to befriend,
+      // but not suicidally stubborn — players can still buy his alliance.
+      aggressionBias: 22,
+      expansionBias: -12,
+      economyBias: 6,
+      cultureBias: -12,
+      diplomacyBias: -14,
+      warTolerance: 80,
+      peacePreference: 30,
+      minimumUnitsLostBeforePeace: 4,
+      casualtyToleranceRatio: 0.50,
+    },
+  },
 ];
 
 /**
@@ -472,4 +503,13 @@ export function getLeaderMilitaryDoctrineByNationId(nationId: string): AIMilitar
 
 export function getLeaderMilitaryDoctrineById(leaderId: string): AIMilitaryDoctrine {
   return getAIMilitaryDoctrineById(getLeaderById(leaderId)?.aiMilitaryDoctrineId);
+}
+
+/**
+ * The leader-specific cap on voluntarily founded cities, or undefined when the
+ * leader imposes no cap (strategy desiredCityCount applies as usual). Used by
+ * the AI to enforce one-city / tall-play leaders such as Mad Jack.
+ */
+export function getLeaderMaxPreferredCitiesByNationId(nationId: string): number | undefined {
+  return getLeaderByNationId(nationId)?.maxPreferredCities;
 }

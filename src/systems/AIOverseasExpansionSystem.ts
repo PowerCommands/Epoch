@@ -20,6 +20,7 @@ import { cityHasWaterTile } from './ProductionRules';
 import { canNationEmbarkLandUnits, canUnitEndMovementOnTile, isWaterTile } from './UnitMovementRules';
 import { SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
 import { getEraIndex } from '../data/eraTimeline';
+import { getLeaderMaxPreferredCitiesByNationId } from '../data/leaders';
 
 const SAILING_TECH_ID = 'sailing';
 const ISLAND_DISCOVERY_MARKER_TYPE = 'islandDiscovery';
@@ -379,6 +380,13 @@ export class AIOverseasExpansionSystem {
     const nation = this.nationManager.getNation(nationId);
     if (!nation) return { canSelect: false, reason: 'nation is unavailable' };
     nation.knownIslandTargets = nation.knownIslandTargets?.map(normalizeTarget);
+    // Respect a leader-specific city cap (e.g. Mad Jack's one-city challenge):
+    // such leaders never launch settlement expeditions. Cities gained by war or
+    // diplomacy are unaffected — this only blocks voluntary overseas founding.
+    const leaderCap = getLeaderMaxPreferredCitiesByNationId(nationId);
+    if (leaderCap !== undefined && this.cityManager.getCitiesByOwner(nationId).length >= leaderCap) {
+      return { canSelect: false, reason: 'leader does not voluntarily found additional cities' };
+    }
     if (!nation.researchedTechIds.includes(SAILING_TECH_ID)) {
       return { canSelect: false, reason: 'Sailing has not been researched' };
     }

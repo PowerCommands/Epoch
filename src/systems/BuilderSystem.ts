@@ -2,6 +2,7 @@ import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import { getImprovementById, getImprovementForTileType, type TileImprovementDefinition } from '../data/improvements';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
+import { isBarbarianCamp } from '../data/buildings';
 import { TileType, type MapData, type Tile } from '../types/map';
 import { canUnitEnterTile } from './UnitMovementRules';
 import type { CityManager } from './CityManager';
@@ -64,6 +65,7 @@ export class BuilderSystem {
   canNationImproveLandTile(nationId: string, tile: Tile): boolean {
     if (this.isSeaTile(tile)) return false;
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
+    if (isBarbarianCamp(tile.buildingId)) return false; // camp locks its tile
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return false;
     if (tile.ownerId !== nationId) return false;
     if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, nationId) === null) return false;
@@ -148,6 +150,7 @@ export class BuilderSystem {
     if (!this.isCurrentTile(unit, tile)) return { canBuild: false, reason: 'Worker must stand on this tile' };
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
+    if (isBarbarianCamp(tile.buildingId)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };
     if ((options.requireMovement ?? true) && unit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
     if (!canUnitEnterTile(unit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };

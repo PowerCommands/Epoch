@@ -1,6 +1,13 @@
 import { Nation } from '../entities/Nation';
 import { getNationDefinitionById } from '../data/nations';
 import { getLeaderByNationId } from '../data/leaders';
+import {
+  BARBARIAN_NATION_ID,
+  BARBARIAN_NATION_NAME,
+  BARBARIAN_NATION_COLOR,
+  BARBARIAN_NATION_SECONDARY_COLOR,
+  isBarbarianNation,
+} from '../data/barbarians';
 import { NationResources } from '../entities/NationResources';
 import { MapData } from '../types/map';
 import type { ScenarioNation } from '../types/scenario';
@@ -27,8 +34,38 @@ export class NationManager {
     return this.nations.get(id);
   }
 
+  /**
+   * All participant nations. Deliberately EXCLUDES the synthetic barbarian
+   * nation so it never appears as a turn-taker, diplomacy/economy/victory
+   * participant, or selectable nation. Barbarian units still resolve their owner
+   * via {@link getNation} for combat/rendering, and barbarians are driven
+   * separately by BarbarianSystem.
+   */
   getAllNations(): Nation[] {
+    return Array.from(this.nations.values()).filter((nation) => !isBarbarianNation(nation.id));
+  }
+
+  /** All registered nations including the synthetic barbarian nation. */
+  getAllNationsIncludingNeutral(): Nation[] {
     return Array.from(this.nations.values());
+  }
+
+  /**
+   * Create and register the synthetic barbarian nation if it does not already
+   * exist, returning it. Idempotent — safe to call on fresh start and on load.
+   */
+  ensureBarbarianNation(): Nation {
+    const existing = this.nations.get(BARBARIAN_NATION_ID);
+    if (existing) return existing;
+    const nation = new Nation({
+      id: BARBARIAN_NATION_ID,
+      name: BARBARIAN_NATION_NAME,
+      color: BARBARIAN_NATION_COLOR,
+      secondaryColor: BARBARIAN_NATION_SECONDARY_COLOR,
+      isHuman: false,
+    });
+    this.addNation(nation);
+    return nation;
   }
 
   removeNation(nationId: string): void {

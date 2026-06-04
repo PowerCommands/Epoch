@@ -1,5 +1,6 @@
 import type { Unit } from '../entities/Unit';
 import { getAllegianceType } from '../entities/UnitType';
+import { isBarbarianNation } from '../data/barbarians';
 import type { MapData } from '../types/map';
 import type { SavedForeignTroopViolationWarning } from '../types/saveGame';
 import type { DiplomacyManager, DiplomaticMemoryValues } from './DiplomacyManager';
@@ -158,6 +159,8 @@ export class ForeignTroopViolationSystem {
 
     for (const unit of this.unitManager.getAllUnits()) {
       if (!this.isForeignTroopViolationUnit(unit)) continue;
+      // Barbarians have no diplomacy: their units are never treaty violators.
+      if (isBarbarianNation(unit.ownerId)) continue;
       const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
       const offendedNationId = tile?.ownerId;
       if (!offendedNationId || offendedNationId === unit.ownerId) continue;

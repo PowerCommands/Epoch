@@ -7,7 +7,8 @@ import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
 import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, canCarryUnitType, hasCargoCapacity } from '../data/units';
-import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById } from '../data/buildings';
+import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById, isBarbarianCamp } from '../data/buildings';
+import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { BuildingType } from '../entities/Building';
@@ -101,7 +102,7 @@ import {
   type NavalExpeditionTarget,
 } from './ai/NavalExpeditionTargetingSystem';
 import { CITY_BASE_HEALTH } from '../data/cities';
-import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId, getLeaderMaxPreferredCitiesByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { getEraIndex } from '../data/eraTimeline';
 import {
@@ -1356,18 +1357,47 @@ export class AISystem {
   private readonly settlerFallbackLogRoundByNation = new Map<string, number>();
   private readonly settlerNoValidSiteLogRoundByNation = new Map<string, number>();
 
+  // Effective number of cities this nation will voluntarily aim for. The
+  // strategy's desiredCityCount is the baseline, clamped by any leader-specific
+  // cap (e.g. Mad Jack's one-city challenge via maxPreferredCities). Cities
+  // taken by conquest/treaty/gift bypass this entirely — it only gates the
+  // nation's own settler production and expansion drive.
+  private getEffectiveDesiredCityCount(nationId: string, strategy: AIStrategy): number {
+    const baseline = strategy.expansion.desiredCityCount;
+    const leaderCap = getLeaderMaxPreferredCitiesByNationId(nationId);
+    return leaderCap === undefined ? baseline : Math.min(baseline, leaderCap);
+  }
+
   // Single source of truth for "is this settler allowed to found a city
   // here, right now?" — combines the FoundCitySystem terrain rules with the
   // strategy's settlerMinCityDistance spacing requirement against ALL cities
   // (own and foreign).
   private canFoundWithSpacing(settler: Unit, strategy: AIStrategy, eraStrategy: AILeaderEraStrategy): boolean {
     if (!this.foundCitySystem.canFound(settler)) return false;
+    // AI keeps a safety distance from active Barbarian Camps (humans may settle
+    // right next to them; only the camp tile itself is universally blocked).
+    if (this.minDistanceToBarbarianCamps(settler.tileX, settler.tileY) < BARBARIAN_CAMP_CITY_SAFETY_DISTANCE) {
+      return false;
+    }
     const minDist = this.minDistanceToCities(
       settler.tileX,
       settler.tileY,
       this.cityManager.getAllCities(),
     );
     return minDist >= this.getEffectiveSettlerMinCityDistance(strategy, eraStrategy);
+  }
+
+  /** Smallest hex distance from (tileX, tileY) to any active Barbarian Camp. */
+  private minDistanceToBarbarianCamps(tileX: number, tileY: number): number {
+    let min = Number.POSITIVE_INFINITY;
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        if (!isBarbarianCamp(tile.buildingId)) continue;
+        const dist = this.gridSystem.getDistance({ x: tileX, y: tileY }, { x: tile.x, y: tile.y });
+        if (dist < min) min = dist;
+      }
+    }
+    return min;
   }
 
   private logSettlerSpacingRejection(
@@ -4303,7 +4333,7 @@ export class AISystem {
         if (choice.unitType.canFound === true) {
           this.recordSettlerProductionStarted(
             nationId,
-            this.cityManager.getCitiesByOwner(nationId).length >= strategy.expansion.desiredCityCount
+            this.cityManager.getCitiesByOwner(nationId).length >= this.getEffectiveDesiredCityCount(nationId, strategy)
               ? 'longTerm'
               : 'earlyTarget',
           );
@@ -4524,7 +4554,7 @@ export class AISystem {
     // 2. Settler if the nation is still below its strategy's desired city count.
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
     if (
-      cityCount < strategy.expansion.desiredCityCount &&
+      cityCount < this.getEffectiveDesiredCityCount(nationId, strategy) &&
       plannedSettlerCount === 0 &&
       this.canBuildUnit(nationId, SETTLER.id) &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext()) &&
@@ -4726,7 +4756,7 @@ export class AISystem {
     const canBuildGeneralMilitary = !isOverBudget ||
       (defensivePressure && doctrineBudget.allowOverbuildingWhenThreatened);
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
-    const wantsMoreCities = cityCount < strategy.expansion.desiredCityCount;
+    const wantsMoreCities = cityCount < this.getEffectiveDesiredCityCount(nationId, strategy);
     const canProduceSettler =
       this.canBuildUnit(nationId, SETTLER.id) &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext());
@@ -5145,7 +5175,7 @@ export class AISystem {
     if (plannedSettlerCount > 0 || !canProduceSettler) return undefined;
 
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
-    if (cityCount < strategy.expansion.desiredCityCount) return 'earlyTarget';
+    if (cityCount < this.getEffectiveDesiredCityCount(nationId, strategy)) return 'earlyTarget';
 
     const interval = strategy.expansion.settlerInterval ?? POST_TARGET_SETTLER_DEFAULT_INTERVAL;
     const completedCycles = this.completedProductionCyclesSinceLastSettler.get(nationId) ?? 0;
@@ -5172,6 +5202,10 @@ export class AISystem {
     if (!this.canAffordUnitProduction(nationId, SETTLER)) return false;
 
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
+    // A leader-specific city cap (e.g. Mad Jack's one-city challenge) is an
+    // absolute ceiling: never resume long-term expansion once it is reached.
+    const leaderCap = getLeaderMaxPreferredCitiesByNationId(nationId);
+    if (leaderCap !== undefined && cityCount >= leaderCap) return false;
     const interval = strategy.expansion.settlerInterval ?? POST_TARGET_SETTLER_DEFAULT_INTERVAL;
     return cityCount >= strategy.expansion.desiredCityCount && interval > 0;
   }

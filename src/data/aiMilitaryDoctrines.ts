@@ -365,6 +365,29 @@ export const ECONOMIC_MINIMAL_ARMY_DOCTRINE: AIMilitaryDoctrine = {
   productionBehavior: { modernizationBias: 1.15, quantityBias: 0.35, qualityBias: 1.25 },
 };
 
+export const PIRATE_CODE_DOCTRINE: AIMilitaryDoctrine = {
+  id: 'pirateCode',
+  name: 'Pirate Code',
+  description:
+    'A fleet of raiders that lives and dies at sea. Overwhelmingly naval, fast and aggressive, with only a token land garrison for the home port.',
+  modernizationBias: 1.1,
+  quantityBias: 1.3,
+  qualityBias: 1.0,
+  preferredRoles: {
+    melee: 0.5,
+    ranged: 0.55,
+    mounted: 0.2,
+    siege: 0.3,
+    navalMelee: 2.4,
+    navalRanged: 2.0,
+    air: 0.6,
+  },
+  targetComposition: { melee: 0.08, ranged: 0.08, mounted: 0.02, siege: 0.02, navalMelee: 0.46, navalRanged: 0.34 },
+  militaryBudget: { strengthMultiplier: 1.3, maxUnitsMultiplier: 1.5, allowOverbuildingWhenThreatened: true },
+  strategicTolerance: { minHappinessForMilitaryBuilds: -8, minGoldReserveForMilitaryBuilds: 0, tolerateWarWeariness: true },
+  productionBehavior: { modernizationBias: 1.1, quantityBias: 1.3, qualityBias: 1.0 },
+};
+
 export const AI_MILITARY_DOCTRINES: readonly AIMilitaryDoctrine[] = [
   BALANCED_DOCTRINE,
   STEPPE_HORDE_DOCTRINE,
@@ -381,6 +404,7 @@ export const AI_MILITARY_DOCTRINES: readonly AIMilitaryDoctrine[] = [
   FORTIFIED_DEFENSE_DOCTRINE,
   RELIGIOUS_MILITIA_DOCTRINE,
   ECONOMIC_MINIMAL_ARMY_DOCTRINE,
+  PIRATE_CODE_DOCTRINE,
 ];
 
 export function getAIMilitaryDoctrineById(id: string | undefined): AIMilitaryDoctrine {

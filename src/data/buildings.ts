@@ -112,6 +112,34 @@ export const ALL_BUILDINGS: BuildingType[] = [
   RESEARCH_LAB, SOLAR_PLANT, NUCLEAR_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, POLICE_STATION, SPACESHIP_FACTORY,
 ];
 
+/**
+ * Barbarian Camp — a neutral, ownerless map structure (not a buildable city
+ * building). Deliberately kept OUT of {@link ALL_BUILDINGS} so it can never
+ * appear in city production lists, be purchased, or be built by any nation. It
+ * still resolves through {@link getBuildingById} (name, sprite, sabotage log)
+ * via {@link SPECIAL_BUILDINGS}. Its sprite lives at
+ * `assets/sprites/buildings/barbarian-camp.png`; the runtime sprite path helper
+ * maps the id to that file (see asset note in ProductionRules/spriteKey usage).
+ */
+export const BARBARIAN_CAMP_BUILDING_ID = 'barbarian-camp';
+
+export const BARBARIAN_CAMP: BuildingType = building({
+  id: BARBARIAN_CAMP_BUILDING_ID,
+  name: 'Barbarian Camp',
+  era: 'ancient',
+  cost: 0,
+  maintenance: 0,
+  description: 'A neutral barbarian stronghold. Spawns hostile units until razed by a unit able to destroy buildings.',
+});
+
+/** Map structures that are NOT player-constructable but must still resolve by id. */
+export const SPECIAL_BUILDINGS: readonly BuildingType[] = [BARBARIAN_CAMP];
+
 export function getBuildingById(id: string): BuildingType | undefined {
-  return ALL_BUILDINGS.find((b) => b.id === id);
+  return ALL_BUILDINGS.find((b) => b.id === id)
+    ?? SPECIAL_BUILDINGS.find((b) => b.id === id);
+}
+
+export function isBarbarianCamp(buildingId: string | undefined): boolean {
+  return buildingId === BARBARIAN_CAMP_BUILDING_ID;
 }

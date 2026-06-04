@@ -1,4 +1,5 @@
 import type { TurnManager } from './TurnManager';
+import { isBarbarianNation } from '../data/barbarians';
 
 export type DiplomacyState = 'WAR' | 'PEACE';
 
@@ -264,6 +265,9 @@ export class DiplomacyManager {
   }
 
   canAttack(a: string, b: string): boolean {
+    // Barbarians have no diplomacy: they are permanently hostile to everyone and
+    // everyone may attack them without a declaration of war.
+    if (isBarbarianNation(a) || isBarbarianNation(b)) return true;
     return this.getState(a, b) === 'WAR';
   }
 

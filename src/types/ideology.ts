@@ -5,7 +5,8 @@ export type IdeologyId =
   | 'globalism'
   | 'militarism'
   | 'traditionalism'
-  | 'progressivism';
+  | 'progressivism'
+  | 'freebooters';
 
 export interface IdeologyDefinition {
   readonly id: IdeologyId;

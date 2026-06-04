@@ -56,6 +56,13 @@ export type CombatActionSource = 'human-ui' | 'system';
 
 interface CombatActionOptions {
   source?: CombatActionSource;
+  /**
+   * Allow the attack to resolve outside the attacker's normal turn slot. Used by
+   * the barbarian driver (BarbarianSystem), which acts during a controlled phase
+   * rather than taking a turn in the participant turn order. Never set for
+   * player/AI actions.
+   */
+  allowOutOfTurn?: boolean;
 }
 
 type CombatListener = (e: CombatEvent) => void;
@@ -128,8 +135,9 @@ export class CombatSystem {
     tileY: number,
     options: CombatActionOptions = {},
   ): boolean {
-    // 1. Must be attacker's nation's turn
-    if (this.turnManager.getCurrentNation().id !== attacker.ownerId) {
+    // 1. Must be attacker's nation's turn (barbarians act out of turn via their
+    // own driver, which sets allowOutOfTurn).
+    if (!options.allowOutOfTurn && this.turnManager.getCurrentNation().id !== attacker.ownerId) {
       return false;
     }
     if (this.isUnitCombatBlocked(attacker)) return false;

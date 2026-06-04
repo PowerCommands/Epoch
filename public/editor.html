@@ -426,6 +426,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <button class="tool-btn" data-tool="addCity">Add City</button>
         <button class="tool-btn" data-tool="addUnit">Add Unit</button>
         <button class="tool-btn" data-tool="marker">World Marker</button>
+        <button class="tool-btn" data-tool="barbarianCamp">Barbarian Camp</button>
       </div>
     </div>
 
@@ -635,6 +636,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field" id="sd-static-step-field">Years per turn
         <input id="sd-static-step" type="number" min="1" step="1">
       </label>
+      <label class="field">Barbarian spawn interval (rounds)
+        <input id="sd-barbarian-interval" type="number" min="1" step="1">
+      </label>
       <div id="sd-error" class="sd-error"></div>
     </div>
   </div>
@@ -804,6 +808,11 @@ function normalizeScenarioMeta() {
   if (typeof meta.startYear !== 'number' || !(meta.startYear > 0)) meta.startYear = DEFAULT_SCENARIO_START_YEAR;
   else meta.startYear = Math.floor(meta.startYear);
   if (typeof meta.startYearIsBC !== 'boolean') meta.startYearIsBC = DEFAULT_SCENARIO_START_YEAR_IS_BC;
+  if (typeof meta.barbarianSpawnInterval !== 'number' || !(meta.barbarianSpawnInterval >= 1)) {
+    meta.barbarianSpawnInterval = DEFAULT_BARBARIAN_SPAWN_INTERVAL;
+  } else {
+    meta.barbarianSpawnInterval = Math.floor(meta.barbarianSpawnInterval);
+  }
 
   const progression = meta.timeProgression && typeof meta.timeProgression === 'object' ? meta.timeProgression : {};
   const mode = SCENARIO_TIME_PROGRESSION_MODES.includes(progression.mode)
@@ -855,6 +864,14 @@ let templateScale = 1;
 const MIN_TEMPLATE_SCALE = 0.1, MAX_TEMPLATE_SCALE = 12;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
+let tileBuildings = null; // 2D array [r][q] of standalone building ids (Barbarian Camp) or undefined
+const BARBARIAN_CAMP_BUILDING_ID = 'barbarian-camp';
+// Default rounds between barbarian spawns from a camp (mirrors the runtime
+// DEFAULT_BARBARIAN_SPAWN_INTERVAL in src/data/barbarians.ts).
+const DEFAULT_BARBARIAN_SPAWN_INTERVAL = 10;
+// Land terrain a Barbarian Camp may be placed on (land, non-water). Mirrors the
+// runtime BarbarianSystem placement rule.
+const BARBARIAN_CAMP_LAND_TYPES = ['plains', 'forest', 'jungle', 'desert', 'beach', 'meadow'];
 let paintedTiles = null; // 2D array [r][q] of booleans: has the user/scenario deliberately painted this tile? (editor-only, never saved)
 let mapW = 0, mapH = 0, tileSize = 0;
 let hexSize = 0;
@@ -951,16 +968,20 @@ function startEditor(map, scenarioData, customEntry) {
   // default ocean fill is "unpainted" until the user (or scenario data) sets it.
   tiles = [];
   tileResources = [];
+  tileBuildings = [];
   paintedTiles = [];
   for (let r = 0; r < mapH; r++) {
     const row = [];
     const resourceRow = [];
+    const buildingRow = [];
     const paintedRow = [];
     for (let q = 0; q < mapW; q++) row.push('ocean');
     for (let q = 0; q < mapW; q++) resourceRow.push(undefined);
+    for (let q = 0; q < mapW; q++) buildingRow.push(undefined);
     for (let q = 0; q < mapW; q++) paintedRow.push(false);
     tiles.push(row);
     tileResources.push(resourceRow);
+    tileBuildings.push(buildingRow);
     paintedTiles.push(paintedRow);
   }
   for (const t of scenario.map.tiles) {
@@ -970,6 +991,11 @@ function startEditor(map, scenarioData, customEntry) {
       if (TILE_TYPES.includes(t.type)) paintedTiles[t.r][t.q] = true;
       if (typeof t.resourceId === 'string' && t.resourceId.length > 0) {
         tileResources[t.r][t.q] = t.resourceId;
+      }
+      // Standalone tile buildings (e.g. Barbarian Camp). City buildings are not
+      // authored here. Only the camp is supported by the editor for now.
+      if (t.buildingId === BARBARIAN_CAMP_BUILDING_ID) {
+        tileBuildings[t.r][t.q] = t.buildingId;
       }
     }
   }
@@ -2972,21 +2998,25 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
   // Rebuild the grids, copying anything that still fits.
   const nextTiles = [];
   const nextResources = [];
+  const nextBuildings = [];
   const nextPainted = [];
   for (let r = 0; r < newHeight; r++) {
-    const row = [], resourceRow = [], paintedRow = [];
+    const row = [], resourceRow = [], buildingRow = [], paintedRow = [];
     for (let q = 0; q < newWidth; q++) {
       const inOld = r < mapH && q < mapW;
       row.push(inOld ? tiles[r][q] : 'ocean');
       resourceRow.push(inOld ? tileResources[r][q] : undefined);
+      buildingRow.push(inOld ? tileBuildings[r][q] : undefined);
       paintedRow.push(inOld ? paintedTiles[r][q] : false);
     }
     nextTiles.push(row);
     nextResources.push(resourceRow);
+    nextBuildings.push(buildingRow);
     nextPainted.push(paintedRow);
   }
   tiles = nextTiles;
   tileResources = nextResources;
+  tileBuildings = nextBuildings;
   paintedTiles = nextPainted;
 
   // Drop entities outside the new bounds.
@@ -3631,7 +3661,31 @@ function applyToolAt(q, r) {
     const markerIdx = scenario.worldMarkers.findIndex(marker => marker.x === q && marker.y === r);
     if (markerIdx >= 0) selectMarker(markerIdx);
     else addMarkerAt(q, r);
+  } else if (currentTool === 'barbarianCamp') {
+    toggleBarbarianCampAt(q, r);
   }
+}
+
+// Place a Barbarian Camp on a valid tile, or remove an existing one (toggle).
+// Valid = land (non-water), no city on the tile. Mirrors the runtime placement
+// rule in BarbarianSystem.
+function toggleBarbarianCampAt(q, r) {
+  if (!tiles[r] || tiles[r][q] === undefined) return;
+  if (tileBuildings[r][q] === BARBARIAN_CAMP_BUILDING_ID) {
+    tileBuildings[r][q] = undefined; // toggle off
+    render();
+    return;
+  }
+  if (!BARBARIAN_CAMP_LAND_TYPES.includes(tiles[r][q])) {
+    setStatusInfo('Barbarian Camp must be placed on a land tile (not water/mountain/ice).');
+    return;
+  }
+  if (scenario.cities.some(c => c.q === q && c.r === r)) {
+    setStatusInfo('Cannot place a Barbarian Camp on a city tile.');
+    return;
+  }
+  tileBuildings[r][q] = BARBARIAN_CAMP_BUILDING_ID;
+  render();
 }
 
 function panToPointer(clientX, clientY) {
@@ -4160,6 +4214,18 @@ function render() {
     }
   }
 
+  // Draw Barbarian Camps on top of terrain
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      if (tileBuildings[r][q] !== BARBARIAN_CAMP_BUILDING_ID) continue;
+      const rect = hexRect(q, r);
+      if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) {
+        continue;
+      }
+      drawBarbarianCamp(q, r);
+    }
+  }
+
   drawWorldMarkers();
 
   // Draw cities
@@ -4347,6 +4413,30 @@ function drawResource(q, r, resourceId) {
   }
 
   drawResourceFallback(resource.name, sx, sy, size);
+}
+
+let barbarianCampImage = null;
+function getBarbarianCampImage() {
+  if (barbarianCampImage) return barbarianCampImage;
+  const image = new Image();
+  image.src = `/assets/sprites/buildings/${BARBARIAN_CAMP_BUILDING_ID}.png`;
+  image.addEventListener('load', render, { once: true });
+  image.addEventListener('error', render, { once: true });
+  barbarianCampImage = image;
+  return image;
+}
+
+function drawBarbarianCamp(q, r) {
+  const world = tileToWorld(q, r);
+  const sx = (world.x - camX) * zoom;
+  const sy = (world.y - camY) * zoom;
+  const size = Math.max(10, tileSize * zoom * 0.7);
+  const image = getBarbarianCampImage();
+  if (image?.complete && image.naturalWidth > 0) {
+    ctx.drawImage(image, sx - size / 2, sy - size / 2, size, size);
+    return;
+  }
+  drawResourceFallback('Barbarian Camp', sx, sy, size);
 }
 
 function getResourceImage(resource) {
@@ -4545,6 +4635,7 @@ function buildScenarioOutput() {
     for (let q = 0; q < mapW; q++) {
       const tile = { q, r, type: tiles[r][q] };
       if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
+      if (tileBuildings[r][q] !== undefined) tile.buildingId = tileBuildings[r][q];
       flatTiles.push(tile);
     }
   }
@@ -4605,6 +4696,7 @@ function openScenarioDetails() {
   document.getElementById('sd-start-year-bc').checked = !!meta.startYearIsBC;
   document.getElementById('sd-time-mode').value = meta.timeProgression.mode;
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
+  document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
   document.getElementById('sd-error').textContent = '';
   updateScenarioDetailsStaticVisibility();
   document.getElementById('scenario-details-overlay').classList.add('open');
@@ -4638,6 +4730,12 @@ function saveScenarioDetails() {
     timeProgression.staticYearStep = step;
   }
 
+  const barbarianSpawnInterval = parseInt(document.getElementById('sd-barbarian-interval').value, 10);
+  if (!Number.isInteger(barbarianSpawnInterval) || barbarianSpawnInterval < 1) {
+    errorEl.textContent = 'Barbarian spawn interval must be a positive integer (rounds).';
+    return false;
+  }
+
   if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
   scenario.meta.name = name;
   scenario.meta.description = document.getElementById('sd-description').value.trim();
@@ -4645,6 +4743,7 @@ function saveScenarioDetails() {
   scenario.meta.startYear = startYear;
   scenario.meta.startYearIsBC = document.getElementById('sd-start-year-bc').checked;
   scenario.meta.timeProgression = timeProgression;
+  scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
 
   writeEditorAutosave();
   closeScenarioDetails();

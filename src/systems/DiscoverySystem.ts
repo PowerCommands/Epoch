@@ -2,6 +2,7 @@ import type { CityManager } from './CityManager';
 import type { NationManager } from './NationManager';
 import type { UnitManager } from './UnitManager';
 import type { IGridSystem } from './grid/IGridSystem';
+import { isBarbarianNation } from '../data/barbarians';
 
 export const DISCOVERY_RADIUS = 17;
 
@@ -144,6 +145,10 @@ export class DiscoverySystem {
   }
 
   private recordMet(a: string, b: string): void {
+    // Barbarians have no diplomatic identity: encountering their camps/units
+    // never counts as "meeting a nation" (no first-contact audience, no entry in
+    // diplomacy/known-nation UI).
+    if (isBarbarianNation(a) || isBarbarianNation(b)) return;
     const setA = this.getOrCreate(a);
     const setB = this.getOrCreate(b);
     if (setA.has(b) && setB.has(a)) return;

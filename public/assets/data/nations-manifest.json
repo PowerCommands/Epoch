@@ -141,6 +141,16 @@
       "leaderImage": "/assets/sprites/leaders/mehmed-i.png"
     },
     {
+      "nationId": "nation_pirate",
+      "nationName": "Pirates",
+      "color": "#1a1a1a",
+      "secondaryColor": "#c0392b",
+      "leaderId": "leader_mad_jack",
+      "leaderName": "Mad Jack",
+      "leaderTitle": "Pirate Lord of the Free Seas",
+      "leaderImage": "/assets/sprites/leaders/pirate.png"
+    },
+    {
       "nationId": "nation_spain",
       "nationName": "Spain",
       "color": "#e84a4a",

@@ -4,7 +4,7 @@ import type { MapData, Tile } from '../types/map';
 import type { CityManager } from './CityManager';
 import type { WonderSystem } from './WonderSystem';
 import type { NationManager } from './NationManager';
-import { getBuildingById } from '../data/buildings';
+import { getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { getWonderById } from '../data/wonders';
 import { getAllegianceType } from '../entities/UnitType';
 
@@ -13,11 +13,18 @@ export type DestroyActionKind = 'improvement' | 'building';
 /** Loot granted to the destroying nation when an improvement is razed. */
 export const IMPROVEMENT_DESTRUCTION_LOOT_GOLD = 10;
 
+/** Loot granted to the destroying nation when a Barbarian Camp is razed. */
+export const BARBARIAN_CAMP_DESTRUCTION_LOOT_GOLD = 25;
+
 export type SabotageLogger = (event: { nationId: string; message: string }) => void;
 
-/** A breakable structure on a tile (building or world wonder). */
+/**
+ * A breakable structure on a tile. `camp` is a neutral, ownerless tile
+ * structure (Barbarian Camp) whose broken state lives on the tile rather than
+ * in a city's CityBuildings.
+ */
 interface BreakableTarget {
-  kind: 'building' | 'wonder';
+  kind: 'building' | 'wonder' | 'camp';
   id: string;
 }
 
@@ -135,8 +142,18 @@ export class InfrastructureSabotageSystem {
     const owningCity = this.findCityOwningTile(tile);
     const location = owningCity ? ` in ${owningCity.name}` : '';
 
+    let lootGold = 0;
     if (target.kind === 'wonder') {
       this.wonderSystem.setWonderBroken(target.id, true);
+    } else if (target.kind === 'camp') {
+      // Neutral, ownerless structure: razing a camp removes it from the map
+      // entirely (it does NOT linger as a broken ruin), so its tile restrictions
+      // disappear immediately. Grants loot (same model as improvement plundering)
+      // to human and AI alike.
+      tile.buildingId = undefined;
+      tile.buildingBroken = undefined;
+      lootGold = BARBARIAN_CAMP_DESTRUCTION_LOOT_GOLD;
+      this.nationManager.getResources(unit.ownerId).gold += lootGold;
     } else if (owningCity) {
       this.cityManager.getBuildings(owningCity.id).setBroken(target.id, true);
     }
@@ -145,11 +162,28 @@ export class InfrastructureSabotageSystem {
     const name = target.kind === 'wonder'
       ? getWonderById(target.id)?.name ?? target.id
       : getBuildingById(target.id)?.name ?? target.id;
+    const lootSuffix = lootGold > 0 ? ` for ${lootGold} gold` : '';
+    // A camp is removed outright; buildings/wonders are left standing but broken.
+    const outcome = target.kind === 'camp' ? 'razed and removed' : 'now broken';
+    const verb = target.kind === 'camp' ? 'razed' : 'damaged';
     this.log({
       nationId: unit.ownerId,
-      message: `${unit.unitType.name} damaged ${name}${location} at (${tile.x}, ${tile.y}). The ${target.kind} is now broken${this.deniableSuffix(unit)}.`,
+      message: `${unit.unitType.name} ${verb} ${name}${location} at (${tile.x}, ${tile.y})${lootSuffix}. The ${target.kind} is ${outcome}${this.deniableSuffix(unit)}.`,
     });
     return true;
+  }
+
+  /**
+   * Loot gold the unit's pending destroy-building action would grant right now
+   * (25 for a Barbarian Camp, 0 otherwise). Lets the UI play the gold-reward
+   * animation for human players without duplicating target detection.
+   */
+  getDestroyBuildingLootGold(unit: Unit): number {
+    if (!this.canDestroyBuilding(unit)) return 0;
+    const tile = this.getUnitTile(unit);
+    if (!tile) return 0;
+    const target = this.getBreakableTarget(tile);
+    return target?.kind === 'camp' ? BARBARIAN_CAMP_DESTRUCTION_LOOT_GOLD : 0;
   }
 
   /**
@@ -162,6 +196,10 @@ export class InfrastructureSabotageSystem {
       return { kind: 'wonder', id: tile.wonderId };
     }
     if (tile.buildingId !== undefined) {
+      // Barbarian Camp: ownerless tile structure, broken state tracked on the tile.
+      if (isBarbarianCamp(tile.buildingId)) {
+        return tile.buildingBroken ? null : { kind: 'camp', id: tile.buildingId };
+      }
       const owningCity = this.findCityOwningTile(tile);
       if (owningCity && !this.cityManager.getBuildings(owningCity.id).isBroken(tile.buildingId)) {
         return { kind: 'building', id: tile.buildingId };

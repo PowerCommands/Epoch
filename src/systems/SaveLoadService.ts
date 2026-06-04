@@ -233,6 +233,7 @@ export class SaveLoadService {
           && tile.improvementId === undefined
           && tile.improvementConstruction === undefined
           && tile.buildingId === undefined
+          && tile.buildingBroken === undefined
           && tile.buildingConstruction === undefined
           && tile.wonderId === undefined
           && tile.wonderConstruction === undefined
@@ -250,6 +251,7 @@ export class SaveLoadService {
             ? { ...tile.improvementConstruction }
             : undefined,
           buildingId: tile.buildingId,
+          buildingBroken: tile.buildingBroken ? true : undefined,
           buildingConstruction: tile.buildingConstruction
             ? { ...tile.buildingConstruction }
             : undefined,
@@ -513,6 +515,7 @@ export class SaveLoadService {
         tile.improvementId = undefined;
         tile.improvementConstruction = undefined;
         tile.buildingId = undefined;
+        tile.buildingBroken = undefined;
         tile.buildingConstruction = undefined;
         tile.wonderId = undefined;
         tile.wonderConstruction = undefined;
@@ -531,6 +534,7 @@ export class SaveLoadService {
         tile.improvementConstruction = { ...saved.improvementConstruction };
       }
       if (saved.buildingId !== undefined) tile.buildingId = saved.buildingId;
+      if (saved.buildingBroken === true) tile.buildingBroken = true;
       if (saved.buildingConstruction !== undefined) {
         tile.buildingConstruction = { ...saved.buildingConstruction };
       }

@@ -166,6 +166,7 @@ export interface SavedTile {
     totalTurns: number;
   };
   buildingId?: string;
+  buildingBroken?: boolean;
   buildingConstruction?: {
     buildingId: string;
     cityId: string;
