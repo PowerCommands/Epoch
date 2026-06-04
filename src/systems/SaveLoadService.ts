@@ -38,6 +38,7 @@ import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
 import type { HistoricalTimelineService } from './HistoricalTimelineService';
+import type { CovertSuspicionSystem } from './diplomacy/CovertSuspicionSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -49,6 +50,7 @@ import { CulturalSphereSystem } from './CulturalSphereSystem';
 import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
+import { getLeaderCovertPersonalityByNationId } from '../data/leaders';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -77,6 +79,7 @@ export interface SaveLoadContext {
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
+  covertSuspicionSystem?: CovertSuspicionSystem;
 }
 
 /**
@@ -133,6 +136,7 @@ export class SaveLoadService {
         aiStrategyStartedTurn: nation.aiStrategyStartedTurn,
         previousAiStrategyId: nation.previousAiStrategyId,
         aiNationalAgendaId: nation.aiNationalAgendaId,
+        covertPersonalityId: nation.covertPersonalityId,
         researchedTechIds: [...nation.researchedTechIds],
         currentResearchTechId: nation.currentResearchTechId,
         researchProgress: nation.researchProgress,
@@ -278,6 +282,7 @@ export class SaveLoadService {
       fear: entry.relation.fear,
       hostility: entry.relation.hostility,
       affinity: entry.relation.affinity,
+      suspicion: entry.relation.suspicion,
       lastWarDeclarationTurn: entry.relation.lastWarDeclarationTurn,
       lastPeaceProposalTurn: entry.relation.lastPeaceProposalTurn,
       lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
@@ -357,6 +362,7 @@ export class SaveLoadService {
       worldMarkerClaims: worldMarkerSystem?.getClaimEntries(),
       foreignTroopViolationWarnings,
       historicalTimeline: historicalTimeline?.serialize(),
+      covertIncidents: context.covertSuspicionSystem?.getOffenseRecords(),
     };
   }
 
@@ -469,6 +475,7 @@ export class SaveLoadService {
     }
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
     context.symbolicGiftRegistry?.restore(state.symbolicGifts);
+    context.covertSuspicionSystem?.restoreOffenseRecords(state.covertIncidents);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,
       state.turn.currentTurnIndex,
@@ -632,6 +639,8 @@ export class SaveLoadService {
       nation.aiStrategyStartedTurn = saved.aiStrategyStartedTurn ?? 0;
       nation.previousAiStrategyId = saved.previousAiStrategyId;
       nation.aiNationalAgendaId = saved.aiNationalAgendaId ?? BALANCED_AGENDA_ID;
+      // Older saves predate covert personalities → fall back to the leader default.
+      nation.covertPersonalityId = saved.covertPersonalityId ?? getLeaderCovertPersonalityByNationId(saved.id);
       nation.researchedTechIds = SaveLoadService.migrateTechIds(saved.researchedTechIds);
       nation.currentResearchTechId = SaveLoadService.migrateTechId(saved.currentResearchTechId);
       nation.researchProgress = saved.researchProgress;
@@ -830,6 +839,7 @@ export class SaveLoadService {
         fear: entry.fear,
         hostility: entry.hostility,
         affinity: entry.affinity,
+        suspicion: entry.suspicion,
         aggressorNationId: entry.state === 'WAR' ? nationA : undefined,
       });
 
@@ -861,6 +871,7 @@ export class SaveLoadService {
         fear: entry.fear,
         hostility: entry.hostility,
         affinity: entry.affinity,
+        suspicion: entry.suspicion,
         lastWarDeclarationTurn: entry.lastWarDeclarationTurn,
         lastPeaceProposalTurn: entry.lastPeaceProposalTurn,
         lastOpenBordersChangeTurn: entry.lastOpenBordersChangeTurn,

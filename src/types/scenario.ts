@@ -1,4 +1,5 @@
 import type { AINationalAgendaId } from './aiNationalAgenda';
+import type { CovertPersonalityId } from './covertPersonality';
 import type { WorldMarker } from './WorldMarker';
 
 /**
@@ -56,6 +57,8 @@ export interface ScenarioNation {
   isHuman: boolean;
   aiStrategyId?: string;
   aiNationalAgendaId?: AINationalAgendaId;
+  /** Covert-warfare personality. Absent → leader default → neutral. */
+  covertPersonalityId?: CovertPersonalityId;
   startTerritoryCenter: { q: number; r: number };
   /**
    * Editor-authored leader name. Empty/absent falls back to the hardcoded leader
@@ -128,6 +131,8 @@ export interface ScenarioInitialDiplomacyEntry {
   fear: number;
   hostility: number;
   affinity: number;
+  /** Suspicion (0–100). Optional for back-compat; absent normalizes to 0. */
+  suspicion?: number;
 }
 
 export interface ScenarioData {

@@ -7,6 +7,7 @@ import type { NationManager } from './NationManager';
 import { getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { getWonderById } from '../data/wonders';
 import { getAllegianceType } from '../entities/UnitType';
+import type { CovertSuspicionSystem } from './diplomacy/CovertSuspicionSystem';
 
 export type DestroyActionKind = 'improvement' | 'building';
 
@@ -47,6 +48,10 @@ interface BreakableTarget {
  *   the caller via {@link getActOfWarTarget}).
  */
 export class InfrastructureSabotageSystem {
+  // Optional: covert (hidden-nation) sabotage feeds the Suspicion system.
+  // Injected after construction to avoid a constructor cycle.
+  private covertSuspicionSystem: CovertSuspicionSystem | null = null;
+
   constructor(
     private readonly mapData: MapData,
     private readonly cityManager: CityManager,
@@ -55,9 +60,32 @@ export class InfrastructureSabotageSystem {
     private readonly log: SabotageLogger,
   ) {}
 
+  setCovertSuspicionSystem(system: CovertSuspicionSystem): void {
+    this.covertSuspicionSystem = system;
+  }
+
+  /**
+   * Report a destroy action as a covert incident when the actor is a hidden-nation
+   * (deniable) unit against an owned target. Normal-unit sabotage is overt (an
+   * act of war handled by the caller), so it creates no covert suspicion.
+   */
+  private reportCovertSabotage(unit: Unit, victimNationId: string | undefined, valuable: boolean): void {
+    const covert = this.covertSuspicionSystem;
+    if (!covert || !victimNationId) return;
+    if (getAllegianceType(unit.unitType) !== 'hiddenNation') return;
+    covert.reportIncident({
+      attackerNationId: unit.ownerId,
+      victimNationId,
+      action: unit.unitType.id === 'privateer' ? 'privateerRaid' : 'agentSabotage',
+      valuable,
+    });
+  }
+
   /** True when `unit` may raze an enemy improvement on its current tile. */
   canDestroyImprovement(unit: Unit): boolean {
-    if (unit.unitType.canDestroyImprovement !== true) return false;
+    // Razing capability comes from a military demolisher (canDestroyImprovement)
+    // OR a covert saboteur (canSabotageImprovements, e.g. Spy/Agent).
+    if (unit.unitType.canDestroyImprovement !== true && unit.unitType.canSabotageImprovements !== true) return false;
     const tile = this.getUnitTile(unit);
     if (!tile || tile.improvementId === undefined) return false;
     return !this.isOwnedBy(tile, unit.ownerId);
@@ -68,7 +96,8 @@ export class InfrastructureSabotageSystem {
    * tile (one that exists, is enemy-owned, and is not already broken).
    */
   canDestroyBuilding(unit: Unit): boolean {
-    if (unit.unitType.canDestroyBuilding !== true) return false;
+    // Military demolisher (canDestroyBuilding) OR covert saboteur (canSabotageBuildings, e.g. Agent).
+    if (unit.unitType.canDestroyBuilding !== true && unit.unitType.canSabotageBuildings !== true) return false;
     const tile = this.getUnitTile(unit);
     if (!tile) return false;
     if (this.isOwnedBy(tile, unit.ownerId)) return false; // never your own infrastructure
@@ -112,6 +141,7 @@ export class InfrastructureSabotageSystem {
     if (!this.canDestroyImprovement(unit)) return false;
     const tile = this.getUnitTile(unit)!;
     const improvementId = tile.improvementId!;
+    const victimNationId = tile.resourceOwnerNationId ?? tile.ownerId;
 
     tile.improvementId = undefined;
     this.consumeUnitTurn(unit);
@@ -125,6 +155,7 @@ export class InfrastructureSabotageSystem {
       nationId: unit.ownerId,
       message: `${unit.unitType.name} razed enemy improvement (${improvementId}) at (${tile.x}, ${tile.y}) for ${IMPROVEMENT_DESTRUCTION_LOOT_GOLD} gold${this.deniableSuffix(unit)}.`,
     });
+    this.reportCovertSabotage(unit, victimNationId, false);
     return true;
   }
 
@@ -170,6 +201,11 @@ export class InfrastructureSabotageSystem {
       nationId: unit.ownerId,
       message: `${unit.unitType.name} ${verb} ${name}${location} at (${tile.x}, ${tile.y})${lootSuffix}. The ${target.kind} is ${outcome}${this.deniableSuffix(unit)}.`,
     });
+    // Camps are neutral/ownerless → no covert victim. Damaging an owned
+    // building/wonder is high-value sabotage when done by a deniable unit.
+    if (target.kind !== 'camp') {
+      this.reportCovertSabotage(unit, owningCity?.ownerId ?? tile.ownerId, true);
+    }
     return true;
   }
 

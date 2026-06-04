@@ -26,6 +26,7 @@ export interface AIDiplomacyDecisionReason {
   readonly fear: number;
   readonly hostility: number;
   readonly affinity: number;
+  readonly suspicion: number;
 
   readonly ideologyCompatibility?: number;
   readonly ideologyCompatibilityLabel?: string;

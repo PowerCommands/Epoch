@@ -51,6 +51,16 @@
       "leaderImage": "/assets/sprites/leaders/charles-vi.png"
     },
     {
+      "nationId": "nation_germany",
+      "nationName": "Germany",
+      "color": "#2b2b2b",
+      "secondaryColor": "#d4af37",
+      "leaderId": "hermann-the-cheruscan",
+      "leaderName": "Hermann the Cheruscan",
+      "leaderTitle": "Chieftain of the Cherusci",
+      "leaderImage": "/assets/sprites/leaders/hermann-the-cheruscan.png"
+    },
+    {
       "nationId": "nation_hre",
       "nationName": "Holy Roman Empire",
       "color": "#e8c84a",

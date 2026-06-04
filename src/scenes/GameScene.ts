@@ -110,6 +110,8 @@ import { InfrastructureRepairSystem } from '../systems/InfrastructureRepairSyste
 import { InsurgentBehaviorSystem } from '../systems/InsurgentBehaviorSystem';
 import { BarbarianSystem } from '../systems/BarbarianSystem';
 import { resolveBarbarianSpawnInterval } from '../data/barbarians';
+import { CovertSuspicionSystem } from '../systems/diplomacy/CovertSuspicionSystem';
+import { AICovertOperationsSystem } from '../systems/ai/AICovertOperationsSystem';
 import { IntelReportDialog } from '../ui/IntelReportDialog';
 import { isCovertOperative } from '../utils/unitRoleUtils';
 import { CheatSystem } from '../systems/CheatSystem';
@@ -588,7 +590,10 @@ export class GameScene extends Phaser.Scene {
     // Alliance partners cannot declare war on each other (central rule).
     diplomacyManager.setAllianceGuard((a, b) => allianceManager.areAllied(a, b));
     const tradeDiplomacySystem = new TradeDiplomacySystem(diplomacyManager);
-    const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(diplomacyManager);
+    const diplomaticEvaluationSystem = new DiplomaticEvaluationSystem(
+      diplomacyManager,
+      (id) => nationManager.getCovertPersonality(id),
+    );
     const ideologicalDriftSystem = new IdeologicalDriftSystem(
       diplomacyManager,
       nationManager,
@@ -1327,6 +1332,21 @@ export class GameScene extends Phaser.Scene {
       ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
     );
     unitActionToolbox.setSabotageAvailabilityProvider(infrastructureSabotageSystem);
+
+    // Covert actions (spying, sabotage, partisan/rebel/privateer raids) generate
+    // Suspicion on the victim via a simple deterministic detection model. Player
+    // log hides the attacker unless exposed; the [DEBUG] log carries full info for
+    // autorun balancing. Wired into combat + sabotage; restored from save below.
+    const covertSuspicionSystem = new CovertSuspicionSystem(
+      diplomacyManager,
+      turnManager,
+      (id) => nationManager.getNation(id)?.name ?? id,
+      (nationId, message) => logManager.info({ nationId, category: 'diplomacy', message }),
+      (message) => console.log(`[autorun] ${message}`),
+      (id) => nationManager.getCovertPersonality(id),
+    );
+    combatSystem.setCovertSuspicionSystem(covertSuspicionSystem);
+    infrastructureSabotageSystem.setCovertSuspicionSystem(covertSuspicionSystem);
     const infrastructureRepairSystem = new InfrastructureRepairSystem(
       mapData,
       cityManager,
@@ -1612,6 +1632,26 @@ export class GameScene extends Phaser.Scene {
       tileBuildingRenderer.rebuildAll();
     });
 
+    // AI covert mission execution: Spies (espionage), Agents (sabotage), and
+    // Privateers (maritime economic raiding) act per personality, reusing
+    // pathfinding/combat/sabotage and the covert-suspicion consequences. Driven
+    // before the main AI pass each AI turn. Rebels/Partisans stay on
+    // InsurgentBehaviorSystem above.
+    const aiCovertOperationsSystem = new AICovertOperationsSystem(
+      mapData,
+      gridSystem,
+      unitManager,
+      cityManager,
+      nationManager,
+      movementSystem,
+      pathfindingSystem,
+      combatSystem,
+      infrastructureSabotageSystem,
+      covertSuspicionSystem,
+      diplomacyManager,
+      (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
+    );
+
     // Insurgent forces (Rebels, Partisans) act autonomously at the start of each
     // nation's turn — human- and AI-owned alike. The owner relocates them; they
     // choose how they fight. (AISystem.runMovement skips insurgents so there is
@@ -1868,6 +1908,8 @@ export class GameScene extends Phaser.Scene {
       maybeProposeAIJointWar(nation.id);
       // Clear nearby Barbarian Camps before the main AI pass spends movement.
       barbarianSystem.runAICampClearingForNation(nation.id, infrastructureSabotageSystem);
+      // Covert operatives / privateers act before the main military movement pass.
+      aiCovertOperationsSystem.runForNation(nation.id);
       aiSystem.runTurn(nation.id);
       aiExplorationSystem.runTurn(nation.id);
     };
@@ -1975,6 +2017,8 @@ export class GameScene extends Phaser.Scene {
         maybeProposeAIJointWar(e.nation.id);
         // Clear nearby Barbarian Camps before the main AI pass spends movement.
         barbarianSystem.runAICampClearingForNation(e.nation.id, infrastructureSabotageSystem);
+        // Covert operatives / privateers act before the main military movement pass.
+        aiCovertOperationsSystem.runForNation(e.nation.id);
         aiSystem.runTurn(e.nation.id);
         aiExplorationSystem.runTurn(e.nation.id);
         territoryRenderer.invalidate();
@@ -2977,6 +3021,8 @@ export class GameScene extends Phaser.Scene {
       },
     );
     turnManager.on('roundStart', () => allianceCouncilManager.update());
+    // Diplomatic upkeep: suspicion drifts back toward 0 a little each round.
+    turnManager.on('roundStart', () => { diplomacyManager.decaySuspicion(); });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => allianceCouncilDialog.hide());
 
     foreignTroopViolationSystem.onWarning((event) => {
@@ -5335,6 +5381,12 @@ export class GameScene extends Phaser.Scene {
           // Read-only report on the infiltrated city's owning civilization.
           if (rightPanel && city && city.ownerId !== unit.ownerId && unit.unitType.canGatherIntel === true) {
             intelReportDialog.show(rightPanel.buildIntelReport(city.ownerId));
+            // Intelligence gathering risks tipping off the target (covert suspicion).
+            covertSuspicionSystem.reportIncident({
+              attackerNationId: unit.ownerId,
+              victimNationId: city.ownerId,
+              action: 'spyIntel',
+            });
           }
         }
         unitActionToolbox.resetMode();
@@ -5482,6 +5534,7 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          covertSuspicionSystem,
         }),
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -6022,6 +6075,7 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        covertSuspicionSystem,
       });
       updateFog();
       // Older saves only persist tile.improvementConstruction; recompute
@@ -6108,6 +6162,7 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          covertSuspicionSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -6161,6 +6216,7 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        covertSuspicionSystem,
       });
     const saveGameDialog = new SaveGameDialog({
       onConfirm: (filename) => {

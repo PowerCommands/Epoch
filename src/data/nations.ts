@@ -25,6 +25,7 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_japan', name: 'Japan', color: '#ffffff', secondaryColor: '#bc002d' },
   { id: 'nation_denmark', name: 'Denmark', color: '#80071b', secondaryColor: '#ffffff' },
   { id: 'nation_pirate', name: 'Pirates', color: '#1a1a1a', secondaryColor: '#c0392b' },
+  { id: 'nation_germany', name: 'Germany', color: '#2b2b2b', secondaryColor: '#d4af37' },
 ];
 
 export function getNationDefinitionById(nationId: string): NationDefinition | undefined {

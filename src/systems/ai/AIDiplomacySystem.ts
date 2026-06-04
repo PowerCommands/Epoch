@@ -20,6 +20,11 @@ import {
 import type { AILogFormatter } from './AILogFormatter';
 import type { PeaceTreatySystem } from '../PeaceTreatySystem';
 import { MIN_WAR_TURNS_FOR_PEACE } from '../DiplomacyManager';
+import {
+  getSuspicionOpenBordersPenalty,
+  suspicionBlocksOpenBorders,
+  getSuspicionWarScoreBonus,
+} from '../diplomacy/suspicionEffects';
 
 // AIDiplomacySystem v1:
 // Uses diplomatic attitude to trigger simple decisions.
@@ -169,6 +174,14 @@ export class AIDiplomacySystem {
       else if (warComparison === 'equal') warScore += 0.2;
       if (threat === 'low' || threat === 'medium') warScore += 0.3;
       warScore += ideologyWarModifier / 100;
+      // Suspicion amplifies an already-hostile, already-viable war intent (we are
+      // inside the hostile branch, past the weaker/high-threat gates). It never
+      // starts a war on its own — only nudges escalation when tension exists. The
+      // deciding nation's covert personality scales this (paranoid/fanatic escalate
+      // harder from suspicion; a merchant barely does).
+      const selfPersonality = this.nationManager.getCovertPersonality(selfId);
+      const suspicionWarBonus = getSuspicionWarScoreBonus(relation.suspicion) * selfPersonality.suspicionToWar;
+      warScore += suspicionWarBonus;
       const personalityFactor = getNationPersonalityFactor(selfId);
       warScore *= 0.8 + personalityFactor * 0.4;
       // Era-strategy multiplier dampens or amplifies war propensity per
@@ -179,8 +192,12 @@ export class AIDiplomacySystem {
       }
 
       const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
+      const suspicionNote = suspicionWarBonus > 0
+        ? ` (war pressure increased by suspicion ${Math.round(relation.suspicion)}`
+          + `${selfPersonality.suspicionToWar > 1 ? `, amplified by ${selfPersonality.name} personality` : ''})`
+        : '';
       console.log(
-        this.formatLog(selfId, `AI war decision toward ${targetName}: score=${warScore.toFixed(2)}`),
+        this.formatLog(selfId, `AI war decision toward ${targetName}: score=${warScore.toFixed(2)}${suspicionNote}`),
       );
 
       const goalWantsWar = warScore > 0.7;
@@ -208,9 +225,19 @@ export class AIDiplomacySystem {
       return;
     }
 
-    const adjustedDiplomacyBias = personality.diplomacyBias + ideologyOpenBordersModifier;
-    const adjustedTrust = relation.trust + ideologyOpenBordersModifier;
-    if (attitude === 'friendly' || (attitude === 'neutral' && adjustedDiplomacyBias >= 15 && adjustedTrust >= 50)) {
+    // Suspicion reduces open-borders willingness (penalty on the trust/bias
+    // gate) and, when very high, refuses to grant outright unless an
+    // overwhelmingly friendly bond exists. Existing grants are never revoked here.
+    const suspicionPenalty = getSuspicionOpenBordersPenalty(relation.suspicion);
+    const adjustedDiplomacyBias = personality.diplomacyBias + ideologyOpenBordersModifier + suspicionPenalty;
+    const adjustedTrust = relation.trust + ideologyOpenBordersModifier + suspicionPenalty;
+    const baseWantsOpenBorders =
+      attitude === 'friendly' || (attitude === 'neutral' && adjustedDiplomacyBias >= 15 && adjustedTrust >= 50);
+    const refusedBySuspicion = suspicionBlocksOpenBorders(relation.suspicion, {
+      trust: relation.trust,
+      affinity: relation.affinity,
+    });
+    if (baseWantsOpenBorders && !refusedBySuspicion) {
       if (this.turnsSince(relation.lastOpenBordersChangeTurn, currentTurn) >= OPEN_BORDERS_COOLDOWN) {
         this.ensureOpenBorders(
           selfId,
@@ -224,6 +251,21 @@ export class AIDiplomacySystem {
           evaluation,
           ideologyOpenBordersModifier,
         );
+      }
+    } else if (suspicionPenalty < 0 && !this.diplomacyManager.isOpenBorderGrantedFrom(selfId, otherId)) {
+      // Log only when suspicion is the deciding factor: the relation is warm
+      // enough that open borders would be wanted at suspicion 0 (raw thresholds,
+      // independent of the suspicion-suppressed attitude), yet it is not granted.
+      // Kept cheap and quiet — fires only when suspicion is already elevated.
+      const wouldWantWithoutSuspicion =
+        (relation.trust >= 70 && relation.affinity >= 10) || // friendly-equivalent warmth
+        (personality.diplomacyBias + ideologyOpenBordersModifier >= 15 && relation.trust + ideologyOpenBordersModifier >= 50);
+      if (wouldWantWithoutSuspicion) {
+        const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
+        console.log(this.formatLog(
+          selfId,
+          `suspicion ${Math.round(relation.suspicion)} reduced open borders willingness toward ${targetName}.`,
+        ));
       }
     }
   }
@@ -357,6 +399,7 @@ export class AIDiplomacySystem {
       fear: relation.fear,
       hostility: relation.hostility,
       affinity: relation.affinity,
+      suspicion: relation.suspicion,
       ideologyCompatibility: evaluation.ideologyCompatibility,
       ideologyCompatibilityLabel: evaluation.ideologyCompatibilityLabel,
       sourceIdeologyName: evaluation.sourceIdeologyName,
@@ -431,7 +474,7 @@ function formatIdeologyReason(
 }
 
 function formatRelationReason(relation: DiplomacyRelation): string {
-  return `; relation trust ${Math.round(relation.trust)}, fear ${Math.round(relation.fear)}, hostility ${Math.round(relation.hostility)}, affinity ${Math.round(relation.affinity)}`;
+  return `; relation trust ${Math.round(relation.trust)}, fear ${Math.round(relation.fear)}, hostility ${Math.round(relation.hostility)}, suspicion ${Math.round(relation.suspicion)}, affinity ${Math.round(relation.affinity)}`;
 }
 
 function getIdeologyEffectText(action: AIDiplomacyAction, ideologyModifier: number): string {

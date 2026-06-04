@@ -20,6 +20,10 @@
       "/assets/sounds/nation_france/nation_france-theme-01.mp3",
       "/assets/sounds/nation_france/nation_france-theme-02.mp3"
     ],
+    "nation_germany": [
+      "/assets/sounds/nation_germany/hermann-the-cheruscan-theme-01.mp3",
+      "/assets/sounds/nation_germany/hermann-the-cheruscan-theme-02.mp3"
+    ],
     "nation_hre": [
       "/assets/sounds/nation_hre/nation_hre-theme-01.mp3",
       "/assets/sounds/nation_hre/nation_hre-theme-02.mp3"

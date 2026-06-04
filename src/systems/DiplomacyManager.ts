@@ -28,6 +28,9 @@ export interface DiplomacyRelation {
   fear: number;
   hostility: number;
   affinity: number;
+  // Distrust / suspected hostile intent, independent of open war. Symmetric like
+  // the other memory values (one value per pair). Decays slowly each round.
+  suspicion: number;
 
   // Cooldowns prevent AI from making rapid contradictory diplomatic decisions.
   // This stabilizes diplomacy behavior without changing core rules.
@@ -126,14 +129,25 @@ export interface DiplomaticMemoryValues {
   fear: number;
   hostility: number;
   affinity: number;
+  suspicion: number;
 }
 
 export const DEFAULT_TRUST = 50;
 export const DEFAULT_FEAR = 0;
 export const DEFAULT_HOSTILITY = 0;
 export const DEFAULT_AFFINITY = 0;
+export const DEFAULT_SUSPICION = 0;
+export const MIN_SUSPICION = 0;
+export const MAX_SUSPICION = 100;
+/** Passive suspicion decay applied to every tracked relation each round. */
+export const SUSPICION_DECAY_PER_ROUND = 1;
 export const MIN_WAR_TURNS_FOR_PEACE = 15;
 export const PEACE_TREATY_COOLDOWN_TURNS = 20;
+
+/** Clamp a suspicion value to its valid 0–100 range. */
+export function clampSuspicion(value: number): number {
+  return Math.max(MIN_SUSPICION, Math.min(MAX_SUSPICION, Math.round(value)));
+}
 
 export function createDefaultRelation(): DiplomacyRelation {
   return {
@@ -147,6 +161,7 @@ export function createDefaultRelation(): DiplomacyRelation {
     fear: DEFAULT_FEAR,
     hostility: DEFAULT_HOSTILITY,
     affinity: DEFAULT_AFFINITY,
+    suspicion: DEFAULT_SUSPICION,
     lastWarDeclarationTurn: null,
     lastPeaceProposalTurn: null,
     lastOpenBordersChangeTurn: null,
@@ -182,6 +197,8 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
     fear: partial.fear ?? base.fear,
     hostility: partial.hostility ?? base.hostility,
     affinity: partial.affinity ?? base.affinity,
+    // Older saves/scenarios predate suspicion → default to 0. Clamp to 0–100.
+    suspicion: partial.suspicion === undefined ? base.suspicion : clampSuspicion(partial.suspicion),
     lastWarDeclarationTurn:
       partial.lastWarDeclarationTurn ?? partial.lastWarTurn ?? base.lastWarDeclarationTurn,
     lastPeaceProposalTurn:
@@ -634,6 +651,7 @@ export class DiplomacyManager {
         relation.fear === defaults.fear &&
         relation.hostility === defaults.hostility &&
         relation.affinity === defaults.affinity &&
+        relation.suspicion === defaults.suspicion &&
         relation.lastWarDeclarationTurn === defaults.lastWarDeclarationTurn &&
         relation.lastPeaceProposalTurn === defaults.lastPeaceProposalTurn &&
         relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn &&
@@ -754,7 +772,51 @@ export class DiplomacyManager {
       fear: values.fear,
       hostility: values.hostility,
       affinity: values.affinity,
+      suspicion: values.suspicion,
     });
+  }
+
+  /** Current suspicion (0–100) for a pair. Symmetric, like trust/fear/etc. */
+  getSuspicion(a: string, b: string): number {
+    return this.getRelation(a, b).suspicion;
+  }
+
+  /**
+   * Set this pair's suspicion directly (clamped 0–100). Quiet — fires no
+   * listeners — mirroring setMemoryValues; callers refresh UI if needed.
+   */
+  setSuspicion(a: string, b: string, value: number): void {
+    const key = this.pairKey(a, b);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    this.relations.set(key, { ...current, suspicion: clampSuspicion(value) });
+  }
+
+  /** Add `delta` to this pair's suspicion (clamped 0–100). Returns the new value. */
+  addSuspicion(a: string, b: string, delta: number): number {
+    const next = clampSuspicion(this.getSuspicion(a, b) + delta);
+    this.setSuspicion(a, b, next);
+    return next;
+  }
+
+  /**
+   * Passively decay suspicion toward 0 by `amount` for every tracked relation
+   * (clamped at 0). Only stored relations are touched; never-interacted pairs
+   * default to 0 already. Returns the pairs that actually changed so callers can
+   * log meaningful drift without per-nation spam.
+   */
+  decaySuspicion(amount = SUSPICION_DECAY_PER_ROUND): Array<{ a: string; b: string; from: number; to: number }> {
+    if (amount <= 0) return [];
+    const changed: Array<{ a: string; b: string; from: number; to: number }> = [];
+    for (const [key, relation] of this.relations) {
+      if (relation.suspicion <= MIN_SUSPICION) continue;
+      const from = relation.suspicion;
+      const to = Math.max(MIN_SUSPICION, from - amount);
+      if (to === from) continue;
+      relation.suspicion = to;
+      const [a, b] = key.split(PAIR_KEY_SEPARATOR);
+      if (a !== undefined && b !== undefined) changed.push({ a, b, from, to });
+    }
+    return changed;
   }
 
   /** Reset all diplomacy state. Used before applying a loaded save. */

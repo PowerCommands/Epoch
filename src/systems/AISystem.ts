@@ -6,7 +6,17 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, canCarryUnitType, hasCargoCapacity } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, PRIVATEER, getUnitTypeById, canCarryUnitType, hasCargoCapacity } from '../data/units';
+import type { CovertPersonality } from '../types/covertPersonality';
+import {
+  COVERT_CANDIDATE_UNIT_IDS,
+  COVERT_MIN_REFERENCE_SCORE,
+  getCovertDemandFactor,
+  getDesiredCovertCapability,
+  getPrivateerPersonalityMultiplier,
+  isManagedCovertUnit,
+  pickPreferredCovertUnit,
+} from './ai/covertForceEvaluation';
 import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
@@ -43,6 +53,7 @@ import type { HappinessSystem } from './HappinessSystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { TradeConnectionSystem } from './TradeConnectionSystem';
 import type { DiplomaticProposalSystem } from './diplomacy/DiplomaticProposalSystem';
+import { evaluateEmbassyUnderSuspicion, evaluateTradeUnderSuspicion } from './diplomacy/suspicionEffects';
 import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
@@ -111,7 +122,7 @@ import {
 } from './ai/AIMilitaryDoctrineScoring';
 import type { AIMilitaryDoctrine, AIMilitaryDoctrineRole, DoctrineProductionScoreBreakdown } from '../types/aiMilitaryDoctrine';
 import { AIMilitaryDoctrineEvaluator } from './ai/AIMilitaryDoctrineEvaluator';
-import { getUnitDoctrineRole } from '../utils/unitRoleUtils';
+import { getUnitDoctrineRole, isCovertOperative } from '../utils/unitRoleUtils';
 import {
   getModernizationGoldReserve,
   getModernizationMaxUpgrades,
@@ -273,6 +284,10 @@ function threatRank(level: ThreatLevel): number {
 
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
   unitType.category !== 'leader' &&
+  // Covert units (spy/agent/rebels/partisans) have combat strength but are
+  // strategic assets, not generic army — they are evaluated separately by the
+  // covert-force evaluator, never built as standing military here.
+  unitType.category !== 'covert' &&
   unitType.baseStrength > 0
 ));
 // Score boost applied to naval candidates when a maritime doctrine is active
@@ -814,19 +829,39 @@ export class AISystem {
       if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, other.id)) continue;
       if (dm.getState(nationId, other.id) === 'WAR') continue;
 
+      const relation = dm.getRelation(nationId, other.id);
+
       if (!dm.hasEmbassy(nationId, other.id)) {
         const embassyCheck = dm.canEstablishEmbassy(nationId, other.id, validationContext);
-        if (embassyCheck.ok && dm.establishEmbassy(nationId, other.id)) {
-          const target = other.name;
-          console.debug(this.formatLog(nationId, `AI established embassy with ${target}`));
+        if (embassyCheck.ok) {
+          // Suspicion makes a nation reluctant to open a new embassy (less than
+          // for open borders; strong trust still gets one through).
+          const gate = evaluateEmbassyUnderSuspicion(relation.suspicion, relation.trust);
+          if (!gate.allow) {
+            if (gate.reason) console.debug(this.formatLog(nationId, `AI declined embassy with ${other.name}: ${gate.reason}.`));
+          } else if (dm.establishEmbassy(nationId, other.id)) {
+            const suffix = gate.reason ? ` (${gate.reason})` : '';
+            console.debug(this.formatLog(nationId, `AI established embassy with ${other.name}${suffix}`));
+          }
         }
       }
 
       if (!dm.hasTradeRelations(nationId, other.id)) {
         const tradeCheck = dm.canEstablishTradeRelations(nationId, other.id, validationContext);
-        if (tradeCheck.ok && dm.establishTradeRelations(nationId, other.id)) {
-          const target = other.name;
-          console.debug(this.formatLog(nationId, `AI established trade relations with ${target}`));
+        if (tradeCheck.ok) {
+          // Suspicion lowers trade willingness, but economic lean / mutual benefit
+          // still overcomes low–moderate suspicion (never makes trade impossible).
+          // A merchant personality weighs suspicion against trade more heavily;
+          // a pirate/schemer barely lets it interfere.
+          const personality = this.nationManager.getCovertPersonality(nationId);
+          const effectiveSuspicion = relation.suspicion * personality.suspicionToTrade;
+          const gate = evaluateTradeUnderSuspicion(effectiveSuspicion, relation.trust, weights.trade);
+          if (!gate.allow) {
+            if (gate.reason) console.debug(this.formatLog(nationId, `AI declined trade relations with ${other.name}: ${gate.reason}.`));
+          } else if (dm.establishTradeRelations(nationId, other.id)) {
+            const suffix = gate.reason ? ` (${gate.reason})` : '';
+            console.debug(this.formatLog(nationId, `AI established trade relations with ${other.name}${suffix}`));
+          }
         }
       }
     }
@@ -2219,6 +2254,7 @@ export class AISystem {
       if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
       if (unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon') continue;
       if (unit.unitType.isInsurgentForce === true) continue; // insurgents use InsurgentBehaviorSystem
+      if (isCovertOperative(unit.unitType)) continue; // Spy/Agent use AICovertOperationsSystem
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
       if (unit.unitType.id === WORK_BOAT.id) {
@@ -5786,6 +5822,7 @@ export class AISystem {
 
     if (doctrineCtx) {
       const { doctrine, nationEraIndex } = doctrineCtx;
+      const covertPersonality = this.nationManager.getCovertPersonality(nationId);
 
       // Once any ranged naval ship is buildable, melee naval units become a
       // heavy-suppressed fallback — maritime doctrines should converge on the
@@ -5830,6 +5867,11 @@ export class AISystem {
           score *= NAVAL_MELEE_SUPPRESSION_MULTIPLIER;
         }
 
+        // Pirate personalities strongly favour privateers; doctrine still governs.
+        if (u.id === PRIVATEER.id) {
+          score *= getPrivateerPersonalityMultiplier(covertPersonality);
+        }
+
         if (score > bestFinalScore) {
           best = u;
           bestFinalScore = score;
@@ -5858,12 +5900,65 @@ export class AISystem {
         console.debug(this.formatLog(nationId, `doctrine preferred ranged naval ${best.name} over weaker naval option for ${doctrine.id}.`));
       }
 
+      // Covert units compete as one more input: a personality with a real covert
+      // deficit can outscore the best military choice, but otherwise loses.
+      const covertChoice = this.evaluateCovertProductionCandidate(nationId, city, covertPersonality, bestFinalScore);
+      if (covertChoice) return covertChoice;
+
       return best;
     }
 
     const archer = available.find((u) => u.id === ARCHER.id);
     if (archer && !this.hasFriendlyRangedUnitNearby(city, nationId)) return archer;
     return available.find((u) => u.id === WARRIOR.id) ?? available[0];
+  }
+
+  /** Buildable covert-category units (spy/agent/rebels/partisans) for this city/era. */
+  private getBuildableCovertUnits(nationId: string, city: City): UnitType[] {
+    return COVERT_CANDIDATE_UNIT_IDS
+      .map((id) => getUnitTypeById(id))
+      .filter((u): u is UnitType => u !== undefined
+        && this.canBuildUnit(nationId, u.id)
+        && canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext()));
+  }
+
+  /** Owned land covert units (the covert-force "current capability"). */
+  private countCovertUnits(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId).filter((u) => isManagedCovertUnit(u.unitType)).length;
+  }
+
+  /**
+   * If the nation has a covert deficit and its personality wants covert units
+   * strongly enough to beat the best military score, return the covert unit to
+   * build (else undefined). Reuses the same scoring scale via `militaryScore`.
+   */
+  private evaluateCovertProductionCandidate(
+    nationId: string,
+    city: City,
+    personality: CovertPersonality,
+    militaryScore: number,
+  ): UnitType | undefined {
+    const buildable = this.getBuildableCovertUnits(nationId, city);
+    if (buildable.length === 0) return undefined;
+
+    const desired = getDesiredCovertCapability(personality, true);
+    const current = this.countCovertUnits(nationId);
+    const deficit = Math.max(0, desired - current);
+    if (deficit <= 0) return undefined;
+
+    const covertUnit = pickPreferredCovertUnit(buildable);
+    if (!covertUnit) return undefined;
+
+    const factor = getCovertDemandFactor(personality, true);
+    const reference = Math.max(militaryScore, COVERT_MIN_REFERENCE_SCORE);
+    const covertScore = reference * factor;
+    if (covertScore <= militaryScore) return undefined;
+
+    console.debug(this.formatLog(
+      nationId,
+      `covert force deficit (${current}/${desired}): ${covertUnit.name} production selected — ${personality.name} personality covert demand (factor ${factor.toFixed(2)}).`,
+    ));
+    return covertUnit;
   }
 
   private runLeaderRelocation(nationId: string): void {

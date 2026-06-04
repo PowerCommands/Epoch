@@ -8,7 +8,7 @@ import type {
 // These values are not yet used for AI decisions, but form the basis for
 // future diplomacy logic.
 
-type MemoryField = 'trust' | 'fear' | 'hostility' | 'affinity';
+type MemoryField = 'trust' | 'fear' | 'hostility' | 'affinity' | 'suspicion';
 type MemoryDelta = Partial<Pick<DiplomacyRelation, MemoryField>>;
 
 const MIN_VALUE = 0;
@@ -192,6 +192,9 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
       fear: clamp(relation.fear + (delta.fear ?? 0)),
       hostility: clamp(relation.hostility + (delta.hostility ?? 0)),
       affinity: clamp(relation.affinity + (delta.affinity ?? 0)),
+      // Existing events don't move suspicion (no delta.suspicion) — it is carried
+      // through unchanged here and only changes via decay / editor / future logic.
+      suspicion: clamp(relation.suspicion + (delta.suspicion ?? 0)),
     });
   }
 }

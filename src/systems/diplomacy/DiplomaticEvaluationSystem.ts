@@ -4,6 +4,9 @@ import {
   describeIdeologyCompatibility,
   getIdeologyCompatibility,
 } from '../../data/ideologyCompatibility';
+import { suspicionSuppressesFriendly, suspicionAmplifiesHostile } from './suspicionEffects';
+import type { CovertPersonality } from '../../types/covertPersonality';
+import { getCovertPersonalityById } from '../../data/covertPersonalities';
 
 /**
  * Coarse attitude label derived from memory values. Read-only — no decisions
@@ -35,7 +38,12 @@ export interface DiplomaticEvaluationResult {
 }
 
 export class DiplomaticEvaluationSystem {
-  constructor(private readonly diplomacyManager: DiplomacyManager) {}
+  constructor(
+    private readonly diplomacyManager: DiplomacyManager,
+    /** Viewer's covert personality scales how strongly suspicion colours attitude. */
+    private readonly getPersonality: (nationId: string) => CovertPersonality =
+      () => getCovertPersonalityById(undefined),
+  ) {}
 
   /**
    * Return the full passive evaluation for a directed relation. This includes
@@ -80,17 +88,26 @@ export class DiplomaticEvaluationSystem {
     if (viewerNationId === targetNationId) return 'neutral';
 
     const relation = this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    // The viewer's covert personality scales how strongly suspicion colours its
+    // attitude (a paranoid nation turns hostile on far less suspicion).
+    const effectiveSuspicion = relation.suspicion * this.getPersonality(viewerNationId).suspicionToWar;
 
     if (relation.fear >= HIGH_FEAR_THRESHOLD) return 'afraid';
     if (
       relation.hostility >= HIGH_HOSTILITY_THRESHOLD ||
-      relation.trust <= LOW_TRUST_THRESHOLD
+      relation.trust <= LOW_TRUST_THRESHOLD ||
+      // Suspicion amplifies pre-existing hostility into a hostile attitude (it
+      // never flips attitude on its own — real hostility must already exist).
+      suspicionAmplifiesHostile(effectiveSuspicion, relation.hostility)
     ) {
       return 'hostile';
     }
     if (
       relation.trust >= HIGH_TRUST_THRESHOLD &&
-      relation.affinity >= HIGH_AFFINITY_THRESHOLD
+      relation.affinity >= HIGH_AFFINITY_THRESHOLD &&
+      // A suspicious nation stays guarded (neutral) instead of friendly unless
+      // trust is very high.
+      !suspicionSuppressesFriendly(effectiveSuspicion, relation.trust)
     ) {
       return 'friendly';
     }
@@ -104,6 +121,7 @@ function applyIdeologyAttitudeNudge(
     readonly trust: number;
     readonly fear: number;
     readonly hostility: number;
+    readonly suspicion: number;
   },
   ideologyCompatibility: number,
 ): DiplomaticAttitude {
@@ -116,7 +134,9 @@ function applyIdeologyAttitudeNudge(
     ideologyCompatibility >= 25 &&
     relation.trust >= 55 &&
     relation.hostility <= 20 &&
-    relation.fear <= 30
+    relation.fear <= 30 &&
+    // High suspicion keeps the relation guarded even when ideology aligns.
+    !suspicionSuppressesFriendly(relation.suspicion, relation.trust)
   ) {
     return 'friendly';
   }

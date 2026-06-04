@@ -95,6 +95,19 @@ export const ISOLATIONIST_AGENDA: AINationalAgenda = {
   },
 };
 
+export const HOMELAND_DEFENSE_AGENDA: AINationalAgenda = {
+  id: 'homeland_defense',
+  name: 'Homeland Defense',
+  description: 'Defends the homeland fiercely, opposes runaway empires, builds military strength, and punishes nearby aggressors rather than chasing endless expansion.',
+  strategyBias: {
+    // Defensive resilience is the core identity; a real military edge to punish
+    // aggressors; a touch of balance so it is not a pure turtle.
+    [DEFENSIVE_AI_STRATEGY_ID]: 20,
+    [AGGRESSIVE_AI_STRATEGY_ID]: 8,
+    [BALANCED_AI_STRATEGY_ID]: 5,
+  },
+};
+
 export const AI_NATIONAL_AGENDAS: readonly AINationalAgenda[] = [
   BALANCED_AGENDA,
   GROWTH_AGENDA,
@@ -104,6 +117,7 @@ export const AI_NATIONAL_AGENDAS: readonly AINationalAgenda[] = [
   EXPANSIONIST_AGENDA,
   NAVAL_POWER_AGENDA,
   ISOLATIONIST_AGENDA,
+  HOMELAND_DEFENSE_AGENDA,
 ];
 
 export function getAINationalAgendaById(id: string | undefined): AINationalAgenda {

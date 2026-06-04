@@ -176,6 +176,7 @@ export class BorderPressureSystem {
       fear: clamp(relation.fear + (delta.fear ?? 0)),
       hostility: clamp(relation.hostility + (delta.hostility ?? 0)),
       affinity: relation.affinity,
+      suspicion: relation.suspicion,
     };
     this.diplomacyManager.setMemoryValues(nationAId, nationBId, next);
     return {

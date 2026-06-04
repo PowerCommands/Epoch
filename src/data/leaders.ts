@@ -7,6 +7,8 @@ import { getIdeologyById } from './ideologies';
 import type { IdeologyDefinition } from '../types/ideology';
 import { getAIMilitaryDoctrineById } from './aiMilitaryDoctrines';
 import type { AIMilitaryDoctrine } from '../types/aiMilitaryDoctrine';
+import type { CovertPersonalityId } from '../types/covertPersonality';
+import { DEFAULT_COVERT_PERSONALITY_ID } from './covertPersonalities';
 
 const LEADER_IMAGE_BASE = '/assets/sprites/leaders';
 
@@ -429,6 +431,46 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       casualtyToleranceRatio: 0.50,
     },
   },
+  {
+    // Hermann the Cheruscan (Arminius) — a tribal-confederation defender: fierce
+    // homeland resistance against larger empires rather than world conquest.
+    // Nationalist identity, disciplined land army, distrust of dominant powers,
+    // and (per his historical reliance on intelligence and deception) a paranoid
+    // covert posture. Music/art live under nation_germany.
+    id: 'hermann-the-cheruscan',
+    name: 'Hermann the Cheruscan',
+    nationId: 'nation_germany',
+    title: 'Chieftain of the Cherusci',
+    image: `${LEADER_IMAGE_BASE}/hermann-the-cheruscan.png`,
+    description: "Hermann the Cheruscan, known to the Romans as Arminius, united Germanic tribes against Roman expansion and achieved one of history's most famous victories in the Teutoburg Forest. A skilled strategist who understood both Roman military doctrine and tribal warfare, Hermann represents independence, resilience, and fierce resistance against foreign domination. Under his leadership, alliances are forged through necessity, enemies are watched carefully, and freedom is defended at any cost.",
+    ideologyId: 'nationalism',
+    aiMilitaryDoctrineId: 'disciplinedInfantry',
+    aiNationalAgendaId: 'homeland_defense',
+    covertPersonalityId: 'paranoid',
+    aiPersonality: {
+      // Fierce homeland defender: ready to fight and punish aggressors, resilient
+      // to the end (high casualty tolerance), little interest in culture/science,
+      // only moderate expansion. Wary of others but will ally against stronger foes.
+      aggressionBias: 10,
+      expansionBias: 3,
+      economyBias: 2,
+      cultureBias: -10,
+      diplomacyBias: -2,
+      warTolerance: 70,
+      peacePreference: 40,
+      minimumUnitsLostBeforePeace: 6,
+      casualtyToleranceRatio: 0.60,
+    },
+    diplomacyFlavor: {
+      greeting: 'I am Hermann of the Cherusci. Speak plainly — we have learned to be cautious with strangers who come bearing fine words.',
+      friendly: 'Between free peoples there is loyalty, and against the great powers there is strength in standing together. Our shields are at your side.',
+      neutral: 'We watch the movements of all nations, yours among them. Walk carefully near our forests.',
+      hostile: 'No empire dictates terms to free men. Press us further and you will learn what the legions learned.',
+      warDeclaration: 'You reach for what is ours. Then it is settled — we defend our homeland and our freedom, whatever the cost.',
+      victory: 'The tribes endure, free and unbroken. Let every empire remember the price of crossing into our lands.',
+      defeat: 'You may take this ground, but freedom is not so easily conquered. Free peoples endure, and they remember.',
+    },
+  },
 ];
 
 /**
@@ -503,6 +545,52 @@ export function getLeaderMilitaryDoctrineByNationId(nationId: string): AIMilitar
 
 export function getLeaderMilitaryDoctrineById(leaderId: string): AIMilitaryDoctrine {
   return getAIMilitaryDoctrineById(getLeaderById(leaderId)?.aiMilitaryDoctrineId);
+}
+
+/**
+ * Default covert personality per leader, applied when a leader/scenario does not
+ * specify one. Kept as a map so we get variety without editing every leader
+ * entry; deliberately spread across personalities rather than perfectly tuned.
+ */
+const LEADER_COVERT_PERSONALITY_DEFAULTS: Record<string, CovertPersonalityId> = {
+  leader_henry_v: 'opportunist',
+  leader_charles_vii: 'honorable',
+  leader_sigismund: 'pragmatist',
+  leader_gustav_vasa: 'opportunist',
+  leader_vytautas: 'opportunist',
+  leader_marfa_boretskaya: 'merchant',
+  leader_mehmed_ii: 'fanatic',
+  leader_isabella_i: 'fanatic',
+  leader_abu_said_uthman_ii: 'merchant',
+  'leader_george-washington': 'honorable',
+  'leader_mahatma-gandhi': 'honorable',
+  'leader_qin-shi-huang': 'schemer',
+  leader_koxinga: 'merchant',
+  'leader_dom-pedro-ii': 'honorable',
+  'leader_mansa-musa': 'merchant',
+  'leader_genghis-khan': 'opportunist',
+  'leader_oda-nobunaga': 'schemer',
+  'leader_christian-iv': 'opportunist',
+  leader_mad_jack: 'pirate',
+};
+
+/**
+ * Resolve a leader's covert personality id: explicit field first, then the
+ * per-leader default map, then the neutral global default.
+ */
+export function getLeaderCovertPersonalityId(leaderId: string | undefined): CovertPersonalityId {
+  if (leaderId === undefined) return DEFAULT_COVERT_PERSONALITY_ID;
+  const leader = getLeaderById(leaderId);
+  return leader?.covertPersonalityId
+    ?? LEADER_COVERT_PERSONALITY_DEFAULTS[leaderId]
+    ?? DEFAULT_COVERT_PERSONALITY_ID;
+}
+
+export function getLeaderCovertPersonalityByNationId(nationId: string): CovertPersonalityId {
+  const leader = getLeaderByNationId(nationId);
+  return leader?.covertPersonalityId
+    ?? (leader ? LEADER_COVERT_PERSONALITY_DEFAULTS[leader.id] : undefined)
+    ?? DEFAULT_COVERT_PERSONALITY_ID;
 }
 
 /**

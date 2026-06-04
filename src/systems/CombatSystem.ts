@@ -17,6 +17,7 @@ import { CityManager } from './CityManager';
 import { ProductionSystem } from './ProductionSystem';
 import type { MapData } from '../types/map';
 import type { DiplomacyManager } from './DiplomacyManager';
+import type { CovertSuspicionSystem, CovertActionKind } from './diplomacy/CovertSuspicionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { PolicySystem } from './PolicySystem';
 import { isEmbarked } from './UnitMovementRules';
@@ -91,6 +92,9 @@ export class CombatSystem {
   private readonly cityCombatListeners: CityCombatListener[] = [];
   private readonly rejectedListeners: CombatRejectedListener[] = [];
   private readonly warRequiredListeners: WarRequiredListener[] = [];
+  // Optional: turns covert combat (privateer/insurgent raids, caught insurgents)
+  // into Suspicion. Injected after construction to avoid a constructor cycle.
+  private covertSuspicionSystem: CovertSuspicionSystem | null = null;
 
   constructor(
     unitManager: UnitManager,
@@ -111,6 +115,10 @@ export class CombatSystem {
     this.productionSystem = productionSystem;
     this.mapData = mapData;
     this.diplomacyManager = diplomacyManager ?? null;
+  }
+
+  setCovertSuspicionSystem(system: CovertSuspicionSystem): void {
+    this.covertSuspicionSystem = system;
   }
 
   on(callback: CombatListener): void {
@@ -250,9 +258,53 @@ export class CombatSystem {
       this.unitManager.removeUnit(target.id);
     }
 
+    this.reportCovertUnitCombat(attacker, target, result);
+
     for (const cb of this.listeners) cb({ attacker, defender: target, result });
 
     return true;
+  }
+
+  /**
+   * Generate Suspicion from covert unit combat: a hidden-nation raider
+   * (privateer / rebels / partisans) striking another nation, and a hidden-nation
+   * insurgent caught and destroyed by a conventional force (conclusive exposure).
+   * Spy-vs-spy duels (both covert) create no national victim and are ignored.
+   */
+  private reportCovertUnitCombat(attacker: Unit, target: Unit, result: CombatResult): void {
+    const covert = this.covertSuspicionSystem;
+    if (!covert || attacker.ownerId === target.ownerId) return;
+    const attackerHidden = getAllegianceType(attacker.unitType) === 'hiddenNation';
+    const targetHidden = getAllegianceType(target.unitType) === 'hiddenNation';
+
+    if (attackerHidden && !targetHidden) {
+      covert.reportIncident({
+        attackerNationId: attacker.ownerId,
+        victimNationId: target.ownerId,
+        action: covertActionForUnit(attacker),
+        valuable: result.defenderDied,
+      });
+    }
+
+    // A deniable raider killed in the open by a conventional force is exposed.
+    if (!attackerHidden && targetHidden && result.defenderDied && isExposableRaider(target)) {
+      covert.reportIncident({
+        attackerNationId: target.ownerId,
+        victimNationId: attacker.ownerId,
+        action: 'insurgentExposed',
+      });
+    }
+  }
+
+  private reportCovertCityCombat(attacker: Unit, city: City): void {
+    const covert = this.covertSuspicionSystem;
+    if (!covert || attacker.ownerId === city.ownerId) return;
+    if (getAllegianceType(attacker.unitType) !== 'hiddenNation') return;
+    covert.reportIncident({
+      attackerNationId: attacker.ownerId,
+      victimNationId: city.ownerId,
+      action: covertActionForUnit(attacker),
+    });
   }
 
   private executeCityCombat(attacker: Unit, city: City, isRanged = false): boolean {
@@ -290,6 +342,8 @@ export class CombatSystem {
       captured = true;
     }
 
+    this.reportCovertCityCombat(attacker, city);
+
     for (const cb of this.cityCombatListeners) {
       cb({ attacker, city, result, captured, previousOwnerId, leaderDefenseBonus });
     }
@@ -318,4 +372,17 @@ export class CombatSystem {
       cb({ attackerId: attacker.ownerId, targetNationId, attacker, tileX, tileY, source });
     }
   }
+}
+
+/** Map a hidden-nation raider to the covert action kind it represents. */
+function covertActionForUnit(unit: Unit): CovertActionKind {
+  if (unit.unitType.isInsurgentForce === true) {
+    return unit.unitType.id === 'partisans' ? 'partisanRaid' : 'rebelActivity';
+  }
+  return 'privateerRaid';
+}
+
+/** A deniable raider whose destruction conclusively exposes its backer. */
+function isExposableRaider(unit: Unit): boolean {
+  return unit.unitType.isInsurgentForce === true || unit.unitType.id === 'privateer';
 }

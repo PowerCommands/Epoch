@@ -125,6 +125,7 @@ export class ForeignTroopViolationSystem {
       fear: relation.fear,
       hostility: clamp(relation.hostility + DEFIANT_HOSTILITY_PENALTY),
       affinity: relation.affinity,
+      suspicion: relation.suspicion,
     });
   }
 
@@ -205,6 +206,7 @@ export class ForeignTroopViolationSystem {
       fear: relation.fear,
       hostility: clamp(relation.hostility + penalty),
       affinity: relation.affinity,
+      suspicion: relation.suspicion,
     };
     this.diplomacyManager.setMemoryValues(warning.offendedNationId, warning.violatingNationId, next);
     return {

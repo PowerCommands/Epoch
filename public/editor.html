@@ -2215,11 +2215,25 @@ document.getElementById('nation-secondary-color').addEventListener('input', (eve
 const EMBASSY_REQUIRED_TECH_ID = 'writing';       // both nations must know Writing
 const TRADE_REQUIRED_CULTURE_ID = 'foreign_trade'; // both nations must have Foreign Trade
 // Diplomacy memory defaults mirror DiplomacyManager (DEFAULT_TRUST etc.).
-const DIPLOMACY_MEMORY_DEFAULTS = { trust: 50, fear: 0, hostility: 0, affinity: 0 };
+// Covert personalities (mirrors src/data/covertPersonalities.ts). Empty id = use
+// the leader's built-in default. Agenda and covert personality are independent.
+const COVERT_PERSONALITY_OPTIONS = [
+  { id: '', label: 'Default (leader)' },
+  { id: 'pragmatist', label: 'Pragmatist' },
+  { id: 'honorable', label: 'Honorable' },
+  { id: 'schemer', label: 'Schemer' },
+  { id: 'opportunist', label: 'Opportunist' },
+  { id: 'paranoid', label: 'Paranoid' },
+  { id: 'fanatic', label: 'Fanatic' },
+  { id: 'merchant', label: 'Merchant' },
+  { id: 'pirate', label: 'Pirate' },
+];
+const DIPLOMACY_MEMORY_DEFAULTS = { trust: 50, fear: 0, hostility: 0, affinity: 0, suspicion: 0 };
 const DIPLOMACY_MEMORY_FIELDS = [
   { key: 'trust', label: 'Trust' },
   { key: 'fear', label: 'Fear' },
   { key: 'hostility', label: 'Hostility' },
+  { key: 'suspicion', label: 'Suspicion' },
   { key: 'affinity', label: 'Affinity' },
 ];
 
@@ -2290,7 +2304,8 @@ function isDefaultDiplomacyEntry(entry) {
     && entry.trust === DIPLOMACY_MEMORY_DEFAULTS.trust
     && entry.fear === DIPLOMACY_MEMORY_DEFAULTS.fear
     && entry.hostility === DIPLOMACY_MEMORY_DEFAULTS.hostility
-    && entry.affinity === DIPLOMACY_MEMORY_DEFAULTS.affinity;
+    && entry.affinity === DIPLOMACY_MEMORY_DEFAULTS.affinity
+    && (entry.suspicion ?? DIPLOMACY_MEMORY_DEFAULTS.suspicion) === DIPLOMACY_MEMORY_DEFAULTS.suspicion;
 }
 
 function clampMemoryValue(value) {
@@ -2399,6 +2414,7 @@ function migrateNationDetails() {
         fear: clampMemoryValue(entry.fear ?? DIPLOMACY_MEMORY_DEFAULTS.fear),
         hostility: clampMemoryValue(entry.hostility ?? DIPLOMACY_MEMORY_DEFAULTS.hostility),
         affinity: clampMemoryValue(entry.affinity ?? DIPLOMACY_MEMORY_DEFAULTS.affinity),
+        suspicion: clampMemoryValue(entry.suspicion ?? DIPLOMACY_MEMORY_DEFAULTS.suspicion),
       };
     });
 }
@@ -2521,7 +2537,24 @@ function buildLeaderSection(nation) {
   });
   goldField.appendChild(goldInput);
 
-  body.append(nameField, descField, goldField);
+  // Covert personality — how this nation pursues goals via covert warfare.
+  // Independent of agenda. Empty value = use the leader's built-in default.
+  const personalityField = ndEl('label', 'field', 'Covert personality');
+  const personalitySelect = document.createElement('select');
+  for (const opt of COVERT_PERSONALITY_OPTIONS) {
+    const o = document.createElement('option');
+    o.value = opt.id;
+    o.textContent = opt.label;
+    personalitySelect.appendChild(o);
+  }
+  personalitySelect.value = typeof nation.covertPersonalityId === 'string' ? nation.covertPersonalityId : '';
+  personalitySelect.addEventListener('change', () => {
+    if (personalitySelect.value) nation.covertPersonalityId = personalitySelect.value;
+    else delete nation.covertPersonalityId;
+  });
+  personalityField.appendChild(personalitySelect);
+
+  body.append(nameField, descField, goldField, personalityField);
   section.appendChild(body);
   return section;
 }

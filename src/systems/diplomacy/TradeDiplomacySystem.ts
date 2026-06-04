@@ -139,6 +139,7 @@ export class TradeDiplomacySystem {
       fear: clamp((relation.fear) + (delta.fear ?? 0)),
       hostility: clamp((relation.hostility) + (delta.hostility ?? 0)),
       affinity: clamp((relation.affinity) + (delta.affinity ?? 0)),
+      suspicion: clamp((relation.suspicion) + (delta.suspicion ?? 0)),
     });
   }
 

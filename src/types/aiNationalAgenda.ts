@@ -6,7 +6,8 @@ export type AINationalAgendaId =
   | 'military_power'
   | 'expansionist'
   | 'naval_power'
-  | 'isolationist';
+  | 'isolationist'
+  | 'homeland_defense';
 
 export interface AINationalAgenda {
   readonly id: AINationalAgendaId;

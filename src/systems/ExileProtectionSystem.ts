@@ -361,6 +361,7 @@ export class ExileProtectionSystem {
       affinity: clampMemory(relation.affinity + (delta.affinity ?? 0)),
       hostility: clampMemory(relation.hostility + (delta.hostility ?? 0)),
       fear: clampMemory(relation.fear + (delta.fear ?? 0)),
+      suspicion: relation.suspicion,
     });
   }
 

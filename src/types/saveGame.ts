@@ -4,6 +4,7 @@ import type { CityFocusType } from '../entities/City';
 import type { CityProductionRhythm } from '../entities/City';
 import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
+import type { CovertPersonalityId } from './covertPersonality';
 import type { TradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
 import type { HistoricalEvent } from './historicalTimeline';
@@ -72,6 +73,8 @@ export interface SavedNation {
   aiStrategyStartedTurn?: number;
   previousAiStrategyId?: string;
   aiNationalAgendaId?: AINationalAgendaId;
+  /** Covert-warfare personality. Optional so older saves load (→ leader/neutral default). */
+  covertPersonalityId?: CovertPersonalityId;
   researchedTechIds: string[];
   currentResearchTechId?: string;
   researchProgress: number;
@@ -202,6 +205,8 @@ export interface SavedDiplomacyEntry {
   fear?: number;
   hostility?: number;
   affinity?: number;
+  // Optional so saves written before suspicion existed still load (defaults to 0).
+  suspicion?: number;
   lastWarDeclarationTurn?: number | null;
   lastPeaceProposalTurn?: number | null;
   lastOpenBordersChangeTurn?: number | null;
@@ -278,6 +283,18 @@ export interface SavedGameState {
   foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
   fogOfWar?: SavedFogOfWar;
   historicalTimeline?: HistoricalEvent[];
+  /**
+   * Repeated-offender memory for covert suspicion (per ordered attacker→victim
+   * pair). Optional so older saves load cleanly (treated as no prior incidents).
+   */
+  covertIncidents?: SavedCovertIncident[];
+}
+
+/** One attacker→victim covert offense tally for repeated-offender escalation. */
+export interface SavedCovertIncident {
+  attacker: string;
+  victim: string;
+  count: number;
 }
 
 /** Sparse list of tiles the human player has explored or seen. */

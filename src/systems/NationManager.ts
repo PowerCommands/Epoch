@@ -1,6 +1,8 @@
 import { Nation } from '../entities/Nation';
 import { getNationDefinitionById } from '../data/nations';
-import { getLeaderByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderCovertPersonalityByNationId } from '../data/leaders';
+import { getCovertPersonalityById } from '../data/covertPersonalities';
+import type { CovertPersonality } from '../types/covertPersonality';
 import {
   BARBARIAN_NATION_ID,
   BARBARIAN_NATION_NAME,
@@ -77,6 +79,14 @@ export class NationManager {
     return this.resources.get(nationId)!;
   }
 
+  /**
+   * Resolve a nation's covert personality (its runtime id → preset), falling
+   * back to the neutral default for unknown/missing nations.
+   */
+  getCovertPersonality(nationId: string): CovertPersonality {
+    return getCovertPersonalityById(this.nations.get(nationId)?.covertPersonalityId);
+  }
+
   /** Return the id of the first human-controlled nation, or undefined. */
   getHumanNationId(): string | undefined {
     for (const nation of this.nations.values()) {
@@ -125,6 +135,7 @@ export class NationManager {
         name: cfg.name,
         color: cfg.color,
         secondaryColor: cfg.secondaryColor,
+        covertPersonalityId: getLeaderCovertPersonalityByNationId(cfg.id),
       }));
       NationManager.claimArea(mapData, cfg.id, cfg.cx, cfg.cy, INITIAL_CLAIM_SIZE, gridSystem);
     }
@@ -161,6 +172,7 @@ export class NationManager {
         aiStrategyId: cfg.aiStrategyId,
         aiStrategyStartedTurn: 0,
         aiNationalAgendaId: cfg.aiNationalAgendaId ?? getLeaderByNationId(cfg.id)?.aiNationalAgendaId,
+        covertPersonalityId: cfg.covertPersonalityId ?? getLeaderCovertPersonalityByNationId(cfg.id),
         researchedTechIds: cfg.researchedTechIds,
         currentResearchTechId: cfg.currentResearchTechId,
         researchProgress: cfg.researchProgress,
