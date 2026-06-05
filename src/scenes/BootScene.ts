@@ -79,6 +79,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_demolish_improvement', 'assets/sprites/actions/demolish-improvement.png');
     this.load.image('action_demolish', 'assets/sprites/actions/demolish.png');
     this.load.image('action_intel', 'assets/sprites/actions/intel.png');
+    this.load.image('action_debark', 'assets/sprites/actions/debark.png');
 
     // Base unit images, keyed by unitType.id (e.g. worker, work_boat, settler).
     // Special units are preloaded for systems that spawn them directly, but

@@ -1,8 +1,9 @@
 import type { Unit } from '../entities/Unit';
+import { hasCargoCapacity } from '../data/units';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel';
+export type UnitActionMode = 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel' | 'debark';
 
 /** Recon unit types eligible for Auto Explore (Scout, Scout Boat, and future recon). */
 function isReconUnit(unit: Unit): boolean {
@@ -68,6 +69,11 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     isAvailable: (unit) => unit.unitType.canGatherIntel === true,
   },
   {
+    mode: 'debark',
+    label: 'Debark',
+    isAvailable: (unit) => unit.unitType.isNaval === true && hasCargoCapacity(unit.unitType),
+  },
+  {
     mode: 'repair',
     label: 'Repair',
     // Capability gate only (Worker / Work Boat); the "is there a broken own
@@ -123,8 +129,15 @@ type RepairAvailabilityProvider = {
 type IntelAvailabilityProvider = {
   canGatherIntel(unit: Unit): boolean;
 };
+export interface DebarkPreview {
+  canDebark: boolean;
+  reason?: string;
+}
+type DebarkAvailabilityProvider = {
+  getDebarkPreview(unit: Unit): DebarkPreview;
+};
 
-export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'repair', 'intel', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
+export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'repair', 'intel', 'debark', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -139,6 +152,7 @@ export class UnitActionToolbox {
   private sabotageAvailabilityProvider: SabotageAvailabilityProvider | null = null;
   private repairAvailabilityProvider: RepairAvailabilityProvider | null = null;
   private intelAvailabilityProvider: IntelAvailabilityProvider | null = null;
+  private debarkAvailabilityProvider: DebarkAvailabilityProvider | null = null;
   private readonly modeChangedListeners: ModeChangedListener[] = [];
   private readonly changedListeners: ChangedListener[] = [];
 
@@ -171,6 +185,11 @@ export class UnitActionToolbox {
 
   setIntelAvailabilityProvider(provider: IntelAvailabilityProvider): void {
     this.intelAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setDebarkAvailabilityProvider(provider: DebarkAvailabilityProvider): void {
+    this.debarkAvailabilityProvider = provider;
     this.refresh();
   }
 
@@ -225,7 +244,7 @@ export class UnitActionToolbox {
     if (
       mode === 'sleep' || mode === 'dismiss' || mode === 'upgrade' || mode === 'explore'
       || mode === 'destroyImprovement' || mode === 'destroyBuilding' || mode === 'repair'
-      || mode === 'intel'
+      || mode === 'intel' || mode === 'debark'
     ) {
       this.triggerMode(mode);
       return;
@@ -266,11 +285,12 @@ export class UnitActionToolbox {
 
       const preview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined;
       const upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined;
-      const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview);
+      const debarkPreview = action.mode === 'debark' ? this.getDebarkPreview(unit) : undefined;
+      const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview, debarkPreview);
 
       // Keep the build action on screen (greyed out) for capable builders so the
       // tooltip can explain why it can't build here; hide every other unavailable action.
-      const keepDisabled = action.mode === 'build' && action.isAvailable(unit);
+      const keepDisabled = (action.mode === 'build' || action.mode === 'debark') && action.isAvailable(unit);
       if (!isAvailable && !keepDisabled) continue;
 
       const isActive = this.mode === action.mode || action.isToggledOn?.(unit) === true;
@@ -279,7 +299,7 @@ export class UnitActionToolbox {
         label: this.getActionLabel(action, upgradePreview),
         isAvailable,
         isActive,
-        tooltip: this.getActionTooltip(action, preview, upgradePreview),
+        tooltip: this.getActionTooltip(action, preview, upgradePreview, debarkPreview),
       });
     }
     return states;
@@ -318,8 +338,9 @@ export class UnitActionToolbox {
     for (const action of ACTIONS) {
       const preview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined;
       const upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined;
-      const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview);
-      if (!isAvailable && action.mode !== 'build') continue;
+      const debarkPreview = action.mode === 'debark' ? this.getDebarkPreview(unit) : undefined;
+      const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview, debarkPreview);
+      if (!isAvailable && action.mode !== 'build' && action.mode !== 'debark') continue;
 
       const button = document.createElement('button');
       button.type = 'button';
@@ -329,7 +350,7 @@ export class UnitActionToolbox {
       button.classList.toggle('unit-action-button-active', selectedAsMode || toggledOn);
       if (action.mode === 'dismiss') button.classList.add('unit-action-button-danger');
       button.textContent = this.getActionLabel(action, upgradePreview);
-      const tooltip = this.getActionTooltip(action, preview, upgradePreview);
+      const tooltip = this.getActionTooltip(action, preview, upgradePreview, debarkPreview);
       if (tooltip !== undefined) button.title = tooltip;
       button.disabled = !isAvailable;
       button.style.opacity = isAvailable ? '1' : '0.4';
@@ -357,6 +378,7 @@ export class UnitActionToolbox {
     unit: Unit,
     buildPreview = action.mode === 'build' ? this.getBuildPreview(unit) : undefined,
     upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined,
+    debarkPreview = action.mode === 'debark' ? this.getDebarkPreview(unit) : undefined,
   ): boolean {
     if (!action.isAvailable(unit)) return false;
     if (action.mode === 'dismiss' && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
@@ -378,6 +400,9 @@ export class UnitActionToolbox {
     if (action.mode === 'intel') {
       return this.intelAvailabilityProvider?.canGatherIntel(unit) === true;
     }
+    if (action.mode === 'debark') {
+      return debarkPreview?.canDebark === true;
+    }
     if (action.mode !== 'build') return true;
     return buildPreview?.canBuild === true;
   }
@@ -390,6 +415,11 @@ export class UnitActionToolbox {
   private getUpgradePreview(unit: Unit): UnitUpgradePreview {
     return this.upgradeAvailabilityProvider?.getUpgradePreview(unit, unit.ownerId)
       ?? { canUpgrade: false, reason: 'No upgrade rules available' };
+  }
+
+  private getDebarkPreview(unit: Unit): DebarkPreview {
+    return this.debarkAvailabilityProvider?.getDebarkPreview(unit)
+      ?? { canDebark: false, reason: 'No debark rules available' };
   }
 
   private getActionLabel(
@@ -407,6 +437,7 @@ export class UnitActionToolbox {
     action: UnitActionDefinition,
     buildPreview: BuildImprovementPreview | undefined,
     upgradePreview: UnitUpgradePreview | undefined,
+    debarkPreview: DebarkPreview | undefined,
   ): string | undefined {
     if (action.mode === 'dismiss') {
       const unit = this.selectedUnit;
@@ -425,6 +456,11 @@ export class UnitActionToolbox {
       return this.selectedUnit?.automation === 'explore'
         ? 'Auto exploring — choose another action to stop.'
         : 'Automatically explore the map (continues each turn).';
+    }
+    if (action.mode === 'debark') {
+      return debarkPreview?.canDebark
+        ? 'Unload cargo to an adjacent valid tile.'
+        : debarkPreview?.reason ?? 'Cannot debark cargo here.';
     }
     if (action.mode !== 'build') return undefined;
     if (buildPreview?.canBuild) return 'Build improvement';

@@ -46,7 +46,7 @@ import { MovementSystem } from '../systems/MovementSystem';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
 import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
 import { InvalidTileFeedbackRenderer } from '../renderers/InvalidTileFeedbackRenderer';
-import { canUnitEnterTile } from '../systems/UnitMovementRules';
+import { canUnitEnterTile, isWaterTile } from '../systems/UnitMovementRules';
 import { RangedPreviewRenderer } from '../systems/RangedPreviewRenderer';
 import { TurnOrderSystem } from '../systems/TurnOrderSystem';
 import { CombatSystem } from '../systems/CombatSystem';
@@ -1607,6 +1607,34 @@ export class GameScene extends Phaser.Scene {
         message,
       }),
     );
+    const getDebarkOption = (transport: Unit): {
+      cargo?: Unit;
+      target?: { x: number; y: number };
+      reason?: string;
+    } => {
+      const cargoUnits = unitBoardingManager.getCargo(transport);
+      if (cargoUnits.length === 0) return { reason: 'No cargo onboard.' };
+
+      for (const cargo of cargoUnits) {
+        for (const coord of gridSystem.getAdjacentCoords({ x: transport.tileX, y: transport.tileY })) {
+          const tile = mapData.tiles[coord.y]?.[coord.x];
+          if (!tile || isWaterTile(tile)) continue;
+          if (unitBoardingManager.canUnboard(cargo, coord.x, coord.y)) {
+            return { cargo, target: coord };
+          }
+        }
+      }
+
+      return { cargo: cargoUnits[0], reason: 'No adjacent valid tile to debark.' };
+    };
+    unitActionToolbox.setDebarkAvailabilityProvider({
+      getDebarkPreview: (unit) => {
+        const option = getDebarkOption(unit);
+        return option.cargo && option.target
+          ? { canDebark: true }
+          : { canDebark: false, reason: option.reason ?? 'Cannot debark cargo here.' };
+      },
+    });
 
     // 15. Rörelseregler för enheter
     movementSystem = new MovementSystem(
@@ -5420,6 +5448,26 @@ export class GameScene extends Phaser.Scene {
               victimNationId: city.ownerId,
               action: 'spyIntel',
             });
+          }
+        }
+        unitActionToolbox.resetMode();
+        return;
+      }
+
+      if (mode === 'debark') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind === 'unit' && selection.unit.ownerId === humanNationId) {
+          const option = getDebarkOption(selection.unit);
+          if (option.cargo && option.target) {
+            selection.unit.queuedDestination = undefined;
+            option.cargo.queuedDestination = undefined;
+            reachableTiles = new Set<string>();
+            pathPreviewRenderer.clear();
+            unitBoardingManager.unboard(option.cargo, option.target.x, option.target.y);
+            unitActionToolbox.refresh();
+            turnOrderSystem.refreshActive();
+            hudLayer?.refresh();
+            rightPanel?.requestRefresh();
           }
         }
         unitActionToolbox.resetMode();
