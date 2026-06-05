@@ -579,8 +579,8 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Builds factories, machine labor, and mass production. Unlocks Gatling Guns and Factories.',
     prerequisites: ['economics'],
     leadsTo: ['steam_power'],
-    unlocks: [{ kind: 'unit', id: 'gatling_gun' }, { kind: 'building', id: 'factory' }],
-    // TODO: reveals Coal and unlocks Big Ben when resources/wonders exist.
+    unlocks: [{ kind: 'unit', id: 'gatling_gun' }, { kind: 'building', id: 'factory' }, { kind: 'wonder', id: 'big-ben' }],
+    // TODO: reveals Coal.
   },
   {
     id: 'dynamite',
@@ -611,8 +611,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Standardizes components for faster repair and mass armies. Unlocks Great War Infantry and Military Bases.',
     prerequisites: ['electricity', 'steam_power'],
     leadsTo: ['plastics', 'electronics'],
-    unlocks: [{ kind: 'unit', id: 'great_war_infantry' }, { kind: 'building', id: 'military_base' }],
-    // TODO: unlocks Statue of Liberty wonder.
+    unlocks: [{ kind: 'unit', id: 'great_war_infantry' }, { kind: 'building', id: 'military_base' }, { kind: 'wonder', id: 'statue_of_liberty' }, { kind: 'wonder', id: 'brandenburg-gate' }],
   },
   {
     id: 'railroad',
@@ -644,8 +643,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Broadcasts sound and information across entire nations. Unlocks Broadcast Towers for modern communication.',
     prerequisites: ['electricity'],
     leadsTo: ['plastics'],
-    unlocks: [{ kind: 'building', id: 'broadcast_tower' }, { kind: 'unit', id: 'agent' }],
-    // TODO: unlocks Eiffel Tower wonder.
+    unlocks: [{ kind: 'building', id: 'broadcast_tower' }, { kind: 'unit', id: 'agent' }, { kind: 'wonder', id: 'eiffel_tower' }],
   },
   {
     id: 'flight',
@@ -759,7 +757,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Automates calculation, command, and complex control systems. Unlocks Helicopter Gunships and leads toward advanced robotics.',
     prerequisites: ['radar', 'combined_arms'],
     leadsTo: ['robotics', 'lasers'],
-    unlocks: [{ kind: 'unit', id: 'helicopter_gunship' }],
+    unlocks: [{ kind: 'unit', id: 'helicopter_gunship' }, { kind: 'wonder', id: 'empire-state-building' }],
   },
   {
     id: 'rocketry',
@@ -790,7 +788,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Splits atoms for immense energy and destructive weapons. Unlocks Atomic Bombs, Bazookas, and Nuclear Plants.',
     prerequisites: ['atomic_theory', 'radar'],
     leadsTo: ['advanced_ballistics', 'mobile_tactics'],
-    unlocks: [{ kind: 'unit', id: 'atomic_bomb' }, { kind: 'unit', id: 'bazooka' }, { kind: 'building', id: 'nuclear_plant' }],
+    unlocks: [{ kind: 'unit', id: 'atomic_bomb' }, { kind: 'unit', id: 'bazooka' }, { kind: 'building', id: 'nuclear_plant' }, { kind: 'wonder', id: 'hoover-dam' }],
   },
   {
     id: 'globalization',
@@ -800,7 +798,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Connects economies, diplomacy, and influence at planetary scale. Leads toward particle physics and future-era research.',
     prerequisites: ['telecommunications'],
     leadsTo: ['particle_physics'],
-    unlocks: [],
+    unlocks: [{ kind: 'wonder', id: 'panama-canal' }],
     // TODO: unlocks United Nations.
   },
   {
@@ -863,8 +861,8 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Builds global signal networks for command and survival. Unlocks Nuclear Submarines and Bomb Shelters.',
     prerequisites: ['ecology'],
     leadsTo: ['globalization', 'particle_physics', 'the_internet'],
-    unlocks: [{ kind: 'unit', id: 'nuclear_submarine' }, { kind: 'building', id: 'bomb_shelter' }],
-    // TODO: unlocks National Visitor Center and CN Tower when those buildings/wonders exist.
+    unlocks: [{ kind: 'unit', id: 'nuclear_submarine' }, { kind: 'building', id: 'bomb_shelter' }, { kind: 'wonder', id: 'sydney-opera-house' }],
+    // TODO: unlocks National Visitor Center and CN Tower when those buildings exist.
   },
   {
     id: 'particle_physics',
