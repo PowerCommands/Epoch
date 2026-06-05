@@ -93,7 +93,7 @@ import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
 import { TimelinePanel } from '../ui/TimelinePanel';
-import { EraSystem } from '../systems/EraSystem';
+import { EraSystem, getEraRank } from '../systems/EraSystem';
 import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
@@ -150,6 +150,7 @@ import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, 
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
+import type { WonderState, WonderType } from '../entities/Wonder';
 import { CORPORATIONS, getCorporationById } from '../data/corporations';
 import { getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
@@ -999,6 +1000,20 @@ export class GameScene extends Phaser.Scene {
       } else if (humanNeedsCultureSelection()) {
         hudLayer?.openCulturePanel();
       }
+    };
+    const buildWonderCompletionPopupData = (state: WonderState, wonderType: WonderType): DiscoveryPopupData => {
+      const nationName = timelineNationName(state.ownerId);
+      const cityName = cityManager.getCity(state.cityId)?.name ?? 'an unknown city';
+      return {
+        title: wonderType.name,
+        subtitle: `${nationName} has completed the ${wonderType.name} in ${cityName}.`,
+        imageKey: getWonderSpriteKey(wonderType.id),
+        imagePath: getWonderSpritePath(wonderType.id),
+        description: wonderType.description,
+        unlockRows: [],
+        leadsToRows: [],
+        hideProgression: true,
+      };
     };
     const buildTechnologyDiscoveryPopupData = (technology: TechnologyDefinition): DiscoveryPopupData => ({
       title: technology.name,
@@ -2477,12 +2492,22 @@ export class GameScene extends Phaser.Scene {
         return false;
       }
 
+      // Improvement-building units (Worker, Work Boat) only gain their full
+      // multi-improvement capacity once the owning nation reaches the
+      // renaissance era. Before then they are capped to a single charge and
+      // "die" after one improvement. Renaissance+ uses the unit's data default.
+      const reachedRenaissance =
+        getEraRank(eraSystem.getNationEra(city.ownerId)) >= getEraRank('renaissance');
+      const improvementCharges = item.unitType.canBuildImprovements && !reachedRenaissance
+        ? 1
+        : undefined;
       unitManager.createUnit({
         type: item.unitType,
         ownerId: city.ownerId,
         tileX: placement.x,
         tileY: placement.y,
         movementPoints: 0,
+        improvementCharges,
       });
 
       updateCityProductionRhythm(city, item);
@@ -4391,6 +4416,13 @@ export class GameScene extends Phaser.Scene {
         text: `${timelineNationName(state.ownerId)} completed ${wonderType.name}`,
         eventNationIds: [state.ownerId],
       });
+      // Surface a prominent completion popup whenever any nation finishes a
+      // wonder during live human play. Skipped during autoplay/autorun, which
+      // keeps log/timeline behavior only. Multiple completions in one turn are
+      // queued by HudLayer and shown one at a time.
+      if (!autoplaySystem.isActive()) {
+        hudLayer?.enqueueDiscovery(buildWonderCompletionPopupData(state, wonderType));
+      }
     });
     corporationSystem?.onCorporationFounded((result) => {
       historicalTimeline.record({

@@ -18,6 +18,17 @@ export interface DiscoveryPopupData {
   description: string;
   unlockRows: DiscoveryPopupRow[];
   leadsToRows: DiscoveryPopupRow[];
+  /**
+   * Optional secondary line shown above the description, e.g. a World Wonder's
+   * completion sentence ("China has completed the Eiffel Tower in Beijing.").
+   */
+  subtitle?: string;
+  /**
+   * When true the "Unlocks" / "Leads To" progression sections are omitted and
+   * the panel shrinks to fit. Used by event popups (e.g. World Wonder
+   * completion) that have no tech-tree progression to show.
+   */
+  hideProgression?: boolean;
 }
 
 type DiscoveryPopupCloseListener = () => void;
@@ -60,6 +71,7 @@ export class DiscoveryPopup {
   private readonly heroFrame: Phaser.GameObjects.Rectangle;
   private readonly heroImage: Phaser.GameObjects.Image;
   private readonly heroFallbackText: Phaser.GameObjects.Text;
+  private readonly subtitleText: Phaser.GameObjects.Text;
   private readonly descriptionText: Phaser.GameObjects.Text;
   private readonly unlocksHeading: Phaser.GameObjects.Text;
   private readonly unlocksEmptyText: Phaser.GameObjects.Text;
@@ -122,6 +134,8 @@ export class DiscoveryPopup {
       .setDisplaySize(HERO_SIZE, HERO_SIZE);
     this.heroFallbackText = this.createContentText('', 42, '#bfe9ff', 'bold')
       .setOrigin(0.5, 0.5);
+    this.subtitleText = this.createContentText('', 19, '#f5d98a', 'bold', PANEL_WIDTH - PANEL_PADDING * 2)
+      .setAlign('center');
     this.descriptionText = this.createContentText('', 17, '#d8e5ef', 'normal', PANEL_WIDTH - PANEL_PADDING * 2);
     this.unlocksHeading = this.createContentText('Unlocks', 20, '#f2f7fb', 'bold');
     this.unlocksEmptyText = this.createContentText('No direct unlocks.', 15, '#9fb1bf');
@@ -145,6 +159,7 @@ export class DiscoveryPopup {
     this.scrollOffset = 0;
     this.destroyRows();
     this.titleText.setText(data.title);
+    this.subtitleText.setText(data.subtitle ?? '');
     this.descriptionText.setText(data.description);
     this.heroFallbackText.setText(getInitials(data.title));
 
@@ -185,10 +200,18 @@ export class DiscoveryPopup {
 
     const contentWidth = PANEL_WIDTH - PANEL_PADDING * 2;
     this.titleText.setWordWrapWidth(contentWidth, true);
+    this.subtitleText.setWordWrapWidth(contentWidth, true);
     this.descriptionText.setWordWrapWidth(contentWidth, true);
 
+    const hasSubtitle = (this.current.subtitle ?? '').length > 0;
+    const showProgression = !this.current.hideProgression;
     const fullContentHeight = this.getFullContentHeight();
-    const panelHeight = Math.min(PANEL_HEIGHT, Math.max(360, height - 24));
+    const maxPanelHeight = Math.max(360, height - 24);
+    // Progression popups (tech/culture) keep the tall fixed panel; event popups
+    // without progression shrink to fit their content.
+    const panelHeight = showProgression
+      ? Math.min(PANEL_HEIGHT, maxPanelHeight)
+      : Math.min(PANEL_HEIGHT, maxPanelHeight, fullContentHeight + PANEL_PADDING * 3 + BUTTON_HEIGHT);
     const panelX = Math.round((width - PANEL_WIDTH) / 2);
     const panelY = Math.round((height - panelHeight) / 2);
     const contentViewportHeight = panelHeight - PANEL_PADDING * 3 - BUTTON_HEIGHT;
@@ -212,26 +235,33 @@ export class DiscoveryPopup {
     this.heroFallbackText.setPosition(heroX + HERO_SIZE / 2, Math.round(cursorY + HERO_SIZE / 2));
     cursorY += HERO_SIZE + PANEL_GAP;
 
+    if (hasSubtitle) {
+      this.subtitleText.setPosition(contentX, Math.round(cursorY));
+      cursorY += this.subtitleText.height + PANEL_GAP;
+    }
+
     this.descriptionText.setPosition(contentX, Math.round(cursorY));
     cursorY += this.descriptionText.height + PANEL_GAP + 2;
 
-    cursorY = this.layoutSection(
-      this.unlocksHeading,
-      this.unlocksEmptyText,
-      this.unlockRows,
-      contentX,
-      cursorY,
-      contentWidth,
-    );
-    cursorY += PANEL_GAP;
-    this.layoutSection(
-      this.leadsToHeading,
-      this.leadsToEmptyText,
-      this.leadsToRows,
-      contentX,
-      cursorY,
-      contentWidth,
-    );
+    if (showProgression) {
+      cursorY = this.layoutSection(
+        this.unlocksHeading,
+        this.unlocksEmptyText,
+        this.unlockRows,
+        contentX,
+        cursorY,
+        contentWidth,
+      );
+      cursorY += PANEL_GAP;
+      this.layoutSection(
+        this.leadsToHeading,
+        this.leadsToEmptyText,
+        this.leadsToRows,
+        contentX,
+        cursorY,
+        contentWidth,
+      );
+    }
 
     const buttonWidth = 180;
     const buttonX = panelX + Math.round((PANEL_WIDTH - buttonWidth) / 2);
@@ -367,6 +397,10 @@ export class DiscoveryPopup {
 
   private getFullContentHeight(): number {
     let height = this.titleText.height + PANEL_GAP + HERO_SIZE + PANEL_GAP + this.descriptionText.height + PANEL_GAP + 2;
+    if ((this.current?.subtitle ?? '').length > 0) {
+      height += this.subtitleText.height + PANEL_GAP;
+    }
+    if (this.current?.hideProgression) return height;
     height += this.getSectionHeight(this.unlockRows);
     height += PANEL_GAP;
     height += this.getSectionHeight(this.leadsToRows);
@@ -584,8 +618,12 @@ export class DiscoveryPopup {
       this.refreshRowImage(row);
     }
     if (!visible) return;
-    this.unlocksEmptyText.setVisible(this.unlockRows.length === 0);
-    this.leadsToEmptyText.setVisible(this.leadsToRows.length === 0);
+    const showProgression = !this.current?.hideProgression;
+    this.subtitleText.setVisible((this.current?.subtitle ?? '').length > 0);
+    this.unlocksHeading.setVisible(showProgression);
+    this.leadsToHeading.setVisible(showProgression);
+    this.unlocksEmptyText.setVisible(showProgression && this.unlockRows.length === 0);
+    this.leadsToEmptyText.setVisible(showProgression && this.leadsToRows.length === 0);
   }
 }
 
