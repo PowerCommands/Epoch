@@ -12,6 +12,7 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_sweden', name: 'Sweden', color: '#2541d0', secondaryColor: '#e6ad3d' },
   { id: 'nation_lithuania', name: 'Lithuania', color: '#f4870b', secondaryColor: '#201f1e' },
   { id: 'nation_novgorod', name: 'Novgorod', color: '#16a085', secondaryColor: '#e7d7a8' },
+  { id: 'nation_russia', name: 'Russia', color: '#ffffff', secondaryColor: '#0039a6' },
   { id: 'nation_ottoman', name: 'Ottoman Empire', color: '#c44ae8', secondaryColor: '#7fd1c7' },
   { id: 'nation_spain', name: 'Spain', color: '#e84a4a', secondaryColor: '#f2d15c' },
   { id: 'nation_morocco_empire', name: 'Morocco', color: '#9b5f4b', secondaryColor: '#d9c39a' },

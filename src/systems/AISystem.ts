@@ -6443,7 +6443,13 @@ export class AISystem {
     eraStrategy: AILeaderEraStrategy,
   ): WonderType | null {
     if (!this.wonderSystem || !this.wonderPlacementSystem) return null;
-    if ((eraStrategy.productionWeights.wonder ?? 1) <= 1) return null;
+    // True-disable gate only: a wonder weight of exactly 0 (or negative) means
+    // this leader/era never builds wonders. Default/neutral leaders (weight ~1)
+    // are NOT hard-gated here — they compete via the weighted production scoring
+    // (scoreAIProductionCandidate multiplies the wonder candidate by both the
+    // strategy and era wonder weight), so higher-bias leaders still prefer
+    // wonders while normal nations may pick one when it scores well.
+    if ((eraStrategy.productionWeights.wonder ?? 1) <= 0) return null;
 
     let best: WonderType | null = null;
     let bestScore = Number.NEGATIVE_INFINITY;

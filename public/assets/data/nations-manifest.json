@@ -161,6 +161,16 @@
       "leaderImage": "/assets/sprites/leaders/pirate.png"
     },
     {
+      "nationId": "nation_russia",
+      "nationName": "Russia",
+      "color": "#ffffff",
+      "secondaryColor": "#0039a6",
+      "leaderId": "ivan-iv",
+      "leaderName": "Ivan IV",
+      "leaderTitle": "Ivan the Terrible",
+      "leaderImage": "/assets/sprites/leaders/ivan-iv.png"
+    },
+    {
       "nationId": "nation_spain",
       "nationName": "Spain",
       "color": "#e84a4a",

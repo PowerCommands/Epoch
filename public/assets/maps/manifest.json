@@ -4,12 +4,7 @@
       "key": "map_asia",
       "label": "Asia",
       "file": "assets/maps/asia.json"
-    },
-    {
-      "key": "map_caribian_1",
-      "label": "Caribian",
-      "file": "assets/maps/caribian (1).json"
-    },
+    },    
     {
       "key": "map_caribian",
       "label": "Caribian",
@@ -57,7 +52,7 @@
     },
     {
       "key": "map_world",
-      "label": "Two Continents test scenario",
+      "label": "Word",
       "file": "assets/maps/world.json"
     }
   ]

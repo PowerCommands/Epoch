@@ -64,6 +64,10 @@
       "/assets/sounds/nation_pirate/nation_pirate-theme-01.mp3",
       "/assets/sounds/nation_pirate/nation_pirate-theme-02.mp3"
     ],
+    "nation_russia": [
+      "/assets/sounds/nation_russia/ivan-iv-theme-01.mp3",
+      "/assets/sounds/nation_russia/ivan-iv-theme-02.mp3"
+    ],
     "nation_spain": [
       "/assets/sounds/nation_spain/nation_spain-theme-01.mp3",
       "/assets/sounds/nation_spain/nation_spain-theme-02.mp3"

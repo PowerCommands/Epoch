@@ -471,6 +471,51 @@ export const ALL_LEADERS: LeaderDefinition[] = [
       defeat: 'You may take this ground, but freedom is not so easily conquered. Free peoples endure, and they remember.',
     },
   },
+  {
+    // Ivan IV (Ivan the Terrible) — a paranoid imperial empire-builder. Expansionist
+    // and militaristic like Mongolia, but the deliberate twist: instead of the
+    // nomadic steppeHorde's impulsive rush, he accumulates a large combined-arms
+    // standing army (imperialCombinedArms: high strength/unit budget, tolerates war
+    // weariness) and pressures neighbors over time. Distrustful diplomacy — low
+    // alliance willingness, lasting hostility, quick to threaten — is reinforced by
+    // the paranoid covert posture and the Military Power agenda. Assets live under
+    // leaders/ivan-iv and nation_russia.
+    id: 'ivan-iv',
+    name: 'Ivan IV',
+    nationId: 'nation_russia',
+    title: 'Ivan the Terrible',
+    image: `${LEADER_IMAGE_BASE}/ivan-iv.png`,
+    description: 'Ivan IV transformed Russia from a regional kingdom into an expanding empire. Ruthless toward rivals and feared by neighbors, he centralized power, crushed opposition and pushed Russian influence across vast frontiers. Under his rule, military strength and territorial expansion took precedence over diplomacy.',
+    ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'imperialCombinedArms',
+    aiNationalAgendaId: 'military_power',
+    covertPersonalityId: 'paranoid',
+    culturePriorities: ['early_empire', 'state_workforce'],
+    aiPersonality: {
+      // Aggressive and strongly expansionist, but less impulsive than Genghis/Mehmed:
+      // a lower war tolerance means he builds up military strength before striking,
+      // while very low diplomacy and peace preference keep him alliance-averse, slow
+      // to forgive, and hostile for long stretches.
+      aggressionBias: 14,
+      expansionBias: 14,
+      economyBias: 4,
+      cultureBias: -8,
+      diplomacyBias: -12,
+      warTolerance: 72,
+      peacePreference: 30,
+      minimumUnitsLostBeforePeace: 6,
+      casualtyToleranceRatio: 0.60,
+    },
+    diplomacyFlavor: {
+      greeting: 'I am Ivan, Tsar of all the Russias. Speak — but know that I trust no crown that smiles too easily.',
+      friendly: 'For now our interests run together. See that they continue to, lest my patience wear thin.',
+      neutral: 'Russia watches its borders, and its neighbors. We forget nothing, and we forgive little.',
+      hostile: 'You overreach. Russia has swallowed greater powers than yours and felt no hunger after.',
+      warDeclaration: 'I have measured your strength and found it wanting. The frontier will move — at your expense.',
+      victory: 'The empire grows, as it was always destined to. Let every rival remember who was master here.',
+      defeat: 'So the throne falls. Yet Russia endures the cold, the famine, and the conqueror alike — and it remembers.',
+    },
+  },
 ];
 
 /**
