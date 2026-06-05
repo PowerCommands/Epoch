@@ -21,6 +21,12 @@ export interface WonderType {
   readonly requiredTechnologyId?: string;
   readonly scope: WonderScope;
   readonly placement?: WonderPlacementRule;
+  /**
+   * Minimum city population required before construction may begin. A city
+   * below this threshold cannot start the wonder (enforced for both human and
+   * AI via WonderSystem). Absent => no population requirement.
+   */
+  readonly minimumPopulation?: number;
 }
 
 export interface WonderState {

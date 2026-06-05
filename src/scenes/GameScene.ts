@@ -4500,12 +4500,12 @@ export class GameScene extends Phaser.Scene {
         .filter((wonderType) => researchSystem.isWonderUnlocked(city.ownerId, wonderType.id))
         .map((wonderType) => {
           const queuedHere = isQueuedHere(wonderType.id);
-          const cityCanBuild = wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem });
+          const blockReason = wonderSystem.getCityWonderBlockReason(city, wonderType, { researchSystem });
           const validCoords = wonderPlacementSystem.getValidPlacementCoords(city, wonderType, mapData);
           let disabled = false;
           let reason: string | undefined;
           if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
-          else if (!cityCanBuild) { disabled = true; reason = 'This city cannot build it'; }
+          else if (blockReason) { disabled = true; reason = blockReason; }
           else if (validCoords.length === 0) { disabled = true; reason = 'No valid owned tile matches this wonder placement.'; }
           return {
             id: wonderType.id,
@@ -4664,8 +4664,9 @@ export class GameScene extends Phaser.Scene {
 
       const wonderType = getWonderById(wonderId);
       if (!wonderType) return { ok: false, message: 'Unknown wonder.' };
-      if (!wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem })) {
-        return { ok: false, message: 'This city cannot build that wonder.' };
+      const blockReason = wonderSystem.getCityWonderBlockReason(city, wonderType, { researchSystem });
+      if (blockReason) {
+        return { ok: false, message: `This city cannot build that wonder: ${blockReason}.` };
       }
       const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
         entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId

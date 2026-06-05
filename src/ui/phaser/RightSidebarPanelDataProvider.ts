@@ -1254,7 +1254,9 @@ export class RightSidebarPanelDataProvider {
       const item: Producible = { kind: 'wonder', wonderType };
       const cost = this.productionSystem.getCost(item);
       const queuedHere = isQueuedHere(wonderType.id);
-      const cityCanBuild = wonderSystem ? wonderSystem.canCityBuildWonder(city, wonderType, { researchSystem: research ?? undefined }) : true;
+      const blockReason = wonderSystem
+        ? wonderSystem.getCityWonderBlockReason(city, wonderType, { researchSystem: research ?? undefined })
+        : undefined;
       const hasValidPlacement = this.wonderPlacementAvailabilityProvider
         ? this.wonderPlacementAvailabilityProvider(city, wonderType.id)
         : true;
@@ -1262,7 +1264,7 @@ export class RightSidebarPanelDataProvider {
       let disabled = false;
       let reason: string | undefined;
       if (queuedHere) { disabled = true; reason = 'Already in this queue'; }
-      else if (!cityCanBuild) { disabled = true; reason = 'This city cannot build it'; }
+      else if (blockReason) { disabled = true; reason = blockReason; }
       else if (!hasValidPlacement) { disabled = true; reason = 'No valid placement tile'; }
 
       const baseLabel = `${wonderType.name} (${cost})`;

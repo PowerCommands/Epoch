@@ -68,14 +68,34 @@ export class WonderSystem {
     wonderType: WonderType,
     context: CanCityBuildWonderContext = {},
   ): boolean {
-    if (this.isWonderBuilt(wonderType.id)) return false;
+    return this.getCityWonderBlockReason(city, wonderType, context) === undefined;
+  }
+
+  /**
+   * Returns a human-readable reason a city cannot begin this wonder, or
+   * undefined when construction is allowed. Shared by human UI and AI so
+   * eligibility stays consistent across both.
+   */
+  getCityWonderBlockReason(
+    city: City,
+    wonderType: WonderType,
+    context: CanCityBuildWonderContext = {},
+  ): string | undefined {
+    if (this.isWonderBuilt(wonderType.id)) return 'Already built';
 
     const research = context.researchSystem ?? this.researchSystem;
     if (research && !research.isWonderUnlocked(city.ownerId, wonderType.id)) {
-      return false;
+      return 'Requires technology';
     }
 
-    return true;
+    if (
+      wonderType.minimumPopulation !== undefined
+      && city.population < wonderType.minimumPopulation
+    ) {
+      return `Requires population ${wonderType.minimumPopulation} (city has ${city.population})`;
+    }
+
+    return undefined;
   }
 
   /**

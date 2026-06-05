@@ -6449,7 +6449,7 @@ export class AISystem {
     let bestScore = Number.NEGATIVE_INFINITY;
     for (const wonder of ALL_WONDERS) {
       if (!this.wonderSystem.canCityBuildWonder(city, wonder, { researchSystem: this.researchSystem })) continue;
-      if (this.isWonderQueued(wonder.id)) continue;
+      if (this.isWonderQueuedByNation(wonder.id, nationId)) continue;
       if (this.wonderPlacementSystem.getValidPlacementCoords(city, wonder, this.mapData).length === 0) continue;
 
       const score = this.getWorldWonderProductionScore(wonder) - wonder.productionCost / 30;
@@ -6461,9 +6461,10 @@ export class AISystem {
     return best;
   }
 
-  private isWonderQueued(wonderId: string): boolean {
+  private isWonderQueuedByNation(wonderId: string, nationId: string): boolean {
     return this.cityManager.getAllCities().some((city) => (
-      this.productionSystem.getQueue(city.id)
+      city.ownerId === nationId
+      && this.productionSystem.getQueue(city.id)
         .some((entry) => entry.item.kind === 'wonder' && entry.item.wonderType.id === wonderId)
     ));
   }
