@@ -98,7 +98,7 @@ import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
-import { VictorySystem } from '../systems/VictorySystem';
+import { VictorySystem, type VictoryType } from '../systems/VictorySystem';
 import { PoliticalCapitalSystem } from '../systems/PoliticalCapitalSystem';
 import { LeaderCaptureSystem, type LeaderCaptureChoiceRequest } from '../systems/LeaderCaptureSystem';
 import { NationCollapseSystem } from '../systems/NationCollapseSystem';
@@ -204,21 +204,50 @@ import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 import { LogManager } from '../systems/LogManager';
 
 interface EpochGameDiagnostics {
-  startAutoplay: (rounds: number) => Promise<{ completedRounds: number }>;
+  startAutoplay: (rounds: number) => Promise<{ completedRounds: number; victory: EpochVictorySummary | null }>;
   stopAutoplay: () => void;
   isAutoplayActive: () => boolean;
   isAutoplayCompleted: () => boolean;
   getEventLogEntries: () => Array<{ id: number; text: string; nationIds: string[]; round: number }>;
   getEventLogText: () => string;
-  getStateSummary: () => {
-    currentRound: number;
-    currentNationId: string;
-    currentNationName: string;
-    nationCount: number;
-    cityCount: number;
-    unitCount: number;
-  };
+  getStateSummary: () => EpochStateSummary;
   getSaveState: () => SavedGameState;
+}
+
+/** Per-nation progression snapshot used for timeline/balance calibration. */
+interface EpochNationStateSummary {
+  id: string;
+  name: string;
+  isHuman: boolean;
+  era: string;
+  technologyCount: number;
+  cultureNodeCount: number;
+  currentResearch: string | null;
+  currentCulture: string | null;
+  cityCount: number;
+  population: number;
+}
+
+/** Structured victory outcome surfaced to diagnostics/autorun. */
+interface EpochVictorySummary {
+  nationId: string;
+  nationName: string;
+  type: VictoryType;
+  round: number;
+}
+
+interface EpochStateSummary {
+  currentRound: number;
+  currentNationId: string;
+  currentNationName: string;
+  nationCount: number;
+  cityCount: number;
+  unitCount: number;
+  worldYear: number;
+  worldYearLabel: string;
+  scenario: string;
+  victory: EpochVictorySummary | null;
+  nations: EpochNationStateSummary[];
 }
 
 /**
@@ -1839,13 +1868,23 @@ export class GameScene extends Phaser.Scene {
     // 16. Läkningssystem
     const healingSystem = new HealingSystem(unitManager, cityManager, turnManager);
 
-    // 17. Victory system
+    // 17. Victory system. A loaded save carries its own victory rules, which take
+    // precedence over the start-up config so continuing a game preserves them.
+    // Older saves without the field fall back to VictorySystem defaults (all on).
+    const savedVictoryConditions = data.savedState?.victoryConditions;
+    const effectiveVictoryConditions = savedVictoryConditions
+      ? {
+        domination: { enabled: savedVictoryConditions.domination },
+        science: { ...data.victoryConditions?.science, enabled: savedVictoryConditions.science },
+        cultural: { enabled: savedVictoryConditions.cultural },
+      }
+      : data.victoryConditions ?? {};
     const victorySystem = new VictorySystem(
       cityManager,
       nationManager,
       turnManager,
       resourceAccessSystem,
-      { science: data.victoryConditions?.science },
+      effectiveVictoryConditions,
       (nationId, message) => logManager.info({ nationId, category: 'victory', message }),
       researchSystem,
       corporationSystem,
@@ -5567,7 +5606,27 @@ export class GameScene extends Phaser.Scene {
         startAutoplay: (rounds: number) => new Promise((resolve) => {
           const requestedRounds = Math.max(1, Math.floor(rounds));
           this.diagnosticSystem.enableTurnLogging();
-          autoplaySystem.onCompleted((event) => resolve({ completedRounds: event.totalRounds }));
+          // Resolve on a clean completion (requested rounds reached) OR on a stop —
+          // victory stops autoplay early. `settle` guards against a double resolve.
+          let settled = false;
+          const settle = (): void => {
+            if (settled) return;
+            settled = true;
+            const victoryState = victorySystem.getVictoryState();
+            resolve({
+              completedRounds: autoplaySystem.getCompletedRounds(),
+              victory: victoryState
+                ? {
+                  nationId: victoryState.nationId,
+                  nationName: nationManager.getNation(victoryState.nationId)?.name ?? victoryState.nationId,
+                  type: victoryState.type,
+                  round: victoryState.round,
+                }
+                : null,
+            });
+          };
+          autoplaySystem.onCompleted(settle);
+          autoplaySystem.onStopped(settle);
           autoplaySystem.start(requestedRounds, { suppressVisuals: true });
         }),
         stopAutoplay: () => autoplaySystem.stop(),
@@ -5579,13 +5638,47 @@ export class GameScene extends Phaser.Scene {
           .join('\n'),
         getStateSummary: () => {
           const currentNation = turnManager.getCurrentNation();
+          const allNations = nationManager.getAllNations();
+          const gameDate = turnManager.getGameDate();
+          // Per-nation progression snapshot. Deterministic and read-only — purely
+          // derived from current entity/system state so it is stable across long
+          // autorun sessions and safe to call at any point.
+          const nations: EpochNationStateSummary[] = allNations.map((nation) => {
+            const cities = cityManager.getCitiesByOwner(nation.id);
+            return {
+              id: nation.id,
+              name: nation.name,
+              isHuman: nation.isHuman,
+              era: eraSystem.getNationEra(nation.id),
+              technologyCount: nation.researchedTechIds.length,
+              cultureNodeCount: nation.unlockedCultureNodeIds.length,
+              currentResearch: researchSystem.getCurrentResearch(nation.id)?.name ?? null,
+              currentCulture: cultureSystem.getCurrentCultureNode(nation.id)?.name ?? null,
+              cityCount: cities.length,
+              population: cities.reduce((sum, city) => sum + city.population, 0),
+            };
+          });
+          const victoryState = victorySystem.getVictoryState();
+          const victory = victoryState
+            ? {
+              nationId: victoryState.nationId,
+              nationName: nationManager.getNation(victoryState.nationId)?.name ?? victoryState.nationId,
+              type: victoryState.type,
+              round: victoryState.round,
+            }
+            : null;
           return {
             currentRound: turnManager.getCurrentRound(),
             currentNationId: currentNation.id,
             currentNationName: currentNation.name,
-            nationCount: nationManager.getAllNations().length,
+            nationCount: allNations.length,
             cityCount: cityManager.getAllCities().length,
             unitCount: unitManager.getAllUnits().length,
+            worldYear: gameDate.signedYear,
+            worldYearLabel: turnManager.getGameDateLabel(),
+            scenario: data.mapKey,
+            victory,
+            nations,
           };
         },
         getSaveState: () => SaveLoadService.serialize({
@@ -5616,6 +5709,7 @@ export class GameScene extends Phaser.Scene {
           foreignTroopViolationSystem,
           historicalTimeline,
           covertSuspicionSystem,
+          victorySystem,
         }),
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -6070,6 +6164,9 @@ export class GameScene extends Phaser.Scene {
     // Victory overlay
     victorySystem.onVictory((nationId, type) => {
       turnManager.stop();
+      // Halt an in-progress autorun/autoplay so the session ends cleanly the moment
+      // a nation wins, instead of running out the remaining requested rounds.
+      if (autoplaySystem.isActive()) autoplaySystem.stop();
 
       const nation = nationManager.getNation(nationId);
       const nationName = nation?.name ?? 'Unknown';
@@ -6244,6 +6341,7 @@ export class GameScene extends Phaser.Scene {
           foreignTroopViolationSystem,
           historicalTimeline,
           covertSuspicionSystem,
+          victorySystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -6298,6 +6396,7 @@ export class GameScene extends Phaser.Scene {
         foreignTroopViolationSystem,
         historicalTimeline,
         covertSuspicionSystem,
+        victorySystem,
       });
     const saveGameDialog = new SaveGameDialog({
       onConfirm: (filename) => {

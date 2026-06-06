@@ -257,6 +257,12 @@ export interface SavedGameState {
   humanNationId: string;
   activeNationIds: string[];
   gameSpeedId?: GameSpeedId;
+  /**
+   * Enabled victory conditions for the session. Optional so pre-feature saves
+   * still load; loaders must default a missing field to all three enabled
+   * (domination, science, cultural) to preserve historical behavior.
+   */
+  victoryConditions?: SavedVictoryConditions;
   turn: {
     currentRound: number;
     currentTurnIndex: number;
@@ -288,6 +294,13 @@ export interface SavedGameState {
    * pair). Optional so older saves load cleanly (treated as no prior incidents).
    */
   covertIncidents?: SavedCovertIncident[];
+}
+
+/** Persisted enabled-state of each implemented victory type. */
+export interface SavedVictoryConditions {
+  domination: boolean;
+  science: boolean;
+  cultural: boolean;
 }
 
 /** One attacker→victim covert offense tally for repeated-offender escalation. */

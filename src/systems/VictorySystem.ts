@@ -17,8 +17,28 @@ interface ScienceVictorySettings {
   requiredAerospaceParts: number;
 }
 
+interface ToggleableVictorySettings {
+  enabled?: boolean;
+}
+
 interface VictoryConditionsConfig {
+  domination?: ToggleableVictorySettings;
   science?: Partial<ScienceVictorySettings>;
+  cultural?: ToggleableVictorySettings;
+}
+
+/** Which victory types are currently active. Persisted in the save state. */
+export interface EnabledVictoryConditions {
+  domination: boolean;
+  science: boolean;
+  cultural: boolean;
+}
+
+/** Structured outcome once a nation has won. Exposed for diagnostics/autorun. */
+export interface VictoryState {
+  nationId: string;
+  type: VictoryType;
+  round: number;
 }
 
 export interface ScienceVictoryProgress {
@@ -56,14 +76,17 @@ const CULTURAL_PROGRESS_INTERVAL = 25;
 export class VictorySystem {
   private readonly listeners: VictoryListener[] = [];
   private won = false;
+  private victoryState: VictoryState | null = null;
   private readonly science: ScienceVictorySettings;
+  private readonly dominationEnabled: boolean;
+  private readonly culturalEnabled: boolean;
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
   private lastCulturalProgressRound = -CULTURAL_PROGRESS_INTERVAL;
 
   constructor(
     private readonly cityManager: CityManager,
     private readonly nationManager: NationManager,
-    turnManager: TurnManager,
+    private readonly turnManager: TurnManager,
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     conditions: VictoryConditionsConfig = {},
     private readonly log?: VictoryLogger,
@@ -75,29 +98,34 @@ export class VictorySystem {
       enabled: conditions.science?.enabled ?? true,
       requiredAerospaceParts: conditions.science?.requiredAerospaceParts ?? 5,
     };
+    this.dominationEnabled = conditions.domination?.enabled ?? true;
+    this.culturalEnabled = conditions.cultural?.enabled ?? true;
 
     turnManager.on('turnEnd', (e) => {
       if (this.won) return;
 
-      const scienceWinner = this.checkScienceVictory();
+      const scienceWinner = this.science.enabled ? this.checkScienceVictory() : null;
       if (scienceWinner) {
-        this.won = true;
+        this.recordVictory(scienceWinner, 'science', e.round);
         this.logScienceVictory(scienceWinner, e.round);
+        this.logVictory(scienceWinner, 'science', e.round);
         for (const cb of this.listeners) cb(scienceWinner, 'science');
         return;
       }
 
-      const culturalWinner = this.checkCulturalVictory();
+      const culturalWinner = this.culturalEnabled ? this.checkCulturalVictory() : null;
       if (culturalWinner) {
-        this.won = true;
+        this.recordVictory(culturalWinner, 'cultural', e.round);
         this.logCulturalVictory(culturalWinner, e.round);
+        this.logVictory(culturalWinner, 'cultural', e.round);
         for (const cb of this.listeners) cb(culturalWinner, 'cultural');
         return;
       }
 
-      const dominationWinner = this.checkDominationVictory();
+      const dominationWinner = this.dominationEnabled ? this.checkDominationVictory() : null;
       if (dominationWinner) {
-        this.won = true;
+        this.recordVictory(dominationWinner, 'domination', e.round);
+        this.logVictory(dominationWinner, 'domination', e.round);
         for (const cb of this.listeners) cb(dominationWinner, 'domination');
       }
     });
@@ -110,7 +138,7 @@ export class VictorySystem {
     });
 
     turnManager.on('roundEnd', (e) => {
-      if (this.won || !this.wonderSystem) return;
+      if (this.won || !this.culturalEnabled || !this.wonderSystem) return;
       if (e.round - this.lastCulturalProgressRound < CULTURAL_PROGRESS_INTERVAL) return;
       this.lastCulturalProgressRound = e.round;
       this.logCulturalProgress(e.round);
@@ -120,6 +148,36 @@ export class VictorySystem {
   /** Public entry point kept for external callers. Checks domination only. */
   checkVictory(): string | null {
     return this.checkDominationVictory();
+  }
+
+  /** Which victory types are active. Persisted so saves restore the same rules. */
+  getEnabledConditions(): EnabledVictoryConditions {
+    return {
+      domination: this.dominationEnabled,
+      science: this.science.enabled,
+      cultural: this.culturalEnabled,
+    };
+  }
+
+  /** Structured outcome once a nation has won, else null. */
+  getVictoryState(): VictoryState | null {
+    return this.victoryState ? { ...this.victoryState } : null;
+  }
+
+  private recordVictory(nationId: string, type: VictoryType, round: number): void {
+    this.won = true;
+    this.victoryState = { nationId, type, round };
+  }
+
+  /**
+   * Stable, machine-detectable victory line emitted for every victory type.
+   * Autorun greps for the "VICTORY:" prefix, so keep the phrasing stable.
+   */
+  private logVictory(nationId: string, type: VictoryType, round: number): void {
+    if (!this.log) return;
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const dateLabel = this.turnManager.getGameDateLabel();
+    this.log(nationId, `VICTORY: ${name} won by ${type} victory on round ${round} (${dateLabel}).`);
   }
 
   getScienceVictoryProgress(nationId: string): ScienceVictoryProgress {

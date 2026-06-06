@@ -39,6 +39,7 @@ import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
 import type { HistoricalTimelineService } from './HistoricalTimelineService';
 import type { CovertSuspicionSystem } from './diplomacy/CovertSuspicionSystem';
+import type { VictorySystem } from './VictorySystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
@@ -80,6 +81,7 @@ export interface SaveLoadContext {
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
   covertSuspicionSystem?: CovertSuspicionSystem;
+  victorySystem?: VictorySystem;
 }
 
 /**
@@ -330,6 +332,7 @@ export class SaveLoadService {
       humanNationId,
       activeNationIds: nationManager.getAllNations().map((nation) => nation.id),
       gameSpeedId,
+      victoryConditions: context.victorySystem?.getEnabledConditions(),
       turn: {
         currentRound: turnManager.getCurrentRound(),
         currentTurnIndex: turnManager.getCurrentTurnIndex(),

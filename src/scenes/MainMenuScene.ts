@@ -11,7 +11,7 @@ import {
   formatScenarioTimeProgression,
 } from '../data/scenarioMeta';
 import { renderScenarioMinimap } from '../ui/ScenarioMinimapRenderer';
-import type { GameConfig, ResourceAbundance } from '../types/gameConfig';
+import type { GameConfig, ResourceAbundance, VictoryConditionsConfig } from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
@@ -34,6 +34,7 @@ interface EpochMainMenuDiagnostics {
     activeNationIds?: string[];
     gameSpeedId?: GameSpeedId;
     resourceAbundance?: ResourceAbundance;
+    victoryConditions?: VictoryConditionsConfig;
   }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
   startSavedGame: (savedState: unknown) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string };
 }
@@ -54,7 +55,8 @@ export class MainMenuScene extends Phaser.Scene {
   /** "No barbarians" setup toggle — strips all Barbarian Camps from the scenario. */
   private noBarbarians = false;
   private latestAutosave: SavedGameState | null = null;
-  private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
+  // Diplomatic victory is not implemented; it is shown disabled and excluded here.
+  private enabledVictoryIds = new Set(['domination', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
   private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
   private music: SetupMusicManager | null = null;
@@ -187,10 +189,10 @@ export class MainMenuScene extends Phaser.Scene {
             <span class="mm-victory-title">Domination</span>
             <span class="mm-victory-copy">Conquer rival capitals.</span>
           </button>
-          <button class="mm-victory-card active" type="button" data-victory="diplomatic">
+          <button class="mm-victory-card disabled" type="button" data-victory="diplomatic" disabled aria-disabled="true" title="Not implemented yet">
             <span class="mm-victory-check" aria-hidden="true"></span>
             <span class="mm-victory-title">Diplomatic</span>
-            <span class="mm-victory-copy">Shape the world council.</span>
+            <span class="mm-victory-copy">Not implemented yet.</span>
           </button>
           <button class="mm-victory-card active" type="button" data-victory="science">
             <span class="mm-victory-check" aria-hidden="true"></span>
@@ -350,6 +352,7 @@ export class MainMenuScene extends Phaser.Scene {
     activeNationIds?: string[];
     gameSpeedId?: GameSpeedId;
     resourceAbundance?: ResourceAbundance;
+    victoryConditions?: VictoryConditionsConfig;
   }): { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string } {
     const scenarioKey = this.resolveDiagnosticScenarioKey(options.scenario);
     if (!scenarioKey) return { ok: false, error: `Scenario not found: ${options.scenario ?? '(default)'}` };
@@ -377,6 +380,7 @@ export class MainMenuScene extends Phaser.Scene {
       gameSpeedId: options.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
       autofocusOnEndTurn: false,
       worldSeed: generateNewGameSeed(),
+      victoryConditions: options.victoryConditions,
     } satisfies GameConfig);
 
     return { ok: true, scenario: scenarioKey, humanNationId, activeNationIds: finalActiveNationIds };
@@ -471,6 +475,8 @@ export class MainMenuScene extends Phaser.Scene {
     document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
       const victoryId = button.dataset.victory;
       if (!victoryId) return;
+      // Diplomatic is shown disabled (not implemented) — no toggle wiring.
+      if (button.disabled) return;
 
       button.addEventListener('click', () => {
         if (this.enabledVictoryIds.has(victoryId)) {
@@ -881,10 +887,23 @@ export class MainMenuScene extends Phaser.Scene {
       gameSpeedId: this.selectedGameSpeedId,
       worldSeed: generateNewGameSeed(),
       noBarbarians: this.noBarbarians,
+      victoryConditions: this.buildVictoryConditions(),
     };
 
     this.cleanup();
     this.scene.start('GameScene', config);
+  }
+
+  /**
+   * Translate the selected victory checkboxes into the engine config. Diplomatic
+   * is intentionally omitted — it is shown disabled in the UI and not implemented.
+   */
+  private buildVictoryConditions(): VictoryConditionsConfig {
+    return {
+      domination: { enabled: this.enabledVictoryIds.has('domination') },
+      science: { enabled: this.enabledVictoryIds.has('science') },
+      cultural: { enabled: this.enabledVictoryIds.has('cultural') },
+    };
   }
 
   /**
@@ -1243,6 +1262,18 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-victory-card.inactive {
         opacity: 0.48;
         background: rgba(219, 218, 210, 0.66);
+      }
+
+      .mm-victory-card.disabled {
+        opacity: 0.4;
+        background: rgba(219, 218, 210, 0.5);
+        cursor: not-allowed;
+        filter: grayscale(0.6);
+      }
+
+      .mm-victory-card.disabled:hover {
+        transform: none;
+        border-color: rgba(116, 82, 44, 0.32);
       }
 
       .mm-victory-check {

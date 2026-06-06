@@ -4,6 +4,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
+type VictoryTypeName = 'domination' | 'science' | 'cultural';
+const ALL_VICTORY_TYPES: readonly VictoryTypeName[] = ['domination', 'science', 'cultural'];
+
+interface VictoryConditionsConfig {
+  domination?: { enabled: boolean };
+  science?: { enabled: boolean };
+  cultural?: { enabled: boolean };
+}
+
 interface AutorunOptions {
   turns: number;
   scenario: string;
@@ -13,6 +22,15 @@ interface AutorunOptions {
   timeoutMs: number;
   browserPath?: string;
   savePath?: string;
+  /** When set (via --victory), only these victory types are enabled for new games. */
+  victoryTypes?: VictoryTypeName[];
+}
+
+interface VictorySummary {
+  nationId: string;
+  nationName: string;
+  type: string;
+  round: number;
 }
 
 interface AutorunMetadata {
@@ -29,10 +47,85 @@ interface AutorunMetadata {
   startingYear?: number;
   finalTurn?: number;
   finalYear?: number;
+  victoryConditions?: VictoryConditionsConfig;
+  victoryDetected: boolean;
+  victoryNationId?: string;
+  victoryNationName?: string;
+  victoryType?: string;
+  victoryRound?: number;
   browserPath?: string;
   error?: string;
   stateSummary?: unknown;
 }
+
+/** Per-nation progression snapshot exposed by getStateSummary(). */
+interface NationStateSummary {
+  id: string;
+  name: string;
+  isHuman: boolean;
+  era: string;
+  technologyCount: number;
+  cultureNodeCount: number;
+  currentResearch: string | null;
+  currentCulture: string | null;
+  cityCount: number;
+  population: number;
+}
+
+interface StateSummary {
+  currentRound: number;
+  currentNationId: string;
+  currentNationName: string;
+  nationCount: number;
+  cityCount: number;
+  unitCount: number;
+  worldYear?: number;
+  worldYearLabel?: string;
+  scenario?: string;
+  victory?: VictorySummary | null;
+  nations?: NationStateSummary[];
+}
+
+interface NationLeader {
+  id: string;
+  name: string;
+  value: number;
+}
+
+/** Machine-readable timeline/progression calibration, written to its own JSON file. */
+interface TimelineCalibration {
+  scenario: string;
+  startingTurn: number | null;
+  finalTurn: number | null;
+  startingYear: number | null;
+  finalYear: number | null;
+  finalYearLabel: string | null;
+  elapsedTurns: number | null;
+  nations: NationStateSummary[];
+  leadingByTechnology: NationLeader | null;
+  leadingByCulture: NationLeader | null;
+  slowestByTechnology: NationLeader | null;
+  slowestByCulture: NationLeader | null;
+  mostAdvancedEra: string | null;
+  eraDistribution: Record<string, number>;
+  warnings: string[];
+}
+
+const ERA_ORDER: readonly string[] = [
+  'ancient',
+  'classical',
+  'medieval',
+  'renaissance',
+  'industrial',
+  'modern',
+  'atomic',
+  'information',
+  'future',
+];
+
+// A nation this far ahead of the runner-up (in techs or culture nodes) is flagged
+// as a runaway leader; tune here without touching gameplay code.
+const RUNAWAY_LEADER_GAP = 4;
 
 const DEFAULT_PORT = 4173;
 const DEFAULT_TURNS = 10;
@@ -66,13 +159,16 @@ async function main(): Promise<void> {
   let completedTurns = 0;
   let errorMessage: string | undefined;
   let logText = '';
-  let stateSummary: unknown;
+  let stateSummary: StateSummary | undefined;
   let saveState: unknown;
   let startScenario = options.scenario;
   let startingTurn: number | undefined;
   let startingYear: number | undefined;
   let browserPath = options.browserPath;
+  let victory: VictorySummary | null = null;
   const browserMessages: string[] = [];
+  // New games honor --victory; a loaded save keeps the victory rules baked into it.
+  const victoryConditions = buildVictoryConditions(options.victoryTypes);
 
   try {
     const savedState = savePath ? await readSaveState(savePath) : undefined;
@@ -116,7 +212,13 @@ async function main(): Promise<void> {
 
     const startResult = savedState
       ? await page.evaluate((state) => window.__epochDiagnostics!.startSavedGame!(state), savedState)
-      : await page.evaluate((scenario) => window.__epochDiagnostics!.startNewGame({ scenario }), options.scenario);
+      : await page.evaluate(
+        (args) => window.__epochDiagnostics!.startNewGame({
+          scenario: args.scenario,
+          victoryConditions: args.victoryConditions,
+        }),
+        { scenario: options.scenario, victoryConditions },
+      );
     if (startResult.ok !== true) throw new Error(startResult.error);
     startScenario = startResult.scenario;
     if ('startingTurn' in startResult && typeof startResult.startingTurn === 'number') {
@@ -132,6 +234,17 @@ async function main(): Promise<void> {
       { timeout: options.timeoutMs },
     );
 
+    // Capture the pre-autoplay state so starting turn/year are always populated
+    // (new games don't report them via startNewGame), giving deterministic elapsed
+    // turns in the timeline calibration.
+    const initialSummary = await page.evaluate(() => window.__epochDiagnostics?.getStateSummary?.());
+    if (startingTurn === undefined && typeof initialSummary?.currentRound === 'number') {
+      startingTurn = initialSummary.currentRound;
+    }
+    if (startingYear === undefined && typeof initialSummary?.worldYear === 'number') {
+      startingYear = initialSummary.worldYear;
+    }
+
     const autoplayResult = await withTimeout(
       page.evaluate((turns) => window.__epochDiagnostics!.startAutoplay(turns), options.turns),
       options.timeoutMs,
@@ -141,7 +254,10 @@ async function main(): Promise<void> {
     logText = await page.evaluate(() => window.__epochDiagnostics!.getEventLogText());
     stateSummary = await page.evaluate(() => window.__epochDiagnostics!.getStateSummary());
     saveState = await page.evaluate(() => window.__epochDiagnostics!.getSaveState?.());
-    success = completedTurns >= options.turns;
+    // Prefer the structured victory from the autoplay result; fall back to the
+    // post-run state summary. A victory ending the run early still counts as success.
+    victory = autoplayResult.victory ?? stateSummary?.victory ?? null;
+    success = completedTurns >= options.turns || victory !== null;
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : String(error);
     if (page) {
@@ -160,7 +276,7 @@ async function main(): Promise<void> {
 
   const durationMs = Date.now() - startedAt;
   const outputSavePath = path.join(outputDir, 'latest-save.json');
-  const finalState = stateSummary as { currentRound?: number } | undefined;
+  const finalYear = typeof stateSummary?.worldYear === 'number' ? stateSummary.worldYear : getSavedYear(saveState);
   const metadata: AutorunMetadata = {
     scenario: startScenario,
     requestedTurns: options.turns,
@@ -173,16 +289,29 @@ async function main(): Promise<void> {
     outputSavePath: saveState ? path.relative(process.cwd(), outputSavePath) : undefined,
     startingTurn,
     startingYear,
-    finalTurn: finalState?.currentRound,
+    finalTurn: stateSummary?.currentRound,
+    finalYear,
+    victoryConditions,
+    victoryDetected: victory !== null,
+    victoryNationId: victory?.nationId,
+    victoryNationName: victory?.nationName,
+    victoryType: victory?.type,
+    victoryRound: victory?.round,
     browserPath,
     error: errorMessage,
     stateSummary,
   };
-  const summary = buildSummary(metadata, browserMessages);
+  const calibration = buildTimelineCalibration(metadata, stateSummary);
+  const summary = buildSummary(metadata, calibration, browserMessages);
 
   await fs.writeFile(path.join(outputDir, 'latest-log.txt'), logText || '(no log entries)\n', 'utf8');
   await fs.writeFile(path.join(outputDir, 'latest-summary.md'), summary, 'utf8');
   await fs.writeFile(path.join(outputDir, 'latest-metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+  await fs.writeFile(
+    path.join(outputDir, 'latest-timeline-calibration.json'),
+    `${JSON.stringify(calibration, null, 2)}\n`,
+    'utf8',
+  );
   if (saveState) {
     await fs.writeFile(outputSavePath, `${JSON.stringify(saveState, null, 2)}\n`, 'utf8');
   }
@@ -193,7 +322,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`Autorun completed ${completedTurns}/${options.turns} turns.`);
+  if (victory) {
+    console.log(
+      `Autorun ended early on victory: ${victory.nationName} won by ${victory.type} victory on round ${victory.round} (after ${completedTurns}/${options.turns} turns).`,
+    );
+  } else {
+    console.log(`Autorun completed ${completedTurns}/${options.turns} turns.`);
+  }
   console.log(`Wrote diagnostics to ${path.relative(process.cwd(), outputDir)}`);
 }
 
@@ -231,10 +366,53 @@ function parseArgs(args: string[]): AutorunOptions {
     } else if (arg === '--browser-path' && next) {
       options.browserPath = next;
       i++;
+    } else if (arg === '--victory' && next) {
+      options.victoryTypes = parseVictoryTypes(next);
+      i++;
     }
   }
 
   return options;
+}
+
+/**
+ * Parse a `--victory domination,science` value into a deduped list of valid
+ * victory types. Unknown tokens are ignored with a warning so a typo can't
+ * silently enable everything.
+ */
+function parseVictoryTypes(value: string): VictoryTypeName[] {
+  const selected: VictoryTypeName[] = [];
+  for (const raw of value.split(',')) {
+    const token = raw.trim().toLowerCase();
+    if (!token) continue;
+    if ((ALL_VICTORY_TYPES as readonly string[]).includes(token)) {
+      const victoryType = token as VictoryTypeName;
+      if (!selected.includes(victoryType)) selected.push(victoryType);
+    } else {
+      console.warn(`[autorun] Ignoring unknown victory type: ${token}`);
+    }
+  }
+  return selected;
+}
+
+/**
+ * Build the victoryConditions config passed to startNewGame. Absent --victory
+ * leaves it undefined so the engine default (all enabled) applies; an explicit
+ * list enables only the named types and disables the rest.
+ */
+function buildVictoryConditions(victoryTypes: VictoryTypeName[] | undefined): VictoryConditionsConfig | undefined {
+  if (!victoryTypes) return undefined;
+  return {
+    domination: { enabled: victoryTypes.includes('domination') },
+    science: { enabled: victoryTypes.includes('science') },
+    cultural: { enabled: victoryTypes.includes('cultural') },
+  };
+}
+
+function formatVictoryConditions(config: VictoryConditionsConfig): string {
+  return ALL_VICTORY_TYPES
+    .map((type) => `${type}: ${config[type]?.enabled ? 'on' : 'off'}`)
+    .join(', ');
 }
 
 function startPreviewServer(port: number): ChildProcessWithoutNullStreams {
@@ -313,7 +491,11 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
-function buildSummary(metadata: AutorunMetadata, browserMessages: string[]): string {
+function buildSummary(
+  metadata: AutorunMetadata,
+  calibration: TimelineCalibration,
+  browserMessages: string[],
+): string {
   const lines = [
     '# Epoch Autorun Summary',
     '',
@@ -325,19 +507,191 @@ function buildSummary(metadata: AutorunMetadata, browserMessages: string[]): str
     `- Timestamp: ${metadata.timestamp}`,
     `- Port: ${metadata.port}`,
   ];
+  // State plainly why the run ended: requested turns completed vs. early victory.
+  const endReason = metadata.victoryDetected
+    ? `victory (${metadata.victoryNationName ?? metadata.victoryNationId ?? 'a nation'} won by ${metadata.victoryType ?? 'unknown'} victory on round ${metadata.victoryRound ?? '?'})`
+    : metadata.completedTurns >= metadata.requestedTurns
+      ? 'requested turns completed'
+      : 'incomplete (did not reach requested turns or a victory)';
+  lines.push(`- End reason: ${endReason}`);
   if (metadata.savePath) lines.push(`- Input save: ${metadata.savePath}`);
   if (metadata.outputSavePath) lines.push(`- Output save: ${metadata.outputSavePath}`);
   if (metadata.startingTurn !== undefined) lines.push(`- Starting turn: ${metadata.startingTurn}`);
   if (metadata.finalTurn !== undefined) lines.push(`- Final turn: ${metadata.finalTurn}`);
   if (metadata.startingYear !== undefined) lines.push(`- Starting year: ${metadata.startingYear}`);
+  if (metadata.finalYear !== undefined && metadata.finalYear !== null) lines.push(`- Final year: ${metadata.finalYear}`);
+  if (metadata.victoryConditions) {
+    lines.push(`- Victory conditions: ${formatVictoryConditions(metadata.victoryConditions)}`);
+  }
   if (metadata.error) lines.push(`- Error: ${metadata.error}`);
   if (metadata.browserPath) lines.push(`- Browser: ${metadata.browserPath}`);
+
+  if (metadata.victoryDetected) {
+    lines.push('', '## Victory', '');
+    lines.push(`- Winner: ${metadata.victoryNationName ?? metadata.victoryNationId ?? 'unknown'}`);
+    if (metadata.victoryNationId) lines.push(`- Winner id: ${metadata.victoryNationId}`);
+    if (metadata.victoryType) lines.push(`- Type: ${metadata.victoryType}`);
+    if (metadata.victoryRound !== undefined) lines.push(`- Round: ${metadata.victoryRound}`);
+  }
+
+  lines.push('', ...renderTimelineCalibration(calibration));
+
   if (browserMessages.length > 0) {
     lines.push('', '## Browser Messages', '');
     lines.push(...browserMessages.slice(-20).map((message) => `- ${message}`));
   }
   lines.push('');
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Derive the timeline/progression calibration view from a state summary. Pure and
+ * deterministic — given the same summary it always yields the same result, so it is
+ * stable across long autorun sessions. Nations keep their engine order for tie-breaks.
+ */
+function buildTimelineCalibration(
+  metadata: AutorunMetadata,
+  stateSummary: StateSummary | undefined,
+): TimelineCalibration {
+  const nations = stateSummary?.nations ?? [];
+  const startingTurn = metadata.startingTurn ?? null;
+  const finalTurn = metadata.finalTurn ?? null;
+  const elapsedTurns = startingTurn !== null && finalTurn !== null ? finalTurn - startingTurn : null;
+
+  const eraDistribution: Record<string, number> = {};
+  for (const nation of nations) {
+    eraDistribution[nation.era] = (eraDistribution[nation.era] ?? 0) + 1;
+  }
+
+  const leadingByTechnology = pickLeader(nations, (n) => n.technologyCount, 'max');
+  const slowestByTechnology = pickLeader(nations, (n) => n.technologyCount, 'min');
+  const leadingByCulture = pickLeader(nations, (n) => n.cultureNodeCount, 'max');
+  const slowestByCulture = pickLeader(nations, (n) => n.cultureNodeCount, 'min');
+  const mostAdvancedEra = nations.length > 0
+    ? nations.reduce((highest, n) => (eraRank(n.era) > eraRank(highest) ? n.era : highest), nations[0].era)
+    : null;
+
+  return {
+    scenario: metadata.scenario,
+    startingTurn,
+    finalTurn,
+    startingYear: metadata.startingYear ?? null,
+    finalYear: metadata.finalYear ?? null,
+    finalYearLabel: stateSummary?.worldYearLabel ?? null,
+    elapsedTurns,
+    nations,
+    leadingByTechnology,
+    leadingByCulture,
+    slowestByTechnology,
+    slowestByCulture,
+    mostAdvancedEra,
+    eraDistribution,
+    warnings: buildCalibrationWarnings(nations),
+  };
+}
+
+function eraRank(era: string): number {
+  const index = ERA_ORDER.indexOf(era);
+  return index === -1 ? -1 : index;
+}
+
+/** Pick the leading/slowest nation by a numeric metric, keeping engine order for ties. */
+function pickLeader(
+  nations: readonly NationStateSummary[],
+  metric: (nation: NationStateSummary) => number,
+  mode: 'max' | 'min',
+): NationLeader | null {
+  if (nations.length === 0) return null;
+  let best = nations[0];
+  for (const nation of nations) {
+    const better = mode === 'max' ? metric(nation) > metric(best) : metric(nation) < metric(best);
+    if (better) best = nation;
+  }
+  return { id: best.id, name: best.name, value: metric(best) };
+}
+
+function buildCalibrationWarnings(nations: readonly NationStateSummary[]): string[] {
+  const warnings: string[] = [];
+  if (nations.length < 2) return warnings;
+
+  const techCounts = nations.map((n) => n.technologyCount).sort((a, b) => b - a);
+  if (techCounts[0] - techCounts[1] >= RUNAWAY_LEADER_GAP) {
+    const leader = pickLeader(nations, (n) => n.technologyCount, 'max');
+    warnings.push(
+      `Technology runaway: ${leader?.name ?? 'leader'} leads by ${techCounts[0] - techCounts[1]} techs (${techCounts[0]} vs ${techCounts[1]}).`,
+    );
+  }
+
+  const cultureCounts = nations.map((n) => n.cultureNodeCount).sort((a, b) => b - a);
+  if (cultureCounts[0] - cultureCounts[1] >= RUNAWAY_LEADER_GAP) {
+    const leader = pickLeader(nations, (n) => n.cultureNodeCount, 'max');
+    warnings.push(
+      `Culture runaway: ${leader?.name ?? 'leader'} leads by ${cultureCounts[0] - cultureCounts[1]} nodes (${cultureCounts[0]} vs ${cultureCounts[1]}).`,
+    );
+  }
+
+  const ancientCount = nations.filter((n) => n.era === 'ancient').length;
+  if (ancientCount / nations.length > 0.5 && nations.some((n) => n.era !== 'ancient')) {
+    warnings.push(
+      `Progression stall: ${ancientCount}/${nations.length} nations are still in the ancient era while others have advanced.`,
+    );
+  }
+
+  if (nations.every((n) => n.technologyCount === 0)) {
+    warnings.push('No technology progress: every nation has 0 technologies researched.');
+  }
+
+  return warnings;
+}
+
+function renderTimelineCalibration(calibration: TimelineCalibration): string[] {
+  const lines = ['## Timeline Calibration', ''];
+  lines.push(`- Scenario: ${calibration.scenario}`);
+  lines.push(`- Starting turn: ${formatValue(calibration.startingTurn)}`);
+  lines.push(`- Final turn: ${formatValue(calibration.finalTurn)}`);
+  lines.push(`- Elapsed turns: ${formatValue(calibration.elapsedTurns)}`);
+  lines.push(`- Starting year: ${formatValue(calibration.startingYear)}`);
+  lines.push(`- Final year: ${formatValue(calibration.finalYear)}${calibration.finalYearLabel ? ` (${calibration.finalYearLabel})` : ''}`);
+  lines.push(`- Most advanced era: ${calibration.mostAdvancedEra ?? 'n/a'}`);
+  lines.push(`- Leading by technology: ${formatLeader(calibration.leadingByTechnology, 'techs')}`);
+  lines.push(`- Slowest by technology: ${formatLeader(calibration.slowestByTechnology, 'techs')}`);
+  lines.push(`- Leading by culture: ${formatLeader(calibration.leadingByCulture, 'nodes')}`);
+  lines.push(`- Slowest by culture: ${formatLeader(calibration.slowestByCulture, 'nodes')}`);
+
+  const eraKeys = Object.keys(calibration.eraDistribution).sort((a, b) => eraRank(a) - eraRank(b));
+  const eraText = eraKeys.length > 0
+    ? eraKeys.map((era) => `${era}: ${calibration.eraDistribution[era]}`).join(', ')
+    : 'n/a';
+  lines.push(`- Era distribution: ${eraText}`);
+
+  if (calibration.nations.length > 0) {
+    lines.push('', '### Nations', '');
+    lines.push('| Nation | Era | Techs | Culture | Cities | Pop | Researching | Culture target |');
+    lines.push('| --- | --- | ---: | ---: | ---: | ---: | --- | --- |');
+    for (const nation of calibration.nations) {
+      const label = nation.isHuman ? `${nation.name} (human)` : nation.name;
+      lines.push(
+        `| ${label} | ${nation.era} | ${nation.technologyCount} | ${nation.cultureNodeCount} | ${nation.cityCount} | ${nation.population} | ${nation.currentResearch ?? '—'} | ${nation.currentCulture ?? '—'} |`,
+      );
+    }
+  }
+
+  lines.push('', '### Warnings', '');
+  if (calibration.warnings.length > 0) {
+    lines.push(...calibration.warnings.map((warning) => `- ⚠️ ${warning}`));
+  } else {
+    lines.push('- None');
+  }
+
+  return lines;
+}
+
+function formatValue(value: number | null): string {
+  return value === null || value === undefined ? 'n/a' : String(value);
+}
+
+function formatLeader(leader: NationLeader | null, unit: string): string {
+  return leader ? `${leader.name} (${leader.value} ${unit})` : 'n/a';
 }
 
 function delay(ms: number): Promise<void> {
@@ -398,6 +752,7 @@ declare global {
         activeNationIds?: string[];
         gameSpeedId?: string;
         resourceAbundance?: string;
+        victoryConditions?: VictoryConditionsConfig;
       }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
       startSavedGame?: (savedState: unknown) => {
         ok: true;
@@ -407,12 +762,12 @@ declare global {
         startingTurn: number;
         startingYear?: number;
       } | { ok: false; error: string };
-      startAutoplay?: (rounds: number) => Promise<{ completedRounds: number }>;
+      startAutoplay?: (rounds: number) => Promise<{ completedRounds: number; victory: VictorySummary | null }>;
       stopAutoplay?: () => void;
       isAutoplayActive?: () => boolean;
       isAutoplayCompleted?: () => boolean;
       getEventLogText?: () => string;
-      getStateSummary?: () => unknown;
+      getStateSummary?: () => StateSummary;
       getSaveState?: () => unknown;
     };
   }
