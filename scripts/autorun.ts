@@ -72,6 +72,18 @@ interface NationStateSummary {
   population: number;
 }
 
+interface EraMilestone {
+  era: string;
+  nationId: string;
+  nationName: string;
+  turn: number;
+  worldYear: number;
+  worldYearLabel: string;
+  previousEra: string;
+  newEra: string;
+  source: string | null;
+}
+
 interface StateSummary {
   currentRound: number;
   currentNationId: string;
@@ -84,6 +96,7 @@ interface StateSummary {
   scenario?: string;
   victory?: VictorySummary | null;
   nations?: NationStateSummary[];
+  eraMilestones?: EraMilestone[];
 }
 
 interface NationLeader {
@@ -108,6 +121,7 @@ interface TimelineCalibration {
   slowestByCulture: NationLeader | null;
   mostAdvancedEra: string | null;
   eraDistribution: Record<string, number>;
+  eraMilestones: EraMilestone[];
   warnings: string[];
 }
 
@@ -160,6 +174,7 @@ async function main(): Promise<void> {
   let errorMessage: string | undefined;
   let logText = '';
   let stateSummary: StateSummary | undefined;
+  let inputSaveState: unknown;
   let saveState: unknown;
   let startScenario = options.scenario;
   let startingTurn: number | undefined;
@@ -171,10 +186,10 @@ async function main(): Promise<void> {
   const victoryConditions = buildVictoryConditions(options.victoryTypes);
 
   try {
-    const savedState = savePath ? await readSaveState(savePath) : undefined;
-    startingTurn = getSavedTurn(savedState);
-    startingYear = getSavedYear(savedState);
-    startScenario = getSavedScenario(savedState) ?? options.scenario;
+    inputSaveState = savePath ? await readSaveState(savePath) : undefined;
+    startingTurn = getSavedTurn(inputSaveState);
+    startingYear = getSavedYear(inputSaveState);
+    startScenario = getSavedScenario(inputSaveState) ?? options.scenario;
 
     await runNpmCommand(['run', 'build']);
     server = startPreviewServer(port);
@@ -206,12 +221,12 @@ async function main(): Promise<void> {
       (useSave) => useSave
         ? typeof window.__epochDiagnostics?.startSavedGame === 'function'
         : typeof window.__epochDiagnostics?.startNewGame === 'function',
-      Boolean(savedState),
+      Boolean(inputSaveState),
       { timeout: options.timeoutMs },
     );
 
-    const startResult = savedState
-      ? await page.evaluate((state) => window.__epochDiagnostics!.startSavedGame!(state), savedState)
+    const startResult = inputSaveState
+      ? await page.evaluate((state) => window.__epochDiagnostics!.startSavedGame!(state), inputSaveState)
       : await page.evaluate(
         (args) => window.__epochDiagnostics!.startNewGame({
           scenario: args.scenario,
@@ -291,7 +306,7 @@ async function main(): Promise<void> {
     startingYear,
     finalTurn: stateSummary?.currentRound,
     finalYear,
-    victoryConditions,
+    victoryConditions: getSavedVictoryConditions(inputSaveState) ?? victoryConditions,
     victoryDetected: victory !== null,
     victoryNationId: victory?.nationId,
     victoryNationName: victory?.nationName,
@@ -567,6 +582,7 @@ function buildTimelineCalibration(
   const slowestByTechnology = pickLeader(nations, (n) => n.technologyCount, 'min');
   const leadingByCulture = pickLeader(nations, (n) => n.cultureNodeCount, 'max');
   const slowestByCulture = pickLeader(nations, (n) => n.cultureNodeCount, 'min');
+  const eraMilestones = stateSummary?.eraMilestones ?? [];
   const mostAdvancedEra = nations.length > 0
     ? nations.reduce((highest, n) => (eraRank(n.era) > eraRank(highest) ? n.era : highest), nations[0].era)
     : null;
@@ -586,6 +602,7 @@ function buildTimelineCalibration(
     slowestByCulture,
     mostAdvancedEra,
     eraDistribution,
+    eraMilestones,
     warnings: buildCalibrationWarnings(nations),
   };
 }
@@ -664,6 +681,19 @@ function renderTimelineCalibration(calibration: TimelineCalibration): string[] {
     : 'n/a';
   lines.push(`- Era distribution: ${eraText}`);
 
+  lines.push('', '### Era Milestones', '');
+  if (calibration.eraMilestones.length > 0) {
+    lines.push('| Era | Nation | Turn | Date | Previous | New | Source |');
+    lines.push('| --- | --- | ---: | --- | --- | --- | --- |');
+    for (const milestone of calibration.eraMilestones) {
+      lines.push(
+        `| ${milestone.era} | ${milestone.nationName} | ${milestone.turn} | ${milestone.worldYearLabel} | ${milestone.previousEra} | ${milestone.newEra} | ${milestone.source ?? 'n/a'} |`,
+      );
+    }
+  } else {
+    lines.push('- None observed in this segment');
+  }
+
   if (calibration.nations.length > 0) {
     lines.push('', '### Nations', '');
     lines.push('| Nation | Era | Techs | Culture | Cities | Pop | Researching | Culture target |');
@@ -731,6 +761,16 @@ function getSavedTurn(savedState: unknown): number | undefined {
 
 function getSavedYear(savedState: unknown): number | undefined {
   return isRecord(savedState) && typeof savedState.worldYear === 'number' ? savedState.worldYear : undefined;
+}
+
+function getSavedVictoryConditions(savedState: unknown): VictoryConditionsConfig | undefined {
+  if (!isRecord(savedState) || !isRecord(savedState.victoryConditions)) return undefined;
+  const conditions = savedState.victoryConditions;
+  return {
+    domination: { enabled: conditions.domination === true },
+    science: { enabled: conditions.science === true },
+    cultural: { enabled: conditions.cultural === true },
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -94,6 +94,7 @@ import { EventLogSystem } from '../systems/EventLogSystem';
 import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
 import { TimelinePanel } from '../ui/TimelinePanel';
 import { EraSystem, getEraRank } from '../systems/EraSystem';
+import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
@@ -228,6 +229,19 @@ interface EpochNationStateSummary {
   population: number;
 }
 
+/** First observed actual era transition during a diagnostics/autorun session. */
+interface EpochEraMilestone {
+  era: string;
+  nationId: string;
+  nationName: string;
+  turn: number;
+  worldYear: number;
+  worldYearLabel: string;
+  previousEra: string;
+  newEra: string;
+  source: string | null;
+}
+
 /** Structured victory outcome surfaced to diagnostics/autorun. */
 interface EpochVictorySummary {
   nationId: string;
@@ -248,6 +262,7 @@ interface EpochStateSummary {
   scenario: string;
   victory: EpochVictorySummary | null;
   nations: EpochNationStateSummary[];
+  eraMilestones: EpochEraMilestone[];
 }
 
 /**
@@ -416,6 +431,38 @@ export class GameScene extends Phaser.Scene {
     // 11. Turordning
     const turnManager = new TurnManager(nationManager, gameSpeed, scenarioJson.meta);
     unitManager.setCurrentRoundProvider(() => turnManager.getCurrentRound());
+    const observedEraByNation = new Map<string, Era>();
+    const eraMilestones: EpochEraMilestone[] = [];
+    let eraMilestoneBaselineInitialized = false;
+    const syncEraMilestoneBaseline = (): void => {
+      observedEraByNation.clear();
+      for (const nation of nationManager.getAllNations()) {
+        observedEraByNation.set(nation.id, eraSystem.getNationEra(nation.id));
+      }
+      eraMilestoneBaselineInitialized = true;
+    };
+    const recordEraMilestone = (nationId: string, source: string | null): void => {
+      if (!eraMilestoneBaselineInitialized) syncEraMilestoneBaseline();
+      const nation = nationManager.getNation(nationId);
+      if (!nation) return;
+      const previousEra = observedEraByNation.get(nationId) ?? eraSystem.getNationEra(nationId);
+      const newEra = eraSystem.getNationEra(nationId);
+      observedEraByNation.set(nationId, newEra);
+      if (getEraRank(newEra) <= getEraRank(previousEra)) return;
+
+      const gameDate = turnManager.getGameDate();
+      eraMilestones.push({
+        era: newEra,
+        nationId: nation.id,
+        nationName: nation.name,
+        turn: turnManager.getCurrentRound(),
+        worldYear: gameDate.signedYear,
+        worldYearLabel: turnManager.getGameDateLabel(),
+        previousEra,
+        newEra,
+        source,
+      });
+    };
 
     // World chronicle (History panel). Records major events as they happen and
     // persists with the save. Subscriptions to game events are wired below once
@@ -5552,6 +5599,11 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
     researchSystem.onCompleted((event) => {
+      const technology = getTechnologyById(event.technologyId);
+      recordEraMilestone(
+        event.nationId,
+        technology ? `technology:${technology.id} (${technology.name})` : `technology:${event.technologyId}`,
+      );
       if (event.nationId === humanNationId && isNaturalResourceRevealTechnology(event.technologyId)) {
         naturalResourceRenderer.rebuildAll();
       }
@@ -5561,7 +5613,6 @@ export class GameScene extends Phaser.Scene {
       resourceSystem.recalculateForNation(event.nationId);
       happinessSystem.recalculateNation(event.nationId);
       if (event.nationId === humanNationId && !autoplaySystem.isActive()) {
-        const technology = getTechnologyById(event.technologyId);
         if (technology) {
           hudLayer?.enqueueDiscovery(buildTechnologyDiscoveryPopupData(technology));
         }
@@ -5604,6 +5655,7 @@ export class GameScene extends Phaser.Scene {
       const diagnosticsWindow = window as Window & { __epochDiagnostics?: EpochGameDiagnostics };
       diagnosticsWindow.__epochDiagnostics = {
         startAutoplay: (rounds: number) => new Promise((resolve) => {
+          syncEraMilestoneBaseline();
           const requestedRounds = Math.max(1, Math.floor(rounds));
           this.diagnosticSystem.enableTurnLogging();
           // Resolve on a clean completion (requested rounds reached) OR on a stop —
@@ -5637,6 +5689,7 @@ export class GameScene extends Phaser.Scene {
           .map((entry) => `T${entry.round}: ${entry.text}`)
           .join('\n'),
         getStateSummary: () => {
+          if (!eraMilestoneBaselineInitialized) syncEraMilestoneBaseline();
           const currentNation = turnManager.getCurrentNation();
           const allNations = nationManager.getAllNations();
           const gameDate = turnManager.getGameDate();
@@ -5679,6 +5732,7 @@ export class GameScene extends Phaser.Scene {
             scenario: data.mapKey,
             victory,
             nations,
+            eraMilestones: [...eraMilestones],
           };
         },
         getSaveState: () => SaveLoadService.serialize({

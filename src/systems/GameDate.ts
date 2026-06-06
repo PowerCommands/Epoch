@@ -11,8 +11,8 @@ import type { ScenarioMeta } from '../types/scenario';
  * while still rendering the historical "1 BC → 1 AD" sequence (never a year 0).
  */
 
-export const BASE_YEARS_PER_ROUND = 25;
-export const YEAR_PROGRESS_DECAY = 0.002677;
+export const BASE_YEARS_PER_ROUND = 167;
+export const YEAR_PROGRESS_DECAY = 0.02762;
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
