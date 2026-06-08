@@ -12,7 +12,7 @@ import type { ScenarioMeta } from '../types/scenario';
  */
 
 export const BASE_YEARS_PER_ROUND = 167;
-export const YEAR_PROGRESS_DECAY = 0.02762;
+export const YEAR_PROGRESS_DECAY = 0.026225;
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',

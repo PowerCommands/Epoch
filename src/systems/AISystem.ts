@@ -323,6 +323,7 @@ const SCORE_MILITARY = 70;
 const SCORE_FOOD_BUILDING = 65;
 const SCORE_PRODUCTION_BUILDING = 60;
 const SCORE_GOLD_BUILDING = 55;
+const SCORE_SCIENCE_BUILDING = 78;
 const SCORE_CULTURE_BUILDING = 75;
 const SCORE_WORLD_WONDER = 68;
 const SCORE_FALLBACK = 25;
@@ -4998,6 +4999,15 @@ export class AISystem {
       });
     }
 
+    const scienceBuilding = this.findMissingScienceBuilding(nationId, buildings);
+    if (scienceBuilding) {
+      candidates.push({
+        item: { kind: 'building', buildingType: scienceBuilding },
+        baseScore: this.getScienceBuildingProductionScore(scienceBuilding) + buildingBoost,
+        category: 'scienceBuilding',
+      });
+    }
+
     const cultureBuilding = this.findMissingCultureBuilding(nationId, buildings);
     if (cultureBuilding) {
       candidates.push({
@@ -5403,6 +5413,7 @@ export class AISystem {
       + (building.modifiers.productionPercent ?? 0)
       + (building.modifiers.happinessPerTurn ?? 0) * 6
       + (building.modifiers.sciencePerTurn ?? 0) * 5
+      + (building.modifiers.sciencePercent ?? 0) * 1.5
       + (building.modifiers.goldPerTurn ?? 0) * 4
       + (building.modifiers.culturePerTurn ?? 0) * 5
       + (building.modifiers.culturePercent ?? 0);
@@ -6398,11 +6409,32 @@ export class AISystem {
       if (buildings.has(candidate.id)) continue;
       if (!this.canBuildBuilding(nationId, candidate.id)) continue;
       if (!this.isEconomicScienceBuilding(candidate)) continue;
+      if (this.isScienceBuilding(candidate)) continue;
       if (!cheapest || candidate.productionCost < cheapest.productionCost) {
         cheapest = candidate;
       }
     }
     return cheapest;
+  }
+
+  private findMissingScienceBuilding(
+    nationId: string,
+    buildings: CityBuildings,
+  ): BuildingType | null {
+    let best: BuildingType | null = null;
+    let bestScore = Number.NEGATIVE_INFINITY;
+    for (const candidate of ALL_BUILDINGS) {
+      if (buildings.has(candidate.id)) continue;
+      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.isScienceBuilding(candidate)) continue;
+
+      const score = this.getScienceBuildingProductionScore(candidate) - candidate.productionCost / 20;
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return best;
   }
 
   private findMissingCultureBuilding(
@@ -6435,6 +6467,18 @@ export class AISystem {
     return SCORE_CULTURE_BUILDING
       + (modifiers.culturePerTurn ?? 0) * 8
       + (modifiers.culturePercent ?? 0) * 1.5;
+  }
+
+  private isScienceBuilding(candidate: BuildingType): boolean {
+    const modifiers = candidate.modifiers;
+    return (modifiers.sciencePerTurn ?? 0) > 0 || (modifiers.sciencePercent ?? 0) > 0;
+  }
+
+  private getScienceBuildingProductionScore(buildingType: BuildingType): number {
+    const modifiers = buildingType.modifiers;
+    return SCORE_SCIENCE_BUILDING
+      + (modifiers.sciencePerTurn ?? 0) * 12
+      + (modifiers.sciencePercent ?? 0) * 2;
   }
 
   private pickBestAvailableWorldWonder(

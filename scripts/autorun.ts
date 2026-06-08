@@ -206,6 +206,7 @@ async function main(): Promise<void> {
     page = await browser.newPage();
     page.on('console', (message) => {
       const text = `[browser:${message.type()}] ${message.text()}`;
+      if (text.includes('[DEBUG] Suspicion')) return;
       browserMessages.push(text);
       if (message.type() === 'error') console.warn(text);
       else if (message.type() === 'log') console.log(text);
@@ -369,6 +370,9 @@ function parseArgs(args: string[]): AutorunOptions {
       i++;
     } else if (arg === '--output' && next) {
       options.outputDir = next;
+      i++;
+    } else if (arg === '--port' && next) {
+      options.port = Number.parseInt(next, 10);
       i++;
     } else if (arg === '--save' && next) {
       options.savePath = next;

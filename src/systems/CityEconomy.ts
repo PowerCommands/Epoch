@@ -13,6 +13,7 @@ import type { IGridSystem } from './grid/IGridSystem';
 import { getTileResourceQuantity } from './resource/ResourceQuantity';
 
 export const BASE_CITY_FOOD = 2;
+const SCIENCE_PER_POPULATION = 0.75;
 
 export interface WorkedTileYield extends TileYield {
   tile: Tile;
@@ -70,7 +71,7 @@ export function calculateCityEconomy(
   let food = BASE_CITY_FOOD;
   let production = 0;
   let gold = city.population;
-  let science = 0;
+  let science = Math.floor(city.population * SCIENCE_PER_POPULATION);
   let culture = 1;
   let happiness = 0;
 

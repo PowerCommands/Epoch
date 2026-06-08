@@ -16,14 +16,14 @@ import type { Era } from './technologies';
  */
 export const ERA_PACING_MULTIPLIERS: Record<Era, number> = {
   ancient:     1.00,
-  classical:   1.15,
-  medieval:    1.50,
-  renaissance: 2.00,
-  industrial:  2.80,
-  modern:      3.50,
-  atomic:      4.20,
-  information: 5.00,
-  future:      5.80,
+  classical:   1.10,
+  medieval:    1.35,
+  renaissance: 1.55,
+  industrial:  1.90,
+  modern:      1.90,
+  atomic:      2.10,
+  information: 2.25,
+  future:      2.45,
 };
 
 export function getEraPacingMultiplier(era: Era): number {
