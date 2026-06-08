@@ -122,7 +122,7 @@ export class TurnManager {
     return computeGameDate(this.scenarioMeta, this.currentRound, this.yearProgressionMultiplier);
   }
 
-  /** Formatted date, e.g. "January 4000 BC" / "February 1939 AD". */
+  /** Formatted date, e.g. "January 4000 BC" / "February 1939". */
   getGameDateLabel(): string {
     return formatGameDate(this.getGameDate());
   }

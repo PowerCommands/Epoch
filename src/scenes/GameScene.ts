@@ -201,6 +201,7 @@ import type { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
+import { materializeScenarioNationReplacements } from '../utils/scenarioNationReplacements';
 import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 import { LogManager } from '../systems/LogManager';
 
@@ -294,11 +295,23 @@ export class GameScene extends Phaser.Scene {
 
     // 1. Parse scenario using map key from config
     const scenarioJson = this.cache.json.get(data.mapKey) as ScenarioData;
+    const replacementResult = data.savedState
+      ? { scenario: scenarioJson, idMap: {} }
+      : materializeScenarioNationReplacements(scenarioJson, data.scenarioNationReplacements);
+    const runtimeScenarioJson = replacementResult.scenario;
+    if (!data.savedState && Object.keys(replacementResult.idMap).length > 0) {
+      const remapNationId = (nationId: string) => replacementResult.idMap[nationId] ?? nationId;
+      data = {
+        ...data,
+        humanNationId: remapNationId(data.humanNationId),
+        activeNationIds: data.activeNationIds.map(remapNationId),
+      };
+    }
     // Install scenario-authored leader name/description overrides before any
     // system or UI reads leaders, so the override flows through the whole game.
-    setScenarioLeaderOverrides(scenarioJson.nations);
+    setScenarioLeaderOverrides(runtimeScenarioJson.nations);
 
-    const scenario = ScenarioLoader.parse(scenarioJson);
+    const scenario = ScenarioLoader.parse(runtimeScenarioJson);
     const mapData = scenario.mapData;
     // "No barbarians" setup option: strip every Barbarian Camp from the scenario
     // up front, as if it never had any. Done before any system/renderer reads the

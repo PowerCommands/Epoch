@@ -524,13 +524,14 @@ export const ALL_LEADERS: LeaderDefinition[] = [
  * leader accessor below, so a scenario-authored leader name/description flows
  * through the whole game without each call site knowing about it.
  */
-const scenarioLeaderOverrides = new Map<string, { name?: string; description?: string }>();
+const scenarioLeaderOverrides = new Map<string, { name?: string; description?: string; replacementNationId?: string }>();
 
 /** Minimal shape needed from a scenario nation to derive a leader override. */
 interface ScenarioLeaderSource {
   id: string;
   leaderName?: string;
   leaderDescription?: string;
+  replacementNationId?: string;
 }
 
 /**
@@ -544,10 +545,12 @@ export function setScenarioLeaderOverrides(nations: readonly ScenarioLeaderSourc
   for (const nation of nations) {
     const name = nation.leaderName?.trim();
     const description = nation.leaderDescription?.trim();
-    if (!name && !description) continue;
+    const replacementNationId = nation.replacementNationId?.trim();
+    if (!name && !description && !replacementNationId) continue;
     scenarioLeaderOverrides.set(nation.id, {
       ...(name ? { name } : {}),
       ...(description ? { description } : {}),
+      ...(replacementNationId ? { replacementNationId } : {}),
     });
   }
 }
@@ -565,7 +568,14 @@ function applyLeaderOverride(leader: LeaderDefinition | undefined): LeaderDefini
 }
 
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {
-  return applyLeaderOverride(ALL_LEADERS.find((leader) => leader.nationId === nationId));
+  const replacementNationId = scenarioLeaderOverrides.get(nationId)?.replacementNationId;
+  const leader = ALL_LEADERS.find((candidate) => candidate.nationId === (replacementNationId ?? nationId));
+  const overridden = applyLeaderOverride(leader);
+  return overridden && replacementNationId ? { ...overridden, nationId } : overridden;
+}
+
+export function getBuiltInLeaderByNationId(nationId: string): LeaderDefinition | undefined {
+  return ALL_LEADERS.find((leader) => leader.nationId === nationId);
 }
 
 export function getLeaderById(leaderId: string): LeaderDefinition | undefined {

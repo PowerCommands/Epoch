@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
-import { getLeaderByNationId, setScenarioLeaderOverrides } from '../data/leaders';
+import { getBuiltInLeaderByNationId, getLeaderByNationId, setScenarioLeaderOverrides } from '../data/leaders';
+import { NATION_DEFINITIONS, getNationDefinitionById } from '../data/nations';
 import { getTechnologyById } from '../data/technologies';
 import { getCultureNodeById } from '../data/cultureTree';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
@@ -22,6 +23,12 @@ import { WhatsNewDialog } from '../ui/WhatsNewDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
+import {
+  applyScenarioNationReplacement,
+  normalizeScenarioNationReplacements,
+  type RuntimeScenarioNation,
+  type ScenarioNationReplacementMap,
+} from '../utils/scenarioNationReplacements';
 
 /** Sentinel value for the "Load scenario…" entry in the scenario dropdown. */
 const LOAD_SCENARIO_OPTION_VALUE = '__load_scenario__';
@@ -48,6 +55,7 @@ export class MainMenuScene extends Phaser.Scene {
   private customScenarios: CustomScenarioEntry[] = [];
   private currentMapKey = '';
   private nations: ScenarioNation[] = [];
+  private scenarioNationReplacements = new Map<string, string>();
   private selectedNationId: string | null = null;
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
@@ -225,6 +233,11 @@ export class MainMenuScene extends Phaser.Scene {
             </div>
 
             <div id="mm-selected-display" class="mm-selected-display"></div>
+
+            <div class="mm-scenario-nations-section">
+              <span class="mm-field-label">Scenario Nations</span>
+              <div id="mm-scenario-nations-list" class="mm-scenario-nations-list"></div>
+            </div>
 
             <label class="mm-field-label" for="mm-map-select">Scenario</label>
             <select id="mm-map-select" class="mm-select">
@@ -555,6 +568,7 @@ export class MainMenuScene extends Phaser.Scene {
   private onMapChanged(mapKey: string): void {
     this.currentMapKey = mapKey;
     this.selectedNationId = null;
+    this.scenarioNationReplacements.clear();
 
     const customScenario = this.getCustomScenario(mapKey);
     const json = customScenario?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined;
@@ -569,7 +583,7 @@ export class MainMenuScene extends Phaser.Scene {
       return;
     }
     // Keep the menu's leader accessors consistent with the chosen scenario.
-    setScenarioLeaderOverrides(json.nations);
+    setScenarioLeaderOverrides(this.getRuntimeScenarioNations(json.nations));
     this.nations = json.nations;
     this.selectedOpponentIds = new Set(this.nations.map(n => n.id));
 
@@ -623,6 +637,8 @@ export class MainMenuScene extends Phaser.Scene {
     container.innerHTML = '';
 
     for (const nation of this.nations) {
+      const displayNation = this.getRuntimeScenarioNation(nation);
+      const replacementNationId = this.scenarioNationReplacements.get(nation.id);
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'mm-nation-card';
@@ -634,10 +650,11 @@ export class MainMenuScene extends Phaser.Scene {
       if (isSelectedPlayer) card.classList.add('selected-player');
       if (!isSelectedPlayer && isOpponent) card.classList.add('opponent-enabled');
       if (!isSelectedPlayer && !isOpponent) card.classList.add('opponent-disabled');
+      if (replacementNationId) card.classList.add('has-replacement');
 
       const dot = document.createElement('span');
       dot.className = 'mm-nation-dot';
-      dot.style.background = nation.color;
+      dot.style.background = displayNation.color;
 
       const leader = getLeaderByNationId(nation.id);
       const portrait = this.createLeaderPortrait(nation.id, 'mm-card-portrait');
@@ -645,15 +662,15 @@ export class MainMenuScene extends Phaser.Scene {
       copy.className = 'mm-nation-copy';
 
       const name = document.createElement('strong');
-      name.textContent = nation.name;
+      name.textContent = displayNation.name;
 
       const leaderName = document.createElement('span');
       leaderName.className = 'mm-card-leader';
-      leaderName.textContent = nation.leaderName?.trim() || leader?.name || 'Unknown leader';
+      leaderName.textContent = displayNation.leaderName?.trim() || leader?.name || 'Unknown leader';
 
       const description = document.createElement('span');
       description.className = 'mm-card-description';
-      description.textContent = nation.leaderDescription?.trim()
+      description.textContent = displayNation.leaderDescription?.trim()
         || leader?.description
         || 'A capable ruler ready to shape the age.';
 
@@ -661,12 +678,23 @@ export class MainMenuScene extends Phaser.Scene {
       gold.className = 'mm-card-gold';
       gold.textContent = `💰 ${nation.gold ?? 0} starting gold`;
 
+      const replacement = this.createReplacementSummary(nation, displayNation);
+
       const state = document.createElement('span');
       state.className = 'mm-card-state';
       state.textContent = isSelectedPlayer ? 'Player' : isOpponent ? 'Opponent' : 'Excluded';
 
-      copy.append(name, leaderName, description, gold, this.createNationScenarioInfo(nation));
-      card.append(portrait, dot, copy, state);
+      const replaceButton = document.createElement('button');
+      replaceButton.type = 'button';
+      replaceButton.className = 'mm-replace-btn';
+      replaceButton.textContent = 'Replace';
+      replaceButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.openNationReplacementDialog(nation.id);
+      });
+
+      copy.append(name, replacement, leaderName, description, gold, this.createNationScenarioInfo(nation));
+      card.append(portrait, dot, copy, state, replaceButton);
       card.addEventListener('click', () => this.handleNationCardClick(nation.id));
       container.appendChild(card);
     }
@@ -703,7 +731,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.renderNationList();
     this.updateSetupPanel();
     this.updateStartButton();
-    this.music?.playPlaylist(nationId);
+    this.music?.playPlaylist(this.scenarioNationReplacements.get(nationId) ?? nationId);
   }
 
   private clearPlayerNation(): void {
@@ -720,9 +748,11 @@ export class MainMenuScene extends Phaser.Scene {
     const opponentCount = document.getElementById('mm-opponent-count')!;
     const opponentHint = document.getElementById('mm-opponent-hint')!;
     const opponentList = document.getElementById('mm-opponent-list')!;
+    const scenarioNationsList = document.getElementById('mm-scenario-nations-list')!;
     const changeButton = document.getElementById('mm-change-nation-btn') as HTMLButtonElement;
     selectedDisplay.innerHTML = '';
     opponentList.innerHTML = '';
+    scenarioNationsList.innerHTML = '';
 
     const selectedNation = this.nations.find(n => n.id === this.selectedNationId);
     if (!selectedNation) {
@@ -733,9 +763,10 @@ export class MainMenuScene extends Phaser.Scene {
       changeButton.disabled = true;
     } else {
       const leader = getLeaderByNationId(selectedNation.id);
+      const displayNation = this.getRuntimeScenarioNation(selectedNation);
       selectedDisplay.append(
         this.createLeaderPortrait(selectedNation.id, 'mm-leader-portrait'),
-        this.createSelectedNationCopy(selectedNation, leader?.name ?? 'Unknown leader'),
+        this.createSelectedNationCopy(selectedNation, displayNation, leader?.name ?? 'Unknown leader'),
       );
       changeButton.disabled = false;
     }
@@ -750,37 +781,78 @@ export class MainMenuScene extends Phaser.Scene {
       : 'All civilizations are available until your first pick.';
 
     for (const opponent of enabledOpponents) {
+      const displayOpponent = this.getRuntimeScenarioNation(opponent);
       const item = document.createElement('span');
       item.className = 'mm-opponent-chip';
 
       const dot = document.createElement('span');
       dot.className = 'mm-nation-dot mini';
-      dot.style.background = opponent.color;
+      dot.style.background = displayOpponent.color;
 
       const name = document.createElement('span');
-      name.textContent = opponent.name;
+      name.textContent = displayOpponent.name;
 
       item.append(dot, name);
       opponentList.appendChild(item);
     }
+
+    for (const nation of this.nations) {
+      const displayNation = this.getRuntimeScenarioNation(nation);
+      const row = document.createElement('div');
+      row.className = 'mm-scenario-nation-row';
+      if (this.scenarioNationReplacements.has(nation.id)) row.classList.add('has-replacement');
+
+      const dot = document.createElement('span');
+      dot.className = 'mm-nation-dot mini';
+      dot.style.background = displayNation.color;
+
+      const name = document.createElement('span');
+      name.className = 'mm-scenario-nation-name';
+      name.textContent = displayNation.name;
+
+      const replacement = this.createReplacementSummary(nation, displayNation);
+
+      const replaceButton = document.createElement('button');
+      replaceButton.type = 'button';
+      replaceButton.className = 'mm-scenario-replace-btn';
+      replaceButton.textContent = 'Replace';
+      replaceButton.addEventListener('click', () => this.openNationReplacementDialog(nation.id));
+
+      row.append(dot, name, replacement, replaceButton);
+      scenarioNationsList.appendChild(row);
+    }
   }
 
-  private createSelectedNationCopy(nation: ScenarioNation, leaderName: string): HTMLElement {
+  private createSelectedNationCopy(nation: ScenarioNation, displayNation: RuntimeScenarioNation, leaderName: string): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'mm-selected-copy';
 
     const dot = document.createElement('span');
     dot.className = 'mm-nation-dot';
-    dot.style.background = nation.color;
+    dot.style.background = displayNation.color;
 
     const name = document.createElement('strong');
-    name.textContent = nation.name;
+    name.textContent = displayNation.name;
 
     const leader = document.createElement('span');
     leader.textContent = `Leader: ${leaderName}`;
 
-    wrapper.append(dot, name, leader);
+    wrapper.append(dot, name, this.createReplacementSummary(nation, displayNation), leader);
     return wrapper;
+  }
+
+  private createReplacementSummary(nation: ScenarioNation, displayNation: RuntimeScenarioNation): HTMLElement {
+    const summary = document.createElement('span');
+    const replacementNationId = this.scenarioNationReplacements.get(nation.id);
+    if (!replacementNationId) {
+      summary.className = 'mm-replacement-summary empty';
+      summary.textContent = '';
+      return summary;
+    }
+
+    summary.className = 'mm-replacement-summary';
+    summary.textContent = `${displayNation.name} replacing ${nation.name}`;
+    return summary;
   }
 
   private createNationScenarioInfo(nation: ScenarioNation): HTMLElement {
@@ -845,6 +917,121 @@ export class MainMenuScene extends Phaser.Scene {
       ?? null;
   }
 
+  private getRuntimeScenarioNation(nation: ScenarioNation): RuntimeScenarioNation {
+    return applyScenarioNationReplacement(nation, this.scenarioNationReplacements.get(nation.id));
+  }
+
+  private getRuntimeScenarioNations(nations = this.nations): RuntimeScenarioNation[] {
+    return nations.map((nation) => this.getRuntimeScenarioNation(nation));
+  }
+
+  private getScenarioNationReplacementConfig(): ScenarioNationReplacementMap | undefined {
+    const scenario = this.getCurrentScenario();
+    if (!scenario || this.scenarioNationReplacements.size === 0) return undefined;
+
+    const normalized = normalizeScenarioNationReplacements(
+      scenario.nations,
+      Object.fromEntries(this.scenarioNationReplacements),
+    );
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+
+  private openNationReplacementDialog(slotNationId: string): void {
+    const scenario = this.getCurrentScenario();
+    const slotNation = this.nations.find((nation) => nation.id === slotNationId);
+    if (!scenario || !slotNation) return;
+
+    const usedIdentityIds = new Set(this.nations.map((nation) => this.scenarioNationReplacements.get(nation.id) ?? nation.id));
+    usedIdentityIds.delete(this.scenarioNationReplacements.get(slotNationId) ?? slotNationId);
+    const candidates = NATION_DEFINITIONS
+      .filter((nation) => nation.id === slotNation.id || !scenario.nations.some((scenarioNation) => scenarioNation.id === nation.id))
+      .filter((nation) => nation.id === slotNation.id || !usedIdentityIds.has(nation.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const activeReplacementId = this.scenarioNationReplacements.get(slotNationId);
+    const overlay = document.createElement('div');
+    overlay.className = 'mm-replacement-dialog-backdrop';
+    overlay.setAttribute('role', 'presentation');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'mm-replacement-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'mm-replacement-dialog-title');
+
+    const title = document.createElement('h2');
+    title.id = 'mm-replacement-dialog-title';
+    title.textContent = `Replace ${slotNation.name} With`;
+
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.className = 'mm-replacement-close';
+    closeButton.textContent = 'Close';
+    closeButton.addEventListener('click', () => overlay.remove());
+
+    const list = document.createElement('div');
+    list.className = 'mm-replacement-list';
+
+    for (const candidate of candidates) {
+      const leader = candidate.id === slotNation.id
+        ? getBuiltInLeaderByNationId(candidate.id)
+        : getLeaderByNationId(candidate.id);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mm-replacement-option';
+      if (candidate.id === activeReplacementId) button.classList.add('active');
+      if (candidate.id === slotNation.id && !activeReplacementId) button.classList.add('active');
+
+      const dot = document.createElement('span');
+      dot.className = 'mm-nation-dot';
+      dot.style.background = candidate.color;
+
+      const copy = document.createElement('span');
+      copy.className = 'mm-replacement-option-copy';
+      const name = document.createElement('strong');
+      name.textContent = candidate.id === slotNation.id ? `${candidate.name} (restore original)` : candidate.name;
+      const leaderName = document.createElement('span');
+      leaderName.textContent = leader?.name ?? 'Unknown leader';
+      copy.append(name, leaderName);
+
+      button.append(dot, copy);
+      button.addEventListener('click', () => {
+        this.setNationReplacement(slotNationId, candidate.id === slotNation.id ? null : candidate.id);
+        overlay.remove();
+      });
+      list.appendChild(button);
+    }
+
+    dialog.append(title, closeButton, list);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) overlay.remove();
+    });
+    document.body.appendChild(overlay);
+  }
+
+  private setNationReplacement(slotNationId: string, replacementNationId: string | null): void {
+    if (!replacementNationId || replacementNationId === slotNationId) {
+      this.scenarioNationReplacements.delete(slotNationId);
+    } else if (getNationDefinitionById(replacementNationId)) {
+      this.scenarioNationReplacements.set(slotNationId, replacementNationId);
+    }
+
+    const scenario = this.getCurrentScenario();
+    if (scenario) {
+      const normalized = normalizeScenarioNationReplacements(
+        scenario.nations,
+        Object.fromEntries(this.scenarioNationReplacements),
+      );
+      this.scenarioNationReplacements = new Map(Object.entries(normalized));
+    }
+
+    setScenarioLeaderOverrides(this.getRuntimeScenarioNations());
+    this.renderNationList();
+    this.updateSetupPanel();
+    this.updateStartButton();
+  }
+
   private getEnabledOpponentIds(): string[] {
     return [...this.selectedOpponentIds].filter(id => id !== this.selectedNationId);
   }
@@ -883,6 +1070,7 @@ export class MainMenuScene extends Phaser.Scene {
       mapKey: this.currentMapKey,
       humanNationId: this.selectedNationId,
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
+      scenarioNationReplacements: this.getScenarioNationReplacementConfig(),
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
       worldSeed: generateNewGameSeed(),
@@ -1474,6 +1662,7 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-nation-card {
         display: grid;
         grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
         gap: 9px;
         align-items: center;
         min-width: 0;
@@ -1503,6 +1692,30 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-nation-card.opponent-disabled {
         opacity: 0.5;
         background: rgba(222, 221, 213, 0.7);
+      }
+
+      .mm-nation-card.has-replacement {
+        border-color: rgba(26, 85, 125, 0.62);
+      }
+
+      .mm-replace-btn {
+        grid-column: 4;
+        grid-row: 2;
+        align-self: end;
+        padding: 6px 8px;
+        color: #6d4215;
+        background: rgba(255, 252, 244, 0.8);
+        border: 1px solid rgba(117, 86, 56, 0.34);
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .mm-replace-btn:hover {
+        background: rgba(255, 247, 225, 0.94);
+        border-color: rgba(176, 101, 24, 0.68);
       }
 
       .mm-nation-dot {
@@ -1561,6 +1774,20 @@ export class MainMenuScene extends Phaser.Scene {
         white-space: nowrap;
       }
 
+      .mm-replacement-summary {
+        color: #1a557d !important;
+        font-size: 12px !important;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-replacement-summary.empty {
+        display: none;
+      }
+
       .mm-card-setup-info {
         display: grid;
         gap: 2px;
@@ -1594,6 +1821,8 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       .mm-card-state {
+        grid-column: 4;
+        grid-row: 1;
         align-self: start;
         padding: 4px 6px;
         border-radius: 8px;
@@ -1666,8 +1895,76 @@ export class MainMenuScene extends Phaser.Scene {
         font-size: 15px;
       }
 
+      .mm-selected-copy .mm-replacement-summary {
+        grid-column: 1 / -1;
+      }
+
       .mm-field-label {
         margin: 16px 0 7px;
+      }
+
+      .mm-scenario-nations-section {
+        padding-bottom: 14px;
+        border-bottom: 1px solid rgba(117, 86, 56, 0.2);
+      }
+
+      .mm-scenario-nations-list {
+        display: grid;
+        gap: 7px;
+        max-height: 176px;
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .mm-scenario-nation-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        align-items: center;
+        gap: 3px 8px;
+        padding: 7px 8px;
+        border: 1px solid rgba(117, 86, 56, 0.22);
+        border-radius: 8px;
+        background: rgba(255, 252, 243, 0.56);
+      }
+
+      .mm-scenario-nation-row.has-replacement {
+        border-color: rgba(26, 85, 125, 0.5);
+        background: rgba(238, 247, 250, 0.74);
+      }
+
+      .mm-scenario-nation-name {
+        min-width: 0;
+        color: #2b2017;
+        font-size: 14px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-scenario-nation-row .mm-replacement-summary {
+        grid-column: 2;
+        font-size: 11px !important;
+      }
+
+      .mm-scenario-replace-btn {
+        grid-column: 3;
+        grid-row: 1 / span 2;
+        padding: 6px 8px;
+        color: #6d4215;
+        background: rgba(255, 252, 244, 0.82);
+        border: 1px solid rgba(117, 86, 56, 0.34);
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .mm-scenario-replace-btn:hover {
+        background: rgba(255, 247, 225, 0.94);
+        border-color: rgba(176, 101, 24, 0.68);
       }
 
       .mm-select {
@@ -1885,6 +2182,101 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-start-btn:disabled {
         opacity: 0.46;
         cursor: not-allowed;
+      }
+
+      .mm-replacement-dialog-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(22, 15, 10, 0.58);
+      }
+
+      .mm-replacement-dialog {
+        width: min(540px, calc(100vw - 48px));
+        max-height: min(680px, calc(100vh - 48px));
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 14px;
+        padding: 20px;
+        background: rgba(248, 245, 235, 0.98);
+        border: 1px solid rgba(118, 84, 49, 0.42);
+        border-radius: 8px;
+        box-shadow: 0 24px 60px rgba(20, 13, 8, 0.34);
+      }
+
+      .mm-replacement-dialog h2 {
+        margin: 0;
+        color: #1f160f;
+        font-size: 26px;
+        line-height: 1.1;
+      }
+
+      .mm-replacement-close {
+        align-self: start;
+        padding: 7px 10px;
+        color: #6d4215;
+        background: transparent;
+        border: 1px solid rgba(117, 86, 56, 0.36);
+        border-radius: 8px;
+        font-family: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .mm-replacement-list {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 8px;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .mm-replacement-option {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        min-height: 58px;
+        padding: 10px 12px;
+        text-align: left;
+        color: #261a10;
+        background: rgba(255, 252, 244, 0.88);
+        border: 1px solid rgba(117, 86, 56, 0.34);
+        border-radius: 8px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      .mm-replacement-option:hover,
+      .mm-replacement-option.active {
+        border-color: rgba(176, 101, 24, 0.72);
+        background: rgba(255, 247, 225, 0.96);
+      }
+
+      .mm-replacement-option-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .mm-replacement-option-copy strong,
+      .mm-replacement-option-copy span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .mm-replacement-option-copy strong {
+        font-size: 17px;
+      }
+
+      .mm-replacement-option-copy span {
+        color: rgba(36, 26, 18, 0.7);
+        font-size: 13px;
       }
 
       @media (max-width: 1180px) {

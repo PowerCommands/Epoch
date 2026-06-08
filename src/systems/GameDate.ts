@@ -90,9 +90,9 @@ export function computeGameDate(
   return { ...astroToParts(astro), monthIndex, monthName: MONTH_NAMES[monthIndex] };
 }
 
-/** Format a GameDate as "January 4000 BC" / "February 1939 AD". */
+/** Format a GameDate as "January 4000 BC" / "February 1939". */
 export function formatGameDate(date: GameDate): string {
-  return `${date.monthName} ${date.year} ${date.isBC ? 'BC' : 'AD'}`;
+  return `${date.monthName} ${date.year}${date.isBC ? ' BC' : ''}`;
 }
 
 /** Convenience: resolve raw meta then compute the date in one step. */

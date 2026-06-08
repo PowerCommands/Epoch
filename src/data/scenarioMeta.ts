@@ -47,9 +47,9 @@ export function resolveScenarioMeta(meta: ScenarioMeta | undefined): ResolvedSce
   };
 }
 
-/** Format a resolved start year as "4000 BC" or "1939 AD". */
+/** Format a resolved start year as "4000 BC" or "1939". */
 export function formatScenarioStartYear(meta: ResolvedScenarioMeta): string {
-  return `${meta.startYear} ${meta.startYearIsBC ? 'BC' : 'AD'}`;
+  return `${meta.startYear}${meta.startYearIsBC ? ' BC' : ''}`;
 }
 
 /** Human-readable description of the time progression setup. */

@@ -22,6 +22,12 @@ export interface GameConfig {
   mapKey: string;
   humanNationId: string;
   activeNationIds: string[];
+  /**
+   * Transient setup-only identity swaps keyed by scenario slot nation id.
+   * The slot id remains the runtime id so cities, units, diplomacy, and saves
+   * keep their scenario references; only the nation/leader identity changes.
+   */
+  scenarioNationReplacements?: Record<string, string>;
   resourceAbundance: ResourceAbundance;
   gameSpeedId: GameSpeedId;
   autofocusOnEndTurn?: boolean;
