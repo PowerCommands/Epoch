@@ -9,6 +9,7 @@ import type { MapLensMode } from '../../types/mapLens';
 import { RafScheduler } from '../../utils/RafScheduler';
 import type { UnitActionToolbox } from '../UnitActionToolbox';
 import { CultureHudPanel } from './CultureHudPanel';
+import { DependencyTreeDialog } from './DependencyTreeDialog';
 import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import { IdleCitiesHudIndicator } from './IdleCitiesHudIndicator';
@@ -50,6 +51,7 @@ export class HudLayer {
   private readonly topResourceBar: TopResourceBar;
   private readonly researchPanel: ResearchHudPanel;
   private readonly culturePanel: CultureHudPanel;
+  private readonly dependencyTreeDialog: DependencyTreeDialog;
   private readonly policyDialog: PolicyDialog;
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
   private readonly proposalDialog: ProposalDialog;
@@ -94,6 +96,11 @@ export class HudLayer {
 
     this.researchPanel = new ResearchHudPanel(scene, (object) => this.addOwned(object), this.config.worldInputGate);
     this.researchPanel.setOnSelectTechnology((technologyId) => this.config.onSelectResearch(technologyId));
+    this.researchPanel.setOnOpenTree(() => {
+      const nationId = this.config.humanNationId;
+      if (!nationId) return;
+      this.dependencyTreeDialog.open(this.config.dataProvider.getTechnologyTreeState(nationId));
+    });
     this.researchPanel.setOnToggle((collapsed) => {
       if (!collapsed) {
         this.culturePanel.setCollapsed(true);
@@ -109,6 +116,11 @@ export class HudLayer {
       }
     });
     this.culturePanel.setOnOpenPolicies(() => this.policyDialog.open());
+    this.culturePanel.setOnOpenTree(() => {
+      const nationId = this.config.humanNationId;
+      if (!nationId) return;
+      this.dependencyTreeDialog.open(this.config.dataProvider.getCultureTreeState(nationId));
+    });
 
     this.policyDialog = new PolicyDialog(
       scene,
@@ -118,6 +130,12 @@ export class HudLayer {
       () => this.config.humanNationId,
     );
     this.policyDialog.setOnPoliciesChanged((nationId) => this.config.onPoliciesChanged(nationId));
+
+    this.dependencyTreeDialog = new DependencyTreeDialog(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+    );
 
     this.unitActionHudToolbox = new UnitActionHudToolbox(
       scene,
@@ -261,7 +279,10 @@ export class HudLayer {
   }
 
   hasOpenSelectionPanel(): boolean {
-    return this.researchPanel.isOpen() || this.culturePanel.isOpen() || this.policyDialog.isShowing();
+    return this.researchPanel.isOpen()
+      || this.culturePanel.isOpen()
+      || this.policyDialog.isShowing()
+      || this.dependencyTreeDialog.isShowing();
   }
 
   /**
@@ -313,6 +334,7 @@ export class HudLayer {
     this.topResourceBar.destroy();
     this.researchPanel.destroy();
     this.culturePanel.destroy();
+    this.dependencyTreeDialog.destroy();
     this.policyDialog.destroy();
     this.unitActionHudToolbox.destroy();
     this.proposalDialog.destroy();

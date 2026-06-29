@@ -6,10 +6,11 @@ import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
-import { getCultureNodeById } from '../../data/cultureTree';
+import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getNaturalResourceById } from '../../data/naturalResources';
-import { getCultureSpriteKey, getCultureSpritePath } from '../../utils/assetPaths';
+import { ALL_TECHNOLOGIES } from '../../data/technologies';
+import { getCultureSpriteKey, getCultureSpritePath, getTechnologySpriteKey } from '../../utils/assetPaths';
 import {
   buildHappinessTooltip,
   formatHappinessStateLabel,
@@ -80,6 +81,23 @@ export interface HudCultureState {
   culturePerTurn: number;
   tooltip: string;
   eras: HudCultureEraState[];
+}
+
+export type HudTreeNodeStatus = 'completed' | 'available' | 'active' | 'locked';
+
+export interface HudDependencyTreeNode {
+  id: string;
+  name: string;
+  description: string;
+  imageKey: string;
+  prerequisites: string[];
+  status: HudTreeNodeStatus;
+}
+
+export interface HudDependencyTreeState {
+  title: string;
+  accentColor: number;
+  nodes: HudDependencyTreeNode[];
 }
 
 /**
@@ -221,6 +239,37 @@ export class NationHudDataProvider {
     };
   }
 
+  getTechnologyTreeState(nationId: string): HudDependencyTreeState {
+    const reachedIds = new Set<string>();
+    for (const technology of ALL_TECHNOLOGIES) {
+      const isCompleted = this.researchSystem.isResearched(nationId, technology.id);
+      const isActive = this.researchSystem.getCurrentResearch(nationId)?.id === technology.id;
+      const isAvailable = this.researchSystem.canStartResearch(nationId, technology.id);
+      if (isCompleted || isActive || isAvailable) reachedIds.add(technology.id);
+    }
+
+    return {
+      title: 'Technology Tree',
+      accentColor: 0x68a9d5,
+      nodes: ALL_TECHNOLOGIES
+        .filter((technology) => shouldRevealTreeNode(technology.prerequisites, reachedIds))
+        .map((technology) => ({
+          id: technology.id,
+          name: technology.name,
+          description: technology.description,
+          imageKey: getTechnologySpriteKey(technology.id),
+          prerequisites: technology.prerequisites,
+          status: this.researchSystem.isResearched(nationId, technology.id)
+            ? 'completed'
+            : this.researchSystem.getCurrentResearch(nationId)?.id === technology.id
+              ? 'active'
+              : this.researchSystem.canStartResearch(nationId, technology.id)
+                ? 'available'
+                : 'locked',
+        })),
+    };
+  }
+
   getCultureState(nationId: string): HudCultureState {
     const current = this.cultureSystem.getCurrentCultureNode(nationId);
     const viewState = this.cultureSystem.getCultureViewState(nationId)
@@ -268,6 +317,42 @@ export class NationHudDataProvider {
       eras: Array.from(eras.values()),
     };
   }
+
+  getCultureTreeState(nationId: string): HudDependencyTreeState {
+    const viewState = this.cultureSystem.getCultureViewState(nationId);
+    const reachedIds = new Set<string>();
+    for (const entry of viewState) {
+      if (entry.isUnlocked || entry.isActive || entry.isAvailable) reachedIds.add(entry.node.id);
+    }
+
+    return {
+      title: 'Culture Tree',
+      accentColor: 0xb39cff,
+      nodes: CULTURE_TREE
+        .filter((node) => shouldRevealTreeNode(node.prerequisites ?? [], reachedIds))
+        .map((node) => {
+          const entry = viewState.find((candidate) => candidate.node.id === node.id);
+          return {
+            id: node.id,
+            name: node.name,
+            description: node.description,
+            imageKey: getCultureSpriteKey(node.id),
+            prerequisites: node.prerequisites ?? [],
+            status: entry?.isUnlocked
+              ? 'completed'
+              : entry?.isActive
+                ? 'active'
+                : entry?.isAvailable
+                  ? 'available'
+                  : 'locked',
+          };
+        }),
+    };
+  }
+}
+
+function shouldRevealTreeNode(prerequisites: readonly string[], reachedIds: ReadonlySet<string>): boolean {
+  return prerequisites.length === 0 || prerequisites.some((id) => reachedIds.has(id));
 }
 
 function formatEraName(era: string): string {

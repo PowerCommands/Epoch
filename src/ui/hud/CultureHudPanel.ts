@@ -62,6 +62,8 @@ export class CultureHudPanel {
   private readonly contentMask: Phaser.Display.Masks.GeometryMask;
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly titleText: Phaser.GameObjects.Text;
+  private readonly treeButtonBackground: Phaser.GameObjects.Rectangle;
+  private readonly treeButtonIcon: Phaser.GameObjects.Text;
   private readonly currentText: Phaser.GameObjects.Text;
   private readonly progressText: Phaser.GameObjects.Text;
   private readonly cultureText: Phaser.GameObjects.Text;
@@ -80,6 +82,8 @@ export class CultureHudPanel {
   private readonly policiesButtonText: Phaser.GameObjects.Text;
   private policiesButtonHovered = false;
   private policiesButtonPressed = false;
+  private treeButtonHovered = false;
+  private treeButtonPressed = false;
   private collapsed = true;
   private draggingScrollbar = false;
   private dragPointerId: number | null = null;
@@ -92,6 +96,7 @@ export class CultureHudPanel {
   private onSelectCultureNode: ((nodeId: string) => boolean) | null = null;
   private onToggle: ((collapsed: boolean) => void) | null = null;
   private onOpenPolicies: (() => void) | null = null;
+  private onOpenTree: (() => void) | null = null;
   private state: HudCultureState = {
     currentName: 'None selected',
     progress: 0,
@@ -157,6 +162,25 @@ export class CultureHudPanel {
     this.progressText = this.createMaskedText('', 17, '#c7d6e5');
     this.cultureText = this.createMaskedText('', 17, '#8fd0ff');
 
+    this.treeButtonBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 34, 32, 0x182434, 1))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 3)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, 0xb39cff, 0.65)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.treeButtonIcon = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '⌬', {
+      fontFamily: 'sans-serif',
+      fontSize: '18px',
+      color: '#f0ebff',
+      fontStyle: 'bold',
+    }))
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH + 4)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setVisible(false);
+
     this.policiesButtonBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 110, 32, 0x182434, 1))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 3)
@@ -184,6 +208,54 @@ export class CultureHudPanel {
       event.stopPropagation();
       this.policiesButtonHovered = true;
       this.refreshPoliciesButtonVisual();
+    });
+
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_OVER, (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.treeButtonHovered = true;
+      this.refreshTreeButtonVisual();
+    });
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_OUT, (
+      _pointer: Phaser.Input.Pointer,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.treeButtonHovered = false;
+      this.treeButtonPressed = false;
+      this.refreshTreeButtonVisual();
+    });
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      this.treeButtonPressed = true;
+      consumePointerEvent(pointer);
+      this.refreshTreeButtonVisual();
+    });
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_UP, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      const shouldOpen = this.treeButtonPressed;
+      this.treeButtonPressed = false;
+      this.worldInputGate.releasePointer(pointer.id);
+      this.refreshTreeButtonVisual();
+      if (shouldOpen) this.onOpenTree?.();
     });
     this.policiesButtonBackground.on(Phaser.Input.Events.POINTER_OUT, (
       _pointer: Phaser.Input.Pointer,
@@ -328,6 +400,10 @@ export class CultureHudPanel {
     this.onOpenPolicies = handler;
   }
 
+  setOnOpenTree(handler: () => void): void {
+    this.onOpenTree = handler;
+  }
+
   setCollapsed(collapsed: boolean): void {
     if (this.collapsed === collapsed) return;
     this.collapsed = collapsed;
@@ -367,9 +443,21 @@ export class CultureHudPanel {
 
     this.titleText.setVisible(panelVisible).setPosition(Math.round(innerX), Math.round(baseY + contentCursor));
 
+    const treeButtonWidth = 34;
+    const treeButtonHeight = 32;
+    const treeButtonX = panelX + PANEL_WIDTH - PANEL_INNER_PADDING - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP - treeButtonWidth;
+    const treeButtonY = panelY + 12;
+    this.treeButtonBackground
+      .setVisible(panelVisible)
+      .setPosition(Math.round(treeButtonX), Math.round(treeButtonY))
+      .setDisplaySize(treeButtonWidth, treeButtonHeight);
+    this.treeButtonIcon
+      .setVisible(panelVisible)
+      .setPosition(Math.round(treeButtonX + treeButtonWidth / 2), Math.round(treeButtonY + treeButtonHeight / 2));
+
     const policiesButtonWidth = 110;
     const policiesButtonHeight = 32;
-    const policiesButtonX = panelX + PANEL_WIDTH - PANEL_INNER_PADDING - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP - policiesButtonWidth;
+    const policiesButtonX = treeButtonX - 10 - policiesButtonWidth;
     const policiesButtonY = panelY + 12;
     this.policiesButtonBackground
       .setVisible(panelVisible)
@@ -456,6 +544,8 @@ export class CultureHudPanel {
     this.currentText.destroy();
     this.progressText.destroy();
     this.cultureText.destroy();
+    this.treeButtonBackground.destroy();
+    this.treeButtonIcon.destroy();
     this.policiesButtonBackground.destroy();
     this.policiesButtonText.destroy();
     this.destroyCultureButtons();
@@ -472,6 +562,18 @@ export class CultureHudPanel {
       return;
     }
     this.policiesButtonBackground.setFillStyle(0x182434, 1);
+  }
+
+  private refreshTreeButtonVisual(): void {
+    if (this.treeButtonPressed) {
+      this.treeButtonBackground.setFillStyle(0x302646, 1);
+      return;
+    }
+    if (this.treeButtonHovered) {
+      this.treeButtonBackground.setFillStyle(0x2a2141, 1);
+      return;
+    }
+    this.treeButtonBackground.setFillStyle(0x182434, 1);
   }
 
   private createMaskedText(

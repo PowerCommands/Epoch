@@ -58,6 +58,8 @@ export class ResearchHudPanel {
   private readonly contentMask: Phaser.Display.Masks.GeometryMask;
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly titleText: Phaser.GameObjects.Text;
+  private readonly treeButtonBackground: Phaser.GameObjects.Rectangle;
+  private readonly treeButtonIcon: Phaser.GameObjects.Text;
   private readonly currentText: Phaser.GameObjects.Text;
   private readonly progressText: Phaser.GameObjects.Text;
   private readonly scienceText: Phaser.GameObjects.Text;
@@ -95,6 +97,9 @@ export class ResearchHudPanel {
   };
   private onSelectTechnology: ((techId: string) => boolean) | null = null;
   private onToggle: ((collapsed: boolean) => void) | null = null;
+  private onOpenTree: (() => void) | null = null;
+  private treeButtonHovered = false;
+  private treeButtonPressed = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -145,12 +150,78 @@ export class ResearchHudPanel {
     this.contentMask = this.contentMaskGraphics.createGeometryMask();
 
     this.titleText = this.createMaskedText('Research', 24, '#f2f7fb', 'bold');
+    this.treeButtonBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 34, 32, 0x182434, 1))
+      .setOrigin(0, 0)
+      .setDepth(DEPTH + 3)
+      .setScrollFactor(0)
+      .setStrokeStyle(1, 0x6fb2d4, 0.65)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.treeButtonIcon = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '⌬', {
+      fontFamily: 'sans-serif',
+      fontSize: '18px',
+      color: '#dff5ff',
+      fontStyle: 'bold',
+    }))
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH + 4)
+      .setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION)
+      .setVisible(false);
     this.currentText = this.createMaskedText('', 18, '#f2f7fb', 'normal', PANEL_CONTENT_WIDTH);
     this.progressText = this.createMaskedText('', 17, '#c7d6e5');
     this.scienceText = this.createMaskedText('', 17, '#8fd0ff');
     this.availableHeading = this.createMaskedText('Available', 16, '#88a6bd', 'bold');
     this.researchedHeading = this.createMaskedText('Researched', 16, '#88a6bd', 'bold');
     this.researchedText = this.createMaskedText('', 16, '#d5dde5', 'normal', PANEL_CONTENT_WIDTH);
+
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_OVER, (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.treeButtonHovered = true;
+      this.refreshTreeButtonVisual();
+    });
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_OUT, (
+      _pointer: Phaser.Input.Pointer,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.treeButtonHovered = false;
+      this.treeButtonPressed = false;
+      this.refreshTreeButtonVisual();
+    });
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      this.treeButtonPressed = true;
+      consumePointerEvent(pointer);
+      this.refreshTreeButtonVisual();
+    });
+    this.treeButtonBackground.on(Phaser.Input.Events.POINTER_UP, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      const shouldOpen = this.treeButtonPressed;
+      this.treeButtonPressed = false;
+      this.worldInputGate.releasePointer(pointer.id);
+      this.refreshTreeButtonVisual();
+      if (shouldOpen) this.onOpenTree?.();
+    });
 
     this.blocker.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
@@ -249,6 +320,10 @@ export class ResearchHudPanel {
     this.onToggle = handler;
   }
 
+  setOnOpenTree(handler: () => void): void {
+    this.onOpenTree = handler;
+  }
+
   setCollapsed(collapsed: boolean): void {
     if (this.collapsed === collapsed) return;
     this.collapsed = collapsed;
@@ -288,6 +363,15 @@ export class ResearchHudPanel {
     let contentCursor = 0;
 
     this.titleText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
+    const treeButtonX = panelX + PANEL_WIDTH - PANEL_INNER_PADDING - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP - 34;
+    const treeButtonY = panelY + 12;
+    this.treeButtonBackground
+      .setVisible(panelVisible)
+      .setPosition(Math.round(treeButtonX), Math.round(treeButtonY))
+      .setDisplaySize(34, 32);
+    this.treeButtonIcon
+      .setVisible(panelVisible)
+      .setPosition(Math.round(treeButtonX + 17), Math.round(treeButtonY + 16));
     contentCursor += LINE_HEIGHT + 5;
 
     this.currentText.setVisible(panelVisible).setPosition(Math.round(contentX), Math.round(baseY + contentCursor));
@@ -361,6 +445,8 @@ export class ResearchHudPanel {
     this.scrollbarThumb.destroy();
     this.contentMaskGraphics.destroy();
     this.titleText.destroy();
+    this.treeButtonBackground.destroy();
+    this.treeButtonIcon.destroy();
     this.currentText.destroy();
     this.progressText.destroy();
     this.scienceText.destroy();
@@ -633,6 +719,18 @@ export class ResearchHudPanel {
 
   private refreshToggleState(): void {
     this.toggleButton.setActive(!this.collapsed);
+  }
+
+  private refreshTreeButtonVisual(): void {
+    if (this.treeButtonPressed) {
+      this.treeButtonBackground.setFillStyle(0x24364a, 1);
+      return;
+    }
+    if (this.treeButtonHovered) {
+      this.treeButtonBackground.setFillStyle(0x203247, 1);
+      return;
+    }
+    this.treeButtonBackground.setFillStyle(0x182434, 1);
   }
 
   private refreshTechButtonVisual(button: TechButtonView): void {
