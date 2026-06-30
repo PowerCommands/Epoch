@@ -13,6 +13,7 @@ import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem'
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
 import type { LeaderEvacuationState } from '../entities/Nation';
+import type { WorldCouncilState } from './worldCouncil';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -276,6 +277,8 @@ export interface SavedGameState {
   /** One-time symbolic-gift milestones. Optional so pre-feature saves still load. */
   symbolicGifts?: SavedSymbolicGifts;
   wonders: SavedWonder[];
+  /** Global World Council institution. Optional so older saves load with none. */
+  worldCouncil?: WorldCouncilState;
   /** Alliance Core v1. Optional so older saves load with no alliances. */
   alliances?: Alliance[];
   corporations?: SavedCorporation[];
@@ -301,6 +304,7 @@ export interface SavedVictoryConditions {
   domination: boolean;
   science: boolean;
   cultural: boolean;
+  diplomatic?: boolean;
 }
 
 /** One attacker→victim covert offense tally for repeated-offender escalation. */

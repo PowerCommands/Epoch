@@ -5,9 +5,10 @@ import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { TurnManager } from './TurnManager';
 import type { WonderSystem } from './WonderSystem';
+import type { WorldCouncilSystem } from './WorldCouncilSystem';
 import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from './CulturalVictory';
 
-export type VictoryType = 'domination' | 'science' | 'cultural';
+export type VictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
 
 type VictoryListener = (nationId: string, type: VictoryType) => void;
 type VictoryLogger = (nationId: string, message: string) => void;
@@ -25,6 +26,7 @@ interface VictoryConditionsConfig {
   domination?: ToggleableVictorySettings;
   science?: Partial<ScienceVictorySettings>;
   cultural?: ToggleableVictorySettings;
+  diplomatic?: ToggleableVictorySettings;
 }
 
 /** Which victory types are currently active. Persisted in the save state. */
@@ -32,6 +34,7 @@ export interface EnabledVictoryConditions {
   domination: boolean;
   science: boolean;
   cultural: boolean;
+  diplomatic: boolean;
 }
 
 /** Structured outcome once a nation has won. Exposed for diagnostics/autorun. */
@@ -61,10 +64,17 @@ export interface CulturalVictoryProgress {
   requiredWonders: number;
 }
 
+export interface DiplomaticVictoryProgress {
+  nationId: string;
+  diplomacyScore: number;
+  requiredDiplomacyScore: number;
+}
+
 const AEROSPACE_PARTS_ID = 'aerospace_parts';
 const AEROSPACE_CORP_ID = 'aerospace_industries';
 const SCIENCE_PROGRESS_INTERVAL = 25;
 const CULTURAL_PROGRESS_INTERVAL = 25;
+export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = 100000;
 
 /**
  * VictorySystem checks for win conditions after each turn end.
@@ -72,6 +82,7 @@ const CULTURAL_PROGRESS_INTERVAL = 25;
  * Science: one nation produces enough aerospace_parts.
  * Cultural: one nation owns at least 75% of all World Wonders (ownership is
  * derived from current city ownership, so conquest transfers it).
+ * Diplomatic: one nation reaches the Diplomatic Score threshold.
  */
 export class VictorySystem {
   private readonly listeners: VictoryListener[] = [];
@@ -80,6 +91,7 @@ export class VictorySystem {
   private readonly science: ScienceVictorySettings;
   private readonly dominationEnabled: boolean;
   private readonly culturalEnabled: boolean;
+  private readonly diplomaticEnabled: boolean;
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
   private lastCulturalProgressRound = -CULTURAL_PROGRESS_INTERVAL;
 
@@ -93,6 +105,7 @@ export class VictorySystem {
     private readonly researchSystem?: ResearchSystem,
     private readonly corporationSystem?: CorporationSystem,
     private readonly wonderSystem?: WonderSystem,
+    private readonly worldCouncilSystem?: WorldCouncilSystem,
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
@@ -100,6 +113,7 @@ export class VictorySystem {
     };
     this.dominationEnabled = conditions.domination?.enabled ?? true;
     this.culturalEnabled = conditions.cultural?.enabled ?? true;
+    this.diplomaticEnabled = conditions.diplomatic?.enabled ?? true;
 
     turnManager.on('turnEnd', (e) => {
       if (this.won) return;
@@ -119,6 +133,15 @@ export class VictorySystem {
         this.logCulturalVictory(culturalWinner, e.round);
         this.logVictory(culturalWinner, 'cultural', e.round);
         for (const cb of this.listeners) cb(culturalWinner, 'cultural');
+        return;
+      }
+
+      const diplomaticWinner = this.diplomaticEnabled ? this.checkDiplomaticVictory() : null;
+      if (diplomaticWinner) {
+        this.recordVictory(diplomaticWinner, 'diplomatic', e.round);
+        this.logDiplomaticVictory(diplomaticWinner, e.round);
+        this.logVictory(diplomaticWinner, 'diplomatic', e.round);
+        for (const cb of this.listeners) cb(diplomaticWinner, 'diplomatic');
         return;
       }
 
@@ -156,6 +179,7 @@ export class VictorySystem {
       domination: this.dominationEnabled,
       science: this.science.enabled,
       cultural: this.culturalEnabled,
+      diplomatic: this.diplomaticEnabled,
     };
   }
 
@@ -255,6 +279,23 @@ export class VictorySystem {
       .sort((a, b) => b.ownedWonders - a.ownedWonders);
   }
 
+  getDiplomaticVictoryProgress(nationId: string): DiplomaticVictoryProgress {
+    return {
+      nationId,
+      diplomacyScore: this.getDiplomacyScore(nationId),
+      requiredDiplomacyScore: DIPLOMATIC_VICTORY_SCORE_THRESHOLD,
+    };
+  }
+
+  getDiplomaticVictoryRanking(): DiplomaticVictoryProgress[] {
+    return this.nationManager.getAllNations()
+      .map((nation) => this.getDiplomaticVictoryProgress(nation.id))
+      .sort((a, b) =>
+        b.diplomacyScore - a.diplomacyScore
+        || a.nationId.localeCompare(b.nationId),
+      );
+  }
+
   private checkCulturalVictory(): string | null {
     if (!this.wonderSystem) return null;
     const required = getRequiredCulturalVictoryWonderCount();
@@ -277,6 +318,15 @@ export class VictorySystem {
 
     const owners = new Set(capitals.map((c) => c.ownerId));
     if (owners.size === 1) return capitals[0].ownerId;
+    return null;
+  }
+
+  private checkDiplomaticVictory(): string | null {
+    for (const nation of this.nationManager.getAllNations()) {
+      if (this.getDiplomacyScore(nation.id) >= DIPLOMATIC_VICTORY_SCORE_THRESHOLD) {
+        return nation.id;
+      }
+    }
     return null;
   }
 
@@ -338,6 +388,20 @@ export class VictorySystem {
       lines.push(`- ${name}: ${p.ownedWonders}/${required} World Wonders`);
     }
     this.log(ranking[0].nationId, lines.join('\n'));
+  }
+
+  private logDiplomaticVictory(nationId: string, round: number): void {
+    if (!this.log) return;
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const score = this.getDiplomacyScore(nationId);
+    this.log(nationId, `[r${round}] ${name} achieved Diplomatic Victory with ${score.toLocaleString()} Diplomatic Score.`);
+  }
+
+  private getDiplomacyScore(nationId: string): number {
+    return this.worldCouncilSystem
+      ?.getMembers()
+      .find((member) => member.nationId === nationId)
+      ?.diplomacyScore ?? 0;
   }
 
   onVictory(callback: VictoryListener): void {

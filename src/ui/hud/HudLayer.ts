@@ -20,6 +20,10 @@ import { ProposalDialog, type ProposalDialogContext } from './ProposalDialog';
 import { ResearchHudPanel } from './ResearchHudPanel';
 import { TopResourceBar } from './TopResourceBar';
 import { UnitActionHudToolbox } from './UnitActionHudToolbox';
+import { WorldCouncilContributionDialog, type WorldCouncilContributionDialogState } from './WorldCouncilContributionDialog';
+import { WorldCouncilFoundationDialog, type WorldCouncilFoundationDialogState, type WorldCouncilFoundationOffer } from './WorldCouncilFoundationDialog';
+import { WorldCouncilOverviewDialog, type WorldCouncilOverviewState } from './WorldCouncilOverviewDialog';
+import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 
 interface HudLayerConfig {
   humanNationId: string | undefined;
@@ -38,6 +42,13 @@ interface HudLayerConfig {
   onRejectProposal: (proposalId: string) => void;
   onDiscoveryClosed: () => void;
   onToggleMapLens: () => void;
+  getWorldCouncilFoundationState?: () => WorldCouncilFoundationDialogState | null;
+  getWorldCouncilOverviewState?: () => WorldCouncilOverviewState | null;
+  getWorldCouncilContributionState?: () => WorldCouncilContributionDialogState | null;
+  onFoundWorldCouncil?: (offer: WorldCouncilFoundationOffer) => boolean;
+  onSubmitWorldCouncilContribution?: (offer: WorldCouncilFoundationOffer) => boolean;
+  onLeaveWorldCouncil?: () => boolean;
+  isDiagnosticsEnabled?: () => boolean;
 }
 
 export class HudLayer {
@@ -57,6 +68,12 @@ export class HudLayer {
   private readonly proposalDialog: ProposalDialog;
   private readonly discoveryPopup: DiscoveryPopup;
   private readonly mapLensToggle: MapLensToggleHud;
+  private readonly worldCouncilDialog: WorldCouncilFoundationDialog;
+  private readonly worldCouncilContributionDialog: WorldCouncilContributionDialog;
+  private readonly worldCouncilOverviewDialog: WorldCouncilOverviewDialog;
+  private readonly worldCouncilButton: Phaser.GameObjects.Rectangle;
+  private readonly worldCouncilButtonText: Phaser.GameObjects.Text;
+  private readonly worldCouncilButtonHitArea: Phaser.GameObjects.Zone;
   private mapLensBottomReserved = 0;
   private readonly proposalQueue: DiplomaticProposal[] = [];
   private readonly discoveryQueue: DiscoveryPopupData[] = [];
@@ -99,7 +116,10 @@ export class HudLayer {
     this.researchPanel.setOnOpenTree(() => {
       const nationId = this.config.humanNationId;
       if (!nationId) return;
-      this.dependencyTreeDialog.open(this.config.dataProvider.getTechnologyTreeState(nationId));
+      this.dependencyTreeDialog.open(this.config.dataProvider.getTechnologyTreeState(
+        nationId,
+        this.config.isDiagnosticsEnabled?.() === true,
+      ));
     });
     this.researchPanel.setOnToggle((collapsed) => {
       if (!collapsed) {
@@ -167,6 +187,98 @@ export class HudLayer {
       this.config.worldInputGate,
     );
     this.mapLensToggle.setOnToggle(() => this.config.onToggleMapLens());
+
+    this.worldCouncilDialog = new WorldCouncilFoundationDialog(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+    );
+    this.worldCouncilDialog.setOnFound((offer) => {
+      const founded = this.config.onFoundWorldCouncil?.(offer) ?? false;
+      if (founded) {
+        this.worldCouncilDialog.hide();
+        this.showNextQueuedModal();
+      }
+      this.refresh();
+    });
+    this.worldCouncilDialog.setOnDecline(() => {
+      const founded = this.config.onFoundWorldCouncil?.({ gold: 0, sciencePercent: 0, culturePercent: 0 }) ?? false;
+      if (founded) {
+        this.worldCouncilDialog.hide();
+        this.showNextQueuedModal();
+      }
+      this.refresh();
+    });
+    this.worldCouncilContributionDialog = new WorldCouncilContributionDialog(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+    );
+    this.worldCouncilContributionDialog.setOnConfirm((offer) => {
+      const submitted = this.config.onSubmitWorldCouncilContribution?.(offer) ?? false;
+      if (submitted) {
+        this.worldCouncilContributionDialog.hide();
+        this.showNextQueuedModal();
+      }
+      this.refresh();
+    });
+    this.worldCouncilOverviewDialog = new WorldCouncilOverviewDialog(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+    );
+    this.worldCouncilOverviewDialog.setOnClose(() => {
+      this.worldCouncilOverviewDialog.hide();
+      this.showNextQueuedModal();
+    });
+    this.worldCouncilOverviewDialog.setOnLeave(() => {
+      const left = this.config.onLeaveWorldCouncil?.() ?? false;
+      if (left) {
+        const state = this.config.getWorldCouncilOverviewState?.() ?? null;
+        if (state) this.worldCouncilOverviewDialog.show(state);
+        else {
+          this.worldCouncilOverviewDialog.hide();
+          this.showNextQueuedModal();
+        }
+      }
+      this.refresh();
+    });
+    this.worldCouncilButton = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 32, 0x192538, 0.92))
+      .setOrigin(0, 0)
+      .setDepth(141)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.worldCouncilButtonText = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '📜 Found World Council', {
+      fontFamily: 'sans-serif',
+      fontSize: '15px',
+      color: '#f4f1e7',
+      fontStyle: 'bold',
+    }))
+      .setOrigin(0.5, 0.5)
+      .setDepth(142)
+      .setScrollFactor(0)
+      .setResolution(2)
+      .setVisible(false);
+    this.worldCouncilButtonHitArea = this.addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, 10, 32))
+      .setOrigin(0, 0)
+      .setDepth(143)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.worldCouncilButtonHitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      this.config.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+    });
+    this.worldCouncilButtonHitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer) => {
+      this.config.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+      const foundationState = this.config.getWorldCouncilFoundationState?.() ?? null;
+      if (foundationState) {
+        this.worldCouncilDialog.show(foundationState);
+        return;
+      }
+      const overviewState = this.config.getWorldCouncilOverviewState?.() ?? null;
+      if (overviewState) this.worldCouncilOverviewDialog.show(overviewState);
+    });
 
     this.discoveryPopup = new DiscoveryPopup(
       scene,
@@ -275,7 +387,11 @@ export class HudLayer {
   }
 
   hasBlockingModal(): boolean {
-    return this.discoveryPopup.isShowing() || this.proposalDialog.isShowing();
+    return this.discoveryPopup.isShowing()
+      || this.proposalDialog.isShowing()
+      || this.worldCouncilDialog.isShowing()
+      || this.worldCouncilContributionDialog.isShowing()
+      || this.worldCouncilOverviewDialog.isShowing();
   }
 
   hasOpenSelectionPanel(): boolean {
@@ -340,6 +456,12 @@ export class HudLayer {
     this.proposalDialog.destroy();
     this.discoveryPopup.destroy();
     this.mapLensToggle.destroy();
+    this.worldCouncilDialog.destroy();
+    this.worldCouncilContributionDialog.destroy();
+    this.worldCouncilOverviewDialog.destroy();
+    this.worldCouncilButton.destroy();
+    this.worldCouncilButtonText.destroy();
+    this.worldCouncilButtonHitArea.destroy();
     this.proposalQueue.length = 0;
     this.discoveryQueue.length = 0;
     this.config.worldInputGate.clearAll();
@@ -359,6 +481,8 @@ export class HudLayer {
     this.culturePanel.setState(this.config.dataProvider.getCultureState(nationId));
     this.policyDialog.refresh();
     this.unitActionHudToolbox.refresh();
+    this.refreshWorldCouncilButton();
+    this.showPendingWorldCouncilContribution();
     this.endTurnButton.setEnabled(this.endTurnEnabled);
     this.setIdleCityIds(this.config.getIdleCityIds());
     this.layout();
@@ -376,6 +500,10 @@ export class HudLayer {
     this.proposalDialog.layout();
     this.discoveryPopup.layout();
     this.mapLensToggle.layout(height, this.mapLensBottomReserved);
+    this.layoutWorldCouncilButton();
+    this.worldCouncilDialog.layout();
+    this.worldCouncilContributionDialog.layout();
+    this.worldCouncilOverviewDialog.layout();
   }
 
   private showNextQueuedModal(): void {
@@ -387,6 +515,34 @@ export class HudLayer {
     }
     const discovery = this.discoveryQueue.shift();
     if (discovery) this.discoveryPopup.show(discovery);
+  }
+
+  private refreshWorldCouncilButton(): void {
+    const hasFoundation = (this.config.getWorldCouncilFoundationState?.() ?? null) !== null;
+    const hasOverview = (this.config.getWorldCouncilOverviewState?.() ?? null) !== null;
+    const visible = hasFoundation || hasOverview;
+    this.worldCouncilButtonText.setText(hasFoundation ? '📜 Found World Council' : 'World Council');
+    this.worldCouncilButton.setVisible(visible);
+    this.worldCouncilButtonText.setVisible(visible);
+    this.worldCouncilButtonHitArea.setVisible(visible);
+    if (visible) this.worldCouncilButtonHitArea.setInteractive({ cursor: 'pointer' });
+    else this.worldCouncilButtonHitArea.disableInteractive();
+  }
+
+  private showPendingWorldCouncilContribution(): void {
+    if (this.hasBlockingModal()) return;
+    const state = this.config.getWorldCouncilContributionState?.() ?? null;
+    if (state) this.worldCouncilContributionDialog.show(state);
+  }
+
+  private layoutWorldCouncilButton(): void {
+    if (!this.worldCouncilButton.visible) return;
+    const width = Math.ceil(this.worldCouncilButtonText.width) + 28;
+    const x = 16;
+    const y = 58;
+    this.worldCouncilButton.setPosition(x, y).setDisplaySize(width, 32);
+    this.worldCouncilButtonText.setPosition(x + width / 2, y + 16);
+    this.worldCouncilButtonHitArea.setPosition(x, y).setSize(width, 32);
   }
 
   private setIdleCityIds(cityIds: string[]): void {

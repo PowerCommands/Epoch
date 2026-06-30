@@ -4,13 +4,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 
-type VictoryTypeName = 'domination' | 'science' | 'cultural';
-const ALL_VICTORY_TYPES: readonly VictoryTypeName[] = ['domination', 'science', 'cultural'];
+type VictoryTypeName = 'domination' | 'science' | 'cultural' | 'diplomatic';
+const ALL_VICTORY_TYPES: readonly VictoryTypeName[] = ['domination', 'science', 'cultural', 'diplomatic'];
 
 interface VictoryConditionsConfig {
   domination?: { enabled: boolean };
   science?: { enabled: boolean };
   cultural?: { enabled: boolean };
+  diplomatic?: { enabled: boolean };
 }
 
 interface AutorunOptions {
@@ -24,6 +25,7 @@ interface AutorunOptions {
   savePath?: string;
   /** When set (via --victory), only these victory types are enabled for new games. */
   victoryTypes?: VictoryTypeName[];
+  continueAfterVictory: boolean;
 }
 
 interface VictorySummary {
@@ -182,7 +184,8 @@ async function main(): Promise<void> {
   let browserPath = options.browserPath;
   let victory: VictorySummary | null = null;
   const browserMessages: string[] = [];
-  // New games honor --victory; a loaded save keeps the victory rules baked into it.
+    // New games honor --victory. Loaded diagnostic saves also honor it when
+    // supplied, which lets long balance runs continue after unrelated victories.
   const victoryConditions = buildVictoryConditions(options.victoryTypes);
 
   try {
@@ -227,7 +230,10 @@ async function main(): Promise<void> {
     );
 
     const startResult = inputSaveState
-      ? await page.evaluate((state) => window.__epochDiagnostics!.startSavedGame!(state), inputSaveState)
+      ? await page.evaluate(
+        (args) => window.__epochDiagnostics!.startSavedGame!(args.state, { victoryConditions: args.victoryConditions }),
+        { state: inputSaveState, victoryConditions },
+      )
       : await page.evaluate(
         (args) => window.__epochDiagnostics!.startNewGame({
           scenario: args.scenario,
@@ -262,7 +268,10 @@ async function main(): Promise<void> {
     }
 
     const autoplayResult = await withTimeout(
-      page.evaluate((turns) => window.__epochDiagnostics!.startAutoplay(turns), options.turns),
+      page.evaluate(
+        (args) => window.__epochDiagnostics!.startAutoplay(args.turns, { continueAfterVictory: args.continueAfterVictory }),
+        { turns: options.turns, continueAfterVictory: options.continueAfterVictory },
+      ),
       options.timeoutMs,
       `Autorun timed out after ${options.timeoutMs}ms`,
     );
@@ -307,7 +316,7 @@ async function main(): Promise<void> {
     startingYear,
     finalTurn: stateSummary?.currentRound,
     finalYear,
-    victoryConditions: getSavedVictoryConditions(inputSaveState) ?? victoryConditions,
+    victoryConditions: victoryConditions ?? getSavedVictoryConditions(inputSaveState),
     victoryDetected: victory !== null,
     victoryNationId: victory?.nationId,
     victoryNationName: victory?.nationName,
@@ -357,6 +366,7 @@ function parseArgs(args: string[]): AutorunOptions {
     headed: false,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     browserPath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
+    continueAfterVictory: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -382,6 +392,8 @@ function parseArgs(args: string[]): AutorunOptions {
       i++;
     } else if (arg === '--headed') {
       options.headed = true;
+    } else if (arg === '--continue-after-victory') {
+      options.continueAfterVictory = true;
     } else if (arg === '--browser-path' && next) {
       options.browserPath = next;
       i++;
@@ -425,6 +437,7 @@ function buildVictoryConditions(victoryTypes: VictoryTypeName[] | undefined): Vi
     domination: { enabled: victoryTypes.includes('domination') },
     science: { enabled: victoryTypes.includes('science') },
     cultural: { enabled: victoryTypes.includes('cultural') },
+    diplomatic: { enabled: victoryTypes.includes('diplomatic') },
   };
 }
 
@@ -774,6 +787,7 @@ function getSavedVictoryConditions(savedState: unknown): VictoryConditionsConfig
     domination: { enabled: conditions.domination === true },
     science: { enabled: conditions.science === true },
     cultural: { enabled: conditions.cultural === true },
+    diplomatic: { enabled: conditions.diplomatic !== false },
   };
 }
 
@@ -798,7 +812,7 @@ declare global {
         resourceAbundance?: string;
         victoryConditions?: VictoryConditionsConfig;
       }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
-      startSavedGame?: (savedState: unknown) => {
+      startSavedGame?: (savedState: unknown, options?: { victoryConditions?: VictoryConditionsConfig }) => {
         ok: true;
         scenario: string;
         humanNationId: string;
@@ -806,7 +820,7 @@ declare global {
         startingTurn: number;
         startingYear?: number;
       } | { ok: false; error: string };
-      startAutoplay?: (rounds: number) => Promise<{ completedRounds: number; victory: VictorySummary | null }>;
+      startAutoplay?: (rounds: number, options?: { continueAfterVictory?: boolean }) => Promise<{ completedRounds: number; victory: VictorySummary | null }>;
       stopAutoplay?: () => void;
       isAutoplayActive?: () => boolean;
       isAutoplayCompleted?: () => boolean;

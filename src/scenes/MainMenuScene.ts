@@ -43,7 +43,7 @@ interface EpochMainMenuDiagnostics {
     resourceAbundance?: ResourceAbundance;
     victoryConditions?: VictoryConditionsConfig;
   }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[] } | { ok: false; error: string };
-  startSavedGame: (savedState: unknown) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string };
+  startSavedGame: (savedState: unknown, options?: { victoryConditions?: VictoryConditionsConfig }) => { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string };
 }
 
 /**
@@ -63,8 +63,7 @@ export class MainMenuScene extends Phaser.Scene {
   /** "No barbarians" setup toggle — strips all Barbarian Camps from the scenario. */
   private noBarbarians = false;
   private latestAutosave: SavedGameState | null = null;
-  // Diplomatic victory is not implemented; it is shown disabled and excluded here.
-  private enabledVictoryIds = new Set(['domination', 'science', 'cultural']);
+  private enabledVictoryIds = new Set(['domination', 'diplomatic', 'science', 'cultural']);
   private resizeHandler: (() => void) | null = null;
   private keydownHandler: ((event: KeyboardEvent) => void) | null = null;
   private music: SetupMusicManager | null = null;
@@ -197,10 +196,10 @@ export class MainMenuScene extends Phaser.Scene {
             <span class="mm-victory-title">Domination</span>
             <span class="mm-victory-copy">Conquer rival capitals.</span>
           </button>
-          <button class="mm-victory-card disabled" type="button" data-victory="diplomatic" disabled aria-disabled="true" title="Not implemented yet">
+          <button class="mm-victory-card active" type="button" data-victory="diplomatic">
             <span class="mm-victory-check" aria-hidden="true"></span>
             <span class="mm-victory-title">Diplomatic</span>
-            <span class="mm-victory-copy">Not implemented yet.</span>
+            <span class="mm-victory-copy">Earn global influence.</span>
           </button>
           <button class="mm-victory-card active" type="button" data-victory="science">
             <span class="mm-victory-check" aria-hidden="true"></span>
@@ -355,7 +354,7 @@ export class MainMenuScene extends Phaser.Scene {
         })),
       ],
       startNewGame: (options = {}) => this.startDiagnosticGame(options),
-      startSavedGame: (savedState) => this.startDiagnosticSavedGame(savedState),
+      startSavedGame: (savedState, options) => this.startDiagnosticSavedGame(savedState, options),
     };
   }
 
@@ -399,7 +398,9 @@ export class MainMenuScene extends Phaser.Scene {
     return { ok: true, scenario: scenarioKey, humanNationId, activeNationIds: finalActiveNationIds };
   }
 
-  private startDiagnosticSavedGame(savedStateInput: unknown): { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string } {
+  private startDiagnosticSavedGame(savedStateInput: unknown, options: {
+    victoryConditions?: VictoryConditionsConfig;
+  } = {}): { ok: true; scenario: string; humanNationId: string; activeNationIds: string[]; startingTurn: number; startingYear?: number } | { ok: false; error: string } {
     const result = SaveLoadService.validate(savedStateInput);
     if (!result.ok) return { ok: false, error: result.error };
 
@@ -408,15 +409,27 @@ export class MainMenuScene extends Phaser.Scene {
       return { ok: false, error: `Scenario could not be loaded for save: ${savedState.mapKey}` };
     }
 
+    const sceneSavedState = options.victoryConditions
+      ? {
+        ...savedState,
+        victoryConditions: {
+          domination: options.victoryConditions.domination?.enabled ?? false,
+          science: options.victoryConditions.science?.enabled ?? false,
+          cultural: options.victoryConditions.cultural?.enabled ?? false,
+          diplomatic: options.victoryConditions.diplomatic?.enabled ?? false,
+        },
+      }
+      : savedState;
+
     this.cleanup();
     this.scene.start('GameScene', {
-      mapKey: savedState.mapKey,
-      humanNationId: savedState.humanNationId,
-      activeNationIds: savedState.activeNationIds,
+      mapKey: sceneSavedState.mapKey,
+      humanNationId: sceneSavedState.humanNationId,
+      activeNationIds: sceneSavedState.activeNationIds,
       resourceAbundance: 'normal',
-      gameSpeedId: savedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
+      gameSpeedId: sceneSavedState.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
       autofocusOnEndTurn: false,
-      savedState,
+      savedState: sceneSavedState,
     } satisfies GameConfig);
 
     return {
@@ -488,7 +501,6 @@ export class MainMenuScene extends Phaser.Scene {
     document.querySelectorAll<HTMLButtonElement>('[data-victory]').forEach(button => {
       const victoryId = button.dataset.victory;
       if (!victoryId) return;
-      // Diplomatic is shown disabled (not implemented) — no toggle wiring.
       if (button.disabled) return;
 
       button.addEventListener('click', () => {
@@ -1083,14 +1095,14 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   /**
-   * Translate the selected victory checkboxes into the engine config. Diplomatic
-   * is intentionally omitted — it is shown disabled in the UI and not implemented.
+   * Translate the selected victory checkboxes into the engine config.
    */
   private buildVictoryConditions(): VictoryConditionsConfig {
     return {
       domination: { enabled: this.enabledVictoryIds.has('domination') },
       science: { enabled: this.enabledVictoryIds.has('science') },
       cultural: { enabled: this.enabledVictoryIds.has('cultural') },
+      diplomatic: { enabled: this.enabledVictoryIds.has('diplomatic') },
     };
   }
 

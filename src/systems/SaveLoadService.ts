@@ -44,6 +44,7 @@ import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
 import type { CorporationSystem } from './CorporationSystem';
+import type { WorldCouncilSystem } from './WorldCouncilSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -82,6 +83,7 @@ export interface SaveLoadContext {
   historicalTimeline?: HistoricalTimelineService;
   covertSuspicionSystem?: CovertSuspicionSystem;
   victorySystem?: VictorySystem;
+  worldCouncilSystem?: WorldCouncilSystem;
 }
 
 /**
@@ -345,6 +347,7 @@ export class SaveLoadService {
       discovery,
       symbolicGifts: symbolicGiftRegistry?.serialize(),
       wonders,
+      worldCouncil: context.worldCouncilSystem?.getState() ?? undefined,
       alliances: allianceManager?.getAllAlliances().map((alliance) => ({
         ...alliance,
         memberNationIds: [...alliance.memberNationIds],
@@ -434,6 +437,7 @@ export class SaveLoadService {
       activePolicies: nation.activePolicies ?? [],
     })));
     SaveLoadService.applyWonders(state.wonders ?? [], context.wonderSystem);
+    context.worldCouncilSystem?.restore(state.worldCouncil);
     SaveLoadService.applyCorporations(state.corporations ?? [], context.corporationSystem);
     SaveLoadService.applyCitiesAndProduction(
       state.cities,

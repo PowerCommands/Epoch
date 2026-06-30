@@ -2,6 +2,7 @@ import type { CityManager } from '../../systems/CityManager';
 import type { HappinessSystem } from '../../systems/HappinessSystem';
 import type { NationManager } from '../../systems/NationManager';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
+import type { DiagnosticSystem } from '../../systems/DiagnosticSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
@@ -114,6 +115,7 @@ export class NationHudDataProvider {
     private readonly turnManager: TurnManager,
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly unitUpkeepSystem?: UnitUpkeepSystem,
+    private readonly diagnosticSystem?: DiagnosticSystem,
   ) {}
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
@@ -239,7 +241,7 @@ export class NationHudDataProvider {
     };
   }
 
-  getTechnologyTreeState(nationId: string): HudDependencyTreeState {
+  getTechnologyTreeState(nationId: string, revealAllNodes = this.diagnosticSystem?.isOpen() === true): HudDependencyTreeState {
     const reachedIds = new Set<string>();
     for (const technology of ALL_TECHNOLOGIES) {
       const isCompleted = this.researchSystem.isResearched(nationId, technology.id);
@@ -252,7 +254,7 @@ export class NationHudDataProvider {
       title: 'Technology Tree',
       accentColor: 0x68a9d5,
       nodes: ALL_TECHNOLOGIES
-        .filter((technology) => shouldRevealTreeNode(technology.prerequisites, reachedIds))
+        .filter((technology) => revealAllNodes || shouldRevealTreeNode(technology.prerequisites, reachedIds))
         .map((technology) => ({
           id: technology.id,
           name: technology.name,
@@ -319,6 +321,7 @@ export class NationHudDataProvider {
   }
 
   getCultureTreeState(nationId: string): HudDependencyTreeState {
+    const revealAllNodes = this.diagnosticSystem?.isOpen() === true;
     const viewState = this.cultureSystem.getCultureViewState(nationId);
     const reachedIds = new Set<string>();
     for (const entry of viewState) {
@@ -329,7 +332,7 @@ export class NationHudDataProvider {
       title: 'Culture Tree',
       accentColor: 0xb39cff,
       nodes: CULTURE_TREE
-        .filter((node) => shouldRevealTreeNode(node.prerequisites ?? [], reachedIds))
+        .filter((node) => revealAllNodes || shouldRevealTreeNode(node.prerequisites ?? [], reachedIds))
         .map((node) => {
           const entry = viewState.find((candidate) => candidate.node.id === node.id);
           return {

@@ -43,6 +43,7 @@ import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
+import type { WorldCouncilSystem } from '../../systems/WorldCouncilSystem';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
@@ -127,6 +128,7 @@ export class RightSidebarPanelDataProvider {
   private researchSystem: ResearchSystem | null = null;
   private cultureSystem: CultureSystem | null = null;
   private wonderSystem: WonderSystem | null = null;
+  private worldCouncilSystem: WorldCouncilSystem | null = null;
   private corporationSystem: CorporationSystem | null = null;
   private tradeDealSystem: TradeDealSystem | null = null;
   private tradeConnectionSystem: TradeConnectionSystem | null = null;
@@ -214,6 +216,10 @@ export class RightSidebarPanelDataProvider {
 
   setWonderSystem(wonderSystem: WonderSystem): void {
     this.wonderSystem = wonderSystem;
+  }
+
+  setWorldCouncilSystem(worldCouncilSystem: WorldCouncilSystem): void {
+    this.worldCouncilSystem = worldCouncilSystem;
   }
 
   setCorporationSystem(corporationSystem: CorporationSystem): void {
@@ -1961,7 +1967,7 @@ export class RightSidebarPanelDataProvider {
     // player can run one of each over a single route. Buttons render disabled
     // with an explanation when their direction has no free slot, instead of
     // clicks failing silently.
-    const dealCapacityTotal = this.tradeConnectionSystem?.getActiveDealCapacityBetweenNations(playerId, otherNationId) ?? 0;
+    const dealCapacityTotal = this.tradeDealSystem.getDealCapacityBetweenNations(playerId, otherNationId);
     const importsUsed = existingDeals.filter((deal) => deal.buyerNationId === playerId && deal.sellerNationId === otherNationId).length;
     const exportsUsed = existingDeals.filter((deal) => deal.sellerNationId === playerId && deal.buyerNationId === otherNationId).length;
     const hasImportCapacity = importsUsed < dealCapacityTotal;
@@ -2173,7 +2179,7 @@ export class RightSidebarPanelDataProvider {
       case 'domination':
         return this.getLeaderboardSection('⚔️ Domination', this.getDominationLeaderboard());
       case 'diplomacy':
-        return this.getLeaderboardSection('🕊️ Diplomacy', this.getDiplomacyLeaderboard());
+        return this.getDiplomaticVictorySection();
       case 'research':
         return this.getLeaderboardSection('💡 Research', this.getResearchLeaderboard());
       case 'cultural':
@@ -2219,6 +2225,23 @@ export class RightSidebarPanelDataProvider {
         secondaryScore: this.getCultureScore(nation.id),
       };
     }));
+  }
+
+  private getDiplomaticVictorySection(): RightSidebarSection {
+    const entries = this.getDiplomacyLeaderboard();
+    const headerRow = textRow(
+      'Diplomatic Victory — reach 100,000 Diplomatic Score to win.',
+      true,
+    );
+    const rows: RightSidebarRow[] = entries.length === 0
+      ? [textRow('No leaderboard data available.', true)]
+      : entries.map((entry, index) => textRow(
+        `${index + 1}. ${entry.name}: ${entry.score.toLocaleString()}`,
+        false,
+        false,
+        entry.color,
+      ));
+    return { title: '🕊️ Diplomatic Victory', rows: [headerRow, ...rows] };
   }
 
   private getCultureScore(nationId: string): number {
@@ -2273,9 +2296,16 @@ export class RightSidebarPanelDataProvider {
       nationId: nation.id,
       name: nation.name,
       color: nation.color,
-      score: 0,
-      detail: 'Not implemented',
+      score: this.getDiplomaticScore(nation.id),
+      detail: `${this.getDiplomaticScore(nation.id).toLocaleString()} Diplomatic Score`,
     })));
+  }
+
+  private getDiplomaticScore(nationId: string): number {
+    return this.worldCouncilSystem
+      ?.getMembers()
+      .find((member) => member.nationId === nationId)
+      ?.diplomacyScore ?? 0;
   }
 
   private sortLeaderboard(entries: LeaderboardEntry[]): LeaderboardEntry[] {

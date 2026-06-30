@@ -309,10 +309,11 @@ export class CombatSystem {
 
   private executeCityCombat(attacker: Unit, city: City, isRanged = false): boolean {
     const leaderDefenseBonus = !isRanged ? (this.cityDefenseSystem?.getLeaderDefenseBonus(city) ?? 0) : 0;
+    const worldHeritageDefenseBonus = !isRanged ? (this.cityDefenseSystem?.getWorldHeritageDefenseBonus(city) ?? 0) : 0;
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
       cityDefenseBonus: this.policySystem?.getFlatModifierTotal(city.ownerId, 'cityDefenseFlat') ?? 0,
-      cityDefenseMultiplier: 1 + leaderDefenseBonus,
+      cityDefenseMultiplier: 1 + leaderDefenseBonus + worldHeritageDefenseBonus,
     };
     const result = isRanged
       ? resolveRangedVsCity(attacker, city, modifiers)

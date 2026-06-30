@@ -146,6 +146,10 @@ export class TradeDealSystem {
       .map((deal) => this.copyDeal(deal));
   }
 
+  getDealCapacityBetweenNations(nationAId: string, nationBId: string): number {
+    return this.connectionCapacityProvider(nationAId, nationBId);
+  }
+
   restoreDeals(deals: readonly TradeDeal[] | undefined): void {
     this.deals.clear();
     let highestNumericSuffix = 0;

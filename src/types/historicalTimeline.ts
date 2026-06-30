@@ -11,6 +11,9 @@ export type HistoricalEventType =
   | 'cityCaptured'
   | 'tradeRouteCompleted'
   | 'wonderBuilt'
+  | 'worldCouncilFounded'
+  | 'worldCouncilActive'
+  | 'worldCouncilMeeting'
   | 'corporationFounded';
 
 /**

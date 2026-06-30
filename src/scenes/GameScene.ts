@@ -130,6 +130,8 @@ import { FogOfWarRenderer } from '../renderers/FogOfWarRenderer';
 import { VisibilitySystem } from '../systems/VisibilitySystem';
 import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { WonderSystem } from '../systems/WonderSystem';
+import { WorldCouncilSystem } from '../systems/WorldCouncilSystem';
+import { WorldCouncilResolutionSystem } from '../systems/WorldCouncilResolutionSystem';
 import { CorporationSystem } from '../systems/CorporationSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
@@ -206,7 +208,7 @@ import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 import { LogManager } from '../systems/LogManager';
 
 interface EpochGameDiagnostics {
-  startAutoplay: (rounds: number) => Promise<{ completedRounds: number; victory: EpochVictorySummary | null }>;
+  startAutoplay: (rounds: number, options?: { continueAfterVictory?: boolean }) => Promise<{ completedRounds: number; victory: EpochVictorySummary | null }>;
   stopAutoplay: () => void;
   isAutoplayActive: () => boolean;
   isAutoplayCompleted: () => boolean;
@@ -779,8 +781,17 @@ export class GameScene extends Phaser.Scene {
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
     );
+    const worldCouncilResolutionSystem = new WorldCouncilResolutionSystem();
+    const worldCouncilSystem = new WorldCouncilSystem(
+      nationManager,
+      cityManager,
+      resourceSystem,
+      worldCouncilResolutionSystem,
+    );
+    turnManager.on('turnStart', (event) => worldCouncilSystem.handleTurnStart(event));
     tradeDealSystem.setConnectionCapacityProvider((a, b) =>
-      tradeConnectionSystem.getActiveDealCapacityBetweenNations(a, b),
+      tradeConnectionSystem.getActiveDealCapacityBetweenNations(a, b)
+      + worldCouncilSystem.getTradeAgreementCapacityBetweenNations(a, b),
     );
     // Human deals use directional import/export capacity (see TradeDealSystem).
     tradeDealSystem.setHumanNationId(humanNationId);
@@ -1362,7 +1373,40 @@ export class GameScene extends Phaser.Scene {
       (a, b) => discoverySystem.hasMet(a, b),
       (nationId) => getAvailableLuxuryResourceQuantities(nationId).map((entry) => entry.resourceId),
     );
-    const cityDefenseSystem = new CityDefenseSystem(unitManager);
+    const cityDefenseSystem = new CityDefenseSystem(unitManager, wonderSystem);
+    cityDefenseSystem.setWorldHeritageProtectionActive(worldCouncilSystem.hasWorldHeritageProtection());
+    worldCouncilResolutionSystem.setRuntime({
+      getDiplomacyState: (a, b) => diplomacyManager.getState(a, b),
+      getRelationMemory: (a, b) => {
+        const relation = diplomacyManager.getRelation(a, b);
+        return { trust: relation.trust, hostility: relation.hostility };
+      },
+      shareMaps: (memberNationIds) => {
+        const humanMember = memberNationIds.includes(humanNationIdForDiplomacy);
+        if (humanMember) {
+          for (const nationId of memberNationIds) {
+            if (nationId === humanNationIdForDiplomacy) continue;
+            for (const city of cityManager.getCitiesByOwner(nationId)) {
+              visibilitySystem.discoverCity(city);
+            }
+          }
+          updateFog();
+        }
+        for (let i = 0; i < memberNationIds.length; i += 1) {
+          for (let j = i + 1; j < memberNationIds.length; j += 1) {
+            diplomacyManager.recordMapExchange(memberNationIds[i]!, memberNationIds[j]!);
+          }
+        }
+      },
+      setWorldHeritageProtection: (active) => {
+        cityDefenseSystem.setWorldHeritageProtectionActive(active);
+      },
+      condemnAggressiveWar: (targetNationId, memberNationIds) => {
+        for (const memberNationId of memberNationIds) {
+          diplomacyManager.recordWorldCouncilCondemnation(memberNationId, targetNationId);
+        }
+      },
+    });
 
     // 14. Stridssystem
     const combatSystem = new CombatSystem(
@@ -1937,6 +1981,7 @@ export class GameScene extends Phaser.Scene {
         domination: { enabled: savedVictoryConditions.domination },
         science: { ...data.victoryConditions?.science, enabled: savedVictoryConditions.science },
         cultural: { enabled: savedVictoryConditions.cultural },
+        diplomatic: { enabled: savedVictoryConditions.diplomatic ?? true },
       }
       : data.victoryConditions ?? {};
     const victorySystem = new VictorySystem(
@@ -1949,6 +1994,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       corporationSystem,
       wonderSystem,
+      worldCouncilSystem,
     );
 
     // 18. Stadsgrundningssystem
@@ -2148,6 +2194,17 @@ export class GameScene extends Phaser.Scene {
     });
 
     turnManager.on('turnStart', (e) => {
+      if (!e.nation.isHuman) {
+        const foundingWonder = getWorldCouncilFoundingWonder();
+        if (foundingWonder?.ownerId === e.nation.id) {
+          foundWorldCouncil(e.nation.id, {
+            gold: Math.floor(nationManager.getResources(e.nation.id).gold * 0.15),
+            sciencePercent: 10,
+            culturePercent: 10,
+          });
+        }
+      }
+
       if (autoplaySystem.isActive()) return;
 
       if (!e.nation.isHuman) {
@@ -2204,6 +2261,129 @@ export class GameScene extends Phaser.Scene {
       }
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
       this.cameraController.focusOn(x, y, 1.5);
+    };
+    const getWorldCouncilFoundingWonder = (): WonderState | undefined => {
+      const forbiddenCity = wonderSystem.getCompletedWonder('forbidden-city');
+      if (!forbiddenCity || worldCouncilSystem.hasCouncil()) return undefined;
+      return forbiddenCity;
+    };
+    const getWorldCouncilFoundationStateForHuman = () => {
+      if (!humanNationId || turnManager.getCurrentNation().id !== humanNationId) return null;
+      const forbiddenCity = getWorldCouncilFoundingWonder();
+      if (!forbiddenCity || forbiddenCity.ownerId !== humanNationId) return null;
+      const city = cityManager.getCity(forbiddenCity.cityId);
+      const nation = nationManager.getNation(humanNationId);
+      if (!city || !nation) return null;
+      const resources = nationManager.getResources(humanNationId);
+      return {
+        nationName: nation.name,
+        cityName: city.name,
+        maxGold: resources.gold,
+        sciencePerTurn: researchSystem.getResearchPerTurn(humanNationId),
+        culturePerTurn: resources.culturePerTurn,
+      };
+    };
+    const getWorldCouncilOverviewStateForHuman = () => {
+      const state = worldCouncilSystem.getState();
+      if (!state) return null;
+      const foundingCity = cityManager.getCity(state.foundingCityId);
+      const foundingNation = nationManager.getNation(state.foundingNationId);
+      return {
+        status: state.status,
+        foundingCityName: foundingCity?.name ?? 'Unknown City',
+        foundingNationName: foundingNation?.name ?? state.foundingNationId,
+        constructionTurnsRemaining: state.constructionTurnsRemaining,
+        diplomacyScoreThreshold: worldCouncilSystem.getDiplomacyScoreThreshold(),
+        nextRegularMeetingTurn: state.nextRegularMeetingTurn,
+        canHumanLeave: humanNationId ? worldCouncilSystem.isMember(humanNationId) : false,
+        members: state.members.map((member) => ({
+          nationName: nationManager.getNation(member.nationId)?.name ?? member.nationId,
+          diplomacyScore: member.diplomacyScore,
+          diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting,
+          goldContributed: member.goldContributed,
+          scienceContributionPercent: member.scienceContributionPercent,
+          cultureContributionPercent: member.cultureContributionPercent,
+        })),
+        meetings: state.meetings.map((meeting) => ({
+          kind: meeting.kind === 'regular' ? 'Regular' : 'Emergency',
+          turn: meeting.turn,
+          cityName: cityManager.getCity(meeting.cityId)?.name ?? 'Unknown City',
+          hostNationName: meeting.hostNationId
+            ? nationManager.getNation(meeting.hostNationId)?.name ?? meeting.hostNationId
+            : undefined,
+          triggerText: meeting.emergencyTrigger?.eventType === 'warDeclared'
+            ? `war declared: ${nationManager.getNation(meeting.emergencyTrigger.aggressorNationId ?? '')?.name ?? meeting.emergencyTrigger.aggressorNationId ?? 'Unknown'} vs ${nationManager.getNation(meeting.emergencyTrigger.targetNationId ?? '')?.name ?? meeting.emergencyTrigger.targetNationId ?? 'Unknown'}`
+            : undefined,
+          proposals: meeting.proposals?.map((proposal) => {
+            const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
+            return {
+              slot: proposal.slot,
+              title: definition?.title ?? proposal.resolutionId,
+              description: definition?.description ?? '',
+              icon: definition?.icon ?? '📃',
+              votingType: definition?.votingType ?? 'influence',
+              proposerNationName: proposal.proposerNationId
+                ? nationManager.getNation(proposal.proposerNationId)?.name ?? proposal.proposerNationId
+                : undefined,
+              targetNationName: proposal.targetNationId
+                ? nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId
+                : undefined,
+              participantNationNames: proposal.participantNationIds?.map((nationId) =>
+                nationManager.getNation(nationId)?.name ?? nationId),
+              voteSummary: proposal.votes
+                ? formatWorldCouncilVoteSummary(proposal.votes)
+                : undefined,
+              outcomeText: proposal.outcomeText,
+            };
+          }) ?? [],
+        })),
+      };
+    };
+    const getWorldCouncilContributionStateForHuman = () => {
+      if (!humanNationId || !worldCouncilSystem.hasPendingHumanContribution(humanNationId)) return null;
+      const state = worldCouncilSystem.getState();
+      const member = state?.members.find((entry) => entry.nationId === humanNationId);
+      const nation = nationManager.getNation(humanNationId);
+      if (!state || !member || !nation) return null;
+      const resources = nationManager.getResources(humanNationId);
+      return {
+        nationName: nation.name,
+        maxGold: resources.gold,
+        currentGold: Math.min(member.goldContributed, resources.gold),
+        currentSciencePercent: member.scienceContributionPercent,
+        currentCulturePercent: member.cultureContributionPercent,
+      };
+    };
+    const foundWorldCouncil = (
+      nationId: string,
+      offer: { gold: number; sciencePercent: number; culturePercent: number },
+    ): boolean => {
+      const forbiddenCity = getWorldCouncilFoundingWonder();
+      if (!forbiddenCity || forbiddenCity.ownerId !== nationId) return false;
+      const founded = worldCouncilSystem.found({
+        foundingCityId: forbiddenCity.cityId,
+        foundingNationId: nationId,
+        foundingTurn: turnManager.getCurrentRound(),
+        founderOffer: offer,
+      });
+      if (!founded) return false;
+      const cityName = cityManager.getCity(forbiddenCity.cityId)?.name ?? 'Unknown City';
+      historicalTimeline.record({
+        type: 'worldCouncilFounded',
+        icon: '📜',
+        text: `${timelineNationName(nationId)} founded the World Council in ${cityName}`,
+        eventNationIds: worldCouncilSystem.getState()?.memberNationIds ?? [nationId],
+      });
+      logManager.info({
+        nationId,
+        nationIds: worldCouncilSystem.getState()?.memberNationIds ?? [nationId],
+        category: 'diplomacy',
+        message: `founded the World Council in ${cityName}. Construction will take 20 turns.`,
+      });
+      resourceSystem.recalculateForNation(nationId);
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+      return true;
     };
     const selectActiveUnitWithoutCamera = (unit: Unit) => {
       suppressPromote = true;
@@ -4301,6 +4481,7 @@ export class GameScene extends Phaser.Scene {
       turnManager,
       resourceAccessSystem,
       unitUpkeepSystem,
+      this.diagnosticSystem,
     );
     hudLayer = new HudLayer(this, {
       humanNationId,
@@ -4346,6 +4527,39 @@ export class GameScene extends Phaser.Scene {
       onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
       onDiscoveryClosed: openPendingHumanSelectionPanels,
       onToggleMapLens: toggleMapLens,
+      getWorldCouncilFoundationState: getWorldCouncilFoundationStateForHuman,
+      getWorldCouncilOverviewState: getWorldCouncilOverviewStateForHuman,
+      getWorldCouncilContributionState: getWorldCouncilContributionStateForHuman,
+      onFoundWorldCouncil: (offer) => {
+        if (!humanNationId) return false;
+        return foundWorldCouncil(humanNationId, offer);
+      },
+      onSubmitWorldCouncilContribution: (offer) => {
+        if (!humanNationId) return false;
+        const wasMember = worldCouncilSystem.isMember(humanNationId);
+        const submitted = worldCouncilSystem.submitHumanContribution(humanNationId, offer);
+        if (submitted && wasMember && !worldCouncilSystem.isMember(humanNationId)) {
+          logManager.info({
+            nationId: humanNationId,
+            category: 'diplomacy',
+            message: 'left the World Council by ending all contributions.',
+          });
+        }
+        return submitted;
+      },
+      onLeaveWorldCouncil: () => {
+        if (!humanNationId) return false;
+        const left = worldCouncilSystem.leaveCouncil(humanNationId);
+        if (left) {
+          logManager.info({
+            nationId: humanNationId,
+            category: 'diplomacy',
+            message: 'left the World Council.',
+          });
+        }
+        return left;
+      },
+      isDiagnosticsEnabled: () => this.diagnosticSystem.isOpen(),
     });
     hudLayer.setEndTurnEnabled(turnManager.getCurrentNation().isHuman);
     hudLayer.setEndTurnBusy(!turnManager.getCurrentNation().isHuman);
@@ -4365,6 +4579,12 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
     cultureSystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    worldCouncilSystem.onChanged(() => {
+      cityDefenseSystem.setWorldHeritageProtectionActive(worldCouncilSystem.hasWorldHeritageProtection());
       if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -4437,6 +4657,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setResearchSystem(researchSystem);
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
+    rightPanel.setWorldCouncilSystem(worldCouncilSystem);
     rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setTradeConnectionSystem(tradeConnectionSystem);
@@ -4466,6 +4687,11 @@ export class GameScene extends Phaser.Scene {
       });
     });
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
+      worldCouncilSystem.triggerEmergencyMeeting(turnManager.getCurrentRound(), {
+        eventType: 'warDeclared',
+        aggressorNationId: aggressorId,
+        targetNationId: targetId,
+      });
       // If the target was already at war with another nation, this reads as
       // joining an existing war rather than starting a fresh one.
       const targetAlreadyAtWar = nationManager.getAllNations().some((nation) =>
@@ -4550,6 +4776,57 @@ export class GameScene extends Phaser.Scene {
       if (!autoplaySystem.isActive()) {
         hudLayer?.enqueueDiscovery(buildWonderCompletionPopupData(state, wonderType));
       }
+    });
+    worldCouncilSystem.onCompleted((state) => {
+      const cityName = cityManager.getCity(state.foundingCityId)?.name ?? 'Unknown City';
+      historicalTimeline.record({
+        type: 'worldCouncilActive',
+        icon: '📜',
+        text: `World Council became active in ${cityName}`,
+        eventNationIds: state.memberNationIds.length > 0 ? state.memberNationIds : [state.foundingNationId],
+      });
+      logManager.info({
+        nationId: state.foundingNationId,
+        nationIds: state.memberNationIds.length > 0 ? state.memberNationIds : [state.foundingNationId],
+        category: 'diplomacy',
+        message: `World Council became active in ${cityName}.`,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    worldCouncilSystem.onMeeting((meeting, state) => {
+      const cityName = cityManager.getCity(meeting.cityId)?.name ?? 'Unknown City';
+      const hostName = meeting.hostNationId
+        ? timelineNationName(meeting.hostNationId)
+        : undefined;
+      const emergencyText = meeting.emergencyTrigger?.eventType === 'warDeclared'
+        ? ` after ${timelineNationName(meeting.emergencyTrigger.aggressorNationId ?? '')} declared war on ${timelineNationName(meeting.emergencyTrigger.targetNationId ?? '')}`
+        : '';
+      const meetingText = meeting.kind === 'regular'
+        ? `World Council held a regular meeting in ${cityName}${hostName ? `, hosted by ${hostName}` : ''}`
+        : `World Council held an emergency meeting in ${cityName}${emergencyText}`;
+      const eventNationIds = meeting.kind === 'emergency'
+        ? [
+            meeting.emergencyTrigger?.aggressorNationId,
+            meeting.emergencyTrigger?.targetNationId,
+          ].filter((nationId): nationId is string => nationId !== undefined)
+        : meeting.hostNationId
+          ? [meeting.hostNationId]
+          : state.memberNationIds;
+      historicalTimeline.record({
+        type: 'worldCouncilMeeting',
+        icon: '📜',
+        text: meetingText,
+        eventNationIds,
+      });
+      logManager.info({
+        nationId: meeting.hostNationId ?? state.foundingNationId,
+        nationIds: eventNationIds.length > 0 ? eventNationIds : state.memberNationIds,
+        category: 'diplomacy',
+        message: meetingText,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
     });
     corporationSystem?.onCorporationFounded((result) => {
       historicalTimeline.record({
@@ -5661,14 +5938,16 @@ export class GameScene extends Phaser.Scene {
 
     new CombatLog(this, combatSystem, nationManager);
     new AutoplayHud(autoplaySystem);
+    let diagnosticContinueAfterVictory = false;
     if (isDevBuild()) {
       // Enable the unbounded full-session log immediately so every entry from
       // game start is captured. The UI still uses the capped getAllEntries() buffer.
       eventLog.enableFullLog();
       const diagnosticsWindow = window as Window & { __epochDiagnostics?: EpochGameDiagnostics };
       diagnosticsWindow.__epochDiagnostics = {
-        startAutoplay: (rounds: number) => new Promise((resolve) => {
+        startAutoplay: (rounds: number, options = {}) => new Promise((resolve) => {
           syncEraMilestoneBaseline();
+          diagnosticContinueAfterVictory = options.continueAfterVictory === true;
           const requestedRounds = Math.max(1, Math.floor(rounds));
           this.diagnosticSystem.enableTurnLogging();
           // Resolve on a clean completion (requested rounds reached) OR on a stop —
@@ -5777,6 +6056,7 @@ export class GameScene extends Phaser.Scene {
           historicalTimeline,
           covertSuspicionSystem,
           victorySystem,
+          worldCouncilSystem,
         }),
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -6230,6 +6510,7 @@ export class GameScene extends Phaser.Scene {
 
     // Victory overlay
     victorySystem.onVictory((nationId, type) => {
+      if (diagnosticContinueAfterVictory && autoplaySystem.isActive()) return;
       turnManager.stop();
       // Halt an in-progress autorun/autoplay so the session ends cleanly the moment
       // a nation wins, instead of running out the remaining requested rounds.
@@ -6249,7 +6530,9 @@ export class GameScene extends Phaser.Scene {
         ? `Science Victory\n${nationName} has completed its aerospace program.`
         : type === 'cultural'
           ? `Cultural Victory\n${nationName} commands the world's World Wonders.`
-          : `${nationName} has conquered all capitals!\nVICTORY`;
+          : type === 'diplomatic'
+            ? `Diplomatic Victory\n${nationName} commands global influence.`
+            : `${nationName} has conquered all capitals!\nVICTORY`;
 
       this.add.text(width / 2, height / 2 - 30, victoryText, {
           fontSize: '32px',
@@ -6273,14 +6556,20 @@ export class GameScene extends Phaser.Scene {
       // Block further input on the overlay
       overlay.setInteractive();
 
-      // Human science / cultural victory: also show the modal popup
-      if ((type === 'science' || type === 'cultural') && !isAutoplayActive() && nationId === humanNationId) {
+      // Human non-domination victory: also show the modal popup
+      if ((type === 'science' || type === 'cultural' || type === 'diplomatic') && !isAutoplayActive() && nationId === humanNationId) {
         showDiplomacyModal({
-          title: type === 'science' ? 'Science Victory' : 'Cultural Victory',
+          title: type === 'science'
+            ? 'Science Victory'
+            : type === 'cultural'
+              ? 'Cultural Victory'
+              : 'Diplomatic Victory',
           message: type === 'science'
             ? `${nationName} has completed its aerospace program.`
-            : `${nationName} commands the world's World Wonders.`,
-          accentColor: type === 'science' ? '#4af' : '#c084fc',
+            : type === 'cultural'
+              ? `${nationName} commands the world's World Wonders.`
+              : `${nationName} commands global influence.`,
+          accentColor: type === 'science' ? '#4af' : type === 'cultural' ? '#c084fc' : '#a7f3d0',
           confirmLabel: 'Continue',
           cancelLabel: '',
           onConfirm: () => {},
@@ -6321,6 +6610,7 @@ export class GameScene extends Phaser.Scene {
         foreignTroopViolationSystem,
         historicalTimeline,
         covertSuspicionSystem,
+        worldCouncilSystem,
       });
       updateFog();
       // Older saves only persist tile.improvementConstruction; recompute
@@ -6409,6 +6699,7 @@ export class GameScene extends Phaser.Scene {
           historicalTimeline,
           covertSuspicionSystem,
           victorySystem,
+          worldCouncilSystem,
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -6464,6 +6755,7 @@ export class GameScene extends Phaser.Scene {
         historicalTimeline,
         covertSuspicionSystem,
         victorySystem,
+        worldCouncilSystem,
       });
     const saveGameDialog = new SaveGameDialog({
       onConfirm: (filename) => {
@@ -7241,4 +7533,16 @@ function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' 
     case 'gold_trade': return 'gold transfer';
     case 'peace': return 'peace proposal';
   }
+}
+
+function formatWorldCouncilVoteSummary(
+  votes: ReadonlyArray<{ readonly support: boolean; readonly influence: number }>,
+): string {
+  const support = votes
+    .filter((vote) => vote.support)
+    .reduce((sum, vote) => sum + vote.influence, 0);
+  const oppose = votes
+    .filter((vote) => !vote.support)
+    .reduce((sum, vote) => sum + vote.influence, 0);
+  return `Influence vote: ${support} for, ${oppose} against.`;
 }

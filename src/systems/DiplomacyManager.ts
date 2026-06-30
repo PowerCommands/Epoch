@@ -149,6 +149,10 @@ export function clampSuspicion(value: number): number {
   return Math.max(MIN_SUSPICION, Math.min(MAX_SUSPICION, Math.round(value)));
 }
 
+function clampDiplomacyValue(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
 export function createDefaultRelation(): DiplomacyRelation {
   return {
     state: 'PEACE',
@@ -763,6 +767,20 @@ export class DiplomacyManager {
   recordProposalRejected(a: string, b: string): void {
     this.memoryHook?.onProposalRejected(a, b);
     this.notifyChanged(a, b);
+  }
+
+  /** Diplomatic penalty applied by a passed condemnation resolution. */
+  recordWorldCouncilCondemnation(memberNationId: string, condemnedNationId: string): void {
+    if (memberNationId === condemnedNationId) return;
+    const relation = this.getRelation(memberNationId, condemnedNationId);
+    this.setMemoryValues(memberNationId, condemnedNationId, {
+      trust: clampDiplomacyValue(relation.trust - 15),
+      fear: clampDiplomacyValue(relation.fear + 5),
+      hostility: clampDiplomacyValue(relation.hostility + 15),
+      affinity: relation.affinity,
+      suspicion: relation.suspicion,
+    });
+    this.notifyChanged(memberNationId, condemnedNationId);
   }
 
   setMemoryValues(a: string, b: string, values: DiplomaticMemoryValues): void {
