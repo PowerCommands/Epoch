@@ -11,6 +11,7 @@ export interface WorldCouncilFoundationOffer {
 }
 
 export interface WorldCouncilFoundationDialogState {
+  readonly organizationName: string;
   readonly nationName: string;
   readonly cityName: string;
   readonly maxGold: number;
@@ -106,8 +107,9 @@ export class WorldCouncilFoundationDialog {
 
   show(state: WorldCouncilFoundationDialogState): void {
     this.current = state;
+    this.titleText.setText(state.organizationName);
     this.bodyText.setText([
-      `${state.nationName} will invite every nation to found the World Council in ${state.cityName}.`,
+      `${state.nationName} will invite every nation to found the ${state.organizationName} in ${state.cityName}.`,
       '',
       'Your contribution:',
       `${Math.min(state.maxGold, 100)} gold`,

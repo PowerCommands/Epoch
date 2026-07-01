@@ -154,8 +154,9 @@ import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { WonderState, WonderType } from '../entities/Wonder';
+import type { WorldCouncilOrganizationKind } from '../types/worldCouncil';
 import { CORPORATIONS, getCorporationById } from '../data/corporations';
-import { getResourceDisplayName } from '../data/resources';
+import { getResourceDefinitionById, getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
 import { TutorialWizard, type TutorialStep } from '../ui/hud/TutorialWizard';
@@ -781,6 +782,15 @@ export class GameScene extends Phaser.Scene {
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
     );
+    const getTradeResourceCategory = (resourceId: string) =>
+      getNaturalResourceById(resourceId)?.category
+      ?? (getResourceDefinitionById(resourceId)?.category === 'manufactured' ? 'manufactured' : 'unknown');
+    tradeDealSystem.setRestrictionProvider((input) =>
+      worldCouncilSystem.getTradeRestrictionReason(
+        input.sellerNationId,
+        input.buyerNationId,
+        getTradeResourceCategory(input.resourceId),
+      ));
     const worldCouncilResolutionSystem = new WorldCouncilResolutionSystem();
     const worldCouncilSystem = new WorldCouncilSystem(
       nationManager,
@@ -1406,6 +1416,16 @@ export class GameScene extends Phaser.Scene {
         for (const memberNationId of memberNationIds) {
           diplomacyManager.recordWorldCouncilCondemnation(memberNationId, targetNationId);
         }
+      },
+      applyTradeRestrictions: (_resolutionId, targetNationId) => {
+        tradeDealSystem.cancelDealsMatching((deal) => {
+          if (deal.sellerNationId !== targetNationId && deal.buyerNationId !== targetNationId) return false;
+          return worldCouncilSystem.getTradeRestrictionReason(
+            deal.sellerNationId,
+            deal.buyerNationId,
+            getTradeResourceCategory(deal.resourceId),
+          ) !== undefined;
+        }, 'sanctions');
       },
     });
 
@@ -2196,8 +2216,8 @@ export class GameScene extends Phaser.Scene {
 
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) {
-        const foundingWonder = getWorldCouncilFoundingWonder();
-        if (foundingWonder?.ownerId === e.nation.id) {
+        const foundingCandidate = getWorldCouncilFoundingCandidate();
+        if (foundingCandidate?.wonder.ownerId === e.nation.id) {
           foundWorldCouncil(e.nation.id, {
             gold: Math.floor(nationManager.getResources(e.nation.id).gold * 0.15),
             sciencePercent: 10,
@@ -2263,20 +2283,30 @@ export class GameScene extends Phaser.Scene {
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
       this.cameraController.focusOn(x, y, 1.5);
     };
-    const getWorldCouncilFoundingWonder = (): WonderState | undefined => {
+    const getOrganizationDisplayName = (organizationKind: WorldCouncilOrganizationKind): string =>
+      organizationKind === 'un' ? 'United Nations' : 'World Council';
+    const getWorldCouncilFoundingCandidate = (): {
+      wonder: WonderState;
+      organizationKind: WorldCouncilOrganizationKind;
+    } | undefined => {
+      const statueOfLiberty = wonderSystem.getCompletedWonder('statue_of_liberty');
+      if (statueOfLiberty && worldCouncilSystem.getOrganizationKind() !== 'un') {
+        return { wonder: statueOfLiberty, organizationKind: 'un' };
+      }
       const forbiddenCity = wonderSystem.getCompletedWonder('forbidden-city');
       if (!forbiddenCity || worldCouncilSystem.hasCouncil()) return undefined;
-      return forbiddenCity;
+      return { wonder: forbiddenCity, organizationKind: 'worldCouncil' };
     };
     const getWorldCouncilFoundationStateForHuman = () => {
       if (!humanNationId || turnManager.getCurrentNation().id !== humanNationId) return null;
-      const forbiddenCity = getWorldCouncilFoundingWonder();
-      if (!forbiddenCity || forbiddenCity.ownerId !== humanNationId) return null;
-      const city = cityManager.getCity(forbiddenCity.cityId);
+      const foundingCandidate = getWorldCouncilFoundingCandidate();
+      if (!foundingCandidate || foundingCandidate.wonder.ownerId !== humanNationId) return null;
+      const city = cityManager.getCity(foundingCandidate.wonder.cityId);
       const nation = nationManager.getNation(humanNationId);
       if (!city || !nation) return null;
       const resources = nationManager.getResources(humanNationId);
       return {
+        organizationName: getOrganizationDisplayName(foundingCandidate.organizationKind),
         nationName: nation.name,
         cityName: city.name,
         maxGold: resources.gold,
@@ -2289,7 +2319,9 @@ export class GameScene extends Phaser.Scene {
       if (!state) return null;
       const foundingCity = cityManager.getCity(state.foundingCityId);
       const foundingNation = nationManager.getNation(state.foundingNationId);
+      const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
       return {
+        organizationName,
         status: state.status,
         foundingCityName: foundingCity?.name ?? 'Unknown City',
         foundingNationName: foundingNation?.name ?? state.foundingNationId,
@@ -2305,6 +2337,35 @@ export class GameScene extends Phaser.Scene {
           scienceContributionPercent: member.scienceContributionPercent,
           cultureContributionPercent: member.cultureContributionPercent,
         })),
+        enactedResolutions: state.enactedResolutions.map((resolution) => {
+          const definition = worldCouncilResolutionSystem.getDefinition(resolution.resolutionId);
+          const remainingTurns = resolution.active !== false
+            && resolution.expired !== true
+            && resolution.expirationTurn !== undefined
+              ? Math.max(0, resolution.expirationTurn - turnManager.getCurrentRound())
+              : undefined;
+          return {
+            title: definition?.title ?? resolution.resolutionId,
+            status: resolution.expired === true
+              ? 'expired' as const
+              : resolution.active === false || resolution.repealed === true
+                ? 'repealed' as const
+                : 'active' as const,
+            meetingKind: resolution.meetingKind === 'emergency'
+              ? 'Emergency'
+              : resolution.meetingKind === 'regular'
+                ? 'Regular'
+                : 'Unknown',
+            turn: resolution.turn,
+            repealTurn: resolution.repealTurn,
+            targetNationName: resolution.targetNationId
+              ? nationManager.getNation(resolution.targetNationId)?.name ?? resolution.targetNationId
+              : undefined,
+            remainingTurns,
+            participantNationNames: resolution.participantNationIds?.map((nationId) =>
+              nationManager.getNation(nationId)?.name ?? nationId),
+          };
+        }),
         meetings: state.meetings.map((meeting) => ({
           kind: meeting.kind === 'regular' ? 'Regular' : 'Emergency',
           turn: meeting.turn,
@@ -2317,12 +2378,17 @@ export class GameScene extends Phaser.Scene {
             : undefined,
           proposals: meeting.proposals?.map((proposal) => {
             const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
+            const isRepeal = proposal.repealTargetEnactedResolutionId !== undefined;
             return {
               slot: proposal.slot,
-              title: definition?.title ?? proposal.resolutionId,
-              description: definition?.description ?? '',
-              icon: definition?.icon ?? '📃',
-              votingType: definition?.votingType ?? 'influence',
+              title: isRepeal
+                ? `Repeal ${definition?.title ?? proposal.resolutionId}`
+                : definition?.title ?? proposal.resolutionId,
+              description: isRepeal
+                ? `If passed, removes the active effect of ${definition?.title ?? proposal.resolutionId}.`
+                : definition?.description ?? '',
+              icon: isRepeal ? '↩' : definition?.icon ?? '📃',
+              votingType: isRepeal ? 'influence' : definition?.votingType ?? 'influence',
               proposerNationName: proposal.proposerNationId
                 ? nationManager.getNation(proposal.proposerNationId)?.name ?? proposal.proposerNationId
                 : undefined,
@@ -2348,6 +2414,7 @@ export class GameScene extends Phaser.Scene {
       if (!state || !member || !nation) return null;
       const resources = nationManager.getResources(humanNationId);
       return {
+        organizationName: getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil'),
         nationName: nation.name,
         maxGold: resources.gold,
         currentGold: Math.min(member.goldContributed, resources.gold),
@@ -2359,27 +2426,29 @@ export class GameScene extends Phaser.Scene {
       nationId: string,
       offer: { gold: number; sciencePercent: number; culturePercent: number },
     ): boolean => {
-      const forbiddenCity = getWorldCouncilFoundingWonder();
-      if (!forbiddenCity || forbiddenCity.ownerId !== nationId) return false;
+      const foundingCandidate = getWorldCouncilFoundingCandidate();
+      if (!foundingCandidate || foundingCandidate.wonder.ownerId !== nationId) return false;
       const founded = worldCouncilSystem.found({
-        foundingCityId: forbiddenCity.cityId,
+        foundingCityId: foundingCandidate.wonder.cityId,
         foundingNationId: nationId,
         foundingTurn: turnManager.getCurrentRound(),
         founderOffer: offer,
+        organizationKind: foundingCandidate.organizationKind,
       });
       if (!founded) return false;
-      const cityName = cityManager.getCity(forbiddenCity.cityId)?.name ?? 'Unknown City';
+      const cityName = cityManager.getCity(foundingCandidate.wonder.cityId)?.name ?? 'Unknown City';
+      const organizationName = getOrganizationDisplayName(foundingCandidate.organizationKind);
       historicalTimeline.record({
         type: 'worldCouncilFounded',
         icon: '📜',
-        text: `${timelineNationName(nationId)} founded the World Council in ${cityName}`,
+        text: `${timelineNationName(nationId)} founded the ${organizationName} in ${cityName}`,
         eventNationIds: worldCouncilSystem.getState()?.memberNationIds ?? [nationId],
       });
       logManager.info({
         nationId,
         nationIds: worldCouncilSystem.getState()?.memberNationIds ?? [nationId],
         category: 'diplomacy',
-        message: `founded the World Council in ${cityName}. Construction will take 20 turns.`,
+        message: `founded the ${organizationName} in ${cityName}. Construction will take 20 turns.`,
       });
       resourceSystem.recalculateForNation(nationId);
       hudLayer?.refresh();
@@ -4547,7 +4616,7 @@ export class GameScene extends Phaser.Scene {
           logManager.info({
             nationId: humanNationId,
             category: 'diplomacy',
-            message: 'left the World Council.',
+            message: `left the ${worldCouncilSystem.getOrganizationName()}.`,
           });
         }
         return left;
@@ -4772,17 +4841,43 @@ export class GameScene extends Phaser.Scene {
     });
     worldCouncilSystem.onCompleted((state) => {
       const cityName = cityManager.getCity(state.foundingCityId)?.name ?? 'Unknown City';
+      const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
       historicalTimeline.record({
         type: 'worldCouncilActive',
         icon: '📜',
-        text: `World Council became active in ${cityName}`,
+        text: `${organizationName} became active in ${cityName}`,
         eventNationIds: state.memberNationIds.length > 0 ? state.memberNationIds : [state.foundingNationId],
       });
       logManager.info({
         nationId: state.foundingNationId,
         nationIds: state.memberNationIds.length > 0 ? state.memberNationIds : [state.foundingNationId],
         category: 'diplomacy',
-        message: `World Council became active in ${cityName}.`,
+        message: `${organizationName} became active in ${cityName}.`,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+    worldCouncilSystem.onResolutionExpired((resolution, state) => {
+      const definition = worldCouncilResolutionSystem.getDefinition(resolution.resolutionId);
+      const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
+      const targetName = resolution.targetNationId
+        ? timelineNationName(resolution.targetNationId)
+        : undefined;
+      const verb = resolution.resolutionId === 'international_sanctions' ? 'have' : 'has';
+      const message = targetName
+        ? `${organizationName} ${definition?.title ?? resolution.resolutionId} against ${targetName} ${verb} expired.`
+        : `${organizationName} ${definition?.title ?? resolution.resolutionId} ${verb} expired.`;
+      historicalTimeline.record({
+        type: 'worldCouncilMeeting',
+        icon: '📜',
+        text: message,
+        eventNationIds: resolution.targetNationId ? [resolution.targetNationId] : state.memberNationIds,
+      });
+      logManager.info({
+        nationId: resolution.targetNationId ?? state.foundingNationId,
+        nationIds: resolution.targetNationId ? [resolution.targetNationId] : state.memberNationIds,
+        category: 'diplomacy',
+        message,
       });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -4795,9 +4890,10 @@ export class GameScene extends Phaser.Scene {
       const emergencyText = meeting.emergencyTrigger?.eventType === 'warDeclared'
         ? ` after ${timelineNationName(meeting.emergencyTrigger.aggressorNationId ?? '')} declared war on ${timelineNationName(meeting.emergencyTrigger.targetNationId ?? '')}`
         : '';
+      const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
       const meetingText = meeting.kind === 'regular'
-        ? `World Council held a regular meeting in ${cityName}${hostName ? `, hosted by ${hostName}` : ''}`
-        : `World Council held an emergency meeting in ${cityName}${emergencyText}`;
+        ? `${organizationName} held a regular meeting in ${cityName}${hostName ? `, hosted by ${hostName}` : ''}`
+        : `${organizationName} held an emergency meeting in ${cityName}${emergencyText}`;
       const eventNationIds = meeting.kind === 'emergency'
         ? [
             meeting.emergencyTrigger?.aggressorNationId,

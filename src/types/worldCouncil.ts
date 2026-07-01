@@ -2,6 +2,8 @@ export const WORLD_COUNCIL_CONSTRUCTION_TURNS = 20;
 export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 5000;
 export const WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS = 50;
 
+export type WorldCouncilOrganizationKind = 'worldCouncil' | 'un';
+
 export interface WorldCouncilMember {
   readonly nationId: string;
   readonly goldContributed: number;
@@ -31,7 +33,15 @@ export type WorldCouncilResolutionId =
   | 'global_free_trade_agreement'
   | 'shared_cartography'
   | 'protect_world_heritage'
-  | 'condemn_aggressive_war';
+  | 'condemn_aggressive_war'
+  | 'international_sanctions'
+  | 'international_embargo'
+  | 'ceasefire_resolution'
+  | 'nuclear_non_proliferation_treaty'
+  | 'global_infrastructure_initiative'
+  | 'un_peacekeeping_mission'
+  | 'climate_accord'
+  | 'international_development_fund';
 
 export type WorldCouncilResolutionVotingType = 'none' | 'optionalParticipation' | 'influence';
 
@@ -48,6 +58,8 @@ export interface WorldCouncilResolutionProposal {
   readonly resolutionId: WorldCouncilResolutionId;
   readonly proposerNationId?: string;
   readonly targetNationId?: string;
+  readonly repealTargetEnactedResolutionId?: string;
+  readonly repealTargetResolutionId?: WorldCouncilResolutionId;
   readonly participantNationIds?: string[];
   readonly votes?: WorldCouncilResolutionVote[];
   readonly passed?: boolean;
@@ -65,9 +77,16 @@ export interface WorldCouncilEnactedResolution {
   readonly id: string;
   readonly resolutionId: WorldCouncilResolutionId;
   readonly meetingId: number;
+  readonly meetingKind?: WorldCouncilMeetingKind;
   readonly turn: number;
   readonly participantNationIds?: string[];
   readonly targetNationId?: string;
+  readonly active?: boolean;
+  readonly repealed?: boolean;
+  readonly expired?: boolean;
+  readonly expirationTurn?: number;
+  readonly repealTurn?: number;
+  readonly repealMeetingId?: number;
 }
 
 export interface WorldCouncilMeeting {
@@ -87,6 +106,7 @@ export interface WorldCouncilPendingContributionNegotiation {
 }
 
 export interface WorldCouncilState {
+  readonly organizationKind?: WorldCouncilOrganizationKind;
   readonly foundingCityId: string;
   readonly foundingNationId: string;
   readonly foundingTurn: number;

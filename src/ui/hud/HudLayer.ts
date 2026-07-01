@@ -518,10 +518,13 @@ export class HudLayer {
   }
 
   private refreshWorldCouncilButton(): void {
-    const hasFoundation = (this.config.getWorldCouncilFoundationState?.() ?? null) !== null;
-    const hasOverview = (this.config.getWorldCouncilOverviewState?.() ?? null) !== null;
+    const foundationState = this.config.getWorldCouncilFoundationState?.() ?? null;
+    const overviewState = this.config.getWorldCouncilOverviewState?.() ?? null;
+    const hasFoundation = foundationState !== null;
+    const hasOverview = overviewState !== null;
     const visible = hasFoundation || hasOverview;
-    this.worldCouncilButtonText.setText(hasFoundation ? '📜 Found World Council' : 'World Council');
+    const organizationName = foundationState?.organizationName ?? overviewState?.organizationName ?? 'World Council';
+    this.worldCouncilButtonText.setText(hasFoundation ? `📜 Found ${organizationName}` : organizationName);
     this.worldCouncilButton.setVisible(visible);
     this.worldCouncilButtonText.setVisible(visible);
     this.worldCouncilButtonHitArea.setVisible(visible);

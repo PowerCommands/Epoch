@@ -20,6 +20,7 @@ export interface TradeDealSystemGoldAccess {
 }
 
 export type TradeDealCanExportResource = (sellerNationId: string, resourceId: string) => boolean;
+export type TradeDealRestrictionProvider = (input: CreateTradeDealInput) => string | undefined;
 
 type TradeDealListener = (event: TradeDealEvent) => void;
 
@@ -35,6 +36,7 @@ export class TradeDealSystem {
    * Defaults to true so existing tests/back-compat paths are unaffected.
    */
   private hasTradeNetworks: (nationId: string) => boolean = () => true;
+  private restrictionProvider: TradeDealRestrictionProvider = () => undefined;
   /**
    * The human player's nation, if any. When a deal involves the human, trade
    * capacity is counted directionally (separate import/export slots). Undefined
@@ -59,6 +61,10 @@ export class TradeDealSystem {
 
   setHasTradeNetworks(fn: (nationId: string) => boolean): void {
     this.hasTradeNetworks = fn;
+  }
+
+  setRestrictionProvider(fn: TradeDealRestrictionProvider): void {
+    this.restrictionProvider = fn;
   }
 
   setHumanNationId(nationId: string | undefined): void {
@@ -115,6 +121,17 @@ export class TradeDealSystem {
     let cancelled = 0;
     for (const deal of Array.from(this.deals.values())) {
       if (deal.sellerNationId !== nationId && deal.buyerNationId !== nationId) continue;
+      this.deals.delete(deal.id);
+      this.emitCancelled(deal, reason);
+      cancelled++;
+    }
+    return cancelled;
+  }
+
+  cancelDealsMatching(predicate: (deal: TradeDeal) => boolean, reason: TradeDealEndReason): number {
+    let cancelled = 0;
+    for (const deal of Array.from(this.deals.values())) {
+      if (!predicate(this.copyDeal(deal))) continue;
       this.deals.delete(deal.id);
       this.emitCancelled(deal, reason);
       cancelled++;
@@ -209,6 +226,8 @@ export class TradeDealSystem {
     if (!this.canExportResource(input.sellerNationId, input.resourceId)) {
       return { ok: false, reason: 'Seller does not currently have access to that resource.' };
     }
+    const restrictionReason = this.restrictionProvider(input);
+    if (restrictionReason) return { ok: false, reason: restrictionReason };
     const alreadyImportingFromSeller = Array.from(this.deals.values()).some((deal) =>
       deal.sellerNationId === input.sellerNationId &&
       deal.buyerNationId === input.buyerNationId &&

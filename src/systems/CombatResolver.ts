@@ -26,6 +26,7 @@ export interface CityCombatModifiers {
   readonly attackerStrengthBonus?: number;
   readonly cityDefenseBonus?: number;
   readonly cityDefenseMultiplier?: number;
+  readonly cityDamageTakenMultiplier?: number;
 }
 
 /**
@@ -100,7 +101,9 @@ export function resolveRangedVsCity(
   const attackerHpRatio = attacker.health / attacker.unitType.baseHealth;
   const rangedStr = (attacker.unitType.rangedStrength ?? attacker.unitType.baseStrength)
     + (modifiers.attackerStrengthBonus ?? 0);
-  const damageToCity = Math.round(rangedStr * attackerHpRatio);
+  const damageToCity = Math.max(1, Math.round(
+    rangedStr * attackerHpRatio * (modifiers.cityDamageTakenMultiplier ?? 1),
+  ));
   const newCityHp = Math.max(0, city.health - damageToCity);
 
   return {
@@ -127,7 +130,9 @@ export function resolveUnitVsCity(
   const cityDefenseBase = CITY_BASE_DEFENSE + (modifiers.cityDefenseBonus ?? 0);
   const cityDefense = Math.max(1, Math.floor(cityDefenseBase * (modifiers.cityDefenseMultiplier ?? 1)));
 
-  const damageToCity = Math.round(attackerStrength * attackerHpRatio);
+  const damageToCity = Math.max(1, Math.round(
+    attackerStrength * attackerHpRatio * (modifiers.cityDamageTakenMultiplier ?? 1),
+  ));
   const damageToAttacker = Math.round(cityDefense * 0.5);
 
   const newCityHp = Math.max(0, city.health - damageToCity);

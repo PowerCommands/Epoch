@@ -6,6 +6,7 @@ import type { WorldCouncilFoundationOffer } from './WorldCouncilFoundationDialog
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
 export interface WorldCouncilContributionDialogState {
+  readonly organizationName: string;
   readonly nationName: string;
   readonly maxGold: number;
   readonly currentGold: number;
@@ -111,7 +112,8 @@ export class WorldCouncilContributionDialog {
     this.gold = clamp(state.currentGold, 0, state.maxGold);
     this.sciencePercent = clamp(state.currentSciencePercent, 0, 100);
     this.culturePercent = clamp(state.currentCulturePercent, 0, 100);
-    this.bodyText.setText(`${state.nationName}, choose new World Council contributions. Minimum keeps a symbolic Council commitment.`);
+    this.titleText.setText(`${state.organizationName} Contributions`);
+    this.bodyText.setText(`${state.nationName}, choose new ${state.organizationName} contributions. Minimum keeps a symbolic commitment.`);
     this.refreshValues();
     this.setVisible(true);
     this.layout();

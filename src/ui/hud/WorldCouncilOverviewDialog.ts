@@ -35,7 +35,19 @@ export interface WorldCouncilOverviewProposal {
   readonly voteSummary?: string;
 }
 
+export interface WorldCouncilOverviewEnactedResolution {
+  readonly title: string;
+  readonly status: 'active' | 'repealed' | 'expired';
+  readonly meetingKind: string;
+  readonly turn: number;
+  readonly repealTurn?: number;
+  readonly targetNationName?: string;
+  readonly remainingTurns?: number;
+  readonly participantNationNames?: string[];
+}
+
 export interface WorldCouncilOverviewState {
+  readonly organizationName: string;
   readonly status: string;
   readonly foundingCityName: string;
   readonly foundingNationName: string;
@@ -44,6 +56,7 @@ export interface WorldCouncilOverviewState {
   readonly nextRegularMeetingTurn: number;
   readonly canHumanLeave: boolean;
   readonly members: WorldCouncilOverviewMember[];
+  readonly enactedResolutions: WorldCouncilOverviewEnactedResolution[];
   readonly meetings: WorldCouncilOverviewMeeting[];
 }
 
@@ -128,6 +141,7 @@ export class WorldCouncilOverviewDialog {
 
   show(state: WorldCouncilOverviewState): void {
     this.current = state;
+    this.titleText.setText(`${state.organizationName} Overview`);
     this.bodyText.setText(formatOverview(state));
     this.setVisible(true);
     this.layout();
@@ -280,6 +294,26 @@ function formatOverview(state: WorldCouncilOverviewState): string {
         }
         if (proposal.voteSummary) lines.push(`     ${proposal.voteSummary}`);
         if (proposal.outcomeText) lines.push(`     ${proposal.outcomeText}`);
+      }
+    }
+  }
+  lines.push('', 'Enacted Resolutions');
+  if (state.enactedResolutions.length === 0) {
+    lines.push('None');
+  } else {
+    for (const resolution of state.enactedResolutions) {
+      const statusText = resolution.status === 'active'
+        ? 'Active'
+        : resolution.status === 'expired'
+          ? 'Expired'
+          : `Repealed${resolution.repealTurn !== undefined ? ` round ${resolution.repealTurn}` : ''}`;
+      const targetText = resolution.targetNationName ? ` against ${resolution.targetNationName}` : '';
+      lines.push(`${statusText}: ${resolution.title}${targetText} (${resolution.meetingKind}, round ${resolution.turn})`);
+      if (resolution.remainingTurns !== undefined) {
+        lines.push(`  Remaining: ${resolution.remainingTurns} turns`);
+      }
+      if (resolution.participantNationNames && resolution.participantNationNames.length > 0) {
+        lines.push(`  Signers: ${resolution.participantNationNames.join(', ')}`);
       }
     }
   }
