@@ -2229,8 +2229,9 @@ export class RightSidebarPanelDataProvider {
 
   private getDiplomaticVictorySection(): RightSidebarSection {
     const entries = this.getDiplomacyLeaderboard();
+    const requiredScore = this.worldCouncilSystem?.getDiplomacyScoreThreshold() ?? 5000;
     const headerRow = textRow(
-      'Diplomatic Victory — reach 100,000 Diplomatic Score to win.',
+      `Diplomatic Victory — reach ${requiredScore.toLocaleString()} Diplomatic Score to win.`,
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0

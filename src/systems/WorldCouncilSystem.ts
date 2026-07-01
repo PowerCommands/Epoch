@@ -1,8 +1,10 @@
 import type { NationManager } from './NationManager';
 import type { CityManager } from './CityManager';
 import type { ResourceSystem } from './ResourceSystem';
+import type { DiscoverySystem } from './DiscoverySystem';
 import type { WorldCouncilResolutionSystem } from './WorldCouncilResolutionSystem';
 import type { TurnStartEvent } from '../types/events';
+import { isBarbarianNation } from '../data/barbarians';
 import type {
   WorldCouncilContributionChoice,
   WorldCouncilEmergencyTrigger,
@@ -34,9 +36,9 @@ export type WorldCouncilChangedListener = () => void;
 export type WorldCouncilCompletedListener = (state: WorldCouncilState) => void;
 export type WorldCouncilMeetingListener = (meeting: WorldCouncilMeeting, state: WorldCouncilState) => void;
 
-const DEFAULT_AI_GOLD_SHARE = 0.12;
-const DEFAULT_AI_SCIENCE_PERCENT = 10;
-const DEFAULT_AI_CULTURE_PERCENT = 10;
+const MINIMUM_COUNCIL_SCIENCE_PERCENT = 1;
+const MINIMUM_COUNCIL_CULTURE_PERCENT = 1;
+const NON_STANDARD_WORLD_COUNCIL_NATION_IDS = new Set(['nation_pirate']);
 
 export class WorldCouncilSystem {
   private state: WorldCouncilState | null = null;
@@ -44,12 +46,14 @@ export class WorldCouncilSystem {
   private readonly completedListeners: WorldCouncilCompletedListener[] = [];
   private readonly meetingListeners: WorldCouncilMeetingListener[] = [];
   private hasSkippedInitialTurnStart = false;
+  private lastProcessedCouncilRound = 0;
 
   constructor(
     private readonly nationManager: NationManager,
     private readonly cityManager: CityManager,
     private readonly resourceSystem: ResourceSystem,
     private readonly resolutionSystem?: WorldCouncilResolutionSystem,
+    private readonly discoverySystem?: DiscoverySystem,
   ) {}
 
   hasCouncil(): boolean {
@@ -108,18 +112,21 @@ export class WorldCouncilSystem {
 
   leaveCouncil(nationId: string): boolean {
     if (!this.state || !this.isMember(nationId)) return false;
-    const members = this.state.members.filter((member) => member.nationId !== nationId);
-    this.state = {
-      ...this.state,
-      members,
-      memberNationIds: members.map((member) => member.nationId),
-    };
+    this.removeMember(nationId);
+    this.notifyChanged();
+    return true;
+  }
+
+  removeEliminatedNation(nationId: string): boolean {
+    if (!this.state || !this.isMember(nationId)) return false;
+    this.removeMember(nationId);
     this.notifyChanged();
     return true;
   }
 
   triggerEmergencyMeeting(turn: number, trigger: WorldCouncilEmergencyTrigger): WorldCouncilMeeting | null {
     if (!this.state || this.state.status !== 'active') return null;
+    this.pruneEliminatedMembers();
     const meeting = this.createMeeting({
       kind: 'emergency',
       turn,
@@ -141,7 +148,8 @@ export class WorldCouncilSystem {
 
     for (const nation of this.nationManager.getAllNations()) {
       if (nation.id === options.foundingNationId) continue;
-      const offer = this.chooseAIContribution(nation.id, options.foundingNationId);
+      if (!this.isEligibleForInvitation(nation.id, options.foundingNationId)) continue;
+      const offer = this.chooseAIContribution(nation.id);
       if (!offer) continue;
       const member = this.applyContribution(nation.id, offer);
       if (isMemberContribution(member)) members.push(member);
@@ -173,37 +181,20 @@ export class WorldCouncilSystem {
     }
     if (!this.state) return;
 
+    const membershipChanged = this.pruneEliminatedMembers();
     const scoreAdvanced = this.advanceDiplomacyScore(event.nation.id);
+    const lifecycleChanged = this.advanceCouncilLifecycle(event.round);
 
-    if (this.state.status === 'active' && event.nation.id === this.state.foundingNationId) {
-      const meeting = this.maybeCreateRegularMeeting(event.round);
-      if (meeting) {
-        this.notifyChanged();
-        this.notifyMeeting(meeting);
-        return;
-      }
-    }
-
-    if (this.state.status !== 'construction' || event.nation.id !== this.state.foundingNationId) {
-      if (scoreAdvanced) this.notifyChanged();
-      return;
-    }
-
-    const remaining = Math.max(0, this.state.constructionTurnsRemaining - 1);
-    this.state = {
-      ...this.state,
-      constructionTurnsRemaining: remaining,
-      status: remaining === 0 ? 'active' : 'construction',
-    };
-    this.notifyChanged();
-    if (this.state.status === 'active') {
-      this.notifyCompleted(this.state);
+    if (scoreAdvanced || membershipChanged || lifecycleChanged) {
+      this.notifyChanged();
     }
   }
 
   restore(state: WorldCouncilState | undefined): void {
     this.state = state ? cloneState(normalizeState(state)) : null;
     this.hasSkippedInitialTurnStart = true;
+    this.lastProcessedCouncilRound = this.state?.lastRegularMeetingTurn ?? 0;
+    this.pruneEliminatedMembers();
     this.notifyChanged();
   }
 
@@ -224,20 +215,34 @@ export class WorldCouncilSystem {
     this.meetingListeners.push(listener);
   }
 
-  private chooseAIContribution(nationId: string, foundingNationId: string): WorldCouncilContributionOffer | null {
+  private chooseAIContribution(nationId: string): WorldCouncilContributionOffer | null {
     const nation = this.nationManager.getNation(nationId);
-    if (!nation || nation.isHuman) return null;
+    if (!nation) return null;
 
     const resources = this.nationManager.getResources(nationId);
-    const cities = this.cityManager.getCitiesByOwner(nationId).length;
-    const founderCities = this.cityManager.getCitiesByOwner(foundingNationId).length;
-    const willingness = cities >= Math.max(1, founderCities - 1) || resources.gold >= 100;
-    if (!willingness) return null;
+    const personality = getLeaderPersonalityByNationId(nationId);
+    const commitment = this.getCouncilCommitment(nationId);
+    const positiveCommitment = Math.max(0, commitment);
+    const goldShare = clampNumber(
+      0.03 + positiveCommitment / 650 + Math.max(0, personality.economyBias) / 1000,
+      0.01,
+      0.24,
+    );
+    const sciencePercent = clampWhole(
+      4 + Math.round((personality.diplomacyBias + personality.economyBias + personality.peacePreference - personality.aggressionBias) / 16),
+      MINIMUM_COUNCIL_SCIENCE_PERCENT,
+      25,
+    );
+    const culturePercent = clampWhole(
+      4 + Math.round((personality.diplomacyBias + personality.cultureBias + personality.peacePreference - personality.aggressionBias) / 16),
+      MINIMUM_COUNCIL_CULTURE_PERCENT,
+      25,
+    );
 
     return {
-      gold: Math.max(0, Math.floor(resources.gold * DEFAULT_AI_GOLD_SHARE)),
-      sciencePercent: DEFAULT_AI_SCIENCE_PERCENT,
-      culturePercent: DEFAULT_AI_CULTURE_PERCENT,
+      gold: Math.max(0, Math.floor(resources.gold * goldShare)),
+      sciencePercent,
+      culturePercent,
     };
   }
 
@@ -247,8 +252,8 @@ export class WorldCouncilSystem {
   ): WorldCouncilMember {
     const resources = this.nationManager.getResources(nationId);
     const gold = clampWhole(offer.gold, 0, resources.gold);
-    const sciencePercent = clampWhole(offer.sciencePercent, 0, 100);
-    const culturePercent = clampWhole(offer.culturePercent, 0, 100);
+    const sciencePercent = clampWhole(offer.sciencePercent, MINIMUM_COUNCIL_SCIENCE_PERCENT, 100);
+    const culturePercent = clampWhole(offer.culturePercent, MINIMUM_COUNCIL_CULTURE_PERCENT, 100);
 
     if (gold > 0) this.resourceSystem.addGold(nationId, -gold);
 
@@ -264,6 +269,7 @@ export class WorldCouncilSystem {
 
   private advanceDiplomacyScore(nationId: string): boolean {
     if (!this.state) return false;
+    if (!this.nationManager.getNation(nationId)) return false;
     const index = this.state.members.findIndex((member) => member.nationId === nationId);
     if (index < 0) return false;
     const members = this.state.members.map((member, memberIndex) => {
@@ -282,8 +288,35 @@ export class WorldCouncilSystem {
     return true;
   }
 
+  private advanceCouncilLifecycle(round: number): boolean {
+    if (!this.state) return false;
+    if (round <= this.state.foundingTurn) return false;
+    if (round === this.lastProcessedCouncilRound) return false;
+    this.lastProcessedCouncilRound = round;
+
+    if (this.state.status === 'construction') {
+      const remaining = Math.max(0, this.state.constructionTurnsRemaining - 1);
+      const becameActive = remaining === 0;
+      this.state = {
+        ...this.state,
+        constructionTurnsRemaining: remaining,
+        status: becameActive ? 'active' : 'construction',
+      };
+      if (becameActive) this.notifyCompleted(this.state);
+      return true;
+    }
+
+    const meeting = this.maybeCreateRegularMeeting(round);
+    if (meeting) {
+      this.notifyMeeting(meeting);
+      return true;
+    }
+    return false;
+  }
+
   private maybeCreateRegularMeeting(turn: number): WorldCouncilMeeting | null {
     if (!this.state || this.state.status !== 'active') return null;
+    this.pruneEliminatedMembers();
     if (turn < this.state.nextRegularMeetingTurn) return null;
 
     const hostNationId = this.getRegularMeetingHostNationId();
@@ -413,12 +446,12 @@ export class WorldCouncilSystem {
         members.push(member);
         continue;
       }
-      if (!isMemberChoice(choice)) continue;
+      const contribution = this.enforceMinimumContribution(choice);
       members.push({
         ...member,
-        goldContributed: choice.goldContributed,
-        scienceContributionPercent: choice.scienceContributionPercent,
-        cultureContributionPercent: choice.cultureContributionPercent,
+        goldContributed: contribution.goldContributed,
+        scienceContributionPercent: contribution.scienceContributionPercent,
+        cultureContributionPercent: contribution.cultureContributionPercent,
       });
     }
     this.state = {
@@ -430,6 +463,103 @@ export class WorldCouncilSystem {
   }
 
   private chooseAIRegularMeetingContribution(nationId: string): WorldCouncilContributionChoice {
+    const resources = this.nationManager.getResources(nationId);
+    const personality = getLeaderPersonalityByNationId(nationId);
+    const commitment = this.getCouncilCommitment(nationId);
+
+    const goldShare = clampNumber(0.04 + commitment / 600, 0, 0.25);
+    const sciencePercent = clampWhole(
+      6 + Math.round((commitment + personality.economyBias) / 14),
+      MINIMUM_COUNCIL_SCIENCE_PERCENT,
+      25,
+    );
+    const culturePercent = clampWhole(
+      6 + Math.round((commitment + personality.cultureBias) / 14),
+      MINIMUM_COUNCIL_CULTURE_PERCENT,
+      25,
+    );
+    return {
+      nationId,
+      goldContributed: clampWhole(resources.gold * goldShare, 0, resources.gold),
+      scienceContributionPercent: sciencePercent,
+      cultureContributionPercent: culturePercent,
+    };
+  }
+
+  private makeContributionChoice(
+    nationId: string,
+    offer: WorldCouncilContributionOffer,
+  ): WorldCouncilContributionChoice {
+    const resources = this.nationManager.getResources(nationId);
+    return this.enforceMinimumContribution({
+      nationId,
+      goldContributed: clampWhole(offer.gold, 0, resources.gold),
+      scienceContributionPercent: clampWhole(offer.sciencePercent, 0, 100),
+      cultureContributionPercent: clampWhole(offer.culturePercent, 0, 100),
+    });
+  }
+
+  private enforceMinimumContribution(choice: WorldCouncilContributionChoice): WorldCouncilContributionChoice {
+    return {
+      ...choice,
+      scienceContributionPercent: clampWhole(choice.scienceContributionPercent, MINIMUM_COUNCIL_SCIENCE_PERCENT, 100),
+      cultureContributionPercent: clampWhole(choice.cultureContributionPercent, MINIMUM_COUNCIL_CULTURE_PERCENT, 100),
+    };
+  }
+
+  private isEligibleForInvitation(nationId: string, foundingNationId: string): boolean {
+    if (nationId === foundingNationId) return true;
+    if (isBarbarianNation(nationId)) return false;
+    if (NON_STANDARD_WORLD_COUNCIL_NATION_IDS.has(nationId)) return false;
+    if (this.discoverySystem && !this.discoverySystem.hasMet(foundingNationId, nationId)) return false;
+    return true;
+  }
+
+  private removeMember(nationId: string): void {
+    if (!this.state) return;
+    const members = this.state.members.filter((member) => member.nationId !== nationId);
+    const wasAwaitingContribution = this.state.pendingContributionNegotiation?.awaitingHumanNationId === nationId;
+    const pending = this.state.pendingContributionNegotiation
+      ? {
+          ...this.state.pendingContributionNegotiation,
+          choices: this.state.pendingContributionNegotiation.choices
+            .filter((choice) => choice.nationId !== nationId),
+          awaitingHumanNationId: this.state.pendingContributionNegotiation.awaitingHumanNationId === nationId
+            ? undefined
+            : this.state.pendingContributionNegotiation.awaitingHumanNationId,
+        }
+      : undefined;
+    this.state = {
+      ...this.state,
+      members,
+      memberNationIds: members.map((member) => member.nationId),
+      pendingContributionNegotiation: pending?.awaitingHumanNationId || pending?.choices.length
+        ? pending
+        : undefined,
+      enactedResolutions: this.state.enactedResolutions.map((resolution) => ({
+        ...resolution,
+        participantNationIds: resolution.participantNationIds
+          ? resolution.participantNationIds.filter((participantNationId) => participantNationId !== nationId)
+          : undefined,
+        targetNationId: resolution.targetNationId === nationId ? undefined : resolution.targetNationId,
+      })),
+    };
+    if (wasAwaitingContribution && pending) {
+      this.finalizeContributionNegotiation(pending.choices);
+    }
+  }
+
+  private pruneEliminatedMembers(): boolean {
+    if (!this.state) return false;
+    const eliminatedMemberIds = this.state.members
+      .filter((member) => !this.nationManager.getNation(member.nationId))
+      .map((member) => member.nationId);
+    if (eliminatedMemberIds.length === 0) return false;
+    for (const nationId of eliminatedMemberIds) this.removeMember(nationId);
+    return true;
+  }
+
+  private getCouncilCommitment(nationId: string): number {
     const nation = this.nationManager.getNation(nationId);
     const resources = this.nationManager.getResources(nationId);
     const personality = getLeaderPersonalityByNationId(nationId);
@@ -444,34 +574,7 @@ export class WorldCouncilSystem {
       + (wantsEconomy ? 15 : 0)
       + (wantsHappiness ? 8 : 0);
     const warPressure = (isDefensive ? 18 : 0) + (isPreparingWar ? 12 : 0) + Math.max(0, personality.warTolerance - 50) / 3;
-    const commitment = wantsDiplomacy + personality.economyBias + personality.cultureBias - economyPressure - warPressure;
-
-    if (commitment <= -45 && resources.goldPerTurn < 1) {
-      return { nationId, goldContributed: 0, scienceContributionPercent: 0, cultureContributionPercent: 0 };
-    }
-
-    const goldShare = clampNumber(0.08 + commitment / 500, 0, 0.25);
-    const sciencePercent = clampWhole(8 + Math.round((personality.diplomacyBias + personality.economyBias - warPressure) / 12), 0, 25);
-    const culturePercent = clampWhole(8 + Math.round((personality.diplomacyBias + personality.cultureBias - economyPressure) / 12), 0, 25);
-    return {
-      nationId,
-      goldContributed: clampWhole(resources.gold * goldShare, 0, resources.gold),
-      scienceContributionPercent: sciencePercent,
-      cultureContributionPercent: culturePercent,
-    };
-  }
-
-  private makeContributionChoice(
-    nationId: string,
-    offer: WorldCouncilContributionOffer,
-  ): WorldCouncilContributionChoice {
-    const resources = this.nationManager.getResources(nationId);
-    return {
-      nationId,
-      goldContributed: clampWhole(offer.gold, 0, resources.gold),
-      scienceContributionPercent: clampWhole(offer.sciencePercent, 0, 100),
-      cultureContributionPercent: clampWhole(offer.culturePercent, 0, 100),
-    };
+    return wantsDiplomacy + personality.economyBias + personality.cultureBias - economyPressure - warPressure;
   }
 
   private notifyChanged(): void {
@@ -505,14 +608,8 @@ function isMemberContribution(member: WorldCouncilMember): boolean {
     || member.cultureContributionPercent > 0;
 }
 
-function isMemberChoice(choice: WorldCouncilContributionChoice): boolean {
-  return choice.goldContributed > 0
-    || choice.scienceContributionPercent > 0
-    || choice.cultureContributionPercent > 0;
-}
-
 function getDiplomacyScoreGain(member: WorldCouncilMember): number {
-  return member.goldContributed
+  return member.goldContributed / 100
     + member.scienceContributionPercent
     + member.cultureContributionPercent;
 }

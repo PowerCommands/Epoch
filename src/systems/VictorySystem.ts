@@ -6,6 +6,7 @@ import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { TurnManager } from './TurnManager';
 import type { WonderSystem } from './WonderSystem';
 import type { WorldCouncilSystem } from './WorldCouncilSystem';
+import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
 import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from './CulturalVictory';
 
 export type VictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
@@ -74,7 +75,7 @@ const AEROSPACE_PARTS_ID = 'aerospace_parts';
 const AEROSPACE_CORP_ID = 'aerospace_industries';
 const SCIENCE_PROGRESS_INTERVAL = 25;
 const CULTURAL_PROGRESS_INTERVAL = 25;
-export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = 100000;
+export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
 
 /**
  * VictorySystem checks for win conditions after each turn end.

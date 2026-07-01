@@ -787,6 +787,7 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       resourceSystem,
       worldCouncilResolutionSystem,
+      discoverySystem,
     );
     turnManager.on('turnStart', (event) => worldCouncilSystem.handleTurnStart(event));
     tradeDealSystem.setConnectionCapacityProvider((a, b) =>
@@ -2295,7 +2296,7 @@ export class GameScene extends Phaser.Scene {
         constructionTurnsRemaining: state.constructionTurnsRemaining,
         diplomacyScoreThreshold: worldCouncilSystem.getDiplomacyScoreThreshold(),
         nextRegularMeetingTurn: state.nextRegularMeetingTurn,
-        canHumanLeave: humanNationId ? worldCouncilSystem.isMember(humanNationId) : false,
+        canHumanLeave: false,
         members: state.members.map((member) => ({
           nationName: nationManager.getNation(member.nationId)?.name ?? member.nationId,
           diplomacyScore: member.diplomacyScore,
@@ -3119,6 +3120,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     nationCollapseSystem.onNationCollapsed((event) => {
+      worldCouncilSystem.removeEliminatedNation(event.nationId);
       for (const city of event.occupiedCities) {
         cityRenderer.refreshCity(city);
         cityBannerRenderer.refreshCity(city);
@@ -4536,16 +4538,7 @@ export class GameScene extends Phaser.Scene {
       },
       onSubmitWorldCouncilContribution: (offer) => {
         if (!humanNationId) return false;
-        const wasMember = worldCouncilSystem.isMember(humanNationId);
-        const submitted = worldCouncilSystem.submitHumanContribution(humanNationId, offer);
-        if (submitted && wasMember && !worldCouncilSystem.isMember(humanNationId)) {
-          logManager.info({
-            nationId: humanNationId,
-            category: 'diplomacy',
-            message: 'left the World Council by ending all contributions.',
-          });
-        }
-        return submitted;
+        return worldCouncilSystem.submitHumanContribution(humanNationId, offer);
       },
       onLeaveWorldCouncil: () => {
         if (!humanNationId) return false;
@@ -4813,6 +4806,9 @@ export class GameScene extends Phaser.Scene {
         : meeting.hostNationId
           ? [meeting.hostNationId]
           : state.memberNationIds;
+      const primaryNationId = meeting.hostNationId
+        ?? state.memberNationIds.find((nationId) => nationManager.getNation(nationId))
+        ?? state.foundingNationId;
       historicalTimeline.record({
         type: 'worldCouncilMeeting',
         icon: '📜',
@@ -4820,7 +4816,7 @@ export class GameScene extends Phaser.Scene {
         eventNationIds,
       });
       logManager.info({
-        nationId: meeting.hostNationId ?? state.foundingNationId,
+        nationId: primaryNationId,
         nationIds: eventNationIds.length > 0 ? eventNationIds : state.memberNationIds,
         category: 'diplomacy',
         message: meetingText,

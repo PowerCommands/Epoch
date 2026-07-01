@@ -96,9 +96,9 @@ export class WorldCouncilContributionDialog {
       ['Culture -5%', () => this.adjustCulture(-5)],
       ['Culture +5%', () => this.adjustCulture(5)],
       ['Confirm', () => this.confirm()],
-      ['Leave Council', () => this.leaveCouncil()],
+      ['Minimum', () => this.minimumContribution()],
     ] as const) {
-      this.buttons.push(this.createButton(addOwned, label, label === 'Leave Council' ? 0x5a3030 : 0x355f76, onClick));
+      this.buttons.push(this.createButton(addOwned, label, label === 'Minimum' ? 0x46613d : 0x355f76, onClick));
     }
   }
 
@@ -111,7 +111,7 @@ export class WorldCouncilContributionDialog {
     this.gold = clamp(state.currentGold, 0, state.maxGold);
     this.sciencePercent = clamp(state.currentSciencePercent, 0, 100);
     this.culturePercent = clamp(state.currentCulturePercent, 0, 100);
-    this.bodyText.setText(`${state.nationName}, choose new World Council contributions. Zero in every category leaves the Council.`);
+    this.bodyText.setText(`${state.nationName}, choose new World Council contributions. Minimum keeps a symbolic Council commitment.`);
     this.refreshValues();
     this.setVisible(true);
     this.layout();
@@ -184,8 +184,8 @@ export class WorldCouncilContributionDialog {
     });
   }
 
-  private leaveCouncil(): void {
-    this.confirmListener?.({ gold: 0, sciencePercent: 0, culturePercent: 0 });
+  private minimumContribution(): void {
+    this.confirmListener?.({ gold: 0, sciencePercent: 1, culturePercent: 1 });
   }
 
   private refreshValues(): void {
