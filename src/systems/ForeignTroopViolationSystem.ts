@@ -37,6 +37,7 @@ export interface ForeignTroopViolationClearedEvent {
 type WarningListener = (event: ForeignTroopViolationWarningEvent) => void;
 type EscalationListener = (event: ForeignTroopViolationEscalationEvent) => void;
 type ClearedListener = (event: ForeignTroopViolationClearedEvent) => void;
+type ForeignTroopAuthorization = (unit: Unit, territoryOwnerId: string) => boolean;
 
 const MIN_VALUE = 0;
 const MAX_VALUE = 100;
@@ -51,6 +52,7 @@ export class ForeignTroopViolationSystem {
   private readonly warningListeners: WarningListener[] = [];
   private readonly escalationListeners: EscalationListener[] = [];
   private readonly clearedListeners: ClearedListener[] = [];
+  private isForeignTroopAuthorized: ForeignTroopAuthorization = () => false;
 
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
@@ -58,6 +60,10 @@ export class ForeignTroopViolationSystem {
     private readonly unitManager: UnitManager,
     private readonly mapData: MapData,
   ) {}
+
+  setForeignTroopAuthorizationProvider(provider: ForeignTroopAuthorization): void {
+    this.isForeignTroopAuthorized = provider;
+  }
 
   onWarning(listener: WarningListener): void {
     this.warningListeners.push(listener);
@@ -168,6 +174,7 @@ export class ForeignTroopViolationSystem {
       if (!this.nationManager.getNation(offendedNationId)) continue;
       if (!this.nationManager.getNation(unit.ownerId)) continue;
       if (this.diplomacyManager.getState(offendedNationId, unit.ownerId) === 'WAR') continue;
+      if (this.isForeignTroopAuthorized(unit, offendedNationId)) continue;
 
       const key = this.warningKey(offendedNationId, unit.ownerId);
       const existing = violations.get(key);

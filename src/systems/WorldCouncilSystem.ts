@@ -49,6 +49,9 @@ export type WorldCouncilTradeResourceCategory = 'luxury' | 'strategic' | 'bonus'
 const MINIMUM_COUNCIL_SCIENCE_PERCENT = 1;
 const MINIMUM_COUNCIL_CULTURE_PERCENT = 1;
 const NON_STANDARD_WORLD_COUNCIL_NATION_IDS = new Set(['nation_pirate']);
+const NUCLEAR_NON_PROLIFERATION_UNIT_IDS = new Set(['atomic_bomb', 'nuclear_missile']);
+const NUCLEAR_NON_PROLIFERATION_BLOCK_REASON =
+  'Production prohibited by the United Nations Nuclear Non-Proliferation Treaty.';
 
 export class WorldCouncilSystem {
   private state: WorldCouncilState | null = null;
@@ -97,6 +100,11 @@ export class WorldCouncilSystem {
 
   getTradeAgreementCapacityBetweenNations(nationAId: string, nationBId: string): number {
     if (!this.state) return 0;
+    if (
+      this.getActiveTradeRestrictionForDeal(nationAId, nationBId, 'unknown')?.resolutionId === 'international_embargo'
+    ) {
+      return 0;
+    }
     return this.state.enactedResolutions.some((resolution) =>
       resolution.resolutionId === 'global_free_trade_agreement'
       && isEnactedResolutionActive(resolution)
@@ -110,6 +118,61 @@ export class WorldCouncilSystem {
     return this.state?.enactedResolutions.some((resolution) =>
       resolution.resolutionId === 'protect_world_heritage'
       && isEnactedResolutionActive(resolution)) ?? false;
+  }
+
+  getUnitProductionRestrictionReason(nationId: string, unitTypeId: string): string | undefined {
+    if (!this.state || this.state.organizationKind !== 'un') return undefined;
+    if (!NUCLEAR_NON_PROLIFERATION_UNIT_IDS.has(unitTypeId)) return undefined;
+    if (!this.isMember(nationId)) return undefined;
+    const treatyActive = this.state.enactedResolutions.some((resolution) =>
+      resolution.resolutionId === 'nuclear_non_proliferation_treaty'
+      && isEnactedResolutionActive(resolution));
+    return treatyActive ? NUCLEAR_NON_PROLIFERATION_BLOCK_REASON : undefined;
+  }
+
+  getActivePeacekeepingMissionForHost(hostNationId: string): WorldCouncilEnactedResolution | undefined {
+    if (!this.state || this.state.organizationKind !== 'un') return undefined;
+    return this.state.enactedResolutions.find((resolution) =>
+      resolution.resolutionId === 'un_peacekeeping_mission'
+      && resolution.targetNationId === hostNationId
+      && resolution.secondaryTargetNationId !== undefined
+      && isEnactedResolutionActive(resolution));
+  }
+
+  hasActivePeacekeepingMissionForHost(hostNationId: string): boolean {
+    return this.getActivePeacekeepingMissionForHost(hostNationId) !== undefined;
+  }
+
+  canPeacekeeperEnterTerritory(unitOwnerNationId: string, territoryOwnerNationId: string, isMilitaryUnit: boolean): boolean {
+    if (!isMilitaryUnit) return false;
+    const mission = this.getActivePeacekeepingMissionForHost(territoryOwnerNationId);
+    if (!mission) return false;
+    return mission.participantNationIds?.includes(unitOwnerNationId) === true;
+  }
+
+  canResolvePeacekeepingCombat(attackerNationId: string, defenderNationId: string, tileOwnerNationId?: string): boolean {
+    if (!tileOwnerNationId) return false;
+    const mission = this.getActivePeacekeepingMissionForHost(tileOwnerNationId);
+    if (!mission?.secondaryTargetNationId) return false;
+    const threatNationId = mission.secondaryTargetNationId;
+    const participants = mission.participantNationIds ?? [];
+    return (
+      participants.includes(attackerNationId) && defenderNationId === threatNationId
+    ) || (
+      attackerNationId === threatNationId && participants.includes(defenderNationId)
+    );
+  }
+
+  getPeacekeepingDefensivePowerAgainst(
+    attackerNationId: string,
+    hostNationId: string,
+    getMilitaryStrength: (nationId: string) => number,
+  ): number {
+    const mission = this.getActivePeacekeepingMissionForHost(hostNationId);
+    if (!mission || mission.secondaryTargetNationId !== attackerNationId) return 0;
+    return (mission.participantNationIds ?? [])
+      .filter((participantNationId) => participantNationId !== attackerNationId && participantNationId !== hostNationId)
+      .reduce((sum, participantNationId) => sum + getMilitaryStrength(participantNationId) * 0.65, 0);
   }
 
   getTradeRestrictionReason(
@@ -129,6 +192,34 @@ export class WorldCouncilSystem {
 
   getDiplomacyScoreThreshold(): number {
     return WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
+  }
+
+  awardGoldContributionDiplomacyScore(nationId: string, gold: number): boolean {
+    if (!this.state || gold <= 0) return false;
+    const index = this.state.members.findIndex((member) => member.nationId === nationId);
+    if (index < 0) return false;
+    const scoreGain = getDiplomacyScoreGain({
+      nationId,
+      goldContributed: gold,
+      scienceContributionPercent: 0,
+      cultureContributionPercent: 0,
+      diplomacyScore: 0,
+      diplomacyScoreSinceLastRegularMeeting: 0,
+    });
+    const members = this.state.members.map((member, memberIndex) =>
+      memberIndex === index
+        ? {
+            ...member,
+            diplomacyScore: member.diplomacyScore + scoreGain,
+            diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting + scoreGain,
+          }
+        : member);
+    this.state = {
+      ...this.state,
+      members,
+    };
+    this.notifyChanged();
+    return true;
   }
 
   hasPendingHumanContribution(nationId: string): boolean {
@@ -160,9 +251,19 @@ export class WorldCouncilSystem {
     return true;
   }
 
+  expirePeacekeepingMissionBecauseHostDeclaredWar(
+    hostNationId: string,
+    threatNationId: string,
+  ): WorldCouncilEnactedResolution | undefined {
+    return this.expirePeacekeepingMission((resolution) =>
+      resolution.targetNationId === hostNationId
+      && resolution.secondaryTargetNationId === threatNationId);
+  }
+
   triggerEmergencyMeeting(turn: number, trigger: WorldCouncilEmergencyTrigger): WorldCouncilMeeting | null {
-    if (!this.state || this.state.status !== 'active') return null;
+    if (!this.state) return null;
     this.pruneEliminatedMembers();
+    if (this.state.status !== 'active' && !this.canCreateDefenseSupportEmergency(trigger)) return null;
     const meeting = this.createMeeting({
       kind: 'emergency',
       turn,
@@ -171,6 +272,16 @@ export class WorldCouncilSystem {
     this.notifyChanged();
     this.notifyMeeting(meeting);
     return { ...meeting, emergencyTrigger: meeting.emergencyTrigger ? { ...meeting.emergencyTrigger } : undefined };
+  }
+
+  private canCreateDefenseSupportEmergency(trigger: WorldCouncilEmergencyTrigger): boolean {
+    if (trigger.eventType !== 'warDeclared') return false;
+    const aggressorNationId = trigger.aggressorNationId;
+    const targetNationId = trigger.targetNationId;
+    return aggressorNationId !== undefined
+      && targetNationId !== undefined
+      && this.isMember(aggressorNationId)
+      && this.isMember(targetNationId);
   }
 
   found(options: FoundWorldCouncilOptions): boolean {
@@ -463,8 +574,10 @@ export class WorldCouncilSystem {
     emergencyTrigger?: WorldCouncilEmergencyTrigger;
   }): WorldCouncilMeeting {
     if (!this.state) throw new Error('Cannot create World Council meeting before the Council exists.');
-    const proposals = options.kind === 'regular' && this.resolutionSystem
-      ? this.createRegularMeetingProposals(options.turn, options.hostNationId)
+    const proposals = this.resolutionSystem
+      ? options.kind === 'regular'
+        ? this.createRegularMeetingProposals(options.turn, options.hostNationId)
+        : this.createEmergencyMeetingProposals(options.emergencyTrigger)
       : undefined;
     const meeting: WorldCouncilMeeting = {
       id: this.state.nextMeetingId,
@@ -480,10 +593,27 @@ export class WorldCouncilSystem {
       meetings: [...this.state.meetings, meeting],
       nextMeetingId: this.state.nextMeetingId + 1,
     };
-    if (options.kind === 'regular' && meeting.proposals && this.resolutionSystem) {
+    if (meeting.proposals && this.resolutionSystem) {
       return this.resolveMeetingProposals(meeting.id) ?? meeting;
     }
     return meeting;
+  }
+
+  private createEmergencyMeetingProposals(
+    emergencyTrigger: WorldCouncilEmergencyTrigger | undefined,
+  ): WorldCouncilResolutionProposal[] | undefined {
+    if (!emergencyTrigger || emergencyTrigger.eventType !== 'warDeclared') return undefined;
+    const aggressorNationId = emergencyTrigger.aggressorNationId;
+    const targetNationId = emergencyTrigger.targetNationId;
+    if (!aggressorNationId || !targetNationId) return undefined;
+    if (!this.isMember(aggressorNationId) || !this.isMember(targetNationId)) return undefined;
+    return [{
+      slot: 'host',
+      resolutionId: 'defense_support',
+      proposerNationId: targetNationId,
+      targetNationId,
+      secondaryTargetNationId: aggressorNationId,
+    }];
   }
 
   private createRegularMeetingProposals(turn: number, hostNationId: string | undefined): WorldCouncilResolutionProposal[] | undefined {
@@ -542,6 +672,9 @@ export class WorldCouncilSystem {
         turn: meeting.turn,
         members: this.state!.members,
         previousEmergencyMeetings,
+        nextRegularMeetingTurn: meeting.kind === 'regular'
+          ? meeting.turn + WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS
+          : this.state!.nextRegularMeetingTurn,
       }));
     const proposals = resolved.map((result) => result.proposal);
     const enacted = resolved
@@ -578,6 +711,7 @@ export class WorldCouncilSystem {
         memberNationIds: this.state.memberNationIds,
         participantNationIds: proposal.participantNationIds,
         targetNationId: proposal.targetNationId,
+        secondaryTargetNationId: proposal.secondaryTargetNationId,
       });
     }
     return meetings.find((item) => item.id === meetingId) ?? null;
@@ -643,6 +777,36 @@ export class WorldCouncilSystem {
     return expired;
   }
 
+  private expirePeacekeepingMission(
+    predicate: (resolution: WorldCouncilEnactedResolution) => boolean,
+  ): WorldCouncilEnactedResolution | undefined {
+    if (!this.state) return undefined;
+    let expired: WorldCouncilEnactedResolution | undefined;
+    const enactedResolutions = this.state.enactedResolutions.map((resolution) => {
+      if (
+        expired !== undefined
+        || resolution.resolutionId !== 'un_peacekeeping_mission'
+        || !isEnactedResolutionActive(resolution)
+        || !predicate(resolution)
+      ) {
+        return resolution;
+      }
+      expired = {
+        ...resolution,
+        active: false,
+        expired: true,
+      };
+      return expired;
+    });
+    if (!expired) return undefined;
+    this.state = {
+      ...this.state,
+      enactedResolutions,
+    };
+    this.notifyChanged();
+    return { ...expired, participantNationIds: expired.participantNationIds ? [...expired.participantNationIds] : undefined };
+  }
+
   private finalizeContributionNegotiation(choices: WorldCouncilContributionChoice[]): void {
     if (!this.state) return;
     const byNation = new Map(choices.map((choice) => [choice.nationId, choice]));
@@ -673,17 +837,18 @@ export class WorldCouncilSystem {
     const resources = this.nationManager.getResources(nationId);
     const personality = getLeaderPersonalityByNationId(nationId);
     const commitment = this.getCouncilCommitment(nationId);
+    const embargoPressure = this.isNationEmbargoed(nationId) ? 10 : 0;
 
-    const goldShare = clampNumber(0.04 + commitment / 600, 0, 0.25);
+    const goldShare = clampNumber(0.04 + (commitment - embargoPressure) / 600, 0, 0.22);
     const sciencePercent = clampWhole(
-      6 + Math.round((commitment + personality.economyBias) / 14),
+      5 + Math.round((commitment + personality.economyBias - embargoPressure) / 16),
       MINIMUM_COUNCIL_SCIENCE_PERCENT,
-      25,
+      22,
     );
     const culturePercent = clampWhole(
-      6 + Math.round((commitment + personality.cultureBias) / 14),
+      5 + Math.round((commitment + personality.cultureBias - embargoPressure) / 16),
       MINIMUM_COUNCIL_CULTURE_PERCENT,
-      25,
+      22,
     );
     return {
       nationId,
@@ -743,13 +908,30 @@ export class WorldCouncilSystem {
       pendingContributionNegotiation: pending?.awaitingHumanNationId || pending?.choices.length
         ? pending
         : undefined,
-      enactedResolutions: this.state.enactedResolutions.map((resolution) => ({
-        ...resolution,
-        participantNationIds: resolution.participantNationIds
-          ? resolution.participantNationIds.filter((participantNationId) => participantNationId !== nationId)
-          : undefined,
-        targetNationId: resolution.targetNationId === nationId ? undefined : resolution.targetNationId,
-      })),
+      enactedResolutions: this.state.enactedResolutions.map((resolution) => {
+        if (
+          resolution.resolutionId === 'un_peacekeeping_mission'
+          && isEnactedResolutionActive(resolution)
+          && (resolution.targetNationId === nationId || resolution.secondaryTargetNationId === nationId)
+        ) {
+          return {
+            ...resolution,
+            active: false,
+            expired: true,
+            participantNationIds: resolution.participantNationIds
+              ? resolution.participantNationIds.filter((participantNationId) => participantNationId !== nationId)
+              : undefined,
+          };
+        }
+        return {
+          ...resolution,
+          participantNationIds: resolution.participantNationIds
+            ? resolution.participantNationIds.filter((participantNationId) => participantNationId !== nationId)
+            : undefined,
+          targetNationId: resolution.targetNationId === nationId ? undefined : resolution.targetNationId,
+          secondaryTargetNationId: resolution.secondaryTargetNationId === nationId ? undefined : resolution.secondaryTargetNationId,
+        };
+      }),
     };
     if (wasAwaitingContribution && pending) {
       this.finalizeContributionNegotiation(pending.choices);
@@ -784,6 +966,13 @@ export class WorldCouncilSystem {
     return wantsDiplomacy + personality.economyBias + personality.cultureBias - economyPressure - warPressure;
   }
 
+  private isNationEmbargoed(nationId: string): boolean {
+    return this.state?.enactedResolutions.some((resolution) =>
+      resolution.resolutionId === 'international_embargo'
+      && resolution.targetNationId === nationId
+      && isEnactedResolutionActive(resolution)) ?? false;
+  }
+
   private notifyChanged(): void {
     for (const listener of this.changedListeners) listener();
   }
@@ -801,6 +990,8 @@ export class WorldCouncilSystem {
       proposals: meeting.proposals?.map((proposal) => ({
         ...proposal,
         participantNationIds: proposal.participantNationIds ? [...proposal.participantNationIds] : undefined,
+        donations: proposal.donations?.map((donation) => ({ ...donation })),
+        distributions: proposal.distributions?.map((distribution) => ({ ...distribution })),
         votes: proposal.votes?.map((vote) => ({ ...vote })),
       })),
     };
@@ -826,9 +1017,8 @@ function isMemberContribution(member: WorldCouncilMember): boolean {
 }
 
 function getDiplomacyScoreGain(member: WorldCouncilMember): number {
-  return member.goldContributed / 100
-    + member.scienceContributionPercent
-    + member.cultureContributionPercent;
+  return member.goldContributed / 500
+    + (member.scienceContributionPercent + member.cultureContributionPercent) * 0.72;
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -852,6 +1042,8 @@ function cloneState(state: WorldCouncilState): WorldCouncilState {
       proposals: meeting.proposals?.map((proposal) => ({
         ...proposal,
         participantNationIds: proposal.participantNationIds ? [...proposal.participantNationIds] : undefined,
+        donations: proposal.donations?.map((donation) => ({ ...donation })),
+        distributions: proposal.distributions?.map((distribution) => ({ ...distribution })),
         votes: proposal.votes?.map((vote) => ({ ...vote })),
       })),
     })),

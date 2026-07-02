@@ -44,6 +44,7 @@ import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
 import type { WorldCouncilSystem } from '../../systems/WorldCouncilSystem';
+import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../../types/worldCouncil';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
@@ -1159,6 +1160,8 @@ export class RightSidebarPanelDataProvider {
           unitUpkeepAffordability: this.unitUpkeepSystem,
           upkeepAffordabilityTurns: 10,
           getNationEra: (nationId) => this.eraSystem?.getNationEra(nationId) ?? 'ancient',
+          getUnitProductionRestrictionReason: (nationId, unitTypeId) =>
+            this.worldCouncilSystem?.getUnitProductionRestrictionReason(nationId, unitTypeId),
         },
       );
       if (disabledReason && !unitType.requiredResource && !isUnitUpkeepAffordabilityReason(disabledReason)) continue;
@@ -1182,6 +1185,8 @@ export class RightSidebarPanelDataProvider {
               unitUpkeepAffordability: this.unitUpkeepSystem,
               upkeepAffordabilityTurns: 10,
               getNationEra: (nationId) => this.eraSystem?.getNationEra(nationId) ?? 'ancient',
+              getUnitProductionRestrictionReason: (nationId, unitTypeId) =>
+                this.worldCouncilSystem?.getUnitProductionRestrictionReason(nationId, unitTypeId),
             },
           )) return;
         this.productionSystem.enqueue(city.id, item);
@@ -2229,7 +2234,7 @@ export class RightSidebarPanelDataProvider {
 
   private getDiplomaticVictorySection(): RightSidebarSection {
     const entries = this.getDiplomacyLeaderboard();
-    const requiredScore = this.worldCouncilSystem?.getDiplomacyScoreThreshold() ?? 5000;
+    const requiredScore = this.worldCouncilSystem?.getDiplomacyScoreThreshold() ?? WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
     const headerRow = textRow(
       `Diplomatic Victory — reach ${requiredScore.toLocaleString()} Diplomatic Score to win.`,
       true,

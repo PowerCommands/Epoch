@@ -146,17 +146,26 @@ export class AIDiplomacySystem {
     // grants), friendly opens borders, anything else stays put.
     if (attitude === 'hostile') {
       if (this.diplomacyManager.isPeaceTreatyActive(selfId, otherId, currentTurn)) return;
+      if (this.diplomacyManager.isCeasefireActive(selfId, otherId, currentTurn)) return;
       // Alliance-aware: attacking an allied target means facing the defender
       // plus the ally that defensive alliance activation would pull in. Price
       // the war against that combined strength, not the isolated target.
       const warComparison = this.militaryEvaluationSystem.compareMilitaryStrengthForWar(selfId, otherId);
       const defensiveBreakdown = this.militaryEvaluationSystem.getDefensiveWarPowerBreakdown(selfId, otherId);
-      if (defensiveBreakdown.allyNationId) {
+      if (defensiveBreakdown.allyNationId || defensiveBreakdown.peacekeepingPower > 0) {
         const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
-        const allyName = this.nationManager.getNation(defensiveBreakdown.allyNationId)?.name ?? defensiveBreakdown.allyNationId;
+        const allyName = defensiveBreakdown.allyNationId
+          ? this.nationManager.getNation(defensiveBreakdown.allyNationId)?.name ?? defensiveBreakdown.allyNationId
+          : null;
+        const allianceText = allyName
+          ? ` + alliance ${allyName} ${Math.round(defensiveBreakdown.alliancePower)}`
+          : '';
+        const peacekeepingText = defensiveBreakdown.peacekeepingPower > 0
+          ? ` + UN peacekeepers ${Math.round(defensiveBreakdown.peacekeepingPower)}`
+          : '';
         console.log(this.formatLog(
           selfId,
-          `evaluated war against ${targetName}: defender power ${Math.round(defensiveBreakdown.defenderPower)} + alliance ${allyName} ${Math.round(defensiveBreakdown.alliancePower)} = ${Math.round(defensiveBreakdown.totalDefensivePower)} (Alliance: ${defensiveBreakdown.allianceName}).`,
+          `evaluated war against ${targetName}: defender power ${Math.round(defensiveBreakdown.defenderPower)}${allianceText}${peacekeepingText} = ${Math.round(defensiveBreakdown.totalDefensivePower)}${defensiveBreakdown.allianceName ? ` (Alliance: ${defensiveBreakdown.allianceName})` : ''}.`,
         ));
       }
       // Don't pick a fight we'll obviously lose, or while the enemy is

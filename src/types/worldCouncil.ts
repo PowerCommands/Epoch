@@ -1,5 +1,5 @@
 export const WORLD_COUNCIL_CONSTRUCTION_TURNS = 20;
-export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 5000;
+export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 8000;
 export const WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS = 50;
 
 export type WorldCouncilOrganizationKind = 'worldCouncil' | 'un';
@@ -30,6 +30,7 @@ export interface WorldCouncilContributionChoice {
 }
 
 export type WorldCouncilResolutionId =
+  | 'defense_support'
   | 'global_free_trade_agreement'
   | 'shared_cartography'
   | 'protect_world_heritage'
@@ -43,7 +44,7 @@ export type WorldCouncilResolutionId =
   | 'climate_accord'
   | 'international_development_fund';
 
-export type WorldCouncilResolutionVotingType = 'none' | 'optionalParticipation' | 'influence';
+export type WorldCouncilResolutionVotingType = 'none' | 'optionalParticipation' | 'influence' | 'special';
 
 export interface WorldCouncilResolutionDefinition {
   readonly id: WorldCouncilResolutionId;
@@ -58,13 +59,27 @@ export interface WorldCouncilResolutionProposal {
   readonly resolutionId: WorldCouncilResolutionId;
   readonly proposerNationId?: string;
   readonly targetNationId?: string;
+  readonly secondaryTargetNationId?: string;
   readonly repealTargetEnactedResolutionId?: string;
   readonly repealTargetResolutionId?: WorldCouncilResolutionId;
   readonly participantNationIds?: string[];
+  readonly donations?: WorldCouncilResolutionDonation[];
+  readonly distributions?: WorldCouncilResolutionDistribution[];
+  readonly totalGoldDonated?: number;
   readonly votes?: WorldCouncilResolutionVote[];
   readonly passed?: boolean;
   readonly resolved?: boolean;
   readonly outcomeText?: string;
+}
+
+export interface WorldCouncilResolutionDonation {
+  readonly nationId: string;
+  readonly gold: number;
+}
+
+export interface WorldCouncilResolutionDistribution {
+  readonly nationId: string;
+  readonly gold: number;
 }
 
 export interface WorldCouncilResolutionVote {
@@ -81,6 +96,7 @@ export interface WorldCouncilEnactedResolution {
   readonly turn: number;
   readonly participantNationIds?: string[];
   readonly targetNationId?: string;
+  readonly secondaryTargetNationId?: string;
   readonly active?: boolean;
   readonly repealed?: boolean;
   readonly expired?: boolean;

@@ -19,6 +19,7 @@ export class TradeConnectionSystem {
   private readonly connections = new Map<string, TradeConnection>();
   private readonly activatedListeners: ((connection: TradeConnection) => void)[] = [];
   private nextConnectionNumber = 1;
+  private restrictionProvider: (nationAId: string, nationBId: string) => string | undefined = () => undefined;
 
   constructor(
     private readonly cityManager: CityManager,
@@ -26,6 +27,10 @@ export class TradeConnectionSystem {
     private readonly nationManager: NationManager,
     private readonly log?: (message: string, nationId: string) => void,
   ) {}
+
+  setRestrictionProvider(fn: (nationAId: string, nationBId: string) => string | undefined): void {
+    this.restrictionProvider = fn;
+  }
 
   getCityTradeCapacity(cityId: string): number {
     if (!this.cityManager.getCity(cityId)) return 0;
@@ -78,6 +83,9 @@ export class TradeConnectionSystem {
     if (!this.diplomacyManager.hasTradeRelations(nationAId, nationBId)) {
       return { ok: false, reason: 'Active Trade Relations are required.' };
     }
+
+    const restrictionReason = this.restrictionProvider(nationAId, nationBId);
+    if (restrictionReason) return { ok: false, reason: restrictionReason };
 
     if (this.getCityAvailableTradeCapacity(cityAId) < 1) {
       return { ok: false, reason: `${cityA.name} has no available trade capacity.` };

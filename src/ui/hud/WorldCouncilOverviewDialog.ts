@@ -24,24 +24,41 @@ export interface WorldCouncilOverviewMeeting {
 
 export interface WorldCouncilOverviewProposal {
   readonly slot: string;
+  readonly resolutionId?: string;
   readonly title: string;
   readonly description: string;
   readonly icon: string;
   readonly votingType: string;
   readonly proposerNationName?: string;
   readonly targetNationName?: string;
+  readonly secondaryTargetNationName?: string;
   readonly participantNationNames?: string[];
+  readonly donations?: WorldCouncilOverviewDonation[];
+  readonly distributions?: WorldCouncilOverviewDistribution[];
+  readonly totalGoldDonated?: number;
   readonly outcomeText?: string;
   readonly voteSummary?: string;
 }
 
+export interface WorldCouncilOverviewDonation {
+  readonly nationName: string;
+  readonly gold: number;
+}
+
+export interface WorldCouncilOverviewDistribution {
+  readonly nationName: string;
+  readonly gold: number;
+}
+
 export interface WorldCouncilOverviewEnactedResolution {
+  readonly resolutionId?: string;
   readonly title: string;
   readonly status: 'active' | 'repealed' | 'expired';
   readonly meetingKind: string;
   readonly turn: number;
   readonly repealTurn?: number;
   readonly targetNationName?: string;
+  readonly secondaryTargetNationName?: string;
   readonly remainingTurns?: number;
   readonly participantNationNames?: string[];
 }
@@ -287,12 +304,37 @@ function formatOverview(state: WorldCouncilOverviewState): string {
       for (const proposal of meeting.proposals) {
         const proposer = proposal.proposerNationName ? ` by ${proposal.proposerNationName}` : '';
         lines.push(`  ${proposal.icon} ${proposal.slot}${proposer}: ${proposal.title} (${proposal.votingType})`);
-        if (proposal.targetNationName) lines.push(`     Target: ${proposal.targetNationName}`);
+        if (proposal.targetNationName) {
+          const targetText = proposal.secondaryTargetNationName
+            ? `${proposal.targetNationName} - ${proposal.secondaryTargetNationName}`
+            : proposal.targetNationName;
+          lines.push(`     Target: ${targetText}`);
+        }
         lines.push(`     ${proposal.description}`);
         if (proposal.participantNationNames && proposal.participantNationNames.length > 0) {
-          lines.push(`     Signers: ${proposal.participantNationNames.join(', ')}`);
+          const participantLabel = proposal.resolutionId === 'un_peacekeeping_mission' ? 'Participants' : 'Signers';
+          lines.push(`     ${participantLabel}: ${proposal.participantNationNames.join(', ')}`);
         }
-        if (proposal.voteSummary) lines.push(`     ${proposal.voteSummary}`);
+        if (proposal.donations) {
+          const donors = proposal.donations.filter((donation) => donation.gold > 0);
+          const declined = proposal.distributions
+            ? []
+            : proposal.donations.filter((donation) => donation.gold <= 0);
+          for (const donation of donors) {
+            lines.push(`     ${donation.nationName} contributed ${donation.gold} Gold.`);
+          }
+          if (declined.length > 0) {
+            lines.push(`     Declined: ${declined.map((donation) => donation.nationName).join(', ')}`);
+          }
+          lines.push(`     Total international aid: ${proposal.totalGoldDonated ?? 0} Gold.`);
+          if (proposal.distributions && proposal.distributions.length > 0) {
+            for (const distribution of proposal.distributions) {
+              lines.push(`     ${distribution.nationName} received ${distribution.gold} Gold.`);
+            }
+          }
+        } else if (proposal.voteSummary) {
+          lines.push(`     ${proposal.voteSummary}`);
+        }
         if (proposal.outcomeText) lines.push(`     ${proposal.outcomeText}`);
       }
     }
@@ -307,13 +349,20 @@ function formatOverview(state: WorldCouncilOverviewState): string {
         : resolution.status === 'expired'
           ? 'Expired'
           : `Repealed${resolution.repealTurn !== undefined ? ` round ${resolution.repealTurn}` : ''}`;
-      const targetText = resolution.targetNationName ? ` against ${resolution.targetNationName}` : '';
+      const targetText = resolution.targetNationName
+        ? resolution.secondaryTargetNationName
+          ? resolution.resolutionId === 'un_peacekeeping_mission'
+            ? `: host ${resolution.targetNationName}, threat ${resolution.secondaryTargetNationName}`
+            : `: ${resolution.targetNationName} - ${resolution.secondaryTargetNationName}`
+          : ` against ${resolution.targetNationName}`
+        : '';
       lines.push(`${statusText}: ${resolution.title}${targetText} (${resolution.meetingKind}, round ${resolution.turn})`);
       if (resolution.remainingTurns !== undefined) {
         lines.push(`  Remaining: ${resolution.remainingTurns} turns`);
       }
       if (resolution.participantNationNames && resolution.participantNationNames.length > 0) {
-        lines.push(`  Signers: ${resolution.participantNationNames.join(', ')}`);
+        const participantLabel = resolution.resolutionId === 'un_peacekeeping_mission' ? 'Participants' : 'Signers';
+        lines.push(`  ${participantLabel}: ${resolution.participantNationNames.join(', ')}`);
       }
     }
   }

@@ -72,6 +72,7 @@ type CombatRejectedListener = (e: CombatRejectedEvent) => void;
 type WarRequiredListener = (e: WarRequiredEvent) => void;
 type UnitCombatBlocker = (unit: Unit) => boolean;
 type ProtectedLeaderProtectorResolver = (attacker: Unit, target: Unit) => string | null;
+type PeacekeepingCombatAuthorizer = (attacker: Unit, target: Unit, tileOwnerId?: string) => boolean;
 
 const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
 
@@ -107,6 +108,7 @@ export class CombatSystem {
     private readonly isUnitCombatBlocked: UnitCombatBlocker = () => false,
     private readonly policySystem?: PolicySystem,
     private readonly getProtectedLeaderProtector: ProtectedLeaderProtectorResolver = () => null,
+    private readonly canResolvePeacekeepingCombat: PeacekeepingCombatAuthorizer = () => false,
     private readonly cityDefenseSystem?: CityDefenseSystem,
   ) {
     this.unitManager = unitManager;
@@ -212,7 +214,11 @@ export class CombatSystem {
         );
       } else if (targetIsHiddenNation) {
         // Deniable/insurgent target — no war check.
-      } else if (this.diplomacyManager && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)) {
+      } else if (
+        this.diplomacyManager
+        && !this.diplomacyManager.canAttack(attacker.ownerId, targetUnit.ownerId)
+        && !this.canResolvePeacekeepingCombat(attacker, targetUnit, this.mapData.tiles[tileY]?.[tileX]?.ownerId)
+      ) {
         this.notifyWarRequired(attacker, targetUnit.ownerId, tileX, tileY, options.source ?? 'system');
         return false;
       }

@@ -84,6 +84,19 @@ export class ResourceSystem {
     return nationRes.gold;
   }
 
+  spendInfluence(nationId: string, amount: number): number {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return 0;
+
+    const nationRes = this.nationManager.getResources(nationId);
+    const spent = Math.max(0, Math.min(nationRes.influence, Math.floor(amount)));
+    if (spent <= 0) return 0;
+
+    nationRes.influence -= spent;
+    this.notify({ nationId });
+    return spent;
+  }
+
   setGold(nationId: string, amount: number): number | null {
     const nation = this.nationManager.getNation(nationId);
     if (!nation) return null;

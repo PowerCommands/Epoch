@@ -15,6 +15,7 @@ export interface UnitProductionRuleContext {
   hasActiveUnitOfType?: (nationId: string, unitTypeId: string) => boolean;
   isResidenceCapital?: (city: City) => boolean;
   getNationEra?: (nationId: string) => Era;
+  getUnitProductionRestrictionReason?: (nationId: string, unitTypeId: string) => string | undefined;
   onObsoleteUnitBlocked?: (city: City, unitType: UnitType, nationEra: Era) => void;
 }
 
@@ -78,6 +79,9 @@ export function getCityUnitProductionBlockReason(
   if (unitType.residenceCapitalOnly === true && context.isResidenceCapital?.(city) !== true) {
     return `${unitType.name} may only be produced in the residence capital`;
   }
+
+  const productionRestrictionReason = context.getUnitProductionRestrictionReason?.(city.ownerId, unitType.id);
+  if (productionRestrictionReason) return productionRestrictionReason;
 
   const nationEra = context.getNationEra?.(city.ownerId);
   if (

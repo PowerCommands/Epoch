@@ -22,15 +22,24 @@ export interface MilitaryStrengthBreakdown {
 export interface DefensiveWarPowerBreakdown {
   readonly defenderPower: number;
   readonly alliancePower: number;
+  readonly peacekeepingPower: number;
   readonly totalDefensivePower: number;
   readonly allianceName: string | null;
   readonly allyNationId: string | null;
 }
 
+export type PeacekeepingDefensivePowerProvider = (
+  attackerNationId: string,
+  defenderNationId: string,
+  getMilitaryStrength: (nationId: string) => MilitaryStrengthBreakdown,
+) => number;
+
 const STRONGER_RATIO = 1.25;
 const WEAKER_RATIO = 0.75;
 
 export class AIMilitaryEvaluationSystem {
+  private peacekeepingDefensivePowerProvider: PeacekeepingDefensivePowerProvider = () => 0;
+
   constructor(
     private readonly unitManager: UnitManager,
     private readonly cityManager: CityManager,
@@ -39,6 +48,10 @@ export class AIMilitaryEvaluationSystem {
     private readonly allianceManager?: AllianceManager,
     private readonly diplomacyManager?: DiplomacyManager,
   ) {}
+
+  setPeacekeepingDefensivePowerProvider(provider: PeacekeepingDefensivePowerProvider): void {
+    this.peacekeepingDefensivePowerProvider = provider;
+  }
 
   getMilitaryStrength(nationId: string): MilitaryStrengthBreakdown {
     let unitStrength = 0;
@@ -86,13 +99,19 @@ export class AIMilitaryEvaluationSystem {
   getDefensiveWarPowerBreakdown(attackerNationId: string, defenderNationId: string): DefensiveWarPowerBreakdown {
     const defenderPower = this.getMilitaryStrength(defenderNationId).totalStrength;
     const allyNationId = this.allianceManager?.getAllyNationId(defenderNationId) ?? null;
+    const peacekeepingPower = Math.max(0, this.peacekeepingDefensivePowerProvider(
+      attackerNationId,
+      defenderNationId,
+      (nationId) => this.getMilitaryStrength(nationId),
+    ));
 
     if (allyNationId && this.shouldIncludeAlly(attackerNationId, defenderNationId, allyNationId)) {
       const alliancePower = this.getMilitaryStrength(allyNationId).totalStrength;
       return {
         defenderPower,
         alliancePower,
-        totalDefensivePower: defenderPower + alliancePower,
+        peacekeepingPower,
+        totalDefensivePower: defenderPower + alliancePower + peacekeepingPower,
         allianceName: this.allianceManager?.getAllianceForNation(defenderNationId)?.name ?? null,
         allyNationId,
       };
@@ -101,7 +120,8 @@ export class AIMilitaryEvaluationSystem {
     return {
       defenderPower,
       alliancePower: 0,
-      totalDefensivePower: defenderPower,
+      peacekeepingPower,
+      totalDefensivePower: defenderPower + peacekeepingPower,
       allianceName: null,
       allyNationId: null,
     };

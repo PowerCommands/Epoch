@@ -778,6 +778,7 @@ export class GameScene extends Phaser.Scene {
         unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
       isResidenceCapital: (city: City) => city.isResidenceCapital,
       getNationEra: (nationId: string) => eraSystem.getNationEra(nationId),
+      getUnitProductionRestrictionReason: undefined as ((nationId: string, unitTypeId: string) => string | undefined) | undefined,
     };
     tradeDealSystem.setCanExportResource((sellerNationId, resourceId) =>
       resourceAccessSystem.canExportResource(sellerNationId, resourceId),
@@ -785,12 +786,6 @@ export class GameScene extends Phaser.Scene {
     const getTradeResourceCategory = (resourceId: string) =>
       getNaturalResourceById(resourceId)?.category
       ?? (getResourceDefinitionById(resourceId)?.category === 'manufactured' ? 'manufactured' : 'unknown');
-    tradeDealSystem.setRestrictionProvider((input) =>
-      worldCouncilSystem.getTradeRestrictionReason(
-        input.sellerNationId,
-        input.buyerNationId,
-        getTradeResourceCategory(input.resourceId),
-      ));
     const worldCouncilResolutionSystem = new WorldCouncilResolutionSystem();
     const worldCouncilSystem = new WorldCouncilSystem(
       nationManager,
@@ -799,7 +794,29 @@ export class GameScene extends Phaser.Scene {
       worldCouncilResolutionSystem,
       discoverySystem,
     );
+    aiMilitaryEvaluationSystem.setPeacekeepingDefensivePowerProvider((attackerNationId, defenderNationId, getMilitaryStrength) =>
+      worldCouncilSystem.getPeacekeepingDefensivePowerAgainst(
+        attackerNationId,
+        defenderNationId,
+        (nationId) => getMilitaryStrength(nationId).totalStrength,
+      ));
+    foreignTroopViolationSystem.setForeignTroopAuthorizationProvider((unit, territoryOwnerId) =>
+      worldCouncilSystem.canPeacekeeperEnterTerritory(
+        unit.ownerId,
+        territoryOwnerId,
+        Math.max(unit.unitType.baseStrength, unit.unitType.rangedStrength ?? 0) > 0,
+      ));
+    unitProductionRuleContext.getUnitProductionRestrictionReason = (nationId, unitTypeId) =>
+      worldCouncilSystem.getUnitProductionRestrictionReason(nationId, unitTypeId);
     turnManager.on('turnStart', (event) => worldCouncilSystem.handleTurnStart(event));
+    tradeDealSystem.setRestrictionProvider((input) =>
+      worldCouncilSystem.getTradeRestrictionReason(
+        input.sellerNationId,
+        input.buyerNationId,
+        getTradeResourceCategory(input.resourceId),
+      ));
+    tradeConnectionSystem.setRestrictionProvider((a, b) =>
+      worldCouncilSystem.getTradeRestrictionReason(a, b, 'unknown'));
     tradeDealSystem.setConnectionCapacityProvider((a, b) =>
       tradeConnectionSystem.getActiveDealCapacityBetweenNations(a, b)
       + worldCouncilSystem.getTradeAgreementCapacityBetweenNations(a, b),
@@ -1390,7 +1407,59 @@ export class GameScene extends Phaser.Scene {
       getDiplomacyState: (a, b) => diplomacyManager.getState(a, b),
       getRelationMemory: (a, b) => {
         const relation = diplomacyManager.getRelation(a, b);
-        return { trust: relation.trust, hostility: relation.hostility };
+        return {
+          trust: relation.trust,
+          fear: relation.fear,
+          hostility: relation.hostility,
+          affinity: relation.affinity,
+          suspicion: relation.suspicion,
+        };
+      },
+      areAllied: (a, b) => allianceManager.areAllied(a, b),
+      hasOpenBorders: (a, b) =>
+        diplomacyManager.isOpenBorderGrantedFrom(a, b) || diplomacyManager.isOpenBorderGrantedFrom(b, a),
+      hasTradeRelations: (a, b) => diplomacyManager.hasTradeRelations(a, b),
+      getActiveTradeGoldPerTurnBetween: (a, b) =>
+        tradeDealSystem.getDealsBetween(a, b).reduce((sum, deal) => sum + deal.goldPerTurn, 0),
+      getLeaderPersonality: (nationId) => getLeaderPersonalityByNationId(nationId),
+      getIdeologyId: (nationId) => getLeaderByNationId(nationId)?.ideologyId,
+      getMilitaryStrength: (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
+      getAllNationIds: () => nationManager.getAllNations().map((nation) => nation.id),
+      isNationActive: (nationId) => aiMilitaryEvaluationSystem.isNationActive(nationId),
+      getAggressorNationId: (a, b) => diplomacyManager.getAggressorNationId(a, b),
+      hasActivePeacekeepingMissionForHost: (hostNationId) =>
+        worldCouncilSystem.hasActivePeacekeepingMissionForHost(hostNationId),
+      getAvailableInfluence: (nationId) => nationManager.getResources(nationId).influence,
+      spendInfluence: (nationId, amount) => resourceSystem.spendInfluence(nationId, amount),
+      isHumanNation: (nationId) => nationManager.getNation(nationId)?.isHuman === true,
+      requestHumanInfluenceVote: (input) => {
+        if (isAutoplayActive() || nationManager.getNation(input.nationId)?.isHuman !== true) return null;
+        if (typeof window === 'undefined') return null;
+        const definition = worldCouncilResolutionSystem.getDefinition(input.proposal.resolutionId);
+        const title = definition?.title ?? input.proposal.resolutionId;
+        const targetName = input.targetNationId
+          ? nationManager.getNation(input.targetNationId)?.name ?? input.targetNationId
+          : undefined;
+        const secondaryTargetName = input.secondaryTargetNationId
+          ? nationManager.getNation(input.secondaryTargetNationId)?.name ?? input.secondaryTargetNationId
+          : undefined;
+        const targetText = targetName && secondaryTargetName
+          ? ` targeting ${targetName} - ${secondaryTargetName}`
+          : targetName
+            ? ` targeting ${targetName}`
+            : '';
+        const support = window.confirm(
+          `${title}${targetText}\n\nChoose OK to vote YES, or Cancel to vote NO.`,
+        );
+        const rawAmount = window.prompt(
+          `Spend Influence on this vote (available: ${Math.floor(input.maxInfluence)}).`,
+          String(Math.min(Math.floor(input.maxInfluence), input.suggestedInfluence)),
+        );
+        if (rawAmount === null) {
+          return { support, influence: input.suggestedInfluence };
+        }
+        const influence = Math.max(0, Math.min(Math.floor(input.maxInfluence), Number.parseInt(rawAmount, 10) || 0));
+        return { support, influence };
       },
       shareMaps: (memberNationIds) => {
         const humanMember = memberNationIds.includes(humanNationIdForDiplomacy);
@@ -1417,7 +1486,7 @@ export class GameScene extends Phaser.Scene {
           diplomacyManager.recordWorldCouncilCondemnation(memberNationId, targetNationId);
         }
       },
-      applyTradeRestrictions: (_resolutionId, targetNationId) => {
+      applyTradeRestrictions: (resolutionId, targetNationId) => {
         tradeDealSystem.cancelDealsMatching((deal) => {
           if (deal.sellerNationId !== targetNationId && deal.buyerNationId !== targetNationId) return false;
           return worldCouncilSystem.getTradeRestrictionReason(
@@ -1426,6 +1495,55 @@ export class GameScene extends Phaser.Scene {
             getTradeResourceCategory(deal.resourceId),
           ) !== undefined;
         }, 'sanctions');
+        if (resolutionId === 'international_embargo') {
+          for (const nation of nationManager.getAllNations()) {
+            if (nation.id === targetNationId) continue;
+            tradeConnectionSystem.cancelConnectionsBetweenNations(targetNationId, nation.id);
+          }
+        }
+      },
+      enforceCeasefire: (nationAId, nationBId, durationTurns) => {
+        const enforced = diplomacyManager.enforceCeasefire(nationAId, nationBId, durationTurns, turnManager.getCurrentRound());
+        if (!enforced) return false;
+        const nameA = nationManager.getNation(nationAId)?.name ?? nationAId;
+        const nameB = nationManager.getNation(nationBId)?.name ?? nationBId;
+        logManager.info({
+          nationIds: [nationAId, nationBId],
+          category: 'diplomacy',
+          message: `United Nations enforced a ceasefire between ${nameA} and ${nameB} for ${durationTurns} turns.`,
+        });
+        return true;
+      },
+      getTreasury: (nationId) => nationManager.getResources(nationId).gold,
+      getGoldPerTurn: (nationId) => nationManager.getResources(nationId).goldPerTurn,
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      isAtWarWithAnyone: (nationId) => nationManager.getAllNations()
+        .some((nation) => nation.id !== nationId && diplomacyManager.getState(nationId, nation.id) === 'WAR'),
+      transferGold: (fromNationId, toNationId, amount) => {
+        const gold = Math.max(0, Math.floor(amount));
+        if (gold <= 0) return false;
+        if (nationManager.getResources(fromNationId).gold < gold) return false;
+        resourceSystem.addGold(fromNationId, -gold);
+        resourceSystem.addGold(toNationId, gold);
+        return true;
+      },
+      recordGoldGift: (fromNationId, toNationId, amount) => {
+        diplomacyManager.recordGoldGift(fromNationId, toNationId, amount);
+      },
+      awardGoldContributionDiplomacyScore: (nationId, gold) => {
+        worldCouncilSystem.awardGoldContributionDiplomacyScore(nationId, gold);
+      },
+      requestHumanGoldDonation: (input) => {
+        if (isAutoplayActive() || nationManager.getNation(input.nationId)?.isHuman !== true) return null;
+        if (typeof window === 'undefined') return null;
+        const recipientName = nationManager.getNation(input.recipientNationId)?.name ?? input.recipientNationId;
+        const aggressorName = nationManager.getNation(input.aggressorNationId)?.name ?? input.aggressorNationId;
+        const rawAmount = window.prompt(
+          `${recipientName} requested Defense Support after being attacked by ${aggressorName}.\n\nDonate Gold (available: ${Math.floor(input.maxGold)}).`,
+          String(Math.min(Math.floor(input.maxGold), input.suggestedGold)),
+        );
+        if (rawAmount === null) return 0;
+        return Math.max(0, Math.min(Math.floor(input.maxGold), Number.parseInt(rawAmount, 10) || 0));
       },
     });
 
@@ -1441,6 +1559,8 @@ export class GameScene extends Phaser.Scene {
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
       policySystem,
       (attacker, target) => exileProtectionSystem.getProtectorForProtectedLeaderTarget(attacker.ownerId, target),
+      (attacker, target, tileOwnerId) =>
+        worldCouncilSystem.canResolvePeacekeepingCombat(attacker.ownerId, target.ownerId, tileOwnerId),
       cityDefenseSystem,
     );
     const nationCollapseSystem = new NationCollapseSystem(
@@ -1802,6 +1922,12 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
       (unit, territoryOwnerId) => exileProtectionSystem.canLeaderEnterTerritory(unit, territoryOwnerId),
+      (unit, territoryOwnerId) =>
+        worldCouncilSystem.canPeacekeeperEnterTerritory(
+          unit.ownerId,
+          territoryOwnerId,
+          Math.max(unit.unitType.baseStrength, unit.unitType.rangedStrength ?? 0) > 0,
+        ),
       unitBoardingManager,
     );
 
@@ -2345,6 +2471,7 @@ export class GameScene extends Phaser.Scene {
               ? Math.max(0, resolution.expirationTurn - turnManager.getCurrentRound())
               : undefined;
           return {
+            resolutionId: resolution.resolutionId,
             title: definition?.title ?? resolution.resolutionId,
             status: resolution.expired === true
               ? 'expired' as const
@@ -2360,6 +2487,9 @@ export class GameScene extends Phaser.Scene {
             repealTurn: resolution.repealTurn,
             targetNationName: resolution.targetNationId
               ? nationManager.getNation(resolution.targetNationId)?.name ?? resolution.targetNationId
+              : undefined,
+            secondaryTargetNationName: resolution.secondaryTargetNationId
+              ? nationManager.getNation(resolution.secondaryTargetNationId)?.name ?? resolution.secondaryTargetNationId
               : undefined,
             remainingTurns,
             participantNationNames: resolution.participantNationIds?.map((nationId) =>
@@ -2381,6 +2511,7 @@ export class GameScene extends Phaser.Scene {
             const isRepeal = proposal.repealTargetEnactedResolutionId !== undefined;
             return {
               slot: proposal.slot,
+              resolutionId: proposal.resolutionId,
               title: isRepeal
                 ? `Repeal ${definition?.title ?? proposal.resolutionId}`
                 : definition?.title ?? proposal.resolutionId,
@@ -2395,8 +2526,20 @@ export class GameScene extends Phaser.Scene {
               targetNationName: proposal.targetNationId
                 ? nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId
                 : undefined,
+              secondaryTargetNationName: proposal.secondaryTargetNationId
+                ? nationManager.getNation(proposal.secondaryTargetNationId)?.name ?? proposal.secondaryTargetNationId
+                : undefined,
               participantNationNames: proposal.participantNationIds?.map((nationId) =>
                 nationManager.getNation(nationId)?.name ?? nationId),
+              donations: proposal.donations?.map((donation) => ({
+                nationName: nationManager.getNation(donation.nationId)?.name ?? donation.nationId,
+                gold: donation.gold,
+              })),
+              distributions: proposal.distributions?.map((distribution) => ({
+                nationName: nationManager.getNation(distribution.nationId)?.name ?? distribution.nationId,
+                gold: distribution.gold,
+              })),
+              totalGoldDonated: proposal.totalGoldDonated,
               voteSummary: proposal.votes
                 ? formatWorldCouncilVoteSummary(proposal.votes)
                 : undefined,
@@ -3487,6 +3630,14 @@ export class GameScene extends Phaser.Scene {
     });
 
     const getPeaceTreatyBlockReason = (targetNationId: string): string | null => {
+      const ceasefireRemaining = diplomacyManager.getCeasefireRemainingTurns(
+        humanNationIdForDiplomacy,
+        targetNationId,
+        turnManager.getCurrentRound(),
+      );
+      if (ceasefireRemaining > 0) {
+        return `UN ceasefire active for ${ceasefireRemaining} more turn${ceasefireRemaining === 1 ? '' : 's'}.`;
+      }
       const remaining = diplomacyManager.getPeaceTreatyRemainingTurns(
         humanNationIdForDiplomacy,
         targetNationId,
@@ -3495,18 +3646,26 @@ export class GameScene extends Phaser.Scene {
       return remaining > 0 ? `Peace treaty active for ${remaining} more turn${remaining === 1 ? '' : 's'}.` : null;
     };
     const logBlockedHumanWarDeclaration = (targetNationId: string): void => {
+      const ceasefireRemaining = diplomacyManager.getCeasefireRemainingTurns(
+        humanNationIdForDiplomacy,
+        targetNationId,
+        turnManager.getCurrentRound(),
+      );
       const remaining = diplomacyManager.getPeaceTreatyRemainingTurns(
         humanNationIdForDiplomacy,
         targetNationId,
         turnManager.getCurrentRound(),
       );
-      if (remaining <= 0) return;
+      if (remaining <= 0 && ceasefireRemaining <= 0) return;
       const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      const reason = ceasefireRemaining > 0
+        ? `active UN ceasefire for ${ceasefireRemaining} more turn${ceasefireRemaining === 1 ? '' : 's'}`
+        : `active peace treaty for ${remaining} more turn${remaining === 1 ? '' : 's'}`;
       logManager.info({
         nationIds: [humanNationIdForDiplomacy, targetNationId],
         category: 'diplomacy',
-        message: `${humanName} cannot declare war on ${targetName} for ${remaining} more turn${remaining === 1 ? '' : 's'} due to active peace treaty.`,
+        message: `${humanName} cannot declare war on ${targetName} due to ${reason}.`,
       });
     };
 
@@ -3677,6 +3836,16 @@ export class GameScene extends Phaser.Scene {
       const nameA = nationManager.getNation(aggressorId)?.name ?? aggressorId;
       const nameB = nationManager.getNation(targetId)?.name ?? targetId;
       console.log(`[Diplomacy] War declared: ${nameA} → ${nameB}`);
+      const endedPeacekeepingMission = worldCouncilSystem.expirePeacekeepingMissionBecauseHostDeclaredWar(aggressorId, targetId);
+      if (endedPeacekeepingMission) {
+        const message = `The UN Peacekeeping Mission in ${nameA} ended because ${nameA} initiated war against ${nameB}.`;
+        logManager.info({
+          nationId: aggressorId,
+          nationIds: [aggressorId, targetId],
+          category: 'diplomacy',
+          message,
+        });
+      }
       logManager.info({
         nationId: isAINation(aggressorId) ? aggressorId : undefined,
         nationIds: [aggressorId, targetId],
@@ -4863,19 +5032,32 @@ export class GameScene extends Phaser.Scene {
       const targetName = resolution.targetNationId
         ? timelineNationName(resolution.targetNationId)
         : undefined;
+      const secondaryTargetName = resolution.secondaryTargetNationId
+        ? timelineNationName(resolution.secondaryTargetNationId)
+        : undefined;
       const verb = resolution.resolutionId === 'international_sanctions' ? 'have' : 'has';
-      const message = targetName
+      const message = resolution.resolutionId === 'ceasefire_resolution' && targetName && secondaryTargetName
+        ? `The UN ceasefire between ${targetName} and ${secondaryTargetName} has expired.`
+        : resolution.resolutionId === 'un_peacekeeping_mission' && targetName
+          ? `The UN Peacekeeping Mission in ${targetName} has expired.`
+        : resolution.resolutionId === 'global_infrastructure_initiative'
+          ? 'The Global Infrastructure Initiative has concluded.'
+        : targetName
         ? `${organizationName} ${definition?.title ?? resolution.resolutionId} against ${targetName} ${verb} expired.`
         : `${organizationName} ${definition?.title ?? resolution.resolutionId} ${verb} expired.`;
       historicalTimeline.record({
         type: 'worldCouncilMeeting',
         icon: '📜',
         text: message,
-        eventNationIds: resolution.targetNationId ? [resolution.targetNationId] : state.memberNationIds,
+        eventNationIds: resolution.targetNationId
+          ? [resolution.targetNationId, resolution.secondaryTargetNationId].filter((nationId): nationId is string => nationId !== undefined)
+          : state.memberNationIds,
       });
       logManager.info({
         nationId: resolution.targetNationId ?? state.foundingNationId,
-        nationIds: resolution.targetNationId ? [resolution.targetNationId] : state.memberNationIds,
+        nationIds: resolution.targetNationId
+          ? [resolution.targetNationId, resolution.secondaryTargetNationId].filter((nationId): nationId is string => nationId !== undefined)
+          : state.memberNationIds,
         category: 'diplomacy',
         message,
       });
@@ -4917,6 +5099,20 @@ export class GameScene extends Phaser.Scene {
         category: 'diplomacy',
         message: meetingText,
       });
+      for (const proposal of meeting.proposals ?? []) {
+        if (
+          proposal.resolutionId !== 'defense_support'
+          && proposal.resolutionId !== 'global_infrastructure_initiative'
+          && proposal.resolutionId !== 'un_peacekeeping_mission'
+        ) continue;
+        if (!proposal.outcomeText) continue;
+        logManager.info({
+          nationId: proposal.targetNationId ?? primaryNationId,
+          nationIds: state.memberNationIds,
+          category: 'diplomacy',
+          message: proposal.outcomeText,
+        });
+      }
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });

@@ -48,7 +48,7 @@
     {
       "key": "map_two_continents_scenario_i",
       "label": "Two Continents test scenario",
-      "file": "assets/maps/twoContinentsScenarioI.json"
+      "file": "assets/maps/twoContinentsScenario.json"
     },
     {
       "key": "map_world",

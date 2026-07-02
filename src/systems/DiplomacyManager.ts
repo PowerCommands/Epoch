@@ -45,6 +45,9 @@ export interface DiplomacyRelation {
 
   // While set, neither side may declare war until the current turn reaches this value.
   peaceTreatyUntilTurn?: number | null;
+  // UN-enforced temporary ceasefire. Separate from ordinary peace treaties so
+  // UI/logging can explain the source of the war block.
+  ceasefireUntilTurn?: number | null;
 
   // Per-war loss counters. Reset each time war is declared. A/B follow the
   // alphabetical pairKey ordering (same as openBordersFromAToB etc.).
@@ -172,6 +175,7 @@ export function createDefaultRelation(): DiplomacyRelation {
     lastEmbassyChangeTurn: null,
     lastTradeRelationsChangeTurn: null,
     peaceTreatyUntilTurn: null,
+    ceasefireUntilTurn: null,
     militaryUnitsLostA: 0,
     militaryUnitsLostB: 0,
     citiesLostA: 0,
@@ -217,6 +221,7 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
       partial.lastTradeRelationsChangeTurn ?? base.lastTradeRelationsChangeTurn,
     aggressorNationId: partial.aggressorNationId,
     peaceTreatyUntilTurn: partial.peaceTreatyUntilTurn ?? base.peaceTreatyUntilTurn,
+    ceasefireUntilTurn: partial.ceasefireUntilTurn ?? base.ceasefireUntilTurn,
     militaryUnitsLostA: partial.militaryUnitsLostA ?? base.militaryUnitsLostA,
     militaryUnitsLostB: partial.militaryUnitsLostB ?? base.militaryUnitsLostB,
     citiesLostA: partial.citiesLostA ?? base.citiesLostA,
@@ -323,6 +328,7 @@ export class DiplomacyManager {
     if (this.allianceGuard?.(aggressorId, targetId)) return false;
     const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
     if (this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
+    if (this.isCeasefireActive(aggressorId, targetId, currentTurn)) return false;
     const previous = this.relations.get(key);
     const next = normalizeRelation({
       ...previous,
@@ -441,10 +447,43 @@ export class DiplomacyManager {
     return untilTurn !== undefined && untilTurn !== null && currentTurn < untilTurn;
   }
 
+  isCeasefireActive(a: string, b: string, currentTurn: number): boolean {
+    const untilTurn = this.getRelation(a, b).ceasefireUntilTurn;
+    return untilTurn !== undefined && untilTurn !== null && currentTurn < untilTurn;
+  }
+
   getPeaceTreatyRemainingTurns(a: string, b: string, currentTurn: number): number {
     const untilTurn = this.getRelation(a, b).peaceTreatyUntilTurn;
     if (untilTurn === undefined || untilTurn === null) return 0;
     return Math.max(0, untilTurn - currentTurn);
+  }
+
+  getCeasefireRemainingTurns(a: string, b: string, currentTurn: number): number {
+    const untilTurn = this.getRelation(a, b).ceasefireUntilTurn;
+    if (untilTurn === undefined || untilTurn === null) return 0;
+    return Math.max(0, untilTurn - currentTurn);
+  }
+
+  enforceCeasefire(a: string, b: string, durationTurns: number, currentTurn?: number): boolean {
+    if (a === b || this.getState(a, b) !== 'WAR') return false;
+    const key = this.pairKey(a, b);
+    const previous = this.relations.get(key);
+    const turn = currentTurn ?? this.turnManager?.getCurrentRound() ?? previous?.lastPeaceProposalTurn ?? 0;
+    const next = normalizeRelation({
+      ...previous,
+      state: 'PEACE',
+      openBordersFromAToB: false,
+      openBordersFromBToA: false,
+      tradeRelations: false,
+      lastPeaceProposalTurn: turn,
+      ceasefireUntilTurn: turn + Math.max(0, Math.floor(durationTurns)),
+    });
+    this.relations.set(key, next);
+    this.pendingProposals.delete(a);
+    this.pendingProposals.delete(b);
+    this.memoryHook?.onMakePeace(a, b);
+    this.notifyChanged(a, b);
+    return true;
   }
 
   getAggressorNationId(a: string, b: string): string | undefined {
@@ -663,7 +702,8 @@ export class DiplomacyManager {
         relation.lastOpenBordersChangeTurn === defaults.lastOpenBordersChangeTurn &&
         relation.lastEmbassyChangeTurn === defaults.lastEmbassyChangeTurn &&
         relation.lastTradeRelationsChangeTurn === defaults.lastTradeRelationsChangeTurn &&
-        relation.peaceTreatyUntilTurn === defaults.peaceTreatyUntilTurn
+        relation.peaceTreatyUntilTurn === defaults.peaceTreatyUntilTurn &&
+        relation.ceasefireUntilTurn === defaults.ceasefireUntilTurn
       ) {
         continue;
       }

@@ -39,6 +39,7 @@ interface MovementActionOptions {
 type MovementWarRequiredListener = (event: MovementWarRequiredEvent) => void;
 type UnitMovementBlocker = (unit: Unit) => boolean;
 type ProtectedLeaderTerritoryAccess = (unit: Unit, territoryOwnerId: string) => boolean;
+type PeacekeepingTerritoryAccess = (unit: Unit, territoryOwnerId: string) => boolean;
 
 /**
  * MovementSystem äger rörelsereglerna för enheter.
@@ -61,6 +62,7 @@ export class MovementSystem {
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly isUnitMovementBlocked: UnitMovementBlocker = () => false,
     private readonly canProtectedLeaderEnterTerritory: ProtectedLeaderTerritoryAccess = () => false,
+    private readonly canPeacekeeperEnterTerritory: PeacekeepingTerritoryAccess = () => false,
     private readonly unitBoardingManager?: UnitBoardingManager,
   ) {
     this.activeNationId = turnManager.getCurrentNation().id;
@@ -270,6 +272,7 @@ export class MovementSystem {
     // into a single check.
     if (this.diplomacyManager.canEnterTerritory(unit.ownerId, tile.ownerId)) return null;
     if (this.canProtectedLeaderEnterTerritory(unit, tile.ownerId)) return null;
+    if (this.canPeacekeeperEnterTerritory(unit, tile.ownerId)) return null;
     return tile.ownerId;
   }
 
