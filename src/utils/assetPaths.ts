@@ -9,7 +9,6 @@ export function getCitySpritePath(era: Era): string {
 }
 
 export function getUnitSpritePath(unitId: string): string {
-  if (unitId === 'leader') return 'assets/sprites/units/leaders.png';
   return `assets/sprites/units/${unitId}.png`;
 }
 

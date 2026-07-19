@@ -1,12 +1,29 @@
 {
   "permissions": {
-    "allow": [      
-      "Bash(*)",      
-      "Read(//tmp/**)",
-      "Read(//home/harri/**)"      
+    "allow": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts,null,1\\)\\); console.log\\('devDeps:',Object.keys\\(p.devDependencies||{}\\).join\\(', '\\)\\)\")",
+      "Bash(npx tsx *)",
+      "Bash(node -e \"const t=require\\('./tsconfig.json'\\); console.log\\('include:',JSON.stringify\\(t.include\\)\\); console.log\\('exclude:',JSON.stringify\\(t.exclude\\)\\); console.log\\('allowImportingTsExtensions:',t.compilerOptions.allowImportingTsExtensions\\)\")",
+      "Bash(git mv *)",
+      "Bash(npm run *)",
+      "Bash(nohup npx tsx tools/autorun-series.ts --output autorun-output/maritime-expansion-diplomacy-redesign-test)",
+      "Bash(echo \"launched PID $!\")",
+      "Bash(pkill -f \"tools/autorun-series.ts\")",
+      "Bash(pkill -f \"vite preview\")",
+      "Bash(pkill -f \"scripts/autorun.ts\")",
+      "Bash(node -e ' *)"
     ],
+    "defaultMode": "bypassPermissions",
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/home/harri/projects/Epoch"
     ]
   },
   "model": "claude-opus-4-8"

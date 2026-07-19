@@ -5,7 +5,7 @@ import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { TurnManager } from './TurnManager';
 import type { WonderSystem } from './WonderSystem';
-import type { WorldCouncilSystem } from './WorldCouncilSystem';
+import type { DiplomaticScoreBreakdown, WorldCouncilSystem } from './WorldCouncilSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
 import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from './CulturalVictory';
 
@@ -69,12 +69,14 @@ export interface DiplomaticVictoryProgress {
   nationId: string;
   diplomacyScore: number;
   requiredDiplomacyScore: number;
+  scoreBreakdown: DiplomaticScoreBreakdown;
 }
 
 const AEROSPACE_PARTS_ID = 'aerospace_parts';
 const AEROSPACE_CORP_ID = 'aerospace_industries';
 const SCIENCE_PROGRESS_INTERVAL = 25;
 const CULTURAL_PROGRESS_INTERVAL = 25;
+const DIPLOMATIC_PROGRESS_INTERVAL = 25;
 export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
 
 /**
@@ -95,6 +97,7 @@ export class VictorySystem {
   private readonly diplomaticEnabled: boolean;
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
   private lastCulturalProgressRound = -CULTURAL_PROGRESS_INTERVAL;
+  private lastDiplomaticProgressRound = -DIPLOMATIC_PROGRESS_INTERVAL;
 
   constructor(
     private readonly cityManager: CityManager,
@@ -166,6 +169,13 @@ export class VictorySystem {
       if (e.round - this.lastCulturalProgressRound < CULTURAL_PROGRESS_INTERVAL) return;
       this.lastCulturalProgressRound = e.round;
       this.logCulturalProgress(e.round);
+    });
+
+    turnManager.on('roundEnd', (e) => {
+      if (this.won || !this.diplomaticEnabled || !this.worldCouncilSystem) return;
+      if (e.round - this.lastDiplomaticProgressRound < DIPLOMATIC_PROGRESS_INTERVAL) return;
+      this.lastDiplomaticProgressRound = e.round;
+      this.logDiplomaticProgress(e.round);
     });
   }
 
@@ -281,10 +291,12 @@ export class VictorySystem {
   }
 
   getDiplomaticVictoryProgress(nationId: string): DiplomaticVictoryProgress {
+    const scoreBreakdown = this.getDiplomaticScoreBreakdown(nationId);
     return {
       nationId,
-      diplomacyScore: this.getDiplomacyScore(nationId),
+      diplomacyScore: scoreBreakdown.total,
       requiredDiplomacyScore: DIPLOMATIC_VICTORY_SCORE_THRESHOLD,
+      scoreBreakdown,
     };
   }
 
@@ -394,18 +406,79 @@ export class VictorySystem {
   private logDiplomaticVictory(nationId: string, round: number): void {
     if (!this.log) return;
     const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-    const score = this.getDiplomacyScore(nationId);
-    this.log(nationId, `[r${round}] ${name} achieved Diplomatic Victory with ${score.toLocaleString()} Diplomatic Score.`);
+    const breakdown = this.getDiplomaticScoreBreakdown(nationId);
+    this.log(nationId, [
+      `[r${round}] ${name} achieved Diplomatic Victory with ${formatScore(breakdown.total)} Diplomatic Score.`,
+      this.formatDiplomaticScoreBreakdown('Diplomatic Victory Final Score', [breakdown]),
+    ].join('\n'));
+  }
+
+  private logDiplomaticProgress(round: number): void {
+    if (!this.log) return;
+    const ranking = this.getDiplomaticVictoryRanking();
+    if (ranking.length === 0) return;
+    const breakdowns = ranking.map((entry) => entry.scoreBreakdown);
+    this.log(ranking[0].nationId, this.formatDiplomaticScoreBreakdown(
+      `[r${round}] Diplomatic Victory Progress`,
+      breakdowns,
+    ));
   }
 
   private getDiplomacyScore(nationId: string): number {
+    return this.getDiplomaticScoreBreakdown(nationId).total;
+  }
+
+  private getDiplomaticScoreBreakdown(nationId: string): DiplomaticScoreBreakdown {
     return this.worldCouncilSystem
-      ?.getMembers()
-      .find((member) => member.nationId === nationId)
-      ?.diplomacyScore ?? 0;
+      ?.getDiplomaticScoreBreakdown(nationId)
+      ?? {
+        nationId,
+        total: 0,
+        proposalScore: 0,
+        supportScore: 0,
+        contributionScore: 0,
+        otherScore: 0,
+      };
+  }
+
+  private formatDiplomaticScoreBreakdown(title: string, breakdowns: readonly DiplomaticScoreBreakdown[]): string {
+    const lines = [title];
+    for (const breakdown of breakdowns) {
+      const name = this.nationManager.getNation(breakdown.nationId)?.name ?? breakdown.nationId;
+      const display = getDisplayDiplomaticScoreBreakdown(breakdown);
+      lines.push(
+        '',
+        name,
+        `  Total Score............. ${formatScore(display.total)}`,
+        `  Proposals Passed........ ${formatScore(display.proposalScore)}`,
+        `  Resolution Support...... ${formatScore(display.supportScore)}`,
+        `  Contributions........... ${formatScore(display.contributionScore)}`,
+        `  Other................... ${formatScore(display.otherScore)}`,
+      );
+    }
+    return lines.join('\n');
   }
 
   onVictory(callback: VictoryListener): void {
     this.listeners.push(callback);
   }
+}
+
+function formatScore(score: number): string {
+  return Math.round(score).toLocaleString();
+}
+
+function getDisplayDiplomaticScoreBreakdown(breakdown: DiplomaticScoreBreakdown): DiplomaticScoreBreakdown {
+  const total = Math.round(breakdown.total);
+  const proposalScore = Math.floor(Math.max(0, breakdown.proposalScore));
+  const supportScore = Math.floor(Math.max(0, breakdown.supportScore));
+  const contributionScore = Math.floor(Math.max(0, breakdown.contributionScore));
+  return {
+    nationId: breakdown.nationId,
+    total,
+    proposalScore,
+    supportScore,
+    contributionScore,
+    otherScore: total - proposalScore - supportScore - contributionScore,
+  };
 }

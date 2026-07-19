@@ -448,7 +448,6 @@ export class AIExplorationSystem {
       if (unit.unitType.category === 'recon') return false;
       if (unit.unitType.category === 'naval_recon') return false;
       if (unit.unitType.category === 'civilian') return false;
-      if (unit.unitType.category === 'leader') return false;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) return false;
       return true;
     });

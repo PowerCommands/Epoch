@@ -12,6 +12,7 @@ export interface WorldCouncilContributionDialogState {
   readonly currentGold: number;
   readonly currentSciencePercent: number;
   readonly currentCulturePercent: number;
+  readonly getMaxGold?: (sciencePercent: number, culturePercent: number) => number;
 }
 
 const DEPTH = 212;
@@ -39,6 +40,7 @@ export class WorldCouncilContributionDialog {
   private gold = 0;
   private sciencePercent = 0;
   private culturePercent = 0;
+  private effectiveMaxGold = 0;
   private confirmListener: ((offer: WorldCouncilFoundationOffer) => void) | null = null;
 
   constructor(
@@ -109,9 +111,10 @@ export class WorldCouncilContributionDialog {
 
   show(state: WorldCouncilContributionDialogState): void {
     this.current = state;
-    this.gold = clamp(state.currentGold, 0, state.maxGold);
     this.sciencePercent = clamp(state.currentSciencePercent, 0, 100);
     this.culturePercent = clamp(state.currentCulturePercent, 0, 100);
+    this.effectiveMaxGold = this.getEffectiveMaxGold();
+    this.gold = clamp(state.currentGold, 0, this.effectiveMaxGold);
     this.titleText.setText(`${state.organizationName} Contributions`);
     this.bodyText.setText(`${state.nationName}, choose new ${state.organizationName} contributions. Minimum keeps a symbolic commitment.`);
     this.refreshValues();
@@ -164,17 +167,22 @@ export class WorldCouncilContributionDialog {
 
   private adjustGold(delta: number): void {
     if (!this.current) return;
-    this.gold = clamp(this.gold + delta, 0, this.current.maxGold);
+    this.effectiveMaxGold = this.getEffectiveMaxGold();
+    this.gold = clamp(this.gold + delta, 0, this.effectiveMaxGold);
     this.refreshValues();
   }
 
   private adjustScience(delta: number): void {
     this.sciencePercent = clamp(this.sciencePercent + delta, 0, 100);
+    this.effectiveMaxGold = this.getEffectiveMaxGold();
+    this.gold = clamp(this.gold, 0, this.effectiveMaxGold);
     this.refreshValues();
   }
 
   private adjustCulture(delta: number): void {
     this.culturePercent = clamp(this.culturePercent + delta, 0, 100);
+    this.effectiveMaxGold = this.getEffectiveMaxGold();
+    this.gold = clamp(this.gold, 0, this.effectiveMaxGold);
     this.refreshValues();
   }
 
@@ -191,11 +199,19 @@ export class WorldCouncilContributionDialog {
   }
 
   private refreshValues(): void {
+    this.effectiveMaxGold = this.getEffectiveMaxGold();
+    this.gold = clamp(this.gold, 0, this.effectiveMaxGold);
     this.valueText.setText([
-      `Gold:    ${this.gold}`,
+      `Gold:    ${this.gold} / ${this.effectiveMaxGold}`,
       `Science: ${this.sciencePercent}%`,
       `Culture: ${this.culturePercent}%`,
     ].join('\n'));
+  }
+
+  private getEffectiveMaxGold(): number {
+    if (!this.current) return 0;
+    const maxGold = this.current.getMaxGold?.(this.sciencePercent, this.culturePercent) ?? this.current.maxGold;
+    return clamp(maxGold, 0, this.current.maxGold);
   }
 
   private setVisible(visible: boolean): void {

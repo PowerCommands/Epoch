@@ -84,11 +84,11 @@ export function getMilitaryUnitRole(unitType: UnitType): MilitaryUnitRole {
 /**
  * Returns true for combat-capable unit types that count toward military
  * strength and upkeep (baseStrength > 0 OR rangedStrength > 0), excluding
- * non-combat categories: leader, civilian, recon, and naval_recon.
+ * non-combat categories: civilian, recon, and naval_recon.
  */
 export function isMilitaryUnitType(unitType: UnitType): boolean {
   const { category } = unitType;
-  if (category === 'leader' || category === 'civilian' || category === 'recon' || category === 'naval_recon') return false;
+  if (category === 'civilian' || category === 'recon' || category === 'naval_recon') return false;
   return unitType.baseStrength > 0 || (unitType.rangedStrength ?? 0) > 0;
 }
 

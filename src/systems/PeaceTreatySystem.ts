@@ -12,6 +12,7 @@ import type { DiplomaticEvaluationSystem } from './diplomacy/DiplomaticEvaluatio
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { CulturalSphereSystem } from './CulturalSphereSystem';
 import { getLeaderPersonalityByNationId } from '../data/leaders';
+import type { NationCollapseSystem } from './NationCollapseSystem';
 
 export const MAX_REPARATIONS_GOLD = 10_000;
 export const REPARATIONS_FRACTION = 0.5;
@@ -28,7 +29,12 @@ export class PeaceTreatySystem {
     private readonly militaryEvaluationSystem?: AIMilitaryEvaluationSystem,
     private readonly threatEvaluationSystem?: AIMilitaryThreatEvaluationSystem,
     private readonly diplomaticEvaluationSystem?: DiplomaticEvaluationSystem,
+    private nationCollapseSystem?: NationCollapseSystem,
   ) {}
+
+  setNationCollapseSystem(system: NationCollapseSystem): void {
+    this.nationCollapseSystem = system;
+  }
 
   selectPeaceOfferCity(nationId: string): City | null {
     const cities = this.cityManager.getCitiesByOwner(nationId);
@@ -67,12 +73,14 @@ export class PeaceTreatySystem {
     if (proposal.offeredCityId) {
       const city = this.cityManager.getCity(proposal.offeredCityId);
       if (city) {
+        const previousOwnerId = city.ownerId;
         city.occupiedOriginalNationId = city.originNationId !== proposal.toNationId
           ? city.originNationId
           : undefined;
         this.cityManager.transferOwnership(proposal.offeredCityId, proposal.toNationId, this.productionSystem);
         new CityTerritorySystem().transferCityTerritory(city, proposal.toNationId, this.mapData);
         new CulturalSphereSystem().claimInitialCityCulture(city, this.mapData, this.gridSystem);
+        this.collapsePreviousOwnerWithoutCities(previousOwnerId, proposal.toNationId, city);
       }
     }
     if (proposal.goldReparations && proposal.goldReparations > 0) {
@@ -118,5 +126,16 @@ export class PeaceTreatySystem {
     score += (personality.peacePreference - 50) / 2;
 
     return score > 0;
+  }
+
+  private collapsePreviousOwnerWithoutCities(previousOwnerId: string, receiverNationId: string, city: City): void {
+    if (!this.nationCollapseSystem) return;
+    if (this.cityManager.getCitiesByOwner(previousOwnerId).length > 0) return;
+    this.nationCollapseSystem.collapse({
+      nationId: previousOwnerId,
+      conquerorNationId: receiverNationId,
+      triggerCity: city,
+      reason: 'no_valid_survival_state',
+    });
   }
 }

@@ -4,11 +4,13 @@ import type {
   WorldCouncilMember,
   WorldCouncilResolutionDefinition,
   WorldCouncilResolutionDonation,
+  WorldCouncilDefenseSupportDonationDiagnostics,
   WorldCouncilResolutionDistribution,
   WorldCouncilResolutionId,
   WorldCouncilOrganizationKind,
   WorldCouncilResolutionProposal,
   WorldCouncilResolutionVote,
+  WorldCouncilResolutionVoteSummary,
 } from '../types/worldCouncil';
 
 export interface WorldCouncilResolutionContext {
@@ -404,9 +406,8 @@ export class WorldCouncilResolutionSystem {
     };
     const votes = context.members.map((member) =>
       this.createInfluenceVote(member, proposalWithTargets, targets.targetNationId, targets.secondaryTargetNationId));
-    const support = votes.filter((vote) => vote.support).reduce((sum, vote) => sum + vote.influence, 0);
-    const oppose = votes.filter((vote) => !vote.support).reduce((sum, vote) => sum + vote.influence, 0);
-    const passed = support > oppose;
+    const voteSummary = summarizeInfluenceVotes(votes);
+    const passed = voteSummary.supportInfluence > voteSummary.opposeInfluence;
     const participantNationIds = passed && proposal.resolutionId === 'un_peacekeeping_mission'
       ? this.choosePeacekeepingParticipants(targets.targetNationId, targets.secondaryTargetNationId, context)
       : proposal.participantNationIds;
@@ -414,13 +415,14 @@ export class WorldCouncilResolutionSystem {
       ...proposalWithTargets,
       participantNationIds,
       votes,
+      voteSummary,
       passed,
       resolved: true,
       outcomeText: formatInfluenceOutcome(
         definition,
         passed,
-        support,
-        oppose,
+        voteSummary.supportInfluence,
+        voteSummary.opposeInfluence,
         targets.targetNationId,
         targets.secondaryTargetNationId,
         participantNationIds,
@@ -502,20 +504,25 @@ export class WorldCouncilResolutionSystem {
     const donations: WorldCouncilResolutionDonation[] = [];
     for (const member of context.members) {
       const donorNationId = member.nationId;
-      const gold = donorNationId === recipientNationId
-        ? 0
+      const decision = donorNationId === recipientNationId
+        ? this.createRecipientDefenseSupportDecision(donorNationId)
         : this.chooseDefenseSupportDonation(donorNationId, recipientNationId, aggressorNationId);
+      const gold = decision.actualDonation;
       if (gold > 0) {
         const transferred = this.runtime.transferGold?.(donorNationId, recipientNationId, gold) ?? false;
         if (transferred) {
           this.runtime.recordGoldGift?.(donorNationId, recipientNationId, gold);
           this.runtime.awardGoldContributionDiplomacyScore?.(donorNationId, gold);
-          donations.push({ nationId: donorNationId, gold });
+          donations.push({ nationId: donorNationId, gold, diagnostics: decision });
         } else {
-          donations.push({ nationId: donorNationId, gold: 0 });
+          donations.push({
+            nationId: donorNationId,
+            gold: 0,
+            diagnostics: { ...decision, actualDonation: 0, reason: `${decision.reason} Transfer failed.` },
+          });
         }
       } else {
-        donations.push({ nationId: donorNationId, gold: 0 });
+        donations.push({ nationId: donorNationId, gold: 0, diagnostics: decision });
       }
     }
 
@@ -547,17 +554,17 @@ export class WorldCouncilResolutionSystem {
   ): WorldCouncilResolutionResolveResult {
     const votes = context.members.map((member) =>
       this.createInfluenceVote(member, proposal, undefined));
-    const support = votes.filter((vote) => vote.support).reduce((sum, vote) => sum + vote.influence, 0);
-    const oppose = votes.filter((vote) => !vote.support).reduce((sum, vote) => sum + vote.influence, 0);
-    const passed = support > oppose;
+    const voteSummary = summarizeInfluenceVotes(votes);
+    const passed = voteSummary.supportInfluence > voteSummary.opposeInfluence;
     if (!passed) {
       return {
         proposal: {
           ...proposal,
           votes,
+          voteSummary,
           passed,
           resolved: true,
-          outcomeText: `Failed by Influence (${support}-${oppose}).`,
+          outcomeText: `Failed by Influence (${voteSummary.supportInfluence}-${voteSummary.opposeInfluence}).`,
         },
       };
     }
@@ -566,6 +573,7 @@ export class WorldCouncilResolutionSystem {
     const resolved: WorldCouncilResolutionProposal = {
       ...proposal,
       votes,
+      voteSummary,
       donations,
       distributions,
       totalGoldDonated,
@@ -673,18 +681,18 @@ export class WorldCouncilResolutionSystem {
   ): WorldCouncilResolutionResolveResult {
     const votes = context.members.map((member) =>
       this.createInfluenceVote(member, proposal, undefined));
-    const support = votes.filter((vote) => vote.support).reduce((sum, vote) => sum + vote.influence, 0);
-    const oppose = votes.filter((vote) => !vote.support).reduce((sum, vote) => sum + vote.influence, 0);
-    const passed = support > oppose;
+    const voteSummary = summarizeInfluenceVotes(votes);
+    const passed = voteSummary.supportInfluence > voteSummary.opposeInfluence;
     return {
       proposal: {
         ...proposal,
         votes,
+        voteSummary,
         passed,
         resolved: true,
         outcomeText: passed
-          ? `${definition.title} was repealed by Influence (${support}-${oppose}).`
-          : `Repeal failed by Influence (${support}-${oppose}).`,
+          ? `${definition.title} was repealed by Influence (${voteSummary.supportInfluence}-${voteSummary.opposeInfluence}).`
+          : `Repeal failed by Influence (${voteSummary.supportInfluence}-${voteSummary.opposeInfluence}).`,
       },
     };
   }
@@ -718,7 +726,14 @@ export class WorldCouncilResolutionSystem {
 
     const influence = this.runtime.spendInfluence?.(member.nationId, intendedInfluence)
       ?? Math.min(availableInfluence, intendedInfluence);
-    return { nationId: member.nationId, support, influence };
+    return {
+      nationId: member.nationId,
+      support,
+      influence,
+      availableInfluence,
+      remainingInfluence: Math.max(0, availableInfluence - influence),
+      supportScore: Math.round(supportScore),
+    };
   }
 
   private scoreProposalSupport(
@@ -924,77 +939,179 @@ export class WorldCouncilResolutionSystem {
     donorNationId: string,
     recipientNationId: string,
     aggressorNationId: string,
-  ): number {
+  ): WorldCouncilDefenseSupportDonationDiagnostics {
     const treasury = Math.max(0, Math.floor(this.runtime.getTreasury?.(donorNationId) ?? 0));
-    if (treasury <= 0 || donorNationId === recipientNationId) return 0;
-    if (donorNationId === aggressorNationId) return 0;
+    const goldPerTurn = this.runtime.getGoldPerTurn?.(donorNationId) ?? 0;
+    const maximumDonation = this.getDefenseSupportMaxDonation(donorNationId, treasury, goldPerTurn);
+    if (treasury <= 0) {
+      return this.createDefenseSupportDonationDiagnostics(treasury, goldPerTurn, maximumDonation, 0, 0, 0, 'No treasury available.');
+    }
+    if (donorNationId === aggressorNationId) {
+      return this.createDefenseSupportDonationDiagnostics(treasury, goldPerTurn, maximumDonation, 0, 0, 0, 'Aggressor does not fund defense support against itself.');
+    }
 
     let score = 0;
+    const reasons: string[] = [];
     const recipientRelation = this.runtime.getRelationMemory?.(donorNationId, recipientNationId);
     const aggressorRelation = this.runtime.getRelationMemory?.(donorNationId, aggressorNationId);
     const personality = this.runtime.getLeaderPersonality?.(donorNationId);
-    const goldPerTurn = this.runtime.getGoldPerTurn?.(donorNationId) ?? 0;
 
-    if (this.runtime.areAllied?.(donorNationId, recipientNationId)) score += 45;
-    if (this.runtime.areAllied?.(donorNationId, aggressorNationId)) score -= 45;
-    if (this.runtime.getDiplomacyState?.(donorNationId, aggressorNationId) === 'WAR') score += 35;
-    if (this.runtime.getDiplomacyState?.(donorNationId, recipientNationId) === 'WAR') score -= 60;
-    if (this.runtime.hasOpenBorders?.(donorNationId, recipientNationId)) score += 6;
-    if (this.runtime.hasTradeRelations?.(donorNationId, recipientNationId)) score += 8;
+    if (this.runtime.areAllied?.(donorNationId, recipientNationId)) {
+      score += 55;
+      reasons.push('friendly ally under attack');
+    }
+    if (this.runtime.areAllied?.(donorNationId, aggressorNationId)) {
+      score -= 55;
+      reasons.push('allied with aggressor');
+    }
+    if (this.runtime.getDiplomacyState?.(donorNationId, aggressorNationId) === 'WAR') {
+      score += 45;
+      reasons.push('already at war with aggressor');
+    }
+    if (this.runtime.getDiplomacyState?.(donorNationId, recipientNationId) === 'WAR') {
+      score -= 75;
+      reasons.push('at war with defended nation');
+    }
+    if (this.runtime.hasOpenBorders?.(donorNationId, recipientNationId)) score += 8;
+    if (this.runtime.hasTradeRelations?.(donorNationId, recipientNationId)) {
+      score += 12;
+      reasons.push('trade ties with defended nation');
+    }
 
     if (recipientRelation) {
-      score += (recipientRelation.trust - 50) * 0.45;
-      score += (recipientRelation.affinity ?? 0) * 0.25;
-      score -= recipientRelation.hostility * 0.45;
-      score -= (recipientRelation.suspicion ?? 0) * 0.2;
+      score += (recipientRelation.trust - 50) * 0.65;
+      score += (recipientRelation.affinity ?? 0) * 0.35;
+      score -= recipientRelation.hostility * 0.55;
+      score -= (recipientRelation.suspicion ?? 0) * 0.25;
+      if (recipientRelation.trust >= 65) reasons.push('high trust toward defended nation');
     }
     if (aggressorRelation) {
-      score += aggressorRelation.hostility * 0.35;
-      score += (aggressorRelation.suspicion ?? 0) * 0.22;
-      score -= Math.max(0, aggressorRelation.trust - 50) * 0.25;
-      score -= (aggressorRelation.affinity ?? 0) * 0.18;
+      score += aggressorRelation.hostility * 0.48;
+      score += (aggressorRelation.suspicion ?? 0) * 0.32;
+      score -= Math.max(0, aggressorRelation.trust - 50) * 0.3;
+      score -= (aggressorRelation.affinity ?? 0) * 0.22;
+      if (aggressorRelation.hostility >= 35) reasons.push('hostile toward aggressor');
     }
 
-    if (treasury >= 2500) score += 18;
-    else if (treasury >= 1000) score += 10;
-    else if (treasury < 200) score -= 30;
-    else if (treasury < 500) score -= 14;
-    if (goldPerTurn > 20) score += 8;
-    if (goldPerTurn < 0) score -= 25;
-    if (this.runtime.isAtWarWithAnyone?.(donorNationId)) score -= 10;
+    if (treasury >= 5000) {
+      score += 34;
+      reasons.push('large treasury');
+    } else if (treasury >= 2500) {
+      score += 25;
+      reasons.push('strong treasury');
+    } else if (treasury >= 1000) {
+      score += 16;
+      reasons.push('healthy treasury');
+    } else if (treasury < 200) {
+      score -= 42;
+      reasons.push('low treasury');
+    } else if (treasury < 500) {
+      score -= 22;
+      reasons.push('limited treasury');
+    }
+    if (goldPerTurn > 80) {
+      score += 22;
+      reasons.push('very strong gold income');
+    } else if (goldPerTurn > 30) {
+      score += 14;
+      reasons.push('positive gold income');
+    }
+    if (goldPerTurn < 0) {
+      score -= 35;
+      reasons.push('negative gold income');
+    }
+    if (this.runtime.isAtWarWithAnyone?.(donorNationId)) {
+      score -= 15;
+      reasons.push('currently at war and conserving resources');
+    }
 
     if (personality) {
-      score += personality.peacePreference * 0.24;
-      score += personality.diplomacyBias * 0.2;
-      score += personality.economyBias * (treasury >= 1000 && goldPerTurn >= 0 ? 0.16 : -0.12);
-      score -= personality.aggressionBias * 0.18;
-      score -= Math.max(0, personality.warTolerance - 55) * 0.12;
+      score += personality.peacePreference * 0.3;
+      score += personality.diplomacyBias * 0.26;
+      score += personality.economyBias * (treasury >= 1000 && goldPerTurn >= 0 ? 0.18 : -0.14);
+      score -= personality.aggressionBias * 0.2;
+      score -= Math.max(0, personality.warTolerance - 55) * 0.14;
     }
 
-    const ratio = score >= 85
-      ? 0.5
-      : score >= 55
-        ? 0.3
-        : score >= 30
-          ? 0.2
-          : score >= 10
-            ? 0.1
-            : 0;
+    const ratio = score >= 115
+      ? 0.18
+      : score >= 90
+        ? 0.13
+        : score >= 65
+          ? 0.09
+          : score >= 35
+            ? 0.05
+            : score >= 15
+              ? 0.025
+          : 0;
 
-    const suggestedGold = ratio > 0 ? Math.max(1, Math.floor(treasury * ratio)) : 0;
+    const incomeBoost = Math.max(0, goldPerTurn) * (score >= 65 ? 2 : 1);
+    const suggestedGold = ratio > 0 ? Math.max(1, Math.floor(treasury * ratio + incomeBoost)) : 0;
+    let actualDonation = normalizeDefenseSupportDonation(suggestedGold, maximumDonation);
     if (this.runtime.isHumanNation?.(donorNationId) === true) {
       const humanGold = this.runtime.requestHumanGoldDonation?.({
         nationId: donorNationId,
         recipientNationId,
         aggressorNationId,
         suggestedGold,
-        maxGold: treasury,
+        maxGold: maximumDonation,
       });
       if (humanGold !== null && humanGold !== undefined) {
-        return normalizeDefenseSupportDonation(humanGold, treasury);
+        actualDonation = normalizeDefenseSupportDonation(humanGold, maximumDonation);
       }
     }
-    return normalizeDefenseSupportDonation(suggestedGold, treasury);
+    if (actualDonation <= 0 && reasons.length === 0) reasons.push('relationship and strategic score too low');
+    return this.createDefenseSupportDonationDiagnostics(
+      treasury,
+      goldPerTurn,
+      maximumDonation,
+      suggestedGold,
+      actualDonation,
+      score,
+      reasons.join('; ') || 'meaningful aid justified by relationship and economic position',
+    );
+  }
+
+  private createRecipientDefenseSupportDecision(nationId: string): WorldCouncilDefenseSupportDonationDiagnostics {
+    const treasury = Math.max(0, Math.floor(this.runtime.getTreasury?.(nationId) ?? 0));
+    const goldPerTurn = this.runtime.getGoldPerTurn?.(nationId) ?? 0;
+    return this.createDefenseSupportDonationDiagnostics(
+      treasury,
+      goldPerTurn,
+      0,
+      0,
+      0,
+      0,
+      'Defended nation receives aid instead of donating.',
+    );
+  }
+
+  private getDefenseSupportMaxDonation(nationId: string, treasury: number, goldPerTurn: number): number {
+    const reserve = this.runtime.isAtWarWithAnyone?.(nationId)
+      ? Math.max(120, Math.floor(treasury * 0.25))
+      : Math.max(80, Math.floor(treasury * 0.12));
+    const incomeCapacity = Math.max(0, goldPerTurn) * 8;
+    return Math.max(0, Math.min(treasury - reserve, Math.floor(treasury * 0.25 + incomeCapacity)));
+  }
+
+  private createDefenseSupportDonationDiagnostics(
+    treasury: number,
+    goldPerTurn: number,
+    maximumDonation: number,
+    desiredDonation: number,
+    actualDonation: number,
+    score: number,
+    reason: string,
+  ): WorldCouncilDefenseSupportDonationDiagnostics {
+    return {
+      treasury,
+      goldPerTurn: Math.round(goldPerTurn),
+      maximumDonation,
+      desiredDonation: Math.max(0, Math.floor(desiredDonation)),
+      actualDonation,
+      score: Math.round(score),
+      reason,
+    };
   }
 
   private scoreRepealVote(voterNationId: string, proposal: WorldCouncilResolutionProposal): number {
@@ -1293,6 +1410,23 @@ function isNegativeResolution(resolutionId: WorldCouncilResolutionId): boolean {
   return resolutionId === 'condemn_aggressive_war'
     || resolutionId === 'international_sanctions'
     || resolutionId === 'international_embargo';
+}
+
+function summarizeInfluenceVotes(votes: readonly WorldCouncilResolutionVote[]): WorldCouncilResolutionVoteSummary {
+  const supportInfluence = votes
+    .filter((vote) => vote.support)
+    .reduce((sum, vote) => sum + vote.influence, 0);
+  const opposeInfluence = votes
+    .filter((vote) => !vote.support)
+    .reduce((sum, vote) => sum + vote.influence, 0);
+  const abstentions = votes.filter((vote) => vote.influence <= 0).length;
+  return {
+    supportInfluence,
+    opposeInfluence,
+    abstentions,
+    margin: Math.abs(supportInfluence - opposeInfluence),
+    outcome: supportInfluence > opposeInfluence ? 'passed' : 'failed',
+  };
 }
 
 function toPublicDefinition(definition: ResolutionDefinitionConfig): WorldCouncilResolutionDefinition {

@@ -26,7 +26,6 @@ interface UnitDefinitionInput {
   canTraverseWater?: boolean;
   mustEndOnLand?: boolean;
   uniquePerNation?: boolean;
-  residenceCapitalOnly?: boolean;
   canGatherIntel?: boolean;
   canSabotageImprovements?: boolean;
   canSabotageBuildings?: boolean;
@@ -44,13 +43,12 @@ const RENAISSANCE_ERA_INDEX = getEraIndex('renaissance');
 /**
  * Conservative "is this a normal military unit" test, driven by existing combat
  * stats rather than {@link UnitCategory}. Civilians (Settler, Worker, Work Boat,
- * Cargo Ship, Transport Ship, Archaeologist) and the special Leader are excluded
- * even though the Leader has combat strength.
+ * Cargo Ship, Transport Ship, Archaeologist) are excluded.
  */
 function isMilitaryUnit(input: UnitDefinitionInput): boolean {
   // Covert units are excluded too: their sabotage is a separate (future) mechanic
   // via their own flags, so they must not auto-gain the generic destroy actions.
-  if (input.category === 'civilian' || input.category === 'leader' || input.category === 'covert') return false;
+  if (input.category === 'civilian' || input.category === 'covert') return false;
   return input.combatStrength > 0 || (input.rangedStrength ?? 0) > 0;
 }
 
@@ -85,7 +83,6 @@ function unit(input: UnitDefinitionInput): UnitType {
     canTraverseWater: input.canTraverseWater,
     mustEndOnLand: input.mustEndOnLand,
     uniquePerNation: input.uniquePerNation,
-    residenceCapitalOnly: input.residenceCapitalOnly,
     canGatherIntel: input.canGatherIntel,
     canSabotageImprovements: input.canSabotageImprovements,
     canSabotageBuildings: input.canSabotageBuildings,
@@ -192,24 +189,6 @@ export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Crui
 
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 70, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2, serviceLifeRounds: 50 }); // renaissance capacity (2); charges are capped to 1 at build time until the owner reaches the renaissance era. Expires for AI nations after 50 rounds so stranded workers (small lakes/islands) don't loiter forever
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });
-// Leader is a special strategic entity, not a normal producible unit.
-// It is intentionally excluded from ALL_UNIT_TYPES and may only be spawned by
-// dedicated political residence / evacuation systems.
-export const LEADER = unit({
-  id: 'leader',
-  name: 'Leader',
-  era: 'ancient',
-  cost: 0,
-  combatStrength: 8,
-  movement: 10,
-  category: 'leader',
-  upkeepGold: 0,
-  ignoresUnitCollision: true,
-  canTraverseWater: true,
-  mustEndOnLand: true,
-  uniquePerNation: true,
-  residenceCapitalOnly: true,
-});
 
 export const TRANSPORT_SHIP = unit({ id: 'transport_ship', name: 'Transport Ship', era: 'renaissance', cost: 120, combatStrength: 0, movement: 4, category: 'civilian', isNaval: true, cargoCapacity: 3, allowedCargoCategories: ['civilian', 'melee', 'ranged', 'mounted', 'siege'] });
 
@@ -241,10 +220,6 @@ export const PARTISANS = unit({
   description: 'A modern insurgent army that wages irregular warfare behind enemy lines.',
 }); // cost ≈ 3× Tank (375)
 
-export const SPECIAL_UNIT_TYPES: UnitType[] = [
-  LEADER,
-];
-
 export const ALL_UNIT_TYPES: UnitType[] = [
   WARRIOR, SCOUT, SCOUT_BOAT, ARCHER, SPEARMAN, CHARIOT_ARCHER, WORK_BOAT, TRIREME, ARCHER_GALLEY, CARGO_SHIP,
   HORSEMAN, COMPOSITE_BOWMAN, CATAPULT, SWORDSMAN,
@@ -261,8 +236,7 @@ export const ALL_UNIT_TYPES: UnitType[] = [
 ];
 
 export function getUnitTypeById(id: string): UnitType | undefined {
-  return ALL_UNIT_TYPES.find((unitType) => unitType.id === id)
-    ?? SPECIAL_UNIT_TYPES.find((unitType) => unitType.id === id);
+  return ALL_UNIT_TYPES.find((unitType) => unitType.id === id);
 }
 
 export function hasCargoCapacity(unitType: UnitType): boolean {

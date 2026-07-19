@@ -1,6 +1,24 @@
 export const WORLD_COUNCIL_CONSTRUCTION_TURNS = 20;
-export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 8000;
+export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 5000;
 export const WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS = 50;
+
+/**
+ * Diplomatic Score is earned from political outcomes at World Council / UN
+ * meetings, not from passive per-turn contribution percentages. These are the
+ * centralised, tunable award constants; the next full autorun calibrates them.
+ *
+ * - A nation that proposes a resolution which passes earns the largest reward.
+ * - Nations that spend Influence to support a resolution that passes share a
+ *   smaller pool, split by their Influence commitment (coalition building).
+ * - Genuinely contributing gold to an emergency Defense Support resolution
+ *   earns a small, bounded participation reward.
+ *
+ * Blocking an opposing proposal deliberately earns no direct score: denying a
+ * rival its proposer reward is itself the reward.
+ */
+export const WORLD_COUNCIL_DIPLOMACY_SCORE_PROPOSAL_PASSED = 600;
+export const WORLD_COUNCIL_DIPLOMACY_SCORE_SUPPORT_POOL = 300;
+export const WORLD_COUNCIL_DIPLOMACY_SCORE_DEFENSE_DONATION_MAX = 40;
 
 export type WorldCouncilOrganizationKind = 'worldCouncil' | 'un';
 
@@ -11,6 +29,16 @@ export interface WorldCouncilMember {
   readonly cultureContributionPercent: number;
   readonly diplomacyScore: number;
   readonly diplomacyScoreSinceLastRegularMeeting: number;
+  /** Score earned by proposing resolutions that passed. Primary victory source. */
+  readonly diplomacyScoreFromProposals: number;
+  /** Score earned by spending Influence to support resolutions that passed. */
+  readonly diplomacyScoreFromSupport: number;
+  /** Small participation reward from Defense Support gold donations. */
+  readonly diplomacyScoreFromGold: number;
+  /** Legacy passive-contribution buckets. No longer grow; kept for save compat. */
+  readonly diplomacyScoreFromScience: number;
+  readonly diplomacyScoreFromCulture: number;
+  readonly diplomacyScoreFromOther: number;
 }
 
 export type WorldCouncilMeetingKind = 'regular' | 'emergency';
@@ -67,6 +95,8 @@ export interface WorldCouncilResolutionProposal {
   readonly distributions?: WorldCouncilResolutionDistribution[];
   readonly totalGoldDonated?: number;
   readonly votes?: WorldCouncilResolutionVote[];
+  readonly selectionDiagnostics?: WorldCouncilResolutionSelectionDiagnostics;
+  readonly voteSummary?: WorldCouncilResolutionVoteSummary;
   readonly passed?: boolean;
   readonly resolved?: boolean;
   readonly outcomeText?: string;
@@ -75,6 +105,7 @@ export interface WorldCouncilResolutionProposal {
 export interface WorldCouncilResolutionDonation {
   readonly nationId: string;
   readonly gold: number;
+  readonly diagnostics?: WorldCouncilDefenseSupportDonationDiagnostics;
 }
 
 export interface WorldCouncilResolutionDistribution {
@@ -86,6 +117,44 @@ export interface WorldCouncilResolutionVote {
   readonly nationId: string;
   readonly support: boolean;
   readonly influence: number;
+  readonly availableInfluence?: number;
+  readonly remainingInfluence?: number;
+  readonly supportScore?: number;
+}
+
+export interface WorldCouncilResolutionCandidateScore {
+  readonly resolutionId: WorldCouncilResolutionId;
+  readonly repealTargetEnactedResolutionId?: string;
+  readonly baseScore: number;
+  readonly recentPenalty: number;
+  readonly repeatProposerPenalty: number;
+  readonly diversityBonus: number;
+  readonly finalScore: number;
+  readonly reason: string;
+}
+
+export interface WorldCouncilResolutionSelectionDiagnostics {
+  readonly selectedResolutionId: WorldCouncilResolutionId;
+  readonly selectedRepealTargetEnactedResolutionId?: string;
+  readonly candidates: WorldCouncilResolutionCandidateScore[];
+}
+
+export interface WorldCouncilResolutionVoteSummary {
+  readonly supportInfluence: number;
+  readonly opposeInfluence: number;
+  readonly abstentions: number;
+  readonly margin: number;
+  readonly outcome: 'passed' | 'failed';
+}
+
+export interface WorldCouncilDefenseSupportDonationDiagnostics {
+  readonly treasury: number;
+  readonly goldPerTurn: number;
+  readonly maximumDonation: number;
+  readonly desiredDonation: number;
+  readonly actualDonation: number;
+  readonly score: number;
+  readonly reason: string;
 }
 
 export interface WorldCouncilEnactedResolution {

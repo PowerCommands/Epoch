@@ -9,10 +9,8 @@ import type { TradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
 import type { HistoricalEvent } from './historicalTimeline';
 import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacySystem';
-import type { ExileProtectionAgreement } from '../systems/ExileProtectionSystem';
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
-import type { LeaderEvacuationState } from '../entities/Nation';
 import type { WorldCouncilState } from './worldCouncil';
 
 /**
@@ -88,7 +86,6 @@ export interface SavedNation {
   influence?: number;
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
-  leaderEvacuationState?: LeaderEvacuationState;
 }
 
 export interface SavedCity {
@@ -285,7 +282,6 @@ export interface SavedGameState {
   tradeDeals?: TradeDeal[];
   tradeConnections?: TradeConnection[];
   tradeHistory?: SavedTradeHistoryEntry[];
-  exileProtectionAgreements?: ExileProtectionAgreement[];
   worldMarkers?: WorldMarker[];
   worldMarkerDiscoveries?: WorldMarkerDiscoveryEntry[];
   worldMarkerClaims?: WorldMarkerClaimEntry[];

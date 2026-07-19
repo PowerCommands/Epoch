@@ -12,6 +12,7 @@ import type {
   WorldCouncilMeeting,
   WorldCouncilMember,
   WorldCouncilOrganizationKind,
+  WorldCouncilResolutionCandidateScore,
   WorldCouncilResolutionId,
   WorldCouncilResolutionProposal,
   WorldCouncilState,
@@ -19,14 +20,33 @@ import type {
 import {
   WORLD_COUNCIL_CONSTRUCTION_TURNS,
   WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD,
+  WORLD_COUNCIL_DIPLOMACY_SCORE_PROPOSAL_PASSED,
+  WORLD_COUNCIL_DIPLOMACY_SCORE_SUPPORT_POOL,
+  WORLD_COUNCIL_DIPLOMACY_SCORE_DEFENSE_DONATION_MAX,
   WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS,
 } from '../types/worldCouncil';
 import { getLeaderPersonalityByNationId } from '../data/leaders';
+
+/** Signature for the optional Diplomatic Score audit logger. */
+export type WorldCouncilLogger = (nationId: string, message: string) => void;
 
 export interface WorldCouncilContributionOffer {
   readonly gold: number;
   readonly sciencePercent: number;
   readonly culturePercent: number;
+}
+
+export interface DiplomaticScoreBreakdown {
+  readonly nationId: string;
+  readonly total: number;
+  /** Score from proposing resolutions that passed (primary source). */
+  readonly proposalScore: number;
+  /** Score from spending Influence to support resolutions that passed. */
+  readonly supportScore: number;
+  /** Small participation reward from genuine gold contributions. */
+  readonly contributionScore: number;
+  /** Legacy / uncategorised score (e.g. from pre-redesign saves). */
+  readonly otherScore: number;
 }
 
 export interface FoundWorldCouncilOptions {
@@ -52,6 +72,11 @@ const NON_STANDARD_WORLD_COUNCIL_NATION_IDS = new Set(['nation_pirate']);
 const NUCLEAR_NON_PROLIFERATION_UNIT_IDS = new Set(['atomic_bomb', 'nuclear_missile']);
 const NUCLEAR_NON_PROLIFERATION_BLOCK_REASON =
   'Production prohibited by the United Nations Nuclear Non-Proliferation Treaty.';
+const RECENT_RESOLUTION_MEMORY_TURNS = 160;
+const RECENT_RESOLUTION_PENALTY_PER_MEETING = 24;
+const REPEAT_PROPOSER_MEMORY_TURNS = 240;
+const REPEAT_PROPOSER_PENALTY_PER_MEETING = 34;
+const DIVERSITY_BONUS_PER_UNUSED_KIND = 10;
 
 export class WorldCouncilSystem {
   private state: WorldCouncilState | null = null;
@@ -68,6 +93,7 @@ export class WorldCouncilSystem {
     private readonly resourceSystem: ResourceSystem,
     private readonly resolutionSystem?: WorldCouncilResolutionSystem,
     private readonly discoverySystem?: DiscoverySystem,
+    private readonly log?: WorldCouncilLogger,
   ) {}
 
   hasCouncil(): boolean {
@@ -92,6 +118,32 @@ export class WorldCouncilSystem {
 
   getMembers(): WorldCouncilMember[] {
     return this.state?.members.map((member) => ({ ...member })) ?? [];
+  }
+
+  getDiplomaticScoreBreakdown(nationId: string): DiplomaticScoreBreakdown {
+    const member = this.state?.members.find((entry) => entry.nationId === nationId);
+    if (!member) {
+      return {
+        nationId,
+        total: 0,
+        proposalScore: 0,
+        supportScore: 0,
+        contributionScore: 0,
+        otherScore: 0,
+      };
+    }
+    return getDiplomaticScoreBreakdown(member);
+  }
+
+  getMaxGoldContributionForOffer(
+    nationId: string,
+    scienceContributionPercent: number,
+    cultureContributionPercent: number,
+  ): number {
+    const resources = this.nationManager.getResources(nationId);
+    const science = getScienceDiplomacyScoreGain(clampWhole(scienceContributionPercent, MINIMUM_COUNCIL_SCIENCE_PERCENT, 100));
+    const culture = getCultureDiplomacyScoreGain(clampWhole(cultureContributionPercent, MINIMUM_COUNCIL_CULTURE_PERCENT, 100));
+    return clampWhole(getGoldForDiplomacyScore(science + culture), 0, resources.gold);
   }
 
   isMember(nationId: string): boolean {
@@ -194,30 +246,37 @@ export class WorldCouncilSystem {
     return WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
   }
 
+  /**
+   * Small, bounded participation reward for genuinely donating gold to an
+   * emergency Defense Support resolution. This is a one-time award per donation
+   * (not passive per-turn accrual) and is capped so it stays secondary to
+   * political success from proposing and supporting resolutions.
+   */
   awardGoldContributionDiplomacyScore(nationId: string, gold: number): boolean {
     if (!this.state || gold <= 0) return false;
     const index = this.state.members.findIndex((member) => member.nationId === nationId);
     if (index < 0) return false;
-    const scoreGain = getDiplomacyScoreGain({
-      nationId,
-      goldContributed: gold,
-      scienceContributionPercent: 0,
-      cultureContributionPercent: 0,
-      diplomacyScore: 0,
-      diplomacyScoreSinceLastRegularMeeting: 0,
-    });
-    const members = this.state.members.map((member, memberIndex) =>
+    const member = this.state.members[index]!;
+    const scoreGain = Math.min(
+      getGoldDiplomacyScoreGain(gold),
+      WORLD_COUNCIL_DIPLOMACY_SCORE_DEFENSE_DONATION_MAX,
+    );
+    if (scoreGain <= 0) return false;
+    const members = this.state.members.map((entry, memberIndex) =>
       memberIndex === index
         ? {
-            ...member,
-            diplomacyScore: member.diplomacyScore + scoreGain,
-            diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting + scoreGain,
+            ...entry,
+            diplomacyScore: entry.diplomacyScore + scoreGain,
+            diplomacyScoreSinceLastRegularMeeting: entry.diplomacyScoreSinceLastRegularMeeting + scoreGain,
+            diplomacyScoreFromGold: entry.diplomacyScoreFromGold + scoreGain,
           }
-        : member);
+        : entry);
     this.state = {
       ...this.state,
       members,
     };
+    this.logScoreAward(nationId, scoreGain, member.diplomacyScore + scoreGain,
+      `donated ${gold} gold to a Defense Support resolution`);
     this.notifyChanged();
     return true;
   }
@@ -229,6 +288,14 @@ export class WorldCouncilSystem {
   submitHumanContribution(nationId: string, offer: WorldCouncilContributionOffer): boolean {
     if (!this.state?.pendingContributionNegotiation) return false;
     if (this.state.pendingContributionNegotiation.awaitingHumanNationId !== nationId) return false;
+    const requestedSciencePercent = clampWhole(offer.sciencePercent, MINIMUM_COUNCIL_SCIENCE_PERCENT, 100);
+    const requestedCulturePercent = clampWhole(offer.culturePercent, MINIMUM_COUNCIL_CULTURE_PERCENT, 100);
+    const maxGold = this.getMaxGoldContributionForOffer(
+      nationId,
+      requestedSciencePercent,
+      requestedCulturePercent,
+    );
+    if (clampWhole(offer.gold, 0, Number.POSITIVE_INFINITY) > maxGold) return false;
     const choices = this.state.pendingContributionNegotiation.choices
       .filter((choice) => choice.nationId !== nationId);
     choices.push(this.makeContributionChoice(nationId, offer));
@@ -335,7 +402,7 @@ export class WorldCouncilSystem {
     const founderContribution = this.applyContribution(options.foundingNationId, options.founderOffer);
     const existingFounder = byNationId.get(options.foundingNationId);
     byNationId.set(options.foundingNationId, existingFounder
-      ? {
+      ? this.enforceGoldContributionCap({
           ...existingFounder,
           goldContributed: existingFounder.goldContributed + founderContribution.goldContributed,
           scienceContributionPercent: Math.max(
@@ -346,7 +413,7 @@ export class WorldCouncilSystem {
             existingFounder.cultureContributionPercent,
             founderContribution.cultureContributionPercent,
           ),
-        }
+        })
       : founderContribution);
 
     for (const nation of this.nationManager.getAllNations()) {
@@ -385,10 +452,11 @@ export class WorldCouncilSystem {
 
     const expiredResolutions = this.expireTimedResolutions(event.round);
     const membershipChanged = this.pruneEliminatedMembers();
-    const scoreAdvanced = this.advanceDiplomacyScore(event.nation.id);
+    // Diplomatic Score is no longer accrued passively each turn. It is awarded
+    // only from political outcomes at meetings (see awardMeetingPoliticalScores).
     const lifecycleChanged = this.advanceCouncilLifecycle(event.round);
 
-    if (scoreAdvanced || membershipChanged || lifecycleChanged || expiredResolutions.length > 0) {
+    if (membershipChanged || lifecycleChanged || expiredResolutions.length > 0) {
       this.notifyChanged();
     }
     for (const resolution of expiredResolutions) this.notifyResolutionExpired(resolution);
@@ -458,10 +526,13 @@ export class WorldCouncilSystem {
     nationId: string,
     offer: WorldCouncilContributionOffer,
   ): WorldCouncilMember {
-    const resources = this.nationManager.getResources(nationId);
-    const gold = clampWhole(offer.gold, 0, resources.gold);
     const sciencePercent = clampWhole(offer.sciencePercent, MINIMUM_COUNCIL_SCIENCE_PERCENT, 100);
     const culturePercent = clampWhole(offer.culturePercent, MINIMUM_COUNCIL_CULTURE_PERCENT, 100);
+    const gold = clampWhole(
+      offer.gold,
+      0,
+      this.getMaxGoldContributionForOffer(nationId, sciencePercent, culturePercent),
+    );
 
     if (gold > 0) this.resourceSystem.addGold(nationId, -gold);
 
@@ -472,28 +543,62 @@ export class WorldCouncilSystem {
       cultureContributionPercent: culturePercent,
       diplomacyScore: 0,
       diplomacyScoreSinceLastRegularMeeting: 0,
+      diplomacyScoreFromProposals: 0,
+      diplomacyScoreFromSupport: 0,
+      diplomacyScoreFromGold: 0,
+      diplomacyScoreFromScience: 0,
+      diplomacyScoreFromCulture: 0,
+      diplomacyScoreFromOther: 0,
     };
   }
 
-  private advanceDiplomacyScore(nationId: string): boolean {
+  /**
+   * Awards Diplomatic Score from the political outcomes of a resolved meeting.
+   * Only regular meetings score, so emergency/war meetings cannot be farmed.
+   * Proposers of passed resolutions earn the largest reward; Influence-spending
+   * supporters share a smaller pool by their commitment. Blocking earns nothing.
+   */
+  private awardMeetingPoliticalScores(meeting: WorldCouncilMeeting): boolean {
     if (!this.state) return false;
-    if (!this.nationManager.getNation(nationId)) return false;
-    const index = this.state.members.findIndex((member) => member.nationId === nationId);
-    if (index < 0) return false;
-    const members = this.state.members.map((member, memberIndex) => {
-      if (memberIndex !== index) return member;
+    const awards = computeMeetingPoliticalScoreAwards(meeting, this.state.memberNationIds);
+    if (awards.length === 0) return false;
+    const byNation = new Map(awards.map((award) => [award.nationId, award]));
+    const members = this.state.members.map((member) => {
+      const award = byNation.get(member.nationId);
+      if (!award) return member;
+      const totalGain = award.proposalScore + award.supportScore;
+      if (totalGain <= 0) return member;
       return {
         ...member,
-        diplomacyScore: member.diplomacyScore + getDiplomacyScoreGain(member),
-        diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting + getDiplomacyScoreGain(member),
+        diplomacyScore: member.diplomacyScore + totalGain,
+        diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting + totalGain,
+        diplomacyScoreFromProposals: member.diplomacyScoreFromProposals + award.proposalScore,
+        diplomacyScoreFromSupport: member.diplomacyScoreFromSupport + award.supportScore,
       };
     });
-    this.state = {
-      ...this.state,
-      members,
-      memberNationIds: members.map((member) => member.nationId),
-    };
+    this.state = { ...this.state, members };
+
+    const meetingLabel = `${this.getOrganizationName()} regular meeting`;
+    for (const member of members) {
+      const award = byNation.get(member.nationId);
+      if (!award) continue;
+      const totalGain = award.proposalScore + award.supportScore;
+      if (totalGain <= 0) continue;
+      const role = award.proposalScore > 0 ? 'proposer' : 'supporter';
+      this.logScoreAward(member.nationId, totalGain, member.diplomacyScore,
+        `${award.reasons.join('; ')} at ${meetingLabel} (${role})`);
+    }
     return true;
+  }
+
+  private logScoreAward(nationId: string, gained: number, totalAfter: number, reason: string): void {
+    if (!this.log || gained <= 0) return;
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    this.log(
+      nationId,
+      `${name} gained ${Math.round(gained).toLocaleString()} Diplomatic Score: ${reason}. `
+      + `Total: ${Math.round(totalAfter).toLocaleString()} / ${WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD.toLocaleString()}.`,
+    );
   }
 
   private advanceCouncilLifecycle(round: number): boolean {
@@ -639,12 +744,20 @@ export class WorldCouncilSystem {
     }
 
     const repealTargets = this.getRepealableResolutions();
-    const normalProposal = slot === 'host'
-      ? this.resolutionSystem.chooseHostProposal(proposerNationId, this.getOrganizationKind())
-      : this.resolutionSystem.chooseRandomProposal(seed, excludedResolutionId, this.getOrganizationKind());
+    const normalProposals = this.resolutionSystem.getDefinitions(this.getOrganizationKind())
+      .filter((definition) => definition.votingType !== 'special')
+      .filter((definition) => definition.id !== excludedResolutionId)
+      .filter((definition) => slot === 'host' || definition.id !== 'un_peacekeeping_mission')
+      .map((definition) => ({
+        slot,
+        proposerNationId,
+        resolutionId: definition.id,
+      }));
     const candidates: WorldCouncilResolutionProposal[] = [];
-    if (!this.hasActiveRepealableResolution(normalProposal.resolutionId)) {
-      candidates.push(normalProposal);
+    for (const proposal of normalProposals) {
+      if (!this.hasActiveRepealableResolution(proposal.resolutionId)) {
+        candidates.push(proposal);
+      }
     }
     for (const target of repealTargets) {
       if (target.resolutionId === excludedResolutionId) continue;
@@ -656,8 +769,153 @@ export class WorldCouncilSystem {
         repealTargetResolutionId: target.resolutionId,
       });
     }
-    if (candidates.length === 0) candidates.push(normalProposal);
-    return candidates[Math.abs(seed) % candidates.length]!;
+    if (candidates.length === 0) {
+      const fallback = slot === 'host'
+        ? this.resolutionSystem.chooseHostProposal(proposerNationId, this.getOrganizationKind())
+        : this.resolutionSystem.chooseRandomProposal(seed, excludedResolutionId, this.getOrganizationKind());
+      candidates.push(fallback);
+    }
+    return this.chooseScoredRegularProposal(candidates, slot, seed, proposerNationId);
+  }
+
+  private chooseScoredRegularProposal(
+    candidates: readonly WorldCouncilResolutionProposal[],
+    slot: 'host' | 'random',
+    seed: number,
+    proposerNationId: string | undefined,
+  ): WorldCouncilResolutionProposal {
+    const scored = candidates.map((proposal) =>
+      this.scoreRegularProposalCandidate(proposal, slot, seed, proposerNationId));
+    const selected = [...scored].sort((a, b) =>
+      b.score.finalScore - a.score.finalScore
+      || stableResolutionTieBreak(seed, a.proposal.resolutionId, a.proposal.repealTargetEnactedResolutionId)
+        - stableResolutionTieBreak(seed, b.proposal.resolutionId, b.proposal.repealTargetEnactedResolutionId))[0]!;
+    return {
+      ...selected.proposal,
+      selectionDiagnostics: {
+        selectedResolutionId: selected.proposal.resolutionId,
+        selectedRepealTargetEnactedResolutionId: selected.proposal.repealTargetEnactedResolutionId,
+        candidates: scored
+          .map((entry) => entry.score)
+          .sort((a, b) => b.finalScore - a.finalScore || a.resolutionId.localeCompare(b.resolutionId)),
+      },
+    };
+  }
+
+  private scoreRegularProposalCandidate(
+    proposal: WorldCouncilResolutionProposal,
+    slot: 'host' | 'random',
+    seed: number,
+    proposerNationId: string | undefined,
+  ): { proposal: WorldCouncilResolutionProposal; score: WorldCouncilResolutionCandidateScore } {
+    const baseScore = this.getRegularProposalBaseScore(proposal, slot, seed, proposerNationId);
+    const recentPenalty = this.getRecentResolutionPenalty(proposal.resolutionId);
+    const repeatProposerPenalty = proposerNationId
+      ? this.getRepeatProposerResolutionPenalty(proposerNationId, proposal.resolutionId)
+      : 0;
+    const diversityBonus = this.getResolutionDiversityBonus(proposal.resolutionId);
+    const finalScore = baseScore - recentPenalty - repeatProposerPenalty + diversityBonus;
+    const reasons = [`base ${Math.round(baseScore)}`];
+    if (recentPenalty > 0) reasons.push(`recent -${Math.round(recentPenalty)}`);
+    if (repeatProposerPenalty > 0) reasons.push(`same proposer -${Math.round(repeatProposerPenalty)}`);
+    if (diversityBonus > 0) reasons.push(`diversity +${Math.round(diversityBonus)}`);
+    if (proposal.repealTargetEnactedResolutionId) reasons.push('repeal candidate');
+    return {
+      proposal,
+      score: {
+        resolutionId: proposal.resolutionId,
+        repealTargetEnactedResolutionId: proposal.repealTargetEnactedResolutionId,
+        baseScore: Math.round(baseScore),
+        recentPenalty: Math.round(recentPenalty),
+        repeatProposerPenalty: Math.round(repeatProposerPenalty),
+        diversityBonus: Math.round(diversityBonus),
+        finalScore: Math.round(finalScore),
+        reason: reasons.join(', '),
+      },
+    };
+  }
+
+  private getRegularProposalBaseScore(
+    proposal: WorldCouncilResolutionProposal,
+    slot: 'host' | 'random',
+    seed: number,
+    proposerNationId: string | undefined,
+  ): number {
+    if (proposal.repealTargetEnactedResolutionId) return 70;
+    const organizationKind = this.getOrganizationKind();
+    const hostPreferred = proposerNationId
+      ? this.resolutionSystem?.chooseHostProposal(proposerNationId, organizationKind).resolutionId
+      : undefined;
+    const randomPreferred = this.resolutionSystem?.chooseRandomProposal(seed, undefined, organizationKind).resolutionId;
+    let score = slot === 'host' && proposal.resolutionId === hostPreferred ? 104 : 76;
+    if (slot === 'random' && proposal.resolutionId === randomPreferred) score += 18;
+    score += stableResolutionTieBreak(seed, proposal.resolutionId) / 10;
+
+    const recentEmergencyPressure = this.getRecentEmergencyPressure(proposerNationId);
+    if (proposal.resolutionId === 'un_peacekeeping_mission') score += recentEmergencyPressure;
+    if (proposal.resolutionId === 'ceasefire_resolution') score += Math.max(0, recentEmergencyPressure - 10);
+    if (proposal.resolutionId === 'condemn_aggressive_war') score += Math.max(0, recentEmergencyPressure - 18);
+    if (proposal.resolutionId === 'shared_cartography' && this.hasResolutionEverPassed('shared_cartography')) score -= 35;
+    if (proposal.resolutionId === 'global_infrastructure_initiative') score += 8;
+    if (proposal.resolutionId === 'international_development_fund') score += 6;
+    if (proposal.resolutionId === 'climate_accord') score += 4;
+    return score;
+  }
+
+  private getRecentEmergencyPressure(proposerNationId: string | undefined): number {
+    if (!this.state) return 0;
+    const lastRegularTurn = this.state.lastRegularMeetingTurn;
+    return this.state.meetings
+      .filter((meeting) => meeting.kind === 'emergency' && lastRegularTurn - meeting.turn <= 120)
+      .reduce((score, meeting) => {
+        const trigger = meeting.emergencyTrigger;
+        if (!trigger) return score;
+        const proposerInvolved = proposerNationId
+          && (trigger.aggressorNationId === proposerNationId || trigger.targetNationId === proposerNationId);
+        return score + (proposerInvolved ? 34 : 16);
+      }, 0);
+  }
+
+  private getRecentResolutionPenalty(resolutionId: WorldCouncilResolutionId): number {
+    if (!this.state) return 0;
+    return this.state.meetings.reduce((penalty, meeting) => {
+      const age = this.state!.lastRegularMeetingTurn - meeting.turn;
+      if (age < 0 || age > RECENT_RESOLUTION_MEMORY_TURNS) return penalty;
+      const count = meeting.proposals?.filter((proposal) => proposal.resolutionId === resolutionId).length ?? 0;
+      const ageFactor = 1 - age / RECENT_RESOLUTION_MEMORY_TURNS;
+      return penalty + count * RECENT_RESOLUTION_PENALTY_PER_MEETING * ageFactor;
+    }, 0);
+  }
+
+  private getRepeatProposerResolutionPenalty(
+    proposerNationId: string,
+    resolutionId: WorldCouncilResolutionId,
+  ): number {
+    if (!this.state) return 0;
+    return this.state.meetings.reduce((penalty, meeting) => {
+      const age = this.state!.lastRegularMeetingTurn - meeting.turn;
+      if (age < 0 || age > REPEAT_PROPOSER_MEMORY_TURNS) return penalty;
+      const count = meeting.proposals?.filter((proposal) =>
+        proposal.proposerNationId === proposerNationId && proposal.resolutionId === resolutionId).length ?? 0;
+      const ageFactor = 1 - age / REPEAT_PROPOSER_MEMORY_TURNS;
+      return penalty + count * REPEAT_PROPOSER_PENALTY_PER_MEETING * ageFactor;
+    }, 0);
+  }
+
+  private getResolutionDiversityBonus(resolutionId: WorldCouncilResolutionId): number {
+    if (!this.state) return 0;
+    const recentKinds = new Set(
+      this.state.meetings
+        .filter((meeting) => this.state!.lastRegularMeetingTurn - meeting.turn <= RECENT_RESOLUTION_MEMORY_TURNS)
+        .flatMap((meeting) => meeting.proposals ?? [])
+        .map((proposal) => getResolutionKind(proposal.resolutionId)),
+    );
+    return recentKinds.has(getResolutionKind(resolutionId)) ? 0 : DIVERSITY_BONUS_PER_UNUSED_KIND;
+  }
+
+  private hasResolutionEverPassed(resolutionId: WorldCouncilResolutionId): boolean {
+    return this.state?.meetings.some((meeting) =>
+      meeting.proposals?.some((proposal) => proposal.resolutionId === resolutionId && proposal.passed === true)) ?? false;
   }
 
   private resolveMeetingProposals(meetingId: number): WorldCouncilMeeting | null {
@@ -714,7 +972,9 @@ export class WorldCouncilSystem {
         secondaryTargetNationId: proposal.secondaryTargetNationId,
       });
     }
-    return meetings.find((item) => item.id === meetingId) ?? null;
+    const resolvedMeeting = this.state.meetings.find((item) => item.id === meetingId);
+    if (resolvedMeeting) this.awardMeetingPoliticalScores(resolvedMeeting);
+    return this.state.meetings.find((item) => item.id === meetingId) ?? null;
   }
 
   private getRepealableResolutions(): WorldCouncilEnactedResolution[] {
@@ -817,7 +1077,7 @@ export class WorldCouncilSystem {
         members.push(member);
         continue;
       }
-      const contribution = this.enforceMinimumContribution(choice);
+      const contribution = this.enforceGoldContributionCap(this.enforceMinimumContribution(choice));
       members.push({
         ...member,
         goldContributed: contribution.goldContributed,
@@ -852,7 +1112,11 @@ export class WorldCouncilSystem {
     );
     return {
       nationId,
-      goldContributed: clampWhole(resources.gold * goldShare, 0, resources.gold),
+      goldContributed: clampWhole(
+        resources.gold * goldShare,
+        0,
+        this.getMaxGoldContributionForOffer(nationId, sciencePercent, culturePercent),
+      ),
       scienceContributionPercent: sciencePercent,
       cultureContributionPercent: culturePercent,
     };
@@ -863,12 +1127,12 @@ export class WorldCouncilSystem {
     offer: WorldCouncilContributionOffer,
   ): WorldCouncilContributionChoice {
     const resources = this.nationManager.getResources(nationId);
-    return this.enforceMinimumContribution({
+    return this.enforceGoldContributionCap(this.enforceMinimumContribution({
       nationId,
       goldContributed: clampWhole(offer.gold, 0, resources.gold),
       scienceContributionPercent: clampWhole(offer.sciencePercent, 0, 100),
       cultureContributionPercent: clampWhole(offer.culturePercent, 0, 100),
-    });
+    }));
   }
 
   private enforceMinimumContribution(choice: WorldCouncilContributionChoice): WorldCouncilContributionChoice {
@@ -876,6 +1140,18 @@ export class WorldCouncilSystem {
       ...choice,
       scienceContributionPercent: clampWhole(choice.scienceContributionPercent, MINIMUM_COUNCIL_SCIENCE_PERCENT, 100),
       cultureContributionPercent: clampWhole(choice.cultureContributionPercent, MINIMUM_COUNCIL_CULTURE_PERCENT, 100),
+    };
+  }
+
+  private enforceGoldContributionCap<T extends WorldCouncilContributionChoice | WorldCouncilMember>(choice: T): T {
+    const maxGold = this.getMaxGoldContributionForOffer(
+      choice.nationId,
+      choice.scienceContributionPercent,
+      choice.cultureContributionPercent,
+    );
+    return {
+      ...choice,
+      goldContributed: clampWhole(choice.goldContributed, 0, maxGold),
     };
   }
 
@@ -1016,9 +1292,109 @@ function isMemberContribution(member: WorldCouncilMember): boolean {
     || member.cultureContributionPercent > 0;
 }
 
-function getDiplomacyScoreGain(member: WorldCouncilMember): number {
-  return member.goldContributed / 500
-    + (member.scienceContributionPercent + member.cultureContributionPercent) * 0.72;
+// The following gold helpers remain solely to bound gold contributions via the
+// existing contribution cap (getMaxGoldContributionForOffer). They no longer
+// drive any passive per-turn Diplomatic Score.
+function getGoldDiplomacyScoreGain(gold: number): number {
+  return gold / 500;
+}
+
+function getScienceDiplomacyScoreGain(scienceContributionPercent: number): number {
+  return scienceContributionPercent * 0.72;
+}
+
+function getCultureDiplomacyScoreGain(cultureContributionPercent: number): number {
+  return cultureContributionPercent * 0.72;
+}
+
+function getGoldForDiplomacyScore(score: number): number {
+  return Math.floor(score * 500);
+}
+
+function formatResolutionLabel(resolutionId: string): string {
+  return resolutionId
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/** One nation's Diplomatic Score award from a single resolved meeting. */
+export interface MeetingPoliticalScoreAward {
+  readonly nationId: string;
+  readonly proposalScore: number;
+  readonly supportScore: number;
+  readonly reasons: readonly string[];
+}
+
+/**
+ * Pure computation of Diplomatic Score awards from a resolved meeting. Reads
+ * only the meeting's proposals (proposer + passed flag + Influence votes) and
+ * the current membership. It never reads contribution percentages, so leader
+ * personality cannot create score here — only political success does. Emergency
+ * meetings score nothing to prevent war-driven farming.
+ */
+export function computeMeetingPoliticalScoreAwards(
+  meeting: Pick<WorldCouncilMeeting, 'kind' | 'proposals'>,
+  memberNationIds: readonly string[],
+): MeetingPoliticalScoreAward[] {
+  if (meeting.kind !== 'regular' || !meeting.proposals) return [];
+  const memberIds = new Set(memberNationIds);
+  const awards = new Map<string, { proposal: number; support: number; reasons: string[] }>();
+  const add = (nationId: string, kind: 'proposal' | 'support', amount: number, reason: string): void => {
+    if (amount <= 0 || !memberIds.has(nationId)) return;
+    const entry = awards.get(nationId) ?? { proposal: 0, support: 0, reasons: [] };
+    entry[kind] += amount;
+    entry.reasons.push(reason);
+    awards.set(nationId, entry);
+  };
+
+  for (const proposal of meeting.proposals) {
+    if (proposal.passed !== true) continue;
+    const resolutionLabel = formatResolutionLabel(proposal.resolutionId);
+
+    if (proposal.proposerNationId) {
+      add(proposal.proposerNationId, 'proposal', WORLD_COUNCIL_DIPLOMACY_SCORE_PROPOSAL_PASSED,
+        `proposed ${resolutionLabel} passed`);
+    }
+
+    const supporters = (proposal.votes ?? []).filter((vote) =>
+      vote.support
+      && vote.influence > 0
+      && vote.nationId !== proposal.proposerNationId
+      && memberIds.has(vote.nationId));
+    const totalSupportInfluence = supporters.reduce((sum, vote) => sum + vote.influence, 0);
+    if (totalSupportInfluence > 0) {
+      for (const vote of supporters) {
+        const share = WORLD_COUNCIL_DIPLOMACY_SCORE_SUPPORT_POOL * (vote.influence / totalSupportInfluence);
+        add(vote.nationId, 'support', share, `backed ${resolutionLabel} with ${vote.influence} Influence`);
+      }
+    }
+  }
+
+  return [...awards.entries()].map(([nationId, entry]) => ({
+    nationId,
+    proposalScore: Math.round(entry.proposal),
+    supportScore: Math.round(entry.support),
+    reasons: entry.reasons,
+  }));
+}
+
+export function getDiplomaticScoreBreakdown(member: WorldCouncilMember): DiplomaticScoreBreakdown {
+  const proposalScore = member.diplomacyScoreFromProposals;
+  const supportScore = member.diplomacyScoreFromSupport;
+  const contributionScore = member.diplomacyScoreFromGold
+    + member.diplomacyScoreFromScience
+    + member.diplomacyScoreFromCulture;
+  const categorised = proposalScore + supportScore + contributionScore + member.diplomacyScoreFromOther;
+  const remainder = member.diplomacyScore - categorised;
+  return {
+    nationId: member.nationId,
+    total: member.diplomacyScore,
+    proposalScore,
+    supportScore,
+    contributionScore,
+    otherScore: member.diplomacyScoreFromOther + remainder,
+  };
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -1075,6 +1451,19 @@ function normalizeState(state: WorldCouncilState): WorldCouncilState {
     const normalizedMembers = state.members.map((member) => ({
       ...member,
       diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting ?? 0,
+      diplomacyScoreFromProposals: member.diplomacyScoreFromProposals ?? 0,
+      diplomacyScoreFromSupport: member.diplomacyScoreFromSupport ?? 0,
+      diplomacyScoreFromGold: member.diplomacyScoreFromGold ?? 0,
+      diplomacyScoreFromScience: member.diplomacyScoreFromScience ?? 0,
+      diplomacyScoreFromCulture: member.diplomacyScoreFromCulture ?? 0,
+      diplomacyScoreFromOther: member.diplomacyScoreFromOther
+        ?? Math.max(
+          0,
+          member.diplomacyScore
+            - (member.diplomacyScoreFromGold ?? 0)
+            - (member.diplomacyScoreFromScience ?? 0)
+            - (member.diplomacyScoreFromCulture ?? 0),
+        ),
     }));
     const meetings = Array.isArray(state.meetings) ? state.meetings : [];
     return {
@@ -1108,6 +1497,12 @@ function normalizeState(state: WorldCouncilState): WorldCouncilState {
     cultureContributionPercent: contribution.culturePercent ?? 0,
     diplomacyScore: contribution.diplomacyScore ?? 0,
     diplomacyScoreSinceLastRegularMeeting: contribution.diplomacyScoreSinceLastRegularMeeting ?? 0,
+    diplomacyScoreFromProposals: 0,
+    diplomacyScoreFromSupport: 0,
+    diplomacyScoreFromGold: 0,
+    diplomacyScoreFromScience: 0,
+    diplomacyScoreFromCulture: 0,
+    diplomacyScoreFromOther: contribution.diplomacyScore ?? 0,
   })).filter(isMemberContribution);
 
   return {
@@ -1130,6 +1525,48 @@ function stableMeetingSeed(turn: number, meetingId: number, hostNationId: string
     hash = ((hash << 5) - hash + hostNationId!.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
+}
+
+function stableResolutionTieBreak(
+  seed: number,
+  resolutionId: WorldCouncilResolutionId,
+  repealTargetEnactedResolutionId?: string,
+): number {
+  let hash = seed || 17;
+  const text = `${resolutionId}:${repealTargetEnactedResolutionId ?? ''}`;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash % 1000);
+}
+
+function getResolutionKind(resolutionId: WorldCouncilResolutionId): string {
+  if (
+    resolutionId === 'un_peacekeeping_mission'
+    || resolutionId === 'ceasefire_resolution'
+    || resolutionId === 'defense_support'
+  ) {
+    return 'security';
+  }
+  if (
+    resolutionId === 'international_sanctions'
+    || resolutionId === 'international_embargo'
+    || resolutionId === 'condemn_aggressive_war'
+    || resolutionId === 'nuclear_non_proliferation_treaty'
+  ) {
+    return 'punitive';
+  }
+  if (
+    resolutionId === 'global_infrastructure_initiative'
+    || resolutionId === 'international_development_fund'
+    || resolutionId === 'global_free_trade_agreement'
+  ) {
+    return 'economic';
+  }
+  if (resolutionId === 'shared_cartography') return 'knowledge';
+  if (resolutionId === 'protect_world_heritage') return 'heritage';
+  if (resolutionId === 'climate_accord') return 'environment';
+  return 'general';
 }
 
 function normalizeEnactedResolution(

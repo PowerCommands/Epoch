@@ -101,9 +101,8 @@ import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem, type VictoryType } from '../systems/VictorySystem';
 import { PoliticalCapitalSystem } from '../systems/PoliticalCapitalSystem';
-import { LeaderCaptureSystem, type LeaderCaptureChoiceRequest } from '../systems/LeaderCaptureSystem';
 import { NationCollapseSystem } from '../systems/NationCollapseSystem';
-import { ExileProtectionSystem, type ExileProtectionChoiceRequest } from '../systems/ExileProtectionSystem';
+import { ExileProtectionSystem } from '../systems/ExileProtectionSystem';
 import { CityDefenseSystem } from '../systems/CityDefenseSystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
 import { InfrastructureSabotageSystem, IMPROVEMENT_DESTRUCTION_LOOT_GOLD } from '../systems/InfrastructureSabotageSystem';
@@ -793,6 +792,7 @@ export class GameScene extends Phaser.Scene {
       resourceSystem,
       worldCouncilResolutionSystem,
       discoverySystem,
+      (nationId, message) => logManager.info({ nationId, category: 'diplomacy', message }),
     );
     aiMilitaryEvaluationSystem.setPeacekeepingDefensivePowerProvider((attackerNationId, defenderNationId, getMilitaryStrength) =>
       worldCouncilSystem.getPeacekeepingDefensivePowerAgainst(
@@ -1398,10 +1398,10 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       mapData,
       turnManager,
-      (a, b) => discoverySystem.hasMet(a, b),
-      (nationId) => getAvailableLuxuryResourceQuantities(nationId).map((entry) => entry.resourceId),
+      (a: string, b: string) => discoverySystem.hasMet(a, b),
+      (nationId: string) => getAvailableLuxuryResourceQuantities(nationId).map((entry) => entry.resourceId),
     );
-    const cityDefenseSystem = new CityDefenseSystem(unitManager, wonderSystem);
+    const cityDefenseSystem = new CityDefenseSystem(wonderSystem);
     cityDefenseSystem.setWorldHeritageProtectionActive(worldCouncilSystem.hasWorldHeritageProtection());
     worldCouncilResolutionSystem.setRuntime({
       getDiplomacyState: (a, b) => diplomacyManager.getState(a, b),
@@ -1547,22 +1547,6 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    // 14. Stridssystem
-    const combatSystem = new CombatSystem(
-      unitManager,
-      turnManager,
-      cityManager,
-      productionSystem,
-      mapData,
-      diplomacyManager,
-      gridSystem,
-      (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
-      policySystem,
-      (attacker, target) => exileProtectionSystem.getProtectorForProtectedLeaderTarget(attacker.ownerId, target),
-      (attacker, target, tileOwnerId) =>
-        worldCouncilSystem.canResolvePeacekeepingCombat(attacker.ownerId, target.ownerId, tileOwnerId),
-      cityDefenseSystem,
-    );
     const nationCollapseSystem = new NationCollapseSystem(
       cityManager,
       unitManager,
@@ -1575,22 +1559,27 @@ export class GameScene extends Phaser.Scene {
       tradeDealSystem,
       exileProtectionSystem,
     );
-    const politicalCapitalSystem = new PoliticalCapitalSystem(
-      cityManager,
+    peaceTreatySystem.setNationCollapseSystem(nationCollapseSystem);
+    // 14. Stridssystem
+    const combatSystem = new CombatSystem(
       unitManager,
-      nationManager,
       turnManager,
+      cityManager,
+      productionSystem,
+      mapData,
+      diplomacyManager,
+      gridSystem,
+      (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
+      policySystem,
+      (attacker, target, tileOwnerId) =>
+        worldCouncilSystem.canResolvePeacekeepingCombat(attacker.ownerId, target.ownerId, tileOwnerId),
+      cityDefenseSystem,
       nationCollapseSystem,
     );
-    const leaderCaptureSystem = new LeaderCaptureSystem(
+    const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
-      unitManager,
       nationManager,
-      mapData,
-      gridSystem,
-      diplomacyManager,
-      nationCollapseSystem,
-      (nationId) => nationManager.getNation(nationId)?.isHuman === true,
+      turnManager,
     );
     const unitUpgradeSystem = new UnitUpgradeSystem(
       nationManager,
@@ -1921,7 +1910,6 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       diplomacyManager,
       (unit) => improvementConstructionSystem.isUnitBusy(unit.id),
-      (unit, territoryOwnerId) => exileProtectionSystem.canLeaderEnterTerritory(unit, territoryOwnerId),
       (unit, territoryOwnerId) =>
         worldCouncilSystem.canPeacekeeperEnterTerritory(
           unit.ownerId,
@@ -2560,9 +2548,18 @@ export class GameScene extends Phaser.Scene {
         organizationName: getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil'),
         nationName: nation.name,
         maxGold: resources.gold,
-        currentGold: Math.min(member.goldContributed, resources.gold),
+        currentGold: Math.min(
+          member.goldContributed,
+          worldCouncilSystem.getMaxGoldContributionForOffer(
+            humanNationId,
+            member.scienceContributionPercent,
+            member.cultureContributionPercent,
+          ),
+        ),
         currentSciencePercent: member.scienceContributionPercent,
         currentCulturePercent: member.cultureContributionPercent,
+        getMaxGold: (sciencePercent: number, culturePercent: number) =>
+          worldCouncilSystem.getMaxGoldContributionForOffer(humanNationId, sciencePercent, culturePercent),
       };
     };
     const foundWorldCouncil = (
@@ -3055,162 +3052,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // ─── Leader capture and combat events ───────────────────────────────────
-
-    const showLeaderCaptureDialog = (request: LeaderCaptureChoiceRequest): void => {
-      const existing = document.getElementById('leader-capture-modal');
-      if (existing) existing.remove();
-
-      const attackerName = nationManager.getNation(request.attacker.ownerId)?.name ?? request.attacker.ownerId;
-      const defeatedName = nationManager.getNation(request.defeatedNationId)?.name ?? request.defeatedNationId;
-      const defeatedGold = nationManager.getResources(request.defeatedNationId).gold;
-      const ransomGold = Math.floor(Math.max(0, defeatedGold) * 0.5);
-
-      const overlay = document.createElement('div');
-      overlay.id = 'leader-capture-modal';
-      overlay.style.cssText = `
-        position: fixed; inset: 0; z-index: 10000;
-        display: flex; align-items: center; justify-content: center;
-        background: rgba(0,0,0,0.72);
-      `;
-
-      const box = document.createElement('div');
-      box.style.cssText = `
-        width: min(460px, calc(100vw - 32px));
-        background: #191b24; border: 2px solid #d9b85f;
-        border-radius: 8px; padding: 26px 30px; color: #eee;
-        font-family: sans-serif; box-shadow: 0 14px 40px rgba(0,0,0,0.45);
-      `;
-
-      const title = document.createElement('div');
-      title.textContent = `${attackerName} captured ${defeatedName}'s leader`;
-      title.style.cssText = 'font-size: 20px; font-weight: 700; margin-bottom: 12px;';
-      box.appendChild(title);
-
-      const details = document.createElement('div');
-      details.textContent = `Execute the leader to collapse ${defeatedName}, or ransom and release them for up to 50% of their treasury (${ransomGold} gold). Released leaders escape to a valid land tile and do not move the residence capital until end turn.`;
-      details.style.cssText = 'font-size: 15px; line-height: 1.45; color: #d8d8d8; margin-bottom: 22px;';
-      box.appendChild(details);
-
-      const buttons = document.createElement('div');
-      buttons.style.cssText = 'display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap;';
-
-      const makeButton = (label: string, primary: boolean, handler: () => void): HTMLButtonElement => {
-        const button = document.createElement('button');
-        button.textContent = label;
-        button.style.cssText = `
-          padding: 9px 14px; border-radius: 6px; cursor: pointer; font-size: 14px;
-          border: 1px solid ${primary ? '#d9b85f' : '#777'};
-          background: ${primary ? '#d9b85f' : 'transparent'};
-          color: ${primary ? '#111' : '#eee'};
-        `;
-        button.addEventListener('click', () => {
-          overlay.remove();
-          handler();
-        });
-        return button;
-      };
-
-      buttons.appendChild(makeButton('Ransom and Release Leader', false, request.ransom));
-      buttons.appendChild(makeButton('Execute Leader', true, request.execute));
-      box.appendChild(buttons);
-      overlay.appendChild(box);
-      document.body.appendChild(overlay);
-    };
-
-    leaderCaptureSystem.onChoiceRequested(showLeaderCaptureDialog);
-    leaderCaptureSystem.onResolved((event) => {
-      logManager.info({ nationIds: [event.attacker.ownerId, event.defeatedNationId], category: 'combat', message: event.message });
-      unitRenderer.rebuildAll();
-      cityRenderer.rebuildAll();
-      cityBannerRenderer.rebuildAll();
-      territoryRenderer.invalidate();
-      rebuildMinimapForGameplay();
-      refreshCultureOverlay();
-      resourceSystem.recalculateForNation(event.attacker.ownerId);
-      if (nationManager.getNation(event.defeatedNationId)) {
-        resourceSystem.recalculateForNation(event.defeatedNationId);
-      }
-      happinessSystem.recalculateAll();
-      hudLayer?.refresh();
-      rightPanel?.requestRefresh();
-    });
-
-    const showExileProtectionDialog = (request: ExileProtectionChoiceRequest): void => {
-      const existing = document.getElementById('exile-protection-modal');
-      if (existing) existing.remove();
-
-      const protectedName = nationManager.getNation(request.protectedNationId)?.name ?? request.protectedNationId;
-      const enemyName = nationManager.getNation(request.enemyNationId)?.name ?? request.enemyNationId;
-
-      const overlay = document.createElement('div');
-      overlay.id = 'exile-protection-modal';
-      overlay.style.cssText = `
-        position: fixed; inset: 0; z-index: 10000;
-        display: flex; align-items: center; justify-content: center;
-        background: rgba(0,0,0,0.72);
-      `;
-
-      const box = document.createElement('div');
-      box.style.cssText = `
-        width: min(520px, calc(100vw - 32px));
-        background: #191b24; border: 2px solid #79a7d8;
-        border-radius: 8px; padding: 26px 30px; color: #eee;
-        font-family: sans-serif; box-shadow: 0 14px 40px rgba(0,0,0,0.45);
-      `;
-
-      const title = document.createElement('div');
-      title.textContent = `${protectedName} requests protection`;
-      title.style.cssText = 'font-size: 20px; font-weight: 700; margin-bottom: 12px;';
-      box.appendChild(title);
-
-      const details = document.createElement('div');
-      details.textContent = `${protectedName}'s fleeing leader asks to shelter in your territory. Accepting allows the Leader into your land and cities, damages relations with ${enemyName}, and may force a war if ${enemyName} attacks the Leader under your protection.`;
-      details.style.cssText = 'font-size: 15px; line-height: 1.45; color: #d8d8d8; margin-bottom: 22px;';
-      box.appendChild(details);
-
-      const buttons = document.createElement('div');
-      buttons.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;';
-
-      const makeButton = (label: string, handler: () => void): HTMLButtonElement => {
-        const button = document.createElement('button');
-        button.textContent = label;
-        button.style.cssText = `
-          padding: 9px 12px; border-radius: 6px; cursor: pointer; font-size: 14px;
-          border: 1px solid #79a7d8; background: transparent; color: #eee;
-        `;
-        button.addEventListener('click', () => {
-          overlay.remove();
-          handler();
-        });
-        return button;
-      };
-
-      buttons.appendChild(makeButton('Deny protection', request.deny));
-      buttons.appendChild(makeButton('Accept for free', request.acceptFree));
-      buttons.appendChild(makeButton('Accept for gold tribute', request.acceptGold));
-      buttons.appendChild(makeButton('Accept for resource tribute', request.acceptResource));
-      box.appendChild(buttons);
-      overlay.appendChild(box);
-      document.body.appendChild(overlay);
-    };
-
-    exileProtectionSystem.onChoiceRequested(showExileProtectionDialog);
-    exileProtectionSystem.onGranted((event) => {
-      logManager.info({ nationIds: [event.request.protectedNationId, event.request.protectorNationId, event.request.enemyNationId], category: 'diplomacy', message: event.message });
-      hudLayer?.refresh();
-      rightPanel?.requestRefresh();
-    });
-    exileProtectionSystem.onDenied((event) => {
-      logManager.info({ nationIds: [event.request.protectedNationId, event.request.protectorNationId], category: 'diplomacy', message: event.message });
-      hudLayer?.refresh();
-      rightPanel?.requestRefresh();
-    });
-    exileProtectionSystem.onExpired((event) => {
-      logManager.info({ nationIds: [event.request.protectedNationId, event.request.protectorNationId], category: 'diplomacy', message: event.message });
-      hudLayer?.refresh();
-      rightPanel?.requestRefresh();
-    });
+    // ─── Combat events ──────────────────────────────────────────────────────
 
     combatSystem.on(async (e) => {
       const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
@@ -3219,18 +3061,13 @@ export class GameScene extends Phaser.Scene {
       } else {
         await combatAnimationSystem.playMeleeAttack(e.attacker, e.defender.tileX, e.defender.tileY, e.defender.id);
       }
-      if (e.result.defenderDied) {
-        leaderCaptureSystem.handleUnitDefeated(e.attacker, e.defender);
-      }
       if (e.result.attackerDied) {
         unitRenderer.removeUnit(e.attacker.id);
       } else {
         unitRenderer.refreshUnitPosition(e.attacker.id);
       }
-      if (!e.result.defenderDied || e.defender.unitType.id !== 'leader') {
-        if (e.result.defenderDied) unitRenderer.removeUnit(e.defender.id);
-        else unitRenderer.refreshUnitPosition(e.defender.id);
-      }
+      if (e.result.defenderDied) unitRenderer.removeUnit(e.defender.id);
+      else unitRenderer.refreshUnitPosition(e.defender.id);
       // Record per-war unit losses for military units (baseStrength > 0).
       // Combat involving insurgents (Rebels, Partisans) is outside diplomacy and
       // must never create diplomatic penalties, so it is excluded entirely.
@@ -3259,10 +3096,6 @@ export class GameScene extends Phaser.Scene {
       cityRenderer.refreshCity(e.city);
       cityBannerRenderer.refreshCity(e.city);
       hudLayer?.refresh();
-      if ((e.leaderDefenseBonus ?? 0) > 0) {
-        logManager.info({ nationId: e.city.ownerId, category: 'combat', message: `${e.city.name} defended with Leader bonus (+50%).` });
-      }
-
       // Om attackeraren dog
       if (e.result.attackerDied) {
         unitRenderer.removeUnit(e.attacker.id);
@@ -3283,12 +3116,8 @@ export class GameScene extends Phaser.Scene {
 
       // Om staden erövrades
       if (e.captured) {
-        let leaderCaptureHandled = false;
         if (e.previousOwnerId) {
-          leaderCaptureHandled = leaderCaptureSystem.handleCityCaptured(e.city, e.previousOwnerId, e.attacker);
-          if (!leaderCaptureHandled) {
-            politicalCapitalSystem.handleCityCaptured(e.city, e.previousOwnerId, e.attacker.ownerId);
-          }
+          politicalCapitalSystem.handleCityCaptured(e.city, e.previousOwnerId);
         }
         // Den erövrande enheten flyttades in på stadens tile
         unitRenderer.refreshUnitPosition(e.attacker.id);
@@ -3345,7 +3174,6 @@ export class GameScene extends Phaser.Scene {
       happinessSystem.recalculateAll();
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
-      if (event.reason === 'leader_executed') return;
       logManager.info({ nationIds: event.conquerorNationId ? [event.conquerorNationId] : [], category: 'combat', message: event.message });
     });
 
@@ -3912,12 +3740,21 @@ export class GameScene extends Phaser.Scene {
     };
 
     const transferGiftCity = (city: City, toNationId: string): void => {
+      const previousOwnerId = city.ownerId;
       city.occupiedOriginalNationId = city.originNationId !== toNationId
         ? city.originNationId
         : undefined;
       cityManager.transferOwnership(city.id, toNationId, productionSystem);
       cityTerritorySystem.transferCityTerritory(city, toNationId, mapData);
       culturalSphereSystem.claimInitialCityCulture(city, mapData, gridSystem);
+      if (cityManager.getCitiesByOwner(previousOwnerId).length === 0) {
+        nationCollapseSystem.collapse({
+          nationId: previousOwnerId,
+          conquerorNationId: toNationId,
+          triggerCity: city,
+          reason: 'no_valid_survival_state',
+        });
+      }
       cityRenderer.refreshCity(city);
       cityBannerRenderer.refreshCity(city);
       territoryRenderer.invalidate();
@@ -4646,8 +4483,6 @@ export class GameScene extends Phaser.Scene {
         `Year: ${turnManager.getGlobalYearLabel()}`,
         '',
         ...aiOverseasExpansionSystem.getDiagnosticLines(),
-        '',
-        ...aiSystem.getLeaderEvacuationDiagnosticLines(),
       ],
     );
     const worldMarkerRenderer = new WorldMarkerRenderer(this, tileMap, worldMarkerSystem, this.diagnosticSystem);
@@ -5100,11 +4935,78 @@ export class GameScene extends Phaser.Scene {
         message: meetingText,
       });
       for (const proposal of meeting.proposals ?? []) {
-        if (
-          proposal.resolutionId !== 'defense_support'
-          && proposal.resolutionId !== 'global_infrastructure_initiative'
-          && proposal.resolutionId !== 'un_peacekeeping_mission'
-        ) continue;
+        const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
+        const proposalTitle = definition?.title ?? proposal.resolutionId;
+        if (proposal.selectionDiagnostics) {
+          const candidateLines = proposal.selectionDiagnostics.candidates
+            .map((candidate) =>
+              `${worldCouncilResolutionSystem.getDefinition(candidate.resolutionId)?.title ?? candidate.resolutionId}`
+              + `${candidate.repealTargetEnactedResolutionId ? ' (repeal)' : ''}: base ${candidate.baseScore}, `
+              + `recent penalty ${candidate.recentPenalty}, proposer penalty ${candidate.repeatProposerPenalty}, `
+              + `diversity ${candidate.diversityBonus}, final ${candidate.finalScore} (${candidate.reason})`);
+          logManager.info({
+            nationId: proposal.proposerNationId ?? primaryNationId,
+            nationIds: state.memberNationIds,
+            category: 'diplomacy',
+            message: [
+              `${organizationName} resolution evaluation (${proposal.slot} slot).`,
+              ...candidateLines,
+              `Selected: ${proposalTitle}${proposal.repealTargetEnactedResolutionId ? ' repeal' : ''}.`,
+            ].join('\n'),
+          });
+        }
+        if (proposal.votes && proposal.votes.length > 0) {
+          const voteLines = proposal.votes.map((vote) => {
+            const nationName = timelineNationName(vote.nationId);
+            const voteText = vote.influence <= 0 ? 'ABSTAIN' : vote.support ? 'FOR' : 'AGAINST';
+            return [
+              nationName,
+              `Influence available: ${vote.availableInfluence ?? vote.influence}`,
+              `Influence committed: ${vote.influence}`,
+              `Remaining influence: ${vote.remainingInfluence ?? 0}`,
+              `Vote: ${voteText}`,
+              `Support score: ${vote.supportScore ?? 'n/a'}`,
+            ].join('\n');
+          });
+          const summary = proposal.voteSummary;
+          logManager.info({
+            nationId: proposal.proposerNationId ?? proposal.targetNationId ?? primaryNationId,
+            nationIds: state.memberNationIds,
+            category: 'diplomacy',
+            message: [
+              `${organizationName} influence usage for ${proposalTitle}.`,
+              ...voteLines,
+              summary
+                ? `Meeting summary: ${summary.supportInfluence} for, ${summary.opposeInfluence} against, ${summary.abstentions} abstentions, margin ${summary.margin}, ${summary.outcome}.`
+                : formatWorldCouncilVoteSummary(proposal.votes),
+            ].join('\n\n'),
+          });
+        }
+        if (proposal.resolutionId === 'defense_support' && proposal.donations) {
+          const donationLines = proposal.donations.map((donation) => {
+            const diagnostics = donation.diagnostics;
+            return diagnostics
+              ? [
+                  timelineNationName(donation.nationId),
+                  `Treasury: ${diagnostics.treasury}`,
+                  `Gold per turn: ${diagnostics.goldPerTurn}`,
+                  `Maximum donation: ${diagnostics.maximumDonation}`,
+                  `Desired donation: ${diagnostics.desiredDonation}`,
+                  `Actual donation: ${diagnostics.actualDonation}`,
+                  `Reason: ${diagnostics.reason}`,
+                ].join('\n')
+              : `${timelineNationName(donation.nationId)}\nActual donation: ${donation.gold}`;
+          });
+          logManager.info({
+            nationId: proposal.targetNationId ?? primaryNationId,
+            nationIds: state.memberNationIds,
+            category: 'diplomacy',
+            message: [
+              `${organizationName} Defense Support donation evaluation.`,
+              ...donationLines,
+            ].join('\n\n'),
+          });
+        }
         if (!proposal.outcomeText) continue;
         logManager.info({
           nationId: proposal.targetNationId ?? primaryNationId,
@@ -5196,7 +5098,6 @@ export class GameScene extends Phaser.Scene {
     };
     const getCityViewUnitOptions = (city: City): CityViewUnitOption[] => (
       ALL_UNIT_TYPES
-        .filter((unitType) => unitType.category !== 'leader')
         .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
         .flatMap((unitType) => {
           const reason = getCityUnitProductionBlockReason(
@@ -5576,7 +5477,7 @@ export class GameScene extends Phaser.Scene {
     cityView.onUnitRequested((unitId) => {
       const city = getOpenCityViewCity();
       if (!city) return;
-      const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId && candidate.category !== 'leader');
+      const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId);
       if (!unitType) return;
       if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
@@ -7433,14 +7334,6 @@ export class GameScene extends Phaser.Scene {
     unitType: UnitType,
     gridSystem: IGridSystem,
   ): { x: number; y: number } | null {
-    if (unitType.residenceCapitalOnly === true) {
-      const tile = tileMap.getTileAt(city.tileX, city.tileY);
-      if (tile && tile.ownerId === city.ownerId && city.isResidenceCapital) {
-        return { x: city.tileX, y: city.tileY };
-      }
-      return null;
-    }
-
     const adjacentCandidates = gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY });
     const candidates = unitType.isNaval
       ? city.ownedTileCoords

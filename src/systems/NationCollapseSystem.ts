@@ -13,8 +13,6 @@ import type { UnitManager } from './UnitManager';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
 
 export type NationCollapseReason =
-  | 'leader_executed'
-  | 'residence_capital_captured_leader_present'
   | 'no_valid_survival_state';
 
 export interface CollapseNationInput {
@@ -65,11 +63,7 @@ export class NationCollapseSystem {
   canCollapse(input: CollapseNationInput): boolean {
     if (!this.nationManager.getNation(input.nationId)) return false;
     if (input.conquerorNationId !== undefined && input.conquerorNationId === input.nationId) return false;
-    return (
-      input.reason === 'leader_executed' ||
-      input.reason === 'residence_capital_captured_leader_present' ||
-      input.reason === 'no_valid_survival_state'
-    );
+    return input.reason === 'no_valid_survival_state';
   }
 
   collapse(input: CollapseNationInput): NationCollapsedEvent | null {
@@ -153,16 +147,6 @@ export class NationCollapseSystem {
     occupiedCitiesCount: number;
   }): string {
     const suffix = `${input.unitsRemoved} units removed, ${input.occupiedCitiesCount} cities occupied.`;
-    if (
-      input.reason === 'residence_capital_captured_leader_present' &&
-      input.conquerorName &&
-      input.triggerCity
-    ) {
-      return `${input.nationName} collapsed after ${input.conquerorName} captured its residence capital with the leader present. ${suffix}`;
-    }
-    if (input.reason === 'leader_executed' && input.conquerorName) {
-      return `${input.nationName} collapsed after ${input.conquerorName} executed its leader. ${suffix}`;
-    }
     return `${input.nationName} collapsed because no valid survival state remained. ${suffix}`;
   }
 }

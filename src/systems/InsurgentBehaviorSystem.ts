@@ -79,13 +79,13 @@ export class InsurgentBehaviorSystem {
   /**
    * Valid insurgent targets are foreign military/naval units and foreign
    * insurgents. Friendly (same-owner) units, civilians (workers/settlers),
-   * leaders, and covert Spy/Agent units are never targeted. Land insurgents
+   * civilian and covert Spy/Agent units are never targeted. Land insurgents
    * cannot engage naval units (land melee vs. naval is disallowed in combat).
    */
   private isValidTarget(unit: Unit, target: Unit): boolean {
     if (target.ownerId === unit.ownerId) return false; // owner + own insurgents are friendly
     const category = target.unitType.category;
-    if (category === 'civilian' || category === 'leader') return false;
+    if (category === 'civilian') return false;
     // Exclude covert Spy/Agent (covert, non-insurgent); foreign insurgents are valid.
     if (category === 'covert' && target.unitType.isInsurgentForce !== true) return false;
     if (!isMilitaryUnitType(target.unitType)) return false;

@@ -72,7 +72,7 @@ export class UnitBoardingManager {
     if (!this.hasAvailableCargoSpace(transport)) return 'cargo hold is full';
     if (this.isCargo(passenger)) return 'passenger is already cargo';
     if (this.isCargo(transport)) return 'transport is already cargo';
-    if (passenger.unitType.residenceCapitalOnly === true || passenger.unitType.uniquePerNation === true) return 'special unit cannot board';
+    if (passenger.unitType.uniquePerNation === true) return 'special unit cannot board';
     if (!this.isValidBoardingPosition(passenger, transport)) return 'units are not in a valid boarding position';
     return undefined;
   }

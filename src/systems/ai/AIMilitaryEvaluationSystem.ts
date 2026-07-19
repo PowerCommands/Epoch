@@ -56,7 +56,6 @@ export class AIMilitaryEvaluationSystem {
   getMilitaryStrength(nationId: string): MilitaryStrengthBreakdown {
     let unitStrength = 0;
     for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
-      if (unit.unitType.category === 'leader') continue;
       const meleeStrength = unit.unitType.baseStrength;
       const rangedStrength = unit.unitType.rangedStrength ?? 0;
       const effectiveStrength = Math.max(meleeStrength, rangedStrength);
@@ -150,11 +149,9 @@ export class AIMilitaryEvaluationSystem {
     return true;
   }
 
-  /** A nation still in the game: it has at least one city or one combat unit. */
+  /** A nation still in the game: city ownership is the survival condition. */
   isNationActive(nationId: string): boolean {
-    if (this.cityManager.getCitiesByOwner(nationId).length > 0) return true;
-    return this.unitManager.getUnitsByOwner(nationId)
-      .some((unit) => unit.unitType.category !== 'leader');
+    return this.cityManager.getCitiesByOwner(nationId).length > 0;
   }
 
   /**

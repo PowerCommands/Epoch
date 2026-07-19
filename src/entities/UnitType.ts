@@ -11,7 +11,6 @@ export type UnitCategory =
   | 'air'
   | 'civilian'
   | 'recon'
-  | 'leader'
   // Special-purpose units operating outside normal diplomacy/warfare (Spy,
   // Agent, Rebels, Partisans). Kept separate from civilian/military/naval/air
   // for future UI filtering and behavior.
@@ -66,7 +65,6 @@ export interface UnitType {
   readonly canTraverseWater?: boolean;
   readonly mustEndOnLand?: boolean;
   readonly uniquePerNation?: boolean;
-  readonly residenceCapitalOnly?: boolean;
   // ─── Covert-unit capability flags (placeholders; no behavior yet) ──────────
   /** Covert unit can gather intelligence (behavior added later). */
   readonly canGatherIntel?: boolean;

@@ -153,9 +153,6 @@ export class SaveLoadService {
         influence: res.influence,
         knownIslandTargets: nation.knownIslandTargets?.map((target) => ({ ...target })),
         handledOverseasRegionNames: nation.handledOverseasRegionNames ? [...nation.handledOverseasRegionNames] : undefined,
-        leaderEvacuationState: nation.leaderEvacuationState
-          ? { ...nation.leaderEvacuationState }
-          : undefined,
       };
     });
 
@@ -362,7 +359,6 @@ export class SaveLoadService {
             knownCityIds: visibilitySystem.getKnownCityIds(),
           }
         : undefined,
-      exileProtectionAgreements: exileProtectionSystem?.getAllAgreements(),
       worldMarkers: worldMarkerSystem?.getAllMarkersForSave(),
       worldMarkerDiscoveries: worldMarkerSystem?.getDiscoveryEntries(),
       worldMarkerClaims: worldMarkerSystem?.getClaimEntries(),
@@ -473,7 +469,6 @@ export class SaveLoadService {
       context.visibilitySystem.restoreExplored(state.fogOfWar.explored);
       context.visibilitySystem.restoreKnownCities(state.fogOfWar.knownCityIds ?? []);
     }
-    context.exileProtectionSystem?.restoreAgreements(state.exileProtectionAgreements ?? []);
     context.historicalTimeline?.restore(state.historicalTimeline);
     if (context.worldMarkerSystem) {
       context.worldMarkerSystem.replaceMarkers(state.worldMarkers ?? context.worldMarkerSystem.getAllMarkers());
@@ -656,9 +651,6 @@ export class SaveLoadService {
       nation.cultureProgress = saved.cultureProgress ?? 0;
       nation.knownIslandTargets = saved.knownIslandTargets?.map((target) => ({ ...target }));
       nation.handledOverseasRegionNames = saved.handledOverseasRegionNames ? [...saved.handledOverseasRegionNames] : undefined;
-      nation.leaderEvacuationState = saved.leaderEvacuationState
-        ? { ...saved.leaderEvacuationState }
-        : undefined;
 
       const res = nationManager.getResources(saved.id);
       res.gold = saved.gold;
@@ -955,7 +947,6 @@ function fromSavedProducible(item: SavedProducible): Producible | null {
   }
   if (item.kind === 'unit') {
     const type = getUnitTypeById(item.id);
-    if (type?.category === 'leader') return null;
     return type ? { kind: 'unit', unitType: type } : null;
   }
   if (item.kind === 'wonder') {

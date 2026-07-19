@@ -6,8 +6,7 @@ import { ALL_UNIT_TYPES } from '../src/data/units';
  * Writes a browser-friendly unit type registry for the standalone editor.
  * The canonical unit definitions remain in src/data/units.ts.
  *
- * Exports all normal unit types (ALL_UNIT_TYPES). The special LEADER unit is
- * intentionally excluded: it is runtime-only and cannot be manually placed.
+ * Exports all unit types available for runtime placement and production.
  */
 
 const projectRoot = path.resolve(process.cwd());

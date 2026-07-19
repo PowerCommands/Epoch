@@ -38,7 +38,6 @@ interface MovementActionOptions {
 
 type MovementWarRequiredListener = (event: MovementWarRequiredEvent) => void;
 type UnitMovementBlocker = (unit: Unit) => boolean;
-type ProtectedLeaderTerritoryAccess = (unit: Unit, territoryOwnerId: string) => boolean;
 type PeacekeepingTerritoryAccess = (unit: Unit, territoryOwnerId: string) => boolean;
 
 /**
@@ -61,7 +60,6 @@ export class MovementSystem {
     private readonly nationManager: NationManager,
     private readonly diplomacyManager?: DiplomacyManager,
     private readonly isUnitMovementBlocked: UnitMovementBlocker = () => false,
-    private readonly canProtectedLeaderEnterTerritory: ProtectedLeaderTerritoryAccess = () => false,
     private readonly canPeacekeeperEnterTerritory: PeacekeepingTerritoryAccess = () => false,
     private readonly unitBoardingManager?: UnitBoardingManager,
   ) {
@@ -271,7 +269,6 @@ export class MovementSystem {
     // open-borders grants, so the legacy WAR / openBorders branches collapse
     // into a single check.
     if (this.diplomacyManager.canEnterTerritory(unit.ownerId, tile.ownerId)) return null;
-    if (this.canProtectedLeaderEnterTerritory(unit, tile.ownerId)) return null;
     if (this.canPeacekeeperEnterTerritory(unit, tile.ownerId)) return null;
     return tile.ownerId;
   }

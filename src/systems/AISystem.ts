@@ -6,7 +6,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, LEADER, PRIVATEER, getUnitTypeById, canCarryUnitType, hasCargoCapacity } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, PRIVATEER, getUnitTypeById, canCarryUnitType, hasCargoCapacity } from '../data/units';
 import type { CovertPersonality } from '../types/covertPersonality';
 import {
   COVERT_CANDIDATE_UNIT_IDS,
@@ -132,7 +132,6 @@ import type { AILeaderEraStrategy } from '../types/aiLeaderEraStrategy';
 import type { EraSystem } from './EraSystem';
 import type { Era } from '../data/technologies';
 import type { AILogFormatter } from './ai/AILogFormatter';
-import type { LeaderEvacuationState } from '../entities/Nation';
 import {
   getSharedAISettlementMemorySystem,
   type AISettlementMemorySystem,
@@ -167,8 +166,6 @@ const FOUNDATION_PHASE_CITY_COUNT = 3;
 const FOUNDATION_HAPPINESS_FLOOR = -2;
 const PEACE_UNITS_BEFORE_INFRASTRUCTURE = 2;
 const WAR_UNITS_BEFORE_INFRASTRUCTURE = 3;
-const LEADER_EVACUATION_TRIGGER_HP = 20;
-const LEADER_REFUGE_REACH_TILES = 10;
 const WARTIME_INFRASTRUCTURE_BUILDING_IDS = [
   'walls',
   'barracks',
@@ -190,13 +187,6 @@ function isUnit(target: Unit | City): target is Unit {
 
 function tileKey(x: number, y: number): string {
   return `${x},${y}`;
-}
-
-function compareLeaderDestinations(a: LeaderRefugeCandidate, b: LeaderRefugeCandidate): number {
-  return a.path.length - b.path.length
-    || a.y - b.y
-    || a.x - b.x
-    || (a.city?.id ?? '').localeCompare(b.city?.id ?? '');
 }
 
 interface CoastalDefenseTargets {
@@ -249,21 +239,6 @@ interface PeacetimeMilitarySpreadState {
   readonly claimedTargets: Set<string>;
 }
 
-interface LeaderEvacuationEligibility {
-  readonly allowed: boolean;
-  readonly cityHp: number;
-  readonly reason: string;
-}
-
-interface LeaderRefugeCandidate {
-  readonly x: number;
-  readonly y: number;
-  readonly city?: City;
-  readonly type: 'ownCity' | 'friendlyRefuge';
-  readonly nationId: string;
-  readonly path: readonly Tile[];
-}
-
 function maxThreatLevel(a: ThreatLevel, b: ThreatLevel): ThreatLevel {
   if (threatRank(b) > threatRank(a)) return b;
   return a;
@@ -283,7 +258,6 @@ function threatRank(level: ThreatLevel): number {
 }
 
 const MILITARY_OPTIONS = ALL_UNIT_TYPES.filter((unitType) => (
-  unitType.category !== 'leader' &&
   // Covert units (spy/agent/rebels/partisans) have combat strength but are
   // strategic assets, not generic army — they are evaluated separately by the
   // covert-force evaluator, never built as standing military here.
@@ -506,9 +480,6 @@ export class AISystem {
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
   private readonly lastTradeProposalTurnByNation = new Map<string, number>();
   private readonly longTermExpansionLoggedRound = new Map<string, number>();
-  private readonly leaderEvacuationDecisionLog = new Map<string, string>();
-  private readonly leaderEvacuationEligibilityByNation = new Map<string, LeaderEvacuationEligibility>();
-  private readonly exposedLeaderTargetLoggedRound = new Map<string, number>();
   private readonly peacetimeSpreadLoggedRound = new Map<string, number>();
   private readonly offensiveOperationSystem = new OffensiveOperationSystem();
   private readonly navalExpeditionTargetingSystem = new NavalExpeditionTargetingSystem();
@@ -666,7 +637,6 @@ export class AISystem {
     this.overseasExpansionSystem?.runTurn(nationId);
     this.runSettlers(nationId);
     this.overseasExpansionSystem?.runStaging(nationId);
-    this.runLeaderRelocation(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runTilePurchases(nationId);
@@ -1877,7 +1847,6 @@ export class AISystem {
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
-      if (unit.unitType.id === LEADER.id) continue;
       if (unit.unitType.baseStrength <= 0) continue; // settlers can't attack
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
@@ -1890,14 +1859,6 @@ export class AISystem {
   // Strategy-based scoring allows AI to prioritize targets differently
   // without changing core combat rules.
   private tryAttackBestTarget(unit: Unit, nationId: string, strategy: AIStrategy): boolean {
-    const exposedLeaderTarget = this.findAttackableExposedLeaderTarget(unit, nationId);
-    if (exposedLeaderTarget) {
-      this.logExposedLeaderPriorityOnce(nationId, exposedLeaderTarget.ownerId);
-      if (this.combatSystem.tryAttack(unit, exposedLeaderTarget.tileX, exposedLeaderTarget.tileY)) {
-        return true;
-      }
-    }
-
     const range = unit.unitType.range ?? 1;
     const tiles = this.gridSystem.getTilesInRange(
       { x: unit.tileX, y: unit.tileY },
@@ -2137,24 +2098,6 @@ export class AISystem {
     console.log(this.formatLog(nationId, message));
   }
 
-  private findAttackableExposedLeaderTarget(unit: Unit, nationId: string): Unit | undefined {
-    const range = unit.unitType.range ?? 1;
-    return this.unitManager.getAllUnits()
-      .filter((target) => target.unitType.id === LEADER.id)
-      .filter((target) => target.ownerId !== nationId)
-      .filter((target) => this.diplomacyManager?.canAttack(nationId, target.ownerId) ?? true)
-      .filter((target) => this.gridSystem.getDistance(
-        { x: unit.tileX, y: unit.tileY },
-        { x: target.tileX, y: target.tileY },
-      ) <= range)
-      .sort((a, b) => (
-        this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, { x: a.tileX, y: a.tileY })
-        - this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, { x: b.tileX, y: b.tileY })
-        || a.ownerId.localeCompare(b.ownerId)
-        || a.id.localeCompare(b.id)
-      ))[0];
-  }
-
   private findEnemyTargetAt(
     tileX: number,
     tileY: number,
@@ -2251,7 +2194,6 @@ export class AISystem {
       if (unit.movementPoints <= 0) continue;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
-      if (unit.unitType.id === LEADER.id) continue; // leaders use evacuation movement only
       if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
       if (unit.unitType.id === SCOUT_BOAT.id || unit.unitType.category === 'naval_recon') continue;
       if (unit.unitType.isInsurgentForce === true) continue; // insurgents use InsurgentBehaviorSystem
@@ -2284,7 +2226,6 @@ export class AISystem {
 
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
 
-      if (this.moveTowardExposedLeader(unit, nationId)) continue;
       this.moveByStrategyScoring(unit, nationId, strategy);
     }
 
@@ -2313,9 +2254,7 @@ export class AISystem {
     if (unit.unitType.category === 'recon') return false;
     if (unit.unitType.category === 'naval_recon') return false;
     if (unit.unitType.category === 'civilian') return false;
-    if (unit.unitType.category === 'leader') return false;
     if (unit.unitType.canFound) return false;
-    if (unit.unitType.id === LEADER.id) return false;
     if (unit.unitType.id === SCOUT.id) return false;
     if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) return false;
     if (unit.movementPoints <= 0) return false;
@@ -2477,47 +2416,6 @@ export class AISystem {
       nationId,
       `redeploying ${count} idle military unit${count === 1 ? '' : 's'} away from city cluster.`,
     );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  private moveTowardExposedLeader(unit: Unit, nationId: string): boolean {
-    if (unit.unitType.baseStrength <= 0) return false;
-    if ((unit.unitType.range ?? 1) > 1) return false;
-
-    const target = this.findNearestExposedEnemyLeader(unit, nationId);
-    if (!target) return false;
-    const path = this.findApproachPath(unit, { x: target.tileX, y: target.tileY });
-    if (!path || path.length === 0) return false;
-    const disciplinedPath = this.getDisciplinedMilitaryPath(unit, path, true);
-    if (!disciplinedPath) return false;
-
-    this.logExposedLeaderPriorityOnce(nationId, target.ownerId);
-    this.movementSystem.moveAlongPath(unit, disciplinedPath);
-    return true;
-  }
-
-  private findNearestExposedEnemyLeader(unit: Unit, nationId: string): Unit | undefined {
-    return this.unitManager.getAllUnits()
-      .filter((target) => target.unitType.id === LEADER.id)
-      .filter((target) => target.ownerId !== nationId)
-      .filter((target) => this.diplomacyManager?.canAttack(nationId, target.ownerId) ?? true)
-      .map((target) => ({
-        target,
-        distance: this.gridSystem.getDistance(
-          { x: unit.tileX, y: unit.tileY },
-          { x: target.tileX, y: target.tileY },
-        ),
-      }))
-      .sort((a, b) => a.distance - b.distance || a.target.ownerId.localeCompare(b.target.ownerId) || a.target.id.localeCompare(b.target.id))[0]?.target;
-  }
-
-  private logExposedLeaderPriorityOnce(nationId: string, leaderNationId: string): void {
-    const round = this.turnManager.getCurrentRound();
-    if (this.exposedLeaderTargetLoggedRound.get(nationId) === round) return;
-    this.exposedLeaderTargetLoggedRound.set(nationId, round);
-    const leaderNationName = this.nationManager.getNation(leaderNationId)?.name ?? leaderNationId;
-    this.logStrategicEvent?.(nationId, `prioritizing exposed ${leaderNationName} leader.`);
   }
 
   // ─── Naval patrol ────────────────────────────────────────────────────────────
@@ -4130,7 +4028,6 @@ export class AISystem {
   private isSovereigntyDisciplinedMilitaryUnit(unit: Unit): boolean {
     if (unit.unitType.baseStrength <= 0) return false;
     if (unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon') return false;
-    if (unit.unitType.category === 'civilian' || unit.unitType.category === 'leader') return false;
     return true;
   }
 
@@ -4375,10 +4272,10 @@ export class AISystem {
               : 'earlyTarget',
           );
         }
-        if (choice.unitType.category !== 'leader' && choice.unitType.baseStrength > 0) plannedMilitaryCount++;
+        if (choice.unitType.baseStrength > 0) plannedMilitaryCount++;
         if (choice.unitType.canFound === true) plannedSettlerCount++;
         if (choice.unitType.id === WORKER.id) plannedWorkerCount++;
-        if (choice.unitType.category !== 'leader' && choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
+        if (choice.unitType.isNaval === true && choice.unitType.baseStrength > 0) {
           plannedNavalCount++;
         }
         if (choice.unitType.id === WORK_BOAT.id) plannedWorkBoatCount++;
@@ -4639,7 +4536,7 @@ export class AISystem {
 
   private countMilitary(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.category !== 'leader' && u.unitType.baseStrength > 0)
+      .filter((u) => u.unitType.baseStrength > 0)
       .length;
   }
 
@@ -4665,7 +4562,7 @@ export class AISystem {
 
   private isNavalCombatUnitType(unitType: UnitType): boolean {
     if (unitType.isNaval !== true) return false;
-    if (unitType.category === 'leader' || unitType.category === 'civilian' || unitType.category === 'naval_recon') return false;
+    if (unitType.category === 'civilian' || unitType.category === 'naval_recon') return false;
     return unitType.baseStrength > 0 || (unitType.rangedStrength ?? 0) > 0;
   }
 
@@ -5087,7 +4984,7 @@ export class AISystem {
     );
     const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
     if (best) {
-      if (best.item.kind === 'unit' && best.item.unitType.category !== 'leader' && best.item.unitType.baseStrength > 0) {
+      if (best.item.kind === 'unit' && best.item.unitType.baseStrength > 0) {
         this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx, city.name, budgetModifier);
         this.logDoctrineToleranceIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx.doctrine, city.name);
         if (budgetModifier < 1.0 && acuteDefenderNeeded) {
@@ -5652,7 +5549,7 @@ export class AISystem {
 
   private getNationMilitaryStrength(nationId: string): number {
     return this.unitManager.getUnitsByOwner(nationId)
-      .filter((unit) => unit.unitType.category !== 'leader' && unit.unitType.baseStrength > 0)
+      .filter((unit) => unit.unitType.baseStrength > 0)
       .reduce((total, unit) => total + unit.unitType.baseStrength, 0);
   }
 
@@ -5736,7 +5633,6 @@ export class AISystem {
   ): UnitType | undefined {
     const candidates = ALL_UNIT_TYPES.filter((u) => (
       u.isNaval === true &&
-      u.category !== 'leader' &&
       u.baseStrength > 0 &&
       this.canBuildUnit(nationId, u.id) &&
       canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
@@ -5970,343 +5866,6 @@ export class AISystem {
       `covert force deficit (${current}/${desired}): ${covertUnit.name} production selected — ${personality.name} personality covert demand (factor ${factor.toFixed(2)}).`,
     ));
     return covertUnit;
-  }
-
-  private runLeaderRelocation(nationId: string): void {
-    const nation = this.nationManager.getNation(nationId);
-    if (!nation) return;
-    const residence = this.cityManager.getResidenceCapital(nationId);
-    if (!residence) return;
-    const leader = this.unitManager.getUnitsByOwner(nationId).find((unit) => unit.unitType.id === LEADER.id);
-
-    if (leader) {
-      if (residence.health > LEADER_EVACUATION_TRIGGER_HP) {
-        this.forceLeaderReturnToSafety(nationId, leader, residence);
-        return;
-      }
-      this.continueLeaderEvacuation(nationId, residence, leader);
-      return;
-    }
-
-    const eligibility = this.canLeaderEvacuate(residence);
-    this.leaderEvacuationEligibilityByNation.set(nationId, eligibility);
-    if (!eligibility.allowed) {
-      this.updateLeaderEvacuationState(nationId, {
-        state: 'insideCity',
-        destinationX: residence.tileX,
-        destinationY: residence.tileY,
-        destinationCityId: residence.id,
-        destinationNationId: nationId,
-        destinationType: 'residence',
-        updatedTurn: this.turnManager.getCurrentRound(),
-        reason: eligibility.reason,
-      });
-      return;
-    }
-
-    this.logLeaderEvacuationDecision(
-      nationId,
-      `trigger:${residence.id}`,
-      `leader evacuation triggered: ${residence.name} HP 20 or lower.`,
-    );
-
-    const deployedLeader = this.unitManager.createUnit({
-      type: LEADER,
-      ownerId: nationId,
-      tileX: residence.tileX,
-      tileY: residence.tileY,
-      movementPoints: LEADER_REFUGE_REACH_TILES,
-    });
-    this.continueLeaderEvacuation(nationId, residence, deployedLeader);
-  }
-
-  private forceLeaderReturnToSafety(nationId: string, leader: Unit, residence: City): void {
-    if (leader.tileX === residence.tileX && leader.tileY === residence.tileY) {
-      this.unitManager.removeUnit(leader.id);
-      this.updateLeaderEvacuationState(nationId, {
-        state: 'insideCity',
-        destinationX: residence.tileX,
-        destinationY: residence.tileY,
-        destinationCityId: residence.id,
-        destinationNationId: nationId,
-        destinationType: 'residence',
-        updatedTurn: this.turnManager.getCurrentRound(),
-        reason: 'city HP above 20',
-      });
-      return;
-    }
-
-    const destination = this.resolveLeaderReturnDestination(nationId, leader)
-      ?? this.pickNearestOwnCityDestination(nationId, residence, leader, true)
-      ?? this.pickReachableFriendlyRefuge(nationId, leader);
-    if (!destination) {
-      this.updateLeaderEvacuationState(nationId, {
-        state: 'returning',
-        updatedTurn: this.turnManager.getCurrentRound(),
-        reason: 'no safe return destination available',
-      });
-      return;
-    }
-
-    this.updateLeaderEvacuationState(nationId, {
-      state: 'returning',
-      destinationX: destination.x,
-      destinationY: destination.y,
-      destinationCityId: destination.city?.id,
-      destinationNationId: destination.nationId,
-      destinationType: destination.type,
-      updatedTurn: this.turnManager.getCurrentRound(),
-      reason: `returning because evacuation conditions are no longer valid`,
-    });
-
-    this.logLeaderEvacuationDecision(
-      nationId,
-      `return:${destination.city?.id ?? `${destination.x},${destination.y}`}`,
-      `leader returning to ${destination.city?.name ?? `(${destination.x},${destination.y})`} because evacuation conditions are no longer valid.`,
-    );
-    this.movementSystem.moveAlongPath(leader, destination.path.slice(1), { source: 'system' });
-  }
-
-  private continueLeaderEvacuation(nationId: string, residence: City, leader: Unit): void {
-    leader.movementPoints = Math.min(leader.movementPoints, LEADER_REFUGE_REACH_TILES);
-    const currentCity = this.cityManager.getCityAt(leader.tileX, leader.tileY);
-    if (
-      currentCity &&
-      (currentCity.ownerId === nationId || this.isFriendlyRefugeCity(nationId, currentCity)) &&
-      currentCity.id !== residence.id
-    ) {
-      this.updateLeaderEvacuationState(nationId, {
-        state: 'sheltered',
-        destinationX: currentCity.tileX,
-        destinationY: currentCity.tileY,
-        destinationCityId: currentCity.id,
-        destinationNationId: currentCity.ownerId,
-        destinationType: currentCity.ownerId === nationId ? 'ownCity' : 'friendlyRefuge',
-        updatedTurn: this.turnManager.getCurrentRound(),
-        reason: `leader sheltered in ${currentCity.name}`,
-      });
-      return;
-    }
-
-    const existingDestination = this.resolveLeaderEvacuationDestination(nationId, leader);
-    const destination = existingDestination ?? this.pickLeaderEvacuationDestination(nationId, residence, leader);
-    if (!destination) {
-      this.updateLeaderEvacuationState(nationId, {
-        state: 'fleeing',
-        updatedTurn: this.turnManager.getCurrentRound(),
-        reason: 'no evacuation destination available',
-      });
-      return;
-    }
-
-    this.updateLeaderEvacuationState(nationId, {
-      state: 'fleeing',
-      destinationX: destination.x,
-      destinationY: destination.y,
-      destinationCityId: destination.city?.id,
-      destinationNationId: destination.nationId,
-      destinationType: destination.type,
-      updatedTurn: this.turnManager.getCurrentRound(),
-      reason: destination.type === 'friendlyRefuge'
-        ? `seeking protection in ${this.nationManager.getNation(destination.nationId)?.name ?? destination.nationId}`
-        : `fleeing toward ${destination.city?.name ?? 'own territory'}`,
-    });
-
-    const beforeX = leader.tileX;
-    const beforeY = leader.tileY;
-    this.movementSystem.moveAlongPath(leader, destination.path.slice(1), { source: 'system' });
-    if (leader.tileX === beforeX && leader.tileY === beforeY) {
-      const fallback = this.pickNearestOwnCityDestination(nationId, residence, leader);
-      if (fallback && fallback !== destination) {
-        this.updateLeaderEvacuationState(nationId, {
-          state: 'fleeing',
-          destinationX: fallback.x,
-          destinationY: fallback.y,
-          destinationCityId: fallback.city?.id,
-          destinationNationId: nationId,
-          destinationType: 'ownCity',
-          updatedTurn: this.turnManager.getCurrentRound(),
-          reason: 'primary evacuation destination became blocked',
-        });
-        this.movementSystem.moveAlongPath(leader, fallback.path.slice(1), { source: 'system' });
-      }
-      return;
-    }
-
-    if (destination.type === 'friendlyRefuge') {
-      this.logLeaderEvacuationDecision(
-        nationId,
-        `refuge:${destination.nationId}`,
-        `leader seeks protection in friendly ${this.nationManager.getNation(destination.nationId)?.name ?? destination.nationId} territory.`,
-      );
-    } else if (destination.city) {
-      this.logLeaderEvacuationDecision(
-        nationId,
-        `own-city:${destination.city.id}`,
-        `leader fleeing toward nearest own city ${destination.city.name}.`,
-      );
-    }
-  }
-
-  private logLeaderEvacuationDecision(nationId: string, decision: string, message: string): void {
-    const key = `${this.turnManager.getCurrentRound()}:${decision}`;
-    if (this.leaderEvacuationDecisionLog.get(nationId) === key) return;
-    this.leaderEvacuationDecisionLog.set(nationId, key);
-    this.logStrategicEvent?.(nationId, this.formatLog(nationId, message));
-  }
-
-  private canLeaderEvacuate(residence: City): LeaderEvacuationEligibility {
-    const allowed = residence.health <= LEADER_EVACUATION_TRIGGER_HP;
-    return {
-      allowed,
-      cityHp: residence.health,
-      reason: allowed ? 'city HP 20 or lower' : 'city HP above 20',
-    };
-  }
-
-  private resolveLeaderEvacuationDestination(nationId: string, leader: Unit): LeaderRefugeCandidate | undefined {
-    const state = this.nationManager.getNation(nationId)?.leaderEvacuationState;
-    if (!state) return undefined;
-
-    const city = state.destinationCityId ? this.cityManager.getCity(state.destinationCityId) : undefined;
-    if (state.destinationCityId && !city) return undefined;
-    if (city && state.destinationType === 'ownCity' && city.ownerId !== nationId) return undefined;
-    if (city && state.destinationType === 'friendlyRefuge' && !this.isFriendlyRefugeCity(nationId, city)) return undefined;
-
-    const x = city?.tileX ?? state.destinationX;
-    const y = city?.tileY ?? state.destinationY;
-    if (x === undefined || y === undefined) return undefined;
-    const tile = this.mapData.tiles[y]?.[x];
-    if (!tile) return undefined;
-    if (!city && state.destinationType === 'friendlyRefuge' && (!tile.ownerId || !this.isFriendlyRefugeNation(nationId, tile.ownerId))) {
-      return undefined;
-    }
-
-    const path = this.pathfindingSystem.findPath(leader, x, y, { respectMovementPoints: false });
-    if (!path || path.length < 2) return undefined;
-    return {
-      x,
-      y,
-      city,
-      type: state.destinationType === 'friendlyRefuge' ? 'friendlyRefuge' : 'ownCity',
-      nationId: city?.ownerId ?? tile.ownerId ?? nationId,
-      path,
-    };
-  }
-
-  private pickLeaderEvacuationDestination(nationId: string, residence: City, leader: Unit): LeaderRefugeCandidate | undefined {
-    return this.pickReachableFriendlyRefuge(nationId, leader)
-      ?? this.pickNearestOwnCityDestination(nationId, residence, leader);
-  }
-
-  private pickReachableFriendlyRefuge(nationId: string, leader: Unit): LeaderRefugeCandidate | undefined {
-    const cityCandidates = this.cityManager.getAllCities()
-      .filter((city) => this.isFriendlyRefugeCity(nationId, city))
-      .map((city) => this.createLeaderDestinationFromCity(leader, city, 'friendlyRefuge'))
-      .filter((candidate): candidate is LeaderRefugeCandidate => candidate !== undefined)
-      .filter((candidate) => candidate.path.length - 1 <= Math.min(leader.movementPoints, LEADER_REFUGE_REACH_TILES))
-      .sort(compareLeaderDestinations);
-    if (cityCandidates[0]) return cityCandidates[0];
-
-    const territoryCandidates: LeaderRefugeCandidate[] = [];
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        if (!tile.ownerId || tile.ownerId === nationId) continue;
-        if (!this.isFriendlyRefugeNation(nationId, tile.ownerId)) continue;
-        if (tile.type === TileType.Coast || tile.type === TileType.Ocean || tile.type === TileType.Mountain) continue;
-        const path = this.pathfindingSystem.findPath(leader, tile.x, tile.y, { respectMovementPoints: false });
-        if (!path || path.length < 2 || path.length - 1 > Math.min(leader.movementPoints, LEADER_REFUGE_REACH_TILES)) continue;
-        territoryCandidates.push({
-          x: tile.x,
-          y: tile.y,
-          type: 'friendlyRefuge',
-          nationId: tile.ownerId,
-          path,
-        });
-      }
-    }
-    return territoryCandidates.sort(compareLeaderDestinations)[0];
-  }
-
-  private resolveLeaderReturnDestination(nationId: string, leader: Unit): LeaderRefugeCandidate | undefined {
-    const state = this.nationManager.getNation(nationId)?.leaderEvacuationState;
-    if (state?.state !== 'returning') return undefined;
-    return this.resolveLeaderEvacuationDestination(nationId, leader);
-  }
-
-  private pickNearestOwnCityDestination(
-    nationId: string,
-    residence: City,
-    leader: Unit,
-    includeResidence = false,
-  ): LeaderRefugeCandidate | undefined {
-    return this.cityManager.getCitiesByOwner(nationId)
-      .filter((city) => includeResidence || city.id !== residence.id)
-      .map((city) => this.createLeaderDestinationFromCity(leader, city, 'ownCity'))
-      .filter((candidate): candidate is LeaderRefugeCandidate => candidate !== undefined)
-      .sort(compareLeaderDestinations)[0];
-  }
-
-  private createLeaderDestinationFromCity(
-    leader: Unit,
-    city: City,
-    type: 'ownCity' | 'friendlyRefuge',
-  ): LeaderRefugeCandidate | undefined {
-    const path = this.pathfindingSystem.findPath(leader, city.tileX, city.tileY, { respectMovementPoints: false });
-    if (!path || path.length < 2) return undefined;
-    return {
-      x: city.tileX,
-      y: city.tileY,
-      city,
-      type,
-      nationId: city.ownerId,
-      path,
-    };
-  }
-
-  private isFriendlyRefugeCity(nationId: string, city: City): boolean {
-    return city.ownerId !== nationId && this.isFriendlyRefugeNation(nationId, city.ownerId);
-  }
-
-  private isFriendlyRefugeNation(nationId: string, otherNationId: string): boolean {
-    const relation = this.diplomacyManager?.getRelation(nationId, otherNationId);
-    if (relation?.state === 'WAR') return false;
-    if (this.diplomacyManager?.isOpenBorderGrantedFrom(otherNationId, nationId)) return true;
-    if (this.diplomacyManager?.canEnterTerritory(nationId, otherNationId)) return true;
-    return relation !== undefined && relation.trust >= 80;
-  }
-
-  private updateLeaderEvacuationState(nationId: string, state: LeaderEvacuationState): void {
-    const nation = this.nationManager.getNation(nationId);
-    if (!nation) return;
-    nation.leaderEvacuationState = { ...state };
-  }
-
-  getLeaderEvacuationDiagnosticLines(): string[] {
-    const lines: string[] = ['Leader Evacuation Eligibility:'];
-    let wroteEligibility = false;
-    for (const nation of this.nationManager.getAllNations().sort((a, b) => a.name.localeCompare(b.name))) {
-      const eligibility = this.leaderEvacuationEligibilityByNation.get(nation.id);
-      if (!eligibility) continue;
-      lines.push(`- ${nation.name}: allowed ${eligibility.allowed ? 'true' : 'false'}, city HP ${eligibility.cityHp}, ${eligibility.allowed ? 'evacuation approved' : `blocked: ${eligibility.reason}`}`);
-      wroteEligibility = true;
-    }
-    if (!wroteEligibility) lines.push('- none');
-
-    lines.push('', 'Leader Evacuation Status:');
-    let wrote = false;
-    for (const nation of this.nationManager.getAllNations().sort((a, b) => a.name.localeCompare(b.name))) {
-      const state = nation.leaderEvacuationState;
-      if (!state) continue;
-      const destination = state.destinationCityId ? this.cityManager.getCity(state.destinationCityId) : undefined;
-      const destinationKind = state.destinationType === 'friendlyRefuge' ? 'allied' : state.destinationType ?? 'none';
-      const destinationLabel = destination?.name
-        ?? (state.destinationX !== undefined && state.destinationY !== undefined ? `(${state.destinationX},${state.destinationY})` : 'none');
-      lines.push(`- ${nation.name}: state ${state.state}, destination ${destinationLabel} (${destinationKind})`);
-      wrote = true;
-    }
-    if (!wrote) lines.push('- none');
-    return lines;
   }
 
   private canBuildUnit(nationId: string, unitId: string): boolean {
@@ -6610,7 +6169,6 @@ export class AISystem {
       if (
         unit &&
         unit.ownerId === nationId &&
-        unit.unitType.category !== 'leader' &&
         unit.unitType.baseStrength > 0
       ) return false;
     }
@@ -6641,7 +6199,6 @@ export class AISystem {
       if (
         unit &&
         unit.ownerId === nationId &&
-        unit.unitType.category !== 'leader' &&
         unit.unitType.baseStrength > 0 &&
         !unit.unitType.isNaval &&
         (unit.unitType.range ?? 1) > 1

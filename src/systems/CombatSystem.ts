@@ -22,6 +22,7 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { PolicySystem } from './PolicySystem';
 import { isEmbarked } from './UnitMovementRules';
 import type { CityDefenseSystem } from './CityDefenseSystem';
+import type { NationCollapseSystem } from './NationCollapseSystem';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -35,7 +36,6 @@ export interface CityCombatEvent {
   result: CityCombatResult;
   captured: boolean;
   previousOwnerId?: string;
-  leaderDefenseBonus?: number;
 }
 
 export interface CombatRejectedEvent {
@@ -71,7 +71,6 @@ type CityCombatListener = (e: CityCombatEvent) => void;
 type CombatRejectedListener = (e: CombatRejectedEvent) => void;
 type WarRequiredListener = (e: WarRequiredEvent) => void;
 type UnitCombatBlocker = (unit: Unit) => boolean;
-type ProtectedLeaderProtectorResolver = (attacker: Unit, target: Unit) => string | null;
 type PeacekeepingCombatAuthorizer = (attacker: Unit, target: Unit, tileOwnerId?: string) => boolean;
 
 const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
@@ -107,9 +106,9 @@ export class CombatSystem {
     private readonly gridSystem: IGridSystem,
     private readonly isUnitCombatBlocked: UnitCombatBlocker = () => false,
     private readonly policySystem?: PolicySystem,
-    private readonly getProtectedLeaderProtector: ProtectedLeaderProtectorResolver = () => null,
     private readonly canResolvePeacekeepingCombat: PeacekeepingCombatAuthorizer = () => false,
     private readonly cityDefenseSystem?: CityDefenseSystem,
+    private readonly nationCollapseSystem?: NationCollapseSystem,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -194,11 +193,6 @@ export class CombatSystem {
     const targetCity = this.cityManager.getCityAt(tileX, tileY);
 
     if (targetUnit && targetUnit.ownerId !== attacker.ownerId) {
-      const protectorNationId = this.getProtectedLeaderProtector(attacker, targetUnit);
-      if (protectorNationId !== null) {
-        this.notifyWarRequired(attacker, protectorNationId, tileX, tileY, options.source ?? 'system');
-        return false;
-      }
       // hiddenNation units (e.g. Privateers) perform deniable attacks: they may
       // strike enemy units without a formal war. This bypasses only the war
       // requirement for unit targets — no war is declared and no diplomatic
@@ -260,9 +254,7 @@ export class CombatSystem {
     this.unitManager.notifyDamaged(target);
 
     if (result.attackerDied) this.unitManager.removeUnit(attacker.id);
-    if (result.defenderDied && target.unitType.id !== 'leader') {
-      this.unitManager.removeUnit(target.id);
-    }
+    if (result.defenderDied) this.unitManager.removeUnit(target.id);
 
     this.reportCovertUnitCombat(attacker, target, result);
 
@@ -314,12 +306,11 @@ export class CombatSystem {
   }
 
   private executeCityCombat(attacker: Unit, city: City, isRanged = false): boolean {
-    const leaderDefenseBonus = !isRanged ? (this.cityDefenseSystem?.getLeaderDefenseBonus(city) ?? 0) : 0;
     const worldHeritageDefenseBonus = this.cityDefenseSystem?.getWorldHeritageDefenseBonus(city) ?? 0;
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
       cityDefenseBonus: this.policySystem?.getFlatModifierTotal(city.ownerId, 'cityDefenseFlat') ?? 0,
-      cityDefenseMultiplier: 1 + leaderDefenseBonus + worldHeritageDefenseBonus,
+      cityDefenseMultiplier: 1 + worldHeritageDefenseBonus,
       cityDamageTakenMultiplier: 1 / (1 + worldHeritageDefenseBonus),
     };
     const result = isRanged
@@ -348,15 +339,27 @@ export class CombatSystem {
       previousOwnerId = city.ownerId;
       captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem, this.unitManager, this.gridSystem);
       captured = true;
+      this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);
     }
 
     this.reportCovertCityCombat(attacker, city);
 
     for (const cb of this.cityCombatListeners) {
-      cb({ attacker, city, result, captured, previousOwnerId, leaderDefenseBonus });
+      cb({ attacker, city, result, captured, previousOwnerId });
     }
 
     return true;
+  }
+
+  private collapsePreviousOwnerWithoutCities(previousOwnerId: string, conquerorNationId: string, capturedCity: City): void {
+    if (!this.nationCollapseSystem) return;
+    if (this.cityManager.getCitiesByOwner(previousOwnerId).length > 0) return;
+    this.nationCollapseSystem.collapse({
+      nationId: previousOwnerId,
+      conquerorNationId,
+      triggerCity: capturedCity,
+      reason: 'no_valid_survival_state',
+    });
   }
 
   private notifyRejected(attacker: Unit, target: Unit, reason: string): void {

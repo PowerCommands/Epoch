@@ -6,24 +6,6 @@ import type { CovertPersonalityId } from '../types/covertPersonality';
 import { DEFAULT_COVERT_PERSONALITY_ID } from '../data/covertPersonalities';
 import type { OverseasSettlementTarget } from '../types/ai/OverseasSettlementTarget';
 
-export type LeaderEvacuationStateId =
-  | 'insideCity'
-  | 'fleeing'
-  | 'returning'
-  | 'sheltered';
-export type LeaderEvacuationDestinationType = 'residence' | 'ownCity' | 'friendlyRefuge';
-
-export interface LeaderEvacuationState {
-  state: LeaderEvacuationStateId;
-  destinationX?: number;
-  destinationY?: number;
-  destinationCityId?: string;
-  destinationNationId?: string;
-  destinationType?: LeaderEvacuationDestinationType;
-  updatedTurn: number;
-  reason?: string;
-}
-
 export interface NationConfig {
   id: string;
   name: string;
@@ -72,7 +54,6 @@ export class Nation {
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
-  leaderEvacuationState?: LeaderEvacuationState;
 
   constructor(config: NationConfig) {
     this.id = config.id;

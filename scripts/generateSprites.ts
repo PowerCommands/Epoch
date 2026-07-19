@@ -317,53 +317,10 @@ function generateTransportShip() {
   save('unit_transport_ship.png', c);
 }
 
-function generateLeader() {
-  const [c, ctx] = unitToken();
-
-  const bodyGradient = makeTintableGradient(ctx, CX - 9, CY - 15, CX + 9, CY + 16, '#f7f7f7', '#d4d4d4', '#777777');
-  ctx.fillStyle = bodyGradient;
-  ctx.strokeStyle = '#3f3f3f';
-  ctx.lineWidth = 1.8;
-  ctx.lineJoin = 'round';
-
-  ctx.beginPath();
-  ctx.moveTo(CX - 12, CY + 14);
-  ctx.lineTo(CX + 12, CY + 14);
-  ctx.lineTo(CX + 9, CY + 8);
-  ctx.lineTo(CX + 5, CY - 1);
-  ctx.quadraticCurveTo(CX + 9, CY - 6, CX + 5, CY - 10);
-  ctx.lineTo(CX + 2, CY - 13);
-  ctx.lineTo(CX + 2, CY - 18);
-  ctx.lineTo(CX - 2, CY - 18);
-  ctx.lineTo(CX - 2, CY - 13);
-  ctx.lineTo(CX - 5, CY - 10);
-  ctx.quadraticCurveTo(CX - 9, CY - 6, CX - 5, CY - 1);
-  ctx.lineTo(CX - 9, CY + 8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = '#4a4a4a';
-  roundedRect(ctx, CX - 13, CY + 11, 26, 5, 2);
-  ctx.fill();
-
-  ctx.strokeStyle = '#f9d66b';
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.moveTo(CX - 8, CY - 15);
-  ctx.lineTo(CX + 8, CY - 15);
-  ctx.moveTo(CX, CY - 22);
-  ctx.lineTo(CX, CY - 10);
-  ctx.stroke();
-
-  save('units/leaders.png', c);
-}
-
 generateCity();
 generateWarrior();
 generateArcher();
 generateCavalry();
 generateSettler();
 generateTransportShip();
-generateLeader();
-console.log('done - 7 sprites generated');
+console.log('done - 6 sprites generated');
