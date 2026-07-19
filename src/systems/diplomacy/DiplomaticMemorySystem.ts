@@ -3,6 +3,13 @@ import type {
   DiplomacyRelation,
   DiplomaticMemoryHook,
 } from '../DiplomacyManager';
+import {
+  AGGRESSION_MEMORY_DECAY_INTERVAL_ROUNDS,
+  AGGRESSION_MEMORY_DECAY_STEP,
+  AGGRESSION_MEMORY_LOG_PREFIX,
+  OBSERVER_AGGRESSION_DELTAS,
+  type AggressionEventType,
+} from '../../data/multilateralAggression';
 
 // DiplomaticMemorySystem updates relationship values based on events.
 // These values are not yet used for AI decisions, but form the basis for
@@ -117,8 +124,197 @@ const DELTA_PROPOSAL_REJECTED: MemoryDelta = {
   hostility: 2,
 };
 
+/**
+ * World knowledge the multilateral path needs. Injected rather than imported so
+ * the memory system keeps its single dependency (DiplomacyManager) and stays
+ * trivially testable. Supplied by GameScene from the existing discovery and
+ * city-ownership models — this system invents no new information propagation.
+ */
+export interface MultilateralAggressionContext {
+  /** Every nation id currently in the game (including the aggressor/victim). */
+  getAllNationIds(): readonly string[];
+  /** Existing contact model — DiscoverySystem.hasMet. */
+  haveMet(a: string, b: string): boolean;
+  /** Still in the game; city ownership is the survival condition. */
+  isNationActive(nationId: string): boolean;
+  /** Optional sink for the diagnostic lines; defaults to console.log. */
+  log?(line: string): void;
+}
+
+/** Details of the aggressive act being reported to observers. */
+export interface AggressionEvent {
+  readonly type: AggressionEventType;
+  readonly aggressorNationId: string;
+  readonly victimNationId: string;
+  readonly round: number;
+  /** Captured city name, for the log line only. */
+  readonly cityName?: string;
+}
+
+/**
+ * How much of a pair's fear/hostility/trust movement this system is responsible
+ * for. Decay is bounded by these numbers so it can only ever unwind observer
+ * reactions — never the bilateral memory a nation earned from its own wars.
+ */
+interface ObserverAggressionLedgerEntry {
+  trustLost: number;
+  fearGained: number;
+  hostilityGained: number;
+}
+
+const LEDGER_KEY_SEPARATOR = '|';
+
 export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
+  private multilateralContext: MultilateralAggressionContext | null = null;
+
+  /** Keyed `observerId|aggressorId` — directed, unlike the relation itself. */
+  private readonly observerLedger = new Map<string, ObserverAggressionLedgerEntry>();
+
   constructor(private readonly diplomacyManager: DiplomacyManager) {}
+
+  /**
+   * Enable the multilateral (third-party observer) aggression path. Without a
+   * context the system behaves exactly as before — bilateral memory only.
+   */
+  setMultilateralAggressionContext(context: MultilateralAggressionContext | null): void {
+    this.multilateralContext = context;
+  }
+
+  /**
+   * Propagate an act of aggression to every qualifying third-party observer.
+   *
+   * The aggressor and the direct victim are excluded here: the victim's
+   * reaction is already covered by the bilateral deltas (onDeclareWar /
+   * onCityCaptured), and mixing the two paths would double-count.
+   */
+  recordAggressionForObservers(event: AggressionEvent): void {
+    const context = this.multilateralContext;
+    if (!context) return;
+
+    const { type, aggressorNationId, victimNationId, round } = event;
+    if (aggressorNationId === victimNationId) return;
+
+    const delta = OBSERVER_AGGRESSION_DELTAS[type];
+    for (const observerId of context.getAllNationIds()) {
+      if (!this.isEligibleObserver(observerId, aggressorNationId, victimNationId, context)) continue;
+      this.applyObserverDelta(observerId, event, delta, round, context);
+    }
+  }
+
+  /**
+   * Observer eligibility. A nation reacts only to aggression it could plausibly
+   * know about, between civilizations it has actually discovered.
+   */
+  private isEligibleObserver(
+    observerId: string,
+    aggressorNationId: string,
+    victimNationId: string,
+    context: MultilateralAggressionContext,
+  ): boolean {
+    if (observerId === aggressorNationId) return false;      // no self-reaction
+    if (observerId === victimNationId) return false;         // bilateral path owns the victim
+    if (!context.isNationActive(observerId)) return false;    // eliminated nations do not react
+    if (!context.haveMet(observerId, aggressorNationId)) return false;
+    if (!context.haveMet(observerId, victimNationId)) return false;
+    return true;
+  }
+
+  private applyObserverDelta(
+    observerId: string,
+    event: AggressionEvent,
+    delta: { trust: number; fear: number; hostility: number },
+    round: number,
+    context: MultilateralAggressionContext,
+  ): void {
+    const aggressorId = event.aggressorNationId;
+    const before = this.diplomacyManager.getRelation(observerId, aggressorId);
+
+    const trust = clamp(before.trust + delta.trust);
+    const fear = clamp(before.fear + delta.fear);
+    const hostility = clamp(before.hostility + delta.hostility);
+
+    this.diplomacyManager.setMemoryValues(observerId, aggressorId, {
+      trust,
+      fear,
+      hostility,
+      affinity: before.affinity,
+      suspicion: before.suspicion,
+    });
+
+    // Record only the movement that actually landed after clamping, so decay
+    // can never give back more than this system took.
+    const entry = this.getLedgerEntry(observerId, aggressorId);
+    entry.trustLost += before.trust - trust;
+    entry.fearGained += fear - before.fear;
+    entry.hostilityGained += hostility - before.hostility;
+
+    const log = context.log ?? ((line: string) => console.log(line));
+    const city = event.cityName ? ` city=${event.cityName}` : '';
+    log(
+      `${AGGRESSION_MEMORY_LOG_PREFIX} r${round} event=${event.type} `
+      + `aggressor=${aggressorId} victim=${event.victimNationId} observer=${observerId}${city} `
+      + `trust ${Math.round(before.trust)}->${Math.round(trust)} (${formatDelta(trust - before.trust)}) `
+      + `fear ${Math.round(before.fear)}->${Math.round(fear)} (${formatDelta(fear - before.fear)}) `
+      + `hostility ${Math.round(before.hostility)}->${Math.round(hostility)} (${formatDelta(hostility - before.hostility)})`,
+    );
+  }
+
+  /**
+   * Release accumulated observer aggression memory over time.
+   *
+   * Called every round; acts only on the decay cadence. Strictly bounded by the
+   * ledger, so a nation's fear of someone who actually attacked *it* is never
+   * touched — only the portion this system contributed as a bystander.
+   *
+   * Intentionally quiet: decay is a slow background drift and logging it per
+   * pair per round would drown the aggression events it is meant to complement.
+   */
+  decayObserverAggressionMemory(round: number): void {
+    if (!this.multilateralContext) return;
+    if (round % AGGRESSION_MEMORY_DECAY_INTERVAL_ROUNDS !== 0) return;
+
+    const step = AGGRESSION_MEMORY_DECAY_STEP;
+    for (const [key, entry] of this.observerLedger) {
+      if (entry.trustLost <= 0 && entry.fearGained <= 0 && entry.hostilityGained <= 0) {
+        this.observerLedger.delete(key);
+        continue;
+      }
+      const [observerId, aggressorId] = key.split(LEDGER_KEY_SEPARATOR);
+      if (observerId === undefined || aggressorId === undefined) continue;
+
+      const trustBack = Math.min(step, entry.trustLost);
+      const fearBack = Math.min(step, entry.fearGained);
+      const hostilityBack = Math.min(step, entry.hostilityGained);
+
+      const relation = this.diplomacyManager.getRelation(observerId, aggressorId);
+      this.diplomacyManager.setMemoryValues(observerId, aggressorId, {
+        trust: clamp(relation.trust + trustBack),
+        fear: clamp(relation.fear - fearBack),
+        hostility: clamp(relation.hostility - hostilityBack),
+        affinity: relation.affinity,
+        suspicion: relation.suspicion,
+      });
+
+      entry.trustLost -= trustBack;
+      entry.fearGained -= fearBack;
+      entry.hostilityGained -= hostilityBack;
+    }
+  }
+
+  /** Accumulated observer-derived movement for a pair. Diagnostics and tests. */
+  getObserverAggressionLedger(observerId: string, aggressorId: string): ObserverAggressionLedgerEntry {
+    return { ...this.getLedgerEntry(observerId, aggressorId) };
+  }
+
+  private getLedgerEntry(observerId: string, aggressorId: string): ObserverAggressionLedgerEntry {
+    const key = `${observerId}${LEDGER_KEY_SEPARATOR}${aggressorId}`;
+    let entry = this.observerLedger.get(key);
+    if (!entry) {
+      entry = { trustLost: 0, fearGained: 0, hostilityGained: 0 };
+      this.observerLedger.set(key, entry);
+    }
+    return entry;
+  }
 
   onDeclareWar(a: string, b: string): void {
     this.adjustRelation(a, b, DELTA_DECLARE_WAR);
@@ -197,4 +393,9 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
       suspicion: clamp(relation.suspicion + (delta.suspicion ?? 0)),
     });
   }
+}
+
+function formatDelta(value: number): string {
+  const rounded = Math.round(value);
+  return rounded >= 0 ? `+${rounded}` : `${rounded}`;
 }

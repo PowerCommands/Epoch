@@ -675,6 +675,18 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', (event) => unitLifetimeSystem.handleRoundStart(event.round));
     const diplomaticMemorySystem = new DiplomaticMemorySystem(diplomacyManager);
     diplomacyManager.attachMemoryHook(diplomaticMemorySystem);
+    // Multilateral Aggression Memory: third-party nations gain diplomatic memory
+    // of wars and conquests they witness. Uses the existing contact model
+    // (DiscoverySystem) and city-ownership survival condition — no new
+    // information-propagation system.
+    diplomaticMemorySystem.setMultilateralAggressionContext({
+      getAllNationIds: () => nationManager.getAllNations().map((nation) => nation.id),
+      haveMet: (a, b) => discoverySystem.hasMet(a, b),
+      isNationActive: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+    });
+    turnManager.on('roundStart', (event) => {
+      diplomaticMemorySystem.decayObserverAggressionMemory(event.round);
+    });
     // Tracks one-time symbolic-gift milestones (player's gift reward + the AI's
     // reciprocal first-meeting courtesy) per nation pair.
     const symbolicGiftRegistry = new SymbolicGiftRegistry();
@@ -3136,6 +3148,16 @@ export class GameScene extends Phaser.Scene {
         // Diplomatic memory: capturing a city scars the relationship.
         if (e.previousOwnerId) {
           diplomaticMemorySystem.onCityCaptured(e.attacker.ownerId, e.previousOwnerId);
+          // ...and the rest of the known world takes note. Exactly one observer
+          // event per capture — the capital variant replaces the ordinary one
+          // rather than stacking on top of it.
+          diplomaticMemorySystem.recordAggressionForObservers({
+            type: e.city.isCapital ? 'capital_capture' : 'city_capture',
+            aggressorNationId: e.attacker.ownerId,
+            victimNationId: e.previousOwnerId,
+            round: turnManager.getCurrentRound(),
+            cityName: e.city.name,
+          });
         }
         // A conquered city may introduce new encounters
         discoverySystem.scan();
@@ -3161,6 +3183,17 @@ export class GameScene extends Phaser.Scene {
     });
 
     nationCollapseSystem.onNationCollapsed((event) => {
+      // Destroying an entire civilization is the strongest signal the rest of
+      // the world receives. Only conquest counts — a nation that collapses with
+      // no conqueror has no aggressor to blame.
+      if (event.conquerorNationId) {
+        diplomaticMemorySystem.recordAggressionForObservers({
+          type: 'nation_elimination',
+          aggressorNationId: event.conquerorNationId,
+          victimNationId: event.nationId,
+          round: turnManager.getCurrentRound(),
+        });
+      }
       worldCouncilSystem.removeEliminatedNation(event.nationId);
       for (const city of event.occupiedCities) {
         cityRenderer.refreshCity(city);
@@ -3664,6 +3697,15 @@ export class GameScene extends Phaser.Scene {
       const nameA = nationManager.getNation(aggressorId)?.name ?? aggressorId;
       const nameB = nationManager.getNation(targetId)?.name ?? targetId;
       console.log(`[Diplomacy] War declared: ${nameA} → ${nameB}`);
+      // Third parties note that this nation is willing to use force. Guarded by
+      // isActivating() above, so a defensive ally being pulled into a war is
+      // not mistaken for fresh aggression.
+      diplomaticMemorySystem.recordAggressionForObservers({
+        type: 'war_declaration',
+        aggressorNationId: aggressorId,
+        victimNationId: targetId,
+        round: turnManager.getCurrentRound(),
+      });
       const endedPeacekeepingMission = worldCouncilSystem.expirePeacekeepingMissionBecauseHostDeclaredWar(aggressorId, targetId);
       if (endedPeacekeepingMission) {
         const message = `The UN Peacekeeping Mission in ${nameA} ended because ${nameA} initiated war against ${nameB}.`;
