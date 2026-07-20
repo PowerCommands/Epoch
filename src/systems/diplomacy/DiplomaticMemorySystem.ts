@@ -5,8 +5,10 @@ import type {
 } from '../DiplomacyManager';
 import {
   AGGRESSION_MEMORY_DECAY_INTERVAL_ROUNDS,
-  AGGRESSION_MEMORY_DECAY_STEP,
+  AGGRESSION_MEMORY_DECAY_RATE,
+  AGGRESSION_MEMORY_DECAY_RELEASE_FLOOR,
   AGGRESSION_MEMORY_LOG_PREFIX,
+  AGGRESSION_MEMORY_PEACE_COOLDOWN_ROUNDS,
   OBSERVER_AGGRESSION_DELTAS,
   type AggressionEventType,
 } from '../../data/multilateralAggression';
@@ -23,6 +25,38 @@ const MAX_VALUE = 100;
 
 function clamp(value: number): number {
   return Math.max(MIN_VALUE, Math.min(MAX_VALUE, value));
+}
+
+/**
+ * How much of one outstanding ledger component to release this interval.
+ *
+ * Proportional, so a large reputation sheds the same *fraction* per interval
+ * and therefore takes far longer to unwind in absolute terms than a minor
+ * incident. Deterministic: a pure function of the outstanding value, with no
+ * rounding and no accumulated per-entry carry state.
+ *
+ * The floor exists because proportional decay is asymptotic — the last
+ * fraction of a point would otherwise never be released.
+ */
+function releaseAmount(outstanding: number): number {
+  if (outstanding <= 0) return 0;
+  if (outstanding <= AGGRESSION_MEMORY_DECAY_RELEASE_FLOOR) return outstanding;
+  return outstanding * AGGRESSION_MEMORY_DECAY_RATE;
+}
+
+/**
+ * Remove floating-point dust from an incrementally decayed value.
+ *
+ * Proportional decay adds many small fractions back to a relation, and binary
+ * floating point does not telescope exactly: fully rehabilitating a trust of
+ * 50 would land on 50.00000000000001 and breach the invariant that decay never
+ * returns more than this system took. Every event delta and every relation
+ * baseline is an integer, so snapping imperceptible residuals to the nearest
+ * integer restores exactness without touching genuinely fractional states.
+ */
+function snapFloatDust(value: number): number {
+  const rounded = Math.round(value);
+  return Math.abs(value - rounded) < 1e-6 ? rounded : value;
 }
 
 const DELTA_DECLARE_WAR: MemoryDelta = {
@@ -170,6 +204,14 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
   /** Keyed `observerId|aggressorId` — directed, unlike the relation itself. */
   private readonly observerLedger = new Map<string, ObserverAggressionLedgerEntry>();
 
+  /**
+   * Round of each aggressor's most recent qualifying aggressive action. Drives
+   * the peace cooldown: memory of a nation still actively conquering does not
+   * decay at all. Keyed by aggressor, not by pair — the world's memory thaws
+   * when the aggressor stops, not per-observer.
+   */
+  private readonly lastAggressionRound = new Map<string, number>();
+
   constructor(private readonly diplomacyManager: DiplomacyManager) {}
 
   /**
@@ -193,6 +235,11 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
 
     const { type, aggressorNationId, victimNationId, round } = event;
     if (aggressorNationId === victimNationId) return;
+
+    // Restart the peace cooldown even when nobody is currently eligible to
+    // witness this: the aggressor is demonstrably still conquering, so memory
+    // already held by earlier observers must not begin thawing.
+    this.lastAggressionRound.set(aggressorNationId, round);
 
     const delta = OBSERVER_AGGRESSION_DELTAS[type];
     for (const observerId of context.getAllNationIds()) {
@@ -273,7 +320,6 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
     if (!this.multilateralContext) return;
     if (round % AGGRESSION_MEMORY_DECAY_INTERVAL_ROUNDS !== 0) return;
 
-    const step = AGGRESSION_MEMORY_DECAY_STEP;
     for (const [key, entry] of this.observerLedger) {
       if (entry.trustLost <= 0 && entry.fearGained <= 0 && entry.hostilityGained <= 0) {
         this.observerLedger.delete(key);
@@ -282,15 +328,20 @@ export class DiplomaticMemorySystem implements DiplomaticMemoryHook {
       const [observerId, aggressorId] = key.split(LEDGER_KEY_SEPARATOR);
       if (observerId === undefined || aggressorId === undefined) continue;
 
-      const trustBack = Math.min(step, entry.trustLost);
-      const fearBack = Math.min(step, entry.fearGained);
-      const hostilityBack = Math.min(step, entry.hostilityGained);
+      // Peace cooldown: a nation still conquering is not being forgiven.
+      const lastAggression = this.lastAggressionRound.get(aggressorId);
+      if (lastAggression !== undefined
+        && round - lastAggression < AGGRESSION_MEMORY_PEACE_COOLDOWN_ROUNDS) continue;
+
+      const trustBack = releaseAmount(entry.trustLost);
+      const fearBack = releaseAmount(entry.fearGained);
+      const hostilityBack = releaseAmount(entry.hostilityGained);
 
       const relation = this.diplomacyManager.getRelation(observerId, aggressorId);
       this.diplomacyManager.setMemoryValues(observerId, aggressorId, {
-        trust: clamp(relation.trust + trustBack),
-        fear: clamp(relation.fear - fearBack),
-        hostility: clamp(relation.hostility - hostilityBack),
+        trust: snapFloatDust(clamp(relation.trust + trustBack)),
+        fear: snapFloatDust(clamp(relation.fear - fearBack)),
+        hostility: snapFloatDust(clamp(relation.hostility - hostilityBack)),
         affinity: relation.affinity,
         suspicion: relation.suspicion,
       });

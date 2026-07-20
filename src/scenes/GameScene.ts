@@ -2305,8 +2305,13 @@ export class GameScene extends Phaser.Scene {
       if (!autoplaySystem.isVisualSuppressionEnabled()) return;
       SetupMusicManager.getShared().muteForSession();
       const originalConsoleLog = console.log;
+      // Autoplay silences console.log to keep long headless runs quiet, but a
+      // few prefixes are diagnostics the autorun pipeline exists to collect.
+      // Suppressing those makes the run unobservable rather than merely quiet.
+      const autoplayLogAllowList = ['[autorun]', '[Diplomacy]', '[AggressionMemory]'];
       console.log = (...args: unknown[]) => {
-        if (typeof args[0] === 'string' && args[0].startsWith('[autorun]')) {
+        const first = args[0];
+        if (typeof first === 'string' && autoplayLogAllowList.some((prefix) => first.startsWith(prefix))) {
           originalConsoleLog(...args);
         }
       };

@@ -73,20 +73,61 @@ export const OBSERVER_AGGRESSION_DELTAS: Readonly<Record<AggressionEventType, Ob
 };
 
 /**
- * Decay cadence. Every N rounds, one accumulated point of observer-derived
- * fear and hostility is released and one point of trust is restored.
- *
- * At 4 rounds/point, a single elimination's +20 hostility takes ~80 rounds to
- * fade and a full two-nation conquest campaign takes several hundred — slow
- * enough that destroying a civilization is not forgotten in a handful of turns,
- * fast enough that a nation which stops conquering can rehabilitate over eras.
+ * Decay cadence. Decay is evaluated every N rounds.
  *
  * Decay is strictly bounded by what this system contributed (see the ledger in
  * DiplomaticMemorySystem): it can never erode fear/hostility that came from
  * the observer's own wars.
  */
 export const AGGRESSION_MEMORY_DECAY_INTERVAL_ROUNDS = 4;
-export const AGGRESSION_MEMORY_DECAY_STEP = 1;
+
+/**
+ * Proportional decay rate — the fraction of *outstanding* observer memory
+ * released per decay interval.
+ *
+ * Replaces the original flat ±1 per 4 rounds, which was measured in
+ * `autorun-output/maritime-expansion-aggression-memory-test` to cancel
+ * accumulation almost exactly: conquest events arrive every 8-12 rounds and
+ * cost 3 trust, while flat decay restored 2-3 in the same window. Six
+ * consecutive city captures produced a net trust change of zero, so no
+ * downstream threshold was ever crossed.
+ *
+ * Proportional decay makes a large reputation genuinely expensive to shed. The
+ * relative half-life is ~27 intervals (~110 rounds) at this rate, so:
+ *   - one war declaration (trust -4) fades to negligible over a long peace
+ *   - one elimination (+20 hostility) still reads ~11 after 90 rounds of decay
+ *   - a serial conqueror's accumulated memory takes eras to unwind
+ *
+ * Held at the low end of the intended 2-3% band: the peace cooldown below
+ * already blocks decay during active conquest, so this rate only ever applies
+ * to a nation that has genuinely stopped.
+ */
+export const AGGRESSION_MEMORY_DECAY_RATE = 0.025;
+
+/**
+ * Rounds of *no qualifying aggression* before an aggressor's memory decays at
+ * all. Every war declaration, city capture, capital capture and elimination
+ * restarts this clock for that aggressor.
+ *
+ * Gated on time-since-last-aggression rather than `isAtWar`, so a nation stuck
+ * in a long frozen or defensive conflict still rehabilitates — only continued
+ * conquest keeps the memory frozen at full strength.
+ *
+ * At 24 rounds this comfortably exceeds the 8-12 round spacing observed
+ * between captures in a real campaign, which is precisely the interval the old
+ * flat model gave back.
+ */
+export const AGGRESSION_MEMORY_PEACE_COOLDOWN_ROUNDS = 24;
+
+/**
+ * Below this many outstanding points, the remainder is released in full.
+ *
+ * Pure proportional decay is asymptotic and never reaches zero, so without a
+ * floor a trivial memory would persist forever at ever-smaller fractions. The
+ * floor is deliberately small: large enough to guarantee termination, far too
+ * small to reintroduce the flat model's ~1 point per interval.
+ */
+export const AGGRESSION_MEMORY_DECAY_RELEASE_FLOOR = 0.5;
 
 /** Log prefix so autorun analysis can isolate these events with one grep. */
 export const AGGRESSION_MEMORY_LOG_PREFIX = '[AggressionMemory]';

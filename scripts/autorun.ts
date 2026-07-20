@@ -330,6 +330,14 @@ async function main(): Promise<void> {
   const summary = buildSummary(metadata, calibration, browserMessages);
 
   await fs.writeFile(path.join(outputDir, 'latest-log.txt'), logText || '(no log entries)\n', 'utf8');
+  // The summary keeps only the last 20 browser messages, which discards every
+  // console-only diagnostic the game emits (e.g. [Diplomacy], [AggressionMemory]).
+  // Persist the full stream so post-run analysis can reconstruct it.
+  await fs.writeFile(
+    path.join(outputDir, 'browser-console.log'),
+    browserMessages.length > 0 ? `${browserMessages.join('\n')}\n` : '(no browser messages)\n',
+    'utf8',
+  );
   await fs.writeFile(path.join(outputDir, 'latest-summary.md'), summary, 'utf8');
   await fs.writeFile(path.join(outputDir, 'latest-metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
   await fs.writeFile(
