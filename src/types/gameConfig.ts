@@ -55,7 +55,7 @@ export interface GameConfig {
   /**
    * Victory condition overrides for the session. Absent fields use
    * VictorySystem defaults (domination, science, cultural, diplomatic all enabled;
-   * 5 aerospace parts for science). For loaded saves, GameScene prefers
+   * 10 aerospace parts for science). For loaded saves, GameScene prefers
    * the conditions stored in {@link savedState}.
    */
   victoryConditions?: VictoryConditionsConfig;

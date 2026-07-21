@@ -24,7 +24,7 @@ import type { WorldCouncilState } from './worldCouncil';
 export const SAVED_GAME_VERSION = 4 as const;
 
 export interface SavedProducible {
-  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'tradeRoute';
+  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'manufacturedResource' | 'tradeRoute';
   id: string;
   /** Extra fields for tradeRoute queue entries. Optional for backward compat. */
   fromCityId?: string;
@@ -53,6 +53,11 @@ export interface SavedCorporation {
   founderNationId: string;
   cityId?: string;
   foundedTurn: number;
+}
+
+export interface SavedAerospacePartProgress {
+  nationId: string;
+  quantity: number;
 }
 
 export interface SavedQueueEntry {
@@ -279,6 +284,8 @@ export interface SavedGameState {
   /** Alliance Core v1. Optional so older saves load with no alliances. */
   alliances?: Alliance[];
   corporations?: SavedCorporation[];
+  /** Accumulated, deliberately manufactured Science Victory parts. */
+  aerospaceParts?: SavedAerospacePartProgress[];
   tradeDeals?: TradeDeal[];
   tradeConnections?: TradeConnection[];
   tradeHistory?: SavedTradeHistoryEntry[];
@@ -299,6 +306,7 @@ export interface SavedGameState {
 export interface SavedVictoryConditions {
   domination: boolean;
   science: boolean;
+  scienceRequiredAerospaceParts?: number;
   cultural: boolean;
   diplomatic?: boolean;
 }

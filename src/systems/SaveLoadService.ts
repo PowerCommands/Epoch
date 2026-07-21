@@ -19,6 +19,7 @@ import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { getUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
+import { AEROSPACE_PART_PRODUCTION, AEROSPACE_PARTS_ID } from '../data/scienceVictory';
 import type { Producible } from '../types/producible';
 import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { CityManager } from './CityManager';
@@ -44,6 +45,7 @@ import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
 import type { CorporationSystem } from './CorporationSystem';
+import type { AerospacePartSystem } from './AerospacePartSystem';
 import type { WorldCouncilSystem } from './WorldCouncilSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
@@ -73,6 +75,7 @@ export interface SaveLoadContext {
   gridSystem: IGridSystem;
   wonderSystem: WonderSystem;
   corporationSystem?: CorporationSystem;
+  aerospacePartSystem?: AerospacePartSystem;
   tradeDealSystem?: TradeDealSystem;
   tradeConnectionSystem?: TradeConnectionSystem;
   tradeDiplomacySystem?: TradeDiplomacySystem;
@@ -121,6 +124,7 @@ export class SaveLoadService {
       turnManager,
       wonderSystem,
       corporationSystem,
+      aerospacePartSystem,
       tradeDealSystem,
       tradeConnectionSystem,
       tradeDiplomacySystem,
@@ -331,7 +335,12 @@ export class SaveLoadService {
       humanNationId,
       activeNationIds: nationManager.getAllNations().map((nation) => nation.id),
       gameSpeedId,
-      victoryConditions: context.victorySystem?.getEnabledConditions(),
+      victoryConditions: context.victorySystem
+        ? {
+            ...context.victorySystem.getEnabledConditions(),
+            scienceRequiredAerospaceParts: context.victorySystem.getScienceVictorySettings().requiredAerospaceParts,
+          }
+        : undefined,
       turn: {
         currentRound: turnManager.getCurrentRound(),
         currentTurnIndex: turnManager.getCurrentTurnIndex(),
@@ -350,6 +359,7 @@ export class SaveLoadService {
         memberNationIds: [...alliance.memberNationIds],
       })),
       corporations,
+      aerospaceParts: aerospacePartSystem?.getProgressForSave() ?? [],
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
       tradeConnections: tradeConnectionSystem?.getAllConnections(),
       tradeHistory: tradeDiplomacySystem?.getAllEntries(),
@@ -435,6 +445,7 @@ export class SaveLoadService {
     SaveLoadService.applyWonders(state.wonders ?? [], context.wonderSystem);
     context.worldCouncilSystem?.restore(state.worldCouncil);
     SaveLoadService.applyCorporations(state.corporations ?? [], context.corporationSystem);
+    context.aerospacePartSystem?.restoreProgress(state.aerospaceParts ?? []);
     SaveLoadService.applyCitiesAndProduction(
       state.cities,
       context.cityManager,
@@ -921,6 +932,8 @@ function toSavedProducible(item: Producible): SavedProducible {
       return { kind: 'wonder', id: item.wonderType.id };
     case 'corporation':
       return { kind: 'corporation', id: item.corporationType.id };
+    case 'manufacturedResource':
+      return { kind: 'manufacturedResource', id: item.productionType.id };
     case 'tradeRoute':
       return {
         kind: 'tradeRoute',
@@ -964,6 +977,13 @@ function fromSavedProducible(item: SavedProducible): Producible | null {
       return null;
     }
     return { kind: 'corporation', corporationType: def };
+  }
+  if (item.kind === 'manufacturedResource') {
+    if (item.id !== AEROSPACE_PARTS_ID) {
+      console.warn(`[SaveLoadService] Unknown manufactured production id during restore: ${item.id}`);
+      return null;
+    }
+    return { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION };
   }
   const def = getBuildingById(item.id);
   return def ? { kind: 'building', buildingType: def } : null;

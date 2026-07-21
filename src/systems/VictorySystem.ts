@@ -8,6 +8,11 @@ import type { WonderSystem } from './WonderSystem';
 import type { DiplomaticScoreBreakdown, WorldCouncilSystem } from './WorldCouncilSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
 import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from './CulturalVictory';
+import {
+  AEROSPACE_INDUSTRIES_ID,
+  AEROSPACE_PARTS_ID,
+  DEFAULT_REQUIRED_AEROSPACE_PARTS,
+} from '../data/scienceVictory';
 
 export type VictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
 
@@ -72,8 +77,6 @@ export interface DiplomaticVictoryProgress {
   scoreBreakdown: DiplomaticScoreBreakdown;
 }
 
-const AEROSPACE_PARTS_ID = 'aerospace_parts';
-const AEROSPACE_CORP_ID = 'aerospace_industries';
 const SCIENCE_PROGRESS_INTERVAL = 25;
 const CULTURAL_PROGRESS_INTERVAL = 25;
 const DIPLOMATIC_PROGRESS_INTERVAL = 25;
@@ -113,7 +116,7 @@ export class VictorySystem {
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
-      requiredAerospaceParts: conditions.science?.requiredAerospaceParts ?? 5,
+      requiredAerospaceParts: conditions.science?.requiredAerospaceParts ?? DEFAULT_REQUIRED_AEROSPACE_PARTS,
     };
     this.dominationEnabled = conditions.domination?.enabled ?? true;
     this.culturalEnabled = conditions.cultural?.enabled ?? true;
@@ -194,6 +197,10 @@ export class VictorySystem {
     };
   }
 
+  getScienceVictorySettings(): Readonly<ScienceVictorySettings> {
+    return { ...this.science };
+  }
+
   /** Structured outcome once a nation has won, else null. */
   getVictoryState(): VictoryState | null {
     return this.victoryState ? { ...this.victoryState } : null;
@@ -227,8 +234,7 @@ export class VictorySystem {
       (city) => this.cityManager.getBuildings(city.id).hasActive('factory'),
     );
     const hasAerospaceIndustries = this.corporationSystem
-      ?.getFoundedCorporationsForNation(nationId)
-      .some((c) => c.corporationId === AEROSPACE_CORP_ID) ?? false;
+      ?.isFounded(AEROSPACE_INDUSTRIES_ID) ?? false;
 
     const fulfilledMilestones = [hasFlight, hasAluminum, hasFactory, hasAerospaceIndustries]
       .filter(Boolean).length;

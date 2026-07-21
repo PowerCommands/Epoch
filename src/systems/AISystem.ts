@@ -143,6 +143,14 @@ import {
   type SeaResourceCandidate,
 } from './ai/AISeaResourceMemorySystem';
 import { CityFocusSystem } from './ai/CityFocusSystem';
+import type { CorporationSystem } from './CorporationSystem';
+import {
+  AEROSPACE_INDUSTRIES_ID,
+  getAICorporationProductionCandidates,
+} from './ai/AICorporationProduction';
+import type { AerospacePartSystem } from './AerospacePartSystem';
+import { getAIAerospacePartProductionCandidate } from './ai/AIAerospacePartProduction';
+import { DEFAULT_REQUIRED_AEROSPACE_PARTS } from '../data/scienceVictory';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -407,6 +415,7 @@ function describeProducible(item: Producible): string {
     case 'building': return `building:${item.buildingType.name}`;
     case 'wonder': return `wonder:${item.wonderType.name}`;
     case 'corporation': return `corporation:${item.corporationType.name}`;
+    case 'manufacturedResource': return `manufacturedResource:${item.productionType.name}`;
     case 'tradeRoute': return `tradeRoute:${item.displayName}`;
   }
 }
@@ -503,6 +512,8 @@ export class AISystem {
   });
   private readonly cityFocusSystem: CityFocusSystem;
   private readonly obsoleteUnitProductionBlockLogKeys = new Set<string>();
+  private readonly aerospaceEligibilityLoggedNationIds = new Set<string>();
+  private readonly aerospaceManufacturingStateByNation = new Map<string, string>();
   private readonly doctrineEvaluator: AIMilitaryDoctrineEvaluator;
   private readonly militaryPickRationaleByNation = new Map<string, {
     role: AIMilitaryDoctrineRole | null;
@@ -551,6 +562,10 @@ export class AISystem {
     private readonly tradeConnectionSystem?: TradeConnectionSystem,
     private readonly diplomaticProposalSystem?: DiplomaticProposalSystem,
     private readonly aiExplorationSystem?: AIExplorationSystem,
+    private readonly corporationSystem?: CorporationSystem,
+    private readonly scienceVictoryEnabled = false,
+    private readonly aerospacePartSystem?: AerospacePartSystem,
+    private readonly requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -4914,6 +4929,75 @@ export class AISystem {
       });
     }
 
+    if (this.corporationSystem) {
+      const corporationCandidates = getAICorporationProductionCandidates({
+        city,
+        nationCities: this.cityManager.getCitiesByOwner(nationId),
+        corporationSystem: this.corporationSystem,
+        productionSystem: this.productionSystem,
+        scienceVictoryEnabled: this.scienceVictoryEnabled,
+      });
+      candidates.push(...corporationCandidates);
+
+      const aerospace = corporationCandidates.find((candidate) => (
+        candidate.item.kind === 'corporation'
+          && candidate.item.corporationType.id === AEROSPACE_INDUSTRIES_ID
+      ));
+      if (
+        aerospace
+        && this.scienceVictoryEnabled
+        && !this.aerospaceEligibilityLoggedNationIds.has(nationId)
+      ) {
+        this.aerospaceEligibilityLoggedNationIds.add(nationId);
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        const factoryCount = this.cityManager.getCitiesByOwner(nationId).filter((ownedCity) => (
+          this.cityManager.getBuildings(ownedCity.id).hasActive('factory')
+        )).length;
+        this.logScienceVictoryAI(
+          nationId,
+          `${nationName} eligible for AeroSpace Industries: city=${city.name} factories=${factoryCount} aluminum=yes; considered candidate baseScore=${Math.round(aerospace.baseScore)}.`,
+        );
+      }
+    }
+
+    if (this.aerospacePartSystem) {
+      const nationCities = this.cityManager.getCitiesByOwner(nationId);
+      const aerospacePartCandidate = getAIAerospacePartProductionCandidate({
+        city,
+        nationCities,
+        aerospacePartSystem: this.aerospacePartSystem,
+        productionSystem: this.productionSystem,
+        scienceVictoryEnabled: this.scienceVictoryEnabled,
+        requiredAerospaceParts: this.requiredAerospaceParts,
+      });
+      if (aerospacePartCandidate) candidates.push(aerospacePartCandidate);
+
+      if (this.scienceVictoryEnabled && nationCities[0]?.id === city.id) {
+        const eligibleCity = nationCities.find((ownedCity) => this.aerospacePartSystem?.canCityProduce(ownedCity));
+        const blockers = eligibleCity
+          ? []
+          : [...new Set(nationCities.flatMap((ownedCity) => (
+            this.aerospacePartSystem?.getCityProductionBlockers(ownedCity) ?? []
+          )))];
+        const state = eligibleCity ? `eligible:${eligibleCity.id}` : `blocked:${blockers.join('|')}`;
+        if (this.aerospaceManufacturingStateByNation.get(nationId) !== state) {
+          this.aerospaceManufacturingStateByNation.set(nationId, state);
+          const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+          if (eligibleCity) {
+            this.logScienceVictoryAI(
+              nationId,
+              `${nationName} eligible to manufacture Aerospace Parts: city=${eligibleCity.name} progress=${this.aerospacePartSystem.getQuantity(nationId)}/${this.requiredAerospaceParts}.`,
+            );
+          } else if (this.aerospacePartSystem.isGloballyUnlocked()) {
+            this.logScienceVictoryAI(
+              nationId,
+              `${nationName} cannot manufacture Aerospace Parts: ${blockers.join(', ') || 'no eligible city'}.`,
+            );
+          }
+        }
+      }
+    }
+
     const wonder = this.pickBestAvailableWorldWonder(city, nationId, eraStrategy);
     if (wonder) {
       candidates.push({
@@ -5020,6 +5104,30 @@ export class AISystem {
           this.formatLog(nationId, `prioritizing World Wonder: ${best.item.wonderType.name}`),
         );
       }
+      if (best.item.kind === 'corporation') {
+        const score = scoreAIProductionCandidate(best, strategy, eraStrategy, cityFocus);
+        if (best.item.corporationType.id === AEROSPACE_INDUSTRIES_ID && this.scienceVictoryEnabled) {
+          const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+          this.logScienceVictoryAI(
+            nationId,
+            `${nationName} selected AeroSpace Industries in ${city.name} score=${Math.round(score)}; production began.`,
+          );
+        } else {
+          this.logStrategicEvent?.(
+            nationId,
+            `AI selected corporation ${best.item.corporationType.name} in ${city.name}, score ${Math.round(score)}.`,
+          );
+        }
+      }
+      if (best.item.kind === 'manufacturedResource') {
+        const score = scoreAIProductionCandidate(best, strategy, eraStrategy, cityFocus);
+        const bonus = this.aerospacePartSystem?.getProductionBonusPercent(nationId) ?? 0;
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        this.logScienceVictoryAI(
+          nationId,
+          `${nationName} selected Aerospace Part production in ${city.name} score=${Math.round(score)} bonus=${bonus}%; production began.`,
+        );
+      }
       const itemName = this.foundationProducibleName(best.item);
       const reason = this.describeFoundationProductionReason(best.item);
       if (
@@ -5047,6 +5155,12 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private logScienceVictoryAI(nationId: string, message: string): void {
+    const tagged = `[ScienceVictoryAI] ${message}`;
+    console.log(this.formatLog(nationId, tagged));
+    this.logStrategicEvent?.(nationId, tagged);
   }
 
   private getNavalSaturationUrgencyModifier(
@@ -5326,6 +5440,8 @@ export class AISystem {
         return `unit:${item.unitType.name}`;
       case 'corporation':
         return `corporation:${item.corporationType.name}`;
+      case 'manufacturedResource':
+        return `manufacturedResource:${item.productionType.name}`;
       case 'tradeRoute':
         return `tradeRoute:${item.displayName}`;
     }
@@ -6141,6 +6257,7 @@ export class AISystem {
     }
     if (item.kind === 'wonder') return 'wonder';
     if (item.kind === 'corporation') return 'corporation';
+    if (item.kind === 'manufacturedResource') return 'science victory';
     if (item.kind === 'tradeRoute') return 'infrastructure';
     const bt = item.buildingType;
     if ((bt.modifiers.happinessPerTurn ?? 0) > 0) return 'low happiness';
@@ -6156,6 +6273,7 @@ export class AISystem {
     if (item.kind === 'unit') return item.unitType.name;
     if (item.kind === 'wonder') return item.wonderType.name;
     if (item.kind === 'corporation') return item.corporationType.name;
+    if (item.kind === 'manufacturedResource') return item.productionType.name;
     if (item.kind === 'tradeRoute') return item.displayName;
     return item.buildingType.name;
   }

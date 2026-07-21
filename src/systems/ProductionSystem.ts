@@ -47,6 +47,7 @@ export type ProductionCompletedListener = (cityId: string, item: Producible, ent
 export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Producible, entry: QueueEntry) => void;
 export type ProductionChangedListener = (cityId: string) => void;
 export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
+export type ItemProductionPercentProvider = (nationId: string, item: Producible) => number;
 
 export type CompleteCurrentProductionResult =
   | { kind: 'completed'; item: Producible }
@@ -72,6 +73,7 @@ export class ProductionSystem {
   private readonly completedSuccessfullyListeners: ProductionCompletedSuccessfullyListener[] = [];
   private readonly changedListeners: ProductionChangedListener[] = [];
   private readonly removedListeners: ProductionRemovedListener[] = [];
+  private itemProductionPercentProvider: ItemProductionPercentProvider = () => 0;
   private hasSkippedInitialTurnStart = false;
 
   constructor(
@@ -306,6 +308,10 @@ export class ProductionSystem {
     this.removedListeners.push(listener);
   }
 
+  setItemProductionPercentProvider(provider: ItemProductionPercentProvider): void {
+    this.itemProductionPercentProvider = provider;
+  }
+
   private handleTurnStart(e: TurnStartEvent): void {
     if (!this.hasSkippedInitialTurnStart) {
       this.hasSkippedInitialTurnStart = true;
@@ -373,6 +379,8 @@ export class ProductionSystem {
         return item.wonderType.productionCost;
       case 'corporation':
         return item.corporationType.productionCost;
+      case 'manufacturedResource':
+        return item.productionType.productionCost;
       case 'tradeRoute':
         return item.productionCost;
     }
@@ -390,6 +398,8 @@ export class ProductionSystem {
         return 'Wonder already completed';
       case 'corporation':
         return 'Corporation already founded or requirements no longer met';
+      case 'manufacturedResource':
+        return 'Manufactured resource requirements are no longer met';
       case 'tradeRoute':
         return undefined;
     }
@@ -447,17 +457,18 @@ export class ProductionSystem {
   }
 
   private getPolicyProductionPercent(nationId: string, item: Producible): number {
+    const itemBonus = this.itemProductionPercentProvider(nationId, item);
     if (item.kind === 'wonder') {
-      return this.policySystem?.getPercentModifierTotal(nationId, 'wonderProductionPercent') ?? 0;
+      return itemBonus + (this.policySystem?.getPercentModifierTotal(nationId, 'wonderProductionPercent') ?? 0);
     }
     if (
       item.kind === 'unit' &&
       item.unitType.isNaval !== true &&
       item.unitType.category !== 'air'
     ) {
-      return this.policySystem?.getPercentModifierTotal(nationId, 'landUnitProductionPercent') ?? 0;
+      return itemBonus + (this.policySystem?.getPercentModifierTotal(nationId, 'landUnitProductionPercent') ?? 0);
     }
-    return 0;
+    return itemBonus;
   }
 
   private notifyChanged(cityId: string): void {

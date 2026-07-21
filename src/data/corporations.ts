@@ -167,7 +167,7 @@ export const CORPORATIONS: CorporationDefinition[] = [
   {
     id: 'aerospace_industries',
     name: 'AeroSpace Industries',
-    description: 'Builds aluminum-backed air industry into aerospace parts.',
+    description: 'Starts the global space race and grants its owner +50% Production toward Aerospace Parts.',
     requiredTechIds: ['flight'],
     requiredResourceIds: ['aluminum'],
     requiredBuildingIds: ['factory'],
@@ -176,7 +176,7 @@ export const CORPORATIONS: CorporationDefinition[] = [
     productionCost: 860,
     manufacturedResourceId: 'aerospace_parts',
     productionBuildingId: 'factory',
-    resourcePerBuilding: 1,
+    resourcePerBuilding: 0,
   },
   {
     id: 'global_media_network',

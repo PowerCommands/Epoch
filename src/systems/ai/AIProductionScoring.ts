@@ -2,6 +2,7 @@ import type { Producible } from '../../types/producible';
 import type { AIStrategy } from '../../types/aiStrategy';
 import type { AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
 import type { CityFocusType } from '../../entities/City';
+import { AEROSPACE_INDUSTRIES_ID } from '../../data/scienceVictory';
 
 // Strategy weights shape AI production preference without changing
 // production rules. Categories map directly to AIStrategy.production weights.
@@ -16,6 +17,8 @@ export type AIProductionCategory =
   | 'goldBuilding'
   | 'happinessBuilding'
   | 'wonder'
+  | 'corporation'
+  | 'aerospacePart'
   | 'worker'
   | 'workBoat';
 
@@ -45,6 +48,8 @@ function getProductionWeight(
     case 'settler':
       return strategy.production.settlerWeight;
     case 'scout':
+    case 'corporation':
+    case 'aerospacePart':
     case 'worker':
     case 'workBoat':
       return 1;
@@ -92,6 +97,10 @@ function getEraProductionMultiplier(
       return weights.happinessBuilding;
     case 'wonder':
       return weights.wonder;
+    case 'corporation':
+      return 1;
+    case 'aerospacePart':
+      return 1;
     case 'worker':
       return weights.worker ?? 1;
     case 'workBoat':
@@ -144,6 +153,10 @@ function getCulturalFocusMultiplier(candidate: AIProductionCandidate): number {
       return 2.5;
     case 'wonder':
       return 3;
+    case 'corporation':
+      return 1.1;
+    case 'aerospacePart':
+      return 1;
     case 'happinessBuilding':
       return 1.15;
     case 'military':
@@ -169,6 +182,10 @@ function getMilitaryFocusMultiplier(candidate: AIProductionCandidate): number {
       return 1.1;
     case 'wonder':
       return 0.75;
+    case 'corporation':
+      return 0.9;
+    case 'aerospacePart':
+      return 0.95;
     case 'cultureBuilding':
       return 0.85;
     default:
@@ -186,6 +203,10 @@ function getEconomicFocusMultiplier(candidate: AIProductionCandidate): number {
       return 1.1;
     case 'wonder':
       return 0.85;
+    case 'corporation':
+      return 1.15;
+    case 'aerospacePart':
+      return 1;
     case 'military':
       return 0.85;
     default:
@@ -206,6 +227,10 @@ function getNavalFocusMultiplier(candidate: AIProductionCandidate): number {
       return 0.9;
     case 'wonder':
       return 0.85;
+    case 'corporation':
+      return 0.95;
+    case 'aerospacePart':
+      return 0.95;
     default:
       return 1;
   }
@@ -221,6 +246,13 @@ function getScientificFocusMultiplier(candidate: AIProductionCandidate): number 
       return 0.9;
     case 'wonder':
       return 0.9;
+    case 'corporation':
+      return candidate.item.kind === 'corporation'
+        && candidate.item.corporationType.id === AEROSPACE_INDUSTRIES_ID
+        ? 1.1
+        : 1;
+    case 'aerospacePart':
+      return 1.2;
     default:
       return 1;
   }

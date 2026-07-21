@@ -415,6 +415,8 @@ export class MainMenuScene extends Phaser.Scene {
         victoryConditions: {
           domination: options.victoryConditions.domination?.enabled ?? false,
           science: options.victoryConditions.science?.enabled ?? false,
+          scienceRequiredAerospaceParts: options.victoryConditions.science?.requiredAerospaceParts
+            ?? savedState.victoryConditions?.scienceRequiredAerospaceParts,
           cultural: options.victoryConditions.cultural?.enabled ?? false,
           diplomatic: options.victoryConditions.diplomatic?.enabled ?? false,
         },

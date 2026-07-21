@@ -50,6 +50,7 @@ export interface CityViewWonderOption {
 
 export interface CityViewCorporationOption {
   id: string;
+  spriteId?: string;
   name: string;
   cost: number;
   description: string;
@@ -655,7 +656,7 @@ export class CityView {
     const corporations = this.renderProductionAccordion('corporations', 'Corporations', corporationOptions, (grid, option) => {
       const estimate = option.turnsRemaining ?? option.cost;
       const button = this.createProductionButton(
-        getCorporationSpritePath(option.id),
+        getCorporationSpritePath(option.spriteId ?? option.id),
         `${option.name} (${estimate})`,
       );
       const disabled = option.disabled ?? false;

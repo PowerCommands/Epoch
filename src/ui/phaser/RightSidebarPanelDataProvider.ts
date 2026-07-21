@@ -13,6 +13,12 @@ import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
 import { CORPORATIONS } from '../../data/corporations';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getResourceDisplayName } from '../../data/resources';
+import {
+  AEROSPACE_INDUSTRIES_ID,
+  AEROSPACE_PART_PRODUCTION,
+  AEROSPACE_PARTS_ID,
+  DEFAULT_REQUIRED_AEROSPACE_PARTS,
+} from '../../data/scienceVictory';
 import type { City } from '../../entities/City';
 import type { Nation } from '../../entities/Nation';
 import type { Unit } from '../../entities/Unit';
@@ -46,6 +52,7 @@ import type { WonderSystem } from '../../systems/WonderSystem';
 import type { WorldCouncilSystem } from '../../systems/WorldCouncilSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../../types/worldCouncil';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
+import type { AerospacePartSystem } from '../../systems/AerospacePartSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
 import type { TradeConnection } from '../../types/tradeConnection';
@@ -131,6 +138,8 @@ export class RightSidebarPanelDataProvider {
   private wonderSystem: WonderSystem | null = null;
   private worldCouncilSystem: WorldCouncilSystem | null = null;
   private corporationSystem: CorporationSystem | null = null;
+  private aerospacePartSystem: AerospacePartSystem | null = null;
+  private requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS;
   private tradeDealSystem: TradeDealSystem | null = null;
   private tradeConnectionSystem: TradeConnectionSystem | null = null;
   private tradeDiplomacySystem: TradeDiplomacySystem | null = null;
@@ -225,6 +234,11 @@ export class RightSidebarPanelDataProvider {
 
   setCorporationSystem(corporationSystem: CorporationSystem): void {
     this.corporationSystem = corporationSystem;
+  }
+
+  setAerospacePartSystem(system: AerospacePartSystem, requiredAerospaceParts: number): void {
+    this.aerospacePartSystem = system;
+    this.requiredAerospaceParts = requiredAerospaceParts;
   }
 
   setTradeDealSystem(tradeDealSystem: TradeDealSystem): void {
@@ -1239,6 +1253,33 @@ export class RightSidebarPanelDataProvider {
         spritePath: getProducibleSpritePath(item),
         onClick: () => {
           if (disabled || !corporationSystem?.canCityProduceCorporation(city, corporationType.id)) return;
+          this.productionSystem.enqueue(city.id, item);
+          this.requestRefresh();
+        },
+      });
+    }
+
+    const aerospacePartSystem = this.aerospacePartSystem;
+    if (aerospacePartSystem) {
+      const item: Producible = {
+        kind: 'manufacturedResource',
+        productionType: AEROSPACE_PART_PRODUCTION,
+      };
+      const queuedHere = this.productionSystem.getQueue(city.id).some((entry) => (
+        entry.item.kind === 'manufacturedResource'
+          && entry.item.productionType.id === AEROSPACE_PARTS_ID
+      ));
+      const blockers = aerospacePartSystem.getCityProductionBlockers(city);
+      const reason = queuedHere ? 'Already in this queue' : blockers.join(', ') || undefined;
+      const turns = this.productionSystem.getTurnsEstimate(city.id, item);
+      rows.push({
+        kind: 'button',
+        text: `${AEROSPACE_PART_PRODUCTION.name} (${turns}) — ${aerospacePartSystem.getQuantity(city.ownerId)}/${this.requiredAerospaceParts}${reason ? ` — ${reason}` : ''}`,
+        disabled: reason !== undefined,
+        accentColor: 0x8fb9d9,
+        spritePath: getCorporationSpritePath(AEROSPACE_INDUSTRIES_ID),
+        onClick: () => {
+          if (reason || !aerospacePartSystem.canCityProduce(city)) return;
           this.productionSystem.enqueue(city.id, item);
           this.requestRefresh();
         },
@@ -2395,6 +2436,8 @@ function getProducibleName(item: Producible): string {
       return item.wonderType.name;
     case 'corporation':
       return item.corporationType.name;
+    case 'manufacturedResource':
+      return item.productionType.name;
     case 'tradeRoute':
       return item.displayName;
   }
@@ -2408,6 +2451,8 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getWonderSpritePath(item.wonderType.id);
     case 'corporation':
       return getCorporationSpritePath(item.corporationType.id);
+    case 'manufacturedResource':
+      return getCorporationSpritePath('aerospace_industries');
     case 'building':
     case 'tradeRoute':
       return undefined;

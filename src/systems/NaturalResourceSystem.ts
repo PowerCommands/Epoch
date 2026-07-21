@@ -44,8 +44,7 @@ export class NaturalResourceSystem {
     const candidates: Tile[] = [];
     for (const row of mapData.tiles) {
       for (const tile of row) {
-        if (tile.resourceId !== undefined) continue;
-        if (cityCoordKeys.has(this.coordKey(tile.x, tile.y))) continue;
+        if (!isNaturalResourcePlacementTileAvailable(tile, cityCoordKeys)) continue;
         if (getNaturalResourcesForTileType(tile.type).length === 0) continue;
         candidates.push(tile);
       }
@@ -165,8 +164,21 @@ export class NaturalResourceSystem {
   }
 
   private coordKey(x: number, y: number): string {
-    return `${x},${y}`;
+    return naturalResourcePlacementCoordKey(x, y);
   }
+}
+
+/** Shared placement constraints used by ordinary and victory-resource passes. */
+export function isNaturalResourcePlacementTileAvailable(
+  tile: Tile,
+  cityCoordKeys: ReadonlySet<string>,
+): boolean {
+  return tile.resourceId === undefined
+    && !cityCoordKeys.has(naturalResourcePlacementCoordKey(tile.x, tile.y));
+}
+
+export function naturalResourcePlacementCoordKey(x: number, y: number): string {
+  return `${x},${y}`;
 }
 
 class SeededRng {

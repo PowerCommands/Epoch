@@ -23,7 +23,13 @@ import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
 import { BorderPressureSystem, type BorderPressureEvent } from '../systems/BorderPressureSystem';
 import { ForeignTroopViolationSystem } from '../systems/ForeignTroopViolationSystem';
 import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
-import { NaturalResourceSystem } from '../systems/NaturalResourceSystem';
+import { initializeWorldNaturalResources } from '../systems/WorldResourceInitialization';
+import {
+  AEROSPACE_INDUSTRIES_ID,
+  AEROSPACE_PART_PRODUCTION,
+  AEROSPACE_PARTS_ID,
+  DEFAULT_REQUIRED_AEROSPACE_PARTS,
+} from '../data/scienceVictory';
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
 import { MilitaryUnhappinessSystem } from '../systems/MilitaryUnhappinessSystem';
@@ -132,6 +138,7 @@ import { WonderSystem } from '../systems/WonderSystem';
 import { WorldCouncilSystem } from '../systems/WorldCouncilSystem';
 import { WorldCouncilResolutionSystem } from '../systems/WorldCouncilResolutionSystem';
 import { CorporationSystem } from '../systems/CorporationSystem';
+import { AerospacePartSystem } from '../systems/AerospacePartSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
 import type { IGridSystem } from '../systems/grid/IGridSystem';
 import { HexGridSystem } from '../systems/grid/HexGridSystem';
@@ -346,16 +353,23 @@ export class GameScene extends Phaser.Scene {
     const activeUnits = scenario.units.filter(u => activeSet.has(u.nationId));
     const cityTerritorySystem = new CityTerritorySystem(gameSpeed, gridSystem);
 
-    if (!data.savedState) {
-      new NaturalResourceSystem().generate(mapData, {
-        mapKey: data.mapKey,
-        activeNationIds: data.activeNationIds,
-        humanNationId: data.humanNationId,
-        resourceAbundance,
-        cityCoords: activeCities.map((city) => ({ x: city.q, y: city.r })),
-        worldSeed: data.worldSeed ?? generateWorldSeed(),
-      });
-    }
+    // Fresh maps finish ordinary seeded resource distribution first, then add
+    // enabled-victory resource guarantees. Loaded saves skip both passes.
+    initializeWorldNaturalResources(mapData, {
+      isLoadedGame: data.savedState !== undefined,
+      mapKey: data.mapKey,
+      activeNationIds: data.activeNationIds,
+      humanNationId: data.humanNationId,
+      resourceAbundance,
+      cityCoords: activeCities.map((city) => ({ x: city.q, y: city.r })),
+      worldSeed: data.worldSeed ?? generateWorldSeed(),
+      scienceVictoryEnabled: data.savedState?.victoryConditions?.science
+        ?? data.victoryConditions?.science?.enabled
+        ?? true,
+      requiredAerospaceParts: data.savedState?.victoryConditions?.scienceRequiredAerospaceParts
+        ?? data.victoryConditions?.science?.requiredAerospaceParts
+        ?? DEFAULT_REQUIRED_AEROSPACE_PARTS,
+    });
 
     // 3. Create nations and claim AI start territories (mutates mapData.tiles)
     const nationManager = NationManager.loadFromScenario(activeNations, mapData, gridSystem);
@@ -504,6 +518,7 @@ export class GameScene extends Phaser.Scene {
     const policySystem = new PolicySystem(nationManager);
     const wonderSystem = new WonderSystem();
     let corporationSystem: CorporationSystem | undefined;
+    let aerospacePartSystem: AerospacePartSystem;
     const territoryExpansionBonusSystem = new TerritoryExpansionBonusSystem(gridSystem, cityTerritorySystem);
     let getAvailableLuxuryResourceQuantities: (
       nationId: string,
@@ -1125,9 +1140,24 @@ export class GameScene extends Phaser.Scene {
         recalculateHappiness: (nationId) => happinessSystem.recalculateNation(nationId),
       },
     );
-    resourceAccessSystem.setManufacturedResourceProvider((nationId) =>
-      corporationSystem?.getNationManufacturedResources(nationId) ?? new Map(),
+    aerospacePartSystem = new AerospacePartSystem(
+      cityManager,
+      researchSystem,
+      resourceAccessSystem,
+      corporationSystem,
     );
+    resourceAccessSystem.setManufacturedResourceProvider((nationId) => {
+      const resources = new Map(corporationSystem?.getNationManufacturedResources(nationId) ?? []);
+      for (const [resourceId, quantity] of aerospacePartSystem.getManufacturedResources(nationId)) {
+        resources.set(resourceId, (resources.get(resourceId) ?? 0) + quantity);
+      }
+      return resources;
+    });
+    productionSystem.setItemProductionPercentProvider((nationId, item) => (
+      item.kind === 'manufacturedResource' && item.productionType.id === AEROSPACE_PARTS_ID
+        ? aerospacePartSystem.getProductionBonusPercent(nationId)
+        : 0
+    ));
     const humanNeedsResearchSelection = (): boolean => {
       if (!humanNationId) return false;
       return !researchSystem.getCurrentResearch(humanNationId)
@@ -2126,7 +2156,12 @@ export class GameScene extends Phaser.Scene {
     const effectiveVictoryConditions = savedVictoryConditions
       ? {
         domination: { enabled: savedVictoryConditions.domination },
-        science: { ...data.victoryConditions?.science, enabled: savedVictoryConditions.science },
+        science: {
+          ...data.victoryConditions?.science,
+          enabled: savedVictoryConditions.science,
+          requiredAerospaceParts: savedVictoryConditions.scienceRequiredAerospaceParts
+            ?? data.victoryConditions?.science?.requiredAerospaceParts,
+        },
         cultural: { enabled: savedVictoryConditions.cultural },
         diplomatic: { enabled: savedVictoryConditions.diplomatic ?? true },
       }
@@ -2232,6 +2267,10 @@ export class GameScene extends Phaser.Scene {
       tradeConnectionSystem,
       diplomaticProposalSystem,
       aiExplorationSystem,
+      corporationSystem,
+      victorySystem.getEnabledConditions().science,
+      aerospacePartSystem,
+      victorySystem.getScienceVictorySettings().requiredAerospaceParts,
     );
     aiSystem.setCultureSystem(cultureSystem);
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
@@ -2308,10 +2347,13 @@ export class GameScene extends Phaser.Scene {
       // Autoplay silences console.log to keep long headless runs quiet, but a
       // few prefixes are diagnostics the autorun pipeline exists to collect.
       // Suppressing those makes the run unobservable rather than merely quiet.
-      const autoplayLogAllowList = ['[autorun]', '[Diplomacy]', '[AggressionMemory]'];
+      const autoplayLogAllowList = ['[autorun]', '[Diplomacy]', '[AggressionMemory]', '[ScienceVictoryAI]'];
       console.log = (...args: unknown[]) => {
         const first = args[0];
-        if (typeof first === 'string' && autoplayLogAllowList.some((prefix) => first.startsWith(prefix))) {
+        // Matched anywhere in the line, not just at the start: several systems
+        // route diagnostics through a formatter that prefixes turn/nation
+        // context ahead of the tag (see AISystem.logScienceVictoryAI).
+        if (typeof first === 'string' && autoplayLogAllowList.some((tag) => first.includes(tag))) {
           originalConsoleLog(...args);
         }
       };
@@ -2970,6 +3012,26 @@ export class GameScene extends Phaser.Scene {
         productionSystem.removeCorporationFromAllQueues(item.corporationType.id);
         resourceSystem.recalculateForNation(city.ownerId);
         happinessSystem.recalculateNation(city.ownerId);
+        refreshOpenCityView();
+        rightPanel?.requestRefresh();
+        hudLayer?.refresh();
+        updateCityProductionRhythm(city, item);
+        return true;
+      }
+
+      if (item.kind === 'manufacturedResource') {
+        if (item.productionType.id !== AEROSPACE_PARTS_ID) return false;
+        const quantity = aerospacePartSystem.completeProduction(city);
+        if (quantity === null) return false;
+        const required = victorySystem.getScienceVictorySettings().requiredAerospaceParts;
+        const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
+        const bonus = aerospacePartSystem.getProductionBonusPercent(city.ownerId);
+        logManager.info({
+          nationId: city.ownerId,
+          category: 'victory',
+          message: `[ScienceVictoryAI] ${nationName} completed Aerospace Part in ${city.name}; bonus=${bonus}%; accumulated=${quantity}/${required}.`,
+        });
+        resourceSystem.recalculateForNation(city.ownerId);
         refreshOpenCityView();
         rightPanel?.requestRefresh();
         hudLayer?.refresh();
@@ -4772,6 +4834,10 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setWorldCouncilSystem(worldCouncilSystem);
     rightPanel.setCorporationSystem(corporationSystem);
+    rightPanel.setAerospacePartSystem(
+      aerospacePartSystem,
+      victorySystem.getScienceVictorySettings().requiredAerospaceParts,
+    );
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setTradeConnectionSystem(tradeConnectionSystem);
     rightPanel.setTradeDiplomacySystem(tradeDiplomacySystem);
@@ -5072,6 +5138,17 @@ export class GameScene extends Phaser.Scene {
         text: `${timelineNationName(result.founded.founderNationId)} founded ${result.definition.name}`,
         eventNationIds: [result.founded.founderNationId],
       });
+      if (result.definition.id === AEROSPACE_INDUSTRIES_ID) {
+        const founder = nationManager.getNation(result.founded.founderNationId);
+        const cityName = result.founded.cityId
+          ? cityManager.getCity(result.founded.cityId)?.name
+          : undefined;
+        logManager.info({
+          nationId: result.founded.founderNationId,
+          category: 'victory',
+          message: `[ScienceVictoryAI] ${founder?.name ?? result.founded.founderNationId} founded AeroSpace Industries${cityName ? ` in ${cityName}` : ''}; global Aerospace Parts production unlocked; founder production bonus=50%.`,
+        });
+      }
     });
     rightPanel.setBuilderHintProvider((tile) => {
       if (!selectedBuilderForHints) return null;
@@ -5193,7 +5270,7 @@ export class GameScene extends Phaser.Scene {
       const isQueuedHere = (corporationId: string): boolean => productionSystem.getQueue(city.id)
         .some((entry) => entry.item.kind === 'corporation' && entry.item.corporationType.id === corporationId);
 
-      return CORPORATIONS
+      const corporationOptions: CityViewCorporationOption[] = CORPORATIONS
         .filter((corporationType) => !corporationSystem?.isFounded(corporationType.id))
         .map((corporationType) => {
           const queuedHere = isQueuedHere(corporationType.id);
@@ -5208,11 +5285,36 @@ export class GameScene extends Phaser.Scene {
             cost: productionSystem.getCost({ kind: 'corporation', corporationType }),
             turnsRemaining: productionSystem.getTurnsEstimate(city.id, { kind: 'corporation', corporationType }),
             description: corporationType.description,
-            outputSummary: `Produces ${corporationType.resourcePerBuilding} ${corporationType.manufacturedResourceId} per ${corporationType.productionBuildingId}.`,
+            outputSummary: corporationType.id === AEROSPACE_INDUSTRIES_ID
+              ? 'Globally unlocks Aerospace Part manufacturing; founder receives +50% Production for parts.'
+              : `Produces ${corporationType.resourcePerBuilding} ${corporationType.manufacturedResourceId} per ${corporationType.productionBuildingId}.`,
             disabled,
             reason,
           };
         });
+      const aerospaceQueuedHere = productionSystem.getQueue(city.id).some((entry) => (
+        entry.item.kind === 'manufacturedResource'
+          && entry.item.productionType.id === AEROSPACE_PARTS_ID
+      ));
+      const aerospaceBlockers = aerospacePartSystem.getCityProductionBlockers(city);
+      corporationOptions.push({
+        id: AEROSPACE_PARTS_ID,
+        spriteId: AEROSPACE_INDUSTRIES_ID,
+        name: AEROSPACE_PART_PRODUCTION.name,
+        cost: productionSystem.getCost({
+          kind: 'manufacturedResource',
+          productionType: AEROSPACE_PART_PRODUCTION,
+        }),
+        turnsRemaining: productionSystem.getTurnsEstimate(city.id, {
+          kind: 'manufacturedResource',
+          productionType: AEROSPACE_PART_PRODUCTION,
+        }),
+        description: AEROSPACE_PART_PRODUCTION.description,
+        outputSummary: `Produces 1 accumulated Aerospace Part. Current: ${aerospacePartSystem.getQuantity(city.ownerId)}/${victorySystem.getScienceVictorySettings().requiredAerospaceParts}.`,
+        disabled: aerospaceQueuedHere || aerospaceBlockers.length > 0,
+        reason: aerospaceQueuedHere ? 'Already in this queue' : aerospaceBlockers.join(', ') || undefined,
+      });
+      return corporationOptions;
     };
     const getCityViewPlacementRenderState = (city: City): CityViewPlacementRenderState => {
       const placementState = buildingPlacementSystem.getState();
@@ -5594,6 +5696,27 @@ export class GameScene extends Phaser.Scene {
     cityView.onCorporationRequested((corporationId) => {
       const city = getOpenCityViewCity();
       if (!city) return;
+      if (corporationId === AEROSPACE_PARTS_ID) {
+        if (!aerospacePartSystem.canCityProduce(city)) {
+          refreshOpenCityView();
+          return;
+        }
+        const alreadyQueued = productionSystem.getQueue(city.id).some((entry) => (
+          entry.item.kind === 'manufacturedResource'
+            && entry.item.productionType.id === AEROSPACE_PARTS_ID
+        ));
+        if (!alreadyQueued) {
+          productionSystem.enqueue(city.id, {
+            kind: 'manufacturedResource',
+            productionType: AEROSPACE_PART_PRODUCTION,
+          });
+        }
+        rightPanel?.requestRefresh();
+        if (cityView.isAutoCloseEnabled()) closeOpenCityView();
+        else cityView.switchToQueueMode();
+        refreshOpenCityView();
+        return;
+      }
       const corporationType = getCorporationById(corporationId);
       if (!corporationType) return;
       if (!corporationSystem?.canCityProduceCorporation(city, corporationType.id)) {
@@ -6287,6 +6410,7 @@ export class GameScene extends Phaser.Scene {
           visibilitySystem,
           exileProtectionSystem,
           corporationSystem,
+          aerospacePartSystem,
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
@@ -6842,6 +6966,7 @@ export class GameScene extends Phaser.Scene {
         visibilitySystem,
         exileProtectionSystem,
         corporationSystem,
+        aerospacePartSystem,
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
@@ -6930,6 +7055,7 @@ export class GameScene extends Phaser.Scene {
           visibilitySystem,
           exileProtectionSystem,
           corporationSystem,
+          aerospacePartSystem,
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
@@ -6986,6 +7112,7 @@ export class GameScene extends Phaser.Scene {
         visibilitySystem,
         exileProtectionSystem,
         corporationSystem,
+        aerospacePartSystem,
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
@@ -7528,6 +7655,8 @@ function getProducibleName(item: Producible): string {
       return item.wonderType.name;
     case 'corporation':
       return item.corporationType.name;
+    case 'manufacturedResource':
+      return item.productionType.name;
     case 'tradeRoute':
       return item.displayName;
   }
@@ -7543,6 +7672,8 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getWonderSpritePath(item.wonderType.id);
     case 'corporation':
       return getCorporationSpritePath(item.corporationType.id);
+    case 'manufacturedResource':
+      return getCorporationSpritePath(AEROSPACE_INDUSTRIES_ID);
   }
 }
 
