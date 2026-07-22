@@ -48,6 +48,7 @@ export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Pro
 export type ProductionChangedListener = (cityId: string) => void;
 export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
 export type ItemProductionPercentProvider = (nationId: string, item: Producible) => number;
+export type ItemProductionCostProvider = (cityId: string, item: Producible, baseCost: number) => number;
 
 export type CompleteCurrentProductionResult =
   | { kind: 'completed'; item: Producible }
@@ -74,6 +75,7 @@ export class ProductionSystem {
   private readonly changedListeners: ProductionChangedListener[] = [];
   private readonly removedListeners: ProductionRemovedListener[] = [];
   private itemProductionPercentProvider: ItemProductionPercentProvider = () => 0;
+  private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
   private hasSkippedInitialTurnStart = false;
 
   constructor(
@@ -136,7 +138,7 @@ export class ProductionSystem {
 
     return queue.map((entry, i) => {
       const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, entry.item));
-      const cost = this.getCost(entry.item);
+      const cost = this.getCost(entry.item, cityId);
       const progress = entry.accumulated;
       const remaining = cost - (i === 0 ? progress : 0);
       const turnsRemaining = Math.max(1, Math.ceil(remaining / ppt));
@@ -190,7 +192,7 @@ export class ProductionSystem {
     if (!queue || queue.length === 0) return { kind: 'empty' };
 
     const entry = queue[0];
-    entry.accumulated = this.getCost(entry.item);
+    entry.accumulated = this.getCost(entry.item, cityId);
 
     const completed = this.tryComplete(cityId, entry);
     if (completed) {
@@ -221,7 +223,7 @@ export class ProductionSystem {
 
   getTurnsEstimate(cityId: string, item: Producible): number {
     const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, item));
-    return Math.max(1, Math.ceil(this.getCost(item) / ppt));
+    return Math.max(1, Math.ceil(this.getCost(item, cityId) / ppt));
   }
 
   /**
@@ -312,6 +314,10 @@ export class ProductionSystem {
     this.itemProductionPercentProvider = provider;
   }
 
+  setItemProductionCostProvider(provider: ItemProductionCostProvider): void {
+    this.itemProductionCostProvider = provider;
+  }
+
   private handleTurnStart(e: TurnStartEvent): void {
     if (!this.hasSkippedInitialTurnStart) {
       this.hasSkippedInitialTurnStart = true;
@@ -324,7 +330,7 @@ export class ProductionSystem {
       if (!queue || queue.length === 0) continue;
 
       const entry = queue[0];
-      const cost = this.getCost(entry.item);
+      const cost = this.getCost(entry.item, city.id);
 
       if (entry.accumulated < cost) {
         entry.accumulated = Math.min(
@@ -365,8 +371,12 @@ export class ProductionSystem {
     return true;
   }
 
-  getCost(item: Producible): number {
-    return scaleGameSpeedCost(this.getBaseCost(item), this.gameSpeed);
+  getCost(item: Producible, cityId?: string): number {
+    const baseCost = this.getBaseCost(item);
+    const resolvedBaseCost = cityId === undefined
+      ? baseCost
+      : this.itemProductionCostProvider(cityId, item, baseCost);
+    return scaleGameSpeedCost(resolvedBaseCost, this.gameSpeed);
   }
 
   private getBaseCost(item: Producible): number {

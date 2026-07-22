@@ -1,8 +1,11 @@
 import {
   AEROSPACE_INDUSTRIES_ID,
   AEROSPACE_INDUSTRIES_PART_PRODUCTION_BONUS_PERCENT,
+  AEROSPACE_PART_BASE_PRODUCTION_COST,
+  AEROSPACE_PART_COST_GROWTH_RATE,
   AEROSPACE_PART_PRODUCTION,
   AEROSPACE_PARTS_ID,
+  calculateAerospacePartProductionCost,
 } from '../data/scienceVictory';
 import type { City } from '../entities/City';
 import type { CityManager } from './CityManager';
@@ -13,6 +16,14 @@ import type { ResourceAccessSystem } from './ResourceAccessSystem';
 export interface SavedAerospacePartProgress {
   readonly nationId: string;
   readonly quantity: number;
+}
+
+export interface AerospacePartProductionCostDetails {
+  readonly completedParts: number;
+  readonly partNumber: number;
+  readonly baseProductionCost: number;
+  readonly growthRate: number;
+  readonly productionCost: number;
 }
 
 /** Owns deliberately manufactured, persistent Aerospace Part progress. */
@@ -68,6 +79,21 @@ export class AerospacePartSystem {
     return this.quantities.get(nationId) ?? 0;
   }
 
+  getProductionCostDetails(nationId: string): AerospacePartProductionCostDetails {
+    const completedParts = this.getQuantity(nationId);
+    return {
+      completedParts,
+      partNumber: completedParts + 1,
+      baseProductionCost: AEROSPACE_PART_BASE_PRODUCTION_COST,
+      growthRate: AEROSPACE_PART_COST_GROWTH_RATE,
+      productionCost: calculateAerospacePartProductionCost(completedParts),
+    };
+  }
+
+  getProductionCost(nationId: string): number {
+    return this.getProductionCostDetails(nationId).productionCost;
+  }
+
   getManufacturedResources(nationId: string): ReadonlyMap<string, number> {
     const quantity = this.getQuantity(nationId);
     return quantity > 0 ? new Map([[AEROSPACE_PARTS_ID, quantity]]) : new Map();
@@ -94,4 +120,3 @@ export class AerospacePartSystem {
     }
   }
 }
-

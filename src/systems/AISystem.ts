@@ -17,7 +17,7 @@ import {
   isManagedCovertUnit,
   pickPreferredCovertUnit,
 } from './ai/covertForceEvaluation';
-import { ALL_BUILDINGS, GRANARY, WORKSHOP, MARKET, getBuildingById, isBarbarianCamp } from '../data/buildings';
+import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
@@ -151,6 +151,10 @@ import {
 import type { AerospacePartSystem } from './AerospacePartSystem';
 import { getAIAerospacePartProductionCandidate } from './ai/AIAerospacePartProduction';
 import { DEFAULT_REQUIRED_AEROSPACE_PARTS } from '../data/scienceVictory';
+import {
+  getAISpaceRaceFactoryPriority,
+  type AISpaceRaceFactoryPriority,
+} from './ai/AIScienceVictoryFactoryProduction';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -514,6 +518,7 @@ export class AISystem {
   private readonly obsoleteUnitProductionBlockLogKeys = new Set<string>();
   private readonly aerospaceEligibilityLoggedNationIds = new Set<string>();
   private readonly aerospaceManufacturingStateByNation = new Map<string, string>();
+  private readonly spaceRaceFactoryPriorityStateByNation = new Map<string, string>();
   private readonly doctrineEvaluator: AIMilitaryDoctrineEvaluator;
   private readonly militaryPickRationaleByNation = new Map<string, {
     role: AIMilitaryDoctrineRole | null;
@@ -4195,6 +4200,7 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
+    this.logSpaceRaceFactoryPriorityState(nationId);
     this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
     this.ensureFoundationSettlerProduction(nationId, cities);
@@ -4277,7 +4283,17 @@ export class AISystem {
         continue;
       }
 
+      const selectedSpaceRaceFactoryPriority = choice.kind === 'building' && choice.buildingType.id === FACTORY.id
+        ? this.getSpaceRaceFactoryPriority(nationId)
+        : undefined;
       this.productionSystem.setProduction(city.id, choice, { placement });
+      if (selectedSpaceRaceFactoryPriority?.applies) {
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        this.logScienceVictoryAI(
+          nationId,
+          `${nationName} selected first space-race Factory in ${city.name}; baseScore=${selectedSpaceRaceFactoryPriority.baseScore} scienceVictoryBonus=${selectedSpaceRaceFactoryPriority.scienceVictoryBonus} resultingScore=${selectedSpaceRaceFactoryPriority.resultingScore}; production began.`,
+        );
+      }
       if (choice.kind === 'unit') {
         if (choice.unitType.canFound === true) {
           this.recordSettlerProductionStarted(
@@ -4723,6 +4739,17 @@ export class AISystem {
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
+    const spaceRaceFactoryPriority = this.getSpaceRaceFactoryPriority(nationId);
+    const spaceRaceFactoryCandidate = spaceRaceFactoryPriority.applies
+      && !buildings.has(FACTORY.id)
+      && this.canBuildBuilding(nationId, FACTORY.id)
+      ? {
+          item: { kind: 'building' as const, buildingType: FACTORY },
+          baseScore: spaceRaceFactoryPriority.resultingScore,
+          category: 'productionBuilding' as const,
+        }
+      : undefined;
+    if (spaceRaceFactoryCandidate) candidates.push(spaceRaceFactoryCandidate);
 
     // Defenders bypass the budget gate — emergency defense is always permitted.
     const acuteDefenderNeeded = this.needsDefender(city, nationId, militaryDoctrineCtx?.doctrine);
@@ -5057,7 +5084,7 @@ export class AISystem {
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
     const cityFocus = city.focus ?? 'balanced';
-    const rhythmPick = this.pickProductionRhythmCandidate(
+    const rhythmPick = spaceRaceFactoryCandidate ? undefined : this.pickProductionRhythmCandidate(
       city,
       nationId,
       strategy,
@@ -5122,10 +5149,12 @@ export class AISystem {
       if (best.item.kind === 'manufacturedResource') {
         const score = scoreAIProductionCandidate(best, strategy, eraStrategy, cityFocus);
         const bonus = this.aerospacePartSystem?.getProductionBonusPercent(nationId) ?? 0;
+        const cost = this.aerospacePartSystem?.getProductionCostDetails(nationId);
+        const effectiveCost = this.productionSystem.getCost(best.item, city.id);
         const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
         this.logScienceVictoryAI(
           nationId,
-          `${nationName} selected Aerospace Part production in ${city.name} score=${Math.round(score)} bonus=${bonus}%; production began.`,
+          `${nationName} selected Aerospace Part ${cost?.partNumber ?? '?'}/${this.requiredAerospaceParts} production in ${city.name} score=${Math.round(score)} completedParts=${cost?.completedParts ?? 0} baseCost=${cost?.baseProductionCost ?? best.item.productionType.productionCost} growthRate=${Math.round((cost?.growthRate ?? 0) * 100)}% productionCost=${cost?.productionCost ?? best.item.productionType.productionCost} effectiveCost=${effectiveCost} aerospaceIndustriesBonus=${bonus}%; production began.`,
         );
       }
       const itemName = this.foundationProducibleName(best.item);
@@ -5155,6 +5184,59 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private getSpaceRaceFactoryPriority(nationId: string): AISpaceRaceFactoryPriority {
+    const nationCities = this.cityManager.getCitiesByOwner(nationId);
+    const activeFactoryCount = nationCities.filter((city) => (
+      this.cityManager.getBuildings(city.id).hasActive(FACTORY.id)
+    )).length;
+    const queuedFactoryCount = nationCities.reduce((count, city) => (
+      count + this.productionSystem.getQueue(city.id).filter((entry) => (
+        entry.item.kind === 'building' && entry.item.buildingType.id === FACTORY.id
+      )).length
+    ), 0);
+    return getAISpaceRaceFactoryPriority({
+      scienceVictoryEnabled: this.scienceVictoryEnabled,
+      spaceRaceGloballyUnlocked: this.aerospacePartSystem?.isGloballyUnlocked() ?? false,
+      hasFlight: this.researchSystem?.isResearched(nationId, 'flight') ?? false,
+      hasAluminum: this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false,
+      activeFactoryCount,
+      queuedFactoryCount,
+    });
+  }
+
+  private logSpaceRaceFactoryPriorityState(nationId: string): void {
+    if (!this.scienceVictoryEnabled || !this.aerospacePartSystem?.isGloballyUnlocked()) return;
+
+    const nationCities = this.cityManager.getCitiesByOwner(nationId);
+    const hasFlight = this.researchSystem?.isResearched(nationId, 'flight') ?? false;
+    const hasAluminum = this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false;
+    const activeFactoryCount = nationCities.filter((city) => (
+      this.cityManager.getBuildings(city.id).hasActive(FACTORY.id)
+    )).length;
+    const queuedFactoryCount = nationCities.reduce((count, city) => (
+      count + this.productionSystem.getQueue(city.id).filter((entry) => (
+        entry.item.kind === 'building' && entry.item.buildingType.id === FACTORY.id
+      )).length
+    ), 0);
+    const priority = getAISpaceRaceFactoryPriority({
+      scienceVictoryEnabled: this.scienceVictoryEnabled,
+      spaceRaceGloballyUnlocked: true,
+      hasFlight,
+      hasAluminum,
+      activeFactoryCount,
+      queuedFactoryCount,
+    });
+    const state = [hasFlight, hasAluminum, activeFactoryCount, queuedFactoryCount, priority.applies].join('|');
+    if (this.spaceRaceFactoryPriorityStateByNation.get(nationId) === state) return;
+    this.spaceRaceFactoryPriorityStateByNation.set(nationId, state);
+
+    const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+    this.logScienceVictoryAI(
+      nationId,
+      `${nationName} space-race Factory evaluation: globallyUnlocked=yes flight=${hasFlight ? 'yes' : 'no'} aluminum=${hasAluminum ? 'yes' : 'no'} activeFactories=${activeFactoryCount} queuedFactories=${queuedFactoryCount} specialPriority=${priority.applies ? 'yes' : 'no'} baseScore=${priority.baseScore} scienceVictoryBonus=${priority.scienceVictoryBonus} resultingScore=${priority.resultingScore}.`,
+    );
   }
 
   private logScienceVictoryAI(nationId: string, message: string): void {

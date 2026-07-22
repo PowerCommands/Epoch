@@ -1158,6 +1158,13 @@ export class GameScene extends Phaser.Scene {
         ? aerospacePartSystem.getProductionBonusPercent(nationId)
         : 0
     ));
+    productionSystem.setItemProductionCostProvider((cityId, item, baseCost) => {
+      if (item.kind !== 'manufacturedResource' || item.productionType.id !== AEROSPACE_PARTS_ID) {
+        return baseCost;
+      }
+      const city = cityManager.getCity(cityId);
+      return city ? aerospacePartSystem.getProductionCost(city.ownerId) : baseCost;
+    });
     const humanNeedsResearchSelection = (): boolean => {
       if (!humanNationId) return false;
       return !researchSystem.getCurrentResearch(humanNationId)
@@ -3021,6 +3028,8 @@ export class GameScene extends Phaser.Scene {
 
       if (item.kind === 'manufacturedResource') {
         if (item.productionType.id !== AEROSPACE_PARTS_ID) return false;
+        const costDetails = aerospacePartSystem.getProductionCostDetails(city.ownerId);
+        const effectiveCost = productionSystem.getCost(item, city.id);
         const quantity = aerospacePartSystem.completeProduction(city);
         if (quantity === null) return false;
         const required = victorySystem.getScienceVictorySettings().requiredAerospaceParts;
@@ -3029,7 +3038,7 @@ export class GameScene extends Phaser.Scene {
         logManager.info({
           nationId: city.ownerId,
           category: 'victory',
-          message: `[ScienceVictoryAI] ${nationName} completed Aerospace Part in ${city.name}; bonus=${bonus}%; accumulated=${quantity}/${required}.`,
+          message: `[ScienceVictoryAI] ${nationName} completed Aerospace Part ${quantity}/${required} in ${city.name}; completedParts=${costDetails.completedParts} baseCost=${costDetails.baseProductionCost} growthRate=${Math.round(costDetails.growthRate * 100)}% productionCost=${costDetails.productionCost} effectiveCost=${effectiveCost} aerospaceIndustriesBonus=${bonus}%; accumulated=${quantity}/${required}.`,
         });
         resourceSystem.recalculateForNation(city.ownerId);
         refreshOpenCityView();
@@ -5304,7 +5313,7 @@ export class GameScene extends Phaser.Scene {
         cost: productionSystem.getCost({
           kind: 'manufacturedResource',
           productionType: AEROSPACE_PART_PRODUCTION,
-        }),
+        }, city.id),
         turnsRemaining: productionSystem.getTurnsEstimate(city.id, {
           kind: 'manufacturedResource',
           productionType: AEROSPACE_PART_PRODUCTION,

@@ -2,6 +2,36 @@ export const AEROSPACE_INDUSTRIES_ID = 'aerospace_industries';
 export const AEROSPACE_PARTS_ID = 'aerospace_parts';
 export const DEFAULT_REQUIRED_AEROSPACE_PARTS = 10;
 export const AEROSPACE_INDUSTRIES_PART_PRODUCTION_BONUS_PERCENT = 50;
+export const AEROSPACE_PART_BASE_PRODUCTION_COST = 1200;
+export const AEROSPACE_PART_COST_GROWTH_RATE = 0.10;
+
+export interface AerospacePartCostConfiguration {
+  readonly baseProductionCost: number;
+  readonly growthRate: number;
+}
+
+export const AEROSPACE_PART_COST_CONFIGURATION: AerospacePartCostConfiguration = {
+  baseProductionCost: AEROSPACE_PART_BASE_PRODUCTION_COST,
+  growthRate: AEROSPACE_PART_COST_GROWTH_RATE,
+};
+
+/**
+ * Base (pre-game-speed) production cost for a nation's next Aerospace Part.
+ * Completed-part progress is national, so nations entering the race later
+ * still begin at the lower end of the curve.
+ */
+export function calculateAerospacePartProductionCost(
+  completedParts: number,
+  configuration: AerospacePartCostConfiguration = AEROSPACE_PART_COST_CONFIGURATION,
+): number {
+  const normalizedCompletedParts = Math.max(0, Math.floor(completedParts));
+  const normalizedBaseCost = Math.max(1, configuration.baseProductionCost);
+  const normalizedGrowthRate = Math.max(0, configuration.growthRate);
+  return Math.max(
+    1,
+    Math.round(normalizedBaseCost * ((1 + normalizedGrowthRate) ** normalizedCompletedParts)),
+  );
+}
 
 export interface ManufacturedResourceProductionDefinition {
   readonly id: string;
@@ -17,7 +47,7 @@ export const AEROSPACE_PART_PRODUCTION: ManufacturedResourceProductionDefinition
   id: AEROSPACE_PARTS_ID,
   name: 'Aerospace Part',
   description: 'Manufacture one Aerospace Part for the global space race.',
-  productionCost: 300,
+  productionCost: AEROSPACE_PART_BASE_PRODUCTION_COST,
   requiredTechIds: ['flight'],
   requiredResourceIds: ['aluminum'],
   requiredBuildingId: 'factory',
@@ -41,4 +71,3 @@ export function getScienceVictoryResourceBonusCount(
   const requirementTiers = Math.max(1, Math.ceil(Math.max(1, requiredAerospaceParts) / 5));
   return Math.max(2, regionalAvailability + requirementTiers - 1);
 }
-

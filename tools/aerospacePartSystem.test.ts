@@ -7,10 +7,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  AEROSPACE_PART_BASE_PRODUCTION_COST,
+  AEROSPACE_PART_COST_GROWTH_RATE,
   AEROSPACE_INDUSTRIES_ID,
   AEROSPACE_PART_PRODUCTION,
   AEROSPACE_PARTS_ID,
   DEFAULT_REQUIRED_AEROSPACE_PARTS,
+  calculateAerospacePartProductionCost,
 } from '../src/data/scienceVictory.ts';
 import { FACTORY } from '../src/data/buildings.ts';
 import { City } from '../src/entities/City.ts';
@@ -37,6 +40,7 @@ function makeHarness() {
     id: OWNER_ID,
     name: 'Founder',
     color: 0x111111,
+    isHuman: true,
     researchedTechIds: ['flight'],
   });
   const rival = new Nation({
@@ -98,6 +102,13 @@ function makeHarness() {
       ? aerospacePartSystem.getProductionBonusPercent(nationId)
       : 0
   ));
+  productionSystem.setItemProductionCostProvider((cityId, item, baseCost) => {
+    if (item.kind !== 'manufacturedResource' || item.productionType.id !== AEROSPACE_PARTS_ID) {
+      return baseCost;
+    }
+    const city = cityManager.getCity(cityId);
+    return city ? aerospacePartSystem.getProductionCost(city.ownerId) : baseCost;
+  });
   productionSystem.onCompleted((cityId, item) => {
     if (item.kind !== 'manufacturedResource') return;
     const city = cityManager.getCity(cityId);
@@ -206,7 +217,7 @@ test('AeroSpace Industries owner receives exactly +50% part Production', () => {
   harness.foundAerospaceIndustries();
   const item = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION } as const;
   assert.equal(harness.aerospacePartSystem.getProductionBonusPercent(OWNER_ID), 50);
-  assert.equal(harness.productionSystem.getTurnsEstimate(harness.ownerCity.id, item), 5);
+  assert.equal(harness.productionSystem.getTurnsEstimate(harness.ownerCity.id, item), 20);
 });
 
 test('non-owner receives no Aerospace Part Production bonus', () => {
@@ -214,7 +225,87 @@ test('non-owner receives no Aerospace Part Production bonus', () => {
   harness.foundAerospaceIndustries();
   const item = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION } as const;
   assert.equal(harness.aerospacePartSystem.getProductionBonusPercent(RIVAL_ID), 0);
-  assert.equal(harness.productionSystem.getTurnsEstimate(harness.rivalCity.id, item), 8);
+  assert.equal(harness.productionSystem.getTurnsEstimate(harness.rivalCity.id, item), 30);
+});
+
+test('first Aerospace Part uses the configured 1200 base production cost', () => {
+  const harness = makeHarness();
+  assert.equal(AEROSPACE_PART_BASE_PRODUCTION_COST, 1200);
+  assert.equal(harness.aerospacePartSystem.getProductionCost(OWNER_ID), 1200);
+});
+
+test('second Aerospace Part uses one configured growth step', () => {
+  const harness = makeHarness();
+  harness.aerospacePartSystem.restoreProgress([{ nationId: OWNER_ID, quantity: 1 }]);
+  assert.equal(AEROSPACE_PART_COST_GROWTH_RATE, 0.10);
+  assert.equal(harness.aerospacePartSystem.getProductionCost(OWNER_ID), 1320);
+});
+
+test('later Aerospace Parts follow the rounded exponential cost formula', () => {
+  assert.deepEqual(
+    Array.from({ length: 10 }, (_, completedParts) => calculateAerospacePartProductionCost(completedParts)),
+    [1200, 1320, 1452, 1597, 1757, 1933, 2126, 2338, 2572, 2830],
+  );
+});
+
+test('progressive Aerospace Part cost is per nation', () => {
+  const harness = makeHarness();
+  harness.aerospacePartSystem.restoreProgress([
+    { nationId: OWNER_ID, quantity: 7 },
+    { nationId: RIVAL_ID, quantity: 2 },
+  ]);
+  assert.equal(harness.aerospacePartSystem.getProductionCost(OWNER_ID), 2338);
+  assert.equal(harness.aerospacePartSystem.getProductionCost(RIVAL_ID), 1452);
+});
+
+test('a nation entering the race at zero parts still receives the base cost', () => {
+  const harness = makeHarness();
+  harness.aerospacePartSystem.restoreProgress([{ nationId: OWNER_ID, quantity: 8 }]);
+  assert.equal(harness.aerospacePartSystem.getProductionCost(RIVAL_ID), 1200);
+});
+
+test('cost configuration can change growth without changing the algorithm', () => {
+  assert.equal(calculateAerospacePartProductionCost(5, {
+    baseProductionCost: 1200,
+    growthRate: 0.05,
+  }), 1532);
+  assert.equal(calculateAerospacePartProductionCost(5, {
+    baseProductionCost: 1200,
+    growthRate: 0.10,
+  }), 1933);
+});
+
+test('human and AI cities use the same national Aerospace Part cost rule', () => {
+  const harness = makeHarness();
+  assert.equal(harness.owner.isHuman, true);
+  assert.equal(harness.rival.isHuman, false);
+  harness.aerospacePartSystem.restoreProgress([
+    { nationId: OWNER_ID, quantity: 3 },
+    { nationId: RIVAL_ID, quantity: 3 },
+  ]);
+  const item = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION } as const;
+  assert.equal(
+    harness.productionSystem.getCost(item, harness.ownerCity.id),
+    harness.productionSystem.getCost(item, harness.rivalCity.id),
+  );
+});
+
+test('restored progress deterministically reconstructs next-part and queued costs', () => {
+  const source = makeHarness();
+  source.aerospacePartSystem.restoreProgress([{ nationId: OWNER_ID, quantity: 6 }]);
+  source.productionSystem.setProduction(source.ownerCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+  const savedProgress = source.aerospacePartSystem.getProgressForSave();
+  const savedQueue = source.productionSystem.getProduction(source.ownerCity.id);
+
+  const restored = makeHarness();
+  restored.aerospacePartSystem.restoreProgress(savedProgress);
+  restored.productionSystem.restoreQueue(restored.ownerCity.id, savedQueue ? [savedQueue] : []);
+
+  assert.equal(restored.aerospacePartSystem.getProductionCost(OWNER_ID), 2126);
+  // Standard speed applies the existing 0.5 cost multiplier after progression.
+  assert.equal(restored.productionSystem.getQueue(restored.ownerCity.id)[0]?.cost, 1063);
 });
 
 test('AeroSpace Industries bonus does not affect ordinary city production', () => {
