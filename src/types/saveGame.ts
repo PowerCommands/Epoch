@@ -117,6 +117,7 @@ export interface SavedCity {
   lastTurnAttacked: number | null;
   lastTilePurchaseTurn?: number;
   recentlyConqueredTurnsRemaining?: number;
+  integrationStartedRound?: number;
   // Backward-compatible: old saves store plain building ids; newer saves may
   // store objects carrying broken state. Strings load as working (not broken).
   buildings: Array<string | SavedBuilding>;

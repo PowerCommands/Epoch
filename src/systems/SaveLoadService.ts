@@ -206,6 +206,7 @@ export class SaveLoadService {
         recentlyConqueredTurnsRemaining: city.recentlyConqueredTurnsRemaining > 0
           ? city.recentlyConqueredTurnsRemaining
           : undefined,
+        integrationStartedRound: city.integrationStartedRound,
         buildings,
         productionQueue,
       };
@@ -706,6 +707,7 @@ export class SaveLoadService {
         culturalSphereProgress: saved.culturalSphereProgress,
         lastTurnAttacked: saved.lastTurnAttacked,
         lastTilePurchaseTurn: saved.lastTilePurchaseTurn,
+        integrationStartedRound: saved.integrationStartedRound,
       });
       city.recentlyConqueredTurnsRemaining = saved.recentlyConqueredTurnsRemaining ?? 0;
 

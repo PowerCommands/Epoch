@@ -11,6 +11,7 @@ import type { TradeDealSystem } from './TradeDealSystem';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
 import type { ExileProtectionSystem } from './ExileProtectionSystem';
+import type { CityIntegrationSystem } from './CityIntegrationSystem';
 
 export type NationCollapseReason =
   | 'no_valid_survival_state';
@@ -54,6 +55,7 @@ export class NationCollapseSystem {
     private readonly gridSystem: IGridSystem,
     private readonly tradeDealSystem?: TradeDealSystem,
     private readonly exileProtectionSystem?: ExileProtectionSystem,
+    private readonly cityIntegrationSystem?: CityIntegrationSystem,
   ) {}
 
   onNationCollapsed(listener: NationCollapsedListener): void {
@@ -98,7 +100,9 @@ export class NationCollapseSystem {
       city.isResidenceCapital = false;
       city.occupiedOriginalNationId = city.originNationId;
       if (input.conquerorNationId !== undefined) {
+        const previousOwnerId = city.ownerId;
         this.cityManager.transferOwnership(city.id, input.conquerorNationId, this.productionSystem);
+        this.cityIntegrationSystem?.handleConquest(city, previousOwnerId, input.conquerorNationId);
         this.cityTerritorySystem.transferCityTerritory(city, input.conquerorNationId, this.mapData);
         this.culturalSphereSystem.claimInitialCityCulture(city, this.mapData, this.gridSystem);
         citiesTransferred++;

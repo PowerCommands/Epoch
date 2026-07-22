@@ -8,6 +8,7 @@ import type { UnitManager } from './UnitManager';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { CulturalSphereSystem } from './CulturalSphereSystem';
 import type { IGridSystem } from './grid/IGridSystem';
+import type { CityIntegrationSystem } from './CityIntegrationSystem';
 
 /**
  * Intern hjälpmodul för stadserövring.
@@ -21,14 +22,17 @@ export function captureCity(
   productionSystem: ProductionSystem,
   unitManager: UnitManager,
   gridSystem: IGridSystem,
+  cityIntegrationSystem?: CityIntegrationSystem,
 ): void {
   const newOwnerId = attacker.ownerId;
+  const previousOwnerId = city.ownerId;
 
   // Byt stadsägare och rensa produktion
   cityManager.transferOwnership(city.id, newOwnerId, productionSystem);
   city.occupiedOriginalNationId = city.originNationId !== newOwnerId
     ? city.originNationId
     : undefined;
+  cityIntegrationSystem?.handleConquest(city, previousOwnerId, newOwnerId);
 
   // Stadens hela territorium byter ägare så renderers och save/load ser samma state.
   new CityTerritorySystem().transferCityTerritory(city, newOwnerId, mapData);

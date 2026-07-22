@@ -5,6 +5,7 @@ import type { Producible } from '../types/producible';
 import type { TurnStartEvent } from '../types/events';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { PolicySystem } from './PolicySystem';
+import { getCityIntegrationProgress } from './CityIntegrationSystem';
 
 /**
  * A single entry in a city's production queue.
@@ -80,7 +81,7 @@ export class ProductionSystem {
 
   constructor(
     cityManager: CityManager,
-    turnManager: TurnManager,
+    private readonly turnManager: TurnManager,
     private readonly happinessSystem: HappinessSystem,
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly policySystem?: PolicySystem,
@@ -216,6 +217,10 @@ export class ProductionSystem {
    * doesn't exist.
    */
   getBuyCost(cityId: string, index: number): number | null {
+    const city = this.cityManager.getCity(cityId);
+    if (city && getCityIntegrationProgress(city, this.turnManager.getCurrentRound()).state === 'occupied') {
+      return null;
+    }
     const entries = this.getQueue(cityId);
     if (index < 0 || index >= entries.length) return null;
     return entries[index].turnsRemaining * BUY_COST_PER_TURN;
@@ -236,6 +241,10 @@ export class ProductionSystem {
    * is left intact so callers can refund and retry.
    */
   completeQueueEntry(cityId: string, index: number): CompleteQueueEntryResult {
+    const city = this.cityManager.getCity(cityId);
+    if (city && getCityIntegrationProgress(city, this.turnManager.getCurrentRound()).state === 'occupied') {
+      return { ok: false, reason: 'Occupied cities cannot buy production' };
+    }
     const queue = this.queues.get(cityId);
     if (!queue || index < 0 || index >= queue.length) {
       return { ok: false, reason: 'Queue entry not found' };

@@ -47,6 +47,10 @@ import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../syst
 import type { ProductionSystem, QueueEntryView } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { CurrencySystem } from '../../systems/CurrencySystem';
+import {
+  CITY_OCCUPATION_GOLD_COST_PER_TURN,
+  getCityIntegrationProgress,
+} from '../../systems/CityIntegrationSystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
@@ -685,6 +689,8 @@ export class RightSidebarPanelDataProvider {
       EMPTY_MODIFIERS,
     );
     const isHuman = city.ownerId === this.humanNationId;
+    const integration = getCityIntegrationProgress(city, this.getCurrentTurn?.() ?? 0);
+    const integrationLabel = integration.state[0].toUpperCase() + integration.state.slice(1);
     const growthModifier = this.happinessSystem.getGrowthModifier(city.ownerId);
     const effectiveGrowthPerTurn = economy.netFood > 0 ? Math.floor(economy.netFood * growthModifier) : economy.netFood;
     const turnsUntilGrowth = effectiveGrowthPerTurn > 0
@@ -700,6 +706,13 @@ export class RightSidebarPanelDataProvider {
         rows: [
           textRow(city.name, false, true, nation?.color),
           textRow(`Owner: ${nation?.name ?? 'Unknown'}`),
+          textRow(`Status: ${integrationLabel}`),
+          ...(integration.state !== 'integrated'
+            ? [textRow(`Integration: ${integration.turnsInState} / ${integration.phaseTurns} turns`)]
+            : []),
+          ...(integration.state === 'occupied'
+            ? [textRow(`Occupation cost: ${CITY_OCCUPATION_GOLD_COST_PER_TURN} gold/turn`, true)]
+            : []),
           textRow(`Capital: ${city.isCapital ? 'Yes' : 'No'}`),
           textRow(`Population: ${city.population}`),
           textRow(`Health: ${city.health}/${CITY_BASE_HEALTH}`),
@@ -742,6 +755,9 @@ export class RightSidebarPanelDataProvider {
                 textRow(`Gold: +${resources.goldPerTurn}/turn`),
                 textRow(`Science: +${resources.sciencePerTurn}/turn`),
                 textRow(`Culture per turn: +${resources.culturePerTurn}/turn`),
+                ...(integration.state !== 'integrated'
+                  ? [textRow(`${integrationLabel} city output: ${Math.round(integration.outputMultiplier * 100)}%`, true)]
+                  : []),
                 textRow(`Happiness: +${resources.happinessPerTurn}/turn`),
                 textRow(`Buildings: ${buildings.length > 0 ? buildings.join(', ') : 'none'}`),
               ],

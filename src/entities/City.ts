@@ -54,6 +54,8 @@ export class City {
   lastTurnAttacked: number | null = null;
   lastTilePurchaseTurn?: number;
   recentlyConqueredTurnsRemaining = 0;
+  /** Round of the latest foreign military conquest; absent means Integrated. */
+  integrationStartedRound?: number;
   focus?: CityFocusType;
   productionRhythm: CityProductionRhythm;
 

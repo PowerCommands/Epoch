@@ -78,6 +78,11 @@ interface NationStateSummary {
     strength: string;
     treasury: number;
   } | null;
+  cityIntegration: {
+    occupied: number;
+    recovering: number;
+    integrated: number;
+  };
 }
 
 interface EraMilestone {

@@ -10,6 +10,11 @@ import { UnitBoardingManager } from '../systems/UnitBoardingManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import {
+  CityIntegrationSystem,
+  getCityIntegrationOutputMultiplier,
+  getNationCityIntegrationCounts,
+} from '../systems/CityIntegrationSystem';
+import {
   CurrencySystem,
   countActiveBanksForNation,
   getActiveInternationalTradePartnerIds,
@@ -249,6 +254,11 @@ interface EpochNationStateSummary {
     strength: CurrencyStrength;
     treasury: number;
   } | null;
+  cityIntegration: {
+    occupied: number;
+    recovering: number;
+    integrated: number;
+  };
 }
 
 /** First observed actual era transition during a diagnostics/autorun session. */
@@ -605,6 +615,12 @@ export class GameScene extends Phaser.Scene {
       culturalSphereSystem,
       wonderSystem,
       () => refreshCultureOverlay(),
+    );
+    const cityIntegrationSystem = new CityIntegrationSystem(
+      cityManager,
+      turnManager,
+      (nationId, message) => logManager.info({ nationId, category: 'city', message }),
+      (city) => resourceSystem.recalculateForNation(city.ownerId),
     );
     const unitUpkeepSystem = new UnitUpkeepSystem(
       nationManager,
@@ -1103,16 +1119,17 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       () => turnManager.getCurrentRound(),
       (nationId) => cityManager.getCitiesByOwner(nationId)
-        .reduce((sum, city) => sum + calculateCityEconomy(
+        .reduce((sum, city) => sum + Math.round(calculateCityEconomy(
           city,
           mapData,
           cityManager.getBuildings(city.id),
           gridSystem,
           wonderSystem.getNationModifiers(nationId),
-        ).science, 0),
+        ).science * getCityIntegrationOutputMultiplier(city, turnManager.getCurrentRound())), 0),
       gameSpeed,
       undefined,
       (nationId, message) => logManager.info({ nationId, category: 'research', message }),
+      (city) => getCityIntegrationOutputMultiplier(city, turnManager.getCurrentRound()),
     );
     // Culture-gated units (e.g. Rebels → Nationalism) are unlocked via the
     // culture tree rather than a technology; route that check through the shared
@@ -1165,7 +1182,11 @@ export class GameScene extends Phaser.Scene {
           tradeDealSystem,
         ),
         getCorporationCount: (nationId) => corporationSystem?.getCorporationsForNation(nationId).length ?? 0,
-        getActiveBankCount: (nationId) => countActiveBanksForNation(nationId, cityManager),
+        getActiveBankCount: (nationId) => countActiveBanksForNation(
+          nationId,
+          cityManager,
+          turnManager.getCurrentRound(),
+        ),
       },
       (message) => logManager.info({ category: 'currency', message }),
     );
@@ -1642,6 +1663,7 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       tradeDealSystem,
       exileProtectionSystem,
+      cityIntegrationSystem,
     );
     peaceTreatySystem.setNationCollapseSystem(nationCollapseSystem);
     // 14. Stridssystem
@@ -1659,6 +1681,7 @@ export class GameScene extends Phaser.Scene {
         worldCouncilSystem.canResolvePeacekeepingCombat(attacker.ownerId, target.ownerId, tileOwnerId),
       cityDefenseSystem,
       nationCollapseSystem,
+      cityIntegrationSystem,
     );
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
@@ -6402,6 +6425,11 @@ export class GameScene extends Phaser.Scene {
           const nations: EpochNationStateSummary[] = allNations.map((nation) => {
             const cities = cityManager.getCitiesByOwner(nation.id);
             const currency = currencySystem.getCurrencyState(nation.id);
+            const cityIntegration = getNationCityIntegrationCounts(
+              nation.id,
+              cityManager,
+              turnManager.getCurrentRound(),
+            );
             return {
               id: nation.id,
               name: nation.name,
@@ -6421,6 +6449,7 @@ export class GameScene extends Phaser.Scene {
                   treasury: currency.treasury,
                 }
                 : null,
+              cityIntegration,
             };
           });
           const victoryState = victorySystem.getVictoryState();

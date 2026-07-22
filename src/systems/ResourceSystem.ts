@@ -23,6 +23,10 @@ import type { Nation } from '../entities/Nation';
 import type { PolicySystem } from './PolicySystem';
 import type { CulturalSphereSystem } from './CulturalSphereSystem';
 import type { WonderSystem } from './WonderSystem';
+import {
+  applyCityIntegrationOutput,
+  getNationOccupationGoldCost,
+} from './CityIntegrationSystem';
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -41,7 +45,7 @@ export class ResourceSystem {
   constructor(
     nationManager: NationManager,
     cityManager: CityManager,
-    turnManager: TurnManager,
+    private readonly turnManager: TurnManager,
     generator: IResourceGenerator,
     mapData: MapData,
     private readonly gridSystem: IGridSystem,
@@ -131,16 +135,14 @@ export class ResourceSystem {
     this.updateWorkedTiles(cities);
 
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nationId, cities);
-    nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId);
+    nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId)
+      - getNationOccupationGoldCost(nationId, this.cityManager, this.turnManager.getCurrentRound());
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
     for (const city of cities) {
       const cityRes = this.cityManager.getResources(city.id);
-      const economy = this.applyPolicyEconomyModifiers(
-        city.ownerId,
-        this.calculateEconomyForCity(city, nationModifiers),
-      );
+      const economy = this.calculateIntegratedEconomyForCity(city, nationModifiers);
       cityRes.foodPerTurn = economy.food;
       cityRes.productionPerTurn = economy.production;
       cityRes.goldPerTurn = economy.gold;
@@ -181,13 +183,19 @@ export class ResourceSystem {
     const cultureModifier = this.happinessSystem.getCultureModifier(nation.id);
 
     // Räkna om per-turn (kan ändras om städer förstörts/skapats)
-    nationRes.goldPerTurn = this.calculateNationGoldPerTurn(
+    const occupationGoldCost = getNationOccupationGoldCost(
+      nation.id,
+      this.cityManager,
+      this.turnManager.getCurrentRound(),
+    );
+    const baseGoldPerTurn = this.calculateNationGoldPerTurn(
       nation,
       cities,
       lookup,
       nationModifiers,
     );
-    nationRes.gold += Math.floor(nationRes.goldPerTurn * goldModifier);
+    nationRes.goldPerTurn = baseGoldPerTurn - occupationGoldCost;
+    nationRes.gold += Math.floor(baseGoldPerTurn * goldModifier) - occupationGoldCost;
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.influence += nationRes.influencePerTurn;
     nationRes.culturePerTurn = 0;
@@ -197,7 +205,10 @@ export class ResourceSystem {
       const cityRes = this.cityManager.getResources(city.id);
       const buildings = this.cityManager.getBuildings(city.id);
       const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers);
-      const policyEconomy = this.applyPolicyEconomyModifiers(city.ownerId, economy);
+      const policyEconomy = this.applyCityIntegrationMultiplier(
+        city,
+        this.applyPolicyEconomyModifiers(city.ownerId, economy),
+      );
       const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
       let displayEconomy = policyEconomy;
@@ -212,9 +223,12 @@ export class ResourceSystem {
           this.cityTerritorySystem.updateWorkedTiles(city, this.mapData);
           this.cityTerritorySystem.refreshNextExpansionTile(city, this.mapData);
           this.happinessSystem.recalculateNation(city.ownerId);
-          displayEconomy = this.applyPolicyEconomyModifiers(
-            city.ownerId,
-            calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+          displayEconomy = this.applyCityIntegrationMultiplier(
+            city,
+            this.applyPolicyEconomyModifiers(
+              city.ownerId,
+              calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+            ),
           );
         }
       }
@@ -254,6 +268,10 @@ export class ResourceSystem {
         cities,
         lookup,
         nationModifiers,
+      ) - getNationOccupationGoldCost(
+        nation.id,
+        this.cityManager,
+        this.turnManager.getCurrentRound(),
       );
       nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
       nationRes.culturePerTurn = 0;
@@ -262,10 +280,7 @@ export class ResourceSystem {
       for (const city of cities) {
         const cityRes = this.cityManager.getResources(city.id);
         const buildings = this.cityManager.getBuildings(city.id);
-        const economy = this.applyPolicyEconomyModifiers(
-          city.ownerId,
-          calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
-        );
+        const economy = this.calculateIntegratedEconomyForCity(city, nationModifiers);
         cityRes.foodPerTurn = economy.food;
         cityRes.productionPerTurn = economy.production;
         cityRes.goldPerTurn = economy.gold;
@@ -308,10 +323,7 @@ export class ResourceSystem {
     nationModifiers: Readonly<ModifierSet>,
   ): number {
     const baseGoldPerTurn = cities.reduce((sum, city) => {
-      const economy = this.applyPolicyEconomyModifiers(
-        nation.id,
-        calculateCityEconomy(city, this.mapData, lookup(city.id), this.gridSystem, nationModifiers),
-      );
+      const economy = this.calculateIntegratedEconomyForCity(city, nationModifiers);
       return sum + economy.gold;
     }, 0);
 
@@ -329,6 +341,27 @@ export class ResourceSystem {
       this.gridSystem,
       nationModifiers,
     );
+  }
+
+  private calculateIntegratedEconomyForCity(
+    city: City,
+    nationModifiers: Readonly<ModifierSet>,
+  ): CityEconomySummary {
+    return this.applyCityIntegrationMultiplier(
+      city,
+      this.applyPolicyEconomyModifiers(city.ownerId, this.calculateEconomyForCity(city, nationModifiers)),
+    );
+  }
+
+  private applyCityIntegrationMultiplier(city: City, economy: CityEconomySummary): CityEconomySummary {
+    const round = this.turnManager.getCurrentRound();
+    return {
+      ...economy,
+      gold: applyCityIntegrationOutput(economy.gold, city, round),
+      production: applyCityIntegrationOutput(economy.production, city, round),
+      science: applyCityIntegrationOutput(economy.science, city, round),
+      culture: applyCityIntegrationOutput(economy.culture, city, round),
+    };
   }
 
   private applyPolicyEconomyModifiers(

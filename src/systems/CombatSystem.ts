@@ -23,6 +23,7 @@ import type { PolicySystem } from './PolicySystem';
 import { isEmbarked } from './UnitMovementRules';
 import type { CityDefenseSystem } from './CityDefenseSystem';
 import type { NationCollapseSystem } from './NationCollapseSystem';
+import type { CityIntegrationSystem } from './CityIntegrationSystem';
 
 export interface CombatEvent {
   attacker: Unit;
@@ -109,6 +110,7 @@ export class CombatSystem {
     private readonly canResolvePeacekeepingCombat: PeacekeepingCombatAuthorizer = () => false,
     private readonly cityDefenseSystem?: CityDefenseSystem,
     private readonly nationCollapseSystem?: NationCollapseSystem,
+    private readonly cityIntegrationSystem?: CityIntegrationSystem,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -337,7 +339,16 @@ export class CombatSystem {
     let previousOwnerId: string | undefined;
     if (!isRanged && result.cityFell && !result.attackerDied) {
       previousOwnerId = city.ownerId;
-      captureCity(city, attacker, this.cityManager, this.mapData, this.productionSystem, this.unitManager, this.gridSystem);
+      captureCity(
+        city,
+        attacker,
+        this.cityManager,
+        this.mapData,
+        this.productionSystem,
+        this.unitManager,
+        this.gridSystem,
+        this.cityIntegrationSystem,
+      );
       captured = true;
       this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);
     }

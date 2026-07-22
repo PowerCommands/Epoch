@@ -9,6 +9,7 @@ import type { NationManager } from './NationManager';
 import { pickBestAIResearchTechnology } from './ai/AIResearchPlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
 import { getHighestEra } from './EraSystem';
+import type { City } from '../entities/City';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
@@ -36,6 +37,7 @@ export class ResearchSystem {
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
     private readonly logEvent?: (nationId: string, message: string) => void,
+    private readonly getCityScienceMultiplier: (city: City) => number = () => 1,
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -293,7 +295,9 @@ export class ResearchSystem {
   }
 
   private calculateResearchPerTurn(nationId: string): number {
-    return 1 + this.cityManager.getCitiesByOwner(nationId).length + this.getBuildingSciencePerTurn(nationId);
+    const cityScience = this.cityManager.getCitiesByOwner(nationId)
+      .reduce((sum, city) => sum + this.getCityScienceMultiplier(city), 0);
+    return 1 + cityScience + this.getBuildingSciencePerTurn(nationId);
   }
 
   private notifyChanged(): void {

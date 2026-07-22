@@ -114,6 +114,9 @@ export class CityManager {
     if (!city) return;
 
     city.ownerId = newOwnerId;
+    // Peaceful transfers start Integrated. Military conquest immediately calls
+    // CityIntegrationSystem.handleConquest after this canonical transfer.
+    city.integrationStartedRound = undefined;
 
     if (productionSystem) {
       productionSystem.clearProduction(cityId);
@@ -154,6 +157,7 @@ export class CityManager {
     culturalSphereProgress?: number;
     lastTurnAttacked: number | null;
     lastTilePurchaseTurn?: number;
+    integrationStartedRound?: number;
   }): City {
     const city = new City({
       id: config.id,
@@ -176,6 +180,7 @@ export class CityManager {
     city.culturalSphereProgress = config.culturalSphereProgress ?? 0;
     city.lastTurnAttacked = config.lastTurnAttacked;
     city.lastTilePurchaseTurn = config.lastTilePurchaseTurn;
+    city.integrationStartedRound = config.integrationStartedRound;
 
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));

@@ -3,6 +3,7 @@ import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
 import type { CityManager } from './CityManager';
 import type { TradeDealSystem } from './TradeDealSystem';
+import { getCityIntegrationProgress } from './CityIntegrationSystem';
 
 export const CURRENCY_TECHNOLOGY_ID = 'currency';
 export const CURRENCY_RANKING_UPDATE_INTERVAL = 20;
@@ -112,9 +113,16 @@ export function getActiveInternationalTradePartnerIds(
   ));
 }
 
-export function countActiveBanksForNation(nationId: string, cityManager: CityManager): number {
+export function countActiveBanksForNation(
+  nationId: string,
+  cityManager: CityManager,
+  currentRound = 0,
+): number {
   return cityManager.getCitiesByOwner(nationId)
-    .filter((city) => cityManager.getBuildings(city.id).hasActive('bank')).length;
+    .filter((city) => (
+      getCityIntegrationProgress(city, currentRound).state !== 'occupied'
+      && cityManager.getBuildings(city.id).hasActive('bank')
+    )).length;
 }
 
 /**
