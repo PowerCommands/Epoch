@@ -4,7 +4,7 @@ export const AI_SPACE_RACE_FIRST_FACTORY_BONUS = 200;
 export interface AISpaceRaceFactoryPriorityContext {
   readonly scienceVictoryEnabled: boolean;
   readonly spaceRaceGloballyUnlocked: boolean;
-  readonly hasFlight: boolean;
+  readonly hasRocketry: boolean;
   readonly hasAluminum: boolean;
   readonly activeFactoryCount: number;
   readonly queuedFactoryCount: number;
@@ -27,7 +27,7 @@ export function getAISpaceRaceFactoryPriority(
 ): AISpaceRaceFactoryPriority {
   const applies = context.scienceVictoryEnabled
     && context.spaceRaceGloballyUnlocked
-    && context.hasFlight
+    && context.hasRocketry
     && context.hasAluminum
     && context.activeFactoryCount === 0
     && context.queuedFactoryCount === 0;

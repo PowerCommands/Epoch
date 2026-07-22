@@ -150,7 +150,7 @@ import {
 } from './ai/AICorporationProduction';
 import type { AerospacePartSystem } from './AerospacePartSystem';
 import { getAIAerospacePartProductionCandidate } from './ai/AIAerospacePartProduction';
-import { DEFAULT_REQUIRED_AEROSPACE_PARTS } from '../data/scienceVictory';
+import { DEFAULT_REQUIRED_AEROSPACE_PARTS, SCIENCE_VICTORY_TECH_ID } from '../data/scienceVictory';
 import {
   getAISpaceRaceFactoryPriority,
   type AISpaceRaceFactoryPriority,
@@ -5199,7 +5199,7 @@ export class AISystem {
     return getAISpaceRaceFactoryPriority({
       scienceVictoryEnabled: this.scienceVictoryEnabled,
       spaceRaceGloballyUnlocked: this.aerospacePartSystem?.isGloballyUnlocked() ?? false,
-      hasFlight: this.researchSystem?.isResearched(nationId, 'flight') ?? false,
+      hasRocketry: this.researchSystem?.isResearched(nationId, SCIENCE_VICTORY_TECH_ID) ?? false,
       hasAluminum: this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false,
       activeFactoryCount,
       queuedFactoryCount,
@@ -5210,7 +5210,7 @@ export class AISystem {
     if (!this.scienceVictoryEnabled || !this.aerospacePartSystem?.isGloballyUnlocked()) return;
 
     const nationCities = this.cityManager.getCitiesByOwner(nationId);
-    const hasFlight = this.researchSystem?.isResearched(nationId, 'flight') ?? false;
+    const hasRocketry = this.researchSystem?.isResearched(nationId, SCIENCE_VICTORY_TECH_ID) ?? false;
     const hasAluminum = this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false;
     const activeFactoryCount = nationCities.filter((city) => (
       this.cityManager.getBuildings(city.id).hasActive(FACTORY.id)
@@ -5223,19 +5223,19 @@ export class AISystem {
     const priority = getAISpaceRaceFactoryPriority({
       scienceVictoryEnabled: this.scienceVictoryEnabled,
       spaceRaceGloballyUnlocked: true,
-      hasFlight,
+      hasRocketry,
       hasAluminum,
       activeFactoryCount,
       queuedFactoryCount,
     });
-    const state = [hasFlight, hasAluminum, activeFactoryCount, queuedFactoryCount, priority.applies].join('|');
+    const state = [hasRocketry, hasAluminum, activeFactoryCount, queuedFactoryCount, priority.applies].join('|');
     if (this.spaceRaceFactoryPriorityStateByNation.get(nationId) === state) return;
     this.spaceRaceFactoryPriorityStateByNation.set(nationId, state);
 
     const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
     this.logScienceVictoryAI(
       nationId,
-      `${nationName} space-race Factory evaluation: globallyUnlocked=yes flight=${hasFlight ? 'yes' : 'no'} aluminum=${hasAluminum ? 'yes' : 'no'} activeFactories=${activeFactoryCount} queuedFactories=${queuedFactoryCount} specialPriority=${priority.applies ? 'yes' : 'no'} baseScore=${priority.baseScore} scienceVictoryBonus=${priority.scienceVictoryBonus} resultingScore=${priority.resultingScore}.`,
+      `${nationName} space-race Factory evaluation: globallyUnlocked=yes rocketry=${hasRocketry ? 'yes' : 'no'} aluminum=${hasAluminum ? 'yes' : 'no'} activeFactories=${activeFactoryCount} queuedFactories=${queuedFactoryCount} specialPriority=${priority.applies ? 'yes' : 'no'} baseScore=${priority.baseScore} scienceVictoryBonus=${priority.scienceVictoryBonus} resultingScore=${priority.resultingScore}.`,
     );
   }
 

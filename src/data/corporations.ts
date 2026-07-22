@@ -7,6 +7,7 @@ import {
 import { NATURAL_RESOURCES } from './naturalResources';
 import { getResourceDefinitionById } from './resources';
 import { getTechnologyById } from './technologies';
+import { SCIENCE_VICTORY_TECH_ID } from './scienceVictory';
 import type { ManufacturedResourceDefinition } from '../entities/ManufacturedResource';
 
 export interface CorporationDefinition {
@@ -168,7 +169,7 @@ export const CORPORATIONS: CorporationDefinition[] = [
     id: 'aerospace_industries',
     name: 'AeroSpace Industries',
     description: 'Starts the global space race and grants its owner +50% Production toward Aerospace Parts.',
-    requiredTechIds: ['flight'],
+    requiredTechIds: [SCIENCE_VICTORY_TECH_ID],
     requiredResourceIds: ['aluminum'],
     requiredBuildingIds: ['factory'],
     happinessBonus: 5,

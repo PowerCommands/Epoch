@@ -13,6 +13,7 @@ import {
   AEROSPACE_PART_PRODUCTION,
   AEROSPACE_PARTS_ID,
   DEFAULT_REQUIRED_AEROSPACE_PARTS,
+  SCIENCE_VICTORY_TECH_ID,
   calculateAerospacePartProductionCost,
 } from '../src/data/scienceVictory.ts';
 import { FACTORY } from '../src/data/buildings.ts';
@@ -41,13 +42,13 @@ function makeHarness() {
     name: 'Founder',
     color: 0x111111,
     isHuman: true,
-    researchedTechIds: ['flight'],
+    researchedTechIds: [SCIENCE_VICTORY_TECH_ID],
   });
   const rival = new Nation({
     id: RIVAL_ID,
     name: 'Rival',
     color: 0x222222,
-    researchedTechIds: ['flight'],
+    researchedTechIds: [SCIENCE_VICTORY_TECH_ID],
   });
   nationManager.addNation(owner);
   nationManager.addNation(rival);
@@ -179,7 +180,7 @@ test('founding AeroSpace Industries globally unlocks part production', () => {
   assert.equal(harness.aerospacePartSystem.canCityProduce(harness.ownerCity), true);
 });
 
-test('a qualifying non-owner can manufacture and accumulate Aerospace Parts', () => {
+test('Rocketry, Aluminum, and a Factory let a non-owner manufacture Aerospace Parts after unlock', () => {
   const harness = makeHarness();
   harness.foundAerospaceIndustries();
   assert.equal(harness.aerospacePartSystem.canCityProduce(harness.rivalCity), true);
@@ -187,12 +188,13 @@ test('a qualifying non-owner can manufacture and accumulate Aerospace Parts', ()
   assert.equal(harness.aerospacePartSystem.getQuantity(RIVAL_ID), 1);
 });
 
-test('missing Flight prevents Aerospace Part production', () => {
+test('Flight alone does not allow Aerospace Part production after global unlock', () => {
   const harness = makeHarness();
   harness.foundAerospaceIndustries();
-  harness.rival.researchedTechIds = [];
+  harness.rival.researchedTechIds = ['flight'];
   assert.equal(harness.aerospacePartSystem.canCityProduce(harness.rivalCity), false);
-  assert.ok(harness.aerospacePartSystem.getCityProductionBlockers(harness.rivalCity).includes('missing technology: flight'));
+  assert.ok(harness.aerospacePartSystem.getCityProductionBlockers(harness.rivalCity)
+    .includes(`missing technology: ${SCIENCE_VICTORY_TECH_ID}`));
 });
 
 test('missing Aluminum prevents Aerospace Part production', () => {

@@ -1,5 +1,6 @@
 export const AEROSPACE_INDUSTRIES_ID = 'aerospace_industries';
 export const AEROSPACE_PARTS_ID = 'aerospace_parts';
+export const SCIENCE_VICTORY_TECH_ID = 'rocketry';
 export const DEFAULT_REQUIRED_AEROSPACE_PARTS = 10;
 export const AEROSPACE_INDUSTRIES_PART_PRODUCTION_BONUS_PERCENT = 50;
 export const AEROSPACE_PART_BASE_PRODUCTION_COST = 1200;
@@ -48,7 +49,7 @@ export const AEROSPACE_PART_PRODUCTION: ManufacturedResourceProductionDefinition
   name: 'Aerospace Part',
   description: 'Manufacture one Aerospace Part for the global space race.',
   productionCost: AEROSPACE_PART_BASE_PRODUCTION_COST,
-  requiredTechIds: ['flight'],
+  requiredTechIds: [SCIENCE_VICTORY_TECH_ID],
   requiredResourceIds: ['aluminum'],
   requiredBuildingId: 'factory',
 };

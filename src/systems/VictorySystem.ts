@@ -12,6 +12,7 @@ import {
   AEROSPACE_INDUSTRIES_ID,
   AEROSPACE_PARTS_ID,
   DEFAULT_REQUIRED_AEROSPACE_PARTS,
+  SCIENCE_VICTORY_TECH_ID,
 } from '../data/scienceVictory';
 
 export type VictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
@@ -54,7 +55,7 @@ export interface ScienceVictoryProgress {
   nationId: string;
   aerospaceParts: number;
   requiredAerospaceParts: number;
-  hasFlight: boolean;
+  hasRocketry: boolean;
   hasAluminum: boolean;
   hasFactory: boolean;
   hasAerospaceIndustries: boolean;
@@ -228,7 +229,7 @@ export class VictorySystem {
       AEROSPACE_PARTS_ID,
     ) ?? 0;
 
-    const hasFlight = this.researchSystem?.isResearched(nationId, 'flight') ?? false;
+    const hasRocketry = this.researchSystem?.isResearched(nationId, SCIENCE_VICTORY_TECH_ID) ?? false;
     const hasAluminum = this.resourceAccessSystem?.hasResource(nationId, 'aluminum') ?? false;
     const hasFactory = this.cityManager.getCitiesByOwner(nationId).some(
       (city) => this.cityManager.getBuildings(city.id).hasActive('factory'),
@@ -236,7 +237,7 @@ export class VictorySystem {
     const hasAerospaceIndustries = this.corporationSystem
       ?.isFounded(AEROSPACE_INDUSTRIES_ID) ?? false;
 
-    const fulfilledMilestones = [hasFlight, hasAluminum, hasFactory, hasAerospaceIndustries]
+    const fulfilledMilestones = [hasRocketry, hasAluminum, hasFactory, hasAerospaceIndustries]
       .filter(Boolean).length;
 
     const researchedTechnologyCount = this.researchSystem
@@ -255,7 +256,7 @@ export class VictorySystem {
       nationId,
       aerospaceParts,
       requiredAerospaceParts: this.science.requiredAerospaceParts,
-      hasFlight,
+      hasRocketry,
       hasAluminum,
       hasFactory,
       hasAerospaceIndustries,

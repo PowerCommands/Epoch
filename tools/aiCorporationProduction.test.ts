@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { getAIStrategyById } from '../src/data/aiStrategies.ts';
 import { FACTORY, MARKET } from '../src/data/buildings.ts';
 import { getCorporationById, type CorporationDefinition } from '../src/data/corporations.ts';
+import { SCIENCE_VICTORY_TECH_ID } from '../src/data/scienceVictory.ts';
 import { City } from '../src/entities/City.ts';
 import { Nation } from '../src/entities/Nation.ts';
 import { CityManager } from '../src/systems/CityManager.ts';
@@ -52,7 +53,7 @@ function makeHarness(options: HarnessOptions = {}) {
     name: 'Test AI',
     color: 0x123456,
     isHuman: false,
-    researchedTechIds: options.researchedTechIds ?? ['flight'],
+    researchedTechIds: options.researchedTechIds ?? [SCIENCE_VICTORY_TECH_ID],
   });
   nationManager.addNation(nation);
 
@@ -171,8 +172,8 @@ test('authoritative CorporationSystem prerequisites suppress an illegal general 
   assert.deepEqual(candidatesFor(harness, harness.cities[0], false, [SILK_ROAD]), []);
 });
 
-test('AeroSpace Industries is unavailable without Flight', () => {
-  const harness = makeHarness({ researchedTechIds: [] });
+test('Flight alone no longer makes AeroSpace Industries available', () => {
+  const harness = makeHarness({ researchedTechIds: ['flight'] });
   assert.deepEqual(candidatesFor(harness), []);
 });
 
@@ -205,8 +206,8 @@ test('Science Victory disabled removes only the special AeroSpace priority', () 
   assert.ok(score < AI_AEROSPACE_SCIENCE_VICTORY_SCORE);
 });
 
-test('Flight alone is sufficient technology; 82/82 completion is not required', () => {
-  const harness = makeHarness({ researchedTechIds: ['flight'] });
+test('Rocketry alone satisfies the technology requirement; 82/82 completion is not required', () => {
+  const harness = makeHarness({ researchedTechIds: [SCIENCE_VICTORY_TECH_ID] });
   assert.equal(harness.nation.researchedTechIds.length, 1);
   assert.equal(candidatesFor(harness).length, 1);
 });

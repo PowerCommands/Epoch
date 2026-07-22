@@ -16,7 +16,7 @@ import {
 const ELIGIBLE: AISpaceRaceFactoryPriorityContext = {
   scienceVictoryEnabled: true,
   spaceRaceGloballyUnlocked: true,
-  hasFlight: true,
+  hasRocketry: true,
   hasAluminum: true,
   activeFactoryCount: 0,
   queuedFactoryCount: 0,
@@ -29,7 +29,7 @@ test('before AeroSpace Industries exists no space-race Factory priority applies'
   }).applies, false);
 });
 
-test('global unlock plus Flight, Aluminum, and zero Factories activates priority', () => {
+test('global unlock plus Rocketry, Aluminum, and zero Factories activates priority', () => {
   const priority = getAISpaceRaceFactoryPriority(ELIGIBLE);
   assert.equal(priority.applies, true);
   assert.equal(priority.baseScore, AI_SPACE_RACE_FACTORY_BASE_SCORE);
@@ -37,8 +37,8 @@ test('global unlock plus Flight, Aluminum, and zero Factories activates priority
   assert.equal(priority.resultingScore, 260);
 });
 
-test('missing Flight prevents the specific Factory priority', () => {
-  assert.equal(getAISpaceRaceFactoryPriority({ ...ELIGIBLE, hasFlight: false }).applies, false);
+test('Flight alone does not satisfy the Rocketry condition for Factory priority', () => {
+  assert.equal(getAISpaceRaceFactoryPriority({ ...ELIGIBLE, hasRocketry: false }).applies, false);
 });
 
 test('missing Aluminum prevents the specific Factory priority', () => {
