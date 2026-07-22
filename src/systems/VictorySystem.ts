@@ -1,5 +1,6 @@
 import type { CityManager } from './CityManager';
 import type { CorporationSystem } from './CorporationSystem';
+import type { CurrencyStrength, CurrencySystem } from './CurrencySystem';
 import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
@@ -7,7 +8,11 @@ import type { TurnManager } from './TurnManager';
 import type { WonderSystem } from './WonderSystem';
 import type { DiplomaticScoreBreakdown, WorldCouncilSystem } from './WorldCouncilSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
-import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from './CulturalVictory';
+import {
+  CULTURAL_VICTORY_REQUIRED_CULTURE,
+  CULTURAL_VICTORY_REQUIRED_WONDERS,
+  getOwnedWonderCount,
+} from './CulturalVictory';
 import {
   AEROSPACE_INDUSTRIES_ID,
   AEROSPACE_PARTS_ID,
@@ -67,8 +72,11 @@ export interface ScienceVictoryProgress {
 
 export interface CulturalVictoryProgress {
   nationId: string;
+  accumulatedCulture: number;
+  requiredCulture: number;
   ownedWonders: number;
   requiredWonders: number;
+  currencyStatus: CurrencyStrength | null;
 }
 
 export interface DiplomaticVictoryProgress {
@@ -87,8 +95,8 @@ export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_
  * VictorySystem checks for win conditions after each turn end.
  * Domination: one nation owns every active nation's original capital.
  * Science: one nation produces enough aerospace_parts.
- * Cultural: one nation owns at least 75% of all World Wonders (ownership is
- * derived from current city ownership, so conquest transfers it).
+ * Cultural: one nation simultaneously has enough accumulated Culture, owns
+ * enough World Wonders, and has the current Dominant currency.
  * Diplomatic: one nation reaches the Diplomatic Score threshold.
  */
 export class VictorySystem {
@@ -114,6 +122,7 @@ export class VictorySystem {
     private readonly corporationSystem?: CorporationSystem,
     private readonly wonderSystem?: WonderSystem,
     private readonly worldCouncilSystem?: WorldCouncilSystem,
+    private readonly currencySystem?: CurrencySystem,
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
@@ -280,21 +289,28 @@ export class VictorySystem {
   }
 
   getCulturalVictoryProgress(nationId: string): CulturalVictoryProgress {
+    const accumulatedCulture = this.nationManager.getResources(nationId)?.culture ?? 0;
     const ownedWonders = this.wonderSystem
       ? getOwnedWonderCount(nationId, this.wonderSystem, this.cityManager)
       : 0;
     return {
       nationId,
+      accumulatedCulture,
+      requiredCulture: CULTURAL_VICTORY_REQUIRED_CULTURE,
       ownedWonders,
-      requiredWonders: getRequiredCulturalVictoryWonderCount(),
+      requiredWonders: CULTURAL_VICTORY_REQUIRED_WONDERS,
+      currencyStatus: this.currencySystem?.getCurrencyState(nationId)?.strength ?? null,
     };
   }
 
-  /** Ranked by owned World Wonders (descending). UI ranking applies its own culture tie-break. */
+  /** Diagnostic ordering only; the victory rule itself remains a strict conjunction. */
   getCulturalVictoryRanking(): CulturalVictoryProgress[] {
     return this.nationManager.getAllNations()
       .map((n) => this.getCulturalVictoryProgress(n.id))
-      .sort((a, b) => b.ownedWonders - a.ownedWonders);
+      .sort((a, b) => b.accumulatedCulture - a.accumulatedCulture
+        || b.ownedWonders - a.ownedWonders
+        || Number(b.currencyStatus === 'Dominant') - Number(a.currencyStatus === 'Dominant')
+        || a.nationId.localeCompare(b.nationId));
   }
 
   getDiplomaticVictoryProgress(nationId: string): DiplomaticVictoryProgress {
@@ -317,10 +333,14 @@ export class VictorySystem {
   }
 
   private checkCulturalVictory(): string | null {
-    if (!this.wonderSystem) return null;
-    const required = getRequiredCulturalVictoryWonderCount();
+    if (!this.wonderSystem || !this.currencySystem) return null;
     for (const nation of this.nationManager.getAllNations()) {
-      if (getOwnedWonderCount(nation.id, this.wonderSystem, this.cityManager) >= required) {
+      const progress = this.getCulturalVictoryProgress(nation.id);
+      if (
+        progress.accumulatedCulture >= progress.requiredCulture
+        && progress.ownedWonders >= progress.requiredWonders
+        && progress.currencyStatus === 'Dominant'
+      ) {
         return nation.id;
       }
     }
@@ -392,8 +412,10 @@ export class VictorySystem {
   private logCulturalVictory(nationId: string, round: number): void {
     if (!this.log) return;
     const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-    const { ownedWonders, requiredWonders } = this.getCulturalVictoryProgress(nationId);
-    this.log(nationId, `[r${round}] ${name} achieved Cultural Victory with ${ownedWonders}/${requiredWonders} World Wonders.`);
+    const progress = this.getCulturalVictoryProgress(nationId);
+    this.log(nationId,
+      `[r${round}] ${name} achieved Cultural Victory: culture=${progress.accumulatedCulture}/${progress.requiredCulture} wonders=${progress.ownedWonders}/${progress.requiredWonders} currency=${progress.currencyStatus ?? 'Not established'}.`,
+    );
   }
 
   private logCulturalProgress(round: number): void {
@@ -401,11 +423,15 @@ export class VictorySystem {
     const ranking = this.getCulturalVictoryRanking();
     if (ranking.length === 0) return;
 
-    const required = getRequiredCulturalVictoryWonderCount();
-    const lines = [`[r${round}] Cultural Victory progress (own ${required} World Wonders to win):`];
+    const lines = [`[r${round}] Cultural Victory progress:`];
     for (const p of ranking) {
       const name = this.nationManager.getNation(p.nationId)?.name ?? p.nationId;
-      lines.push(`- ${name}: ${p.ownedWonders}/${required} World Wonders`);
+      const cultureReady = p.accumulatedCulture >= p.requiredCulture ? ' [READY]' : '';
+      const wondersReady = p.ownedWonders >= p.requiredWonders ? ' [READY]' : '';
+      const currencyReady = p.currencyStatus === 'Dominant' ? ' [READY]' : '';
+      lines.push(
+        `- ${name}: culture=${p.accumulatedCulture}/${p.requiredCulture}${cultureReady} wonders=${p.ownedWonders}/${p.requiredWonders}${wondersReady} currency=${p.currencyStatus ?? 'Not established'}${currencyReady}`,
+      );
     }
     this.log(ranking[0].nationId, lines.join('\n'));
   }

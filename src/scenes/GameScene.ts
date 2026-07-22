@@ -9,6 +9,12 @@ import { UnitManager } from '../systems/UnitManager';
 import { UnitBoardingManager } from '../systems/UnitBoardingManager';
 import { TurnManager } from '../systems/TurnManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
+import {
+  CurrencySystem,
+  countActiveBanksForNation,
+  getActiveInternationalTradePartnerIds,
+  type CurrencyStrength,
+} from '../systems/CurrencySystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
 import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 import { UnitLifetimeSystem } from '../systems/UnitLifetimeSystem';
@@ -237,6 +243,12 @@ interface EpochNationStateSummary {
   currentCulture: string | null;
   cityCount: number;
   population: number;
+  currency: {
+    name: string;
+    symbol: string;
+    strength: CurrencyStrength;
+    treasury: number;
+  } | null;
 }
 
 /** First observed actual era transition during a diagnostics/autorun session. */
@@ -1140,6 +1152,29 @@ export class GameScene extends Phaser.Scene {
         recalculateHappiness: (nationId) => happinessSystem.recalculateNation(nationId),
       },
     );
+    const currencySystem = new CurrencySystem(
+      nationManager,
+      researchSystem,
+      {
+        getGoldIncome: (nationId) => (
+          nationManager.getResources(nationId).goldPerTurn
+          - unitUpkeepSystem.calculateUpkeep(nationId)
+        ),
+        getActiveTradePartnerIds: (nationId) => getActiveInternationalTradePartnerIds(
+          nationId,
+          tradeDealSystem,
+        ),
+        getCorporationCount: (nationId) => corporationSystem?.getCorporationsForNation(nationId).length ?? 0,
+        getActiveBankCount: (nationId) => countActiveBanksForNation(nationId, cityManager),
+      },
+      (message) => logManager.info({ category: 'currency', message }),
+    );
+    researchSystem.onCompleted((event) => {
+      if (event.technologyId === 'currency') {
+        currencySystem.activateCurrency(event.nationId, turnManager.getCurrentRound());
+      }
+    });
+    turnManager.on('roundStart', (event) => currencySystem.handleRoundStart(event.round));
     aerospacePartSystem = new AerospacePartSystem(
       cityManager,
       researchSystem,
@@ -2184,6 +2219,7 @@ export class GameScene extends Phaser.Scene {
       corporationSystem,
       wonderSystem,
       worldCouncilSystem,
+      currencySystem,
     );
 
     // 18. Stadsgrundningssystem
@@ -4672,6 +4708,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       cultureSystem,
       turnManager,
+      currencySystem,
       resourceAccessSystem,
       unitUpkeepSystem,
       this.diagnosticSystem,
@@ -4762,6 +4799,11 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
+    currencySystem.onChanged(() => {
+      if (autoplaySystem.isActive()) return;
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
     cultureSystem.onChanged(() => {
       if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
@@ -4839,6 +4881,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setMilitaryEvaluationSystem(aiMilitaryEvaluationSystem);
     rightPanel.setThreatEvaluationSystem(aiMilitaryThreatEvaluationSystem);
     rightPanel.setResearchSystem(researchSystem);
+    rightPanel.setCurrencySystem(currencySystem);
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setWorldCouncilSystem(worldCouncilSystem);
@@ -6358,6 +6401,7 @@ export class GameScene extends Phaser.Scene {
           // autorun sessions and safe to call at any point.
           const nations: EpochNationStateSummary[] = allNations.map((nation) => {
             const cities = cityManager.getCitiesByOwner(nation.id);
+            const currency = currencySystem.getCurrencyState(nation.id);
             return {
               id: nation.id,
               name: nation.name,
@@ -6369,6 +6413,14 @@ export class GameScene extends Phaser.Scene {
               currentCulture: cultureSystem.getCurrentCultureNode(nation.id)?.name ?? null,
               cityCount: cities.length,
               population: cities.reduce((sum, city) => sum + city.population, 0),
+              currency: currency
+                ? {
+                  name: currency.currencyName,
+                  symbol: currency.currencySymbol,
+                  strength: currency.strength,
+                  treasury: currency.treasury,
+                }
+                : null,
             };
           });
           const victoryState = victorySystem.getVictoryState();
@@ -6898,7 +6950,7 @@ export class GameScene extends Phaser.Scene {
       const victoryText = type === 'science'
         ? `Science Victory\n${nationName} has completed its aerospace program.`
         : type === 'cultural'
-          ? `Cultural Victory\n${nationName} commands the world's World Wonders.`
+          ? `Cultural Victory\n${nationName} has achieved global cultural preeminence.`
           : type === 'diplomatic'
             ? `Diplomatic Victory\n${nationName} commands global influence.`
             : `${nationName} has conquered all capitals!\nVICTORY`;
@@ -7020,6 +7072,7 @@ export class GameScene extends Phaser.Scene {
       for (const nation of nationManager.getAllNations()) {
         resourceSystem.recalculateForNation(nation.id);
       }
+      currencySystem.initializeAfterLoad(turnManager.getCurrentRound());
       happinessSystem.recalculateAll();
       refreshOpenCityView();
     } else {

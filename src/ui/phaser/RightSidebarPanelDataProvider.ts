@@ -46,6 +46,7 @@ import type { DiplomaticAttitude } from '../../systems/diplomacy/DiplomaticEvalu
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../systems/ProductionRules';
 import type { ProductionSystem, QueueEntryView } from '../../systems/ProductionSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
+import type { CurrencySystem } from '../../systems/CurrencySystem';
 import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
@@ -68,7 +69,11 @@ import type { LeaderDefinition } from '../../types/leader';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
 import { getCitySpritePath, getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
-import { getOwnedWonderCount, getRequiredCulturalVictoryWonderCount } from '../../systems/CulturalVictory';
+import {
+  CULTURAL_VICTORY_REQUIRED_CULTURE,
+  CULTURAL_VICTORY_REQUIRED_WONDERS,
+  getOwnedWonderCount,
+} from '../../systems/CulturalVictory';
 import type {
   LeaderRelationRow,
   RightSidebarContent,
@@ -134,6 +139,7 @@ export class RightSidebarPanelDataProvider {
   private discoverySystem: DiscoverySystem | null = null;
   private timelineService: HistoricalTimelineService | null = null;
   private researchSystem: ResearchSystem | null = null;
+  private currencySystem: CurrencySystem | null = null;
   private cultureSystem: CultureSystem | null = null;
   private wonderSystem: WonderSystem | null = null;
   private worldCouncilSystem: WorldCouncilSystem | null = null;
@@ -218,6 +224,10 @@ export class RightSidebarPanelDataProvider {
 
   setResearchSystem(researchSystem: ResearchSystem): void {
     this.researchSystem = researchSystem;
+  }
+
+  setCurrencySystem(currencySystem: CurrencySystem): void {
+    this.currencySystem = currencySystem;
   }
 
   setCultureSystem(cultureSystem: CultureSystem): void {
@@ -1380,12 +1390,16 @@ export class RightSidebarPanelDataProvider {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const capital = cities.find((city) => city.isCapital);
     const era = this.eraSystem?.getNationEra(nationId);
+    const currency = this.currencySystem?.getCurrencyState(nationId);
     return {
       title: 'Nation',
       rows: [
         textRow(nation.name, false, true, nation.color),
         ...(era ? [textRow(`Era: ${formatEraLabel(era)}`)] : []),
         textRow(`Capital: ${capital?.name ?? 'none'}`),
+        textRow(currency
+          ? `Currency: ${currency.currencyName} (${currency.currencySymbol}) — ${currency.strength}`
+          : 'Currency: Not established'),
         textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
         textRow(`Cities: ${cities.length}`),
       ],
@@ -2232,16 +2246,10 @@ export class RightSidebarPanelDataProvider {
     }
   }
 
-  /**
-   * Cultural Victory ranking: nations ranked by owned World Wonders, with a
-   * header showing the dynamically-calculated win threshold. The denominator is
-   * always the required count, so players see "owned / required".
-   */
   private getCulturalVictorySection(): RightSidebarSection {
-    const required = getRequiredCulturalVictoryWonderCount();
     const entries = this.getCulturalVictoryLeaderboard();
     const headerRow = textRow(
-      `Cultural Victory — own ${required} of ${ALL_WONDERS.length} World Wonders to win.`,
+      `Cultural Victory — ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, and a Dominant currency.`,
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0
@@ -2252,22 +2260,22 @@ export class RightSidebarPanelDataProvider {
         false,
         entry.color,
       ));
-    return { title: '🏛️ World Wonders', rows: [headerRow, ...rows] };
+    return { title: '🏛️ Cultural Victory', rows: [headerRow, ...rows] };
   }
 
   private getCulturalVictoryLeaderboard(): LeaderboardEntry[] {
     if (!this.wonderSystem) return [];
-    const required = getRequiredCulturalVictoryWonderCount();
     return this.sortLeaderboard(this.nationManager.getAllNations().map((nation) => {
       const owned = getOwnedWonderCount(nation.id, this.wonderSystem!, this.cityManager);
+      const culture = this.nationManager.getResources(nation.id).culture;
+      const currency = this.currencySystem?.getCurrencyState(nation.id)?.strength ?? 'Not established';
       return {
         nationId: nation.id,
         name: nation.name,
         color: nation.color,
-        score: owned,
-        detail: `${owned} / ${required} World Wonders`,
-        // Tie-break: accumulated culture (the same metric the Culture board uses).
-        secondaryScore: this.getCultureScore(nation.id),
+        score: culture,
+        detail: `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}${culture >= CULTURAL_VICTORY_REQUIRED_CULTURE ? ' ✓' : ''} · Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}${owned >= CULTURAL_VICTORY_REQUIRED_WONDERS ? ' ✓' : ''} · Currency ${currency}${currency === 'Dominant' ? ' ✓' : ''}`,
+        secondaryScore: owned,
       };
     }));
   }

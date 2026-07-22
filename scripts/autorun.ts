@@ -72,6 +72,12 @@ interface NationStateSummary {
   currentCulture: string | null;
   cityCount: number;
   population: number;
+  currency: {
+    name: string;
+    symbol: string;
+    strength: string;
+    treasury: number;
+  } | null;
 }
 
 interface EraMilestone {

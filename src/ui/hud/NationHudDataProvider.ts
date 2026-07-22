@@ -7,6 +7,7 @@ import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { TurnManager } from '../../systems/TurnManager';
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
+import type { CurrencySystem } from '../../systems/CurrencySystem';
 import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getNaturalResourceById } from '../../data/naturalResources';
@@ -21,7 +22,7 @@ import {
 const STRATEGIC_RESOURCE_IDS = ['horses', 'iron', 'niter', 'coal', 'oil', 'aluminum', 'uranium'] as const;
 
 export interface HudResourceEntry {
-  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}` | `manufactured:${string}`;
+  key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | 'currency' | `strategic:${string}` | `manufactured:${string}`;
   icon: string;
   iconKey?: string;
   value: number | string;
@@ -113,6 +114,7 @@ export class NationHudDataProvider {
     private readonly researchSystem: ResearchSystem,
     private readonly cultureSystem: CultureSystem,
     private readonly turnManager: TurnManager,
+    private readonly currencySystem: CurrencySystem,
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly unitUpkeepSystem?: UnitUpkeepSystem,
     private readonly diagnosticSystem?: DiagnosticSystem,
@@ -187,6 +189,18 @@ export class NationHudDataProvider {
         delta: nationResources.influencePerTurn,
       },
     ];
+
+    const currency = this.currencySystem.getCurrencyState(nationId);
+    if (currency) {
+      entries.push({
+        key: 'currency',
+        icon: currency.currencySymbol,
+        value: currency.strength,
+        delta: 0,
+        displayMode: 'valueOnly',
+        tooltip: `${currency.currencyName} (${currency.currencySymbol}) — ${currency.strength}`,
+      });
+    }
 
     for (const resourceId of STRATEGIC_RESOURCE_IDS) {
       const quantity = this.resourceAccessSystem?.getResourceSourceCount(nationId, resourceId) ?? 0;
