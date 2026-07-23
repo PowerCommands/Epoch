@@ -24,6 +24,7 @@ import type { Producible } from '../types/producible';
 import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { CityManager } from './CityManager';
 import type { City } from '../entities/City';
+import type { Nation } from '../entities/Nation';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { AllianceManager } from './diplomacy/AllianceManager';
 import type { DiscoverySystem } from './DiscoverySystem';
@@ -96,6 +97,18 @@ export interface SaveLoadContext {
 export type SaveParseResult =
   | { ok: true; state: SavedGameState }
   | { ok: false; error: string };
+
+/**
+ * Restore absolute research state from a save. Progress deliberately remains an
+ * accumulated science value: era-cost changes alter only the remaining amount.
+ */
+export function applySavedResearchState(
+  nation: Nation,
+  saved: Pick<SavedNation, 'currentResearchTechId' | 'researchProgress'>,
+): void {
+  nation.currentResearchTechId = saved.currentResearchTechId;
+  nation.researchProgress = saved.researchProgress;
+}
 
 /**
  * Serializer/deserializer for a running game session.
@@ -656,8 +669,10 @@ export class SaveLoadService {
       // Older saves predate covert personalities → fall back to the leader default.
       nation.covertPersonalityId = saved.covertPersonalityId ?? getLeaderCovertPersonalityByNationId(saved.id);
       nation.researchedTechIds = SaveLoadService.migrateTechIds(saved.researchedTechIds);
-      nation.currentResearchTechId = SaveLoadService.migrateTechId(saved.currentResearchTechId);
-      nation.researchProgress = saved.researchProgress;
+      applySavedResearchState(nation, {
+        currentResearchTechId: SaveLoadService.migrateTechId(saved.currentResearchTechId),
+        researchProgress: saved.researchProgress,
+      });
       nation.unlockedCultureNodeIds = [...(saved.unlockedCultureNodeIds ?? [])];
       nation.currentCultureNodeId = saved.currentCultureNodeId;
       nation.cultureProgress = saved.cultureProgress ?? 0;

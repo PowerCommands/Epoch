@@ -53,6 +53,7 @@ import { PolicySystem } from '../systems/PolicySystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
+import { ProductionPurchaseSystem } from '../systems/ProductionPurchaseSystem';
 import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
 import { HexEdgeOverlayRenderer } from '../systems/HexEdgeOverlayRenderer';
@@ -245,6 +246,8 @@ interface EpochNationStateSummary {
   technologyCount: number;
   cultureNodeCount: number;
   currentResearch: string | null;
+  currentResearchEffectiveCost: number | null;
+  sciencePerTurn: number;
   currentCulture: string | null;
   cityCount: number;
   population: number;
@@ -513,6 +516,9 @@ export class GameScene extends Phaser.Scene {
         newEra,
         source,
       });
+      if (this.diagnosticSystem.isTurnLoggingEnabled()) {
+        console.log(`[TechEra] ${nation.name} entered ${newEra} Era — turn ${turnManager.getCurrentRound()}`);
+      }
     };
 
     // World chronicle (History panel). Records major events as they happen and
@@ -642,6 +648,13 @@ export class GameScene extends Phaser.Scene {
     const invalidTileFeedbackRenderer = new InvalidTileFeedbackRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
+    const productionPurchaseSystem = new ProductionPurchaseSystem(
+      cityManager,
+      nationManager,
+      productionSystem,
+      resourceSystem,
+      () => turnManager.getCurrentRound(),
+    );
     const cityBannerTooltip = new Tooltip(this, (obj) => { this.add.existing(obj); return obj; });
     const cityBannerRenderer = new CityBannerRenderer(
       this,
@@ -1682,6 +1695,7 @@ export class GameScene extends Phaser.Scene {
       cityDefenseSystem,
       nationCollapseSystem,
       cityIntegrationSystem,
+      (nationId, message) => logManager.info({ nationId, category: 'city', message }),
     );
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
@@ -2337,6 +2351,7 @@ export class GameScene extends Phaser.Scene {
       victorySystem.getEnabledConditions().science,
       aerospacePartSystem,
       victorySystem.getScienceVictorySettings().requiredAerospaceParts,
+      productionPurchaseSystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
@@ -2413,7 +2428,7 @@ export class GameScene extends Phaser.Scene {
       // Autoplay silences console.log to keep long headless runs quiet, but a
       // few prefixes are diagnostics the autorun pipeline exists to collect.
       // Suppressing those makes the run unobservable rather than merely quiet.
-      const autoplayLogAllowList = ['[autorun]', '[Diplomacy]', '[AggressionMemory]', '[ScienceVictoryAI]'];
+      const autoplayLogAllowList = ['[autorun]', '[TechEra]', '[EmergencyDefense]', '[Diplomacy]', '[AggressionMemory]', '[ScienceVictoryAI]'];
       console.log = (...args: unknown[]) => {
         const first = args[0];
         // Matched anywhere in the line, not just at the start: several systems
@@ -5274,8 +5289,12 @@ export class GameScene extends Phaser.Scene {
           entry.item.kind === 'corporation' && (corporationSystem?.isFounded(entry.item.corporationType.id) ?? false)
         ))
         .map(({ entry, index }) => {
-          const buyCost = city.ownerId === humanNationId ? productionSystem.getBuyCost(city.id, index) : null;
-          const canBuy = buyCost !== null && availableGold >= buyCost;
+          const quote = city.ownerId === humanNationId
+            ? productionPurchaseSystem.getQuote(city.id, index)
+            : { ok: false as const, reason: 'Not human-controlled' };
+          const rawBuyCost = productionSystem.getBuyCost(city.id, index);
+          const buyCost = quote.ok ? quote.cost : rawBuyCost;
+          const canBuy = quote.ok;
           return {
             index,
             name: getProducibleName(entry.item),
@@ -5290,7 +5309,9 @@ export class GameScene extends Phaser.Scene {
               ? undefined
               : canBuy
                 ? `Buy ${buyCost}`
-                : `Need ${buyCost - availableGold}`,
+                : quote.reason === 'Insufficient gold'
+                  ? `Need ${Math.max(0, buyCost - availableGold)}`
+                  : quote.reason,
             canBuy,
           };
         });
@@ -5540,23 +5561,12 @@ export class GameScene extends Phaser.Scene {
     });
     rightPanel.setBuyProductionRequestHandler((city, index) => {
       if (city.ownerId !== humanNationId) return;
-      const cost = productionSystem.getBuyCost(city.id, index);
-      if (cost === null) return;
-      const nationResources = nationManager.getResources(city.ownerId);
-      if (nationResources.gold < cost) {
-        rightPanel?.requestRefresh();
-        return;
-      }
-
-      resourceSystem.addGold(city.ownerId, -cost);
-      const result = productionSystem.completeQueueEntry(city.id, index);
-      if (!result.ok) {
-        resourceSystem.addGold(city.ownerId, cost);
-        rightPanel?.requestRefresh();
-        return;
-      }
-      resourceSystem.recalculateForNation(city.ownerId);
+      productionPurchaseSystem.purchase(city.id, index);
+      rightPanel?.requestRefresh();
     });
+    rightPanel.setProductionPurchaseQuoteProvider((cityId, index) =>
+      productionPurchaseSystem.getQuote(cityId, index),
+    );
     const getOpenCityViewCity = (): City | null => {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'city') return null;
@@ -5724,22 +5734,7 @@ export class GameScene extends Phaser.Scene {
     cityView.onQueueBuyRequested((index) => {
       const city = getOpenCityViewCity();
       if (!city) return;
-      const cost = productionSystem.getBuyCost(city.id, index);
-      if (cost === null) return;
-      const nationResources = nationManager.getResources(city.ownerId);
-      if (nationResources.gold < cost) {
-        refreshOpenCityView();
-        return;
-      }
-
-      resourceSystem.addGold(city.ownerId, -cost);
-      const result = productionSystem.completeQueueEntry(city.id, index);
-      if (!result.ok) {
-        resourceSystem.addGold(city.ownerId, cost);
-        refreshOpenCityView();
-        return;
-      }
-      resourceSystem.recalculateForNation(city.ownerId);
+      productionPurchaseSystem.purchase(city.id, index);
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
@@ -6425,6 +6420,7 @@ export class GameScene extends Phaser.Scene {
           const nations: EpochNationStateSummary[] = allNations.map((nation) => {
             const cities = cityManager.getCitiesByOwner(nation.id);
             const currency = currencySystem.getCurrencyState(nation.id);
+            const currentResearch = researchSystem.getCurrentResearch(nation.id);
             const cityIntegration = getNationCityIntegrationCounts(
               nation.id,
               cityManager,
@@ -6437,7 +6433,11 @@ export class GameScene extends Phaser.Scene {
               era: eraSystem.getNationEra(nation.id),
               technologyCount: nation.researchedTechIds.length,
               cultureNodeCount: nation.unlockedCultureNodeIds.length,
-              currentResearch: researchSystem.getCurrentResearch(nation.id)?.name ?? null,
+              currentResearch: currentResearch?.name ?? null,
+              currentResearchEffectiveCost: currentResearch
+                ? researchSystem.getEffectiveCost(currentResearch.id)
+                : null,
+              sciencePerTurn: researchSystem.getResearchPerTurn(nation.id),
               currentCulture: cultureSystem.getCurrentCultureNode(nation.id)?.name ?? null,
               cityCount: cities.length,
               population: cities.reduce((sum, city) => sum + city.population, 0),

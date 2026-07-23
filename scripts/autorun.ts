@@ -69,6 +69,8 @@ interface NationStateSummary {
   technologyCount: number;
   cultureNodeCount: number;
   currentResearch: string | null;
+  currentResearchEffectiveCost?: number | null;
+  sciencePerTurn?: number;
   currentCulture: string | null;
   cityCount: number;
   population: number;
@@ -730,14 +732,29 @@ function renderTimelineCalibration(calibration: TimelineCalibration): string[] {
     lines.push('- None observed in this segment');
   }
 
+  lines.push('', '### Era Progression', '');
+  if (calibration.eraMilestones.length > 0) {
+    const nationNames = Array.from(new Set(calibration.eraMilestones.map((milestone) => milestone.nationName)));
+    for (const nationName of nationNames) {
+      const transitions = calibration.eraMilestones
+        .filter((milestone) => milestone.nationName === nationName)
+        .sort((a, b) => eraRank(a.newEra) - eraRank(b.newEra))
+        .map((milestone) => `${milestone.newEra}: t${milestone.turn}`)
+        .join(', ');
+      lines.push(`- ${nationName}: ${transitions}`);
+    }
+  } else {
+    lines.push('- None observed in this segment');
+  }
+
   if (calibration.nations.length > 0) {
     lines.push('', '### Nations', '');
-    lines.push('| Nation | Era | Techs | Culture | Cities | Pop | Researching | Culture target |');
-    lines.push('| --- | --- | ---: | ---: | ---: | ---: | --- | --- |');
+    lines.push('| Nation | Era | Techs | Culture | Cities | Pop | Researching | Effective cost | Science/turn | Culture target |');
+    lines.push('| --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- |');
     for (const nation of calibration.nations) {
       const label = nation.isHuman ? `${nation.name} (human)` : nation.name;
       lines.push(
-        `| ${label} | ${nation.era} | ${nation.technologyCount} | ${nation.cultureNodeCount} | ${nation.cityCount} | ${nation.population} | ${nation.currentResearch ?? '—'} | ${nation.currentCulture ?? '—'} |`,
+        `| ${label} | ${nation.era} | ${nation.technologyCount} | ${nation.cultureNodeCount} | ${nation.cityCount} | ${nation.population} | ${nation.currentResearch ?? '—'} | ${nation.currentResearchEffectiveCost ?? '—'} | ${nation.sciencePerTurn ?? '—'} | ${nation.currentCulture ?? '—'} |`,
       );
     }
   }

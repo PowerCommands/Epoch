@@ -1,7 +1,7 @@
 import type { Era } from './technologies';
 
 /**
- * Era-based cost multipliers for research and culture progression.
+ * Era-based cost multipliers for culture progression.
  *
  * Applied on top of the game-speed cost multiplier so that each successive era
  * takes proportionally longer to traverse, without touching AI logic, combat,
@@ -11,8 +11,8 @@ import type { Era } from './technologies';
  * Medieval onward: progressively heavier so units and wars stay relevant longer
  * and industrial nations no longer appear while others field medieval armies.
  *
- * These values are easy to tune: they are only read by ResearchSystem and
- * CultureSystem when computing effective costs.
+ * Technology research uses its own technology-only multiplier table so the two
+ * progression systems can be calibrated independently.
  */
 export const ERA_PACING_MULTIPLIERS: Record<Era, number> = {
   ancient:     1.00,

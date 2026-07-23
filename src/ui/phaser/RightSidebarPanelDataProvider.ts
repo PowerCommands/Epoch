@@ -45,6 +45,7 @@ import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/Diploma
 import type { DiplomaticAttitude } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../systems/ProductionRules';
 import type { ProductionSystem, QueueEntryView } from '../../systems/ProductionSystem';
+import type { ProductionPurchaseQuote } from '../../systems/ProductionPurchaseSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
 import type { CurrencySystem } from '../../systems/CurrencySystem';
 import {
@@ -166,6 +167,7 @@ export class RightSidebarPanelDataProvider {
   private wonderPlacementRequestHandler: WonderPlacementRequestHandler | null = null;
   private wonderPlacementAvailabilityProvider: WonderPlacementAvailabilityProvider | null = null;
   private buyProductionRequestHandler: BuyProductionRequestHandler | null = null;
+  private productionPurchaseQuoteProvider: ((cityId: string, index: number) => ProductionPurchaseQuote) | null = null;
   private arrangeAudienceHandler: ((leaderId: string) => void) | null = null;
   private current: RightSidebarDetailsState = {
     view: null,
@@ -306,6 +308,12 @@ export class RightSidebarPanelDataProvider {
 
   setBuyProductionRequestHandler(handler: BuyProductionRequestHandler): void {
     this.buyProductionRequestHandler = handler;
+  }
+
+  setProductionPurchaseQuoteProvider(
+    provider: (cityId: string, index: number) => ProductionPurchaseQuote,
+  ): void {
+    this.productionPurchaseQuoteProvider = provider;
   }
 
   setFoundCityHandler(canFoundCity: (unit: Unit) => boolean, foundCity: (unit: Unit) => void): void {
@@ -1140,12 +1148,15 @@ export class RightSidebarPanelDataProvider {
         }, 0xb86767, '🗑️', spritePath)
         : textRow(label, false, false, undefined, spritePath));
       if (isHuman) {
-        const buyCost = this.productionSystem.getBuyCost(city.id, index);
+        const quote = this.productionPurchaseQuoteProvider?.(city.id, index);
+        const buyCost = quote?.cost ?? this.productionSystem.getBuyCost(city.id, index);
         if (buyCost !== null) {
-          const canBuy = availableGold >= buyCost;
+          const canBuy = quote ? quote.ok : availableGold >= buyCost;
           const buyLabel = canBuy
             ? `💰 Buy for ${buyCost} gold`
-            : `💰 Need ${buyCost - availableGold} more gold`;
+            : quote && !quote.ok && quote.reason !== 'Insufficient gold'
+              ? `💰 ${quote.reason}`
+              : `💰 Need ${Math.max(0, buyCost - availableGold)} more gold`;
           rows.push({
             kind: 'button',
             text: buyLabel,

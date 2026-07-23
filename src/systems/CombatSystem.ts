@@ -11,6 +11,13 @@ import {
   type CityCombatResult,
 } from './CombatResolver';
 import { captureCity } from './CityCombat';
+import { CITY_BASE_DEFENSE } from '../data/cities';
+import { isMilitaryUnitType } from '../utils/unitRoleUtils';
+import {
+  getCityIntegrationProgress,
+  getNationCityIntegrationCounts,
+  getNationOccupationGoldCost,
+} from './CityIntegrationSystem';
 import { UnitManager } from './UnitManager';
 import { TurnManager } from './TurnManager';
 import { CityManager } from './CityManager';
@@ -96,6 +103,9 @@ export class CombatSystem {
   // Optional: turns covert combat (privateer/insurgent raids, caught insurgents)
   // into Suspicion. Injected after construction to avoid a constructor cycle.
   private covertSuspicionSystem: CovertSuspicionSystem | null = null;
+  // Diagnostic-only: lightweight per-city siege tracking so a capture can report
+  // how long the city was under sustained pressure. Never read by gameplay.
+  private readonly siegeTracker = new Map<string, { firstRound: number; lastRound: number; attacks: number }>();
 
   constructor(
     unitManager: UnitManager,
@@ -111,6 +121,9 @@ export class CombatSystem {
     private readonly cityDefenseSystem?: CityDefenseSystem,
     private readonly nationCollapseSystem?: NationCollapseSystem,
     private readonly cityIntegrationSystem?: CityIntegrationSystem,
+    // Diagnostic-only structured logger for city-conquest analysis. Pure
+    // instrumentation: it never influences combat resolution or gameplay.
+    private readonly conquestDiagnosticLog?: (nationId: string, message: string) => void,
   ) {
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -319,6 +332,25 @@ export class CombatSystem {
       ? resolveRangedVsCity(attacker, city, modifiers)
       : resolveUnitVsCity(attacker, city, modifiers);
 
+    // Diagnostic snapshot (pure instrumentation): capture the pre-attack state
+    // before any mutation so a resulting capture can be reconstructed.
+    const diagRound = this.turnManager.getCurrentRound();
+    const effectiveCityDefense = Math.max(
+      1,
+      Math.floor((CITY_BASE_DEFENSE + (modifiers.cityDefenseBonus ?? 0)) * (modifiers.cityDefenseMultiplier ?? 1)),
+    );
+    const preAttack = {
+      round: diagRound,
+      cityHealth: city.health,
+      cityPopulation: city.population,
+      cityOriginNationId: city.originNationId,
+      previousOwnerId: city.ownerId,
+      preIntegrationState: getCityIntegrationProgress(city, diagRound).state,
+      garrisonAtTile: this.unitManager.getUnitAt(city.tileX, city.tileY) !== null,
+      effectiveCityDefense,
+    };
+    this.recordSiegeAttack(city, diagRound);
+
     attacker.health = Math.max(0, attacker.health - result.attackerDamageTaken);
     // Ranged cannot capture: city stays at 1 HP minimum
     city.health = isRanged
@@ -351,6 +383,7 @@ export class CombatSystem {
       );
       captured = true;
       this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);
+      this.emitConquestDiagnostic(attacker, city, result, preAttack);
     }
 
     this.reportCovertCityCombat(attacker, city);
@@ -375,6 +408,147 @@ export class CombatSystem {
 
   private notifyRejected(attacker: Unit, target: Unit, reason: string): void {
     for (const cb of this.rejectedListeners) cb({ attacker, target, reason });
+  }
+
+  /**
+   * Diagnostic-only siege tracking. Records each attack (ranged or melee) on a
+   * city so a resulting capture can report how long the city was under sustained
+   * pressure. A gap of more than 4 rounds since the last attack starts a fresh
+   * siege window. Never read by gameplay.
+   */
+  private recordSiegeAttack(city: City, round: number): void {
+    const prior = this.siegeTracker.get(city.id);
+    if (prior === undefined || round - prior.lastRound > 4) {
+      this.siegeTracker.set(city.id, { firstRound: round, lastRound: round, attacks: 1 });
+      return;
+    }
+    prior.lastRound = round;
+    prior.attacks += 1;
+  }
+
+  /**
+   * Emit one structured, greppable line describing a city capture. Pure
+   * instrumentation for the conquest diagnostic run — reads existing game state
+   * and existing combat values only; introduces no second combat model.
+   */
+  private emitConquestDiagnostic(
+    attacker: Unit,
+    city: City,
+    result: CityCombatResult,
+    preAttack: {
+      round: number;
+      cityHealth: number;
+      cityPopulation: number;
+      cityOriginNationId: string;
+      previousOwnerId: string;
+      preIntegrationState: string;
+      garrisonAtTile: boolean;
+      effectiveCityDefense: number;
+    },
+  ): void {
+    if (!this.conquestDiagnosticLog) return;
+    const log = this.conquestDiagnosticLog;
+
+    const round = preAttack.round;
+    const newOwnerId = attacker.ownerId;
+    const defenderId = preAttack.previousOwnerId;
+
+    const captureType = newOwnerId === preAttack.cityOriginNationId
+      ? 'liberation'
+      : preAttack.previousOwnerId !== preAttack.cityOriginNationId
+        ? 'reconquest'
+        : 'original';
+    const resultingState = captureType === 'liberation' ? 'integrated' : 'occupied';
+
+    // Local tactical snapshot around the city, using Manhattan distance to match
+    // the game's orthogonal movement. R=3 "local", R=6 "reinforce" radius.
+    const cx = city.tileX;
+    const cy = city.tileY;
+    const dist = (u: Unit): number => Math.abs(u.tileX - cx) + Math.abs(u.tileY - cy);
+    let localAtk = 0; let localAtkStr = 0;
+    let localDef = 0; let localDefStr = 0;
+    let reinforceDef = 0; let nearestDefDist = -1;
+    for (const u of this.unitManager.getAllUnits()) {
+      if (!isMilitaryUnitType(u.unitType)) continue;
+      const d = dist(u);
+      if (u.ownerId === newOwnerId) {
+        if (d <= 3) { localAtk += 1; localAtkStr += u.unitType.baseStrength; }
+      } else if (u.ownerId === defenderId) {
+        if (d <= 3) { localDef += 1; localDefStr += u.unitType.baseStrength; }
+        if (d <= 6 && (u.tileX !== cx || u.tileY !== cy)) reinforceDef += 1;
+        if (d > 0 && (nearestDefDist < 0 || d < nearestDefDist)) nearestDefDist = d;
+      }
+    }
+
+    // Nation-wide strength (sum of existing baseStrength over military units).
+    const milStrength = (ownerId: string): number => this.unitManager
+      .getUnitsByOwner(ownerId)
+      .reduce((sum, u) => sum + (isMilitaryUnitType(u.unitType) ? u.unitType.baseStrength : 0), 0);
+    const attackerCities = this.cityManager.getCitiesByOwner(newOwnerId).length;
+    const defenderCities = this.cityManager.getCitiesByOwner(defenderId).length;
+
+    // War context from the existing diplomacy relation (A/B follow alphabetical
+    // pairKey ordering, documented on DiplomacyRelation).
+    let warStart = -1; let aggressor = 'n/a'; let defenderCitiesLostThisWar = -1;
+    if (this.diplomacyManager) {
+      const rel = this.diplomacyManager.getRelation(newOwnerId, defenderId);
+      warStart = rel.lastWarDeclarationTurn ?? -1;
+      aggressor = rel.aggressorNationId ?? 'n/a';
+      const defenderIsA = [newOwnerId, defenderId].sort()[0] === defenderId;
+      defenderCitiesLostThisWar = defenderIsA ? rel.citiesLostA : rel.citiesLostB;
+    }
+    const warDuration = warStart >= 0 ? round - warStart : -1;
+
+    // Occupation burden (existing integration helpers).
+    const atkCounts = getNationCityIntegrationCounts(newOwnerId, this.cityManager, round);
+    const defCounts = getNationCityIntegrationCounts(defenderId, this.cityManager, round);
+    const atkOccCost = getNationOccupationGoldCost(newOwnerId, this.cityManager, round);
+
+    const siege = this.siegeTracker.get(city.id);
+    const siegeStart = siege?.firstRound ?? round;
+    const siegeTurns = round - siegeStart;
+    const siegeAttacks = siege?.attacks ?? 1;
+    this.siegeTracker.delete(city.id);
+
+    const parts = [
+      `[ConquestDiag] capture ${city.name}`,
+      `type=${captureType}`,
+      `resultState=${resultingState}`,
+      `from=${defenderId}`,
+      `to=${newOwnerId}`,
+      `origin=${preAttack.cityOriginNationId}`,
+      `pop=${preAttack.cityPopulation}`,
+      `cityDefense=${preAttack.effectiveCityDefense}`,
+      `cityHpBeforeFinalHit=${preAttack.cityHealth}`,
+      `finalHit=${result.cityDamageTaken}`,
+      `preState=${preAttack.preIntegrationState}`,
+      `garrisonOnTile=${preAttack.garrisonAtTile ? 1 : 0}`,
+      `attacker=${attacker.unitType.name}`,
+      `attackerStr=${attacker.unitType.baseStrength}`,
+      `attackerHpPct=${Math.round((attacker.health / attacker.unitType.baseHealth) * 100)}`,
+      `localAtk=${localAtk}`,
+      `localAtkStr=${localAtkStr}`,
+      `localDef=${localDef}`,
+      `localDefStr=${localDefStr}`,
+      `reinforceDefR6=${reinforceDef}`,
+      `nearestDefDist=${nearestDefDist}`,
+      `siegeTurns=${siegeTurns}`,
+      `siegeAttacks=${siegeAttacks}`,
+      `warStart=${warStart}`,
+      `warDuration=${warDuration}`,
+      `aggressor=${aggressor}`,
+      `defCitiesLostThisWar=${defenderCitiesLostThisWar}`,
+      `atkCities=${attackerCities}`,
+      `defCities=${defenderCities}`,
+      `atkMilStr=${milStrength(newOwnerId)}`,
+      `defMilStr=${milStrength(defenderId)}`,
+      `atkOcc=${atkCounts.occupied}`,
+      `atkRec=${atkCounts.recovering}`,
+      `atkOccCost=${atkOccCost}`,
+      `defOcc=${defCounts.occupied}`,
+      `defRec=${defCounts.recovering}`,
+    ];
+    log(newOwnerId, parts.join(' '));
   }
 
   private getOwnedTerritoryCombatBonus(unit: Unit): number {

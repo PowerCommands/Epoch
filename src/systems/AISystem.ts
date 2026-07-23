@@ -155,6 +155,18 @@ import {
   getAISpaceRaceFactoryPriority,
   type AISpaceRaceFactoryPriority,
 } from './ai/AIScienceVictoryFactoryProduction';
+import {
+  allocateEmergencyCityDefenders,
+  detectEmergencyCityThreats,
+  executeEmergencyDefenseAssignment,
+  getEmergencyProductionThreats,
+  getEmergencyPurchaseThreats,
+  isSuitableEmergencyLandDefender,
+  isSuitableEmergencyLandDefenderType,
+  type EmergencyCityThreat,
+  type EmergencyCityThreatSeverity,
+} from './ai/EmergencyCityDefense';
+import type { ProductionPurchaseSystem } from './ProductionPurchaseSystem';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -526,6 +538,9 @@ export class AISystem {
     roleDeficitMultiplier: number;
     finalScore: number;
   }>();
+  private readonly emergencyThreatsByNation = new Map<string, EmergencyCityThreat[]>();
+  private readonly emergencyThreatStateByNation = new Map<string, Map<string, EmergencyCityThreatSeverity>>();
+  private readonly emergencyAssignmentCityByUnit = new Map<string, string>();
 
   constructor(
     unitManager: UnitManager,
@@ -571,6 +586,7 @@ export class AISystem {
     private readonly scienceVictoryEnabled = false,
     private readonly aerospacePartSystem?: AerospacePartSystem,
     private readonly requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS,
+    private readonly productionPurchaseSystem?: ProductionPurchaseSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -641,6 +657,7 @@ export class AISystem {
   }
 
   runTurn(nationId: string): void {
+    this.refreshEmergencyCityThreats(nationId);
     this.cityFocusSystem.updateFocusForNation(nationId);
     this.updateStrategyForNation(nationId);
     this.evaluateStrategyForNation(nationId);
@@ -657,6 +674,7 @@ export class AISystem {
     this.overseasExpansionSystem?.runTurn(nationId);
     this.runSettlers(nationId);
     this.overseasExpansionSystem?.runStaging(nationId);
+    this.runEmergencyDefenseRedeployment(nationId);
     this.runCombat(nationId);
     this.runMovement(nationId);
     this.runTilePurchases(nationId);
@@ -670,6 +688,131 @@ export class AISystem {
         this.formatLog(nationId, `AI goals: ${nation.aiGoals.map((g) => `${g.type}(${g.remainingTurns})`).join(', ')}`),
       );
     }
+  }
+
+  getEmergencyCityThreats(nationId: string): readonly EmergencyCityThreat[] {
+    return this.emergencyThreatsByNation.get(nationId) ?? [];
+  }
+
+  private refreshEmergencyCityThreats(nationId: string): void {
+    const threats = detectEmergencyCityThreats({
+      nationId,
+      cities: this.cityManager.getCitiesByOwner(nationId),
+      units: this.unitManager.getAllUnits(),
+      currentRound: this.turnManager.getCurrentRound(),
+      getDistance: (a, b) => this.gridSystem.getDistance(a, b),
+      isAtWar: (ownerId, otherId) => this.isAtWarWith(ownerId, otherId),
+      canThreatenCity: (unit, city) => (
+        unit.unitType.isNaval !== true || cityHasWaterTile(city, this.mapData)
+      ),
+    });
+    this.emergencyThreatsByNation.set(nationId, threats);
+
+    const previous = this.emergencyThreatStateByNation.get(nationId) ?? new Map();
+    const next = new Map(threats.map((threat) => [threat.city.id, threat.severity]));
+    for (const threat of threats) {
+      if (previous.get(threat.city.id) === threat.severity) continue;
+      this.logEmergencyDefense(
+        nationId,
+        `${threat.city.name} entered ${threat.severity} emergency defense state: ${threat.reason}; `
+        + `hostiles=${threat.hostileUnits.length}, localStrength=${threat.localHostileStrength}.`,
+      );
+    }
+    for (const cityId of previous.keys()) {
+      if (next.has(cityId)) continue;
+      const cityName = this.cityManager.getCity(cityId)?.name ?? cityId;
+      this.logEmergencyDefense(nationId, `${cityName} left emergency defense state.`);
+    }
+    this.emergencyThreatStateByNation.set(nationId, next);
+  }
+
+  private buildEmergencyDefenseAssignments(
+    nationId: string,
+    units: readonly Unit[],
+  ) {
+    const threats = this.getEmergencyCityThreats(nationId);
+    const assignments = allocateEmergencyCityDefenders({
+      nationId,
+      threats,
+      friendlyUnits: units.filter(
+        (unit) => this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) !== true,
+      ),
+      getDistance: (a, b) => this.gridSystem.getDistance(a, b),
+      canReachCity: (unit, city) => this.pathfindingSystem.findPath(
+        unit,
+        city.tileX,
+        city.tileY,
+        { respectMovementPoints: false },
+      ) !== null,
+      hasFriendlyMilitaryOnCity: (city) => this.hasFriendlyMilitaryOnCity(city, nationId),
+    });
+    const currentlyAssignedIds = new Set(assignments.map(({ unit }) => unit.id));
+    for (const unitId of this.emergencyAssignmentCityByUnit.keys()) {
+      if (!currentlyAssignedIds.has(unitId)) this.emergencyAssignmentCityByUnit.delete(unitId);
+    }
+    for (const assignment of assignments) {
+      if (this.emergencyAssignmentCityByUnit.get(assignment.unit.id) === assignment.threat.city.id) continue;
+      this.emergencyAssignmentCityByUnit.set(assignment.unit.id, assignment.threat.city.id);
+      this.logEmergencyDefense(
+        nationId,
+        `reassigned ${assignment.unit.name} to defend ${assignment.threat.city.name} `
+        + `(${assignment.threat.severity}).`,
+      );
+    }
+    return assignments;
+  }
+
+  private runEmergencyDefenseRedeployment(nationId: string): void {
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
+    for (const assignment of this.buildEmergencyDefenseAssignments(nationId, units)) {
+      executeEmergencyDefenseAssignment({
+        assignment,
+        findPath: (unit, city) => this.pathfindingSystem.findPath(
+          unit,
+          city.tileX,
+          city.tileY,
+          { respectMovementPoints: false },
+        ),
+        moveAlongPath: (unit, path) => this.movementSystem.moveAlongPath(unit, path),
+        onOccupied: (completed) => this.logEmergencyDefense(
+          nationId,
+          `${completed.unit.name} occupied threatened city ${completed.threat.city.name}.`,
+        ),
+      });
+    }
+  }
+
+  private isEmergencyCityGarrison(unit: Unit, nationId: string): boolean {
+    return this.getEmergencyCityThreats(nationId).some(
+      (threat) => threat.city.tileX === unit.tileX
+        && threat.city.tileY === unit.tileY
+        && unit.ownerId === nationId
+        && isSuitableEmergencyLandDefender(unit),
+    );
+  }
+
+  private hasFriendlyMilitaryOnCity(city: City, nationId: string): boolean {
+    const unit = this.unitManager.getUnitAt(city.tileX, city.tileY);
+    return unit?.ownerId === nationId && isSuitableEmergencyLandDefender(unit);
+  }
+
+  private hasAdequateLocalEmergencyDefense(threat: EmergencyCityThreat, nationId: string): boolean {
+    if (!this.hasFriendlyMilitaryOnCity(threat.city, nationId)) return false;
+    const cityPosition = { x: threat.city.tileX, y: threat.city.tileY };
+    const friendlyStrength = this.unitManager.getUnitsByOwner(nationId)
+      .filter(isSuitableEmergencyLandDefender)
+      .filter((unit) => this.gridSystem.getDistance(
+        cityPosition,
+        { x: unit.tileX, y: unit.tileY },
+      ) <= 2)
+      .reduce((sum, unit) => sum + unit.unitType.baseStrength, 0);
+    return friendlyStrength >= threat.localHostileStrength * 0.75;
+  }
+
+  private logEmergencyDefense(nationId: string, message: string): void {
+    const formatted = `[EmergencyDefense] ${message}`;
+    console.log(this.formatLog(nationId, formatted));
+    this.logStrategicEvent?.(nationId, formatted);
   }
 
   // ─── Exploration memory ──────────────────────────────────────────────────────
@@ -1868,6 +2011,8 @@ export class AISystem {
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.baseStrength <= 0) continue; // settlers can't attack
+      if (this.emergencyAssignmentCityByUnit.has(unit.id)) continue;
+      if (this.isEmergencyCityGarrison(unit, nationId)) continue;
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
@@ -2212,6 +2357,8 @@ export class AISystem {
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
+      if (this.emergencyAssignmentCityByUnit.has(unit.id)) continue;
+      if (this.isEmergencyCityGarrison(unit, nationId)) continue;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) continue;
       if (unit.unitType.canFound) continue; // settlers handled in runSettlers
       if (unit.unitType.id === SCOUT.id) continue; // scouts use AIExplorationSystem
@@ -4200,6 +4347,8 @@ export class AISystem {
 
   private runProduction(nationId: string): void {
     const cities = this.cityManager.getCitiesByOwner(nationId);
+    this.ensureEmergencyMilitaryProduction(nationId);
+    this.runEmergencyMilitaryPurchase(nationId);
     this.logSpaceRaceFactoryPriorityState(nationId);
     this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
@@ -4310,6 +4459,135 @@ export class AISystem {
           plannedNavalCount++;
         }
         if (choice.unitType.id === WORK_BOAT.id) plannedWorkBoatCount++;
+      }
+    }
+  }
+
+  private ensureEmergencyMilitaryProduction(nationId: string): void {
+    const threats = getEmergencyProductionThreats(
+      this.getEmergencyCityThreats(nationId),
+      (threat) => this.hasAdequateLocalEmergencyDefense(threat, nationId),
+    );
+    if (threats.length === 0) return;
+    const claimedProductionCityIds = new Set<string>();
+
+    for (const threat of threats) {
+      const candidateCities = this.cityManager.getCitiesByOwner(nationId)
+        .map((city) => ({
+          city,
+          distance: this.gridSystem.getDistance(
+            { x: city.tileX, y: city.tileY },
+            { x: threat.city.tileX, y: threat.city.tileY },
+          ),
+        }))
+        .filter(({ distance }) => distance <= 4)
+        .sort((a, b) => {
+          const directDelta = Number(b.city.id === threat.city.id) - Number(a.city.id === threat.city.id);
+          return directDelta || a.distance - b.distance || a.city.id.localeCompare(b.city.id);
+        });
+
+      for (const { city: productionCity } of candidateCities) {
+        if (claimedProductionCityIds.has(productionCity.id)) continue;
+        const current = this.productionSystem.getProduction(productionCity.id);
+        if (
+          current?.item.kind === 'unit'
+          && isSuitableEmergencyLandDefenderType(current.item.unitType)
+          && this.canBuildUnit(nationId, current.item.unitType.id)
+          && canCityProduceUnit(
+            productionCity,
+            current.item.unitType,
+            this.mapData,
+            this.gridSystem,
+            this.getUnitProductionRuleContext(),
+          )
+        ) {
+          claimedProductionCityIds.add(productionCity.id);
+          break;
+        }
+
+        const unitType = this.pickEmergencyLandUnitForCity(productionCity, nationId);
+        if (!unitType) continue;
+        this.productionSystem.enqueueFront(
+          productionCity.id,
+          { kind: 'unit', unitType },
+        );
+        claimedProductionCityIds.add(productionCity.id);
+        const overridden = current ? ` overrode ${describeProducible(current.item)}` : '';
+        this.logEmergencyDefense(
+          nationId,
+          `emergency military production${overridden} in ${productionCity.name}: ${unitType.name} `
+          + `for ${threat.city.name} (${threat.severity}); doctrine/army budget suppression bypassed.`,
+        );
+        break;
+      }
+    }
+  }
+
+  private pickEmergencyLandUnitForCity(city: City, nationId: string): UnitType | undefined {
+    const doctrineContext = this.buildMilitaryDoctrineContext(nationId);
+    return MILITARY_OPTIONS
+      .filter(isSuitableEmergencyLandDefenderType)
+      .filter((unitType) => this.canBuildUnit(nationId, unitType.id))
+      .filter((unitType) => canCityProduceUnit(
+        city,
+        unitType,
+        this.mapData,
+        this.gridSystem,
+        this.getUnitProductionRuleContext(),
+      ))
+      .map((unitType) => ({
+        unitType,
+        score: scoreMilitaryUnitCandidate(
+          unitType,
+          doctrineContext.doctrine,
+          doctrineContext.nationEraIndex,
+        ),
+      }))
+      .sort((a, b) => b.score - a.score
+        || a.unitType.productionCost - b.unitType.productionCost
+        || a.unitType.id.localeCompare(b.unitType.id))[0]?.unitType;
+  }
+
+  private runEmergencyMilitaryPurchase(nationId: string): void {
+    if (!this.productionPurchaseSystem) return;
+    const purchaseThreats = getEmergencyPurchaseThreats(
+      this.getEmergencyCityThreats(nationId),
+      (city) => this.hasFriendlyMilitaryOnCity(city, nationId),
+    );
+    for (const threat of purchaseThreats) {
+      const purchaseCities = this.cityManager.getCitiesByOwner(nationId)
+        .map((city) => ({
+          city,
+          distance: this.gridSystem.getDistance(
+            { x: city.tileX, y: city.tileY },
+            { x: threat.city.tileX, y: threat.city.tileY },
+          ),
+        }))
+        .filter(({ distance }) => distance <= 4)
+        .sort((a, b) => {
+          const directDelta = Number(b.city.id === threat.city.id) - Number(a.city.id === threat.city.id);
+          return directDelta || a.distance - b.distance || a.city.id.localeCompare(b.city.id);
+        });
+
+      for (const { city: purchaseCity } of purchaseCities) {
+        const entry = this.productionSystem.getQueue(purchaseCity.id)[0];
+        if (
+          entry?.item.kind !== 'unit'
+          || !isSuitableEmergencyLandDefenderType(entry.item.unitType)
+        ) continue;
+        const quote = this.productionPurchaseSystem.getQuote(purchaseCity.id, 0);
+        if (!quote.ok) continue;
+
+        const result = this.productionPurchaseSystem.purchase(purchaseCity.id, 0);
+        if (!result.ok) continue;
+        const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+        this.logEmergencyDefense(
+          nationId,
+          `purchase nation=${nationName}; defendedCity=${threat.city.name}; purchaseCity=${purchaseCity.name}; `
+          + `unit=${entry.item.unitType.name}; cost=${result.cost}; gold=${result.goldBefore}->${result.goldAfter}; `
+          + `reason=${threat.severity} (${threat.reason}); turn=${this.turnManager.getCurrentRound()}.`,
+        );
+        return;
       }
     }
   }
