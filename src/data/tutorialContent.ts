@@ -355,20 +355,60 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     id: 'victory',
     title: 'Victory & Objectives',
     blocks: [
-      { kind: 'paragraph', text: 'Epoch is a sandbox-oriented strategy game. Rather than chasing a single rigid win condition, you are encouraged to build the civilization you want.' },
-      { kind: 'paragraph', text: 'There are many ways to play:' },
+      { kind: 'paragraph', text: 'Epoch has four formal victory conditions: Domination, Science, Cultural and Diplomatic Victory. A victory is awarded when a nation meets all requirements for one of these conditions at the end of a turn.' },
+
+      { kind: 'heading', text: 'Domination Victory' },
+      { kind: 'paragraph', text: 'Win by controlling every active nation’s original capital at the same time.' },
       {
         kind: 'list',
         items: [
-          'Explore the far reaches of the world',
-          'Expand across continents',
-          'Build prosperous, thriving civilizations',
-          'Forge alliances and lead through diplomacy',
-          'Dominate your rivals militarily',
-          'Experiment with completely different approaches',
+          'You must own your own original capital and the original capital of every rival still in the game.',
+          'Capturing ordinary cities helps your campaign but does not directly satisfy the victory condition.',
+          'An original capital remains a required objective after it changes hands, so another nation can recapture it and prevent your victory.',
         ],
       },
-      { kind: 'paragraph', text: 'The real goal is to create a successful civilization and enjoy the history you make along the way.' },
+
+      { kind: 'heading', text: 'Science Victory' },
+      { kind: 'paragraph', text: 'Win by producing and accumulating 10 Aerospace Parts for your nation.' },
+      {
+        kind: 'list',
+        items: [
+          'Research Rocketry, secure access to Aluminum and operate an active Factory to found AeroSpace Industries.',
+          'AeroSpace Industries must be founded before any nation can manufacture Aerospace Parts. Its founding starts the global space race.',
+          'After the corporation is founded, a city can produce an Aerospace Part only when its nation has Rocketry and Aluminum and the city has an active Factory.',
+          'The founder of AeroSpace Industries receives +50% Production toward Aerospace Parts, but every eligible nation may compete.',
+          'Aerospace Parts belong to the nation that produces them. Their Production cost increases by 10% for each Part that nation has already completed.',
+          'The first nation to accumulate 10 Aerospace Parts wins.',
+        ],
+      },
+
+      { kind: 'heading', text: 'Cultural Victory' },
+      { kind: 'paragraph', text: 'Win by meeting all three cultural requirements simultaneously:' },
+      {
+        kind: 'list',
+        items: [
+          'Accumulate at least 75,000 Culture.',
+          'Own at least 8 completed, unbroken World Wonders.',
+          'Have your active national currency ranked Dominant.',
+        ],
+      },
+      { kind: 'paragraph', text: 'World Wonders count for the nation that currently owns their city. Conquering or losing a Wonder city therefore changes Cultural Victory progress. Currency strength is relative to other active currencies, and only the highest-ranked currency is Dominant.' },
+
+      { kind: 'heading', text: 'Diplomatic Victory' },
+      { kind: 'paragraph', text: 'Win by reaching 5,000 Diplomatic Score through successful participation in the World Council or United Nations.' },
+      {
+        kind: 'list',
+        items: [
+          'Propose a resolution that passes to earn 600 Diplomatic Score.',
+          'Spend Influence to support a resolution that passes. Supporting nations share a pool of 300 Diplomatic Score in proportion to the Influence they committed.',
+          'Gold donated to an emergency Defense Support resolution grants a small one-time score award, capped at 40 for each donation.',
+          'Opposing or blocking a proposal grants no Diplomatic Score directly.',
+        ],
+      },
+      { kind: 'paragraph', text: 'Diplomatic Victory depends on accumulated score, not on maintaining alliances with every nation or winning a single vote. Build Influence, propose resolutions that can pass and support successful coalitions consistently.' },
+
+      { kind: 'heading', text: 'Choosing Your Objective' },
+      { kind: 'paragraph', text: 'You may pursue several victory paths at once, and preventing a rival from completing their requirements can be as important as advancing your own. The game remains open-ended until a formal victory condition is met.' },
     ],
   },
   {
