@@ -12,6 +12,7 @@ import type { CityManager } from './CityManager';
 import type { CorporationSystem } from './CorporationSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
+import type { ProductionSystem } from './ProductionSystem';
 
 export interface SavedAerospacePartProgress {
   readonly nationId: string;
@@ -20,6 +21,7 @@ export interface SavedAerospacePartProgress {
 
 export interface AerospacePartProductionCostDetails {
   readonly completedParts: number;
+  readonly inFlightParts: number;
   readonly partNumber: number;
   readonly baseProductionCost: number;
   readonly growthRate: number;
@@ -35,6 +37,7 @@ export class AerospacePartSystem {
     private readonly researchSystem: ResearchSystem,
     private readonly resourceAccessSystem: ResourceAccessSystem,
     private readonly corporationSystem: CorporationSystem,
+    private readonly productionSystem: Pick<ProductionSystem, 'countQueuedItems'>,
   ) {}
 
   isGloballyUnlocked(): boolean {
@@ -81,17 +84,27 @@ export class AerospacePartSystem {
 
   getProductionCostDetails(nationId: string): AerospacePartProductionCostDetails {
     const completedParts = this.getQuantity(nationId);
+    const inFlightParts = this.getInFlightQuantity(nationId);
+    const precedingParts = completedParts + inFlightParts;
     return {
       completedParts,
-      partNumber: completedParts + 1,
+      inFlightParts,
+      partNumber: precedingParts + 1,
       baseProductionCost: AEROSPACE_PART_BASE_PRODUCTION_COST,
       growthRate: AEROSPACE_PART_COST_GROWTH_RATE,
-      productionCost: calculateAerospacePartProductionCost(completedParts),
+      productionCost: calculateAerospacePartProductionCost(precedingParts),
     };
   }
 
   getProductionCost(nationId: string): number {
     return this.getProductionCostDetails(nationId).productionCost;
+  }
+
+  getInFlightQuantity(nationId: string): number {
+    const cityIds = this.cityManager.getCitiesByOwner(nationId).map((city) => city.id);
+    return this.productionSystem.countQueuedItems(cityIds, (item) => (
+      item.kind === 'manufacturedResource' && item.productionType.id === AEROSPACE_PARTS_ID
+    ));
   }
 
   getManufacturedResources(nationId: string): ReadonlyMap<string, number> {

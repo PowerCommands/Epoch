@@ -18,6 +18,8 @@ export interface ProductionPlacement {
 export interface QueueEntry {
   item: Producible;
   accumulated: number;
+  /** Base cost fixed when this entry was queued, before game-speed scaling. */
+  lockedProductionCost?: number;
   blockedReason?: string;
   placement?: ProductionPlacement;
 }
@@ -29,6 +31,7 @@ export interface QueueEntryView {
   item: Producible;
   progress: number;
   cost: number;
+  lockedProductionCost?: number;
   turnsRemaining: number;
   blockedReason?: string;
   placement?: ProductionPlacement;
@@ -40,6 +43,7 @@ export interface QueueEntryView {
 export interface CityProduction {
   item: Producible;
   accumulated: number;
+  lockedProductionCost?: number;
   blockedReason?: string;
   placement?: ProductionPlacement;
 }
@@ -49,7 +53,16 @@ export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Pro
 export type ProductionChangedListener = (cityId: string) => void;
 export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
 export type ItemProductionPercentProvider = (nationId: string, item: Producible) => number;
-export type ItemProductionCostProvider = (cityId: string, item: Producible, baseCost: number) => number;
+export interface ItemProductionCost {
+  readonly cost: number;
+  readonly lock: boolean;
+}
+
+export type ItemProductionCostProvider = (
+  cityId: string,
+  item: Producible,
+  baseCost: number,
+) => number | ItemProductionCost;
 
 export type CompleteCurrentProductionResult =
   | { kind: 'completed'; item: Producible }
@@ -97,11 +110,7 @@ export class ProductionSystem {
       queue = [];
       this.queues.set(cityId, queue);
     }
-    queue.push({
-      item,
-      accumulated: 0,
-      placement: options.placement ? { ...options.placement } : undefined,
-    });
+    queue.push(this.createQueueEntry(cityId, item, options));
     this.notifyChanged(cityId);
   }
 
@@ -112,11 +121,7 @@ export class ProductionSystem {
       queue = [];
       this.queues.set(cityId, queue);
     }
-    queue.unshift({
-      item,
-      accumulated: 0,
-      placement: options.placement ? { ...options.placement } : undefined,
-    });
+    queue.unshift(this.createQueueEntry(cityId, item, options));
     this.notifyChanged(cityId);
   }
 
@@ -139,7 +144,7 @@ export class ProductionSystem {
 
     return queue.map((entry, i) => {
       const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, entry.item));
-      const cost = this.getCost(entry.item, cityId);
+      const cost = this.getEntryCost(entry, cityId);
       const progress = entry.accumulated;
       const remaining = cost - (i === 0 ? progress : 0);
       const turnsRemaining = Math.max(1, Math.ceil(remaining / ppt));
@@ -147,6 +152,7 @@ export class ProductionSystem {
         item: entry.item,
         progress: i === 0 ? progress : 0,
         cost,
+        lockedProductionCost: entry.lockedProductionCost,
         turnsRemaining,
         blockedReason: i === 0 ? entry.blockedReason : undefined,
         placement: entry.placement ? { ...entry.placement } : undefined,
@@ -158,11 +164,8 @@ export class ProductionSystem {
   setProduction(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
     const existing = this.queues.get(cityId) ?? [];
     for (const entry of existing) this.notifyRemoved(cityId, entry);
-    this.queues.set(cityId, [{
-      item,
-      accumulated: 0,
-      placement: options.placement ? { ...options.placement } : undefined,
-    }]);
+    this.queues.delete(cityId);
+    this.queues.set(cityId, [this.createQueueEntry(cityId, item, options)]);
     this.notifyChanged(cityId);
   }
 
@@ -174,6 +177,7 @@ export class ProductionSystem {
     return {
       item: entry.item,
       accumulated: entry.accumulated,
+      lockedProductionCost: entry.lockedProductionCost,
       blockedReason: entry.blockedReason,
       placement: entry.placement ? { ...entry.placement } : undefined,
     };
@@ -193,7 +197,7 @@ export class ProductionSystem {
     if (!queue || queue.length === 0) return { kind: 'empty' };
 
     const entry = queue[0];
-    entry.accumulated = this.getCost(entry.item, cityId);
+    entry.accumulated = this.getEntryCost(entry, cityId);
 
     const completed = this.tryComplete(cityId, entry);
     if (completed) {
@@ -285,12 +289,21 @@ export class ProductionSystem {
       this.queues.delete(cityId);
       return;
     }
-    this.queues.set(cityId, entries.map((entry) => ({
-      item: entry.item,
-      accumulated: entry.accumulated,
-      blockedReason: entry.blockedReason,
-      placement: entry.placement ? { ...entry.placement } : undefined,
-    })));
+    const restored: QueueEntry[] = [];
+    this.queues.set(cityId, restored);
+    for (const entry of entries) {
+      const created = entry.lockedProductionCost === undefined
+        ? this.createQueueEntry(cityId, entry.item, { placement: entry.placement })
+        : {
+          item: entry.item,
+          accumulated: 0,
+          lockedProductionCost: entry.lockedProductionCost,
+          placement: entry.placement ? { ...entry.placement } : undefined,
+        };
+      created.accumulated = entry.accumulated;
+      created.blockedReason = entry.blockedReason;
+      restored.push(created);
+    }
   }
 
   /**
@@ -339,7 +352,7 @@ export class ProductionSystem {
       if (!queue || queue.length === 0) continue;
 
       const entry = queue[0];
-      const cost = this.getCost(entry.item, city.id);
+      const cost = this.getEntryCost(entry, city.id);
 
       if (entry.accumulated < cost) {
         entry.accumulated = Math.min(
@@ -382,10 +395,40 @@ export class ProductionSystem {
 
   getCost(item: Producible, cityId?: string): number {
     const baseCost = this.getBaseCost(item);
-    const resolvedBaseCost = cityId === undefined
+    const providedCost = cityId === undefined
       ? baseCost
       : this.itemProductionCostProvider(cityId, item, baseCost);
+    const resolvedBaseCost = typeof providedCost === 'number' ? providedCost : providedCost.cost;
     return scaleGameSpeedCost(resolvedBaseCost, this.gameSpeed);
+  }
+
+  countQueuedItems(cityIds: readonly string[], predicate: (item: Producible) => boolean): number {
+    return cityIds.reduce((count, cityId) => (
+      count + (this.queues.get(cityId) ?? []).filter((entry) => predicate(entry.item)).length
+    ), 0);
+  }
+
+  private createQueueEntry(
+    cityId: string,
+    item: Producible,
+    options: { placement?: ProductionPlacement },
+  ): QueueEntry {
+    const baseCost = this.getBaseCost(item);
+    const providedCost = this.itemProductionCostProvider(cityId, item, baseCost);
+    return {
+      item,
+      accumulated: 0,
+      lockedProductionCost: typeof providedCost === 'number' || !providedCost.lock
+        ? undefined
+        : providedCost.cost,
+      placement: options.placement ? { ...options.placement } : undefined,
+    };
+  }
+
+  private getEntryCost(entry: QueueEntry, cityId: string): number {
+    return entry.lockedProductionCost === undefined
+      ? this.getCost(entry.item, cityId)
+      : scaleGameSpeedCost(entry.lockedProductionCost, this.gameSpeed);
   }
 
   private getBaseCost(item: Producible): number {

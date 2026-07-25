@@ -377,7 +377,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'AeroSpace Industries must be founded before any nation can manufacture Aerospace Parts. Its founding starts the global space race.',
           'After the corporation is founded, a city can produce an Aerospace Part only when its nation has Rocketry and Aluminum and the city has an active Factory.',
           'The founder of AeroSpace Industries receives +50% Production toward Aerospace Parts, but every eligible nation may compete.',
-          'Aerospace Parts belong to the nation that produces them. Their Production cost increases by 10% for each Part that nation has already completed.',
+          'Aerospace Parts belong to the nation that produces them. Each Part locks its Production cost when started, increasing by 10% for each Part that nation has already completed or has in production.',
           'The first nation to accumulate 10 Aerospace Parts wins.',
         ],
       },

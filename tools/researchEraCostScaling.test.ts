@@ -5,7 +5,14 @@ import { test } from 'node:test';
 
 import { getGameSpeedById } from '../src/data/gameSpeeds.ts';
 import {
+  AHEAD_OF_TIME_EXPONENT,
+  AHEAD_OF_TIME_REFERENCE_PENALTY,
+  AHEAD_OF_TIME_REFERENCE_YEARS,
+  AHEAD_OF_TIME_TAIL_START_YEARS,
+  AHEAD_OF_TIME_TAIL_STRENGTH,
+  MAX_AHEAD_OF_TIME_MULTIPLIER,
   TECH_ERA_COST_MULTIPLIERS,
+  getAheadOfTimeResearchCostMultiplier,
   getEffectiveTechnologyCost,
   getTechnologyEraCostMultiplier,
 } from '../src/data/technologyResearchCosts.ts';
@@ -47,6 +54,8 @@ function makeResearchHarness(input: {
   isHuman: boolean;
   technologyId: string;
   progress: number;
+  currentYear?: number;
+  researchedTechIds?: string[];
 }) {
   const nationManager = new NationManager();
   const nation = new Nation({
@@ -56,10 +65,21 @@ function makeResearchHarness(input: {
     isHuman: input.isHuman,
     currentResearchTechId: input.technologyId,
     researchProgress: input.progress,
+    researchedTechIds: input.researchedTechIds,
   });
   nationManager.addNation(nation);
   const cityManager = new CityManager();
-  const researchSystem = new ResearchSystem(nationManager, cityManager, () => 1);
+  const researchSystem = new ResearchSystem(
+    nationManager,
+    cityManager,
+    () => 1,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    () => input.currentYear ?? Number.POSITIVE_INFINITY,
+  );
   return { nation, nationManager, cityManager, researchSystem };
 }
 
@@ -74,6 +94,114 @@ test('effective cost applies game speed, then era scaling, with nearest-integer 
   const standard = getGameSpeedById('standard');
   // 101 × 0.50 rounds to 51 under the existing speed rule; 51 × 1.10 = 56.1 → 56.
   assert.equal(getEffectiveTechnologyCost(makeTechnology('medieval'), standard), 56);
+});
+
+test('timeline multiplier is 1 after and exactly at the canonical era start', () => {
+  assert.equal(getAheadOfTimeResearchCostMultiplier('industrial', 1750), 1);
+  assert.equal(getAheadOfTimeResearchCostMultiplier('industrial', 1700), 1);
+});
+
+test('timeline multiplier follows the configured smooth ahead-of-time curve', () => {
+  assert.equal(AHEAD_OF_TIME_REFERENCE_YEARS, 100);
+  assert.equal(AHEAD_OF_TIME_REFERENCE_PENALTY, 0.7);
+  assert.equal(AHEAD_OF_TIME_EXPONENT, 1.5);
+  assert.equal(AHEAD_OF_TIME_TAIL_START_YEARS, 150);
+  assert.equal(AHEAD_OF_TIME_TAIL_STRENGTH, 1.53);
+  assert.equal(MAX_AHEAD_OF_TIME_MULTIPLIER, 8);
+
+  const fiftyYearsAhead = getAheadOfTimeResearchCostMultiplier('industrial', 1650);
+  const centuryAhead = getAheadOfTimeResearchCostMultiplier('industrial', 1600);
+  const centuryAndHalfAhead = getAheadOfTimeResearchCostMultiplier('industrial', 1550);
+  const twoCenturiesAhead = getAheadOfTimeResearchCostMultiplier('industrial', 1500);
+
+  assert.ok(fiftyYearsAhead > 1.2 && fiftyYearsAhead < 1.3);
+  assert.ok(Math.abs(centuryAhead - 1.7) < 1e-10);
+  assert.ok(Math.abs(centuryAndHalfAhead - 2.22) < 0.1);
+  assert.ok(Math.abs(twoCenturiesAhead - 3.3) < 0.1);
+});
+
+test('timeline multiplier reaches and remains at the exact 8x ceiling', () => {
+  assert.equal(getAheadOfTimeResearchCostMultiplier('industrial', 1400), 8);
+  assert.equal(getAheadOfTimeResearchCostMultiplier('industrial', 1350), 8);
+  assert.equal(getAheadOfTimeResearchCostMultiplier('industrial', 1200), 8);
+  assert.equal(getAheadOfTimeResearchCostMultiplier('future', 1901), 8);
+});
+
+test('timeline multiplier is monotonic until the cap and never exceeds it', () => {
+  const yearsAhead = [0, 25, 50, 100, 150, 200, 250, 300, 350, 500, 1000];
+  const multipliers = yearsAhead.map((ahead) => (
+    getAheadOfTimeResearchCostMultiplier('industrial', 1700 - ahead)
+  ));
+  for (let index = 1; index < multipliers.length; index += 1) {
+    assert.ok(multipliers[index] >= multipliers[index - 1]);
+  }
+  assert.ok(multipliers.every((multiplier) => multiplier <= MAX_AHEAD_OF_TIME_MULTIPLIER));
+});
+
+test('different nations receive the same timeline cost in the same year', () => {
+  const technology = getTechnologyById('combined_arms')!;
+  const human = makeResearchHarness({
+    nationId: 'human',
+    isHuman: true,
+    technologyId: technology.id,
+    progress: 0,
+    currentYear: 1800,
+  });
+  const ai = makeResearchHarness({
+    nationId: 'ai',
+    isHuman: false,
+    technologyId: technology.id,
+    progress: 0,
+    currentYear: 1800,
+  });
+  assert.equal(
+    human.researchSystem.getEffectiveCost(technology.id),
+    ai.researchSystem.getEffectiveCost(technology.id),
+  );
+});
+
+test('technology era, not the nation current era, determines timeline resistance', () => {
+  const technology = getTechnologyById('combined_arms')!;
+  const earlyNation = makeResearchHarness({
+    nationId: 'early',
+    isHuman: true,
+    technologyId: technology.id,
+    progress: 0,
+    currentYear: 1800,
+    researchedTechIds: ['agriculture'],
+  });
+  const advancedNation = makeResearchHarness({
+    nationId: 'advanced',
+    isHuman: true,
+    technologyId: technology.id,
+    progress: 0,
+    currentYear: 1800,
+    researchedTechIds: ['particle_physics'],
+  });
+  assert.equal(
+    earlyNation.researchSystem.getEffectiveCost(technology.id),
+    advancedNation.researchSystem.getEffectiveCost(technology.id),
+  );
+  assert.equal(
+    earlyNation.researchSystem.getAheadOfTimeCostDetails(technology.id)?.eraStartYear,
+    1945,
+  );
+});
+
+test('progressive era scaling and timeline scaling both apply exactly once', () => {
+  const standard = getGameSpeedById('standard');
+  const technology = makeTechnology('modern', 1000);
+  const progressiveCost = getEffectiveTechnologyCost(
+    technology,
+    standard,
+    Number.POSITIVE_INFINITY,
+  );
+  const timelineMultiplier = getAheadOfTimeResearchCostMultiplier('modern', 1800);
+  assert.equal(progressiveCost, 900);
+  assert.equal(
+    getEffectiveTechnologyCost(technology, standard, 1800),
+    Math.round(progressiveCost * timelineMultiplier),
+  );
 });
 
 test('technology definitions retain their existing base costs', () => {
@@ -149,6 +277,76 @@ test('research HUD state displays and calculates progress from effective cost', 
   const effectiveCost = researchSystem.getEffectiveCost(technology.id);
   assert.equal(state.cost, effectiveCost);
   assert.equal(state.progressPercent, Math.round((750 / effectiveCost) * 100));
+});
+
+test('research HUD exposes the timeline penalty only when it applies', () => {
+  const technology = getTechnologyById('biology')!;
+  const ahead = makeResearchHarness({
+    nationId: 'ahead',
+    isHuman: true,
+    technologyId: technology.id,
+    progress: 750,
+    currentYear: 1600,
+  });
+  const provider = new NationHudDataProvider(
+    ahead.nationManager,
+    ahead.cityManager,
+    {} as never,
+    ahead.researchSystem,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  const state = provider.getResearchState(ahead.nation.id);
+  assert.equal(state.cost, ahead.researchSystem.getEffectiveCost(technology.id));
+  assert.match(state.tooltip, /Ahead of historical timeline: \+\d+% research cost/);
+
+  const onTime = makeResearchHarness({
+    nationId: 'on_time',
+    isHuman: true,
+    technologyId: technology.id,
+    progress: 0,
+    currentYear: 1700,
+  });
+  const onTimeProvider = new NationHudDataProvider(
+    onTime.nationManager,
+    onTime.cityManager,
+    {} as never,
+    onTime.researchSystem,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  assert.doesNotMatch(onTimeProvider.getResearchState(onTime.nation.id).tooltip, /historical timeline/);
+});
+
+test('research start diagnostics include canonical timeline and effective-cost details', () => {
+  const nationManager = new NationManager();
+  const nation = new Nation({
+    id: 'diagnostic',
+    name: 'Diagnostic Nation',
+    color: 0xffffff,
+    researchedTechIds: ['economics'],
+  });
+  nationManager.addNation(nation);
+  const messages: string[] = [];
+  const researchSystem = new ResearchSystem(
+    nationManager,
+    new CityManager(),
+    () => 1,
+    undefined,
+    undefined,
+    undefined,
+    (_nationId, message) => messages.push(message),
+    undefined,
+    () => 1600,
+  );
+
+  assert.equal(researchSystem.startResearch(nation.id, 'industrialization'), true);
+  assert.match(
+    messages[0] ?? '',
+    /Industrialization; era=industrial currentYear=1600 eraStartYear=1700 yearsAhead=100 baseCost=1900 effectiveCost=\d+ aheadOfTimeMultiplier=1\.700/,
+  );
 });
 
 test('existing and saved accumulated research remains an absolute value', () => {

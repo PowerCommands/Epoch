@@ -63,6 +63,8 @@ export interface SavedAerospacePartProgress {
 export interface SavedQueueEntry {
   item: SavedProducible;
   accumulated: number;
+  /** Base production cost locked when the item was queued. */
+  lockedProductionCost?: number;
   blockedReason?: string;
   placement?: {
     tileX: number;

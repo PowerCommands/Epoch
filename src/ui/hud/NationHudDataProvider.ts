@@ -12,6 +12,7 @@ import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import { ALL_TECHNOLOGIES } from '../../data/technologies';
+import type { AheadOfTimeResearchCostDetails } from '../../data/technologyResearchCosts';
 import { getCultureSpriteKey, getCultureSpritePath, getTechnologySpriteKey } from '../../utils/assetPaths';
 import {
   buildHappinessTooltip,
@@ -129,7 +130,12 @@ export class NationHudDataProvider {
     const researchPerTurn = this.researchSystem.getResearchPerTurn(nationId);
     const currentResearch = this.researchSystem.getCurrentResearch(nationId);
     const currentResearchCost = currentResearch ? this.researchSystem.getEffectiveCost(currentResearch.id) : 0;
-    const researchTooltip = getResearchTooltip(currentResearch?.name, researchProgress, currentResearchCost);
+    const researchTooltip = getResearchTooltip(
+      currentResearch?.name,
+      researchProgress,
+      currentResearchCost,
+      currentResearch ? this.researchSystem.getAheadOfTimeCostDetails(currentResearch.id) : undefined,
+    );
     const currentCulture = this.cultureSystem.getCurrentCultureNode(nationId);
     const cultureProgress = this.cultureSystem.getCultureProgress(nationId);
     const currentCultureCost = currentCulture ? this.cultureSystem.getEffectiveCost(currentCulture.id) : 0;
@@ -243,13 +249,21 @@ export class NationHudDataProvider {
       cost: currentCost,
       progressPercent: currentCost > 0 ? Math.max(0, Math.min(100, Math.round((this.researchSystem.getResearchProgress(nationId) / currentCost) * 100))) : 0,
       sciencePerTurn: this.researchSystem.getResearchPerTurn(nationId),
-      tooltip: getResearchTooltip(current?.name, this.researchSystem.getResearchProgress(nationId), currentCost),
+      tooltip: getResearchTooltip(
+        current?.name,
+        this.researchSystem.getResearchProgress(nationId),
+        currentCost,
+        current ? this.researchSystem.getAheadOfTimeCostDetails(current.id) : undefined,
+      ),
       available: this.researchSystem.getAvailableTechnologies(nationId).map((technology) => ({
         id: technology.id,
         name: technology.name,
         era: technology.era,
         cost: this.researchSystem.getEffectiveCost(technology.id),
-        description: technology.description,
+        description: appendTimelinePenalty(
+          technology.description,
+          this.researchSystem.getAheadOfTimeCostDetails(technology.id),
+        ),
       })),
       researchedNames: this.researchSystem.getResearchedTechnologies(nationId).map((technology) => technology.name),
     };
@@ -272,7 +286,10 @@ export class NationHudDataProvider {
         .map((technology) => ({
           id: technology.id,
           name: technology.name,
-          description: technology.description,
+          description: appendTimelinePenalty(
+            technology.description,
+            this.researchSystem.getAheadOfTimeCostDetails(technology.id),
+          ),
           imageKey: getTechnologySpriteKey(technology.id),
           prerequisites: technology.prerequisites,
           status: this.researchSystem.isResearched(nationId, technology.id)
@@ -376,8 +393,27 @@ function formatEraName(era: string): string {
   return era.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getResearchTooltip(name: string | undefined, progress: number, cost: number): string {
-  return name ? `Researching: ${name} (${progress}/${cost})` : 'Researching: None selected';
+function getResearchTooltip(
+  name: string | undefined,
+  progress: number,
+  cost: number,
+  timeline?: AheadOfTimeResearchCostDetails,
+): string {
+  if (!name) return 'Researching: None selected';
+  return `Researching: ${name} (${progress}/${cost})${formatTimelinePenalty(timeline)}`;
+}
+
+function appendTimelinePenalty(
+  description: string,
+  timeline?: AheadOfTimeResearchCostDetails,
+): string {
+  return `${description}${formatTimelinePenalty(timeline)}`;
+}
+
+function formatTimelinePenalty(timeline?: AheadOfTimeResearchCostDetails): string {
+  return timeline && timeline.penaltyPercent > 0
+    ? `\nAhead of historical timeline: +${timeline.penaltyPercent}% research cost`
+    : '';
 }
 
 function getCultureTooltip(name: string | undefined, progress: number, cost: number): string {

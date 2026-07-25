@@ -1,7 +1,11 @@
 import type { TechnologyDefinition } from '../data/technologies';
 import { ALL_TECHNOLOGIES, getTechnologyById } from '../data/technologies';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
-import { getEffectiveTechnologyCost } from '../data/technologyResearchCosts';
+import {
+  getAheadOfTimeResearchCostDetails,
+  getEffectiveTechnologyCost,
+  type AheadOfTimeResearchCostDetails,
+} from '../data/technologyResearchCosts';
 import { getLeaderByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import type { CityManager } from './CityManager';
@@ -38,6 +42,7 @@ export class ResearchSystem {
     private readonly earlyGameTurnLimit: number = DEFAULT_AI_EARLY_GAME_TURN_LIMIT,
     private readonly logEvent?: (nationId: string, message: string) => void,
     private readonly getCityScienceMultiplier: (city: City) => number = () => 1,
+    private readonly getCurrentYear: () => number = () => Number.POSITIVE_INFINITY,
   ) {}
 
   canStartResearch(nationId: string, techId: string): boolean {
@@ -62,7 +67,11 @@ export class ResearchSystem {
     nation.currentResearchTechId = techId;
     nation.researchProgress = 0;
 
-    this.logEvent?.(nation.id, `started researching ${technology.name}.`);
+    const timeline = this.getAheadOfTimeCostDetails(technology.id);
+    this.logEvent?.(
+      nation.id,
+      `started researching ${technology.name}; era=${technology.era} currentYear=${timeline?.currentYear ?? '?'} eraStartYear=${timeline?.eraStartYear ?? '?'} yearsAhead=${timeline?.yearsAhead ?? 0} baseCost=${technology.cost} effectiveCost=${this.getEffectiveCost(technology.id)} aheadOfTimeMultiplier=${(timeline?.multiplier ?? 1).toFixed(3)}.`,
+    );
     this.notifyChanged();
 
     return true;
@@ -278,7 +287,13 @@ export class ResearchSystem {
   getEffectiveCost(techId: string): number {
     const technology = getTechnologyById(techId);
     if (!technology) return 0;
-    return getEffectiveTechnologyCost(technology, this.gameSpeed);
+    return getEffectiveTechnologyCost(technology, this.gameSpeed, this.getCurrentYear());
+  }
+
+  getAheadOfTimeCostDetails(techId: string): AheadOfTimeResearchCostDetails | undefined {
+    const technology = getTechnologyById(techId);
+    if (!technology) return undefined;
+    return getAheadOfTimeResearchCostDetails(technology.era, this.getCurrentYear());
   }
 
   private logResearchDiscovery(nationId: string, technologyName: string): void {

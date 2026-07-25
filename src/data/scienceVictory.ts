@@ -17,9 +17,9 @@ export const AEROSPACE_PART_COST_CONFIGURATION: AerospacePartCostConfiguration =
 };
 
 /**
- * Base (pre-game-speed) production cost for a nation's next Aerospace Part.
- * Completed-part progress is national, so nations entering the race later
- * still begin at the lower end of the curve.
+ * Base (pre-game-speed) production cost for an Aerospace Part slot. Callers
+ * pass the number of national parts preceding it, whether completed or already
+ * in production.
  */
 export function calculateAerospacePartProductionCost(
   completedParts: number,

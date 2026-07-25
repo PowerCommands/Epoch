@@ -184,6 +184,7 @@ export class SaveLoadService {
       const productionQueue: SavedQueueEntry[] = queue.map((view) => ({
         item: toSavedProducible(view.item),
         accumulated: view.progress,
+        lockedProductionCost: view.lockedProductionCost,
         blockedReason: view.blockedReason,
         placement: view.placement ? { ...view.placement } : undefined,
       }));
@@ -761,6 +762,7 @@ export class SaveLoadService {
         queueEntries.push({
           item: producible,
           accumulated: entry.accumulated,
+          lockedProductionCost: entry.lockedProductionCost,
           blockedReason: entry.blockedReason,
           placement: entry.placement ? { ...entry.placement } : undefined,
         });

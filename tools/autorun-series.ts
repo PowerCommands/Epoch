@@ -16,7 +16,11 @@
  *   npx tsx tools/autorun-series.ts --report-only  # rebuild reports from block dirs
  *
  * Flags: --scenario --max-turns --block-size --victory --timeout-ms --output
- *        --port --report-only
+ *        --port --report-only --resume-save
+ *
+ * --resume-save <path>: seed the first block from an existing checkpoint save so
+ * an interrupted series can continue. --max-turns is then interpreted as turns
+ * from the resumed starting turn (not absolute).
  */
 
 import { spawn } from 'node:child_process';
@@ -46,6 +50,8 @@ interface SeriesOptions {
   outputDir: string;
   port: number;
   reportOnly: boolean;
+  /** Optional save to seed the FIRST block with, to resume a previously interrupted series. */
+  resumeSave?: string;
 }
 
 const DEFAULTS: SeriesOptions = {
@@ -71,6 +77,7 @@ function parseArgs(argv: string[]): SeriesOptions {
     else if (arg === '--timeout-ms' && next) { options.timeoutMs = Number.parseInt(next, 10); i++; }
     else if (arg === '--output' && next) { options.outputDir = next; i++; }
     else if (arg === '--port' && next) { options.port = Number.parseInt(next, 10); i++; }
+    else if (arg === '--resume-save' && next) { options.resumeSave = next; i++; }
     else if (arg === '--report-only') { options.reportOnly = true; }
   }
   return options;
@@ -139,10 +146,21 @@ async function runSeries(options: SeriesOptions): Promise<void> {
   const totalBlocks = Math.ceil(options.maxTurns / options.blockSize);
   const startedAt = Date.now();
   const blocks: BlockResult[] = [];
-  let previousSavePath: string | null = null;
+  // Seed the first block from a resume save when provided, so an interrupted
+  // series can continue from its last preserved checkpoint.
+  let previousSavePath: string | null = options.resumeSave
+    ? path.resolve(process.cwd(), options.resumeSave)
+    : null;
   let endReason: SeriesRunContext['endReason'] = 'max-turns';
 
+  if (previousSavePath && !(await fileExists(previousSavePath))) {
+    throw new Error(`--resume-save file not found: ${previousSavePath}`);
+  }
+
   console.log(`\n=== Autorun series: ${options.scenario} ===`);
+  if (previousSavePath) {
+    console.log(`Resuming from ${path.relative(process.cwd(), previousSavePath)}`);
+  }
   console.log(`Max ${options.maxTurns} turns in ${options.blockSize}-turn blocks (up to ${totalBlocks} blocks).`);
   console.log(`Victory types: ${options.victoryTypes.join(', ')}`);
   console.log(`Per-block timeout: ${(options.timeoutMs / HOUR_MS).toFixed(1)}h`);

@@ -90,6 +90,7 @@ function makeHarness() {
     researchSystem,
     resourceAccessSystem,
     corporationSystem,
+    productionSystem,
   );
   resourceAccessSystem.setManufacturedResourceProvider((nationId) => {
     const result = new Map(corporationSystem.getNationManufacturedResources(nationId));
@@ -108,7 +109,9 @@ function makeHarness() {
       return baseCost;
     }
     const city = cityManager.getCity(cityId);
-    return city ? aerospacePartSystem.getProductionCost(city.ownerId) : baseCost;
+    return city
+      ? { cost: aerospacePartSystem.getProductionCost(city.ownerId), lock: true }
+      : baseCost;
   });
   productionSystem.onCompleted((cityId, item) => {
     if (item.kind !== 'manufacturedResource') return;
@@ -141,6 +144,19 @@ function makeHarness() {
     });
     return productionSystem.completeCurrentProduction(city.id);
   };
+  const addOwnerCity = (id: string) => {
+    const city = new City({
+      id,
+      name: id,
+      ownerId: OWNER_ID,
+      tileX: 0,
+      tileY: 0,
+    });
+    cityManager.addCity(city);
+    cityManager.getBuildings(city.id).add(FACTORY);
+    cityManager.getResources(city.id).productionPerTurn = 20;
+    return city;
+  };
 
   return {
     owner,
@@ -157,6 +173,7 @@ function makeHarness() {
     victorySystem,
     foundAerospaceIndustries,
     completePart,
+    addOwnerCity,
   };
 }
 
@@ -234,13 +251,110 @@ test('first Aerospace Part uses the configured 1200 base production cost', () =>
   const harness = makeHarness();
   assert.equal(AEROSPACE_PART_BASE_PRODUCTION_COST, 1200);
   assert.equal(harness.aerospacePartSystem.getProductionCost(OWNER_ID), 1200);
+  harness.productionSystem.setProduction(harness.ownerCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+  assert.equal(harness.productionSystem.getQueue(harness.ownerCity.id)[0]?.lockedProductionCost, 1200);
 });
 
-test('second Aerospace Part uses one configured growth step', () => {
+test('a simultaneous second Aerospace Part receives the Part #2 cost', () => {
   const harness = makeHarness();
-  harness.aerospacePartSystem.restoreProgress([{ nationId: OWNER_ID, quantity: 1 }]);
+  const secondCity = harness.addOwnerCity('owner_city_2');
+  harness.productionSystem.setProduction(harness.ownerCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+  harness.productionSystem.setProduction(secondCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
   assert.equal(AEROSPACE_PART_COST_GROWTH_RATE, 0.10);
-  assert.equal(harness.aerospacePartSystem.getProductionCost(OWNER_ID), 1320);
+  assert.equal(harness.productionSystem.getQueue(secondCity.id)[0]?.lockedProductionCost, 1320);
+});
+
+test('additional simultaneous Aerospace Parts continue through the escalating sequence', () => {
+  const harness = makeHarness();
+  const cities = [
+    harness.ownerCity,
+    harness.addOwnerCity('owner_city_2'),
+    harness.addOwnerCity('owner_city_3'),
+    harness.addOwnerCity('owner_city_4'),
+  ];
+  for (const city of cities) {
+    harness.productionSystem.setProduction(city.id, {
+      kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+    });
+  }
+  assert.deepEqual(
+    cities.map((city) => harness.productionSystem.getQueue(city.id)[0]?.lockedProductionCost),
+    [1200, 1320, 1452, 1597],
+  );
+});
+
+test('completed and in-flight Aerospace Parts both determine the next slot', () => {
+  const harness = makeHarness();
+  harness.aerospacePartSystem.restoreProgress([{ nationId: OWNER_ID, quantity: 2 }]);
+  const inFlightCities = [
+    harness.ownerCity,
+    harness.addOwnerCity('owner_city_2'),
+    harness.addOwnerCity('owner_city_3'),
+  ];
+  for (const city of inFlightCities) {
+    harness.productionSystem.setProduction(city.id, {
+      kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+    });
+  }
+  const nextCity = harness.addOwnerCity('owner_city_4');
+  harness.productionSystem.setProduction(nextCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+  assert.equal(harness.aerospacePartSystem.getInFlightQuantity(OWNER_ID), 4);
+  assert.equal(
+    harness.productionSystem.getQueue(nextCity.id)[0]?.lockedProductionCost,
+    calculateAerospacePartProductionCost(5),
+  );
+});
+
+test('an in-flight Aerospace Part retains its cost as other parts start and complete', () => {
+  const harness = makeHarness();
+  harness.foundAerospaceIndustries();
+  const secondCity = harness.addOwnerCity('owner_city_2');
+  harness.productionSystem.setProduction(harness.ownerCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+  const originalCost = harness.productionSystem.getQueue(harness.ownerCity.id)[0]?.cost;
+
+  harness.productionSystem.setProduction(secondCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+  assert.equal(harness.productionSystem.getQueue(harness.ownerCity.id)[0]?.cost, originalCost);
+
+  assert.equal(harness.productionSystem.completeCurrentProduction(secondCity.id).kind, 'completed');
+  assert.equal(harness.productionSystem.getQueue(harness.ownerCity.id)[0]?.cost, originalCost);
+});
+
+test('cancelling an in-flight part affects future slots without repricing existing parts', () => {
+  const harness = makeHarness();
+  const secondCity = harness.addOwnerCity('owner_city_2');
+  const thirdCity = harness.addOwnerCity('owner_city_3');
+  const replacementCity = harness.addOwnerCity('owner_city_4');
+  for (const city of [harness.ownerCity, secondCity, thirdCity]) {
+    harness.productionSystem.setProduction(city.id, {
+      kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+    });
+  }
+  const firstCost = harness.productionSystem.getQueue(harness.ownerCity.id)[0]?.lockedProductionCost;
+  const thirdCost = harness.productionSystem.getQueue(thirdCity.id)[0]?.lockedProductionCost;
+
+  harness.productionSystem.clearProduction(secondCity.id);
+  harness.productionSystem.setProduction(replacementCity.id, {
+    kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION,
+  });
+
+  assert.equal(harness.productionSystem.getQueue(harness.ownerCity.id)[0]?.lockedProductionCost, firstCost);
+  assert.equal(harness.productionSystem.getQueue(thirdCity.id)[0]?.lockedProductionCost, thirdCost);
+  assert.equal(
+    harness.productionSystem.getQueue(replacementCity.id)[0]?.lockedProductionCost,
+    calculateAerospacePartProductionCost(2),
+  );
 });
 
 test('later Aerospace Parts follow the rounded exponential cost formula', () => {
@@ -305,7 +419,7 @@ test('restored progress deterministically reconstructs next-part and queued cost
   restored.aerospacePartSystem.restoreProgress(savedProgress);
   restored.productionSystem.restoreQueue(restored.ownerCity.id, savedQueue ? [savedQueue] : []);
 
-  assert.equal(restored.aerospacePartSystem.getProductionCost(OWNER_ID), 2126);
+  assert.equal(restored.aerospacePartSystem.getProductionCost(OWNER_ID), 2338);
   // Standard speed applies the existing 0.5 cost multiplier after progression.
   assert.equal(restored.productionSystem.getQueue(restored.ownerCity.id)[0]?.cost, 1063);
 });

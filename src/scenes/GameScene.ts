@@ -247,6 +247,13 @@ interface EpochNationStateSummary {
   cultureNodeCount: number;
   currentResearch: string | null;
   currentResearchEffectiveCost: number | null;
+  currentResearchTimeline: {
+    technologyEra: string;
+    currentYear: number;
+    eraStartYear: number;
+    yearsAhead: number;
+    multiplier: number;
+  } | null;
   sciencePerTurn: number;
   currentCulture: string | null;
   cityCount: number;
@@ -1143,6 +1150,7 @@ export class GameScene extends Phaser.Scene {
       undefined,
       (nationId, message) => logManager.info({ nationId, category: 'research', message }),
       (city) => getCityIntegrationOutputMultiplier(city, turnManager.getCurrentRound()),
+      () => turnManager.getGlobalYear(),
     );
     // Culture-gated units (e.g. Rebels → Nationalism) are unlocked via the
     // culture tree rather than a technology; route that check through the shared
@@ -1214,6 +1222,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       resourceAccessSystem,
       corporationSystem,
+      productionSystem,
     );
     resourceAccessSystem.setManufacturedResourceProvider((nationId) => {
       const resources = new Map(corporationSystem?.getNationManufacturedResources(nationId) ?? []);
@@ -1232,7 +1241,9 @@ export class GameScene extends Phaser.Scene {
         return baseCost;
       }
       const city = cityManager.getCity(cityId);
-      return city ? aerospacePartSystem.getProductionCost(city.ownerId) : baseCost;
+      return city
+        ? { cost: aerospacePartSystem.getProductionCost(city.ownerId), lock: true }
+        : baseCost;
     });
     const humanNeedsResearchSelection = (): boolean => {
       if (!humanNationId) return false;
@@ -6421,6 +6432,9 @@ export class GameScene extends Phaser.Scene {
             const cities = cityManager.getCitiesByOwner(nation.id);
             const currency = currencySystem.getCurrencyState(nation.id);
             const currentResearch = researchSystem.getCurrentResearch(nation.id);
+            const researchTimeline = currentResearch
+              ? researchSystem.getAheadOfTimeCostDetails(currentResearch.id)
+              : undefined;
             const cityIntegration = getNationCityIntegrationCounts(
               nation.id,
               cityManager,
@@ -6436,6 +6450,15 @@ export class GameScene extends Phaser.Scene {
               currentResearch: currentResearch?.name ?? null,
               currentResearchEffectiveCost: currentResearch
                 ? researchSystem.getEffectiveCost(currentResearch.id)
+                : null,
+              currentResearchTimeline: currentResearch && researchTimeline
+                ? {
+                  technologyEra: currentResearch.era,
+                  currentYear: researchTimeline.currentYear,
+                  eraStartYear: researchTimeline.eraStartYear,
+                  yearsAhead: researchTimeline.yearsAhead,
+                  multiplier: researchTimeline.multiplier,
+                }
                 : null,
               sciencePerTurn: researchSystem.getResearchPerTurn(nation.id),
               currentCulture: cultureSystem.getCurrentCultureNode(nation.id)?.name ?? null,
