@@ -164,3 +164,47 @@ test('unit removal clears primary and off-grid index entries', () => {
   assert.equal(manager.getUnitAt(6, 6), null);
   assert.deepEqual(manager.getUnitsAt(6, 6), []);
 });
+
+test('owner index follows create, removal, ownership transfer, cargo transfer, and restore', () => {
+  const manager = new UnitManager(8, 8);
+  const transport = makeUnit('transport', TRANSPORT_SHIP, 3, 3);
+  const worker = makeUnit('worker', WORKER, 2, 3);
+  const warrior = makeUnit('warrior', WARRIOR, 1, 1);
+  for (const unit of [transport, worker, warrior]) manager.addUnit(unit);
+  const produced = manager.createUnit({
+    type: WARRIOR,
+    ownerId: OWNER_ID,
+    tileX: 7,
+    tileY: 7,
+  });
+
+  assert.deepEqual(manager.getUnitsByOwner(OWNER_ID), [transport, worker, warrior, produced]);
+  assert.equal(manager.boardUnit(worker.id, transport.id), true);
+  assert.deepEqual(manager.getCargoUnitsForTransport(transport), [worker]);
+  assert.equal(manager.transferOwnership(transport.id, 'nation_new'), true);
+  assert.deepEqual(manager.getUnitsByOwner('nation_new'), [transport, worker]);
+  assert.deepEqual(manager.getUnitsByOwner(OWNER_ID), [warrior, produced]);
+
+  manager.removeUnit(warrior.id);
+  manager.removeUnit(produced.id);
+  assert.deepEqual(manager.getUnitsByOwner(OWNER_ID), []);
+  manager.clearAllSilently();
+  assert.deepEqual(manager.getUnitsByOwner('nation_new'), []);
+
+  const restoredTransport = restore(manager, transport);
+  const restoredWorker = restore(manager, worker);
+  manager.normalizeCargoLinks();
+  assert.deepEqual(manager.getUnitsByOwner('nation_new'), [restoredTransport, restoredWorker]);
+  assert.deepEqual(manager.getCargoUnitsForTransport(restoredTransport), [restoredWorker]);
+});
+
+test('moving a non-transport with no cargo keeps cargo lookup empty', () => {
+  const manager = new UnitManager(8, 8);
+  const warrior = makeUnit('warrior', WARRIOR, 1, 1);
+  manager.addUnit(warrior);
+
+  assert.deepEqual(manager.getCargoUnitsForTransport(warrior), []);
+  assert.equal(manager.moveUnit(warrior.id, 2, 2), true);
+  assert.deepEqual(manager.getCargoUnitsForTransport(warrior), []);
+  assert.equal(manager.getUnitAt(2, 2), warrior);
+});

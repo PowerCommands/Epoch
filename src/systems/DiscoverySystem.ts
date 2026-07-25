@@ -32,6 +32,8 @@ type NationsMetListener = (nationA: string, nationB: string) => void;
 export class DiscoverySystem {
   private readonly met = new Map<string, Set<string>>();
   private readonly listeners: NationsMetListener[] = [];
+  private readonly participantNationIds = new Set<string>();
+  private unmetPairCount: number;
 
   constructor(
     nationManager: NationManager,
@@ -39,10 +41,13 @@ export class DiscoverySystem {
     private readonly unitManager: UnitManager,
     private readonly gridSystem: IGridSystem,
   ) {
-    for (const nation of nationManager.getAllNations()) {
+    const nations = nationManager.getAllNations();
+    this.unmetPairCount = (nations.length * (nations.length - 1)) / 2;
+    for (const nation of nations) {
       const set = new Set<string>();
       set.add(nation.id);
       this.met.set(nation.id, set);
+      this.participantNationIds.add(nation.id);
     }
   }
 
@@ -69,6 +74,7 @@ export class DiscoverySystem {
    * already-met pairs are skipped without side effects.
    */
   scan(): void {
+    if (this.unmetPairCount === 0) return;
     this.scanUnitsAgainstCities();
     this.scanUnitEncounters();
   }
@@ -139,9 +145,7 @@ export class DiscoverySystem {
    * save-load restoration.
    */
   restoreMet(a: string, b: string): void {
-    if (a === b) return;
-    this.getOrCreate(a).add(b);
-    this.getOrCreate(b).add(a);
+    this.markMet(a, b);
   }
 
   private recordMet(a: string, b: string): void {
@@ -149,12 +153,22 @@ export class DiscoverySystem {
     // never counts as "meeting a nation" (no first-contact audience, no entry in
     // diplomacy/known-nation UI).
     if (isBarbarianNation(a) || isBarbarianNation(b)) return;
+    if (!this.markMet(a, b)) return;
+    for (const cb of this.listeners) cb(a, b);
+  }
+
+  private markMet(a: string, b: string): boolean {
+    if (a === b) return false;
     const setA = this.getOrCreate(a);
     const setB = this.getOrCreate(b);
-    if (setA.has(b) && setB.has(a)) return;
+    const isNewPair = !setA.has(b) || !setB.has(a);
+    if (!isNewPair) return false;
     setA.add(b);
     setB.add(a);
-    for (const cb of this.listeners) cb(a, b);
+    if (this.participantNationIds.has(a) && this.participantNationIds.has(b)) {
+      this.unmetPairCount = Math.max(0, this.unmetPairCount - 1);
+    }
+    return true;
   }
 
   private getOrCreate(nationId: string): Set<string> {

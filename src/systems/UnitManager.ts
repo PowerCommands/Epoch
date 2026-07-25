@@ -44,6 +44,7 @@ const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
  */
 export class UnitManager {
   private readonly units = new Map<string, Unit>();
+  private readonly unitsByOwner = new Map<string, Set<Unit>>();
   private readonly unitGrid: (Unit | null)[];
   private readonly offGridUnitsByTile = new Map<number, Unit[]>();
   private readonly listeners: UnitChangedListener[] = [];
@@ -70,6 +71,7 @@ export class UnitManager {
   addUnit(unit: Unit): void {
     this.applyLifetimeDefaults(unit);
     this.units.set(unit.id, unit);
+    this.addToOwnerIndex(unit);
     this.placeOnGrid(unit);
   }
 
@@ -97,6 +99,7 @@ export class UnitManager {
     });
 
     this.units.set(unit.id, unit);
+    this.addToOwnerIndex(unit);
     this.placeOnGrid(unit);
     this.notify({ unit, reason: 'created' });
     return unit;
@@ -114,6 +117,7 @@ export class UnitManager {
       this.removeUnit(cargo.id);
     }
     this.clearFromGrid(unit);
+    this.removeFromOwnerIndex(unit);
     this.units.delete(unitId);
     this.notify({ unit, reason: 'removed' });
   }
@@ -127,7 +131,8 @@ export class UnitManager {
   }
 
   getUnitsByOwner(ownerId: string): Unit[] {
-    return this.getAllUnits().filter((unit) => unit.ownerId === ownerId);
+    const ownedUnits = this.unitsByOwner.get(ownerId);
+    return ownedUnits === undefined ? [] : Array.from(ownedUnits);
   }
 
   getUnitAt(tileX: number, tileY: number): Unit | null {
@@ -182,9 +187,13 @@ export class UnitManager {
   }
 
   getCargoUnitsForTransport(transport: Unit): Unit[] {
-    const cargoIds = new Set(transport.cargoUnitIds);
-    return Array.from(this.units.values())
-      .filter((unit) => cargoIds.has(unit.id) || unit.carriedByUnitId === transport.id);
+    if (transport.cargoUnitIds.length === 0) return [];
+    const cargo: Unit[] = [];
+    for (const cargoUnitId of transport.cargoUnitIds) {
+      const unit = this.units.get(cargoUnitId);
+      if (unit !== undefined && unit.carriedByUnitId === transport.id) cargo.push(unit);
+    }
+    return cargo;
   }
 
   canBoardUnit(unit: Unit, transport: Unit): boolean {
@@ -291,9 +300,13 @@ export class UnitManager {
   transferOwnership(unitId: string, newOwnerId: string): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined || unit.ownerId === newOwnerId) return false;
+    this.removeFromOwnerIndex(unit);
     unit.ownerId = newOwnerId;
+    this.addToOwnerIndex(unit);
     for (const cargo of this.getCargoUnitsForTransport(unit)) {
+      this.removeFromOwnerIndex(cargo);
       cargo.ownerId = newOwnerId;
+      this.addToOwnerIndex(cargo);
       this.notify({ unit: cargo, reason: 'actionChanged' });
     }
     this.notify({ unit, reason: 'actionChanged' });
@@ -399,6 +412,7 @@ export class UnitManager {
    */
   clearAllSilently(): void {
     this.units.clear();
+    this.unitsByOwner.clear();
     this.unitGrid.fill(null);
     this.offGridUnitsByTile.clear();
   }
@@ -461,6 +475,7 @@ export class UnitManager {
     this.applyLifetimeDefaults(unit);
 
     this.units.set(unit.id, unit);
+    this.addToOwnerIndex(unit);
     this.placeOnGrid(unit);
     return unit;
   }
@@ -529,6 +544,22 @@ export class UnitManager {
   private applyLifetimeDefaults(unit: Unit): void {
     if (!Number.isFinite(unit.createdRound)) unit.createdRound = 1;
     unit.expiresAtRound ??= this.getExpiresAtRound(unit.unitType, unit.createdRound);
+  }
+
+  private addToOwnerIndex(unit: Unit): void {
+    const ownedUnits = this.unitsByOwner.get(unit.ownerId);
+    if (ownedUnits === undefined) {
+      this.unitsByOwner.set(unit.ownerId, new Set([unit]));
+      return;
+    }
+    ownedUnits.add(unit);
+  }
+
+  private removeFromOwnerIndex(unit: Unit): void {
+    const ownedUnits = this.unitsByOwner.get(unit.ownerId);
+    if (ownedUnits === undefined) return;
+    ownedUnits.delete(unit);
+    if (ownedUnits.size === 0) this.unitsByOwner.delete(unit.ownerId);
   }
 
   private getExpiresAtRound(unitType: UnitType, createdRound: number): number | undefined {

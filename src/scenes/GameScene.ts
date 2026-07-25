@@ -7096,6 +7096,7 @@ export class GameScene extends Phaser.Scene {
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
       improvementConstructionSystem.syncUnitsFromTiles();
+      builderSystem.rebuildConstructionIndex();
 
       const restoredCities = cityManager.getAllCities();
       console.log(

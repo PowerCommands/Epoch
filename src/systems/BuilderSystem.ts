@@ -8,6 +8,7 @@ import { canUnitEnterTile } from './UnitMovementRules';
 import type { CityManager } from './CityManager';
 import type { TurnManager } from './TurnManager';
 import type { UnitManager } from './UnitManager';
+import type { UnitChangedEvent } from './UnitManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { EraSystem } from './EraSystem';
@@ -36,6 +37,8 @@ interface BuildImprovementOptions {
 }
 
 export class BuilderSystem {
+  private readonly constructionTileByUnitId = new Map<string, Tile>();
+
   constructor(
     private readonly unitManager: UnitManager,
     private readonly cityManager: CityManager,
@@ -44,7 +47,10 @@ export class BuilderSystem {
     private readonly gridSystem: IGridSystem,
     private readonly researchSystem?: ResearchSystem,
     private readonly eraSystem?: EraSystem,
-  ) {}
+  ) {
+    this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
+    this.rebuildConstructionIndex();
+  }
 
   canBuild(unit: Unit, tile: Tile): boolean {
     return this.getBuildPreview(unit, tile).canBuild;
@@ -114,6 +120,7 @@ export class BuilderSystem {
       remainingTurns: requiredTurns,
       totalTurns: requiredTurns,
     };
+    this.constructionTileByUnitId.set(unit.id, tile);
     unit.setBuildingImprovement({
       improvementId: preview.improvement.id,
       tileX: tile.x,
@@ -253,14 +260,35 @@ export class BuilderSystem {
     return null;
   }
 
-  private getConstructionForUnit(unitId: string): Tile['improvementConstruction'] | undefined {
+  rebuildConstructionIndex(): void {
+    this.constructionTileByUnitId.clear();
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
-        if (tile.improvementConstruction?.unitId === unitId) {
-          return tile.improvementConstruction;
-        }
+        const unitId = tile.improvementConstruction?.unitId;
+        if (unitId !== undefined) this.constructionTileByUnitId.set(unitId, tile);
       }
     }
+  }
+
+  private handleUnitChanged(event: UnitChangedEvent): void {
+    if (event.reason === 'removed' || event.unit.buildAction === undefined) {
+      this.constructionTileByUnitId.delete(event.unit.id);
+      return;
+    }
+    const tile = this.mapData.tiles[event.unit.buildAction.tileY]?.[event.unit.buildAction.tileX];
+    if (tile?.improvementConstruction?.unitId === event.unit.id) {
+      this.constructionTileByUnitId.set(event.unit.id, tile);
+    } else {
+      this.constructionTileByUnitId.delete(event.unit.id);
+    }
+  }
+
+  private getConstructionForUnit(unitId: string): Tile['improvementConstruction'] | undefined {
+    const tile = this.constructionTileByUnitId.get(unitId);
+    if (tile === undefined) return undefined;
+    const construction = tile.improvementConstruction;
+    if (construction?.unitId === unitId) return construction;
+    this.constructionTileByUnitId.delete(unitId);
     return undefined;
   }
 }

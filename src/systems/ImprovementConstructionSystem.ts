@@ -40,6 +40,7 @@ type CancelledListener = (event: ImprovementConstructionCancelledEvent) => void;
 export class ImprovementConstructionSystem {
   private readonly completedListeners: CompletedListener[] = [];
   private readonly cancelledListeners: CancelledListener[] = [];
+  private readonly constructionTileByUnitId = new Map<string, Tile>();
 
   constructor(
     private readonly mapData: MapData,
@@ -82,14 +83,11 @@ export class ImprovementConstructionSystem {
   }
 
   getConstructionForUnit(unitId: string): { tile: Tile; construction: TileImprovementConstruction } | null {
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        const construction = tile.improvementConstruction;
-        if (construction?.unitId === unitId) {
-          return { tile, construction };
-        }
-      }
-    }
+    const tile = this.constructionTileByUnitId.get(unitId);
+    if (tile === undefined) return null;
+    const construction = tile.improvementConstruction;
+    if (construction?.unitId === unitId) return { tile, construction };
+    this.constructionTileByUnitId.delete(unitId);
     return null;
   }
 
@@ -114,10 +112,19 @@ export class ImprovementConstructionSystem {
   }
 
   private handleUnitChanged(event: UnitChangedEvent): void {
-    if (event.reason !== 'removed') return;
-    const active = this.getConstructionForUnit(event.unit.id);
-    if (active === null) return;
-    this.cancel(active.tile, active.construction, 'unitRemoved');
+    if (event.reason === 'removed') {
+      const active = this.getConstructionForUnit(event.unit.id);
+      if (active !== null) this.cancel(active.tile, active.construction, 'unitRemoved');
+      return;
+    }
+    if (event.unit.buildAction === undefined) {
+      this.constructionTileByUnitId.delete(event.unit.id);
+      return;
+    }
+    const tile = this.mapData.tiles[event.unit.buildAction.tileY]?.[event.unit.buildAction.tileX];
+    if (tile?.improvementConstruction?.unitId === event.unit.id) {
+      this.constructionTileByUnitId.set(event.unit.id, tile);
+    }
   }
 
   private getConstructionTilesForOwner(ownerId: string): Tile[] {
@@ -157,6 +164,7 @@ export class ImprovementConstructionSystem {
     construction: TileImprovementConstruction,
     reason: ImprovementConstructionCancelReason,
   ): void {
+    this.constructionTileByUnitId.delete(construction.unitId);
     tile.improvementConstruction = undefined;
     const unit = this.unitManager.getUnit(construction.unitId);
     if (unit !== undefined) {
@@ -191,6 +199,7 @@ export class ImprovementConstructionSystem {
     if (construction.resourceOwnerNationId !== undefined) {
       tile.resourceOwnerNationId = construction.resourceOwnerNationId;
     }
+    this.constructionTileByUnitId.delete(construction.unitId);
     tile.improvementConstruction = undefined;
     unit.clearBuildAction();
     this.unitManager.notifyActionChanged(unit.id);
@@ -258,10 +267,12 @@ export class ImprovementConstructionSystem {
    * with a populated mirror for rendering.
    */
   syncUnitsFromTiles(): void {
+    this.constructionTileByUnitId.clear();
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         const construction = tile.improvementConstruction;
         if (construction === undefined) continue;
+        this.constructionTileByUnitId.set(construction.unitId, tile);
         const unit = this.unitManager.getUnit(construction.unitId);
         if (unit === undefined) continue;
         this.syncUnitProgress(unit, construction);
