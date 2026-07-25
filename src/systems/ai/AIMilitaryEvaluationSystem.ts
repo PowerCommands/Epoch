@@ -39,6 +39,8 @@ const WEAKER_RATIO = 0.75;
 
 export class AIMilitaryEvaluationSystem {
   private peacekeepingDefensivePowerProvider: PeacekeepingDefensivePowerProvider = () => 0;
+  private readonly strengthCache = new Map<string, MilitaryStrengthBreakdown>();
+  private readonly knownUnitOwners = new Map<string, string>();
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -47,13 +49,64 @@ export class AIMilitaryEvaluationSystem {
     // war evaluation account for the defender's alliance.
     private readonly allianceManager?: AllianceManager,
     private readonly diplomacyManager?: DiplomacyManager,
-  ) {}
+  ) {
+    for (const unit of this.unitManager.getAllUnits()) {
+      this.knownUnitOwners.set(unit.id, unit.ownerId);
+    }
+    this.unitManager.onUnitChanged((event) => {
+      const previousOwnerId = this.knownUnitOwners.get(event.unit.id);
+      if (event.reason === 'removed') this.knownUnitOwners.delete(event.unit.id);
+      else this.knownUnitOwners.set(event.unit.id, event.unit.ownerId);
+
+      switch (event.reason) {
+        case 'created':
+        case 'removed':
+        case 'damaged':
+        case 'upgraded':
+          this.invalidate(event.unit.ownerId);
+          break;
+        case 'actionChanged':
+          // Ownership transfer uses this event after ownerId changes. Retaining
+          // the prior owner lets us invalidate both sides without throwing away
+          // unrelated nations' cached values for ordinary action changes.
+          if (previousOwnerId !== undefined && previousOwnerId !== event.unit.ownerId) {
+            this.invalidate(previousOwnerId);
+            this.invalidate(event.unit.ownerId);
+          } else if (previousOwnerId === undefined) {
+            this.invalidate();
+          }
+          break;
+        case 'moved':
+        case 'movementReset':
+          break;
+      }
+    });
+    this.cityManager.onCityChanged((event) => {
+      if (event.reason === 'cleared') {
+        this.invalidate();
+        return;
+      }
+      if (event.city) this.invalidate(event.city.ownerId);
+      if (event.previousOwnerId) this.invalidate(event.previousOwnerId);
+    });
+  }
+
+  invalidate(nationId?: string): void {
+    if (nationId === undefined) {
+      this.strengthCache.clear();
+      return;
+    }
+    this.strengthCache.delete(nationId);
+  }
 
   setPeacekeepingDefensivePowerProvider(provider: PeacekeepingDefensivePowerProvider): void {
     this.peacekeepingDefensivePowerProvider = provider;
   }
 
   getMilitaryStrength(nationId: string): MilitaryStrengthBreakdown {
+    const cached = this.strengthCache.get(nationId);
+    if (cached) return cached;
+
     let unitStrength = 0;
     for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
       const meleeStrength = unit.unitType.baseStrength;
@@ -70,11 +123,13 @@ export class AIMilitaryEvaluationSystem {
       cityStrength += CITY_BASE_DEFENSE * cityHealthRatio;
     }
 
-    return {
+    const result = {
       unitStrength,
       cityStrength,
       totalStrength: unitStrength + cityStrength,
     };
+    this.strengthCache.set(nationId, result);
+    return result;
   }
 
   /** Deterministic three-way strength comparison (see {@link classifyStrength}). */

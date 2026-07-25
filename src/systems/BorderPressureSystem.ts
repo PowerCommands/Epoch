@@ -1,6 +1,6 @@
 import type { City } from '../entities/City';
 import type { IdeologyDefinition } from '../types/ideology';
-import type { MapData, Tile } from '../types/map';
+import type { MapData } from '../types/map';
 import type { CityManager } from './CityManager';
 import type { DiplomacyManager, DiplomacyRelation, DiplomaticMemoryValues } from './DiplomacyManager';
 import type { NationManager } from './NationManager';
@@ -41,6 +41,13 @@ interface BorderPressureSignals {
   readonly culturalBorderCount: number;
 }
 
+export interface BorderAdjacencyCounts {
+  border: number;
+  cultural: number;
+}
+
+export type BorderAdjacencyMap = Map<string, BorderAdjacencyCounts>;
+
 const PRESSURE_INTERVAL_ROUNDS = 5;
 const MIN_VALUE = 0;
 const MAX_VALUE = 100;
@@ -65,6 +72,7 @@ export class BorderPressureSystem {
   handleRoundStart(round: number): void {
     if (round % PRESSURE_INTERVAL_ROUNDS !== 0) return;
 
+    const adjacencyByNationPair = buildBorderAdjacencyCounts(this.mapData, this.gridSystem);
     const cityOwnerIds = unique(this.cityManager.getAllCities().map((city) => city.ownerId));
     for (let i = 0; i < cityOwnerIds.length; i++) {
       for (let j = i + 1; j < cityOwnerIds.length; j++) {
@@ -73,7 +81,7 @@ export class BorderPressureSystem {
         if (!this.haveMet(nationAId, nationBId)) continue;
 
         const relation = this.diplomacyManager.getRelation(nationAId, nationBId);
-        const signals = this.evaluateSignals(nationAId, nationBId);
+        const signals = this.evaluateSignals(nationAId, nationBId, adjacencyByNationPair);
         const pressureScore = getPressureScore(signals);
         const pressureLevel = getPressureLevel(pressureScore);
         if (pressureLevel === null) continue;
@@ -114,11 +122,18 @@ export class BorderPressureSystem {
     return getPressureLevel(getPressureScore(this.evaluateSignals(nationAId, nationBId)));
   }
 
-  private evaluateSignals(nationAId: string, nationBId: string): BorderPressureSignals {
+  private evaluateSignals(
+    nationAId: string,
+    nationBId: string,
+    adjacencyByNationPair?: ReadonlyMap<string, BorderAdjacencyCounts>,
+  ): BorderPressureSignals {
+    const adjacency = adjacencyByNationPair
+      ? adjacencyByNationPair.get(getNationPairKey(nationAId, nationBId)) ?? { border: 0, cultural: 0 }
+      : this.countPairAdjacency(nationAId, nationBId);
     return {
       closestCityDistance: this.getClosestCityDistance(nationAId, nationBId),
-      adjacentBorderCount: this.countAdjacentBorders(nationAId, nationBId, 'ownerId'),
-      culturalBorderCount: this.countAdjacentBorders(nationAId, nationBId, 'cultureOwnerId'),
+      adjacentBorderCount: adjacency.border,
+      culturalBorderCount: adjacency.cultural,
     };
   }
 
@@ -136,27 +151,24 @@ export class BorderPressureSystem {
     return closest;
   }
 
-  private countAdjacentBorders(
-    nationAId: string,
-    nationBId: string,
-    ownerField: 'ownerId' | 'cultureOwnerId',
-  ): number {
-    let count = 0;
-    const seen = new Set<string>();
-
+  private countPairAdjacency(nationAId: string, nationBId: string): BorderAdjacencyCounts {
+    const counts: BorderAdjacencyCounts = { border: 0, cultural: 0 };
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
-        if (tile[ownerField] !== nationAId) continue;
+        const tileIndex = tile.y * this.mapData.width + tile.x;
         for (const neighbor of this.gridSystem.getNeighbors(tile, this.mapData)) {
-          if (neighbor[ownerField] !== nationBId) continue;
-          const key = getTilePairKey(tile, neighbor);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          count++;
+          const neighborIndex = neighbor.y * this.mapData.width + neighbor.x;
+          if (tileIndex >= neighborIndex) continue;
+          if (isNationPair(tile.ownerId, neighbor.ownerId, nationAId, nationBId)) {
+            counts.border++;
+          }
+          if (isNationPair(tile.cultureOwnerId, neighbor.cultureOwnerId, nationAId, nationBId)) {
+            counts.cultural++;
+          }
         }
       }
     }
-    return count;
+    return counts;
   }
 
   private getCompatibility(nationAId: string, nationBId: string): number {
@@ -281,10 +293,74 @@ function getCityDistance(gridSystem: IGridSystem, cityA: City, cityB: City): num
   );
 }
 
-function getTilePairKey(tileA: Tile, tileB: Tile): string {
-  const keyA = `${tileA.x},${tileA.y}`;
-  const keyB = `${tileB.x},${tileB.y}`;
-  return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
+/**
+ * Scan the map once and count every undirected border edge for every nation
+ * pair. The nested maps avoid allocating a string for every tile edge; the
+ * requested string key is created once when each nation pair is flattened.
+ */
+export function buildBorderAdjacencyCounts(
+  mapData: MapData,
+  gridSystem: IGridSystem,
+): BorderAdjacencyMap {
+  const nestedCounts = new Map<string, Map<string, BorderAdjacencyCounts>>();
+
+  for (const row of mapData.tiles) {
+    for (const tile of row) {
+      const tileIndex = tile.y * mapData.width + tile.x;
+      for (const neighbor of gridSystem.getNeighbors(tile, mapData)) {
+        const neighborIndex = neighbor.y * mapData.width + neighbor.x;
+        if (tileIndex >= neighborIndex) continue;
+        incrementPairCount(nestedCounts, tile.ownerId, neighbor.ownerId, 'border');
+        incrementPairCount(nestedCounts, tile.cultureOwnerId, neighbor.cultureOwnerId, 'cultural');
+      }
+    }
+  }
+
+  const result: BorderAdjacencyMap = new Map();
+  for (const [nationAId, byNationB] of nestedCounts) {
+    for (const [nationBId, counts] of byNationB) {
+      result.set(`${nationAId}|${nationBId}`, counts);
+    }
+  }
+  return result;
+}
+
+function incrementPairCount(
+  counts: Map<string, Map<string, BorderAdjacencyCounts>>,
+  ownerAId: string | undefined,
+  ownerBId: string | undefined,
+  field: keyof BorderAdjacencyCounts,
+): void {
+  if (!ownerAId || !ownerBId || ownerAId === ownerBId) return;
+  const nationAId = ownerAId < ownerBId ? ownerAId : ownerBId;
+  const nationBId = ownerAId < ownerBId ? ownerBId : ownerAId;
+  let byNationB = counts.get(nationAId);
+  if (!byNationB) {
+    byNationB = new Map();
+    counts.set(nationAId, byNationB);
+  }
+  let pairCounts = byNationB.get(nationBId);
+  if (!pairCounts) {
+    pairCounts = { border: 0, cultural: 0 };
+    byNationB.set(nationBId, pairCounts);
+  }
+  pairCounts[field]++;
+}
+
+function getNationPairKey(nationAId: string, nationBId: string): string {
+  return nationAId < nationBId
+    ? `${nationAId}|${nationBId}`
+    : `${nationBId}|${nationAId}`;
+}
+
+function isNationPair(
+  ownerAId: string | undefined,
+  ownerBId: string | undefined,
+  nationAId: string,
+  nationBId: string,
+): boolean {
+  return (ownerAId === nationAId && ownerBId === nationBId)
+    || (ownerAId === nationBId && ownerBId === nationAId);
 }
 
 function unique(values: readonly string[]): string[] {

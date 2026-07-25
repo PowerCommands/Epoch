@@ -767,6 +767,7 @@ export class GameScene extends Phaser.Scene {
       (a, b) => discoverySystem.hasMet(a, b),
     );
     const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager, allianceManager, diplomacyManager);
+    turnManager.on('roundStart', () => aiMilitaryEvaluationSystem.invalidate());
     const aiMilitaryThreatEvaluationSystem = new AIMilitaryThreatEvaluationSystem(unitManager, cityManager, gridSystem);
     const jointWarSystem = new JointWarSystem(
       diplomacyManager,
@@ -2279,6 +2280,7 @@ export class GameScene extends Phaser.Scene {
 
     // Log city founded and re-scan discovery (new city may trigger encounters).
     foundCitySystem.onCityFounded((city) => {
+      aiMilitaryEvaluationSystem.invalidate(city.ownerId);
       logManager.info({ nationId: city.ownerId, category: 'city', message: `${city.name} was founded.` });
       discoverySystem.scan();
       if (city.ownerId === humanNationId) updateFog();
@@ -3259,6 +3261,8 @@ export class GameScene extends Phaser.Scene {
     });
 
     combatSystem.onCityCombat(async (e) => {
+      aiMilitaryEvaluationSystem.invalidate(e.city.ownerId);
+      if (e.previousOwnerId) aiMilitaryEvaluationSystem.invalidate(e.previousOwnerId);
       const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
       if (isRanged) {
         await combatAnimationSystem.playRangedAttack(e.attacker, e.city.tileX, e.city.tileY);
@@ -3376,6 +3380,7 @@ export class GameScene extends Phaser.Scene {
     healingSystem.onCityHealed((e) => {
       const city = cityManager.getCity(e.cityId);
       if (city) {
+        aiMilitaryEvaluationSystem.invalidate(city.ownerId);
         cityRenderer.refreshCity(city);
         cityBannerRenderer.refreshCity(city);
         hudLayer?.refresh();

@@ -6,6 +6,14 @@ import { NationManager } from './NationManager';
 import { MapData, TileType } from '../types/map';
 import type { ScenarioCity } from '../types/scenario';
 
+export interface CityChangedEvent {
+  readonly reason: 'added' | 'restored' | 'ownershipTransferred' | 'cleared';
+  readonly city?: City;
+  readonly previousOwnerId?: string;
+}
+
+type CityChangedListener = (event: CityChangedEvent) => void;
+
 /**
  * Search outward in expanding axial-hex rings for nearest non-ocean tile.
  */
@@ -44,11 +52,17 @@ export class CityManager {
   private readonly cities = new Map<string, City>();
   private readonly resources = new Map<string, CityResources>();
   private readonly buildings = new Map<string, CityBuildings>();
+  private readonly listeners: CityChangedListener[] = [];
 
   addCity(city: City): void {
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
     this.buildings.set(city.id, new CityBuildings(city.id));
+    this.notify({ reason: 'added', city });
+  }
+
+  onCityChanged(listener: CityChangedListener): void {
+    this.listeners.push(listener);
   }
 
   getCity(id: string): City | undefined {
@@ -113,6 +127,7 @@ export class CityManager {
     const city = this.cities.get(cityId);
     if (!city) return;
 
+    const previousOwnerId = city.ownerId;
     city.ownerId = newOwnerId;
     // Peaceful transfers start Integrated. Military conquest immediately calls
     // CityIntegrationSystem.handleConquest after this canonical transfer.
@@ -121,6 +136,7 @@ export class CityManager {
     if (productionSystem) {
       productionSystem.clearProduction(cityId);
     }
+    this.notify({ reason: 'ownershipTransferred', city, previousOwnerId });
   }
 
   /**
@@ -131,6 +147,7 @@ export class CityManager {
     this.cities.clear();
     this.resources.clear();
     this.buildings.clear();
+    this.notify({ reason: 'cleared' });
   }
 
   /**
@@ -185,7 +202,12 @@ export class CityManager {
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
     this.buildings.set(city.id, new CityBuildings(city.id));
+    this.notify({ reason: 'restored', city });
     return city;
+  }
+
+  private notify(event: CityChangedEvent): void {
+    for (const listener of this.listeners) listener(event);
   }
 
   /**
