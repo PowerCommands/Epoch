@@ -18,16 +18,26 @@ const AXIAL_DIRECTIONS: readonly GridCoord[] = [
  */
 export class HexGridSystem implements IGridSystem {
   getAdjacentCoords(coord: GridCoord): GridCoord[] {
-    return AXIAL_DIRECTIONS.map((direction) => ({
-      x: coord.x + direction.x,
-      y: coord.y + direction.y,
-    }));
+    const adjacentCoords: GridCoord[] = [];
+    for (const direction of AXIAL_DIRECTIONS) {
+      adjacentCoords.push({
+        x: coord.x + direction.x,
+        y: coord.y + direction.y,
+      });
+    }
+    return adjacentCoords;
   }
 
   getNeighbors(coord: GridCoord, mapData: MapData): Tile[] {
-    return this.getAdjacentCoords(coord)
-      .map(({ x, y }) => this.getTile(mapData, x, y))
-      .filter((tile): tile is Tile => tile !== null);
+    const neighbors: Tile[] = [];
+    for (const direction of AXIAL_DIRECTIONS) {
+      const x = coord.x + direction.x;
+      const y = coord.y + direction.y;
+      if (x < 0 || y < 0 || x >= mapData.width || y >= mapData.height) continue;
+      const tile = mapData.tiles[y][x];
+      if (tile !== undefined) neighbors.push(tile);
+    }
+    return neighbors;
   }
 
   isAdjacent(a: GridCoord, b: GridCoord): boolean {

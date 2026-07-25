@@ -45,6 +45,7 @@ const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
 export class UnitManager {
   private readonly units = new Map<string, Unit>();
   private readonly unitGrid: (Unit | null)[];
+  private readonly offGridUnitsByTile = new Map<number, Unit[]>();
   private readonly listeners: UnitChangedListener[] = [];
   private cityLocator: CityLocator | null = null;
   private currentRoundProvider: () => number = () => 1;
@@ -135,24 +136,40 @@ export class UnitManager {
     // Covert operatives (Spy/Agent) never occupy the collision slot and are
     // excluded here, so they never block movement/combat targeting. They stack
     // freely with other units and are found via getUnitsAt / getCovertOperativesAt.
-    return this.unitGrid[key] ?? this.getAllUnits().find((unit) => (
-      unit.carriedByUnitId === undefined && unit.tileX === tileX && unit.tileY === tileY
-      && !isCovertOperative(unit.unitType)
-    )) ?? null;
+    const gridUnit = this.unitGrid[key];
+    if (gridUnit !== null) return gridUnit;
+    const offGridUnits = this.offGridUnitsByTile.get(key);
+    if (offGridUnits === undefined) return null;
+    for (const unit of offGridUnits) {
+      if (!isCovertOperative(unit.unitType)) return unit;
+    }
+    return null;
   }
 
   /** Covert operatives (Spy/Agent) standing on a tile (ignores carried units). */
   getCovertOperativesAt(tileX: number, tileY: number): Unit[] {
-    return this.getUnitsAt(tileX, tileY).filter((unit) => isCovertOperative(unit.unitType));
+    const key = this.gridKey(tileX, tileY);
+    if (key === null) return [];
+    const offGridUnits = this.offGridUnitsByTile.get(key);
+    if (offGridUnits === undefined) return [];
+    const covertOperatives: Unit[] = [];
+    for (const unit of offGridUnits) {
+      if (isCovertOperative(unit.unitType)) covertOperatives.push(unit);
+    }
+    return covertOperatives;
   }
 
   getUnitsAt(tileX: number, tileY: number): Unit[] {
-    const units = Array.from(this.units.values())
-      .filter((unit) => unit.carriedByUnitId === undefined)
-      .filter((unit) => unit.tileX === tileX && unit.tileY === tileY);
-    return [
-      ...units,
-    ];
+    const key = this.gridKey(tileX, tileY);
+    if (key === null) return [];
+    const units: Unit[] = [];
+    const gridUnit = this.unitGrid[key];
+    if (gridUnit !== null) units.push(gridUnit);
+    const offGridUnits = this.offGridUnitsByTile.get(key);
+    if (offGridUnits !== undefined) {
+      for (const unit of offGridUnits) units.push(unit);
+    }
+    return units;
   }
 
   getTransportForUnit(unit: Unit): Unit | undefined {
@@ -229,8 +246,10 @@ export class UnitManager {
     this.notify({ unit, reason: 'moved' });
 
     for (const cargo of this.getCargoUnitsForTransport(unit)) {
+      this.clearFromGrid(cargo);
       cargo.tileX = tileX;
       cargo.tileY = tileY;
+      this.placeOnGrid(cargo);
       this.notify({ unit: cargo, reason: 'moved' });
     }
 
@@ -262,7 +281,9 @@ export class UnitManager {
   upgradeUnitType(unitId: string, targetType: UnitType): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
+    this.clearFromGrid(unit);
     unit.changeUnitType(targetType, this.getEffectiveMovementPoints(targetType));
+    this.placeOnGrid(unit);
     this.notify({ unit, reason: 'upgraded' });
     return true;
   }
@@ -379,6 +400,7 @@ export class UnitManager {
   clearAllSilently(): void {
     this.units.clear();
     this.unitGrid.fill(null);
+    this.offGridUnitsByTile.clear();
   }
 
   /**
@@ -475,6 +497,7 @@ export class UnitManager {
     }
 
     this.unitGrid.fill(null);
+    this.offGridUnitsByTile.clear();
     for (const unit of this.units.values()) this.placeOnGrid(unit);
   }
 
@@ -520,8 +543,18 @@ export class UnitManager {
     // Covert operatives never take the collision slot so they neither block nor
     // are blocked by other units (they stack freely; only hostile covert vs
     // covert is resolved through combat).
-    if (isCovertOperative(unit.unitType)) return;
-    if (unit.unitType.ignoresUnitCollision === true && this.unitGrid[key] !== null) return;
+    if (isCovertOperative(unit.unitType)) {
+      this.addOffGridUnit(key, unit);
+      return;
+    }
+    if (unit.unitType.ignoresUnitCollision === true && this.unitGrid[key] !== null) {
+      this.addOffGridUnit(key, unit);
+      return;
+    }
+    const displacedUnit = this.unitGrid[key];
+    if (displacedUnit !== null && displacedUnit.id !== unit.id) {
+      this.addOffGridUnit(key, displacedUnit);
+    }
     this.unitGrid[key] = unit;
   }
 
@@ -530,6 +563,26 @@ export class UnitManager {
     if (key === null) return;
     if (this.unitGrid[key]?.id === unit.id) {
       this.unitGrid[key] = null;
+      return;
+    }
+    const offGridUnits = this.offGridUnitsByTile.get(key);
+    if (offGridUnits === undefined) return;
+    const index = offGridUnits.findIndex((candidate) => candidate.id === unit.id);
+    if (index < 0) return;
+    offGridUnits.splice(index, 1);
+    if (offGridUnits.length === 0) {
+      this.offGridUnitsByTile.delete(key);
+    }
+  }
+
+  private addOffGridUnit(key: number, unit: Unit): void {
+    const offGridUnits = this.offGridUnitsByTile.get(key);
+    if (offGridUnits === undefined) {
+      this.offGridUnitsByTile.set(key, [unit]);
+      return;
+    }
+    if (!offGridUnits.some((candidate) => candidate.id === unit.id)) {
+      offGridUnits.push(unit);
     }
   }
 
