@@ -7091,6 +7091,7 @@ export class GameScene extends Phaser.Scene {
         covertSuspicionSystem,
         worldCouncilSystem,
       });
+      resourceAccessSystem.invalidateResourceIndex();
       updateFog();
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.

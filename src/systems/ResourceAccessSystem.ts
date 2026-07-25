@@ -27,6 +27,7 @@ export type ManufacturedResourceProvider = (nationId: string) => ReadonlyMap<str
 export class ResourceAccessSystem {
   private canUseResource: ResourceUsabilityPredicate = () => true;
   private getManufacturedResourceQuantities: ManufacturedResourceProvider = () => new Map();
+  private resourceTileIndex: Map<string, Tile[]> | null = null;
 
   constructor(
     private readonly mapData: MapData,
@@ -39,6 +40,10 @@ export class ResourceAccessSystem {
 
   setManufacturedResourceProvider(provider: ManufacturedResourceProvider): void {
     this.getManufacturedResourceQuantities = provider;
+  }
+
+  invalidateResourceIndex(): void {
+    this.resourceTileIndex = null;
   }
 
   hasOwnResource(nationId: string, resourceId: string): boolean {
@@ -60,17 +65,21 @@ export class ResourceAccessSystem {
   }
 
   getOwnedNaturalResources(nationId: string): string[] {
-    const ids = new Set<string>();
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        if (tile.resourceId === undefined) continue;
-        if (!this.canUseResource(nationId, tile.resourceId)) continue;
-        if (this.tileProvidesOwnResource(tile, nationId, tile.resourceId)) {
-          ids.add(tile.resourceId);
-        }
+    const owned: Array<{ resourceId: string; firstTileIndex: number }> = [];
+    for (const [resourceId, tiles] of this.getResourceTileIndex()) {
+      if (!this.canUseResource(nationId, resourceId)) continue;
+      for (const tile of tiles) {
+        if (tile.resourceId !== resourceId) continue;
+        if (!this.tileProvidesOwnResource(tile, nationId, resourceId)) continue;
+        owned.push({
+          resourceId,
+          firstTileIndex: tile.y * this.mapData.width + tile.x,
+        });
+        break;
       }
     }
-    return Array.from(ids);
+    owned.sort((a, b) => a.firstTileIndex - b.firstTileIndex);
+    return owned.map((entry) => entry.resourceId);
   }
 
   hasImportedResource(nationId: string, resourceId: string): boolean {
@@ -239,14 +248,30 @@ export class ResourceAccessSystem {
    */
   private countOwnedTiles(nationId: string, resourceId: string): number {
     let count = 0;
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        if (tile.resourceId !== resourceId) continue;
-        if (!this.tileProvidesOwnResource(tile, nationId, resourceId)) continue;
-        count += getTileResourceQuantity(tile, getNaturalResourceById);
-      }
+    for (const tile of this.getResourceTileIndex().get(resourceId) ?? []) {
+      // Resource placement is static during gameplay. Retaining this check also
+      // makes removal visible until a save-load invalidation rebuilds the index.
+      if (tile.resourceId !== resourceId) continue;
+      if (!this.tileProvidesOwnResource(tile, nationId, resourceId)) continue;
+      count += getTileResourceQuantity(tile, getNaturalResourceById);
     }
     return count;
+  }
+
+  private getResourceTileIndex(): Map<string, Tile[]> {
+    if (this.resourceTileIndex) return this.resourceTileIndex;
+
+    const index = new Map<string, Tile[]>();
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        if (tile.resourceId === undefined) continue;
+        const tiles = index.get(tile.resourceId);
+        if (tiles) tiles.push(tile);
+        else index.set(tile.resourceId, [tile]);
+      }
+    }
+    this.resourceTileIndex = index;
+    return index;
   }
 
   private tileProvidesOwnResource(tile: Tile, nationId: string, resourceId: string): boolean {

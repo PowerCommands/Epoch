@@ -1,8 +1,9 @@
 import type { City } from '../entities/City';
 import type { MapData, Tile } from '../types/map';
 import { CityTerritorySystem } from './CityTerritorySystem';
+import { HexGridSystem } from './grid/HexGridSystem';
 
-const cityTerritorySystem = new CityTerritorySystem();
+const cityTerritorySystem = new CityTerritorySystem(undefined, new HexGridSystem());
 const knownTileSets = new WeakMap<Tile, Tile[]>();
 
 function toMapData(tiles: Tile[]): MapData {

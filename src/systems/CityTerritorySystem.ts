@@ -61,12 +61,10 @@ export class CityTerritorySystem {
   }
 
   getClaimCost(city: City, mapData: MapData): number {
-    const ownedNearbyCount = mapData.tiles
-      .flat()
-      .filter((tile) => (
-        tile.ownerId === city.ownerId &&
-        this.getExpansionRingDistance(city, tile) <= CITY_CLAIM_RANGE
-      )).length;
+    let ownedNearbyCount = 0;
+    for (const tile of this.getTilesInClaimRange(city, mapData)) {
+      if (tile.ownerId === city.ownerId) ownedNearbyCount++;
+    }
 
     return scaleGameSpeedCost(CLAIM_BASE_COST + ownedNearbyCount * CLAIM_COST_PER_OWNED_TILE, this.gameSpeed);
   }
@@ -74,8 +72,7 @@ export class CityTerritorySystem {
   getClaimableTiles(city: City, mapData: MapData): CityTileCoord[] {
     const ownedSet = new Set(city.ownedTileCoords.map((coord) => this.getCoordKey(coord.x, coord.y)));
 
-    return mapData.tiles
-      .flat()
+    return this.getTilesInClaimRange(city, mapData)
       .filter((tile) => {
         const key = this.getCoordKey(tile.x, tile.y);
         if (ownedSet.has(key)) return false;
@@ -105,11 +102,18 @@ export class CityTerritorySystem {
 
   getExpansionCandidatesByRing(city: City, mapData: MapData): Map<number, Tile[]> {
     const candidatesByRing = new Map<number, Tile[]>();
-    const claimableSet = new Set(this.getClaimableTiles(city, mapData).map((coord) => this.getCoordKey(coord.x, coord.y)));
+    const ownedSet = new Set(city.ownedTileCoords.map((coord) => this.getCoordKey(coord.x, coord.y)));
 
-    for (const tile of mapData.tiles.flat()) {
-      if (!claimableSet.has(this.getCoordKey(tile.x, tile.y))) continue;
+    // getTilesInRange uses axial traversal; row-major ordering reproduces the
+    // former whole-map encounter order before the single filtering/bucket pass.
+    const inRangeTiles = this.getTilesInClaimRange(city, mapData)
+      .sort((a, b) => this.compareCoords(a, b));
+    for (const tile of inRangeTiles) {
+      const key = this.getCoordKey(tile.x, tile.y);
+      if (ownedSet.has(key)) continue;
+      if (tile.ownerId !== undefined) continue;
       const distance = this.getExpansionRingDistance(city, tile);
+      if (distance < 2 || distance > CITY_CLAIM_RANGE) continue;
       const ringCandidates = candidatesByRing.get(distance) ?? [];
       ringCandidates.push(tile);
       candidatesByRing.set(distance, ringCandidates);
@@ -249,6 +253,18 @@ export class CityTerritorySystem {
     return city.ownedTileCoords
       .map(({ x, y }) => this.getTile(mapData, x, y))
       .filter((tile): tile is Tile => tile !== undefined);
+  }
+
+  private getTilesInClaimRange(city: City, mapData: MapData): Tile[] {
+    if (!this.gridSystem) {
+      throw new Error('CityTerritorySystem requires a grid system for territory range queries.');
+    }
+    return this.gridSystem.getTilesInRange(
+      { x: city.tileX, y: city.tileY },
+      CITY_CLAIM_RANGE,
+      mapData,
+      { includeCenter: true },
+    );
   }
 
   private applyClaimedTile(city: City, tile: Tile, mapData: MapData): boolean {
