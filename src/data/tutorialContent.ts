@@ -172,6 +172,36 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     ],
   },
   {
+    id: 'happiness',
+    title: 'Happiness',
+    blocks: [
+      { kind: 'paragraph', text: 'Happiness 😀 is measured for your whole nation, not city by city. It is shown in the top resource bar, along with your current mood — from Crisis at the low end up to a Golden Age at the very top.' },
+      { kind: 'heading', text: 'What raises happiness' },
+      {
+        kind: 'list',
+        items: [
+          'Happiness buildings such as temples and colosseums',
+          'World Wonders',
+          'Luxury resources inside your territory',
+          'Certain policies and culture effects',
+        ],
+      },
+      { kind: 'heading', text: 'What lowers happiness' },
+      {
+        kind: 'list',
+        items: [
+          'Each city you own',
+          'Large populations',
+          'Recently conquered cities',
+          'War weariness from prolonged conflict',
+        ],
+      },
+      { kind: 'heading', text: 'Why it matters' },
+      { kind: 'paragraph', text: 'Your happiness state applies nation-wide modifiers. A happy or prosperous nation grows faster and produces more, while an unhappy nation suffers penalties to growth and production. If happiness collapses into unrest or crisis, growth can stop entirely and production falls sharply.' },
+      { kind: 'note', text: 'Expanding quickly is powerful, but every new city adds unhappiness. Balance expansion with happiness buildings and luxury resources so your empire keeps growing.' },
+    ],
+  },
+  {
     id: 'technologies',
     title: 'Technologies',
     blocks: [
@@ -195,7 +225,9 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Sailing',
         ],
       },
-      { kind: 'note', text: 'Some diplomatic actions require specific technologies. For example, Writing enables map exchange between civilizations.' },
+      { kind: 'note', text: 'Some diplomatic actions require specific technologies. For example, Writing unlocks the Establish Embassy and Exchange Maps actions with nations you have met.' },
+      { kind: 'heading', text: 'Eras' },
+      { kind: 'paragraph', text: 'Technology and culture carry your civilization through the ages — Ancient, Classical, Medieval, Renaissance, Industrial, Modern and beyond. Reaching a new era unlocks more advanced units, buildings and options, and some units and improvements only become fully effective in later eras.' },
     ],
   },
   {
@@ -220,6 +252,28 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       },
       { kind: 'heading', text: 'War' },
       { kind: 'paragraph', text: 'Nations can declare war and become hostile. War is required before military units can attack one another.' },
+    ],
+  },
+  {
+    id: 'world-council',
+    title: 'The World Council',
+    blocks: [
+      { kind: 'paragraph', text: 'The World Council is a global forum where nations meet to pass resolutions. Once founded it convenes regularly, and it can later evolve into the United Nations. It is the arena in which Diplomatic Victory is contested.' },
+      { kind: 'heading', text: 'Influence' },
+      { kind: 'paragraph', text: 'Influence is a resource shown in the top resource bar. Your cities generate it each turn — larger populations produce more — and certain policies increase it further. You spend Influence at the council to support the resolutions you favour.' },
+      { kind: 'heading', text: 'Resolutions' },
+      { kind: 'paragraph', text: 'At each meeting, resolutions are put forward — trade agreements, sanctions, shared cartography, peacekeeping and more. Nations then vote by committing Influence for or against each proposal.' },
+      {
+        kind: 'list',
+        items: [
+          'The nation that proposes a resolution that passes earns the most Diplomatic Score',
+          'Nations that spend Influence to support a resolution that passes share a smaller reward, split by how much Influence they committed',
+          'Blocking a rival’s proposal earns no score directly, but denying them their reward can be worth it',
+        ],
+      },
+      { kind: 'heading', text: 'Emergencies' },
+      { kind: 'paragraph', text: 'Events such as a declaration of war can trigger an emergency meeting. Donating gold to an emergency Defense Support resolution grants a small, one-time score reward.' },
+      { kind: 'note', text: 'Consistent participation is the key to Diplomatic Victory — build Influence, propose resolutions that can pass, and back winning coalitions meeting after meeting.' },
     ],
   },
   {
@@ -254,6 +308,25 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'paragraph', text: 'The trade route is still being established and is not yet producing benefits.' },
       { kind: 'heading', text: 'Active' },
       { kind: 'paragraph', text: 'The trade route is operating and generating benefits for both partners.' },
+    ],
+  },
+  {
+    id: 'currency',
+    title: 'Currency',
+    blocks: [
+      { kind: 'paragraph', text: 'Once you research Currency, your civilization gains its own named national currency, shown with its symbol and strength in the top resource bar.' },
+      { kind: 'heading', text: 'Currency Strength' },
+      { kind: 'paragraph', text: 'Your currency is ranked against the currencies of other active nations, and its strength is re-evaluated periodically. Strength ranges from Collapsing, through Weak, Stable and Strong, up to Dominant — the single strongest currency in the world.' },
+      { kind: 'paragraph', text: 'Currency strength is driven by the health of your economy:' },
+      {
+        kind: 'list',
+        items: [
+          'Gold reserves and income',
+          'Active trade relations and trade partners',
+          'Corporations and banks',
+        ],
+      },
+      { kind: 'note', text: 'Only the highest-ranked currency is Dominant, and a Dominant currency is one of the three requirements for a Cultural Victory. A strong economy therefore feeds directly into your victory options.' },
     ],
   },
   {
@@ -324,12 +397,47 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     id: 'culture',
     title: 'Culture',
     blocks: [
+      { kind: 'paragraph', text: 'Culture is a second research track that runs alongside technology. Where technology advances your tools, buildings and units, culture advances your society — its laws, institutions and traditions.' },
+      { kind: 'heading', text: 'The Culture Tree' },
+      { kind: 'paragraph', text: 'Your civilization generates Culture ⭐ every turn, and that culture accumulates as progress toward a chosen node on the culture tree. Open the culture panel to pick what your civilization studies next, from a Code of Laws in the ancient era through to the great ideologies of the modern age.' },
+      { kind: 'paragraph', text: 'Completing a culture node can unlock:' },
+      {
+        kind: 'list',
+        items: [
+          'New forms of government',
+          'Policy slots, which let you run more policies at once',
+          'Diplomatic options such as trade delegations and alliances',
+          'Certain buildings and units',
+        ],
+      },
+      { kind: 'note', text: 'Because governments, policy slots and even alliances are unlocked here, the culture tree shapes your civilization just as much as the technology tree does.' },
       { kind: 'heading', text: 'Cultural Expansion' },
-      { kind: 'paragraph', text: 'Culture expands your cities’ borders, claiming new tiles for your civilization over time.' },
-      { kind: 'heading', text: 'Cultural Identity' },
-      { kind: 'paragraph', text: 'Different nations develop unique strengths and characteristics as they progress.' },
-      { kind: 'heading', text: 'Influence' },
-      { kind: 'paragraph', text: 'Culture contributes to territorial control and to the broader development of your civilization.' },
+      { kind: 'paragraph', text: 'Culture also expands your cities’ borders, claiming new tiles for your civilization over time. Each city works toward a planned expansion tile, which you can retarget, and tiles and resources brought inside your borders become available to work.' },
+      { kind: 'heading', text: 'Cultural Victory' },
+      { kind: 'paragraph', text: 'Sustained cultural output is a victory path in its own right, combined with World Wonders and a dominant currency. See Victory & Objectives for the full requirements.' },
+    ],
+  },
+  {
+    id: 'government-and-policies',
+    title: 'Government & Policies',
+    blocks: [
+      { kind: 'paragraph', text: 'As your culture tree advances, you gain access to new forms of government and to policies that let you tailor your civilization to your strategy.' },
+      { kind: 'heading', text: 'Government' },
+      { kind: 'paragraph', text: 'Governments are unlocked through the culture tree. Early societies begin with simple tribal governments and can progress toward classical republics, autocracies and theocracies, and eventually to the modern ideological states — democracy, fascism and communism among them.' },
+      { kind: 'heading', text: 'Policies' },
+      { kind: 'paragraph', text: 'Policies are individual bonuses you slot into your government. Open the Policies dialog from the culture panel to assign them.' },
+      {
+        kind: 'list',
+        items: [
+          'Policies come in categories: military, economic, diplomatic and ideology',
+          'Each policy occupies a slot of its own category, and wildcard slots accept any policy',
+          'You unlock additional policy slots by advancing the culture tree',
+          'Policies can be swapped as your situation changes',
+        ],
+      },
+      { kind: 'note', text: 'Some policies increase happiness, production or Influence, so revisit your policy loadout as new slots and policies unlock.' },
+      { kind: 'heading', text: 'Ideology' },
+      { kind: 'paragraph', text: 'Each nation has an ideology — such as Liberalism, Nationalism, Globalism or Militarism — that expresses its character. Ideology shapes how a nation approaches diplomacy, trade, open borders, war and cultural pressure, and it has its own policy category.' },
     ],
   },
   {
@@ -346,7 +454,9 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         ],
       },
       { kind: 'heading', text: 'Luxury Resources' },
-      { kind: 'paragraph', text: 'Luxury resources improve the quality of life and prosperity of your civilization.' },
+      { kind: 'paragraph', text: 'Luxury resources such as wine, silver and gems improve happiness and the prosperity of your civilization.' },
+      { kind: 'heading', text: 'Bonus Resources' },
+      { kind: 'paragraph', text: 'Bonus resources such as wheat, cattle and fish simply boost the yields of the tiles they sit on. Building the matching tile improvement increases the benefit further.' },
       { kind: 'heading', text: 'Access' },
       { kind: 'paragraph', text: 'A resource must be inside territory you control before you can make use of it.' },
     ],
