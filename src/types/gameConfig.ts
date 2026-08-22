@@ -1,5 +1,6 @@
 import type { SavedGameState } from './saveGame';
 import type { GameSpeedId } from '../data/gameSpeeds';
+import type { CovertPersonalityId } from './covertPersonality';
 
 export type ResourceAbundance = 'scarce' | 'normal' | 'abundant';
 
@@ -10,6 +11,16 @@ export interface ScienceVictoryConfig {
 
 export interface ToggleableVictoryConfig {
   enabled: boolean;
+}
+
+/** Transient per-nation changes made in the Game Setup Nation Details dialog. */
+export interface ScenarioNationCustomization {
+  leaderName: string | null;
+  leaderDescription: string | null;
+  gold: number;
+  covertPersonalityId: CovertPersonalityId | null;
+  researchedTechIds: string[];
+  unlockedCultureNodeIds: string[];
 }
 
 export interface VictoryConditionsConfig {
@@ -29,6 +40,8 @@ export interface GameConfig {
    * keep their scenario references; only the nation/leader identity changes.
    */
   scenarioNationReplacements?: Record<string, string>;
+  /** Setup-only nation properties, keyed by the original scenario slot id. */
+  scenarioNationCustomizations?: Record<string, ScenarioNationCustomization>;
   resourceAbundance: ResourceAbundance;
   gameSpeedId: GameSpeedId;
   autofocusOnEndTurn?: boolean;

@@ -12,7 +12,12 @@ import {
   formatScenarioTimeProgression,
 } from '../data/scenarioMeta';
 import { renderScenarioMinimap } from '../ui/ScenarioMinimapRenderer';
-import type { GameConfig, ResourceAbundance, VictoryConditionsConfig } from '../types/gameConfig';
+import type {
+  GameConfig,
+  ResourceAbundance,
+  ScenarioNationCustomization,
+  VictoryConditionsConfig,
+} from '../types/gameConfig';
 import { DEFAULT_GAME_SPEED_ID, GAME_SPEEDS, getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { SetupMusicManager } from '../systems/SetupMusicManager';
 import { SaveLoadService } from '../systems/SaveLoadService';
@@ -21,6 +26,7 @@ import { computeGameDateFromMeta, formatGameDate } from '../systems/GameDate';
 import { TutorialView } from '../ui/TutorialView';
 import { WhatsNewDialog } from '../ui/WhatsNewDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
+import { NationDetailsDialog } from '../ui/NationDetailsDialog';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
 import {
@@ -56,6 +62,7 @@ export class MainMenuScene extends Phaser.Scene {
   private currentMapKey = '';
   private nations: ScenarioNation[] = [];
   private scenarioNationReplacements = new Map<string, string>();
+  private scenarioNationCustomizations = new Map<string, ScenarioNationCustomization>();
   private selectedNationId: string | null = null;
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
@@ -578,6 +585,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.currentMapKey = mapKey;
     this.selectedNationId = null;
     this.scenarioNationReplacements.clear();
+    this.scenarioNationCustomizations.clear();
 
     const customScenario = this.getCustomScenario(mapKey);
     const json = customScenario?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined;
@@ -685,7 +693,7 @@ export class MainMenuScene extends Phaser.Scene {
 
       const gold = document.createElement('span');
       gold.className = 'mm-card-gold';
-      gold.textContent = `💰 ${nation.gold ?? 0} starting gold`;
+      gold.textContent = `💰 ${displayNation.gold ?? 0} starting gold`;
 
       const replacement = this.createReplacementSummary(nation, displayNation);
 
@@ -702,8 +710,21 @@ export class MainMenuScene extends Phaser.Scene {
         this.openNationReplacementDialog(nation.id);
       });
 
+      const detailsButton = document.createElement('button');
+      detailsButton.type = 'button';
+      detailsButton.className = 'mm-nation-details-btn';
+      detailsButton.textContent = 'Nation details…';
+      detailsButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.openNationDetailsDialog(nation.id);
+      });
+
+      const cardActions = document.createElement('span');
+      cardActions.className = 'mm-card-actions';
+      cardActions.append(detailsButton, replaceButton);
+
       copy.append(name, replacement, leaderName, description, gold, this.createNationScenarioInfo(nation));
-      card.append(portrait, dot, copy, state, replaceButton);
+      card.append(portrait, dot, copy, state, cardActions);
       card.addEventListener('click', () => this.handleNationCardClick(nation.id));
       container.appendChild(card);
     }
@@ -844,14 +865,15 @@ export class MainMenuScene extends Phaser.Scene {
     const scenario = this.getCurrentScenario();
     if (!scenario) return wrapper;
 
+    const customization = this.scenarioNationCustomizations.get(nation.id);
     const details = scenario.nationDetails?.[nation.id];
     const techIds = uniqueStrings([
-      ...(details?.researchedTechIds ?? []),
-      ...(nation.researchedTechIds ?? []),
+      ...(customization?.researchedTechIds ?? details?.researchedTechIds ?? []),
+      ...(customization ? [] : nation.researchedTechIds ?? []),
     ]);
     const cultureIds = uniqueStrings([
-      ...(details?.unlockedCultureNodeIds ?? []),
-      ...(nation.unlockedCultureNodeIds ?? []),
+      ...(customization?.unlockedCultureNodeIds ?? details?.unlockedCultureNodeIds ?? []),
+      ...(customization ? [] : nation.unlockedCultureNodeIds ?? []),
     ]);
 
     const technologyNames = techIds.map((id) => getTechnologyById(id)?.name ?? formatScenarioId(id));
@@ -900,7 +922,17 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private getRuntimeScenarioNation(nation: ScenarioNation): RuntimeScenarioNation {
-    return applyScenarioNationReplacement(nation, this.scenarioNationReplacements.get(nation.id));
+    const runtimeNation = applyScenarioNationReplacement(nation, this.scenarioNationReplacements.get(nation.id));
+    const customization = this.scenarioNationCustomizations.get(nation.id);
+    if (!customization) return runtimeNation;
+    const customized = { ...runtimeNation, gold: customization.gold };
+    if (customization.leaderName) customized.leaderName = customization.leaderName;
+    else delete customized.leaderName;
+    if (customization.leaderDescription) customized.leaderDescription = customization.leaderDescription;
+    else delete customized.leaderDescription;
+    if (customization.covertPersonalityId) customized.covertPersonalityId = customization.covertPersonalityId;
+    else delete customized.covertPersonalityId;
+    return customized;
   }
 
   private getRuntimeScenarioNations(nations = this.nations): RuntimeScenarioNation[] {
@@ -916,6 +948,25 @@ export class MainMenuScene extends Phaser.Scene {
       Object.fromEntries(this.scenarioNationReplacements),
     );
     return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+
+  private openNationDetailsDialog(slotNationId: string): void {
+    const scenario = this.getCurrentScenario();
+    const slotNation = this.nations.find((nation) => nation.id === slotNationId);
+    if (!scenario || !slotNation) return;
+    const runtimeNation = this.getRuntimeScenarioNation(slotNation);
+    NationDetailsDialog.show({
+      nation: runtimeNation,
+      identityNationId: runtimeNation.replacementNationId ?? slotNation.id,
+      details: scenario.nationDetails?.[slotNationId],
+      customization: this.scenarioNationCustomizations.get(slotNationId),
+      onSave: (customization) => {
+        this.scenarioNationCustomizations.set(slotNationId, customization);
+        setScenarioLeaderOverrides(this.getRuntimeScenarioNations());
+        this.renderNationList();
+        this.updateSetupPanel();
+      },
+    });
   }
 
   private openNationReplacementDialog(slotNationId: string): void {
@@ -1053,6 +1104,9 @@ export class MainMenuScene extends Phaser.Scene {
       humanNationId: this.selectedNationId,
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
       scenarioNationReplacements: this.getScenarioNationReplacementConfig(),
+      scenarioNationCustomizations: this.scenarioNationCustomizations.size > 0
+        ? Object.fromEntries(this.scenarioNationCustomizations)
+        : undefined,
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
       worldSeed: generateNewGameSeed(),
@@ -1680,10 +1734,17 @@ export class MainMenuScene extends Phaser.Scene {
         border-color: rgba(26, 85, 125, 0.62);
       }
 
-      .mm-replace-btn {
+      .mm-card-actions {
         grid-column: 4;
         grid-row: 2;
         align-self: end;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .mm-replace-btn,
+      .mm-nation-details-btn {
         padding: 6px 8px;
         color: #6d4215;
         background: rgba(255, 252, 244, 0.8);
@@ -1695,9 +1756,15 @@ export class MainMenuScene extends Phaser.Scene {
         cursor: pointer;
       }
 
-      .mm-replace-btn:hover {
+      .mm-replace-btn:hover,
+      .mm-nation-details-btn:hover {
         background: rgba(255, 247, 225, 0.94);
         border-color: rgba(176, 101, 24, 0.68);
+      }
+
+      .mm-nation-details-btn {
+        border-color: rgba(21, 64, 82, 0.72);
+        color: #153f52;
       }
 
       .mm-nation-dot {
@@ -2186,6 +2253,112 @@ export class MainMenuScene extends Phaser.Scene {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .mm-nation-details-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1210;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgba(0, 0, 0, 0.68);
+        font-family: "Courier New", monospace;
+      }
+
+      .mm-nation-details-dialog {
+        width: min(900px, calc(100vw - 48px));
+        max-height: min(800px, calc(100vh - 48px));
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        color: #ddd;
+        background: #181818;
+        border: 1px solid #393939;
+        border-radius: 8px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      }
+
+      .mm-nd-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        background: #202020;
+        border-bottom: 1px solid #333;
+      }
+
+      .mm-nd-header h2 {
+        margin: 0;
+        color: #ddd;
+        font-size: 15px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+      }
+
+      .mm-nd-header-actions { display: flex; gap: 8px; }
+      .mm-nd-header button,
+      .mm-nd-toolbar button {
+        padding: 6px 12px;
+        color: #ddd;
+        background: #2a2a2a;
+        border: 1px solid #555;
+        border-radius: 4px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .mm-nd-header button:hover,
+      .mm-nd-toolbar button:hover { border-color: #888; background: #333; }
+      .mm-nd-header button.primary { border-color: #3a6b48; background: #234a30; color: #cde6d4; }
+
+      .mm-nd-content {
+        min-height: 0;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        overflow-y: auto;
+      }
+
+      .mm-nd-section { border: 1px solid #2c2c2c; border-radius: 6px; background: #1d1d1d; }
+      .mm-nd-section h3 {
+        margin: 0;
+        padding: 9px 12px;
+        color: #aaa;
+        border-bottom: 1px solid #2c2c2c;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .mm-nd-section-body { padding: 10px 12px; }
+      .mm-nd-field { display: grid; gap: 5px; margin-bottom: 9px; color: #bbb; font-size: 12px; }
+      .mm-nd-field:last-child { margin-bottom: 0; }
+      .mm-nd-field input,
+      .mm-nd-field textarea,
+      .mm-nd-field select {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 7px 8px;
+        color: #ddd;
+        background: #151515;
+        border: 1px solid #444;
+        border-radius: 3px;
+        font: inherit;
+      }
+      .mm-nd-field textarea { min-height: 82px; resize: vertical; }
+      .mm-nd-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+      .mm-nd-toolbar button { padding: 4px 8px; font-size: 11px; }
+      .mm-nd-count { margin-left: auto; align-self: center; color: #888; font-size: 11px; }
+      .mm-nd-era { padding: 4px 0; border-top: 1px solid #292929; }
+      .mm-nd-era-title { padding: 4px 0; color: #aaa; cursor: pointer; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+      .mm-nd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; padding: 2px 0 6px; }
+      .mm-nd-check { display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 11px; line-height: 1.3; }
+
+      @media (max-width: 640px) {
+        .mm-nd-grid { grid-template-columns: 1fr; }
+        .mm-card-actions { flex-direction: column; align-items: stretch; }
       }
 
       .mm-replacement-option-copy strong {

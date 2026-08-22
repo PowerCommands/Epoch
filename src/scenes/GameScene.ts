@@ -224,6 +224,7 @@ import type { UnitType } from '../entities/UnitType';
 import type { Selectable } from '../types/selection';
 import type { GameConfig } from '../types/gameConfig';
 import { materializeScenarioNationReplacements } from '../utils/scenarioNationReplacements';
+import { applyScenarioNationCustomizations } from '../utils/scenarioNationCustomizations';
 import { DEFAULT_GAME_SPEED_ID, getGameSpeedById } from '../data/gameSpeeds';
 import { LogManager } from '../systems/LogManager';
 
@@ -340,7 +341,13 @@ export class GameScene extends Phaser.Scene {
     const replacementResult = data.savedState
       ? { scenario: scenarioJson, idMap: {} }
       : materializeScenarioNationReplacements(scenarioJson, data.scenarioNationReplacements);
-    const runtimeScenarioJson = replacementResult.scenario;
+    const runtimeScenarioJson = data.savedState
+      ? replacementResult.scenario
+      : applyScenarioNationCustomizations(
+          replacementResult.scenario,
+          data.scenarioNationCustomizations,
+          replacementResult.idMap,
+        );
     if (!data.savedState && Object.keys(replacementResult.idMap).length > 0) {
       const remapNationId = (nationId: string) => replacementResult.idMap[nationId] ?? nationId;
       data = {
