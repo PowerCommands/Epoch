@@ -4,6 +4,7 @@ import type {
   SavedDiplomacyEntry,
   SavedDiscoveryEntry,
   SavedForeignTroopViolationWarning,
+  SavedGuideProgress,
   SavedGameState,
   SavedNation,
   SavedProducible,
@@ -88,6 +89,8 @@ export interface SaveLoadContext {
   covertSuspicionSystem?: CovertSuspicionSystem;
   victorySystem?: VictorySystem;
   worldCouncilSystem?: WorldCouncilSystem;
+  /** Snapshot supplied by the progressive guide; presentation state is excluded. */
+  guideProgress?: SavedGuideProgress;
 }
 
 /**
@@ -360,6 +363,7 @@ export class SaveLoadService {
         currentRound: turnManager.getCurrentRound(),
         currentTurnIndex: turnManager.getCurrentTurnIndex(),
       },
+      guideProgress: context.guideProgress ? { ...context.guideProgress } : undefined,
       tiles,
       nations,
       cities,

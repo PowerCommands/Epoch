@@ -117,7 +117,7 @@ import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
-import { VictorySystem, type VictoryType } from '../systems/VictorySystem';
+import { VictorySystem, type EnabledVictoryConditions, type VictoryType } from '../systems/VictorySystem';
 import { PoliticalCapitalSystem } from '../systems/PoliticalCapitalSystem';
 import { NationCollapseSystem } from '../systems/NationCollapseSystem';
 import { ExileProtectionSystem } from '../systems/ExileProtectionSystem';
@@ -164,7 +164,6 @@ import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
 import { SaveGameDialog } from '../ui/SaveGameDialog';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { TutorialView } from '../ui/TutorialView';
 import { SettingsDialog } from '../ui/SettingsDialog';
 import { isAutofocusOnEndTurn, isAutoEndTurn } from '../systems/PlayerSettings';
 import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
@@ -177,8 +176,10 @@ import { CORPORATIONS, getCorporationById } from '../data/corporations';
 import { getResourceDefinitionById, getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
-import { TutorialWizard, type TutorialStep } from '../ui/hud/TutorialWizard';
+import { TutorialWizard, type StartupGuideStep } from '../ui/hud/TutorialWizard';
 import { isTutorialDontShowAgain } from '../systems/TutorialSettings';
+import { GuideProgression } from '../systems/GuideProgression';
+import { buildProgressiveGuideTips } from '../data/progressiveGuide';
 import type { ScreenRect } from '../types/screenRect';
 import { Tooltip } from '../ui/hud/Tooltip';
 import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
@@ -190,7 +191,7 @@ import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDat
 import { LeaderAudienceDialog } from '../ui/dialogs/LeaderAudienceDialog';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
-import type { SavedGameState } from '../types/saveGame';
+import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { CULTURE_TREE } from '../data/cultureTree';
 import { getImprovementById } from '../data/improvements';
@@ -4890,12 +4891,10 @@ export class GameScene extends Phaser.Scene {
     // Stack the lens toggle above the minimap panel.
     hudLayer.setMapLensBottomReserved(236);
 
-    // ─── New-game tutorial wizard ────────────────────────────────────────────
-    // New players get a guided overlay that points at their starting units and
-    // the core HUD controls. It auto-launches on every new game unless the
-    // player disables it in Settings; the framework is generic so future
-    // scripted tutorials can reuse it by supplying their own step list.
-    this.setupTutorialWizard({
+    // ─── Guides ───────────────────────────────────────────────────────────────
+    // The new-game startup guide is separate from the progressive topics. One
+    // progressive topic becomes due after every six completed human turns.
+    const guideProgression = this.setupProgressiveGuide({
       humanNationId,
       unitManager,
       tileMap,
@@ -4903,7 +4902,13 @@ export class GameScene extends Phaser.Scene {
       worldInputGate,
       selectionManager,
       focusUnit,
+      turnManager,
+      isAutoplayActive: () => autoplaySystem.isActive(),
+      savedProgress: data.savedState?.guideProgress,
+      savedRound: data.savedState?.turn.currentRound ?? 0,
       isFreshGame: data.savedState === undefined,
+      enabledVictories: victorySystem.getEnabledConditions(),
+      requiredAerospaceParts: victorySystem.getScienceVictorySettings().requiredAerospaceParts,
     });
 
     rightPanel = new RightSidebarPanelDataProvider(
@@ -6535,6 +6540,7 @@ export class GameScene extends Phaser.Scene {
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
+          guideProgress: guideProgression.getState(),
         }),
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -7183,6 +7189,7 @@ export class GameScene extends Phaser.Scene {
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
+          guideProgress: guideProgression.getState(),
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
       } catch (err: unknown) {
@@ -7198,7 +7205,6 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Escape menu ─────────────────────────────────────────────────────────
 
-    const tutorialView = new TutorialView();
     const settingsDialog = new SettingsDialog({
       music: SetupMusicManager.getShared(),
       // Enabling Auto End Turn mid-turn should take effect right away if nothing
@@ -7240,6 +7246,7 @@ export class GameScene extends Phaser.Scene {
         covertSuspicionSystem,
         victorySystem,
         worldCouncilSystem,
+        guideProgress: guideProgression.getState(),
       });
     const saveGameDialog = new SaveGameDialog({
       onConfirm: (filename) => {
@@ -7282,9 +7289,8 @@ export class GameScene extends Phaser.Scene {
           this.scene.start('MainMenuScene');
         },
         onTutorial: () => {
-          // Open the manual on top of the pause menu; leave the pause menu open
-          // underneath so closing the tutorial returns the player to it.
-          tutorialView.show();
+          escapeMenu.close();
+          this.tutorialWizard?.openManual();
         },
         onSettings: () => {
           // Open Settings over the pause menu; closing it returns to the menu.
@@ -7294,6 +7300,10 @@ export class GameScene extends Phaser.Scene {
     );
 
     const onKeyEscape = () => {
+      if (this.tutorialWizard?.isActive()) {
+        this.tutorialWizard.close();
+        return;
+      }
       // An open menu always closes first.
       if (escapeMenu.isOpen()) {
         escapeMenu.close();
@@ -7339,7 +7349,6 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-S', onKeyCtrlS);
       escapeMenu.shutdown();
       saveGameDialog.shutdown();
-      tutorialView.shutdown();
       settingsDialog.shutdown();
     });
 
@@ -7469,20 +7478,16 @@ export class GameScene extends Phaser.Scene {
     if (!this.isAutoplayActiveForVisuals()) {
       this.minimapHud?.update();
     }
-    // Re-anchor the tutorial overlay so it tracks units / HUD as the camera moves.
+    // Keep the guide panel responsive and anchored to startup-guide targets.
     this.tutorialWizard?.update();
     this.diagnosticSystem.update();
   }
 
   /**
-   * Builds the first-time tutorial step list and auto-launches the wizard on new
-   * games. GameScene stays orchestration-only: every step supplies a closure
-   * that resolves its live screen-space target (units via the camera transform,
-   * HUD controls via HudLayer accessors) and optional selection side effects.
-   * The wizard itself owns no game knowledge, so the same framework can drive
-   * future tutorials with a different step list.
+   * Wires the separate new-game introduction and deterministic progressive
+   * tips to the reused guide panel.
    */
-  private setupTutorialWizard(deps: {
+  private setupProgressiveGuide(deps: {
     humanNationId: string | undefined;
     unitManager: UnitManager;
     tileMap: TileMap;
@@ -7490,129 +7495,113 @@ export class GameScene extends Phaser.Scene {
     worldInputGate: WorldInputGate;
     selectionManager: SelectionManager;
     focusUnit: (unit: Unit) => void;
+    turnManager: TurnManager;
+    isAutoplayActive: () => boolean;
+    savedProgress: SavedGuideProgress | undefined;
+    savedRound: number;
     isFreshGame: boolean;
-  }): void {
-    const { humanNationId, unitManager, tileMap, hudLayer, worldInputGate, selectionManager, focusUnit, isFreshGame } = deps;
-    if (humanNationId === undefined) return;
+    enabledVictories: EnabledVictoryConditions;
+    requiredAerospaceParts: number;
+  }): GuideProgression {
+    const tips = buildProgressiveGuideTips({
+      enabledVictories: deps.enabledVictories,
+      requiredAerospaceParts: deps.requiredAerospaceParts,
+    });
+    const progression = GuideProgression.fromSave(
+      tips.length,
+      deps.savedProgress,
+      deps.savedRound,
+    );
 
-    const humanUnits = unitManager.getUnitsByOwner(humanNationId);
-    const startingSettlerId = humanUnits.find((u) => u.unitType.canFound)?.id;
+    const humanUnits = deps.humanNationId === undefined
+      ? []
+      : deps.unitManager.getUnitsByOwner(deps.humanNationId);
+    const startingSettlerId = humanUnits.find((unit) => unit.unitType.canFound)?.id;
     const startingScoutId = humanUnits.find(
-      (u) => u.unitType.category === 'recon' || u.unitType.category === 'naval_recon',
+      (unit) => unit.unitType.category === 'recon' || unit.unitType.category === 'naval_recon',
     )?.id;
-
-    // Without a starting settler there's nothing meaningful to teach; bail out.
-    if (startingSettlerId === undefined) return;
-
-    const camera = this.cameras.main;
     const unitTargetRect = (unitId: string | undefined): ScreenRect | null => {
       if (unitId === undefined) return null;
-      const unit = unitManager.getUnit(unitId);
-      if (!unit) return null; // founded/dismissed — target no longer exists
-      const world = tileMap.tileToWorld(unit.tileX, unit.tileY);
-      const view = camera.worldView;
-      const centerX = (world.x - view.x) * camera.zoom;
-      const centerY = (world.y - view.y) * camera.zoom;
-      const size = Math.max(tileMap.getTileSize() * camera.zoom, 32);
-      // Drop the arrow when the unit is well outside the viewport.
+      const unit = deps.unitManager.getUnit(unitId);
+      if (!unit) return null;
+      const world = deps.tileMap.tileToWorld(unit.tileX, unit.tileY);
+      const camera = this.cameras.main;
+      const centerX = (world.x - camera.worldView.x) * camera.zoom;
+      const centerY = (world.y - camera.worldView.y) * camera.zoom;
+      const size = Math.max(deps.tileMap.getTileSize() * camera.zoom, 32);
       if (
         centerX < -size || centerY < -size
         || centerX > this.scale.width + size || centerY > this.scale.height + size
-      ) {
-        return null;
-      }
+      ) return null;
       return { centerX, centerY, width: size, height: size };
     };
-
     const selectUnitById = (unitId: string | undefined): void => {
-      if (unitId === undefined) return;
-      const unit = unitManager.getUnit(unitId);
-      if (!unit || unit.ownerId !== humanNationId) return;
-      // SelectionManager no-ops when re-selecting the already-selected unit, so
-      // onSelectionChanged (which wires the unit-action toolbox) would not fire
-      // and the action buttons could stay hidden. Clear first when the unit is
-      // already selected so focusUnit re-triggers selection and the Found City
-      // button reliably appears on the relevant step.
-      const current = selectionManager.getSelected();
+      if (unitId === undefined || deps.humanNationId === undefined) return;
+      const unit = deps.unitManager.getUnit(unitId);
+      if (!unit || unit.ownerId !== deps.humanNationId) return;
+      const current = deps.selectionManager.getSelected();
       if (current?.kind === 'unit' && current.unit.id === unit.id) {
-        selectionManager.clearSelection();
+        deps.selectionManager.clearSelection();
       }
-      focusUnit(unit);
+      deps.focusUnit(unit);
     };
-
-    const steps: TutorialStep[] = [
+    const startupSteps: StartupGuideStep[] = [
       {
         title: 'Your Settler',
         text: 'This is your Settler. Settlers are used to found new cities and begin expanding your civilization.',
-        targetType: 'unit',
-        placement: 'auto',
         onEnter: () => selectUnitById(startingSettlerId),
         resolveTarget: () => unitTargetRect(startingSettlerId),
       },
       {
         title: 'Found City',
         text: 'Units have different action buttons depending on what they are capable of doing. The Settler can found a city.',
-        targetType: 'ui-element',
-        placement: 'auto',
         onEnter: () => selectUnitById(startingSettlerId),
-        resolveTarget: () => hudLayer.getUnitActionButtonRect('found'),
+        resolveTarget: () => deps.hudLayer.getUnitActionButtonRect('found'),
       },
       {
         title: 'Your Scout',
         text: 'Scouts are used to explore the world and discover cities, resources, natural wonders and other civilizations. Scouts can also be automated.',
-        targetType: 'unit',
-        placement: 'auto',
         onEnter: () => selectUnitById(startingScoutId),
         resolveTarget: () => unitTargetRect(startingScoutId),
       },
       {
         title: 'Automated Scouting',
         text: 'Automated scouting allows the Scout to explore on its own using the same exploration logic used by AI scouts.',
-        targetType: 'ui-element',
-        placement: 'auto',
         onEnter: () => selectUnitById(startingScoutId),
-        resolveTarget: () => hudLayer.getUnitActionButtonRect('explore'),
+        resolveTarget: () => deps.hudLayer.getUnitActionButtonRect('explore'),
       },
       {
         title: 'Next Turn',
         text: 'End your current turn and let all other civilizations act. Normally you press this once you have finished giving orders (or press Return / Enter). If you prefer, enable Auto End Turn in Settings — then the game advances the turn for you automatically once no units need orders.',
-        targetType: 'ui-element',
-        placement: 'auto',
-        resolveTarget: () => hudLayer.getEndTurnButtonRect(),
+        resolveTarget: () => deps.hudLayer.getEndTurnButtonRect(),
       },
       {
         title: 'Gold',
         text: 'Gold is used to support your civilization. Military units require maintenance, so running out of gold can become a serious problem.',
-        targetType: 'ui-element',
         placement: 'below',
-        resolveTarget: () => hudLayer.getResourceEntryRect('gold'),
+        resolveTarget: () => deps.hudLayer.getResourceEntryRect('gold'),
       },
       {
         title: 'Unit Focus',
         text: 'Clicking the active unit toggles unit focus on and off. When a unit is inactive you can freely inspect cities, tiles and other units without issuing movement orders.',
-        targetType: 'unit',
-        placement: 'auto',
         onEnter: () => selectUnitById(startingSettlerId),
         resolveTarget: () => unitTargetRect(startingSettlerId),
       },
       {
         title: 'Start Guide Settings',
         text: 'You can turn this start guide off or on at any time in Settings. In game, open Settings from the pause menu.',
-        targetType: 'ui-element',
-        placement: 'auto',
         resolveTarget: () => null,
       },
     ];
 
     this.tutorialWizard = new TutorialWizard(
       this,
-      hudLayer.getOwnedObjectAttacher(),
-      worldInputGate,
+      deps.hudLayer.getOwnedObjectAttacher(),
+      deps.worldInputGate,
+      tips,
       {
-        // Close (any step): return focus to the Settler so the player resumes
-        // with it selected and active.
-        onClose: () => {
-          selectUnitById(startingSettlerId);
+        onClose: (mode) => {
+          if (mode === 'startup') selectUnitById(startingSettlerId);
         },
       },
     );
@@ -7622,9 +7611,21 @@ export class GameScene extends Phaser.Scene {
       this.tutorialWizard = null;
     });
 
-    if (isFreshGame && !isTutorialDontShowAgain()) {
-      this.tutorialWizard.start(steps);
+    if (deps.isFreshGame && startingSettlerId !== undefined && !isTutorialDontShowAgain()) {
+      this.tutorialWizard.openStartup(startupSteps);
     }
+
+    if (deps.humanNationId !== undefined) {
+      deps.turnManager.on('turnEnd', (event) => {
+        if (event.nation.id !== deps.humanNationId) return;
+        const dueTipIndex = progression.completeHumanTurn();
+        if (dueTipIndex === null) return;
+        if (deps.isAutoplayActive() || isTutorialDontShowAgain()) return;
+        this.tutorialWizard?.openAutomaticTip(dueTipIndex);
+      });
+    }
+
+    return progression;
   }
 
   private findUnitPlacementTile(

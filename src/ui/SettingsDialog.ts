@@ -19,7 +19,7 @@ export interface SettingsDialogOptions {
 /**
  * Reusable Settings dialog (Start Screen + in-game pause menu).
  *
- * Collects player preferences (Autofocus on end turn, Auto End Turn, start guide) and audio
+ * Collects player preferences (Autofocus, Auto End Turn, guide tips) and audio
  * settings in one place. Built as an isolated HTML/CSS overlay so it carries no
  * external stylesheet dependency, and pinned above the pause menu so it can open
  * on top of it. Audio persistence is owned by SetupMusicManager; the preference
@@ -164,8 +164,8 @@ export class SettingsDialog {
     ));
     group.appendChild(this.buildCheckbox(
       'settings-start-guide-toggle',
-      'Show start guide',
-      'Show the introductory guide when starting a new game.',
+      'Show guide tips',
+      'Show the startup guide and progressive guide tips.',
     ));
 
     return group;

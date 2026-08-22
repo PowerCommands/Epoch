@@ -255,6 +255,12 @@ export interface SavedForeignTroopViolationWarning {
   unitCount: number;
 }
 
+/** Automatic progressive-guide cursor. Manual browsing is intentionally not persisted here. */
+export interface SavedGuideProgress {
+  nextAutomaticTipIndex: number;
+  completedHumanTurns: number;
+}
+
 export interface SavedGameState {
   version: typeof SAVED_GAME_VERSION;
   savedAt: string;
@@ -273,6 +279,8 @@ export interface SavedGameState {
     currentRound: number;
     currentTurnIndex: number;
   };
+  /** Optional so saves created before the progressive guide remain loadable. */
+  guideProgress?: SavedGuideProgress;
   tiles: SavedTile[];
   nations: SavedNation[];
   cities: SavedCity[];
