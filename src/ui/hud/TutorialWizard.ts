@@ -36,12 +36,9 @@ export interface TutorialStep {
 export interface TutorialWizardCallbacks {
   /**
    * Fired when the wizard is dismissed (Close pressed, on any step). The wizard
-   * has already hidden itself. `dontShowAgain` is the live state of the panel's
-   * "Don't show again" checkbox — the host persists exactly this value and
-   * restores focus to the settler. Closing alone never suppresses the wizard;
-   * only a ticked checkbox does.
+   * has already hidden itself so the host can restore gameplay focus.
    */
-  onClose: (dontShowAgain: boolean) => void;
+  onClose: () => void;
 }
 
 const DEPTH = 600;
@@ -54,10 +51,6 @@ const BUTTON_HEIGHT = 34;
 const BUTTON_PADDING_X = 16;
 const BUTTON_GAP = 8;
 const BUTTON_TOP_GAP = 16;
-const CHECKBOX_TOP_GAP = 14;
-const CHECKBOX_SIZE = 18;
-const CHECKBOX_LABEL_GAP = 9;
-const CHECKBOX_ROW_HEIGHT = CHECKBOX_SIZE;
 const SCREEN_MARGIN = 16;
 const TARGET_GAP = 26;
 const ARROW_SIZE = 20;
@@ -84,19 +77,12 @@ export class TutorialWizard {
   private readonly backButton: WizardButton;
   private readonly nextButton: WizardButton;
   private readonly closeButton: WizardButton;
-  private readonly checkboxBox: Phaser.GameObjects.Rectangle;
-  private readonly checkboxMark: Phaser.GameObjects.Text;
-  private readonly checkboxLabel: Phaser.GameObjects.Text;
-  private readonly checkboxHit: Phaser.GameObjects.Zone;
   private readonly textResolution = getTextResolution();
 
   private steps: TutorialStep[] = [];
   private stepIndex = 0;
   private active = false;
   private panelHeight = 0;
-  // Player choice to suppress the wizard on future new games. Unchecked by
-  // default; only the host persisting this on close suppresses the wizard.
-  private dontShowAgain = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -163,66 +149,6 @@ export class TutorialWizard {
     this.backButton = this.createButton('Back', () => this.goBack(), false);
     this.nextButton = this.createButton('Next', () => this.goNext(), true);
     this.closeButton = this.createButton('Close', () => this.close(), false);
-
-    // "Don't show again" checkbox — shown on every step. Ticking it does not
-    // hide the wizard now; the host persists the choice when the wizard closes.
-    this.checkboxBox = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, CHECKBOX_SIZE, CHECKBOX_SIZE, 0x1c2b3a, 0.98))
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 3)
-      .setScrollFactor(0)
-      .setStrokeStyle(1.5, 0x6f89a2, 0.9)
-      .setVisible(false);
-    this.checkboxMark = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '✓', {
-      fontFamily: 'sans-serif',
-      fontSize: '15px',
-      fontStyle: 'bold',
-      color: '#f4dfaa',
-    }))
-      .setOrigin(0.5, 0.5)
-      .setDepth(DEPTH + 4)
-      .setScrollFactor(0)
-      .setResolution(this.textResolution)
-      .setVisible(false);
-    this.checkboxLabel = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, "Don't show again", {
-      fontFamily: 'sans-serif',
-      fontSize: '13px',
-      color: '#c7d2dd',
-    }))
-      .setOrigin(0, 0.5)
-      .setDepth(DEPTH + 4)
-      .setScrollFactor(0)
-      .setResolution(this.textResolution)
-      .setVisible(false);
-    const checkboxWidth = CHECKBOX_SIZE + CHECKBOX_LABEL_GAP + Math.ceil(this.checkboxLabel.width);
-    this.checkboxHit = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, checkboxWidth, CHECKBOX_ROW_HEIGHT))
-      .setOrigin(0, 0)
-      .setDepth(DEPTH + 5)
-      .setScrollFactor(0)
-      .setVisible(false);
-    this.checkboxHit.on(Phaser.Input.Events.POINTER_DOWN, (
-      pointer: Phaser.Input.Pointer,
-      _x: number,
-      _y: number,
-      event: Phaser.Types.Input.EventData,
-    ) => {
-      event.stopPropagation();
-      if (pointer.button !== 0) return;
-      this.worldInputGate.claimPointer(pointer.id);
-      consumePointerEvent(pointer);
-    });
-    this.checkboxHit.on(Phaser.Input.Events.POINTER_UP, (
-      pointer: Phaser.Input.Pointer,
-      _x: number,
-      _y: number,
-      event: Phaser.Types.Input.EventData,
-    ) => {
-      event.stopPropagation();
-      if (pointer.button !== 0) return;
-      consumePointerEvent(pointer);
-      this.worldInputGate.releasePointer(pointer.id);
-      this.dontShowAgain = !this.dontShowAgain;
-      this.refreshCheckbox();
-    });
   }
 
   /** Begin a tutorial with the given ordered steps. */
@@ -231,7 +157,6 @@ export class TutorialWizard {
     this.steps = steps;
     this.stepIndex = 0;
     this.active = true;
-    this.dontShowAgain = false;
     this.showStep();
   }
 
@@ -251,10 +176,6 @@ export class TutorialWizard {
     this.arrow.destroy();
     this.titleText.destroy();
     this.bodyText.destroy();
-    this.checkboxBox.destroy();
-    this.checkboxMark.destroy();
-    this.checkboxLabel.destroy();
-    this.checkboxHit.destroy();
     for (const button of [this.backButton, this.nextButton, this.closeButton]) {
       button.background.destroy();
       button.label.destroy();
@@ -264,9 +185,8 @@ export class TutorialWizard {
 
   private close(): void {
     if (!this.active) return;
-    const dontShowAgain = this.dontShowAgain;
     this.hide();
-    this.callbacks.onClose(dontShowAgain);
+    this.callbacks.onClose();
   }
 
   private goBack(): void {
@@ -300,13 +220,6 @@ export class TutorialWizard {
     this.panelStroke.setVisible(true);
     this.titleText.setVisible(true);
     this.bodyText.setVisible(true);
-    // The checkbox is present on every step.
-    this.checkboxBox.setVisible(true);
-    this.checkboxLabel.setVisible(true);
-    this.checkboxHit.setVisible(true);
-    this.checkboxHit.disableInteractive();
-    this.checkboxHit.setInteractive({ useHandCursor: true });
-    this.refreshCheckbox();
 
     this.layout();
   }
@@ -318,19 +231,9 @@ export class TutorialWizard {
     this.arrow.setVisible(false);
     this.titleText.setVisible(false);
     this.bodyText.setVisible(false);
-    this.checkboxBox.setVisible(false);
-    this.checkboxMark.setVisible(false);
-    this.checkboxLabel.setVisible(false);
-    this.checkboxHit.setVisible(false);
-    this.checkboxHit.disableInteractive();
     for (const button of [this.backButton, this.nextButton, this.closeButton]) {
       this.hideButton(button);
     }
-  }
-
-  private refreshCheckbox(): void {
-    this.checkboxBox.setFillStyle(this.dontShowAgain ? 0x2f4a63 : 0x1c2b3a, 0.98);
-    this.checkboxMark.setVisible(this.dontShowAgain && this.checkboxBox.visible);
   }
 
   private layout(): void {
@@ -343,7 +246,6 @@ export class TutorialWizard {
     const titleHeight = this.titleText.height;
     const bodyHeight = this.bodyText.height;
     const innerHeight = titleHeight + BODY_TOP_GAP + bodyHeight
-      + CHECKBOX_TOP_GAP + CHECKBOX_ROW_HEIGHT
       + BUTTON_TOP_GAP + BUTTON_HEIGHT;
     this.panelHeight = PANEL_PADDING * 2 + innerHeight;
 
@@ -458,14 +360,6 @@ export class TutorialWizard {
 
     // Buttons sit in a row along the bottom of the panel.
     const rowY = y + this.panelHeight - PANEL_PADDING - BUTTON_HEIGHT;
-
-    // "Don't show again" checkbox row, directly above the button row.
-    const checkboxY = rowY - BUTTON_TOP_GAP - CHECKBOX_ROW_HEIGHT;
-    this.checkboxBox.setPosition(contentX, checkboxY).setSize(CHECKBOX_SIZE, CHECKBOX_SIZE);
-    this.checkboxMark.setPosition(contentX + CHECKBOX_SIZE / 2, checkboxY + CHECKBOX_SIZE / 2);
-    this.checkboxLabel.setPosition(contentX + CHECKBOX_SIZE + CHECKBOX_LABEL_GAP, checkboxY + CHECKBOX_SIZE / 2);
-    const checkboxWidth = CHECKBOX_SIZE + CHECKBOX_LABEL_GAP + Math.ceil(this.checkboxLabel.width);
-    this.checkboxHit.setPosition(contentX, checkboxY).setSize(checkboxWidth, CHECKBOX_ROW_HEIGHT);
 
     // Right-aligned group: Next (rightmost) then Close to its left.
     let rightX = x + PANEL_WIDTH - PANEL_PADDING;

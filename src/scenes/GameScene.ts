@@ -178,7 +178,7 @@ import { getResourceDefinitionById, getResourceDisplayName } from '../data/resou
 import type { Producible } from '../types/producible';
 import { HudLayer } from '../ui/hud/HudLayer';
 import { TutorialWizard, type TutorialStep } from '../ui/hud/TutorialWizard';
-import { isTutorialDontShowAgain, setTutorialDontShowAgain } from '../systems/TutorialSettings';
+import { isTutorialDontShowAgain } from '../systems/TutorialSettings';
 import type { ScreenRect } from '../types/screenRect';
 import { Tooltip } from '../ui/hud/Tooltip';
 import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
@@ -4893,7 +4893,7 @@ export class GameScene extends Phaser.Scene {
     // ─── New-game tutorial wizard ────────────────────────────────────────────
     // New players get a guided overlay that points at their starting units and
     // the core HUD controls. It auto-launches on every new game unless the
-    // player ticks "Don't show again"; the framework is generic so future
+    // player disables it in Settings; the framework is generic so future
     // scripted tutorials can reuse it by supplying their own step list.
     this.setupTutorialWizard({
       humanNationId,
@@ -7595,6 +7595,13 @@ export class GameScene extends Phaser.Scene {
         onEnter: () => selectUnitById(startingSettlerId),
         resolveTarget: () => unitTargetRect(startingSettlerId),
       },
+      {
+        title: 'Start Guide Settings',
+        text: 'You can turn this start guide off or on at any time in Settings. In game, open Settings from the pause menu.',
+        targetType: 'ui-element',
+        placement: 'auto',
+        resolveTarget: () => null,
+      },
     ];
 
     this.tutorialWizard = new TutorialWizard(
@@ -7602,11 +7609,9 @@ export class GameScene extends Phaser.Scene {
       hudLayer.getOwnedObjectAttacher(),
       worldInputGate,
       {
-        // Close (any step): persist the player's "Don't show again" choice
-        // verbatim (only a ticked checkbox suppresses future runs), then return
-        // focus to the Settler so the player resumes with it selected and active.
-        onClose: (dontShowAgain) => {
-          setTutorialDontShowAgain(dontShowAgain);
+        // Close (any step): return focus to the Settler so the player resumes
+        // with it selected and active.
+        onClose: () => {
           selectUnitById(startingSettlerId);
         },
       },

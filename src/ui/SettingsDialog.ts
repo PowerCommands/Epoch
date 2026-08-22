@@ -6,6 +6,7 @@ import {
   setAutoEndTurn,
   setAutofocusOnEndTurn,
 } from '../systems/PlayerSettings';
+import { isTutorialDontShowAgain, setTutorialDontShowAgain } from '../systems/TutorialSettings';
 
 export interface SettingsDialogOptions {
   /** Music manager for the audio controls; audio section is hidden when absent. */
@@ -18,7 +19,7 @@ export interface SettingsDialogOptions {
 /**
  * Reusable Settings dialog (Start Screen + in-game pause menu).
  *
- * Collects player preferences (Autofocus on end turn, Auto End Turn) and audio
+ * Collects player preferences (Autofocus on end turn, Auto End Turn, start guide) and audio
  * settings in one place. Built as an isolated HTML/CSS overlay so it carries no
  * external stylesheet dependency, and pinned above the pause menu so it can open
  * on top of it. Audio persistence is owned by SetupMusicManager; the preference
@@ -161,6 +162,11 @@ export class SettingsDialog {
       'Auto end turn',
       'Automatically end the turn when no units need orders.',
     ));
+    group.appendChild(this.buildCheckbox(
+      'settings-start-guide-toggle',
+      'Show start guide',
+      'Show the introductory guide when starting a new game.',
+    ));
 
     return group;
   }
@@ -195,6 +201,7 @@ export class SettingsDialog {
   private wirePreferenceToggles(): void {
     const autofocus = this.overlay.querySelector<HTMLInputElement>('.settings-autofocus-toggle');
     const autoEndTurn = this.overlay.querySelector<HTMLInputElement>('.settings-auto-end-turn-toggle');
+    const startGuide = this.overlay.querySelector<HTMLInputElement>('.settings-start-guide-toggle');
     autofocus?.addEventListener('change', () => {
       setAutofocusOnEndTurn(autofocus.checked);
       this.options.onAutofocusChanged?.(autofocus.checked);
@@ -203,13 +210,18 @@ export class SettingsDialog {
       setAutoEndTurn(autoEndTurn.checked);
       this.options.onAutoEndTurnChanged?.(autoEndTurn.checked);
     });
+    startGuide?.addEventListener('change', () => {
+      setTutorialDontShowAgain(!startGuide.checked);
+    });
   }
 
   private syncPreferenceToggles(): void {
     const autofocus = this.overlay.querySelector<HTMLInputElement>('.settings-autofocus-toggle');
     const autoEndTurn = this.overlay.querySelector<HTMLInputElement>('.settings-auto-end-turn-toggle');
+    const startGuide = this.overlay.querySelector<HTMLInputElement>('.settings-start-guide-toggle');
     if (autofocus) autofocus.checked = isAutofocusOnEndTurn();
     if (autoEndTurn) autoEndTurn.checked = isAutoEndTurn();
+    if (startGuide) startGuide.checked = !isTutorialDontShowAgain();
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {

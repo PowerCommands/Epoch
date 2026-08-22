@@ -4,9 +4,7 @@ const DONT_SHOW_AGAIN_STORAGE_KEY = 'epoch.tutorialDontShowAgain';
  * Persistent, cross-game tutorial preference.
  *
  * Default behaviour is to show the new-game tutorial wizard every time a new
- * game starts. The wizard is only suppressed when the player explicitly ticks
- * the "Don't show again" checkbox — that is the *only* thing that sets this
- * flag. Pressing Close or reaching the last step does NOT suppress it.
+ * game starts. The player can change this preference in the Settings dialog.
  *
  * `tutorialDontShowAgain === true`  → do not auto-show on a new game.
  * Any other value (missing / 'false' / legacy keys) → show the wizard.
@@ -25,9 +23,8 @@ export function isTutorialDontShowAgain(): boolean {
 }
 
 /**
- * Persist the player's "Don't show again" choice. Passing false clears the flag
- * so the wizard returns on the next new game (an unticked checkbox never
- * suppresses future runs).
+ * Persist whether the start guide should be suppressed. Passing false clears
+ * the flag so the wizard returns on the next new game.
  */
 export function setTutorialDontShowAgain(value: boolean): void {
   try {

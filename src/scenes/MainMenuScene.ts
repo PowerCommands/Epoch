@@ -233,11 +233,6 @@ export class MainMenuScene extends Phaser.Scene {
 
             <div id="mm-selected-display" class="mm-selected-display"></div>
 
-            <div class="mm-scenario-nations-section">
-              <span class="mm-field-label">Scenario Nations</span>
-              <div id="mm-scenario-nations-list" class="mm-scenario-nations-list"></div>
-            </div>
-
             <label class="mm-field-label" for="mm-map-select">Scenario</label>
             <select id="mm-map-select" class="mm-select">
               ${mapOptions}
@@ -762,11 +757,9 @@ export class MainMenuScene extends Phaser.Scene {
     const opponentCount = document.getElementById('mm-opponent-count')!;
     const opponentHint = document.getElementById('mm-opponent-hint')!;
     const opponentList = document.getElementById('mm-opponent-list')!;
-    const scenarioNationsList = document.getElementById('mm-scenario-nations-list')!;
     const changeButton = document.getElementById('mm-change-nation-btn') as HTMLButtonElement;
     selectedDisplay.innerHTML = '';
     opponentList.innerHTML = '';
-    scenarioNationsList.innerHTML = '';
 
     const selectedNation = this.nations.find(n => n.id === this.selectedNationId);
     if (!selectedNation) {
@@ -810,31 +803,6 @@ export class MainMenuScene extends Phaser.Scene {
       opponentList.appendChild(item);
     }
 
-    for (const nation of this.nations) {
-      const displayNation = this.getRuntimeScenarioNation(nation);
-      const row = document.createElement('div');
-      row.className = 'mm-scenario-nation-row';
-      if (this.scenarioNationReplacements.has(nation.id)) row.classList.add('has-replacement');
-
-      const dot = document.createElement('span');
-      dot.className = 'mm-nation-dot mini';
-      dot.style.background = displayNation.color;
-
-      const name = document.createElement('span');
-      name.className = 'mm-scenario-nation-name';
-      name.textContent = displayNation.name;
-
-      const replacement = this.createReplacementSummary(nation, displayNation);
-
-      const replaceButton = document.createElement('button');
-      replaceButton.type = 'button';
-      replaceButton.className = 'mm-scenario-replace-btn';
-      replaceButton.textContent = 'Replace';
-      replaceButton.addEventListener('click', () => this.openNationReplacementDialog(nation.id));
-
-      row.append(dot, name, replacement, replaceButton);
-      scenarioNationsList.appendChild(row);
-    }
   }
 
   private createSelectedNationCopy(nation: ScenarioNation, displayNation: RuntimeScenarioNation, leaderName: string): HTMLElement {
@@ -1915,70 +1883,6 @@ export class MainMenuScene extends Phaser.Scene {
 
       .mm-field-label {
         margin: 16px 0 7px;
-      }
-
-      .mm-scenario-nations-section {
-        padding-bottom: 14px;
-        border-bottom: 1px solid rgba(117, 86, 56, 0.2);
-      }
-
-      .mm-scenario-nations-list {
-        display: grid;
-        gap: 7px;
-        max-height: 176px;
-        overflow: auto;
-        padding-right: 2px;
-      }
-
-      .mm-scenario-nation-row {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-rows: auto auto;
-        align-items: center;
-        gap: 3px 8px;
-        padding: 7px 8px;
-        border: 1px solid rgba(117, 86, 56, 0.22);
-        border-radius: 8px;
-        background: rgba(255, 252, 243, 0.56);
-      }
-
-      .mm-scenario-nation-row.has-replacement {
-        border-color: rgba(26, 85, 125, 0.5);
-        background: rgba(238, 247, 250, 0.74);
-      }
-
-      .mm-scenario-nation-name {
-        min-width: 0;
-        color: #2b2017;
-        font-size: 14px;
-        font-weight: 700;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      .mm-scenario-nation-row .mm-replacement-summary {
-        grid-column: 2;
-        font-size: 11px !important;
-      }
-
-      .mm-scenario-replace-btn {
-        grid-column: 3;
-        grid-row: 1 / span 2;
-        padding: 6px 8px;
-        color: #6d4215;
-        background: rgba(255, 252, 244, 0.82);
-        border: 1px solid rgba(117, 86, 56, 0.34);
-        border-radius: 8px;
-        font-family: inherit;
-        font-size: 12px;
-        font-weight: 700;
-        cursor: pointer;
-      }
-
-      .mm-scenario-replace-btn:hover {
-        background: rgba(255, 247, 225, 0.94);
-        border-color: rgba(176, 101, 24, 0.68);
       }
 
       .mm-select {
