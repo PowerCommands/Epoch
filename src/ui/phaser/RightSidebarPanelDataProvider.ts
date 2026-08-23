@@ -67,6 +67,7 @@ import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
+import { buildDominationRanking } from '../../systems/DominationRanking';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
@@ -2370,18 +2371,20 @@ export class RightSidebarPanelDataProvider {
   private getDominationLeaderboard(): LeaderboardEntry[] {
     const capitals = this.cityManager.getAllCities().filter((city) => city.isCapital);
     const nations = this.nationManager.getAllNations();
-
-    const strengthByNation = new Map<string, number>();
     let totalWorldStrength = 0;
     for (const nation of nations) {
       const strength = this.militaryEvaluationSystem?.getMilitaryStrength(nation.id).totalStrength ?? 0;
-      strengthByNation.set(nation.id, strength);
       totalWorldStrength += strength;
     }
-
-    return this.sortLeaderboard(nations.map((nation) => {
-      const score = capitals.filter((city) => city.ownerId === nation.id).length;
-      const milStrength = strengthByNation.get(nation.id) ?? 0;
+    const nationById = new Map(nations.map((nation) => [nation.id, nation]));
+    return buildDominationRanking(
+      nations,
+      capitals,
+      (nationId) => this.militaryEvaluationSystem?.getMilitaryStrength(nationId).totalStrength ?? 0,
+    ).map((ranked) => {
+      const nation = nationById.get(ranked.nationId)!;
+      const score = ranked.capitalCount;
+      const milStrength = ranked.militaryStrength;
       const milPct = totalWorldStrength > 0 ? Math.round(milStrength / totalWorldStrength * 100) : 0;
       return {
         nationId: nation.id,
@@ -2391,7 +2394,7 @@ export class RightSidebarPanelDataProvider {
         detail: `${score}/${capitals.length} caps, mil ${milPct}%`,
         secondaryScore: milStrength,
       };
-    }));
+    });
   }
 
   private getResearchLeaderboard(): LeaderboardEntry[] {

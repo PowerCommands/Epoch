@@ -8,6 +8,7 @@ import type { CovertPersonalityId } from './covertPersonality';
 import type { TradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
 import type { HistoricalEvent } from './historicalTimeline';
+import type { SavedNewspaperState } from './newspaper';
 import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacySystem';
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
@@ -283,6 +284,8 @@ export interface SavedGameState {
   };
   /** Optional so saves created before the progressive guide remain loadable. */
   guideProgress?: SavedGuideProgress;
+  /** Consumed issue cursor. Optional so pre-newspaper saves remain loadable. */
+  newspaper?: SavedNewspaperState;
   tiles: SavedTile[];
   nations: SavedNation[];
   cities: SavedCity[];

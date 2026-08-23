@@ -145,6 +145,13 @@ export class GossipFlavorEventSystem {
       icon: GOSSIP_FLAVOR_EVENT_ICON,
       text: historyText,
       eventNationIds: [speaker.id, recipient.id],
+      metadata: {
+        aggressorNationId: speaker.id,
+        targetNationId: recipient.id,
+        cityName: input.cityName,
+        leaderInsultSubtype: definition.insultSubtype === 'threat' ? 'threat' : 'insult',
+        leaderInsultText: resolvedText,
+      },
     });
     this.pairCooldowns.set(key, round + GOSSIP_FLAVOR_PAIR_COOLDOWN_ROUNDS);
     this.context.logGenerated?.(result);

@@ -15,6 +15,8 @@ import {
   THREAT_OVERWHELMING_FEAR_MULTIPLIER,
 } from '../src/systems/GossipSystem.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
+import { HistoricalTimelineService } from '../src/systems/HistoricalTimelineService.ts';
+import { recordGossipInsultInHistory } from '../src/systems/GossipHistoryRecorder.ts';
 
 const SOURCE = 'nation_sweden';
 const RECIPIENT = 'nation_england';
@@ -139,6 +141,31 @@ test('Insults spend no Influence and apply the structured recipient-to-human eff
   assert.equal(result.diplomaticEffect?.towardNationId, SOURCE);
   assert.equal(result.insultWeight, 1);
   assert.equal(result.insultSubtype, 'provocation');
+});
+
+test('a successful interactive Insult can be recorded as structured History', () => {
+  const { nations, gossip } = makeHarness();
+  const result = insult(gossip, 'threat_army_at_gates');
+  assert.equal(result.success, true);
+  if (!result.success) return;
+
+  const timeline = new HistoricalTimelineService(
+    () => 100,
+    () => 'January 1000 BC',
+    (nationId) => nations.getNation(nationId)?.name,
+    (nationId) => nationId === SOURCE ? 'Gustavus' : nationId === RECIPIENT ? 'Elizabeth' : undefined,
+  );
+  assert.equal(recordGossipInsultInHistory(result, timeline, {
+    getNationName: (nationId) => nations.getNation(nationId)?.name,
+    getLeaderName: (nationId) => nationId === SOURCE ? 'Gustavus' : nationId === RECIPIENT ? 'Elizabeth' : undefined,
+  }), true);
+
+  const [history] = timeline.getEvents();
+  assert.equal(history?.type, 'leaderInsult');
+  assert.equal(history?.metadata?.leaderInsultSubtype, 'threat');
+  assert.equal(history?.metadata?.leaderInsultText, result.resolvedText);
+  assert.deepEqual(history?.eventNationIds, [SOURCE, RECIPIENT]);
+  assert.match(history?.text ?? '', /Gustavus of Sweden threatened Elizabeth of England/);
 });
 
 test('ordinary provocation effects do not depend on military power and add no Fear', () => {

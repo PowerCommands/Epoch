@@ -88,6 +88,7 @@ import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/
 import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
 import { GossipSystem } from '../systems/GossipSystem';
 import { GossipFlavorEventSystem } from '../systems/GossipFlavorEventSystem';
+import { recordGossipInsultInHistory } from '../systems/GossipHistoryRecorder';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
@@ -112,7 +113,10 @@ import { createAILogFormatter } from '../systems/ai/AILogFormatter';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
+import { NewspaperSystem } from '../systems/NewspaperSystem';
+import { buildDominationRanking } from '../systems/DominationRanking';
 import { TimelinePanel } from '../ui/TimelinePanel';
+import { NewspaperDialog } from '../ui/NewspaperDialog';
 import { EraSystem, getEraRank } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
@@ -538,6 +542,13 @@ export class GameScene extends Phaser.Scene {
         newEra,
         source,
       });
+      historicalTimeline.record({
+        type: 'eraReached',
+        icon: '⚙',
+        text: `${nation.name} entered the ${newEra} Era`,
+        eventNationIds: [nation.id],
+        metadata: { eraName: newEra },
+      });
       if (this.diagnosticSystem.isTurnLoggingEnabled()) {
         console.log(`[TechEra] ${nation.name} entered ${newEra} Era — turn ${turnManager.getCurrentRound()}`);
       }
@@ -549,6 +560,8 @@ export class GameScene extends Phaser.Scene {
     const historicalTimeline = new HistoricalTimelineService(
       () => turnManager.getCurrentRound(),
       () => turnManager.getGameDateLabel(),
+      (nationId) => nationManager.getNation(nationId)?.name,
+      (nationId) => getLeaderByNationId(nationId)?.name,
     );
     const timelineNationName = (nationId: string): string =>
       nationManager.getNation(nationId)?.name ?? nationId;
@@ -2438,9 +2451,41 @@ export class GameScene extends Phaser.Scene {
     isAutoplayActive = () => autoplaySystem.isActive();
     this.isAutoplayActiveForVisuals = () => autoplaySystem.isActive();
 
+    const newspaperSystem = NewspaperSystem.fromSave({
+      humanNationId: data.humanNationId,
+      getTimelineEvents: () => historicalTimeline.getEvents(),
+      getDominationRanking: () => buildDominationRanking(
+        nationManager.getAllNations(),
+        cityManager.getAllCities().filter((city) => city.isCapital),
+        (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
+      ).map((entry) => entry.nationId),
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name,
+      getLeaderName: (nationId) => getLeaderByNationId(nationId)?.name,
+      seed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|newspaper-v1`,
+    }, data.savedState?.newspaper, data.savedState?.turn.currentRound ?? 1);
+    const newspaperDialog = new NewspaperDialog();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => newspaperDialog.close());
+
+    turnManager.on('turnStart', (event) => {
+      if (event.nation.id !== humanNationId) return;
+      const issue = newspaperSystem.consumeDueIssue(
+        event.round,
+        turnManager.getGameDateLabel(),
+        autoplaySystem.isActive() || this.diagnosticSystem.isTurnLoggingEnabled(),
+      );
+      if (issue) newspaperDialog.show(issue);
+    });
+
     const combatAnimationSystem = new CombatAnimationSystem(this, tileMap, unitRenderer, autoplaySystem);
 
     aiExplorationSystem.onIslandDiscovered((e) => {
+      historicalTimeline.record({
+        type: 'majorDiscovery',
+        icon: '🧭',
+        text: `${timelineNationName(e.nationId)} discovered ${e.markerName}`,
+        eventNationIds: [e.nationId],
+        metadata: { discoveryName: e.markerName },
+      });
       if (e.nationId !== humanNationId) return;
       if (autoplaySystem.isActive()) return;
       hudLayer?.enqueueDiscovery({
@@ -2779,6 +2824,7 @@ export class GameScene extends Phaser.Scene {
         icon: '📜',
         text: `${timelineNationName(nationId)} founded the ${organizationName} in ${cityName}`,
         eventNationIds: worldCouncilSystem.getState()?.memberNationIds ?? [nationId],
+        metadata: { cityId: foundingCandidate.wonder.cityId, cityName },
       });
       logManager.info({
         nationId,
@@ -3402,6 +3448,19 @@ export class GameScene extends Phaser.Scene {
           round: turnManager.getCurrentRound(),
         });
       }
+      historicalTimeline.record({
+        type: 'nationEliminated',
+        icon: '⚑',
+        text: `${event.nationName} was eliminated${event.conquerorName ? ` by ${event.conquerorName}` : ''}`,
+        eventNationIds: [event.nationId, event.conquerorNationId].filter((id): id is string => id !== undefined),
+        metadata: {
+          nationNames: [event.nationName, event.conquerorName].filter((name): name is string => name !== undefined),
+          aggressorNationId: event.conquerorNationId,
+          targetNationId: event.nationId,
+          cityId: event.triggerCity?.id,
+          cityName: event.triggerCity?.name,
+        },
+      });
       worldCouncilSystem.removeEliminatedNation(event.nationId);
       for (const city of event.occupiedCities) {
         cityRenderer.refreshCity(city);
@@ -5008,6 +5067,7 @@ export class GameScene extends Phaser.Scene {
           ? `${timelineNationName(city.ownerId)} founded its capital ${city.name}`
           : `${timelineNationName(city.ownerId)} founded ${city.name}`,
         eventNationIds: [city.ownerId],
+        metadata: { cityId: city.id, cityName: city.name },
       });
     });
     discoverySystem.onNationsMet((a, b) => {
@@ -5016,6 +5076,7 @@ export class GameScene extends Phaser.Scene {
         icon: '🧑‍🤝‍🧑',
         text: `${timelineNationName(a)} met ${timelineNationName(b)}`,
         eventNationIds: [a, b],
+        metadata: { aggressorNationId: a, targetNationId: b },
       });
     });
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
@@ -5035,12 +5096,14 @@ export class GameScene extends Phaser.Scene {
           icon: '⚔',
           text: `${timelineNationName(aggressorId)} joined the war against ${timelineNationName(targetId)}`,
           eventNationIds: [aggressorId, targetId],
+          metadata: { aggressorNationId: aggressorId, targetNationId: targetId },
         }
         : {
           type: 'warDeclared',
           icon: '⚔',
           text: `${timelineNationName(aggressorId)} declared war on ${timelineNationName(targetId)}`,
           eventNationIds: [aggressorId, targetId],
+          metadata: { aggressorNationId: aggressorId, targetNationId: targetId },
         });
       gossipFlavorEventSystem.handleWarDeclared(aggressorId, targetId);
     });
@@ -5050,6 +5113,7 @@ export class GameScene extends Phaser.Scene {
         icon: '🕊',
         text: `${timelineNationName(a)} and ${timelineNationName(b)} signed peace`,
         eventNationIds: [a, b],
+        metadata: { aggressorNationId: a, targetNationId: b },
       });
     });
     diplomacyManager.onEmbassyEstablished((from, to) => {
@@ -5058,6 +5122,7 @@ export class GameScene extends Phaser.Scene {
         icon: '🏛',
         text: `${timelineNationName(from)} established an embassy in ${timelineNationName(to)}`,
         eventNationIds: [from, to],
+        metadata: { aggressorNationId: from, targetNationId: to },
       });
     });
     diplomacyManager.onTradeRelationsEstablished((a, b) => {
@@ -5066,6 +5131,7 @@ export class GameScene extends Phaser.Scene {
         icon: '💰',
         text: `${timelineNationName(a)} and ${timelineNationName(b)} established trade relations`,
         eventNationIds: [a, b],
+        metadata: { aggressorNationId: a, targetNationId: b },
       });
     });
     diplomacyManager.onAllianceFormed((a, b) => {
@@ -5074,15 +5140,23 @@ export class GameScene extends Phaser.Scene {
         icon: '🤝',
         text: `${timelineNationName(a)} and ${timelineNationName(b)} became allies`,
         eventNationIds: [a, b],
+        metadata: { aggressorNationId: a, targetNationId: b },
       });
     });
     combatSystem.onCityCombat((event) => {
       if (!event.captured || !event.previousOwnerId) return;
       historicalTimeline.record({
-        type: 'cityCaptured',
+        type: event.city.isOriginalCapital ? 'capitalCaptured' : 'cityCaptured',
         icon: '🏴',
         text: `${timelineNationName(event.city.ownerId)} captured ${event.city.name} from ${timelineNationName(event.previousOwnerId)}`,
         eventNationIds: [event.city.ownerId, event.previousOwnerId],
+        metadata: {
+          cityId: event.city.id,
+          cityName: event.city.name,
+          aggressorNationId: event.city.ownerId,
+          targetNationId: event.previousOwnerId,
+          previousOwnerNationId: event.previousOwnerId,
+        },
       });
       gossipFlavorEventSystem.handleCityCaptured(event.city.ownerId, event.previousOwnerId, event.city.name);
     });
@@ -5094,6 +5168,7 @@ export class GameScene extends Phaser.Scene {
         icon: '🚚',
         text: `Trade route completed between ${cityAName} and ${cityBName}`,
         eventNationIds: [connection.nationAId, connection.nationBId],
+        metadata: { cityName: `${cityAName} and ${cityBName}` },
       });
     });
     wonderSystem.onWonderCompleted((state, wonderType) => {
@@ -5102,6 +5177,12 @@ export class GameScene extends Phaser.Scene {
         icon: '🏛',
         text: `${timelineNationName(state.ownerId)} completed ${wonderType.name}`,
         eventNationIds: [state.ownerId],
+        metadata: {
+          cityId: state.cityId,
+          cityName: cityManager.getCity(state.cityId)?.name,
+          wonderId: wonderType.id,
+          wonderName: wonderType.name,
+        },
       });
       // Surface a prominent completion popup whenever any nation finishes a
       // wonder during live human play. Skipped during autoplay/autorun, which
@@ -5205,6 +5286,25 @@ export class GameScene extends Phaser.Scene {
       for (const proposal of meeting.proposals ?? []) {
         const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
         const proposalTitle = definition?.title ?? proposal.resolutionId;
+        if (proposal.resolved && proposal.passed) {
+          const involved = [
+            proposal.proposerNationId,
+            proposal.targetNationId,
+            proposal.secondaryTargetNationId,
+          ].filter((nationId): nationId is string => nationId !== undefined);
+          historicalTimeline.record({
+            type: 'worldCouncilResolution',
+            icon: '⚖',
+            text: `${organizationName} adopted ${proposalTitle}`,
+            eventNationIds: involved.length > 0 ? involved : state.memberNationIds,
+            metadata: {
+              resolutionId: proposal.resolutionId,
+              resolutionName: proposalTitle,
+              aggressorNationId: proposal.proposerNationId,
+              targetNationId: proposal.targetNationId,
+            },
+          });
+        }
         if (proposal.selectionDiagnostics) {
           const candidateLines = proposal.selectionDiagnostics.candidates
             .map((candidate) =>
@@ -5292,6 +5392,12 @@ export class GameScene extends Phaser.Scene {
         icon: '🏢',
         text: `${timelineNationName(result.founded.founderNationId)} founded ${result.definition.name}`,
         eventNationIds: [result.founded.founderNationId],
+        metadata: {
+          corporationId: result.definition.id,
+          corporationName: result.definition.name,
+          cityId: result.founded.cityId,
+          cityName: result.founded.cityId ? cityManager.getCity(result.founded.cityId)?.name : undefined,
+        },
       });
       if (result.definition.id === AEROSPACE_INDUSTRIES_ID) {
         const founder = nationManager.getNation(result.founded.founderNationId);
@@ -6081,6 +6187,12 @@ export class GameScene extends Phaser.Scene {
       resolveText: (input) => gossipSystem.resolveText(input),
       execute: (input) => {
         const result = gossipSystem.execute(input);
+        if (result.success && result.type === 'insult') {
+          recordGossipInsultInHistory(result, historicalTimeline, {
+            getNationName: (nationId) => nationManager.getNation(nationId)?.name,
+            getLeaderName: (nationId) => getLeaderByNationId(nationId)?.name,
+          });
+        }
         rightPanel?.requestRefresh();
         return result;
       },
@@ -6630,6 +6742,7 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          newspaperSystem,
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
@@ -7191,6 +7304,7 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        newspaperSystem,
         covertSuspicionSystem,
         worldCouncilSystem,
       });
@@ -7285,6 +7399,7 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          newspaperSystem,
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
@@ -7344,6 +7459,7 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        newspaperSystem,
         covertSuspicionSystem,
         victorySystem,
         worldCouncilSystem,

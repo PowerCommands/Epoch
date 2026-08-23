@@ -1,4 +1,4 @@
-import type { HistoricalEvent, HistoricalEventType } from '../types/historicalTimeline';
+import type { HistoricalEvent, HistoricalEventMetadata, HistoricalEventType } from '../types/historicalTimeline';
 
 type ChangedListener = () => void;
 
@@ -14,6 +14,7 @@ export interface RecordHistoricalEventInput {
    * everything.
    */
   visibleToNationIds?: string[];
+  metadata?: HistoricalEventMetadata;
 }
 
 /**
@@ -37,6 +38,8 @@ export class HistoricalTimelineService {
   constructor(
     private readonly getRound: () => number,
     private readonly getDateLabel: () => string,
+    private readonly getNationName?: (nationId: string) => string | undefined,
+    private readonly getLeaderName?: (nationId: string) => string | undefined,
   ) {}
 
   /** Append a new chronicle entry, stamped with the current round and date. */
@@ -52,6 +55,11 @@ export class HistoricalTimelineService {
       eventNationIds: [...input.eventNationIds],
       visibleToNationIds: [...(input.visibleToNationIds ?? input.eventNationIds)],
       discoveredTurn: round,
+      metadata: {
+        nationNames: input.eventNationIds.map((id) => this.getNationName?.(id) ?? id),
+        leaderNames: input.eventNationIds.map((id) => this.getLeaderName?.(id) ?? this.getNationName?.(id) ?? id),
+        ...input.metadata,
+      },
     });
     this.notifyChanged();
   }
@@ -71,6 +79,7 @@ export class HistoricalTimelineService {
       ...event,
       eventNationIds: [...event.eventNationIds],
       visibleToNationIds: [...event.visibleToNationIds],
+      metadata: cloneMetadata(event.metadata),
     }));
   }
 
@@ -83,6 +92,7 @@ export class HistoricalTimelineService {
           ...event,
           eventNationIds: [...event.eventNationIds],
           visibleToNationIds: [...(event.visibleToNationIds ?? event.eventNationIds)],
+          metadata: cloneMetadata(event.metadata),
         });
       }
     }
@@ -93,4 +103,12 @@ export class HistoricalTimelineService {
   private notifyChanged(): void {
     for (const listener of this.listeners) listener();
   }
+}
+
+function cloneMetadata(metadata: HistoricalEventMetadata | undefined): HistoricalEventMetadata | undefined {
+  return metadata ? {
+    ...metadata,
+    nationNames: metadata.nationNames ? [...metadata.nationNames] : undefined,
+    leaderNames: metadata.leaderNames ? [...metadata.leaderNames] : undefined,
+  } : undefined;
 }

@@ -25,7 +25,9 @@ export interface CollapseNationInput {
 
 export interface NationCollapsedEvent {
   nationId: string;
+  nationName: string;
   conquerorNationId?: string;
+  conquerorName?: string;
   reason: NationCollapseReason;
   triggerCity?: City;
   unitsRemoved: number;
@@ -119,7 +121,9 @@ export class NationCollapseSystem {
     const occupiedCities = Array.from(occupiedCitiesById.values());
     const event: NationCollapsedEvent = {
       nationId: input.nationId,
+      nationName,
       conquerorNationId: input.conquerorNationId,
+      conquerorName,
       reason: input.reason,
       triggerCity: input.triggerCity,
       unitsRemoved: unitsToRemove.length,

@@ -41,6 +41,7 @@ import type { ExileProtectionSystem } from './ExileProtectionSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
 import type { HistoricalTimelineService } from './HistoricalTimelineService';
+import type { NewspaperSystem } from './NewspaperSystem';
 import type { CovertSuspicionSystem } from './diplomacy/CovertSuspicionSystem';
 import type { VictorySystem } from './VictorySystem';
 import type { TurnManager } from './TurnManager';
@@ -90,6 +91,7 @@ export interface SaveLoadContext {
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
+  newspaperSystem?: NewspaperSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
   victorySystem?: VictorySystem;
   worldCouncilSystem?: WorldCouncilSystem;
@@ -155,6 +157,7 @@ export class SaveLoadService {
       worldMarkerSystem,
       foreignTroopViolationSystem,
       historicalTimeline,
+      newspaperSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -370,6 +373,7 @@ export class SaveLoadService {
         currentTurnIndex: turnManager.getCurrentTurnIndex(),
       },
       guideProgress: context.guideProgress ? { ...context.guideProgress } : undefined,
+      newspaper: newspaperSystem?.getState(),
       tiles,
       nations,
       cities,

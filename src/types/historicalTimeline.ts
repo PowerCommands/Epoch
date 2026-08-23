@@ -14,8 +14,37 @@ export type HistoricalEventType =
   | 'worldCouncilFounded'
   | 'worldCouncilActive'
   | 'worldCouncilMeeting'
+  | 'worldCouncilResolution'
   | 'corporationFounded'
+  | 'nationEliminated'
+  | 'capitalCaptured'
+  | 'eraReached'
+  | 'governmentChanged'
+  | 'majorDiscovery'
   | 'leaderInsult';
+
+/** Optional structured newspaper/replay facts; old saves may omit all fields. */
+export interface HistoricalEventMetadata {
+  /** Frozen display names aligned with eventNationIds for removed-nation safety. */
+  nationNames?: string[];
+  leaderNames?: string[];
+  cityId?: string;
+  cityName?: string;
+  aggressorNationId?: string;
+  targetNationId?: string;
+  previousOwnerNationId?: string;
+  wonderId?: string;
+  wonderName?: string;
+  eraName?: string;
+  corporationId?: string;
+  corporationName?: string;
+  resolutionId?: string;
+  resolutionName?: string;
+  governmentName?: string;
+  discoveryName?: string;
+  leaderInsultSubtype?: 'insult' | 'threat';
+  leaderInsultText?: string;
+}
 
 /**
  * A single entry in the world chronicle.
@@ -45,4 +74,5 @@ export interface HistoricalEvent {
   visibleToNationIds: string[];
   /** Round the event entered the timeline (future fog-aware reveal). */
   discoveredTurn: number;
+  metadata?: HistoricalEventMetadata;
 }
