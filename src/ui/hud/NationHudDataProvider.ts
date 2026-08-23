@@ -166,6 +166,7 @@ export class NationHudDataProvider {
         value: 0,
         delta: productionPerTurn,
         displayMode: 'deltaOnly',
+        tooltip: 'Production',
       },
       {
         key: 'science',
@@ -187,12 +188,14 @@ export class NationHudDataProvider {
         value: nationResources.gold,
         delta: nationResources.goldPerTurn,
         upkeep: unitUpkeep,
+        tooltip: 'Gold',
       },
       {
         key: 'influence',
         icon: '🕊️',
         value: nationResources.influence,
         delta: nationResources.influencePerTurn,
+        tooltip: 'Influence',
       },
     ];
 
