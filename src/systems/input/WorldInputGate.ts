@@ -5,6 +5,19 @@
 export class WorldInputGate {
   private readonly claimedPointerIds = new Set<number>();
   private readonly wheelBlockers = new Map<string, (screenX: number, screenY: number) => boolean>();
+  private readonly worldBlockers = new Set<string>();
+
+  blockWorld(id: string): void {
+    this.worldBlockers.add(id);
+  }
+
+  unblockWorld(id: string): void {
+    this.worldBlockers.delete(id);
+  }
+
+  isWorldInteractionBlocked(): boolean {
+    return this.worldBlockers.size > 0;
+  }
 
   claimPointer(pointerId: number): void {
     this.claimedPointerIds.add(pointerId);
@@ -17,7 +30,7 @@ export class WorldInputGate {
   }
 
   isPointerClaimed(pointerId: number): boolean {
-    return this.claimedPointerIds.has(pointerId);
+    return this.isWorldInteractionBlocked() || this.claimedPointerIds.has(pointerId);
   }
 
   registerWheelBlocker(id: string, blocker: (screenX: number, screenY: number) => boolean): void {
@@ -29,6 +42,7 @@ export class WorldInputGate {
   }
 
   isWheelBlocked(screenX: number, screenY: number): boolean {
+    if (this.isWorldInteractionBlocked()) return true;
     for (const blocker of this.wheelBlockers.values()) {
       if (blocker(screenX, screenY)) {
         return true;
@@ -40,5 +54,6 @@ export class WorldInputGate {
   clearAll(): void {
     this.claimedPointerIds.clear();
     this.wheelBlockers.clear();
+    this.worldBlockers.clear();
   }
 }

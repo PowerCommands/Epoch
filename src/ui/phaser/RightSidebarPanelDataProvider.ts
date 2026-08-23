@@ -120,6 +120,35 @@ type BuyProductionRequestHandler = (city: City, index: number) => void;
 /** Most recent timeline entries rendered in the History panel (older ones stay saved). */
 const TIMELINE_RENDER_LIMIT = 200;
 
+export function buildLeaderDialogSection(
+  leader: LeaderDefinition,
+  isHumanLeader: boolean,
+  isKnownToHuman: boolean,
+  handlers: {
+    arrangeAudience?: (leaderId: string) => void;
+    arrangeGossip?: (leaderId: string) => void;
+  },
+): RightSidebarSection | undefined {
+  if (isHumanLeader || !isKnownToHuman) return undefined;
+  return {
+    title: 'Dialog',
+    rows: [
+      {
+        kind: 'button',
+        text: `Arrange an audience with ${leader.name}`,
+        accentColor: 0xf4d06f,
+        onClick: () => handlers.arrangeAudience?.(leader.id),
+      },
+      {
+        kind: 'button',
+        text: `Gossip with ${leader.name}`,
+        accentColor: 0xd9a441,
+        onClick: () => handlers.arrangeGossip?.(leader.id),
+      },
+    ],
+  };
+}
+
 interface LeaderboardEntry {
   nationId: string;
   name: string;
@@ -169,6 +198,7 @@ export class RightSidebarPanelDataProvider {
   private buyProductionRequestHandler: BuyProductionRequestHandler | null = null;
   private productionPurchaseQuoteProvider: ((cityId: string, index: number) => ProductionPurchaseQuote) | null = null;
   private arrangeAudienceHandler: ((leaderId: string) => void) | null = null;
+  private arrangeGossipHandler: ((leaderId: string) => void) | null = null;
   private current: RightSidebarDetailsState = {
     view: null,
     tile: null,
@@ -323,6 +353,10 @@ export class RightSidebarPanelDataProvider {
 
   setArrangeAudienceHandler(handler: (leaderId: string) => void): void {
     this.arrangeAudienceHandler = handler;
+  }
+
+  setArrangeGossipHandler(handler: (leaderId: string) => void): void {
+    this.arrangeGossipHandler = handler;
   }
 
   getCurrentCity(): City | null {
@@ -932,17 +966,16 @@ export class RightSidebarPanelDataProvider {
     const resources = this.nationManager.getResources(leader.nationId);
     const ideologyRows = this.getLeaderIdeologyRows(leader.nationId);
     const sections: RightSidebarSection[] = [];
-    if (leader.nationId !== this.humanNationId) {
-      sections.push({
-        title: 'Audience',
-        rows: [{
-          kind: 'button',
-          text: `Arrange an audience with ${leader.name}`,
-          accentColor: 0xf4d06f,
-          onClick: () => this.arrangeAudienceHandler?.(leader.id),
-        }],
-      });
-    }
+    const dialogSection = buildLeaderDialogSection(
+      leader,
+      leader.nationId === this.humanNationId,
+      this.isNationKnown(leader.nationId),
+      {
+        arrangeAudience: (leaderId) => this.arrangeAudienceHandler?.(leaderId),
+        arrangeGossip: (leaderId) => this.arrangeGossipHandler?.(leaderId),
+      },
+    );
+    if (dialogSection) sections.push(dialogSection);
     sections.push(
       {
         title: 'Leader',

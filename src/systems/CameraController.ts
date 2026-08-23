@@ -110,6 +110,7 @@ export class CameraController {
   // ─── Privata metoder ───────────────────────────────────────────────────────
 
   private handleKeyboardPan(delta: number): void {
+    if (this.worldInputGate.isWorldInteractionBlocked()) return;
     // Skala hastigheten omvänt mot zoom så att rörelsen känns
     // konsekvent oavsett hur långt inzoomad spelaren är.
     const speed = (PAN_SPEED / this.cam.zoom) * (delta / 1000);

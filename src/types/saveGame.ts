@@ -12,6 +12,8 @@ import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacy
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
 import type { WorldCouncilState } from './worldCouncil';
+import type { SavedGossipState } from './gossip';
+import type { SavedGossipFlavorState } from './gossipFlavor';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -289,6 +291,10 @@ export interface SavedGameState {
   discovery: SavedDiscoveryEntry[];
   /** One-time symbolic-gift milestones. Optional so pre-feature saves still load. */
   symbolicGifts?: SavedSymbolicGifts;
+  /** Recipient-scoped manipulation cooldowns. Optional for older saves. */
+  gossip?: SavedGossipState;
+  /** Symmetric History-flavor noise cooldowns; mechanically independent from Gossip. */
+  gossipFlavor?: SavedGossipFlavorState;
   wonders: SavedWonder[];
   /** Global World Council institution. Optional so older saves load with none. */
   worldCouncil?: WorldCouncilState;

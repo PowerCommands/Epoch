@@ -86,6 +86,8 @@ import { CityViewInteractionController } from '../systems/CityViewInteractionCon
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
 import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
+import { GossipSystem } from '../systems/GossipSystem';
+import { GossipFlavorEventSystem } from '../systems/GossipFlavorEventSystem';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
@@ -115,6 +117,7 @@ import { EraSystem, getEraRank } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
+import { GOSSIP_DEFINITIONS } from '../data/gossip';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
 import { VictorySystem, type EnabledVictoryConditions, type VictoryType } from '../systems/VictorySystem';
@@ -189,6 +192,8 @@ import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { RightSidebarPanel } from '../ui/phaser/RightSidebarPanel';
 import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDataProvider';
 import { LeaderAudienceDialog } from '../ui/dialogs/LeaderAudienceDialog';
+import { LeaderGossipDialog } from '../ui/dialogs/LeaderGossipDialog';
+import { filterGossipTargets } from '../ui/dialogs/GossipDialogModel';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
@@ -322,6 +327,7 @@ export class GameScene extends Phaser.Scene {
   private tutorialWizard: TutorialWizard | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
   private leaderAudienceDialog: LeaderAudienceDialog | null = null;
+  private leaderGossipDialog: LeaderGossipDialog | null = null;
   private isAutoplayActiveForVisuals: () => boolean = () => false;
 
   constructor() {
@@ -332,6 +338,7 @@ export class GameScene extends Phaser.Scene {
     this.minimapHud = null;
     this.rightSidebarPanel = null;
     this.leaderAudienceDialog = null;
+    this.leaderGossipDialog = null;
     this.tutorialWizard = null;
     this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
@@ -731,6 +738,16 @@ export class GameScene extends Phaser.Scene {
 
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager(turnManager);
+    let getGossipMilitaryPower: (nationId: string) => number = () => 0;
+    const gossipSystem = new GossipSystem(
+      nationManager,
+      diplomacyManager,
+      resourceSystem,
+      () => turnManager.getCurrentRound(),
+      discoverySystem,
+      (nationId) => eraSystem.getNationEra(nationId),
+      (nationId) => getGossipMilitaryPower(nationId),
+    );
     const unitLifetimeSystem = new UnitLifetimeSystem(
       unitManager,
       nationManager,
@@ -775,6 +792,24 @@ export class GameScene extends Phaser.Scene {
       (a, b) => discoverySystem.hasMet(a, b),
     );
     const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager, allianceManager, diplomacyManager);
+    getGossipMilitaryPower = (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength;
+    const gossipFlavorEventSystem = new GossipFlavorEventSystem({
+      nationManager,
+      diplomacyManager,
+      historicalTimeline,
+      getRound: () => turnManager.getCurrentRound(),
+      getMilitaryPower: (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
+      isNationActive: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      // Save files do not currently persist worldSeed. Use stable session
+      // identity fields so flavor rolls remain identical after save/load.
+      randomSeed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|gossip-flavor-v1`,
+      logGenerated: (result) => logManager.info({
+        nationIds: [result.speakerNationId, result.recipientNationId],
+        category: 'diplomacy',
+        message: `[GossipFlavor] round=${result.round} trigger=${result.trigger} speaker=${result.speakerNationId} recipient=${result.recipientNationId} insult=${result.insultId} weight=${result.insultWeight} recipientHuman=${result.recipientIsHuman}${result.cityName ? ` city=${result.cityName}` : ''}`,
+      }),
+    });
+    turnManager.on('roundStart', (event) => gossipFlavorEventSystem.handlePeriodicRound(event.round));
     turnManager.on('roundStart', () => aiMilitaryEvaluationSystem.invalidate());
     const aiMilitaryThreatEvaluationSystem = new AIMilitaryThreatEvaluationSystem(unitManager, cityManager, gridSystem);
     const jointWarSystem = new JointWarSystem(
@@ -2936,7 +2971,7 @@ export class GameScene extends Phaser.Scene {
 
     const processAudienceQueue = (): void => {
       const dialog = this.leaderAudienceDialog;
-      if (!dialog || dialog.isOpen()) return;
+      if (!dialog || dialog.isOpen() || this.leaderGossipDialog?.isOpen()) return;
       const nextLeaderId = pendingAudienceLeaderIds.shift();
       if (nextLeaderId) dialog.open(nextLeaderId);
     };
@@ -5007,6 +5042,7 @@ export class GameScene extends Phaser.Scene {
           text: `${timelineNationName(aggressorId)} declared war on ${timelineNationName(targetId)}`,
           eventNationIds: [aggressorId, targetId],
         });
+      gossipFlavorEventSystem.handleWarDeclared(aggressorId, targetId);
     });
     diplomacyManager.onPeaceAccepted((a, b) => {
       historicalTimeline.record({
@@ -5048,6 +5084,7 @@ export class GameScene extends Phaser.Scene {
         text: `${timelineNationName(event.city.ownerId)} captured ${event.city.name} from ${timelineNationName(event.previousOwnerId)}`,
         eventNationIds: [event.city.ownerId, event.previousOwnerId],
       });
+      gossipFlavorEventSystem.handleCityCaptured(event.city.ownerId, event.previousOwnerId, event.city.name);
     });
     tradeConnectionSystem.onConnectionActivated((connection) => {
       const cityAName = cityManager.getCity(connection.cityAId)?.name ?? connection.cityAId;
@@ -6011,7 +6048,54 @@ export class GameScene extends Phaser.Scene {
       onOpened: (nationId) => onAudienceOpened(nationId),
       onClosed: () => onAudienceClosed(),
     });
-    rightPanel.setArrangeAudienceHandler((leaderId) => this.leaderAudienceDialog?.open(leaderId));
+    this.leaderGossipDialog = new LeaderGossipDialog(this, worldInputGate, {
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      getNationColor: (nationId) => nationManager.getNation(nationId)?.color ?? 0xf4f1e7,
+      getNationSecondaryColor: (nationId) => nationManager.getNation(nationId)?.secondaryColor ?? 0x9a7b3a,
+      getAvailableItems: () => GOSSIP_DEFINITIONS,
+      getValidTargets: (sourceNationId, recipientNationId) => filterGossipTargets(
+        nationManager.getAllNations().flatMap((nation) => {
+          const leader = getLeaderByNationId(nation.id);
+          return leader ? [{
+            nationId: nation.id,
+            nationName: nation.name,
+            leaderId: leader.id,
+            leaderName: leader.name,
+            knownToHuman: discoverySystem.hasMet(sourceNationId, nation.id),
+          }] : [];
+        }),
+        sourceNationId,
+        recipientNationId,
+      ),
+      getHumanInfluence: () => nationManager.getResources(data.humanNationId).influence,
+      getItemAvailability: (sourceNationId, itemId) => gossipSystem.getItemAvailability(sourceNationId, itemId),
+      getManipulationStatus: (sourceNationId, recipientNationId) => (
+        gossipSystem.getManipulationStatus(sourceNationId, recipientNationId)
+      ),
+      getManipulationCost: (itemId, sourceNationId, influenceTier) => (
+        gossipSystem.getManipulationCost(itemId, sourceNationId, influenceTier)
+      ),
+      getInsultStatus: (sourceNationId, recipientNationId) => (
+        gossipSystem.getInsultStatus(sourceNationId, recipientNationId)
+      ),
+      resolveText: (input) => gossipSystem.resolveText(input),
+      execute: (input) => {
+        const result = gossipSystem.execute(input);
+        rightPanel?.requestRefresh();
+        return result;
+      },
+    }, data.humanNationId, {
+      onOpened: (nationId) => onAudienceOpened(nationId),
+      onClosed: () => onAudienceClosed(),
+    });
+    rightPanel.setArrangeAudienceHandler((leaderId) => {
+      if (this.leaderGossipDialog?.isOpen()) this.leaderGossipDialog.close();
+      this.leaderAudienceDialog?.open(leaderId);
+    });
+    rightPanel.setArrangeGossipHandler((leaderId) => {
+      if (this.leaderAudienceDialog?.isOpen()) return;
+      this.leaderGossipDialog?.open(leaderId);
+    });
     const computeRangedTargets = (unit: Unit): Set<string> => {
       const range = unit.unitType.range ?? 1;
       if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();
@@ -6530,6 +6614,8 @@ export class GameScene extends Phaser.Scene {
           allianceManager,
           discoverySystem,
           symbolicGiftRegistry,
+          gossipSystem,
+          gossipFlavorEventSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -6995,6 +7081,8 @@ export class GameScene extends Phaser.Scene {
       this.rightSidebarPanel = null;
       this.leaderAudienceDialog?.destroy();
       this.leaderAudienceDialog = null;
+      this.leaderGossipDialog?.destroy();
+      this.leaderGossipDialog = null;
       leaderStrip?.shutdown();
       cheatConsole.shutdown();
     });
@@ -7087,6 +7175,8 @@ export class GameScene extends Phaser.Scene {
         allianceManager,
         discoverySystem,
         symbolicGiftRegistry,
+        gossipSystem,
+        gossipFlavorEventSystem,
         turnManager,
         gridSystem,
         wonderSystem,
@@ -7179,6 +7269,8 @@ export class GameScene extends Phaser.Scene {
           allianceManager,
           discoverySystem,
           symbolicGiftRegistry,
+          gossipSystem,
+          gossipFlavorEventSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -7236,6 +7328,8 @@ export class GameScene extends Phaser.Scene {
         allianceManager,
         discoverySystem,
         symbolicGiftRegistry,
+        gossipSystem,
+        gossipFlavorEventSystem,
         turnManager,
         gridSystem,
         wonderSystem,

@@ -8,6 +8,7 @@
     "dev": "vite",
     "predev": "npm run generate-manifests",
     "typecheck": "tsc --noEmit",
+    "test:gossip": "tsx --test tools/gossipSystem.test.ts tools/gossipGuiCoordination.test.ts tools/gossipInformationExpansion.test.ts tools/gossipManipulationExpansion.test.ts tools/gossipInsultExpansion.test.ts tools/gossipFlavorEvents.test.ts",
     "build": "tsc && vite build",
     "autorun": "tsx scripts/autorun.ts",
     "prebuild": "npm run generate-manifests",

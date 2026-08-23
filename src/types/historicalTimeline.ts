@@ -14,7 +14,8 @@ export type HistoricalEventType =
   | 'worldCouncilFounded'
   | 'worldCouncilActive'
   | 'worldCouncilMeeting'
-  | 'corporationFounded';
+  | 'corporationFounded'
+  | 'leaderInsult';
 
 /**
  * A single entry in the world chronicle.

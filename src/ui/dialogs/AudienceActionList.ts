@@ -72,9 +72,9 @@ export class AudienceActionList {
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
   }
 
-  setRows(rows: RightSidebarRow[]): void {
+  setRows(rows: RightSidebarRow[], preserveScroll = false): void {
     this.rows = rows;
-    this.scrollOffset = 0;
+    if (!preserveScroll) this.scrollOffset = 0;
   }
 
   layout(x: number, y: number, width: number, height: number): void {

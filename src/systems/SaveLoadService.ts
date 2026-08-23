@@ -49,6 +49,8 @@ import type { WonderSystem } from './WonderSystem';
 import type { CorporationSystem } from './CorporationSystem';
 import type { AerospacePartSystem } from './AerospacePartSystem';
 import type { WorldCouncilSystem } from './WorldCouncilSystem';
+import type { GossipSystem } from './GossipSystem';
+import type { GossipFlavorEventSystem } from './GossipFlavorEventSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -73,6 +75,8 @@ export interface SaveLoadContext {
   allianceManager?: AllianceManager;
   discoverySystem: DiscoverySystem;
   symbolicGiftRegistry?: SymbolicGiftRegistry;
+  gossipSystem?: GossipSystem;
+  gossipFlavorEventSystem?: GossipFlavorEventSystem;
   turnManager: TurnManager;
   gridSystem: IGridSystem;
   wonderSystem: WonderSystem;
@@ -137,6 +141,8 @@ export class SaveLoadService {
       allianceManager,
       discoverySystem,
       symbolicGiftRegistry,
+      gossipSystem,
+      gossipFlavorEventSystem,
       turnManager,
       wonderSystem,
       corporationSystem,
@@ -371,6 +377,8 @@ export class SaveLoadService {
       diplomacy,
       discovery,
       symbolicGifts: symbolicGiftRegistry?.serialize(),
+      gossip: gossipSystem?.serialize(),
+      gossipFlavor: gossipFlavorEventSystem?.serialize(),
       wonders,
       worldCouncil: context.worldCouncilSystem?.getState() ?? undefined,
       alliances: allianceManager?.getAllAlliances().map((alliance) => ({
@@ -507,6 +515,8 @@ export class SaveLoadService {
     }
     SaveLoadService.applyDiscovery(state.discovery, context.discoverySystem);
     context.symbolicGiftRegistry?.restore(state.symbolicGifts);
+    context.gossipSystem?.restore(state.gossip);
+    context.gossipFlavorEventSystem?.restore(state.gossipFlavor);
     context.covertSuspicionSystem?.restoreOffenseRecords(state.covertIncidents);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,
