@@ -14,7 +14,8 @@ const TOGGLE_HIT_SIZE = 122;
 const TOGGLE_GAP = 14;
 const TOGGLE_BASE_Y = EDGE_MARGIN + 46;
 const CULTURE_TOGGLE_Y = TOGGLE_BASE_Y + TOGGLE_SIZE + TOGGLE_GAP;
-const SHARED_PANEL_Y = CULTURE_TOGGLE_Y + TOGGLE_SIZE + 12;
+const SHARED_PANEL_Y = TOGGLE_BASE_Y;
+const SHARED_PANEL_X = EDGE_MARGIN + TOGGLE_SIZE + TOGGLE_GAP;
 const PANEL_WIDTH = 560;
 const PANEL_INNER_PADDING = 20;
 const PANEL_MASK_PADDING = 10;
@@ -351,7 +352,7 @@ export class ResearchHudPanel {
     this.blocker.setVisible(panelVisible).setPosition(0, 0).setSize(viewportWidth, viewportHeight);
     this.panelBackground.setVisible(panelVisible);
 
-    const panelX = EDGE_MARGIN;
+    const panelX = SHARED_PANEL_X;
     const panelY = SHARED_PANEL_Y;
     const bottomPadding = Math.max(EDGE_MARGIN, this.bottomReserved + EDGE_MARGIN);
     const availableHeight = Math.max(PANEL_MIN_HEIGHT, viewportHeight - panelY - bottomPadding);

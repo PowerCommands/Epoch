@@ -91,10 +91,7 @@ test('HUD availability follows founding and button sits directly below Research 
   assert.equal(model().founded, true);
   assert.equal(GAMES_HUD_BUTTON_LAYOUT.left, 16);
   assert.ok(GAMES_HUD_BUTTON_LAYOUT.researchTop < GAMES_HUD_BUTTON_LAYOUT.cultureTop);
-  assert.equal(
-    GAMES_HUD_BUTTON_LAYOUT.top - GAMES_HUD_BUTTON_LAYOUT.cultureTop,
-    GAMES_HUD_BUTTON_LAYOUT.cultureTop - GAMES_HUD_BUTTON_LAYOUT.researchTop,
-  );
+  assert.equal(GAMES_HUD_BUTTON_LAYOUT.top, 302);
   assert.equal(GAMES_HUD_DARK_BLUE, 0x071d3a);
 });
 

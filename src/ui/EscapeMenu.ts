@@ -113,7 +113,7 @@ export class EscapeMenu {
       this.clearError();
       this.fileInput.click();
     });
-    const tutorialBtn = makeButton('Tutorial', '#4a90d9', () => {
+    const tutorialBtn = makeButton('Show tips', '#4a90d9', () => {
       this.clearError();
       this.callbacks.onTutorial();
     });

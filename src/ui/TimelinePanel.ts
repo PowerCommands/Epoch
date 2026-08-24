@@ -3,6 +3,7 @@ import type { HistoricalTimelineService } from '../systems/HistoricalTimelineSer
 /** Most recent entries rendered (older ones stay stored/saved); keeps the DOM light. */
 const RENDER_LIMIT = 300;
 const COLLAPSED_KEY = 'epoch.historyPanelCollapsed';
+const SHORTCUT_HIDDEN_KEY = 'epoch.historyPanelShortcutHidden';
 
 /**
  * Permanent "History of the World" panel pinned to the right edge.
@@ -25,6 +26,7 @@ export class TimelinePanel {
 
   constructor(private readonly timeline: HistoricalTimelineService) {
     this.collapsed = this.readCollapsed();
+    this.shortcutHidden = this.readShortcutHidden();
 
     this.root = document.createElement('div');
     this.root.id = 'history-panel';
@@ -73,6 +75,7 @@ export class TimelinePanel {
     this.timeline.onChanged(() => this.scheduleRender());
     document.addEventListener('keydown', this.handleKeyDown, true);
     this.applyCollapsedState();
+    this.applyVisibility();
     this.render();
   }
 
@@ -93,11 +96,13 @@ export class TimelinePanel {
 
     event.preventDefault();
     event.stopPropagation();
-    this.shortcutHidden = !this.shortcutHidden;
+    this.shortcutHidden = !this.readShortcutHidden();
+    this.writeShortcutHidden(this.shortcutHidden);
     this.applyVisibility();
   };
 
   private applyVisibility(): void {
+    this.shortcutHidden = this.readShortcutHidden();
     this.root.style.display = this.shortcutHidden || this.contextHidden ? 'none' : 'flex';
   }
 
@@ -174,6 +179,22 @@ export class TimelinePanel {
   private writeCollapsed(collapsed: boolean): void {
     try {
       localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+    } catch {
+      // Ignore storage errors.
+    }
+  }
+
+  private readShortcutHidden(): boolean {
+    try {
+      return window.localStorage.getItem(SHORTCUT_HIDDEN_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  private writeShortcutHidden(hidden: boolean): void {
+    try {
+      window.localStorage.setItem(SHORTCUT_HIDDEN_KEY, String(hidden));
     } catch {
       // Ignore storage errors.
     }

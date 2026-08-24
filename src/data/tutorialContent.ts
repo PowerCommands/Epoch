@@ -46,6 +46,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Esc — Release a focused unit into inspect mode, close an open panel, or open the game menu',
           'Ctrl + Q — Open or close the game menu',
           'Ctrl + S — Open the Save Game dialog',
+          'Ctrl + H — Show or hide the History panel; the choice is remembered for future games',
         ],
       },
       { kind: 'note', text: 'While you are typing in a text field (for example renaming a city), shortcuts are paused so your keystrokes go to the field.' },

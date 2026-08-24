@@ -8,7 +8,7 @@ import type {
 
 export const GAMES_HUD_BUTTON_LAYOUT = {
   left: 16,
-  top: 294,
+  top: 302,
   diameter: 102,
   researchTop: 62,
   cultureTop: 178,
