@@ -11,7 +11,7 @@
     "test:gossip": "tsx --test tools/gossipSystem.test.ts tools/gossipGuiCoordination.test.ts tools/gossipInformationExpansion.test.ts tools/gossipManipulationExpansion.test.ts tools/gossipInsultExpansion.test.ts tools/gossipFlavorEvents.test.ts",
     "test:tutorial": "tsx --test tools/tutorialGossipContent.test.ts tools/progressiveGuideContent.test.ts tools/guideProgression.test.ts",
     "test:newspaper": "tsx --test tools/newspaperSystem.test.ts",
-    "test:games-of-nations": "tsx --test tools/gamesOfNationsSystem.test.ts tools/gamesOfNationsInvestment.test.ts tools/gamesOfNationsUi.test.ts tools/gamesOfNationsCompetition.test.ts",
+    "test:games-of-nations": "tsx --test tools/gamesOfNationsSystem.test.ts tools/gamesOfNationsInvestment.test.ts tools/gamesOfNationsUi.test.ts tools/gamesOfNationsCompetition.test.ts tools/gamesOfNationsChronicle.test.ts",
     "build": "tsc && vite build",
     "autorun": "tsx scripts/autorun.ts",
     "prebuild": "npm run generate-manifests",

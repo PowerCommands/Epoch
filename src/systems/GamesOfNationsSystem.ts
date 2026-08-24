@@ -36,6 +36,7 @@ export interface GamesOfNationsDependencies {
   log?: (message: string) => void;
   onGoldMedal?: (event: GamesOfNationsGoldEvent) => void;
   onGamesCompleted?: (event: GamesOfNationsCompletedEvent) => void;
+  onSportResolved?: (event: GamesOfNationsSportResolvedEvent) => void;
 }
 
 export interface GamesOfNationsGoldEvent {
@@ -55,6 +56,22 @@ export interface GamesOfNationsCompletedEvent {
   hostCityName?: string;
   overallWinnerNationId?: string;
   medalTable: GamesOfNationsMedalStanding[];
+  turn: number;
+}
+
+/** Immutable presentation snapshot emitted once, after a Competition sport is finalized. */
+export interface GamesOfNationsSportResolvedEvent {
+  gamesNumber: number;
+  competitionDay: number;
+  sport: GamesOfNationsSport;
+  result: GamesOfNationsSportResult;
+  hostNationId?: string;
+  hostCityId?: string;
+  hostCityName?: string;
+  nextSport?: GamesOfNationsSport;
+  nextSportCandidates: Array<{ nationId: string; gamesPoints: number }>;
+  medalTable: GamesOfNationsMedalStanding[];
+  overallWinnerNationId?: string;
   turn: number;
 }
 
@@ -438,10 +455,10 @@ export class GamesOfNationsSystem {
       GAMES_OF_NATIONS_SPORTS.length - 1,
       Math.max(-1, turn - this.state.phaseStartTurn),
     );
-    for (let index = 0; index <= lastDueIndex; index += 1) this.resolveSport(index);
+    for (let index = 0; index <= lastDueIndex; index += 1) this.resolveSport(index, turn);
   }
 
-  private resolveSport(sportIndex: number): void {
+  private resolveSport(sportIndex: number, resolutionTurn: number): void {
     const sport = GAMES_OF_NATIONS_SPORTS[sportIndex];
     if (!sport) return;
     const results = this.state.sportResults ?? (this.state.sportResults = createSportResults());
@@ -492,6 +509,39 @@ export class GamesOfNationsSystem {
     }
 
     if (sportIndex === GAMES_OF_NATIONS_SPORTS.length - 1) this.finalizeCompetition();
+    const scheduledSportTurn = (this.state.phaseStartTurn ?? 0) + sportIndex;
+    if (resolutionTurn === scheduledSportTurn) this.emitSportResolved(sportIndex, result, living);
+  }
+
+  private emitSportResolved(
+    sportIndex: number,
+    result: GamesOfNationsSportResult,
+    living: ReadonlySet<string>,
+  ): void {
+    const nextSport = GAMES_OF_NATIONS_SPORTS[sportIndex + 1];
+    const nextSportCandidates = nextSport
+      ? this.state.participants
+        .filter((participant) => participant.participating && living.has(participant.nationId))
+        .map((participant) => ({
+          nationId: participant.nationId,
+          gamesPoints: whole(participant.gamesPointsBySport[nextSport]),
+        }))
+        .filter((candidate) => candidate.gamesPoints > 0)
+      : [];
+    this.dependencies.onSportResolved?.({
+      gamesNumber: this.state.competitionNumber,
+      competitionDay: sportIndex + 1,
+      sport: result.sport,
+      result: cloneSportResult(result),
+      hostNationId: this.state.hostNationId,
+      hostCityId: this.state.hostCityId,
+      hostCityName: this.currentHostCityName(),
+      nextSport,
+      nextSportCandidates,
+      medalTable: (this.state.medalTable ?? []).map((standing) => ({ ...standing })),
+      overallWinnerNationId: this.state.overallWinnerNationId,
+      turn: (this.state.phaseStartTurn ?? 0) + sportIndex,
+    });
   }
 
   private finalizeCompetition(): void {

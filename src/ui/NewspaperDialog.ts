@@ -1,4 +1,8 @@
-import type { NewspaperArticle, NewspaperIssue } from '../types/newspaper';
+import type {
+  NewspaperArticle,
+  NewspaperIssue,
+  NewspaperPresentedIssue,
+} from '../types/newspaper';
 
 const MODAL_ID = 'epoch-newspaper-dialog';
 
@@ -11,8 +15,10 @@ export interface NewspaperDialogOptions {
 export class NewspaperDialog {
   private archive: readonly NewspaperIssue[] = [];
   private archiveIndex = -1;
+  private readonly pending: Array<{ issue: NewspaperPresentedIssue; options: NewspaperDialogOptions }> = [];
 
-  show(issue: NewspaperIssue, options: NewspaperDialogOptions = {}): void {
+  /** Presents now, replacing any open front page. Archive navigation relies on this behavior. */
+  show(issue: NewspaperPresentedIssue, options: NewspaperDialogOptions = {}): void {
     this.removeOverlay();
     this.archive = options.archive ?? [];
     this.archiveIndex = options.archiveIndex ?? -1;
@@ -47,8 +53,16 @@ export class NewspaperDialog {
       element('div', 'THE EPOCH CHRONICLE', 'font-size:clamp(30px,5vw,58px);font-weight:900;letter-spacing:.05em;line-height:1;'),
       ...(issue.issueType === 'victory'
         ? [element('div', 'FINAL EDITION', 'font-size:17px;font-weight:900;letter-spacing:.2em;margin-top:8px;')]
-        : [element('div', `ISSUE ${issue.issueNumber}`, 'font-size:13px;font-weight:900;letter-spacing:.18em;margin-top:8px;')]),
-      element('div', `${issue.dateLabel} · World Edition · Round ${issue.issueRound}`, 'font-size:13px;letter-spacing:.13em;text-transform:uppercase;margin-top:6px;'),
+        : issue.issueType === 'gamesSpecial'
+          ? [element('div', 'GAMES OF NATIONS EDITION', 'font-size:17px;font-weight:900;letter-spacing:.16em;margin-top:8px;')]
+          : [element('div', `ISSUE ${issue.issueNumber}`, 'font-size:13px;font-weight:900;letter-spacing:.18em;margin-top:8px;')]),
+      element(
+        'div',
+        issue.issueType === 'gamesSpecial'
+          ? `${issue.dateLabel} · Games #${issue.gamesNumber} · Day ${issue.competitionDay} of 5 · ${issue.sport}`
+          : `${issue.dateLabel} · World Edition · Round ${issue.issueRound}`,
+        'font-size:13px;letter-spacing:.13em;text-transform:uppercase;margin-top:6px;',
+      ),
     );
 
     const main = document.createElement('article');
@@ -78,11 +92,16 @@ export class NewspaperDialog {
 
     const footer = document.createElement('footer');
     footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:20px;margin-top:18px;font-size:12px;';
-    footer.appendChild(element('span', `Reporting events from rounds ${issue.coverageStartRound}–${issue.coverageEndRound}`, 'font-style:italic;color:#554d41;'));
+    footer.appendChild(element(
+      'span',
+      issue.issueType === 'gamesSpecial'
+        ? `Special Competition report · Round ${issue.issueRound}`
+        : `Reporting events from rounds ${issue.coverageStartRound}–${issue.coverageEndRound}`,
+      'font-style:italic;color:#554d41;',
+    ));
     const controls = document.createElement('div');
     controls.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;';
-    const isArchive = this.archiveIndex >= 0;
-    if (isArchive) {
+    if (this.archiveIndex >= 0 && issue.issueType !== 'gamesSpecial') {
       const previous = this.button('‹ Previous', () => this.showArchive(this.archive, this.archiveIndex - 1));
       previous.disabled = this.archiveIndex === 0;
       const next = this.button('Next ›', () => this.showArchive(this.archive, this.archiveIndex + 1));
@@ -104,7 +123,16 @@ export class NewspaperDialog {
     paper.append(masthead, main, secondaryGrid, footer);
     overlay.appendChild(paper);
     document.body.appendChild(overlay);
-    requestAnimationFrame(() => controls.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+    requestAnimationFrame(() => controls.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true }));
+  }
+
+  /** Queues simultaneous regular and special editions instead of replacing either one. */
+  present(issue: NewspaperPresentedIssue, options: NewspaperDialogOptions = {}): void {
+    if (this.isOpen()) {
+      this.pending.push({ issue, options });
+      return;
+    }
+    this.show(issue, options);
   }
 
   showArchive(issues: readonly NewspaperIssue[], index = issues.length - 1): void {
@@ -114,6 +142,15 @@ export class NewspaperDialog {
   }
 
   close(): void {
+    this.removeOverlay();
+    this.archive = [];
+    this.archiveIndex = -1;
+    const next = this.pending.shift();
+    if (next) this.show(next.issue, next.options);
+  }
+
+  shutdown(): void {
+    this.pending.length = 0;
     this.removeOverlay();
     this.archive = [];
     this.archiveIndex = -1;

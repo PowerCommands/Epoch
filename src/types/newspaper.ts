@@ -67,6 +67,24 @@ export interface NewspaperIssue {
   victory?: NewspaperVictoryDetails;
 }
 
+/** Ephemeral presentation model. Games editions are never part of SavedNewspaperState. */
+export interface GamesOfNationsNewspaperIssue {
+  id: string;
+  issueType: 'gamesSpecial';
+  gamesNumber: number;
+  competitionDay: number;
+  sport: string;
+  issueRound: number;
+  coverageStartRound: number;
+  coverageEndRound: number;
+  worldYear: number;
+  dateLabel: string;
+  mainArticle: NewspaperArticle;
+  secondaryArticles: [NewspaperArticle, NewspaperArticle, NewspaperArticle];
+}
+
+export type NewspaperPresentedIssue = NewspaperIssue | GamesOfNationsNewspaperIssue;
+
 export interface SavedNewspaperState {
   lastConsumedIssueRound: number;
   issues?: NewspaperIssue[];

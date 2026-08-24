@@ -114,7 +114,11 @@ import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
 import { NewspaperSystem } from '../systems/NewspaperSystem';
-import { GamesOfNationsSystem } from '../systems/GamesOfNationsSystem';
+import {
+  GamesOfNationsSystem,
+  type GamesOfNationsSportResolvedEvent,
+} from '../systems/GamesOfNationsSystem';
+import { buildGamesOfNationsEdition } from '../systems/GamesOfNationsChronicle';
 import type { GamesOfNationsSummary } from '../types/gamesOfNations';
 import { buildGamesOfNationsUiModel, validateGamesAllocation } from '../ui/hud/GamesOfNationsUiModel';
 import { buildDominationRanking } from '../systems/DominationRanking';
@@ -628,6 +632,7 @@ export class GameScene extends Phaser.Scene {
         * happinessSystem.getProductionModifier(nationId),
       ),
     }));
+    let presentGamesOfNationsEdition: (event: GamesOfNationsSportResolvedEvent) => void = () => {};
     const gamesOfNationsSystem = GamesOfNationsSystem.fromSave({
       getCurrentTurn: () => turnManager.getCurrentRound(),
       getLivingNationIds: () => nationManager.getAllNations().map((nation) => nation.id),
@@ -697,6 +702,7 @@ export class GameScene extends Phaser.Scene {
           },
         });
       },
+      onSportResolved: (event) => presentGamesOfNationsEdition(event),
     }, data.savedState?.gamesOfNations, data.savedState?.turn.currentRound ?? 1);
     turnManager.on('roundStart', (event) => gamesOfNationsSystem.handleRoundStart(event.round));
     const cultureSystem = new CultureSystem(
@@ -2563,7 +2569,21 @@ export class GameScene extends Phaser.Scene {
       seed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|newspaper-v1`,
     }, data.savedState?.newspaper, data.savedState?.turn.currentRound ?? 1);
     const newspaperDialog = new NewspaperDialog();
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => newspaperDialog.close());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => newspaperDialog.shutdown());
+    presentGamesOfNationsEdition = (event) => {
+      const issue = buildGamesOfNationsEdition({
+        event,
+        dateLabel: turnManager.getGameDateLabel(),
+        worldYear: turnManager.getGlobalYear(),
+        getNationName: (nationId) => nationManager.getNation(nationId)?.name,
+        seed: `${data.mapKey}|${data.humanNationId}|games-chronicle-v1`,
+      });
+      if (this.diagnosticSystem.isTurnLoggingEnabled()) {
+        console.log(`[GamesChronicle] Games #${event.gamesNumber} Day ${event.competitionDay}: ${issue.mainArticle.headline}`);
+      }
+      if (autoplaySystem.isActive() || this.diagnosticSystem.isTurnLoggingEnabled()) return;
+      newspaperDialog.present(issue);
+    };
 
     turnManager.on('turnStart', (event) => {
       if (event.nation.id !== humanNationId) return;
@@ -2573,7 +2593,7 @@ export class GameScene extends Phaser.Scene {
         autoplaySystem.isActive() || this.diagnosticSystem.isTurnLoggingEnabled(),
         turnManager.getGlobalYear(),
       );
-      if (issue) newspaperDialog.show(issue);
+      if (issue) newspaperDialog.present(issue);
     });
 
     const combatAnimationSystem = new CombatAnimationSystem(this, tileMap, unitRenderer, autoplaySystem);
