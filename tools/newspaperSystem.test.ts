@@ -161,3 +161,95 @@ test('every recurring event definition has exactly ten comments', () => {
     assert.equal(definition.comments.length, 10);
   }
 });
+
+test('regular issues persist as immutable snapshots across save/load', () => {
+  const events = [event(1, 'warDeclared', 5, ['high', 'low'])];
+  const original = harness(events);
+  const published = original.consumeDueIssue(11, 'January 1000 BC', false, -1000)!;
+  const saved = JSON.parse(JSON.stringify(original.getState())) as SavedNewspaperState;
+  const restored = harness([], undefined, saved, 11);
+  const archived = restored.getIssues();
+
+  assert.equal(archived.length, 1);
+  assert.deepEqual(archived[0], published);
+  assert.equal(archived[0]?.mainArticle.headline, published.mainArticle.headline);
+  assert.equal(restored.consumeDueIssue(11, 'Changed Date'), null);
+});
+
+test('three regular issues retain chronological sequence and stable numbering', () => {
+  const events = [
+    event(1, 'cityFounded', 5, ['human'], { cityName: 'First' }),
+    event(2, 'warDeclared', 15, ['high', 'low']),
+    event(3, 'peace', 25, ['high', 'low']),
+  ];
+  const system = harness(events);
+  system.consumeDueIssue(11, 'Date 11');
+  system.consumeDueIssue(21, 'Date 21');
+  system.consumeDueIssue(31, 'Date 31');
+  assert.deepEqual(system.getIssues().map((issue) => [issue.issueNumber, issue.issueRound]), [
+    [1, 11], [2, 21], [3, 31],
+  ]);
+});
+
+test('victory issue is last, identifies an AI winner, and is created exactly once', () => {
+  const system = harness([event(1, 'warDeclared', 45, ['high', 'low'])], undefined, {
+    lastConsumedIssueRound: 41,
+    issues: [],
+  }, 47);
+  const first = system.consumeVictoryIssue({
+    round: 47, worldYear: 1967, dateLabel: 'March 1967', nationId: 'high', victoryType: 'science',
+  });
+  const repeated = system.consumeVictoryIssue({
+    round: 47, worldYear: 1967, dateLabel: 'March 1967', nationId: 'high', victoryType: 'science',
+  });
+
+  assert.equal(system.getIssues().length, 1);
+  assert.deepEqual(repeated, first);
+  assert.equal(first.issueType, 'victory');
+  assert.equal(first.victory?.nationId, 'high');
+  assert.equal(first.victory?.nationName, 'Highland');
+  assert.equal(first.victory?.leaderName, 'Hector');
+  assert.equal(first.victory?.victoryType, 'science');
+  assert.match(first.mainArticle.headline, /HIGHLAND/);
+  assert.match(first.mainArticle.body, /Hector.*Science Victory.*March 1967/);
+  assert.equal(first.coverageStartRound, 41);
+  assert.equal(first.coverageEndRound, 47);
+  assert.equal(first.secondaryArticles[0].historicalEventId, 1);
+});
+
+test('victory on a recurring boundary replaces that round regular issue', () => {
+  const events = [event(1, 'warDeclared', 49, ['high', 'low'])];
+  const system = harness(events, undefined, { lastConsumedIssueRound: 41, issues: [] }, 51);
+  assert.ok(system.consumeDueIssue(51, 'Boundary', false, 2000));
+  const finalIssue = system.consumeVictoryIssue({
+    round: 51, worldYear: 2000, dateLabel: 'Boundary', nationId: 'human', victoryType: 'cultural',
+  });
+  const archive = system.getIssues();
+  assert.equal(archive.length, 1);
+  assert.equal(archive[0]?.id, finalIssue.id);
+  assert.equal(archive[0]?.issueType, 'victory');
+  assert.equal(finalIssue.coverageStartRound, 41);
+});
+
+test('old cursor-only saves start with an empty archive and publish future issues', () => {
+  const system = harness([], undefined, { lastConsumedIssueRound: 21 }, 21);
+  assert.deepEqual(system.getIssues(), []);
+  assert.ok(system.consumeDueIssue(31, 'Future'));
+  assert.equal(system.getIssues().length, 1);
+});
+
+test('suppressed presentation still archives the generated issue', () => {
+  const system = harness([event(1, 'peace', 8, ['high', 'low'])]);
+  assert.equal(system.consumeDueIssue(11, 'Date', true), null);
+  assert.equal(system.getIssues().length, 1);
+});
+
+test('archive readers cannot mutate stored snapshots', () => {
+  const system = harness([event(1, 'peace', 8, ['high', 'low'])]);
+  system.consumeDueIssue(11, 'Date');
+  const selected = system.getIssues();
+  selected[0]!.mainArticle.headline = 'MUTATED';
+  selected[0]!.mainArticle.involvedNationNames.push('MUTATED');
+  assert.notEqual(system.getIssues()[0]?.mainArticle.headline, 'MUTATED');
+  assert.equal(system.getIssues()[0]?.mainArticle.involvedNationNames.includes('MUTATED'), false);
+});

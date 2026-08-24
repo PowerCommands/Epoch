@@ -2,10 +2,20 @@ import type { NewspaperArticle, NewspaperIssue } from '../types/newspaper';
 
 const MODAL_ID = 'epoch-newspaper-dialog';
 
+export interface NewspaperDialogOptions {
+  archive?: readonly NewspaperIssue[];
+  archiveIndex?: number;
+}
+
 /** Presentation-only newspaper front page. */
 export class NewspaperDialog {
-  show(issue: NewspaperIssue): void {
-    this.close();
+  private archive: readonly NewspaperIssue[] = [];
+  private archiveIndex = -1;
+
+  show(issue: NewspaperIssue, options: NewspaperDialogOptions = {}): void {
+    this.removeOverlay();
+    this.archive = options.archive ?? [];
+    this.archiveIndex = options.archiveIndex ?? -1;
     const overlay = document.createElement('div');
     overlay.id = MODAL_ID;
     overlay.tabIndex = -1;
@@ -35,7 +45,10 @@ export class NewspaperDialog {
     masthead.style.cssText = 'text-align:center; border-bottom:4px double #29251f; padding-bottom:10px; margin-bottom:14px;';
     masthead.append(
       element('div', 'THE EPOCH CHRONICLE', 'font-size:clamp(30px,5vw,58px);font-weight:900;letter-spacing:.05em;line-height:1;'),
-      element('div', `${issue.dateLabel} · World Edition · Round ${issue.issueRound}`, 'font-size:13px;letter-spacing:.13em;text-transform:uppercase;margin-top:8px;'),
+      ...(issue.issueType === 'victory'
+        ? [element('div', 'FINAL EDITION', 'font-size:17px;font-weight:900;letter-spacing:.2em;margin-top:8px;')]
+        : [element('div', `ISSUE ${issue.issueNumber}`, 'font-size:13px;font-weight:900;letter-spacing:.18em;margin-top:8px;')]),
+      element('div', `${issue.dateLabel} · World Edition · Round ${issue.issueRound}`, 'font-size:13px;letter-spacing:.13em;text-transform:uppercase;margin-top:6px;'),
     );
 
     const main = document.createElement('article');
@@ -66,20 +79,47 @@ export class NewspaperDialog {
     const footer = document.createElement('footer');
     footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:20px;margin-top:18px;font-size:12px;';
     footer.appendChild(element('span', `Reporting events from rounds ${issue.coverageStartRound}–${issue.coverageEndRound}`, 'font-style:italic;color:#554d41;'));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = 'Continue';
-    button.style.cssText = 'font:700 15px Georgia,serif;padding:9px 28px;border:2px solid #29251f;background:#29251f;color:#f3ead2;cursor:pointer;letter-spacing:.05em;';
-    button.addEventListener('click', () => this.close());
-    footer.appendChild(button);
+    const controls = document.createElement('div');
+    controls.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap;';
+    const isArchive = this.archiveIndex >= 0;
+    if (isArchive) {
+      const previous = this.button('‹ Previous', () => this.showArchive(this.archive, this.archiveIndex - 1));
+      previous.disabled = this.archiveIndex === 0;
+      const next = this.button('Next ›', () => this.showArchive(this.archive, this.archiveIndex + 1));
+      next.disabled = this.archiveIndex >= this.archive.length - 1;
+      controls.append(
+        previous,
+        element('span', `${issue.issueType === 'victory' ? 'Final Edition' : `Issue ${issue.issueNumber}`} · ${this.archiveIndex + 1} of ${this.archive.length}`, 'font-weight:bold;min-width:170px;text-align:center;'),
+        next,
+        this.button('Close', () => this.close(), true),
+      );
+    } else {
+      if (issue.issueType === 'victory' && this.archive.length > 0) {
+        controls.appendChild(this.button('View Newspaper Archive', () => this.showArchive(this.archive)));
+      }
+      controls.appendChild(this.button('Continue', () => this.close(), true));
+    }
+    footer.appendChild(controls);
 
     paper.append(masthead, main, secondaryGrid, footer);
     overlay.appendChild(paper);
     document.body.appendChild(overlay);
-    requestAnimationFrame(() => button.focus());
+    requestAnimationFrame(() => controls.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus());
+  }
+
+  showArchive(issues: readonly NewspaperIssue[], index = issues.length - 1): void {
+    if (issues.length === 0) return;
+    const boundedIndex = Math.max(0, Math.min(index, issues.length - 1));
+    this.show(issues[boundedIndex]!, { archive: issues, archiveIndex: boundedIndex });
   }
 
   close(): void {
+    this.removeOverlay();
+    this.archive = [];
+    this.archiveIndex = -1;
+  }
+
+  private removeOverlay(): void {
     const overlay = document.getElementById(MODAL_ID);
     document.removeEventListener('keydown', this.handleKeyDown, true);
     overlay?.remove();
@@ -92,8 +132,23 @@ export class NewspaperDialog {
     if (event.key === 'Escape') {
       event.preventDefault();
       this.close();
+    } else if (this.archiveIndex >= 0 && event.key === 'ArrowLeft' && this.archiveIndex > 0) {
+      event.preventDefault();
+      this.showArchive(this.archive, this.archiveIndex - 1);
+    } else if (this.archiveIndex >= 0 && event.key === 'ArrowRight' && this.archiveIndex < this.archive.length - 1) {
+      event.preventDefault();
+      this.showArchive(this.archive, this.archiveIndex + 1);
     }
   };
+
+  private button(label: string, onClick: () => void, primary = false): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.style.cssText = `font:700 14px Georgia,serif;padding:8px 16px;border:2px solid #29251f;${primary ? 'background:#29251f;color:#f3ead2;' : 'background:transparent;color:#29251f;'}cursor:pointer;letter-spacing:.04em;`;
+    button.addEventListener('click', onClick);
+    return button;
+  }
 
   private articleCopy(article: NewspaperArticle, main: boolean): HTMLDivElement {
     const copy = document.createElement('div');

@@ -33,6 +33,7 @@ export interface NewspaperArticle {
   headline: string;
   body: string;
   comment: string;
+  involvedNationIds: string[];
   involvedNationNames: string[];
   involvedLeaderNames: string[];
   imagePath?: string;
@@ -40,15 +41,33 @@ export interface NewspaperArticle {
   isFiller?: boolean;
 }
 
+export type NewspaperIssueType = 'regular' | 'victory';
+export type NewspaperVictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
+
+export interface NewspaperVictoryDetails {
+  nationId: string;
+  nationName: string;
+  leaderName?: string;
+  victoryType: NewspaperVictoryType;
+  victoryTypeLabel: string;
+}
+
+/** Serializable published snapshot. This is both the runtime and save model. */
 export interface NewspaperIssue {
+  id: string;
+  issueNumber: number;
+  issueType: NewspaperIssueType;
   issueRound: number;
   coverageStartRound: number;
   coverageEndRound: number;
+  worldYear: number;
   dateLabel: string;
   mainArticle: NewspaperArticle;
   secondaryArticles: [NewspaperArticle, NewspaperArticle, NewspaperArticle];
+  victory?: NewspaperVictoryDetails;
 }
 
 export interface SavedNewspaperState {
   lastConsumedIssueRound: number;
+  issues?: NewspaperIssue[];
 }

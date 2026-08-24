@@ -2472,6 +2472,7 @@ export class GameScene extends Phaser.Scene {
         event.round,
         turnManager.getGameDateLabel(),
         autoplaySystem.isActive() || this.diagnosticSystem.isTurnLoggingEnabled(),
+        turnManager.getGlobalYear(),
       );
       if (issue) newspaperDialog.show(issue);
     });
@@ -7202,7 +7203,15 @@ export class GameScene extends Phaser.Scene {
 
     // Victory overlay
     victorySystem.onVictory((nationId, type) => {
-      if (diagnosticContinueAfterVictory && autoplaySystem.isActive()) return;
+      const wasAutoplayActive = autoplaySystem.isActive();
+      const finalIssue = newspaperSystem.consumeVictoryIssue({
+        round: turnManager.getCurrentRound(),
+        worldYear: turnManager.getGlobalYear(),
+        dateLabel: turnManager.getGameDateLabel(),
+        nationId,
+        victoryType: type,
+      });
+      if (diagnosticContinueAfterVictory && wasAutoplayActive) return;
       turnManager.stop();
       // Halt an in-progress autorun/autoplay so the session ends cleanly the moment
       // a nation wins, instead of running out the remaining requested rounds.
@@ -7245,11 +7254,27 @@ export class GameScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(201);
 
+      const archiveButton = this.add.text(width / 2, height / 2 + 78, 'Newspaper Archive', {
+          fontSize: '17px',
+          fontStyle: 'bold',
+          color: '#f0dfb5',
+          backgroundColor: '#332b20',
+          padding: { x: 14, y: 8 },
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(202)
+        .setInteractive({ useHandCursor: true });
+      archiveButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        newspaperDialog.showArchive(newspaperSystem.getIssues());
+      });
+
       // Block further input on the overlay
       overlay.setInteractive();
 
       // Human non-domination victory: also show the modal popup
-      if ((type === 'science' || type === 'cultural' || type === 'diplomatic') && !isAutoplayActive() && nationId === humanNationId) {
+      if ((type === 'science' || type === 'cultural' || type === 'diplomatic') && !wasAutoplayActive && nationId === humanNationId) {
         showDiplomacyModal({
           title: type === 'science'
             ? 'Science Victory'
@@ -7267,6 +7292,9 @@ export class GameScene extends Phaser.Scene {
           onConfirm: () => {},
           onCancel: () => {},
         });
+      }
+      if (!wasAutoplayActive && !this.diagnosticSystem.isTurnLoggingEnabled()) {
+        newspaperDialog.show(finalIssue, { archive: newspaperSystem.getIssues() });
       }
     });
 

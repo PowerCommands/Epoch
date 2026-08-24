@@ -6,6 +6,7 @@ import type {
   NewspaperEventType,
   NewspaperIssue,
   SavedNewspaperState,
+  NewspaperVictoryType,
 } from '../types/newspaper';
 
 export const FIRST_NEWSPAPER_ROUND = 11;
@@ -31,16 +32,18 @@ export function latestNewspaperRoundAtOrBefore(round: number): number {
 
 export class NewspaperSystem {
   private lastConsumedIssueRound: number;
+  private issues: NewspaperIssue[];
 
   private constructor(
     private readonly dependencies: NewspaperSystemDependencies,
     state: SavedNewspaperState,
   ) {
     this.lastConsumedIssueRound = Math.max(1, Math.floor(state.lastConsumedIssueRound));
+    this.issues = normalizeSavedIssues(state.issues);
   }
 
   static forNewGame(dependencies: NewspaperSystemDependencies): NewspaperSystem {
-    return new NewspaperSystem(dependencies, { lastConsumedIssueRound: 1 });
+    return new NewspaperSystem(dependencies, { lastConsumedIssueRound: 1, issues: [] });
   }
 
   static fromSave(
@@ -51,25 +54,62 @@ export class NewspaperSystem {
     if (isValidSavedState(savedState)) return new NewspaperSystem(dependencies, savedState);
     // A pre-feature save consumes every boundary through its saved round, so it
     // waits for the next future issue and never creates a historical backlog.
+    const partialIssues = savedState && typeof savedState === 'object'
+      ? (savedState as SavedNewspaperState).issues
+      : undefined;
     return new NewspaperSystem(dependencies, {
       lastConsumedIssueRound: latestNewspaperRoundAtOrBefore(currentRound),
+      issues: partialIssues,
     });
   }
 
-  /** Advances the cursor even when presentation is suppressed by autoplay. */
-  consumeDueIssue(round: number, dateLabel: string, suppressPresentation = false): NewspaperIssue | null {
+  /** Archives before returning; suppression affects presentation only. */
+  consumeDueIssue(round: number, dateLabel: string, suppressPresentation = false, worldYear = 0): NewspaperIssue | null {
     if (!isNewspaperRound(round) || round <= this.lastConsumedIssueRound) return null;
     const coverageStartRound = this.lastConsumedIssueRound;
+    const issue = this.buildIssue(round, dateLabel, coverageStartRound, worldYear);
+    this.issues.push(issue);
     this.lastConsumedIssueRound = round;
-    if (suppressPresentation) return null;
-    return this.buildIssue(round, dateLabel, coverageStartRound);
+    return suppressPresentation ? null : cloneIssue(issue);
   }
 
   getState(): SavedNewspaperState {
-    return { lastConsumedIssueRound: this.lastConsumedIssueRound };
+    return {
+      lastConsumedIssueRound: this.lastConsumedIssueRound,
+      issues: this.issues.map(cloneIssue),
+    };
   }
 
-  private buildIssue(issueRound: number, dateLabel: string, coverageStartRound: number): NewspaperIssue {
+  getIssues(): NewspaperIssue[] {
+    return this.issues.map(cloneIssue);
+  }
+
+  /** Builds and archives the single terminal edition, replacing a same-round regular issue. */
+  consumeVictoryIssue(args: {
+    round: number;
+    worldYear: number;
+    dateLabel: string;
+    nationId: string;
+    victoryType: NewspaperVictoryType;
+  }): NewspaperIssue {
+    const existing = this.issues.find((issue) => issue.issueType === 'victory');
+    if (existing) return cloneIssue(existing);
+
+    const sameRoundRegularIndex = this.issues.findIndex((issue) =>
+      issue.issueType === 'regular' && issue.issueRound === args.round,
+    );
+    const replaced = sameRoundRegularIndex >= 0 ? this.issues[sameRoundRegularIndex] : undefined;
+    if (sameRoundRegularIndex >= 0) this.issues.splice(sameRoundRegularIndex, 1);
+
+    const coverageStartRound = replaced?.coverageStartRound ?? this.lastConsumedIssueRound;
+    const issueNumber = this.issues.length + 1;
+    const issue = this.buildVictoryIssue(args, coverageStartRound, issueNumber);
+    this.lastConsumedIssueRound = Math.max(this.lastConsumedIssueRound, args.round);
+    this.issues.push(issue);
+    return cloneIssue(issue);
+  }
+
+  private buildIssue(issueRound: number, dateLabel: string, coverageStartRound: number, worldYear: number): NewspaperIssue {
     const candidates = this.dependencies.getTimelineEvents().filter((event) =>
       event.round >= coverageStartRound && event.round < issueRound,
     );
@@ -97,12 +137,68 @@ export class NewspaperSystem {
     while (secondary.length < 3) secondary.push(quietSecondaryArticle(secondary.length));
 
     return {
+      id: `newspaper-${this.issues.length + 1}`,
+      issueNumber: this.issues.length + 1,
+      issueType: 'regular',
       issueRound,
       coverageStartRound,
       coverageEndRound: issueRound - 1,
+      worldYear,
       dateLabel,
       mainArticle,
       secondaryArticles: secondary as [NewspaperArticle, NewspaperArticle, NewspaperArticle],
+    };
+  }
+
+  private buildVictoryIssue(
+    args: { round: number; worldYear: number; dateLabel: string; nationId: string; victoryType: NewspaperVictoryType },
+    coverageStartRound: number,
+    issueNumber: number,
+  ): NewspaperIssue {
+    const nationName = this.dependencies.getNationName(args.nationId) ?? args.nationId;
+    const leaderName = this.dependencies.getLeaderName(args.nationId);
+    const presentation = VICTORY_PRESENTATION[args.victoryType];
+    const candidates = this.dependencies.getTimelineEvents().filter((event) =>
+      event.round >= coverageStartRound && event.round <= args.round,
+    );
+    const normal = candidates.filter(isSupportedNormalEvent).sort((a, b) => this.compareNormal(a, b));
+    const insults = candidates.filter(isUsableInsult).sort((a, b) => this.compareRelevance(a, b));
+    const secondary: NewspaperArticle[] = [];
+    const used = new Set<number>();
+    for (const insult of insults) {
+      if (secondary.length >= 3 || used.has(insult.id)) continue;
+      secondary.push(this.buildInsultArticle(insult));
+      used.add(insult.id);
+    }
+    for (const event of normal) {
+      if (secondary.length >= 3 || used.has(event.id)) continue;
+      secondary.push(this.buildNormalArticle(event, args.round, `victory-secondary-${secondary.length}`, false));
+      used.add(event.id);
+    }
+    while (secondary.length < 3) secondary.push(quietSecondaryArticle(secondary.length));
+
+    const victoryTypeLabel = `${presentation.displayName} Victory`;
+    return {
+      id: `newspaper-victory-${args.round}-${args.nationId}-${args.victoryType}`,
+      issueNumber,
+      issueType: 'victory',
+      issueRound: args.round,
+      coverageStartRound,
+      coverageEndRound: args.round,
+      worldYear: args.worldYear,
+      dateLabel: args.dateLabel,
+      mainArticle: {
+        eventType: undefined,
+        headline: presentation.headline(nationName),
+        body: `Under the leadership of ${leaderName ?? nationName}, ${nationName} has secured a ${victoryTypeLabel} on ${args.dateLabel} (Round ${args.round}).`,
+        comment: presentation.comment,
+        involvedNationIds: [args.nationId],
+        involvedNationNames: [nationName],
+        involvedLeaderNames: leaderName ? [leaderName] : [],
+        imagePath: NEWSPAPER_IMAGE_PATHS.victory,
+      },
+      secondaryArticles: secondary as [NewspaperArticle, NewspaperArticle, NewspaperArticle],
+      victory: { nationId: args.nationId, nationName, leaderName, victoryType: args.victoryType, victoryTypeLabel },
     };
   }
 
@@ -144,6 +240,7 @@ export class NewspaperSystem {
       headline: definition.buildHeadline(context),
       body: definition.buildBody(context),
       comment: definition.comments[commentIndex]!,
+      involvedNationIds: [...event.eventNationIds],
       involvedNationNames: context.nationNames,
       involvedLeaderNames: context.leaderNames,
       imagePath: includeImage ? definition.imagePath : undefined,
@@ -165,6 +262,7 @@ export class NewspaperSystem {
       headline: `${speakerLeader.toLocaleUpperCase()} ${verb} ${recipientLeader.toLocaleUpperCase()}`,
       body: `“${metadata.leaderInsultText}”`,
       comment: '',
+      involvedNationIds: [...event.eventNationIds],
       involvedNationNames: event.eventNationIds.map((id, index) => metadata.nationNames?.[index] ?? this.dependencies.getNationName(id) ?? id),
       involvedLeaderNames: [speakerLeader, recipientLeader],
       isInsult: true,
@@ -219,6 +317,7 @@ function quietMainArticle(): NewspaperArticle {
     headline: 'A QUIET DECADE ACROSS THE WORLD',
     body: 'No single event dominated the chronicle during the decade now concluded.',
     comment: 'Nations nevertheless continue to look toward the years ahead.',
+    involvedNationIds: [],
     involvedNationNames: [],
     involvedLeaderNames: [],
     imagePath: NEWSPAPER_IMAGE_PATHS.majorDiscovery,
@@ -233,11 +332,69 @@ function quietSecondaryArticle(index: number): NewspaperArticle {
     ['A NEW DECADE BEGINS', 'The next chapter of the world chronicle remains unwritten.'],
   ] as const;
   const [headline, body] = fillers[index % fillers.length]!;
-  return { headline, body, comment: '', involvedNationNames: [], involvedLeaderNames: [], isFiller: true };
+  return { headline, body, comment: '', involvedNationIds: [], involvedNationNames: [], involvedLeaderNames: [], isFiller: true };
 }
 
 function isValidSavedState(value: SavedNewspaperState | undefined): value is SavedNewspaperState {
   return value !== undefined
     && Number.isFinite(value.lastConsumedIssueRound)
     && value.lastConsumedIssueRound >= 1;
+}
+
+const VICTORY_PRESENTATION: Readonly<Record<NewspaperVictoryType, {
+  displayName: string;
+  headline: (nationName: string) => string;
+  comment: string;
+}>> = {
+  domination: { displayName: 'Domination', headline: (name) => `${name.toLocaleUpperCase()} CONQUERS THE WORLD`, comment: 'The age of rival capitals has come to an end.' },
+  science: { displayName: 'Science', headline: (name) => `${name.toLocaleUpperCase()} LEADS HUMANITY INTO A NEW AGE`, comment: 'A new chapter in human achievement has begun.' },
+  cultural: { displayName: 'Cultural', headline: (name) => `${name.toLocaleUpperCase()} CULTURE CAPTURES THE WORLD`, comment: 'Across every frontier, its influence is now unmistakable.' },
+  diplomatic: { displayName: 'Diplomatic', headline: (name) => `${name.toLocaleUpperCase()} EMERGES AS LEADER OF THE WORLD`, comment: 'The nations of the world acknowledge a new center of global influence.' },
+};
+
+function cloneIssue(issue: NewspaperIssue): NewspaperIssue {
+  return {
+    ...issue,
+    mainArticle: cloneArticle(issue.mainArticle),
+    secondaryArticles: issue.secondaryArticles.map(cloneArticle) as [NewspaperArticle, NewspaperArticle, NewspaperArticle],
+    victory: issue.victory ? { ...issue.victory } : undefined,
+  };
+}
+
+function cloneArticle(article: NewspaperArticle): NewspaperArticle {
+  return {
+    ...article,
+    involvedNationIds: [...article.involvedNationIds],
+    involvedNationNames: [...article.involvedNationNames],
+    involvedLeaderNames: [...article.involvedLeaderNames],
+  };
+}
+
+function normalizeSavedIssues(value: SavedNewspaperState['issues']): NewspaperIssue[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: NewspaperIssue[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object' || !candidate.mainArticle || !Array.isArray(candidate.secondaryArticles)) continue;
+    const issueNumber = Number.isFinite(candidate.issueNumber) ? Math.max(1, Math.floor(candidate.issueNumber)) : normalized.length + 1;
+    const article = (saved: NewspaperArticle): NewspaperArticle => ({
+      ...saved,
+      comment: typeof saved.comment === 'string' ? saved.comment : '',
+      involvedNationIds: Array.isArray(saved.involvedNationIds) ? [...saved.involvedNationIds] : [],
+      involvedNationNames: Array.isArray(saved.involvedNationNames) ? [...saved.involvedNationNames] : [],
+      involvedLeaderNames: Array.isArray(saved.involvedLeaderNames) ? [...saved.involvedLeaderNames] : [],
+    });
+    const secondary = candidate.secondaryArticles.slice(0, 3).map(article);
+    while (secondary.length < 3) secondary.push(quietSecondaryArticle(secondary.length));
+    normalized.push({
+      ...candidate,
+      id: typeof candidate.id === 'string' ? candidate.id : `newspaper-${issueNumber}`,
+      issueNumber,
+      issueType: candidate.issueType === 'victory' ? 'victory' : 'regular',
+      worldYear: Number.isFinite(candidate.worldYear) ? candidate.worldYear : 0,
+      mainArticle: article(candidate.mainArticle),
+      secondaryArticles: secondary as [NewspaperArticle, NewspaperArticle, NewspaperArticle],
+      victory: candidate.victory ? { ...candidate.victory } : undefined,
+    });
+  }
+  return normalized;
 }
