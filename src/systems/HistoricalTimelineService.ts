@@ -14,6 +14,7 @@ export interface RecordHistoricalEventInput {
    * everything.
    */
   visibleToNationIds?: string[];
+  newsImportance?: number;
   metadata?: HistoricalEventMetadata;
 }
 
@@ -55,6 +56,7 @@ export class HistoricalTimelineService {
       eventNationIds: [...input.eventNationIds],
       visibleToNationIds: [...(input.visibleToNationIds ?? input.eventNationIds)],
       discoveredTurn: round,
+      newsImportance: input.newsImportance,
       metadata: {
         nationNames: input.eventNationIds.map((id) => this.getNationName?.(id) ?? id),
         leaderNames: input.eventNationIds.map((id) => this.getLeaderName?.(id) ?? this.getNationName?.(id) ?? id),

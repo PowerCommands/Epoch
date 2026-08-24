@@ -12,6 +12,9 @@ interface CircularHudProgressButtonConfig {
   iconSize: number;
   progressColor: number;
   accentColor: number;
+  backgroundColor?: number;
+  hoverBackgroundColor?: number;
+  pressedBackgroundColor?: number;
 }
 
 const BACKGROUND_COLOR = 0x0c141d;
@@ -43,6 +46,7 @@ export class CircularHudProgressButton {
   private hovered = false;
   private pressed = false;
   private active = false;
+  private visible = true;
   private clickHandler: (() => void) | null = null;
 
   constructor(
@@ -159,6 +163,23 @@ export class CircularHudProgressButton {
     this.refreshVisualState();
   }
 
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    this.background.setVisible(visible);
+    this.rim.setVisible(visible);
+    this.progressRing.setVisible(visible);
+    this.icon.setVisible(visible);
+    this.hitArea.setVisible(visible);
+    if (visible) this.hitArea.setInteractive({ useHandCursor: true });
+    else {
+      this.hitArea.disableInteractive();
+      this.hovered = false;
+      this.pressed = false;
+      this.hideTooltip();
+    }
+  }
+
   setProgress(progress: number): void {
     const clamped = Phaser.Math.Clamp(progress, 0, 1);
     if (this.progress === clamped) return;
@@ -169,6 +190,11 @@ export class CircularHudProgressButton {
   setTooltip(tooltip: string): void {
     this.tooltip = tooltip;
     this.refreshTooltip();
+  }
+
+  setIcon(icon: string): void {
+    if (this.icon.text === icon) return;
+    this.icon.setText(icon);
   }
 
   layout(topLeftX: number, topLeftY: number): void {
@@ -197,10 +223,10 @@ export class CircularHudProgressButton {
 
   private refreshVisualState(): void {
     const fillColor = this.pressed
-      ? PRESSED_BACKGROUND_COLOR
+      ? this.config.pressedBackgroundColor ?? PRESSED_BACKGROUND_COLOR
       : this.hovered
-        ? HOVER_BACKGROUND_COLOR
-        : BACKGROUND_COLOR;
+        ? this.config.hoverBackgroundColor ?? HOVER_BACKGROUND_COLOR
+        : this.config.backgroundColor ?? BACKGROUND_COLOR;
     const scale = this.pressed ? 0.96 : this.hovered ? 1.04 : 1;
 
     this.background

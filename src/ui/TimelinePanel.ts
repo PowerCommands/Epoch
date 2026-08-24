@@ -19,6 +19,8 @@ export class TimelinePanel {
   private readonly listEl: HTMLDivElement;
   private readonly toggleEl: HTMLButtonElement;
   private collapsed = false;
+  private shortcutHidden = false;
+  private contextHidden = false;
   private renderQueued = false;
 
   constructor(private readonly timeline: HistoricalTimelineService) {
@@ -48,6 +50,7 @@ export class TimelinePanel {
     `;
     const title = document.createElement('span');
     title.textContent = '📜 History';
+    title.title = 'Show or hide History (Ctrl+H)';
     title.style.cssText = 'font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: #f4dfaa;';
     this.toggleEl = document.createElement('button');
     this.toggleEl.type = 'button';
@@ -68,17 +71,34 @@ export class TimelinePanel {
     document.body.appendChild(this.root);
 
     this.timeline.onChanged(() => this.scheduleRender());
+    document.addEventListener('keydown', this.handleKeyDown, true);
     this.applyCollapsedState();
     this.render();
   }
 
   /** Hide the whole panel (e.g. while a sidebar mode overlays the same area). */
   setHidden(hidden: boolean): void {
-    this.root.style.display = hidden ? 'none' : 'flex';
+    this.contextHidden = hidden;
+    this.applyVisibility();
   }
 
   shutdown(): void {
+    document.removeEventListener('keydown', this.handleKeyDown, true);
     this.root.remove();
+  }
+
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (!event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'h') return;
+    if (isEditableTarget(event.target)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.shortcutHidden = !this.shortcutHidden;
+    this.applyVisibility();
+  };
+
+  private applyVisibility(): void {
+    this.root.style.display = this.shortcutHidden || this.contextHidden ? 'none' : 'flex';
   }
 
   private setCollapsed(collapsed: boolean): void {
@@ -158,4 +178,9 @@ export class TimelinePanel {
       // Ignore storage errors.
     }
   }
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || target.matches('input, textarea, select');
 }

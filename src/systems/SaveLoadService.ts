@@ -42,6 +42,7 @@ import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ForeignTroopViolationSystem } from './ForeignTroopViolationSystem';
 import type { HistoricalTimelineService } from './HistoricalTimelineService';
 import type { NewspaperSystem } from './NewspaperSystem';
+import type { GamesOfNationsSystem } from './GamesOfNationsSystem';
 import type { CovertSuspicionSystem } from './diplomacy/CovertSuspicionSystem';
 import type { VictorySystem } from './VictorySystem';
 import type { TurnManager } from './TurnManager';
@@ -92,6 +93,7 @@ export interface SaveLoadContext {
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
   newspaperSystem?: NewspaperSystem;
+  gamesOfNationsSystem?: GamesOfNationsSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
   victorySystem?: VictorySystem;
   worldCouncilSystem?: WorldCouncilSystem;
@@ -158,6 +160,7 @@ export class SaveLoadService {
       foreignTroopViolationSystem,
       historicalTimeline,
       newspaperSystem,
+      gamesOfNationsSystem,
     } = context;
 
     const nations: SavedNation[] = nationManager.getAllNations().map((nation) => {
@@ -374,6 +377,7 @@ export class SaveLoadService {
       },
       guideProgress: context.guideProgress ? { ...context.guideProgress } : undefined,
       newspaper: newspaperSystem?.getState(),
+      gamesOfNations: gamesOfNationsSystem?.getState(),
       tiles,
       nations,
       cities,

@@ -23,6 +23,7 @@ export const NEWSPAPER_IMAGE_PATHS = {
   tradeRouteCompleted: `${NEWS_PATH}trade-route.png`,
   embassyEstablished: `${NEWS_PATH}embassy-established.png`,
   tradeRelations: `${NEWS_PATH}trade-relations.png`,
+  gamesOfNations: '/assets/sprites/cultures/games_recreation.png',
 } as const;
 
 function names(context: NewspaperArticleContext): [string, string] {
@@ -91,4 +92,6 @@ export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, Ne
   tradeRouteCompleted: definition(42, NEWSPAPER_IMAGE_PATHS.tradeRouteCompleted, 'the new trade route', () => 'NEW TRADE ROUTE OPENS', (c) => `A trade route now links ${c.cityName ?? (c.nationNames.join(' and ') || 'distant markets')}.`),
   embassyEstablished: definition(35, NEWSPAPER_IMAGE_PATHS.embassyEstablished, 'the new embassy', (c) => { const [a, b] = names(c); return `${upper(a)} OPENS EMBASSY IN ${upper(b)}`; }, (c) => { const [a, b] = names(c); return `${a} has established a permanent embassy in ${b}.`; }),
   tradeRelations: definition(32, NEWSPAPER_IMAGE_PATHS.tradeRelations, 'the trade agreement', (c) => { const [a, b] = names(c); return `${upper(a)} AND ${upper(b)} ESTABLISH TRADE`; }, (c) => { const [a, b] = names(c); return `${a} and ${b} have opened formal trade relations.`; }),
+  gamesGold: definition(50, NEWSPAPER_IMAGE_PATHS.gamesOfNations, 'the Games gold medal', (c) => `${upper(c.nationNames[0] ?? 'A NATION')} WINS ${upper(c.event.metadata?.gamesSport ?? 'GAMES')} GOLD`, (c) => `${c.nationNames[0] ?? 'A nation'} has won Gold in ${c.event.metadata?.gamesSport ?? 'a sport'} at Games of Nations #${c.event.metadata?.gamesNumber ?? '?'}.`),
+  gamesCompleted: definition(70, NEWSPAPER_IMAGE_PATHS.gamesOfNations, 'the completed Games of Nations', (c) => `GAMES OF NATIONS #${c.event.metadata?.gamesNumber ?? '?'} CONCLUDE`, (c) => c.event.text),
 };

@@ -203,7 +203,7 @@ export class NewspaperSystem {
   }
 
   private compareNormal(a: HistoricalEvent, b: HistoricalEvent): number {
-    const priorityDifference = getDefinition(b).priority - getDefinition(a).priority;
+    const priorityDifference = getSelectionPriority(b) - getSelectionPriority(a);
     return priorityDifference || this.compareRelevance(a, b);
   }
 
@@ -284,6 +284,14 @@ export class NewspaperSystem {
       discoveryName: metadata?.discoveryName,
     };
   }
+}
+
+/** Maps optional lower-is-more-important History values into the newspaper's higher-priority scale. */
+export function getSelectionPriority(event: HistoricalEvent): number {
+  if (Number.isFinite(event.newsImportance) && event.newsImportance! >= 0) {
+    return Math.max(0, 100 - Math.floor(event.newsImportance!) * 10);
+  }
+  return getDefinition(event).priority;
 }
 
 function isSupportedNormalEvent(event: HistoricalEvent): event is HistoricalEvent & { type: NewspaperEventType } {

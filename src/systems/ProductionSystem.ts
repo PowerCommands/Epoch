@@ -53,6 +53,7 @@ export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Pro
 export type ProductionChangedListener = (cityId: string) => void;
 export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
 export type ItemProductionPercentProvider = (nationId: string, item: Producible) => number;
+export type ProductionDiversionProvider = (nationId: string, cityId: string) => number;
 export interface ItemProductionCost {
   readonly cost: number;
   readonly lock: boolean;
@@ -89,6 +90,7 @@ export class ProductionSystem {
   private readonly changedListeners: ProductionChangedListener[] = [];
   private readonly removedListeners: ProductionRemovedListener[] = [];
   private itemProductionPercentProvider: ItemProductionPercentProvider = () => 0;
+  private productionDiversionProvider: ProductionDiversionProvider = () => 0;
   private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
   private hasSkippedInitialTurnStart = false;
 
@@ -336,6 +338,11 @@ export class ProductionSystem {
     this.itemProductionPercentProvider = provider;
   }
 
+  /** Flat base production withheld before queue progress and item bonuses. */
+  setProductionDiversionProvider(provider: ProductionDiversionProvider): void {
+    this.productionDiversionProvider = provider;
+  }
+
   setItemProductionCostProvider(provider: ItemProductionCostProvider): void {
     this.itemProductionCostProvider = provider;
   }
@@ -512,7 +519,14 @@ export class ProductionSystem {
 
     const cityRes = this.cityManager.getResources(cityId);
     const modifier = this.happinessSystem.getProductionModifier(city.ownerId);
-    const baseProduction = Math.floor(cityRes.productionPerTurn * modifier);
+    const undivertedProduction = Math.floor(cityRes.productionPerTurn * modifier);
+    const baseProduction = Math.max(
+      0,
+      undivertedProduction - Math.min(
+        undivertedProduction,
+        Math.max(0, Math.floor(this.productionDiversionProvider(city.ownerId, cityId))),
+      ),
+    );
     if (!item) return baseProduction;
 
     return applyPercent(baseProduction, this.getPolicyProductionPercent(city.ownerId, item));

@@ -21,6 +21,8 @@ export type HistoricalEventType =
   | 'eraReached'
   | 'governmentChanged'
   | 'majorDiscovery'
+  | 'gamesGold'
+  | 'gamesCompleted'
   | 'leaderInsult';
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */
@@ -44,6 +46,13 @@ export interface HistoricalEventMetadata {
   discoveryName?: string;
   leaderInsultSubtype?: 'insult' | 'threat';
   leaderInsultText?: string;
+  gamesNumber?: number;
+  gamesSport?: string;
+  gamesWinnerNationId?: string;
+  gamesHostNationId?: string;
+  gamesGold?: number;
+  gamesSilver?: number;
+  gamesBronze?: number;
 }
 
 /**
@@ -74,5 +83,7 @@ export interface HistoricalEvent {
   visibleToNationIds: string[];
   /** Round the event entered the timeline (future fog-aware reveal). */
   discoveredTurn: number;
+  /** Lower values are more newsworthy; optional for backward compatibility. */
+  newsImportance?: number;
   metadata?: HistoricalEventMetadata;
 }

@@ -9,6 +9,7 @@ import type { TradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
 import type { HistoricalEvent } from './historicalTimeline';
 import type { SavedNewspaperState } from './newspaper';
+import type { SavedGamesOfNationsState } from './gamesOfNations';
 import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacySystem';
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
@@ -286,6 +287,8 @@ export interface SavedGameState {
   guideProgress?: SavedGuideProgress;
   /** Consumed issue cursor. Optional so pre-newspaper saves remain loadable. */
   newspaper?: SavedNewspaperState;
+  /** Global sporting lifecycle. Optional so pre-feature saves remain loadable. */
+  gamesOfNations?: SavedGamesOfNationsState;
   tiles: SavedTile[];
   nations: SavedNation[];
   cities: SavedCity[];

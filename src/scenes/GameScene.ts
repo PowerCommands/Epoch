@@ -114,6 +114,9 @@ import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
 import { NewspaperSystem } from '../systems/NewspaperSystem';
+import { GamesOfNationsSystem } from '../systems/GamesOfNationsSystem';
+import type { GamesOfNationsSummary } from '../types/gamesOfNations';
+import { buildGamesOfNationsUiModel, validateGamesAllocation } from '../ui/hud/GamesOfNationsUiModel';
 import { buildDominationRanking } from '../systems/DominationRanking';
 import { TimelinePanel } from '../ui/TimelinePanel';
 import { NewspaperDialog } from '../ui/NewspaperDialog';
@@ -314,6 +317,7 @@ interface EpochStateSummary {
   worldYearLabel: string;
   scenario: string;
   victory: EpochVictorySummary | null;
+  gamesOfNations: GamesOfNationsSummary;
   nations: EpochNationStateSummary[];
   eraMilestones: EpochEraMilestone[];
 }
@@ -614,10 +618,95 @@ export class GameScene extends Phaser.Scene {
     });
     const isAINation = (nationId: string): boolean => nationManager.getNation(nationId)?.isHuman === false;
     const logManager = new LogManager({ turnManager, nationManager, eraSystem, happinessSystem, eventLog });
+    const getGamesCultureOutput = (nationId: string): number => (
+      nationManager.getResources(nationId).culturePerTurn
+    );
+    const getGamesProductionSources = (nationId: string) => cityManager.getCitiesByOwner(nationId).map((city) => ({
+      cityId: city.id,
+      available: Math.floor(
+        cityManager.getResources(city.id).productionPerTurn
+        * happinessSystem.getProductionModifier(nationId),
+      ),
+    }));
+    const gamesOfNationsSystem = GamesOfNationsSystem.fromSave({
+      getCurrentTurn: () => turnManager.getCurrentRound(),
+      getLivingNationIds: () => nationManager.getAllNations().map((nation) => nation.id),
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name,
+      getCapitalCity: (nationId) => {
+        const ownedCities = cityManager.getCitiesByOwner(nationId);
+        const capital = cityManager.getResidenceCapital(nationId)
+          ?? ownedCities.find((city) => city.isCapital)
+          ?? ownedCities[0];
+        return capital ? { id: capital.id, name: capital.name } : undefined;
+      },
+      getCityName: (cityId) => cityManager.getCity(cityId)?.name,
+      isHumanNation: (nationId) => nationManager.getNation(nationId)?.isHuman === true,
+      getCultureOutput: getGamesCultureOutput,
+      getProductionSources: getGamesProductionSources,
+      getCulturalPriority: (nationId) => {
+        const nation = nationManager.getNation(nationId);
+        const personalityBias = getLeaderPersonalityByNationId(nationId).cultureBias;
+        const agendaBonus = nation?.aiNationalAgendaId === 'culture' ? 0.2 : 0;
+        const strategyBonus = nation?.aiStrategyId === 'cultural_dominance' ? 0.2 : 0;
+        return Math.max(0, Math.min(1, (personalityBias + 12) / 40 + agendaBonus + strategyBonus));
+      },
+      seed: `${data.mapKey}|${[...data.activeNationIds].sort().join(',')}|games-of-nations-v1`,
+      log: (message) => logManager.info({ category: 'games-of-nations', message }),
+      onGoldMedal: (event) => {
+        const winnerName = timelineNationName(event.goldNationId);
+        const location = event.hostCityName ? ` in ${event.hostCityName}` : '';
+        historicalTimeline.record({
+          type: 'gamesGold',
+          icon: '🏆',
+          text: `${winnerName} wins Gold in ${event.sport} at the Games of Nations${location}.`,
+          eventNationIds: [event.goldNationId],
+          newsImportance: 5,
+          metadata: {
+            gamesNumber: event.gamesNumber,
+            gamesSport: event.sport,
+            gamesWinnerNationId: event.goldNationId,
+            gamesHostNationId: event.hostNationId,
+            cityId: event.hostCityId,
+            cityName: event.hostCityName,
+          },
+        });
+      },
+      onGamesCompleted: (event) => {
+        const winner = event.medalTable.find((standing) => standing.nationId === event.overallWinnerNationId);
+        const leaders = event.medalTable.slice(0, 3).map((standing) => standing.nationId);
+        const location = event.hostCityName ? ` in ${event.hostCityName}` : '';
+        const runnerUpNames = event.medalTable.slice(1, 3).map((standing) => timelineNationName(standing.nationId));
+        const resultText = winner
+          ? `${timelineNationName(winner.nationId)} wins the Games with ${winner.gold} Gold, ${winner.silver} Silver and ${winner.bronze} Bronze medal${winner.bronze === 1 ? '' : 's'}${runnerUpNames.length > 0 ? `, ahead of ${runnerUpNames.join(' and ')}` : ''}.`
+          : 'No medals were awarded, so there is no overall winner.';
+        historicalTimeline.record({
+          type: 'gamesCompleted',
+          icon: '🏆',
+          text: `Games of Nations #${event.gamesNumber} conclude${location}. ${resultText}`,
+          eventNationIds: leaders.length > 0 ? leaders : event.hostNationId ? [event.hostNationId] : [],
+          newsImportance: 3,
+          metadata: {
+            gamesNumber: event.gamesNumber,
+            gamesWinnerNationId: event.overallWinnerNationId,
+            gamesHostNationId: event.hostNationId,
+            cityId: event.hostCityId,
+            cityName: event.hostCityName,
+            gamesGold: winner?.gold,
+            gamesSilver: winner?.silver,
+            gamesBronze: winner?.bronze,
+          },
+        });
+      },
+    }, data.savedState?.gamesOfNations, data.savedState?.turn.currentRound ?? 1);
+    turnManager.on('roundStart', (event) => gamesOfNationsSystem.handleRoundStart(event.round));
     const cultureSystem = new CultureSystem(
       nationManager,
       () => turnManager.getCurrentRound(),
-      undefined,
+      (nationId) => Math.max(
+        0,
+        nationManager.getResources(nationId).culturePerTurn
+          - gamesOfNationsSystem.getCultureDiversionForTurn(nationId, turnManager.getCurrentRound()),
+      ),
       gameSpeed,
       undefined,
       (nationId, message) => logManager.info({ nationId, category: 'culture', message }),
@@ -657,6 +746,9 @@ export class GameScene extends Phaser.Scene {
       wonderSystem,
       () => refreshCultureOverlay(),
     );
+    turnManager.on('turnStart', (event) => {
+      gamesOfNationsSystem.processNationPreparationTurn(event.nation.id, event.round);
+    });
     const cityIntegrationSystem = new CityIntegrationSystem(
       cityManager,
       turnManager,
@@ -683,6 +775,13 @@ export class GameScene extends Phaser.Scene {
     const invalidTileFeedbackRenderer = new InvalidTileFeedbackRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
     const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
+    productionSystem.setProductionDiversionProvider((nationId, cityId) => (
+      gamesOfNationsSystem.getProductionDiversionForTurn(
+        nationId,
+        cityId,
+        turnManager.getCurrentRound(),
+      )
+    ));
     const productionPurchaseSystem = new ProductionPurchaseSystem(
       cityManager,
       nationManager,
@@ -4870,6 +4969,32 @@ export class GameScene extends Phaser.Scene {
       unitUpkeepSystem,
       this.diagnosticSystem,
     );
+    const getGamesOfNationsUiModel = () => {
+      const summary = gamesOfNationsSystem.getSummary();
+      const hostNationName = summary.hostNationId
+        ? nationManager.getNation(summary.hostNationId)?.name ?? null
+        : null;
+      const hostCityName = summary.hostCityId
+        ? cityManager.getCity(summary.hostCityId)?.name ?? null
+        : null;
+      const founderNationName = summary.founderNationId
+        ? nationManager.getNation(summary.founderNationId)?.name ?? null
+        : null;
+      return buildGamesOfNationsUiModel({
+        summary,
+        humanNationId: humanNationId ?? '',
+        hostNationName,
+        hostCityName,
+        founderNationName,
+        currentCultureAvailable: humanNationId ? getGamesCultureOutput(humanNationId) : 0,
+        currentBaseProductionAvailable: humanNationId
+          ? getGamesProductionSources(humanNationId).reduce((sum, source) => sum + source.available, 0)
+          : 0,
+        nationNames: Object.fromEntries(
+          nationManager.getAllNations().map((nation) => [nation.id, nation.name]),
+        ),
+      });
+    };
     hudLayer = new HudLayer(this, {
       humanNationId,
       dataProvider: hudDataProvider,
@@ -4913,6 +5038,33 @@ export class GameScene extends Phaser.Scene {
       onAcceptProposal: (proposalId) => diplomaticProposalSystem.acceptProposal(proposalId),
       onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
       onDiscoveryClosed: openPendingHumanSelectionPanels,
+      getGamesOfNationsModel: getGamesOfNationsUiModel,
+      onGamesParticipationDecision: (participating) => {
+        if (!humanNationId) return false;
+        const summary = gamesOfNationsSystem.getSummary();
+        if (summary.phase !== 'preparation') return false;
+        const participationSet = gamesOfNationsSystem.setParticipation(humanNationId, participating);
+        const acknowledged = gamesOfNationsSystem.acknowledgeHumanPreparationPrompt(summary.competitionNumber);
+        if (participationSet && acknowledged) hudLayer?.refresh();
+        return participationSet && acknowledged;
+      },
+      onApplyGamesStrategy: (culture, baseProduction, allocation) => {
+        if (!humanNationId) return false;
+        if (
+          !Number.isInteger(culture) || culture < 0
+          || !Number.isInteger(baseProduction) || baseProduction < 0
+          || validateGamesAllocation(allocation) !== null
+        ) return false;
+        const summary = gamesOfNationsSystem.getSummary();
+        const participant = summary.participants
+          .find((entry) => entry.nationId === humanNationId);
+        if (summary.phase !== 'preparation' || !participant?.participating) return false;
+        const cultureSet = gamesOfNationsSystem.setNationCultureCommitment(humanNationId, culture);
+        const productionSet = gamesOfNationsSystem.setNationProductionCommitment(humanNationId, baseProduction);
+        const allocationSet = gamesOfNationsSystem.setNationSportAllocation(humanNationId, allocation);
+        if (cultureSet && productionSet && allocationSet) hudLayer?.refresh();
+        return cultureSet && productionSet && allocationSet;
+      },
       onToggleMapLens: toggleMapLens,
       getWorldCouncilFoundationState: getWorldCouncilFoundationStateForHuman,
       getWorldCouncilOverviewState: getWorldCouncilOverviewStateForHuman,
@@ -6572,6 +6724,11 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     });
     cultureSystem.onCompleted((event) => {
+      gamesOfNationsSystem.handleCultureCompleted(
+        event.nationId,
+        event.cultureNode.id,
+        turnManager.getCurrentRound(),
+      );
       cultureEffectSystem.handleCultureNodeCompleted(event.nationId, event.cultureNode);
       resourceSystem.recalculateForNation(event.nationId);
       happinessSystem.recalculateNation(event.nationId);
@@ -6709,6 +6866,7 @@ export class GameScene extends Phaser.Scene {
             worldYearLabel: turnManager.getGameDateLabel(),
             scenario: data.mapKey,
             victory,
+            gamesOfNations: gamesOfNationsSystem.getSummary(),
             nations,
             eraMilestones: [...eraMilestones],
           };
@@ -6744,6 +6902,7 @@ export class GameScene extends Phaser.Scene {
           foreignTroopViolationSystem,
           historicalTimeline,
           newspaperSystem,
+          gamesOfNationsSystem,
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
@@ -7333,6 +7492,7 @@ export class GameScene extends Phaser.Scene {
         foreignTroopViolationSystem,
         historicalTimeline,
         newspaperSystem,
+        gamesOfNationsSystem,
         covertSuspicionSystem,
         worldCouncilSystem,
       });
@@ -7428,6 +7588,7 @@ export class GameScene extends Phaser.Scene {
           foreignTroopViolationSystem,
           historicalTimeline,
           newspaperSystem,
+          gamesOfNationsSystem,
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
@@ -7488,6 +7649,7 @@ export class GameScene extends Phaser.Scene {
         foreignTroopViolationSystem,
         historicalTimeline,
         newspaperSystem,
+        gamesOfNationsSystem,
         covertSuspicionSystem,
         victorySystem,
         worldCouncilSystem,

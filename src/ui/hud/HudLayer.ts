@@ -12,6 +12,9 @@ import { CultureHudPanel } from './CultureHudPanel';
 import { DependencyTreeDialog } from './DependencyTreeDialog';
 import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
+import { GamesOfNationsHud } from './GamesOfNationsHud';
+import type { GamesOfNationsUiModel } from './GamesOfNationsUiModel';
+import type { GamesOfNationsSportValues } from '../../types/gamesOfNations';
 import { IdleCitiesHudIndicator } from './IdleCitiesHudIndicator';
 import { MapLensToggleHud } from './MapLensToggleHud';
 import type { NationHudDataProvider } from './NationHudDataProvider';
@@ -41,6 +44,13 @@ interface HudLayerConfig {
   onAcceptProposal: (proposalId: string) => void;
   onRejectProposal: (proposalId: string) => void;
   onDiscoveryClosed: () => void;
+  getGamesOfNationsModel: () => GamesOfNationsUiModel;
+  onGamesParticipationDecision: (participating: boolean) => boolean;
+  onApplyGamesStrategy: (
+    culture: number,
+    baseProduction: number,
+    allocation: GamesOfNationsSportValues,
+  ) => boolean;
   onToggleMapLens: () => void;
   getWorldCouncilFoundationState?: () => WorldCouncilFoundationDialogState | null;
   getWorldCouncilOverviewState?: () => WorldCouncilOverviewState | null;
@@ -62,6 +72,7 @@ export class HudLayer {
   private readonly topResourceBar: TopResourceBar;
   private readonly researchPanel: ResearchHudPanel;
   private readonly culturePanel: CultureHudPanel;
+  private readonly gamesOfNationsHud: GamesOfNationsHud;
   private readonly dependencyTreeDialog: DependencyTreeDialog;
   private readonly policyDialog: PolicyDialog;
   private readonly unitActionHudToolbox: UnitActionHudToolbox;
@@ -141,6 +152,18 @@ export class HudLayer {
       if (!nationId) return;
       this.dependencyTreeDialog.open(this.config.dataProvider.getCultureTreeState(nationId));
     });
+
+    this.gamesOfNationsHud = new GamesOfNationsHud(
+      scene,
+      (object) => this.addOwned(object),
+      this.config.worldInputGate,
+      {
+        getModel: this.config.getGamesOfNationsModel,
+        onParticipationDecision: this.config.onGamesParticipationDecision,
+        onApply: this.config.onApplyGamesStrategy,
+        canOpen: () => !this.hasBlockingModal(),
+      },
+    );
 
     this.policyDialog = new PolicyDialog(
       scene,
@@ -387,7 +410,8 @@ export class HudLayer {
   }
 
   hasBlockingModal(): boolean {
-    return this.discoveryPopup.isShowing()
+    return this.gamesOfNationsHud.isDialogOpen()
+      || this.discoveryPopup.isShowing()
       || this.proposalDialog.isShowing()
       || this.worldCouncilDialog.isShowing()
       || this.worldCouncilContributionDialog.isShowing()
@@ -450,6 +474,7 @@ export class HudLayer {
     this.topResourceBar.destroy();
     this.researchPanel.destroy();
     this.culturePanel.destroy();
+    this.gamesOfNationsHud.destroy();
     this.dependencyTreeDialog.destroy();
     this.policyDialog.destroy();
     this.unitActionHudToolbox.destroy();
@@ -479,6 +504,7 @@ export class HudLayer {
     this.topResourceBar.setEntries(this.config.dataProvider.getResourceEntries(nationId));
     this.researchPanel.setState(this.config.dataProvider.getResearchState(nationId));
     this.culturePanel.setState(this.config.dataProvider.getCultureState(nationId));
+    this.gamesOfNationsHud.refresh();
     this.policyDialog.refresh();
     this.unitActionHudToolbox.refresh();
     this.refreshWorldCouncilButton();
@@ -486,6 +512,7 @@ export class HudLayer {
     this.endTurnButton.setEnabled(this.endTurnEnabled);
     this.setIdleCityIds(this.config.getIdleCityIds());
     this.layout();
+    this.gamesOfNationsHud.showPromptIfPending();
   }
 
   private layout(): void {
@@ -493,6 +520,7 @@ export class HudLayer {
     this.topResourceBar.layout();
     this.researchPanel.layout(width, height);
     this.culturePanel.layout(width, height);
+    this.gamesOfNationsHud.layout();
     this.endTurnButton.layout(width, height);
     const endTurnLayout = this.endTurnButton.getLayout();
     this.idleCitiesIndicator.layout(endTurnLayout);
@@ -514,7 +542,11 @@ export class HudLayer {
       return;
     }
     const discovery = this.discoveryQueue.shift();
-    if (discovery) this.discoveryPopup.show(discovery);
+    if (discovery) {
+      this.discoveryPopup.show(discovery);
+      return;
+    }
+    this.gamesOfNationsHud.showPromptIfPending();
   }
 
   private refreshWorldCouncilButton(): void {
