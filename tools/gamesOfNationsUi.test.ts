@@ -61,6 +61,12 @@ function summary(overrides: Partial<GamesOfNationsSummary> = {}): GamesOfNations
     phaseProgressTurn: 4,
     phaseTotalTurns: 10,
     preparationActive: true,
+    hostBonusCalculated: false,
+    hostBonusRate: 0.10,
+    totalExternalInitialGamesPoints: 0,
+    hostBonusGamesPoints: 0,
+    hostBonusSport: null,
+    hostEffectiveGamesPoints: null,
     humanPreparationPromptAcknowledgedCompetitionNumber: null,
     participatingNationIds: [HUMAN, HOST],
     participants: [participant()],
@@ -170,6 +176,51 @@ test('investment controls are editable only for participating nations during Pre
   assert.equal(model({ phase: 'competition' }).controlsEditable, false);
   assert.equal(model({ phase: 'cooldown' }).controlsEditable, false);
   assert.equal(model({ participants: [participant({ participating: false })] }).controlsEditable, false);
+});
+
+test('human host UI requires one initial bonus sport and then presents the assignment as locked', () => {
+  const hostParticipant = participant({ nationId: HUMAN, cultureCommitment: 0, productionCommitment: 0 });
+  const choosing = model({
+    hostNationId: HUMAN,
+    participants: [hostParticipant],
+    hostBonusCalculated: true,
+    hostBonusGamesPoints: 14,
+    totalExternalInitialGamesPoints: 140,
+    hostBonusSport: null,
+  });
+  assert.equal(choosing.humanIsHost, true);
+  assert.equal(choosing.participating, true);
+  assert.equal(choosing.hostBonusSelectionRequired, true);
+  assert.equal(choosing.participant?.cultureCommitment, 0);
+  assert.equal(choosing.participant?.productionCommitment, 0);
+
+  const locked = model({
+    hostNationId: HUMAN,
+    participants: [hostParticipant],
+    phase: 'competition',
+    hostBonusCalculated: true,
+    hostBonusGamesPoints: 14,
+    hostBonusSport: 'Wrestling',
+  });
+  assert.equal(locked.hostBonusSelectionRequired, false);
+  assert.equal(locked.hostBonusLocked, true);
+  assert.equal(locked.hostBonusBaseGamesPoints, 40);
+  assert.equal(locked.hostBonusEffectiveGamesPoints, 54);
+});
+
+test('non-host human can inspect an AI host bonus without receiving selection controls', () => {
+  const aiHost = participant({ nationId: HOST, gamesPointsBySport: { ...EQUAL, Marathon: 70 } });
+  const view = model({
+    participants: [participant(), aiHost],
+    hostBonusCalculated: true,
+    hostBonusGamesPoints: 9,
+    hostBonusSport: 'Marathon',
+  });
+  assert.equal(view.humanIsHost, false);
+  assert.equal(view.hostBonusSelectionRequired, false);
+  assert.equal(view.hostBonusSport, 'Marathon');
+  assert.equal(view.hostBonusBaseGamesPoints, 70);
+  assert.equal(view.hostBonusEffectiveGamesPoints, 79);
 });
 
 test('phase presentation exposes waiting, active sport, and cooldown timing', () => {

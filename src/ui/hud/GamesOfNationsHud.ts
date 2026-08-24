@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GamesOfNationsDialog } from '../GamesOfNationsDialog';
-import type { GamesOfNationsSportValues } from '../../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportValues } from '../../types/gamesOfNations';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import {
   GAMES_HUD_BUTTON_LAYOUT,
@@ -14,7 +14,7 @@ type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 export interface GamesOfNationsHudConfig {
   getModel: () => GamesOfNationsUiModel;
   onParticipationDecision: (participating: boolean) => boolean;
-  onApply: (culture: number, baseProduction: number, allocation: GamesOfNationsSportValues) => boolean;
+  onApply: (culture: number, baseProduction: number, allocation: GamesOfNationsSportValues, hostBonusSport?: GamesOfNationsSport) => boolean;
   canOpen: () => boolean;
 }
 

@@ -645,6 +645,10 @@ export class GameScene extends Phaser.Scene {
         return capital ? { id: capital.id, name: capital.name } : undefined;
       },
       getCityName: (cityId) => cityManager.getCity(cityId)?.name,
+      getWorldDateForTurn: (turn) => ({
+        worldYear: turnManager.getGameDateForRound(turn).signedYear,
+        yearLabel: turnManager.getGameDateLabelForRound(turn),
+      }),
       isHumanNation: (nationId) => nationManager.getNation(nationId)?.isHuman === true,
       getCultureOutput: getGamesCultureOutput,
       getProductionSources: getGamesProductionSources,
@@ -701,6 +705,7 @@ export class GameScene extends Phaser.Scene {
             gamesBronze: winner?.bronze,
           },
         });
+        rightPanel?.requestRefresh();
       },
       onSportResolved: (event) => presentGamesOfNationsEdition(event),
     }, data.savedState?.gamesOfNations, data.savedState?.turn.currentRound ?? 1);
@@ -5064,11 +5069,19 @@ export class GameScene extends Phaser.Scene {
         const summary = gamesOfNationsSystem.getSummary();
         if (summary.phase !== 'preparation') return false;
         const participationSet = gamesOfNationsSystem.setParticipation(humanNationId, participating);
-        const acknowledged = gamesOfNationsSystem.acknowledgeHumanPreparationPrompt(summary.competitionNumber);
-        if (participationSet && acknowledged) hudLayer?.refresh();
-        return participationSet && acknowledged;
+        if (!participationSet) return false;
+        if (participating) {
+          hudLayer?.refresh();
+          return true;
+        }
+        const confirmed = gamesOfNationsSystem.confirmHumanPreparationConfiguration(
+          humanNationId,
+          summary.competitionNumber,
+        );
+        if (confirmed) hudLayer?.refresh();
+        return confirmed;
       },
-      onApplyGamesStrategy: (culture, baseProduction, allocation) => {
+      onApplyGamesStrategy: (culture, baseProduction, allocation, hostBonusSport) => {
         if (!humanNationId) return false;
         if (
           !Number.isInteger(culture) || culture < 0
@@ -5082,8 +5095,15 @@ export class GameScene extends Phaser.Scene {
         const cultureSet = gamesOfNationsSystem.setNationCultureCommitment(humanNationId, culture);
         const productionSet = gamesOfNationsSystem.setNationProductionCommitment(humanNationId, baseProduction);
         const allocationSet = gamesOfNationsSystem.setNationSportAllocation(humanNationId, allocation);
-        if (cultureSet && productionSet && allocationSet) hudLayer?.refresh();
-        return cultureSet && productionSet && allocationSet;
+        if (!(cultureSet && productionSet && allocationSet)) return false;
+        const confirmed = summary.humanPreparationPromptAcknowledgedCompetitionNumber === summary.competitionNumber
+          || gamesOfNationsSystem.confirmHumanPreparationConfiguration(
+            humanNationId,
+            summary.competitionNumber,
+            hostBonusSport,
+          );
+        if (confirmed) hudLayer?.refresh();
+        return confirmed;
       },
       onToggleMapLens: toggleMapLens,
       getWorldCouncilFoundationState: getWorldCouncilFoundationStateForHuman,
@@ -5198,6 +5218,7 @@ export class GameScene extends Phaser.Scene {
       strategicResourceCapacitySystem,
       unitUpkeepSystem,
     );
+    rightPanel.setGamesOfNationsSystem(gamesOfNationsSystem);
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.

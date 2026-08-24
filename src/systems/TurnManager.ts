@@ -119,12 +119,21 @@ export class TurnManager {
 
   /** Full scenario-driven display date for the current round. */
   getGameDate(): GameDate {
-    return computeGameDate(this.scenarioMeta, this.currentRound, this.yearProgressionMultiplier);
+    return this.getGameDateForRound(this.currentRound);
+  }
+
+  /** Scenario-driven date for a historical round, using the same calendar rules as the live turn. */
+  getGameDateForRound(round: number): GameDate {
+    return computeGameDate(this.scenarioMeta, round, this.yearProgressionMultiplier);
   }
 
   /** Formatted date, e.g. "January 4000 BC" / "February 1939". */
   getGameDateLabel(): string {
     return formatGameDate(this.getGameDate());
+  }
+
+  getGameDateLabelForRound(round: number): string {
+    return formatGameDate(this.getGameDateForRound(round));
   }
 
   /**

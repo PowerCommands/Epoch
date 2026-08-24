@@ -1,5 +1,5 @@
 import { GAMES_OF_NATIONS_SPORTS } from '../systems/GamesOfNationsSystem';
-import type { GamesOfNationsSportValues } from '../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportValues } from '../types/gamesOfNations';
 import type { GamesOfNationsUiModel } from './hud/GamesOfNationsUiModel';
 import { validateGamesAllocation } from './hud/GamesOfNationsUiModel';
 
@@ -8,12 +8,14 @@ const OVERLAY_ID = 'epoch-games-of-nations-dialog';
 export interface GamesOfNationsDialogCallbacks {
   getModel: () => GamesOfNationsUiModel;
   onParticipationDecision: (participating: boolean) => boolean;
-  onApply: (culture: number, baseProduction: number, allocation: GamesOfNationsSportValues) => boolean;
+  onApply: (culture: number, baseProduction: number, allocation: GamesOfNationsSportValues, hostBonusSport?: GamesOfNationsSport) => boolean;
 }
 
 /** Accessible HTML presentation for the one-time prompt and reusable Games panel. */
 export class GamesOfNationsDialog {
   private mode: 'prompt' | 'panel' | null = null;
+  private hostBonusSportDraft: GamesOfNationsSport | undefined;
+  private hostBonusSelectionChanged: (() => void) | null = null;
 
   constructor(private readonly callbacks: GamesOfNationsDialogCallbacks) {}
 
@@ -40,21 +42,27 @@ export class GamesOfNationsDialog {
     );
     const actions = element('div', 'gon-actions');
     actions.append(
-      button('Participate', 'gon-participate', () => {
+      button(model.humanIsHost ? 'Configure mandatory participation' : 'Participate', 'gon-participate', () => {
         if (!this.callbacks.onParticipationDecision(true)) return;
         this.showPanel();
       }, true),
-      button('Do not participate', 'gon-decline', () => {
+    );
+    if (!model.humanIsHost) {
+      actions.appendChild(button('Do not participate', 'gon-decline', () => {
         if (!this.callbacks.onParticipationDecision(false)) return;
         this.close();
-      }),
-    );
+      }));
+    } else {
+      card.appendChild(notice('As host, your nation must participate, but may commit zero Culture and zero Production.'));
+    }
     card.appendChild(actions);
     this.mount(overlay, '.gon-participate');
   }
 
   showPanel(): void {
     this.mode = 'panel';
+    this.hostBonusSportDraft = undefined;
+    this.hostBonusSelectionChanged = null;
     const model = this.callbacks.getModel();
     const { overlay, card } = this.createShell('Games of Nations configuration');
     overlay.dataset.mode = 'panel';
@@ -64,7 +72,7 @@ export class GamesOfNationsDialog {
     const titleGroup = element('div');
     titleGroup.append(heading('Games of Nations', 'h1'), text(`Games #${model.gamesNumber} · ${model.phaseLabel}`, 'gon-subtitle'));
     header.append(titleGroup, button('Close', 'gon-close', () => this.close()));
-    card.append(header, this.buildStatus(model));
+    card.append(header, this.buildStatus(model), this.buildHostAdvantage(model));
 
     if (model.phase === 'waitingForFirstGames') {
       card.appendChild(notice(
@@ -178,7 +186,7 @@ export class GamesOfNationsDialog {
     const validation = text('', 'gon-validation');
     validation.id = 'gon-allocation-validation';
     validation.setAttribute('aria-live', 'polite');
-    const apply = button('Apply future strategy', 'gon-apply', () => {
+    const apply = button(model.promptPending ? 'Confirm initial strategy' : 'Apply future strategy', 'gon-apply', () => {
       const allocation = readAllocation(allocationInputs);
       const error = validateGamesAllocation(allocation);
       if (error) {
@@ -188,7 +196,8 @@ export class GamesOfNationsDialog {
       }
       const culture = readWhole(cultureInput);
       const production = readWhole(productionInput);
-      if (!this.callbacks.onApply(culture, production, allocation)) {
+      const hostBonusSport = this.hostBonusSportDraft;
+      if (!this.callbacks.onApply(culture, production, allocation, hostBonusSport)) {
         validation.textContent = 'The strategy could not be applied.';
         return;
       }
@@ -199,9 +208,10 @@ export class GamesOfNationsDialog {
       const error = validateGamesAllocation(readAllocation(allocationInputs));
       validation.textContent = error ?? 'Allocation total: 100%';
       validation.classList.toggle('gon-valid', error === null);
-      apply.disabled = !editable || error !== null;
+      apply.disabled = !editable || error !== null || (model.hostBonusSelectionRequired && this.hostBonusSportDraft === undefined);
     };
     for (const input of allocationInputs.values()) input.addEventListener('input', updateValidation);
+    this.hostBonusSelectionChanged = updateValidation;
     cultureInput.addEventListener('input', () => sanitizeDraft(cultureInput));
     productionInput.addEventListener('input', () => sanitizeDraft(productionInput));
     updateValidation();
@@ -210,6 +220,44 @@ export class GamesOfNationsDialog {
     section.appendChild(footer);
 
     section.appendChild(notice('Each Culture or base Production point invested generates 10 Games Points. Commitments are attempted independently and all-or-nothing each Preparation turn. Already invested resources and Games Points cannot be recovered or moved between sports.'));
+    return section;
+  }
+
+  private buildHostAdvantage(model: GamesOfNationsUiModel): HTMLElement {
+    const section = element('section', 'gon-investment');
+    section.append(heading('Host Advantage', 'h2'));
+    if (!model.hostBonusCalculated) {
+      section.appendChild(notice(`${model.hostNationName ?? 'The host'} receives a fixed bonus after initial participant commitments are confirmed.`));
+      return section;
+    }
+    if (model.hostBonusSelectionRequired) {
+      section.append(
+        text(`Bonus: +${model.hostBonusGamesPoints} GP`, 'gon-emphasis'),
+        paragraph('Choose exactly one sport. The entire bonus is locked to that sport when the initial strategy is confirmed.'),
+      );
+      const select = document.createElement('select');
+      select.id = 'gon-host-bonus-sport';
+      select.className = 'gon-number-input';
+      select.setAttribute('aria-label', 'Host bonus sport');
+      select.appendChild(new Option('Choose one sport', ''));
+      for (const sport of GAMES_OF_NATIONS_SPORTS) select.appendChild(new Option(sport, sport));
+      select.addEventListener('change', () => {
+        this.hostBonusSportDraft = GAMES_OF_NATIONS_SPORTS.find((sport) => sport === select.value);
+        this.hostBonusSelectionChanged?.();
+      });
+      section.appendChild(select);
+      return section;
+    }
+    const assignment = model.hostBonusSport
+      ? `${model.hostNationName ?? 'The host'} receives +${model.hostBonusGamesPoints} GP in ${model.hostBonusSport}.`
+      : `Host bonus: +${model.hostBonusGamesPoints} GP.`;
+    section.appendChild(notice(`${assignment}${model.hostBonusLocked ? ' Locked for this Games.' : ''}`));
+    if (model.hostBonusSport && model.hostBonusBaseGamesPoints !== null && model.hostBonusEffectiveGamesPoints !== null) {
+      section.appendChild(text(
+        `${model.hostBonusSport}: Base GP ${model.hostBonusBaseGamesPoints} · Host Bonus +${model.hostBonusGamesPoints} · Effective GP ${model.hostBonusEffectiveGamesPoints}`,
+        'gon-locked',
+      ));
+    }
     return section;
   }
 
@@ -259,6 +307,12 @@ export class GamesOfNationsDialog {
           text(result.silverName ? `Silver — ${result.silverName}` : 'No Silver awarded'),
           text(result.bronzeName ? `Bronze — ${result.bronzeName}` : 'No Bronze awarded'),
         );
+      }
+      if (result.sport === model.hostBonusSport) {
+        card.appendChild(text(
+          `Host advantage — Base GP ${model.hostBonusBaseGamesPoints ?? 0} + ${model.hostBonusGamesPoints} bonus = ${model.hostBonusEffectiveGamesPoints ?? model.hostBonusGamesPoints} effective GP`,
+          'gon-locked',
+        ));
       }
       sports.appendChild(card);
     }
@@ -321,6 +375,7 @@ function appendStyles(overlay: HTMLElement): void {
     .gon-actions,.gon-panel-footer{display:flex;gap:12px;justify-content:flex-end;align-items:center;flex-wrap:wrap;margin-top:24px}
     .gon-card button{border:1px solid #6b8fbd;border-radius:5px;background:#112b50;color:#eef6ff;padding:10px 17px;font:700 14px inherit;cursor:pointer}
     .gon-card button:hover:not(:disabled),.gon-card button:focus-visible{background:#174477;outline:2px solid #93c5fd;outline-offset:2px}.gon-card button.gon-participate,.gon-card button.gon-apply{background:#1d4ed8;border-color:#60a5fa}.gon-card button:disabled{opacity:.45;cursor:not-allowed}
+    .gon-card select{min-width:220px;box-sizing:border-box;padding:9px;border:1px solid #537aa5;border-radius:4px;background:#071525;color:#fff;font:700 14px inherit}
     .gon-panel-header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start}.gon-subtitle,.gon-muted{color:#9fb5d1;font-size:14px}.gon-status-grid,.gon-points-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:18px 0}
     .gon-metric{padding:11px 13px;border:1px solid #24466f;border-radius:7px;background:rgba(3,13,29,.48)}.gon-metric-label{display:block;color:#8eabc9;font-size:12px;text-transform:uppercase;letter-spacing:.06em}.gon-metric-value{display:block;margin-top:4px;font-weight:700;color:#f1f6ff}
     .gon-notice{margin:16px 0;padding:11px 13px;border-left:3px solid #60a5fa;background:rgba(30,64,175,.15);line-height:1.45;color:#d8e8fb}.gon-section-heading{display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}

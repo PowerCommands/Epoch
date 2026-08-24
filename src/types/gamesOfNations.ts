@@ -32,6 +32,35 @@ export interface GamesOfNationsMedalStanding {
   bronze: number;
 }
 
+export const GAMES_MEDAL_POINTS = {
+  gold: 5,
+  silver: 3,
+  bronze: 1,
+} as const;
+
+export interface CompletedGamesOfNationsRecord {
+  gamesNumber: number;
+  tournamentStartTurn: number;
+  completionTurn: number;
+  worldYear: number;
+  yearLabel: string;
+  hostNationId?: string;
+  hostNationName: string;
+  hostCityId?: string;
+  hostCityName: string;
+  overallWinnerNationId?: string;
+  overallWinnerNationName?: string;
+  hostBonusGamesPoints?: number;
+  hostBonusSport?: GamesOfNationsSport;
+  medalTable: Array<GamesOfNationsMedalStanding & { nationName: string }>;
+}
+
+export interface GamesOfNationsHistoricalStanding extends GamesOfNationsMedalStanding {
+  nationName: string;
+  totalMedals: number;
+  points: number;
+}
+
 /** Per-cycle participation and preparation investment state. */
 export interface GamesOfNationsParticipantState {
   nationId: string;
@@ -46,6 +75,9 @@ export interface GamesOfNationsParticipantState {
   failedCultureCommitmentTurns: number;
   failedProductionCommitmentTurns: number;
   strategyInitialized: boolean;
+  /** Immutable values captured for this cycle's host-bonus calculation. */
+  initialCultureCommitment?: number;
+  initialProductionCommitment?: number;
   lastInvestmentTurn?: number;
   cultureDiversionThisTurn?: number;
   productionDiversionByCity?: Record<string, number>;
@@ -71,6 +103,11 @@ export interface SavedGamesOfNationsState {
   sportResults?: GamesOfNationsSportResult[];
   medalTable?: GamesOfNationsMedalStanding[];
   overallWinnerNationId?: string;
+  hostBonusCalculated?: boolean;
+  totalExternalInitialGamesPoints?: number;
+  hostBonusGamesPoints?: number;
+  hostBonusSport?: GamesOfNationsSport;
+  completedGames?: CompletedGamesOfNationsRecord[];
   /** Last Games cycle for which the human answered the one-time Preparation prompt. */
   humanPreparationPromptAcknowledgedCompetitionNumber?: number;
   lastProcessedTurn: number;
@@ -99,6 +136,15 @@ export interface GamesOfNationsSummary {
   medalTable: GamesOfNationsMedalStanding[];
   overallWinnerNationId: string | null;
   competitionComplete: boolean;
+  hostBonusCalculated: boolean;
+  hostBonusRate: number;
+  totalExternalInitialGamesPoints: number;
+  hostBonusGamesPoints: number;
+  hostBonusSport: GamesOfNationsSport | null;
+  hostEffectiveGamesPoints: number | null;
+  completedGamesCount: number;
+  completedGames: CompletedGamesOfNationsRecord[];
+  historicalMedalStandings: GamesOfNationsHistoricalStanding[];
   participatingNationIds: string[];
   participants: GamesOfNationsParticipantState[];
 }

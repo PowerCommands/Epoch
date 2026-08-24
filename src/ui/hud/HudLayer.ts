@@ -14,7 +14,7 @@ import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import { GamesOfNationsHud } from './GamesOfNationsHud';
 import type { GamesOfNationsUiModel } from './GamesOfNationsUiModel';
-import type { GamesOfNationsSportValues } from '../../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportValues } from '../../types/gamesOfNations';
 import { IdleCitiesHudIndicator } from './IdleCitiesHudIndicator';
 import { MapLensToggleHud } from './MapLensToggleHud';
 import type { NationHudDataProvider } from './NationHudDataProvider';
@@ -50,6 +50,7 @@ interface HudLayerConfig {
     culture: number,
     baseProduction: number,
     allocation: GamesOfNationsSportValues,
+    hostBonusSport?: GamesOfNationsSport,
   ) => boolean;
   onToggleMapLens: () => void;
   getWorldCouncilFoundationState?: () => WorldCouncilFoundationDialogState | null;

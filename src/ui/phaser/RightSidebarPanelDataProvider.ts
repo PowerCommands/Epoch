@@ -67,6 +67,7 @@ import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
 import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../systems/ResourceCitySearchSystem';
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
+import type { GamesOfNationsSystem } from '../../systems/GamesOfNationsSystem';
 import { buildDominationRanking } from '../../systems/DominationRanking';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
@@ -94,6 +95,7 @@ import type {
 } from './RightSidebarPanelTypes';
 import type { DiplomacyGraph, DiplomacyGraphEdge, DiplomacyGraphNode, DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 import { RafScheduler } from '../../utils/RafScheduler';
+import { buildGamesOfNationsLeaderboardSections } from './GamesOfNationsLeaderboardContent';
 
 /** One city's entry in a covert intelligence report. */
 export interface IntelReportCity {
@@ -189,6 +191,7 @@ export class RightSidebarPanelDataProvider {
   private resourceCitySearchSystem: ResourceCitySearchSystem | null = null;
   private detailsSearchQuery = '';
   private eraSystem: EraSystem | null = null;
+  private gamesOfNationsSystem: GamesOfNationsSystem | null = null;
   private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
@@ -310,6 +313,10 @@ export class RightSidebarPanelDataProvider {
 
   setEraSystem(eraSystem: EraSystem): void {
     this.eraSystem = eraSystem;
+  }
+
+  setGamesOfNationsSystem(system: GamesOfNationsSystem): void {
+    this.gamesOfNationsSystem = system;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -498,6 +505,15 @@ export class RightSidebarPanelDataProvider {
   }
 
   getLeaderboardContent(category: RightSidebarLeaderboardCategory): RightSidebarContent {
+    if (category === 'gon') {
+      return {
+        title: 'Leaderboard',
+        sections: buildGamesOfNationsLeaderboardSections(
+          this.gamesOfNationsSystem?.getHistoricalMedalStandings() ?? [],
+          this.gamesOfNationsSystem?.getCompletedGames() ?? [],
+        ),
+      };
+    }
     const section = this.getLeaderboardSectionByCategory(category);
     return {
       title: 'Leaderboard',
@@ -2294,7 +2310,7 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
-  private getLeaderboardSectionByCategory(category: RightSidebarLeaderboardCategory): RightSidebarSection {
+  private getLeaderboardSectionByCategory(category: Exclude<RightSidebarLeaderboardCategory, 'gon'>): RightSidebarSection {
     switch (category) {
       case 'domination':
         return this.getLeaderboardSection('⚔️ Domination', this.getDominationLeaderboard());

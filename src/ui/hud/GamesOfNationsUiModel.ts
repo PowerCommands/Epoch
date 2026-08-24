@@ -1,6 +1,7 @@
 import { GAMES_POINTS_PER_RESOURCE, GAMES_OF_NATIONS_SPORTS } from '../../systems/GamesOfNationsSystem';
 import type {
   GamesOfNationsParticipantState,
+  GamesOfNationsSport,
   GamesOfNationsSportValues,
   GamesOfNationsSummary,
 } from '../../types/gamesOfNations';
@@ -69,6 +70,15 @@ export interface GamesOfNationsUiModel {
   }>;
   medalTable: Array<{ nationId: string; nationName: string; gold: number; silver: number; bronze: number }>;
   overallWinnerName: string | null;
+  humanIsHost: boolean;
+  hostNationName: string | null;
+  hostBonusCalculated: boolean;
+  hostBonusGamesPoints: number;
+  hostBonusSport: GamesOfNationsSport | null;
+  hostBonusSelectionRequired: boolean;
+  hostBonusLocked: boolean;
+  hostBonusBaseGamesPoints: number | null;
+  hostBonusEffectiveGamesPoints: number | null;
 }
 
 export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): GamesOfNationsUiModel {
@@ -92,6 +102,11 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     ? summary.turnsUntilNextPhase
     : null;
   const participating = participant?.participating === true;
+  const humanIsHost = summary.hostNationId === context.humanNationId;
+  const hostParticipant = summary.participants.find((entry) => entry.nationId === summary.hostNationId);
+  const hostBonusBaseGamesPoints = summary.hostBonusSport
+    ? hostParticipant?.gamesPointsBySport[summary.hostBonusSport] ?? 0
+    : null;
   const nationName = (nationId: string | undefined): string | null => (
     nationId ? context.nationNames?.[nationId] ?? nationId : null
   );
@@ -135,6 +150,20 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
       nationName: nationName(standing.nationId) ?? standing.nationId,
     })),
     overallWinnerName: nationName(summary.overallWinnerNationId ?? undefined),
+    humanIsHost,
+    hostNationName: context.hostNationName,
+    hostBonusCalculated: summary.hostBonusCalculated,
+    hostBonusGamesPoints: summary.hostBonusGamesPoints,
+    hostBonusSport: summary.hostBonusSport,
+    hostBonusSelectionRequired: summary.phase === 'preparation'
+      && humanIsHost
+      && summary.hostBonusCalculated
+      && summary.hostBonusSport === null,
+    hostBonusLocked: summary.hostBonusSport !== null,
+    hostBonusBaseGamesPoints,
+    hostBonusEffectiveGamesPoints: hostBonusBaseGamesPoints === null
+      ? null
+      : hostBonusBaseGamesPoints + summary.hostBonusGamesPoints,
   };
 }
 

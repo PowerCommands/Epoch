@@ -10,6 +10,7 @@ import type {
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
   RightSidebarRelationsTableRow,
+  RightSidebarCompactTableRow,
   RightSidebarCityPairPickerRow,
   RightSidebarButtonGroupRow,
   CityPickerItem,
@@ -59,6 +60,7 @@ interface ContentInput {
 const DEPTH = 1200;
 const EDGE_MARGIN = 16;
 const PANEL_WIDTH = 678;
+const LEADERBOARD_PANEL_WIDTH = 1110;
 const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
 const PANEL_PADDING = 24;
@@ -97,7 +99,7 @@ const MODES: ModeDefinition[] = [
   { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa },
 ];
 
-const LEADERBOARD_CATEGORIES: Array<{
+export const LEADERBOARD_CATEGORIES: Array<{
   id: RightSidebarLeaderboardCategory;
   label: string;
   accentColor: number;
@@ -106,6 +108,7 @@ const LEADERBOARD_CATEGORIES: Array<{
   { id: 'diplomacy', label: '🕊️ Diplomacy', accentColor: 0xa7f3d0 },
   { id: 'research', label: '💡 Research', accentColor: 0x6ec6ff },
   { id: 'cultural', label: '🏛️ Cultural', accentColor: 0xf4d06f },
+  { id: 'gon', label: 'Game of nations', accentColor: 0xe0b94f },
 ];
 
 const CITY_DETAIL_TABS: Array<{
@@ -344,6 +347,7 @@ export class RightSidebarPanel {
     this.activeMode = mode;
     this.collapsed = false;
     this.scrollOffset = 0;
+    this.layout();
     this.renderActiveContent();
     this.refreshVisibility();
     this.refreshButtonVisuals();
@@ -362,12 +366,13 @@ export class RightSidebarPanel {
   /** Returns the screen-space X of the leftmost action button's left edge. */
   getButtonRowLeftX(): number {
     const viewportWidth = this.scene.scale.width;
-    const panelX = viewportWidth - PANEL_WIDTH - EDGE_MARGIN;
+    const panelWidth = this.getPanelWidth();
+    const panelX = viewportWidth - panelWidth - EDGE_MARGIN;
     const visibleCount = this.modeButtons.filter((b) => b.visible).length;
     const buttonRowWidth = visibleCount > 0
       ? BUTTON_DIAMETER * visibleCount + BUTTON_GAP * (visibleCount - 1)
       : 0;
-    return panelX + PANEL_WIDTH - buttonRowWidth;
+    return panelX + panelWidth - buttonRowWidth;
   }
 
   collapse(): void {
@@ -975,7 +980,8 @@ export class RightSidebarPanel {
   }
 
   private addLeaderboardTabs(y: number): number {
-    const tabWidth = (CONTENT_WIDTH - LEADERBOARD_TAB_GAP * (LEADERBOARD_CATEGORIES.length - 1)) / LEADERBOARD_CATEGORIES.length;
+    const contentWidth = this.getContentWidth();
+    const tabWidth = (contentWidth - LEADERBOARD_TAB_GAP * (LEADERBOARD_CATEGORIES.length - 1)) / LEADERBOARD_CATEGORIES.length;
     let x = PANEL_PADDING;
     for (const category of LEADERBOARD_CATEGORIES) {
       const selected = category.id === this.leaderboardCategory;
@@ -1192,9 +1198,66 @@ export class RightSidebarPanel {
         return this.addSearchInputRow(row, y);
       case 'relationsTable':
         return this.addRelationsTableRow(row, y);
+      case 'compactTable':
+        return this.addCompactTableRow(row, y);
       case 'cityPairPicker':
         return this.addCityPairPickerRow(row, y);
     }
+  }
+
+  private addCompactTableRow(row: RightSidebarCompactTableRow, y: number): number {
+    if (row.columns.length === 0) return y;
+    const contentWidth = this.getContentWidth() - 20;
+    const totalWeight = row.columns.reduce((sum, column) => sum + Math.max(0.01, column.weight), 0);
+    const widths = row.columns.map((column) => contentWidth * Math.max(0.01, column.weight) / totalWeight);
+    const headerHeight = 30;
+    const bodyHeight = 30;
+    const padding = 4;
+
+    const addCell = (
+      value: string,
+      columnIndex: number,
+      cellY: number,
+      color: string,
+      fontStyle: 'normal' | 'bold',
+    ): void => {
+      const left = PANEL_PADDING + widths.slice(0, columnIndex).reduce((sum, width) => sum + width, 0);
+      const width = widths[columnIndex];
+      const align = row.columns[columnIndex].align ?? 'left';
+      const text = this.addContentText(value, 10, color, fontStyle, Math.max(1, width - padding * 2));
+      text.setOrigin(align === 'right' ? 1 : align === 'center' ? 0.5 : 0, 0);
+      text.setPosition(
+        align === 'right' ? left + width - padding : align === 'center' ? left + width / 2 : left + padding,
+        cellY + 7,
+      );
+      text.setData('baseY', cellY + 7);
+      text.setCrop(0, 0, Math.max(1, width - padding * 2), bodyHeight);
+    };
+
+    const header = this.addOwned(new Phaser.GameObjects.Rectangle(
+      this.scene, PANEL_PADDING, y, contentWidth, headerHeight, 0x17364a, 0.95,
+    )).setOrigin(0, 0).setScrollFactor(0);
+    header.setData('baseY', y);
+    this.panelContainer.add(header);
+    this.contentObjects.push(header);
+    header.setMask(this.contentMask);
+    row.columns.forEach((column, index) => addCell(column.label, index, y, '#c8d7e6', 'bold'));
+
+    let cursorY = y + headerHeight;
+    row.rows.forEach((cells, rowIndex) => {
+      if (rowIndex % 2 === 1) {
+        const stripe = this.addOwned(new Phaser.GameObjects.Rectangle(
+          this.scene, PANEL_PADDING, cursorY, contentWidth, bodyHeight, 0x102838, 0.55,
+        )).setOrigin(0, 0).setScrollFactor(0);
+        stripe.setData('baseY', cursorY);
+        this.panelContainer.add(stripe);
+        this.contentObjects.push(stripe);
+        stripe.setMask(this.contentMask);
+      }
+      row.columns.forEach((_column, index) => addCell(cells[index] ?? '', index, cursorY, '#edf4ff', 'normal'));
+      cursorY += bodyHeight;
+    });
+    return cursorY + ROW_GAP;
   }
 
   /**
@@ -1584,17 +1647,18 @@ export class RightSidebarPanel {
   private layout(): void {
     const viewportWidth = this.scene.scale.width;
     const viewportHeight = this.scene.scale.height;
+    const panelWidth = this.getPanelWidth();
     this.panelHeight = Math.max(260, viewportHeight - PANEL_TOP - PANEL_BOTTOM_MARGIN);
-    const panelX = viewportWidth - PANEL_WIDTH - EDGE_MARGIN;
+    const panelX = viewportWidth - panelWidth - EDGE_MARGIN;
     const panelY = PANEL_TOP;
 
     this.container.setPosition(0, 0);
     this.buttonContainer.setPosition(0, 0);
     this.panelContainer.setPosition(panelX, panelY);
-    this.panelBackground.setSize(PANEL_WIDTH, this.panelHeight).setPosition(0, 0);
-    this.panelHitArea.setSize(PANEL_WIDTH, this.panelHeight).setPosition(0, 0);
+    this.panelBackground.setSize(panelWidth, this.panelHeight).setPosition(0, 0);
+    this.panelHitArea.setSize(panelWidth, this.panelHeight).setPosition(0, 0);
     this.titleText.setPosition(PANEL_PADDING, PANEL_PADDING);
-    const copyX = PANEL_WIDTH - PANEL_PADDING - LOG_COPY_BUTTON_WIDTH;
+    const copyX = panelWidth - PANEL_PADDING - LOG_COPY_BUTTON_WIDTH;
     const copyY = PANEL_PADDING - 4;
     this.logCopyButtonBackground.setPosition(copyX, copyY);
     this.logCopyButtonLabel.setPosition(copyX + LOG_COPY_BUTTON_WIDTH / 2, copyY + LOG_COPY_BUTTON_HEIGHT / 2);
@@ -1606,7 +1670,7 @@ export class RightSidebarPanel {
     const buttonRowWidth = visibleButtons.length > 0
       ? (BUTTON_DIAMETER * visibleButtons.length) + (BUTTON_GAP * (visibleButtons.length - 1))
       : 0;
-    let buttonX = panelX + PANEL_WIDTH - buttonRowWidth + BUTTON_RADIUS;
+    let buttonX = panelX + panelWidth - buttonRowWidth + BUTTON_RADIUS;
     const buttonY = BUTTON_ROW_TOP + BUTTON_RADIUS;
     for (const button of visibleButtons) {
       button.background.setPosition(buttonX, buttonY);
@@ -1617,7 +1681,7 @@ export class RightSidebarPanel {
       buttonX += BUTTON_DIAMETER + BUTTON_GAP;
     }
 
-    const collapseX = PANEL_WIDTH / 2;
+    const collapseX = panelWidth / 2;
     const collapseY = this.panelHeight - PANEL_PADDING - COLLAPSE_HEIGHT / 2;
     this.collapseBackground.setPosition(collapseX, collapseY);
     this.collapseLabel.setPosition(collapseX + 13, collapseY).setOrigin(0.5);
@@ -1634,7 +1698,7 @@ export class RightSidebarPanel {
     this.contentMaskGraphics.fillRect(
       this.panelContainer.x + PANEL_PADDING,
       this.panelContainer.y + this.scrollableContentTop - 2,
-      CONTENT_WIDTH,
+      this.getContentWidth(),
       visibleContentHeight + 4,
     );
   }
@@ -1715,7 +1779,7 @@ export class RightSidebarPanel {
     if (!shouldShow) return;
 
     const trackHeight = visibleHeight;
-    const trackX = PANEL_WIDTH - PANEL_PADDING + SCROLLBAR_MARGIN;
+    const trackX = this.getPanelWidth() - PANEL_PADDING + SCROLLBAR_MARGIN;
     const trackY = this.scrollableContentTop;
     const thumbHeight = Phaser.Math.Clamp(
       (visibleHeight / this.contentHeight) * trackHeight,
@@ -1859,20 +1923,30 @@ export class RightSidebarPanel {
     return Math.max(120, this.panelHeight - this.scrollableContentTop - CONTENT_BOTTOM_GAP);
   }
 
+  private getPanelWidth(): number {
+    return this.activeMode === 'leaderboard' ? LEADERBOARD_PANEL_WIDTH : PANEL_WIDTH;
+  }
+
+  private getContentWidth(): number {
+    return this.getPanelWidth() - PANEL_PADDING * 2;
+  }
+
   private isPointerOverPanel(pointer: Phaser.Input.Pointer): boolean {
-    const panelX = this.scene.scale.width - PANEL_WIDTH - EDGE_MARGIN;
+    const panelWidth = this.getPanelWidth();
+    const panelX = this.scene.scale.width - panelWidth - EDGE_MARGIN;
     const panelY = PANEL_TOP;
     return pointer.x >= panelX
-      && pointer.x <= panelX + PANEL_WIDTH
+      && pointer.x <= panelX + panelWidth
       && pointer.y >= panelY
       && pointer.y <= panelY + this.panelHeight;
   }
 
   private containsScreenPoint(screenX: number, screenY: number): boolean {
+    const panelWidth = this.getPanelWidth();
     const panelBounds = new Phaser.Geom.Rectangle(
-      this.scene.scale.width - PANEL_WIDTH - EDGE_MARGIN,
+      this.scene.scale.width - panelWidth - EDGE_MARGIN,
       PANEL_TOP,
-      PANEL_WIDTH,
+      panelWidth,
       this.panelHeight,
     );
     if (!this.collapsed && panelBounds.contains(screenX, screenY)) return true;

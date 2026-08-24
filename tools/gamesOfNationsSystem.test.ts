@@ -82,6 +82,15 @@ test('remains inactive before Games and Recreation is completed', () => {
     medalTable: [],
     overallWinnerNationId: null,
     competitionComplete: false,
+    hostBonusCalculated: false,
+    hostBonusRate: 0.1,
+    totalExternalInitialGamesPoints: 0,
+    hostBonusGamesPoints: 0,
+    hostBonusSport: null,
+    hostEffectiveGamesPoints: null,
+    completedGamesCount: 0,
+    completedGames: [],
+    historicalMedalStandings: [],
     participatingNationIds: [],
     participants: [],
   });
@@ -183,8 +192,9 @@ test('participation is cycle-scoped, defaults living nations in, and supports fu
   const h = harness();
   foundAt80(h);
   assert.deepEqual(h.system.getSummary().participatingNationIds, ['france', 'sweden', 'england']);
-  assert.equal(h.system.setParticipation('france', false), true);
-  assert.deepEqual(h.system.getSummary().participatingNationIds, ['sweden', 'england']);
+  assert.equal(h.system.setParticipation('france', false), false);
+  assert.equal(h.system.setParticipation('sweden', false), true);
+  assert.deepEqual(h.system.getSummary().participatingNationIds, ['france', 'england']);
   h.advanceTo(120);
   assert.deepEqual(h.system.getSummary().participatingNationIds, ['france', 'sweden', 'england']);
 });
