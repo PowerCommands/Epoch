@@ -119,7 +119,7 @@ import {
   type GamesOfNationsSportResolvedEvent,
 } from '../systems/GamesOfNationsSystem';
 import { buildGamesOfNationsEdition } from '../systems/GamesOfNationsChronicle';
-import type { GamesOfNationsSummary } from '../types/gamesOfNations';
+import type { GamesOfNationsSportValues, GamesOfNationsSummary } from '../types/gamesOfNations';
 import { buildGamesOfNationsUiModel } from '../ui/hud/GamesOfNationsUiModel';
 import { buildDominationRanking } from '../systems/DominationRanking';
 import { TimelinePanel } from '../ui/TimelinePanel';
@@ -5357,7 +5357,7 @@ export class GameScene extends Phaser.Scene {
         }
         return resolved;
       },
-      onApplyGamesStrategy: (culture, baseProduction, hostBonusSport) => {
+      onApplyGamesStrategy: (culture, baseProduction, strategy: GamesOfNationsSportValues, hostBonusSport) => {
         if (!humanNationId) return false;
         if (
           !Number.isInteger(culture) || culture < 0
@@ -5369,7 +5369,8 @@ export class GameScene extends Phaser.Scene {
         if (summary.phase !== 'preparation' || !participant?.participating) return false;
         const cultureSet = gamesOfNationsSystem.setNationCultureCommitment(humanNationId, culture);
         const productionSet = gamesOfNationsSystem.setNationProductionCommitment(humanNationId, baseProduction);
-        if (!(cultureSet && productionSet)) return false;
+        const strategySet = gamesOfNationsSystem.setNationGamesPointsStrategy(humanNationId, strategy);
+        if (!(cultureSet && productionSet && strategySet)) return false;
         const confirmed = summary.humanPreparationPromptAcknowledgedCompetitionNumber === summary.competitionNumber
           || gamesOfNationsSystem.confirmHumanPreparationConfiguration(
             humanNationId,
@@ -5378,6 +5379,9 @@ export class GameScene extends Phaser.Scene {
           );
         if (confirmed) hudLayer?.refresh();
         return confirmed;
+      },
+      onGamesStrategyAdjustmentSeen: () => {
+        if (humanNationId) gamesOfNationsSystem.acknowledgeHumanStrategyAdjustment(humanNationId);
       },
       onAllocateGamesPoints: (sport, amount) => {
         if (!humanNationId) return false;

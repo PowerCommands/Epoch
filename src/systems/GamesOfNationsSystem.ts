@@ -701,6 +701,38 @@ export class GamesOfNationsSystem {
     return true;
   }
 
+  setNationGamesPointsStrategy(nationId: string, strategy: GamesOfNationsSportValues): boolean {
+    const participant = this.getParticipant(nationId);
+    if (!participant || this.state.phase !== 'preparation' || !participant.participating
+      || this.isExcludedFromGames(nationId, this.state.competitionNumber)) return false;
+    if (ALL_GAMES_SPORTS.some((sport) => (
+      !Number.isFinite(strategy[sport])
+      || !Number.isInteger(strategy[sport])
+      || strategy[sport] < 0
+    ))) return false;
+    const normalized = normalizeSportTotals(strategy);
+    const activeSports = this.cycleSports();
+    const activeSet = new Set<GamesOfNationsSport>(activeSports);
+    if (ALL_GAMES_SPORTS.some((sport) => !activeSet.has(sport) && normalized[sport] !== 0)) return false;
+    const budget = (participant.cultureCommitment + participant.productionCommitment) * GAMES_POINTS_PER_RESOURCE;
+    const planned = activeSports.reduce((sum, sport) => sum + normalized[sport], 0);
+    if (planned !== budget) return false;
+    participant.gamesPointsStrategyBySport = normalized;
+    participant.strategyInitialized = true;
+    delete participant.strategyAdjustmentPending;
+    if (participant.unallocatedGamesPoints > 0) {
+      this.allocatePoolByHumanStrategy(participant, participant.unallocatedGamesPoints);
+    }
+    return true;
+  }
+
+  acknowledgeHumanStrategyAdjustment(nationId: string): boolean {
+    const participant = this.getParticipant(nationId);
+    if (!participant || !this.isInteractiveHuman(nationId) || participant.strategyAdjustmentPending !== true) return false;
+    delete participant.strategyAdjustmentPending;
+    return true;
+  }
+
   allocateGamesPoints(nationId: string, sport: GamesOfNationsSport, amount: number): boolean {
     const participant = this.getParticipant(nationId);
     if (
@@ -772,7 +804,12 @@ export class GamesOfNationsSystem {
       participant.totalGamesPoints += generatedPoints;
       participant.gamesPointsGeneratedThisTurn = generatedPoints;
       this.log(`${this.nationName(nationId)} generated ${generatedPoints} GP; unallocated pool now ${participant.unallocatedGamesPoints} GP`);
-      if (!this.isInteractiveHuman(nationId)) this.allocateAIGamesPoints(participant, generatedPoints);
+      if (!this.isInteractiveHuman(nationId)) {
+        this.allocateAIGamesPoints(participant, generatedPoints);
+      }
+    }
+    if (this.isInteractiveHuman(nationId) && participant.strategyInitialized) {
+      this.allocateHumanGamesPointsByStrategy(participant, generatedPoints);
     }
   }
 
@@ -1569,6 +1606,44 @@ export class GamesOfNationsSystem {
     this.log(`${this.nationName(participant.nationId)} allocated ${amount} generated GP directly across active sports`);
   }
 
+  private allocateHumanGamesPointsByStrategy(
+    participant: GamesOfNationsParticipantState,
+    generatedPoints: number,
+  ): void {
+    const activeSports = this.cycleSports();
+    const planned = activeSports.reduce((sum, sport) => sum + participant.gamesPointsStrategyBySport[sport], 0);
+    if (planned > generatedPoints) {
+      participant.gamesPointsStrategyBySport = reduceGamesStrategyToBudget(
+        participant.gamesPointsStrategyBySport,
+        generatedPoints,
+        activeSports,
+      );
+      this.log(`${this.nationName(participant.nationId)} Games strategy rebalanced from ${planned} to ${generatedPoints} GP after actual investment changed`);
+    }
+    if (planned !== generatedPoints) participant.strategyAdjustmentPending = true;
+    const adjustedTotal = activeSports.reduce((sum, sport) => sum + participant.gamesPointsStrategyBySport[sport], 0);
+    this.allocatePoolByHumanStrategy(participant, Math.min(generatedPoints, adjustedTotal));
+  }
+
+  private allocatePoolByHumanStrategy(
+    participant: GamesOfNationsParticipantState,
+    maximumAmount: number,
+  ): void {
+    const activeSports = this.cycleSports();
+    const amount = Math.min(whole(maximumAmount), participant.unallocatedGamesPoints);
+    if (amount <= 0) return;
+    const strategyTotal = activeSports.reduce((sum, sport) => sum + participant.gamesPointsStrategyBySport[sport], 0);
+    if (strategyTotal <= 0) return;
+    const distributed = distributeGamesPointsByWeights(
+      amount,
+      participant.gamesPointsStrategyBySport,
+      activeSports,
+    );
+    for (const sport of activeSports) participant.gamesPointsBySport[sport] += distributed[sport];
+    participant.unallocatedGamesPoints -= amount;
+    this.log(`${this.nationName(participant.nationId)} applied ${amount} GP using its recurring sport strategy`);
+  }
+
   private distributeParticipantPoolEvenly(
     participant: GamesOfNationsParticipantState,
     reason: 'manually distributed' | 'auto-distributed',
@@ -1998,6 +2073,7 @@ function newParticipant(nationId: string): GamesOfNationsParticipantState {
     cultureCommitment: 0,
     productionCommitment: 0,
     unallocatedGamesPoints: 0,
+    gamesPointsStrategyBySport: equalSportValues(0),
     gamesPointsBySport: equalSportValues(0),
     totalGamesPoints: 0,
     totalCultureInvested: 0,
@@ -2017,6 +2093,8 @@ function normalizeParticipant(value: GamesOfNationsParticipantState): GamesOfNat
   // Legacy percentage preferences are intentionally discarded. Already committed
   // sport GP remain exact and future GP enters the new unallocated pool.
   participant.unallocatedGamesPoints = whole(partial.unallocatedGamesPoints ?? 0);
+  participant.gamesPointsStrategyBySport = normalizeSportTotals(partial.gamesPointsStrategyBySport);
+  if (partial.strategyAdjustmentPending === true) participant.strategyAdjustmentPending = true;
   participant.gamesPointsBySport = normalizeSportTotals(partial.gamesPointsBySport);
   participant.totalGamesPoints = whole(partial.totalGamesPoints
     ?? participant.unallocatedGamesPoints
@@ -2050,6 +2128,7 @@ function normalizeParticipant(value: GamesOfNationsParticipantState): GamesOfNat
 function cloneParticipant(participant: GamesOfNationsParticipantState): GamesOfNationsParticipantState {
   return {
     ...participant,
+    gamesPointsStrategyBySport: { ...participant.gamesPointsStrategyBySport },
     gamesPointsBySport: { ...participant.gamesPointsBySport },
     productionDiversionByCity: participant.productionDiversionByCity
       ? { ...participant.productionDiversionByCity }
@@ -2077,6 +2156,38 @@ function normalizeSportTotals(value: GamesOfNationsSportValues | undefined): Gam
   if (!value || typeof value !== 'object') return totals;
   for (const sport of ALL_GAMES_SPORTS) totals[sport] = whole(value[sport]);
   return totals;
+}
+
+/** Reduce the largest planned sport first until the recurring strategy fits its real GP budget. */
+export function reduceGamesStrategyToBudget(
+  strategy: GamesOfNationsSportValues,
+  budget: number,
+  sports: readonly GamesOfNationsSport[] = GAMES_OF_NATIONS_SPORTS,
+): GamesOfNationsSportValues {
+  const reduced = normalizeSportTotals(strategy);
+  const target = whole(budget);
+  let total = sports.reduce((sum, sport) => sum + reduced[sport], 0);
+  while (total > target) {
+    const highest = Math.max(...sports.map((sport) => reduced[sport]));
+    const largest = sports.filter((sport) => reduced[sport] === highest);
+    const nextHighest = Math.max(0, ...sports
+      .filter((sport) => reduced[sport] < highest)
+      .map((sport) => reduced[sport]));
+    const deficit = total - target;
+    const levelCost = (highest - nextHighest) * largest.length;
+    if (levelCost > 0 && deficit >= levelCost) {
+      for (const sport of largest) reduced[sport] = nextHighest;
+      total -= levelCost;
+      continue;
+    }
+    const evenReduction = Math.floor(deficit / largest.length);
+    const remainder = deficit % largest.length;
+    largest.forEach((sport, index) => {
+      reduced[sport] -= evenReduction + (index < remainder ? 1 : 0);
+    });
+    total = target;
+  }
+  return reduced;
 }
 
 export function distributeGamesPointsByWeights(

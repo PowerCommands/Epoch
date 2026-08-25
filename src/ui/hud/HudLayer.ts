@@ -14,7 +14,7 @@ import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import { GamesOfNationsHud } from './GamesOfNationsHud';
 import type { GamesOfNationsUiModel } from './GamesOfNationsUiModel';
-import type { GamesOfNationsSport, GamesOfNationsSportId } from '../../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportId, GamesOfNationsSportValues } from '../../types/gamesOfNations';
 import { IdleCitiesHudIndicator } from './IdleCitiesHudIndicator';
 import { MapLensToggleHud } from './MapLensToggleHud';
 import type { NationHudDataProvider } from './NationHudDataProvider';
@@ -53,8 +53,10 @@ interface HudLayerConfig {
   onApplyGamesStrategy: (
     culture: number,
     baseProduction: number,
+    strategy: GamesOfNationsSportValues,
     hostBonusSport?: GamesOfNationsSport,
   ) => boolean;
+  onGamesStrategyAdjustmentSeen: () => void;
   onAllocateGamesPoints: (sport: GamesOfNationsSport, amount: number) => boolean;
   onDistributeRemainingGamesPoints: () => boolean;
   onToggleMapLens: () => void;
@@ -167,6 +169,7 @@ export class HudLayer {
         getModel: this.config.getGamesOfNationsModel,
         onParticipationDecision: this.config.onGamesParticipationDecision,
         onApply: this.config.onApplyGamesStrategy,
+        onStrategyAdjustmentSeen: this.config.onGamesStrategyAdjustmentSeen,
         onAllocateGamesPoints: this.config.onAllocateGamesPoints,
         onDistributeRemainingGamesPoints: this.config.onDistributeRemainingGamesPoints,
         onHostingDecision: this.config.onGamesHostingDecision,

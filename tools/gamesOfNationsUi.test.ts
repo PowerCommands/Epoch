@@ -233,6 +233,23 @@ test('locked committed points remain separate from unallocated GP in the model',
   assert.equal(view.participant?.sportAllocation, undefined);
 });
 
+test('a human strategy imbalance requests the panel only during interactive Preparation', () => {
+  assert.equal(model({
+    participants: [participant({ strategyAdjustmentPending: true })],
+  }).strategyAdjustmentPending, true);
+  assert.equal(model({
+    phase: 'competition',
+    participants: [participant({ strategyAdjustmentPending: true })],
+  }).strategyAdjustmentPending, false);
+  assert.equal(model({
+    humanInteractionSuppressed: true,
+    participants: [participant({ strategyAdjustmentPending: true })],
+  }).strategyAdjustmentPending, false);
+
+  const hudSource = readFileSync(new URL('../src/ui/hud/GamesOfNationsHud.ts', import.meta.url), 'utf8');
+  assert.match(hudSource, /if \(model\.strategyAdjustmentPending\) \{\s*this\.dialog\.showPanel\(\)/);
+});
+
 test('dialog copy labels base Production accurately and explains bonus-amplified opportunity cost', () => {
   const source = readFileSync(new URL('../src/ui/GamesOfNationsDialog.ts', import.meta.url), 'utf8');
   assert.match(source, /Base Production commitment/);
@@ -240,14 +257,18 @@ test('dialog copy labels base Production accurately and explains bonus-amplified
   assert.match(source, /diverted before Production bonuses are applied/);
   assert.match(source, /impact on normal production may be greater than the base amount committed/);
   assert.match(source, /Existing Culture progress is not spent/);
-  assert.match(source, /Games Points available to allocate/);
-  assert.match(source, /GP committed/);
+  assert.match(source, /Planned Games Points available to assign/);
+  assert.match(source, /GP \/ turn planned/);
+  assert.match(source, /GP invested this Games/);
   assert.match(source, /Distribute Remaining Evenly/);
   assert.match(source, /gon-sport-grid/);
   assert.match(source, /getGamesSportByName\(sport\)\.image/);
   assert.match(source, /allocationButton\('\+10', 10\)/);
   assert.match(source, /allocationButton\('\+50', 50\)/);
-  assert.match(source, /allocationButton\('ALL', pool\)/);
+  assert.match(source, /allocationButton\('ALL', 'all'\)/);
+  assert.match(source, /const selectedHostBonusSport = model\.hostBonusSport \?\? this\.hostBonusSportDraft/);
+  assert.match(source, /display\.chip\.hidden = !visible/);
+  assert.match(source, /display\.effective\.hidden = !visible/);
   assert.doesNotMatch(source, /% future/);
   assert.doesNotMatch(source, /gon-allocation-/);
   assert.match(source, /Competition results/);

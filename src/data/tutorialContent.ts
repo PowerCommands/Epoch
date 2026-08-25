@@ -462,8 +462,8 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       },
 
       { kind: 'heading', text: 'Assigning Games Points' },
-      { kind: 'paragraph', text: 'Generated GP enters an unallocated pool. You can assign it directly to any sport in the current Games, but committed sport GP is permanent for that Games: it cannot be withdrawn, moved to another sport or returned to the pool.' },
-      { kind: 'paragraph', text: 'You may keep GP unallocated while deciding. Distribute Remaining Evenly is a quick way to spread the pool across every active sport. When Preparation ends, any GP still unallocated is automatically distributed evenly.' },
+      { kind: 'paragraph', text: 'Your Culture and base Production commitments immediately define a GP-per-turn planning budget. Assign that full budget as a recurring sport strategy before applying it; no resource is charged and no GP becomes locked until a Preparation turn is processed.' },
+      { kind: 'paragraph', text: 'Each successful payment applies the strategy to that turn’s GP. Actually invested sport GP is permanent for the current Games and cannot be withdrawn or moved. If the resources available that turn cannot fund the full plan, the strategy is reduced from its largest sport allocations until it fits; human players are then shown the panel to review and rebalance it.' },
 
       { kind: 'heading', text: 'Sports, Competition and Medals' },
       { kind: 'paragraph', text: 'The original program contains five traditional sports: Wrestling, Marathon, Swimming, Javelin and Long Jump. Later Games may add Horse Racing, Boxing, 100 Metres, Pole Vault and Fencing; these additional sports are not all available at the beginning.' },

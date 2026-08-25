@@ -138,6 +138,10 @@ export interface GamesOfNationsParticipantState {
   sportAllocation?: GamesOfNationsSportValues;
   /** Earned normal GP not yet irreversibly committed to a sport. */
   unallocatedGamesPoints: number;
+  /** Recurring per-Preparation-turn GP plan; actual paid GP is committed using this strategy. */
+  gamesPointsStrategyBySport: GamesOfNationsSportValues;
+  /** Human-only notification raised when actual paid GP no longer matches the plan. */
+  strategyAdjustmentPending?: boolean;
   gamesPointsBySport: GamesOfNationsSportValues;
   totalGamesPoints: number;
   totalCultureInvested: number;

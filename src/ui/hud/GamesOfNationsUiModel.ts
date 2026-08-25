@@ -64,6 +64,7 @@ export interface GamesOfNationsUiModel {
   excluded: boolean;
   controlsEditable: boolean;
   promptPending: boolean;
+  strategyAdjustmentPending: boolean;
   hostingPromptPending: boolean;
   hostCitySelectionPending: boolean;
   candidateNationName: string | null;
@@ -164,6 +165,9 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     promptPending: summary.humanInteractionSuppressed !== true && summary.phase === 'preparation'
       && !excluded
       && summary.humanPreparationPromptAcknowledgedCompetitionNumber !== summary.competitionNumber,
+    strategyAdjustmentPending: summary.humanInteractionSuppressed !== true
+      && summary.phase === 'preparation'
+      && participant?.strategyAdjustmentPending === true,
     hostingPromptPending: summary.humanInteractionSuppressed !== true && summary.hostingDecision === 'pendingDecision'
       && summary.hostCandidateNationId === context.humanNationId,
     hostCitySelectionPending: summary.humanInteractionSuppressed !== true && summary.hostingDecision === 'pendingCity'

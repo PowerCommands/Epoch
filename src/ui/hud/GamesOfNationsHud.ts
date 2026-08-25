@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GamesOfNationsDialog } from '../GamesOfNationsDialog';
-import type { GamesOfNationsSport, GamesOfNationsSportId } from '../../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportId, GamesOfNationsSportValues } from '../../types/gamesOfNations';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import {
   GAMES_HUD_BUTTON_LAYOUT,
@@ -14,7 +14,8 @@ type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 export interface GamesOfNationsHudConfig {
   getModel: () => GamesOfNationsUiModel;
   onParticipationDecision: (participating: boolean) => boolean;
-  onApply: (culture: number, baseProduction: number, hostBonusSport?: GamesOfNationsSport) => boolean;
+  onApply: (culture: number, baseProduction: number, strategy: GamesOfNationsSportValues, hostBonusSport?: GamesOfNationsSport) => boolean;
+  onStrategyAdjustmentSeen: () => void;
   onAllocateGamesPoints: (sport: GamesOfNationsSport, amount: number) => boolean;
   onDistributeRemainingGamesPoints: () => boolean;
   onHostingDecision: (accept: boolean) => boolean;
@@ -39,6 +40,7 @@ export class GamesOfNationsHud {
       getModel: config.getModel,
       onParticipationDecision: config.onParticipationDecision,
       onApply: config.onApply,
+      onStrategyAdjustmentSeen: config.onStrategyAdjustmentSeen,
       onAllocateGamesPoints: config.onAllocateGamesPoints,
       onDistributeRemainingGamesPoints: config.onDistributeRemainingGamesPoints,
       onHostingDecision: config.onHostingDecision,
@@ -89,6 +91,10 @@ export class GamesOfNationsHud {
     }
     if (model.hostCitySelectionPending) {
       this.dialog.showHostCitySelection();
+      return true;
+    }
+    if (model.strategyAdjustmentPending) {
+      this.dialog.showPanel();
       return true;
     }
     if (!model.promptPending) return false;

@@ -10,6 +10,7 @@ import {
   GAMES_AND_RECREATION_CULTURE_ID,
   GAMES_OF_NATIONS_SPORTS,
   GamesOfNationsSystem,
+  reduceGamesStrategyToBudget,
   type GamesOfNationsDependencies,
 } from '../src/systems/GamesOfNationsSystem';
 import type { HappinessSystem } from '../src/systems/HappinessSystem';
@@ -243,6 +244,90 @@ test('one Culture and one Production each convert to exactly ten Games Points', 
   assert.equal(participant(h).unallocatedGamesPoints, 20);
   assert.deepEqual(participant(h).gamesPointsBySport, {
     Wrestling: 0, Marathon: 0, Swimming: 0, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
+  });
+});
+
+test('human can assign the recurring GP strategy before any resources are paid', () => {
+  const h = investmentHarness();
+  foundAt80(h);
+  h.advanceTo(95);
+  assert.equal(h.system.setNationCultureCommitment(HUMAN, 3), true);
+  assert.equal(h.system.setNationProductionCommitment(HUMAN, 8), true);
+  const strategy: GamesOfNationsSportValues = {
+    Wrestling: 60, Marathon: 50, Swimming: 0, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
+  };
+  assert.equal(h.system.setNationGamesPointsStrategy(HUMAN, strategy), true);
+  assert.equal(participant(h).totalGamesPoints, 0);
+  assert.equal(participant(h).totalCultureInvested, 0);
+  assert.equal(participant(h).totalProductionInvested, 0);
+  assert.deepEqual(participant(h).gamesPointsStrategyBySport, strategy);
+
+  h.process(95);
+  assert.equal(participant(h).totalGamesPoints, 110);
+  assert.equal(participant(h).gamesPointsBySport.Wrestling, 60);
+  assert.equal(participant(h).gamesPointsBySport.Marathon, 50);
+  assert.equal(participant(h).unallocatedGamesPoints, 0);
+
+  h.process(96);
+  assert.equal(participant(h).totalGamesPoints, 220);
+  assert.equal(participant(h).gamesPointsBySport.Wrestling, 120);
+  assert.equal(participant(h).gamesPointsBySport.Marathon, 100);
+});
+
+test('resource shortfall reduces the largest recurring sport allocations and requests human review', () => {
+  const h = investmentHarness();
+  foundAt80(h);
+  h.advanceTo(95);
+  h.system.setNationCultureCommitment(HUMAN, 3);
+  h.system.setNationProductionCommitment(HUMAN, 8);
+  assert.equal(h.system.setNationGamesPointsStrategy(HUMAN, {
+    Wrestling: 70, Marathon: 40, Swimming: 0, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
+  }), true);
+  h.production[HUMAN] = [{ cityId: 'human-capital', available: 7 }];
+  h.process(95);
+
+  assert.equal(participant(h).totalCultureInvested, 3);
+  assert.equal(participant(h).totalProductionInvested, 0);
+  assert.equal(participant(h).totalGamesPoints, 30);
+  assert.equal(participant(h).gamesPointsStrategyBySport.Wrestling, 15);
+  assert.equal(participant(h).gamesPointsStrategyBySport.Marathon, 15);
+  assert.equal(participant(h).gamesPointsBySport.Wrestling, 15);
+  assert.equal(participant(h).gamesPointsBySport.Marathon, 15);
+  assert.equal(participant(h).unallocatedGamesPoints, 0);
+  assert.equal(participant(h).strategyAdjustmentPending, true);
+  assert.equal(h.system.acknowledgeHumanStrategyAdjustment(HUMAN), true);
+  assert.equal(participant(h).strategyAdjustmentPending, undefined);
+});
+
+test('a complete payment failure reduces a human strategy to zero without free GP', () => {
+  const h = investmentHarness();
+  foundAt80(h);
+  h.advanceTo(95);
+  h.system.setNationCultureCommitment(HUMAN, 3);
+  h.system.setNationProductionCommitment(HUMAN, 8);
+  assert.equal(h.system.setNationGamesPointsStrategy(HUMAN, {
+    Wrestling: 110, Marathon: 0, Swimming: 0, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
+  }), true);
+  h.culture[HUMAN] = 2;
+  h.production[HUMAN] = [{ cityId: 'human-capital', available: 7 }];
+  h.process(95);
+  assert.equal(participant(h).totalGamesPoints, 0);
+  assert.equal(participant(h).gamesPointsBySport.Wrestling, 0);
+  assert.equal(participant(h).gamesPointsStrategyBySport.Wrestling, 0);
+  assert.equal(participant(h).strategyAdjustmentPending, true);
+});
+
+test('strategy reduction always removes from the currently largest allocation', () => {
+  const reduced = reduceGamesStrategyToBudget({
+    Wrestling: 70, Marathon: 20, Swimming: 10, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
+  }, 60);
+  assert.deepEqual(reduced, {
+    Wrestling: 30, Marathon: 20, Swimming: 10, Javelin: 0, 'Long Jump': 0,
     ...ADDITIONAL_ZERO,
   });
 });
