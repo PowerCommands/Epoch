@@ -3,18 +3,26 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { NATION_DEFINITIONS } from '../src/data/nations.ts';
-import { isResourceAllowedOnTile } from '../src/data/naturalResources.ts';
 import { getUnitTypeById } from '../src/data/units.ts';
 import { ScenarioLoader } from '../src/systems/ScenarioLoader.ts';
 import { SaveLoadService } from '../src/systems/SaveLoadService.ts';
+import { initializeWorldNaturalResources } from '../src/systems/WorldResourceInitialization.ts';
 import { MapGenerationValidator, buildLandComponentSizes, hexDistance, isValidStartTerrain } from '../src/systems/procedural/MapGenerationValidator.ts';
 import { RandomScenarioGenerator } from '../src/systems/procedural/RandomScenarioGenerator.ts';
-import { RANDOM_MAP_SIZES, type RandomMapSize, type RandomMapType } from '../src/systems/procedural/RandomScenarioTypes.ts';
+import {
+  DEFAULT_RANDOM_TERRAIN_WEIGHTS,
+  normalizeTerrainWeights,
+  RANDOM_LAND_TERRAIN_TYPES,
+  RANDOM_MAP_PROFILE_DEFINITIONS,
+  RANDOM_MAP_SIZES,
+  validateRandomMapDimensions,
+  type RandomMapType,
+} from '../src/systems/procedural/RandomScenarioTypes.ts';
 import { SAVED_GAME_VERSION, type SavedGameState } from '../src/types/saveGame.ts';
 import type { ScenarioNation } from '../src/types/scenario.ts';
 
 const MAP_TYPES: RandomMapType[] = ['continents', 'archipelago', 'heartland'];
-const MAP_SIZES: RandomMapSize[] = ['small', 'medium', 'large'];
+const MAP_SIZES = ['small', 'medium', 'large'] as const;
 
 function nations(count = 10): ScenarioNation[] {
   return NATION_DEFINITIONS
@@ -23,15 +31,17 @@ function nations(count = 10): ScenarioNation[] {
     .map((nation, index) => ({ ...nation, isHuman: index === 0, startTerritoryCenter: { q: 0, r: 0 } }));
 }
 
-function generate(mapType: RandomMapType, mapSize: RandomMapSize, seed = 4837281, count = 10) {
+function generate(mapType: RandomMapType, mapSize: keyof typeof RANDOM_MAP_SIZES, seed = 4837281, count = 8) {
   const participants = nations(count);
+  const dimensions = RANDOM_MAP_SIZES[mapSize];
   return RandomScenarioGenerator.generate({
     mapType,
     mapSize,
+    ...dimensions,
     seed,
+    terrainWeights: DEFAULT_RANDOM_TERRAIN_WEIGHTS,
+    featureCount: RANDOM_MAP_PROFILE_DEFINITIONS[mapType].defaultFeatureCount,
     nations: participants,
-    humanNationId: participants[0]!.id,
-    resourceAbundance: 'normal',
   });
 }
 
@@ -84,24 +94,95 @@ test('starts are viable land and obey the generated minimum separation', () => {
   }
 });
 
-test('every generated resource uses its canonical allowed terrain', () => {
+test('generation leaves resources for ordinary Game Setup initialization', () => {
   for (const mapType of MAP_TYPES) {
     const generated = generate(mapType, 'small', 44119);
-    const parsed = ScenarioLoader.parse(generated.scenario);
-    for (const tile of parsed.mapData.tiles.flat()) {
-      if (tile.resourceId) assert.equal(isResourceAllowedOnTile(tile.resourceId, tile.type), true);
-    }
+    assert.equal(generated.scenario.map.tiles.some((tile) => tile.resourceId), false);
   }
 });
 
 test('Game Setup resource abundance controls generated resource density', () => {
-  const participants = nations();
-  const make = (resourceAbundance: 'scarce' | 'abundant') => RandomScenarioGenerator.generate({
-    mapType: 'continents', mapSize: 'small', seed: 91919, nations: participants,
-    humanNationId: participants[0]!.id, resourceAbundance,
+  const generated = generate('continents', 'small', 91919);
+  const resources = (resourceAbundance: 'scarce' | 'abundant') => {
+    const parsed = ScenarioLoader.parse(structuredClone(generated.scenario));
+    initializeWorldNaturalResources(parsed.mapData, {
+      isLoadedGame: false,
+      mapKey: generated.mapKey,
+      activeNationIds: generated.scenario.nations.map((nation) => nation.id),
+      humanNationId: generated.scenario.nations[0]!.id,
+      resourceAbundance,
+      cityCoords: [],
+      worldSeed: `generated-world-${generated.metadata.seed}`,
+      scienceVictoryEnabled: false,
+    });
+    return parsed.mapData.tiles.flat().filter((tile) => tile.resourceId).length;
+  };
+  assert.ok(resources('abundant') > resources('scarce'));
+});
+
+test('custom dimensions validate and generate without being a preset', () => {
+  assert.equal(validateRandomMapDimensions(91, 57), null);
+  assert.match(validateRandomMapDimensions(20, 57) ?? '', /Width/);
+  assert.match(validateRandomMapDimensions(160, 101) ?? '', /Height/);
+  const participants = nations(6);
+  const generated = RandomScenarioGenerator.generate({
+    mapType: 'continents', mapSize: 'custom', width: 91, height: 57, seed: 1212,
+    terrainWeights: DEFAULT_RANDOM_TERRAIN_WEIGHTS, featureCount: 3, nations: participants,
   });
-  const resources = (generated: ReturnType<typeof make>) => generated.scenario.map.tiles.filter((tile) => tile.resourceId).length;
-  assert.ok(resources(make('abundant')) > resources(make('scarce')));
+  assert.equal(generated.metadata.mapSize, 'custom');
+  assert.equal(generated.scenario.map.width, 91);
+  assert.equal(generated.scenario.map.height, 57);
+});
+
+test('terrain weights normalize and materially affect generated terrain', () => {
+  const normalized = normalizeTerrainWeights({ ...DEFAULT_RANDOM_TERRAIN_WEIGHTS, plains: 60, meadow: 60 });
+  assert.ok(Math.abs(Object.values(normalized).reduce((sum, value) => sum + value, 0) - 1) < 1e-12);
+  const participants = nations(6);
+  const make = (forest: number) => RandomScenarioGenerator.generate({
+    mapType: 'continents', mapSize: 'small', width: 80, height: 50, seed: 6767,
+    terrainWeights: { ...DEFAULT_RANDOM_TERRAIN_WEIGHTS, forest }, featureCount: 3, nations: participants,
+  });
+  const countForest = (value: ReturnType<typeof make>) => value.scenario.map.tiles.filter((tile) => tile.type === 'forest').length;
+  assert.ok(countForest(make(80)) > countForest(make(5)));
+});
+
+test('profile-specific feature counts are persisted and drive geography', () => {
+  const participants = nations(6);
+  const makeContinents = (featureCount: number) => RandomScenarioGenerator.generate({
+    mapType: 'continents', mapSize: 'medium', width: 100, height: 60, seed: 31337,
+    terrainWeights: DEFAULT_RANDOM_TERRAIN_WEIGHTS, featureCount, nations: participants,
+  });
+  const makeHeartland = (featureCount: number) => RandomScenarioGenerator.generate({
+    mapType: 'heartland', mapSize: 'medium', width: 100, height: 60, seed: 31337,
+    terrainWeights: DEFAULT_RANDOM_TERRAIN_WEIGHTS, featureCount, nations: participants,
+  });
+  const few = makeHeartland(2);
+  const many = makeHeartland(8);
+  assert.equal(few.metadata.requestedFeatureCount, 2);
+  assert.equal(many.metadata.requestedFeatureCount, 8);
+  assert.notEqual(JSON.stringify(few.scenario.map.tiles), JSON.stringify(many.scenario.map.tiles));
+  const componentCount = (scenario: ReturnType<typeof makeContinents>['scenario']) => {
+    const parsed = ScenarioLoader.parse(scenario);
+    const sizes = [...buildLandComponentSizes(parsed.mapData.tiles.map((row) => row.map((tile) => tile.type))).values()];
+    return Math.round(sizes.reduce((sum, size) => sum + 1 / size, 0));
+  };
+  assert.ok(componentCount(makeContinents(5).scenario) > componentCount(makeContinents(2).scenario));
+  assert.equal(RANDOM_MAP_PROFILE_DEFINITIONS.continents.defaultFeatureCount, 3);
+  assert.equal(RANDOM_MAP_PROFILE_DEFINITIONS.archipelago.defaultFeatureCount, 12);
+  assert.equal(RANDOM_MAP_PROFILE_DEFINITIONS.heartland.defaultFeatureCount, 5);
+});
+
+test('all supported land terrain types are represented with coherent placement rules', () => {
+  const generated = generate('continents', 'medium', 44881);
+  const tiles = generated.scenario.map.tiles;
+  for (const type of RANDOM_LAND_TERRAIN_TYPES) assert.ok(tiles.some((tile) => tile.type === type), `${type} should be generated`);
+  const at = new Map(tiles.map((tile) => [`${tile.q},${tile.r}`, tile]));
+  const directions = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]] as const;
+  for (const beach of tiles.filter((tile) => tile.type === 'beach')) {
+    assert.ok(directions.some(([dq, dr]) => ['ocean', 'coast'].includes(at.get(`${beach.q + dq},${beach.r + dr}`)?.type ?? '')));
+  }
+  const ice = tiles.filter((tile) => tile.type === 'ice');
+  assert.ok(ice.every((tile) => Math.abs(tile.r / 59 - 0.5) * 2 > 0.65));
 });
 
 test('profiles have distinct v1 geographic identities', () => {
@@ -133,7 +214,7 @@ test('profiles have distinct v1 geographic identities', () => {
   for (const tiles of [continents, archipelago, heartland]) {
     const landTiles = tiles.filter((tile) => tile.type !== 'ocean' && tile.type !== 'coast');
     const basic = landTiles.filter((tile) => tile.type === 'plains' || tile.type === 'meadow').length;
-    assert.ok(basic / landTiles.length >= 0.65 && basic / landTiles.length <= 0.75);
+    assert.ok(basic / landTiles.length >= 0.45 && basic / landTiles.length <= 0.70);
   }
 });
 
@@ -183,15 +264,25 @@ test('save parsing preserves embedded generated geography and metadata exactly',
 test('Game Setup exposes exactly the three v1 profiles and focused dialog controls', () => {
   const menu = readFileSync(new URL('../src/scenes/MainMenuScene.ts', import.meta.url), 'utf8');
   const dialog = readFileSync(new URL('../src/ui/RandomScenarioDialog.ts', import.meta.url), 'utf8');
-  for (const type of MAP_TYPES) assert.match(menu, new RegExp(`data-random-map-type="${type}"`));
+  assert.ok(menu.indexOf('label="Random Scenarios"') < menu.indexOf('label="Official Scenarios"'));
+  for (const type of MAP_TYPES) assert.match(menu, new RegExp(`RANDOM_SCENARIO_OPTION_PREFIX.*${type}|${type}.*RANDOM_SCENARIO_OPTION_PREFIX`, 's'));
   assert.match(dialog, /\['small', 'medium', 'large'\]/);
   assert.deepEqual(RANDOM_MAP_SIZES.small, { width: 80, height: 50 });
   assert.match(dialog, /size === 'medium'/);
   assert.deepEqual(RANDOM_MAP_SIZES.medium, { width: 100, height: 60 });
   assert.deepEqual(RANDOM_MAP_SIZES.large, { width: 120, height: 80 });
   assert.match(dialog, /random-scenario-seed/);
+  assert.match(dialog, /random-scenario-width/);
+  assert.match(dialog, /random-scenario-height/);
+  assert.match(dialog, /random-scenario-feature-count/);
+  assert.match(dialog, /random-scenario-terrain-/);
+  assert.match(dialog, /random-scenario-nations/);
   assert.match(dialog, /Randomize/);
   assert.match(dialog, /Cancel/);
   assert.match(dialog, /Generate/);
-  assert.doesNotMatch(dialog, /climate|rainfall|temperature|world age|preview/i);
+  assert.doesNotMatch(dialog, /climate|rainfall|temperature|world age|Resource Abundance|Game Speed|Victory Conditions/i);
+  assert.match(menu, /mm-random-scenario-hidden/);
+  assert.match(menu, /canvas\.hidden = Boolean\(generated\)/);
+  assert.match(menu, /generatedScenario: this\.generatedRandomScenario/);
+  assert.doesNotMatch(menu, /generateAndStartRandomScenario/);
 });

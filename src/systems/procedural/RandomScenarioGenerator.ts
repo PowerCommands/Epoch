@@ -1,11 +1,11 @@
-import { NaturalResourceSystem } from '../NaturalResourceSystem';
-import { ScenarioLoader } from '../ScenarioLoader';
 import { TileType, type MapData } from '../../types/map';
 import type { ScenarioData, ScenarioNation, ScenarioUnit } from '../../types/scenario';
 import { MapGenerationValidator, buildLandComponentSizes, hexDistance, isValidStartTerrain } from './MapGenerationValidator';
 import { SeededRandom } from './SeededRandom';
 import {
-  RANDOM_MAP_SIZES,
+  normalizeTerrainWeights,
+  validateRandomFeatureCount,
+  validateRandomMapDimensions,
   type GeneratedRandomScenario,
   type GeneratedScenarioMetadata,
   type RandomMapType,
@@ -37,13 +37,14 @@ export const RANDOM_MAP_PROFILES: Readonly<Record<RandomMapType, MapProfile>> = 
 
 export class RandomScenarioGenerator {
   static generate(config: RandomScenarioConfig): GeneratedRandomScenario {
-    const dimensions = RANDOM_MAP_SIZES[config.mapSize];
-    if (!dimensions) throw new Error(`Unsupported random map size: ${String(config.mapSize)}`);
+    const dimensions = { width: config.width, height: config.height };
+    const dimensionError = validateRandomMapDimensions(dimensions.width, dimensions.height);
+    if (dimensionError) throw new Error(dimensionError);
+    const featureError = validateRandomFeatureCount(config.mapType, config.featureCount, dimensions.width, dimensions.height);
+    if (featureError) throw new Error(featureError);
+    const normalizedTerrainWeights = normalizeTerrainWeights(config.terrainWeights);
     if (!Number.isSafeInteger(config.seed)) throw new Error('Random Scenario seed must be a safe integer.');
     if (config.nations.length < 2) throw new Error('Random Scenario requires at least two participating nations.');
-    if (!config.nations.some((nation) => nation.id === config.humanNationId)) {
-      throw new Error('The selected human nation is not participating in the Random Scenario.');
-    }
 
     const nationIds = config.nations.map((nation) => nation.id);
     if (new Set(nationIds).size !== nationIds.length) throw new Error('Participating nations must be unique.');
@@ -51,10 +52,12 @@ export class RandomScenarioGenerator {
     for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
       const attemptSeed = [
         'epoch-random-scenario-v1', config.seed, config.mapType, dimensions.width, dimensions.height,
+        config.featureCount,
+        Object.entries(normalizedTerrainWeights).map(([type, weight]) => `${type}:${weight}`).join(','),
         [...nationIds].sort().join(','), `attempt-${attempt}`,
       ].join('|');
       try {
-        const generated = generateAttempt(config, attemptSeed);
+        const generated = generateAttempt(config, normalizedTerrainWeights, attemptSeed);
         const validation = MapGenerationValidator.validate(generated.scenario, generated.metadata);
         if (validation.valid) return generated;
         lastErrors = validation.errors;
@@ -66,29 +69,25 @@ export class RandomScenarioGenerator {
   }
 }
 
-function generateAttempt(config: RandomScenarioConfig, attemptSeed: string): GeneratedRandomScenario {
-  const { width, height } = RANDOM_MAP_SIZES[config.mapSize];
-  const mapKey = buildGeneratedMapKey(config.mapType, config.seed, width, height, config.nations.map((nation) => nation.id));
+function generateAttempt(
+  config: RandomScenarioConfig,
+  normalizedTerrainWeights: ReturnType<typeof normalizeTerrainWeights>,
+  attemptSeed: string,
+): GeneratedRandomScenario {
+  const { width, height } = config;
+  const mapKey = buildGeneratedMapKey(config, normalizedTerrainWeights);
   const rng = new SeededRandom(attemptSeed);
-  const land = generateLandmass(config.mapType, width, height, rng);
-  const terrain = generateTerrain(land, width, height, rng);
+  const land = generateLandmass(config.mapType, width, height, config.featureCount, rng);
+  const terrain = generateTerrain(land, width, height, normalizedTerrainWeights, rng);
   deriveCoasts(terrain, width, height);
 
   const mapData = toMapData(terrain, width, height);
-  new NaturalResourceSystem().generate(mapData, {
-    mapKey,
-    activeNationIds: config.nations.map((nation) => nation.id),
-    humanNationId: config.humanNationId,
-    resourceAbundance: config.resourceAbundance,
-    cityCoords: [],
-    worldSeed: `${attemptSeed}|procedural-resources`,
-  });
 
   const minimumStartDistance = calculateMinimumStartDistance(width, height, land, config.nations.length);
   const starts = selectStartingPositions(mapData, config.mapType, config.nations.length, minimumStartDistance, rng);
   const nations = config.nations.map((nation, index): ScenarioNation => ({
     ...nation,
-    isHuman: nation.id === config.humanNationId,
+    isHuman: false,
     startTerritoryCenter: { q: starts[index]!.q, r: starts[index]!.r },
   }));
   const units: ScenarioUnit[] = nations.map((nation, index) => ({
@@ -138,6 +137,8 @@ function generateAttempt(config: RandomScenarioConfig, attemptSeed: string): Gen
     seed: config.seed,
     width,
     height,
+    terrainWeights: { ...config.terrainWeights },
+    requestedFeatureCount: config.featureCount,
     minimumStartDistance,
   };
   return {
@@ -147,12 +148,12 @@ function generateAttempt(config: RandomScenarioConfig, attemptSeed: string): Gen
   };
 }
 
-function generateLandmass(type: RandomMapType, width: number, height: number, rng: SeededRandom): boolean[][] {
+function generateLandmass(type: RandomMapType, width: number, height: number, featureCount: number, rng: SeededRandom): boolean[][] {
   const land = Array.from({ length: height }, () => Array<boolean>(width).fill(false));
   const labels = Array.from({ length: height }, () => Array<number>(width).fill(-1));
   const profile = RANDOM_MAP_PROFILES[type];
   const totalTarget = Math.floor(width * height * profile.landFraction);
-  const regionCount = Math.max(profile.minRegions, Math.min(profile.maxRegions, Math.round(width * height / profile.regionDivisor)));
+  const regionCount = type === 'heartland' ? Math.max(2, Math.min(7, Math.round(width * height / profile.regionDivisor))) : featureCount;
 
   if (type === 'heartland') {
     const center = {
@@ -160,7 +161,7 @@ function generateLandmass(type: RandomMapType, width: number, height: number, rn
       r: Math.floor(height * (0.43 + rng.next() * 0.14)),
     };
     growRegion(land, labels, 0, center, Math.floor(totalTarget * profile.heartlandShare!), 0, rng);
-    carveHeartlandLakes(land, width, height, rng);
+    carveHeartlandLakes(land, width, height, featureCount, rng);
     const remaining = Math.max(0, totalTarget - countLand(land));
     growSeparatedRegions(land, labels, regionCount - 1, remaining, profile.separation, rng);
   } else {
@@ -265,8 +266,7 @@ function cleanupLand(land: boolean[][], type: RandomMapType): void {
   }
 }
 
-function carveHeartlandLakes(land: boolean[][], width: number, height: number, rng: SeededRandom): void {
-  const lakeCount = Math.max(3, Math.floor(width * height / 1800));
+function carveHeartlandLakes(land: boolean[][], width: number, height: number, lakeCount: number, rng: SeededRandom): void {
   for (let lake = 0; lake < lakeCount; lake += 1) {
     const seed = findExistingLand(land, rng);
     if (!seed) continue;
@@ -284,17 +284,40 @@ function carveHeartlandLakes(land: boolean[][], width: number, height: number, r
   }
 }
 
-function generateTerrain(land: boolean[][], width: number, height: number, rng: SeededRandom): TileType[][] {
+function generateTerrain(
+  land: boolean[][],
+  width: number,
+  height: number,
+  weights: ReturnType<typeof normalizeTerrainWeights>,
+  rng: SeededRandom,
+): TileType[][] {
+  const baseWeight = weights.plains + weights.meadow;
+  const plainsShare = baseWeight > 0 ? weights.plains / baseWeight : 0.5;
   const terrain = land.map((row) => row.map((isLand) => isLand
-    ? (rng.next() < 0.52 ? TileType.Plains : TileType.Meadow)
+    ? (rng.next() < plainsShare ? TileType.Plains : TileType.Meadow)
     : TileType.Ocean));
   const landCount = countLand(land);
-  paintTerrainPatches(terrain, land, TileType.Forest, Math.floor(landCount * 0.11), 5, 18, rng);
-  paintTerrainPatches(terrain, land, TileType.Desert, Math.floor(landCount * 0.055), 7, 22, rng, (coord) => latitude(coord.r, height) < 0.68);
-  paintTerrainPatches(terrain, land, TileType.Jungle, Math.floor(landCount * 0.055), 6, 18, rng, (coord) => latitude(coord.r, height) < 0.48);
-  paintMountainChains(terrain, land, Math.floor(landCount * 0.055), rng);
-  paintTerrainPatches(terrain, land, TileType.Ice, Math.floor(landCount * 0.035), 4, 12, rng, (coord) => latitude(coord.r, height) > 0.70);
+  paintTerrainPatches(terrain, land, TileType.Forest, Math.floor(landCount * weights.forest), 5, 18, rng);
+  paintTerrainPatches(terrain, land, TileType.Desert, Math.floor(landCount * weights.desert), 7, 22, rng, (coord) => latitude(coord.r, height) < 0.68);
+  paintTerrainPatches(terrain, land, TileType.Jungle, Math.floor(landCount * weights.jungle), 6, 18, rng, (coord) => latitude(coord.r, height) < 0.48);
+  paintMountainChains(terrain, land, Math.floor(landCount * weights.mountain), rng);
+  paintTerrainPatches(terrain, land, TileType.Ice, Math.floor(landCount * weights.ice), 4, 12, rng, (coord) => latitude(coord.r, height) > 0.70);
+  paintBeaches(terrain, land, Math.floor(landCount * weights.beach), rng);
   return terrain;
+}
+
+function paintBeaches(terrain: TileType[][], land: boolean[][], target: number, rng: SeededRandom): void {
+  if (target <= 0) return;
+  const height = land.length;
+  const width = land[0]!.length;
+  const candidates: Coord[] = [];
+  for (let r = 0; r < height; r += 1) {
+    for (let q = 0; q < width; q += 1) {
+      if (!isBaseTerrain(terrain[r]![q])) continue;
+      if (countNeighbors(q, r, width, height, (nq, nr) => !land[nr]![nq]) > 0) candidates.push({ q, r });
+    }
+  }
+  for (const coord of rng.shuffle(candidates).slice(0, target)) terrain[coord.r]![coord.q] = TileType.Beach;
 }
 
 function paintTerrainPatches(
@@ -504,14 +527,21 @@ function profileName(type: RandomMapType): string {
   return type === 'continents' ? 'Continents' : type === 'archipelago' ? 'Archipelago' : 'Heartland';
 }
 
-function buildGeneratedMapKey(type: RandomMapType, seed: number, width: number, height: number, nationIds: readonly string[]): string {
-  const identity = [...nationIds].sort().join('|');
+function buildGeneratedMapKey(
+  config: RandomScenarioConfig,
+  weights: ReturnType<typeof normalizeTerrainWeights>,
+): string {
+  const identity = [
+    ...config.nations.map((nation) => nation.id).sort(),
+    config.featureCount,
+    ...Object.entries(weights).map(([type, weight]) => `${type}:${weight}`),
+  ].join('|');
   let hash = 2166136261;
   for (let index = 0; index < identity.length; index += 1) {
     hash ^= identity.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return `generated_${type}_${width}x${height}_${seed}_${(hash >>> 0).toString(36)}`;
+  return `generated_${config.mapType}_${config.width}x${config.height}_${config.seed}_${(hash >>> 0).toString(36)}`;
 }
 
 function key(q: number, r: number): string {

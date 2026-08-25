@@ -27,9 +27,13 @@ import { TutorialView } from '../ui/TutorialView';
 import { WhatsNewDialog } from '../ui/WhatsNewDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
 import { NationDetailsDialog } from '../ui/NationDetailsDialog';
-import { RandomScenarioDialog } from '../ui/RandomScenarioDialog';
+import { RandomScenarioDialog, type RandomScenarioDialogConfig } from '../ui/RandomScenarioDialog';
 import { RandomScenarioGenerator } from '../systems/procedural/RandomScenarioGenerator';
-import type { RandomMapSize, RandomMapType } from '../systems/procedural/RandomScenarioTypes';
+import {
+  RANDOM_MAP_PROFILE_DEFINITIONS,
+  type GeneratedRandomScenario,
+  type RandomMapType,
+} from '../systems/procedural/RandomScenarioTypes';
 import type { SavedGameState } from '../types/saveGame';
 import { CustomScenarioStorage, type CustomScenarioEntry } from '../services/scenario/CustomScenarioStorage';
 import {
@@ -41,6 +45,7 @@ import {
 
 /** Sentinel value for the "Load scenario…" entry in the scenario dropdown. */
 const LOAD_SCENARIO_OPTION_VALUE = '__load_scenario__';
+const RANDOM_SCENARIO_OPTION_PREFIX = '__random_scenario__:';
 
 interface EpochMainMenuDiagnostics {
   listScenarios: () => Array<{ key: string; label: string; custom: boolean }>;
@@ -81,6 +86,7 @@ export class MainMenuScene extends Phaser.Scene {
   private whatsNewDialog: WhatsNewDialog | null = null;
   private settingsDialog: SettingsDialog | null = null;
   private randomScenarioDialog: RandomScenarioDialog | null = null;
+  private generatedRandomScenario: GeneratedRandomScenario | null = null;
 
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -252,15 +258,6 @@ export class MainMenuScene extends Phaser.Scene {
             </select>
             <input id="mm-scenario-input" type="file" accept="application/json,.json" hidden>
 
-            <div class="mm-random-scenario-group" aria-label="Random Scenario">
-              <span class="mm-field-label">Random Scenario</span>
-              <div class="mm-random-scenario-actions">
-                <button type="button" data-random-map-type="continents">Continents</button>
-                <button type="button" data-random-map-type="archipelago">Archipelago</button>
-                <button type="button" data-random-map-type="heartland">Heartland</button>
-              </div>
-            </div>
-
             <label class="mm-field-label" for="mm-resource-abundance-select">Resource Abundance</label>
             <select id="mm-resource-abundance-select" class="mm-select">
               <option value="scarce">Scarce</option>
@@ -295,6 +292,7 @@ export class MainMenuScene extends Phaser.Scene {
             </div>
             <div class="mm-scenario-preview">
               <canvas id="mm-scenario-minimap" class="mm-scenario-minimap"></canvas>
+              <div id="mm-random-scenario-hidden" class="mm-random-scenario-hidden" hidden></div>
             </div>
             <dl id="mm-scenario-details" class="mm-scenario-details"></dl>
           </aside>
@@ -325,8 +323,14 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private buildMapOptionsHTML(): string {
+    const randomOptions = (['continents', 'archipelago', 'heartland'] as const)
+      .map((type) => `<option value="${RANDOM_SCENARIO_OPTION_PREFIX}${type}">${RANDOM_MAP_PROFILE_DEFINITIONS[type].name}</option>`)
+      .join('');
+    const generatedOption = this.generatedRandomScenario
+      ? `<option value="${escapeHtmlAttribute(this.generatedRandomScenario.mapKey)}">Randomized — ${RANDOM_MAP_PROFILE_DEFINITIONS[this.generatedRandomScenario.metadata.mapType].name}</option>`
+      : '';
     const officialOptions = this.maps
-      .map((map) => `<option value="${escapeHtmlAttribute(map.key)}">${escapeHtmlText(map.label)}</option>`)
+      .map((map, index) => `<option value="${escapeHtmlAttribute(map.key)}"${index === 0 ? ' selected' : ''}>${escapeHtmlText(map.label)}</option>`)
       .join('');
     const customOptions = this.customScenarios
       .map((entry) => {
@@ -337,9 +341,10 @@ export class MainMenuScene extends Phaser.Scene {
 
     const loadOption = `<option value="${LOAD_SCENARIO_OPTION_VALUE}">Load scenario…</option>`;
     if (!customOptions) {
-      return `<optgroup label="Official Scenarios">${officialOptions}</optgroup>${loadOption}`;
+      return `<optgroup label="Random Scenarios">${generatedOption}${randomOptions}</optgroup><optgroup label="Official Scenarios">${officialOptions}</optgroup>${loadOption}`;
     }
     return `
+      <optgroup label="Random Scenarios">${generatedOption}${randomOptions}</optgroup>
       <optgroup label="Official Scenarios">${officialOptions}</optgroup>
       <optgroup label="My Scenarios">${customOptions}</optgroup>
       ${loadOption}
@@ -504,6 +509,11 @@ export class MainMenuScene extends Phaser.Scene {
         scenarioInput.click();
         return;
       }
+      if (mapSelect.value.startsWith(RANDOM_SCENARIO_OPTION_PREFIX)) {
+        const mapType = mapSelect.value.slice(RANDOM_SCENARIO_OPTION_PREFIX.length) as RandomMapType;
+        this.openRandomScenarioDialog(mapType);
+        return;
+      }
       this.onMapChanged(mapSelect.value);
     });
     scenarioInput.addEventListener('change', () => {
@@ -514,12 +524,6 @@ export class MainMenuScene extends Phaser.Scene {
     const resourceAbundanceSelect = document.getElementById('mm-resource-abundance-select') as HTMLSelectElement;
     resourceAbundanceSelect.addEventListener('change', () => {
       this.selectedResourceAbundance = toResourceAbundance(resourceAbundanceSelect.value);
-    });
-    document.querySelectorAll<HTMLButtonElement>('[data-random-map-type]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const mapType = button.dataset.randomMapType as RandomMapType | undefined;
-        if (mapType) this.openRandomScenarioDialog(mapType);
-      });
     });
     const gameSpeedSelect = document.getElementById('mm-game-speed-select') as HTMLSelectElement;
     gameSpeedSelect.addEventListener('change', () => {
@@ -646,19 +650,30 @@ export class MainMenuScene extends Phaser.Scene {
   private updateScenarioDetails(scenario: ScenarioData | null): void {
     const preview = document.querySelector<HTMLElement>('.mm-scenario-preview');
     const canvas = document.getElementById('mm-scenario-minimap') as HTMLCanvasElement | null;
+    const hiddenState = document.getElementById('mm-random-scenario-hidden');
     const details = document.getElementById('mm-scenario-details');
-    if (!preview || !canvas || !details) return;
+    if (!preview || !canvas || !hiddenState || !details) return;
 
     if (!scenario) {
       preview.classList.add('is-empty');
       canvas.hidden = true;
+      hiddenState.hidden = true;
       details.innerHTML = '<p class="mm-scenario-empty">Select a scenario to see its details.</p>';
       return;
     }
 
-    preview.classList.remove('is-empty');
-    canvas.hidden = false;
-    renderScenarioMinimap(canvas, scenario);
+    const generated = this.generatedRandomScenario?.mapKey === this.currentMapKey
+      ? this.generatedRandomScenario
+      : null;
+    preview.classList.toggle('is-empty', Boolean(generated));
+    canvas.hidden = Boolean(generated);
+    hiddenState.hidden = !generated;
+    if (generated) {
+      hiddenState.innerHTML = `<strong>RANDOMIZED</strong><span>${escapeHtmlText(RANDOM_MAP_PROFILE_DEFINITIONS[generated.metadata.mapType].name)}</span><span>${generated.metadata.width} × ${generated.metadata.height}</span>`;
+    } else {
+      hiddenState.textContent = '';
+      renderScenarioMinimap(canvas, scenario);
+    }
 
     const meta = resolveScenarioMeta(scenario.meta);
     const rows: Array<{ label: string; value: string }> = [
@@ -1132,6 +1147,9 @@ export class MainMenuScene extends Phaser.Scene {
 
     const config: GameConfig = {
       mapKey: this.currentMapKey,
+      generatedScenario: this.generatedRandomScenario?.mapKey === this.currentMapKey
+        ? { metadata: this.generatedRandomScenario.metadata, scenario: this.generatedRandomScenario.scenario }
+        : undefined,
       humanNationId: this.selectedNationId,
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
       scenarioNationReplacements: this.getScenarioNationReplacementConfig(),
@@ -1140,7 +1158,9 @@ export class MainMenuScene extends Phaser.Scene {
         : undefined,
       resourceAbundance: this.selectedResourceAbundance,
       gameSpeedId: this.selectedGameSpeedId,
-      worldSeed: generateNewGameSeed(),
+      worldSeed: this.generatedRandomScenario?.mapKey === this.currentMapKey
+        ? `generated-world-${this.generatedRandomScenario.metadata.seed}`
+        : generateNewGameSeed(),
       noBarbarians: this.noBarbarians,
       victoryConditions: this.buildVictoryConditions(),
     };
@@ -1150,63 +1170,45 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private openRandomScenarioDialog(mapType: RandomMapType): void {
-    if (!this.selectedNationId || this.getEnabledOpponentIds().length === 0) {
-      window.alert('Choose your nation and at least one opponent before generating a Random Scenario.');
-      return;
-    }
     if (!this.randomScenarioDialog) {
       this.randomScenarioDialog = new RandomScenarioDialog({
-        onGenerate: (type, size, seed) => this.generateAndStartRandomScenario(type, size, seed),
+        onGenerate: (config) => this.generateRandomScenario(config),
+        onCancel: () => this.restoreCurrentScenarioSelection(),
       });
     }
-    this.randomScenarioDialog.show(mapType);
+    this.randomScenarioDialog.show(mapType, NATION_DEFINITIONS);
   }
 
-  private generateAndStartRandomScenario(
-    mapType: RandomMapType,
-    mapSize: RandomMapSize,
-    seed: number,
-  ): { ok: true } | { ok: false; error: string } {
-    if (!this.selectedNationId) return { ok: false, error: 'Choose your nation first.' };
-    const activeNationIds = [this.selectedNationId, ...this.getEnabledOpponentIds()];
-    const activeSet = new Set(activeNationIds);
-    const sourceScenario = this.getCurrentScenario();
-    const nations = this.nations.filter((nation) => activeSet.has(nation.id));
-    if (!sourceScenario || nations.length !== activeNationIds.length) {
-      return { ok: false, error: 'The selected nations could not be prepared for generation.' };
-    }
+  private generateRandomScenario(config: RandomScenarioDialogConfig): { ok: true } | { ok: false; error: string } {
+    const selectedDefinitions = config.nationIds.map((id) => getNationDefinitionById(id));
+    if (selectedDefinitions.some((nation) => !nation)) return { ok: false, error: 'A selected nation is unavailable.' };
+    const nations = selectedDefinitions.map((nation): ScenarioNation => ({
+      ...nation!,
+      isHuman: false,
+      startTerritoryCenter: { q: 0, r: 0 },
+    }));
     try {
       const generated = RandomScenarioGenerator.generate({
-        mapType,
-        mapSize,
-        seed,
+        ...config,
         nations,
-        humanNationId: this.selectedNationId,
-        resourceAbundance: this.selectedResourceAbundance,
-        nationDetails: sourceScenario.nationDetails,
       });
+      this.generatedRandomScenario = generated;
       this.cache.json.add(generated.mapKey, generated.scenario);
-      const config: GameConfig = {
-        mapKey: generated.mapKey,
-        generatedScenario: { metadata: generated.metadata, scenario: generated.scenario },
-        humanNationId: this.selectedNationId,
-        activeNationIds,
-        scenarioNationReplacements: this.getScenarioNationReplacementConfig(),
-        scenarioNationCustomizations: this.scenarioNationCustomizations.size > 0
-          ? Object.fromEntries(this.scenarioNationCustomizations)
-          : undefined,
-        resourceAbundance: this.selectedResourceAbundance,
-        gameSpeedId: this.selectedGameSpeedId,
-        worldSeed: `generated-world-${seed}`,
-        noBarbarians: this.noBarbarians,
-        victoryConditions: this.buildVictoryConditions(),
-      };
-      this.cleanup();
-      this.scene.start('GameScene', config);
+      const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement | null;
+      if (mapSelect) {
+        mapSelect.innerHTML = this.buildMapOptionsHTML();
+        mapSelect.value = generated.mapKey;
+      }
+      this.onMapChanged(generated.mapKey);
       return { ok: true };
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }
+  }
+
+  private restoreCurrentScenarioSelection(): void {
+    const mapSelect = document.getElementById('mm-map-select') as HTMLSelectElement | null;
+    if (mapSelect) mapSelect.value = this.currentMapKey;
   }
 
   /**
@@ -1681,10 +1683,31 @@ export class MainMenuScene extends Phaser.Scene {
         border-radius: 3px;
       }
 
+      .mm-scenario-minimap[hidden],
+      .mm-random-scenario-hidden[hidden] {
+        display: none;
+      }
+
       .mm-scenario-preview.is-empty {
         min-height: 80px;
         color: #7a6a52;
         font-size: 13px;
+      }
+
+      .mm-random-scenario-hidden {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 18px;
+        color: #6d5a41;
+        letter-spacing: 0.05em;
+      }
+
+      .mm-random-scenario-hidden strong {
+        color: #7f4c15;
+        font-size: 18px;
+        letter-spacing: 0.14em;
       }
 
       .mm-scenario-details {
@@ -2062,43 +2085,6 @@ export class MainMenuScene extends Phaser.Scene {
 
       .mm-select option.custom-scenario-option {
         font-style: italic;
-      }
-
-      .mm-random-scenario-group {
-        margin-top: 12px;
-        padding: 11px;
-        border: 1px solid rgba(117, 86, 56, 0.28);
-        border-radius: 8px;
-        background: rgba(255, 252, 244, 0.48);
-      }
-
-      .mm-random-scenario-group .mm-field-label {
-        display: block;
-        margin: 0 0 8px;
-      }
-
-      .mm-random-scenario-actions {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px;
-      }
-
-      .mm-random-scenario-actions button {
-        min-width: 0;
-        padding: 8px 4px;
-        border: 1px solid rgba(117, 86, 56, 0.42);
-        border-radius: 7px;
-        background: rgba(255, 250, 240, 0.9);
-        color: #2b2017;
-        font: 700 12px Georgia, 'Times New Roman', serif;
-        cursor: pointer;
-      }
-
-      .mm-random-scenario-actions button:hover,
-      .mm-random-scenario-actions button:focus-visible {
-        background: #f0dcc0;
-        outline: 2px solid rgba(176, 101, 24, 0.3);
-        outline-offset: 1px;
       }
 
       .mm-opponent-summary {
