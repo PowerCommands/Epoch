@@ -57,6 +57,7 @@ export class NaturalResourceSystem {
     for (const row of mapData.tiles) {
       for (const tile of row) {
         if (cityCoordKeys.has(this.coordKey(tile.x, tile.y))) continue;
+        if (tile.buildingId !== undefined) continue;
         if (getNaturalResourcesForTileType(tile.type).length === 0) continue;
         count += 1;
       }
@@ -174,6 +175,7 @@ export function isNaturalResourcePlacementTileAvailable(
   cityCoordKeys: ReadonlySet<string>,
 ): boolean {
   return tile.resourceId === undefined
+    && tile.buildingId === undefined
     && !cityCoordKeys.has(naturalResourcePlacementCoordKey(tile.x, tile.y));
 }
 

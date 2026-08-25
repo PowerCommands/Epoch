@@ -39,6 +39,15 @@ export const DEFAULT_RANDOM_TERRAIN_WEIGHTS: Readonly<Record<RandomLandTerrainTy
   ice: 1,
 };
 
+export const DEFAULT_RANDOM_BARBARIAN_CAMP_COUNT = 6;
+export const DEFAULT_RANDOM_STARTING_SCOUT = true;
+export const DEFAULT_RANDOM_STARTING_WARRIOR = true;
+export const RANDOM_CAMP_MIN_START_DISTANCE = 5;
+export const RANDOM_CAMP_MIN_CAMP_DISTANCE = 4;
+export const RANDOM_CAMP_PREFERRED_MIN_DISTANCE = 7;
+export const RANDOM_CAMP_PREFERRED_MAX_DISTANCE = 14;
+export const RANDOM_STARTING_UNIT_MAX_DISTANCE = 1;
+
 export interface RandomMapProfileDefinition {
   readonly name: string;
   readonly featureLabel: string;
@@ -59,6 +68,9 @@ export interface RandomScenarioConfig {
   seed: number;
   terrainWeights: Readonly<Record<RandomLandTerrainType, number>>;
   featureCount: number;
+  barbarianCampCount: number;
+  addStartingScout: boolean;
+  addStartingWarrior: boolean;
   nations: readonly ScenarioNation[];
   nationDetails?: Readonly<Record<string, ScenarioNationDetails>>;
 }
@@ -72,6 +84,9 @@ export interface GeneratedScenarioMetadata {
   height: number;
   terrainWeights: Readonly<Record<RandomLandTerrainType, number>>;
   requestedFeatureCount: number;
+  barbarianCampCount: number;
+  addStartingScout: boolean;
+  addStartingWarrior: boolean;
   minimumStartDistance: number;
 }
 
@@ -114,6 +129,12 @@ export function validateRandomFeatureCount(type: RandomMapType, count: number, w
       ? Math.min(100, Math.floor(area * 0.34 / 50))
       : Math.min(30, Math.floor(area / 200));
   if (count > maximum) return `${RANDOM_MAP_PROFILE_DEFINITIONS[type].featureLabel} must not exceed ${maximum} for this map size.`;
+  return null;
+}
+
+export function validateRandomBarbarianCampCount(count: number, width: number, height: number): string | null {
+  if (!Number.isInteger(count) || count < 0) return 'Barbarian Camp count must be a non-negative whole number.';
+  if (count > width * height) return 'Barbarian Camp count cannot exceed the number of map tiles.';
   return null;
 }
 

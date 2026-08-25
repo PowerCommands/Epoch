@@ -23,6 +23,11 @@ const PROJECTILE_DEPTH = 30;
 const SHAKE_MS = 110;
 const SHAKE_INTENSITY = 0.0025;
 
+export interface CombatAnimationOptions {
+  defenderUnitId?: string;
+  shakeOnImpact: boolean;
+}
+
 export class CombatAnimationSystem {
   constructor(
     private readonly scene: Phaser.Scene,
@@ -35,7 +40,7 @@ export class CombatAnimationSystem {
     attacker: Unit,
     defenderTileX: number,
     defenderTileY: number,
-    defenderUnitId?: string,
+    options: CombatAnimationOptions,
   ): Promise<void> {
     if (this.autoplaySystem.isActive()) return;
 
@@ -58,8 +63,8 @@ export class CombatAnimationSystem {
       ease: 'Cubic.Out',
     });
 
-    if (defenderUnitId) this.unitRenderer.flashUnitRed(defenderUnitId, FLASH_MS, FLASH_TINT);
-    this.shake();
+    if (options.defenderUnitId) this.unitRenderer.flashUnitRed(options.defenderUnitId, FLASH_MS, FLASH_TINT);
+    if (options.shakeOnImpact) this.shake();
 
     await this.tweenAsync({
       targets: attackerContainer,
@@ -74,7 +79,7 @@ export class CombatAnimationSystem {
     attacker: Unit,
     defenderTileX: number,
     defenderTileY: number,
-    defenderUnitId?: string,
+    options: CombatAnimationOptions,
   ): Promise<void> {
     if (this.autoplaySystem.isActive()) return;
 
@@ -126,8 +131,8 @@ export class CombatAnimationSystem {
 
     await projectilePromise;
 
-    if (defenderUnitId) this.unitRenderer.flashUnitRed(defenderUnitId, FLASH_MS, FLASH_TINT);
-    this.shake();
+    if (options.defenderUnitId) this.unitRenderer.flashUnitRed(options.defenderUnitId, FLASH_MS, FLASH_TINT);
+    if (options.shakeOnImpact) this.shake();
     projectile.destroy();
   }
 

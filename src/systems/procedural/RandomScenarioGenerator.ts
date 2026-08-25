@@ -1,9 +1,15 @@
 import { TileType, type MapData } from '../../types/map';
+import { BARBARIAN_CAMP_BUILDING_ID } from '../../data/barbarians';
 import type { ScenarioData, ScenarioNation, ScenarioUnit } from '../../types/scenario';
 import { MapGenerationValidator, buildLandComponentSizes, hexDistance, isValidStartTerrain } from './MapGenerationValidator';
 import { SeededRandom } from './SeededRandom';
 import {
   normalizeTerrainWeights,
+  RANDOM_CAMP_MIN_CAMP_DISTANCE,
+  RANDOM_CAMP_MIN_START_DISTANCE,
+  RANDOM_CAMP_PREFERRED_MAX_DISTANCE,
+  RANDOM_CAMP_PREFERRED_MIN_DISTANCE,
+  validateRandomBarbarianCampCount,
   validateRandomFeatureCount,
   validateRandomMapDimensions,
   type GeneratedRandomScenario,
@@ -18,6 +24,9 @@ const EDGE_MARGIN = 3;
 const DIRECTIONS = [
   [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1],
 ] as const;
+const PASSABLE_STARTING_LAND_TYPES: ReadonlySet<TileType> = new Set([
+  TileType.Plains, TileType.Meadow, TileType.Beach, TileType.Forest, TileType.Desert, TileType.Jungle,
+]);
 
 interface MapProfile {
   readonly landFraction: number;
@@ -42,6 +51,8 @@ export class RandomScenarioGenerator {
     if (dimensionError) throw new Error(dimensionError);
     const featureError = validateRandomFeatureCount(config.mapType, config.featureCount, dimensions.width, dimensions.height);
     if (featureError) throw new Error(featureError);
+    const campError = validateRandomBarbarianCampCount(config.barbarianCampCount, dimensions.width, dimensions.height);
+    if (campError) throw new Error(campError);
     const normalizedTerrainWeights = normalizeTerrainWeights(config.terrainWeights);
     if (!Number.isSafeInteger(config.seed)) throw new Error('Random Scenario seed must be a safe integer.');
     if (config.nations.length < 2) throw new Error('Random Scenario requires at least two participating nations.');
@@ -53,6 +64,7 @@ export class RandomScenarioGenerator {
       const attemptSeed = [
         'epoch-random-scenario-v1', config.seed, config.mapType, dimensions.width, dimensions.height,
         config.featureCount,
+        config.barbarianCampCount, config.addStartingScout, config.addStartingWarrior,
         Object.entries(normalizedTerrainWeights).map(([type, weight]) => `${type}:${weight}`).join(','),
         [...nationIds].sort().join(','), `attempt-${attempt}`,
       ].join('|');
@@ -84,18 +96,17 @@ function generateAttempt(
   const mapData = toMapData(terrain, width, height);
 
   const minimumStartDistance = calculateMinimumStartDistance(width, height, land, config.nations.length);
-  const starts = selectStartingPositions(mapData, config.mapType, config.nations.length, minimumStartDistance, rng);
+  const optionalStartingUnitCount = Number(config.addStartingScout) + Number(config.addStartingWarrior);
+  const starts = selectStartingPositions(
+    mapData, config.mapType, config.nations.length, minimumStartDistance, optionalStartingUnitCount, rng,
+  );
   const nations = config.nations.map((nation, index): ScenarioNation => ({
     ...nation,
     isHuman: false,
     startTerritoryCenter: { q: starts[index]!.q, r: starts[index]!.r },
   }));
-  const units: ScenarioUnit[] = nations.map((nation, index) => ({
-    nationId: nation.id,
-    unitTypeId: 'settler',
-    q: starts[index]!.q,
-    r: starts[index]!.r,
-  }));
+  const units = placeStartingUnits(nations, starts, mapData, config.addStartingScout, config.addStartingWarrior, rng);
+  placeBarbarianCamps(mapData, starts, units, config.barbarianCampCount, rng);
   const scenario: ScenarioData = {
     meta: {
       name: `Random ${profileName(config.mapType)}`,
@@ -116,6 +127,7 @@ function generateAttempt(
         r: tile.y,
         type: tile.type,
         ...(tile.resourceId ? { resourceId: tile.resourceId } : {}),
+        ...(tile.buildingId ? { buildingId: tile.buildingId } : {}),
       })),
     },
     nations,
@@ -139,6 +151,9 @@ function generateAttempt(
     height,
     terrainWeights: { ...config.terrainWeights },
     requestedFeatureCount: config.featureCount,
+    barbarianCampCount: config.barbarianCampCount,
+    addStartingScout: config.addStartingScout,
+    addStartingWarrior: config.addStartingWarrior,
     minimumStartDistance,
   };
   return {
@@ -390,12 +405,16 @@ function selectStartingPositions(
   mapType: RandomMapType,
   count: number,
   minimumDistance: number,
+  requiredAdjacentUnitTiles: number,
   rng: SeededRandom,
 ): Coord[] {
   const types = mapData.tiles.map((row) => row.map((tile) => tile.type));
   const components = buildLandComponentSizes(types);
   const candidates = mapData.tiles.flat()
     .filter((tile) => isValidStartTerrain(tile.type))
+    .filter((tile) => countNeighbors(tile.x, tile.y, mapData.width, mapData.height, (q, r) => (
+      PASSABLE_STARTING_LAND_TYPES.has(mapData.tiles[r]![q]!.type)
+    )) >= requiredAdjacentUnitTiles)
     .filter((tile) => (components.get(key(tile.x, tile.y)) ?? 0) >= (mapType === 'archipelago' ? 32 : 55))
     .map((tile) => ({
       q: tile.x,
@@ -413,6 +432,94 @@ function selectStartingPositions(
     selected.push({ q: choice.q, r: choice.r });
   }
   return selected;
+}
+
+function placeStartingUnits(
+  nations: readonly ScenarioNation[],
+  starts: readonly Coord[],
+  mapData: MapData,
+  addScout: boolean,
+  addWarrior: boolean,
+  rng: SeededRandom,
+): ScenarioUnit[] {
+  const units: ScenarioUnit[] = [];
+  const occupied = new Set<string>();
+  const optionalTypes = [
+    ...(addScout ? ['scout'] : []),
+    ...(addWarrior ? ['warrior'] : []),
+  ];
+  for (let index = 0; index < nations.length; index += 1) {
+    const nation = nations[index]!;
+    const start = starts[index]!;
+    units.push({ nationId: nation.id, unitTypeId: 'settler', q: start.q, r: start.r });
+    occupied.add(key(start.q, start.r));
+    const neighbors = rng.shuffle(DIRECTIONS)
+      .map(([dq, dr]) => ({ q: start.q + dq, r: start.r + dr }))
+      .filter((coord) => {
+        const tile = mapData.tiles[coord.r]?.[coord.q];
+        return tile !== undefined && PASSABLE_STARTING_LAND_TYPES.has(tile.type) && !occupied.has(key(coord.q, coord.r));
+      });
+    if (neighbors.length < optionalTypes.length) throw new Error(`${nation.id} has no room for its requested starting units.`);
+    optionalTypes.forEach((unitTypeId, unitIndex) => {
+      const coord = neighbors[unitIndex]!;
+      occupied.add(key(coord.q, coord.r));
+      units.push({ nationId: nation.id, unitTypeId, q: coord.q, r: coord.r });
+    });
+  }
+  return units;
+}
+
+function placeBarbarianCamps(
+  mapData: MapData,
+  starts: readonly Coord[],
+  units: readonly ScenarioUnit[],
+  requestedCount: number,
+  rng: SeededRandom,
+): void {
+  if (requestedCount === 0) return;
+  const occupied = new Set(units.map((unit) => key(unit.q, unit.r)));
+  const camps: Coord[] = [];
+  const anchorOrder = rng.shuffle(starts.map((_, index) => index));
+  const allocations = Array.from({ length: requestedCount }, (_, index) => anchorOrder[index % anchorOrder.length]!);
+
+  for (const anchorIndex of allocations) {
+    const anchor = starts[anchorIndex]!;
+    const allCandidates = mapData.tiles.flat().filter((tile) => {
+      const coord = { q: tile.x, r: tile.y };
+      if (!PASSABLE_STARTING_LAND_TYPES.has(tile.type) || tile.buildingId || occupied.has(key(tile.x, tile.y))) return false;
+      if (starts.some((start) => hexDistance(start, coord) < RANDOM_CAMP_MIN_START_DISTANCE)) return false;
+      if (camps.some((camp) => hexDistance(camp, coord) < RANDOM_CAMP_MIN_CAMP_DISTANCE)) return false;
+      return nearestStartIndex(tile, starts) === anchorIndex;
+    });
+    const preferred = allCandidates.filter((tile) => {
+      const distance = hexDistance(anchor, { q: tile.x, r: tile.y });
+      return distance >= RANDOM_CAMP_PREFERRED_MIN_DISTANCE && distance <= RANDOM_CAMP_PREFERRED_MAX_DISTANCE;
+    });
+    const candidates = preferred.length > 0 ? preferred : allCandidates;
+    if (candidates.length === 0) throw new Error(`Could not place ${requestedCount} fairly distributed Barbarian Camps.`);
+    const shuffled = rng.shuffle(candidates);
+    shuffled.sort((a, b) => (
+      Math.abs(hexDistance(anchor, { q: a.x, r: a.y }) - 10)
+      - Math.abs(hexDistance(anchor, { q: b.x, r: b.y }) - 10)
+    ));
+    const choice = shuffled[0]!;
+    choice.buildingId = BARBARIAN_CAMP_BUILDING_ID;
+    camps.push({ q: choice.x, r: choice.y });
+  }
+}
+
+function nearestStartIndex(coord: { q?: number; r?: number; x?: number; y?: number }, starts: readonly Coord[]): number {
+  const point = { q: coord.q ?? coord.x!, r: coord.r ?? coord.y! };
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < starts.length; index += 1) {
+    const distance = hexDistance(point, starts[index]!);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+  return nearestIndex;
 }
 
 function scoreStart(mapData: MapData, q: number, r: number): number {
@@ -534,6 +641,9 @@ function buildGeneratedMapKey(
   const identity = [
     ...config.nations.map((nation) => nation.id).sort(),
     config.featureCount,
+    config.barbarianCampCount,
+    config.addStartingScout,
+    config.addStartingWarrior,
     ...Object.entries(weights).map(([type, weight]) => `${type}:${weight}`),
   ].join('|');
   let hash = 2166136261;

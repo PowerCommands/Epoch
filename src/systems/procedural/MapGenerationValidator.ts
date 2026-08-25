@@ -1,10 +1,14 @@
 import { isResourceAllowedOnTile } from '../../data/naturalResources';
+import { BARBARIAN_CAMP_BUILDING_ID } from '../../data/barbarians';
 import { ScenarioLoader } from '../ScenarioLoader';
 import { TileType } from '../../types/map';
 import type { ScenarioData } from '../../types/scenario';
-import type {
-  GeneratedScenarioMetadata,
-  MapGenerationValidationResult,
+import {
+  RANDOM_CAMP_MIN_CAMP_DISTANCE,
+  RANDOM_CAMP_MIN_START_DISTANCE,
+  RANDOM_STARTING_UNIT_MAX_DISTANCE,
+  type GeneratedScenarioMetadata,
+  type MapGenerationValidationResult,
 } from './RandomScenarioTypes';
 
 const DIRECTIONS = [
@@ -56,11 +60,17 @@ export class MapGenerationValidator {
     }
 
     const starts: Array<{ nationId: string; q: number; r: number }> = [];
+    const occupiedUnitTiles = new Set<string>();
     for (const nation of scenario.nations) {
       const settlers = scenario.units.filter((unit) => unit.nationId === nation.id && unit.unitTypeId === 'settler');
-      const otherUnits = scenario.units.filter((unit) => unit.nationId === nation.id && unit.unitTypeId !== 'settler');
+      const scouts = scenario.units.filter((unit) => unit.nationId === nation.id && unit.unitTypeId === 'scout');
+      const warriors = scenario.units.filter((unit) => unit.nationId === nation.id && unit.unitTypeId === 'warrior');
+      const otherUnits = scenario.units.filter((unit) => unit.nationId === nation.id
+        && !['settler', 'scout', 'warrior'].includes(unit.unitTypeId));
       if (settlers.length !== 1) errors.push(`${nation.id} must receive exactly one Settler.`);
-      if (otherUnits.length > 0) errors.push(`${nation.id} received a non-Settler starting unit.`);
+      if (scouts.length !== Number(metadata.addStartingScout)) errors.push(`${nation.id} has the wrong number of starting Scouts.`);
+      if (warriors.length !== Number(metadata.addStartingWarrior)) errors.push(`${nation.id} has the wrong number of starting Warriors.`);
+      if (otherUnits.length > 0) errors.push(`${nation.id} received an unsupported starting unit.`);
       const settler = settlers[0];
       if (!settler) continue;
       const tile = parsed.mapData.tiles[settler.r]?.[settler.q];
@@ -69,6 +79,16 @@ export class MapGenerationValidator {
         errors.push(`${nation.id} start territory does not match its Settler.`);
       }
       starts.push({ nationId: nation.id, q: settler.q, r: settler.r });
+      for (const unit of [...settlers, ...scouts, ...warriors]) {
+        const unitTile = parsed.mapData.tiles[unit.r]?.[unit.q];
+        const unitKey = coordKey(unit.q, unit.r);
+        if (!unitTile || !isValidStartTerrain(unitTile.type)) errors.push(`${nation.id} has a starting unit on invalid terrain.`);
+        if (occupiedUnitTiles.has(unitKey)) errors.push(`Starting units overlap at ${unitKey}.`);
+        occupiedUnitTiles.add(unitKey);
+        if (unit.unitTypeId !== 'settler' && hexDistance(unit, settler) > RANDOM_STARTING_UNIT_MAX_DISTANCE) {
+          errors.push(`${nation.id} has an optional starting unit too far from its Settler.`);
+        }
+      }
     }
     if (scenario.units.some((unit) => !nationIds.has(unit.nationId))) errors.push('A starting unit belongs to an unknown nation.');
 
@@ -88,6 +108,47 @@ export class MapGenerationValidator {
           errors.push(`${start.nationId} starts on an unusably small island (${size} tiles).`);
         }
       }
+    }
+
+    const camps = parsed.mapData.tiles.flat().filter((tile) => tile.buildingId === BARBARIAN_CAMP_BUILDING_ID);
+    if (camps.length !== metadata.barbarianCampCount) {
+      errors.push(`Expected ${metadata.barbarianCampCount} Barbarian Camps, got ${camps.length}.`);
+    }
+    const campTiles = new Set<string>();
+    const campPressure = starts.map(() => 0);
+    for (const camp of camps) {
+      const campKey = coordKey(camp.x, camp.y);
+      if (campTiles.has(campKey)) errors.push(`Duplicate Barbarian Camp at ${campKey}.`);
+      campTiles.add(campKey);
+      if (!isValidCampTerrain(camp.type)) errors.push(`Barbarian Camp at ${campKey} is on invalid terrain.`);
+      if (occupiedUnitTiles.has(campKey)) errors.push(`Barbarian Camp at ${campKey} overlaps a starting unit.`);
+      const campCoord = { q: camp.x, r: camp.y };
+      if (starts.some((start) => hexDistance(start, campCoord) < RANDOM_CAMP_MIN_START_DISTANCE)) {
+        errors.push(`Barbarian Camp at ${campKey} is too close to a national start.`);
+      }
+      let nearest = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      starts.forEach((start, index) => {
+        const distance = hexDistance(start, campCoord);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = index;
+        }
+      });
+      if (campPressure.length > 0) campPressure[nearest]! += 1;
+    }
+    for (let first = 0; first < camps.length; first += 1) {
+      for (let second = first + 1; second < camps.length; second += 1) {
+        if (hexDistance(
+          { q: camps[first]!.x, r: camps[first]!.y },
+          { q: camps[second]!.x, r: camps[second]!.y },
+        ) < RANDOM_CAMP_MIN_CAMP_DISTANCE) {
+          errors.push('Generated Barbarian Camps are too close together.');
+        }
+      }
+    }
+    if (campPressure.length > 0 && Math.max(...campPressure) - Math.min(...campPressure) > 1) {
+      errors.push('Barbarian Camps are not distributed fairly between national starts.');
     }
 
     for (const tile of parsed.mapData.tiles.flat()) {
@@ -145,6 +206,15 @@ export function buildLandComponentSizes(types: readonly (readonly TileType[])[])
 
 function isWater(type: TileType): boolean {
   return type === TileType.Ocean || type === TileType.Coast;
+}
+
+function isValidCampTerrain(type: TileType): boolean {
+  return type === TileType.Plains
+    || type === TileType.Meadow
+    || type === TileType.Beach
+    || type === TileType.Forest
+    || type === TileType.Desert
+    || type === TileType.Jungle;
 }
 
 function coordKey(q: number, r: number): string {

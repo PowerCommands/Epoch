@@ -149,6 +149,7 @@ import { isCovertOperative } from '../utils/unitRoleUtils';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
 import { CombatAnimationSystem } from '../systems/CombatAnimationSystem';
+import { isHumanInvolvedInCombat } from '../systems/CombatAnimationPolicy';
 import { AutoplayHud } from '../ui/hud/AutoplayHud';
 import { DiagnosticSystem } from '../systems/DiagnosticSystem';
 import { calculateCityEconomy } from '../systems/CityEconomy';
@@ -502,8 +503,8 @@ export class GameScene extends Phaser.Scene {
     unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
 
     // 7b. Give every nation in authored scenarios a starting Scout to accelerate
-    // early exploration. Random Scenario v1 deliberately starts every nation
-    // with exactly one Settler, so it opts out of this authored-map convenience.
+    // early exploration. Random Scenarios carry their explicitly configured
+    // Settler/Scout/Warrior package and must not receive an extra automatic Scout.
     if (!data.savedState && !data.generatedScenario) {
       this.spawnStartingScouts(activeNations, unitManager, gridSystem, mapData);
     }
@@ -3641,10 +3642,14 @@ export class GameScene extends Phaser.Scene {
 
     combatSystem.on(async (e) => {
       const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
+      const animationOptions = {
+        defenderUnitId: e.defender.id,
+        shakeOnImpact: isHumanInvolvedInCombat(humanNationId, e.attacker.ownerId, e.defender.ownerId),
+      };
       if (isRanged) {
-        await combatAnimationSystem.playRangedAttack(e.attacker, e.defender.tileX, e.defender.tileY, e.defender.id);
+        await combatAnimationSystem.playRangedAttack(e.attacker, e.defender.tileX, e.defender.tileY, animationOptions);
       } else {
-        await combatAnimationSystem.playMeleeAttack(e.attacker, e.defender.tileX, e.defender.tileY, e.defender.id);
+        await combatAnimationSystem.playMeleeAttack(e.attacker, e.defender.tileX, e.defender.tileY, animationOptions);
       }
       if (e.result.attackerDied) {
         unitRenderer.removeUnit(e.attacker.id);
@@ -3674,10 +3679,14 @@ export class GameScene extends Phaser.Scene {
       aiMilitaryEvaluationSystem.invalidate(e.city.ownerId);
       if (e.previousOwnerId) aiMilitaryEvaluationSystem.invalidate(e.previousOwnerId);
       const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
+      const defendingNationId = e.previousOwnerId ?? e.city.ownerId;
+      const animationOptions = {
+        shakeOnImpact: isHumanInvolvedInCombat(humanNationId, e.attacker.ownerId, defendingNationId),
+      };
       if (isRanged) {
-        await combatAnimationSystem.playRangedAttack(e.attacker, e.city.tileX, e.city.tileY);
+        await combatAnimationSystem.playRangedAttack(e.attacker, e.city.tileX, e.city.tileY, animationOptions);
       } else {
-        await combatAnimationSystem.playMeleeAttack(e.attacker, e.city.tileX, e.city.tileY);
+        await combatAnimationSystem.playMeleeAttack(e.attacker, e.city.tileX, e.city.tileY, animationOptions);
       }
       // Uppdatera stadsrendering
       cityRenderer.refreshCity(e.city);

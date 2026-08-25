@@ -1,10 +1,14 @@
 import type { NationDefinition } from '../data/nations';
 import {
   DEFAULT_RANDOM_TERRAIN_WEIGHTS,
+  DEFAULT_RANDOM_BARBARIAN_CAMP_COUNT,
+  DEFAULT_RANDOM_STARTING_SCOUT,
+  DEFAULT_RANDOM_STARTING_WARRIOR,
   identifyRandomMapSize,
   RANDOM_LAND_TERRAIN_TYPES,
   RANDOM_MAP_PROFILE_DEFINITIONS,
   RANDOM_MAP_SIZES,
+  validateRandomBarbarianCampCount,
   validateRandomFeatureCount,
   validateRandomMapDimensions,
   type RandomLandTerrainType,
@@ -15,6 +19,7 @@ import {
 export type RandomScenarioDialogConfig = Pick<
   RandomScenarioConfig,
   'mapType' | 'mapSize' | 'width' | 'height' | 'seed' | 'terrainWeights' | 'featureCount'
+  | 'barbarianCampCount' | 'addStartingScout' | 'addStartingWarrior'
 > & { nationIds: string[] };
 
 export interface RandomScenarioDialogCallbacks {
@@ -121,6 +126,20 @@ export class RandomScenarioDialog {
     weightHint.style.cssText = 'margin:7px 0 0;color:#70583e;font-size:12px;';
     left.append(terrainGrid, weightHint);
 
+    right.appendChild(sectionHeading('Starting World'));
+    const barbarianCamps = numericField(
+      'random-scenario-barbarian-camps',
+      'Barbarian Camps',
+      DEFAULT_RANDOM_BARBARIAN_CAMP_COUNT,
+    );
+    barbarianCamps.input.min = '0';
+    const startingUnitChoices = document.createElement('div');
+    startingUnitChoices.style.cssText = 'display:flex;flex-direction:column;gap:7px;margin-top:12px;';
+    const addScout = checkboxField('random-scenario-add-scout', 'Add Scout', DEFAULT_RANDOM_STARTING_SCOUT);
+    const addWarrior = checkboxField('random-scenario-add-warrior', 'Add Warrior', DEFAULT_RANDOM_STARTING_WARRIOR);
+    startingUnitChoices.append(addScout.wrapper, addWarrior.wrapper);
+    right.append(barbarianCamps.wrapper, startingUnitChoices);
+
     right.appendChild(sectionHeading('Participating Nations'));
     const nationActions = document.createElement('div');
     nationActions.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;';
@@ -164,9 +183,11 @@ export class RandomScenarioDialog {
       const featureCount = Number(feature.input.value);
       const dimensionError = validateRandomMapDimensions(width, height);
       const featureError = validateRandomFeatureCount(mapType, featureCount, width, height);
+      const barbarianCampCount = Number(barbarianCamps.input.value);
+      const campError = validateRandomBarbarianCampCount(barbarianCampCount, width, height);
       const nationIds = nationCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
-      if (dimensionError || featureError || !Number.isSafeInteger(seed) || nationIds.length < 2) {
-        error.textContent = dimensionError ?? featureError
+      if (dimensionError || featureError || campError || !Number.isSafeInteger(seed) || nationIds.length < 2) {
+        error.textContent = dimensionError ?? featureError ?? campError
           ?? (!Number.isSafeInteger(seed) ? 'Enter a whole numeric seed.' : 'Select at least two participating nations.');
         return;
       }
@@ -186,6 +207,9 @@ export class RandomScenarioDialog {
         seed,
         terrainWeights,
         featureCount,
+        barbarianCampCount,
+        addStartingScout: addScout.input.checked,
+        addStartingWarrior: addWarrior.input.checked,
         nationIds,
       });
       if (result.ok) return this.close();
@@ -245,6 +269,17 @@ function numericField(id: string, labelText: string, value: number): { wrapper: 
   input.value = String(value);
   input.style.cssText = `${fieldStyle()}width:84px;`;
   wrapper.appendChild(input);
+  return { wrapper, input };
+}
+
+function checkboxField(id: string, labelText: string, checked: boolean): { wrapper: HTMLLabelElement; input: HTMLInputElement } {
+  const wrapper = document.createElement('label');
+  wrapper.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:14px;';
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'checkbox';
+  input.checked = checked;
+  wrapper.append(input, document.createTextNode(labelText));
   return { wrapper, input };
 }
 
