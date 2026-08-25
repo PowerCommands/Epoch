@@ -16,6 +16,7 @@ import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
 import type { WorldCouncilState } from './worldCouncil';
 import type { SavedGossipState } from './gossip';
 import type { SavedGossipFlavorState } from './gossipFlavor';
+import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -270,6 +271,8 @@ export interface SavedGameState {
   savedAt: string;
   worldYear?: number;
   mapKey: string;
+  /** Initial generated scenario, embedded so future generator changes cannot alter this save's geography. */
+  generatedScenario?: GeneratedScenarioSnapshot;
   humanNationId: string;
   activeNationIds: string[];
   gameSpeedId?: GameSpeedId;

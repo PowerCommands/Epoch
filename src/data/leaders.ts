@@ -9,10 +9,11 @@ import { getAIMilitaryDoctrineById } from './aiMilitaryDoctrines';
 import type { AIMilitaryDoctrine } from '../types/aiMilitaryDoctrine';
 import type { CovertPersonalityId } from '../types/covertPersonality';
 import { DEFAULT_COVERT_PERSONALITY_ID } from './covertPersonalities';
+import type { GamesOfNationsLeaderPreferences } from '../types/gamesOfNations';
 
 const LEADER_IMAGE_BASE = '/assets/sprites/leaders';
 
-export const ALL_LEADERS: LeaderDefinition[] = [
+const LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'gamesOfNationsPreferences'>> = [
   {
     id: 'leader_henry_v',
     name: 'Henry V',
@@ -517,6 +518,35 @@ export const ALL_LEADERS: LeaderDefinition[] = [
     },
   },
 ];
+
+const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderPreferences>> = {
+  leader_henry_v: { traditionalFavourite: 'wrestling', additionalFavourite: 'boxing' },
+  leader_charles_vii: { traditionalFavourite: 'long_jump', additionalFavourite: 'fencing' },
+  leader_sigismund: { traditionalFavourite: 'javelin', additionalFavourite: 'pole_vault' },
+  leader_gustav_vasa: { traditionalFavourite: 'javelin', additionalFavourite: 'fencing' },
+  leader_vytautas: { traditionalFavourite: 'marathon', additionalFavourite: 'horse_racing' },
+  leader_marfa_boretskaya: { traditionalFavourite: 'swimming', additionalFavourite: 'hundred_metres' },
+  leader_mehmed_ii: { traditionalFavourite: 'wrestling', additionalFavourite: 'horse_racing' },
+  leader_isabella_i: { traditionalFavourite: 'long_jump', additionalFavourite: 'fencing' },
+  leader_abu_said_uthman_ii: { traditionalFavourite: 'marathon', additionalFavourite: 'horse_racing' },
+  'leader_george-washington': { traditionalFavourite: 'javelin', additionalFavourite: 'boxing' },
+  'leader_mahatma-gandhi': { traditionalFavourite: 'marathon', additionalFavourite: 'hundred_metres' },
+  'leader_qin-shi-huang': { traditionalFavourite: 'swimming', additionalFavourite: 'pole_vault' },
+  leader_koxinga: { traditionalFavourite: 'swimming', additionalFavourite: 'fencing' },
+  'leader_dom-pedro-ii': { traditionalFavourite: 'long_jump', additionalFavourite: 'pole_vault' },
+  'leader_mansa-musa': { traditionalFavourite: 'marathon', additionalFavourite: 'hundred_metres' },
+  'leader_genghis-khan': { traditionalFavourite: 'wrestling', additionalFavourite: 'horse_racing' },
+  'leader_oda-nobunaga': { traditionalFavourite: 'javelin', additionalFavourite: 'fencing' },
+  'leader_christian-iv': { traditionalFavourite: 'swimming', additionalFavourite: 'pole_vault' },
+  leader_mad_jack: { traditionalFavourite: 'swimming', additionalFavourite: 'boxing' },
+  'hermann-the-cheruscan': { traditionalFavourite: 'wrestling', additionalFavourite: 'hundred_metres' },
+  'ivan-iv': { traditionalFavourite: 'javelin', additionalFavourite: 'horse_racing' },
+};
+
+export const ALL_LEADERS: LeaderDefinition[] = LEADERS_WITHOUT_GAMES_PREFERENCES.map((leader) => ({
+  ...leader,
+  gamesOfNationsPreferences: GAMES_PREFERENCES_BY_LEADER[leader.id]!,
+}));
 
 /**
  * Per-scenario leader overrides, keyed by nationId. Installed once at game start

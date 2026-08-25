@@ -32,6 +32,7 @@ export interface GossipDefinition {
   readonly effect?: GossipRelationEffectConfig;
   readonly insultEffect?: GossipInsultEffectConfig;
   readonly responseKind?: GossipInformationResponseKind;
+  readonly requiresGamesOfNationsFounded?: boolean;
 }
 
 export type GossipInformationResponseKind =
@@ -41,7 +42,8 @@ export type GossipInformationResponseKind =
   | 'least_trusted'
   | 'most_feared'
   | 'greatest_rival'
-  | 'war_risk';
+  | 'war_risk'
+  | 'sports_preferences';
 
 export interface GossipExecutionInput {
   readonly itemId: string;
@@ -90,7 +92,9 @@ export type GossipFailureReason =
   | 'recipient_rejects'
   | 'cooldown_active'
   | 'insult_cooldown_active'
-  | 'culture_locked';
+  | 'culture_locked'
+  | 'games_not_founded'
+  | 'already_discovered';
 
 export interface GossipSuccessResult {
   readonly success: true;
@@ -130,9 +134,10 @@ export type GossipExecutionResult = GossipSuccessResult | GossipFailureResult;
 
 export interface GossipItemAvailability {
   readonly available: boolean;
+  readonly visible?: boolean;
   readonly requiredCultureNodeId?: string;
   readonly requiredCultureNodeName?: string;
-  readonly failureReason?: Extract<GossipFailureReason, 'unknown_item' | 'invalid_source' | 'culture_locked'>;
+  readonly failureReason?: Extract<GossipFailureReason, 'unknown_item' | 'invalid_source' | 'invalid_recipient' | 'culture_locked' | 'games_not_founded' | 'already_discovered'>;
 }
 
 export interface SavedGossipManipulationCooldown {
@@ -145,6 +150,15 @@ export interface SavedGossipManipulationCooldown {
 export interface SavedGossipState {
   readonly manipulationCooldowns: SavedGossipManipulationCooldown[];
   readonly insultCooldowns?: SavedGossipManipulationCooldown[];
+  readonly discoveredSportsPreferences?: Array<{
+    readonly sourceNationId: string;
+    readonly recipientNationId: string;
+  }>;
+}
+
+export interface KnownSportsPreferences {
+  readonly traditionalSport: string;
+  readonly additionalSport: string;
 }
 
 export interface GossipManipulationStatus {

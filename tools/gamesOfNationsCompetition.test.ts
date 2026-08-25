@@ -35,7 +35,7 @@ function participant(
     participating,
     cultureCommitment: 0,
     productionCommitment: 0,
-    sportAllocation: points(20),
+    unallocatedGamesPoints: 0,
     gamesPointsBySport: { ...sportPoints },
     totalGamesPoints: Object.values(sportPoints).reduce((sum, value) => sum + value, 0),
     totalCultureInvested: 0,

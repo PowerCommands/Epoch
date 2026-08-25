@@ -156,6 +156,26 @@ test('comment selection is stable for the same issue and event', () => {
   assert.equal(first.mainArticle.comment, second.mainArticle.comment);
 });
 
+test('wonder news uses the built wonder image from history metadata', () => {
+  const issue = harness([
+    event(1, 'wonderBuilt', 5, ['human'], { wonderId: 'great_lighthouse', wonderName: 'Great Lighthouse' }),
+  ]).consumeDueIssue(11, 'Date')!;
+
+  assert.equal(issue.mainArticle.imagePath, '/assets/sprites/wonders/great_lighthouse.png');
+});
+
+test('wonder news can infer an older history entry and otherwise uses the fallback image', () => {
+  const inferred = event(1, 'wonderBuilt', 5, ['human']);
+  inferred.text = 'Humania completed Angkor Wat';
+  const inferredIssue = harness([inferred]).consumeDueIssue(11, 'Date')!;
+  const fallbackIssue = harness([
+    event(2, 'wonderBuilt', 5, ['human']),
+  ]).consumeDueIssue(11, 'Date')!;
+
+  assert.equal(inferredIssue.mainArticle.imagePath, '/assets/sprites/wonders/angkor-wat.png');
+  assert.equal(fallbackIssue.mainArticle.imagePath, '/assets/sprites/news/wonder-built.png');
+});
+
 test('every recurring event definition has exactly ten comments', () => {
   for (const definition of Object.values(NEWSPAPER_EVENT_DEFINITIONS)) {
     assert.equal(definition.comments.length, 10);

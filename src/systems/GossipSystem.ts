@@ -1,6 +1,7 @@
 import { getGossipDefinition } from '../data/gossip';
 import { getAIStrategyById } from '../data/aiStrategies';
 import { getCultureNodeById } from '../data/cultureTree';
+import { getGamesSportById } from '../data/gamesOfNationsSports';
 import {
   getLeaderByNationId,
   getLeaderIdeologyByNationId,
@@ -21,6 +22,7 @@ import type {
   GossipInsultStatus,
   GossipDiplomaticEffect,
   GossipInsultEffectConfig,
+  KnownSportsPreferences,
   SavedGossipState,
 } from '../types/gossip';
 import { formatGossipText, type GossipTextContext } from '../utils/gossipText';
@@ -61,7 +63,15 @@ export interface GossipInfluenceGateway {
 
 export interface GossipKnowledgeGateway {
   hasMet(observerNationId: string, otherNationId: string): boolean;
+  isGamesOfNationsFounded?: () => boolean;
 }
+
+const SPORTS_PREFERENCE_RESPONSE_TEMPLATES = [
+  "I've always had a fondness for {traditionalSport}. And among the newer events, nothing compares to {additionalSport}.",
+  '{traditionalSport} has always been close to my heart, though I have a particular weakness for {additionalSport}.',
+  'Give me {traditionalSport} any day. Although I would never miss a good {additionalSport} contest.',
+  'I have always enjoyed {traditionalSport}, though I would love to see more of {additionalSport}.',
+] as const;
 
 export function calculateThreatFearMultiplier(sourcePower: number, recipientPower: number): number {
   const safeSourcePower = Math.max(0, sourcePower);
@@ -99,6 +109,7 @@ function opinionResponse(targetLeaderName: string, relation: DiplomacyRelation):
 export class GossipSystem {
   private readonly manipulationCooldowns = new Map<string, number>();
   private readonly insultCooldowns = new Map<string, number>();
+  private readonly discoveredSportsPreferences = new Set<string>();
 
   constructor(
     private readonly nationManager: NationManager,
@@ -135,11 +146,23 @@ export class GossipSystem {
     };
   }
 
-  getItemAvailability(sourceNationId: string, itemId: string): GossipItemAvailability {
+  getItemAvailability(sourceNationId: string, itemId: string, recipientNationId?: string): GossipItemAvailability {
     const definition = getGossipDefinition(itemId);
     if (!definition) return { available: false, failureReason: 'unknown_item' };
     const source = this.nationManager.getNation(sourceNationId);
     if (!source?.isHuman) return { available: false, failureReason: 'invalid_source' };
+    if (definition.requiresGamesOfNationsFounded) {
+      if (this.knowledgeGateway.isGamesOfNationsFounded?.() !== true) {
+        return { available: false, visible: false, failureReason: 'games_not_founded' };
+      }
+      const recipient = recipientNationId ? this.nationManager.getNation(recipientNationId) : undefined;
+      if (!recipient || recipient.isHuman || !this.knowledgeGateway.hasMet(sourceNationId, recipient.id)) {
+        return { available: false, visible: false, failureReason: 'invalid_recipient' };
+      }
+      if (this.hasDiscoveredSportsPreferences(sourceNationId, recipient.id)) {
+        return { available: false, visible: false, failureReason: 'already_discovered' };
+      }
+    }
     const requiredCultureNodeId = definition.requiredCultureNodeId;
     if (!requiredCultureNodeId) return { available: true };
     const requiredCultureNodeName = getCultureNodeById(requiredCultureNodeId)?.name ?? requiredCultureNodeId;
@@ -223,7 +246,7 @@ export class GossipSystem {
 
     const validationFailure = this.validateNations(definition, input);
     if (validationFailure) return this.failure(input.itemId, definition, validationFailure, 0);
-    const availability = this.getItemAvailability(input.sourceNationId, input.itemId);
+    const availability = this.getItemAvailability(input.sourceNationId, input.itemId, input.recipientNationId);
     if (!availability.available) {
       return this.failure(input.itemId, definition, availability.failureReason ?? 'culture_locked', 0);
     }
@@ -233,6 +256,9 @@ export class GossipSystem {
 
     if (definition.type === 'information') {
       const information = this.resolveInformation(definition, input, context);
+      if (definition.responseKind === 'sports_preferences') {
+        this.discoveredSportsPreferences.add(this.discoveryKey(input.sourceNationId, input.recipientNationId));
+      }
       return {
         success: true,
         itemId: definition.id,
@@ -361,12 +387,17 @@ export class GossipSystem {
         const [sourceNationId, recipientNationId] = key.split('->');
         return { sourceNationId: sourceNationId!, recipientNationId: recipientNationId!, availableAtRound };
       }),
+      discoveredSportsPreferences: Array.from(this.discoveredSportsPreferences, (key) => {
+        const [sourceNationId, recipientNationId] = key.split('->');
+        return { sourceNationId: sourceNationId!, recipientNationId: recipientNationId! };
+      }),
     };
   }
 
   restore(state: SavedGossipState | undefined): void {
     this.manipulationCooldowns.clear();
     this.insultCooldowns.clear();
+    this.discoveredSportsPreferences.clear();
     for (const entry of state?.manipulationCooldowns ?? []) {
       if (!Number.isFinite(entry.availableAtRound)) continue;
       this.manipulationCooldowns.set(
@@ -381,6 +412,25 @@ export class GossipSystem {
         Math.max(0, Math.floor(entry.availableAtRound)),
       );
     }
+    for (const entry of state?.discoveredSportsPreferences ?? []) {
+      if (!this.nationManager.getNation(entry.sourceNationId)?.isHuman) continue;
+      if (!this.nationManager.getNation(entry.recipientNationId)) continue;
+      this.discoveredSportsPreferences.add(this.discoveryKey(entry.sourceNationId, entry.recipientNationId));
+    }
+  }
+
+  hasDiscoveredSportsPreferences(sourceNationId: string, recipientNationId: string): boolean {
+    return this.discoveredSportsPreferences.has(this.discoveryKey(sourceNationId, recipientNationId));
+  }
+
+  getKnownSportsPreferences(sourceNationId: string, recipientNationId: string): KnownSportsPreferences | null {
+    if (!this.hasDiscoveredSportsPreferences(sourceNationId, recipientNationId)) return null;
+    const preferences = getLeaderByNationId(recipientNationId)?.gamesOfNationsPreferences;
+    if (!preferences) return null;
+    return {
+      traditionalSport: getGamesSportById(preferences.traditionalFavourite).name,
+      additionalSport: getGamesSportById(preferences.additionalFavourite).name,
+    };
   }
 
   private applyInsultEffect(
@@ -479,6 +529,19 @@ export class GossipSystem {
     }
     if (definition.responseKind === 'agenda') {
       return { responseText: describeGossipAgenda(recipient.aiStrategyId, recipient.aiNationalAgendaId) };
+    }
+    if (definition.responseKind === 'sports_preferences') {
+      const preferences = getLeaderByNationId(recipient.id)?.gamesOfNationsPreferences;
+      if (!preferences) return { responseText: 'I have not settled on any particular events.' };
+      const traditionalSport = getGamesSportById(preferences.traditionalFavourite).name;
+      const additionalSport = getGamesSportById(preferences.additionalFavourite).name;
+      const seed = `${recipient.id}|sports-preferences`.split('')
+        .reduce((sum, character) => sum + character.charCodeAt(0), 0);
+      return {
+        responseText: SPORTS_PREFERENCE_RESPONSE_TEMPLATES[seed % SPORTS_PREFERENCE_RESPONSE_TEMPLATES.length]!
+          .split('{traditionalSport}').join(traditionalSport)
+          .split('{additionalSport}').join(additionalSport),
+      };
     }
 
     const candidates = this.getAutomaticCandidates(recipient.id);
@@ -612,6 +675,10 @@ export class GossipSystem {
   }
 
   private cooldownKey(sourceNationId: string, recipientNationId: string): string {
+    return `${sourceNationId}->${recipientNationId}`;
+  }
+
+  private discoveryKey(sourceNationId: string, recipientNationId: string): string {
     return `${sourceNationId}->${recipientNationId}`;
   }
 }

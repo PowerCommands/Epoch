@@ -17,7 +17,7 @@ import {
   isManagedCovertUnit,
   pickPreferredCovertUnit,
 } from './ai/covertForceEvaluation';
-import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, getBuildingById, isBarbarianCamp } from '../data/buildings';
+import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
@@ -167,6 +167,7 @@ import {
   type EmergencyCityThreatSeverity,
 } from './ai/EmergencyCityDefense';
 import type { ProductionPurchaseSystem } from './ProductionPurchaseSystem';
+import type { GamesOfNationsSystem } from './GamesOfNationsSystem';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -436,6 +437,16 @@ function describeProducible(item: Producible): string {
   }
 }
 
+/** Returns -1 when the mandatory stadium must be enqueued, its queue index when it must move, or null when already first. */
+export function getGrandStadiumPriorityQueueAction(
+  queue: readonly { item: Producible }[],
+): number | null {
+  const index = queue.findIndex((entry) =>
+    entry.item.kind === 'building' && entry.item.buildingType.id === GRAND_STADIUM_BUILDING_ID,
+  );
+  return index === 0 ? null : index;
+}
+
 /**
  * AISystem kör grundläggande AI för icke-mänskliga nationer.
  *
@@ -587,6 +598,7 @@ export class AISystem {
     private readonly aerospacePartSystem?: AerospacePartSystem,
     private readonly requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS,
     private readonly productionPurchaseSystem?: ProductionPurchaseSystem,
+    private readonly gamesOfNationsSystem?: GamesOfNationsSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -4355,6 +4367,7 @@ export class AISystem {
     this.ensureFoundationSettlerProduction(nationId, cities);
     this.ensureNavalReconProduction(nationId, cities);
     this.runMilitaryModernization(nationId);
+    this.ensureGrandStadiumProduction(nationId);
 
     const strategy = this.getStrategy(nationId);
     const eraStrategy = this.getActiveEraStrategy(nationId);
@@ -6375,7 +6388,30 @@ export class AISystem {
   }
 
   private canBuildBuilding(nationId: string, buildingId: string): boolean {
+    if (buildingId === GRAND_STADIUM_BUILDING_ID) return false;
     return this.researchSystem?.isBuildingUnlocked(nationId, buildingId) ?? true;
+  }
+
+  private ensureGrandStadiumProduction(nationId: string): void {
+    const cityId = this.gamesOfNationsSystem?.getGrandStadiumPriorityCityId(nationId);
+    if (!cityId) return;
+    const city = this.cityManager.getCity(cityId);
+    if (!city || city.ownerId !== nationId || this.cityManager.getBuildings(cityId).has(GRAND_STADIUM_BUILDING_ID)) return;
+    const queue = this.productionSystem.getQueue(cityId);
+    const priorityAction = getGrandStadiumPriorityQueueAction(queue);
+    if (priorityAction === null) return;
+    if (priorityAction > 0) {
+      this.productionSystem.moveQueueEntryToFront(cityId, priorityAction);
+      this.logStrategicEvent?.(nationId, `Grand Stadium moved to highest production priority in ${city.name}.`);
+      return;
+    }
+    const placement = this.reserveAIBuildingPlacement(city, GRAND_STADIUM);
+    if (this.buildingPlacementSystem && !placement) {
+      this.logStrategicEvent?.(nationId, `Grand Stadium priority blocked in ${city.name}: no valid placement.`);
+      return;
+    }
+    this.productionSystem.enqueueFront(cityId, { kind: 'building', buildingType: GRAND_STADIUM }, { placement });
+    this.logStrategicEvent?.(nationId, `Grand Stadium set as highest production priority in ${city.name}.`);
   }
 
   private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {

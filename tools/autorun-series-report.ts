@@ -26,6 +26,13 @@ export interface NationStateSummary {
   currentCulture: string | null;
   cityCount: number;
   population: number;
+  culturalVictory?: {
+    normalRequirementsMet: boolean;
+    latestCompletedGamesNumber: number | null;
+    reigningGamesChampionNationId: string | null;
+    isReigningGamesChampion: boolean;
+    victoryEligible: boolean;
+  };
 }
 
 export interface StateSummary {
@@ -455,6 +462,7 @@ export interface SeriesReportModel {
       currentCulture: string | null;
       influence: number | null;
       gold: number | null;
+      culturalVictory: NationStateSummary['culturalVictory'];
     }>;
   }>;
   importantEvents: CategorizedEvent[];
@@ -585,6 +593,7 @@ export function buildSeriesReportModel(ctx: SeriesRunContext): SeriesReportModel
           currentCulture: nation.currentCulture,
           influence: saved?.influence ?? null,
           gold: saved?.gold ?? null,
+          culturalVictory: nation.culturalVictory,
         };
       }),
     };
@@ -701,6 +710,10 @@ function fmt(value: number | string | null | undefined): string {
   return value === null || value === undefined ? 'n/a' : String(value);
 }
 
+function formatDiagnosticBoolean(value: boolean | undefined): string {
+  return value === undefined ? 'n/a' : value ? 'yes' : 'no';
+}
+
 function fmtDuration(ms: number | null | undefined): string {
   if (ms == null) return 'n/a';
   const totalSeconds = Math.round(ms / 1000);
@@ -750,15 +763,15 @@ export function renderSeriesReportMarkdown(model: SeriesReportModel, names: Map<
 
   // 3. Nation progression snapshots
   lines.push('## 3. Nation progression snapshots', '');
-  lines.push('_Per-checkpoint per-nation values. Diplomatic/science/cultural victory progress is not separately exposed by the engine; era, tech count, culture-node count and influence are shown as the closest reliable proxies._', '');
+  lines.push('_Per-checkpoint per-nation values, including the Cultural Victory gate derived from the latest completed Games of Nations._', '');
   for (const snapshot of model.nationProgression) {
     lines.push(`### Checkpoint turn ${fmt(snapshot.checkpointTurn)} (block ${snapshot.blockNumber})`, '');
-    lines.push('| Nation | Era | Techs | Culture | Cities | Pop | Influence | Gold | Researching | Culture target |');
-    lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |');
+    lines.push('| Nation | Era | Techs | Culture | Cities | Pop | Influence | Gold | Researching | Culture target | Normal cultural reqs | Reigning GoN champion | Cultural victory eligible |');
+    lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | :---: | :---: | :---: |');
     for (const nation of snapshot.nations) {
       const label = nation.isHuman ? `${nation.name} (human)` : nation.name;
       lines.push(
-        `| ${label} | ${nation.era} | ${nation.technologyCount} | ${nation.cultureNodeCount} | ${nation.cityCount} | ${nation.population} | ${fmt(nation.influence)} | ${fmt(nation.gold)} | ${fmt(nation.currentResearch)} | ${fmt(nation.currentCulture)} |`,
+        `| ${label} | ${nation.era} | ${nation.technologyCount} | ${nation.cultureNodeCount} | ${nation.cityCount} | ${nation.population} | ${fmt(nation.influence)} | ${fmt(nation.gold)} | ${fmt(nation.currentResearch)} | ${fmt(nation.currentCulture)} | ${formatDiagnosticBoolean(nation.culturalVictory?.normalRequirementsMet)} | ${formatDiagnosticBoolean(nation.culturalVictory?.isReigningGamesChampion)} | ${formatDiagnosticBoolean(nation.culturalVictory?.victoryEligible)} |`,
       );
     }
     lines.push('');

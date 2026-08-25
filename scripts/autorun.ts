@@ -85,6 +85,13 @@ interface NationStateSummary {
     recovering: number;
     integrated: number;
   };
+  culturalVictory?: {
+    normalRequirementsMet: boolean;
+    latestCompletedGamesNumber: number | null;
+    reigningGamesChampionNationId: string | null;
+    isReigningGamesChampion: boolean;
+    victoryEligible: boolean;
+  };
 }
 
 interface EraMilestone {

@@ -11,7 +11,6 @@ import {
   buildGamesOfNationsUiModel,
   GAMES_HUD_BUTTON_LAYOUT,
   GAMES_HUD_DARK_BLUE,
-  validateGamesAllocation,
 } from '../src/ui/hud/GamesOfNationsUiModel';
 
 const HUMAN = 'human';
@@ -30,7 +29,7 @@ function participant(overrides: Partial<GamesOfNationsParticipantState> = {}): G
     participating: true,
     cultureCommitment: 0,
     productionCommitment: 0,
-    sportAllocation: { ...EQUAL },
+    unallocatedGamesPoints: 25,
     gamesPointsBySport: { Wrestling: 40, Marathon: 30, Swimming: 20, Javelin: 10, 'Long Jump': 0 },
     totalGamesPoints: 100,
     totalCultureInvested: 4,
@@ -134,11 +133,12 @@ test('prompt acknowledgement and participation survive save/load without a rerun
   assert.equal(loaded.getSummary().participants.find((entry) => entry.nationId === HUMAN)?.participating, false);
 });
 
-test('human cycle defaults are zero commitments with equal future allocation', () => {
+test('human cycle exposes resource commitments, committed GP, and the unallocated pool separately', () => {
   const view = model();
   assert.equal(view.participant?.cultureCommitment, 0);
   assert.equal(view.participant?.productionCommitment, 0);
-  assert.deepEqual(view.participant?.sportAllocation, EQUAL);
+  assert.equal(view.participant?.unallocatedGamesPoints, 25);
+  assert.deepEqual(view.participant?.gamesPointsBySport, { Wrestling: 40, Marathon: 30, Swimming: 20, Javelin: 10, 'Long Jump': 0 });
 });
 
 test('availability and achievable GP reflect independent all-or-nothing commitments', () => {
@@ -159,13 +159,6 @@ test('availability and achievable GP reflect independent all-or-nothing commitme
   assert.equal(view.theoreticalGamesPointsPerTurn, 140);
   assert.equal(view.achievableGamesPointsPerTurn, 60);
   assert.equal(view.culture.commitment, 8);
-});
-
-test('allocation validation rejects invalid totals and accepts an exact 100%', () => {
-  assert.equal(validateGamesAllocation(EQUAL), null);
-  assert.match(validateGamesAllocation({ ...EQUAL, Wrestling: 19 }) ?? '', /99%/);
-  assert.match(validateGamesAllocation({ ...EQUAL, Wrestling: -1 }) ?? '', /whole percentage/);
-  assert.match(validateGamesAllocation({ ...EQUAL, Wrestling: Number.NaN }) ?? '', /whole percentage/);
 });
 
 test('investment controls are editable only for participating nations during Preparation', () => {
@@ -232,12 +225,12 @@ test('phase presentation exposes waiting, active sport, and cooldown timing', ()
   assert.match(cooldown.buttonTooltip, /Next preparation in 7 turns/);
 });
 
-test('locked accumulated points remain separate from future allocation in the model', () => {
-  const view = model({ participants: [participant({ sportAllocation: { ...EQUAL, Wrestling: 40, Marathon: 0 } })] });
+test('locked committed points remain separate from unallocated GP in the model', () => {
+  const view = model({ participants: [participant({ unallocatedGamesPoints: 83 })] });
   assert.equal(view.participant?.gamesPointsBySport.Wrestling, 40);
-  assert.equal(view.participant?.sportAllocation.Wrestling, 40);
   assert.equal(view.participant?.gamesPointsBySport.Marathon, 30);
-  assert.equal(view.participant?.sportAllocation.Marathon, 0);
+  assert.equal(view.participant?.unallocatedGamesPoints, 83);
+  assert.equal(view.participant?.sportAllocation, undefined);
 });
 
 test('dialog copy labels base Production accurately and explains bonus-amplified opportunity cost', () => {
@@ -247,8 +240,16 @@ test('dialog copy labels base Production accurately and explains bonus-amplified
   assert.match(source, /diverted before Production bonuses are applied/);
   assert.match(source, /impact on normal production may be greater than the base amount committed/);
   assert.match(source, /Existing Culture progress is not spent/);
-  assert.match(source, /Accumulated:/);
-  assert.match(source, /% future/);
+  assert.match(source, /Games Points available to allocate/);
+  assert.match(source, /GP committed/);
+  assert.match(source, /Distribute Remaining Evenly/);
+  assert.match(source, /gon-sport-grid/);
+  assert.match(source, /getGamesSportByName\(sport\)\.image/);
+  assert.match(source, /allocationButton\('\+10', 10\)/);
+  assert.match(source, /allocationButton\('\+50', 50\)/);
+  assert.match(source, /allocationButton\('ALL', pool\)/);
+  assert.doesNotMatch(source, /% future/);
+  assert.doesNotMatch(source, /gon-allocation-/);
   assert.match(source, /Competition results/);
   assert.match(source, /gon-medal-table/);
   assert.match(source, /Final Games result/);

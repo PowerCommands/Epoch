@@ -31,7 +31,7 @@ function participant(nationId: string, value: number): GamesOfNationsParticipant
     participating: true,
     cultureCommitment: 0,
     productionCommitment: 0,
-    sportAllocation: sportValues(20),
+    unallocatedGamesPoints: 0,
     gamesPointsBySport: sportValues(value),
     totalGamesPoints: value * 5,
     totalCultureInvested: 0,
@@ -130,6 +130,34 @@ test('save/load preserves prior records and the next Games appends without mutat
   assert.deepEqual(second.getCompletedGames().map((games) => games.gamesNumber), [1, 2]);
 });
 
+test('reigning champion is derived from the latest completed Games across save/load', () => {
+  const turn = { value: 150 };
+  const records = [
+    recordWithTable([
+      ['england', 'England', 4, 0, 0],
+      ['sweden', 'Sweden', 0, 1, 0],
+    ], 1, 'england'),
+    recordWithTable([
+      ['england', 'England', 0, 1, 0],
+      ['sweden', 'Sweden', 1, 0, 0],
+      ['china', 'China', 0, 0, 1],
+    ], 2, 'sweden'),
+  ];
+  const loaded = GamesOfNationsSystem.fromSave(
+    dependencies(turn),
+    competitionState(3, structuredClone(records)),
+    turn.value,
+  );
+
+  assert.equal(loaded.getLatestCompletedGames()?.gamesNumber, 2);
+  assert.equal(loaded.getReigningChampionNationId(), 'sweden');
+  assert.equal(loaded.getHistoricalMedalStandings()[0]?.nationId, 'england');
+
+  const reloaded = GamesOfNationsSystem.fromSave(dependencies(turn), loaded.getState(), turn.value);
+  assert.equal(reloaded.getReigningChampionNationId(), 'sweden');
+  assert.equal(reloaded.getLatestCompletedGames()?.overallWinnerNationId, 'sweden');
+});
+
 test('old saves default safely and a fully resolved Step 4 cooldown migrates once', () => {
   const turn = { value: 105 };
   const oldCompetition = competitionState();
@@ -225,6 +253,7 @@ function resolvedResults(): GamesOfNationsSportResult[] {
 function recordWithTable(
   rows: Array<[string, string, number, number, number]>,
   gamesNumber = 1,
+  overallWinnerNationId = 'a',
 ): CompletedGamesOfNationsRecord {
   return {
     gamesNumber,
@@ -236,8 +265,8 @@ function recordWithTable(
     hostNationName: 'Host',
     hostCityId: 'capital',
     hostCityName: 'Capital',
-    overallWinnerNationId: 'a',
-    overallWinnerNationName: 'Archived Alpha',
+    overallWinnerNationId,
+    overallWinnerNationName: rows.find(([nationId]) => nationId === overallWinnerNationId)?.[1] ?? overallWinnerNationId,
     medalTable: rows.map(([nationId, nationName, gold, silver, bronze]) => ({ nationId, nationName, gold, silver, bronze })),
   };
 }

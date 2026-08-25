@@ -2,6 +2,7 @@ import type { AILeaderPersonality } from './aiLeaderPersonality';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { IdeologyId } from './ideology';
 import type { CovertPersonalityId } from './covertPersonality';
+import type { GamesOfNationsLeaderPreferences } from './gamesOfNations';
 
 export interface LeaderDefinition {
   id: string;
@@ -17,6 +18,7 @@ export interface LeaderDefinition {
   /** How this leader pursues goals via covert warfare. Absent → derived default. */
   covertPersonalityId?: CovertPersonalityId;
   culturePriorities?: string[];
+  gamesOfNationsPreferences: GamesOfNationsLeaderPreferences;
   /**
    * Maximum number of cities this leader will voluntarily aim for. Caps
    * AI settler production and expansion (see AISystem / AIOverseasExpansionSystem).

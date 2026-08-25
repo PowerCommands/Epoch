@@ -1,19 +1,14 @@
 import type { GamesOfNationsSportResolvedEvent } from './GamesOfNationsSystem';
 import type { GamesOfNationsSport } from '../types/gamesOfNations';
+import { GAMES_OF_NATIONS_SPORT_DEFINITIONS } from '../data/gamesOfNationsSports';
 import type {
   GamesOfNationsNewspaperIssue,
   NewspaperArticle,
 } from '../types/newspaper';
 
-const IMAGE_ROOT = '/assets/sprites/news/games-of-nations/';
-
-export const GAMES_OF_NATIONS_SPORT_IMAGES: Readonly<Record<GamesOfNationsSport, string>> = {
-  Wrestling: `${IMAGE_ROOT}wrestling.jpg`,
-  Marathon: `${IMAGE_ROOT}marathon.jpg`,
-  Swimming: `${IMAGE_ROOT}swimming.jpg`,
-  Javelin: `${IMAGE_ROOT}javelin.jpg`,
-  'Long Jump': `${IMAGE_ROOT}long-jump.jpg`,
-};
+export const GAMES_OF_NATIONS_SPORT_IMAGES = Object.fromEntries(
+  GAMES_OF_NATIONS_SPORT_DEFINITIONS.map((sport) => [sport.name, sport.image]),
+) as Readonly<Record<GamesOfNationsSport, string>>;
 
 /** Flavor-only identities: exactly 100 names, deliberately not nation-specific. */
 export const GAMES_OF_NATIONS_ATHLETE_NAMES = [
@@ -243,7 +238,7 @@ function buildClosingArticle(
     return article(
       `${winnerName.toLocaleUpperCase()} LEADS GAMES INTO CLOSING CELEBRATION`,
       `With the final medal table settled, ${winnerName} will be celebrated as the overall winner when the Games conclude in ${hostCity}.`,
-      'No sixth sport awaits—only ceremony, applause, and extensive host speeches.',
+      'No further sport awaits—only ceremony, applause, and extensive host speeches.',
       [event.overallWinnerNationId],
       [winnerName],
     );
@@ -302,4 +297,9 @@ const SPORT_COPY: Readonly<Record<GamesOfNationsSport, { contest: string; stage:
   Swimming: { contest: 'pool final', stage: 'water', finish: 'charge through the final length' },
   Javelin: { contest: 'throwing final', stage: 'field', finish: 'towering final attempt' },
   'Long Jump': { contest: 'jumping final', stage: 'runway', finish: 'decisive final leap' },
+  'Horse Racing': { contest: 'race', stage: 'track', finish: 'charge through the final stretch' },
+  Boxing: { contest: 'bout', stage: 'ring', finish: 'decisive exchange before the final bell' },
+  '100 Metres': { contest: 'sprint', stage: 'track', finish: 'fastest drive across the finish line' },
+  'Pole Vault': { contest: 'vaulting final', stage: 'bar', finish: 'towering final clearance' },
+  Fencing: { contest: 'duel', stage: 'piste', finish: 'decisive final touch' },
 };

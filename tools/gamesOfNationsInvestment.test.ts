@@ -6,7 +6,7 @@ import { Nation } from '../src/entities/Nation';
 import { CityManager } from '../src/systems/CityManager';
 import { CultureSystem } from '../src/systems/culture/CultureSystem';
 import {
-  distributeGamesPoints,
+  distributeGamesPointsEvenly,
   GAMES_AND_RECREATION_CULTURE_ID,
   GAMES_OF_NATIONS_SPORTS,
   GamesOfNationsSystem,
@@ -17,6 +17,7 @@ import { NationManager } from '../src/systems/NationManager';
 import { ProductionSystem } from '../src/systems/ProductionSystem';
 import { TurnManager } from '../src/systems/TurnManager';
 import type {
+  GamesOfNationsParticipantState,
   GamesOfNationsSportValues,
   SavedGamesOfNationsState,
 } from '../src/types/gamesOfNations';
@@ -24,6 +25,9 @@ import type {
 const CULTURAL_AI = 'cultural-ai';
 const LOW_AI = 'low-ai';
 const HUMAN = 'human';
+const ADDITIONAL_ZERO = {
+  'Horse Racing': 0, Boxing: 0, '100 Metres': 0, 'Pole Vault': 0, Fencing: 0,
+} as const;
 
 interface InvestmentHarness {
   system: GamesOfNationsSystem;
@@ -82,12 +86,6 @@ function investmentHarness(saved?: SavedGamesOfNationsState, initialTurn = 1): I
 function foundAt80(h: InvestmentHarness): void {
   h.setTurn(80);
   assert.equal(h.system.handleCultureCompleted(CULTURAL_AI, GAMES_AND_RECREATION_CULTURE_ID, 80), true);
-}
-
-function allTo(sport: keyof GamesOfNationsSportValues): GamesOfNationsSportValues {
-  return Object.fromEntries(
-    GAMES_OF_NATIONS_SPORTS.map((candidate) => [candidate, candidate === sport ? 100 : 0]),
-  ) as unknown as GamesOfNationsSportValues;
 }
 
 function participant(h: InvestmentHarness, nationId = HUMAN) {
@@ -218,6 +216,8 @@ test('Culture and Production commitments fail independently and never spend part
   assert.equal(participant(h).totalCultureInvested, 0);
   assert.equal(participant(h).totalProductionInvested, 6);
   assert.equal(participant(h).totalGamesPoints, 60);
+  assert.equal(participant(h).unallocatedGamesPoints, 60);
+  assert.equal(Object.values(participant(h).gamesPointsBySport).reduce((sum, value) => sum + value, 0), 0);
   assert.equal(participant(h).failedCultureCommitmentTurns, 1);
 
   h.culture[HUMAN] = 4;
@@ -226,6 +226,7 @@ test('Culture and Production commitments fail independently and never spend part
   assert.equal(participant(h).totalCultureInvested, 4);
   assert.equal(participant(h).totalProductionInvested, 6);
   assert.equal(participant(h).totalGamesPoints, 100);
+  assert.equal(participant(h).unallocatedGamesPoints, 100);
   assert.equal(participant(h).failedProductionCommitmentTurns, 1);
 });
 
@@ -239,51 +240,85 @@ test('one Culture and one Production each convert to exactly ten Games Points', 
   assert.equal(participant(h).totalCultureInvested, 1);
   assert.equal(participant(h).totalProductionInvested, 1);
   assert.equal(participant(h).totalGamesPoints, 20);
+  assert.equal(participant(h).unallocatedGamesPoints, 20);
+  assert.deepEqual(participant(h).gamesPointsBySport, {
+    Wrestling: 0, Marathon: 0, Swimming: 0, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
+  });
 });
 
-test('commitment and allocation changes affect future points only', () => {
+test('direct allocation irreversibly transfers exact integer GP from the pool and accumulates', () => {
   const h = investmentHarness();
   foundAt80(h);
   h.advanceTo(95);
   h.system.setNationProductionCommitment(HUMAN, 0);
-  h.system.setNationCultureCommitment(HUMAN, 1);
-  h.system.setNationSportAllocation(HUMAN, allTo('Wrestling'));
+  h.system.setNationCultureCommitment(HUMAN, 10);
+  h.culture[HUMAN] = 20;
   h.process(95);
-  assert.equal(participant(h).gamesPointsBySport.Wrestling, 10);
-
-  h.system.setNationCultureCommitment(HUMAN, 2);
-  h.system.setNationSportAllocation(HUMAN, allTo('Marathon'));
-  h.process(96);
-  assert.equal(participant(h).gamesPointsBySport.Wrestling, 10);
-  assert.equal(participant(h).gamesPointsBySport.Marathon, 20);
-  assert.equal(participant(h).totalGamesPoints, 30);
+  assert.equal(participant(h).unallocatedGamesPoints, 100);
+  for (const sport of GAMES_OF_NATIONS_SPORTS) {
+    assert.equal(h.system.allocateGamesPoints(HUMAN, sport, 1), true);
+  }
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Wrestling', 35), true);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Wrestling', 10), true);
+  assert.equal(participant(h).gamesPointsBySport.Wrestling, 46);
+  assert.equal(participant(h).unallocatedGamesPoints, 50);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Marathon', 51), false);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Marathon', -1), false);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Marathon', 1.5), false);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Marathon', 0), false);
+  assert.equal(participant(h).gamesPointsBySport.Wrestling, 46);
+  assert.equal(participant(h).unallocatedGamesPoints, 50);
 });
 
-test('point rounding preserves exact totals using stable sport order', () => {
-  const allocation: GamesOfNationsSportValues = {
-    Wrestling: 33,
-    Marathon: 22,
-    Swimming: 17,
-    Javelin: 16,
-    'Long Jump': 12,
-  };
-  const result = distributeGamesPoints(7, allocation);
+test('even distribution uses canonical remainder order and ignores existing committed totals', () => {
+  const result = distributeGamesPointsEvenly(103);
   assert.deepEqual(result, {
-    Wrestling: 3,
-    Marathon: 2,
-    Swimming: 1,
-    Javelin: 1,
-    'Long Jump': 0,
+    Wrestling: 21,
+    Marathon: 21,
+    Swimming: 21,
+    Javelin: 20,
+    'Long Jump': 20,
+    ...ADDITIONAL_ZERO,
   });
-  assert.equal(Object.values(result).reduce((sum, value) => sum + value, 0), 7);
+  assert.equal(Object.values(result).reduce((sum, value) => sum + value, 0), 103);
+  assert.deepEqual(distributeGamesPointsEvenly(100), {
+    Wrestling: 20, Marathon: 20, Swimming: 20, Javelin: 20, 'Long Jump': 20,
+    ...ADDITIONAL_ZERO,
+  });
 
   const h = investmentHarness();
   foundAt80(h);
   h.advanceTo(95);
-  assert.equal(h.system.setNationSportAllocation(HUMAN, {
-    Wrestling: 3, Marathon: 2, Swimming: 1, Javelin: 2, 'Long Jump': 2,
-  }), true);
-  assert.equal(Object.values(participant(h).sportAllocation).reduce((sum, value) => sum + value, 0), 100);
+  h.system.setNationCultureCommitment(HUMAN, 10);
+  h.culture[HUMAN] = 20;
+  h.process(95);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Wrestling', 100), true);
+  h.process(96);
+  assert.equal(h.system.distributeRemainingGamesPointsEvenly(HUMAN), true);
+  assert.deepEqual(participant(h).gamesPointsBySport, {
+    Wrestling: 120, Marathon: 20, Swimming: 20, Javelin: 20, 'Long Jump': 20,
+    ...ADDITIONAL_ZERO,
+  });
+  assert.equal(participant(h).unallocatedGamesPoints, 0);
+});
+
+test('Preparation end automatically distributes the full human pool before Competition', () => {
+  const h = investmentHarness();
+  foundAt80(h);
+  h.advanceTo(95);
+  h.system.setNationCultureCommitment(HUMAN, 7);
+  h.system.setNationProductionCommitment(HUMAN, 3);
+  h.process(95);
+  assert.equal(participant(h).unallocatedGamesPoints, 100);
+  const before = participant(h).totalGamesPoints;
+  h.advanceTo(105);
+  assert.equal(participant(h).unallocatedGamesPoints, 0);
+  assert.equal(Object.values(participant(h).gamesPointsBySport).reduce((sum, value) => sum + value, 0), before);
+  assert.deepEqual(participant(h).gamesPointsBySport, {
+    Wrestling: 20, Marathon: 20, Swimming: 20, Javelin: 20, 'Long Jump': 20,
+    ...ADDITIONAL_ZERO,
+  });
 });
 
 test('non-participating human consumes nothing and is not forced back in during the cycle', () => {
@@ -301,7 +336,7 @@ test('non-participating human consumes nothing and is not forced back in during 
   assert.equal(h.system.getProductionDiversionForTurn(HUMAN, 'human-capital', 96), 0);
 });
 
-test('AI cultural priority raises conservative commitments and allocations vary', () => {
+test('AI cultural priority raises conservative commitments and AI assigns integer GP without percentage state', () => {
   const h = investmentHarness();
   foundAt80(h);
   h.advanceTo(95);
@@ -310,8 +345,14 @@ test('AI cultural priority raises conservative commitments and allocations vary'
   assert.ok(cultural.cultureCommitment > low.cultureCommitment);
   assert.ok(cultural.cultureCommitment < h.culture[CULTURAL_AI] / 2);
   assert.ok(cultural.productionCommitment < h.production[CULTURAL_AI][0]!.available / 2);
-  assert.notDeepEqual(cultural.sportAllocation, low.sportAllocation);
-  assert.equal(Object.values(cultural.sportAllocation).reduce((sum, value) => sum + value, 0), 100);
+  h.process(95, CULTURAL_AI);
+  h.process(95, LOW_AI);
+  assert.equal(participant(h, CULTURAL_AI).unallocatedGamesPoints, 0);
+  assert.equal(participant(h, LOW_AI).unallocatedGamesPoints, 0);
+  assert.equal(participant(h, CULTURAL_AI).sportAllocation, undefined);
+  assert.equal(Object.values(participant(h, CULTURAL_AI).gamesPointsBySport).reduce((sum, value) => sum + value, 0), participant(h, CULTURAL_AI).totalGamesPoints);
+  assert.equal(GAMES_OF_NATIONS_SPORTS.every((sport) => participant(h, CULTURAL_AI).gamesPointsBySport[sport] > 0), true);
+  assert.notDeepEqual(participant(h, CULTURAL_AI).gamesPointsBySport, participant(h, LOW_AI).gamesPointsBySport);
 });
 
 test('save/load preserves AI strategy and accumulated investment without rerolling', () => {
@@ -324,6 +365,39 @@ test('save/load preserves AI strategy and accumulated investment without rerolli
   const restored = investmentHarness(saved, 95);
   restored.system.handleRoundStart(95);
   assert.deepEqual(restored.system.getState(), h.system.getState());
+});
+
+test('save/load preserves exact committed and unallocated GP without redistributing on load', () => {
+  const h = investmentHarness();
+  foundAt80(h);
+  h.advanceTo(95);
+  h.system.setNationCultureCommitment(HUMAN, 10);
+  h.culture[HUMAN] = 20;
+  h.process(95);
+  assert.equal(h.system.allocateGamesPoints(HUMAN, 'Wrestling', 17), true);
+  const restored = investmentHarness(JSON.parse(JSON.stringify(h.system.getState())), 95);
+  assert.equal(participant(restored).gamesPointsBySport.Wrestling, 17);
+  assert.equal(participant(restored).unallocatedGamesPoints, 83);
+});
+
+test('legacy percentage saves retain committed GP exactly, discard percentages, and start with an empty pool', () => {
+  const h = investmentHarness();
+  foundAt80(h);
+  h.advanceTo(95);
+  const saved = h.system.getState();
+  const legacy = saved.participants.find((entry) => entry.nationId === HUMAN)! as GamesOfNationsParticipantState & {
+    sportAllocation: GamesOfNationsSportValues;
+    unallocatedGamesPoints?: number;
+  };
+  legacy.gamesPointsBySport = { Wrestling: 130, Marathon: 70, Swimming: 40, Javelin: 100, 'Long Jump': 50 };
+  legacy.totalGamesPoints = 390;
+  legacy.sportAllocation = { Wrestling: 50, Marathon: 20, Swimming: 10, Javelin: 10, 'Long Jump': 10 };
+  delete legacy.unallocatedGamesPoints;
+  const restored = investmentHarness(saved, 95);
+  const migrated = participant(restored);
+  assert.deepEqual(migrated.gamesPointsBySport, { ...legacy.gamesPointsBySport, ...ADDITIONAL_ZERO });
+  assert.equal(migrated.unallocatedGamesPoints, 0);
+  assert.equal(migrated.sportAllocation, undefined);
 });
 
 test('new Preparation resets all cycle investment while retaining the 25-turn cadence', () => {
@@ -340,6 +414,7 @@ test('new Preparation resets all cycle investment while retaining the 25-turn ca
   assert.equal(next.totalProductionInvested, 0);
   assert.deepEqual(next.gamesPointsBySport, {
     Wrestling: 0, Marathon: 0, Swimming: 0, Javelin: 0, 'Long Jump': 0,
+    ...ADDITIONAL_ZERO,
   });
   h.advanceTo(130);
   assert.equal(h.system.getState().scheduledGamesTurn, 130);

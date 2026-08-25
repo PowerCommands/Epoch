@@ -150,6 +150,12 @@ export class WorldCouncilSystem {
     return this.state?.members.some((member) => member.nationId === nationId) ?? false;
   }
 
+  canProposeResolution(nationId: string, resolutionId: WorldCouncilResolutionId): boolean {
+    return this.state?.status === 'active'
+      && this.isMember(nationId)
+      && this.resolutionSystem?.isProposalEligible(resolutionId, nationId) === true;
+  }
+
   getTradeAgreementCapacityBetweenNations(nationAId: string, nationBId: string): number {
     if (!this.state) return 0;
     if (
@@ -693,6 +699,18 @@ export class WorldCouncilSystem {
       emergencyTrigger: options.emergencyTrigger ? { ...options.emergencyTrigger } : undefined,
       proposals,
     };
+    for (const proposal of proposals ?? []) {
+      if (!proposal.proposerNationId || !proposal.targetNationId) continue;
+      const proposerName = this.nationManager.getNation(proposal.proposerNationId)?.name ?? proposal.proposerNationId;
+      const targetName = this.nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId;
+      if (proposal.resolutionId === 'games_of_nations_hosting') {
+        this.log?.(proposal.proposerNationId,
+          `${proposerName} proposed Games of Nations Hosting Resolution: replace ${targetName} with ${proposerName}.`);
+      } else if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+        this.log?.(proposal.proposerNationId,
+          `${proposerName} proposed Games of Nations Participation Resolution targeting ${targetName}.`);
+      }
+    }
     this.state = {
       ...this.state,
       meetings: [...this.state.meetings, meeting],
@@ -744,7 +762,7 @@ export class WorldCouncilSystem {
     }
 
     const repealTargets = this.getRepealableResolutions();
-    const normalProposals = this.resolutionSystem.getDefinitions(this.getOrganizationKind())
+    const normalProposals = this.resolutionSystem.getEligibleDefinitions(this.getOrganizationKind(), proposerNationId)
       .filter((definition) => definition.votingType !== 'special')
       .filter((definition) => definition.id !== excludedResolutionId)
       .filter((definition) => slot === 'host' || definition.id !== 'un_peacekeeping_mission')
@@ -790,7 +808,7 @@ export class WorldCouncilSystem {
       b.score.finalScore - a.score.finalScore
       || stableResolutionTieBreak(seed, a.proposal.resolutionId, a.proposal.repealTargetEnactedResolutionId)
         - stableResolutionTieBreak(seed, b.proposal.resolutionId, b.proposal.repealTargetEnactedResolutionId))[0]!;
-    return {
+    return this.resolutionSystem!.prepareProposal({
       ...selected.proposal,
       selectionDiagnostics: {
         selectedResolutionId: selected.proposal.resolutionId,
@@ -799,7 +817,7 @@ export class WorldCouncilSystem {
           .map((entry) => entry.score)
           .sort((a, b) => b.finalScore - a.finalScore || a.resolutionId.localeCompare(b.resolutionId)),
       },
-    };
+    }, seed);
   }
 
   private scoreRegularProposalCandidate(
@@ -857,6 +875,8 @@ export class WorldCouncilSystem {
     if (proposal.resolutionId === 'condemn_aggressive_war') score += Math.max(0, recentEmergencyPressure - 18);
     if (proposal.resolutionId === 'shared_cartography' && this.hasResolutionEverPassed('shared_cartography')) score -= 35;
     if (proposal.resolutionId === 'global_infrastructure_initiative') score += 8;
+    if (proposal.resolutionId === 'games_of_nations_hosting') score += 8;
+    if (proposal.resolutionId === 'exclude_games_of_nations_participant') score += 6;
     if (proposal.resolutionId === 'international_development_fund') score += 6;
     if (proposal.resolutionId === 'climate_accord') score += 4;
     return score;
@@ -961,6 +981,22 @@ export class WorldCouncilSystem {
       enactedResolutions: [...enactedResolutions, ...enacted],
     };
     for (const proposal of proposals) {
+      if (proposal.resolutionId === 'games_of_nations_hosting') {
+        const currentHostName = proposal.targetNationId
+          ? this.nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId
+          : 'the current host';
+        this.log?.(proposal.proposerNationId ?? proposal.targetNationId ?? '', proposal.passed
+          ? 'Games of Nations Hosting Resolution PASSED.'
+          : `Games of Nations Hosting Resolution REJECTED; ${currentHostName} remains host.`);
+      }
+      if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+        const targetName = proposal.targetNationId
+          ? this.nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId
+          : 'the targeted nation';
+        this.log?.(proposal.proposerNationId ?? proposal.targetNationId ?? '', proposal.passed
+          ? `GoN Participation Resolution PASSED: ${targetName} excluded from Games #${proposal.gamesNumber ?? '?'}.`
+          : `GoN Participation Resolution REJECTED: ${targetName} remains eligible for Games #${proposal.gamesNumber ?? '?'}.`);
+      }
       if (proposal.repealTargetEnactedResolutionId) continue;
       this.resolutionSystem.execute(proposal, {
         meetingId,
@@ -970,6 +1006,8 @@ export class WorldCouncilSystem {
         participantNationIds: proposal.participantNationIds,
         targetNationId: proposal.targetNationId,
         secondaryTargetNationId: proposal.secondaryTargetNationId,
+        gamesNumber: proposal.gamesNumber,
+        gamesParticipationJustification: proposal.gamesParticipationJustification,
       });
     }
     const resolvedMeeting = this.state.meetings.find((item) => item.id === meetingId);

@@ -120,11 +120,11 @@ import {
 } from '../systems/GamesOfNationsSystem';
 import { buildGamesOfNationsEdition } from '../systems/GamesOfNationsChronicle';
 import type { GamesOfNationsSummary } from '../types/gamesOfNations';
-import { buildGamesOfNationsUiModel, validateGamesAllocation } from '../ui/hud/GamesOfNationsUiModel';
+import { buildGamesOfNationsUiModel } from '../ui/hud/GamesOfNationsUiModel';
 import { buildDominationRanking } from '../systems/DominationRanking';
 import { TimelinePanel } from '../ui/TimelinePanel';
 import { NewspaperDialog } from '../ui/NewspaperDialog';
-import { EraSystem, getEraRank } from '../systems/EraSystem';
+import { EraSystem, getEraRank, getHighestEra } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
@@ -208,7 +208,7 @@ import { filterGossipTargets } from '../ui/dialogs/GossipDialogModel';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
-import { ALL_BUILDINGS, getBuildingById, isBarbarianCamp } from '../data/buildings';
+import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { CULTURE_TREE } from '../data/cultureTree';
 import { getImprovementById } from '../data/improvements';
 import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
@@ -287,6 +287,13 @@ interface EpochNationStateSummary {
     recovering: number;
     integrated: number;
   };
+  culturalVictory: {
+    normalRequirementsMet: boolean;
+    latestCompletedGamesNumber: number | null;
+    reigningGamesChampionNationId: string | null;
+    isReigningGamesChampion: boolean;
+    victoryEligible: boolean;
+  };
 }
 
 /** First observed actual era transition during a diagnostics/autorun session. */
@@ -355,8 +362,15 @@ export class GameScene extends Phaser.Scene {
     this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
 
-    // 1. Parse scenario using map key from config
-    const scenarioJson = this.cache.json.get(data.mapKey) as ScenarioData;
+    // 1. Parse scenario using map key from config. Procedural saves carry their
+    // original scenario so loading never depends on rerunning a newer generator.
+    const embeddedGeneratedScenario = data.savedState?.generatedScenario ?? data.generatedScenario;
+    if (embeddedGeneratedScenario && !this.cache.json.has(data.mapKey)) {
+      this.cache.json.add(data.mapKey, embeddedGeneratedScenario.scenario);
+    }
+    const scenarioJson = (embeddedGeneratedScenario?.scenario ?? this.cache.json.get(data.mapKey)) as ScenarioData | undefined;
+    if (!scenarioJson) throw new Error(`Scenario could not be loaded: ${data.mapKey}`);
+    if (embeddedGeneratedScenario !== data.generatedScenario) data = { ...data, generatedScenario: embeddedGeneratedScenario };
     const replacementResult = data.savedState
       ? { scenario: scenarioJson, idMap: {} }
       : materializeScenarioNationReplacements(scenarioJson, data.scenarioNationReplacements);
@@ -367,6 +381,15 @@ export class GameScene extends Phaser.Scene {
           data.scenarioNationCustomizations,
           replacementResult.idMap,
         );
+    if (data.generatedScenario && !data.savedState) {
+      data = {
+        ...data,
+        generatedScenario: {
+          metadata: data.generatedScenario.metadata,
+          scenario: runtimeScenarioJson,
+        },
+      };
+    }
     if (!data.savedState && Object.keys(replacementResult.idMap).length > 0) {
       const remapNationId = (nationId: string) => replacementResult.idMap[nationId] ?? nationId;
       data = {
@@ -478,11 +501,10 @@ export class GameScene extends Phaser.Scene {
     // Enrich unit events with cityId (used by right-side details refreshes).
     unitManager.setCityLocator((x, y) => cityManager.getCityAt(x, y)?.id);
 
-    // 7b. Give every nation a starting Scout to accelerate early-game
-    // exploration, discovery and diplomacy. New games only — loaded saves
-    // already contain their units. Scenarios that explicitly place a Scout for
-    // a nation keep theirs (duplicate protection below).
-    if (!data.savedState) {
+    // 7b. Give every nation in authored scenarios a starting Scout to accelerate
+    // early exploration. Random Scenario v1 deliberately starts every nation
+    // with exactly one Settler, so it opts out of this authored-map convenience.
+    if (!data.savedState && !data.generatedScenario) {
       this.spawnStartingScouts(activeNations, unitManager, gridSystem, mapData);
     }
 
@@ -529,14 +551,14 @@ export class GameScene extends Phaser.Scene {
       }
       eraMilestoneBaselineInitialized = true;
     };
-    const recordEraMilestone = (nationId: string, source: string | null): void => {
+    const recordEraMilestone = (nationId: string, source: string | null): Era | null => {
       if (!eraMilestoneBaselineInitialized) syncEraMilestoneBaseline();
       const nation = nationManager.getNation(nationId);
-      if (!nation) return;
+      if (!nation) return null;
       const previousEra = observedEraByNation.get(nationId) ?? eraSystem.getNationEra(nationId);
       const newEra = eraSystem.getNationEra(nationId);
       observedEraByNation.set(nationId, newEra);
-      if (getEraRank(newEra) <= getEraRank(previousEra)) return;
+      if (getEraRank(newEra) <= getEraRank(previousEra)) return null;
 
       const gameDate = turnManager.getGameDate();
       eraMilestones.push({
@@ -560,6 +582,7 @@ export class GameScene extends Phaser.Scene {
       if (this.diagnosticSystem.isTurnLoggingEnabled()) {
         console.log(`[TechEra] ${nation.name} entered ${newEra} Era — turn ${turnManager.getCurrentRound()}`);
       }
+      return newEra;
     };
 
     // World chronicle (History panel). Records major events as they happen and
@@ -632,7 +655,9 @@ export class GameScene extends Phaser.Scene {
         * happinessSystem.getProductionModifier(nationId),
       ),
     }));
+    let isAutoplayActive = (): boolean => false;
     let presentGamesOfNationsEdition: (event: GamesOfNationsSportResolvedEvent) => void = () => {};
+    let victorySystem!: VictorySystem;
     const gamesOfNationsSystem = GamesOfNationsSystem.fromSave({
       getCurrentTurn: () => turnManager.getCurrentRound(),
       getLivingNationIds: () => nationManager.getAllNations().map((nation) => nation.id),
@@ -645,11 +670,23 @@ export class GameScene extends Phaser.Scene {
         return capital ? { id: capital.id, name: capital.name } : undefined;
       },
       getCityName: (cityId) => cityManager.getCity(cityId)?.name,
+      getCityOwnerId: (cityId) => cityManager.getCity(cityId)?.ownerId,
+      hasGrandStadium: (cityId) => cityManager.getBuildings(cityId)?.hasActive(GRAND_STADIUM_BUILDING_ID) === true,
+      hasGrandStadiumStructure: (cityId) => cityManager.getBuildings(cityId)?.has(GRAND_STADIUM_BUILDING_ID) === true,
+      getHostCityCandidates: (nationId) => cityManager.getCitiesByOwner(nationId).map((city) => ({
+        id: city.id,
+        name: city.name,
+        productionPerTurn: Math.max(0, Math.floor(cityManager.getResources(city.id).productionPerTurn)),
+        canConstructGrandStadium: !cityManager.getBuildings(city.id).has(GRAND_STADIUM_BUILDING_ID)
+          && buildingPlacementSystem.getValidPlacementCoords(city, GRAND_STADIUM, mapData).length > 0,
+        hasGrandStadium: cityManager.getBuildings(city.id).hasActive(GRAND_STADIUM_BUILDING_ID),
+      })),
       getWorldDateForTurn: (turn) => ({
         worldYear: turnManager.getGameDateForRound(turn).signedYear,
         yearLabel: turnManager.getGameDateLabelForRound(turn),
       }),
-      isHumanNation: (nationId) => nationManager.getNation(nationId)?.isHuman === true,
+      isHumanNation: (nationId) => nationId === humanNationId,
+      isAutoplayActive: () => isAutoplayActive(),
       getCultureOutput: getGamesCultureOutput,
       getProductionSources: getGamesProductionSources,
       getCulturalPriority: (nationId) => {
@@ -659,6 +696,15 @@ export class GameScene extends Phaser.Scene {
         const strategyBonus = nation?.aiStrategyId === 'cultural_dominance' ? 0.2 : 0;
         return Math.max(0, Math.min(1, (personalityBias + 12) / 40 + agendaBonus + strategyBonus));
       },
+      getGold: (nationId) => nationManager.getResources(nationId).gold,
+      spendGold: (nationId, amount) => {
+        const resources = nationManager.getResources(nationId);
+        if (!Number.isInteger(amount) || amount < 0 || resources.gold < amount) return false;
+        resources.gold -= amount;
+        return true;
+      },
+      getLeaderGamesPreferences: (nationId) => getLeaderByNationId(nationId)?.gamesOfNationsPreferences,
+      getWorldEra: () => getHighestEra(nationManager.getAllNations().map((nation) => eraSystem.getNationEra(nation.id))),
       seed: `${data.mapKey}|${[...data.activeNationIds].sort().join(',')}|games-of-nations-v1`,
       log: (message) => logManager.info({ category: 'games-of-nations', message }),
       onGoldMedal: (event) => {
@@ -705,6 +751,108 @@ export class GameScene extends Phaser.Scene {
             gamesBronze: winner?.bronze,
           },
         });
+        if (
+          humanNationId
+          && event.overallWinnerNationId === humanNationId
+          && victorySystem?.getEnabledConditions().cultural
+        ) {
+          const culturalProgress = victorySystem?.getCulturalVictoryProgress(humanNationId);
+          if (!culturalProgress?.normalRequirementsMet) {
+            logManager.info({
+              nationId: humanNationId,
+              category: 'victory',
+              message: 'Games of Nations Champion — the path to Cultural Victory is open until the next Games conclude.',
+            });
+          }
+        }
+        rightPanel?.requestRefresh();
+      },
+      onHostingConfirmed: (event) => {
+        const hostName = timelineNationName(event.hostNationId);
+        const previousHostName = event.previousHostNationId
+          ? timelineNationName(event.previousHostNationId)
+          : undefined;
+        historicalTimeline.record({
+          type: 'gamesHostingAnnounced',
+          icon: '🏟️',
+          text: event.worldCouncilReplacement && previousHostName
+            ? `The World Council has transferred hosting rights for Games of Nations #${event.gamesNumber} from ${previousHostName} to ${hostName}. ${event.hostCityName} will now host the Games, with preparations restarted.`
+            : event.usedExistingGrandStadium
+              ? `${hostName} will host the next Games of Nations in ${event.hostCityName}, reusing the city's existing Grand Stadium.`
+              : `${hostName} will host the next Games of Nations in ${event.hostCityName}. The city now faces the task of completing its Grand Stadium before the Games begin.`,
+          eventNationIds: event.previousHostNationId
+            ? [event.previousHostNationId, event.hostNationId]
+            : [event.hostNationId],
+          newsImportance: 3,
+          metadata: {
+            gamesNumber: event.gamesNumber,
+            gamesHostNationId: event.hostNationId,
+            cityId: event.hostCityId,
+            cityName: event.hostCityName,
+            scheduledGamesTurn: event.scheduledGamesTurn,
+            scheduledGamesYear: turnManager.getGameDateForRound(event.scheduledGamesTurn).signedYear,
+          },
+        });
+      },
+      onNationExcluded: (event) => {
+        const nationName = timelineNationName(event.excludedNationId);
+        historicalTimeline.record({
+          type: 'gamesParticipantExcluded',
+          icon: '🚫',
+          text: `The World Council has voted to exclude ${nationName} from Games of Nations #${event.gamesNumber}. ${event.justification}`,
+          eventNationIds: [event.excludedNationId],
+          newsImportance: 3,
+          metadata: {
+            gamesNumber: event.gamesNumber,
+            targetNationId: event.excludedNationId,
+          },
+        });
+        if (event.excludedNationId === humanNationId) {
+          const notice = `Excluded from Games of Nations #${event.gamesNumber}\n\nThe World Council has prohibited your nation from competing. All future Culture and Production commitments have been cancelled. Resources already invested will not be returned.`;
+          logManager.info({
+            nationId: event.excludedNationId,
+            category: 'games-of-nations',
+            message: `Excluded from Games of Nations #${event.gamesNumber}. Future Culture and Production commitments are cancelled; previously invested resources will not be returned.`,
+          });
+          if (!isAutoplayActive() && typeof window !== 'undefined') window.alert(notice);
+        }
+        rightPanel?.requestRefresh();
+      },
+      onGamesCancelled: (event) => {
+        const location = event.hostCityName ? ` in ${event.hostCityName}` : '';
+        historicalTimeline.record({
+          type: 'gamesCancelled',
+          icon: '🏟️',
+          text: `The Games of Nations${location} have been cancelled. ${event.reason}.`,
+          eventNationIds: event.hostNationId ? [event.hostNationId] : [],
+          newsImportance: 3,
+          metadata: {
+            gamesNumber: event.gamesNumber,
+            gamesHostNationId: event.hostNationId,
+            cityId: event.hostCityId,
+            cityName: event.hostCityName,
+            gamesCancellationReason: event.reason,
+          },
+        });
+        rightPanel?.requestRefresh();
+      },
+      onSportIntroduced: (event) => {
+        historicalTimeline.record({
+          type: 'gamesSportIntroduced',
+          icon: '🏅',
+          text: `${timelineNationName(event.introducingNationId)} has introduced ${event.sport} to the Games of Nations after winning an international bidding contest. The sport will debut in Games #${event.introducedForGamesNumber}.`,
+          eventNationIds: [event.introducingNationId],
+          newsImportance: 4,
+          metadata: {
+            gamesNumber: event.introducedForGamesNumber,
+            gamesSport: event.sport,
+            gamesSportId: event.sportId,
+            gamesIntroducingNationId: event.introducingNationId,
+            gamesWinningBid: event.winningBid,
+            eraName: event.era,
+          },
+        });
+        hudLayer?.refresh();
         rightPanel?.requestRefresh();
       },
       onSportResolved: (event) => presentGamesOfNationsEdition(event),
@@ -735,7 +883,6 @@ export class GameScene extends Phaser.Scene {
     };
     let getTradeGoldPerTurnDelta: (nationId: string) => number = () => 0;
     let refreshCultureOverlay = (): void => {};
-    let isAutoplayActive = (): boolean => false;
     const rebuildMinimapForGameplay = (): void => {
       if (isAutoplayActive()) return;
       this.minimapHud?.rebuild();
@@ -867,7 +1014,10 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       resourceSystem,
       () => turnManager.getCurrentRound(),
-      discoverySystem,
+      {
+        hasMet: (observerNationId, otherNationId) => discoverySystem.hasMet(observerNationId, otherNationId),
+        isGamesOfNationsFounded: () => gamesOfNationsSystem.getSummary().founded,
+      },
       (nationId) => eraSystem.getNationEra(nationId),
       (nationId) => getGossipMilitaryPower(nationId),
     );
@@ -1722,6 +1872,29 @@ export class GameScene extends Phaser.Scene {
       getMilitaryStrength: (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
       getAllNationIds: () => nationManager.getAllNations().map((nation) => nation.id),
       isNationActive: (nationId) => aiMilitaryEvaluationSystem.isNationActive(nationId),
+      getGamesOfNationsHostingContext: () => gamesOfNationsSystem.getUpcomingHostingContext(),
+      canNationTakeOverGamesHosting: (nationId) => gamesOfNationsSystem.canNationTakeOverHosting(nationId),
+      replaceGamesOfNationsHost: (nationId) => gamesOfNationsSystem.replaceUpcomingHostFromWorldCouncil(nationId),
+      getGamesOfNationsParticipationContext: () => gamesOfNationsSystem.getUpcomingParticipationContext(),
+      getGamesOfNationsCompetitionStrength: (nationId) => {
+        const summary = gamesOfNationsSystem.getSummary();
+        return Object.values(summary.effectiveGamesPointsByNation[nationId] ?? {})
+          .reduce((sum, value) => sum + value, 0);
+      },
+      excludeGamesOfNationsParticipant: (nationId, justification) =>
+        gamesOfNationsSystem.excludeNationFromUpcomingGames(nationId, justification),
+      requestHumanGamesExclusionTarget: (input) => {
+        if (isAutoplayActive() || typeof window === 'undefined') return null;
+        const options = input.eligibleTargetNationIds.map((nationId, index) =>
+          `${index + 1}. ${nationManager.getNation(nationId)?.name ?? nationId}`);
+        const answer = window.prompt(
+          `Select a nation to exclude from Games of Nations #${input.gamesNumber}:\n\n${options.join('\n')}`,
+          '1',
+        );
+        if (answer === null) return null;
+        const index = Number.parseInt(answer, 10) - 1;
+        return input.eligibleTargetNationIds[index] ?? null;
+      },
       getAggressorNationId: (a, b) => diplomacyManager.getAggressorNationId(a, b),
       hasActivePeacekeepingMissionForHost: (hostNationId) =>
         worldCouncilSystem.hasActivePeacekeepingMissionForHost(hostNationId),
@@ -2423,7 +2596,7 @@ export class GameScene extends Phaser.Scene {
         diplomatic: { enabled: savedVictoryConditions.diplomatic ?? true },
       }
       : data.victoryConditions ?? {};
-    const victorySystem = new VictorySystem(
+    victorySystem = new VictorySystem(
       cityManager,
       nationManager,
       turnManager,
@@ -2435,6 +2608,7 @@ export class GameScene extends Phaser.Scene {
       wonderSystem,
       worldCouncilSystem,
       currencySystem,
+      gamesOfNationsSystem,
     );
 
     // 18. Stadsgrundningssystem
@@ -2531,6 +2705,7 @@ export class GameScene extends Phaser.Scene {
       aerospacePartSystem,
       victorySystem.getScienceVictorySettings().requiredAerospaceParts,
       productionPurchaseSystem,
+      gamesOfNationsSystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
@@ -2646,6 +2821,7 @@ export class GameScene extends Phaser.Scene {
     };
     autoplaySystem.onCompleted(refreshGameplayAfterAutoplay);
     autoplaySystem.onStopped(refreshGameplayAfterAutoplay);
+    autoplaySystem.onStarted(() => gamesOfNationsSystem.handleAutoplayStarted());
 
     autoplaySystem.onStarted(() => {
       if (!autoplaySystem.isVisualSuppressionEnabled()) return;
@@ -2898,6 +3074,12 @@ export class GameScene extends Phaser.Scene {
                 ? formatWorldCouncilVoteSummary(proposal.votes)
                 : undefined,
               outcomeText: proposal.outcomeText,
+              gamesNumber: proposal.gamesNumber,
+              gamesHostingJustification: proposal.gamesHostingJustification,
+              gamesParticipationJustification: proposal.gamesParticipationJustification,
+              proposedGamesHostNationName: proposal.proposerNationId
+                ? nationManager.getNation(proposal.proposerNationId)?.name ?? proposal.proposerNationId
+                : undefined,
             };
           }) ?? [],
         })),
@@ -3212,6 +3394,13 @@ export class GameScene extends Phaser.Scene {
       if (!city) return false;
 
       if (item.kind === 'building') {
+        if (
+          item.buildingType.id === GRAND_STADIUM_BUILDING_ID
+          && !gamesOfNationsSystem.canCityConstructGrandStadium(cityId, city.ownerId)
+        ) {
+          console.warn(`[GamesOfNations] Blocked Grand Stadium completion outside the valid hosting window in ${city.name}.`);
+          return false;
+        }
         const completedTile = buildingPlacementSystem.finalizeReservedBuilding(cityId, item.buildingType.id, mapData);
         if (!completedTile) {
           console.warn(`[BuildingPlacement] Completed ${item.buildingType.id} for ${cityId} without a reserved tile.`);
@@ -3219,6 +3408,13 @@ export class GameScene extends Phaser.Scene {
         }
 
         cityManager.getBuildings(cityId).add(item.buildingType);
+        if (item.buildingType.id === GRAND_STADIUM_BUILDING_ID) {
+          logManager.info({
+            nationId: city.ownerId,
+            category: 'games-of-nations',
+            message: `[GamesOfNations] Grand Stadium completed in ${city.name}`,
+          });
+        }
         resourceSystem.recalculateForNation(city.ownerId);
         tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
 
@@ -5005,6 +5201,31 @@ export class GameScene extends Phaser.Scene {
       const founderNationName = summary.founderNationId
         ? nationManager.getNation(summary.founderNationId)?.name ?? null
         : null;
+      const candidateNationName = summary.hostCandidateNationId
+        ? nationManager.getNation(summary.hostCandidateNationId)?.name ?? null
+        : null;
+      const upcomingHostNationName = summary.upcomingHostNationId
+        ? nationManager.getNation(summary.upcomingHostNationId)?.name ?? null
+        : null;
+      const upcomingHostCityName = summary.upcomingHostCityId
+        ? cityManager.getCity(summary.upcomingHostCityId)?.name ?? null
+        : null;
+      const hostCityOptions = humanNationId
+        ? gamesOfNationsSystem.getHostCityCandidates(humanNationId).map((city) => ({
+          id: city.id,
+          name: city.name,
+          productionPerTurn: city.productionPerTurn,
+          estimatedTurns: city.hasGrandStadium
+            ? 0
+            : productionSystem.getTurnsEstimate(city.id, { kind: 'building', buildingType: GRAND_STADIUM }),
+          hasGrandStadium: city.hasGrandStadium,
+        }))
+        : [];
+      const stadiumQueueEntry = summary.upcomingHostCityId
+        ? productionSystem.getQueue(summary.upcomingHostCityId).find((entry) =>
+          entry.item.kind === 'building' && entry.item.buildingType.id === GRAND_STADIUM_BUILDING_ID,
+        )
+        : undefined;
       return buildGamesOfNationsUiModel({
         summary,
         humanNationId: humanNationId ?? '',
@@ -5018,6 +5239,17 @@ export class GameScene extends Phaser.Scene {
         nationNames: Object.fromEntries(
           nationManager.getAllNations().map((nation) => [nation.id, nation.name]),
         ),
+        candidateNationName,
+        upcomingHostNationName,
+        upcomingHostCityName,
+        hostCityOptions,
+        stadiumEstimatedTurns: summary.stadiumCompleted
+          ? 0
+          : stadiumQueueEntry?.turnsRemaining ?? (summary.upcomingHostCityId
+            ? productionSystem.getTurnsEstimate(summary.upcomingHostCityId, { kind: 'building', buildingType: GRAND_STADIUM })
+            : null),
+        stadiumUnderConstruction: stadiumQueueEntry !== undefined,
+        humanTreasury: humanNationId ? nationManager.getResources(humanNationId).gold : 0,
       });
     };
     hudLayer = new HudLayer(this, {
@@ -5081,12 +5313,46 @@ export class GameScene extends Phaser.Scene {
         if (confirmed) hudLayer?.refresh();
         return confirmed;
       },
-      onApplyGamesStrategy: (culture, baseProduction, allocation, hostBonusSport) => {
+      onGamesHostingDecision: (accept) => {
+        if (!humanNationId) return false;
+        const handled = accept
+          ? gamesOfNationsSystem.acceptHostingOffer(humanNationId)
+          : gamesOfNationsSystem.declineHostingOffer(humanNationId);
+        if (handled) hudLayer?.refresh();
+        return handled;
+      },
+      onGamesHostCitySelected: (cityId) => {
+        if (!humanNationId) return false;
+        const selected = gamesOfNationsSystem.selectHostCity(humanNationId, cityId);
+        if (selected) {
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        }
+        return selected;
+      },
+      onGamesSportAuctionBid: (sportId, bid) => {
+        if (!humanNationId) return false;
+        const resolved = gamesOfNationsSystem.submitHumanSportAuctionBid(humanNationId, sportId, bid);
+        if (resolved) {
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        }
+        return resolved;
+      },
+      onGamesSportAuctionAbstain: () => {
+        if (!humanNationId) return false;
+        const resolved = gamesOfNationsSystem.abstainFromHumanSportAuction(humanNationId);
+        if (resolved) {
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        }
+        return resolved;
+      },
+      onApplyGamesStrategy: (culture, baseProduction, hostBonusSport) => {
         if (!humanNationId) return false;
         if (
           !Number.isInteger(culture) || culture < 0
           || !Number.isInteger(baseProduction) || baseProduction < 0
-          || validateGamesAllocation(allocation) !== null
         ) return false;
         const summary = gamesOfNationsSystem.getSummary();
         const participant = summary.participants
@@ -5094,8 +5360,7 @@ export class GameScene extends Phaser.Scene {
         if (summary.phase !== 'preparation' || !participant?.participating) return false;
         const cultureSet = gamesOfNationsSystem.setNationCultureCommitment(humanNationId, culture);
         const productionSet = gamesOfNationsSystem.setNationProductionCommitment(humanNationId, baseProduction);
-        const allocationSet = gamesOfNationsSystem.setNationSportAllocation(humanNationId, allocation);
-        if (!(cultureSet && productionSet && allocationSet)) return false;
+        if (!(cultureSet && productionSet)) return false;
         const confirmed = summary.humanPreparationPromptAcknowledgedCompetitionNumber === summary.competitionNumber
           || gamesOfNationsSystem.confirmHumanPreparationConfiguration(
             humanNationId,
@@ -5104,6 +5369,18 @@ export class GameScene extends Phaser.Scene {
           );
         if (confirmed) hudLayer?.refresh();
         return confirmed;
+      },
+      onAllocateGamesPoints: (sport, amount) => {
+        if (!humanNationId) return false;
+        const allocated = gamesOfNationsSystem.allocateGamesPoints(humanNationId, sport, amount);
+        if (allocated) hudLayer?.refresh();
+        return allocated;
+      },
+      onDistributeRemainingGamesPoints: () => {
+        if (!humanNationId) return false;
+        const distributed = gamesOfNationsSystem.distributeRemainingGamesPointsEvenly(humanNationId);
+        if (distributed) hudLayer?.refresh();
+        return distributed;
       },
       onToggleMapLens: toggleMapLens,
       getWorldCouncilFoundationState: getWorldCouncilFoundationStateForHuman,
@@ -5219,6 +5496,7 @@ export class GameScene extends Phaser.Scene {
       unitUpkeepSystem,
     );
     rightPanel.setGamesOfNationsSystem(gamesOfNationsSystem);
+    rightPanel.setVictorySystem(victorySystem);
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.
@@ -5627,7 +5905,10 @@ export class GameScene extends Phaser.Scene {
       .some((entry) => entry.item.kind === 'building' && entry.item.buildingType.id === buildingId);
     const getCityViewBuildingOptions = (city: City): CityViewBuildingOption[] => {
       const occupiedBuildingIds = getOccupiedBuildingIds(city);
-      return ALL_BUILDINGS
+      const buildings = gamesOfNationsSystem.canCityConstructGrandStadium(city.id, city.ownerId)
+        ? [...ALL_BUILDINGS, GRAND_STADIUM]
+        : ALL_BUILDINGS;
+      return buildings
         .filter((building) => !cityManager.getBuildings(city.id).has(building.id))
         .filter((building) => !occupiedBuildingIds.has(building.id))
         .filter((building) => researchSystem ? researchSystem.isBuildingUnlocked(city.ownerId, building.id) : true)
@@ -5866,6 +6147,13 @@ export class GameScene extends Phaser.Scene {
 
       if (cityManager.getBuildings(city.id).has(buildingId) || getOccupiedBuildingIds(city).has(buildingId)) {
         return { ok: false, message: 'That building is already built or under construction in this city.' };
+      }
+
+      if (
+        buildingId === GRAND_STADIUM_BUILDING_ID
+        && !gamesOfNationsSystem.canCityConstructGrandStadium(city.id, city.ownerId)
+      ) {
+        return { ok: false, message: 'Grand Stadium is available only in the confirmed Games host city before Competition.' };
       }
 
       if (!buildingPlacementSystem.startPlacement(city, buildingId, mapData)) {
@@ -6368,7 +6656,12 @@ export class GameScene extends Phaser.Scene {
         recipientNationId,
       ),
       getHumanInfluence: () => nationManager.getResources(data.humanNationId).influence,
-      getItemAvailability: (sourceNationId, itemId) => gossipSystem.getItemAvailability(sourceNationId, itemId),
+      getItemAvailability: (sourceNationId, itemId, recipientNationId) => (
+        gossipSystem.getItemAvailability(sourceNationId, itemId, recipientNationId)
+      ),
+      getKnownSportsPreferences: (sourceNationId, recipientNationId) => (
+        gossipSystem.getKnownSportsPreferences(sourceNationId, recipientNationId)
+      ),
       getManipulationStatus: (sourceNationId, recipientNationId) => (
         gossipSystem.getManipulationStatus(sourceNationId, recipientNationId)
       ),
@@ -6737,10 +7030,11 @@ export class GameScene extends Phaser.Scene {
     });
     researchSystem.onCompleted((event) => {
       const technology = getTechnologyById(event.technologyId);
-      recordEraMilestone(
+      const reachedEra = recordEraMilestone(
         event.nationId,
         technology ? `technology:${technology.id} (${technology.name})` : `technology:${event.technologyId}`,
       );
+      if (reachedEra) gamesOfNationsSystem.handleEraReached(reachedEra, turnManager.getCurrentRound());
       if (event.nationId === humanNationId && isNaturalResourceRevealTechnology(event.technologyId)) {
         naturalResourceRenderer.rebuildAll();
       }
@@ -6852,6 +7146,7 @@ export class GameScene extends Phaser.Scene {
               cityManager,
               turnManager.getCurrentRound(),
             );
+            const culturalVictory = victorySystem.getCulturalVictoryProgress(nation.id);
             return {
               id: nation.id,
               name: nation.name,
@@ -6885,6 +7180,13 @@ export class GameScene extends Phaser.Scene {
                 }
                 : null,
               cityIntegration,
+              culturalVictory: {
+                normalRequirementsMet: culturalVictory.normalRequirementsMet,
+                latestCompletedGamesNumber: culturalVictory.latestCompletedGamesNumber,
+                reigningGamesChampionNationId: culturalVictory.reigningGamesChampionNationId,
+                isReigningGamesChampion: culturalVictory.isReigningGamesChampion,
+                victoryEligible: culturalVictory.victoryEligible,
+              },
             };
           });
           const victoryState = victorySystem.getVictoryState();
@@ -6914,6 +7216,7 @@ export class GameScene extends Phaser.Scene {
         },
         getSaveState: () => SaveLoadService.serialize({
           mapKey: data.mapKey,
+          generatedScenario: data.generatedScenario,
           humanNationId: data.humanNationId,
           activeNationIds: data.activeNationIds,
           gameSpeedId: gameSpeed.id,
@@ -7600,6 +7903,7 @@ export class GameScene extends Phaser.Scene {
       try {
         const state = SaveLoadService.serialize({
           mapKey: data.mapKey,
+          generatedScenario: data.generatedScenario,
           humanNationId: data.humanNationId,
           activeNationIds: data.activeNationIds,
           gameSpeedId: gameSpeed.id,
@@ -7661,6 +7965,7 @@ export class GameScene extends Phaser.Scene {
     const serializeCurrentGame = (): SavedGameState =>
       SaveLoadService.serialize({
         mapKey: data.mapKey,
+        generatedScenario: data.generatedScenario,
         humanNationId: data.humanNationId,
         activeNationIds: data.activeNationIds,
         gameSpeedId: gameSpeed.id,

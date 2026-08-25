@@ -348,7 +348,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Corporations and banks',
         ],
       },
-      { kind: 'note', text: 'Only the highest-ranked currency is Dominant, and a Dominant currency is one of the three requirements for a Cultural Victory. A strong economy therefore feeds directly into your victory options.' },
+      { kind: 'note', text: 'Only the highest-ranked currency is Dominant, and a Dominant currency is one of the four requirements for a Cultural Victory. A strong economy therefore feeds directly into your victory options.' },
     ],
   },
   {
@@ -436,7 +436,69 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'heading', text: 'Cultural Expansion' },
       { kind: 'paragraph', text: 'Culture also expands your cities’ borders, claiming new tiles for your civilization over time. Each city works toward a planned expansion tile, which you can retarget, and tiles and resources brought inside your borders become available to work.' },
       { kind: 'heading', text: 'Cultural Victory' },
-      { kind: 'paragraph', text: 'Sustained cultural output is a victory path in its own right, combined with World Wonders and a dominant currency. See Victory & Objectives for the full requirements.' },
+      { kind: 'paragraph', text: 'Sustained cultural output is a victory path in its own right, combined with World Wonders, a dominant currency and victory in Games of Nations. See Games of Nations for the sporting system and Victory & Objectives for the full victory requirements.' },
+    ],
+  },
+  {
+    id: 'games-of-nations',
+    title: 'Games of Nations',
+    blocks: [
+      { kind: 'paragraph', text: 'Games of Nations is a recurring international sporting competition. Nations divert Culture and Production into sporting preparation, choose where to focus their Games Points and compete for medals, prestige and an opening toward Cultural Victory.' },
+
+      { kind: 'heading', text: 'Founding the Games' },
+      { kind: 'paragraph', text: 'Completing the Games Of Nations culture, formerly called Games and Recreation, founds the institution. The nation that completes it receives the first opportunity to host, and the first Competition is scheduled 25 turns later. If it declines or cannot host, the offer passes through the host rotation.' },
+      { kind: 'paragraph', text: 'Once founded, the Games recur. Each cycle has a 10-turn Preparation phase, a Competition with one sport resolved per turn, and a 10-turn Cooldown before the next Preparation. Because every active sport receives its own Competition turn, later Games last longer as new sports join the program.' },
+
+      { kind: 'heading', text: 'Participation and Preparation' },
+      { kind: 'paragraph', text: 'Nations normally enter each Games. At the start of Preparation, you choose whether your nation will participate and configure its investment. A host must participate, but may commit zero resources; a non-host may sit out the entire cycle. World Council politics can also exclude a nation.' },
+      { kind: 'paragraph', text: 'During Preparation you set a Culture commitment and a base Production commitment per turn. Culture is diverted from what you generate that turn, not spent from accumulated progress. Each resource is attempted separately and on an all-or-nothing basis: if you cannot provide the full promised amount that turn, none of that resource is diverted and it produces no GP. Production is taken from base Production before percentage bonuses, so the effect on normal construction can be greater than the displayed base commitment.' },
+      {
+        kind: 'list',
+        items: [
+          '1 successfully invested Culture generates 10 Games Points (GP).',
+          '1 successfully invested base Production generates 10 GP.',
+          'Changing a commitment affects future Preparation turns only.',
+        ],
+      },
+
+      { kind: 'heading', text: 'Assigning Games Points' },
+      { kind: 'paragraph', text: 'Generated GP enters an unallocated pool. You can assign it directly to any sport in the current Games, but committed sport GP is permanent for that Games: it cannot be withdrawn, moved to another sport or returned to the pool.' },
+      { kind: 'paragraph', text: 'You may keep GP unallocated while deciding. Distribute Remaining Evenly is a quick way to spread the pool across every active sport. When Preparation ends, any GP still unallocated is automatically distributed evenly.' },
+
+      { kind: 'heading', text: 'Sports, Competition and Medals' },
+      { kind: 'paragraph', text: 'The original program contains five traditional sports: Wrestling, Marathon, Swimming, Javelin and Long Jump. Later Games may add Horse Racing, Boxing, 100 Metres, Pole Vault and Fencing; these additional sports are not all available at the beginning.' },
+      { kind: 'paragraph', text: 'Competition resolves one sport per turn. More effective GP in a sport gives a nation a better chance, so the largest investment is favored but does not guarantee victory. Each event can award Gold, Silver and Bronze to different participating nations.' },
+      { kind: 'paragraph', text: 'A tournament is decided first by Gold medals, then Silver, then Bronze. The cumulative Medal League values Gold at 5 points, Silver at 3 and Bronze at 1; tied league nations are ordered by points, Gold medals, Silver medals and then nation name.' },
+
+      { kind: 'heading', text: 'Hosting and the Grand Stadium' },
+      { kind: 'paragraph', text: 'Hosting rotates between nations. When you receive an offer, you may accept or decline; after accepting, select one of your eligible cities as the host city. AI hosts make the same preparations and attempt to complete the required stadium.' },
+      { kind: 'paragraph', text: 'The chosen city must contain a completed Grand Stadium before Competition begins. If it is unfinished, the Games are cancelled and no sports or medals are awarded. The Grand Stadium is permanent city infrastructure, uses normal construction rules and remains after the Games.' },
+      { kind: 'paragraph', text: 'A future host may reuse a completed Grand Stadium by selecting that same city. Selecting a different city without one requires another Grand Stadium there. Its permanent Happiness benefit equals a normal Stadium, and if both buildings are present their normal Happiness benefits stack.' },
+      { kind: 'heading', text: 'Host Advantage' },
+      { kind: 'paragraph', text: 'After the participating nations confirm their initial commitments, the host receives bonus GP equal to 10% of the other participants’ combined initial GP commitment. The host assigns the bonus to one active sport. That choice is fixed for the Games and can provide a meaningful advantage in that event.' },
+
+      { kind: 'heading', text: 'New Sports and Gold Auctions' },
+      { kind: 'paragraph', text: 'The first time the world reaches the Renaissance, Industrial, Modern, Atomic and Information eras, an available additional sport can be introduced through an international Gold auction. If sports still remain in the Future Era, later hosting cycles provide further opportunities until the program can contain all ten sports.' },
+      { kind: 'paragraph', text: 'Nations nominate an available sport and bid Gold for the prestige of introducing it. Only the winning nation pays; the winning sport joins Games of Nations and the introducing nation receives lasting historical credit.' },
+      { kind: 'paragraph', text: 'AI nations submit their proposals first. You can see their nominations and bids before choosing to abstain, nominate an available sport or submit a bid above the current leader. The proposals may also hint at which sports rivals value.' },
+
+      { kind: 'heading', text: 'Leader Preferences and Gossip' },
+      { kind: 'paragraph', text: 'Every leader favors one traditional sport and one additional sport. These preferences influence how AI nations prepare and which new sport they may want to introduce. If powerful rivals share a favorite, another event may offer a less crowded route to a medal.' },
+      { kind: 'paragraph', text: 'After Games of Nations has been founded and you have met a leader, use Gossip to ask “Which sports do you prefer?” The answer is remembered as Known Information in that leader’s dialog. It can reveal a favored additional sport before that sport has joined the Games, which is useful intelligence for future auctions and tournaments.' },
+
+      { kind: 'heading', text: 'Leaderboard and Historical Record' },
+      { kind: 'paragraph', text: 'Open the GoN tab in Leaderboard to review Games history. Games of Nations Medal League shows each nation’s cumulative Rank, Gold, Silver, Bronze and total Medals. Games of Nations Tournament History records the Year, Host Nation, Host City and Winner of every completed or cancelled Games.' },
+      { kind: 'paragraph', text: 'The Epoch Chronicle publishes special Games editions during Competition, reporting results and the next event. Hosting announcements, new sports, Gold medals, completed or cancelled tournaments and major World Council interventions also become part of the historical record.' },
+
+      { kind: 'heading', text: 'Games of Nations and the World Council' },
+      { kind: 'paragraph', text: 'Once both institutions exist, the World Council can make the upcoming Games a subject of international politics. Games-related resolutions are available only before Competition begins.' },
+      { kind: 'paragraph', text: 'A Games of Nations Hosting Resolution proposes that its sponsor replace the current host. If it passes, the sponsor becomes host, chooses a host city and begins a fresh hosting and Preparation process. Previous Games investments from the abandoned preparation are not refunded, but permanent infrastructure such as an existing Grand Stadium is not destroyed.' },
+      { kind: 'paragraph', text: 'A Games of Nations Participation Resolution can exclude a nation from the upcoming Games. The target cannot compete or win medals, its future Culture and Production commitments stop, and resources already invested are not refunded. The exclusion lasts for that Games only. Even the host can be excluded from competing while remaining responsible for hosting.' },
+      { kind: 'note', text: 'After Competition begins, neither host replacement nor participant exclusion is available. Results and medals already being decided cannot be rewritten halfway through a tournament.' },
+
+      { kind: 'heading', text: 'Games and Cultural Victory' },
+      { kind: 'paragraph', text: 'Winning Games of Nations does not grant victory by itself. It makes your nation the reigning winner of the most recently completed Games and opens the Games-based eligibility window for Cultural Victory while you also meet all other cultural requirements. See Victory & Objectives for the exact requirements.' },
+      { kind: 'note', text: 'A rival nearing Cultural Victory may be checked by competing hard in selected sports, learning leader preferences or using World Council politics before Competition. No single approach guarantees success.' },
     ],
   },
   {
@@ -515,16 +577,20 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       },
 
       { kind: 'heading', text: 'Cultural Victory' },
-      { kind: 'paragraph', text: 'Win by meeting all three cultural requirements simultaneously:' },
+      { kind: 'paragraph', text: 'A nation can only achieve Cultural Victory while it is the reigning winner of the most recently completed Games of Nations. Winning the Games does not grant Cultural Victory by itself; it opens a temporary opportunity to win if all four requirements are met simultaneously:' },
       {
         kind: 'list',
         items: [
           'Accumulate at least 75,000 Culture.',
           'Own at least 8 completed, unbroken World Wonders.',
           'Have your active national currency ranked Dominant.',
+          'Be the reigning winner of the most recently completed Games of Nations.',
         ],
       },
       { kind: 'paragraph', text: 'World Wonders count for the nation that currently owns their city. Conquering or losing a Wonder city therefore changes Cultural Victory progress. Currency strength is relative to other active currencies, and only the highest-ranked currency is Dominant.' },
+      { kind: 'paragraph', text: 'When another nation wins a later Games, the previous champion loses this Games-based eligibility. A culturally dominant nation may therefore need to win the Games and then satisfy or maintain the other three requirements before the next completed tournament replaces it as champion.' },
+      { kind: 'paragraph', text: 'Exclusion from an upcoming Games does not immediately remove the reigning champion’s current eligibility: it remains champion until another Games is successfully completed, although it cannot defend its title while excluded. A cancelled Games creates no new champion, so the winner of the latest successfully completed Games remains reigning champion.' },
+      { kind: 'note', text: 'See Games of Nations for preparation, medals, hosting and the World Council options that can help prevent a rival from becoming or remaining champion.' },
 
       { kind: 'heading', text: 'Diplomatic Victory' },
       { kind: 'paragraph', text: 'Win by reaching 5,000 Diplomatic Score through successful participation in the World Council or United Nations.' },

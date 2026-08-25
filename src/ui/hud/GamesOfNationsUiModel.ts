@@ -1,10 +1,11 @@
-import { GAMES_POINTS_PER_RESOURCE, GAMES_OF_NATIONS_SPORTS } from '../../systems/GamesOfNationsSystem';
+import { GAMES_POINTS_PER_RESOURCE, GAMES_OF_NATIONS_SPORTS, selectAuctionWinner } from '../../systems/GamesOfNationsSystem';
 import type {
   GamesOfNationsParticipantState,
   GamesOfNationsSport,
-  GamesOfNationsSportValues,
+  GamesOfNationsSportId,
   GamesOfNationsSummary,
 } from '../../types/gamesOfNations';
+import { getGamesSportById } from '../../data/gamesOfNationsSports';
 
 export const GAMES_HUD_BUTTON_LAYOUT = {
   left: 16,
@@ -25,6 +26,13 @@ export interface GamesOfNationsUiContext {
   currentCultureAvailable: number;
   currentBaseProductionAvailable: number;
   nationNames?: Readonly<Record<string, string>>;
+  candidateNationName?: string | null;
+  upcomingHostNationName?: string | null;
+  upcomingHostCityName?: string | null;
+  hostCityOptions?: Array<{ id: string; name: string; productionPerTurn: number; estimatedTurns: number | null; hasGrandStadium: boolean }>;
+  stadiumEstimatedTurns?: number | null;
+  stadiumUnderConstruction?: boolean;
+  humanTreasury?: number;
 }
 
 export interface GamesCommitmentView {
@@ -48,12 +56,22 @@ export interface GamesOfNationsUiModel {
   competitionProgress: string | null;
   cooldownProgress: string | null;
   activeSport: string | null;
+  activeSports: GamesOfNationsSport[];
   turnsUntilCompetition: number | null;
   turnsUntilPreparation: number | null;
   participant: GamesOfNationsParticipantState | null;
   participating: boolean;
+  excluded: boolean;
   controlsEditable: boolean;
   promptPending: boolean;
+  hostingPromptPending: boolean;
+  hostCitySelectionPending: boolean;
+  candidateNationName: string | null;
+  hostCityOptions: Array<{ id: string; name: string; productionPerTurn: number; estimatedTurns: number | null; hasGrandStadium: boolean }>;
+  publicHostLabel: string;
+  stadiumStatus: string;
+  stadiumEstimatedTurns: number | null;
+  stadiumAtRisk: boolean;
   buttonProgress: number;
   buttonActive: boolean;
   buttonTooltip: string;
@@ -79,6 +97,13 @@ export interface GamesOfNationsUiModel {
   hostBonusLocked: boolean;
   hostBonusBaseGamesPoints: number | null;
   hostBonusEffectiveGamesPoints: number | null;
+  sportAuction: {
+    era: string;
+    treasury: number;
+    currentLeader: { nationName: string; sportName: string; bid: number } | null;
+    proposals: Array<{ nationName: string; sportName: string; bid: number }>;
+    candidates: Array<{ id: GamesOfNationsSportId; name: string }>;
+  } | null;
 }
 
 export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): GamesOfNationsUiModel {
@@ -102,6 +127,7 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     ? summary.turnsUntilNextPhase
     : null;
   const participating = participant?.participating === true;
+  const excluded = (summary.excludedNationIds ?? []).includes(context.humanNationId);
   const humanIsHost = summary.hostNationId === context.humanNationId;
   const hostParticipant = summary.participants.find((entry) => entry.nationId === summary.hostNationId);
   const hostBonusBaseGamesPoints = summary.hostBonusSport
@@ -110,6 +136,10 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
   const nationName = (nationId: string | undefined): string | null => (
     nationId ? context.nationNames?.[nationId] ?? nationId : null
   );
+  const pendingAuction = summary.pendingSportAuction;
+  const auctionLeader = pendingAuction
+    ? selectAuctionWinner(pendingAuction.proposals, pendingAuction.proposals.map((proposal) => proposal.nationId))
+    : undefined;
   return {
     founded: summary.founded,
     gamesNumber: summary.competitionNumber,
@@ -122,13 +152,40 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     competitionProgress,
     cooldownProgress,
     activeSport: summary.activeSport,
+    activeSports: [...(summary.activeSports ?? ((summary.sportResults ?? []).length > 0
+      ? (summary.sportResults ?? []).map((result) => result.sport)
+      : GAMES_OF_NATIONS_SPORTS))],
     turnsUntilCompetition: summary.turnsUntilGames,
     turnsUntilPreparation,
     participant,
     participating,
-    controlsEditable: summary.phase === 'preparation' && participating,
-    promptPending: summary.phase === 'preparation'
+    excluded,
+    controlsEditable: summary.humanInteractionSuppressed !== true && summary.phase === 'preparation' && participating && !excluded,
+    promptPending: summary.humanInteractionSuppressed !== true && summary.phase === 'preparation'
+      && !excluded
       && summary.humanPreparationPromptAcknowledgedCompetitionNumber !== summary.competitionNumber,
+    hostingPromptPending: summary.humanInteractionSuppressed !== true && summary.hostingDecision === 'pendingDecision'
+      && summary.hostCandidateNationId === context.humanNationId,
+    hostCitySelectionPending: summary.humanInteractionSuppressed !== true && summary.hostingDecision === 'pendingCity'
+      && summary.hostCandidateNationId === context.humanNationId,
+    candidateNationName: context.candidateNationName ?? null,
+    hostCityOptions: context.hostCityOptions ?? [],
+    publicHostLabel: [context.upcomingHostNationName ?? context.hostNationName, context.upcomingHostCityName ?? context.hostCityName]
+      .filter(Boolean).join(' — ') || 'To be determined',
+    stadiumStatus: summary.stadiumRequirementGrandfathered
+      ? 'Fulfilled (legacy cycle)'
+      : summary.stadiumExistingInfrastructure
+        ? 'Completed — existing infrastructure'
+        : summary.stadiumCompleted
+          ? 'Completed — new construction'
+          : context.stadiumUnderConstruction
+            ? 'Under Construction'
+            : summary.hostingDecision === 'confirmed' ? 'Not started' : 'Awaiting host',
+    stadiumEstimatedTurns: context.stadiumEstimatedTurns ?? null,
+    stadiumAtRisk: context.stadiumEstimatedTurns !== undefined
+      && context.stadiumEstimatedTurns !== null
+      && summary.turnsUntilGames !== null
+      && context.stadiumEstimatedTurns > summary.turnsUntilGames,
     buttonProgress: summary.phase === 'preparation'
       ? clamp((progressTurn ?? 0) / 10, 0, 1)
       : summary.phase === 'competition' ? 1 : 0,
@@ -157,6 +214,7 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     hostBonusSport: summary.hostBonusSport,
     hostBonusSelectionRequired: summary.phase === 'preparation'
       && humanIsHost
+      && !excluded
       && summary.hostBonusCalculated
       && summary.hostBonusSport === null,
     hostBonusLocked: summary.hostBonusSport !== null,
@@ -164,16 +222,22 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     hostBonusEffectiveGamesPoints: hostBonusBaseGamesPoints === null
       ? null
       : hostBonusBaseGamesPoints + summary.hostBonusGamesPoints,
+    sportAuction: pendingAuction && summary.humanInteractionSuppressed !== true ? {
+      era: pendingAuction.triggerEra,
+      treasury: whole(context.humanTreasury ?? 0),
+      currentLeader: auctionLeader ? {
+        nationName: nationName(auctionLeader.nationId) ?? auctionLeader.nationId,
+        sportName: getGamesSportById(auctionLeader.sportId).name,
+        bid: auctionLeader.bid,
+      } : null,
+      proposals: pendingAuction.proposals.map((proposal) => ({
+        nationName: nationName(proposal.nationId) ?? proposal.nationId,
+        sportName: getGamesSportById(proposal.sportId).name,
+        bid: proposal.bid,
+      })),
+      candidates: pendingAuction.candidateSportIds.map((id) => ({ id, name: getGamesSportById(id).name })),
+    } : null,
   };
-}
-
-export function validateGamesAllocation(allocation: GamesOfNationsSportValues): string | null {
-  const values = GAMES_OF_NATIONS_SPORTS.map((sport) => allocation[sport]);
-  if (values.some((value) => !Number.isInteger(value) || value < 0 || value > 100)) {
-    return 'Each allocation must be a whole percentage from 0 to 100.';
-  }
-  const total = values.reduce((sum, value) => sum + value, 0);
-  return total === 100 ? null : `Allocation must equal 100% (currently ${total}%).`;
 }
 
 function commitmentView(commitmentValue: number, availableValue: number): GamesCommitmentView {
@@ -200,6 +264,7 @@ function phaseLabel(phase: GamesOfNationsSummary['phase']): string {
     case 'waitingForFirstGames': return 'First Games approaching';
     case 'preparation': return 'Preparation';
     case 'competition': return 'Competition';
+    case 'cancelled': return 'Cancelled';
     case 'cooldown': return 'Cooldown';
     default: return 'Not founded';
   }

@@ -1,19 +1,24 @@
-import { GAMES_OF_NATIONS_SPORTS } from '../systems/GamesOfNationsSystem';
-import type { GamesOfNationsSport, GamesOfNationsSportValues } from '../types/gamesOfNations';
+import { getGamesSportByName } from '../data/gamesOfNationsSports';
+import type { GamesOfNationsSport, GamesOfNationsSportId } from '../types/gamesOfNations';
 import type { GamesOfNationsUiModel } from './hud/GamesOfNationsUiModel';
-import { validateGamesAllocation } from './hud/GamesOfNationsUiModel';
 
 const OVERLAY_ID = 'epoch-games-of-nations-dialog';
 
 export interface GamesOfNationsDialogCallbacks {
   getModel: () => GamesOfNationsUiModel;
   onParticipationDecision: (participating: boolean) => boolean;
-  onApply: (culture: number, baseProduction: number, allocation: GamesOfNationsSportValues, hostBonusSport?: GamesOfNationsSport) => boolean;
+  onApply: (culture: number, baseProduction: number, hostBonusSport?: GamesOfNationsSport) => boolean;
+  onAllocateGamesPoints: (sport: GamesOfNationsSport, amount: number) => boolean;
+  onDistributeRemainingGamesPoints: () => boolean;
+  onHostingDecision: (accept: boolean) => boolean;
+  onHostCitySelected: (cityId: string) => boolean;
+  onSportAuctionBid: (sportId: GamesOfNationsSportId, bid: number) => boolean;
+  onSportAuctionAbstain: () => boolean;
 }
 
 /** Accessible HTML presentation for the one-time prompt and reusable Games panel. */
 export class GamesOfNationsDialog {
-  private mode: 'prompt' | 'panel' | null = null;
+  private mode: 'prompt' | 'hosting' | 'hostCity' | 'auction' | 'panel' | null = null;
   private hostBonusSportDraft: GamesOfNationsSport | undefined;
   private hostBonusSelectionChanged: (() => void) | null = null;
 
@@ -25,6 +30,111 @@ export class GamesOfNationsDialog {
 
   isPromptOpen(): boolean {
     return this.mode === 'prompt' && this.isOpen();
+  }
+
+  showHostingPrompt(): void {
+    const model = this.callbacks.getModel();
+    if (!model.hostingPromptPending) return;
+    this.mode = 'hosting';
+    const { overlay, card } = this.createShell('Games of Nations hosting decision');
+    overlay.dataset.mode = 'hosting';
+    card.append(
+      heading('Games of Nations', 'h1'),
+      paragraph('Your nation has been selected to host the next Games of Nations.'),
+      paragraph('Hosting requires choosing a city and completing a Grand Stadium before the Games begin. If it is not ready, the Games will be cancelled.'),
+    );
+    const actions = element('div', 'gon-actions');
+    actions.append(
+      button('Accept Hosting', 'gon-participate', () => {
+        if (!this.callbacks.onHostingDecision(true)) return;
+        this.showHostCitySelection();
+      }, true),
+      button('Decline', 'gon-decline', () => {
+        if (this.callbacks.onHostingDecision(false)) this.close();
+      }),
+    );
+    card.appendChild(actions);
+    this.mount(overlay, '.gon-participate');
+  }
+
+  showHostCitySelection(): void {
+    const model = this.callbacks.getModel();
+    if (!model.hostCitySelectionPending) return;
+    this.close();
+    this.mode = 'hostCity';
+    const { overlay, card } = this.createShell('Choose Games host city');
+    overlay.dataset.mode = 'hostCity';
+    card.append(heading('Choose the host city', 'h1'), paragraph('This choice is locked for the current Games cycle.'));
+    const actions = element('div', 'gon-actions');
+    for (const city of model.hostCityOptions) {
+      const stadium = city.hasGrandStadium
+        ? 'Grand Stadium: Completed · Hosting requirement: Already satisfied'
+        : `Grand Stadium: Not built · ${city.estimatedTurns === null
+          ? `Production: ${city.productionPerTurn}/turn`
+          : `Estimated completion: ${city.estimatedTurns} turns`}`;
+      actions.appendChild(button(`${city.name} — Production: ${city.productionPerTurn}/turn · ${stadium}`, 'gon-participate', () => {
+        if (this.callbacks.onHostCitySelected(city.id)) this.close();
+      }));
+    }
+    card.appendChild(actions);
+    this.mount(overlay, '.gon-participate');
+  }
+
+  showSportAuction(): void {
+    const model = this.callbacks.getModel();
+    const auction = model.sportAuction;
+    if (!auction) return;
+    this.mode = 'auction';
+    const { overlay, card } = this.createShell('Games of Nations sport auction');
+    overlay.dataset.mode = 'auction';
+    card.append(
+      heading(`${capitalize(auction.era)} sport auction`, 'h1'),
+      paragraph('Nations are bidding for the prestige of introducing the next Games of Nations sport. Only the winner pays.'),
+      text(`Your treasury: ${auction.treasury} Gold`, 'gon-emphasis'),
+    );
+    const proposals = element('div', 'gon-auction-proposals');
+    for (const proposal of auction.proposals) {
+      proposals.appendChild(metric(proposal.nationName, `${proposal.sportName} — ${proposal.bid} Gold`));
+    }
+    card.append(heading('Current proposals', 'h2'), proposals);
+    if (auction.currentLeader) {
+      card.appendChild(notice(`Current leader: ${auction.currentLeader.nationName} — ${auction.currentLeader.sportName} — ${auction.currentLeader.bid} Gold. You must bid at least ${auction.currentLeader.bid + 1} Gold to win.`));
+    }
+    const select = document.createElement('select');
+    select.className = 'gon-number-input';
+    select.setAttribute('aria-label', 'Sport nomination');
+    for (const candidate of auction.candidates) select.appendChild(new Option(candidate.name, candidate.id));
+    const minimum = (auction.currentLeader?.bid ?? -1) + 1;
+    const bidInput = numberInput('gon-auction-bid', Math.max(0, minimum), true, auction.treasury);
+    const fields = element('div', 'gon-commitment-grid');
+    const sportField = element('div', 'gon-commitment-card');
+    sportField.append(text('Nominate sport', 'gon-field-label'), select);
+    const bidField = element('div', 'gon-commitment-card');
+    bidField.append(text('Gold bid', 'gon-field-label'), bidInput);
+    fields.append(sportField, bidField);
+    const validation = text('', 'gon-validation');
+    const actions = element('div', 'gon-actions');
+    actions.append(
+      button('Do Not Bid', 'gon-decline', () => {
+        if (this.callbacks.onSportAuctionAbstain()) this.close();
+      }),
+      button('Submit Winning Bid', 'gon-participate', () => {
+        const sportId = select.value as GamesOfNationsSportId;
+        const bid = readWhole(bidInput);
+        if (bid > auction.treasury) {
+          validation.textContent = 'The bid exceeds your treasury.';
+          return;
+        }
+        if (bid < minimum) {
+          validation.textContent = `Your bid must be at least ${minimum} Gold.`;
+          return;
+        }
+        if (this.callbacks.onSportAuctionBid(sportId, bid)) this.close();
+        else validation.textContent = 'The bid could not be submitted.';
+      }, true),
+    );
+    card.append(fields, validation, actions);
+    this.mount(overlay, '.gon-participate');
   }
 
   showPrompt(): void {
@@ -60,6 +170,7 @@ export class GamesOfNationsDialog {
   }
 
   showPanel(): void {
+    if (this.isOpen()) this.close();
     this.mode = 'panel';
     this.hostBonusSportDraft = undefined;
     this.hostBonusSelectionChanged = null;
@@ -80,6 +191,10 @@ export class GamesOfNationsDialog {
       ));
     } else if (model.phase === 'cooldown') {
       card.appendChild(notice(`Games #${model.gamesNumber} is completed. The next Preparation begins in ${model.turnsUntilPreparation ?? 0} turns.`));
+    } else if (model.phase === 'cancelled') {
+      card.appendChild(notice(`Games #${model.gamesNumber} was cancelled. No sports or medals are awarded; the previous champion remains reigning champion.`));
+    } else if (model.excluded) {
+      card.appendChild(notice(`Excluded from Games of Nations #${model.gamesNumber}. The World Council has prohibited your nation from competing. All future Culture and Production commitments are cancelled, and resources already invested will not be returned. You may still inspect the Games and its results.`));
     } else if (!model.participating) {
       card.appendChild(notice('Your nation is not participating in this Games cycle. You may inspect the event, but cannot re-enter until the next Preparation decision.'));
     }
@@ -107,13 +222,19 @@ export class GamesOfNationsDialog {
     section.append(
       metric('Host', model.hostLabel),
       metric('Phase', model.phaseLabel),
-      metric('Participating', model.phase === 'waitingForFirstGames' ? 'Decision at Preparation' : model.participating ? 'Yes' : 'No'),
+      metric('Participating', model.excluded ? 'No — excluded by World Council' : model.phase === 'waitingForFirstGames' ? 'Decision at Preparation' : model.participating ? 'Yes' : 'No'),
+      metric('Next host', model.publicHostLabel),
+      metric('Grand Stadium', model.stadiumStatus),
     );
     if (model.preparationProgress) section.appendChild(metric('Preparation', model.preparationProgress));
     if (model.competitionProgress) section.appendChild(metric('Competition progress', model.competitionProgress));
     if (model.cooldownProgress) section.appendChild(metric('Cooldown progress', model.cooldownProgress));
     if (model.phase === 'preparation') section.appendChild(metric('Competition begins in', `${model.turnsUntilCompetition ?? 0} turns`));
     if (model.phase === 'competition') section.appendChild(metric('Current sport', model.activeSport ?? '—'));
+    if (model.turnsUntilCompetition !== null) section.appendChild(metric('Games deadline', `${model.turnsUntilCompetition} turns`));
+    if (model.stadiumEstimatedTurns !== null && !model.stadiumStatus.startsWith('Completed')) {
+      section.appendChild(metric('Stadium estimate', `${model.stadiumEstimatedTurns} turns${model.stadiumAtRisk ? ' — AT RISK' : ''}`));
+    }
     if (model.phase === 'cooldown') section.appendChild(metric('Next Preparation', `${model.turnsUntilPreparation ?? 0} turns`));
     return section;
   }
@@ -123,7 +244,11 @@ export class GamesOfNationsDialog {
     const editable = model.controlsEditable;
     const section = element('section', 'gon-investment');
     const headingRow = element('div', 'gon-section-heading');
-    headingRow.append(heading('Preparation investment', 'h2'), text(editable ? 'Changes affect future Preparation turns only.' : 'Read-only outside active participation in Preparation.', 'gon-muted'));
+    headingRow.append(heading('Preparation investment', 'h2'), text(editable
+      ? 'Changes affect future Preparation turns only.'
+      : model.excluded
+        ? 'Disabled: your nation has been excluded from this Games cycle by the World Council.'
+        : 'Read-only outside active participation in Preparation.', 'gon-muted'));
     section.appendChild(headingRow);
 
     const commitments = element('div', 'gon-commitment-grid');
@@ -163,54 +288,79 @@ export class GamesOfNationsDialog {
     );
     section.appendChild(totals);
 
-    section.append(heading('Points by sport and future allocation', 'h2'));
-    const allocationTable = element('div', 'gon-sports');
+    const pool = participant?.unallocatedGamesPoints ?? 0;
+    const poolHeader = element('div', 'gon-gp-pool');
+    poolHeader.append(
+      text('Games Points available to allocate', 'gon-metric-label'),
+      text(`${pool} GP`, 'gon-gp-pool-value'),
+      text('Earned GP remain here until permanently assigned to a sport.', 'gon-muted'),
+    );
+    section.append(poolHeader, heading('Permanent sport investment', 'h2'));
+    const allocationTable = element('div', 'gon-sport-grid');
     allocationTable.setAttribute('role', 'group');
-    allocationTable.setAttribute('aria-label', 'Future Games Point allocation');
-    const allocationInputs = new Map<string, HTMLInputElement>();
-    for (const sport of GAMES_OF_NATIONS_SPORTS) {
-      const row = element('label', 'gon-sport-row');
-      const input = numberInput(`gon-allocation-${slug(sport)}`, participant?.sportAllocation[sport] ?? 20, editable, 100);
-      allocationInputs.set(sport, input);
-      row.htmlFor = input.id;
-      row.append(
-        text(sport, 'gon-sport-name'),
-        text(`Accumulated: ${participant?.gamesPointsBySport[sport] ?? 0} GP`, 'gon-locked'),
-        input,
-        text('% future', 'gon-percent-label'),
+    allocationTable.setAttribute('aria-label', 'Direct Games Points allocation');
+    for (const sport of model.activeSports) {
+      const committed = participant?.gamesPointsBySport[sport] ?? 0;
+      const hostBonus = model.humanIsHost && model.hostBonusSport === sport ? model.hostBonusGamesPoints : 0;
+      const card = element('article', 'gon-sport-card');
+      const image = document.createElement('img');
+      image.className = 'gon-sport-image';
+      image.src = getGamesSportByName(sport).image;
+      image.alt = '';
+      image.loading = 'lazy';
+      const controls = element('div', 'gon-sport-controls');
+      const allocationButton = (label: string, amount: number): HTMLButtonElement => {
+        const control = button(label, 'gon-gp-add', () => {
+          if (this.callbacks.onAllocateGamesPoints(sport, amount)) this.showPanel();
+        });
+        control.disabled = !editable || amount <= 0 || amount > pool;
+        return control;
+      };
+      controls.append(
+        allocationButton('+10', 10),
+        allocationButton('+50', 50),
+        allocationButton('ALL', pool),
       );
-      allocationTable.appendChild(row);
+      card.append(
+        text(sport, 'gon-sport-name'),
+        image,
+        text(`${committed} GP committed`, 'gon-sport-committed'),
+      );
+      if (hostBonus > 0) {
+        card.append(
+          text(`Host Bonus +${hostBonus} GP`, 'gon-host-bonus-chip'),
+          text(`Effective ${committed + hostBonus} GP`, 'gon-sport-effective'),
+        );
+      }
+      card.appendChild(controls);
+      allocationTable.appendChild(card);
     }
     section.appendChild(allocationTable);
 
-    const validation = text('', 'gon-validation');
-    validation.id = 'gon-allocation-validation';
+    const poolActions = element('div', 'gon-pool-actions');
+    const distributeEvenly = button('Distribute Remaining Evenly', 'gon-distribute', () => {
+      if (this.callbacks.onDistributeRemainingGamesPoints()) this.showPanel();
+    });
+    distributeEvenly.disabled = !editable || pool <= 0;
+    poolActions.append(text(`Unallocated: ${pool} GP`, 'gon-unallocated'), distributeEvenly);
+    section.appendChild(poolActions);
+
+    const validation = text('Committed sport GP cannot be reduced, moved, or returned to the pool.', 'gon-validation gon-valid');
     validation.setAttribute('aria-live', 'polite');
     const apply = button(model.promptPending ? 'Confirm initial strategy' : 'Apply future strategy', 'gon-apply', () => {
-      const allocation = readAllocation(allocationInputs);
-      const error = validateGamesAllocation(allocation);
-      if (error) {
-        validation.textContent = error;
-        apply.disabled = true;
-        return;
-      }
       const culture = readWhole(cultureInput);
       const production = readWhole(productionInput);
       const hostBonusSport = this.hostBonusSportDraft;
-      if (!this.callbacks.onApply(culture, production, allocation, hostBonusSport)) {
+      if (!this.callbacks.onApply(culture, production, hostBonusSport)) {
         validation.textContent = 'The strategy could not be applied.';
         return;
       }
       this.showPanel();
     }, true);
-    apply.disabled = !editable;
+    apply.disabled = !editable || (model.hostBonusSelectionRequired && this.hostBonusSportDraft === undefined);
     const updateValidation = (): void => {
-      const error = validateGamesAllocation(readAllocation(allocationInputs));
-      validation.textContent = error ?? 'Allocation total: 100%';
-      validation.classList.toggle('gon-valid', error === null);
-      apply.disabled = !editable || error !== null || (model.hostBonusSelectionRequired && this.hostBonusSportDraft === undefined);
+      apply.disabled = !editable || (model.hostBonusSelectionRequired && this.hostBonusSportDraft === undefined);
     };
-    for (const input of allocationInputs.values()) input.addEventListener('input', updateValidation);
     this.hostBonusSelectionChanged = updateValidation;
     cultureInput.addEventListener('input', () => sanitizeDraft(cultureInput));
     productionInput.addEventListener('input', () => sanitizeDraft(productionInput));
@@ -219,7 +369,7 @@ export class GamesOfNationsDialog {
     footer.append(validation, apply);
     section.appendChild(footer);
 
-    section.appendChild(notice('Each Culture or base Production point invested generates 10 Games Points. Commitments are attempted independently and all-or-nothing each Preparation turn. Already invested resources and Games Points cannot be recovered or moved between sports.'));
+    section.appendChild(notice('Each successfully invested Culture or base Production point generates 10 GP in the unallocated pool. Resource commitments are attempted independently and all-or-nothing each Preparation turn. Any GP left at the end of Preparation is distributed evenly across the active sports.'));
     return section;
   }
 
@@ -240,9 +390,9 @@ export class GamesOfNationsDialog {
       select.className = 'gon-number-input';
       select.setAttribute('aria-label', 'Host bonus sport');
       select.appendChild(new Option('Choose one sport', ''));
-      for (const sport of GAMES_OF_NATIONS_SPORTS) select.appendChild(new Option(sport, sport));
+      for (const sport of model.activeSports) select.appendChild(new Option(sport, sport));
       select.addEventListener('change', () => {
-        this.hostBonusSportDraft = GAMES_OF_NATIONS_SPORTS.find((sport) => sport === select.value);
+        this.hostBonusSportDraft = model.activeSports.find((sport) => sport === select.value);
         this.hostBonusSelectionChanged?.();
       });
       section.appendChild(select);
@@ -362,7 +512,7 @@ const OVERLAY_STYLE = `
   font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 `;
 const CARD_STYLE = `
-  width:min(920px,96vw);max-height:94vh;overflow:auto;box-sizing:border-box;padding:clamp(20px,3vw,32px);
+  width:min(1120px,96vw);max-height:94vh;overflow:auto;box-sizing:border-box;padding:clamp(20px,3vw,32px);
   border:1px solid #315b91;border-radius:12px;background:linear-gradient(145deg,#071a35,#0b2447 62%,#091a31);
   box-shadow:0 28px 90px rgba(0,0,0,.7),inset 0 1px rgba(147,197,253,.08);
 `;
@@ -380,9 +530,9 @@ function appendStyles(overlay: HTMLElement): void {
     .gon-metric{padding:11px 13px;border:1px solid #24466f;border-radius:7px;background:rgba(3,13,29,.48)}.gon-metric-label{display:block;color:#8eabc9;font-size:12px;text-transform:uppercase;letter-spacing:.06em}.gon-metric-value{display:block;margin-top:4px;font-weight:700;color:#f1f6ff}
     .gon-notice{margin:16px 0;padding:11px 13px;border-left:3px solid #60a5fa;background:rgba(30,64,175,.15);line-height:1.45;color:#d8e8fb}.gon-section-heading{display:flex;justify-content:space-between;gap:16px;align-items:baseline;flex-wrap:wrap}
     .gon-commitment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.gon-commitment-card{padding:14px;border:1px solid #294d78;border-radius:8px;background:rgba(3,14,31,.55)}.gon-field-label{display:block;font-weight:700;color:#dbeafe;margin-bottom:8px}.gon-number-wrap{display:flex;align-items:center;gap:8px}.gon-card input[type=number]{width:92px;box-sizing:border-box;padding:8px;border:1px solid #537aa5;border-radius:4px;background:#071525;color:#fff;font:700 16px inherit}.gon-card input:disabled{opacity:.55}.gon-availability,.gon-cost-note,.gon-commitment-status{display:block;margin-top:8px;font-size:13px;color:#a9bfd7}.gon-commitment-status{font-weight:700}.gon-unavailable{color:#fca5a5}.gon-affordable{color:#86efac}
-    .gon-sports{display:grid;gap:7px}.gon-sport-row{display:grid;grid-template-columns:minmax(130px,1fr) minmax(150px,1fr) 82px 62px;gap:10px;align-items:center;padding:8px 10px;border:1px solid #203e62;border-radius:6px;background:rgba(2,10,22,.38)}.gon-sport-name{font-weight:700}.gon-locked{color:#a8bfd9;font-size:13px}.gon-percent-label{color:#9fb5d1;font-size:13px}.gon-validation{margin-right:auto;color:#fca5a5}.gon-validation.gon-valid{color:#86efac}
+    .gon-gp-pool{display:grid;grid-template-columns:1fr auto;gap:5px 18px;align-items:center;margin:22px 0 8px;padding:16px 18px;border:1px solid #3b82f6;border-radius:9px;background:linear-gradient(135deg,rgba(29,78,216,.23),rgba(3,14,31,.62))}.gon-gp-pool .gon-muted{grid-column:1/-1}.gon-gp-pool-value{font-size:28px;font-weight:900;color:#f8fbff}.gon-sport-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:13px}.gon-sport-card{min-width:0;display:flex;flex-direction:column;gap:9px;padding:13px;border:1px solid #294d78;border-radius:9px;background:rgba(3,14,31,.66);overflow:hidden}.gon-sport-name{font-weight:900;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:#dbeafe}.gon-sport-image{width:100%;height:105px;object-fit:cover;border-radius:6px;border:1px solid #203e62;background:#071525}.gon-sport-committed{font-size:19px;font-weight:900;color:#f1f6ff}.gon-sport-controls{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:auto}.gon-card button.gon-gp-add{padding:8px 5px;font-size:12px}.gon-host-bonus-chip{align-self:flex-start;padding:4px 7px;border:1px solid #d4a72c;border-radius:999px;background:rgba(180,120,20,.17);color:#fde68a;font-size:12px;font-weight:800}.gon-sport-effective{color:#bfdbfe;font-size:13px;font-weight:700}.gon-pool-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:15px 0;padding:13px 15px;border:1px solid #24466f;border-radius:8px;background:rgba(3,13,29,.48)}.gon-unallocated{font-size:18px;font-weight:900;color:#f1f6ff}.gon-validation{margin-right:auto;color:#fca5a5}.gon-validation.gon-valid{color:#86efac}
     .gon-medal-table{display:grid;border:1px solid #294d78;border-radius:8px;overflow:hidden;margin:10px 0 16px}.gon-medal-row{display:grid;grid-template-columns:minmax(180px,1fr) repeat(3,80px);gap:8px;padding:9px 12px;border-top:1px solid #1d3859;text-align:center}.gon-medal-row:first-child{border-top:0}.gon-medal-header{background:#102d52;color:#bfdbfe;font-size:12px;font-weight:800;text-transform:uppercase}.gon-medal-nation{text-align:left;font-weight:700}.gon-empty-result{padding:12px;color:#9fb5d1}.gon-result-sports{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:9px}.gon-result-sport{padding:11px;border:1px solid #294d78;border-radius:7px;background:rgba(3,14,31,.55);display:grid;gap:4px;font-size:13px}.gon-result-sport-name{font-weight:800;color:#dbeafe}.gon-result-status{color:#93c5fd;text-transform:uppercase;font-size:11px;letter-spacing:.06em}.gon-result-upcoming{opacity:.66}.gon-result-current{border-color:#60a5fa}.gon-result-gold{color:#fde68a;font-weight:700}
-    @media(max-width:680px){.gon-commitment-grid{grid-template-columns:1fr}.gon-sport-row{grid-template-columns:1fr 1fr}.gon-percent-label{display:none}.gon-card{padding:18px}.gon-panel-header{position:sticky;top:0;background:#071a35;padding-bottom:10px;z-index:1}}
+    @media(max-width:680px){.gon-commitment-grid{grid-template-columns:1fr}.gon-sport-grid{grid-template-columns:repeat(auto-fit,minmax(155px,1fr))}.gon-sport-image{height:88px}.gon-card{padding:18px}.gon-panel-header{position:sticky;top:0;background:#071a35;padding-bottom:10px;z-index:1}}
   `;
   overlay.appendChild(style);
 }
@@ -479,10 +629,6 @@ function readWhole(input: HTMLInputElement): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
 
-function readAllocation(inputs: Map<string, HTMLInputElement>): GamesOfNationsSportValues {
-  return Object.fromEntries(GAMES_OF_NATIONS_SPORTS.map((sport) => [sport, Number(inputs.get(sport)!.value)])) as GamesOfNationsSportValues;
-}
-
-function slug(value: string): string {
-  return value.toLowerCase().replace(/\s+/g, '-');
+function capitalize(value: string): string {
+  return value.length > 0 ? value[0]!.toUpperCase() + value.slice(1) : value;
 }

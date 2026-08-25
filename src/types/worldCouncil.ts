@@ -68,6 +68,8 @@ export type WorldCouncilResolutionId =
   | 'ceasefire_resolution'
   | 'nuclear_non_proliferation_treaty'
   | 'global_infrastructure_initiative'
+  | 'games_of_nations_hosting'
+  | 'exclude_games_of_nations_participant'
   | 'un_peacekeeping_mission'
   | 'climate_accord'
   | 'international_development_fund';
@@ -88,6 +90,10 @@ export interface WorldCouncilResolutionProposal {
   readonly proposerNationId?: string;
   readonly targetNationId?: string;
   readonly secondaryTargetNationId?: string;
+  /** Fixed flavor and cycle metadata captured when a GoN hosting proposal is created. */
+  readonly gamesNumber?: number;
+  readonly gamesHostingJustification?: string;
+  readonly gamesParticipationJustification?: string;
   readonly repealTargetEnactedResolutionId?: string;
   readonly repealTargetResolutionId?: WorldCouncilResolutionId;
   readonly participantNationIds?: string[];

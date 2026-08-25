@@ -23,6 +23,10 @@ export type HistoricalEventType =
   | 'majorDiscovery'
   | 'gamesGold'
   | 'gamesCompleted'
+  | 'gamesHostingAnnounced'
+  | 'gamesParticipantExcluded'
+  | 'gamesCancelled'
+  | 'gamesSportIntroduced'
   | 'leaderInsult';
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */
@@ -48,11 +52,17 @@ export interface HistoricalEventMetadata {
   leaderInsultText?: string;
   gamesNumber?: number;
   gamesSport?: string;
+  gamesSportId?: string;
+  gamesIntroducingNationId?: string;
+  gamesWinningBid?: number;
   gamesWinnerNationId?: string;
   gamesHostNationId?: string;
   gamesGold?: number;
   gamesSilver?: number;
   gamesBronze?: number;
+  scheduledGamesTurn?: number;
+  scheduledGamesYear?: number;
+  gamesCancellationReason?: string;
 }
 
 /**

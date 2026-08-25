@@ -130,7 +130,7 @@ function buildVictoryTip(options: ProgressiveGuideContentOptions): GuideTip {
     pages.push({ title: 'Science', body: `Produce ${options.requiredAerospaceParts} Aerospace Parts. The aerospace path depends on Rocketry, Aluminum, an active Factory, and the Aerospace Industries corporation before parts can be manufactured. Research alone does not win; the scientific plan must be converted into industrial output.` });
   }
   if (options.enabledVictories.cultural) {
-    pages.push({ title: 'Cultural', body: `Meet all three requirements at once: enough accumulated Culture, enough owned and functioning World Wonders, and a currency with Dominant status. Cultural victory combines civic output, landmark control, and economic reach rather than relying on cultural map ownership alone.` });
+    pages.push({ title: 'Cultural', body: `Meet all four requirements at once: enough accumulated Culture, enough owned and functioning World Wonders, a currency with Dominant status, and status as the reigning Games of Nations champion. Winning the latest completed Games opens the Cultural Victory window only until the next tournament concludes.` });
   }
   if (options.enabledVictories.diplomatic) {
     pages.push({ title: 'Diplomatic', body: `Reach the required Diplomatic Score. The score reflects World Council leadership and membership, alliances, trade relationships, diplomatic memory, ideology, and other international standing. Durable networks matter more than a single agreement, and hostile behavior can undermine accumulated influence.` });

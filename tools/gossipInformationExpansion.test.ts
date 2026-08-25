@@ -65,9 +65,9 @@ function ask(gossip: GossipSystem, itemId: string) {
   return gossip.execute({ itemId, sourceNationId: SWEDEN, recipientNationId: ENGLAND });
 }
 
-test('all seven Information definitions have the intended culture progression', () => {
+test('all eight Information definitions have the intended unlock progression', () => {
   const information = GOSSIP_DEFINITIONS.filter((item) => item.type === 'information');
-  assert.equal(information.length, 7);
+  assert.equal(information.length, 8);
   const requirements = Object.fromEntries(information.map((item) => [item.id, item.requiredCultureNodeId]));
   assert.deepEqual(requirements, {
     ask_opinion: undefined,
@@ -77,6 +77,7 @@ test('all seven Information definitions have the intended culture progression', 
     ask_most_feared: 'defensive_tactics',
     ask_greatest_rival: 'nationalism',
     ask_war_risk: 'cold_war',
+    ask_sports_preferences: undefined,
   });
 });
 
@@ -104,7 +105,11 @@ test('Information questions do not mutate diplomatic relations', () => {
   );
   relation(ENGLAND, FRANCE, { trust: 12, fear: 44, hostility: 55, suspicion: 30, affinity: 2 });
   const before = diplomacy.getAllStates();
-  for (const item of GOSSIP_DEFINITIONS.filter((definition) => definition.type === 'information' && definition.id !== 'ask_opinion')) {
+  for (const item of GOSSIP_DEFINITIONS.filter((definition) => (
+    definition.type === 'information'
+    && definition.id !== 'ask_opinion'
+    && definition.id !== 'ask_sports_preferences'
+  ))) {
     assert.equal(ask(gossip, item.id).success, true);
   }
   assert.deepEqual(diplomacy.getAllStates(), before);

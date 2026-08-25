@@ -53,7 +53,7 @@ export function buildGamesOfNationsLeaderboardSections(
             games.yearLabel,
             games.hostNationName,
             games.hostCityName,
-            games.overallWinnerNationName ?? 'No winner',
+            games.status === 'cancelled' ? 'Cancelled' : games.overallWinnerNationName ?? 'No winner',
           ]),
       }],
   };

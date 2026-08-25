@@ -61,9 +61,11 @@ import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
 import { getLeaderCovertPersonalityByNationId } from '../data/leaders';
+import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes';
 
 export interface SaveLoadContext {
   mapKey: string;
+  generatedScenario?: GeneratedScenarioSnapshot;
   humanNationId: string;
   activeNationIds: string[];
   gameSpeedId: GameSpeedId;
@@ -133,6 +135,7 @@ export class SaveLoadService {
   static serialize(context: SaveLoadContext): SavedGameState {
     const {
       mapKey,
+      generatedScenario,
       humanNationId,
       gameSpeedId,
       mapData,
@@ -362,6 +365,7 @@ export class SaveLoadService {
       savedAt: new Date().toISOString(),
       worldYear: turnManager.getGlobalYear(),
       mapKey,
+      generatedScenario,
       humanNationId,
       activeNationIds: nationManager.getAllNations().map((nation) => nation.id),
       gameSpeedId,
@@ -458,6 +462,25 @@ export class SaveLoadService {
     for (const key of required) {
       if (!(key in obj)) {
         return { ok: false, error: `Save file missing required field: ${key}` };
+      }
+    }
+    if (obj.generatedScenario !== undefined) {
+      const generated = obj.generatedScenario as Record<string, unknown> | null;
+      const metadata = generated && typeof generated.metadata === 'object'
+        ? generated.metadata as Record<string, unknown>
+        : null;
+      const scenario = generated && typeof generated.scenario === 'object'
+        ? generated.scenario as Record<string, unknown>
+        : null;
+      const map = scenario && typeof scenario.map === 'object'
+        ? scenario.map as Record<string, unknown>
+        : null;
+      if (!generated || !metadata || !scenario || !map
+        || metadata.generatorVersion !== 1
+        || metadata.width !== map.width
+        || metadata.height !== map.height
+        || !Array.isArray(map.tiles)) {
+        return { ok: false, error: 'Save file contains an invalid embedded Random Scenario.' };
       }
     }
     return { ok: true, state: obj as unknown as SavedGameState };

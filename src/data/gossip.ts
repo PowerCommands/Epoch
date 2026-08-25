@@ -57,6 +57,14 @@ export const GOSSIP_DEFINITIONS = [
     responseKind: 'war_risk',
   },
   {
+    id: 'ask_sports_preferences',
+    type: 'information',
+    textTemplate: 'Which sports do you prefer?',
+    requiresTarget: false,
+    requiresGamesOfNationsFounded: true,
+    responseKind: 'sports_preferences',
+  },
+  {
     id: 'spread_distrust',
     type: 'manipulation',
     textTemplate: '{targetLeaderName} cannot be trusted.',

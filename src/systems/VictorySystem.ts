@@ -6,6 +6,7 @@ import type { ResearchSystem } from './ResearchSystem';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { TurnManager } from './TurnManager';
 import type { WonderSystem } from './WonderSystem';
+import type { CompletedGamesOfNationsRecord } from '../types/gamesOfNations';
 import type { DiplomaticScoreBreakdown, WorldCouncilSystem } from './WorldCouncilSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
 import {
@@ -39,6 +40,10 @@ interface VictoryConditionsConfig {
   science?: Partial<ScienceVictorySettings>;
   cultural?: ToggleableVictorySettings;
   diplomatic?: ToggleableVictorySettings;
+}
+
+export interface GamesOfNationsChampionSource {
+  getLatestCompletedGames(): Pick<CompletedGamesOfNationsRecord, 'gamesNumber' | 'overallWinnerNationId'> | undefined;
 }
 
 /** Which victory types are currently active. Persisted in the save state. */
@@ -77,6 +82,11 @@ export interface CulturalVictoryProgress {
   ownedWonders: number;
   requiredWonders: number;
   currencyStatus: CurrencyStrength | null;
+  normalRequirementsMet: boolean;
+  latestCompletedGamesNumber: number | null;
+  reigningGamesChampionNationId: string | null;
+  isReigningGamesChampion: boolean;
+  victoryEligible: boolean;
 }
 
 export interface DiplomaticVictoryProgress {
@@ -96,7 +106,8 @@ export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_
  * Domination: one nation owns every active nation's original capital.
  * Science: one nation produces enough aerospace_parts.
  * Cultural: one nation simultaneously has enough accumulated Culture, owns
- * enough World Wonders, and has the current Dominant currency.
+ * enough World Wonders, has the current Dominant currency, and is the reigning
+ * Games of Nations champion.
  * Diplomatic: one nation reaches the Diplomatic Score threshold.
  */
 export class VictorySystem {
@@ -123,6 +134,7 @@ export class VictorySystem {
     private readonly wonderSystem?: WonderSystem,
     private readonly worldCouncilSystem?: WorldCouncilSystem,
     private readonly currencySystem?: CurrencySystem,
+    private readonly gamesOfNationsSystem?: GamesOfNationsChampionSource,
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
@@ -293,13 +305,25 @@ export class VictorySystem {
     const ownedWonders = this.wonderSystem
       ? getOwnedWonderCount(nationId, this.wonderSystem, this.cityManager)
       : 0;
+    const currencyStatus = this.currencySystem?.getCurrencyState(nationId)?.strength ?? null;
+    const normalRequirementsMet = accumulatedCulture >= CULTURAL_VICTORY_REQUIRED_CULTURE
+      && ownedWonders >= CULTURAL_VICTORY_REQUIRED_WONDERS
+      && currencyStatus === 'Dominant';
+    const latestGames = this.gamesOfNationsSystem?.getLatestCompletedGames();
+    const reigningGamesChampionNationId = latestGames?.overallWinnerNationId ?? null;
+    const isReigningGamesChampion = reigningGamesChampionNationId === nationId;
     return {
       nationId,
       accumulatedCulture,
       requiredCulture: CULTURAL_VICTORY_REQUIRED_CULTURE,
       ownedWonders,
       requiredWonders: CULTURAL_VICTORY_REQUIRED_WONDERS,
-      currencyStatus: this.currencySystem?.getCurrencyState(nationId)?.strength ?? null,
+      currencyStatus,
+      normalRequirementsMet,
+      latestCompletedGamesNumber: latestGames?.gamesNumber ?? null,
+      reigningGamesChampionNationId,
+      isReigningGamesChampion,
+      victoryEligible: normalRequirementsMet && isReigningGamesChampion,
     };
   }
 
@@ -340,6 +364,7 @@ export class VictorySystem {
         progress.accumulatedCulture >= progress.requiredCulture
         && progress.ownedWonders >= progress.requiredWonders
         && progress.currencyStatus === 'Dominant'
+        && progress.isReigningGamesChampion
       ) {
         return nation.id;
       }
@@ -414,7 +439,7 @@ export class VictorySystem {
     const name = this.nationManager.getNation(nationId)?.name ?? nationId;
     const progress = this.getCulturalVictoryProgress(nationId);
     this.log(nationId,
-      `[r${round}] ${name} achieved Cultural Victory: culture=${progress.accumulatedCulture}/${progress.requiredCulture} wonders=${progress.ownedWonders}/${progress.requiredWonders} currency=${progress.currencyStatus ?? 'Not established'}.`,
+      `[r${round}] ${name} achieved Cultural Victory: culture=${progress.accumulatedCulture}/${progress.requiredCulture} wonders=${progress.ownedWonders}/${progress.requiredWonders} currency=${progress.currencyStatus ?? 'Not established'} latestGames=${progress.latestCompletedGamesNumber ?? 'none'} reigningGoNChampion=true.`,
     );
   }
 
@@ -430,7 +455,7 @@ export class VictorySystem {
       const wondersReady = p.ownedWonders >= p.requiredWonders ? ' [READY]' : '';
       const currencyReady = p.currencyStatus === 'Dominant' ? ' [READY]' : '';
       lines.push(
-        `- ${name}: culture=${p.accumulatedCulture}/${p.requiredCulture}${cultureReady} wonders=${p.ownedWonders}/${p.requiredWonders}${wondersReady} currency=${p.currencyStatus ?? 'Not established'}${currencyReady}`,
+        `- ${name}: culture=${p.accumulatedCulture}/${p.requiredCulture}${cultureReady} wonders=${p.ownedWonders}/${p.requiredWonders}${wondersReady} currency=${p.currencyStatus ?? 'Not established'}${currencyReady} normalRequirements=${p.normalRequirementsMet} latestGames=${p.latestCompletedGamesNumber ?? 'none'} reigningGoNChampion=${p.isReigningGamesChampion} victoryEligible=${p.victoryEligible}`,
       );
     }
     this.log(ranking[0].nationId, lines.join('\n'));

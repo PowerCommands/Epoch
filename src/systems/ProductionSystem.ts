@@ -127,6 +127,18 @@ export class ProductionSystem {
     this.notifyChanged(cityId);
   }
 
+  /** Safely reprioritize an existing entry without losing its progress, placement, or locked cost. */
+  moveQueueEntryToFront(cityId: string, index: number): boolean {
+    const queue = this.queues.get(cityId);
+    if (!queue || index < 0 || index >= queue.length) return false;
+    if (index === 0) return true;
+    const [entry] = queue.splice(index, 1);
+    if (!entry) return false;
+    queue.unshift(entry);
+    this.notifyChanged(cityId);
+    return true;
+  }
+
   /** Remove item at index. */
   removeFromQueue(cityId: string, index: number): void {
     const queue = this.queues.get(cityId);

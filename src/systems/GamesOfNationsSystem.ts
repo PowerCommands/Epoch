@@ -4,12 +4,27 @@ import {
   type GamesOfNationsHistoricalStanding,
   type GamesOfNationsParticipantState,
   type GamesOfNationsSport,
+  type GamesOfNationsSportId,
+  type GamesOfNationsIntroductionEra,
+  type GamesOfNationsLeaderPreferences,
+  type GamesOfNationsAuctionProposal,
+  type GamesOfNationsSportAuction,
   type GamesOfNationsSportResult,
   type GamesOfNationsSportValues,
   type GamesOfNationsMedalStanding,
   type GamesOfNationsSummary,
   type SavedGamesOfNationsState,
 } from '../types/gamesOfNations';
+import {
+  ADDITIONAL_GAMES_SPORT_IDS,
+  ALL_GAMES_SPORTS,
+  GAMES_OF_NATIONS_SPORT_DEFINITIONS,
+  TRADITIONAL_GAMES_SPORT_IDS,
+  getGamesSportById,
+  getGamesSportByName,
+  isGamesSportId,
+  isGamesSportName,
+} from '../data/gamesOfNationsSports';
 
 export const GAMES_AND_RECREATION_CULTURE_ID = 'games_recreation';
 export const GAMES_OF_NATIONS_INTERVAL = 25;
@@ -18,30 +33,106 @@ export const GAMES_OF_NATIONS_COMPETITION_TURNS = 5;
 export const GAMES_OF_NATIONS_COOLDOWN_TURNS = 10;
 export const GAMES_POINTS_PER_RESOURCE = 10;
 export const HOST_GAMES_BONUS_RATE = 0.10;
-export const GAMES_OF_NATIONS_SPORTS: readonly GamesOfNationsSport[] = [
-  'Wrestling',
-  'Marathon',
-  'Swimming',
-  'Javelin',
-  'Long Jump',
+/** Legacy/initial program. Runtime gameplay uses the frozen active-sport collection. */
+export const GAMES_OF_NATIONS_SPORTS: readonly GamesOfNationsSport[] = TRADITIONAL_GAMES_SPORT_IDS
+  .map((id) => getGamesSportById(id).name);
+export const GAMES_OF_NATIONS_ALL_SPORTS: readonly GamesOfNationsSport[] = ALL_GAMES_SPORTS;
+
+export const GAMES_OF_NATIONS_ERA_AUCTIONS: readonly GamesOfNationsIntroductionEra[] = [
+  'renaissance', 'industrial', 'modern', 'atomic', 'information',
 ];
+export const GAMES_AUCTION_BID_FRACTIONS = {
+  favouriteMinimum: 0.16,
+  favouriteRange: 0.10,
+  fallbackMinimum: 0.08,
+  fallbackRange: 0.08,
+} as const;
 
 export interface GamesOfNationsDependencies {
   getCurrentTurn: () => number;
   getLivingNationIds: () => readonly string[];
   getNationName: (nationId: string) => string | undefined;
   getCapitalCity: (nationId: string) => { id: string; name: string } | undefined;
+  getHostCityCandidates?: (nationId: string) => readonly GamesOfNationsHostCityCandidate[];
+  getCityOwnerId?: (cityId: string) => string | undefined;
+  hasGrandStadium?: (cityId: string) => boolean;
+  /** Physical presence, including a broken stadium. Used only to prevent duplicates. */
+  hasGrandStadiumStructure?: (cityId: string) => boolean;
   getCityName?: (cityId: string) => string | undefined;
   getWorldDateForTurn?: (turn: number) => { worldYear: number; yearLabel: string };
   isHumanNation?: (nationId: string) => boolean;
+  isAutoplayActive?: () => boolean;
   getCultureOutput?: (nationId: string) => number;
   getProductionSources?: (nationId: string) => readonly { cityId: string; available: number }[];
   getCulturalPriority?: (nationId: string) => number;
+  getGold?: (nationId: string) => number;
+  spendGold?: (nationId: string, amount: number) => boolean;
+  getLeaderGamesPreferences?: (nationId: string) => GamesOfNationsLeaderPreferences | undefined;
+  getWorldEra?: () => GamesOfNationsIntroductionEra | string;
   seed?: string;
   log?: (message: string) => void;
   onGoldMedal?: (event: GamesOfNationsGoldEvent) => void;
   onGamesCompleted?: (event: GamesOfNationsCompletedEvent) => void;
   onSportResolved?: (event: GamesOfNationsSportResolvedEvent) => void;
+  onHostingConfirmed?: (event: GamesOfNationsHostingConfirmedEvent) => void;
+  onGamesCancelled?: (event: GamesOfNationsCancelledEvent) => void;
+  onSportIntroduced?: (event: GamesOfNationsSportIntroducedEvent) => void;
+  onNationExcluded?: (event: GamesOfNationsExclusionEvent) => void;
+}
+
+export interface GamesOfNationsExclusionEvent {
+  gamesNumber: number;
+  excludedNationId: string;
+  justification: string;
+  retainedGamesPoints: number;
+  turn: number;
+}
+
+export interface GamesOfNationsSportIntroducedEvent {
+  sportId: GamesOfNationsSportId;
+  sport: GamesOfNationsSport;
+  introducingNationId: string;
+  winningBid: number;
+  era: GamesOfNationsIntroductionEra;
+  turn: number;
+  worldYear: number;
+  yearLabel: string;
+  introducedForGamesNumber: number;
+}
+
+export interface GamesOfNationsHostCityCandidate {
+  id: string;
+  name: string;
+  productionPerTurn: number;
+  canConstructGrandStadium: boolean;
+  hasGrandStadium: boolean;
+}
+
+export interface GamesOfNationsHostingConfirmedEvent {
+  gamesNumber: number;
+  hostNationId: string;
+  hostCityId: string;
+  hostCityName: string;
+  usedExistingGrandStadium: boolean;
+  scheduledGamesTurn: number;
+  turn: number;
+  previousHostNationId?: string;
+  worldCouncilReplacement?: boolean;
+}
+
+export interface GamesOfNationsUpcomingHostingContext {
+  gamesNumber: number;
+  hostNationId: string;
+  hostCityId?: string;
+}
+
+export interface GamesOfNationsCancelledEvent {
+  gamesNumber: number;
+  hostNationId?: string;
+  hostCityId?: string;
+  hostCityName?: string;
+  reason: string;
+  turn: number;
 }
 
 export interface GamesOfNationsGoldEvent {
@@ -99,8 +190,15 @@ export class GamesOfNationsSystem {
     savedState: SavedGamesOfNationsState | undefined,
     currentTurn: number,
   ): GamesOfNationsSystem {
-    if (!savedState || typeof savedState !== 'object' || savedState.founded !== true) {
+    if (!savedState || typeof savedState !== 'object') {
       return new GamesOfNationsSystem(dependencies, inactiveState(currentTurn));
+    }
+    if (savedState.founded !== true) {
+      return new GamesOfNationsSystem(dependencies, {
+        ...inactiveState(currentTurn),
+        processedSportIntroductionEras: savedState.processedSportIntroductionEras,
+        futureFallbackActive: savedState.futureFallbackActive,
+      });
     }
     const system = new GamesOfNationsSystem(dependencies, {
       ...savedState,
@@ -111,6 +209,8 @@ export class GamesOfNationsSystem {
     system.migrateStep1FirstGames(currentTurn);
     system.migrateHostBonusState();
     system.migrateCompletedStep4Games();
+    system.migrateHostingState();
+    system.migrateSportExpansionState();
     return system;
   }
 
@@ -121,8 +221,8 @@ export class GamesOfNationsSystem {
     const rotationOrder = unique(this.dependencies.getLivingNationIds());
     if (!rotationOrder.includes(nationId)) rotationOrder.push(nationId);
     const hostRotationIndex = Math.max(0, rotationOrder.indexOf(nationId));
-    const capital = this.dependencies.getCapitalCity(nationId);
     const firstGamesTurn = turn + GAMES_OF_NATIONS_INTERVAL;
+    const processedSportIntroductionEras = [...(this.state.processedSportIntroductionEras ?? [])];
     this.state = {
       founded: true,
       founderNationId: nationId,
@@ -133,22 +233,363 @@ export class GamesOfNationsSystem {
       phaseStartTurn: turn,
       nextTransitionTurn: firstGamesTurn - GAMES_OF_NATIONS_PREPARATION_TURNS,
       scheduledGamesTurn: firstGamesTurn,
-      hostNationId: nationId,
-      hostCityId: capital?.id,
+      hostingSchemaVersion: 1,
+      hostingGamesNumber: 1,
+      offeredHostNationIds: [],
+      declinedHostNationIds: [],
       hostRotationOrder: rotationOrder,
       hostRotationIndex,
       participants: this.createParticipants(),
       sportResults: createSportResults(),
       medalTable: [],
       completedGames: [],
+      introducedAdditionalSportIds: [],
+      sportIntroductionRecords: [],
+      processedSportIntroductionEras,
+      futureFallbackActive: this.dependencies.getWorldEra?.() === 'future',
       lastProcessedTurn: turn,
     };
     this.log(`Founded by ${this.nationName(nationId)} on turn ${turn}; first Games scheduled for turn ${firstGamesTurn}`);
+    this.offerHostingFrom(hostRotationIndex);
+    this.maybeStartFutureFallbackAuction(turn, 1);
+    return true;
+  }
+
+  /** Called from Epoch's canonical per-nation era transition hook; each target era is global and one-shot. */
+  handleEraReached(era: string, turn: number): boolean {
+    if (!GAMES_OF_NATIONS_ERA_AUCTIONS.includes(era as GamesOfNationsIntroductionEra) && era !== 'future') return false;
+    const introductionEra = era as GamesOfNationsIntroductionEra;
+    if (introductionEra === 'future') {
+      this.state.futureFallbackActive = true;
+      return false;
+    }
+    if ((this.state.processedSportIntroductionEras ?? []).includes(introductionEra)) return false;
+    this.state.processedSportIntroductionEras = [...(this.state.processedSportIntroductionEras ?? []), introductionEra];
+    if (!this.state.founded || this.remainingAdditionalSportIds().length === 0) return false;
+    return this.startSportAuction(introductionEra, 'era', turn, this.introductionGamesNumber());
+  }
+
+  isHumanSportAuctionPending(): boolean {
+    return this.state.pendingSportAuction?.resolved === false
+      && this.state.hostRotationOrder.some((nationId) =>
+        this.dependencies.getLivingNationIds().includes(nationId)
+        && this.isInteractiveHuman(nationId),
+      );
+  }
+
+  submitHumanSportAuctionBid(nationId: string, sportId: GamesOfNationsSportId, bid: number): boolean {
+    const auction = this.state.pendingSportAuction;
+    if (!auction || auction.resolved || !this.isInteractiveHuman(nationId)) return false;
+    if (!auction.candidateSportIds.includes(sportId) || !Number.isInteger(bid) || bid < 0) return false;
+    const treasury = whole(this.dependencies.getGold?.(nationId) ?? 0);
+    const currentLeader = selectAuctionWinner(auction.proposals, this.state.hostRotationOrder);
+    if (bid > treasury || (currentLeader && bid <= currentLeader.bid)) return false;
+    return this.resolveSportAuction({ nationId, sportId, bid, preferenceStrength: 0 });
+  }
+
+  abstainFromHumanSportAuction(nationId: string): boolean {
+    const auction = this.state.pendingSportAuction;
+    if (!auction || auction.resolved || !this.isInteractiveHuman(nationId)) return false;
+    return this.resolveSportAuction();
+  }
+
+  private startSportAuction(
+    era: GamesOfNationsIntroductionEra,
+    trigger: GamesOfNationsSportAuction['trigger'],
+    turn: number,
+    gamesNumber: number,
+  ): boolean {
+    if (this.state.pendingSportAuction && !this.state.pendingSportAuction.resolved) return false;
+    const candidates = this.remainingAdditionalSportIds();
+    if (!this.state.founded || candidates.length === 0) return false;
+    const living = unique(this.dependencies.getLivingNationIds());
+    const proposals = living
+      .filter((nationId) => !this.isInteractiveHuman(nationId))
+      .map((nationId) => this.buildAIProposal(nationId, candidates, era, gamesNumber));
+    this.state.pendingSportAuction = {
+      id: `${trigger}-${era}-${turn}-${gamesNumber}`,
+      triggerEra: era,
+      trigger,
+      turn,
+      gamesNumber,
+      proposals,
+      candidateSportIds: [...candidates],
+      resolved: false,
+    };
+    this.log(`${era} sport auction: ${proposals.map((proposal) => `${this.nationName(proposal.nationId)} — ${getGamesSportById(proposal.sportId).name} — ${proposal.bid} Gold`).join('; ')}`);
+    const hasHuman = living.some((nationId) => this.isInteractiveHuman(nationId));
+    return hasHuman ? true : this.resolveSportAuction();
+  }
+
+  private buildAIProposal(
+    nationId: string,
+    candidates: readonly GamesOfNationsSportId[],
+    era: GamesOfNationsIntroductionEra,
+    gamesNumber: number,
+  ): GamesOfNationsAuctionProposal {
+    const preference = this.dependencies.getLeaderGamesPreferences?.(nationId);
+    const favourite = preference?.additionalFavourite;
+    const isFavouriteAvailable = !!favourite && candidates.includes(favourite);
+    const sportId = isFavouriteAvailable
+      ? favourite!
+      : candidates[Math.floor(stableUnit(`${this.dependencies.seed}|${era}|${gamesNumber}|${nationId}|nomination`) * candidates.length)]!;
+    const treasury = whole(this.dependencies.getGold?.(nationId) ?? 0);
+    const minimum = isFavouriteAvailable ? GAMES_AUCTION_BID_FRACTIONS.favouriteMinimum : GAMES_AUCTION_BID_FRACTIONS.fallbackMinimum;
+    const range = isFavouriteAvailable ? GAMES_AUCTION_BID_FRACTIONS.favouriteRange : GAMES_AUCTION_BID_FRACTIONS.fallbackRange;
+    const fraction = minimum + stableUnit(`${this.dependencies.seed}|${era}|${gamesNumber}|${nationId}|bid`) * range;
+    return {
+      nationId,
+      sportId,
+      bid: Math.min(treasury, Math.floor(treasury * fraction)),
+      preferenceStrength: isFavouriteAvailable ? 2 : 1,
+    };
+  }
+
+  private resolveSportAuction(humanProposal?: GamesOfNationsAuctionProposal): boolean {
+    const auction = this.state.pendingSportAuction;
+    if (!auction || auction.resolved) return false;
+    const proposals = humanProposal ? [...auction.proposals, humanProposal] : auction.proposals;
+    const winner = selectAuctionWinner(proposals, this.state.hostRotationOrder);
+    if (!winner) return false;
+    const treasury = whole(this.dependencies.getGold?.(winner.nationId) ?? 0);
+    if (winner.bid > treasury || this.dependencies.spendGold?.(winner.nationId, winner.bid) === false) return false;
+    auction.proposals = proposals;
+    auction.resolved = true;
+    const sport = getGamesSportById(winner.sportId);
+    this.state.introducedAdditionalSportIds = [...(this.state.introducedAdditionalSportIds ?? []), winner.sportId];
+    const date = this.dependencies.getWorldDateForTurn?.(auction.turn)
+      ?? { worldYear: 0, yearLabel: `Turn ${auction.turn}` };
+    const record = {
+      sportId: winner.sportId,
+      introducingNationId: winner.nationId,
+      winningBid: winner.bid,
+      era: auction.triggerEra,
+      turn: auction.turn,
+      worldYear: date.worldYear,
+      yearLabel: date.yearLabel,
+      introducedForGamesNumber: auction.gamesNumber,
+    };
+    this.state.sportIntroductionRecords = [...(this.state.sportIntroductionRecords ?? []), record];
+    this.log(`${this.nationName(winner.nationId)} wins the ${auction.triggerEra} sport auction for ${winner.bid} Gold; ${sport.name} will debut in Games #${auction.gamesNumber}`);
+    this.dependencies.onSportIntroduced?.({ ...record, sport: sport.name });
+    delete this.state.pendingSportAuction;
+    return true;
+  }
+
+  getHostCityCandidates(nationId: string): GamesOfNationsHostCityCandidate[] {
+    return this.validHostCities(nationId).map((city) => ({ ...city }));
+  }
+
+  handleAutoplayStarted(): void {
+    this.resolveAutoplayHumanDecisions();
+  }
+
+  acceptHostingOffer(nationId: string): boolean {
+    if (this.state.hostingDecision !== 'pendingDecision' || this.state.hostCandidateNationId !== nationId) return false;
+    if (!this.isInteractiveHuman(nationId)) return false;
+    if (this.validHostCities(nationId).length === 0) {
+      this.declineHostingOffer(nationId);
+      return false;
+    }
+    this.state.hostingDecision = 'pendingCity';
+    this.log(`${this.nationName(nationId)} accepted hosting Games #${this.state.hostingGamesNumber}`);
+    return true;
+  }
+
+  declineHostingOffer(nationId: string): boolean {
+    if (this.state.hostingDecision !== 'pendingDecision' || this.state.hostCandidateNationId !== nationId) return false;
+    this.log(`${this.nationName(nationId)} declined hosting Games #${this.state.hostingGamesNumber}`);
+    this.state.declinedHostNationIds = unique([...(this.state.declinedHostNationIds ?? []), nationId]);
+    const currentIndex = this.state.hostRotationOrder.indexOf(nationId);
+    this.offerHostingFrom(currentIndex + 1);
+    return true;
+  }
+
+  selectHostCity(nationId: string, cityId: string): boolean {
+    if (this.state.hostingDecision !== 'pendingCity' || this.state.hostCandidateNationId !== nationId) return false;
+    if (!this.isInteractiveHuman(nationId)) return false;
+    const city = this.validHostCities(nationId).find((candidate) => candidate.id === cityId);
+    if (!city) return false;
+    this.confirmHosting(nationId, city);
+    return true;
+  }
+
+  isHumanHostingPromptPending(): boolean {
+    const candidate = this.state.hostCandidateNationId;
+    return this.state.hostingDecision === 'pendingDecision'
+      && !!candidate
+      && this.isInteractiveHuman(candidate);
+  }
+
+  isHumanHostCitySelectionPending(): boolean {
+    const candidate = this.state.hostCandidateNationId;
+    return this.state.hostingDecision === 'pendingCity'
+      && !!candidate
+      && this.isInteractiveHuman(candidate);
+  }
+
+  canCityConstructGrandStadium(cityId: string, nationId: string): boolean {
+    if (this.state.hostingDecision !== 'confirmed') return false;
+    if (this.state.upcomingHostNationId !== nationId || this.state.upcomingHostCityId !== cityId) return false;
+    if (this.dependencies.getCityOwnerId?.(cityId) !== undefined && this.dependencies.getCityOwnerId(cityId) !== nationId) return false;
+    if (this.dependencies.hasGrandStadiumStructure?.(cityId) === true) return false;
+    if (this.dependencies.hasGrandStadium?.(cityId) === true) return false;
+    return this.dependencies.getCurrentTurn() < this.hostingDeadline();
+  }
+
+  getGrandStadiumPriorityCityId(nationId: string): string | null {
+    const cityId = this.state.upcomingHostCityId;
+    return cityId && this.canCityConstructGrandStadium(cityId, nationId) ? cityId : null;
+  }
+
+  /** Returns only a selected host for a Games whose Competition has not begun. */
+  getUpcomingHostingContext(): GamesOfNationsUpcomingHostingContext | null {
+    if (!this.state.founded || this.state.phase === 'competition' || this.state.hostingDecision !== 'confirmed') return null;
+    const gamesNumber = this.state.hostingGamesNumber;
+    const hostNationId = this.state.upcomingHostNationId;
+    if (!gamesNumber || !hostNationId) return null;
+    const isCurrentUpcoming = gamesNumber === this.state.competitionNumber
+      && (this.state.phase === 'waitingForFirstGames' || this.state.phase === 'preparation');
+    if (!isCurrentUpcoming && gamesNumber <= this.state.competitionNumber) return null;
+    return { gamesNumber, hostNationId, hostCityId: this.state.upcomingHostCityId };
+  }
+
+  canNationTakeOverHosting(nationId: string): boolean {
+    const context = this.getUpcomingHostingContext();
+    return !!context
+      && context.hostNationId !== nationId
+      && this.dependencies.getLivingNationIds().includes(nationId)
+      && this.validHostCities(nationId).length > 0;
+  }
+
+  getUpcomingParticipationContext(): { gamesNumber: number; eligibleNationIds: string[] } | null {
+    if (!this.state.founded || this.state.phase === 'competition') return null;
+    const gamesNumber = this.state.phase === 'waitingForFirstGames' || this.state.phase === 'preparation'
+      ? this.state.competitionNumber
+      : this.state.hostingGamesNumber ?? this.state.competitionNumber + 1;
+    if (gamesNumber <= 0) return null;
+    const living = this.dependencies.getLivingNationIds();
+    const existingExclusions = this.state.excludedGamesNumber === gamesNumber
+      ? new Set(this.state.excludedNationIds ?? [])
+      : new Set<string>();
+    const eligibleNationIds = living.filter((nationId) => {
+      if (existingExclusions.has(nationId)) return false;
+      if (gamesNumber !== this.state.competitionNumber) return true;
+      return this.getParticipant(nationId)?.participating === true;
+    });
+    return eligibleNationIds.length > 0 ? { gamesNumber, eligibleNationIds } : null;
+  }
+
+  isNationExcludedFromUpcomingGames(nationId: string): boolean {
+    const context = this.getUpcomingParticipationContext();
+    const gamesNumber = context?.gamesNumber ?? this.state.excludedGamesNumber;
+    return gamesNumber !== undefined
+      && this.state.excludedGamesNumber === gamesNumber
+      && (this.state.excludedNationIds ?? []).includes(nationId);
+  }
+
+  excludeNationFromUpcomingGames(nationId: string, justification: string): boolean {
+    const context = this.getUpcomingParticipationContext();
+    if (!context || !context.eligibleNationIds.includes(nationId)) return false;
+    const excluded = this.state.excludedGamesNumber === context.gamesNumber
+      ? [...(this.state.excludedNationIds ?? [])]
+      : [];
+    if (excluded.includes(nationId)) return false;
+    excluded.push(nationId);
+    this.state.excludedGamesNumber = context.gamesNumber;
+    this.state.excludedNationIds = unique(excluded);
+    const participant = this.getParticipant(nationId);
+    const retainedGamesPoints = context.gamesNumber === this.state.competitionNumber
+      ? participant?.totalGamesPoints ?? 0
+      : 0;
+    if (participant && context.gamesNumber === this.state.competitionNumber) {
+      participant.participating = false;
+      participant.cultureCommitment = 0;
+      participant.productionCommitment = 0;
+    }
+    this.log(`${this.nationName(nationId)} excluded from Games #${context.gamesNumber}; future Culture/Production commitments stopped`);
+    this.log(`${this.nationName(nationId)} retains ${retainedGamesPoints} previously generated GP but is ineligible for Competition`);
+    this.dependencies.onNationExcluded?.({
+      gamesNumber: context.gamesNumber,
+      excludedNationId: nationId,
+      justification,
+      retainedGamesPoints,
+      turn: this.dependencies.getCurrentTurn(),
+    });
+    return true;
+  }
+
+  /** Centralized reset used after a passed World Council hosting resolution. */
+  replaceUpcomingHostFromWorldCouncil(proposerNationId: string): boolean {
+    const context = this.getUpcomingHostingContext();
+    const turn = this.dependencies.getCurrentTurn();
+    if (!context || context.hostNationId === proposerNationId) return false;
+    if (!this.dependencies.getLivingNationIds().includes(proposerNationId)) return false;
+    const cities = this.validHostCities(proposerNationId);
+    if (cities.length === 0) return false;
+
+    const replacesCurrentPreparation = context.gamesNumber === this.state.competitionNumber;
+    this.log(`Resetting upcoming Games #${context.gamesNumber} after World Council host replacement`);
+    this.state.hostingGamesNumber = context.gamesNumber;
+    this.state.hostCandidateNationId = proposerNationId;
+    this.state.hostingDecision = 'pendingCity';
+    this.state.offeredHostNationIds = [proposerNationId];
+    this.state.declinedHostNationIds = [];
+    delete this.state.upcomingHostNationId;
+    delete this.state.upcomingHostCityId;
+    delete this.state.upcomingHostUsedExistingGrandStadium;
+    delete this.state.hostingCancellationReason;
+    this.state.stadiumRequirementGrandfathered = false;
+    this.state.scheduledGamesTurn = turn + GAMES_OF_NATIONS_INTERVAL;
+    this.state.worldCouncilScheduleGamesNumber = context.gamesNumber;
+    this.state.pendingWorldCouncilHostReplacement = {
+      gamesNumber: context.gamesNumber,
+      previousHostNationId: context.hostNationId,
+      newHostNationId: proposerNationId,
+    };
+    delete this.state.excludedGamesNumber;
+    this.state.excludedNationIds = [];
+
+    if (replacesCurrentPreparation) {
+      this.state.phase = 'waitingForFirstGames';
+      this.state.phaseStartTurn = turn;
+      this.state.nextTransitionTurn = turn + GAMES_OF_NATIONS_INTERVAL - GAMES_OF_NATIONS_PREPARATION_TURNS;
+      if (context.gamesNumber === 1) this.state.firstGamesTurn = this.state.scheduledGamesTurn;
+      delete this.state.hostNationId;
+      delete this.state.hostCityId;
+      delete this.state.hostUsedExistingGrandStadium;
+      delete this.state.frozenSportIds;
+      delete this.state.activeSportIndex;
+      delete this.state.cancellationReason;
+      delete this.state.overallWinnerNationId;
+      this.state.participants = this.createParticipants();
+      this.state.sportResults = createSportResults(this.programSportIds().map((id) => getGamesSportById(id).name));
+      this.state.medalTable = [];
+      this.state.hostBonusCalculated = false;
+      this.state.totalExternalInitialGamesPoints = 0;
+      this.state.hostBonusGamesPoints = 0;
+      delete this.state.hostBonusSport;
+      delete this.state.humanPreparationPromptAcknowledgedCompetitionNumber;
+    } else if (this.state.phase === 'cooldown') {
+      this.state.nextTransitionTurn = turn + GAMES_OF_NATIONS_INTERVAL - GAMES_OF_NATIONS_PREPARATION_TURNS;
+    }
+
+    this.log(`${this.nationName(proposerNationId)} becomes host of Games #${context.gamesNumber}; previous preparation discarded`);
+    if (this.isInteractiveHuman(proposerNationId)) return true;
+    const autoplayCity = this.isHumanNation(proposerNationId) && this.dependencies.isAutoplayActive?.() === true
+      ? this.selectAutoplayHostCity(proposerNationId, cities)
+      : undefined;
+    const selected = autoplayCity ?? [...cities].sort((a, b) =>
+      Number(b.hasGrandStadium) - Number(a.hasGrandStadium)
+        || b.productionPerTurn - a.productionPerTurn
+        || a.id.localeCompare(b.id))[0]!;
+    this.confirmHosting(proposerNationId, selected);
     return true;
   }
 
   /** Advance explicit phase boundaries and the active sport at round start. */
   handleRoundStart(turn: number): void {
+    this.resolveAutoplayHumanDecisions();
     if (this.state.phase === 'preparation') {
       this.initializeMissingAIStrategies();
       this.initializeHostBonusForPreparation();
@@ -170,6 +611,8 @@ export class GamesOfNationsSystem {
       } else if (this.state.phase === 'competition') {
         this.resolveDueCompetitionSports(transitionTurn - 1);
         this.beginCooldown(transitionTurn);
+      } else if (this.state.phase === 'cancelled') {
+        this.beginCooldown(transitionTurn);
       } else if (this.state.phase === 'cooldown') {
         this.beginPreparation(transitionTurn);
       } else {
@@ -178,8 +621,9 @@ export class GamesOfNationsSystem {
     }
 
     if (this.state.phase === 'competition' && this.state.phaseStartTurn !== undefined) {
+      const cycleSports = this.cycleSports();
       const sportIndex = Math.max(0, Math.min(
-        GAMES_OF_NATIONS_SPORTS.length - 1,
+        cycleSports.length - 1,
         turn - this.state.phaseStartTurn,
       ));
       if (sportIndex !== this.state.activeSportIndex) {
@@ -194,7 +638,7 @@ export class GamesOfNationsSystem {
   /** Future human opt-out UI can use this without changing the cycle model. */
   setParticipation(nationId: string, participating: boolean): boolean {
     const entry = this.state.participants.find((participant) => participant.nationId === nationId);
-    if (!entry) return false;
+    if (!entry || this.isExcludedFromGames(nationId, this.state.competitionNumber)) return false;
     if (nationId === this.state.hostNationId && !participating) return false;
     entry.participating = participating;
     return true;
@@ -205,7 +649,7 @@ export class GamesOfNationsSystem {
       this.state.phase !== 'preparation'
       || competitionNumber !== this.state.competitionNumber
     ) return false;
-    const human = this.state.participants.find((participant) => this.dependencies.isHumanNation?.(participant.nationId) === true);
+    const human = this.state.participants.find((participant) => this.isInteractiveHuman(participant.nationId));
     if (!human) return false;
     return this.confirmHumanPreparationConfiguration(human.nationId, competitionNumber);
   }
@@ -217,11 +661,11 @@ export class GamesOfNationsSystem {
   ): boolean {
     if (this.state.phase !== 'preparation' || competitionNumber !== this.state.competitionNumber) return false;
     const participant = this.getParticipant(nationId);
-    if (!participant || this.dependencies.isHumanNation?.(nationId) !== true) return false;
+    if (!participant || !this.isInteractiveHuman(nationId) || this.isExcludedFromGames(nationId, competitionNumber)) return false;
     this.captureInitialCommitment(participant);
     this.calculateHostBonusIfReady();
     if (nationId === this.state.hostNationId) {
-      if (!this.state.hostBonusCalculated || !hostBonusSport || !GAMES_OF_NATIONS_SPORTS.includes(hostBonusSport)) return false;
+      if (!this.state.hostBonusCalculated || !hostBonusSport || !this.cycleSports().includes(hostBonusSport)) return false;
       if (this.state.hostBonusSport && this.state.hostBonusSport !== hostBonusSport) return false;
       if (!this.state.hostBonusSport) {
         this.state.hostBonusSport = hostBonusSport;
@@ -235,39 +679,59 @@ export class GamesOfNationsSystem {
   }
 
   isHumanPreparationPromptPending(): boolean {
-    return this.state.phase === 'preparation'
+    const human = this.state.participants.find((participant) => this.isInteractiveHuman(participant.nationId));
+    return this.dependencies.isAutoplayActive?.() !== true
+      && this.state.phase === 'preparation'
+      && !!human
+      && !this.isExcludedFromGames(human.nationId, this.state.competitionNumber)
       && this.state.humanPreparationPromptAcknowledgedCompetitionNumber !== this.state.competitionNumber;
   }
 
   setNationCultureCommitment(nationId: string, commitment: number): boolean {
     const participant = this.getParticipant(nationId);
-    if (!participant || !Number.isFinite(commitment) || commitment < 0) return false;
+    if (!participant || this.isExcludedFromGames(nationId, this.state.competitionNumber) || !Number.isFinite(commitment) || commitment < 0) return false;
     participant.cultureCommitment = Math.floor(commitment);
     return true;
   }
 
   setNationProductionCommitment(nationId: string, commitment: number): boolean {
     const participant = this.getParticipant(nationId);
-    if (!participant || !Number.isFinite(commitment) || commitment < 0) return false;
+    if (!participant || this.isExcludedFromGames(nationId, this.state.competitionNumber) || !Number.isFinite(commitment) || commitment < 0) return false;
     participant.productionCommitment = Math.floor(commitment);
     return true;
   }
 
-  setNationSportAllocation(nationId: string, allocation: GamesOfNationsSportValues): boolean {
+  allocateGamesPoints(nationId: string, sport: GamesOfNationsSport, amount: number): boolean {
     const participant = this.getParticipant(nationId);
-    if (!participant) return false;
-    const normalized = normalizeAllocation(allocation);
-    if (!normalized) return false;
-    participant.sportAllocation = normalized;
+    if (
+      this.state.phase !== 'preparation'
+      || !participant?.participating
+      || this.isExcludedFromGames(nationId, this.state.competitionNumber)
+      || !this.cycleSports().includes(sport)
+      || !Number.isInteger(amount)
+      || amount <= 0
+      || amount > participant.unallocatedGamesPoints
+    ) return false;
+    participant.unallocatedGamesPoints -= amount;
+    participant.gamesPointsBySport[sport] += amount;
+    this.log(`${this.nationName(nationId)} allocated ${amount} GP to ${sport}; ${participant.unallocatedGamesPoints} GP remain unallocated`);
     return true;
+  }
+
+  distributeRemainingGamesPointsEvenly(nationId: string): boolean {
+    if (this.state.phase !== 'preparation') return false;
+    const participant = this.getParticipant(nationId);
+    if (!participant?.participating || this.isExcludedFromGames(nationId, this.state.competitionNumber)) return false;
+    return this.distributeParticipantPoolEvenly(participant, 'manually distributed');
   }
 
   /** Called once for each nation's turn, after yields are refreshed and before production/culture advance. */
   processNationPreparationTurn(nationId: string, turn: number): void {
     if (this.state.phase !== 'preparation') return;
     const participant = this.getParticipant(nationId);
-    if (!participant?.participating || participant.lastInvestmentTurn === turn) return;
+    if (!participant?.participating || this.isExcludedFromGames(nationId, this.state.competitionNumber) || participant.lastInvestmentTurn === turn) return;
     participant.lastInvestmentTurn = turn;
+    participant.gamesPointsGeneratedThisTurn = 0;
     delete participant.cultureDiversionThisTurn;
     delete participant.productionDiversionByCity;
 
@@ -304,19 +768,18 @@ export class GamesOfNationsSystem {
 
     const generatedPoints = (investedCulture + investedProduction) * GAMES_POINTS_PER_RESOURCE;
     if (generatedPoints > 0) {
-      const distributed = distributeGamesPoints(generatedPoints, participant.sportAllocation);
-      for (const sport of GAMES_OF_NATIONS_SPORTS) {
-        participant.gamesPointsBySport[sport] += distributed[sport];
-      }
+      participant.unallocatedGamesPoints += generatedPoints;
       participant.totalGamesPoints += generatedPoints;
+      participant.gamesPointsGeneratedThisTurn = generatedPoints;
+      this.log(`${this.nationName(nationId)} generated ${generatedPoints} GP; unallocated pool now ${participant.unallocatedGamesPoints} GP`);
+      if (!this.isInteractiveHuman(nationId)) this.allocateAIGamesPoints(participant, generatedPoints);
     }
   }
 
   getCultureDiversionForTurn(nationId: string, turn: number): number {
     const participant = this.getParticipant(nationId);
     return this.state.phase === 'preparation'
-      && participant?.participating === true
-      && participant.lastInvestmentTurn === turn
+      && participant?.lastInvestmentTurn === turn
       ? participant.cultureDiversionThisTurn ?? 0
       : 0;
   }
@@ -335,11 +798,25 @@ export class GamesOfNationsSystem {
     return (this.state.completedGames ?? []).map(cloneCompletedGamesRecord);
   }
 
+  /** The canonical source for the temporary Cultural Victory eligibility window. */
+  getLatestCompletedGames(): CompletedGamesOfNationsRecord | undefined {
+    const completedGames = this.state.completedGames ?? [];
+    const latest = [...completedGames].reverse().find((games) => games.status === 'completed');
+    return latest ? cloneCompletedGamesRecord(latest) : undefined;
+  }
+
+  /** Derived from completed tournament history; never from the cumulative medal leaderboard. */
+  getReigningChampionNationId(): string | null {
+    const completedGames = this.state.completedGames ?? [];
+    return [...completedGames].reverse().find((games) => games.status === 'completed')?.overallWinnerNationId ?? null;
+  }
+
   getHistoricalMedalStandings(): GamesOfNationsHistoricalStanding[] {
     return buildHistoricalMedalStandings(this.state.completedGames ?? []);
   }
 
   getEffectiveGamesPoints(nationId: string, sport: GamesOfNationsSport): number {
+    if (this.isExcludedFromGames(nationId, this.state.competitionNumber)) return 0;
     const base = whole(this.getParticipant(nationId)?.gamesPointsBySport[sport] ?? 0);
     return base + (
       nationId === this.state.hostNationId && sport === this.state.hostBonusSport
@@ -350,10 +827,14 @@ export class GamesOfNationsSystem {
 
   getSummary(): GamesOfNationsSummary {
     const currentTurn = this.dependencies.getCurrentTurn();
+    const cycleSports = this.cycleSports();
+    const cycleSportIds = this.cycleSportIds();
     const phaseTotalTurns = this.state.phase === 'preparation'
       ? GAMES_OF_NATIONS_PREPARATION_TURNS
       : this.state.phase === 'competition'
-        ? GAMES_OF_NATIONS_COMPETITION_TURNS
+        ? cycleSports.length
+        : this.state.phase === 'cancelled'
+          ? cycleSports.length
         : this.state.phase === 'cooldown'
           ? GAMES_OF_NATIONS_COOLDOWN_TURNS
           : null;
@@ -361,12 +842,13 @@ export class GamesOfNationsSystem {
       ? clamp(currentTurn - this.state.phaseStartTurn + 1, 1, phaseTotalTurns)
       : null;
     const nextGamesTurn = this.state.founded
-      ? (this.state.phase === 'competition'
-        ? (this.state.scheduledGamesTurn ?? currentTurn) + GAMES_OF_NATIONS_INTERVAL
+      ? (this.state.phase === 'competition' || this.state.phase === 'cancelled'
+        ? (this.state.scheduledGamesTurn ?? currentTurn) + this.currentCycleTurns()
         : this.state.scheduledGamesTurn ?? null)
       : null;
     return {
       founded: this.state.founded,
+      humanInteractionSuppressed: this.dependencies.isAutoplayActive?.() === true,
       founderNationId: this.state.founderNationId ?? null,
       foundedTurn: this.state.foundedTurn ?? null,
       firstGamesTurn: this.state.firstGamesTurn ?? null,
@@ -374,6 +856,24 @@ export class GamesOfNationsSystem {
       competitionNumber: this.state.competitionNumber,
       hostNationId: this.state.hostNationId ?? null,
       hostCityId: this.state.hostCityId ?? null,
+      hostingGamesNumber: this.state.hostingGamesNumber ?? null,
+      hostCandidateNationId: this.state.hostCandidateNationId ?? null,
+      offeredHostNationIds: [...(this.state.offeredHostNationIds ?? [])],
+      declinedHostNationIds: [...(this.state.declinedHostNationIds ?? [])],
+      hostingDecision: this.state.hostingDecision ?? null,
+      ...(this.state.excludedGamesNumber !== undefined ? {
+        excludedGamesNumber: this.state.excludedGamesNumber,
+        excludedNationIds: [...(this.state.excludedNationIds ?? [])],
+      } : {}),
+      upcomingHostNationId: this.state.upcomingHostNationId ?? null,
+      upcomingHostCityId: this.state.upcomingHostCityId ?? null,
+      stadiumExists: this.state.upcomingHostCityId ? this.dependencies.hasGrandStadium?.(this.state.upcomingHostCityId) === true : false,
+      stadiumCompleted: this.state.stadiumRequirementGrandfathered === true
+        || (this.state.upcomingHostCityId ? this.dependencies.hasGrandStadium?.(this.state.upcomingHostCityId) === true : false),
+      ...(this.state.upcomingHostUsedExistingGrandStadium === true ? { stadiumExistingInfrastructure: true } : {}),
+      competitionDeadline: this.state.founded ? this.hostingDeadline() : null,
+      cancellationReason: this.state.cancellationReason ?? this.state.hostingCancellationReason ?? null,
+      stadiumRequirementGrandfathered: this.state.stadiumRequirementGrandfathered === true,
       phaseStartTurn: this.state.phaseStartTurn ?? null,
       nextTransitionTurn: this.state.nextTransitionTurn ?? null,
       turnsUntilNextPhase: this.state.nextTransitionTurn === undefined
@@ -382,6 +882,14 @@ export class GamesOfNationsSystem {
       nextGamesTurn,
       turnsUntilGames: nextGamesTurn === null ? null : Math.max(0, nextGamesTurn - currentTurn),
       activeSport: this.getActiveSport(),
+      activeSports: [...cycleSports],
+      activeSportIds: [...cycleSportIds],
+      introducedAdditionalSportIds: [...(this.state.introducedAdditionalSportIds ?? [])],
+      remainingAdditionalSportIds: this.remainingAdditionalSportIds(),
+      sportIntroductionRecords: (this.state.sportIntroductionRecords ?? []).map((record) => ({ ...record })),
+      processedSportIntroductionEras: [...(this.state.processedSportIntroductionEras ?? [])],
+      futureFallbackActive: this.state.futureFallbackActive === true,
+      pendingSportAuction: this.state.pendingSportAuction ? cloneAuction(this.state.pendingSportAuction) : null,
       phaseProgressTurn,
       phaseTotalTurns,
       preparationActive: this.state.phase === 'preparation',
@@ -390,7 +898,7 @@ export class GamesOfNationsSystem {
       sportResults: (this.state.sportResults ?? []).map(cloneSportResult),
       medalTable: (this.state.medalTable ?? []).map((standing) => ({ ...standing })),
       overallWinnerNationId: this.state.overallWinnerNationId ?? null,
-      competitionComplete: (this.state.sportResults ?? []).length === GAMES_OF_NATIONS_SPORTS.length
+      competitionComplete: (this.state.sportResults ?? []).length === cycleSports.length
         && (this.state.sportResults ?? []).every((result) => result.resolved),
       hostBonusCalculated: this.state.hostBonusCalculated === true,
       hostBonusRate: HOST_GAMES_BONUS_RATE,
@@ -404,59 +912,300 @@ export class GamesOfNationsSystem {
       completedGames: this.getCompletedGames(),
       historicalMedalStandings: this.getHistoricalMedalStandings(),
       participatingNationIds: this.state.participants
-        .filter((participant) => participant.participating)
+        .filter((participant) => participant.participating
+          && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber))
         .map((participant) => participant.nationId),
       participants: this.state.participants.map(cloneParticipant),
+      effectiveGamesPointsByNation: Object.fromEntries(this.state.participants.map((participant) => [
+        participant.nationId,
+        Object.fromEntries(ALL_GAMES_SPORTS.map((sport) => [
+          sport,
+          this.getEffectiveGamesPoints(participant.nationId, sport),
+        ])) as GamesOfNationsSportValues,
+      ])),
     };
   }
 
   private beginFirstPreparation(turn: number): void {
+    this.promoteUpcomingHost();
+    this.freezeCurrentProgram();
     this.state.phase = 'preparation';
     this.state.phaseStartTurn = turn;
-    this.state.nextTransitionTurn = this.state.firstGamesTurn;
-    this.resolveScheduledHost();
+    this.state.nextTransitionTurn = this.state.scheduledGamesTurn ?? this.state.firstGamesTurn;
     this.initializeCycleParticipants();
-    this.log(`Preparation for Games #1 begins; competition starts on turn ${this.state.firstGamesTurn}`);
+    this.applyCurrentCycleExclusions();
+    this.log(`Preparation for Games #1 begins; competition starts on turn ${this.state.scheduledGamesTurn ?? this.state.firstGamesTurn}`);
   }
 
   private beginCompetition(turn: number): void {
-    this.resolveScheduledHost();
+    this.promoteUpcomingHost();
+    this.autoDistributeAllRemainingGamesPoints();
+    const cancellationReason = this.validateHostAtDeadline();
+    if (cancellationReason) {
+      this.cancelGames(turn, cancellationReason);
+      this.startNextHostingSelection();
+      return;
+    }
     this.pruneInvalidParticipants();
     this.state.phase = 'competition';
     this.state.phaseStartTurn = turn;
-    this.state.nextTransitionTurn = turn + GAMES_OF_NATIONS_COMPETITION_TURNS;
+    this.state.nextTransitionTurn = turn + this.cycleSports().length;
     this.state.scheduledGamesTurn = turn;
     this.state.activeSportIndex = 0;
-    const cityName = this.state.hostCityId
-      ? this.dependencies.getCapitalCity(this.state.hostNationId ?? '')?.name
-      : undefined;
+    const cityName = this.currentHostCityName();
     const location = cityName ? ` in ${cityName}` : '';
     this.log(`Games #${this.state.competitionNumber} begin${location} on turn ${turn}`);
     this.logCompetitionSport();
     this.resolveDueCompetitionSports(turn);
+    this.startNextHostingSelection();
   }
 
   private beginCooldown(turn: number): void {
+    const wasCancelled = this.state.phase === 'cancelled';
     this.state.phase = 'cooldown';
     this.state.phaseStartTurn = turn;
-    this.state.nextTransitionTurn = turn + GAMES_OF_NATIONS_COOLDOWN_TURNS;
-    this.state.scheduledGamesTurn = (this.state.scheduledGamesTurn ?? turn) + GAMES_OF_NATIONS_INTERVAL;
+    if (this.state.excludedGamesNumber === this.state.competitionNumber) {
+      delete this.state.excludedGamesNumber;
+      this.state.excludedNationIds = [];
+    }
+    const nextGamesNumber = this.state.competitionNumber + 1;
+    const councilSchedule = this.state.worldCouncilScheduleGamesNumber === nextGamesNumber;
+    this.state.nextTransitionTurn = councilSchedule
+      ? Math.max(turn, (this.state.scheduledGamesTurn ?? turn) - GAMES_OF_NATIONS_PREPARATION_TURNS)
+      : turn + GAMES_OF_NATIONS_COOLDOWN_TURNS;
+    if (!councilSchedule) this.state.scheduledGamesTurn = (this.state.scheduledGamesTurn ?? turn) + this.currentCycleTurns();
     delete this.state.activeSportIndex;
-    this.log(`Games #${this.state.competitionNumber} completed; entering cooldown`);
+    this.log(`Games #${this.state.competitionNumber} ${wasCancelled ? 'cancelled' : 'completed'}; entering cooldown`);
   }
 
   private beginPreparation(turn: number): void {
+    const nextGamesNumber = this.state.competitionNumber + 1;
+    if (this.state.hostingGamesNumber !== nextGamesNumber) {
+      this.state.hostingGamesNumber = nextGamesNumber;
+      this.state.offeredHostNationIds = [];
+      this.state.declinedHostNationIds = [];
+      this.state.stadiumRequirementGrandfathered = false;
+      this.selectNextHost();
+    }
     this.state.phase = 'preparation';
     this.state.phaseStartTurn = turn;
-    this.state.nextTransitionTurn = turn + GAMES_OF_NATIONS_PREPARATION_TURNS;
-    this.state.competitionNumber += 1;
-    this.selectNextHost();
+    const councilSchedule = this.state.worldCouncilScheduleGamesNumber === nextGamesNumber;
+    this.state.nextTransitionTurn = councilSchedule
+      ? this.state.scheduledGamesTurn ?? turn + GAMES_OF_NATIONS_PREPARATION_TURNS
+      : turn + GAMES_OF_NATIONS_PREPARATION_TURNS;
+    if (councilSchedule) delete this.state.worldCouncilScheduleGamesNumber;
+    this.state.competitionNumber = nextGamesNumber;
+    this.freezeCurrentProgram();
+    delete this.state.cancellationReason;
+    this.promoteUpcomingHost();
     this.initializeCycleParticipants();
+    this.applyCurrentCycleExclusions();
     this.log(`Preparation for Games #${this.state.competitionNumber} begins; competition starts on turn ${this.state.scheduledGamesTurn}`);
   }
 
   private selectNextHost(): void {
-    this.resolveHostFrom(this.state.hostRotationIndex + 1);
+    this.offerHostingFrom(this.state.hostRotationIndex + 1);
+  }
+
+  private validHostCities(nationId: string): GamesOfNationsHostCityCandidate[] {
+    const supplied = this.dependencies.getHostCityCandidates?.(nationId);
+    if (supplied) {
+      return supplied
+        .filter((city) => city && typeof city.id === 'string' && (city.canConstructGrandStadium || city.hasGrandStadium))
+        .map((city) => ({ ...city }));
+    }
+    const capital = this.dependencies.getCapitalCity(nationId);
+    return capital ? [{ ...capital, productionPerTurn: 0, canConstructGrandStadium: true, hasGrandStadium: false }] : [];
+  }
+
+  private offerHostingFrom(startIndex: number): void {
+    const order = this.state.hostRotationOrder;
+    const living = new Set(this.dependencies.getLivingNationIds());
+    const offered = new Set(this.state.offeredHostNationIds ?? []);
+    delete this.state.hostCandidateNationId;
+    for (let offset = 0; offset < order.length; offset += 1) {
+      const index = ((startIndex + offset) % order.length + order.length) % order.length;
+      const nationId = order[index]!;
+      if (!living.has(nationId) || offered.has(nationId)) continue;
+      offered.add(nationId);
+      this.state.offeredHostNationIds = [...offered];
+      this.state.hostCandidateNationId = nationId;
+      this.state.hostingDecision = 'pendingDecision';
+      const cities = this.validHostCities(nationId);
+      if (cities.length === 0) {
+        this.state.declinedHostNationIds = unique([...(this.state.declinedHostNationIds ?? []), nationId]);
+        this.log(`${this.nationName(nationId)} cannot host Games #${this.state.hostingGamesNumber}: no valid host city`);
+        continue;
+      }
+      if (this.isInteractiveHuman(nationId)) return;
+      const autoplayCapital = this.isHumanNation(nationId) && this.dependencies.isAutoplayActive?.() === true
+        ? this.selectAutoplayHostCity(nationId, cities)
+        : undefined;
+      const selected = autoplayCapital ?? [...cities].sort((a, b) =>
+        Number(b.hasGrandStadium) - Number(a.hasGrandStadium)
+          || b.productionPerTurn - a.productionPerTurn
+          || a.id.localeCompare(b.id),
+      )[0]!;
+      this.log(`${this.nationName(nationId)} accepted hosting Games #${this.state.hostingGamesNumber}`);
+      this.confirmHosting(nationId, selected);
+      return;
+    }
+    delete this.state.hostCandidateNationId;
+    delete this.state.upcomingHostNationId;
+    delete this.state.upcomingHostCityId;
+    delete this.state.upcomingHostUsedExistingGrandStadium;
+    this.state.hostingDecision = 'cancelled';
+    this.state.hostingCancellationReason = 'No eligible nation accepted hosting';
+    this.log(`Games #${this.state.hostingGamesNumber} has no host: ${this.state.hostingCancellationReason}`);
+  }
+
+  private confirmHosting(nationId: string, city: GamesOfNationsHostCityCandidate): void {
+    const gamesNumber = this.state.hostingGamesNumber ?? this.state.competitionNumber;
+    this.state.hostingDecision = 'confirmed';
+    this.state.upcomingHostNationId = nationId;
+    this.state.upcomingHostCityId = city.id;
+    this.state.upcomingHostUsedExistingGrandStadium = city.hasGrandStadium;
+    this.state.hostRotationIndex = Math.max(0, this.state.hostRotationOrder.indexOf(nationId));
+    if (gamesNumber === this.state.competitionNumber) {
+      this.state.hostNationId = nationId;
+      this.state.hostCityId = city.id;
+      this.state.hostUsedExistingGrandStadium = city.hasGrandStadium;
+    }
+    this.state.stadiumRequirementGrandfathered = false;
+    this.log(city.hasGrandStadium
+      ? `${city.name} selected as host city for Games #${gamesNumber}; existing Grand Stadium satisfies hosting requirement`
+      : `${city.name} selected as host city for Games #${gamesNumber}; Grand Stadium construction required`);
+    if (!city.hasGrandStadium) this.log(`Grand Stadium required in ${city.name} before turn ${this.hostingDeadline()}`);
+    const replacement = this.state.pendingWorldCouncilHostReplacement?.gamesNumber === gamesNumber
+      ? this.state.pendingWorldCouncilHostReplacement
+      : undefined;
+    if (replacement || this.state.hostingAnnouncementEmittedGamesNumber !== gamesNumber) {
+      this.state.hostingAnnouncementEmittedGamesNumber = gamesNumber;
+      this.dependencies.onHostingConfirmed?.({
+        gamesNumber,
+        hostNationId: nationId,
+        hostCityId: city.id,
+        hostCityName: city.name,
+        usedExistingGrandStadium: city.hasGrandStadium,
+        scheduledGamesTurn: this.hostingDeadline(),
+        turn: this.dependencies.getCurrentTurn(),
+        previousHostNationId: replacement?.previousHostNationId,
+        worldCouncilReplacement: replacement !== undefined,
+      });
+    }
+    if (replacement) {
+      this.log(`${city.name} selected as replacement host city; Competition rescheduled for turn ${this.hostingDeadline()}`);
+      delete this.state.pendingWorldCouncilHostReplacement;
+    }
+  }
+
+  private promoteUpcomingHost(): void {
+    if (this.state.hostingGamesNumber !== this.state.competitionNumber) return;
+    this.state.hostNationId = this.state.upcomingHostNationId;
+    this.state.hostCityId = this.state.upcomingHostCityId;
+    this.state.hostUsedExistingGrandStadium = this.state.upcomingHostUsedExistingGrandStadium;
+  }
+
+  private startNextHostingSelection(): void {
+    this.state.hostingGamesNumber = this.state.competitionNumber + 1;
+    this.state.offeredHostNationIds = [];
+    this.state.declinedHostNationIds = [];
+    delete this.state.hostCandidateNationId;
+    delete this.state.upcomingHostNationId;
+    delete this.state.upcomingHostCityId;
+    delete this.state.upcomingHostUsedExistingGrandStadium;
+    delete this.state.hostingCancellationReason;
+    this.state.stadiumRequirementGrandfathered = false;
+    this.selectNextHost();
+    this.maybeStartFutureFallbackAuction(this.dependencies.getCurrentTurn(), this.state.hostingGamesNumber);
+  }
+
+  private maybeStartFutureFallbackAuction(turn: number, gamesNumber: number): void {
+    const inFuture = this.state.futureFallbackActive === true || this.dependencies.getWorldEra?.() === 'future';
+    if (!inFuture || this.remainingAdditionalSportIds().length === 0) return;
+    this.state.futureFallbackActive = true;
+    if (this.state.lastFutureFallbackHostingGamesNumber === gamesNumber) return;
+    this.state.lastFutureFallbackHostingGamesNumber = gamesNumber;
+    this.startSportAuction('future', 'futureHostingCycle', turn, gamesNumber);
+  }
+
+  private introductionGamesNumber(): number {
+    return this.state.phase === 'waitingForFirstGames'
+      ? this.state.competitionNumber
+      : this.state.competitionNumber + 1;
+  }
+
+  private remainingAdditionalSportIds(): GamesOfNationsSportId[] {
+    const introduced = new Set(this.state.introducedAdditionalSportIds ?? []);
+    return ADDITIONAL_GAMES_SPORT_IDS.filter((id) => !introduced.has(id));
+  }
+
+  private programSportIds(): GamesOfNationsSportId[] {
+    return [...TRADITIONAL_GAMES_SPORT_IDS, ...(this.state.introducedAdditionalSportIds ?? [])];
+  }
+
+  private cycleSportIds(): GamesOfNationsSportId[] {
+    return this.state.frozenSportIds?.length ? this.state.frozenSportIds : this.programSportIds();
+  }
+
+  private cycleSports(): GamesOfNationsSport[] {
+    return this.cycleSportIds().map((id) => getGamesSportById(id).name);
+  }
+
+  private freezeCurrentProgram(): void {
+    this.state.frozenSportIds = this.programSportIds();
+  }
+
+  private hostingDeadline(): number {
+    const scheduled = this.state.scheduledGamesTurn ?? this.state.firstGamesTurn ?? this.dependencies.getCurrentTurn();
+    if (this.state.worldCouncilScheduleGamesNumber === this.state.hostingGamesNumber) return scheduled;
+    const selectingNextDuringCurrentGames = (this.state.hostingGamesNumber ?? this.state.competitionNumber) > this.state.competitionNumber
+      && (this.state.phase === 'competition' || this.state.phase === 'cancelled');
+    return selectingNextDuringCurrentGames ? scheduled + this.currentCycleTurns() : scheduled;
+  }
+
+  private currentCycleTurns(): number {
+    return GAMES_OF_NATIONS_PREPARATION_TURNS + this.cycleSports().length + GAMES_OF_NATIONS_COOLDOWN_TURNS;
+  }
+
+  private validateHostAtDeadline(): string | null {
+    if (this.state.stadiumRequirementGrandfathered) return null;
+    if (this.state.hostingDecision === 'cancelled') return this.state.hostingCancellationReason ?? 'No nation accepted hosting';
+    const nationId = this.state.hostNationId;
+    const cityId = this.state.hostCityId;
+    if (!nationId || !this.dependencies.getLivingNationIds().includes(nationId)) return 'Confirmed host nation is no longer valid';
+    if (!cityId) return 'Confirmed host city is no longer valid';
+    const owner = this.dependencies.getCityOwnerId?.(cityId);
+    if (owner !== undefined && owner !== nationId) return `${this.currentHostCityName() ?? 'Host city'} is no longer owned by the confirmed host`;
+    if (this.dependencies.hasGrandStadium && !this.dependencies.hasGrandStadium(cityId)) {
+      return `Grand Stadium incomplete in ${this.currentHostCityName() ?? 'host city'} at competition deadline`;
+    }
+    return null;
+  }
+
+  private cancelGames(turn: number, reason: string): void {
+    this.state.phase = 'cancelled';
+    this.state.phaseStartTurn = turn;
+    this.state.nextTransitionTurn = turn + this.cycleSports().length;
+    this.state.scheduledGamesTurn = turn;
+    this.state.cancellationReason = reason;
+    delete this.state.activeSportIndex;
+    this.state.sportResults = createSportResults(this.cycleSports());
+    this.state.medalTable = [];
+    delete this.state.overallWinnerNationId;
+    this.archiveCancelledGames(turn, reason);
+    this.log(`Games #${this.state.competitionNumber} cancelled: ${reason}`);
+    if (this.state.cancellationEventEmittedGamesNumber !== this.state.competitionNumber) {
+      this.state.cancellationEventEmittedGamesNumber = this.state.competitionNumber;
+      this.dependencies.onGamesCancelled?.({
+        gamesNumber: this.state.competitionNumber,
+        hostNationId: this.state.hostNationId,
+        hostCityId: this.state.hostCityId,
+        hostCityName: this.currentHostCityName(),
+        reason,
+        turn,
+      });
+    }
   }
 
   private resolveScheduledHost(): void {
@@ -498,7 +1247,7 @@ export class GamesOfNationsSystem {
 
   private getActiveSport(): GamesOfNationsSport | null {
     if (this.state.phase !== 'competition' || this.state.activeSportIndex === undefined) return null;
-    return GAMES_OF_NATIONS_SPORTS[this.state.activeSportIndex] ?? null;
+    return this.cycleSports()[this.state.activeSportIndex] ?? null;
   }
 
   private logCompetitionSport(): void {
@@ -508,7 +1257,7 @@ export class GamesOfNationsSystem {
 
   private initializeCycleParticipants(): void {
     this.state.participants = this.createParticipants();
-    this.state.sportResults = createSportResults();
+    this.state.sportResults = createSportResults(this.cycleSports());
     this.state.medalTable = [];
     delete this.state.overallWinnerNationId;
     delete this.state.hostBonusCalculated;
@@ -522,22 +1271,25 @@ export class GamesOfNationsSystem {
   private resolveDueCompetitionSports(turn: number): void {
     if (this.state.phase !== 'competition' || this.state.phaseStartTurn === undefined) return;
     const lastDueIndex = Math.min(
-      GAMES_OF_NATIONS_SPORTS.length - 1,
+      this.cycleSports().length - 1,
       Math.max(-1, turn - this.state.phaseStartTurn),
     );
     for (let index = 0; index <= lastDueIndex; index += 1) this.resolveSport(index, turn);
   }
 
   private resolveSport(sportIndex: number, resolutionTurn: number): void {
-    const sport = GAMES_OF_NATIONS_SPORTS[sportIndex];
+    const cycleSports = this.cycleSports();
+    const sport = cycleSports[sportIndex];
     if (!sport) return;
-    const results = this.state.sportResults ?? (this.state.sportResults = createSportResults());
+    const results = this.state.sportResults ?? (this.state.sportResults = createSportResults(cycleSports));
     const result = results[sportIndex];
     if (!result || result.resolved) return;
 
     const living = new Set(this.dependencies.getLivingNationIds());
     const weighted = this.state.participants
-      .filter((participant) => participant.participating && living.has(participant.nationId))
+      .filter((participant) => participant.participating
+        && living.has(participant.nationId)
+        && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber))
       .map((participant) => ({
         nationId: participant.nationId,
         weight: this.getEffectiveGamesPoints(participant.nationId, sport),
@@ -557,7 +1309,10 @@ export class GamesOfNationsSystem {
     this.state.medalTable = buildMedalTable(
       results,
       this.state.hostRotationOrder,
-      this.state.participants.filter((participant) => participant.participating).map((participant) => participant.nationId),
+      this.state.participants
+        .filter((participant) => participant.participating
+          && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber))
+        .map((participant) => participant.nationId),
     );
     const medalText = [
       result.goldNationId ? `Gold ${this.nationName(result.goldNationId)}` : 'no Gold',
@@ -578,7 +1333,7 @@ export class GamesOfNationsSystem {
       });
     }
 
-    if (sportIndex === GAMES_OF_NATIONS_SPORTS.length - 1) this.finalizeCompetition();
+    if (sportIndex === cycleSports.length - 1) this.finalizeCompetition();
     const scheduledSportTurn = (this.state.phaseStartTurn ?? 0) + sportIndex;
     if (resolutionTurn === scheduledSportTurn) this.emitSportResolved(sportIndex, result, living);
   }
@@ -588,10 +1343,12 @@ export class GamesOfNationsSystem {
     result: GamesOfNationsSportResult,
     living: ReadonlySet<string>,
   ): void {
-    const nextSport = GAMES_OF_NATIONS_SPORTS[sportIndex + 1];
+    const nextSport = this.cycleSports()[sportIndex + 1];
     const nextSportCandidates = nextSport
       ? this.state.participants
-        .filter((participant) => participant.participating && living.has(participant.nationId))
+        .filter((participant) => participant.participating
+          && living.has(participant.nationId)
+          && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber))
         .map((participant) => ({
           nationId: participant.nationId,
           gamesPoints: this.getEffectiveGamesPoints(participant.nationId, nextSport),
@@ -631,7 +1388,7 @@ export class GamesOfNationsSystem {
       hostCityName: this.currentHostCityName(),
       overallWinnerNationId: winner?.nationId,
       medalTable: standings.map((standing) => ({ ...standing })),
-      turn: (this.state.phaseStartTurn ?? 0) + GAMES_OF_NATIONS_SPORTS.length - 1,
+      turn: (this.state.phaseStartTurn ?? 0) + this.cycleSports().length - 1,
     });
   }
 
@@ -639,7 +1396,7 @@ export class GamesOfNationsSystem {
     const completedGames = this.state.completedGames ?? (this.state.completedGames = []);
     if (completedGames.some((record) => record.gamesNumber === this.state.competitionNumber)) return;
     const tournamentStartTurn = this.state.phaseStartTurn ?? this.dependencies.getCurrentTurn();
-    const completionTurn = tournamentStartTurn + GAMES_OF_NATIONS_SPORTS.length - 1;
+    const completionTurn = tournamentStartTurn + this.cycleSports().length - 1;
     const date = this.dependencies.getWorldDateForTurn?.(tournamentStartTurn)
       ?? { worldYear: 0, yearLabel: `Turn ${tournamentStartTurn}` };
     const hostNationId = this.state.hostNationId;
@@ -648,6 +1405,7 @@ export class GamesOfNationsSystem {
       ? this.dependencies.getCityName?.(hostCityId) ?? 'Unknown city'
       : 'Unknown city';
     completedGames.push({
+      status: 'completed',
       gamesNumber: this.state.competitionNumber,
       tournamentStartTurn,
       completionTurn,
@@ -657,14 +1415,42 @@ export class GamesOfNationsSystem {
       hostNationName: hostNationId ? this.nationName(hostNationId) : 'Unknown host',
       hostCityId,
       hostCityName: historicalHostCityName,
+      ...(this.state.hostUsedExistingGrandStadium === true ? { usedExistingGrandStadium: true } : {}),
       overallWinnerNationId,
       overallWinnerNationName: overallWinnerNationId ? this.nationName(overallWinnerNationId) : undefined,
       hostBonusGamesPoints: whole(this.state.hostBonusGamesPoints ?? 0),
+      sportIds: [...this.cycleSportIds()],
       ...(this.state.hostBonusSport ? { hostBonusSport: this.state.hostBonusSport } : {}),
       medalTable: (this.state.medalTable ?? []).map((standing) => ({
         ...standing,
         nationName: this.nationName(standing.nationId),
       })),
+    });
+    completedGames.sort((a, b) => a.gamesNumber - b.gamesNumber);
+  }
+
+  private archiveCancelledGames(turn: number, reason: string): void {
+    const completedGames = this.state.completedGames ?? (this.state.completedGames = []);
+    if (completedGames.some((record) => record.gamesNumber === this.state.competitionNumber)) return;
+    const date = this.dependencies.getWorldDateForTurn?.(turn)
+      ?? { worldYear: 0, yearLabel: `Turn ${turn}` };
+    const hostNationId = this.state.hostNationId;
+    const hostCityId = this.state.hostCityId;
+    completedGames.push({
+      status: 'cancelled',
+      cancellationReason: reason,
+      gamesNumber: this.state.competitionNumber,
+      tournamentStartTurn: turn,
+      completionTurn: turn,
+      worldYear: date.worldYear,
+      yearLabel: date.yearLabel,
+      hostNationId,
+      hostNationName: hostNationId ? this.nationName(hostNationId) : 'No confirmed host',
+      hostCityId,
+      hostCityName: hostCityId ? this.dependencies.getCityName?.(hostCityId) ?? 'Unknown city' : 'No host city',
+      ...(this.state.hostUsedExistingGrandStadium === true ? { usedExistingGrandStadium: true } : {}),
+      sportIds: [...this.cycleSportIds()],
+      medalTable: [],
     });
     completedGames.sort((a, b) => a.gamesNumber - b.gamesNumber);
   }
@@ -681,7 +1467,8 @@ export class GamesOfNationsSystem {
 
   private initializeMissingAIStrategies(): void {
     for (const participant of this.state.participants) {
-      if (this.dependencies.isHumanNation?.(participant.nationId) === true) continue;
+      if (this.isExcludedFromGames(participant.nationId, this.state.competitionNumber)) continue;
+      if (this.isInteractiveHuman(participant.nationId)) continue;
       this.initializeAIStrategy(participant);
     }
   }
@@ -689,7 +1476,8 @@ export class GamesOfNationsSystem {
   private initializeHostBonusForPreparation(): void {
     if (this.state.phase !== 'preparation' || this.state.hostBonusCalculated) return;
     for (const participant of this.state.participants) {
-      if (this.dependencies.isHumanNation?.(participant.nationId) === true) continue;
+      if (this.isExcludedFromGames(participant.nationId, this.state.competitionNumber)) continue;
+      if (this.isInteractiveHuman(participant.nationId)) continue;
       this.captureInitialCommitment(participant);
     }
     this.calculateHostBonusIfReady();
@@ -730,12 +1518,18 @@ export class GamesOfNationsSystem {
 
   private assignAIHostBonusSportIfReady(): void {
     if (!this.state.hostBonusCalculated || this.state.hostBonusSport || !this.state.hostNationId) return;
-    if (this.dependencies.isHumanNation?.(this.state.hostNationId) === true) return;
+    if (this.isInteractiveHuman(this.state.hostNationId)) return;
     const host = this.getParticipant(this.state.hostNationId);
     if (!host) return;
-    this.state.hostBonusSport = GAMES_OF_NATIONS_SPORTS.reduce((best, sport) =>
-      host.sportAllocation[sport] > host.sportAllocation[best] ? sport : best,
-    GAMES_OF_NATIONS_SPORTS[0]);
+    const activeSports = this.cycleSports();
+    const weights = buildAISportWeights(
+      `${this.dependencies.seed ?? 'games'}|${this.state.competitionNumber}|${host.nationId}|sports`,
+      activeSports,
+      this.dependencies.getLeaderGamesPreferences?.(host.nationId),
+    );
+    this.state.hostBonusSport = activeSports.reduce((best, sport) =>
+      weights[sport] > weights[best] ? sport : best,
+    activeSports[0]);
     this.log(`${this.nationName(host.nationId)} assigned ${this.state.hostBonusGamesPoints ?? 0} host bonus GP to ${this.state.hostBonusSport}`);
   }
 
@@ -752,16 +1546,73 @@ export class GamesOfNationsSystem {
     const productionRate = clamp(0.07 + priority * 0.06 + productionVariation * 0.05, 0.05, 0.16);
     participant.cultureCommitment = conservativeCommitment(cultureOutput, cultureRate, 4);
     participant.productionCommitment = conservativeCommitment(productionOutput, productionRate, 6);
-    participant.sportAllocation = buildAIAllocation(
-      `${this.dependencies.seed ?? 'games'}|${this.state.competitionNumber}|${nationId}|sports`,
-    );
     participant.strategyInitialized = true;
+    const gamesPreferences = this.dependencies.getLeaderGamesPreferences?.(nationId);
+    if (gamesPreferences) {
+      this.log(`${this.nationName(nationId)} leader favorites: Traditional ${getGamesSportById(gamesPreferences.traditionalFavourite).name}; Additional ${getGamesSportById(gamesPreferences.additionalFavourite).name}`);
+    }
     this.log(`${this.nationName(nationId)} strategy: Culture ${participant.cultureCommitment}/turn, Production ${participant.productionCommitment}/turn`);
-    this.log(`${this.nationName(nationId)} allocation: ${GAMES_OF_NATIONS_SPORTS.map((sport) => `${sport} ${participant.sportAllocation[sport]}%`).join(', ')}`);
+  }
+
+  private allocateAIGamesPoints(participant: GamesOfNationsParticipantState, generatedPoints: number): void {
+    const amount = Math.min(whole(generatedPoints), participant.unallocatedGamesPoints);
+    if (amount <= 0) return;
+    const activeSports = this.cycleSports();
+    const weights = buildAISportWeights(
+      `${this.dependencies.seed ?? 'games'}|${this.state.competitionNumber}|${participant.nationId}|sports`,
+      activeSports,
+      this.dependencies.getLeaderGamesPreferences?.(participant.nationId),
+    );
+    const distributed = distributeGamesPointsByWeights(amount, weights, activeSports);
+    for (const sport of activeSports) participant.gamesPointsBySport[sport] += distributed[sport];
+    participant.unallocatedGamesPoints -= amount;
+    this.log(`${this.nationName(participant.nationId)} allocated ${amount} generated GP directly across active sports`);
+  }
+
+  private distributeParticipantPoolEvenly(
+    participant: GamesOfNationsParticipantState,
+    reason: 'manually distributed' | 'auto-distributed',
+  ): boolean {
+    const amount = participant.unallocatedGamesPoints;
+    if (amount <= 0) return true;
+    const activeSports = this.cycleSports();
+    const distributed = distributeGamesPointsEvenly(amount, activeSports);
+    for (const sport of activeSports) participant.gamesPointsBySport[sport] += distributed[sport];
+    participant.unallocatedGamesPoints = 0;
+    this.log(`${this.nationName(participant.nationId)} ${reason} ${amount} remaining GP across ${activeSports.length} sports`);
+    return true;
+  }
+
+  private autoDistributeAllRemainingGamesPoints(): void {
+    for (const participant of this.state.participants) {
+      if (!participant.participating || this.isExcludedFromGames(participant.nationId, this.state.competitionNumber)) continue;
+      this.distributeParticipantPoolEvenly(participant, 'auto-distributed');
+    }
+    const remaining = this.state.participants.reduce((sum, participant) => sum + participant.unallocatedGamesPoints, 0);
+    if (remaining > 0) this.log(`Invariant warning: Competition begins with ${remaining} unallocated GP`);
   }
 
   private getParticipant(nationId: string): GamesOfNationsParticipantState | undefined {
     return this.state.participants.find((participant) => participant.nationId === nationId);
+  }
+
+  private isExcludedFromGames(nationId: string, gamesNumber: number): boolean {
+    return this.state.excludedGamesNumber === gamesNumber
+      && (this.state.excludedNationIds ?? []).includes(nationId);
+  }
+
+  private applyCurrentCycleExclusions(): void {
+    if (this.state.excludedGamesNumber !== this.state.competitionNumber) {
+      delete this.state.excludedGamesNumber;
+      this.state.excludedNationIds = [];
+      return;
+    }
+    for (const participant of this.state.participants) {
+      if (!this.isExcludedFromGames(participant.nationId, this.state.competitionNumber)) continue;
+      participant.participating = false;
+      participant.cultureCommitment = 0;
+      participant.productionCommitment = 0;
+    }
   }
 
   private migrateStep1FirstGames(currentTurn: number): void {
@@ -788,7 +1639,7 @@ export class GamesOfNationsSystem {
     if (!this.state.overallWinnerNationId || this.state.phaseStartTurn === undefined) return;
     const cooldownStartTurn = this.state.phaseStartTurn;
     const originalPhaseStart = this.state.phaseStartTurn;
-    this.state.phaseStartTurn = cooldownStartTurn - GAMES_OF_NATIONS_SPORTS.length;
+    this.state.phaseStartTurn = cooldownStartTurn - this.cycleSports().length;
     this.archiveCompletedGames(this.state.overallWinnerNationId);
     this.state.phaseStartTurn = originalPhaseStart;
   }
@@ -809,7 +1660,7 @@ export class GamesOfNationsSystem {
     this.initializeHostBonusForPreparation();
     const acknowledged = this.state.humanPreparationPromptAcknowledgedCompetitionNumber === this.state.competitionNumber;
     if (!acknowledged) return;
-    const human = this.state.participants.find((participant) => this.dependencies.isHumanNation?.(participant.nationId) === true);
+    const human = this.state.participants.find((participant) => this.isInteractiveHuman(participant.nationId));
     if (!human) return;
     if (human.nationId === this.state.hostNationId) {
       delete this.state.humanPreparationPromptAcknowledgedCompetitionNumber;
@@ -820,8 +1671,83 @@ export class GamesOfNationsSystem {
     this.assignAIHostBonusSportIfReady();
   }
 
+  private migrateHostingState(): void {
+    if (this.state.hostingSchemaVersion === 1) return;
+    this.state.hostingSchemaVersion = 1;
+    this.state.hostingGamesNumber = this.state.competitionNumber;
+    this.state.offeredHostNationIds = this.state.hostNationId ? [this.state.hostNationId] : [];
+    this.state.declinedHostNationIds = [];
+    this.state.hostCandidateNationId = this.state.hostNationId;
+    this.state.hostingDecision = this.state.hostNationId && this.state.hostCityId ? 'confirmed' : 'cancelled';
+    this.state.upcomingHostNationId = this.state.hostNationId;
+    this.state.upcomingHostCityId = this.state.hostCityId;
+    this.state.stadiumRequirementGrandfathered = true;
+    if (!this.state.hostNationId || !this.state.hostCityId) {
+      this.state.hostingCancellationReason = 'Legacy Games cycle had no valid host';
+    }
+    this.log(`Legacy Games #${this.state.competitionNumber} grandfathered from Grand Stadium requirement`);
+  }
+
+  private migrateSportExpansionState(): void {
+    if (this.state.processedSportIntroductionEras !== undefined) return;
+    const currentEra = this.dependencies.getWorldEra?.();
+    const rank = ['ancient', 'classical', 'medieval', ...GAMES_OF_NATIONS_ERA_AUCTIONS, 'future'].indexOf(currentEra ?? 'ancient');
+    this.state.processedSportIntroductionEras = GAMES_OF_NATIONS_ERA_AUCTIONS.filter((era) =>
+      ['ancient', 'classical', 'medieval', ...GAMES_OF_NATIONS_ERA_AUCTIONS, 'future'].indexOf(era) <= rank,
+    );
+    this.state.introducedAdditionalSportIds ??= [];
+    this.state.sportIntroductionRecords ??= [];
+    this.state.futureFallbackActive = currentEra === 'future';
+    if (!this.state.frozenSportIds && this.state.phase !== 'waitingForFirstGames') this.freezeCurrentProgram();
+    this.log(`Legacy sport program migrated with five traditional sports; past era auctions treated as processed`);
+  }
+
   private nationName(nationId: string): string {
     return this.dependencies.getNationName(nationId) ?? nationId;
+  }
+
+  private isHumanNation(nationId: string): boolean {
+    return this.dependencies.isHumanNation?.(nationId) === true;
+  }
+
+  private isInteractiveHuman(nationId: string): boolean {
+    return this.isHumanNation(nationId) && this.dependencies.isAutoplayActive?.() !== true;
+  }
+
+  private selectAutoplayHostCity(
+    nationId: string,
+    cities: readonly GamesOfNationsHostCityCandidate[],
+  ): GamesOfNationsHostCityCandidate | undefined {
+    const capitalId = this.dependencies.getCapitalCity(nationId)?.id;
+    return cities.find((city) => city.id === capitalId)
+      ?? [...cities].sort((a, b) => b.productionPerTurn - a.productionPerTurn || a.id.localeCompare(b.id))[0];
+  }
+
+  /** Converts any already-open human GoN decision into its AI equivalent when autoplay starts. */
+  private resolveAutoplayHumanDecisions(): void {
+    if (this.dependencies.isAutoplayActive?.() !== true) return;
+    const candidate = this.state.hostCandidateNationId;
+    if (
+      candidate
+      && this.isHumanNation(candidate)
+      && (this.state.hostingDecision === 'pendingDecision' || this.state.hostingDecision === 'pendingCity')
+    ) {
+      const selected = this.selectAutoplayHostCity(candidate, this.validHostCities(candidate));
+      if (selected) this.confirmHosting(candidate, selected);
+      else this.declineHostingOffer(candidate);
+    }
+    const auction = this.state.pendingSportAuction;
+    if (!auction || auction.resolved) return;
+    for (const nationId of this.dependencies.getLivingNationIds()) {
+      if (!this.isHumanNation(nationId) || auction.proposals.some((proposal) => proposal.nationId === nationId)) continue;
+      auction.proposals.push(this.buildAIProposal(
+        nationId,
+        auction.candidateSportIds,
+        auction.triggerEra,
+        auction.gamesNumber,
+      ));
+    }
+    this.resolveSportAuction();
   }
 
   private log(message: string): void {
@@ -845,25 +1771,46 @@ function inactiveState(lastProcessedTurn: number): SavedGamesOfNationsState {
 }
 
 function normalizeState(state: SavedGamesOfNationsState): SavedGamesOfNationsState {
-  if (!state.founded) return inactiveState(Number.isFinite(state.lastProcessedTurn) ? state.lastProcessedTurn : 0);
-  const phase = ['waitingForFirstGames', 'preparation', 'competition', 'cooldown'].includes(state.phase)
+  if (!state.founded) {
+    return {
+      ...inactiveState(Number.isFinite(state.lastProcessedTurn) ? state.lastProcessedTurn : 0),
+      processedSportIntroductionEras: Array.isArray(state.processedSportIntroductionEras)
+        ? unique(state.processedSportIntroductionEras).filter((era) => GAMES_OF_NATIONS_ERA_AUCTIONS.includes(era as GamesOfNationsIntroductionEra)) as GamesOfNationsIntroductionEra[]
+        : [],
+      futureFallbackActive: state.futureFallbackActive === true,
+    };
+  }
+  const phase = ['waitingForFirstGames', 'preparation', 'competition', 'cancelled', 'cooldown'].includes(state.phase)
     ? state.phase
     : 'waitingForFirstGames';
-  const sportResults = normalizeSportResults(state.sportResults);
+  const introducedAdditionalSportIds = uniqueSportIds(state.introducedAdditionalSportIds, ADDITIONAL_GAMES_SPORT_IDS);
+  const programSportIds = [...TRADITIONAL_GAMES_SPORT_IDS, ...introducedAdditionalSportIds];
+  const frozenSportIds = uniqueSportIds(state.frozenSportIds, programSportIds);
+  const activeSportIds = frozenSportIds.length > 0 ? frozenSportIds : programSportIds;
+  const activeSports = activeSportIds.map((id) => getGamesSportById(id).name);
+  const sportResults = normalizeSportResults(state.sportResults, activeSports);
   const hostRotationOrder = unique(Array.isArray(state.hostRotationOrder) ? state.hostRotationOrder : []);
   const participants = Array.isArray(state.participants)
     ? state.participants
       .filter((participant) => participant && typeof participant.nationId === 'string')
       .map((participant) => normalizeParticipant(participant))
     : [];
+  const excludedGamesNumber = Number.isFinite(state.excludedGamesNumber)
+    ? Math.max(1, Math.floor(state.excludedGamesNumber!))
+    : undefined;
+  const excludedNationIds = unique(Array.isArray(state.excludedNationIds) ? state.excludedNationIds : []);
   const savedHostParticipant = participants.find((participant) => participant.nationId === state.hostNationId);
-  if (savedHostParticipant) savedHostParticipant.participating = true;
+  if (savedHostParticipant && !(excludedGamesNumber === state.competitionNumber && excludedNationIds.includes(savedHostParticipant.nationId))) {
+    savedHostParticipant.participating = true;
+  }
   const hasResolvedSport = sportResults.some((result) => result.resolved);
   const medalTable = hasResolvedSport || state.phase === 'competition' || state.phase === 'cooldown'
     ? buildMedalTable(
       sportResults,
       hostRotationOrder,
-      participants.filter((participant) => participant.participating).map((participant) => participant.nationId),
+      participants.filter((participant) => participant.participating
+        && !(excludedGamesNumber === state.competitionNumber && excludedNationIds.includes(participant.nationId)))
+        .map((participant) => participant.nationId),
     )
     : [];
   const hasMedals = medalTable.some((standing) => standing.gold + standing.silver + standing.bronze > 0);
@@ -873,11 +1820,24 @@ function normalizeState(state: SavedGamesOfNationsState): SavedGamesOfNationsSta
     phase,
     competitionNumber: Math.max(1, Math.floor(state.competitionNumber || 1)),
     hostRotationOrder,
+    offeredHostNationIds: unique(Array.isArray(state.offeredHostNationIds) ? state.offeredHostNationIds : []),
+    declinedHostNationIds: unique(Array.isArray(state.declinedHostNationIds) ? state.declinedHostNationIds : []),
     hostRotationIndex: Number.isFinite(state.hostRotationIndex) ? Math.floor(state.hostRotationIndex) : -1,
     participants,
+    ...(excludedGamesNumber !== undefined ? { excludedGamesNumber } : {}),
+    ...(state.excludedNationIds !== undefined ? { excludedNationIds } : {}),
     sportResults,
     medalTable,
     completedGames,
+    introducedAdditionalSportIds,
+    frozenSportIds: frozenSportIds.length > 0 ? frozenSportIds : undefined,
+    sportIntroductionRecords: Array.isArray(state.sportIntroductionRecords)
+      ? state.sportIntroductionRecords.filter((record) => record && isGamesSportId(record.sportId)).map((record) => ({ ...record }))
+      : [],
+    processedSportIntroductionEras: Array.isArray(state.processedSportIntroductionEras)
+      ? unique(state.processedSportIntroductionEras).filter((era) => GAMES_OF_NATIONS_ERA_AUCTIONS.includes(era as GamesOfNationsIntroductionEra)) as GamesOfNationsIntroductionEra[]
+      : undefined,
+    pendingSportAuction: normalizeAuction(state.pendingSportAuction, introducedAdditionalSportIds),
     ...(state.hostBonusCalculated === true ? { hostBonusCalculated: true } : {}),
     ...(Number.isFinite(state.totalExternalInitialGamesPoints)
       ? { totalExternalInitialGamesPoints: whole(state.totalExternalInitialGamesPoints!) }
@@ -899,10 +1859,20 @@ function cloneState(state: SavedGamesOfNationsState): SavedGamesOfNationsState {
   return {
     ...state,
     hostRotationOrder: [...state.hostRotationOrder],
+    offeredHostNationIds: [...(state.offeredHostNationIds ?? [])],
+    declinedHostNationIds: [...(state.declinedHostNationIds ?? [])],
+    ...(state.excludedNationIds !== undefined
+      ? { excludedNationIds: [...state.excludedNationIds] }
+      : {}),
     participants: state.participants.map(cloneParticipant),
     sportResults: (state.sportResults ?? []).map(cloneSportResult),
     medalTable: (state.medalTable ?? []).map((standing) => ({ ...standing })),
     completedGames: (state.completedGames ?? []).map(cloneCompletedGamesRecord),
+    introducedAdditionalSportIds: [...(state.introducedAdditionalSportIds ?? [])],
+    frozenSportIds: state.frozenSportIds ? [...state.frozenSportIds] : undefined,
+    sportIntroductionRecords: (state.sportIntroductionRecords ?? []).map((record) => ({ ...record })),
+    processedSportIntroductionEras: [...(state.processedSportIntroductionEras ?? [])],
+    pendingSportAuction: state.pendingSportAuction ? cloneAuction(state.pendingSportAuction) : undefined,
   };
 }
 
@@ -947,6 +1917,10 @@ function normalizeCompletedGames(value: CompletedGamesOfNationsRecord[] | undefi
     const gamesNumber = Math.max(1, Math.floor(candidate.gamesNumber));
     if (byNumber.has(gamesNumber)) continue;
     byNumber.set(gamesNumber, {
+      status: candidate.status === 'cancelled' ? 'cancelled' : 'completed',
+      ...(candidate.status === 'cancelled' && typeof candidate.cancellationReason === 'string'
+        ? { cancellationReason: candidate.cancellationReason }
+        : {}),
       gamesNumber,
       tournamentStartTurn: Math.max(0, Math.floor(candidate.tournamentStartTurn || 0)),
       completionTurn: Math.max(0, Math.floor(candidate.completionTurn || 0)),
@@ -956,12 +1930,16 @@ function normalizeCompletedGames(value: CompletedGamesOfNationsRecord[] | undefi
       hostNationName: typeof candidate.hostNationName === 'string' ? candidate.hostNationName : candidate.hostNationId ?? 'Unknown host',
       hostCityId: stringOrUndefined(candidate.hostCityId),
       hostCityName: typeof candidate.hostCityName === 'string' ? candidate.hostCityName : candidate.hostCityId ?? 'Unknown city',
+      ...(candidate.usedExistingGrandStadium === true ? { usedExistingGrandStadium: true } : {}),
       overallWinnerNationId: stringOrUndefined(candidate.overallWinnerNationId),
       overallWinnerNationName: stringOrUndefined(candidate.overallWinnerNationName),
       ...(Number.isFinite(candidate.hostBonusGamesPoints)
         ? { hostBonusGamesPoints: whole(candidate.hostBonusGamesPoints!) }
         : {}),
       ...(isGamesSport(candidate.hostBonusSport) ? { hostBonusSport: candidate.hostBonusSport } : {}),
+      sportIds: Array.isArray(candidate.sportIds)
+        ? uniqueSportIds(candidate.sportIds, GAMES_OF_NATIONS_SPORT_DEFINITIONS.map((sport) => sport.id))
+        : [...TRADITIONAL_GAMES_SPORT_IDS],
       medalTable: candidate.medalTable
         .filter((standing) => standing && typeof standing.nationId === 'string')
         .map((standing) => ({
@@ -977,24 +1955,24 @@ function normalizeCompletedGames(value: CompletedGamesOfNationsRecord[] | undefi
 }
 
 function cloneCompletedGamesRecord(record: CompletedGamesOfNationsRecord): CompletedGamesOfNationsRecord {
-  return { ...record, medalTable: record.medalTable.map((standing) => ({ ...standing })) };
+  return { ...record, sportIds: record.sportIds ? [...record.sportIds] : undefined, medalTable: record.medalTable.map((standing) => ({ ...standing })) };
 }
 
-function createSportResults(): GamesOfNationsSportResult[] {
-  return GAMES_OF_NATIONS_SPORTS.map((sport) => ({ sport, resolved: false }));
+function createSportResults(sports: readonly GamesOfNationsSport[] = GAMES_OF_NATIONS_SPORTS): GamesOfNationsSportResult[] {
+  return sports.map((sport) => ({ sport, resolved: false }));
 }
 
-function normalizeSportResults(value: GamesOfNationsSportResult[] | undefined): GamesOfNationsSportResult[] {
+function normalizeSportResults(value: GamesOfNationsSportResult[] | undefined, sports: readonly GamesOfNationsSport[]): GamesOfNationsSportResult[] {
   const saved = Array.isArray(value) ? value : [];
-  return GAMES_OF_NATIONS_SPORTS.map((sport) => {
+  return sports.map((sport) => {
     const candidate = saved.find((result) => result?.sport === sport);
     if (!candidate?.resolved) return { sport, resolved: false };
     return {
       sport,
       resolved: true,
       competitionTurn: Number.isFinite(candidate.competitionTurn)
-        ? Math.max(1, Math.min(5, Math.floor(candidate.competitionTurn!)))
-        : GAMES_OF_NATIONS_SPORTS.indexOf(sport) + 1,
+        ? Math.max(1, Math.min(sports.length, Math.floor(candidate.competitionTurn!)))
+        : sports.indexOf(sport) + 1,
       ...(stringOrUndefined(candidate.goldNationId) ? { goldNationId: candidate.goldNationId } : {}),
       ...(stringOrUndefined(candidate.silverNationId) ? { silverNationId: candidate.silverNationId } : {}),
       ...(stringOrUndefined(candidate.bronzeNationId) ? { bronzeNationId: candidate.bronzeNationId } : {}),
@@ -1019,7 +1997,7 @@ function newParticipant(nationId: string): GamesOfNationsParticipantState {
     participating: true,
     cultureCommitment: 0,
     productionCommitment: 0,
-    sportAllocation: equalSportValues(20),
+    unallocatedGamesPoints: 0,
     gamesPointsBySport: equalSportValues(0),
     totalGamesPoints: 0,
     totalCultureInvested: 0,
@@ -1036,11 +2014,13 @@ function normalizeParticipant(value: GamesOfNationsParticipantState): GamesOfNat
   participant.participating = partial.participating !== false;
   participant.cultureCommitment = whole(partial.cultureCommitment ?? 0);
   participant.productionCommitment = whole(partial.productionCommitment ?? 0);
-  participant.sportAllocation = normalizeAllocation(partial.sportAllocation ?? equalSportValues(20))
-    ?? equalSportValues(20);
+  // Legacy percentage preferences are intentionally discarded. Already committed
+  // sport GP remain exact and future GP enters the new unallocated pool.
+  participant.unallocatedGamesPoints = whole(partial.unallocatedGamesPoints ?? 0);
   participant.gamesPointsBySport = normalizeSportTotals(partial.gamesPointsBySport);
   participant.totalGamesPoints = whole(partial.totalGamesPoints
-    ?? GAMES_OF_NATIONS_SPORTS.reduce((sum, sport) => sum + participant.gamesPointsBySport[sport], 0));
+    ?? participant.unallocatedGamesPoints
+      + ALL_GAMES_SPORTS.reduce((sum, sport) => sum + participant.gamesPointsBySport[sport], 0));
   participant.totalCultureInvested = whole(partial.totalCultureInvested ?? 0);
   participant.totalProductionInvested = whole(partial.totalProductionInvested ?? 0);
   participant.failedCultureCommitmentTurns = whole(partial.failedCultureCommitmentTurns ?? 0);
@@ -1056,6 +2036,9 @@ function normalizeParticipant(value: GamesOfNationsParticipantState): GamesOfNat
   if (Number.isFinite(partial.cultureDiversionThisTurn)) {
     participant.cultureDiversionThisTurn = whole(partial.cultureDiversionThisTurn!);
   }
+  if (Number.isFinite(partial.gamesPointsGeneratedThisTurn)) {
+    participant.gamesPointsGeneratedThisTurn = whole(partial.gamesPointsGeneratedThisTurn!);
+  }
   if (partial.productionDiversionByCity && typeof partial.productionDiversionByCity === 'object') {
     participant.productionDiversionByCity = Object.fromEntries(
       Object.entries(partial.productionDiversionByCity).map(([cityId, amount]) => [cityId, whole(amount)]),
@@ -1067,7 +2050,6 @@ function normalizeParticipant(value: GamesOfNationsParticipantState): GamesOfNat
 function cloneParticipant(participant: GamesOfNationsParticipantState): GamesOfNationsParticipantState {
   return {
     ...participant,
-    sportAllocation: { ...participant.sportAllocation },
     gamesPointsBySport: { ...participant.gamesPointsBySport },
     productionDiversionByCity: participant.productionDiversionByCity
       ? { ...participant.productionDiversionByCity }
@@ -1082,51 +2064,56 @@ function equalSportValues(value: number): GamesOfNationsSportValues {
     Swimming: value,
     Javelin: value,
     'Long Jump': value,
+    'Horse Racing': value,
+    Boxing: value,
+    '100 Metres': value,
+    'Pole Vault': value,
+    Fencing: value,
   };
 }
 
 function normalizeSportTotals(value: GamesOfNationsSportValues | undefined): GamesOfNationsSportValues {
   const totals = equalSportValues(0);
   if (!value || typeof value !== 'object') return totals;
-  for (const sport of GAMES_OF_NATIONS_SPORTS) totals[sport] = whole(value[sport]);
+  for (const sport of ALL_GAMES_SPORTS) totals[sport] = whole(value[sport]);
   return totals;
 }
 
-function normalizeAllocation(value: GamesOfNationsSportValues): GamesOfNationsSportValues | null {
-  if (!value || typeof value !== 'object') return null;
-  const weights = GAMES_OF_NATIONS_SPORTS.map((sport) => Number(value[sport]));
-  if (weights.some((weight) => !Number.isFinite(weight) || weight < 0)) return null;
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  if (total <= 0) return null;
-  const normalized = equalSportValues(0);
-  let assigned = 0;
-  for (let index = 0; index < GAMES_OF_NATIONS_SPORTS.length; index += 1) {
-    const sport = GAMES_OF_NATIONS_SPORTS[index]!;
-    normalized[sport] = Math.floor((weights[index]! / total) * 100);
-    assigned += normalized[sport];
-  }
-  for (let index = 0; assigned < 100; index = (index + 1) % GAMES_OF_NATIONS_SPORTS.length) {
-    normalized[GAMES_OF_NATIONS_SPORTS[index]!] += 1;
-    assigned += 1;
-  }
-  return normalized;
-}
-
-export function distributeGamesPoints(
+export function distributeGamesPointsByWeights(
   points: number,
-  allocation: GamesOfNationsSportValues,
+  weights: GamesOfNationsSportValues,
+  sports: readonly GamesOfNationsSport[] = GAMES_OF_NATIONS_SPORTS,
 ): GamesOfNationsSportValues {
   const totalPoints = whole(points);
-  const normalized = normalizeAllocation(allocation) ?? equalSportValues(20);
+  const normalizedWeights = sports.map((sport) => whole(weights[sport]));
+  const totalWeight = normalizedWeights.reduce((sum, weight) => sum + weight, 0);
   const result = equalSportValues(0);
+  if (totalPoints === 0 || totalWeight === 0) return result;
   let assigned = 0;
-  for (const sport of GAMES_OF_NATIONS_SPORTS) {
-    result[sport] = Math.floor(totalPoints * normalized[sport] / 100);
+  for (let index = 0; index < sports.length; index += 1) {
+    const sport = sports[index]!;
+    result[sport] = Math.floor(totalPoints * normalizedWeights[index]! / totalWeight);
     assigned += result[sport];
   }
-  for (let index = 0; assigned < totalPoints; index = (index + 1) % GAMES_OF_NATIONS_SPORTS.length) {
-    result[GAMES_OF_NATIONS_SPORTS[index]!] += 1;
+  for (let index = 0; assigned < totalPoints; index = (index + 1) % sports.length) {
+    result[sports[index]!] += 1;
     assigned += 1;
+  }
+  return result;
+}
+
+/** Evenly distributes a pool, assigning remainder GP in canonical active-sport order. */
+export function distributeGamesPointsEvenly(
+  points: number,
+  sports: readonly GamesOfNationsSport[] = GAMES_OF_NATIONS_SPORTS,
+): GamesOfNationsSportValues {
+  const totalPoints = whole(points);
+  const result = equalSportValues(0);
+  const each = sports.length > 0 ? Math.floor(totalPoints / sports.length) : 0;
+  for (const sport of sports) result[sport] = each;
+  let remainder = sports.length > 0 ? totalPoints % sports.length : 0;
+  for (let index = 0; remainder > 0; index += 1, remainder -= 1) {
+    result[sports[index]!] += 1;
   }
   return result;
 }
@@ -1211,13 +2198,23 @@ function allocateProductionDiversion(
   return result;
 }
 
-function buildAIAllocation(seed: string): GamesOfNationsSportValues {
+export function buildAISportWeights(
+  seed: string,
+  sports: readonly GamesOfNationsSport[] = GAMES_OF_NATIONS_SPORTS,
+  preferences?: GamesOfNationsLeaderPreferences,
+): GamesOfNationsSportValues {
   const weights = equalSportValues(0);
-  const favoredIndex = Math.floor(stableUnit(`${seed}|favored`) * GAMES_OF_NATIONS_SPORTS.length);
-  GAMES_OF_NATIONS_SPORTS.forEach((sport, index) => {
-    weights[sport] = 10 + Math.floor(stableUnit(`${seed}|${sport}`) * 21) + (index === favoredIndex ? 24 : 0);
+  const favoredIndex = Math.floor(stableUnit(`${seed}|favored`) * sports.length);
+  const favouriteNames = new Set([
+    preferences?.traditionalFavourite,
+    preferences?.additionalFavourite,
+  ].filter((id): id is GamesOfNationsSportId => !!id).map((id) => getGamesSportById(id).name));
+  sports.forEach((sport, index) => {
+    weights[sport] = 10 + Math.floor(stableUnit(`${seed}|${sport}`) * 21)
+      + (index === favoredIndex ? 12 : 0)
+      + (favouriteNames.has(sport) ? 14 : 0);
   });
-  return normalizeAllocation(weights)!;
+  return weights;
 }
 
 function conservativeCommitment(output: number, rate: number, minimumOutput: number): number {
@@ -1239,7 +2236,58 @@ function stringOrUndefined(value: unknown): string | undefined {
 }
 
 function isGamesSport(value: unknown): value is GamesOfNationsSport {
-  return typeof value === 'string' && GAMES_OF_NATIONS_SPORTS.includes(value as GamesOfNationsSport);
+  return isGamesSportName(value);
+}
+
+function uniqueSportIds(
+  values: readonly GamesOfNationsSportId[] | undefined,
+  allowed: readonly GamesOfNationsSportId[],
+): GamesOfNationsSportId[] {
+  const allowedSet = new Set(allowed);
+  return [...new Set((Array.isArray(values) ? values : []).filter((id): id is GamesOfNationsSportId =>
+    isGamesSportId(id) && allowedSet.has(id),
+  ))];
+}
+
+function cloneAuction(auction: GamesOfNationsSportAuction): GamesOfNationsSportAuction {
+  return {
+    ...auction,
+    proposals: auction.proposals.map((proposal) => ({ ...proposal })),
+    candidateSportIds: [...auction.candidateSportIds],
+  };
+}
+
+function normalizeAuction(
+  auction: GamesOfNationsSportAuction | undefined,
+  introduced: readonly GamesOfNationsSportId[],
+): GamesOfNationsSportAuction | undefined {
+  if (!auction || auction.resolved || typeof auction.id !== 'string') return undefined;
+  const introducedSet = new Set(introduced);
+  const candidates = uniqueSportIds(auction.candidateSportIds, ADDITIONAL_GAMES_SPORT_IDS)
+    .filter((id) => !introducedSet.has(id));
+  if (candidates.length === 0) return undefined;
+  return {
+    ...auction,
+    resolved: false,
+    candidateSportIds: candidates,
+    proposals: Array.isArray(auction.proposals) ? auction.proposals.filter((proposal) =>
+      proposal && typeof proposal.nationId === 'string' && candidates.includes(proposal.sportId)
+        && Number.isFinite(proposal.bid) && proposal.bid >= 0,
+    ).map((proposal) => ({ ...proposal, bid: whole(proposal.bid) })) : [],
+  };
+}
+
+export function selectAuctionWinner(
+  proposals: readonly GamesOfNationsAuctionProposal[],
+  stableNationOrder: readonly string[],
+): GamesOfNationsAuctionProposal | undefined {
+  const order = new Map(stableNationOrder.map((nationId, index) => [nationId, index]));
+  return [...proposals].sort((a, b) =>
+    b.bid - a.bid
+      || b.preferenceStrength - a.preferenceStrength
+      || (order.get(a.nationId) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.nationId) ?? Number.MAX_SAFE_INTEGER)
+      || a.nationId.localeCompare(b.nationId),
+  )[0];
 }
 
 function whole(value: number): number {

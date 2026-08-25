@@ -1,5 +1,7 @@
 import { NEWSPAPER_EVENT_DEFINITIONS, NEWSPAPER_IMAGE_PATHS } from '../data/newspaperContent';
+import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { HistoricalEvent } from '../types/historicalTimeline';
+import { getWonderSpritePath } from '../utils/assetPaths';
 import type {
   NewspaperArticle,
   NewspaperArticleContext,
@@ -243,7 +245,7 @@ export class NewspaperSystem {
       involvedNationIds: [...event.eventNationIds],
       involvedNationNames: context.nationNames,
       involvedLeaderNames: context.leaderNames,
-      imagePath: includeImage ? definition.imagePath : undefined,
+      imagePath: includeImage ? resolveArticleImagePath(event, definition.imagePath) : undefined,
     };
   }
 
@@ -310,6 +312,22 @@ function getDefinition(event: HistoricalEvent): NewspaperEventDefinitionValue {
 }
 
 type NewspaperEventDefinitionValue = (typeof NEWSPAPER_EVENT_DEFINITIONS)[NewspaperEventType];
+
+function resolveArticleImagePath(event: HistoricalEvent, fallbackPath: string): string {
+  if (event.type !== 'wonderBuilt') return fallbackPath;
+
+  const metadataWonder = event.metadata?.wonderId
+    ? getWonderById(event.metadata.wonderId)
+    : undefined;
+  const namedWonder = metadataWonder ?? ALL_WONDERS.find((wonder) =>
+    wonder.name.toLocaleLowerCase() === event.metadata?.wonderName?.trim().toLocaleLowerCase(),
+  );
+  const loggedWonder = namedWonder ?? [...ALL_WONDERS]
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((wonder) => event.text.toLocaleLowerCase().includes(wonder.name.toLocaleLowerCase()));
+
+  return loggedWonder ? `/${getWonderSpritePath(loggedWonder.id)}` : fallbackPath;
+}
 
 function stableIndex(key: string, length: number): number {
   let hash = 2166136261;

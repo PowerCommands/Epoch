@@ -1,6 +1,7 @@
 import type { SavedGameState } from './saveGame';
 import type { GameSpeedId } from '../data/gameSpeeds';
 import type { CovertPersonalityId } from './covertPersonality';
+import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 
 export type ResourceAbundance = 'scarce' | 'normal' | 'abundant';
 
@@ -32,6 +33,8 @@ export interface VictoryConditionsConfig {
 
 export interface GameConfig {
   mapKey: string;
+  /** Embedded source for a procedurally generated map registered at runtime. */
+  generatedScenario?: GeneratedScenarioSnapshot;
   humanNationId: string;
   activeNationIds: string[];
   /**

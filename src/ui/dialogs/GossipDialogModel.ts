@@ -6,6 +6,7 @@ import type {
   GossipManipulationStatus,
   GossipManipulationCost,
   GossipInsultStatus,
+  KnownSportsPreferences,
 } from '../../types/gossip';
 
 export const GOSSIP_INFLUENCE_CHOICES = [10, 25, 50] as const;
@@ -37,7 +38,8 @@ export interface GossipDialogContext {
   getAvailableItems(): readonly GossipDefinition[];
   getValidTargets(sourceNationId: string, recipientNationId: string): GossipTarget[];
   getHumanInfluence(): number;
-  getItemAvailability(sourceNationId: string, itemId: string): GossipItemAvailability;
+  getItemAvailability(sourceNationId: string, itemId: string, recipientNationId?: string): GossipItemAvailability;
+  getKnownSportsPreferences?(sourceNationId: string, recipientNationId: string): KnownSportsPreferences | null;
   getManipulationStatus(sourceNationId: string, recipientNationId: string): GossipManipulationStatus;
   getManipulationCost(itemId: string, sourceNationId: string, influenceTier: number): GossipManipulationCost | undefined;
   getInsultStatus(sourceNationId: string, recipientNationId: string): GossipInsultStatus;
@@ -63,8 +65,8 @@ export class GossipDialogModel {
     this.recipientNationId = recipientNationId;
     this.targets = this.context.getValidTargets(this.sourceNationId, recipientNationId);
     this.selectedTargetNationId = this.targets[0]?.nationId ?? null;
-    this.selectedItemId = this.context.getAvailableItems()
-      .find((item) => this.context.getItemAvailability(this.sourceNationId, item.id).available)?.id ?? '';
+    this.selectedItemId = this.getItems()
+      .find((item) => this.context.getItemAvailability(this.sourceNationId, item.id, recipientNationId).available)?.id ?? '';
     this.latestResult = null;
   }
 
@@ -75,7 +77,11 @@ export class GossipDialogModel {
 
   isOpen(): boolean { return this.recipientNationId !== null; }
   getRecipientNationId(): string | null { return this.recipientNationId; }
-  getItems(): readonly GossipDefinition[] { return this.context.getAvailableItems(); }
+  getItems(): readonly GossipDefinition[] {
+    return this.context.getAvailableItems().filter((item) => (
+      this.context.getItemAvailability(this.sourceNationId, item.id, this.recipientNationId ?? undefined).visible !== false
+    ));
+  }
   getSelectedItem(): GossipDefinition | undefined { return this.getItems().find((item) => item.id === this.selectedItemId); }
   getTargets(): readonly GossipTarget[] { return this.targets; }
   getSelectedTarget(): GossipTarget | undefined { return this.targets.find((target) => target.nationId === this.selectedTargetNationId); }
@@ -85,7 +91,12 @@ export class GossipDialogModel {
     return this.context.getManipulationCost(itemId, this.sourceNationId, influenceTier);
   }
   getItemAvailability(itemId: string): GossipItemAvailability {
-    return this.context.getItemAvailability(this.sourceNationId, itemId);
+    return this.context.getItemAvailability(this.sourceNationId, itemId, this.recipientNationId ?? undefined);
+  }
+  getKnownSportsPreferences(): KnownSportsPreferences | null {
+    return this.recipientNationId
+      ? this.context.getKnownSportsPreferences?.(this.sourceNationId, this.recipientNationId) ?? null
+      : null;
   }
   getLatestResult(): GossipExecutionResult | null { return this.latestResult; }
 

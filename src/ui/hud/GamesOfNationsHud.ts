@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GamesOfNationsDialog } from '../GamesOfNationsDialog';
-import type { GamesOfNationsSport, GamesOfNationsSportValues } from '../../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportId } from '../../types/gamesOfNations';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import {
   GAMES_HUD_BUTTON_LAYOUT,
@@ -14,7 +14,13 @@ type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 export interface GamesOfNationsHudConfig {
   getModel: () => GamesOfNationsUiModel;
   onParticipationDecision: (participating: boolean) => boolean;
-  onApply: (culture: number, baseProduction: number, allocation: GamesOfNationsSportValues, hostBonusSport?: GamesOfNationsSport) => boolean;
+  onApply: (culture: number, baseProduction: number, hostBonusSport?: GamesOfNationsSport) => boolean;
+  onAllocateGamesPoints: (sport: GamesOfNationsSport, amount: number) => boolean;
+  onDistributeRemainingGamesPoints: () => boolean;
+  onHostingDecision: (accept: boolean) => boolean;
+  onHostCitySelected: (cityId: string) => boolean;
+  onSportAuctionBid: (sportId: GamesOfNationsSportId, bid: number) => boolean;
+  onSportAuctionAbstain: () => boolean;
   canOpen: () => boolean;
 }
 
@@ -33,6 +39,12 @@ export class GamesOfNationsHud {
       getModel: config.getModel,
       onParticipationDecision: config.onParticipationDecision,
       onApply: config.onApply,
+      onAllocateGamesPoints: config.onAllocateGamesPoints,
+      onDistributeRemainingGamesPoints: config.onDistributeRemainingGamesPoints,
+      onHostingDecision: config.onHostingDecision,
+      onHostCitySelected: config.onHostCitySelected,
+      onSportAuctionBid: config.onSportAuctionBid,
+      onSportAuctionAbstain: config.onSportAuctionAbstain,
     });
     this.button = new CircularHudProgressButton(scene, addOwned, worldInputGate, {
       depth: 139,
@@ -59,14 +71,27 @@ export class GamesOfNationsHud {
     this.button.setProgress(model.buttonProgress);
     this.button.setActive(model.buttonActive);
     this.button.setIcon(model.phase === 'competition'
-      ? model.competitionProgress?.replace(/\s/g, '') ?? '1/5'
+      ? model.competitionProgress?.replace(/\s/g, '') ?? `1/${model.activeSports.length}`
       : '🏆');
     this.button.setTooltip(model.buttonTooltip);
   }
 
   showPromptIfPending(): boolean {
     const model = this.config.getModel();
-    if (!model.promptPending || this.dialog.isOpen() || !this.config.canOpen()) return false;
+    if (this.dialog.isOpen() || !this.config.canOpen()) return false;
+    if (model.sportAuction) {
+      this.dialog.showSportAuction();
+      return true;
+    }
+    if (model.hostingPromptPending) {
+      this.dialog.showHostingPrompt();
+      return true;
+    }
+    if (model.hostCitySelectionPending) {
+      this.dialog.showHostCitySelection();
+      return true;
+    }
+    if (!model.promptPending) return false;
     this.dialog.showPrompt();
     return true;
   }

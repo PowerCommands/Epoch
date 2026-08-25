@@ -177,6 +177,15 @@ export class LeaderGossipDialog {
     if (!leader) return [];
     const selected = this.model.getSelectedItem();
     const rows: RightSidebarRow[] = [{ kind: 'text', text: 'Conversation actions', large: true }];
+    const sportsPreferences = this.model.getKnownSportsPreferences();
+    if (sportsPreferences) {
+      rows.push(
+        { kind: 'text', text: 'Known Information', large: true },
+        { kind: 'text', text: 'Sports Preferences' },
+        { kind: 'text', text: `${sportsPreferences.traditionalSport} / ${sportsPreferences.additionalSport}`, muted: true },
+        { kind: 'separator' },
+      );
+    }
     for (const category of ['information', 'manipulation', 'insult'] as const) {
       const items = this.model.getItems().filter((item) => item.type === category);
       const expanded = this.expandedCategory === category;
@@ -504,6 +513,8 @@ function failureText(reason: GossipFailureReason, rounds: number, leaderName: st
     case 'invalid_source':
     case 'invalid_recipient': return 'This conversation is no longer available.';
     case 'culture_locked': return 'You have not unlocked the required Cultural advancement.';
+    case 'games_not_founded': return 'Games of Nations has not been founded.';
+    case 'already_discovered': return 'You already know this leader’s sports preferences.';
   }
 }
 

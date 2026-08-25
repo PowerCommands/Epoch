@@ -14,7 +14,7 @@ import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import { GamesOfNationsHud } from './GamesOfNationsHud';
 import type { GamesOfNationsUiModel } from './GamesOfNationsUiModel';
-import type { GamesOfNationsSport, GamesOfNationsSportValues } from '../../types/gamesOfNations';
+import type { GamesOfNationsSport, GamesOfNationsSportId } from '../../types/gamesOfNations';
 import { IdleCitiesHudIndicator } from './IdleCitiesHudIndicator';
 import { MapLensToggleHud } from './MapLensToggleHud';
 import type { NationHudDataProvider } from './NationHudDataProvider';
@@ -46,12 +46,17 @@ interface HudLayerConfig {
   onDiscoveryClosed: () => void;
   getGamesOfNationsModel: () => GamesOfNationsUiModel;
   onGamesParticipationDecision: (participating: boolean) => boolean;
+  onGamesHostingDecision: (accept: boolean) => boolean;
+  onGamesHostCitySelected: (cityId: string) => boolean;
+  onGamesSportAuctionBid: (sportId: GamesOfNationsSportId, bid: number) => boolean;
+  onGamesSportAuctionAbstain: () => boolean;
   onApplyGamesStrategy: (
     culture: number,
     baseProduction: number,
-    allocation: GamesOfNationsSportValues,
     hostBonusSport?: GamesOfNationsSport,
   ) => boolean;
+  onAllocateGamesPoints: (sport: GamesOfNationsSport, amount: number) => boolean;
+  onDistributeRemainingGamesPoints: () => boolean;
   onToggleMapLens: () => void;
   getWorldCouncilFoundationState?: () => WorldCouncilFoundationDialogState | null;
   getWorldCouncilOverviewState?: () => WorldCouncilOverviewState | null;
@@ -162,6 +167,12 @@ export class HudLayer {
         getModel: this.config.getGamesOfNationsModel,
         onParticipationDecision: this.config.onGamesParticipationDecision,
         onApply: this.config.onApplyGamesStrategy,
+        onAllocateGamesPoints: this.config.onAllocateGamesPoints,
+        onDistributeRemainingGamesPoints: this.config.onDistributeRemainingGamesPoints,
+        onHostingDecision: this.config.onGamesHostingDecision,
+        onHostCitySelected: this.config.onGamesHostCitySelected,
+        onSportAuctionBid: this.config.onGamesSportAuctionBid,
+        onSportAuctionAbstain: this.config.onGamesSportAuctionAbstain,
         canOpen: () => !this.hasBlockingModal(),
       },
     );

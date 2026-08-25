@@ -31,6 +31,7 @@ function harness(saved?: SavedGamesOfNationsState, initialTurn = 1): Harness {
     getLivingNationIds: () => living,
     getNationName: (id) => ({ france: 'France', sweden: 'Sweden', england: 'England' })[id],
     getCapitalCity: (id) => capitals.get(id),
+    getCityName: (id) => ({ paris: 'Paris', stockholm: 'Stockholm', london: 'London', 'new-capital': 'Lyon' })[id],
     log: (message) => logs.push(message),
   };
   const system = saved
@@ -61,6 +62,7 @@ test('remains inactive before Games and Recreation is completed', () => {
   h.advanceTo(100);
   assert.deepEqual(h.system.getSummary(), {
     founded: false,
+    humanInteractionSuppressed: false,
     founderNationId: null,
     foundedTurn: null,
     firstGamesTurn: null,
@@ -68,12 +70,32 @@ test('remains inactive before Games and Recreation is completed', () => {
     competitionNumber: 0,
     hostNationId: null,
     hostCityId: null,
+    hostingGamesNumber: null,
+    hostCandidateNationId: null,
+    offeredHostNationIds: [],
+    declinedHostNationIds: [],
+    hostingDecision: null,
+    upcomingHostNationId: null,
+    upcomingHostCityId: null,
+    stadiumExists: false,
+    stadiumCompleted: false,
+    competitionDeadline: null,
+    cancellationReason: null,
+    stadiumRequirementGrandfathered: false,
     phaseStartTurn: null,
     nextTransitionTurn: null,
     turnsUntilNextPhase: null,
     nextGamesTurn: null,
     turnsUntilGames: null,
     activeSport: null,
+    activeSports: [...GAMES_OF_NATIONS_SPORTS],
+    activeSportIds: ['wrestling', 'marathon', 'swimming', 'javelin', 'long_jump'],
+    introducedAdditionalSportIds: [],
+    remainingAdditionalSportIds: ['horse_racing', 'boxing', 'hundred_metres', 'pole_vault', 'fencing'],
+    sportIntroductionRecords: [],
+    processedSportIntroductionEras: [],
+    futureFallbackActive: false,
+    pendingSportAuction: null,
     phaseProgressTurn: null,
     phaseTotalTurns: null,
     preparationActive: false,
@@ -93,6 +115,7 @@ test('remains inactive before Games and Recreation is completed', () => {
     historicalMedalStandings: [],
     participatingNationIds: [],
     participants: [],
+    effectiveGamesPointsByNation: {},
   });
 });
 
@@ -108,7 +131,7 @@ test('first unlock founds once and later unlocks do not reset the founder or sch
   assert.equal(h.system.getState().nextTransitionTurn, founded.nextTransitionTurn);
 });
 
-test('first Games begin exactly 25 turns later with founder and current capital hosting', () => {
+test('first Games begin exactly 25 turns later with the accepted host city locked', () => {
   const h = harness();
   foundAt80(h);
   h.capitals.set('france', { id: 'new-capital', name: 'Lyon' });
@@ -123,8 +146,8 @@ test('first Games begin exactly 25 turns later with founder and current capital 
   assert.equal(state.phase, 'competition');
   assert.equal(state.competitionNumber, 1);
   assert.equal(state.hostNationId, 'france');
-  assert.equal(state.hostCityId, 'new-capital');
-  assert.match(h.logs.join('\n'), /Games #1 begin in Lyon on turn 105/);
+  assert.equal(state.hostCityId, 'paris');
+  assert.match(h.logs.join('\n'), /Games #1 begin in Paris on turn 105/);
 });
 
 test('five competition turns expose sports in fixed order before cooldown', () => {
@@ -160,32 +183,30 @@ test('cooldown and preparation last ten turns each and preserve 25-turn competit
   assert.equal(h.system.getState().scheduledGamesTurn, 130);
 });
 
-test('host rotation is deterministic and skips invalid or eliminated nations', () => {
+test('host rotation is deterministic and a confirmed city is not rerolled after later invalidation', () => {
   const h = harness();
   foundAt80(h);
   h.advanceTo(105);
   assert.equal(h.system.getState().hostNationId, 'france');
-  h.advanceTo(119);
+  h.advanceTo(105);
+  assert.equal(h.system.getState().upcomingHostNationId, 'sweden');
   h.living.splice(h.living.indexOf('sweden'), 1);
   h.capitals.delete('sweden');
   h.advanceTo(120);
-  assert.equal(h.system.getState().hostNationId, 'england');
+  assert.equal(h.system.getState().hostNationId, 'sweden');
   h.advanceTo(130);
-  assert.equal(h.system.getState().hostNationId, 'england');
-  h.advanceTo(144);
-  h.advanceTo(145);
-  assert.equal(h.system.getState().hostNationId, 'france');
+  assert.equal(h.system.getState().phase, 'cancelled');
 });
 
-test('invalid first host is skipped safely when the first Games begin', () => {
+test('an accepted first host becoming invalid cancels instead of relocating the Games', () => {
   const h = harness();
   foundAt80(h);
   h.living.splice(h.living.indexOf('france'), 1);
   h.capitals.delete('france');
   h.advanceTo(105);
-  assert.equal(h.system.getState().phase, 'competition');
-  assert.equal(h.system.getState().hostNationId, 'sweden');
-  assert.equal(h.system.getState().hostCityId, 'stockholm');
+  assert.equal(h.system.getState().phase, 'cancelled');
+  assert.equal(h.system.getState().hostNationId, 'france');
+  assert.equal(h.system.getState().hostCityId, 'paris');
 });
 
 test('participation is cycle-scoped, defaults living nations in, and supports future opt-out', () => {

@@ -1,4 +1,4 @@
-import { ALL_BUILDINGS, getBuildingById } from '../../data/buildings';
+import { ALL_BUILDINGS, GRAND_STADIUM, getBuildingById } from '../../data/buildings';
 import { getImprovementById } from '../../data/improvements';
 import { getLeaderById, getLeaderByNationId, getLeaderIdeologyByNationId } from '../../data/leaders';
 import {
@@ -68,6 +68,7 @@ import type { ResourceCitySearchResult, ResourceCitySearchSystem } from '../../s
 import type { StrategicResourceCapacitySystem } from '../../systems/StrategicResourceCapacitySystem';
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
 import type { GamesOfNationsSystem } from '../../systems/GamesOfNationsSystem';
+import type { VictorySystem } from '../../systems/VictorySystem';
 import { buildDominationRanking } from '../../systems/DominationRanking';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import type { TradeDeal } from '../../types/tradeDeal';
@@ -192,6 +193,7 @@ export class RightSidebarPanelDataProvider {
   private detailsSearchQuery = '';
   private eraSystem: EraSystem | null = null;
   private gamesOfNationsSystem: GamesOfNationsSystem | null = null;
+  private victorySystem: VictorySystem | null = null;
   private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
@@ -317,6 +319,10 @@ export class RightSidebarPanelDataProvider {
 
   setGamesOfNationsSystem(system: GamesOfNationsSystem): void {
     this.gamesOfNationsSystem = system;
+  }
+
+  setVictorySystem(system: VictorySystem): void {
+    this.victorySystem = system;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -1295,7 +1301,10 @@ export class RightSidebarPanelDataProvider {
       });
     }
     rows.push({ kind: 'separator' });
-    for (const buildingType of ALL_BUILDINGS) {
+    const availableBuildings = this.gamesOfNationsSystem?.canCityConstructGrandStadium(city.id, city.ownerId)
+      ? [...ALL_BUILDINGS, GRAND_STADIUM]
+      : ALL_BUILDINGS;
+    for (const buildingType of availableBuildings) {
       if (this.cityManager.getBuildings(city.id).has(buildingType.id)) continue;
       if (reservedBuildingIds.has(buildingType.id)) continue;
       if (this.researchSystem && !this.researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;
@@ -2326,7 +2335,7 @@ export class RightSidebarPanelDataProvider {
   private getCulturalVictorySection(): RightSidebarSection {
     const entries = this.getCulturalVictoryLeaderboard();
     const headerRow = textRow(
-      `Cultural Victory — ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, and a Dominant currency.`,
+      `Cultural Victory — ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, a Dominant currency, and Reigning GoN Champion.`,
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0
@@ -2337,7 +2346,14 @@ export class RightSidebarPanelDataProvider {
         false,
         entry.color,
       ));
-    return { title: '🏛️ Cultural Victory', rows: [headerRow, ...rows] };
+    const humanProgress = this.humanNationId
+      ? this.victorySystem?.getCulturalVictoryProgress(this.humanNationId)
+      : undefined;
+    const feedbackRows = humanProgress?.normalRequirementsMet === true
+      && !humanProgress.isReigningGamesChampion
+      ? [textRow('Cultural Victory is within reach, but your nation must become the reigning Games of Nations champion.', true)]
+      : [];
+    return { title: '🏛️ Cultural Victory', rows: [headerRow, ...feedbackRows, ...rows] };
   }
 
   private getCulturalVictoryLeaderboard(): LeaderboardEntry[] {
@@ -2346,12 +2362,14 @@ export class RightSidebarPanelDataProvider {
       const owned = getOwnedWonderCount(nation.id, this.wonderSystem!, this.cityManager);
       const culture = this.nationManager.getResources(nation.id).culture;
       const currency = this.currencySystem?.getCurrencyState(nation.id)?.strength ?? 'Not established';
+      const champion = this.victorySystem
+        ?.getCulturalVictoryProgress(nation.id).isReigningGamesChampion === true;
       return {
         nationId: nation.id,
         name: nation.name,
         color: nation.color,
         score: culture,
-        detail: `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}${culture >= CULTURAL_VICTORY_REQUIRED_CULTURE ? ' ✓' : ''} · Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}${owned >= CULTURAL_VICTORY_REQUIRED_WONDERS ? ' ✓' : ''} · Currency ${currency}${currency === 'Dominant' ? ' ✓' : ''}`,
+        detail: `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}${culture >= CULTURAL_VICTORY_REQUIRED_CULTURE ? ' ✓' : ''} · Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}${owned >= CULTURAL_VICTORY_REQUIRED_WONDERS ? ' ✓' : ''} · Currency ${currency}${currency === 'Dominant' ? ' ✓' : ''} · Reigning GoN Champion ${champion ? '✓' : '✗'}`,
         secondaryScore: owned,
       };
     }));

@@ -38,6 +38,10 @@ export interface WorldCouncilOverviewProposal {
   readonly totalGoldDonated?: number;
   readonly outcomeText?: string;
   readonly voteSummary?: string;
+  readonly gamesNumber?: number;
+  readonly gamesHostingJustification?: string;
+  readonly proposedGamesHostNationName?: string;
+  readonly gamesParticipationJustification?: string;
 }
 
 export interface WorldCouncilOverviewDonation {
@@ -309,6 +313,26 @@ function formatOverview(state: WorldCouncilOverviewState): string {
             ? `${proposal.targetNationName} - ${proposal.secondaryTargetNationName}`
             : proposal.targetNationName;
           lines.push(`     Target: ${targetText}`);
+        }
+        if (proposal.resolutionId === 'games_of_nations_hosting') {
+          if (proposal.gamesNumber !== undefined) lines.push(`     Upcoming Games: #${proposal.gamesNumber}`);
+          if (proposal.targetNationName) lines.push(`     Current host: ${proposal.targetNationName}`);
+          if (proposal.proposedGamesHostNationName) lines.push(`     Proposed host: ${proposal.proposedGamesHostNationName}`);
+          if (proposal.gamesHostingJustification) {
+            lines.push(`     Official justification: “${proposal.gamesHostingJustification}”`);
+          }
+          if (proposal.proposedGamesHostNationName) {
+            lines.push(`     If passed, the current upcoming Games cycle will restart with ${proposal.proposedGamesHostNationName} as host.`);
+          }
+        }
+        if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+          if (proposal.gamesNumber !== undefined) lines.push(`     Upcoming Games: #${proposal.gamesNumber}`);
+          if (proposal.gamesParticipationJustification) {
+            lines.push(`     Official justification: “${proposal.gamesParticipationJustification}”`);
+          }
+          if (proposal.targetNationName) {
+            lines.push(`     Proposed action: Exclude ${proposal.targetNationName} from Games of Nations #${proposal.gamesNumber ?? '?'}.`);
+          }
         }
         lines.push(`     ${proposal.description}`);
         if (proposal.participantNationNames && proposal.participantNationNames.length > 0) {

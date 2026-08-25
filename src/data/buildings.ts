@@ -89,7 +89,19 @@ export const HOSPITAL = building({ id: 'hospital', name: 'Hospital', era: 'indus
 export const HOTEL = building({ id: 'hotel', name: 'Hotel', era: 'industrial', cost: 300, maintenance: 0, modifiers: { culturePercent: 10, happinessPerTurn: 4 }, description: 'Tourism conversion approximated as +10% culture' });
 
 export const BROADCAST_TOWER = building({ id: 'broadcast_tower', name: 'Broadcast Tower', era: 'modern', cost: 500, maintenance: 3, modifiers: { culturePerTurn: 3, culturePercent: 33, happinessPerTurn: 1 } });
-export const STADIUM = building({ id: 'stadium', name: 'Stadium', era: 'modern', cost: 500, maintenance: 2, modifiers: { happinessPerTurn: 5 } });
+/** Canonical happiness yield shared by the normal Stadium and Grand Stadium. */
+export const STADIUM_HAPPINESS_PER_TURN = 5;
+export const STADIUM = building({ id: 'stadium', name: 'Stadium', era: 'modern', cost: 500, maintenance: 2, modifiers: { happinessPerTurn: STADIUM_HAPPINESS_PER_TURN } });
+export const GRAND_STADIUM_BUILDING_ID = 'grand_stadium';
+export const GRAND_STADIUM = building({
+  id: GRAND_STADIUM_BUILDING_ID,
+  name: 'Grand Stadium',
+  era: 'classical',
+  cost: 150,
+  maintenance: 2,
+  modifiers: { happinessPerTurn: STADIUM_HAPPINESS_PER_TURN },
+  description: `A monumental arena required in the confirmed host city before Games of Nations can begin. +${STADIUM_HAPPINESS_PER_TURN} happiness.`,
+});
 export const MILITARY_BASE = building({ id: 'military_base', name: 'Military Base', era: 'modern', cost: 500, maintenance: 0, description: 'City defense omitted until building defense is modeled' , modifiers: { foodPerTurn: 2 }});
 export const MEDICAL_LAB = building({ id: 'medical_lab', name: 'Medical Lab', era: 'modern', cost: 500, maintenance: 3, description: 'Food carryover omitted until growth modifiers exist', modifiers: { foodPerTurn: 2 , happinessPerTurn: 1} });
 
@@ -133,7 +145,8 @@ export const BARBARIAN_CAMP: BuildingType = building({
 });
 
 /** Map structures that are NOT player-constructable but must still resolve by id. */
-export const SPECIAL_BUILDINGS: readonly BuildingType[] = [BARBARIAN_CAMP];
+/** Special buildings resolved by id but exposed only by their owning gameplay system. */
+export const SPECIAL_BUILDINGS: readonly BuildingType[] = [BARBARIAN_CAMP, GRAND_STADIUM];
 
 export function getBuildingById(id: string): BuildingType | undefined {
   return ALL_BUILDINGS.find((b) => b.id === id)

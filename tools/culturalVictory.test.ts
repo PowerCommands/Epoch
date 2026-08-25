@@ -35,6 +35,7 @@ function makeHarness(options: {
   targetHasCurrency?: boolean;
   targetIsHuman?: boolean;
   targetDominant?: boolean;
+  gamesChampionId?: string | null;
 } = {}) {
   const nationManager = new NationManager();
   const target = new Nation({
@@ -92,6 +93,13 @@ function makeHarness(options: {
     assert.equal(wonderSystem.completeWonder(targetCity, wonder, 1), true);
   }
 
+  let latestCompletedGames: { gamesNumber: number; overallWinnerNationId?: string } | undefined = options.gamesChampionId === null
+    ? undefined
+    : { gamesNumber: 1, overallWinnerNationId: options.gamesChampionId ?? TARGET_ID };
+  const gamesChampionSource = {
+    getLatestCompletedGames: () => latestCompletedGames,
+  };
+
   const victorySystem = new VictorySystem(
     cityManager,
     nationManager,
@@ -109,9 +117,13 @@ function makeHarness(options: {
     wonderSystem,
     undefined,
     currencySystem,
+    gamesChampionSource,
   );
 
   const evaluateVictory = () => turnManager.endCurrentTurn();
+  const setReigningGamesChampion = (nationId: string | undefined, gamesNumber = 1) => {
+    latestCompletedGames = { gamesNumber, overallWinnerNationId: nationId };
+  };
   return {
     target,
     rival,
@@ -124,6 +136,7 @@ function makeHarness(options: {
     victorySystem,
     wonderSystem,
     setEconomicStrength,
+    setReigningGamesChampion,
     evaluateVictory,
   };
 }
@@ -133,6 +146,70 @@ test('75,000 Culture, 8 Wonders, and Dominant Currency produce Cultural Victory'
   harness.evaluateVictory();
   assert.deepEqual(harness.victorySystem.getVictoryState()?.type, 'cultural');
   assert.equal(harness.victorySystem.getVictoryState()?.nationId, TARGET_ID);
+});
+
+test('normal Cultural Victory requirements are blocked before the first completed Games', () => {
+  const harness = makeHarness({ gamesChampionId: null });
+  const progress = harness.victorySystem.getCulturalVictoryProgress(TARGET_ID);
+
+  assert.equal(progress.normalRequirementsMet, true);
+  assert.equal(progress.latestCompletedGamesNumber, null);
+  assert.equal(progress.isReigningGamesChampion, false);
+  assert.equal(progress.victoryEligible, false);
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+});
+
+test('only the latest Games winner can pass the additional Cultural Victory gate', () => {
+  const harness = makeHarness({ gamesChampionId: RIVAL_ID });
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).normalRequirementsMet, true);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).isReigningGamesChampion, false);
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+});
+
+test('becoming reigning champion last enables victory through the normal turn-end evaluation', () => {
+  const harness = makeHarness({ gamesChampionId: RIVAL_ID });
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+
+  harness.setReigningGamesChampion(TARGET_ID, 2);
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState()?.type, 'cultural');
+  assert.equal(harness.victorySystem.getVictoryState()?.nationId, TARGET_ID);
+});
+
+test('a new Games winner immediately replaces the previous champion eligibility', () => {
+  const harness = makeHarness({ targetCulture: CULTURAL_VICTORY_REQUIRED_CULTURE - 1 });
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).isReigningGamesChampion, true);
+
+  harness.setReigningGamesChampion(RIVAL_ID, 2);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).isReigningGamesChampion, false);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(RIVAL_ID).isReigningGamesChampion, true);
+  harness.setReigningGamesChampion(RIVAL_ID, 3);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(RIVAL_ID).latestCompletedGamesNumber, 3);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(RIVAL_ID).isReigningGamesChampion, true);
+});
+
+test('winning Games alone does not bypass any existing Cultural Victory requirement', () => {
+  const harness = makeHarness({ targetCulture: CULTURAL_VICTORY_REQUIRED_CULTURE - 1 });
+  const progress = harness.victorySystem.getCulturalVictoryProgress(TARGET_ID);
+  assert.equal(progress.isReigningGamesChampion, true);
+  assert.equal(progress.normalRequirementsMet, false);
+  assert.equal(progress.victoryEligible, false);
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+});
+
+test('eliminating the reigning champion transfers no Games eligibility', () => {
+  const harness = makeHarness({ targetCulture: CULTURAL_VICTORY_REQUIRED_CULTURE - 1 });
+  harness.nationManager.removeNation(TARGET_ID);
+
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(RIVAL_ID).isReigningGamesChampion, false);
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+  harness.setReigningGamesChampion(RIVAL_ID, 2);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(RIVAL_ID).isReigningGamesChampion, true);
 });
 
 test('74,999 accumulated Culture does not satisfy Cultural Victory', () => {

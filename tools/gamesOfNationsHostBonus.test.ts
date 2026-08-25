@@ -18,22 +18,18 @@ import type {
   SavedGamesOfNationsState,
 } from '../src/types/gamesOfNations';
 
-const EQUAL: GamesOfNationsSportValues = {
-  Wrestling: 20, Marathon: 20, Swimming: 20, Javelin: 20, 'Long Jump': 20,
-};
-
 function participant(
   nationId: string,
   culture: number,
   production: number,
-  options: { participating?: boolean; allocation?: GamesOfNationsSportValues; baseGP?: number } = {},
+  options: { participating?: boolean; baseGP?: number; unallocatedGP?: number } = {},
 ): GamesOfNationsParticipantState {
   return {
     nationId,
     participating: options.participating ?? true,
     cultureCommitment: culture,
     productionCommitment: production,
-    sportAllocation: { ...(options.allocation ?? EQUAL) },
+    unallocatedGamesPoints: options.unallocatedGP ?? 0,
     gamesPointsBySport: Object.fromEntries(GAMES_OF_NATIONS_SPORTS.map((sport) => [sport, options.baseGP ?? 0])) as GamesOfNationsSportValues,
     totalGamesPoints: (options.baseGP ?? 0) * 5,
     totalCultureInvested: 0,
@@ -105,8 +101,8 @@ test('host bonus snapshots all participating non-host commitments, converts 10 G
   assert.equal(Math.floor(107 * HOST_GAMES_BONUS_RATE), 10);
 });
 
-test('human host must participate, selects exactly one locked sport, and later edits cannot alter the bank bonus', () => {
-  const state = preparationState('host', [participant('host', 0, 0), participant('a', 3, 5)]);
+test('human host must participate, selects exactly one locked sport, and direct normal GP cannot alter the bank bonus', () => {
+  const state = preparationState('host', [participant('host', 0, 0, { unallocatedGP: 10 }), participant('a', 3, 5)]);
   const system = GamesOfNationsSystem.fromSave(deps('host'), state, 90);
   assert.equal(system.setParticipation('host', false), false);
   assert.equal(system.confirmHumanPreparationConfiguration('host', 1), false);
@@ -117,10 +113,12 @@ test('human host must participate, selects exactly one locked sport, and later e
 
   assert.equal(system.setNationCultureCommitment('a', 100), true);
   assert.equal(system.setNationProductionCommitment('a', 0), true);
-  assert.equal(system.setNationSportAllocation('host', { ...EQUAL, Wrestling: 0, Marathon: 40 }), true);
+  assert.equal(system.allocateGamesPoints('host', 'Wrestling', 10), true);
   const after = system.getSummary();
   assert.equal(after.hostBonusGamesPoints, 8);
   assert.equal(after.hostBonusSport, 'Wrestling');
+  assert.equal(after.participants.find((entry) => entry.nationId === 'host')?.gamesPointsBySport.Wrestling, 10);
+  assert.equal(system.getEffectiveGamesPoints('host', 'Wrestling'), 18);
   assert.equal(after.participants.find((entry) => entry.nationId === 'a')?.initialCultureCommitment, 3);
   assert.equal(after.participants.find((entry) => entry.nationId === 'a')?.cultureCommitment, 100);
 });
@@ -140,10 +138,9 @@ test('failed investments and changed output neither recalculate the bonus nor de
   assert.equal(otherAfter?.failedProductionCommitmentTurns, 1);
 });
 
-test('AI host waits for the human initial configuration, chooses its strongest sport deterministically, and persists it', () => {
-  const favored: GamesOfNationsSportValues = { ...EQUAL, Swimming: 40, Wrestling: 0 };
+test('AI host waits for the human initial configuration, chooses a deterministic sport, and persists it', () => {
   const state = preparationState('host', [
-    participant('host', 1, 1, { allocation: favored }),
+    participant('host', 1, 1),
     participant('human', 2, 1),
   ]);
   const dependencies = deps('human');
@@ -163,9 +160,8 @@ test('AI host waits for the human initial configuration, chooses its strongest s
 test('effective competition GP boosts only the host selected sport and Chronicle favorite sees it', () => {
   const events: GamesOfNationsSportResolvedEvent[] = [];
   const turn = { value: 90 };
-  const marathonFavored: GamesOfNationsSportValues = { ...EQUAL, Marathon: 40, Wrestling: 0 };
   const prep = GamesOfNationsSystem.fromSave(deps('human', turn, events), preparationState('host', [
-    participant('host', 0, 0, { allocation: marathonFavored, baseGP: 100 }),
+    participant('host', 0, 0, { baseGP: 100 }),
     participant('human', 10, 0, { baseGP: 100 }),
   ]), 90);
   prep.confirmHumanPreparationConfiguration('human', 1);
@@ -174,6 +170,9 @@ test('effective competition GP boosts only the host selected sport and Chronicle
   competition.phaseStartTurn = 100;
   competition.nextTransitionTurn = 105;
   competition.lastProcessedTurn = 99;
+  competition.hostBonusCalculated = true;
+  competition.hostBonusGamesPoints = 10;
+  competition.hostBonusSport = 'Marathon';
   const system = GamesOfNationsSystem.fromSave(deps('human', turn, events), competition, 99);
   assert.equal(system.getEffectiveGamesPoints('host', 'Marathon'), 110);
   assert.equal(system.getEffectiveGamesPoints('host', 'Wrestling'), 100);

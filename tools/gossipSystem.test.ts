@@ -44,7 +44,7 @@ function makeHarness() {
   return { nations, diplomacy, gossip, setRound: (next: number) => { round = next; } };
 }
 
-test('catalog preserves the initial Manipulation and Insult definitions and has seven Information items', () => {
+test('catalog preserves the initial Manipulation and Insult definitions and includes sports preferences', () => {
   assert.deepEqual(
     GOSSIP_DEFINITIONS.filter((item) => item.type === 'information').map(({ id }) => id),
     [
@@ -55,6 +55,7 @@ test('catalog preserves the initial Manipulation and Insult definitions and has 
       'ask_most_feared',
       'ask_greatest_rival',
       'ask_war_risk',
+      'ask_sports_preferences',
     ],
   );
   assert.equal(GOSSIP_DEFINITIONS.find((item) => item.id === 'spread_distrust')?.type, 'manipulation');

@@ -228,7 +228,7 @@ function participant(nationId: string, value: number): GamesOfNationsParticipant
     participating: true,
     cultureCommitment: 0,
     productionCommitment: 0,
-    sportAllocation: sportValues(20),
+    unallocatedGamesPoints: 0,
     gamesPointsBySport,
     totalGamesPoints: value * 5,
     totalCultureInvested: 0,

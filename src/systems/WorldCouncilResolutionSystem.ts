@@ -21,6 +21,8 @@ export interface WorldCouncilResolutionContext {
   readonly participantNationIds?: string[];
   readonly targetNationId?: string;
   readonly secondaryTargetNationId?: string;
+  readonly gamesNumber?: number;
+  readonly gamesParticipationJustification?: string;
 }
 
 export interface WorldCouncilResolutionRuntime {
@@ -80,6 +82,24 @@ export interface WorldCouncilResolutionRuntime {
     readonly suggestedGold: number;
     readonly maxGold: number;
   }) => number | null;
+  readonly getGamesOfNationsHostingContext?: () => {
+    readonly gamesNumber: number;
+    readonly hostNationId: string;
+    readonly hostCityId?: string;
+  } | null;
+  readonly canNationTakeOverGamesHosting?: (nationId: string) => boolean;
+  readonly replaceGamesOfNationsHost?: (proposerNationId: string) => boolean;
+  readonly getGamesOfNationsParticipationContext?: () => {
+    readonly gamesNumber: number;
+    readonly eligibleNationIds: readonly string[];
+  } | null;
+  readonly getGamesOfNationsCompetitionStrength?: (nationId: string) => number;
+  readonly excludeGamesOfNationsParticipant?: (nationId: string, justification: string) => boolean;
+  readonly requestHumanGamesExclusionTarget?: (input: {
+    readonly proposerNationId: string;
+    readonly eligibleTargetNationIds: readonly string[];
+    readonly gamesNumber: number;
+  }) => string | null;
 }
 
 export interface WorldCouncilResolutionResolveContext {
@@ -115,6 +135,32 @@ const UN_SANCTION_DURATION_TURNS = 30;
 const UN_CEASEFIRE_DURATION_TURNS = 30;
 const UN_PEACEKEEPING_DURATION_TURNS = 30;
 
+export const GAMES_OF_NATIONS_HOSTING_JUSTIFICATIONS = [
+  'The current host has shown an alarming lack of enthusiasm for ceremonial flags.',
+  'The proposed host claims its weather is considerably more suitable for international sport, despite evidence to the contrary.',
+  "Concerns have been raised that the current host's opening ceremony may contain excessive amounts of interpretive dance.",
+  'The proposing nation insists that its citizens are significantly better at applauding.',
+  "The current host has allegedly failed to demonstrate sufficient respect for oversized mascots.",
+  'The proposing nation claims to possess superior snacks, wider streets and a much more convincing national anthem.',
+  "Anonymous sporting officials have expressed grave concerns about the quality of the current host's souvenir merchandise.",
+  'The proposing nation argues that the Games deserve a host capable of organizing a parade without causing a national emergency.',
+  "The current host has been accused of taking the phrase 'friendly competition' suspiciously seriously.",
+  'The proposing nation assures the Council that everything is already completely under control, despite having prepared absolutely nothing.',
+] as const;
+
+export const GAMES_OF_NATIONS_PARTICIPATION_JUSTIFICATIONS = [
+  'Serious concerns have been raised that the nation does not share the values expected of the international sporting community. Nobody has been able to explain precisely which values.',
+  'The nation has been described as a terrorist state by several officials, although the definition appears to become considerably less clear whenever anyone asks for details.',
+  'The nation stands accused of being a dictatorship and therefore insufficiently committed to the democratic principles traditionally associated with running very fast and throwing things.',
+  "Persistent doping allegations have cast doubt on the nation's athletes, several of whom are reported to have become suspiciously enthusiastic about breakfast.",
+  'International sporting officials have raised serious corruption allegations, apparently without noticing the irony.',
+  'The nation has repeatedly demonstrated conduct considered incompatible with the spirit of friendly competition, particularly the part involving being friendly.',
+  "Officials claim the nation's participation presents an unacceptable security risk. The exact nature of the risk remains classified, which everyone agrees makes it sound much more serious.",
+  'Questions have emerged regarding the eligibility of several athletes, their documentation and, in one particularly confusing case, whether the athlete actually exists.',
+  "The nation's government has been accused of unacceptable political interference in sport. The World Council has therefore decided to consider politically interfering in sport.",
+  'The nation has allegedly failed to demonstrate sufficient respect for the Games of Nations, its traditions, its officials and the surprisingly complicated regulations concerning ceremonial flags.',
+] as const;
+
 const RESOLUTIONS: readonly ResolutionDefinitionConfig[] = [
   {
     id: 'defense_support',
@@ -147,6 +193,32 @@ const RESOLUTIONS: readonly ResolutionDefinitionConfig[] = [
     votingType: 'influence',
     organizationKind: 'worldCouncil',
     execute: (context) => context.runtime?.shareMaps?.(context.memberNationIds),
+  },
+  {
+    id: 'games_of_nations_hosting',
+    title: 'Games of Nations Hosting Resolution',
+    description: 'Replace the current host of the next Games of Nations with the proposing nation.',
+    icon: '🏟️',
+    votingType: 'influence',
+    organizationKind: 'worldCouncil',
+    execute: (context) => {
+      if (context.proposerNationId) context.runtime?.replaceGamesOfNationsHost?.(context.proposerNationId);
+    },
+  },
+  {
+    id: 'exclude_games_of_nations_participant',
+    title: 'Games of Nations Participation Resolution',
+    description: 'Exclude a nation from participating in the upcoming Games of Nations.',
+    icon: '🚫',
+    votingType: 'influence',
+    organizationKind: 'worldCouncil',
+    execute: (context) => {
+      if (!context.targetNationId || !context.gamesParticipationJustification) return;
+      context.runtime?.excludeGamesOfNationsParticipant?.(
+        context.targetNationId,
+        context.gamesParticipationJustification,
+      );
+    },
   },
   {
     id: 'protect_world_heritage',
@@ -285,6 +357,14 @@ export class WorldCouncilResolutionSystem {
       .map(toPublicDefinition);
   }
 
+  getEligibleDefinitions(
+    organizationKind: WorldCouncilOrganizationKind,
+    proposerNationId?: string,
+  ): WorldCouncilResolutionDefinition[] {
+    return this.getDefinitions(organizationKind)
+      .filter((definition) => this.isProposalEligible(definition.id, proposerNationId));
+  }
+
   getDefinition(id: WorldCouncilResolutionId): WorldCouncilResolutionDefinition | undefined {
     const definition = this.definitions.get(id);
     return definition ? toPublicDefinition(definition) : undefined;
@@ -296,6 +376,71 @@ export class WorldCouncilResolutionSystem {
 
   getDurationTurns(id: WorldCouncilResolutionId): number | undefined {
     return this.definitions.get(id)?.durationTurns;
+  }
+
+  isProposalEligible(id: WorldCouncilResolutionId, proposerNationId?: string): boolean {
+    if (id === 'games_of_nations_hosting') {
+      if (!proposerNationId || this.runtime.isNationActive?.(proposerNationId) === false) return false;
+      const context = this.runtime.getGamesOfNationsHostingContext?.();
+      return !!context
+        && context.hostNationId !== proposerNationId
+        && this.runtime.canNationTakeOverGamesHosting?.(proposerNationId) !== false;
+    }
+    if (id === 'exclude_games_of_nations_participant') {
+      if (!proposerNationId || this.runtime.isNationActive?.(proposerNationId) === false) return false;
+      const context = this.runtime.getGamesOfNationsParticipationContext?.();
+      return !!context && context.eligibleNationIds.some((nationId) => nationId !== proposerNationId);
+    }
+    return true;
+  }
+
+  prepareProposal(proposal: WorldCouncilResolutionProposal, seed: number): WorldCouncilResolutionProposal {
+    if (proposal.resolutionId === 'games_of_nations_hosting') {
+      if (proposal.gamesHostingJustification) return proposal;
+      const context = this.runtime.getGamesOfNationsHostingContext?.();
+      if (!context || !proposal.proposerNationId) return proposal;
+      const reasonIndex = stableHash(`${seed}|${context.gamesNumber}|${proposal.proposerNationId}|${context.hostNationId}`)
+        % GAMES_OF_NATIONS_HOSTING_JUSTIFICATIONS.length;
+      return {
+        ...proposal,
+        targetNationId: context.hostNationId,
+        gamesNumber: context.gamesNumber,
+        gamesHostingJustification: GAMES_OF_NATIONS_HOSTING_JUSTIFICATIONS[reasonIndex],
+      };
+    }
+    if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+      if (proposal.gamesParticipationJustification && proposal.targetNationId) return proposal;
+      const context = this.runtime.getGamesOfNationsParticipationContext?.();
+      const proposerNationId = proposal.proposerNationId;
+      if (!context || !proposerNationId) return proposal;
+      const targets = context.eligibleNationIds.filter((nationId) => nationId !== proposerNationId);
+      const humanTarget = this.runtime.isHumanNation?.(proposerNationId) === true
+        ? this.runtime.requestHumanGamesExclusionTarget?.({
+            proposerNationId,
+            eligibleTargetNationIds: targets,
+            gamesNumber: context.gamesNumber,
+          })
+        : undefined;
+      const requestedTarget = proposal.targetNationId && targets.includes(proposal.targetNationId)
+        ? proposal.targetNationId
+        : humanTarget && targets.includes(humanTarget)
+          ? humanTarget
+          : undefined;
+      const targetNationId = requestedTarget
+        ?? [...targets].sort((a, b) =>
+            this.scoreGamesExclusionTarget(proposerNationId, b) - this.scoreGamesExclusionTarget(proposerNationId, a)
+            || stableHash(`${seed}|${a}`) - stableHash(`${seed}|${b}`))[0];
+      if (!targetNationId) return proposal;
+      const reasonIndex = stableHash(`${seed}|${context.gamesNumber}|${proposerNationId}|${targetNationId}`)
+        % GAMES_OF_NATIONS_PARTICIPATION_JUSTIFICATIONS.length;
+      return {
+        ...proposal,
+        targetNationId,
+        gamesNumber: context.gamesNumber,
+        gamesParticipationJustification: GAMES_OF_NATIONS_PARTICIPATION_JUSTIFICATIONS[reasonIndex],
+      };
+    }
+    return proposal;
   }
 
   chooseHostProposal(
@@ -346,6 +491,49 @@ export class WorldCouncilResolutionSystem {
           outcomeText: 'Unknown resolution.',
         },
       };
+    }
+
+    if (
+      proposal.resolutionId === 'games_of_nations_hosting'
+      && (
+        !proposal.proposerNationId
+        || !context.members.some((member) => member.nationId === proposal.proposerNationId)
+        || !this.isProposalEligible(proposal.resolutionId, proposal.proposerNationId)
+        || this.runtime.getGamesOfNationsHostingContext?.()?.hostNationId !== proposal.targetNationId
+      )
+    ) {
+      return {
+        proposal: {
+          ...proposal,
+          votes: [],
+          resolved: true,
+          passed: false,
+          outcomeText: 'The upcoming Games hosting situation is no longer eligible for replacement.',
+        },
+      };
+    }
+    if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+      const participation = this.runtime.getGamesOfNationsParticipationContext?.();
+      if (
+        !proposal.proposerNationId
+        || !proposal.targetNationId
+        || !proposal.gamesParticipationJustification
+        || proposal.proposerNationId === proposal.targetNationId
+        || !context.members.some((member) => member.nationId === proposal.proposerNationId)
+        || !participation
+        || participation.gamesNumber !== proposal.gamesNumber
+        || !participation.eligibleNationIds.includes(proposal.targetNationId)
+      ) {
+        return {
+          proposal: {
+            ...proposal,
+            votes: [],
+            resolved: true,
+            passed: false,
+            outcomeText: 'The upcoming Games participation list is no longer eligible for this exclusion.',
+          },
+        };
+      }
     }
 
     if (proposal.repealTargetEnactedResolutionId) {
@@ -443,6 +631,8 @@ export class WorldCouncilResolutionSystem {
       participantNationIds: proposal.participantNationIds,
       targetNationId: proposal.targetNationId,
       secondaryTargetNationId: proposal.secondaryTargetNationId,
+      gamesNumber: proposal.gamesNumber,
+      gamesParticipationJustification: proposal.gamesParticipationJustification,
       runtime: this.runtime,
     });
   }
@@ -742,6 +932,12 @@ export class WorldCouncilResolutionSystem {
     targetNationId: string | undefined,
     secondaryTargetNationId?: string,
   ): number {
+    if (proposal.resolutionId === 'games_of_nations_hosting') {
+      return this.scoreGamesHostingVote(voterNationId, proposal.proposerNationId, targetNationId);
+    }
+    if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+      return this.scoreGamesExclusionVote(voterNationId, proposal.proposerNationId, targetNationId);
+    }
     if (proposal.resolutionId === 'ceasefire_resolution') {
       return this.scoreCeasefireVote(voterNationId, targetNationId, secondaryTargetNationId);
     }
@@ -755,6 +951,80 @@ export class WorldCouncilResolutionSystem {
       return this.scoreRepealVote(voterNationId, proposal);
     }
     return 12;
+  }
+
+  private scoreGamesHostingVote(
+    voterNationId: string,
+    proposerNationId: string | undefined,
+    currentHostNationId: string | undefined,
+  ): number {
+    if (!proposerNationId || !currentHostNationId) return -100;
+    if (voterNationId === proposerNationId) return 100;
+    if (voterNationId === currentHostNationId) return -100;
+    let score = 0;
+    const proposerRelation = this.runtime.getRelationMemory?.(voterNationId, proposerNationId);
+    const hostRelation = this.runtime.getRelationMemory?.(voterNationId, currentHostNationId);
+    if (proposerRelation) {
+      score += (proposerRelation.trust - 50) * 0.45;
+      score += (proposerRelation.affinity ?? 0) * 0.28;
+      score -= proposerRelation.hostility * 0.5;
+      score -= (proposerRelation.suspicion ?? 0) * 0.2;
+    }
+    if (hostRelation) {
+      score -= (hostRelation.trust - 50) * 0.45;
+      score -= (hostRelation.affinity ?? 0) * 0.28;
+      score += hostRelation.hostility * 0.5;
+      score += (hostRelation.suspicion ?? 0) * 0.2;
+    }
+    if (this.runtime.areAllied?.(voterNationId, proposerNationId)) score += 35;
+    if (this.runtime.areAllied?.(voterNationId, currentHostNationId)) score -= 35;
+    if (this.runtime.getDiplomacyState?.(voterNationId, proposerNationId) === 'WAR') score -= 45;
+    if (this.runtime.getDiplomacyState?.(voterNationId, currentHostNationId) === 'WAR') score += 35;
+    return score;
+  }
+
+  private scoreGamesExclusionVote(
+    voterNationId: string,
+    proposerNationId: string | undefined,
+    targetNationId: string | undefined,
+  ): number {
+    if (!proposerNationId || !targetNationId) return -100;
+    if (voterNationId === proposerNationId) return 100;
+    if (voterNationId === targetNationId) return -100;
+    let score = 0;
+    const proposerRelation = this.runtime.getRelationMemory?.(voterNationId, proposerNationId);
+    const targetRelation = this.runtime.getRelationMemory?.(voterNationId, targetNationId);
+    if (proposerRelation) {
+      score += (proposerRelation.trust - 50) * 0.35;
+      score += (proposerRelation.affinity ?? 0) * 0.22;
+      score -= proposerRelation.hostility * 0.4;
+    }
+    if (targetRelation) {
+      score -= (targetRelation.trust - 50) * 0.45;
+      score -= (targetRelation.affinity ?? 0) * 0.25;
+      score += targetRelation.hostility * 0.55;
+      score += (targetRelation.suspicion ?? 0) * 0.25;
+    }
+    if (this.runtime.areAllied?.(voterNationId, proposerNationId)) score += 24;
+    if (this.runtime.areAllied?.(voterNationId, targetNationId)) score -= 45;
+    if (this.runtime.getDiplomacyState?.(voterNationId, targetNationId) === 'WAR') score += 35;
+    if (this.runtime.getDiplomacyState?.(voterNationId, proposerNationId) === 'WAR') score -= 35;
+    score += Math.min(15, Math.max(0, this.runtime.getGamesOfNationsCompetitionStrength?.(targetNationId) ?? 0) / 100);
+    return score;
+  }
+
+  private scoreGamesExclusionTarget(proposerNationId: string, targetNationId: string): number {
+    const relation = this.runtime.getRelationMemory?.(proposerNationId, targetNationId);
+    let score = Math.min(25, Math.max(0, this.runtime.getGamesOfNationsCompetitionStrength?.(targetNationId) ?? 0) / 80);
+    if (this.runtime.getDiplomacyState?.(proposerNationId, targetNationId) === 'WAR') score += 60;
+    if (this.runtime.areAllied?.(proposerNationId, targetNationId)) score -= 80;
+    if (relation) {
+      score += relation.hostility * 0.7;
+      score += (relation.suspicion ?? 0) * 0.35;
+      score -= relation.trust * 0.55;
+      score -= (relation.affinity ?? 0) * 0.3;
+    }
+    return score;
   }
 
   private chooseInfluenceCommitment(
@@ -1170,6 +1440,12 @@ export class WorldCouncilResolutionSystem {
     proposal: WorldCouncilResolutionProposal,
     context: WorldCouncilResolutionResolveContext,
   ): { targetNationId?: string; secondaryTargetNationId?: string } {
+    if (proposal.resolutionId === 'games_of_nations_hosting') {
+      return { targetNationId: proposal.targetNationId };
+    }
+    if (proposal.resolutionId === 'exclude_games_of_nations_participant') {
+      return { targetNationId: proposal.targetNationId };
+    }
     if (proposal.resolutionId === 'ceasefire_resolution') {
       return this.chooseCeasefireTargets(proposal, context);
     }
@@ -1399,7 +1675,9 @@ export class WorldCouncilResolutionSystem {
 }
 
 function requiresTarget(resolutionId: WorldCouncilResolutionId): boolean {
-  return resolutionId === 'condemn_aggressive_war'
+  return resolutionId === 'games_of_nations_hosting'
+    || resolutionId === 'exclude_games_of_nations_participant'
+    || resolutionId === 'condemn_aggressive_war'
     || resolutionId === 'international_sanctions'
     || resolutionId === 'international_embargo'
     || resolutionId === 'ceasefire_resolution'
