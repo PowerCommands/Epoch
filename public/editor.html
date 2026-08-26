@@ -879,6 +879,7 @@ let unitManifest = { units: [] };
 let buildingManifest = { buildings: [] };
 let technologyManifest = { technologies: [] };
 let cultureTreeManifest = { cultureNodes: [] };
+let cityNamesManifest = { cityNames: {} };
 let templateManifest = { templates: [] };
 // Editor-only background tracing image (never part of scenario gameplay data).
 let templateName = null;
@@ -945,7 +946,7 @@ let editorAutosaveQuotaWarned = false;
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, buildingManifest, technologyManifest, cultureTreeManifest, templateManifest] = await Promise.all([
+  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, buildingManifest, technologyManifest, cultureTreeManifest, cityNamesManifest, templateManifest] = await Promise.all([
     loadMapManifest(),
     loadNationRegistry(),
     loadNaturalResourceManifest(),
@@ -953,6 +954,7 @@ async function init() {
     loadBuildingManifest(),
     loadTechnologyManifest(),
     loadCultureTreeManifest(),
+    loadCityNamesManifest(),
     loadTemplateManifest(),
   ]);
   buildUnitTypeSelect();
@@ -1647,6 +1649,26 @@ async function loadCultureTreeManifest() {
   }
 
   return { cultureNodes: [] };
+}
+
+async function loadCityNamesManifest() {
+  try {
+    const res = await fetch('/assets/data/city-names-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`city names manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && manifest.cityNames && typeof manifest.cityNames === 'object') {
+      const cityNames = {};
+      for (const [nationId, names] of Object.entries(manifest.cityNames)) {
+        if (!Array.isArray(names)) continue;
+        cityNames[nationId] = names.filter(name => typeof name === 'string' && name.length > 0);
+      }
+      return { cityNames };
+    }
+  } catch (err) {
+    console.warn('Failed to load city names manifest.', err);
+  }
+
+  return { cityNames: {} };
 }
 
 function buildUnitTypeSelect() {
@@ -3785,9 +3807,21 @@ function slugifyLabel(label) {
 }
 
 function makeDefaultCityName(nation) {
+  // Draw from the nation's real city-name pool (same pools the game uses when
+  // founding cities) so scenarios read as believable finished worlds. Names
+  // already used anywhere in the scenario are skipped so each city is unique.
+  const used = new Set(scenario.cities.map(c => c.name));
+  const pool = (cityNamesManifest.cityNames && cityNamesManifest.cityNames[nation.id]) || [];
+  for (const name of pool) {
+    if (!used.has(name)) return name;
+  }
+
+  // Pool missing or exhausted: fall back to a readable, unique nation-based name.
   const base = nation.name ? `${nation.name} City` : 'New City';
-  const ownedCount = scenario.cities.filter(c => c.nationId === nation.id).length;
-  return ownedCount === 0 ? base : `${base} ${ownedCount + 1}`;
+  let n = scenario.cities.filter(c => c.nationId === nation.id).length + 1;
+  let candidate = n === 1 ? base : `${base} ${n}`;
+  while (used.has(candidate)) { n += 1; candidate = `${base} ${n}`; }
+  return candidate;
 }
 
 function addCityAt(q, r) {
