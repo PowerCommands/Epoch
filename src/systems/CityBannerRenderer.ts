@@ -451,7 +451,15 @@ export class CityBannerRenderer {
     }
 
     if (production.kind === 'manufacturedResource') {
-      return { textureKey: undefined, fallbackLabel: 'AP' };
+      const textureKey = this.ensureProductionTexture(
+        'manufacturedResource',
+        production.productionType.id,
+        getCorporationSpritePath(production.productionType.id),
+      );
+      return {
+        textureKey,
+        fallbackLabel: getAbbreviation(production.productionType.name),
+      };
     }
 
     const textureKey = this.ensureProductionTexture(

@@ -59,7 +59,7 @@ interface ContentInput {
 
 const DEPTH = 1200;
 const EDGE_MARGIN = 16;
-const PANEL_WIDTH = 678;
+const PANEL_WIDTH = 778;
 const LEADERBOARD_PANEL_WIDTH = 1110;
 const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
@@ -106,7 +106,7 @@ export const LEADERBOARD_CATEGORIES: Array<{
 }> = [
   { id: 'domination', label: '⚔️ Domination', accentColor: 0xf08a7e },
   { id: 'diplomacy', label: '🕊️ Diplomacy', accentColor: 0xa7f3d0 },
-  { id: 'research', label: '💡 Research', accentColor: 0x6ec6ff },
+  { id: 'research', label: '💡 Science', accentColor: 0x6ec6ff },
   { id: 'cultural', label: '🏛️ Cultural', accentColor: 0xf4d06f },
   { id: 'gon', label: 'Game of nations', accentColor: 0xe0b94f },
 ];
@@ -131,6 +131,7 @@ const LEADER_DETAIL_TABS: Array<{
   { id: 'cities', label: 'Cities', accentColor: 0x86efac },
   { id: 'diplomacy', label: 'Diplomacy', accentColor: 0xa7f3d0 },
   { id: 'relations', label: 'Relations', accentColor: 0xf0a8c0 },
+  { id: 'economics', label: 'Economics', accentColor: 0x7fc8a9 },
   { id: 'trade', label: 'Trade', accentColor: 0xf4d06f },
   { id: 'deals', label: 'Deals', accentColor: 0xc084fc },
 ];

@@ -10,6 +10,15 @@ export function buildGamesOfNationsLeaderboardSections(
   standings: readonly GamesOfNationsHistoricalStanding[],
   completedGames: readonly CompletedGamesOfNationsRecord[],
 ): RightSidebarSection[] {
+  const culturalVictoryNote: RightSidebarSection = {
+    title: 'Cultural Victory',
+    rows: [{
+      kind: 'text',
+      text: 'To win a Cultural Victory, a nation must be the Reigning GoN Champion.',
+      muted: true,
+    }],
+  };
+
   const medalLeague: RightSidebarSection = {
     title: 'Games of Nations Medal League',
     rows: standings.length === 0
@@ -58,5 +67,5 @@ export function buildGamesOfNationsLeaderboardSections(
       }],
   };
 
-  return [medalLeague, tournamentHistory];
+  return [culturalVictoryNote, medalLeague, tournamentHistory];
 }

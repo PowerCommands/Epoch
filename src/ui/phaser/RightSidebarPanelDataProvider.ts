@@ -14,7 +14,6 @@ import { CORPORATIONS } from '../../data/corporations';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
 import { getResourceDisplayName } from '../../data/resources';
 import {
-  AEROSPACE_INDUSTRIES_ID,
   AEROSPACE_PART_PRODUCTION,
   AEROSPACE_PARTS_ID,
   DEFAULT_REQUIRED_AEROSPACE_PARTS,
@@ -24,6 +23,7 @@ import type { Nation } from '../../entities/Nation';
 import type { Unit } from '../../entities/Unit';
 import { calculateCityEconomy } from '../../systems/CityEconomy';
 import type { CityManager } from '../../systems/CityManager';
+import type { CityDefenseSystem } from '../../systems/CityDefenseSystem';
 import type { CityTerritorySystem } from '../../systems/CityTerritorySystem';
 import type { DiplomacyManager } from '../../systems/DiplomacyManager';
 import { MIN_WAR_TURNS_FOR_PEACE } from '../../systems/DiplomacyManager';
@@ -194,6 +194,7 @@ export class RightSidebarPanelDataProvider {
   private eraSystem: EraSystem | null = null;
   private gamesOfNationsSystem: GamesOfNationsSystem | null = null;
   private victorySystem: VictorySystem | null = null;
+  private cityDefenseSystem: CityDefenseSystem | null = null;
   private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
@@ -323,6 +324,10 @@ export class RightSidebarPanelDataProvider {
 
   setVictorySystem(system: VictorySystem): void {
     this.victorySystem = system;
+  }
+
+  setCityDefenseSystem(system: CityDefenseSystem): void {
+    this.cityDefenseSystem = system;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -761,6 +766,11 @@ export class RightSidebarPanelDataProvider {
     const turnsUntilGrowth = effectiveGrowthPerTurn > 0
       ? Math.ceil((economy.foodToGrow - city.foodStorage) / effectiveGrowthPerTurn)
       : null;
+    const fortificationDefensePercent = this.cityDefenseSystem?.getFortificationDefensePercent(city) ?? 0;
+    const effectiveCityDefense = this.cityDefenseSystem?.getEffectiveDefense(city) ?? CITY_BASE_DEFENSE;
+    const defenseLabel = fortificationDefensePercent > 0
+      ? `Defense: ${effectiveCityDefense} (Fortifications +${fortificationDefensePercent}%)`
+      : `Defense: ${effectiveCityDefense}`;
 
     switch (tab) {
       case 'city':
@@ -783,7 +793,7 @@ export class RightSidebarPanelDataProvider {
           textRow(`Health: ${city.health}/${CITY_BASE_HEALTH}`),
           progressRow('Health', city.health, CITY_BASE_HEALTH),
           textRow(`Tile position: ${city.tileX}, ${city.tileY}`),
-          textRow(`Defense: ${CITY_BASE_DEFENSE}`),
+          textRow(defenseLabel),
           textRow(`Garrison: ${garrison?.name ?? 'none'}`),
         ],
           }],
@@ -977,6 +987,8 @@ export class RightSidebarPanelDataProvider {
         return this.getLeaderDiplomacyContent(leader);
       case 'relations':
         return this.getLeaderRelationsContent(leader);
+      case 'economics':
+        return this.getLeaderEconomicsContent(leader);
       case 'trade':
         return this.getLeaderTradeContent(leader);
       case 'deals':
@@ -1123,6 +1135,103 @@ export class RightSidebarPanelDataProvider {
     return { title: 'Leader Details', sections: [this.getDiplomacySection(leader.nationId)] };
   }
 
+  private getLeaderEconomicsContent(leader: { nationId: string }): RightSidebarContent {
+    const nationId = leader.nationId;
+    if (nationId !== this.humanNationId && !this.isNationKnown(nationId)) {
+      return {
+        title: 'Leader Details',
+        sections: [{ title: 'Economics', rows: [textRow('You have not met this nation.', true)] }],
+      };
+    }
+
+    const resources = this.nationManager.getResources(nationId);
+    const unitUpkeep = this.unitUpkeepSystem?.calculateUpkeep(nationId) ?? 0;
+    const currency = this.currencySystem?.getCurrencyState(nationId);
+    const foundedCorporations = this.corporationSystem?.getFoundedCorporationsForNation(nationId) ?? [];
+
+    const corporationRows = foundedCorporations.map((founded) => {
+      const definition = CORPORATIONS.find((entry) => entry.id === founded.corporationId);
+      const headquarters = founded.cityId ? this.cityManager.getCity(founded.cityId) : undefined;
+      const manufacturedGood = definition
+        ? getManufacturedResourceById(definition.manufacturedResourceId)
+        : undefined;
+      const details = [
+        headquarters ? `HQ: ${headquarters.name}` : 'Headquarters not recorded',
+        manufacturedGood ? `Produces: ${manufacturedGood.name}` : undefined,
+      ].filter((entry): entry is string => entry !== undefined).join(' · ');
+      return textRow(
+        `${definition?.name ?? founded.corporationId} — ${details}`,
+        false,
+        false,
+        undefined,
+        getCorporationSpritePath(founded.corporationId),
+      );
+    });
+
+    const naturalResourceRows = (this.resourceAccessSystem?.getAvailableResources(nationId) ?? [])
+      .map((resourceId) => {
+        const resource = getNaturalResourceById(resourceId);
+        if (!resource) return undefined;
+        const quantity = this.resourceAccessSystem?.getResourceSourceCount(nationId, resourceId) ?? 0;
+        if (quantity <= 0) return undefined;
+        return { resource, quantity };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+      .sort((a, b) => a.resource.name.localeCompare(b.resource.name))
+      .map(({ resource, quantity }) => textRow(
+        `${resource.name} ×${quantity}`,
+        false,
+        false,
+        undefined,
+        getNaturalResourceSpritePath(resource.id),
+      ));
+
+    const manufacturedResourceRows = (this.resourceAccessSystem
+      ?.getAvailableManufacturedResourceQuantities(nationId) ?? [])
+      .map((entry) => {
+        const resource = getManufacturedResourceById(entry.resourceId);
+        return textRow(`${resource?.name ?? entry.resourceId} ×${entry.quantity}`);
+      });
+
+    return {
+      title: 'Leader Details',
+      sections: [
+        {
+          title: 'Treasury',
+          rows: [
+            textRow(`Gold: ${resources.gold.toLocaleString()}`, false, true),
+            textRow(`Gold per turn: ${formatSigned(resources.goldPerTurn)}`),
+            textRow(`Unit upkeep per turn: ${formatSigned(-unitUpkeep)}`),
+            textRow(`Net gold per turn: ${formatSigned(resources.goldPerTurn - unitUpkeep)}`),
+          ],
+        },
+        {
+          title: 'Currency',
+          rows: currency
+            ? [
+              textRow(`${currency.currencyName} (${currency.currencySymbol})`, false, true),
+              textRow(`Strength: ${currency.strength}`),
+            ]
+            : [textRow('No established currency.', true)],
+        },
+        {
+          title: `Corporations (${foundedCorporations.length})`,
+          rows: corporationRows.length > 0 ? corporationRows : [textRow('None founded.', true)],
+        },
+        {
+          title: 'Natural Resources',
+          rows: naturalResourceRows.length > 0 ? naturalResourceRows : [textRow('None available.', true)],
+        },
+        {
+          title: 'Manufactured Goods',
+          rows: manufacturedResourceRows.length > 0
+            ? manufacturedResourceRows
+            : [textRow('None available.', true)],
+        },
+      ],
+    };
+  }
+
   /**
    * Trade tab — now read-only. It surfaces what each side can trade and the
    * gating reasons, but the interactive Buy controls live in the Leader
@@ -1254,6 +1363,11 @@ export class RightSidebarPanelDataProvider {
         .filter((buildingId): buildingId is string => buildingId !== undefined),
     );
     const rows: RightSidebarRow[] = [];
+    const queuedBuildingIds = new Set(
+      this.productionSystem.getQueue(city.id)
+        .filter((entry) => entry.item.kind === 'building')
+        .map((entry) => entry.item.kind === 'building' ? entry.item.buildingType.id : ''),
+    );
     for (const unitType of ALL_UNIT_TYPES) {
       if (this.researchSystem && !this.researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
       const disabledReason = getCityUnitProductionBlockReason(
@@ -1307,6 +1421,7 @@ export class RightSidebarPanelDataProvider {
     for (const buildingType of availableBuildings) {
       if (this.cityManager.getBuildings(city.id).has(buildingType.id)) continue;
       if (reservedBuildingIds.has(buildingType.id)) continue;
+      if (queuedBuildingIds.has(buildingType.id)) continue;
       if (this.researchSystem && !this.researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;
       const item: Producible = { kind: 'building', buildingType };
       rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})`, () => {
@@ -1373,7 +1488,7 @@ export class RightSidebarPanelDataProvider {
         text: `${AEROSPACE_PART_PRODUCTION.name} (${turns}) — ${aerospacePartSystem.getQuantity(city.ownerId)}/${this.requiredAerospaceParts}${reason ? ` — ${reason}` : ''}`,
         disabled: reason !== undefined,
         accentColor: 0x8fb9d9,
-        spritePath: getCorporationSpritePath(AEROSPACE_INDUSTRIES_ID),
+        spritePath: getCorporationSpritePath(AEROSPACE_PARTS_ID),
         onClick: () => {
           if (reason || !aerospacePartSystem.canCityProduce(city)) return;
           this.productionSystem.enqueue(city.id, item);
@@ -2310,23 +2425,14 @@ export class RightSidebarPanelDataProvider {
     return `${resourceName}: ${sellerSide} → ${buyerSide} | ${deal.goldPerTurn} gold/turn | ${deal.remainingTurns} ${turnsWord} left`;
   }
 
-  private getLeaderboardSection(title: string, entries: LeaderboardEntry[]): RightSidebarSection {
-    return {
-      title,
-      rows: entries.length === 0
-        ? [textRow('No leaderboard data available.', true)]
-        : entries.map((entry, index) => textRow(`${index + 1}. ${entry.name}: ${entry.score} (${entry.detail})`, false, false, entry.color)),
-    };
-  }
-
   private getLeaderboardSectionByCategory(category: Exclude<RightSidebarLeaderboardCategory, 'gon'>): RightSidebarSection {
     switch (category) {
       case 'domination':
-        return this.getLeaderboardSection('⚔️ Domination', this.getDominationLeaderboard());
+        return this.getDominationVictorySection();
       case 'diplomacy':
         return this.getDiplomaticVictorySection();
       case 'research':
-        return this.getLeaderboardSection('💡 Research', this.getResearchLeaderboard());
+        return this.getScienceVictorySection();
       case 'cultural':
         return this.getCulturalVictorySection();
     }
@@ -2346,14 +2452,7 @@ export class RightSidebarPanelDataProvider {
         false,
         entry.color,
       ));
-    const humanProgress = this.humanNationId
-      ? this.victorySystem?.getCulturalVictoryProgress(this.humanNationId)
-      : undefined;
-    const feedbackRows = humanProgress?.normalRequirementsMet === true
-      && !humanProgress.isReigningGamesChampion
-      ? [textRow('Cultural Victory is within reach, but your nation must become the reigning Games of Nations champion.', true)]
-      : [];
-    return { title: '🏛️ Cultural Victory', rows: [headerRow, ...feedbackRows, ...rows] };
+    return { title: '🏛️ Cultural Victory', rows: [headerRow, ...rows] };
   }
 
   private getCulturalVictoryLeaderboard(): LeaderboardEntry[] {
@@ -2364,12 +2463,18 @@ export class RightSidebarPanelDataProvider {
       const currency = this.currencySystem?.getCurrencyState(nation.id)?.strength ?? 'Not established';
       const champion = this.victorySystem
         ?.getCulturalVictoryProgress(nation.id).isReigningGamesChampion === true;
+      const details = [
+        `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}`,
+        `Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}`,
+        currency === 'Dominant' ? 'Currency Dominant' : undefined,
+        champion ? 'Reigning GoN Champion' : undefined,
+      ].filter((detail): detail is string => detail !== undefined);
       return {
         nationId: nation.id,
         name: nation.name,
         color: nation.color,
         score: culture,
-        detail: `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}${culture >= CULTURAL_VICTORY_REQUIRED_CULTURE ? ' ✓' : ''} · Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}${owned >= CULTURAL_VICTORY_REQUIRED_WONDERS ? ' ✓' : ''} · Currency ${currency}${currency === 'Dominant' ? ' ✓' : ''} · Reigning GoN Champion ${champion ? '✓' : '✗'}`,
+        detail: details.join(' · '),
         secondaryScore: owned,
       };
     }));
@@ -2431,15 +2536,59 @@ export class RightSidebarPanelDataProvider {
     });
   }
 
-  private getResearchLeaderboard(): LeaderboardEntry[] {
-    return this.sortLeaderboard(this.nationManager.getAllNations().map((nation) => {
-      const researched = this.researchSystem?.getResearchedTechnologies(nation.id).length ?? 0;
-      const current = this.researchSystem?.getCurrentResearch(nation.id);
-      const progress = current && this.researchSystem
-        ? Math.round((this.researchSystem.getResearchProgress(nation.id) / Math.max(1, this.researchSystem.getEffectiveCost(current.id))) * 100)
-        : 0;
-      return { nationId: nation.id, name: nation.name, color: nation.color, score: researched * 100 + progress, detail: `${researched} techs${current ? `, ${progress}% ${current.name}` : ''}` };
-    }));
+  private getDominationVictorySection(): RightSidebarSection {
+    const entries = this.getDominationLeaderboard();
+    const headerRow = textRow(
+      'Domination Victory — control every active nation\'s original capital at the same time.',
+      true,
+    );
+    const rows: RightSidebarRow[] = entries.length === 0
+      ? [textRow('No leaderboard data available.', true)]
+      : entries.map((entry, index) => textRow(
+        `${index + 1}. ${entry.name}: ${entry.score} (${entry.detail})`,
+        false,
+        false,
+        entry.color,
+      ));
+    return { title: '⚔️ Domination', rows: [headerRow, ...rows] };
+  }
+
+  private getScienceVictorySection(): RightSidebarSection {
+    const progressByNation = this.victorySystem
+      ? this.victorySystem.getScienceVictoryRanking()
+      : [];
+    const progress = [...progressByNation].sort((a, b) => {
+      if (b.aerospaceParts !== a.aerospaceParts) return b.aerospaceParts - a.aerospaceParts;
+      const aPrerequisites = Number(a.hasRocketry) + Number(a.hasFactory) + Number(a.hasAluminum);
+      const bPrerequisites = Number(b.hasRocketry) + Number(b.hasFactory) + Number(b.hasAluminum);
+      if (bPrerequisites !== aPrerequisites) return bPrerequisites - aPrerequisites;
+      const aName = this.nationManager.getNation(a.nationId)?.name ?? a.nationId;
+      const bName = this.nationManager.getNation(b.nationId)?.name ?? b.nationId;
+      return aName.localeCompare(bName);
+    });
+    const headerRow = textRow(
+      `Science Victory — research Rocketry, have an active Factory, access Aluminum, and produce ${this.requiredAerospaceParts} Space Parts.`,
+      true,
+    );
+    const rows: RightSidebarRow[] = progress.length === 0
+      ? [textRow('No leaderboard data available.', true)]
+      : progress.map((entry, index) => {
+        const nation = this.nationManager.getNation(entry.nationId);
+        const name = nation?.name ?? entry.nationId;
+        const fulfilled = [
+          entry.hasRocketry ? 'Rocketry' : undefined,
+          entry.hasFactory ? 'Factory' : undefined,
+          entry.hasAluminum ? 'Aluminum' : undefined,
+          `Space Parts ${entry.aerospaceParts}/${entry.requiredAerospaceParts}`,
+        ].filter((condition): condition is string => condition !== undefined);
+        return textRow(
+          `${index + 1}. ${name} (${fulfilled.join(' · ')})`,
+          false,
+          false,
+          nation?.color,
+        );
+      });
+    return { title: '💡 Science', rows: [headerRow, ...rows] };
   }
 
   private getDiplomacyLeaderboard(): LeaderboardEntry[] {
@@ -2557,7 +2706,7 @@ function getProducibleSpritePath(item: Producible): string | undefined {
     case 'corporation':
       return getCorporationSpritePath(item.corporationType.id);
     case 'manufacturedResource':
-      return getCorporationSpritePath('aerospace_industries');
+      return getCorporationSpritePath(AEROSPACE_PARTS_ID);
     case 'building':
     case 'tradeRoute':
       return undefined;

@@ -6,7 +6,7 @@ export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'timeline' | 'di
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'cultural' | 'gon';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';
-export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'trade' | 'deals';
+export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'economics' | 'trade' | 'deals';
 
 /**
  * One row in the Relations tab, from the selected leader's perspective.

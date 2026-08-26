@@ -150,6 +150,17 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Tiles and resources inside your borders become available to work',
         ],
       },
+      { kind: 'heading', text: 'City Defense' },
+      { kind: 'paragraph', text: 'Every city begins with 25 City Defense. Fortifications are produced inside the city and do not occupy map tiles. Walls, Castle and Arsenal each add +25% City Defense, stacking additively to 31, 37 and 43 effective Defense as the city reaches fortification levels 1, 2 and 3.' },
+      {
+        kind: 'list',
+        items: [
+          'Higher City Defense increases the damage dealt back to melee attackers',
+          'Fortifications reduce incoming damage from both melee and ranged attacks',
+          'A dark-gray ring around the city grows thicker at each fortification level',
+          'Broken fortifications provide no Defense bonus and do not count toward the visible ring level',
+        ],
+      },
     ],
   },
   {

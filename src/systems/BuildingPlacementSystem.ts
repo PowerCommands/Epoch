@@ -18,7 +18,7 @@ export class BuildingPlacementSystem {
 
   startPlacement(city: City, buildingId: string, mapData: MapData): boolean {
     const building = getBuildingById(buildingId);
-    if (!building) return false;
+    if (!building || building.placement === 'city') return false;
 
     const validCoords = this.getValidPlacementCoords(city, building, mapData);
     if (validCoords.length === 0) return false;
@@ -63,7 +63,7 @@ export class BuildingPlacementSystem {
     mapData: MapData,
   ): Array<{ x: number; y: number }> {
     const def = typeof building === 'string' ? getBuildingById(building) : building;
-    if (!def) return [];
+    if (!def || def.placement === 'city') return [];
 
     return city.ownedTileCoords
       .map((coord) => mapData.tiles[coord.y]?.[coord.x])
@@ -127,6 +127,7 @@ export class BuildingPlacementSystem {
     building: BuildingType,
     mapData: MapData,
   ): { tileX: number; tileY: number } | undefined {
+    if (building.placement === 'city') return undefined;
     const [coord] = this.getValidPlacementCoords(city, building, mapData);
     if (!coord) return undefined;
 
@@ -161,6 +162,7 @@ export class BuildingPlacementSystem {
   }
 
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
+    if (building.placement === 'city') return false;
     if (tile.buildingId !== undefined) return false;
     if (tile.buildingConstruction !== undefined) return false;
     if (tile.wonderId !== undefined) return false;

@@ -20,11 +20,13 @@ export interface CityViewAnchor {
   screenY: number;
 }
 
+type CityViewAnchorProvider = () => CityViewAnchor;
+
 export interface CityViewBuildingOption {
   id: string;
   name: string;
   cost: number;
-  placement: 'land' | 'water';
+  placement: 'land' | 'water' | 'city';
   disabled?: boolean;
   reason?: string;
 }
@@ -129,7 +131,7 @@ export class CityView {
   private dragOffsetX = 0;
   private dragOffsetY = 0;
   private userPositioned = false;
-  private anchor: CityViewAnchor | null = null;
+  private anchorProvider: CityViewAnchorProvider | null = null;
   private editingTitleCityId: string | null = null;
   private lastRenderState: {
     city: City;
@@ -354,13 +356,17 @@ export class CityView {
     wonderOptions: CityViewWonderOption[],
     corporationOptions: CityViewCorporationOption[],
     queueItems: CityViewQueueItem[],
-    anchor?: CityViewAnchor,
+    anchor?: CityViewAnchor | CityViewAnchorProvider,
   ): void {
     if (this.currentCityId !== city.id) {
       this.resetViewState();
       this.userPositioned = false;
     }
-    this.anchor = anchor ?? null;
+    this.anchorProvider = typeof anchor === 'function'
+      ? anchor
+      : anchor
+        ? () => anchor
+        : null;
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
@@ -389,7 +395,7 @@ export class CityView {
     this.stopTitleEditing(false);
     this.root.style.display = 'none';
     this.dragging = false;
-    this.anchor = null;
+    this.anchorProvider = null;
     this.userPositioned = false;
     this.hideTooltip();
   }
@@ -470,10 +476,10 @@ export class CityView {
   };
 
   private positionNearAnchor(): void {
-    if (!this.open || this.userPositioned || this.anchor === null) return;
+    if (!this.open || this.userPositioned || this.anchorProvider === null) return;
 
     requestAnimationFrame(() => {
-      if (!this.open || this.userPositioned || this.anchor === null) return;
+      if (!this.open || this.userPositioned || this.anchorProvider === null) return;
 
       const margin = 24;
       const gap = 28;
@@ -483,14 +489,17 @@ export class CityView {
       const rect = this.root.getBoundingClientRect();
       const panelW = rect.width;
       const panelH = rect.height;
-      const anchorX = clamp(this.anchor.screenX, margin, viewportW - margin);
-      const anchorY = clamp(this.anchor.screenY, margin, viewportH - margin);
-      const preferRight = anchorX < viewportW / 2;
+      const anchor = this.anchorProvider();
+      const anchorX = clamp(anchor.screenX, margin, viewportW - margin);
+      const anchorY = clamp(anchor.screenY, margin, viewportH - margin);
       const rawY = anchorY - panelH / 2;
 
       const candidates = [
-        { x: preferRight ? anchorX + gap + cityRadius : anchorX - panelW - gap - cityRadius, y: rawY, priority: 0 },
-        { x: preferRight ? anchorX - panelW - gap - cityRadius : anchorX + gap + cityRadius, y: rawY, priority: 1 },
+        // Keep the panel horizontally beside the city and vertically centred
+        // on it. The right side is the preferred reading direction; overlap
+        // scoring naturally falls back to the left near the viewport edge.
+        { x: anchorX + gap + cityRadius, y: rawY, priority: 0 },
+        { x: anchorX - panelW - gap - cityRadius, y: rawY, priority: 1 },
         { x: anchorX - panelW / 2, y: anchorY + gap + cityRadius, priority: 2 },
         { x: anchorX - panelW / 2, y: anchorY - panelH - gap - cityRadius, priority: 3 },
       ].map((candidate) => ({

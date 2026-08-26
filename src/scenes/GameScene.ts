@@ -1848,7 +1848,7 @@ export class GameScene extends Phaser.Scene {
       (a: string, b: string) => discoverySystem.hasMet(a, b),
       (nationId: string) => getAvailableLuxuryResourceQuantities(nationId).map((entry) => entry.resourceId),
     );
-    const cityDefenseSystem = new CityDefenseSystem(wonderSystem);
+    const cityDefenseSystem = new CityDefenseSystem(wonderSystem, cityManager);
     cityDefenseSystem.setWorldHeritageProtectionActive(worldCouncilSystem.hasWorldHeritageProtection());
     worldCouncilResolutionSystem.setRuntime({
       getDiplomacyState: (a, b) => diplomacyManager.getState(a, b),
@@ -3402,13 +3402,18 @@ export class GameScene extends Phaser.Scene {
           console.warn(`[GamesOfNations] Blocked Grand Stadium completion outside the valid hosting window in ${city.name}.`);
           return false;
         }
-        const completedTile = buildingPlacementSystem.finalizeReservedBuilding(cityId, item.buildingType.id, mapData);
-        if (!completedTile) {
+        const completedTile = item.buildingType.placement === 'city'
+          ? null
+          : buildingPlacementSystem.finalizeReservedBuilding(cityId, item.buildingType.id, mapData);
+        if (item.buildingType.placement !== 'city' && !completedTile) {
           console.warn(`[BuildingPlacement] Completed ${item.buildingType.id} for ${cityId} without a reserved tile.`);
           return false;
         }
 
         cityManager.getBuildings(cityId).add(item.buildingType);
+        if ((item.buildingType.modifiers.cityDefensePercent ?? 0) > 0) {
+          cityRenderer.refreshCity(city);
+        }
         if (item.buildingType.id === GRAND_STADIUM_BUILDING_ID) {
           logManager.info({
             nationId: city.ownerId,
@@ -3417,7 +3422,7 @@ export class GameScene extends Phaser.Scene {
           });
         }
         resourceSystem.recalculateForNation(city.ownerId);
-        tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
+        if (completedTile) tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
 
         const hasFlatCulture = (item.buildingType.modifiers.culturePerTurn ?? 0) > 0;
         const hasPercentCulture = (item.buildingType.modifiers.culturePercent ?? 0) > 0;
@@ -5194,7 +5199,6 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       cultureSystem,
       turnManager,
-      currencySystem,
       resourceAccessSystem,
       unitUpkeepSystem,
       this.diagnosticSystem,
@@ -5510,6 +5514,7 @@ export class GameScene extends Phaser.Scene {
     );
     rightPanel.setGamesOfNationsSystem(gamesOfNationsSystem);
     rightPanel.setVictorySystem(victorySystem);
+    rightPanel.setCityDefenseSystem(cityDefenseSystem);
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.
@@ -5924,9 +5929,12 @@ export class GameScene extends Phaser.Scene {
       return buildings
         .filter((building) => !cityManager.getBuildings(city.id).has(building.id))
         .filter((building) => !occupiedBuildingIds.has(building.id))
+        .filter((building) => !isBuildingQueued(city.id, building.id))
         .filter((building) => researchSystem ? researchSystem.isBuildingUnlocked(city.ownerId, building.id) : true)
         .map((building) => {
-          const validCoords = buildingPlacementSystem.getValidPlacementCoords(city, building, mapData);
+          const validCoords = building.placement === 'city'
+            ? [{ x: city.tileX, y: city.tileY }]
+            : buildingPlacementSystem.getValidPlacementCoords(city, building, mapData);
           return {
             id: building.id,
             name: building.name,
@@ -6047,28 +6055,34 @@ export class GameScene extends Phaser.Scene {
             reason,
           };
         });
-      const aerospaceQueuedHere = productionSystem.getQueue(city.id).some((entry) => (
-        entry.item.kind === 'manufacturedResource'
-          && entry.item.productionType.id === AEROSPACE_PARTS_ID
-      ));
-      const aerospaceBlockers = aerospacePartSystem.getCityProductionBlockers(city);
-      corporationOptions.push({
-        id: AEROSPACE_PARTS_ID,
-        spriteId: AEROSPACE_INDUSTRIES_ID,
-        name: AEROSPACE_PART_PRODUCTION.name,
-        cost: productionSystem.getCost({
-          kind: 'manufacturedResource',
-          productionType: AEROSPACE_PART_PRODUCTION,
-        }, city.id),
-        turnsRemaining: productionSystem.getTurnsEstimate(city.id, {
-          kind: 'manufacturedResource',
-          productionType: AEROSPACE_PART_PRODUCTION,
-        }),
-        description: AEROSPACE_PART_PRODUCTION.description,
-        outputSummary: `Produces 1 accumulated Aerospace Part. Current: ${aerospacePartSystem.getQuantity(city.ownerId)}/${victorySystem.getScienceVictorySettings().requiredAerospaceParts}.`,
-        disabled: aerospaceQueuedHere || aerospaceBlockers.length > 0,
-        reason: aerospaceQueuedHere ? 'Already in this queue' : aerospaceBlockers.join(', ') || undefined,
-      });
+      // Aerospace Parts are a special global production item rather than a
+      // corporation. Keep the initial grid to the twelve actual corporations;
+      // the part replaces the founded AeroSpace Industries card once that
+      // corporation has unlocked the global space race.
+      if (corporationSystem?.isFounded(AEROSPACE_INDUSTRIES_ID)) {
+        const aerospaceQueuedHere = productionSystem.getQueue(city.id).some((entry) => (
+          entry.item.kind === 'manufacturedResource'
+            && entry.item.productionType.id === AEROSPACE_PARTS_ID
+        ));
+        const aerospaceBlockers = aerospacePartSystem.getCityProductionBlockers(city);
+        corporationOptions.push({
+          id: AEROSPACE_PARTS_ID,
+          spriteId: AEROSPACE_PARTS_ID,
+          name: AEROSPACE_PART_PRODUCTION.name,
+          cost: productionSystem.getCost({
+            kind: 'manufacturedResource',
+            productionType: AEROSPACE_PART_PRODUCTION,
+          }, city.id),
+          turnsRemaining: productionSystem.getTurnsEstimate(city.id, {
+            kind: 'manufacturedResource',
+            productionType: AEROSPACE_PART_PRODUCTION,
+          }),
+          description: AEROSPACE_PART_PRODUCTION.description,
+          outputSummary: `Produces 1 accumulated Aerospace Part. Current: ${aerospacePartSystem.getQuantity(city.ownerId)}/${victorySystem.getScienceVictorySettings().requiredAerospaceParts}.`,
+          disabled: aerospaceQueuedHere || aerospaceBlockers.length > 0,
+          reason: aerospaceQueuedHere ? 'Already in this queue' : aerospaceBlockers.join(', ') || undefined,
+        });
+      }
       return corporationOptions;
     };
     const getCityViewPlacementRenderState = (city: City): CityViewPlacementRenderState => {
@@ -6158,15 +6172,27 @@ export class GameScene extends Phaser.Scene {
         return { ok: false, message: 'Select the city before starting building placement.' };
       }
 
-      if (cityManager.getBuildings(city.id).has(buildingId) || getOccupiedBuildingIds(city).has(buildingId)) {
+      if (cityManager.getBuildings(city.id).has(buildingId) || getOccupiedBuildingIds(city).has(buildingId) || isBuildingQueued(city.id, buildingId)) {
         return { ok: false, message: 'That building is already built or under construction in this city.' };
       }
+
+      const building = getBuildingById(buildingId);
+      if (!building) return { ok: false, message: 'Unknown building.' };
 
       if (
         buildingId === GRAND_STADIUM_BUILDING_ID
         && !gamesOfNationsSystem.canCityConstructGrandStadium(city.id, city.ownerId)
       ) {
         return { ok: false, message: 'Grand Stadium is available only in the confirmed Games host city before Competition.' };
+      }
+
+      if (building.placement === 'city') {
+        productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
+        buildingPlacementSystem.cancelPlacement();
+        wonderPlacementSystem.cancelPlacement();
+        rightPanel?.requestRefresh();
+        refreshOpenCityView();
+        return { ok: true };
       }
 
       if (!buildingPlacementSystem.startPlacement(city, buildingId, mapData)) {
@@ -6312,6 +6338,24 @@ export class GameScene extends Phaser.Scene {
     cityView.onPlacementRequested((buildingId) => {
       const city = getOpenCityViewCity();
       if (!city) return;
+
+      const building = getBuildingById(buildingId);
+      if (!building) return;
+      if (building.placement === 'city') {
+        if (!cityManager.getBuildings(city.id).has(buildingId) && !isBuildingQueued(city.id, buildingId)) {
+          productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
+        }
+        buildingPlacementSystem.cancelPlacement();
+        wonderPlacementSystem.cancelPlacement();
+        rightPanel?.requestRefresh();
+        if (cityView.isAutoCloseEnabled()) {
+          closeOpenCityView();
+          return;
+        }
+        cityView.switchToQueueMode();
+        refreshOpenCityView();
+        return;
+      }
 
       const state = buildingPlacementSystem.getState();
       if (state?.cityId === city.id && state.buildingId === buildingId) {
@@ -8217,8 +8261,22 @@ export class GameScene extends Phaser.Scene {
     const openCityView = (city: City): void => {
       unbindGameplayHotkeys();
       const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
-      this.cameraController.focusOn(x, y, 2.0);
-      const screenPosition = worldToScreen(this.cameras.main, x, y);
+      const cityViewZoom = 2.0;
+      const viewportWidth = window.innerWidth;
+      const panelWidth = viewportWidth <= 900
+        ? Math.max(0, viewportWidth - 24)
+        : Math.min(760, viewportWidth * 0.64);
+      const panelMargin = 24;
+      const cityToPanelGap = 28 + 34;
+      const preferredCityScreenX = Math.max(
+        panelMargin + 34,
+        Math.min(
+          viewportWidth / 2,
+          viewportWidth - panelMargin - panelWidth - cityToPanelGap,
+        ),
+      );
+      const focusOffsetWorldX = (viewportWidth / 2 - preferredCityScreenX) / cityViewZoom;
+      this.cameraController.focusOn(x + focusOffsetWorldX, y, cityViewZoom);
       cityView.show(
         city,
         getCityViewUnitOptions(city),
@@ -8228,7 +8286,10 @@ export class GameScene extends Phaser.Scene {
         getCityViewWonderOptions(city),
         getCityViewCorporationOptions(city),
         getCityViewQueueItems(city),
-        screenPosition,
+        // Resolve after Phaser has applied camera bounds for this frame. Near
+        // map edges, calculating this eagerly points at the requested camera
+        // centre rather than the city's final on-screen position.
+        () => worldToScreen(this.cameras.main, x, y),
       );
       cityViewRenderer.showWithState(
         city,
@@ -8566,7 +8627,7 @@ function getProducibleSpritePath(item: Producible): string | undefined {
     case 'corporation':
       return getCorporationSpritePath(item.corporationType.id);
     case 'manufacturedResource':
-      return getCorporationSpritePath(AEROSPACE_INDUSTRIES_ID);
+      return getCorporationSpritePath(AEROSPACE_PARTS_ID);
   }
 }
 
@@ -8765,8 +8826,8 @@ function worldToScreen(
   worldY: number,
 ): { screenX: number; screenY: number } {
   return {
-    screenX: camera.x + (worldX - camera.scrollX) * camera.zoom,
-    screenY: camera.y + (worldY - camera.scrollY) * camera.zoom,
+    screenX: camera.x + (worldX - camera.worldView.x) * camera.zoom,
+    screenY: camera.y + (worldY - camera.worldView.y) * camera.zoom,
   };
 }
 

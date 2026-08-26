@@ -6,10 +6,14 @@ import type { City } from '../entities/City';
 import { HexTileMaskHelper } from './HexTileMaskHelper';
 import type { Era } from '../data/technologies';
 import { getCitySpriteKey } from '../utils/assetPaths';
+import { getCityFortificationLevel } from './CityDefenseSystem';
 
 const CITY_DEPTH = 15;
 const CITY_TILE_FILL_SCALE = 0.9;
 const CAPITAL_SCALE_MULTIPLIER = 1.2;
+const FORTIFICATION_RING_COLOR = 0x454b52;
+const FORTIFICATION_RING_ALPHA = 0.96;
+const FORTIFICATION_RING_WIDTH_BY_LEVEL = [0, 3, 5, 8] as const;
 
 const HIT_RADIUS = 20;
 
@@ -115,6 +119,10 @@ export class CityRenderer {
     this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
 
     const children: Phaser.GameObjects.GameObject[] = [sprite];
+    const fortificationLevel = getCityFortificationLevel(this.cityManager.getBuildings(city.id));
+    if (fortificationLevel !== 0) {
+      children.push(this.createFortificationRing(rect.width, rect.height, fortificationLevel));
+    }
     if (city.isOriginalCapital) {
       children.push(this.createOriginalCapitalRing(rect.width, rect.height));
     }
@@ -134,6 +142,17 @@ export class CityRenderer {
 
     container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
     this.containers.set(city.id, container);
+  }
+
+  private createFortificationRing(
+    tileWidth: number,
+    tileHeight: number,
+    level: 1 | 2 | 3,
+  ): Phaser.GameObjects.Graphics {
+    const ring = this.scene.add.graphics();
+    ring.lineStyle(FORTIFICATION_RING_WIDTH_BY_LEVEL[level], FORTIFICATION_RING_COLOR, FORTIFICATION_RING_ALPHA);
+    ring.strokeEllipse(0, 0, tileWidth * 0.98, tileHeight * 0.78);
+    return ring;
   }
 
   private createOriginalCapitalRing(tileWidth: number, tileHeight: number): Phaser.GameObjects.Graphics {

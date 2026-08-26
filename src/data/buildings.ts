@@ -49,7 +49,7 @@ export const MONUMENT = building({ id: 'monument', name: 'Monument', era: 'ancie
 export const GRANARY = building({ id: 'granary', name: 'Granary', era: 'ancient', cost: 60, maintenance: 1, modifiers: { foodPerTurn: 2 , happinessPerTurn: 1} });
 export const SHRINE = building({ id: 'shrine', name: 'Shrine', era: 'ancient', cost: 40, maintenance: 1, description: 'Faith omitted until religion exists', modifiers: { happinessPerTurn: 2} });
 export const BARRACKS = building({ id: 'barracks', name: 'Barracks', era: 'ancient', cost: 75, maintenance: 1, description: 'Unit XP omitted until promotions exist' });
-export const WALLS = building({ id: 'walls', name: 'Walls', era: 'ancient', cost: 75, maintenance: 0, description: 'City defense omitted until building defense is modeled' });
+export const WALLS = building({ id: 'walls', name: 'Walls', era: 'ancient', placement: 'city', cost: 100, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense' });
 export const WATER_MILL = building({ id: 'water_mill', name: 'Water Mill', era: 'ancient', cost: 75, maintenance: 2, modifiers: { foodPerTurn: 2, productionPerTurn: 1, happinessPerTurn: 1 } });
 export const STONE_WORKS = building({ id: 'stone_works', name: 'Stone Works', era: 'ancient', cost: 75, maintenance: 1, modifiers: { productionPerTurn: 1 , happinessPerTurn: 1}, description: 'Resource requirements omitted; uses flat +1 production approximation' });
 
@@ -61,7 +61,7 @@ export const TEMPLE = building({ id: 'temple', name: 'Temple', era: 'classical',
 export const LIGHTHOUSE = building({ id: 'lighthouse', name: 'Lighthouse', era: 'classical', placement: 'water', cost: 75, maintenance: 1, modifiers: { foodPerTurn: 1, happinessPerTurn: 1 }, description: 'Sea-tile food approximated as +1 food' });
 export const STABLE = building({ id: 'stable', name: 'Stable', era: 'classical', cost: 100, maintenance: 1, modifiers: { productionPercent: 5, happinessPerTurn: 1 }, description: 'Mounted-unit and pasture bonuses approximated as +5% production' });
 
-export const CASTLE = building({ id: 'castle', name: 'Castle', era: 'medieval', cost: 160, maintenance: 0, description: 'City defense omitted until building defense is modeled' , modifiers: { foodPerTurn: 2 }});
+export const CASTLE = building({ id: 'castle', name: 'Castle', era: 'medieval', placement: 'city', cost: 210, maintenance: 0, modifiers: { foodPerTurn: 2, cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const ARMORY = building({ id: 'armory', name: 'Armory', era: 'medieval', cost: 160, maintenance: 1, description: 'Unit XP omitted until promotions exist' , modifiers: { foodPerTurn: 2 }});
 export const FORGE = building({ id: 'forge', name: 'Forge', era: 'medieval', cost: 120, maintenance: 1, modifiers: { productionPercent: 5, happinessPerTurn: 1 }, description: 'Land-unit and iron bonuses approximated as +5% production' });
 export const MARKET = building({ id: 'market', name: 'Market', era: 'medieval', cost: 120, maintenance: 0, modifiers: { goldPerTurn: 2, goldPercent: 25, happinessPerTurn: 2, tradeCapacity: 1 } });
@@ -82,7 +82,7 @@ export const WINDMILL = building({ id: 'windmill', name: 'Windmill', era: 'renai
 export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 200, maintenance: 2, modifiers: { happinessPerTurn: 5 } });
 
 export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, description: 'Unit XP omitted until promotions exist', modifiers: { foodPerTurn: 2 } });
-export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', cost: 300, maintenance: 0, description: 'City defense omitted until building defense is modeled', modifiers: { foodPerTurn: 2 } });
+export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', placement: 'city', cost: 400, maintenance: 0, modifiers: { foodPerTurn: 2, cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const FACTORY = building({ id: 'factory', name: 'Factory', era: 'industrial', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 4, productionPercent: 10, happinessPerTurn: 1 }, description: 'Civ V BNW factory is +10% and +4 production; coal requirement omitted' });
 export const STOCK_EXCHANGE = building({ id: 'stock_exchange', name: 'Stock Exchange', era: 'industrial', cost: 500, maintenance: 0, modifiers: { goldPercent: 33, happinessPerTurn: 1, tradeCapacity: 2 } });
 export const HOSPITAL = building({ id: 'hospital', name: 'Hospital', era: 'industrial', cost: 360, maintenance: 2, modifiers: { foodPerTurn: 5, happinessPerTurn: 2 } });

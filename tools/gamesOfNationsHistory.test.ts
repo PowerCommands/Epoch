@@ -215,17 +215,22 @@ test('each medal has its central 5/3/1 value and medals aggregate across Games',
 test('GoN content renders both tables from archive data and has an empty state', () => {
   const empty = buildGamesOfNationsLeaderboardSections([], []);
   assert.deepEqual(empty.map((section) => section.title), [
+    'Cultural Victory',
     'Games of Nations Medal League',
     'Games of Nations Tournament History',
   ]);
+  assert.equal(empty[1]?.rows[0]?.kind, 'text');
   assert.equal(empty[0]?.rows[0]?.kind, 'text');
+  if (empty[0]?.rows[0]?.kind === 'text') {
+    assert.match(empty[0].rows[0].text, /Reigning GoN Champion/);
+  }
 
   const records = [recordWithTable([['a', 'Archived Alpha', 1, 0, 0]])];
   const sections = buildGamesOfNationsLeaderboardSections(buildHistoricalMedalStandings(records), records);
-  assert.equal(sections[0]?.rows[0]?.kind, 'compactTable');
   assert.equal(sections[1]?.rows[0]?.kind, 'compactTable');
-  if (sections[1]?.rows[0]?.kind === 'compactTable') {
-    assert.deepEqual(sections[1].rows[0].rows[0], ['800 BC', 'Host', 'Capital', 'Archived Alpha']);
+  assert.equal(sections[2]?.rows[0]?.kind, 'compactTable');
+  if (sections[2]?.rows[0]?.kind === 'compactTable') {
+    assert.deepEqual(sections[2].rows[0].rows[0], ['800 BC', 'Host', 'Capital', 'Archived Alpha']);
   }
 });
 
@@ -234,7 +239,7 @@ test('Leaderboard keeps its four existing tabs unchanged and adds the Games tab'
   const categoryBlock = source.match(/export const LEADERBOARD_CATEGORIES[\s\S]*?\n\];/)?.[0] ?? '';
   assert.match(categoryBlock, /id: 'domination', label: '⚔️ Domination'/);
   assert.match(categoryBlock, /id: 'diplomacy', label: '🕊️ Diplomacy'/);
-  assert.match(categoryBlock, /id: 'research', label: '💡 Research'/);
+  assert.match(categoryBlock, /id: 'research', label: '💡 Science'/);
   assert.match(categoryBlock, /id: 'cultural', label: '🏛️ Cultural'/);
   assert.match(categoryBlock, /id: 'gon', label: 'Game of nations'/);
 });

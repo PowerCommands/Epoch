@@ -4438,7 +4438,12 @@ export class AISystem {
         );
         continue;
       }
-      if (choice.kind === 'building' && this.buildingPlacementSystem && !placement) {
+      if (
+        choice.kind === 'building'
+        && choice.buildingType.placement !== 'city'
+        && this.buildingPlacementSystem
+        && !placement
+      ) {
         console.warn(
           this.formatLog(nationId, `AI production in ${city.name}: skipped ${choice.buildingType.name}, no building placement available`),
         );
@@ -5800,7 +5805,8 @@ export class AISystem {
       + (building.modifiers.sciencePercent ?? 0) * 1.5
       + (building.modifiers.goldPerTurn ?? 0) * 4
       + (building.modifiers.culturePerTurn ?? 0) * 5
-      + (building.modifiers.culturePercent ?? 0);
+      + (building.modifiers.culturePercent ?? 0)
+      + (building.modifiers.cityDefensePercent ?? 0) * 2;
   }
 
   private describeRhythmItem(item: Producible): string {
@@ -6416,6 +6422,7 @@ export class AISystem {
 
   private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
     if (!this.canBuildBuilding(nationId, building.id)) return false;
+    if (building.placement === 'city') return true;
     if (!this.buildingPlacementSystem) return true;
     return this.buildingPlacementSystem.getValidPlacementCoords(city, building, this.mapData).length > 0;
   }

@@ -1,7 +1,7 @@
 import type { Era } from '../data/technologies';
 import type { ModifierSet } from '../types/modifiers';
 
-export type BuildingPlacement = 'land' | 'water';
+export type BuildingPlacement = 'land' | 'water' | 'city';
 
 export type BuildingModifiers = ModifierSet;
 

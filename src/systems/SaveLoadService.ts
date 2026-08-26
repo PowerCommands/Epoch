@@ -613,9 +613,13 @@ export class SaveLoadService {
       if (saved.improvementConstruction !== undefined) {
         tile.improvementConstruction = { ...saved.improvementConstruction };
       }
-      if (saved.buildingId !== undefined) tile.buildingId = saved.buildingId;
-      if (saved.buildingBroken === true) tile.buildingBroken = true;
-      if (saved.buildingConstruction !== undefined) {
+      const savedBuildingIsCityBound = saved.buildingId !== undefined
+        && getBuildingById(saved.buildingId)?.placement === 'city';
+      if (saved.buildingId !== undefined && !savedBuildingIsCityBound) tile.buildingId = saved.buildingId;
+      if (saved.buildingBroken === true && !savedBuildingIsCityBound) tile.buildingBroken = true;
+      const constructionIsCityBound = saved.buildingConstruction !== undefined
+        && getBuildingById(saved.buildingConstruction.buildingId)?.placement === 'city';
+      if (saved.buildingConstruction !== undefined && !constructionIsCityBound) {
         tile.buildingConstruction = { ...saved.buildingConstruction };
       }
       if (saved.wonderId !== undefined) tile.wonderId = saved.wonderId;

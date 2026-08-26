@@ -10,6 +10,7 @@ export interface ModifierSet {
   goldPercent?: number;
   sciencePercent?: number;
   culturePercent?: number;
+  cityDefensePercent?: number;
   tradeCapacity?: number;
 }
 
@@ -30,6 +31,7 @@ export function addModifiers(...modifiers: Readonly<ModifierSet>[]): ModifierSet
     total.goldPercent = (total.goldPercent ?? 0) + (modifier.goldPercent ?? 0);
     total.sciencePercent = (total.sciencePercent ?? 0) + (modifier.sciencePercent ?? 0);
     total.culturePercent = (total.culturePercent ?? 0) + (modifier.culturePercent ?? 0);
+    total.cityDefensePercent = (total.cityDefensePercent ?? 0) + (modifier.cityDefensePercent ?? 0);
   }
 
   return total;
