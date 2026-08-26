@@ -2244,24 +2244,31 @@ export class RightSidebarPanelDataProvider {
         const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
         rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
         const alreadyImporting = importedFromSeller.has(resourceId);
+        // The seller can only offer a resource while it owns more than it is
+        // already exporting elsewhere (mirrors canExportResource).
+        const sellerHasSupply = quantity > this.resourceAccessSystem.getExportedResourceSourceCount(otherNationId, resourceId);
         if (!interactive) {
           if (alreadyImporting) rows.push(textRow('Currently importing', true));
           continue;
         }
-        const buyDisabled = alreadyImporting || !hasImportCapacity;
+        const buyDisabled = alreadyImporting || !hasImportCapacity || !sellerHasSupply;
+        const buyLabel = (turns: number, gold: number): string =>
+          alreadyImporting ? 'Already importing'
+            : !sellerHasSupply ? 'Fully exported'
+              : `Buy ${turns}t — ${gold}g/turn`;
         const twentyTurnGold = Math.max(1, tradeGold - 1);
         // Buy: seller = AI nation, buyer = human. Both durations on one row.
         rows.push({
           kind: 'buttonGroup',
           buttons: [
             {
-              text: alreadyImporting ? 'Already importing' : `Buy 10t — ${tradeGold}g/turn`,
+              text: buyLabel(10, tradeGold),
               accentColor: otherNation?.color,
               disabled: buyDisabled,
               onClick: () => this.createTradeDealRequest(otherNationId, playerId, resourceId, 10, tradeGold),
             },
             {
-              text: alreadyImporting ? 'Already importing' : `Buy 20t — ${twentyTurnGold}g/turn`,
+              text: buyLabel(20, twentyTurnGold),
               accentColor: otherNation?.color,
               disabled: buyDisabled,
               onClick: () => this.createTradeDealRequest(otherNationId, playerId, resourceId, 20, twentyTurnGold),
@@ -2281,26 +2288,36 @@ export class RightSidebarPanelDataProvider {
       }
       for (const { resourceId, quantity } of playerOwned) {
         const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
-        rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
+        const exportedCount = this.resourceAccessSystem.getExportedResourceSourceCount(playerId, resourceId);
+        // You can never export more than you own: each existing export deal for
+        // this resource consumes one unit of the owned quantity (mirrors
+        // canExportResource). Show remaining supply so the cap is visible.
+        const remainingSupply = Math.max(0, quantity - exportedCount);
+        rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)} — ${remainingSupply} free to export`));
         const alreadyExporting = exportedToBuyer.has(resourceId);
         if (!interactive) {
           if (alreadyExporting) rows.push(textRow('Currently exporting', true));
           continue;
         }
-        const sellDisabled = alreadyExporting || !hasExportCapacity;
+        const hasRemainingSupply = remainingSupply > 0;
+        const sellDisabled = alreadyExporting || !hasExportCapacity || !hasRemainingSupply;
+        const sellLabel = (turns: number, gold: number): string =>
+          alreadyExporting ? 'Already exporting'
+            : !hasRemainingSupply ? 'Fully exported'
+              : `Sell ${turns}t — ${gold}g/turn`;
         const twentyTurnGold = Math.max(1, tradeGold - 1);
         // Sell: seller = human, buyer = AI nation. Mirrors the Buy controls.
         rows.push({
           kind: 'buttonGroup',
           buttons: [
             {
-              text: alreadyExporting ? 'Already exporting' : `Sell 10t — ${tradeGold}g/turn`,
+              text: sellLabel(10, tradeGold),
               accentColor: otherNation?.color,
               disabled: sellDisabled,
               onClick: () => this.createTradeDealRequest(playerId, otherNationId, resourceId, 10, tradeGold),
             },
             {
-              text: alreadyExporting ? 'Already exporting' : `Sell 20t — ${twentyTurnGold}g/turn`,
+              text: sellLabel(20, twentyTurnGold),
               accentColor: otherNation?.color,
               disabled: sellDisabled,
               onClick: () => this.createTradeDealRequest(playerId, otherNationId, resourceId, 20, twentyTurnGold),

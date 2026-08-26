@@ -210,9 +210,13 @@ export class ResourceAccessSystem {
   }
 
   canExportResource(sellerNationId: string, resourceId: string): boolean {
-    // A nation can export any resource it has access to. Exporting does not
-    // reduce the seller's own access — connection capacity limits deal count.
-    return this.getOwnedResourceSourceCount(sellerNationId, resourceId) > 0;
+    // A nation can never export more of a resource than it owns: each active
+    // export deal consumes one unit of the owned quantity. Exporting does not
+    // reduce the seller's own *internal* access — the owned quantity is still
+    // fully usable at home; it only caps how many export deals can exist at
+    // once. So 2 owned Rice supports at most 2 simultaneous Rice exports.
+    return this.getOwnedResourceSourceCount(sellerNationId, resourceId)
+      > this.getExportedResourceSourceCount(sellerNationId, resourceId);
   }
 
   getExportableResourceQuantities(nationId: string): ReadonlyArray<{

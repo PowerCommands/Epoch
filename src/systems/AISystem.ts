@@ -1082,6 +1082,9 @@ export class AISystem {
           const alreadyImporting = this.tradeDealSystem.getDealsBetween(nationId, humanId)
             .some((d) => d.sellerNationId === humanId && d.resourceId === resourceId);
           if (alreadyImporting) continue;
+          // Don't propose buying what the human cannot export: owned quantity
+          // caps simultaneous exports (mirrors canExportResource).
+          if (!this.resourceAccessSystem.canExportResource(humanId, resourceId)) continue;
           const gpt = getProposalGoldPerTurn(resourceId, luxuryValueMultiplier);
           if (this.nationManager.getResources(nationId).gold < gpt) continue;
           this.diplomaticProposalSystem.createProposal({
@@ -1105,6 +1108,9 @@ export class AISystem {
           const alreadySelling = this.tradeDealSystem.getDealsBetween(nationId, humanId)
             .some((d) => d.sellerNationId === nationId && d.resourceId === resourceId);
           if (alreadySelling) continue;
+          // Only offer to sell what this nation can still export: owned quantity
+          // caps simultaneous exports (mirrors canExportResource).
+          if (!this.resourceAccessSystem.canExportResource(nationId, resourceId)) continue;
           const gpt = getProposalGoldPerTurn(resourceId, luxuryValueMultiplier);
           this.diplomaticProposalSystem.createProposal({
             fromNationId: nationId,
