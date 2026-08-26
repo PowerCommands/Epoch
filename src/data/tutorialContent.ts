@@ -6,9 +6,10 @@
  * it safely and consistently, and so new chapters can be added here without
  * touching any UI logic.
  *
- * The special `cheat-commands` block is a placeholder: the view fills it in at
- * render time from the live cheat command definitions, so the documentation
- * never drifts from the implemented commands.
+ * The special `cheat-commands` and `corporations` blocks are placeholders: the
+ * view fills them in at render time from the live cheat command definitions and
+ * the canonical `CORPORATIONS` data, so the documentation never drifts from the
+ * implemented commands or Corporation requirements.
  */
 
 export type TutorialBlock =
@@ -17,6 +18,7 @@ export type TutorialBlock =
   | { kind: 'list'; items: string[] }
   | { kind: 'note'; text: string }
   | { kind: 'image'; src: string; alt: string }
+  | { kind: 'corporations' }
   | { kind: 'cheat-commands' };
 
 export interface TutorialSection {
@@ -341,6 +343,42 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'paragraph', text: 'The trade route is still being established and is not yet producing benefits.' },
       { kind: 'heading', text: 'Active' },
       { kind: 'paragraph', text: 'The trade route is operating and generating benefits for both partners.' },
+    ],
+  },
+  {
+    id: 'corporations',
+    title: 'Corporations',
+    blocks: [
+      { kind: 'paragraph', text: 'Corporations are powerful economic institutions your cities can found once you meet their requirements. Each Corporation produces a Manufactured Good, which then flows into your trade and wider economy.' },
+
+      { kind: 'heading', text: 'Manufactured Goods' },
+      { kind: 'paragraph', text: 'Manufactured Goods are different from the natural resources found on the map. Where Silk, Iron or Oil occur naturally, Manufactured Goods are created by Corporations. Examples include Trade Goods, Maritime Goods, Engineered Goods, Colonial Goods, Banking Services, Refined Fuel, Steel Goods, Vehicles, Chips and Media. These goods take part in the economic and trade systems according to the normal game rules.' },
+
+      { kind: 'heading', text: 'Global Uniqueness' },
+      { kind: 'paragraph', text: 'Each specific Corporation is globally unique. Once any nation has founded a Corporation, no other nation can ever found that same Corporation.' },
+      { kind: 'note', text: 'For example, if one nation founds the Silk Road Consortium, the Silk Road Consortium is no longer available to anyone else. This makes founding Corporations competitive — reaching their requirements before your rivals is what secures them.' },
+
+      { kind: 'heading', text: 'Founding Requirements' },
+      { kind: 'paragraph', text: 'A Corporation normally requires a combination of the following, all of which must be met by the same nation:' },
+      {
+        kind: 'list',
+        items: [
+          'A required technology',
+          'One or more required natural resources, where applicable',
+          'One or more required buildings',
+          'A city able to produce and found the Corporation',
+        ],
+      },
+      { kind: 'paragraph', text: 'The required production building must be active in the city where the Corporation is founded. Once founded, the Corporation supplies its Manufactured Good according to the existing Corporation production rules — typically one unit of the good for each qualifying production building your nation operates.' },
+
+      { kind: 'heading', text: 'The Corporations' },
+      { kind: 'paragraph', text: 'Every Corporation currently in the game is listed below, generated directly from the game’s definitions:' },
+      { kind: 'corporations' },
+
+      { kind: 'heading', text: 'AeroSpace Industries & the Science Victory' },
+      { kind: 'paragraph', text: 'AeroSpace Industries is a special Corporation. Founding it starts and unlocks the global Aerospace Part manufacturing race, and the founding nation gains +50% Production toward Aerospace Parts.' },
+      { kind: 'paragraph', text: 'Unlike ordinary Corporations, Factories do not automatically generate Aerospace Parts. Aerospace Parts must be deliberately produced using the existing Aerospace Part production system in eligible cities.' },
+      { kind: 'note', text: 'A nation needs 10 accumulated Aerospace Parts to satisfy the Aerospace Part requirement for a Science Victory. The first nation to reach 10 Aerospace Parts wins.' },
     ],
   },
   {

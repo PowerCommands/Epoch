@@ -1,5 +1,11 @@
 import { CheatSystem } from '../systems/CheatSystem';
 import { TUTORIAL_SECTIONS, type TutorialBlock, type TutorialSection } from '../data/tutorialContent';
+import { CORPORATIONS, type CorporationDefinition } from '../data/corporations';
+import { getTechnologyById } from '../data/technologies';
+import { getBuildingById } from '../data/buildings';
+import { getResourceDisplayName } from '../data/resources';
+import { getManufacturedResourceById } from '../data/manufacturedResources';
+import { AEROSPACE_INDUSTRIES_ID } from '../data/scienceVictory';
 
 /**
  * Full-screen, self-contained tutorial / manual overlay.
@@ -231,11 +237,96 @@ export class TutorialView {
         figure.appendChild(img);
         return figure;
       }
+      case 'corporations':
+        return this.renderCorporations();
       case 'cheat-commands':
         return this.renderCheatCommands();
       default:
         return document.createElement('div');
     }
+  }
+
+  private renderCorporations(): HTMLElement {
+    const container = document.createElement('div');
+    container.style.cssText = 'margin: 6px 0 4px; display: flex; flex-direction: column; gap: 12px;';
+
+    for (const corporation of CORPORATIONS) {
+      container.appendChild(this.renderCorporationCard(corporation));
+    }
+
+    return container;
+  }
+
+  private renderCorporationCard(corporation: CorporationDefinition): HTMLElement {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      padding: 12px 14px; border: 1px solid #25344a; border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+    `;
+
+    const name = document.createElement('div');
+    name.textContent = corporation.name;
+    name.style.cssText = 'font-size: 16px; font-weight: 700; color: #a8d8ff; margin-bottom: 4px;';
+    card.appendChild(name);
+
+    const desc = document.createElement('div');
+    desc.textContent = corporation.description;
+    desc.style.cssText = 'font-size: 13px; color: #c2ccd7; margin-bottom: 8px;';
+    card.appendChild(desc);
+
+    const techNames = corporation.requiredTechIds
+      .map((id) => getTechnologyById(id)?.name ?? id)
+      .join(', ');
+    card.appendChild(this.renderCorporationRow('Technology', techNames));
+
+    const resourceIds = corporation.requiredResourceIds ?? [];
+    if (resourceIds.length > 0) {
+      const resourceNames = resourceIds.map((id) => getResourceDisplayName(id)).join(', ');
+      const label = resourceIds.length > 1 ? 'Resources' : 'Resource';
+      card.appendChild(this.renderCorporationRow(label, resourceNames));
+    }
+
+    const buildingIds = corporation.requiredBuildingIds ?? [];
+    if (buildingIds.length > 0) {
+      const buildingNames = buildingIds.map((id) => getBuildingById(id)?.name ?? id).join(', ');
+      const label = buildingIds.length > 1 ? 'Buildings' : 'Building';
+      card.appendChild(this.renderCorporationRow(label, buildingNames));
+    }
+
+    const goodName = getManufacturedResourceById(corporation.manufacturedResourceId)?.name
+      ?? corporation.manufacturedResourceId;
+    card.appendChild(this.renderCorporationRow('Produces', goodName));
+
+    const productionBuildingName = getBuildingById(corporation.productionBuildingId)?.name
+      ?? corporation.productionBuildingId;
+    if (corporation.id === AEROSPACE_INDUSTRIES_ID || corporation.resourcePerBuilding <= 0) {
+      card.appendChild(this.renderCorporationRow(
+        'Output',
+        `Factories do not auto-generate ${goodName}; they must be produced deliberately (see below)`,
+      ));
+    } else {
+      card.appendChild(this.renderCorporationRow(
+        'Output',
+        `${corporation.resourcePerBuilding} per qualifying ${productionBuildingName}`,
+      ));
+    }
+
+    return card;
+  }
+
+  private renderCorporationRow(label: string, value: string): HTMLElement {
+    const row = document.createElement('div');
+    row.style.cssText = 'font-size: 13px; color: #dbe4ee; margin: 2px 0;';
+
+    const key = document.createElement('span');
+    key.textContent = `${label}: `;
+    key.style.cssText = 'color: #9fb2c6; font-weight: 600;';
+
+    const val = document.createElement('span');
+    val.textContent = value;
+
+    row.append(key, val);
+    return row;
   }
 
   private renderCheatCommands(): HTMLElement {
