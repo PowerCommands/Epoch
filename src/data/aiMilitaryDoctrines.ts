@@ -388,6 +388,96 @@ export const PIRATE_CODE_DOCTRINE: AIMilitaryDoctrine = {
   productionBehavior: { modernizationBias: 1.1, quantityBias: 1.3, qualityBias: 1.0 },
 };
 
+/**
+ * Large, modern combined-arms establishment maintained before and during war.
+ * This is a reusable strategic posture: it changes what the AI chooses to
+ * produce and maintain, never production costs, unlocks, or unit statistics.
+ */
+export const MILITARY_MOBILIZATION_DOCTRINE: AIMilitaryDoctrine = {
+  id: 'militaryMobilization',
+  name: 'Military Mobilization',
+  description: 'Sustained military buildup with a large modern combined-arms force, strong land support, and high tolerance for prolonged mobilization.',
+  modernizationBias: 1.25,
+  quantityBias: 1.35,
+  qualityBias: 1.1,
+  preferredRoles: {
+    melee: 1.2,
+    ranged: 1.15,
+    mounted: 1.2,
+    siege: 1.4,
+    navalMelee: 0.65,
+    navalRanged: 0.65,
+    air: 1.3,
+  },
+  targetComposition: {
+    melee: 0.27,
+    ranged: 0.24,
+    mounted: 0.17,
+    siege: 0.17,
+    navalMelee: 0.04,
+    navalRanged: 0.04,
+    air: 0.07,
+  },
+  militaryBudget: {
+    strengthMultiplier: 1.55,
+    maxUnitsMultiplier: 1.75,
+    allowOverbuildingWhenThreatened: true,
+  },
+  strategicTolerance: {
+    minHappinessForMilitaryBuilds: -6,
+    minGoldReserveForMilitaryBuilds: -10,
+    tolerateWarWeariness: true,
+  },
+  productionBehavior: {
+    modernizationBias: 1.25,
+    quantityBias: 1.35,
+    qualityBias: 1.1,
+  },
+};
+
+/** A reusable mixed-force doctrine for prestige powers with meaningful coastal reach. */
+export const PRESTIGE_PROJECTION_DOCTRINE: AIMilitaryDoctrine = {
+  id: 'prestigeProjection',
+  name: 'Prestige Projection',
+  description: 'Maintains an imposing mixed land force and a meaningful navy, favoring attainable demonstrations of power over unlimited mobilization.',
+  modernizationBias: 1.15,
+  quantityBias: 1.15,
+  qualityBias: 1.05,
+  preferredRoles: {
+    melee: 1.2,
+    ranged: 1.05,
+    mounted: 1.05,
+    siege: 1.15,
+    navalMelee: 1.35,
+    navalRanged: 1.4,
+    air: 1.1,
+  },
+  targetComposition: {
+    melee: 0.25,
+    ranged: 0.22,
+    mounted: 0.13,
+    siege: 0.14,
+    navalMelee: 0.12,
+    navalRanged: 0.12,
+    air: 0.02,
+  },
+  militaryBudget: {
+    strengthMultiplier: 1.3,
+    maxUnitsMultiplier: 1.35,
+    allowOverbuildingWhenThreatened: true,
+  },
+  strategicTolerance: {
+    minHappinessForMilitaryBuilds: -2,
+    minGoldReserveForMilitaryBuilds: 5,
+    tolerateWarWeariness: false,
+  },
+  productionBehavior: {
+    modernizationBias: 1.15,
+    quantityBias: 1.15,
+    qualityBias: 1.05,
+  },
+};
+
 export const AI_MILITARY_DOCTRINES: readonly AIMilitaryDoctrine[] = [
   BALANCED_DOCTRINE,
   STEPPE_HORDE_DOCTRINE,
@@ -405,6 +495,8 @@ export const AI_MILITARY_DOCTRINES: readonly AIMilitaryDoctrine[] = [
   RELIGIOUS_MILITIA_DOCTRINE,
   ECONOMIC_MINIMAL_ARMY_DOCTRINE,
   PIRATE_CODE_DOCTRINE,
+  MILITARY_MOBILIZATION_DOCTRINE,
+  PRESTIGE_PROJECTION_DOCTRINE,
 ];
 
 export function getAIMilitaryDoctrineById(id: string | undefined): AIMilitaryDoctrine {

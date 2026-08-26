@@ -2,6 +2,7 @@ import type { MilitaryComparison } from '../systems/ai/AIMilitaryEvaluationSyste
 import type { ThreatLevel } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
 import type { DiplomacyState } from '../systems/DiplomacyManager';
 import type { DiplomaticAttitude } from '../systems/diplomacy/DiplomaticEvaluationSystem';
+import type { WarDeclarationReason } from './warDeclaration';
 
 export type AIDiplomacyAction =
   | 'declareWar'
@@ -32,6 +33,9 @@ export interface AIDiplomacyDecisionReason {
   readonly ideologyCompatibilityLabel?: string;
   readonly sourceIdeologyName?: string;
   readonly targetIdeologyName?: string;
+
+  /** Presentation-only narrative classification for an approved AI declaration. */
+  readonly warDeclarationReason?: WarDeclarationReason;
 
   readonly reasonText: string;
 }

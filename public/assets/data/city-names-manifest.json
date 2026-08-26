@@ -443,6 +443,28 @@
       "Magdeburg",
       "Worms"
     ],
+    "nation_italy": [
+      "Rome",
+      "Milan",
+      "Naples",
+      "Turin",
+      "Palermo",
+      "Genoa",
+      "Bologna",
+      "Florence",
+      "Venice",
+      "Bari",
+      "Catania",
+      "Verona",
+      "Messina",
+      "Padua",
+      "Trieste",
+      "Taranto",
+      "Brescia",
+      "Parma",
+      "Modena",
+      "Ravenna"
+    ],
     "nation_pirate": [
       "Kingston",
       "Tortuga",

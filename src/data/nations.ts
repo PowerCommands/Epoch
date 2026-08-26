@@ -32,6 +32,8 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_denmark', name: 'Denmark', color: '#80071b', secondaryColor: '#ffffff', currencyName: 'Krone', currencySymbol: 'kr' },
   { id: 'nation_pirate', name: 'Pirates', color: '#1a1a1a', secondaryColor: '#c0392b', currencyName: 'Pieces of Eight', currencySymbol: '☠' },
   { id: 'nation_germany', name: 'Germany', color: '#2b2b2b', secondaryColor: '#d4af37', currencyName: 'Mark', currencySymbol: 'ℳ' },
+  { id: 'nation_italy', name: 'Italy', color: '#0b6b3a', secondaryColor: '#ce2b37', currencyName: 'Lira', currencySymbol: '₤' },
+  { id: 'nation_poland', name: 'Poland', color: '#d4213d', secondaryColor: '#f5f5f5', currencyName: 'Polish Złoty', currencySymbol: 'zł' },
 ];
 
 export function getNationDefinitionById(nationId: string): NationDefinition | undefined {

@@ -485,12 +485,69 @@ export const BALANCED_GROWTH_STRATEGY: AILeaderEraStrategy = {
 export const MILITARY_PREPARATION_STRATEGY: AILeaderEraStrategy = {
   id: 'militaryPreparation',
   name: 'Military Preparation',
-  description: 'Placeholder — biases toward building an army before committing to war.',
-  productionWeights: { ...NEUTRAL_PRODUCTION },
-  researchWeights: { ...NEUTRAL_RESEARCH },
-  cultureWeights: { ...NEUTRAL_CULTURE },
-  diplomacyWeights: { ...NEUTRAL_DIPLOMACY },
-  militaryBehavior: { ...NEUTRAL_MILITARY },
+  description: 'Builds production capacity and a large combined-arms force before exploiting favorable military opportunities.',
+  productionWeights: {
+    settler: 1.05,
+    scout: 0.9,
+    military: 1.65,
+    melee: 1.3,
+    ranged: 1.25,
+    naval: 0.75,
+    foodBuilding: 0.9,
+    productionBuilding: 1.4,
+    scienceBuilding: 0.9,
+    cultureBuilding: 0.5,
+    goldBuilding: 0.85,
+    happinessBuilding: 1.0,
+    wonder: 0.45,
+    worker: 1.15,
+    workBoat: 0.75,
+  },
+  researchWeights: {
+    food: 0.9,
+    production: 1.4,
+    military: 1.6,
+    naval: 0.75,
+    economy: 1.0,
+    science: 0.9,
+    expansion: 1.25,
+  },
+  cultureWeights: {
+    expansion: 1.3,
+    diplomacy: 0.45,
+    military: 1.7,
+    happiness: 0.9,
+    economy: 1.0,
+  },
+  diplomacyWeights: {
+    openBorders: 0.55,
+    embassy: 0.5,
+    trade: 0.75,
+    war: 1.35,
+  },
+  militaryBehavior: {
+    prepareForWar: true,
+    targetWeakNeighbor: true,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 1.35,
+  },
+  cityFocusRules: {
+    primaryCityFocus: 'military',
+    largeCityPopulationThreshold: 8,
+  },
+  foundingPreferences: {
+    strategicResource: 1.5,
+    luxuryResource: 0.8,
+    coastalAccess: 0.7,
+    waterResource: 0.75,
+    foodYield: 0.95,
+    productionYield: 1.5,
+    distancePenalty: 0.9,
+  },
+  happinessBehavior: {
+    stabilizationThreshold: -2,
+    criticalThreshold: -6,
+  },
 };
 
 export const CONQUEST_CAMPAIGN_STRATEGY: AILeaderEraStrategy = {
@@ -507,12 +564,65 @@ export const CONQUEST_CAMPAIGN_STRATEGY: AILeaderEraStrategy = {
 export const DEFENSIVE_BUILDER_STRATEGY: AILeaderEraStrategy = {
   id: 'defensiveBuilder',
   name: 'Defensive Builder',
-  description: 'Placeholder — favors defensive infrastructure and stable borders.',
-  productionWeights: { ...NEUTRAL_PRODUCTION },
-  researchWeights: { ...NEUTRAL_RESEARCH },
-  cultureWeights: { ...NEUTRAL_CULTURE },
-  diplomacyWeights: { ...NEUTRAL_DIPLOMACY },
-  militaryBehavior: { ...NEUTRAL_MILITARY },
+  description: 'Maintains a prepared defensive army, productive infrastructure, stable borders, and dependable diplomatic partnerships.',
+  productionWeights: {
+    settler: 0.9,
+    scout: 1.0,
+    military: 1.35,
+    melee: 1.15,
+    ranged: 1.3,
+    naval: 0.8,
+    foodBuilding: 1.0,
+    productionBuilding: 1.25,
+    scienceBuilding: 1.0,
+    cultureBuilding: 0.9,
+    goldBuilding: 1.0,
+    happinessBuilding: 1.15,
+    wonder: 0.7,
+    worker: 1.1,
+    workBoat: 0.8,
+  },
+  researchWeights: {
+    food: 1.0,
+    production: 1.2,
+    military: 1.3,
+    naval: 0.8,
+    economy: 1.0,
+    science: 1.0,
+    expansion: 0.85,
+  },
+  cultureWeights: {
+    expansion: 0.8,
+    diplomacy: 1.35,
+    military: 1.3,
+    happiness: 1.15,
+    economy: 1.0,
+  },
+  diplomacyWeights: {
+    openBorders: 1.2,
+    embassy: 1.4,
+    trade: 1.15,
+    war: 0.8,
+  },
+  militaryBehavior: {
+    prepareForWar: true,
+    targetWeakNeighbor: false,
+    preferCapitalTargets: false,
+    minimumMilitaryReadiness: 1.2,
+  },
+  foundingPreferences: {
+    strategicResource: 1.3,
+    luxuryResource: 0.9,
+    coastalAccess: 0.75,
+    waterResource: 0.85,
+    foodYield: 1.0,
+    productionYield: 1.25,
+    distancePenalty: 1.1,
+  },
+  happinessBehavior: {
+    stabilizationThreshold: 2,
+    criticalThreshold: -2,
+  },
 };
 
 export const NAVAL_EXPANSION_STRATEGY: AILeaderEraStrategy = {
@@ -668,6 +778,24 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
     leaderId: 'leader_genghis-khan',
     strategiesByEra: {
       ancient: 'frontierExpansion',
+    },
+  },
+  {
+    leaderId: 'leader_adolf_hitler',
+    strategiesByEra: {
+      ancient: 'militaryPreparation',
+    },
+  },
+  {
+    leaderId: 'leader_benito_mussolini',
+    strategiesByEra: {
+      ancient: 'militaryPreparation',
+    },
+  },
+  {
+    leaderId: 'leader_wladyslaw_sikorski',
+    strategiesByEra: {
+      ancient: 'defensiveBuilder',
     },
   },
   {

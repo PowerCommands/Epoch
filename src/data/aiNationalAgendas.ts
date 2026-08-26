@@ -108,6 +108,45 @@ export const HOMELAND_DEFENSE_AGENDA: AINationalAgenda = {
   },
 };
 
+/**
+ * Sovereign defensive strength: militarily credible and resistant to pressure,
+ * but deliberately not biased toward territorial expansion.
+ */
+export const FRANCE_LIBRE_AGENDA: AINationalAgenda = {
+  id: 'france_libre',
+  name: 'France Libre',
+  description: 'Defends national sovereignty, respects states that maintain their independence, and distrusts powers that bully or subordinate weaker nations.',
+  strategyBias: {
+    [DEFENSIVE_AI_STRATEGY_ID]: 25,
+    [BALANCED_AI_STRATEGY_ID]: 8,
+    [AGGRESSIVE_AI_STRATEGY_ID]: 5,
+  },
+};
+
+/** Prestige-seeking expansion that favors favorable wars over reckless conquest. */
+export const NEW_ROMAN_EMPIRE_AGENDA: AINationalAgenda = {
+  id: 'new_roman_empire',
+  name: 'New Roman Empire',
+  description: 'Seeks military prestige, territorial influence, national strength, and recognition as a major power, while preferring opportunities that promise a favorable victory.',
+  strategyBias: {
+    [EXPANSIONIST_AI_STRATEGY_ID]: 18,
+    [AGGRESSIVE_AI_STRATEGY_ID]: 12,
+    [BALANCED_AI_STRATEGY_ID]: 5,
+  },
+};
+
+/** Prepared collective defense: sovereignty secured through credible force and dependable partners. */
+export const POLAND_SHALL_ENDURE_AGENDA: AINationalAgenda = {
+  id: 'poland_shall_endure',
+  name: 'Poland Shall Endure',
+  description: 'Protects sovereignty through military preparedness, dependable alliances, resistance to aggression, and respect for nations that honor their commitments.',
+  strategyBias: {
+    [DEFENSIVE_AI_STRATEGY_ID]: 24,
+    [BALANCED_AI_STRATEGY_ID]: 10,
+    [AGGRESSIVE_AI_STRATEGY_ID]: 5,
+  },
+};
+
 export const AI_NATIONAL_AGENDAS: readonly AINationalAgenda[] = [
   BALANCED_AGENDA,
   GROWTH_AGENDA,
@@ -118,6 +157,9 @@ export const AI_NATIONAL_AGENDAS: readonly AINationalAgenda[] = [
   NAVAL_POWER_AGENDA,
   ISOLATIONIST_AGENDA,
   HOMELAND_DEFENSE_AGENDA,
+  FRANCE_LIBRE_AGENDA,
+  NEW_ROMAN_EMPIRE_AGENDA,
+  POLAND_SHALL_ENDURE_AGENDA,
 ];
 
 export function getAINationalAgendaById(id: string | undefined): AINationalAgenda {

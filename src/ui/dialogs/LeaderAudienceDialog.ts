@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getLeaderById } from '../../data/leaders';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
-import { getLeaderRoomImagePath, getLeaderRoomKey } from '../../utils/assetPaths';
+import { getLeaderPortraitKey, getLeaderRoomImagePath, getLeaderRoomKey } from '../../utils/assetPaths';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
 import type { RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
 import { AudienceActionList } from './AudienceActionList';
@@ -90,6 +90,7 @@ export class LeaderAudienceDialog {
   private readonly backdropHitArea: Phaser.GameObjects.Zone;
   private readonly dialogBackground: Phaser.GameObjects.Rectangle;
   private readonly roomImage: Phaser.GameObjects.Image;
+  private readonly leaderPortrait: Phaser.GameObjects.Image;
   private readonly readabilityOverlay: Phaser.GameObjects.Rectangle;
   private readonly leftPanelBackground: Phaser.GameObjects.Rectangle;
   private readonly leaderNameText: Phaser.GameObjects.Text;
@@ -97,10 +98,12 @@ export class LeaderAudienceDialog {
   private readonly leaderTitleText: Phaser.GameObjects.Text;
   private readonly relationLabelText: Phaser.GameObjects.Text;
   private readonly relationValueText: Phaser.GameObjects.Text;
+  private readonly declarationText: Phaser.GameObjects.Text;
   private readonly actionList: AudienceActionList;
   private readonly closeButton: DialogButton;
 
   private currentLeaderId: string | null = null;
+  private declarationMessage: string | null = null;
   private roomVisible = false;
   private destroyed = false;
   /** Room-image keys currently being fetched, to avoid duplicate load requests. */
@@ -124,6 +127,9 @@ export class LeaderAudienceDialog {
     this.roomImage = this.addOwned(new Phaser.GameObjects.Image(scene, 0, 0, '__MISSING'))
       .setOrigin(0.5, 0.5).setDepth(DEPTH + 2).setScrollFactor(0);
 
+    this.leaderPortrait = this.addOwned(new Phaser.GameObjects.Image(scene, 0, 0, '__MISSING'))
+      .setOrigin(0.5, 0.5).setDepth(DEPTH + 4).setScrollFactor(0);
+
     this.readabilityOverlay = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x000000, READABILITY_ALPHA))
       .setOrigin(0, 0).setDepth(DEPTH + 3).setScrollFactor(0);
 
@@ -136,6 +142,7 @@ export class LeaderAudienceDialog {
     this.leaderTitleText = this.addText('', 18, '#9fb0c4', 'normal');
     this.relationLabelText = this.addText('RELATIONSHIP', 14, '#8aa0b8', 'bold');
     this.relationValueText = this.addText('', 26, '#f4d06f', 'bold');
+    this.declarationText = this.addText('', 23, '#f4f1e7', 'normal');
 
     this.actionList = new AudienceActionList(
       scene,
@@ -192,6 +199,7 @@ export class LeaderAudienceDialog {
     if (!leader) return;
 
     this.currentLeaderId = leaderId;
+    this.declarationMessage = null;
     this.setVisible(true);
 
     const nationName = this.context.getNationName(leader.nationId);
@@ -219,9 +227,25 @@ export class LeaderAudienceDialog {
     }
 
     this.actionList.setRows(this.buildRows(leader.nationId));
+    this.actionList.setVisible(true);
+    this.declarationText.setVisible(false);
+    this.leaderPortrait.setVisible(false);
     this.layout();
 
     this.lifecycleHooks.onOpened?.(leader.nationId);
+  }
+
+  /** Open the same leader chamber as a declaration-only acknowledgement. */
+  openWarDeclaration(leaderId: string, message: string): void {
+    this.open(leaderId);
+    this.declarationMessage = message;
+    this.declarationText.setText(message).setVisible(true);
+    const portraitKey = getLeaderPortraitKey(leaderId);
+    if (this.scene.textures.exists(portraitKey)) this.leaderPortrait.setTexture(portraitKey).setVisible(true);
+    this.actionList.setRows([]);
+    this.actionList.setVisible(false);
+    this.closeButton.text.setText('Understood');
+    this.layout();
   }
 
   /**
@@ -249,6 +273,8 @@ export class LeaderAudienceDialog {
   close(): void {
     const closingLeaderId = this.currentLeaderId;
     this.currentLeaderId = null;
+    this.declarationMessage = null;
+    this.closeButton.text.setText('Close');
     this.setVisible(false);
     if (closingLeaderId) {
       const nationId = getLeaderById(closingLeaderId)?.nationId;
@@ -292,7 +318,7 @@ export class LeaderAudienceDialog {
     const leader = getLeaderById(this.currentLeaderId);
     if (!leader) return;
     this.relationValueText.setText(this.context.getRelationshipSummary(leader.nationId));
-    this.actionList.setRows(this.buildRows(leader.nationId));
+    if (this.declarationMessage === null) this.actionList.setRows(this.buildRows(leader.nationId));
     this.layout();
   }
 
@@ -310,16 +336,27 @@ export class LeaderAudienceDialog {
     this.readabilityOverlay.setPosition(dialogX, dialogY).setDisplaySize(dialogW, dialogH);
 
     this.layoutRoomImage(dialogX, dialogY, dialogW, dialogH);
+    this.layoutLeaderPortrait(dialogX, dialogY, dialogW, dialogH);
     this.layoutLeftPanel(dialogX, dialogY, dialogW, dialogH);
     this.layoutCloseButton(dialogX, dialogY, dialogW);
   }
 
   private layoutRoomImage(dialogX: number, dialogY: number, dialogW: number, dialogH: number): void {
-    this.roomImage.setVisible(this.roomVisible);
-    if (!this.roomVisible) return;
+    this.roomImage.setVisible(this.roomVisible && this.declarationMessage === null);
+    if (!this.roomVisible || this.declarationMessage !== null) return;
     const scale = containScale(this.roomImage, dialogW, dialogH);
     this.roomImage.setScale(scale);
     this.roomImage.setPosition(dialogX + dialogW / 2, dialogY + dialogH / 2);
+  }
+
+  private layoutLeaderPortrait(dialogX: number, dialogY: number, dialogW: number, dialogH: number): void {
+    const visible = this.declarationMessage !== null && this.leaderPortrait.texture.key !== '__MISSING';
+    this.leaderPortrait.setVisible(visible);
+    if (!visible) return;
+    const maxWidth = dialogW * 0.42;
+    const maxHeight = dialogH * 0.72;
+    this.leaderPortrait.setScale(containScale(this.leaderPortrait, maxWidth, maxHeight));
+    this.leaderPortrait.setPosition(dialogX + dialogW * 0.73, dialogY + dialogH * 0.54);
   }
 
   private layoutLeftPanel(dialogX: number, dialogY: number, dialogW: number, dialogH: number): void {
@@ -353,6 +390,13 @@ export class LeaderAudienceDialog {
     this.relationValueText.setPosition(panelX, y);
     y += this.relationValueText.height + 22;
 
+    if (this.declarationMessage !== null) {
+      this.declarationText
+        .setWordWrapWidth(wrapWidth)
+        .setPosition(panelX, y);
+      return;
+    }
+
     // Remaining vertical space hosts the scrollable diplomacy/trade controls.
     const listHeight = Math.max(0, panelBottom - y);
     this.actionList.layout(panelX, y, panelW, listHeight);
@@ -371,11 +415,13 @@ export class LeaderAudienceDialog {
     }
     if (!visible) {
       this.roomImage.setVisible(false);
+      this.leaderPortrait.setVisible(false);
       this.leaderTitleText.setVisible(false);
     }
     this.setZoneInteractive(this.backdropHitArea, visible);
     this.setButtonVisible(this.closeButton, visible);
     this.actionList.setVisible(visible);
+    this.declarationText.setVisible(visible && this.declarationMessage !== null);
   }
 
   private removeOwned(object: Phaser.GameObjects.GameObject): void {

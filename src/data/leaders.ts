@@ -550,6 +550,77 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
       defeat: 'You may occupy our ground, but no victory over such a vast people is ever complete.',
     },
   },
+  {
+    // Opportunistic prestige-seeker: maintains a substantial mixed force and
+    // presses weaker rivals, but remains more sensitive to unfavorable military
+    // comparisons than the most committed conquest personalities.
+    id: 'leader_benito_mussolini',
+    name: 'Benito Mussolini',
+    nationId: 'nation_italy',
+    title: 'Il Duce',
+    image: `${LEADER_IMAGE_BASE}/benito-mussolini.png`,
+    description: 'Italy’s Fascist dictator, an authoritarian nationalist who pursued military prestige, territorial expansion, and recognition as a major power.',
+    ideologyId: 'nationalism',
+    aiMilitaryDoctrineId: 'prestigeProjection',
+    aiNationalAgendaId: 'new_roman_empire',
+    covertPersonalityId: 'opportunist',
+    culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'nationalism', 'totalitarianism', 'mobilization'],
+    aiPersonality: {
+      aggressionBias: 13,
+      expansionBias: 15,
+      economyBias: 3,
+      cultureBias: -6,
+      diplomacyBias: -2,
+      warTolerance: 68,
+      peacePreference: 38,
+      minimumUnitsLostBeforePeace: 5,
+      casualtyToleranceRatio: 0.50,
+    },
+    diplomacyFlavor: {
+      greeting: 'Italy expects to be heard among the great powers. Speak, and let us discover whether your proposal is worthy of our attention.',
+      friendly: 'Together our nations command respect. Let our partnership increase the prestige and strength of both.',
+      neutral: 'Italy watches the balance of power closely. We respect strength, ambition, and those who understand opportunity.',
+      hostile: 'Your obstruction is an insult to Italy’s dignity. Do not mistake restraint for weakness.',
+      warDeclaration: 'The hour for speeches has ended. Italy now advances to defend its honor and claim the greatness it deserves.',
+      victory: 'Italy has demonstrated its strength before the world. Let every nation recognize our renewed greatness.',
+      defeat: 'Fortune has turned against us today, but Italy’s pride and ambition will not be erased.',
+    },
+  },
+  {
+    // Prepared alliance-builder: credible defensive strength and firm resistance
+    // to threats, without the expansion bias of conquest-oriented leaders.
+    id: 'leader_wladyslaw_sikorski',
+    name: 'Władysław Sikorski',
+    nationId: 'nation_poland',
+    title: 'General',
+    image: `${LEADER_IMAGE_BASE}/wladyslaw-sikorski.png`,
+    description: 'A Polish general and statesman defined by military preparedness, diplomatic cooperation, and determination to preserve Poland’s sovereignty.',
+    ideologyId: 'conservatism',
+    aiMilitaryDoctrineId: 'disciplinedInfantry',
+    aiNationalAgendaId: 'poland_shall_endure',
+    covertPersonalityId: 'honorable',
+    culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'defensive_tactics', 'civil_service_civics', 'diplomatic_service', 'nationalism', 'mobilization'],
+    aiPersonality: {
+      aggressionBias: 5,
+      expansionBias: -4,
+      economyBias: 4,
+      cultureBias: 0,
+      diplomacyBias: 14,
+      warTolerance: 66,
+      peacePreference: 55,
+      minimumUnitsLostBeforePeace: 5,
+      casualtyToleranceRatio: 0.55,
+    },
+    diplomacyFlavor: {
+      greeting: 'Poland seeks peace founded on respect, preparedness, and clear commitments. Speak candidly, and you will receive the same.',
+      friendly: 'A dependable friend is a source of strength in uncertain times. Poland will honor the commitments we make together.',
+      neutral: 'Poland judges nations by their conduct. We prepare for danger, but we remain ready for honest cooperation.',
+      hostile: 'Threats will not decide Poland’s future. Continued pressure will meet disciplined and determined resistance.',
+      warDeclaration: 'Poland’s security can no longer rest on assurances. Our forces are prepared, and we will act with resolve.',
+      victory: 'Poland stands sovereign because its people and its partners did not yield when tested.',
+      defeat: 'An army may be defeated, but a nation’s determination to endure cannot be erased by force.',
+    },
+  },
 ];
 
 const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderPreferences>> = {
@@ -575,6 +646,8 @@ const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderP
   'hermann-the-cheruscan': { traditionalFavourite: 'wrestling', additionalFavourite: 'hundred_metres' },
   'ivan-iv': { traditionalFavourite: 'javelin', additionalFavourite: 'horse_racing' },
   leader_joseph_stalin: { traditionalFavourite: 'wrestling', additionalFavourite: 'boxing' },
+  leader_benito_mussolini: { traditionalFavourite: 'fencing', additionalFavourite: 'boxing' },
+  leader_wladyslaw_sikorski: { traditionalFavourite: 'javelin', additionalFavourite: 'fencing' },
 };
 
 const DEFAULT_LEADERS: LeaderDefinition[] = DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES.map((leader) => ({
@@ -585,6 +658,8 @@ const DEFAULT_LEADERS: LeaderDefinition[] = DEFAULT_LEADERS_WITHOUT_GAMES_PREFER
 
 const HENRY_V = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_henry_v')!;
 export const JOSEPH_STALIN = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_joseph_stalin')!;
+export const BENITO_MUSSOLINI = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_benito_mussolini')!;
+export const WLADYSLAW_SIKORSKI = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_wladyslaw_sikorski')!;
 
 /** England's first alternative leader; gameplay configuration intentionally mirrors Henry V. */
 export const WINSTON_CHURCHILL: LeaderDefinition = {
@@ -601,7 +676,86 @@ export const WINSTON_CHURCHILL: LeaderDefinition = {
   diplomacyFlavor: HENRY_V.diplomacyFlavor ? { ...HENRY_V.diplomacyFlavor } : undefined,
 };
 
-export const ALL_LEADERS: LeaderDefinition[] = [...DEFAULT_LEADERS, WINSTON_CHURCHILL];
+/** France's modern alternative leader: sovereign, resilient, and defensive rather than expansionist. */
+export const CHARLES_DE_GAULLE: LeaderDefinition = {
+  id: 'leader_charles_de_gaulle',
+  isDefault: false,
+  name: 'Charles de Gaulle',
+  nationId: 'nation_france',
+  title: 'General',
+  image: `${LEADER_IMAGE_BASE}/charles-de-gaulle.png`,
+  description: 'Leader of Free France and later President of the French Republic, defined by national independence, resistance, and an uncompromising defense of French sovereignty.',
+  ideologyId: 'nationalism',
+  aiMilitaryDoctrineId: 'disciplinedInfantry',
+  aiNationalAgendaId: 'france_libre',
+  covertPersonalityId: 'honorable',
+  culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'nationalism', 'mobilization'],
+  gamesOfNationsPreferences: { traditionalFavourite: 'javelin', additionalFavourite: 'fencing' },
+  aiPersonality: {
+    aggressionBias: 7,
+    expansionBias: -6,
+    economyBias: 8,
+    cultureBias: 6,
+    diplomacyBias: 4,
+    warTolerance: 72,
+    peacePreference: 40,
+    minimumUnitsLostBeforePeace: 6,
+    casualtyToleranceRatio: 0.6,
+  },
+  diplomacyFlavor: {
+    greeting: 'France speaks in its own name and chooses its own course. Let us deal with one another as sovereign nations.',
+    friendly: 'Our friendship is strongest when neither nation asks the other to surrender its independence.',
+    neutral: 'France listens to allies and rivals alike, but its decisions remain French decisions.',
+    hostile: 'Pressure will not make France submit. It will only make our resistance more determined.',
+    warDeclaration: 'France will not accept intimidation or subordination. We shall resist, and France shall endure.',
+    victory: 'France stands sovereign and unbroken. That was the purpose of our struggle.',
+    defeat: 'A battle may be lost, but France is not extinguished. Resistance will continue wherever French resolve remains.',
+  },
+};
+
+/** Germany's WWII-era alternative leader with a distinct military buildup profile. */
+export const ADOLF_HITLER: LeaderDefinition = {
+  id: 'leader_adolf_hitler',
+  isDefault: false,
+  name: 'Adolf Hitler',
+  nationId: 'nation_germany',
+  title: 'Führer',
+  image: `${LEADER_IMAGE_BASE}/adolf-hitler.png`,
+  description: 'Germany’s Nazi dictator during World War II, responsible for militarization, aggressive expansion, mass persecution, and genocide.',
+  ideologyId: 'militarism',
+  aiMilitaryDoctrineId: 'militaryMobilization',
+  aiNationalAgendaId: 'military_power',
+  covertPersonalityId: 'paranoid',
+  culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'totalitarianism'],
+  gamesOfNationsPreferences: { traditionalFavourite: 'javelin', additionalFavourite: 'boxing' },
+  aiPersonality: {
+    aggressionBias: 20,
+    expansionBias: 20,
+    economyBias: 6,
+    cultureBias: -10,
+    diplomacyBias: -16,
+    warTolerance: 88,
+    peacePreference: 15,
+    minimumUnitsLostBeforePeace: 8,
+    casualtyToleranceRatio: 0.68,
+  },
+  diplomacyFlavor: {
+    greeting: 'Germany will judge your proposal by strength, discipline, and advantage. Speak plainly.',
+    friendly: 'Our present interests are aligned. That alignment will endure only while it remains useful to Germany.',
+    neutral: 'Germany is preparing for every possibility. Your actions will determine which one follows.',
+    hostile: 'You have placed yourself against German interests. Do not expect hesitation in our response.',
+    warDeclaration: 'Diplomacy no longer serves our aims. Germany will now settle this by force.',
+    victory: 'Germany has imposed its will through preparation and force.',
+    defeat: 'Our military position has collapsed. History will record the consequences.',
+  },
+};
+
+export const ALL_LEADERS: LeaderDefinition[] = [
+  ...DEFAULT_LEADERS,
+  WINSTON_CHURCHILL,
+  CHARLES_DE_GAULLE,
+  ADOLF_HITLER,
+];
 
 /**
  * Per-scenario leader overrides, keyed by nationId. Installed once at game start

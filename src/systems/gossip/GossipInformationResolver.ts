@@ -75,6 +75,9 @@ export function describeGossipAgenda(strategyId: string | undefined, agendaId: s
     case 'naval_power': return 'Control of the seas is central to our plans.';
     case 'isolationist': return 'We prefer security, controlled borders, and freedom from unnecessary conflict.';
     case 'homeland_defense': return 'We will defend our homeland and make aggressors regret testing us.';
+    case 'france_libre': return 'We will maintain the strength and independence to decide our own future.';
+    case 'new_roman_empire': return 'Italy seeks the strength, territory, and prestige of a great power—and recognizes favorable opportunities.';
+    case 'poland_shall_endure': return 'We prepare to defend our sovereignty and place great value on allies who keep their commitments.';
     case 'balanced': return 'We are keeping our options open and strengthening the nation where needed.';
   }
 }

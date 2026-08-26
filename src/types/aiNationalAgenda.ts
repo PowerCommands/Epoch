@@ -7,7 +7,10 @@ export type AINationalAgendaId =
   | 'expansionist'
   | 'naval_power'
   | 'isolationist'
-  | 'homeland_defense';
+  | 'homeland_defense'
+  | 'france_libre'
+  | 'new_roman_empire'
+  | 'poland_shall_endure';
 
 export interface AINationalAgenda {
   readonly id: AINationalAgendaId;

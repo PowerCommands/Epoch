@@ -110,6 +110,10 @@ import { AIPolicySystem } from '../systems/ai/AIPolicySystem';
 import { AIMilitaryEvaluationSystem } from '../systems/ai/AIMilitaryEvaluationSystem';
 import { AIMilitaryThreatEvaluationSystem } from '../systems/ai/AIMilitaryThreatEvaluationSystem';
 import { createAILogFormatter } from '../systems/ai/AILogFormatter';
+import {
+  createAIWarDeclarationDialogueRequest,
+  type AIWarDeclarationDialogueRequest,
+} from '../systems/ai/AIWarDeclarationDialogue';
 import { DiscoverySystem } from '../systems/DiscoverySystem';
 import { EventLogSystem } from '../systems/EventLogSystem';
 import { HistoricalTimelineService } from '../systems/HistoricalTimelineService';
@@ -1465,11 +1469,14 @@ export class GameScene extends Phaser.Scene {
     });
     aiDiplomacySystem.onDecision((reason) => {
       const targetName = nationManager.getNation(reason.targetNationId)?.name ?? reason.targetNationId;
+      const narrativeNote = reason.warDeclarationReason
+        ? ` narrativeReason=${reason.warDeclarationReason}.`
+        : '';
       logManager.info({
         nationId: reason.actorNationId,
         nationIds: [reason.actorNationId, reason.targetNationId],
         category: 'diplomacy',
-        message: `${formatAIDiplomacyAction(reason.action, targetName)} Reason: ${reason.reasonText}`,
+        message: `${formatAIDiplomacyAction(reason.action, targetName)} Reason: ${reason.reasonText}${narrativeNote}`,
       });
     });
     const researchSystem = new ResearchSystem(
@@ -3342,10 +3349,16 @@ export class GameScene extends Phaser.Scene {
     const audienceMusic = SetupMusicManager.getShared();
     let musicKeyBeforeAudience: string | null = null;
     const pendingAudienceLeaderIds: string[] = [];
+    const pendingWarDeclarations: AIWarDeclarationDialogueRequest[] = [];
 
     const processAudienceQueue = (): void => {
       const dialog = this.leaderAudienceDialog;
       if (!dialog || dialog.isOpen() || this.leaderGossipDialog?.isOpen()) return;
+      const declaration = pendingWarDeclarations.shift();
+      if (declaration) {
+        dialog.openWarDeclaration(declaration.leaderId, declaration.phrase);
+        return;
+      }
       const nextLeaderId = pendingAudienceLeaderIds.shift();
       if (nextLeaderId) dialog.open(nextLeaderId);
     };
@@ -3364,7 +3377,7 @@ export class GameScene extends Phaser.Scene {
     const onAudienceClosed = (): void => {
       // Chain straight into the next queued audience (which switches the music
       // to that nation); only restore the prior playlist once none remain.
-      if (pendingAudienceLeaderIds.length > 0) {
+      if (pendingWarDeclarations.length > 0 || pendingAudienceLeaderIds.length > 0) {
         processAudienceQueue();
         return;
       }
@@ -6763,6 +6776,17 @@ export class GameScene extends Phaser.Scene {
     }, data.humanNationId, {
       onOpened: (nationId) => onAudienceOpened(nationId),
       onClosed: () => onAudienceClosed(),
+    });
+    aiDiplomacySystem.onDecision((decision) => {
+      if (isAutoplayActive()) return;
+      const request = createAIWarDeclarationDialogueRequest(
+        decision,
+        humanNationIdForDiplomacy,
+        turnManager.getCurrentRound(),
+      );
+      if (!request) return;
+      pendingWarDeclarations.push(request);
+      processAudienceQueue();
     });
     rightPanel.setArrangeAudienceHandler((leaderId) => {
       if (this.leaderGossipDialog?.isOpen()) this.leaderGossipDialog.close();

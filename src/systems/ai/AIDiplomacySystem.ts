@@ -11,7 +11,8 @@ import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './AIMilitary
 import type { AIDiplomacyAction, AIDiplomacyDecisionReason } from '../../types/aiDiplomacy';
 import type { AILeaderPersonality } from '../../types/aiLeaderPersonality';
 import type { AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
-import { getLeaderPersonalityByNationId } from '../../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId } from '../../data/leaders';
+import { classifyWarDeclarationReason } from './WarDeclarationNarrative';
 import {
   getMilitaryIntent,
   getNationPersonalityFactor,
@@ -216,20 +217,23 @@ export class AIDiplomacySystem {
         this.turnsSince(relation.lastWarDeclarationTurn, currentTurn) >= WAR_COOLDOWN &&
         this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) >= NO_IMMEDIATE_WAR_AFTER_PEACE
       ) {
-        const reason = this.createDecisionReason(
-          'declareWar',
-          selfId,
-          otherId,
-          relation,
-          attitude,
-          warComparison,
-          threat,
-          personality,
-          evaluation,
-          ideologyWarModifier,
-        );
-        this.diplomacyManager.declareWar(selfId, otherId);
-        this.emitDecision(reason);
+        // The decision event is presentation/diagnostic metadata for a war that
+        // actually began. A blocked or already-existing war must not masquerade
+        // as a fresh direct AI declaration.
+        if (this.diplomacyManager.declareWar(selfId, otherId)) {
+          this.emitDecision(this.createDecisionReason(
+            'declareWar',
+            selfId,
+            otherId,
+            relation,
+            attitude,
+            warComparison,
+            threat,
+            personality,
+            evaluation,
+            ideologyWarModifier,
+          ));
+        }
       }
       return;
     }
@@ -396,6 +400,21 @@ export class AIDiplomacySystem {
     evaluation: DiplomaticEvaluationResult,
     ideologyModifier: number,
   ): AIDiplomacyDecisionReason {
+    const leader = getLeaderByNationId(actorNationId);
+    const warDeclarationReason = action === 'declareWar'
+      ? classifyWarDeclarationReason({
+        militaryComparison,
+        threatLevel,
+        trust: relation.trust,
+        fear: relation.fear,
+        hostility: relation.hostility,
+        affinity: relation.affinity,
+        suspicion: relation.suspicion,
+        ideologyCompatibility: evaluation.ideologyCompatibility,
+        personality,
+        nationalAgendaId: leader?.aiNationalAgendaId,
+      })
+      : undefined;
     return {
       action,
       actorNationId,
@@ -413,6 +432,7 @@ export class AIDiplomacySystem {
       ideologyCompatibilityLabel: evaluation.ideologyCompatibilityLabel,
       sourceIdeologyName: evaluation.sourceIdeologyName,
       targetIdeologyName: evaluation.targetIdeologyName,
+      warDeclarationReason,
       reasonText: this.createReasonText(
         action,
         attitude,

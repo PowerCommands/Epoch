@@ -109,6 +109,13 @@
           "leaderTitle": "King of France",
           "leaderImage": "/assets/sprites/leaders/charles-vi.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_charles_de_gaulle",
+          "leaderName": "Charles de Gaulle",
+          "leaderTitle": "General",
+          "leaderImage": "/assets/sprites/leaders/charles-de-gaulle.png",
+          "isDefault": false
         }
       ]
     },
@@ -130,6 +137,13 @@
           "leaderTitle": "Chieftain of the Cherusci",
           "leaderImage": "/assets/sprites/leaders/hermann-the-cheruscan.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_adolf_hitler",
+          "leaderName": "Adolf Hitler",
+          "leaderTitle": "Führer",
+          "leaderImage": "/assets/sprites/leaders/adolf-hitler.png",
+          "isDefault": false
         }
       ]
     },
@@ -171,6 +185,27 @@
           "leaderName": "Gandhi",
           "leaderTitle": "Mahatma Gandhi",
           "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_italy",
+      "nationName": "Italy",
+      "color": "#0b6b3a",
+      "secondaryColor": "#ce2b37",
+      "currencyName": "Lira",
+      "currencySymbol": "₤",
+      "leaderId": "leader_benito_mussolini",
+      "leaderName": "Benito Mussolini",
+      "leaderTitle": "Il Duce",
+      "leaderImage": "/assets/sprites/leaders/benito-mussolini.png",
+      "leaders": [
+        {
+          "leaderId": "leader_benito_mussolini",
+          "leaderName": "Benito Mussolini",
+          "leaderTitle": "Il Duce",
+          "leaderImage": "/assets/sprites/leaders/benito-mussolini.png",
           "isDefault": true
         }
       ]

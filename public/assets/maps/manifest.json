@@ -54,6 +54,11 @@
       "key": "map_world",
       "label": "Word",
       "file": "assets/maps/world.json"
+    },
+    {
+      "key": "map_world_war_ii_europe",
+      "label": "World War II - Europe",
+      "file": "assets/maps/world-war-ii-europe.json"
     }
   ]
 }
