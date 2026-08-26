@@ -73,6 +73,7 @@ export function applyScenarioNationReplacement(
     secondaryColor: definition.secondaryColor,
     leaderName: undefined,
     leaderDescription: undefined,
+    leaderId: undefined,
     aiNationalAgendaId: replacementLeader?.aiNationalAgendaId,
     covertPersonalityId: replacementLeader?.covertPersonalityId,
     replacementNationId,

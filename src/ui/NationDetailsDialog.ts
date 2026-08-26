@@ -1,16 +1,17 @@
 import { CULTURE_TREE } from '../data/cultureTree';
 import { COVERT_PERSONALITIES } from '../data/covertPersonalities';
-import { getBuiltInLeaderByNationId } from '../data/leaders';
 import { ALL_TECHNOLOGIES, type Era } from '../data/technologies';
 import type { ScenarioNationCustomization } from '../types/gameConfig';
 import type { ScenarioNation, ScenarioNationDetails } from '../types/scenario';
+import type { LeaderDefinition } from '../types/leader';
 
 interface NationDetailsDialogOptions {
   nation: ScenarioNation;
-  identityNationId: string;
+  leaders: readonly LeaderDefinition[];
+  selectedLeaderId?: string;
   details?: ScenarioNationDetails;
   customization?: ScenarioNationCustomization;
-  onSave: (customization: ScenarioNationCustomization) => void;
+  onSave: (customization: ScenarioNationCustomization, leaderId: string | undefined) => void;
 }
 
 type ProgressionEntry = { id: string; name: string; era: Era };
@@ -18,7 +19,9 @@ type ProgressionEntry = { id: string; name: string; era: Era };
 /** Single-nation Game Setup variant of Map Editor's Nation Details dialog. */
 export class NationDetailsDialog {
   static show(options: NationDetailsDialogOptions): void {
-    const builtInLeader = getBuiltInLeaderByNationId(options.identityNationId);
+    const selectedLeader = options.leaders.find((leader) => leader.id === options.selectedLeaderId)
+      ?? options.leaders.find((leader) => leader.isDefault)
+      ?? options.leaders[0];
     const draft: ScenarioNationCustomization = options.customization
       ? structuredClone(options.customization)
       : {
@@ -36,6 +39,7 @@ export class NationDetailsDialog {
           ]),
         };
 
+    const leaderSection = this.buildLeaderSection(draft, options.leaders, selectedLeader?.id);
     const overlay = el('div', 'mm-nation-details-backdrop');
     const dialog = el('div', 'mm-nation-details-dialog');
     dialog.setAttribute('role', 'dialog');
@@ -48,7 +52,7 @@ export class NationDetailsDialog {
     const actions = el('div', 'mm-nd-header-actions');
     const cancel = button('Cancel', () => overlay.remove());
     const done = button('Done', () => {
-      options.onSave(structuredClone(draft));
+      options.onSave(structuredClone(draft), leaderSection.getSelectedLeaderId());
       overlay.remove();
     });
     done.classList.add('primary');
@@ -57,7 +61,7 @@ export class NationDetailsDialog {
 
     const content = el('div', 'mm-nd-content');
     content.append(
-      this.buildLeaderSection(draft, builtInLeader?.name),
+      leaderSection.element,
       this.buildProgressionSection('Technologies', ALL_TECHNOLOGIES, draft.researchedTechIds),
       this.buildProgressionSection('Culture Unlocks', CULTURE_TREE, draft.unlockedCultureNodeIds),
     );
@@ -69,14 +73,43 @@ export class NationDetailsDialog {
     document.body.appendChild(overlay);
   }
 
-  private static buildLeaderSection(draft: ScenarioNationCustomization, builtInName?: string): HTMLElement {
+  private static buildLeaderSection(
+    draft: ScenarioNationCustomization,
+    leaders: readonly LeaderDefinition[],
+    initialLeaderId?: string,
+  ): { element: HTMLElement; getSelectedLeaderId: () => string | undefined } {
     const section = sectionElement('Leader');
     const body = section.querySelector('.mm-nd-section-body')!;
+
+    const leaderLabel = el('label', 'mm-nd-field', 'Leader');
+    const leaderSelect = document.createElement('select');
+    for (const leader of leaders) leaderSelect.appendChild(option(leader.id, leader.name));
+    leaderSelect.value = initialLeaderId ?? '';
+    leaderSelect.disabled = leaders.length <= 1;
+    leaderLabel.appendChild(leaderSelect);
+
+    const preview = el('div', 'mm-nd-leader-preview');
+    const portrait = document.createElement('img');
+    portrait.className = 'mm-nd-leader-portrait';
+    const previewCopy = el('div', 'mm-nd-leader-preview-copy');
+    const previewName = el('strong');
+    const previewTitle = el('span');
+    previewCopy.append(previewName, previewTitle);
+    preview.append(portrait, previewCopy);
 
     const name = inputField('Leader name', 'text');
     name.input.maxLength = 120;
     name.input.value = draft.leaderName ?? '';
-    name.input.placeholder = builtInName ? `${builtInName} (built-in)` : 'Built-in leader name';
+    const updatePreview = () => {
+      const leader = leaders.find((candidate) => candidate.id === leaderSelect.value);
+      portrait.hidden = !leader;
+      portrait.src = leader?.image ?? '';
+      portrait.alt = leader?.name ?? '';
+      previewName.textContent = leader?.name ?? 'Unknown leader';
+      previewTitle.textContent = leader?.title ?? '';
+      name.input.placeholder = leader ? `${leader.name} (selected leader)` : 'Built-in leader name';
+    };
+    leaderSelect.addEventListener('change', updatePreview);
     name.input.addEventListener('input', () => { draft.leaderName = name.input.value.trim() || null; });
 
     const descriptionLabel = el('label', 'mm-nd-field', 'Description');
@@ -108,8 +141,14 @@ export class NationDetailsDialog {
     });
     personalityLabel.appendChild(personality);
 
-    body.append(name.label, descriptionLabel, gold.label, personalityLabel);
-    return section;
+    body.append(leaderLabel, preview, name.label, descriptionLabel, gold.label, personalityLabel);
+    updatePreview();
+    return {
+      element: section,
+      getSelectedLeaderId: () => leaders.some((leader) => leader.id === leaderSelect.value)
+        ? leaderSelect.value
+        : undefined,
+    };
   }
 
   private static buildProgressionSection(title: string, entries: readonly ProgressionEntry[], selected: string[]): HTMLElement {

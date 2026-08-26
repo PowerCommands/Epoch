@@ -10,7 +10,16 @@
       "leaderId": "leader_dom-pedro-ii",
       "leaderName": "Dom Pedro II",
       "leaderTitle": "Emperor Dom Pedro II",
-      "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png"
+      "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png",
+      "leaders": [
+        {
+          "leaderId": "leader_dom-pedro-ii",
+          "leaderName": "Dom Pedro II",
+          "leaderTitle": "Emperor Dom Pedro II",
+          "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_china",
@@ -22,7 +31,16 @@
       "leaderId": "leader_qin-shi-huang",
       "leaderName": "Qin Shi Huang",
       "leaderTitle": "Emperor Qin Shi Huang",
-      "leaderImage": "/assets/sprites/leaders/qin-shi-huang.png"
+      "leaderImage": "/assets/sprites/leaders/qin-shi-huang.png",
+      "leaders": [
+        {
+          "leaderId": "leader_qin-shi-huang",
+          "leaderName": "Qin Shi Huang",
+          "leaderTitle": "Emperor Qin Shi Huang",
+          "leaderImage": "/assets/sprites/leaders/qin-shi-huang.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_denmark",
@@ -34,7 +52,16 @@
       "leaderId": "leader_christian-iv",
       "leaderName": "Christian IV",
       "leaderTitle": "King of Denmark and Norway",
-      "leaderImage": "/assets/sprites/leaders/christian-iv.png"
+      "leaderImage": "/assets/sprites/leaders/christian-iv.png",
+      "leaders": [
+        {
+          "leaderId": "leader_christian-iv",
+          "leaderName": "Christian IV",
+          "leaderTitle": "King of Denmark and Norway",
+          "leaderImage": "/assets/sprites/leaders/christian-iv.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_england",
@@ -46,7 +73,23 @@
       "leaderId": "leader_henry_v",
       "leaderName": "Henry V",
       "leaderTitle": "King of England",
-      "leaderImage": "/assets/sprites/leaders/henry-v.png"
+      "leaderImage": "/assets/sprites/leaders/henry-v.png",
+      "leaders": [
+        {
+          "leaderId": "leader_henry_v",
+          "leaderName": "Henry V",
+          "leaderTitle": "King of England",
+          "leaderImage": "/assets/sprites/leaders/henry-v.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_winston_churchill",
+          "leaderName": "Winston Churchill",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/winston-churchill.png",
+          "isDefault": false
+        }
+      ]
     },
     {
       "nationId": "nation_france",
@@ -58,7 +101,16 @@
       "leaderId": "leader_charles_vii",
       "leaderName": "Charles VII",
       "leaderTitle": "King of France",
-      "leaderImage": "/assets/sprites/leaders/charles-vi.png"
+      "leaderImage": "/assets/sprites/leaders/charles-vi.png",
+      "leaders": [
+        {
+          "leaderId": "leader_charles_vii",
+          "leaderName": "Charles VII",
+          "leaderTitle": "King of France",
+          "leaderImage": "/assets/sprites/leaders/charles-vi.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_germany",
@@ -70,7 +122,16 @@
       "leaderId": "hermann-the-cheruscan",
       "leaderName": "Hermann the Cheruscan",
       "leaderTitle": "Chieftain of the Cherusci",
-      "leaderImage": "/assets/sprites/leaders/hermann-the-cheruscan.png"
+      "leaderImage": "/assets/sprites/leaders/hermann-the-cheruscan.png",
+      "leaders": [
+        {
+          "leaderId": "hermann-the-cheruscan",
+          "leaderName": "Hermann the Cheruscan",
+          "leaderTitle": "Chieftain of the Cherusci",
+          "leaderImage": "/assets/sprites/leaders/hermann-the-cheruscan.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_hre",
@@ -82,7 +143,16 @@
       "leaderId": "leader_sigismund",
       "leaderName": "Sigismund",
       "leaderTitle": "Holy Roman Emperor",
-      "leaderImage": "/assets/sprites/leaders/sigismund.png"
+      "leaderImage": "/assets/sprites/leaders/sigismund.png",
+      "leaders": [
+        {
+          "leaderId": "leader_sigismund",
+          "leaderName": "Sigismund",
+          "leaderTitle": "Holy Roman Emperor",
+          "leaderImage": "/assets/sprites/leaders/sigismund.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_india",
@@ -94,7 +164,16 @@
       "leaderId": "leader_mahatma-gandhi",
       "leaderName": "Gandhi",
       "leaderTitle": "Mahatma Gandhi",
-      "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png"
+      "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png",
+      "leaders": [
+        {
+          "leaderId": "leader_mahatma-gandhi",
+          "leaderName": "Gandhi",
+          "leaderTitle": "Mahatma Gandhi",
+          "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_japan",
@@ -106,7 +185,16 @@
       "leaderId": "leader_oda-nobunaga",
       "leaderName": "Oda Nobunaga",
       "leaderTitle": "Daimyo of Owari",
-      "leaderImage": "/assets/sprites/leaders/oda-nobunaga.png"
+      "leaderImage": "/assets/sprites/leaders/oda-nobunaga.png",
+      "leaders": [
+        {
+          "leaderId": "leader_oda-nobunaga",
+          "leaderName": "Oda Nobunaga",
+          "leaderTitle": "Daimyo of Owari",
+          "leaderImage": "/assets/sprites/leaders/oda-nobunaga.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_lithuania",
@@ -118,7 +206,16 @@
       "leaderId": "leader_vytautas",
       "leaderName": "Vytautas the Great",
       "leaderTitle": "Grand Duke of Lithuania",
-      "leaderImage": "/assets/sprites/leaders/vytautas-the-great.png"
+      "leaderImage": "/assets/sprites/leaders/vytautas-the-great.png",
+      "leaders": [
+        {
+          "leaderId": "leader_vytautas",
+          "leaderName": "Vytautas the Great",
+          "leaderTitle": "Grand Duke of Lithuania",
+          "leaderImage": "/assets/sprites/leaders/vytautas-the-great.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_mali_empire",
@@ -130,7 +227,16 @@
       "leaderId": "leader_mansa-musa",
       "leaderName": "Mansa Musa",
       "leaderTitle": "Emperor Mansa Musa",
-      "leaderImage": "/assets/sprites/leaders/mansa-musa.png"
+      "leaderImage": "/assets/sprites/leaders/mansa-musa.png",
+      "leaders": [
+        {
+          "leaderId": "leader_mansa-musa",
+          "leaderName": "Mansa Musa",
+          "leaderTitle": "Emperor Mansa Musa",
+          "leaderImage": "/assets/sprites/leaders/mansa-musa.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_mongolia",
@@ -142,7 +248,16 @@
       "leaderId": "leader_genghis-khan",
       "leaderName": "Genghis Khan",
       "leaderTitle": "Great Khan of the Mongols",
-      "leaderImage": "/assets/sprites/leaders/genghis-khan.png"
+      "leaderImage": "/assets/sprites/leaders/genghis-khan.png",
+      "leaders": [
+        {
+          "leaderId": "leader_genghis-khan",
+          "leaderName": "Genghis Khan",
+          "leaderTitle": "Great Khan of the Mongols",
+          "leaderImage": "/assets/sprites/leaders/genghis-khan.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_morocco_empire",
@@ -154,7 +269,16 @@
       "leaderId": "leader_abu_said_uthman_ii",
       "leaderName": "Abu Said Uthman II",
       "leaderTitle": "Sultan of Morocco",
-      "leaderImage": "/assets/sprites/leaders/abu-al-hasan.png"
+      "leaderImage": "/assets/sprites/leaders/abu-al-hasan.png",
+      "leaders": [
+        {
+          "leaderId": "leader_abu_said_uthman_ii",
+          "leaderName": "Abu Said Uthman II",
+          "leaderTitle": "Sultan of Morocco",
+          "leaderImage": "/assets/sprites/leaders/abu-al-hasan.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_novgorod",
@@ -166,7 +290,16 @@
       "leaderId": "leader_marfa_boretskaya",
       "leaderName": "Marfa Boretskaya",
       "leaderTitle": "Posadnitsa of Novgorod",
-      "leaderImage": "/assets/sprites/leaders/marfa-boretskaya.png"
+      "leaderImage": "/assets/sprites/leaders/marfa-boretskaya.png",
+      "leaders": [
+        {
+          "leaderId": "leader_marfa_boretskaya",
+          "leaderName": "Marfa Boretskaya",
+          "leaderTitle": "Posadnitsa of Novgorod",
+          "leaderImage": "/assets/sprites/leaders/marfa-boretskaya.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_ottoman",
@@ -178,7 +311,16 @@
       "leaderId": "leader_mehmed_ii",
       "leaderName": "Mehmed II",
       "leaderTitle": "Sultan of the Ottoman Empire",
-      "leaderImage": "/assets/sprites/leaders/mehmed-i.png"
+      "leaderImage": "/assets/sprites/leaders/mehmed-i.png",
+      "leaders": [
+        {
+          "leaderId": "leader_mehmed_ii",
+          "leaderName": "Mehmed II",
+          "leaderTitle": "Sultan of the Ottoman Empire",
+          "leaderImage": "/assets/sprites/leaders/mehmed-i.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_pirate",
@@ -190,7 +332,16 @@
       "leaderId": "leader_mad_jack",
       "leaderName": "Mad Jack",
       "leaderTitle": "Pirate Lord of the Free Seas",
-      "leaderImage": "/assets/sprites/leaders/pirate.png"
+      "leaderImage": "/assets/sprites/leaders/pirate.png",
+      "leaders": [
+        {
+          "leaderId": "leader_mad_jack",
+          "leaderName": "Mad Jack",
+          "leaderTitle": "Pirate Lord of the Free Seas",
+          "leaderImage": "/assets/sprites/leaders/pirate.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_russia",
@@ -202,7 +353,37 @@
       "leaderId": "ivan-iv",
       "leaderName": "Ivan IV",
       "leaderTitle": "Ivan the Terrible",
-      "leaderImage": "/assets/sprites/leaders/ivan-iv.png"
+      "leaderImage": "/assets/sprites/leaders/ivan-iv.png",
+      "leaders": [
+        {
+          "leaderId": "ivan-iv",
+          "leaderName": "Ivan IV",
+          "leaderTitle": "Ivan the Terrible",
+          "leaderImage": "/assets/sprites/leaders/ivan-iv.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_soviet_union",
+      "nationName": "Soviet Union",
+      "color": "#8b1a1a",
+      "secondaryColor": "#d4af37",
+      "currencyName": "Soviet Ruble",
+      "currencySymbol": "₽",
+      "leaderId": "leader_joseph_stalin",
+      "leaderName": "Joseph Stalin",
+      "leaderTitle": "General Secretary",
+      "leaderImage": "/assets/sprites/leaders/joseph-stalin.png",
+      "leaders": [
+        {
+          "leaderId": "leader_joseph_stalin",
+          "leaderName": "Joseph Stalin",
+          "leaderTitle": "General Secretary",
+          "leaderImage": "/assets/sprites/leaders/joseph-stalin.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_spain",
@@ -214,7 +395,16 @@
       "leaderId": "leader_isabella_i",
       "leaderName": "Isabella I",
       "leaderTitle": "Queen of Castile",
-      "leaderImage": "/assets/sprites/leaders/isabella.png"
+      "leaderImage": "/assets/sprites/leaders/isabella.png",
+      "leaders": [
+        {
+          "leaderId": "leader_isabella_i",
+          "leaderName": "Isabella I",
+          "leaderTitle": "Queen of Castile",
+          "leaderImage": "/assets/sprites/leaders/isabella.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_sweden",
@@ -226,7 +416,16 @@
       "leaderId": "leader_gustav_vasa",
       "leaderName": "Gustav Vasa",
       "leaderTitle": "King of Sweden",
-      "leaderImage": "/assets/sprites/leaders/gustaf-vasa.png"
+      "leaderImage": "/assets/sprites/leaders/gustaf-vasa.png",
+      "leaders": [
+        {
+          "leaderId": "leader_gustav_vasa",
+          "leaderName": "Gustav Vasa",
+          "leaderTitle": "King of Sweden",
+          "leaderImage": "/assets/sprites/leaders/gustaf-vasa.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_taiwan",
@@ -238,7 +437,16 @@
       "leaderId": "leader_koxinga",
       "leaderName": "Koxinga",
       "leaderTitle": "Zheng Chenggong",
-      "leaderImage": "/assets/sprites/leaders/koxinga.png"
+      "leaderImage": "/assets/sprites/leaders/koxinga.png",
+      "leaders": [
+        {
+          "leaderId": "leader_koxinga",
+          "leaderName": "Koxinga",
+          "leaderTitle": "Zheng Chenggong",
+          "leaderImage": "/assets/sprites/leaders/koxinga.png",
+          "isDefault": true
+        }
+      ]
     },
     {
       "nationId": "nation_usa",
@@ -250,7 +458,16 @@
       "leaderId": "leader_george-washington",
       "leaderName": "George Washington",
       "leaderTitle": "President George Washington",
-      "leaderImage": "/assets/sprites/leaders/george-washington.png"
+      "leaderImage": "/assets/sprites/leaders/george-washington.png",
+      "leaders": [
+        {
+          "leaderId": "leader_george-washington",
+          "leaderName": "George Washington",
+          "leaderTitle": "President George Washington",
+          "leaderImage": "/assets/sprites/leaders/george-washington.png",
+          "isDefault": true
+        }
+      ]
     }
   ]
 }

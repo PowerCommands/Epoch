@@ -275,6 +275,8 @@ export interface SavedGameState {
   generatedScenario?: GeneratedScenarioSnapshot;
   humanNationId: string;
   activeNationIds: string[];
+  /** Explicit active leader ids by nation. Optional for older saves. */
+  leaderSelections?: Record<string, string>;
   gameSpeedId?: GameSpeedId;
   /**
    * Enabled victory conditions for the session. Optional so pre-feature saves

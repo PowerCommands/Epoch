@@ -60,6 +60,8 @@ export interface ScenarioNation {
   /** Covert-warfare personality. Absent → leader default → neutral. */
   covertPersonalityId?: CovertPersonalityId;
   startTerritoryCenter: { q: number; r: number };
+  /** Optional non-default leader selected for this nation by the scenario editor. */
+  leaderId?: string;
   /**
    * Editor-authored leader name. Empty/absent falls back to the hardcoded leader
    * name from {@link getLeaderByNationId}.

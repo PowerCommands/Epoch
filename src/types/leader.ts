@@ -6,6 +6,8 @@ import type { GamesOfNationsLeaderPreferences } from './gamesOfNations';
 
 export interface LeaderDefinition {
   id: string;
+  /** Explicit default marker; exactly one leader per nation must be default. */
+  readonly isDefault: boolean;
   name: string;
   nationId: string;
   title?: string;

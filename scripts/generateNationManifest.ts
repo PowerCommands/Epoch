@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { ALL_LEADERS } from '../src/data/leaders';
+import { getDefaultLeaderByNationId, getLeadersByNationId } from '../src/data/leaders';
 import { NATION_DEFINITIONS } from '../src/data/nations';
 
 /**
@@ -23,6 +23,13 @@ interface NationManifestEntry {
   leaderName: string;
   leaderTitle: string;
   leaderImage: string;
+  leaders: Array<{
+    leaderId: string;
+    leaderName: string;
+    leaderTitle: string;
+    leaderImage: string;
+    isDefault: boolean;
+  }>;
 }
 
 interface NationManifest {
@@ -32,7 +39,7 @@ interface NationManifest {
 const manifest: NationManifest = {
   nations: NATION_DEFINITIONS
     .map((nation): NationManifestEntry => {
-      const leader = ALL_LEADERS.find((candidate) => candidate.nationId === nation.id);
+      const leader = getDefaultLeaderByNationId(nation.id);
       return {
         nationId: nation.id,
         nationName: nation.name,
@@ -44,6 +51,13 @@ const manifest: NationManifest = {
         leaderName: leader?.name ?? '',
         leaderTitle: leader?.title ?? '',
         leaderImage: leader?.image ?? '',
+        leaders: getLeadersByNationId(nation.id).map((candidate) => ({
+          leaderId: candidate.id,
+          leaderName: candidate.name,
+          leaderTitle: candidate.title ?? '',
+          leaderImage: candidate.image,
+          isDefault: candidate.isDefault,
+        })),
       };
     })
     .sort((a, b) => a.nationId.localeCompare(b.nationId)),

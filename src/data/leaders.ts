@@ -13,7 +13,7 @@ import type { GamesOfNationsLeaderPreferences } from '../types/gamesOfNations';
 
 const LEADER_IMAGE_BASE = '/assets/sprites/leaders';
 
-const LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'gamesOfNationsPreferences'>> = [
+const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'gamesOfNationsPreferences' | 'isDefault'>> = [
   {
     id: 'leader_henry_v',
     name: 'Henry V',
@@ -517,6 +517,39 @@ const LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'gamesOfNa
       defeat: 'So the throne falls. Yet Russia endures the cold, the famine, and the conqueror alike — and it remembers.',
     },
   },
+  {
+    id: 'leader_joseph_stalin',
+    name: 'Joseph Stalin',
+    nationId: 'nation_soviet_union',
+    title: 'General Secretary',
+    image: `${LEADER_IMAGE_BASE}/joseph-stalin.png`,
+    description: 'The authoritarian Soviet leader who drove rapid industrialization, concentrated state power, and led the Soviet Union through World War II.',
+    ideologyId: 'militarism',
+    aiMilitaryDoctrineId: 'imperialCombinedArms',
+    aiNationalAgendaId: 'military_power',
+    covertPersonalityId: 'paranoid',
+    culturePriorities: ['state_workforce', 'early_empire', 'totalitarianism', 'class_struggle'],
+    aiPersonality: {
+      aggressionBias: 12,
+      expansionBias: 10,
+      economyBias: 14,
+      cultureBias: -8,
+      diplomacyBias: -14,
+      warTolerance: 78,
+      peacePreference: 24,
+      minimumUnitsLostBeforePeace: 7,
+      casualtyToleranceRatio: 0.65,
+    },
+    diplomacyFlavor: {
+      greeting: 'The Soviet Union listens. Speak clearly, and do not mistake patience for weakness.',
+      friendly: 'Our states have found common purpose. Let discipline and mutual interest keep it so.',
+      neutral: 'We judge nations by their actions, not their assurances. The Soviet Union is watching.',
+      hostile: 'Your intentions are no longer in doubt. We are prepared for what follows.',
+      warDeclaration: 'You have made coexistence impossible. The full strength of the Soviet state will now be brought against you.',
+      victory: 'The Soviet state stands stronger than before. History has rendered its judgment.',
+      defeat: 'You may occupy our ground, but no victory over such a vast people is ever complete.',
+    },
+  },
 ];
 
 const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderPreferences>> = {
@@ -541,12 +574,34 @@ const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderP
   leader_mad_jack: { traditionalFavourite: 'swimming', additionalFavourite: 'boxing' },
   'hermann-the-cheruscan': { traditionalFavourite: 'wrestling', additionalFavourite: 'hundred_metres' },
   'ivan-iv': { traditionalFavourite: 'javelin', additionalFavourite: 'horse_racing' },
+  leader_joseph_stalin: { traditionalFavourite: 'wrestling', additionalFavourite: 'boxing' },
 };
 
-export const ALL_LEADERS: LeaderDefinition[] = LEADERS_WITHOUT_GAMES_PREFERENCES.map((leader) => ({
+const DEFAULT_LEADERS: LeaderDefinition[] = DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES.map((leader) => ({
   ...leader,
+  isDefault: true,
   gamesOfNationsPreferences: GAMES_PREFERENCES_BY_LEADER[leader.id]!,
 }));
+
+const HENRY_V = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_henry_v')!;
+export const JOSEPH_STALIN = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_joseph_stalin')!;
+
+/** England's first alternative leader; gameplay configuration intentionally mirrors Henry V. */
+export const WINSTON_CHURCHILL: LeaderDefinition = {
+  ...HENRY_V,
+  id: 'leader_winston_churchill',
+  isDefault: false,
+  name: 'Winston Churchill',
+  title: 'Prime Minister',
+  image: `${LEADER_IMAGE_BASE}/winston-churchill.png`,
+  description: 'Britain’s wartime Prime Minister, renowned for determined leadership and defiant resistance during World War II.',
+  aiPersonality: HENRY_V.aiPersonality ? { ...HENRY_V.aiPersonality } : undefined,
+  culturePriorities: HENRY_V.culturePriorities ? [...HENRY_V.culturePriorities] : undefined,
+  gamesOfNationsPreferences: { ...HENRY_V.gamesOfNationsPreferences },
+  diplomacyFlavor: HENRY_V.diplomacyFlavor ? { ...HENRY_V.diplomacyFlavor } : undefined,
+};
+
+export const ALL_LEADERS: LeaderDefinition[] = [...DEFAULT_LEADERS, WINSTON_CHURCHILL];
 
 /**
  * Per-scenario leader overrides, keyed by nationId. Installed once at game start
@@ -555,6 +610,7 @@ export const ALL_LEADERS: LeaderDefinition[] = LEADERS_WITHOUT_GAMES_PREFERENCES
  * through the whole game without each call site knowing about it.
  */
 const scenarioLeaderOverrides = new Map<string, { name?: string; description?: string; replacementNationId?: string }>();
+const activeLeaderIdsByNation = new Map<string, string>();
 
 /** Minimal shape needed from a scenario nation to derive a leader override. */
 interface ScenarioLeaderSource {
@@ -586,9 +642,9 @@ export function setScenarioLeaderOverrides(nations: readonly ScenarioLeaderSourc
 }
 
 /** Apply any installed override to a leader, returning an overridden copy. */
-function applyLeaderOverride(leader: LeaderDefinition | undefined): LeaderDefinition | undefined {
+function applyLeaderOverride(leader: LeaderDefinition | undefined, overrideNationId = leader?.nationId): LeaderDefinition | undefined {
   if (!leader) return leader;
-  const override = scenarioLeaderOverrides.get(leader.nationId);
+  const override = overrideNationId ? scenarioLeaderOverrides.get(overrideNationId) : undefined;
   if (!override) return leader;
   return {
     ...leader,
@@ -597,15 +653,41 @@ function applyLeaderOverride(leader: LeaderDefinition | undefined): LeaderDefini
   };
 }
 
+/** Replace all explicit per-game leader selections. Missing nations use defaults. */
+export function setActiveLeaderSelections(selections: Readonly<Record<string, string>> | undefined): void {
+  activeLeaderIdsByNation.clear();
+  for (const [nationId, leaderId] of Object.entries(selections ?? {})) {
+    if (ALL_LEADERS.some((leader) => leader.id === leaderId)) activeLeaderIdsByNation.set(nationId, leaderId);
+  }
+}
+
+/** Explicit selections only, suitable for game configuration and save data. */
+export function getActiveLeaderSelections(): Record<string, string> {
+  return Object.fromEntries(activeLeaderIdsByNation);
+}
+
+export function getLeadersByNationId(nationId: string): LeaderDefinition[] {
+  return ALL_LEADERS.filter((leader) => leader.nationId === nationId);
+}
+
+export function getDefaultLeaderByNationId(nationId: string): LeaderDefinition | undefined {
+  return ALL_LEADERS.find((leader) => leader.nationId === nationId && leader.isDefault);
+}
+
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {
   const replacementNationId = scenarioLeaderOverrides.get(nationId)?.replacementNationId;
-  const leader = ALL_LEADERS.find((candidate) => candidate.nationId === (replacementNationId ?? nationId));
-  const overridden = applyLeaderOverride(leader);
+  const identityNationId = replacementNationId ?? nationId;
+  const selectedLeaderId = activeLeaderIdsByNation.get(nationId);
+  const selectedLeader = selectedLeaderId ? ALL_LEADERS.find((leader) => leader.id === selectedLeaderId) : undefined;
+  const leader = selectedLeader?.nationId === identityNationId
+    ? selectedLeader
+    : getDefaultLeaderByNationId(identityNationId);
+  const overridden = applyLeaderOverride(leader, nationId);
   return overridden && replacementNationId ? { ...overridden, nationId } : overridden;
 }
 
 export function getBuiltInLeaderByNationId(nationId: string): LeaderDefinition | undefined {
-  return ALL_LEADERS.find((leader) => leader.nationId === nationId);
+  return getDefaultLeaderByNationId(nationId);
 }
 
 export function getLeaderById(leaderId: string): LeaderDefinition | undefined {
@@ -639,6 +721,7 @@ export function getLeaderMilitaryDoctrineById(leaderId: string): AIMilitaryDoctr
  */
 const LEADER_COVERT_PERSONALITY_DEFAULTS: Record<string, CovertPersonalityId> = {
   leader_henry_v: 'opportunist',
+  leader_winston_churchill: 'opportunist',
   leader_charles_vii: 'honorable',
   leader_sigismund: 'pragmatist',
   leader_gustav_vasa: 'opportunist',

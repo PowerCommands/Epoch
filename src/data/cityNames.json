@@ -134,6 +134,28 @@
     "Totma",
     "Vyatka"
   ],
+  "nation_soviet_union": [
+    "Moscow",
+    "Leningrad",
+    "Stalingrad",
+    "Kiev",
+    "Minsk",
+    "Kharkov",
+    "Odessa",
+    "Smolensk",
+    "Kursk",
+    "Sevastopol",
+    "Novosibirsk",
+    "Sverdlovsk",
+    "Gorky",
+    "Kazan",
+    "Tula",
+    "Rostov-on-Don",
+    "Kuibyshev",
+    "Voronezh",
+    "Murmansk",
+    "Vladivostok"
+  ],
   "nation_ottoman": [
     "Constantinople",
     "Edirne",

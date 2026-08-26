@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
-import { getBuiltInLeaderByNationId, getLeaderByNationId, setScenarioLeaderOverrides } from '../data/leaders';
+import {
+  getDefaultLeaderByNationId,
+  getLeaderByNationId,
+  getLeadersByNationId,
+  setActiveLeaderSelections,
+  setScenarioLeaderOverrides,
+} from '../data/leaders';
 import { NATION_DEFINITIONS, getNationDefinitionById } from '../data/nations';
 import { getTechnologyById } from '../data/technologies';
 import { getCultureNodeById } from '../data/cultureTree';
@@ -71,6 +77,7 @@ export class MainMenuScene extends Phaser.Scene {
   private nations: ScenarioNation[] = [];
   private scenarioNationReplacements = new Map<string, string>();
   private scenarioNationCustomizations = new Map<string, ScenarioNationCustomization>();
+  private leaderSelections = new Map<string, string>();
   private selectedNationId: string | null = null;
   private selectedOpponentIds = new Set<string>();
   private selectedResourceAbundance: ResourceAbundance = 'normal';
@@ -621,6 +628,8 @@ export class MainMenuScene extends Phaser.Scene {
     this.selectedNationId = null;
     this.scenarioNationReplacements.clear();
     this.scenarioNationCustomizations.clear();
+    this.leaderSelections.clear();
+    setActiveLeaderSelections(undefined);
 
     const customScenario = this.getCustomScenario(mapKey);
     const json = customScenario?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined;
@@ -634,6 +643,13 @@ export class MainMenuScene extends Phaser.Scene {
       this.updateScenarioDetails(null);
       return;
     }
+    for (const nation of json.nations) {
+      const selected = nation.leaderId
+        ? getLeadersByNationId(nation.id).find((leader) => leader.id === nation.leaderId)
+        : undefined;
+      if (selected && !selected.isDefault) this.leaderSelections.set(nation.id, selected.id);
+    }
+    setActiveLeaderSelections(Object.fromEntries(this.leaderSelections));
     // Keep the menu's leader accessors consistent with the chosen scenario.
     setScenarioLeaderOverrides(this.getRuntimeScenarioNations(json.nations));
     this.nations = json.nations;
@@ -1001,13 +1017,26 @@ export class MainMenuScene extends Phaser.Scene {
     const slotNation = this.nations.find((nation) => nation.id === slotNationId);
     if (!scenario || !slotNation) return;
     const runtimeNation = this.getRuntimeScenarioNation(slotNation);
+    const identityNationId = runtimeNation.replacementNationId ?? slotNation.id;
     NationDetailsDialog.show({
       nation: runtimeNation,
-      identityNationId: runtimeNation.replacementNationId ?? slotNation.id,
+      leaders: getLeadersByNationId(identityNationId),
+      selectedLeaderId: getLeaderByNationId(slotNation.id)?.id,
       details: scenario.nationDetails?.[slotNationId],
       customization: this.scenarioNationCustomizations.get(slotNationId),
-      onSave: (customization) => {
+      onSave: (customization, leaderId) => {
         this.scenarioNationCustomizations.set(slotNationId, customization);
+        const defaultLeaderId = getDefaultLeaderByNationId(identityNationId)?.id;
+        const scenarioLeaderId = slotNation.leaderId;
+        const defaultOverridesScenarioAlternative = leaderId === defaultLeaderId
+          && scenarioLeaderId !== undefined
+          && scenarioLeaderId !== defaultLeaderId;
+        if (leaderId && (leaderId !== defaultLeaderId || defaultOverridesScenarioAlternative)) {
+          this.leaderSelections.set(slotNationId, leaderId);
+        } else {
+          this.leaderSelections.delete(slotNationId);
+        }
+        setActiveLeaderSelections(Object.fromEntries(this.leaderSelections));
         setScenarioLeaderOverrides(this.getRuntimeScenarioNations());
         this.renderNationList();
         this.updateSetupPanel();
@@ -1052,9 +1081,7 @@ export class MainMenuScene extends Phaser.Scene {
     list.className = 'mm-replacement-list';
 
     for (const candidate of candidates) {
-      const leader = candidate.id === slotNation.id
-        ? getBuiltInLeaderByNationId(candidate.id)
-        : getLeaderByNationId(candidate.id);
+      const leader = getDefaultLeaderByNationId(candidate.id);
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'mm-replacement-option';
@@ -1090,6 +1117,8 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private setNationReplacement(slotNationId: string, replacementNationId: string | null): void {
+    this.leaderSelections.delete(slotNationId);
+    setActiveLeaderSelections(Object.fromEntries(this.leaderSelections));
     if (!replacementNationId || replacementNationId === slotNationId) {
       this.scenarioNationReplacements.delete(slotNationId);
     } else if (getNationDefinitionById(replacementNationId)) {
@@ -1152,6 +1181,9 @@ export class MainMenuScene extends Phaser.Scene {
         : undefined,
       humanNationId: this.selectedNationId,
       activeNationIds: [this.selectedNationId, ...this.getEnabledOpponentIds()],
+      leaderSelections: this.leaderSelections.size > 0
+        ? Object.fromEntries(this.leaderSelections)
+        : undefined,
       scenarioNationReplacements: this.getScenarioNationReplacementConfig(),
       scenarioNationCustomizations: this.scenarioNationCustomizations.size > 0
         ? Object.fromEntries(this.scenarioNationCustomizations)
@@ -2462,6 +2494,28 @@ export class MainMenuScene extends Phaser.Scene {
         font: inherit;
       }
       .mm-nd-field textarea { min-height: 82px; resize: vertical; }
+      .mm-nd-leader-preview {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 2px 0 10px;
+        padding: 8px;
+        background: #151515;
+        border: 1px solid #333;
+        border-radius: 4px;
+      }
+      .mm-nd-leader-portrait {
+        width: 58px;
+        height: 72px;
+        flex: 0 0 auto;
+        object-fit: cover;
+        object-position: top center;
+        border: 1px solid #444;
+        border-radius: 3px;
+      }
+      .mm-nd-leader-preview-copy { display: grid; gap: 4px; min-width: 0; }
+      .mm-nd-leader-preview-copy strong { color: #eee; font-size: 13px; }
+      .mm-nd-leader-preview-copy span { color: #999; font-size: 11px; }
       .mm-nd-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
       .mm-nd-toolbar button { padding: 4px 8px; font-size: 11px; }
       .mm-nd-count { margin-left: auto; align-self: center; color: #888; font-size: 11px; }

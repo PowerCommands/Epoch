@@ -127,7 +127,7 @@ import { NewspaperDialog } from '../ui/NewspaperDialog';
 import { EraSystem, getEraRank, getHighestEra } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
-import { getLeaderByNationId, getLeaderPersonalityByNationId, setScenarioLeaderOverrides } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId, setActiveLeaderSelections, setScenarioLeaderOverrides } from '../data/leaders';
 import { GOSSIP_DEFINITIONS } from '../data/gossip';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
@@ -404,6 +404,21 @@ export class GameScene extends Phaser.Scene {
     // Install scenario-authored leader name/description overrides before any
     // system or UI reads leaders, so the override flows through the whole game.
     setScenarioLeaderOverrides(runtimeScenarioJson.nations);
+    const scenarioLeaderSelections = Object.fromEntries(
+      runtimeScenarioJson.nations
+        .filter((nation) => typeof nation.leaderId === 'string' && nation.leaderId.length > 0)
+        .map((nation) => [nation.id, nation.leaderId!]),
+    );
+    const configuredLeaderSelections = data.savedState
+      ? (data.savedState.leaderSelections ?? {})
+      : { ...scenarioLeaderSelections, ...(data.leaderSelections ?? {}) };
+    const runtimeLeaderSelections = Object.fromEntries(
+      Object.entries(configuredLeaderSelections ?? {}).map(([nationId, leaderId]) => [
+        replacementResult.idMap[nationId] ?? nationId,
+        leaderId,
+      ]),
+    );
+    setActiveLeaderSelections(runtimeLeaderSelections);
 
     const scenario = ScenarioLoader.parse(runtimeScenarioJson);
     const mapData = scenario.mapData;

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { NATION_DEFINITIONS } from '../src/data/nations';
 
 /**
  * Scans public/assets/sounds/ for subfolders of mp3 tracks and writes a
@@ -38,6 +39,15 @@ for (const entry of entries) {
   if (files.length === 0) continue;
 
   manifest.playlists[folder] = files.map(f => `/assets/sounds/${folder}/${f}`);
+}
+
+// Nations may reuse an existing nation's playlist without duplicating large
+// media files. Runtime remains unaware of the alias: every nation still has a
+// normal playlist key in the generated manifest.
+for (const nation of NATION_DEFINITIONS) {
+  if (!nation.audioPlaylistNationId) continue;
+  const source = manifest.playlists[nation.audioPlaylistNationId];
+  if (source?.length) manifest.playlists[nation.id] = [...source];
 }
 
 fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2) + '\n');

@@ -60,7 +60,7 @@ import { CulturalSphereSystem } from './CulturalSphereSystem';
 import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
-import { getLeaderCovertPersonalityByNationId } from '../data/leaders';
+import { getActiveLeaderSelections, getLeaderCovertPersonalityByNationId } from '../data/leaders';
 import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes';
 
 export interface SaveLoadContext {
@@ -368,6 +368,10 @@ export class SaveLoadService {
       generatedScenario,
       humanNationId,
       activeNationIds: nationManager.getAllNations().map((nation) => nation.id),
+      leaderSelections: (() => {
+        const selections = getActiveLeaderSelections();
+        return Object.keys(selections).length > 0 ? selections : undefined;
+      })(),
       gameSpeedId,
       victoryConditions: context.victorySystem
         ? {

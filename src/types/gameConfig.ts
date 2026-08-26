@@ -37,6 +37,8 @@ export interface GameConfig {
   generatedScenario?: GeneratedScenarioSnapshot;
   humanNationId: string;
   activeNationIds: string[];
+  /** Explicit per-game leader choices; absent entries resolve to nation defaults. */
+  leaderSelections?: Record<string, string>;
   /**
    * Transient setup-only identity swaps keyed by scenario slot nation id.
    * The slot id remains the runtime id so cities, units, diplomacy, and saves

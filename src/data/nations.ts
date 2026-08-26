@@ -5,6 +5,8 @@ export interface NationDefinition {
   secondaryColor: string;
   currencyName: string;
   currencySymbol: string;
+  /** Optional data-driven reuse of another nation's audio/music playlist assets. */
+  audioPlaylistNationId?: string;
 }
 
 export const NATION_DEFINITIONS: readonly NationDefinition[] = [
@@ -15,6 +17,7 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_lithuania', name: 'Lithuania', color: '#f4870b', secondaryColor: '#201f1e', currencyName: 'Litas', currencySymbol: 'Lt' },
   { id: 'nation_novgorod', name: 'Novgorod', color: '#16a085', secondaryColor: '#e7d7a8', currencyName: 'Novgorod Grivna', currencySymbol: 'gr' },
   { id: 'nation_russia', name: 'Russia', color: '#ffffff', secondaryColor: '#0039a6', currencyName: 'Ruble', currencySymbol: '₽' },
+  { id: 'nation_soviet_union', name: 'Soviet Union', color: '#8b1a1a', secondaryColor: '#d4af37', currencyName: 'Soviet Ruble', currencySymbol: '₽', audioPlaylistNationId: 'nation_russia' },
   { id: 'nation_ottoman', name: 'Ottoman Empire', color: '#c44ae8', secondaryColor: '#7fd1c7', currencyName: 'Akçe', currencySymbol: 'ak' },
   { id: 'nation_spain', name: 'Spain', color: '#e84a4a', secondaryColor: '#f2d15c', currencyName: 'Spanish Real', currencySymbol: 'R' },
   { id: 'nation_morocco_empire', name: 'Morocco', color: '#9b5f4b', secondaryColor: '#d9c39a', currencyName: 'Moroccan Dirham', currencySymbol: 'د.م.' },
