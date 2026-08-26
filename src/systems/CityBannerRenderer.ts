@@ -12,6 +12,7 @@ import type { WonderSystem } from './WonderSystem';
 
 const CITY_BANNER_DEPTH = 17;
 const CITY_BANNER_OFFSET_Y = -42;
+const CITY_BANNER_ALPHA = 0.5;
 const PANEL_HEIGHT = 32;
 const PANEL_RADIUS = 16;
 const PANEL_BORDER_COLOR = 0xd9c58b;
@@ -254,6 +255,16 @@ export class CityBannerRenderer {
       productionFallbackText,
       productionZone,
     ]);
+
+    // Make the whole badge semi-transparent by setting alpha on each visible
+    // child, NOT on the container: container-level alpha forces a render-target
+    // flush that conflicts with the production icon's geometry mask and makes
+    // the entire banner vanish. Per-object alpha renders correctly. The
+    // production mask stays fully opaque (it only defines the clip shape), and
+    // the interactive zone is invisible so it is left untouched.
+    for (const child of [chrome, nameText, populationText, productionRing, productionImage, productionFallbackText]) {
+      child.setAlpha(CITY_BANNER_ALPHA);
+    }
 
     const view: CityBannerView = {
       container,

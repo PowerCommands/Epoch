@@ -254,6 +254,8 @@ interface EpochGameDiagnostics {
   getEventLogText: () => string;
   getStateSummary: () => EpochStateSummary;
   getSaveState: () => SavedGameState;
+  /** Dev-only: centre the camera on the first founded city so visual tests can screenshot a city banner. */
+  focusFirstCity: (zoom?: number) => { ok: boolean };
 }
 
 /** Per-nation progression snapshot used for timeline/balance calibration. */
@@ -7309,6 +7311,13 @@ export class GameScene extends Phaser.Scene {
           worldCouncilSystem,
           guideProgress: guideProgression.getState(),
         }),
+        focusFirstCity: (zoom = 2) => {
+          const city = cityManager.getAllCities()[0];
+          if (!city) return { ok: false };
+          const world = tileMap.tileToWorld(city.tileX, city.tileY);
+          this.cameraController.focusOn(world.x, world.y, zoom);
+          return { ok: true };
+        },
       };
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
         delete diagnosticsWindow.__epochDiagnostics;
