@@ -87,6 +87,10 @@ export interface ScenarioCity {
   originNationId?: string;
   isOriginalCapital?: boolean;
   isResidenceCapital?: boolean;
+  /** Explicit editor-authored starting territory. q/r converts to City x/y at load time. */
+  ownedTileCoords?: Array<{ q: number; r: number }>;
+  /** Completed city buildings and their authored map locations. */
+  buildings?: Array<{ buildingId: string; q: number; r: number }>;
 }
 
 export interface ScenarioUnit {

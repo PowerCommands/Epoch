@@ -1,0 +1,361 @@
+{
+  "buildings": [
+    {
+      "id": "monument",
+      "name": "Monument",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/monument.png"
+    },
+    {
+      "id": "granary",
+      "name": "Granary",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/granary.png"
+    },
+    {
+      "id": "shrine",
+      "name": "Shrine",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/shrine.png"
+    },
+    {
+      "id": "barracks",
+      "name": "Barracks",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/barracks.png"
+    },
+    {
+      "id": "walls",
+      "name": "Walls",
+      "era": "ancient",
+      "placement": "city",
+      "iconPath": "assets/sprites/buildings/walls.png"
+    },
+    {
+      "id": "water_mill",
+      "name": "Water Mill",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/water_mill.png"
+    },
+    {
+      "id": "stone_works",
+      "name": "Stone Works",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/stone_works.png"
+    },
+    {
+      "id": "library",
+      "name": "Library",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/library.png"
+    },
+    {
+      "id": "circus",
+      "name": "Circus",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/circus.png"
+    },
+    {
+      "id": "colosseum",
+      "name": "Colosseum",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/colosseum.png"
+    },
+    {
+      "id": "courthouse",
+      "name": "Courthouse",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/courthouse.png"
+    },
+    {
+      "id": "temple",
+      "name": "Temple",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/temple.png"
+    },
+    {
+      "id": "lighthouse",
+      "name": "Lighthouse",
+      "era": "classical",
+      "placement": "water",
+      "iconPath": "assets/sprites/buildings/lighthouse.png"
+    },
+    {
+      "id": "stable",
+      "name": "Stable",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/stable.png"
+    },
+    {
+      "id": "castle",
+      "name": "Castle",
+      "era": "medieval",
+      "placement": "city",
+      "iconPath": "assets/sprites/buildings/castle.png"
+    },
+    {
+      "id": "armory",
+      "name": "Armory",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/armory.png"
+    },
+    {
+      "id": "forge",
+      "name": "Forge",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/forge.png"
+    },
+    {
+      "id": "market",
+      "name": "Market",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/market.png"
+    },
+    {
+      "id": "mint",
+      "name": "Mint",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/mint.png"
+    },
+    {
+      "id": "garden",
+      "name": "Garden",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/garden.png"
+    },
+    {
+      "id": "university",
+      "name": "University",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/university.png"
+    },
+    {
+      "id": "workshop",
+      "name": "Workshop",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/workshop.png"
+    },
+    {
+      "id": "aqueduct",
+      "name": "Aqueduct",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/aqueduct.png"
+    },
+    {
+      "id": "harbor",
+      "name": "Harbor",
+      "era": "medieval",
+      "placement": "water",
+      "iconPath": "assets/sprites/buildings/harbor.png"
+    },
+    {
+      "id": "observatory",
+      "name": "Observatory",
+      "era": "medieval",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/observatory.png"
+    },
+    {
+      "id": "opera_house",
+      "name": "Opera House",
+      "era": "renaissance",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/opera_house.png"
+    },
+    {
+      "id": "bank",
+      "name": "Bank",
+      "era": "renaissance",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/bank.png"
+    },
+    {
+      "id": "museum",
+      "name": "Museum",
+      "era": "renaissance",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/museum.png"
+    },
+    {
+      "id": "public_school",
+      "name": "Public School",
+      "era": "renaissance",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/public_school.png"
+    },
+    {
+      "id": "seaport",
+      "name": "Seaport",
+      "era": "renaissance",
+      "placement": "water",
+      "iconPath": "assets/sprites/buildings/seaport.png"
+    },
+    {
+      "id": "windmill",
+      "name": "Windmill",
+      "era": "renaissance",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/windmill.png"
+    },
+    {
+      "id": "zoo",
+      "name": "Zoo",
+      "era": "renaissance",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/zoo.png"
+    },
+    {
+      "id": "military_academy",
+      "name": "Military Academy",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/military_academy.png"
+    },
+    {
+      "id": "arsenal",
+      "name": "Arsenal",
+      "era": "industrial",
+      "placement": "city",
+      "iconPath": "assets/sprites/buildings/arsenal.png"
+    },
+    {
+      "id": "factory",
+      "name": "Factory",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/factory.png"
+    },
+    {
+      "id": "stock_exchange",
+      "name": "Stock Exchange",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/stock_exchange.png"
+    },
+    {
+      "id": "hospital",
+      "name": "Hospital",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/hospital.png"
+    },
+    {
+      "id": "hotel",
+      "name": "Hotel",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/hotel.png"
+    },
+    {
+      "id": "broadcast_tower",
+      "name": "Broadcast Tower",
+      "era": "modern",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/broadcast_tower.png"
+    },
+    {
+      "id": "stadium",
+      "name": "Stadium",
+      "era": "modern",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/stadium.png"
+    },
+    {
+      "id": "military_base",
+      "name": "Military Base",
+      "era": "modern",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/military_base.png"
+    },
+    {
+      "id": "medical_lab",
+      "name": "Medical Lab",
+      "era": "modern",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/medical_lab.png"
+    },
+    {
+      "id": "research_lab",
+      "name": "Research Lab",
+      "era": "atomic",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/research_lab.png"
+    },
+    {
+      "id": "solar_plant",
+      "name": "Solar Plant",
+      "era": "atomic",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/solar_plant.png"
+    },
+    {
+      "id": "nuclear_plant",
+      "name": "Nuclear Plant",
+      "era": "atomic",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/nuclear_plant.png"
+    },
+    {
+      "id": "hydro_plant",
+      "name": "Hydro Plant",
+      "era": "modern",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/hydro_plant.png"
+    },
+    {
+      "id": "recycling_center",
+      "name": "Recycling Center",
+      "era": "information",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/recycling_center.png"
+    },
+    {
+      "id": "bomb_shelter",
+      "name": "Bomb Shelter",
+      "era": "atomic",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/bomb_shelter.png"
+    },
+    {
+      "id": "police_station",
+      "name": "Police Station",
+      "era": "modern",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/police_station.png"
+    },
+    {
+      "id": "spaceship_factory",
+      "name": "Spaceship Factory",
+      "era": "information",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/spaceship_factory.png"
+    },
+    {
+      "id": "grand_stadium",
+      "name": "Grand Stadium",
+      "era": "classical",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/grand_stadium.png"
+    }
+  ]
+}

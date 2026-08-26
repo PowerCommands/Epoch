@@ -268,8 +268,7 @@ export class CityManager {
       const tileX = land?.x ?? cfg.q;
       const tileY = land?.y ?? cfg.r;
 
-      manager.addCity(
-        new City({
+      const city = new City({
           id: cfg.id,
           name: cfg.name,
           ownerId: cfg.nationId,
@@ -279,8 +278,22 @@ export class CityManager {
           originNationId: cfg.originNationId ?? cfg.nationId,
           isOriginalCapital: cfg.isOriginalCapital ?? cfg.isCapital,
           isResidenceCapital: cfg.isResidenceCapital ?? cfg.isCapital,
-        }),
-      );
+        });
+
+      if (Array.isArray(cfg.ownedTileCoords)) {
+        city.ownedTileCoords = cfg.ownedTileCoords
+          .filter(({ q, r }) => mapData.tiles[r]?.[q] !== undefined)
+          .map(({ q, r }) => ({ x: q, y: r }));
+        for (const { x, y } of city.ownedTileCoords) mapData.tiles[y][x].ownerId = cfg.nationId;
+      }
+
+      manager.addCity(city);
+      for (const placement of cfg.buildings ?? []) {
+        if (typeof placement.buildingId !== 'string' || placement.buildingId.length === 0) continue;
+        manager.getBuildings(city.id).addEntry(placement.buildingId, false);
+        const tile = mapData.tiles[placement.r]?.[placement.q];
+        if (tile) tile.buildingId = placement.buildingId;
+      }
     }
 
     return manager;

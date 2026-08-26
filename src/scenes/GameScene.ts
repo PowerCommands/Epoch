@@ -494,8 +494,11 @@ export class GameScene extends Phaser.Scene {
     const cityManager = CityManager.loadFromScenario(activeCities, mapData);
     const eraSystem = new EraSystem(nationManager);
     const culturalSphereSystem = new CulturalSphereSystem();
+    const scenarioCityById = new Map(activeCities.map((city) => [city.id, city]));
     for (const city of cityManager.getAllCities()) {
-      cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
+      if (!Array.isArray(scenarioCityById.get(city.id)?.ownedTileCoords)) {
+        cityTerritorySystem.initializeOwnedTiles(city, mapData, gridSystem);
+      }
       culturalSphereSystem.claimInitialCityCulture(city, mapData, gridSystem);
     }
 

@@ -31,11 +31,13 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .palette-btn {
   border: 2px solid transparent; border-radius: 3px; padding: 4px 6px;
-  font: inherit; font-size: 11px; color: #ddd; cursor: pointer; text-align: left;
+  font: inherit; font-size: 11px; color: #141414; cursor: pointer; text-align: left;
   display: flex; align-items: center; gap: 6px;
 }
 .palette-btn:hover { border-color: #666; }
-.palette-btn.active { border-color: #fff; background: #333; }
+/* The active button sits on a dark (#333) fill, so its label stays light; the
+   unselected buttons use the browser-default light fill and need dark text. */
+.palette-btn.active { border-color: #fff; background: #333; color: #eee; }
 .palette-btn.invalid { opacity: 0.45; }
 .palette-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
 .palette-resource-img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; image-rendering: pixelated; }
@@ -422,6 +424,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div class="tool-btns" id="tool-btns">
         <button class="tool-btn active" data-tool="paint">Paint Terrain</button>
         <button class="tool-btn" data-tool="move">Move City / Unit</button>
+        <button class="tool-btn" data-tool="editCity">Edit City</button>
         <button class="tool-btn" data-tool="setStart">Set Start Position</button>
         <button class="tool-btn" data-tool="addCity">Add City</button>
         <button class="tool-btn" data-tool="addUnit">Add Unit</button>
@@ -511,6 +514,23 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div class="entity-list" id="unit-list"></div>
       <button class="small-btn" id="delete-entity-btn" type="button" style="margin-top:8px" disabled>Delete Selected</button>
       <div class="hint">Select a city or unit, then Delete (or press the Delete key).</div>
+    </div>
+
+    <div class="section" id="city-tool-section" style="display:none">
+      <div class="section-title" id="city-palette-title">City: select a city</div>
+      <label class="field">
+        Name
+        <input id="city-name-input" type="text" disabled>
+      </label>
+      <div class="palette-tabs">
+        <button class="mode-btn active" id="city-tiles-mode-btn" type="button">City Tiles</button>
+        <button class="mode-btn" id="city-building-mode-btn" type="button">Building</button>
+      </div>
+      <label class="field" id="city-building-field" style="display:none">
+        Completed building
+        <select id="city-building-select"></select>
+      </label>
+      <div class="hint" id="city-tool-hint">Click a city on the map to edit it.</div>
     </div>
 
     <div class="section" id="unit-tool-section" style="display:none">
@@ -848,6 +868,7 @@ let currentCustomEntry = null;
 let nationRegistry = { nations: [] };
 let naturalResourceManifest = { resources: [] };
 let unitManifest = { units: [] };
+let buildingManifest = { buildings: [] };
 let technologyManifest = { technologies: [] };
 let cultureTreeManifest = { cultureNodes: [] };
 let templateManifest = { templates: [] };
@@ -864,7 +885,7 @@ let templateScale = 1;
 const MIN_TEMPLATE_SCALE = 0.1, MAX_TEMPLATE_SCALE = 12;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
-let tileBuildings = null; // 2D array [r][q] of standalone building ids (Barbarian Camp) or undefined
+let tileBuildings = null; // 2D array [r][q] of building ids or undefined
 const BARBARIAN_CAMP_BUILDING_ID = 'barbarian-camp';
 // Default rounds between barbarian spawns from a camp (mirrors the runtime
 // DEFAULT_BARBARIAN_SPAWN_INTERVAL in src/data/barbarians.ts).
@@ -892,6 +913,9 @@ let currentResourceId = null;
 let interactionMode = 'paint';
 let brushSize = 1;
 let selectedEntity = null; // { kind: 'city'|'unit', index: number }
+let currentCityEditMode = 'tiles';
+let selectedCityBuildingId = '';
+let highlightedBuildingCoord = null;
 let selectedMarkerIndex = null;
 let selectedNationId = null;
 let isPainting = false;
@@ -913,16 +937,18 @@ let editorAutosaveQuotaWarned = false;
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
 async function init() {
-  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, technologyManifest, cultureTreeManifest, templateManifest] = await Promise.all([
+  [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, buildingManifest, technologyManifest, cultureTreeManifest, templateManifest] = await Promise.all([
     loadMapManifest(),
     loadNationRegistry(),
     loadNaturalResourceManifest(),
     loadUnitManifest(),
+    loadBuildingManifest(),
     loadTechnologyManifest(),
     loadCultureTreeManifest(),
     loadTemplateManifest(),
   ]);
   buildUnitTypeSelect();
+  buildBuildingTypeSelect();
   // The map/scenario selected on the main menu (via ?map / ?custom) becomes the
   // "Edit current scenario" target. The actual editor only starts once the user
   // chooses an option on the landing page.
@@ -939,6 +965,11 @@ function startEditor(map, scenarioData, customEntry) {
   currentMap = map;
   currentCustomEntry = customEntry ?? null;
   scenario = scenarioData;
+  selectedEntity = null;
+  currentCityEditMode = 'tiles';
+  selectedCityBuildingId = '';
+  highlightedBuildingCoord = null;
+  document.getElementById('city-building-select').value = '';
   sprayMode = false; // each scenario session starts in normal paint mode
   closeMagicWand(); // dismiss any open auto-paint preview from a previous scenario
 
@@ -992,13 +1023,13 @@ function startEditor(map, scenarioData, customEntry) {
       if (typeof t.resourceId === 'string' && t.resourceId.length > 0) {
         tileResources[t.r][t.q] = t.resourceId;
       }
-      // Standalone tile buildings (e.g. Barbarian Camp). City buildings are not
-      // authored here. Only the camp is supported by the editor for now.
-      if (t.buildingId === BARBARIAN_CAMP_BUILDING_ID) {
+      if (typeof t.buildingId === 'string' && t.buildingId.length > 0) {
         tileBuildings[t.r][t.q] = t.buildingId;
       }
     }
   }
+
+  normalizeAuthoredCities();
 
   // Center camera
   worldBounds = getWorldBounds();
@@ -1536,6 +1567,29 @@ async function loadUnitManifest() {
   return { units: [] };
 }
 
+async function loadBuildingManifest() {
+  try {
+    const res = await fetch('/assets/data/buildings-manifest.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`building manifest fetch failed: ${res.status}`);
+    const manifest = await res.json();
+    if (manifest && Array.isArray(manifest.buildings)) {
+      return {
+        buildings: manifest.buildings.filter(building =>
+          building
+          && typeof building.id === 'string'
+          && typeof building.name === 'string'
+          && typeof building.era === 'string'
+          && typeof building.iconPath === 'string'
+          && building.id !== BARBARIAN_CAMP_BUILDING_ID
+        ),
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load building manifest.', err);
+  }
+  return { buildings: [] };
+}
+
 async function loadTechnologyManifest() {
   try {
     const res = await fetch('/assets/data/technologies-manifest.json', { cache: 'no-cache' });
@@ -1608,6 +1662,46 @@ function buildUnitTypeSelect() {
       group.appendChild(option);
     }
     select.appendChild(group);
+  }
+}
+
+function buildBuildingTypeSelect() {
+  const select = document.getElementById('city-building-select');
+  select.innerHTML = '<option value="">None / Remove Building</option>';
+  for (const { era, entries: buildings } of getGroupedManifestEntries(buildingManifest.buildings)) {
+    const group = document.createElement('optgroup');
+    group.label = formatEraName(era);
+    for (const building of buildings) {
+      const option = document.createElement('option');
+      option.value = building.id;
+      option.textContent = building.name;
+      group.appendChild(option);
+    }
+    select.appendChild(group);
+  }
+}
+
+function normalizeAuthoredCities() {
+  for (const city of scenario.cities) {
+    if (Array.isArray(city.ownedTileCoords)) {
+      const seen = new Set();
+      city.ownedTileCoords = city.ownedTileCoords.filter(coord => {
+        const valid = Number.isInteger(coord?.q) && Number.isInteger(coord?.r)
+          && coord.q >= 0 && coord.q < mapW && coord.r >= 0 && coord.r < mapH;
+        const key = `${coord?.q},${coord?.r}`;
+        if (!valid || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    if (!Array.isArray(city.buildings)) continue;
+    city.buildings = city.buildings.filter(placement =>
+      typeof placement?.buildingId === 'string'
+      && placement.buildingId !== BARBARIAN_CAMP_BUILDING_ID
+      && Number.isInteger(placement.q) && Number.isInteger(placement.r)
+      && placement.q >= 0 && placement.q < mapW && placement.r >= 0 && placement.r < mapH
+    );
+    for (const placement of city.buildings) tileBuildings[placement.r][placement.q] = placement.buildingId;
   }
 }
 
@@ -2820,6 +2914,13 @@ function removeNation(nationId) {
   const nation = scenario.nations.find(n => n.id === nationId);
   if (!nation) return;
 
+  for (const city of scenario.cities.filter(c => c.nationId === nationId)) {
+    for (const placement of city.buildings ?? []) {
+      if (tileBuildings[placement.r]?.[placement.q] === placement.buildingId) {
+        tileBuildings[placement.r][placement.q] = undefined;
+      }
+    }
+  }
   scenario.nations = scenario.nations.filter(n => n.id !== nationId);
   scenario.cities = scenario.cities.filter(c => c.nationId !== nationId);
   scenario.units = scenario.units.filter(u => u.nationId !== nationId);
@@ -2849,7 +2950,7 @@ function removeNation(nationId) {
 
 function selectEntity(kind, index) {
   selectedMarkerIndex = null;
-  if (selectedEntity && selectedEntity.kind === kind && selectedEntity.index === index) {
+  if (currentTool !== 'editCity' && selectedEntity && selectedEntity.kind === kind && selectedEntity.index === index) {
     selectedEntity = null;
   } else {
     selectedEntity = { kind, index };
@@ -2860,8 +2961,58 @@ function selectEntity(kind, index) {
   buildMarkerList();
   updateMarkerForm();
   updateEntityHighlights();
+  updateCityPalette();
   render();
 }
+
+function getSelectedCity() {
+  return selectedEntity?.kind === 'city' ? scenario.cities[selectedEntity.index] ?? null : null;
+}
+
+function updateCityPalette() {
+  const city = getSelectedCity();
+  const title = document.getElementById('city-palette-title');
+  const input = document.getElementById('city-name-input');
+  title.textContent = city ? `City: ${city.name}` : 'City: select a city';
+  input.disabled = !city;
+  if (document.activeElement !== input) input.value = city?.name ?? '';
+  document.getElementById('city-tiles-mode-btn').classList.toggle('active', currentCityEditMode === 'tiles');
+  document.getElementById('city-building-mode-btn').classList.toggle('active', currentCityEditMode === 'building');
+  document.getElementById('city-building-field').style.display = currentCityEditMode === 'building' ? '' : 'none';
+  document.getElementById('city-tool-hint').textContent = !city
+    ? 'Click a city on the map to edit it.'
+    : currentCityEditMode === 'tiles'
+      ? 'Click tiles to assign, remove or reassign the authored city territory.'
+      : selectedCityBuildingId
+        ? 'Click a tile to place the selected completed building.'
+        : 'Click a tile to remove its building.';
+}
+
+document.getElementById('city-name-input').addEventListener('input', (event) => {
+  const city = getSelectedCity();
+  if (!city) return;
+  city.name = event.target.value;
+  document.getElementById('city-palette-title').textContent = `City: ${city.name}`;
+  buildEntityLists();
+  updateEntityHighlights();
+  render();
+});
+document.getElementById('city-tiles-mode-btn').addEventListener('click', () => {
+  currentCityEditMode = 'tiles';
+  highlightedBuildingCoord = null;
+  updateCityPalette();
+  render();
+});
+document.getElementById('city-building-mode-btn').addEventListener('click', () => {
+  currentCityEditMode = 'building';
+  updateCityPalette();
+  render();
+});
+document.getElementById('city-building-select').addEventListener('change', (event) => {
+  selectedCityBuildingId = event.target.value;
+  highlightedBuildingCoord = null;
+  updateCityPalette();
+});
 
 function updateEntityHighlights() {
   document.querySelectorAll('#city-list .entity-row').forEach((row, i) => {
@@ -2898,8 +3049,10 @@ document.getElementById('tool-btns').addEventListener('click', (e) => {
 function updateToolPanels() {
   document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
   document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
+  document.getElementById('city-tool-section').style.display = currentTool === 'editCity' ? '' : 'none';
   document.getElementById('unit-tool-section').style.display = currentTool === 'addUnit' ? '' : 'none';
   document.getElementById('marker-tool-section').style.display = currentTool === 'marker' ? '' : 'none';
+  updateCityPalette();
   updateInteractionModeUI();
 }
 
@@ -3055,7 +3208,23 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
   // Drop entities outside the new bounds.
   const inBounds = (q, r) => q >= 0 && q < newWidth && r >= 0 && r < newHeight;
   const beforeCounts = { cities: scenario.cities.length, units: scenario.units.length, markers: scenario.worldMarkers.length };
+  const droppedCities = scenario.cities.filter(c => !inBounds(c.q, c.r));
+  for (const city of droppedCities) {
+    for (const placement of city.buildings ?? []) {
+      if (inBounds(placement.q, placement.r) && tileBuildings[placement.r][placement.q] === placement.buildingId) {
+        tileBuildings[placement.r][placement.q] = undefined;
+      }
+    }
+  }
   scenario.cities = scenario.cities.filter(c => inBounds(c.q, c.r));
+  for (const city of scenario.cities) {
+    if (Array.isArray(city.ownedTileCoords)) {
+      city.ownedTileCoords = city.ownedTileCoords.filter(coord => inBounds(coord.q, coord.r));
+    }
+    if (Array.isArray(city.buildings)) {
+      city.buildings = city.buildings.filter(placement => inBounds(placement.q, placement.r));
+    }
+  }
   scenario.units = scenario.units.filter(u => inBounds(u.q, u.r));
   scenario.worldMarkers = scenario.worldMarkers.filter(m => inBounds(m.x, m.y));
   const dropped = (beforeCounts.cities - scenario.cities.length)
@@ -3294,6 +3463,11 @@ function removeCityInstance(city) {
   const index = scenario.cities.indexOf(city);
   if (index < 0) return false;
   scenario.cities.splice(index, 1);
+  for (const placement of city.buildings ?? []) {
+    if (tileBuildings[placement.r]?.[placement.q] === placement.buildingId) {
+      tileBuildings[placement.r][placement.q] = undefined;
+    }
+  }
   if (selectedEntity?.kind === 'city') selectedEntity = null;
   buildEntityLists();
   updateEntityHighlights();
@@ -3302,8 +3476,17 @@ function removeCityInstance(city) {
 
 /** Re-add a previously removed city instance, at its original index when given. */
 function restoreCityInstance(city, index) {
+  const placements = [...(city.buildings ?? [])];
   if (typeof index === 'number') scenario.cities.splice(Math.min(index, scenario.cities.length), 0, city);
   else scenario.cities.push(city);
+  city.buildings = [];
+  for (const placement of placements) {
+    if (tileBuildings[placement.r]?.[placement.q] !== undefined) {
+      removeBuildingAssociationAt(placement.q, placement.r);
+    }
+    city.buildings.push(placement);
+    tileBuildings[placement.r][placement.q] = placement.buildingId;
+  }
   buildEntityLists();
   updateEntityHighlights();
 }
@@ -3555,14 +3738,20 @@ function addCityAt(q, r) {
     q,
     r,
     isCapital: nationCities.length === 0,
+    ownedTileCoords: [{ q, r }],
+    buildings: [],
   };
 
   scenario.cities.push(city);
   if (city.isCapital) nation.startTerritoryCenter = { q, r };
   selectedEntity = { kind: 'city', index: scenario.cities.length - 1 };
+  currentTool = 'editCity';
+  currentCityEditMode = 'tiles';
+  document.querySelectorAll('.tool-btn').forEach(button => button.classList.toggle('active', button.dataset.tool === 'editCity'));
   setStatusInfo(`Added ${city.isCapital ? 'capital' : 'city'} ${city.name}`);
   buildNationList();
   buildEntityLists();
+  updateToolPanels();
   updateEntityHighlights();
   render();
 }
@@ -3684,6 +3873,22 @@ function applyToolAt(q, r) {
       const unitIdx = scenario.units.findIndex(u => u.q === q && u.r === r);
       if (unitIdx >= 0) { selectEntity('unit', unitIdx); return; }
     }
+  } else if (currentTool === 'editCity') {
+    const cityIdx = scenario.cities.findIndex(city => city.q === q && city.r === r);
+    if (!getSelectedCity() && cityIdx >= 0) {
+      selectEntity('city', cityIdx);
+      return;
+    }
+    if (!getSelectedCity()) {
+      setStatusInfo('Select a city before editing its territory or buildings.');
+      return;
+    }
+    if (cityIdx >= 0 && cityIdx !== selectedEntity.index) {
+      selectEntity('city', cityIdx);
+      return;
+    }
+    if (currentCityEditMode === 'tiles') toggleSelectedCityTile(q, r);
+    else editSelectedCityBuilding(q, r);
   } else if (currentTool === 'setStart') {
     setStartPosition(q, r);
   } else if (currentTool === 'addCity') {
@@ -3697,6 +3902,60 @@ function applyToolAt(q, r) {
   } else if (currentTool === 'barbarianCamp') {
     toggleBarbarianCampAt(q, r);
   }
+}
+
+function toggleSelectedCityTile(q, r) {
+  const city = getSelectedCity();
+  if (!city) return;
+  if (!Array.isArray(city.ownedTileCoords)) city.ownedTileCoords = [];
+  const ownIndex = city.ownedTileCoords.findIndex(coord => coord.q === q && coord.r === r);
+  if (ownIndex >= 0) {
+    city.ownedTileCoords.splice(ownIndex, 1);
+    setStatusInfo(`Removed (${q},${r}) from ${city.name}.`);
+  } else {
+    for (const otherCity of scenario.cities) {
+      if (otherCity === city || !Array.isArray(otherCity.ownedTileCoords)) continue;
+      otherCity.ownedTileCoords = otherCity.ownedTileCoords.filter(coord => coord.q !== q || coord.r !== r);
+    }
+    city.ownedTileCoords.push({ q, r });
+    setStatusInfo(`Assigned (${q},${r}) to ${city.name}.`);
+  }
+  render();
+}
+
+function removeBuildingAssociationAt(q, r) {
+  for (const city of scenario.cities) {
+    if (!Array.isArray(city.buildings)) continue;
+    city.buildings = city.buildings.filter(placement => placement.q !== q || placement.r !== r);
+  }
+  tileBuildings[r][q] = undefined;
+}
+
+function editSelectedCityBuilding(q, r) {
+  const city = getSelectedCity();
+  if (!city) return;
+  highlightedBuildingCoord = null;
+  if (!selectedCityBuildingId) {
+    const removed = tileBuildings[r][q];
+    removeBuildingAssociationAt(q, r);
+    setStatusInfo(removed ? `Removed ${removed} from (${q},${r}).` : `No building at (${q},${r}).`);
+    render();
+    return;
+  }
+  if (!Array.isArray(city.buildings)) city.buildings = [];
+  const duplicate = city.buildings.find(placement => placement.buildingId === selectedCityBuildingId);
+  if (duplicate && (duplicate.q !== q || duplicate.r !== r)) {
+    highlightedBuildingCoord = { q: duplicate.q, r: duplicate.r };
+    const building = buildingManifest.buildings.find(entry => entry.id === selectedCityBuildingId);
+    setStatusInfo(`${building?.name ?? selectedCityBuildingId} already exists in ${city.name}; its tile is highlighted.`);
+    render();
+    return;
+  }
+  removeBuildingAssociationAt(q, r);
+  city.buildings.push({ buildingId: selectedCityBuildingId, q, r });
+  tileBuildings[r][q] = selectedCityBuildingId;
+  setStatusInfo(`Placed ${selectedCityBuildingId} as a completed building in ${city.name}.`);
+  render();
 }
 
 // Place a Barbarian Camp on a valid tile, or remove an existing one (toggle).
@@ -4234,6 +4493,25 @@ function render() {
     }
   }
 
+  // Authored city territory: all cities are subtle; the selected city is
+  // stronger and uses both nation colors so reassignments are easy to inspect.
+  for (let cityIndex = 0; cityIndex < scenario.cities.length; cityIndex++) {
+    const city = scenario.cities[cityIndex];
+    if (!Array.isArray(city.ownedTileCoords)) continue;
+    const nation = scenario.nations.find(entry => entry.id === city.nationId);
+    const selected = selectedEntity?.kind === 'city' && selectedEntity.index === cityIndex;
+    const primary = nation?.color || getRegistryNation(city.nationId)?.color || '#ffffff';
+    const secondary = nation?.secondaryColor || getRegistryNation(city.nationId)?.secondaryColor || '#ffffff';
+    for (const coord of city.ownedTileCoords) {
+      if (!tiles[coord.r]?.[coord.q]) continue;
+      ctx.save();
+      ctx.globalAlpha = selected ? 0.24 : 0.09;
+      drawHex(coord.q, coord.r, primary);
+      ctx.restore();
+      strokeHex(coord.q, coord.r, selected ? secondary : primary, selected ? 2.5 : 1);
+    }
+  }
+
   // Draw resource icons on top of terrain
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
@@ -4247,16 +4525,21 @@ function render() {
     }
   }
 
-  // Draw Barbarian Camps on top of terrain
+  // Draw all authored buildings on top of terrain.
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
-      if (tileBuildings[r][q] !== BARBARIAN_CAMP_BUILDING_ID) continue;
+      const buildingId = tileBuildings[r][q];
+      if (!buildingId) continue;
       const rect = hexRect(q, r);
       if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) {
         continue;
       }
-      drawBarbarianCamp(q, r);
+      drawBuilding(q, r, buildingId);
     }
+  }
+
+  if (highlightedBuildingCoord) {
+    strokeHex(highlightedBuildingCoord.q, highlightedBuildingCoord.r, '#ffe36e', 5);
   }
 
   drawWorldMarkers();
@@ -4470,6 +4753,33 @@ function drawBarbarianCamp(q, r) {
     return;
   }
   drawResourceFallback('Barbarian Camp', sx, sy, size);
+}
+
+const buildingImages = new Map();
+function getBuildingImage(buildingId) {
+  if (buildingId === BARBARIAN_CAMP_BUILDING_ID) return getBarbarianCampImage();
+  if (buildingImages.has(buildingId)) return buildingImages.get(buildingId);
+  const definition = buildingManifest.buildings.find(building => building.id === buildingId);
+  const image = new Image();
+  image.src = `/${definition?.iconPath || `assets/sprites/buildings/${buildingId}.png`}`;
+  image.addEventListener('load', render, { once: true });
+  image.addEventListener('error', render, { once: true });
+  buildingImages.set(buildingId, image);
+  return image;
+}
+
+function drawBuilding(q, r, buildingId) {
+  const world = tileToWorld(q, r);
+  const sx = (world.x - camX) * zoom;
+  const sy = (world.y - camY) * zoom;
+  const size = Math.max(10, tileSize * zoom * 0.7);
+  const image = getBuildingImage(buildingId);
+  if (image?.complete && image.naturalWidth > 0) {
+    ctx.drawImage(image, sx - size / 2, sy - size / 2, size, size);
+    return;
+  }
+  const definition = buildingManifest.buildings.find(building => building.id === buildingId);
+  drawResourceFallback(definition?.name || buildingId, sx, sy, size);
 }
 
 function getResourceImage(resource) {
