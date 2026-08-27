@@ -42,6 +42,8 @@ export interface CapitulationResult {
   demilitarizedUntilTurn: number;
   /** Whether the demanding nation's exploitation-rights demand was committed. */
   exploitationRightsGranted: boolean;
+  /** Surviving foreign holdings the capitulating exploiter lost in victors' territory. */
+  exploitationHoldingsRemoved: number;
 }
 
 export interface SavedCapitulationState {
@@ -74,6 +76,7 @@ export interface CapitulationAppliedEvent {
   restoredCityIds: string[];
   demilitarizedUntilTurn: number;
   exploitationRightsGranted: boolean;
+  exploitationHoldingsRemoved: number;
 }
 
 function clamp01(value: number): number {
@@ -209,7 +212,7 @@ export class CapitulationSystem {
     const rejected: CapitulationResult = {
       accepted: false, reparationsPaid: 0, reparationShares: [], formerEnemyIds: [],
       removedUnitCount: 0, restoredCityIds: [], demilitarizedUntilTurn: 0,
-      exploitationRightsGranted: false,
+      exploitationRightsGranted: false, exploitationHoldingsRemoved: 0,
     };
 
     // 1. Revalidate that capitulation can still be applied.
@@ -268,18 +271,31 @@ export class CapitulationSystem {
         createExploitationRightsConcession(targetNationId, demandingNationId, demandingNationId, 'capitulation'),
       );
 
+    // 11c. Liberation cleanup: a defeated exploiter loses every surviving holding
+    // it owns inside the territory of each nation it capitulated to. This is the
+    // "exploited defeats exploiter" case only — the holdings are the CAPITULATOR's
+    // improvements in the VICTORS' land. Improvements are destroyed, never
+    // transferred; the reverse direction (victorious exploiter) removes nothing
+    // because the capitulator holds no improvements in the loser's own territory.
+    let exploitationHoldingsRemoved = 0;
+    for (const enemyId of formerEnemyIds) {
+      exploitationHoldingsRemoved += this.deps.peaceTreatySystem.removeForeignHoldings(enemyId, targetNationId);
+    }
+
     const result: CapitulationResult = {
       accepted: true, reparationsPaid: reparations, reparationShares, formerEnemyIds,
       removedUnitCount, restoredCityIds, demilitarizedUntilTurn, exploitationRightsGranted,
+      exploitationHoldingsRemoved,
     };
     // 12. Record history/diplomatic events.
     this.deps.log?.(`[Capitulation] ${targetNationId} capitulates to ${demandingNationId}: `
       + `reparations=${reparations} units=-${removedUnitCount} cities=${restoredCityIds.length} `
-      + `wars=${formerEnemyIds.length} demilUntil=${demilitarizedUntilTurn} exploitation=${exploitationRightsGranted}`);
+      + `wars=${formerEnemyIds.length} demilUntil=${demilitarizedUntilTurn} exploitation=${exploitationRightsGranted} `
+      + `holdingsRemoved=${exploitationHoldingsRemoved}`);
     this.deps.onCapitulation?.({
       demandingNationId, capitulatingNationId: targetNationId, reparationsPaid: reparations,
       reparationShares, formerEnemyIds, removedUnitCount, restoredCityIds, demilitarizedUntilTurn,
-      exploitationRightsGranted,
+      exploitationRightsGranted, exploitationHoldingsRemoved,
     });
     return result;
   }

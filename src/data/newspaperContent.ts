@@ -163,6 +163,25 @@ export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, Ne
       return `${beneficiary}'s rights to exploit natural resources within ${grantor} territory have ended as war broke out between the two nations.`;
     },
   ),
+  exploitationHoldingsRemoved: definition(
+    64,
+    NEWSPAPER_IMAGE_PATHS.peace,
+    'the dismantling of foreign resource holdings',
+    (c) => {
+      const { grantor, beneficiary } = exploitationNames(c);
+      return c.event.metadata?.exploitationHoldingsRemovalContext === 'capitulation'
+        ? `${upper(grantor)} EXPELS ${upper(beneficiary)} RESOURCE INTERESTS`
+        : `FOREIGN RESOURCE HOLDINGS DISMANTLED IN ${upper(grantor)}`;
+    },
+    (c) => {
+      const { grantor, beneficiary } = exploitationNames(c);
+      const count = c.event.metadata?.exploitationHoldingsCount ?? 0;
+      const plural = count === 1 ? 'improvement' : 'improvements';
+      return c.event.metadata?.exploitationHoldingsRemovalContext === 'capitulation'
+        ? `Following ${beneficiary}'s capitulation, all ${count} of its surviving resource ${plural} within ${grantor} territory were dismantled.`
+        : `As part of the peace settlement, ${count} ${beneficiary} resource ${plural} within ${grantor} territory were dismantled.`;
+    },
+  ),
   joinedWar: definition(79, NEWSPAPER_IMAGE_PATHS.joinedWar, 'the widening war', (c) => {
     const [a, b] = names(c); return `${upper(a)} ENTERS WAR AGAINST ${upper(b)}`;
   }, (c) => { const [a, b] = names(c); return `${a} has joined the existing war against ${b}.`; }),

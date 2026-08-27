@@ -13,6 +13,7 @@ export type HistoricalEventType =
   | 'peace'
   | 'exploitationRightsGranted'
   | 'exploitationRightsEnded'
+  | 'exploitationHoldingsRemoved'
   | 'cityCaptured'
   | 'tradeRouteCompleted'
   | 'wonderBuilt'
@@ -49,6 +50,9 @@ export interface HistoricalEventMetadata {
   exploitationBeneficiaryNationId?: string;
   exploitationContext?: 'trade' | 'joinWar' | 'peace' | 'capitulation';
   exploitationEndReason?: 'war';
+  /** Number of holdings dismantled, and the settlement that dismantled them. */
+  exploitationHoldingsCount?: number;
+  exploitationHoldingsRemovalContext?: 'peace' | 'capitulation';
   wonderId?: string;
   wonderName?: string;
   eraName?: string;

@@ -5042,6 +5042,36 @@ export class GameScene extends Phaser.Scene {
       goldInput.focus();
     };
 
+    // Records a single History entry when surviving foreign exploitation holdings
+    // are dismantled by a settlement (peace demand/withdrawal or capitulation
+    // liberation). territorialOwnerId owns the land; exploiterId owned the removed
+    // improvements. No tile-level spam — one diplomatic entry per settlement event.
+    const recordHoldingsRemovalHistory = (
+      territorialOwnerId: string,
+      exploiterId: string,
+      count: number,
+      context: 'peace' | 'capitulation',
+    ): void => {
+      if (count <= 0) return;
+      historicalTimeline.record({
+        type: 'exploitationHoldingsRemoved',
+        icon: '⛏',
+        text: context === 'capitulation'
+          ? `Following ${timelineNationName(exploiterId)}'s capitulation, ${count} ${timelineNationName(exploiterId)} `
+            + `exploitation holding${count === 1 ? '' : 's'} in ${timelineNationName(territorialOwnerId)} territory were dismantled`
+          : `${timelineNationName(territorialOwnerId)} secured the removal of ${count} ${timelineNationName(exploiterId)} `
+            + `exploitation holding${count === 1 ? '' : 's'} under the peace settlement`,
+        eventNationIds: [territorialOwnerId, exploiterId],
+        newsImportance: context === 'capitulation' ? 2 : 4,
+        metadata: {
+          exploitationGrantorNationId: territorialOwnerId,
+          exploitationBeneficiaryNationId: exploiterId,
+          exploitationHoldingsCount: count,
+          exploitationHoldingsRemovalContext: context,
+        },
+      });
+    };
+
     const showProposePeaceDialog = (targetNationId: string): void => {
       const targetNation = nationManager.getNation(targetNationId);
       const humanNation = nationManager.getNation(humanNationIdForDiplomacy);
@@ -5143,6 +5173,49 @@ export class GameScene extends Phaser.Scene {
         panel.appendChild(row);
       }
 
+      // Existing Exploitation Holdings — surviving foreign improvements, kept
+      // distinct from the future-rights term above. Two independent directions,
+      // each shown only when relevant holdings actually exist:
+      //  - remove the OTHER nation's holdings from YOUR land (a demand), or
+      //  - withdraw YOUR OWN holdings from THEIR land (a goodwill concession).
+      const recipientHoldingsCount = peaceTreatySystem.countForeignHoldings(humanNationIdForDiplomacy, targetNationId);
+      const proposerHoldingsCount = peaceTreatySystem.countForeignHoldings(targetNationId, humanNationIdForDiplomacy);
+      const addHoldingsCheckbox = (headerText: string, bodyText: string): HTMLInputElement => {
+        const header = document.createElement('div');
+        header.style.cssText = 'font-weight:700;margin:6px 0;';
+        header.textContent = headerText;
+        panel.appendChild(header);
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 0;';
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        row.appendChild(check);
+        const text = document.createElement('span');
+        text.style.cssText = 'font-size:13px;color:#cdd9e8;';
+        text.textContent = bodyText;
+        row.appendChild(text);
+        panel.appendChild(row);
+        return check;
+      };
+      let removeRecipientCheck: HTMLInputElement | null = null;
+      if (recipientHoldingsCount > 0) {
+        removeRecipientCheck = addHoldingsCheckbox(
+          'Remove Foreign Exploitation Holdings',
+          `Remove all ${recipientHoldingsCount} existing ${targetNation.name} resource `
+          + `improvement${recipientHoldingsCount === 1 ? '' : 's'} from ${humanName}'s territory. `
+          + 'The improvements are destroyed, not transferred; the natural resources remain.',
+        );
+      }
+      let removeProposerCheck: HTMLInputElement | null = null;
+      if (proposerHoldingsCount > 0) {
+        removeProposerCheck = addHoldingsCheckbox(
+          'Withdraw Your Exploitation Holdings',
+          `Give up your ${proposerHoldingsCount} existing resource `
+          + `improvement${proposerHoldingsCount === 1 ? '' : 's'} in ${targetNation.name} territory `
+          + 'as part of the settlement. They are dismantled; the natural resources remain.',
+        );
+      }
+
       const summary = document.createElement('div');
       summary.style.cssText = 'margin:14px 0;padding:10px;border-radius:6px;background:#0b121b;'
         + 'border:1px solid rgba(143,163,190,0.35);font-size:13px;color:#cdd9e8;min-height:20px;';
@@ -5151,6 +5224,8 @@ export class GameScene extends Phaser.Scene {
       const readGold = (): number => Math.max(0, Math.min(availableGold, Math.floor(Number(goldInput.value) || 0)));
       const readCities = (): string[] => cityChecks.filter((c) => c.input.checked).map((c) => c.id);
       const readExploit = (): boolean => exploitCheck?.checked === true;
+      const readRemoveRecipient = (): boolean => removeRecipientCheck?.checked === true;
+      const readRemoveProposer = (): boolean => removeProposerCheck?.checked === true;
       const updateSummary = (): void => {
         const gold = readGold();
         const cityIds = readCities();
@@ -5161,11 +5236,15 @@ export class GameScene extends Phaser.Scene {
           parts.push(`cities: ${names}`);
         }
         if (readExploit()) parts.push('resource exploitation rights');
+        if (readRemoveRecipient()) parts.push(`remove ${recipientHoldingsCount} foreign holding${recipientHoldingsCount === 1 ? '' : 's'}`);
+        if (readRemoveProposer()) parts.push(`withdraw your ${proposerHoldingsCount} holding${proposerHoldingsCount === 1 ? '' : 's'}`);
         summary.textContent = `Offer: ${parts.join(' + ')}. Peace Treaty cooldown: ${cooldownTurns} turns.`;
       };
       goldInput.addEventListener('input', updateSummary);
       for (const c of cityChecks) c.input.addEventListener('change', updateSummary);
       exploitCheck?.addEventListener('change', updateSummary);
+      removeRecipientCheck?.addEventListener('change', updateSummary);
+      removeProposerCheck?.addEventListener('change', updateSummary);
       updateSummary();
 
       const buttons = document.createElement('div');
@@ -5182,7 +5261,10 @@ export class GameScene extends Phaser.Scene {
       buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
       buttons.appendChild(makeButton('Propose', true, () => {
         overlay.remove();
-        resolveHumanPeaceProposal(targetNationId, readGold(), readCities(), readExploit());
+        resolveHumanPeaceProposal(targetNationId, readGold(), readCities(), readExploit(), {
+          removeRecipientHoldings: readRemoveRecipient(),
+          removeProposerHoldings: readRemoveProposer(),
+        });
       }));
       panel.appendChild(buttons);
 
@@ -5196,20 +5278,26 @@ export class GameScene extends Phaser.Scene {
       gold: number,
       cityIds: string[],
       offerExploitationRights: boolean,
+      holdings: { removeRecipientHoldings: boolean; removeProposerHoldings: boolean } = {
+        removeRecipientHoldings: false, removeProposerHoldings: false,
+      },
     ): void => {
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
       const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
       diplomacyManager.proposePeace(humanNationIdForDiplomacy, targetNationId, {
         goldReparations: gold,
         offeredCityIds: cityIds,
         ...(offerExploitationRights ? { offeredExploitationRights: true } : {}),
+        ...(holdings.removeRecipientHoldings ? { removeRecipientHoldings: true } : {}),
+        ...(holdings.removeProposerHoldings ? { removeProposerHoldings: true } : {}),
       });
       const proposal = diplomacyManager.getPendingProposal(targetNationId);
       if (!proposal) return;
 
       const evaluation = peaceTreatySystem.evaluatePeaceProposal(proposal);
       // Diagnostic-only (dev/autorun); raw scores are never shown in the player log.
-      console.log(`[Peace] ${targetName} evaluates ${nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'you'}'s offer: `
+      console.log(`[Peace] ${targetName} evaluates ${humanName}'s offer: `
         + `${evaluation.summary} | factors ${JSON.stringify(
           Object.fromEntries(Object.entries(evaluation.factors).map(([k, v]) => [k, Number(v.toFixed(2))])),
         )}`);
@@ -5218,8 +5306,18 @@ export class GameScene extends Phaser.Scene {
         logTreatyDetails(proposal);
         const settlement = peaceTreatySystem.settleAcceptedPeace(proposal);
         const lines = [`${aiLeaderName} accepts your terms. Our nations are at peace.`];
+        // Separate result lines: holdings vs future rights are distinct outcomes.
+        if (settlement.recipientHoldingsRemoved > 0) {
+          lines.push(`All ${settlement.recipientHoldingsRemoved} ${targetName} exploitation holding`
+            + `${settlement.recipientHoldingsRemoved === 1 ? '' : 's'} in ${humanName}'s territory were removed.`);
+          recordHoldingsRemovalHistory(humanNationIdForDiplomacy, targetNationId, settlement.recipientHoldingsRemoved, 'peace');
+        }
+        if (settlement.proposerHoldingsRemoved > 0) {
+          lines.push(`${humanName}'s ${settlement.proposerHoldingsRemoved} exploitation holding`
+            + `${settlement.proposerHoldingsRemoved === 1 ? '' : 's'} in ${targetName} territory were withdrawn.`);
+          recordHoldingsRemovalHistory(targetNationId, humanNationIdForDiplomacy, settlement.proposerHoldingsRemoved, 'peace');
+        }
         if (settlement.exploitationRightsGranted) {
-          const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
           lines.push(`${targetName} may now exploit natural resources in ${humanName}'s territory.`);
         }
         showLeaderResponsePopup(targetNationId, `${aiLeaderName} accepts`, lines);
@@ -5387,6 +5485,13 @@ export class GameScene extends Phaser.Scene {
       if (result.exploitationRightsGranted) {
         const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
         lines.push(`${humanName} may now exploit natural resources in ${targetName}'s territory.`);
+      }
+      // Liberation cleanup: the defeated exploiter's holdings in the victor's land
+      // are dismantled automatically (no demand required).
+      if (result.exploitationHoldingsRemoved > 0) {
+        lines.push(`All ${result.exploitationHoldingsRemoved} ${targetName} exploitation holding`
+          + `${result.exploitationHoldingsRemoved === 1 ? '' : 's'} in your territory were dismantled.`);
+        recordHoldingsRemovalHistory(humanNationIdForDiplomacy, targetNationId, result.exploitationHoldingsRemoved, 'capitulation');
       }
       showLeaderResponsePopup(targetNationId, `${aiLeaderName} capitulates`, lines);
       rightPanel?.refreshCurrent();

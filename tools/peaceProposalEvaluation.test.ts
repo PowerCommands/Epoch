@@ -224,7 +224,10 @@ test('a stale accepted proposal cannot transfer assets after the war has already
   // This harness has no active WAR state, so the authoritative settlement guard
   // rejects the stale proposal before touching either treasury.
   const result = h.system.settleAcceptedPeace(proposal({ goldReparations: 100 }));
-  assert.deepEqual(result, { goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false });
+  assert.deepEqual(result, {
+    goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false,
+    proposerHoldingsRemoved: 0, recipientHoldingsRemoved: 0,
+  });
   assert.equal(h.gold.get('human'), 120);
   assert.equal(h.gold.get('ai'), 0);
 });

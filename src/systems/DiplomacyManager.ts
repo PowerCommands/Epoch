@@ -106,6 +106,17 @@ export interface PeaceProposal {
    * war transitions to PEACE (see PeaceTreatySystem.settleAcceptedPeace).
    */
   offeredExploitationRights?: boolean;
+  /**
+   * Post-war exploitation *holdings* terms (Step 6), independent of the future
+   * exploitation-right term above:
+   *  - removeProposerHoldings: the proposer gives up its own surviving holdings in
+   *    the recipient's territory (a concession offered to the recipient).
+   *  - removeRecipientHoldings: the proposer demands removal of the recipient's
+   *    surviving holdings in the proposer's territory (a demand on the recipient).
+   * When neither is set, surviving holdings remain (the wartime status quo).
+   */
+  removeProposerHoldings?: boolean;
+  removeRecipientHoldings?: boolean;
   warDuration: number;
 }
 
@@ -581,6 +592,8 @@ export class DiplomacyManager {
       offeredCityIds?: string[];
       goldReparations?: number;
       offeredExploitationRights?: boolean;
+      removeProposerHoldings?: boolean;
+      removeRecipientHoldings?: boolean;
     } = {},
   ): void {
     if (this.getState(fromId, toId) !== 'WAR') return;
@@ -883,6 +896,8 @@ export class DiplomacyManager {
         ...(Array.isArray(candidate.offeredCityIds) ? { offeredCityIds: [...candidate.offeredCityIds] } : {}),
         ...(Number.isFinite(candidate.goldReparations) ? { goldReparations: candidate.goldReparations } : {}),
         ...(candidate.offeredExploitationRights === true ? { offeredExploitationRights: true } : {}),
+        ...(candidate.removeProposerHoldings === true ? { removeProposerHoldings: true } : {}),
+        ...(candidate.removeRecipientHoldings === true ? { removeRecipientHoldings: true } : {}),
       };
       this.pendingProposals.set(proposal.toNationId, proposal);
     }
@@ -960,6 +975,8 @@ export class DiplomacyManager {
       ...(proposal.offeredCityIds ? { offeredCityIds: [...proposal.offeredCityIds] } : {}),
       ...(proposal.goldReparations !== undefined ? { goldReparations: proposal.goldReparations } : {}),
       ...(proposal.offeredExploitationRights ? { offeredExploitationRights: true } : {}),
+      ...(proposal.removeProposerHoldings ? { removeProposerHoldings: true } : {}),
+      ...(proposal.removeRecipientHoldings ? { removeRecipientHoldings: true } : {}),
     };
   }
 

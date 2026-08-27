@@ -14,11 +14,16 @@ import { CulturalSphereSystem } from './CulturalSphereSystem';
 import { getLeaderExploitationInterestByNationId, getLeaderPersonalityByNationId } from '../data/leaders';
 import type { NationCollapseSystem } from './NationCollapseSystem';
 import {
+  EXPLOITATION_HOLDING_VALUE,
   commitExploitationRightsConcession,
   createExploitationRightsConcession,
   getExploitationRightsValueForInterest,
   validateExploitationRightsConcession,
 } from './diplomacy/ExploitationRightsConcession';
+import {
+  countForeignExploitationHoldings,
+  removeForeignExploitationHoldings,
+} from './ImprovementOwnership';
 
 export const MAX_REPARATIONS_GOLD = 10_000;
 export const REPARATIONS_FRACTION = 0.5;
@@ -62,6 +67,10 @@ export interface PeaceSettlementResult {
   cityIdsTransferred: string[];
   /** Whether the proposer's offered exploitation rights were committed post-peace. */
   exploitationRightsGranted: boolean;
+  /** Proposer's own surviving holdings removed from the recipient's territory. */
+  proposerHoldingsRemoved: number;
+  /** Recipient's surviving holdings removed from the proposer's territory. */
+  recipientHoldingsRemoved: number;
 }
 
 export interface AIPeaceSeekingEvaluation {
@@ -221,9 +230,21 @@ export class PeaceTreatySystem {
       this.resourceSystem.addGold(proposal.fromNationId, -goldTransferred);
       this.resourceSystem.addGold(proposal.toNationId, goldTransferred);
     }
+    // Post-war exploitation holdings terms. Removal is destruction, never a
+    // transfer — the natural resource stays; the territorial owner is unchanged.
+    // "Retain" is the default, so it is simply the absence of a removal term.
+    const proposerHoldingsRemoved = proposal.removeProposerHoldings === true
+      ? removeForeignExploitationHoldings(this.mapData, proposal.toNationId, proposal.fromNationId)
+      : 0;
+    const recipientHoldingsRemoved = proposal.removeRecipientHoldings === true
+      ? removeForeignExploitationHoldings(this.mapData, proposal.fromNationId, proposal.toNationId)
+      : 0;
     // Exploitation rights are intentionally committed later, after the war ends —
     // see settleAcceptedPeace. The core grant refuses wartime grants outright.
-    return { goldTransferred, cityIdsTransferred, exploitationRightsGranted: false };
+    return {
+      goldTransferred, cityIdsTransferred, exploitationRightsGranted: false,
+      proposerHoldingsRemoved, recipientHoldingsRemoved,
+    };
   }
 
   /**
@@ -233,7 +254,10 @@ export class PeaceTreatySystem {
    */
   settleAcceptedPeace(proposal: PeaceProposal): PeaceSettlementResult {
     if (this.diplomacyManager.getState(proposal.fromNationId, proposal.toNationId) !== 'WAR') {
-      return { goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false };
+      return {
+        goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false,
+        proposerHoldingsRemoved: 0, recipientHoldingsRemoved: 0,
+      };
     }
     const result = this.executeTreaty(proposal);
     // Order matters: end the war first, then commit exploitation rights. The core
@@ -251,7 +275,7 @@ export class PeaceTreatySystem {
   /** Gold-equivalent value of everything the offer would actually transfer to the recipient. */
   computeSettlementValue(
     proposal: PeaceProposal,
-  ): { value: number; gold: number; cityValue: number; exploitationValue: number } {
+  ): { value: number; gold: number; cityValue: number; exploitationValue: number; holdingsValue: number } {
     const gold = this.resolveOfferedGold(proposal);
     let cityValue = 0;
     for (const cityId of this.resolveOfferedCityIds(proposal)) {
@@ -264,7 +288,41 @@ export class PeaceTreatySystem {
     const exploitationValue = this.offeredExploitationRightsCount(proposal)
       ? getExploitationRightsValueForInterest(getLeaderExploitationInterestByNationId(proposal.toNationId))
       : 0;
-    return { value: gold + cityValue + exploitationValue, gold, cityValue, exploitationValue };
+    const holdingsValue = this.holdingsSettlementValue(proposal);
+    return {
+      value: gold + cityValue + exploitationValue + holdingsValue,
+      gold, cityValue, exploitationValue, holdingsValue,
+    };
+  }
+
+  /**
+   * Signed gold-equivalent the holdings terms are worth to the recipient. Removing
+   * the proposer's own holdings from the recipient's land is a concession the
+   * recipient gains (+); demanding removal of the recipient's holdings from the
+   * proposer's land is a loss to the recipient (−). Flat per-improvement value —
+   * never scaled by resource type or quantity beyond a simple count.
+   */
+  private holdingsSettlementValue(proposal: PeaceProposal): number {
+    let value = 0;
+    if (proposal.removeProposerHoldings) {
+      value += EXPLOITATION_HOLDING_VALUE
+        * countForeignExploitationHoldings(this.mapData, proposal.toNationId, proposal.fromNationId);
+    }
+    if (proposal.removeRecipientHoldings) {
+      value -= EXPLOITATION_HOLDING_VALUE
+        * countForeignExploitationHoldings(this.mapData, proposal.fromNationId, proposal.toNationId);
+    }
+    return value;
+  }
+
+  /** Surviving foreign holdings owned by `improvementOwner` inside `territorialOwner`. */
+  countForeignHoldings(territorialOwnerNationId: string, improvementOwnerNationId: string): number {
+    return countForeignExploitationHoldings(this.mapData, territorialOwnerNationId, improvementOwnerNationId);
+  }
+
+  /** Dismantle all foreign holdings owned by `improvementOwner` inside `territorialOwner`. */
+  removeForeignHoldings(territorialOwnerNationId: string, improvementOwnerNationId: string): number {
+    return removeForeignExploitationHoldings(this.mapData, territorialOwnerNationId, improvementOwnerNationId);
   }
 
   /**
@@ -455,6 +513,7 @@ export class PeaceTreatySystem {
         settlementGold: settlement.gold,
         settlementCityValue: settlement.cityValue,
         settlementExploitationValue: settlement.exploitationValue,
+        settlementHoldingsValue: settlement.holdingsValue,
       },
       summary: `pressure=${pressure.toFixed(2)} settlement=${Math.round(settlement.value)} `
         + `threshold=${Math.round(acceptanceThreshold)} → ${accepted ? 'ACCEPT' : 'REJECT'}`,
