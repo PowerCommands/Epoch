@@ -379,6 +379,27 @@
       ]
     },
     {
+      "nationId": "nation_poland",
+      "nationName": "Poland",
+      "color": "#d4213d",
+      "secondaryColor": "#f5f5f5",
+      "currencyName": "Polish Złoty",
+      "currencySymbol": "zł",
+      "leaderId": "leader_wladyslaw_sikorski",
+      "leaderName": "Władysław Sikorski",
+      "leaderTitle": "General",
+      "leaderImage": "/assets/sprites/leaders/wladyslaw-sikorski.png",
+      "leaders": [
+        {
+          "leaderId": "leader_wladyslaw_sikorski",
+          "leaderName": "Władysław Sikorski",
+          "leaderTitle": "General",
+          "leaderImage": "/assets/sprites/leaders/wladyslaw-sikorski.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_russia",
       "nationName": "Russia",
       "color": "#ffffff",

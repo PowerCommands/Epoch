@@ -465,6 +465,28 @@
       "Modena",
       "Ravenna"
     ],
+    "nation_poland": [
+      "Warsaw",
+      "Kraków",
+      "Łódź",
+      "Wrocław",
+      "Poznań",
+      "Gdańsk",
+      "Szczecin",
+      "Lublin",
+      "Bydgoszcz",
+      "Białystok",
+      "Katowice",
+      "Gdynia",
+      "Częstochowa",
+      "Radom",
+      "Toruń",
+      "Kielce",
+      "Rzeszów",
+      "Olsztyn",
+      "Opole",
+      "Zamość"
+    ],
     "nation_pirate": [
       "Kingston",
       "Tortuga",

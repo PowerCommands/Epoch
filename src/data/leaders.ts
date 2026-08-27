@@ -646,7 +646,7 @@ const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderP
   'hermann-the-cheruscan': { traditionalFavourite: 'wrestling', additionalFavourite: 'hundred_metres' },
   'ivan-iv': { traditionalFavourite: 'javelin', additionalFavourite: 'horse_racing' },
   leader_joseph_stalin: { traditionalFavourite: 'wrestling', additionalFavourite: 'boxing' },
-  leader_benito_mussolini: { traditionalFavourite: 'fencing', additionalFavourite: 'boxing' },
+  leader_benito_mussolini: { traditionalFavourite: 'wrestling', additionalFavourite: 'fencing' },
   leader_wladyslaw_sikorski: { traditionalFavourite: 'javelin', additionalFavourite: 'fencing' },
 };
 

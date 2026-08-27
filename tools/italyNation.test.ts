@@ -81,6 +81,13 @@ test('Mussolini is a military opportunist with more restraint than Hitler', () =
   assert.equal(eraStrategy.militaryBehavior.targetWeakNeighbor, true);
 });
 
+test('Mussolini has one category-correct traditional and additional Games preference', () => {
+  assert.deepEqual(BENITO_MUSSOLINI.gamesOfNationsPreferences, {
+    traditionalFavourite: 'wrestling',
+    additionalFavourite: 'fencing',
+  });
+});
+
 test('New Roman Empire favors prestige expansion but normal strategy safety still handles war and threats', () => {
   const agenda = getAINationalAgendaById('new_roman_empire');
   assert.equal(agenda.name, 'New Roman Empire');
