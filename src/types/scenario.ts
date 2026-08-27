@@ -141,6 +141,42 @@ export interface ScenarioInitialDiplomacyEntry {
   suspicion?: number;
 }
 
+/**
+ * An event authored in advance as part of a scenario. This is intentionally
+ * separate from the runtime HistoricalEvent records produced after gameplay
+ * events have actually happened.
+ */
+export interface ScenarioHistoricalEventBase {
+  id: string;
+  type: string;
+  name: string;
+  description: string;
+  /** Positive year magnitude; BC/AD is carried separately. */
+  startYear: number;
+  /** Calendar month, January = 1 through December = 12. */
+  startMonth: number;
+  startYearIsBC?: boolean;
+}
+
+/** An unordered pair of scenario nations that will later begin at war. */
+export interface ScenarioWorldWarConflict {
+  nationAId: string;
+  nationBId: string;
+}
+
+export interface ScenarioWorldWarHistoricalEvent extends ScenarioHistoricalEventBase {
+  type: 'worldWar';
+  conflicts: ScenarioWorldWarConflict[];
+  /**
+   * The war will later end when this nation has no active wars or has been
+   * eliminated. Runtime evaluation is deliberately not implemented here.
+   */
+  endConditionNationId: string;
+}
+
+/** Extensible union of scenario-authored historical event definitions. */
+export type ScenarioHistoricalEvent = ScenarioWorldWarHistoricalEvent;
+
 export interface ScenarioData {
   meta: ScenarioMeta;
   map: ScenarioMap;
@@ -152,4 +188,6 @@ export interface ScenarioData {
   nationDetails: Record<string, ScenarioNationDetails>;
   /** Pre-configured diplomacy, one entry per nation pair. */
   initialDiplomacy: ScenarioInitialDiplomacyEntry[];
+  /** Authored future events. Absent in older scenarios. */
+  historicalEvents?: ScenarioHistoricalEvent[];
 }

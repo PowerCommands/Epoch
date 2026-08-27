@@ -5,6 +5,7 @@ import type {
   TurnEndEvent,
   RoundStartEvent,
   RoundEndEvent,
+  BeforeRoundStartEvent,
 } from '../types/events';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { ScenarioMeta } from '../types/scenario';
@@ -13,8 +14,19 @@ import {
   computeGameDate,
   formatGameDate,
   autoProgressedYears,
+  addMonths,
   type GameDate,
 } from './GameDate';
+
+export type DateProgressionContinuation =
+  | { mode: 'monthly' }
+  | { mode: 'staticYear'; staticYearStep: number }
+  | { mode: 'auto'; autoRoundAtAnchor: number };
+
+export type RuntimeDateProgression = DateProgressionContinuation & {
+  anchorRound: number;
+  anchorDate: GameDate;
+};
 
 export const START_YEAR = -4000;
 
@@ -39,8 +51,10 @@ export class TurnManager {
   private stopped = false;
   private readonly yearProgressionMultiplier: number;
   private readonly scenarioMeta: ResolvedScenarioMeta;
+  private runtimeDateProgression: RuntimeDateProgression | null = null;
 
   private readonly listeners = {
+    beforeRoundStart: [] as ((e: BeforeRoundStartEvent) => void)[],
     turnStart:  [] as ((e: TurnStartEvent) => void)[],
     turnEnd:    [] as ((e: TurnEndEvent) => void)[],
     roundStart: [] as ((e: RoundStartEvent) => void)[],
@@ -62,6 +76,7 @@ export class TurnManager {
    * så att UI-komponenter inte missar det första eventet.
    */
   start(): void {
+    this.emit('beforeRoundStart', { round: this.currentRound, previousRound: null });
     this.emit('roundStart', { round: this.currentRound });
     this.emit('turnStart', {
       round: this.currentRound,
@@ -103,6 +118,7 @@ export class TurnManager {
       this.emit('roundEnd', { round: this.currentRound });
       this.currentRound++;
       this.currentTurnIndex = 0;
+      this.emit('beforeRoundStart', { round: this.currentRound, previousRound: this.currentRound - 1 });
       this.emit('roundStart', { round: this.currentRound });
     }
 
@@ -124,7 +140,71 @@ export class TurnManager {
 
   /** Scenario-driven date for a historical round, using the same calendar rules as the live turn. */
   getGameDateForRound(round: number): GameDate {
+    const runtime = this.runtimeDateProgression;
+    if (runtime && round >= runtime.anchorRound) {
+      const elapsedRounds = round - runtime.anchorRound;
+      switch (runtime.mode) {
+        case 'monthly':
+          return addMonths(runtime.anchorDate, elapsedRounds);
+        case 'staticYear':
+          return addMonths(runtime.anchorDate, elapsedRounds * runtime.staticYearStep * 12);
+        case 'auto': {
+          const progressedYears = autoProgressedYears(
+            runtime.autoRoundAtAnchor + elapsedRounds,
+            this.yearProgressionMultiplier,
+          ) - autoProgressedYears(runtime.autoRoundAtAnchor, this.yearProgressionMultiplier);
+          return addMonths(runtime.anchorDate, progressedYears * 12);
+        }
+      }
+    }
     return computeGameDate(this.scenarioMeta, round, this.yearProgressionMultiplier);
+  }
+
+  /** Install a runtime-only anchored progression without rewriting the scenario timeline. */
+  setRuntimeDateProgression(progression: RuntimeDateProgression): void {
+    this.runtimeDateProgression = {
+      ...progression,
+      anchorDate: { ...progression.anchorDate },
+    };
+  }
+
+  getRuntimeDateProgression(): RuntimeDateProgression | null {
+    const progression = this.runtimeDateProgression;
+    return progression ? { ...progression, anchorDate: { ...progression.anchorDate } } : null;
+  }
+
+  clearRuntimeDateProgression(): void {
+    this.runtimeDateProgression = null;
+  }
+
+  /**
+   * Capture the progression cursor needed to continue forward from an arbitrary
+   * future anchor without reinterpreting rounds already elapsed under another mode.
+   */
+  getDateProgressionContinuation(round = this.currentRound): DateProgressionContinuation {
+    const runtime = this.runtimeDateProgression;
+    if (runtime && round >= runtime.anchorRound) {
+      if (runtime.mode === 'auto') {
+        return { mode: 'auto', autoRoundAtAnchor: runtime.autoRoundAtAnchor + round - runtime.anchorRound };
+      }
+      if (runtime.mode === 'staticYear') {
+        return { mode: 'staticYear', staticYearStep: runtime.staticYearStep };
+      }
+      return { mode: 'monthly' };
+    }
+
+    switch (this.scenarioMeta.timeProgression.mode) {
+      case 'monthly':
+        return { mode: 'monthly' };
+      case 'staticYear':
+        return {
+          mode: 'staticYear',
+          staticYearStep: this.scenarioMeta.timeProgression.staticYearStep ?? 1,
+        };
+      case 'auto':
+      default:
+        return { mode: 'auto', autoRoundAtAnchor: round };
+    }
   }
 
   /** Formatted date, e.g. "January 4000 BC" / "February 1939". */
@@ -179,6 +259,7 @@ export class TurnManager {
   // ─── Pub/sub ───────────────────────────────────────────────────────────────
 
   on(event: 'turnStart', cb: (e: TurnStartEvent) => void): void;
+  on(event: 'beforeRoundStart', cb: (e: BeforeRoundStartEvent) => void): void;
   on(event: 'turnEnd', cb: (e: TurnEndEvent) => void): void;
   on(event: 'roundStart', cb: (e: RoundStartEvent) => void): void;
   on(event: 'roundEnd', cb: (e: RoundEndEvent) => void): void;
@@ -189,6 +270,7 @@ export class TurnManager {
   }
 
   private emit(event: 'turnStart', data: TurnStartEvent): void;
+  private emit(event: 'beforeRoundStart', data: BeforeRoundStartEvent): void;
   private emit(event: 'turnEnd', data: TurnEndEvent): void;
   private emit(event: 'roundStart', data: RoundStartEvent): void;
   private emit(event: 'roundEnd', data: RoundEndEvent): void;

@@ -6,6 +6,8 @@ export type HistoricalEventType =
   | 'embassyEstablished'
   | 'tradeRelations'
   | 'warDeclared'
+  | 'worldWarStarted'
+  | 'worldWarEnded'
   | 'joinedWar'
   | 'peace'
   | 'cityCaptured'
@@ -63,6 +65,14 @@ export interface HistoricalEventMetadata {
   scheduledGamesTurn?: number;
   scheduledGamesYear?: number;
   gamesCancellationReason?: string;
+  scenarioHistoricalEventId?: string;
+  scenarioHistoricalEventName?: string;
+  scenarioHistoricalEventDescription?: string;
+  worldWarConflictNames?: string[];
+  worldWarCompletionReason?: 'peace' | 'elimination';
+  worldWarEndConditionNationId?: string;
+  worldWarEndConditionNationName?: string;
+  worldWarTimelineRestored?: boolean;
 }
 
 /**

@@ -34,6 +34,7 @@ export function latestNewspaperRoundAtOrBefore(round: number): number {
 
 export class NewspaperSystem {
   private lastConsumedIssueRound: number;
+  private lastConsumedTimelineEventId: number;
   private issues: NewspaperIssue[];
 
   private constructor(
@@ -41,11 +42,18 @@ export class NewspaperSystem {
     state: SavedNewspaperState,
   ) {
     this.lastConsumedIssueRound = Math.max(1, Math.floor(state.lastConsumedIssueRound));
+    this.lastConsumedTimelineEventId = Number.isFinite(state.lastConsumedTimelineEventId)
+      ? Math.max(0, Math.floor(state.lastConsumedTimelineEventId!))
+      : 0;
     this.issues = normalizeSavedIssues(state.issues);
   }
 
   static forNewGame(dependencies: NewspaperSystemDependencies): NewspaperSystem {
-    return new NewspaperSystem(dependencies, { lastConsumedIssueRound: 1, issues: [] });
+    return new NewspaperSystem(dependencies, {
+      lastConsumedIssueRound: 1,
+      lastConsumedTimelineEventId: 0,
+      issues: [],
+    });
   }
 
   static fromSave(
@@ -53,7 +61,15 @@ export class NewspaperSystem {
     savedState: SavedNewspaperState | undefined,
     currentRound: number,
   ): NewspaperSystem {
-    if (isValidSavedState(savedState)) return new NewspaperSystem(dependencies, savedState);
+    if (isValidSavedState(savedState)) {
+      const legacyTimelineCursor = savedState.lastConsumedTimelineEventId === undefined
+        ? highestTimelineEventId(dependencies.getTimelineEvents(), (event) => event.round < savedState.lastConsumedIssueRound)
+        : savedState.lastConsumedTimelineEventId;
+      return new NewspaperSystem(dependencies, {
+        ...savedState,
+        lastConsumedTimelineEventId: legacyTimelineCursor,
+      });
+    }
     // A pre-feature save consumes every boundary through its saved round, so it
     // waits for the next future issue and never creates a historical backlog.
     const partialIssues = savedState && typeof savedState === 'object'
@@ -61,6 +77,7 @@ export class NewspaperSystem {
       : undefined;
     return new NewspaperSystem(dependencies, {
       lastConsumedIssueRound: latestNewspaperRoundAtOrBefore(currentRound),
+      lastConsumedTimelineEventId: highestTimelineEventId(dependencies.getTimelineEvents()),
       issues: partialIssues,
     });
   }
@@ -69,15 +86,24 @@ export class NewspaperSystem {
   consumeDueIssue(round: number, dateLabel: string, suppressPresentation = false, worldYear = 0): NewspaperIssue | null {
     if (!isNewspaperRound(round) || round <= this.lastConsumedIssueRound) return null;
     const coverageStartRound = this.lastConsumedIssueRound;
-    const issue = this.buildIssue(round, dateLabel, coverageStartRound, worldYear);
+    // Snapshot at the actual publication point. roundStart systems have already
+    // recorded their facts, while events occurring later in this logical round
+    // do not exist yet and therefore cannot leak into this issue.
+    const availableEvents = this.dependencies.getTimelineEvents().filter((event) => event.round <= round);
+    const issue = this.buildIssue(round, dateLabel, coverageStartRound, worldYear, availableEvents);
     this.issues.push(issue);
     this.lastConsumedIssueRound = round;
+    this.lastConsumedTimelineEventId = Math.max(
+      this.lastConsumedTimelineEventId,
+      highestTimelineEventId(availableEvents),
+    );
     return suppressPresentation ? null : cloneIssue(issue);
   }
 
   getState(): SavedNewspaperState {
     return {
       lastConsumedIssueRound: this.lastConsumedIssueRound,
+      lastConsumedTimelineEventId: this.lastConsumedTimelineEventId,
       issues: this.issues.map(cloneIssue),
     };
   }
@@ -107,14 +133,22 @@ export class NewspaperSystem {
     const issueNumber = this.issues.length + 1;
     const issue = this.buildVictoryIssue(args, coverageStartRound, issueNumber);
     this.lastConsumedIssueRound = Math.max(this.lastConsumedIssueRound, args.round);
+    this.lastConsumedTimelineEventId = Math.max(
+      this.lastConsumedTimelineEventId,
+      highestTimelineEventId(this.dependencies.getTimelineEvents(), (event) => event.round <= args.round),
+    );
     this.issues.push(issue);
     return cloneIssue(issue);
   }
 
-  private buildIssue(issueRound: number, dateLabel: string, coverageStartRound: number, worldYear: number): NewspaperIssue {
-    const candidates = this.dependencies.getTimelineEvents().filter((event) =>
-      event.round >= coverageStartRound && event.round < issueRound,
-    );
+  private buildIssue(
+    issueRound: number,
+    dateLabel: string,
+    coverageStartRound: number,
+    worldYear: number,
+    availableEvents: readonly HistoricalEvent[],
+  ): NewspaperIssue {
+    const candidates = availableEvents.filter((event) => event.id > this.lastConsumedTimelineEventId);
     const normal = candidates.filter(isSupportedNormalEvent).sort((a, b) => this.compareNormal(a, b));
     const insults = candidates.filter(isUsableInsult).sort((a, b) => this.compareRelevance(a, b));
     const used = new Set<number>();
@@ -144,7 +178,7 @@ export class NewspaperSystem {
       issueType: 'regular',
       issueRound,
       coverageStartRound,
-      coverageEndRound: issueRound - 1,
+      coverageEndRound: issueRound,
       worldYear,
       dateLabel,
       mainArticle,
@@ -365,6 +399,17 @@ function isValidSavedState(value: SavedNewspaperState | undefined): value is Sav
   return value !== undefined
     && Number.isFinite(value.lastConsumedIssueRound)
     && value.lastConsumedIssueRound >= 1;
+}
+
+function highestTimelineEventId(
+  events: readonly HistoricalEvent[],
+  include: (event: HistoricalEvent) => boolean = () => true,
+): number {
+  let highest = 0;
+  for (const event of events) {
+    if (include(event)) highest = Math.max(highest, event.id);
+  }
+  return highest;
 }
 
 const VICTORY_PRESENTATION: Readonly<Record<NewspaperVictoryType, {

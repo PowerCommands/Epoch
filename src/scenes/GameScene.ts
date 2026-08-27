@@ -94,6 +94,8 @@ import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySys
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
 import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
+import { ScenarioHistoricalEventSystem } from '../systems/ScenarioHistoricalEventSystem';
+import { ScenarioHistoricalEventPresentationSystem } from '../systems/ScenarioHistoricalEventPresentationSystem';
 import { JointWarSystem } from '../systems/diplomacy/JointWarSystem';
 import type { JointWarKind } from '../types/jointWar';
 import { AllianceCouncilManager } from '../systems/diplomacy/AllianceCouncilManager';
@@ -128,6 +130,7 @@ import { buildGamesOfNationsUiModel } from '../ui/hud/GamesOfNationsUiModel';
 import { buildDominationRanking } from '../systems/DominationRanking';
 import { TimelinePanel } from '../ui/TimelinePanel';
 import { NewspaperDialog } from '../ui/NewspaperDialog';
+import { WorldWarAnnouncementDialog } from '../ui/WorldWarAnnouncementDialog';
 import { EraSystem, getEraRank, getHighestEra } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
@@ -336,6 +339,17 @@ interface EpochStateSummary {
   scenario: string;
   victory: EpochVictorySummary | null;
   gamesOfNations: GamesOfNationsSummary;
+  historicalEvents: Array<{
+    id: string;
+    type: 'worldWar';
+    status: 'pending' | 'active' | 'completed';
+    triggeredRound?: number;
+    triggeredDate?: { year: number; month: number; isBC: boolean };
+    completedRound?: number;
+    completedDate?: { year: number; month: number; isBC: boolean };
+    completionReason?: 'peace' | 'elimination';
+  }>;
+  activeWorldWar: boolean;
   nations: EpochNationStateSummary[];
   eraMilestones: EpochEraMilestone[];
 }
@@ -2777,7 +2791,9 @@ export class GameScene extends Phaser.Scene {
       seed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|newspaper-v1`,
     }, data.savedState?.newspaper, data.savedState?.turn.currentRound ?? 1);
     const newspaperDialog = new NewspaperDialog();
+    const worldWarAnnouncementDialog = new WorldWarAnnouncementDialog();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => newspaperDialog.shutdown());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => worldWarAnnouncementDialog.shutdown());
     presentGamesOfNationsEdition = (event) => {
       const issue = buildGamesOfNationsEdition({
         event,
@@ -4370,6 +4386,37 @@ export class GameScene extends Phaser.Scene {
     // ally automatically joins the war. Registered after the generic war-log
     // listener so the original declaration is logged first.
     allianceWarSystem = new AllianceWarSystem(diplomacyManager, allianceManager);
+    const scenarioHistoricalEventSystem = new ScenarioHistoricalEventSystem(
+      scenario.historicalEvents,
+      turnManager,
+      diplomacyManager,
+      allianceManager,
+      {
+        isNationActive: (nationId) => nationManager.getNation(nationId) !== undefined,
+        isNationEliminated: (nationId) => nationManager.getNation(nationId) === undefined,
+        getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+        log: (message) => console.log(`[HistoricalEvents] ${message}`),
+      },
+    );
+    const historicalEventNationNames = new Map(
+      nationManager.getAllNations().map((nation) => [nation.id, nation.name]),
+    );
+    const scenarioHistoricalEventPresentation = new ScenarioHistoricalEventPresentationSystem(
+      scenarioHistoricalEventSystem,
+      historicalTimeline,
+      {
+        humanNationId: data.humanNationId,
+        getNationName: (nationId) => historicalEventNationNames.get(nationId)
+          ?? nationManager.getNation(nationId)?.name
+          ?? nationId,
+      },
+    );
+    scenarioHistoricalEventPresentation.onAnnouncement((announcement) => {
+      // Presentation is secondary: lifecycle, History and Chronicle candidates
+      // are already recorded even when headless/diagnostic play suppresses UI.
+      if (isAutoplayActive() || this.diagnosticSystem.isTurnLoggingEnabled()) return;
+      worldWarAnnouncementDialog.present(announcement);
+    });
     allianceWarSystem.onActivation(({ attackerNationId, defenderNationId, joiningNationId, allianceName }) => {
       const attackerName = nationManager.getNation(attackerNationId)?.name ?? attackerNationId;
       const defenderName = nationManager.getNation(defenderNationId)?.name ?? defenderNationId;
@@ -7311,6 +7358,24 @@ export class GameScene extends Phaser.Scene {
             scenario: data.mapKey,
             victory,
             gamesOfNations: gamesOfNationsSystem.getSummary(),
+            historicalEvents: scenarioHistoricalEventSystem.getRuntimeStates().map((state) => {
+              const definition = scenario.historicalEvents.find((event) => event.id === state.eventId);
+              return {
+                id: state.eventId,
+                type: definition?.type ?? 'worldWar',
+                status: state.status,
+                triggeredRound: state.triggeredRound,
+                triggeredDate: state.triggeredDate
+                  ? { year: state.triggeredDate.year, month: state.triggeredDate.monthIndex + 1, isBC: state.triggeredDate.isBC }
+                  : undefined,
+                completedRound: state.completedRound,
+                completedDate: state.completedDate
+                  ? { year: state.completedDate.year, month: state.completedDate.monthIndex + 1, isBC: state.completedDate.isBC }
+                  : undefined,
+                completionReason: state.completionReason,
+              };
+            }),
+            activeWorldWar: scenarioHistoricalEventSystem.hasActiveWorldWar(),
             nations,
             eraMilestones: [...eraMilestones],
           };
@@ -7346,6 +7411,7 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          scenarioHistoricalEventSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -7943,6 +8009,7 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        scenarioHistoricalEventSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,
@@ -8040,6 +8107,7 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          scenarioHistoricalEventSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -8102,6 +8170,7 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        scenarioHistoricalEventSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,

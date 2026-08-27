@@ -99,7 +99,15 @@ export interface PeaceProposal {
 type PeaceProposedListener = (proposal: PeaceProposal) => void;
 type PeaceAcceptedListener = (nationA: string, nationB: string) => void;
 type PeaceDeclinedListener = (nationA: string, nationB: string) => void;
-type WarDeclaredListener = (aggressorId: string, targetId: string) => void;
+export type WarDeclarationSource = 'standard' | 'scenarioHistoricalEvent';
+export interface WarDeclarationMetadata {
+  source: WarDeclarationSource;
+}
+type WarDeclaredListener = (
+  aggressorId: string,
+  targetId: string,
+  metadata: WarDeclarationMetadata,
+) => void;
 type DiplomacyPairListener = (nationA: string, nationB: string) => void;
 type DiplomacyChangedListener = (nationA: string, nationB: string, relation: DiplomacyRelation) => void;
 
@@ -288,6 +296,16 @@ export class DiplomacyManager {
     return this.getRelation(a, b).state;
   }
 
+  /** Authoritative check for any active diplomatic WAR involving a nation. */
+  isAtWarWithAnyNation(nationId: string): boolean {
+    for (const [key, relation] of this.relations) {
+      if (relation.state !== 'WAR') continue;
+      const [a, b] = key.split(PAIR_KEY_SEPARATOR);
+      if (a === nationId || b === nationId) return true;
+    }
+    return false;
+  }
+
   getRelation(a: string, b: string): DiplomacyRelation {
     return { ...(this.relations.get(this.pairKey(a, b)) ?? createDefaultRelation()) };
   }
@@ -321,14 +339,35 @@ export class DiplomacyManager {
   }
 
   declareWar(aggressorId: string, targetId: string): boolean {
+    return this.transitionToWar(aggressorId, targetId, false, { source: 'standard' });
+  }
+
+  /**
+   * Enter war through the canonical transition while bypassing diplomatic
+   * permission checks. Intended for explicit scenario/system rules, not AI.
+   */
+  forceDeclareWar(
+    aggressorId: string,
+    targetId: string,
+    metadata: WarDeclarationMetadata = { source: 'scenarioHistoricalEvent' },
+  ): boolean {
+    return this.transitionToWar(aggressorId, targetId, true, metadata);
+  }
+
+  private transitionToWar(
+    aggressorId: string,
+    targetId: string,
+    bypassRestrictions: boolean,
+    metadata: WarDeclarationMetadata,
+  ): boolean {
     if (aggressorId === targetId) return false;
     const key = this.pairKey(aggressorId, targetId);
     if (this.relations.get(key)?.state === 'WAR') return false;
     // Alliance partners cannot declare war on each other (covers human + AI).
-    if (this.allianceGuard?.(aggressorId, targetId)) return false;
+    if (!bypassRestrictions && this.allianceGuard?.(aggressorId, targetId)) return false;
     const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
-    if (this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
-    if (this.isCeasefireActive(aggressorId, targetId, currentTurn)) return false;
+    if (!bypassRestrictions && this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
+    if (!bypassRestrictions && this.isCeasefireActive(aggressorId, targetId, currentTurn)) return false;
     const previous = this.relations.get(key);
     const next = normalizeRelation({
       ...previous,
@@ -344,6 +383,9 @@ export class DiplomacyManager {
       lastWarDeclarationTurn:
         this.turnManager?.getCurrentRound() ?? previous?.lastWarDeclarationTurn ?? null,
       aggressorNationId: aggressorId,
+      // A forced declaration supersedes blockers which would contradict WAR.
+      peaceTreatyUntilTurn: bypassRestrictions ? null : previous?.peaceTreatyUntilTurn,
+      ceasefireUntilTurn: bypassRestrictions ? null : previous?.ceasefireUntilTurn,
       // Reset per-war loss counters for the new conflict.
       militaryUnitsLostA: 0,
       militaryUnitsLostB: 0,
@@ -356,7 +398,7 @@ export class DiplomacyManager {
     // Clear any pending peace proposal between these nations
     this.pendingProposals.delete(aggressorId);
     this.pendingProposals.delete(targetId);
-    for (const cb of this.warDeclaredListeners) cb(aggressorId, targetId);
+    for (const cb of this.warDeclaredListeners) cb(aggressorId, targetId, metadata);
     this.memoryHook?.onDeclareWar(aggressorId, targetId);
     this.notifyChanged(aggressorId, targetId);
     return true;

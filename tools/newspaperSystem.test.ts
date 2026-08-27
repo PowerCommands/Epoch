@@ -31,6 +31,16 @@ function event(
   };
 }
 
+function worldWarStart(id: number, round: number): HistoricalEvent {
+  return event(id, 'worldWarStarted', round, ['high', 'human'], {
+    scenarioHistoricalEventId: 'world-war-ii',
+    scenarioHistoricalEventName: 'World War II',
+    scenarioHistoricalEventDescription: "Germany's invasion of Poland has plunged Europe into war.",
+    worldWarConflictNames: ['Highland ↔ Humania'],
+    nationNames: ['Highland', 'Humania'],
+  });
+}
+
 function harness(
   events: HistoricalEvent[],
   ranking = ['high', 'human', 'low'],
@@ -57,6 +67,84 @@ test('newspaper schedule is rounds ending in 1 beginning at 11', () => {
   assert.equal(isNewspaperRound(20), false);
   assert.equal(isNewspaperRound(21), true);
   assert.equal(isNewspaperRound(31), true);
+});
+
+test('A: a World War registered in the publication round becomes that issue main headline', () => {
+  const issue = harness([
+    event(1, 'cityFounded', 10, ['human'], { cityName: 'Home City' }),
+    worldWarStart(2, 11),
+  ]).consumeDueIssue(11, 'September 1939')!;
+
+  assert.equal(issue.mainArticle.eventType, 'worldWarStarted');
+  assert.equal(issue.mainArticle.headline, 'WORLD WAR II BEGINS');
+  assert.equal(issue.coverageEndRound, 11);
+});
+
+test('B: a World War starting after publication waits for the next scheduled issue', () => {
+  const events: HistoricalEvent[] = [];
+  const system = harness(events);
+  const current = system.consumeDueIssue(11, 'Issue 1')!;
+  events.push(worldWarStart(1, 12));
+  const next = system.consumeDueIssue(21, 'Issue 2')!;
+
+  assert.notEqual(current.mainArticle.eventType, 'worldWarStarted');
+  assert.equal(next.mainArticle.eventType, 'worldWarStarted');
+});
+
+test('C: a World War starting one round before publication appears normally', () => {
+  const issue = harness([worldWarStart(1, 10)]).consumeDueIssue(11, 'Issue')!;
+  assert.equal(issue.mainArticle.eventType, 'worldWarStarted');
+});
+
+test('D: a same-round World War headline is not repeated in the following issue', () => {
+  const system = harness([worldWarStart(1, 11)]);
+  assert.equal(system.consumeDueIssue(11, 'Issue 1')!.mainArticle.eventType, 'worldWarStarted');
+  const next = system.consumeDueIssue(21, 'Issue 2')!;
+  assert.notEqual(next.mainArticle.eventType, 'worldWarStarted');
+  assert.equal(next.secondaryArticles.some((article) => article.eventType === 'worldWarStarted'), false);
+});
+
+test('E: World War priority beats same-round ordinary Chronicle candidates', () => {
+  const issue = harness([
+    event(1, 'warDeclared', 11, ['human', 'low']),
+    event(2, 'nationEliminated', 11, ['high']),
+    worldWarStart(3, 11),
+  ]).consumeDueIssue(11, 'Issue')!;
+  assert.equal(issue.mainArticle.eventType, 'worldWarStarted');
+});
+
+test('F: terminal victory still replaces a same-round World War main headline', () => {
+  const system = harness([worldWarStart(1, 11)]);
+  assert.equal(system.consumeDueIssue(11, 'Issue', false, 1939)!.mainArticle.eventType, 'worldWarStarted');
+  const victory = system.consumeVictoryIssue({
+    round: 11,
+    worldYear: 1939,
+    dateLabel: 'September 1939',
+    nationId: 'human',
+    victoryType: 'domination',
+  });
+  assert.equal(victory.issueType, 'victory');
+  assert.equal(victory.mainArticle.eventType, undefined);
+  assert.match(victory.mainArticle.headline, /HUMANIA/);
+});
+
+test('G: ordinary Chronicle cadence and candidate selection remain unchanged without Historical Events', () => {
+  const system = harness([event(1, 'cityFounded', 11, ['human'], { cityName: 'Home City' })]);
+  assert.equal(system.consumeDueIssue(10, 'Too early'), null);
+  assert.equal(system.consumeDueIssue(11, 'Issue')!.mainArticle.eventType, 'cityFounded');
+  assert.equal(system.consumeDueIssue(12, 'Too early'), null);
+  assert.ok(system.consumeDueIssue(21, 'Next issue'));
+});
+
+test('publication cursor survives save/load and retains later same-round events', () => {
+  const events = [worldWarStart(1, 11)];
+  const original = harness(events);
+  original.consumeDueIssue(11, 'Issue 1');
+  events.push(event(2, 'peace', 11, ['high', 'human']));
+  const restored = harness(events, undefined, original.getState(), 11);
+  const next = restored.consumeDueIssue(21, 'Issue 2')!;
+  assert.equal(next.mainArticle.historicalEventId, 2);
+  assert.equal(next.secondaryArticles.some((article) => article.historicalEventId === 1), false);
 });
 
 test('shared Domination ranking orders capitals, military strength, then name', () => {

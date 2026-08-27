@@ -112,5 +112,8 @@ function cloneMetadata(metadata: HistoricalEventMetadata | undefined): Historica
     ...metadata,
     nationNames: metadata.nationNames ? [...metadata.nationNames] : undefined,
     leaderNames: metadata.leaderNames ? [...metadata.leaderNames] : undefined,
+    worldWarConflictNames: metadata.worldWarConflictNames
+      ? [...metadata.worldWarConflictNames]
+      : undefined,
   } : undefined;
 }

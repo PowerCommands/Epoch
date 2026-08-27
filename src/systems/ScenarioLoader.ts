@@ -5,6 +5,7 @@ import type {
   ScenarioCity,
   ScenarioUnit,
   ScenarioInitialDiplomacyEntry,
+  ScenarioHistoricalEvent,
 } from '../types/scenario';
 import type { WorldMarker } from '../types/WorldMarker';
 
@@ -29,6 +30,8 @@ export interface ParsedScenario {
   worldMarkers: WorldMarker[];
   /** Pre-configured diplomacy pairs, applied by the game when starting fresh. */
   initialDiplomacy: ScenarioInitialDiplomacyEntry[];
+  /** Authored definitions only; runtime triggering is intentionally not implemented. */
+  historicalEvents: ScenarioHistoricalEvent[];
 }
 
 /**
@@ -81,6 +84,7 @@ export class ScenarioLoader {
       units: json.units,
       worldMarkers: json.worldMarkers ?? [],
       initialDiplomacy: json.initialDiplomacy ?? [],
+      historicalEvents: json.historicalEvents ?? [],
     };
   }
 }

@@ -7,6 +7,8 @@ export const NEWSPAPER_IMAGE_PATHS = {
   nationEliminated: `${NEWS_PATH}nation-defeated.png`,
   capitalCaptured: `${NEWS_PATH}capital-lost.png`,
   warDeclared: `${NEWS_PATH}war-declared.png`,
+  worldWarStarted: `${NEWS_PATH}war-declared.png`,
+  worldWarEnded: `${NEWS_PATH}war-declared.png`,
   allianceFormed: `${NEWS_PATH}alliance-formed.png`,
   cityCaptured: `${NEWS_PATH}city-captured.png`,
   peace: `${NEWS_PATH}peace-signed.png`,
@@ -59,6 +61,23 @@ function definition(
 }
 
 export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, NewspaperEventDefinition>> = {
+  worldWarStarted: definition(100, NEWSPAPER_IMAGE_PATHS.worldWarStarted, 'the World War', (c) =>
+    `${upper(c.event.metadata?.scenarioHistoricalEventName ?? 'WORLD WAR')} BEGINS`, (c) => {
+      const description = c.event.metadata?.scenarioHistoricalEventDescription ?? '';
+      const conflicts = c.event.metadata?.worldWarConflictNames ?? [];
+      const conflictText = conflicts.length > 0
+        ? ` The World War conflicts are: ${conflicts.join('; ')}.`
+        : '';
+      return `${description}${conflictText}`.trim();
+    }),
+  worldWarEnded: definition(100, NEWSPAPER_IMAGE_PATHS.worldWarEnded, 'the end of the World War', (c) =>
+    `${upper(c.event.metadata?.scenarioHistoricalEventName ?? 'WORLD WAR')} ENDS`, (c) => {
+      const name = c.event.metadata?.scenarioHistoricalEventName ?? 'The World War';
+      const endNation = c.event.metadata?.worldWarEndConditionNationName ?? 'the end-condition nation';
+      return c.event.metadata?.worldWarCompletionReason === 'elimination'
+        ? `${name} has ended following the elimination of ${endNation}.`
+        : `${name} has ended after ${endNation} returned to a state of peace.`;
+    }),
   nationEliminated: definition(98, NEWSPAPER_IMAGE_PATHS.nationEliminated, 'the fall of a nation', (c) => {
     const [fallen] = names(c); return `${upper(fallen)} FALLS FROM THE WORLD STAGE`;
   }, (c) => { const [fallen, conqueror] = names(c); return `${fallen} has been eliminated${c.nationNames[1] ? ` after the advance of ${conqueror}` : ''}.`; }),

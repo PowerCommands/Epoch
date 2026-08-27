@@ -55,6 +55,15 @@ export class AllianceManager {
     return alliance ? alliance.memberNationIds.includes(b) : false;
   }
 
+  /** Resolve an alliance contradiction before a system-forced war. */
+  separateAlliedNations(a: string, b: string): boolean {
+    const alliance = this.getAllianceForNation(a);
+    if (!alliance || !alliance.memberNationIds.includes(b)) return false;
+    this.removeMember(alliance.id, a);
+    if (alliance.memberNationIds.length < 2) this.dissolve(alliance.id);
+    return true;
+  }
+
   getAllAlliances(): Alliance[] {
     return [...this.alliances.values()];
   }

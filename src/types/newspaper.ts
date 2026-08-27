@@ -87,5 +87,12 @@ export type NewspaperPresentedIssue = NewspaperIssue | GamesOfNationsNewspaperIs
 
 export interface SavedNewspaperState {
   lastConsumedIssueRound: number;
+  /**
+   * Highest History event id that existed when the latest regular Chronicle
+   * was published. This gives publication an exact intra-round boundary: an
+   * event registered before the issue is eligible immediately, while an event
+   * registered later in that same round remains eligible for the next issue.
+   */
+  lastConsumedTimelineEventId?: number;
   issues?: NewspaperIssue[];
 }

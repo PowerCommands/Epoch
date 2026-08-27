@@ -42,6 +42,38 @@ function astroToParts(astro: number): Pick<GameDate, 'year' | 'isBC' | 'signedYe
   return { year, isBC: true, signedYear: -year };
 }
 
+/** Construct a normalized historical date from authored year/month parts. */
+export function createGameDate(year: number, isBC: boolean, monthIndex = 0): GameDate {
+  const normalizedMonth = Math.max(0, Math.min(11, Math.trunc(monthIndex)));
+  const historicalYear = Math.max(1, Math.trunc(year));
+  const astro = isBC ? 1 - historicalYear : historicalYear;
+  return { ...astroToParts(astro), monthIndex: normalizedMonth, monthName: MONTH_NAMES[normalizedMonth] };
+}
+
+/** Monotonic month ordinal, including a seamless 1 BC -> 1 AD transition. */
+export function gameDateToMonthOrdinal(date: GameDate): number {
+  const astro = date.isBC ? 1 - date.year : date.year;
+  return astro * 12 + date.monthIndex;
+}
+
+/** Compare two full historical dates without formatted-string or year-zero pitfalls. */
+export function compareGameDates(a: GameDate, b: GameDate): number {
+  return Math.sign(gameDateToMonthOrdinal(a) - gameDateToMonthOrdinal(b));
+}
+
+/** Add whole calendar months, correctly rolling years and crossing BC/AD. */
+export function addMonths(date: GameDate, months: number): GameDate {
+  const ordinal = gameDateToMonthOrdinal(date) + Math.trunc(months);
+  const astro = Math.floor(ordinal / 12);
+  const monthIndex = ordinal - astro * 12;
+  return { ...astroToParts(astro), monthIndex, monthName: MONTH_NAMES[monthIndex] };
+}
+
+/** True when a forward date step enters or passes `target`. */
+export function hasReachedOrCrossedDate(previous: GameDate, next: GameDate, target: GameDate): boolean {
+  return compareGameDates(previous, target) < 0 && compareGameDates(target, next) <= 0;
+}
+
 /**
  * Dynamic Auto-mode year offset (>= 0) added to the scenario start year. This is
  * the same decaying progression the game has always used; only the start year is

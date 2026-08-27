@@ -17,6 +17,7 @@ import type { WorldCouncilState } from './worldCouncil';
 import type { SavedGossipState } from './gossip';
 import type { SavedGossipFlavorState } from './gossipFlavor';
 import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
+import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -323,6 +324,8 @@ export interface SavedGameState {
   foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
   fogOfWar?: SavedFogOfWar;
   historicalTimeline?: HistoricalEvent[];
+  /** Authored Historical Event lifecycle and runtime calendar anchors. */
+  scenarioHistoricalEvents?: SavedScenarioHistoricalEventsState;
   /**
    * Repeated-offender memory for covert suspicion (per ordered attacker→victim
    * pair). Optional so older saves load cleanly (treated as no prior incidents).

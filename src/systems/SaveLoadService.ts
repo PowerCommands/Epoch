@@ -53,6 +53,7 @@ import type { AerospacePartSystem } from './AerospacePartSystem';
 import type { WorldCouncilSystem } from './WorldCouncilSystem';
 import type { GossipSystem } from './GossipSystem';
 import type { GossipFlavorEventSystem } from './GossipFlavorEventSystem';
+import type { ScenarioHistoricalEventSystem } from './ScenarioHistoricalEventSystem';
 import type { QueueEntry } from './ProductionSystem';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -94,6 +95,7 @@ export interface SaveLoadContext {
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
+  scenarioHistoricalEventSystem?: ScenarioHistoricalEventSystem;
   newspaperSystem?: NewspaperSystem;
   gamesOfNationsSystem?: GamesOfNationsSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
@@ -162,6 +164,7 @@ export class SaveLoadService {
       worldMarkerSystem,
       foreignTroopViolationSystem,
       historicalTimeline,
+      scenarioHistoricalEventSystem,
       newspaperSystem,
       gamesOfNationsSystem,
     } = context;
@@ -417,6 +420,7 @@ export class SaveLoadService {
       worldMarkerClaims: worldMarkerSystem?.getClaimEntries(),
       foreignTroopViolationWarnings,
       historicalTimeline: historicalTimeline?.serialize(),
+      scenarioHistoricalEvents: scenarioHistoricalEventSystem?.serialize(),
       covertIncidents: context.covertSuspicionSystem?.getOffenseRecords(),
     };
   }
@@ -557,6 +561,9 @@ export class SaveLoadService {
       state.turn.currentRound,
       state.turn.currentTurnIndex,
     );
+    // Restore lifecycle and its calendar anchor only after the round cursor is
+    // in place, but before GameScene resumes with TurnManager.start().
+    context.scenarioHistoricalEventSystem?.restore(state.scenarioHistoricalEvents);
   }
 
   private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {

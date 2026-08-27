@@ -409,13 +409,51 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .sd-header-actions button:hover { border-color: #888; background: #333; }
 .sd-header-actions .sd-primary { border-color: #3a6b48; background: #234a30; color: #cde6d4; }
 .sd-header-actions .sd-primary:hover { border-color: #4f9863; background: #2a5a3a; }
-.sd-body { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.sd-body { padding: 16px; display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow-y: auto; }
 .sd-year-row { display: flex; gap: 12px; align-items: flex-end; }
 .sd-checkbox {
   display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ddd;
   padding-bottom: 11px; white-space: nowrap;
 }
 .sd-error { color: #f0a0a0; font-size: 11px; min-height: 14px; line-height: 1.4; }
+.sd-events-section { margin-top: 8px; padding-top: 12px; border-top: 1px solid #333; }
+.sd-events-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sd-events-heading h3 { color: #bbb; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.sd-events-heading button, .sd-event-actions button, .he-actions button, .he-conflict-add-row button {
+  border: 1px solid #555; border-radius: 4px; padding: 5px 9px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 11px; cursor: pointer;
+}
+.sd-events-heading button:hover, .sd-event-actions button:hover, .he-actions button:hover, .he-conflict-add-row button:hover { border-color: #888; background: #333; }
+.sd-events-list { display: flex; flex-direction: column; gap: 6px; }
+.sd-events-empty { color: #777; font-size: 11px; padding: 6px 0; }
+.sd-event-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 9px; border: 1px solid #333; border-radius: 5px; background: #1d1d1d; }
+.sd-event-summary { min-width: 0; display: grid; gap: 2px; }
+.sd-event-summary strong { color: #eee; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-event-summary span { color: #999; font-size: 10px; }
+.sd-event-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.sd-event-actions .danger { border-color: #6a3939; color: #f0b0b0; }
+#historical-event-overlay {
+  position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.68);
+  display: none; align-items: center; justify-content: center; padding: 24px;
+}
+#historical-event-overlay.open { display: flex; }
+.he-dialog {
+  width: 100%; max-width: 680px; max-height: 90vh; display: flex; flex-direction: column;
+  background: #181818; border: 1px solid #3a3a3a; border-radius: 8px; overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.62);
+}
+.he-body { padding: 16px; overflow-y: auto; display: grid; gap: 10px; }
+.he-date-row, .he-conflict-add-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: end; }
+.he-section { border-top: 1px solid #333; padding-top: 12px; display: grid; gap: 8px; }
+.he-section h3 { color: #bbb; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.he-conflict-add-row { grid-template-columns: 1fr 1fr auto; }
+.he-conflict-list { display: flex; flex-direction: column; gap: 5px; }
+.he-conflict-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid #333; border-radius: 4px; color: #ddd; font-size: 11px; background: #1d1d1d; }
+.he-conflict-row button { border: 0; background: transparent; color: #e0a0a0; cursor: pointer; font: inherit; font-size: 11px; }
+.he-hint { color: #999; font-size: 10px; line-height: 1.45; }
+.he-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid #333; background: #202020; }
+.he-actions .primary { border-color: #3a6b48; background: #234a30; color: #cde6d4; }
+.he-error { color: #f0a0a0; font-size: 11px; min-height: 14px; }
 </style>
 </head>
 <body>
@@ -667,7 +705,61 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Barbarian spawn interval (rounds)
         <input id="sd-barbarian-interval" type="number" min="1" step="1">
       </label>
+      <section class="sd-events-section">
+        <div class="sd-events-heading">
+          <h3>Historical Events</h3>
+          <button id="sd-add-event-btn" type="button">Add Historical Event</button>
+        </div>
+        <div id="sd-events-list" class="sd-events-list"></div>
+      </section>
       <div id="sd-error" class="sd-error"></div>
+    </div>
+  </div>
+</div>
+
+<div id="historical-event-overlay" aria-label="Historical Event">
+  <div class="he-dialog">
+    <div class="sd-header">
+      <h2 id="he-dialog-title">Historical Event</h2>
+    </div>
+    <div class="he-body">
+      <label class="field">Event Type
+        <select id="he-type">
+          <option value="worldWar">World War</option>
+        </select>
+      </label>
+      <label class="field">Name
+        <input id="he-name" type="text" maxlength="120" placeholder="World War II">
+      </label>
+      <label class="field">Description
+        <textarea id="he-description" rows="4"></textarea>
+      </label>
+      <div class="he-date-row">
+        <label class="field">Start Month<select id="he-start-month"></select></label>
+        <label class="field">Start Year<input id="he-start-year" type="number" min="1" step="1"></label>
+        <label class="field">Era
+          <select id="he-start-era"><option value="AD">AD</option><option value="BC">BC</option></select>
+        </label>
+      </div>
+      <section class="he-section">
+        <h3>Conflicts</h3>
+        <div class="he-conflict-add-row">
+          <label class="field">Nation A<select id="he-conflict-a"></select></label>
+          <label class="field">Nation B<select id="he-conflict-b"></select></label>
+          <button id="he-add-conflict-btn" type="button">Add Conflict</button>
+        </div>
+        <div id="he-conflict-list" class="he-conflict-list"></div>
+      </section>
+      <section class="he-section">
+        <h3>End Condition</h3>
+        <label class="field">End Condition Nation<select id="he-end-condition-nation"></select></label>
+        <div class="he-hint">The World War ends when this nation is no longer at war with any nation, or has been eliminated.</div>
+      </section>
+      <div id="he-error" class="he-error"></div>
+    </div>
+    <div class="he-actions">
+      <button id="he-cancel-btn" type="button">Cancel</button>
+      <button id="he-save-btn" type="button" class="primary">Save Event</button>
     </div>
   </div>
 </div>
@@ -823,6 +915,10 @@ const DEFAULT_SCENARIO_START_YEAR = 4000;
 const DEFAULT_SCENARIO_START_YEAR_IS_BC = true;
 const DEFAULT_SCENARIO_TIME_PROGRESSION_MODE = 'auto';
 const SCENARIO_TIME_PROGRESSION_MODES = ['auto', 'staticYear', 'monthly'];
+const HISTORICAL_EVENT_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 /**
  * Ensure scenario.meta carries every Scenario Details field, filling defaults
@@ -927,6 +1023,9 @@ let selectedCityBuildingId = '';
 let highlightedBuildingCoord = null;
 let selectedMarkerIndex = null;
 let selectedNationId = null;
+let scenarioDetailsHistoricalEventsDraft = [];
+let historicalEventDialogDraft = null;
+let historicalEventEditingIndex = null;
 let isPainting = false;
 let sprayMode = false; // editor-only: when on, terrain paint only fills unpainted tiles and the map highlights coverage gaps
 
@@ -984,6 +1083,7 @@ function startEditor(map, scenarioData, customEntry) {
   closeMagicWand(); // dismiss any open auto-paint preview from a previous scenario
 
   normalizeScenarioMeta();
+  if (!Array.isArray(scenario.historicalEvents)) scenario.historicalEvents = [];
   loadTemplateImage(scenario.meta?.template ?? null);
   refreshBackgroundTemplateSelect();
   refreshBackgroundZoomSlider();
@@ -4921,6 +5021,76 @@ function worldToScreen(point) {
 
 // ─── Save / Download ────────────────────────────────────────────────────────
 
+function scenarioHistoricalDateOrdinal(year, month, isBC) {
+  if (!Number.isInteger(year) || year <= 0 || !Number.isInteger(month) || month < 1 || month > 12) return null;
+  return (isBC ? -year : year) * 12 + (month - 1);
+}
+
+function scenarioWorldWarConflictKey(nationAId, nationBId) {
+  return nationAId < nationBId ? `${nationAId}|${nationBId}` : `${nationBId}|${nationAId}`;
+}
+
+function validateScenarioHistoricalEvents(activeIds) {
+  const warnings = [];
+  const events = Array.isArray(scenario.historicalEvents) ? scenario.historicalEvents : [];
+  const ids = new Set();
+  const scenarioStart = scenarioHistoricalDateOrdinal(
+    Number(scenario.meta?.startYear),
+    1,
+    !!scenario.meta?.startYearIsBC,
+  );
+
+  events.forEach((event, eventIndex) => {
+    const label = event?.name?.trim() || `Historical event ${eventIndex + 1}`;
+    if (!event || typeof event !== 'object') {
+      warnings.push(`Historical event ${eventIndex + 1} is invalid`);
+      return;
+    }
+    if (typeof event.id !== 'string' || !event.id.trim()) warnings.push(`${label} has no stable event ID`);
+    else if (ids.has(event.id)) warnings.push(`${label} duplicates historical event ID ${event.id}`);
+    else ids.add(event.id);
+    if (typeof event.name !== 'string' || !event.name.trim()) warnings.push(`Historical event ${eventIndex + 1} has an empty name`);
+    if (event.type !== 'worldWar') {
+      warnings.push(`${label} has unsupported historical event type ${event.type || '(missing)'}`);
+      return;
+    }
+    if (!Number.isInteger(event.startYear) || event.startYear <= 0) warnings.push(`${label} has an invalid or missing start year`);
+    if (!Number.isInteger(event.startMonth) || event.startMonth < 1 || event.startMonth > 12) warnings.push(`${label} has an invalid start month`);
+    const eventStart = scenarioHistoricalDateOrdinal(event.startYear, event.startMonth, !!event.startYearIsBC);
+    if (scenarioStart !== null && eventStart !== null && eventStart < scenarioStart) {
+      warnings.push(`${label} starts before the scenario start date`);
+    }
+
+    const conflicts = Array.isArray(event.conflicts) ? event.conflicts : [];
+    if (conflicts.length === 0) warnings.push(`${label} has no conflicts`);
+    const conflictKeys = new Set();
+    const participatingNationIds = new Set();
+    conflicts.forEach((conflict, conflictIndex) => {
+      const a = typeof conflict?.nationAId === 'string' ? conflict.nationAId : '';
+      const b = typeof conflict?.nationBId === 'string' ? conflict.nationBId : '';
+      const conflictLabel = `${label} conflict ${conflictIndex + 1}`;
+      if (!activeIds.has(a)) warnings.push(`${conflictLabel} references inactive or unknown nation ${a || '(missing Nation A)'}`);
+      if (!activeIds.has(b)) warnings.push(`${conflictLabel} references inactive or unknown nation ${b || '(missing Nation B)'}`);
+      if (a && b && a === b) warnings.push(`${conflictLabel} uses the same nation on both sides`);
+      if (a && b) {
+        const key = scenarioWorldWarConflictKey(a, b);
+        if (conflictKeys.has(key)) warnings.push(`${conflictLabel} duplicates an existing conflict (including reversed pairs)`);
+        else conflictKeys.add(key);
+        participatingNationIds.add(a);
+        participatingNationIds.add(b);
+      }
+    });
+
+    const endNationId = typeof event.endConditionNationId === 'string' ? event.endConditionNationId : '';
+    if (!endNationId) warnings.push(`${label} has no end-condition nation`);
+    else {
+      if (!activeIds.has(endNationId)) warnings.push(`${label} end condition references inactive or unknown nation ${endNationId}`);
+      if (!participatingNationIds.has(endNationId)) warnings.push(`${label} end-condition nation does not participate in any listed conflict`);
+    }
+  });
+  return warnings;
+}
+
 function validateScenario() {
   const warnings = [];
   const registryIds = new Set(nationRegistry.nations.map(nation => nation.nationId));
@@ -4990,6 +5160,8 @@ function validateScenario() {
       }
     }
   }
+
+  warnings.push(...validateScenarioHistoricalEvents(activeIds));
 
   return warnings;
 }
@@ -5109,6 +5281,9 @@ function buildScenarioOutput() {
   const nations = scenario.nations.map(({ researchedTechIds, unlockedCultureNodeIds, ...rest }) => rest);
 
   return {
+    // Preserve unrelated and future scenario-level fields while replacing the
+    // editor-owned collections with their normalized current values.
+    ...scenario,
     meta: scenario.meta,
     map: { width: mapW, height: mapH, tileSize, tiles: flatTiles },
     nations,
@@ -5117,6 +5292,7 @@ function buildScenarioOutput() {
     worldMarkers: scenario.worldMarkers || [],
     nationDetails,
     initialDiplomacy,
+    historicalEvents: structuredCloneCompat(scenario.historicalEvents || []),
   };
 }
 
@@ -5132,6 +5308,173 @@ function updateScenarioDetailsStaticVisibility() {
   document.getElementById('sd-static-step-field').style.display = mode === 'staticYear' ? '' : 'none';
 }
 
+function isHistoricalEventDialogOpen() {
+  return document.getElementById('historical-event-overlay').classList.contains('open');
+}
+
+function generateScenarioHistoricalEventId() {
+  const existing = new Set(scenarioDetailsHistoricalEventsDraft.map(event => event?.id).filter(Boolean));
+  let id;
+  do {
+    id = `historical-event-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+  } while (existing.has(id));
+  return id;
+}
+
+function formatScenarioHistoricalEventDate(event) {
+  const month = HISTORICAL_EVENT_MONTHS[event?.startMonth - 1] || `Month ${event?.startMonth ?? '?'}`;
+  const year = Number.isInteger(event?.startYear) && event.startYear > 0 ? event.startYear : '?';
+  return `${month} ${year} ${event?.startYearIsBC ? 'BC' : 'AD'}`;
+}
+
+function renderScenarioHistoricalEventsList() {
+  const list = document.getElementById('sd-events-list');
+  list.innerHTML = '';
+  if (scenarioDetailsHistoricalEventsDraft.length === 0) {
+    list.appendChild(ndEl('div', 'sd-events-empty', 'No historical events authored.'));
+    return;
+  }
+
+  scenarioDetailsHistoricalEventsDraft.forEach((event, index) => {
+    const row = ndEl('div', 'sd-event-row');
+    const summary = ndEl('div', 'sd-event-summary');
+    summary.append(
+      ndEl('strong', undefined, event.name?.trim() || 'Unnamed historical event'),
+      ndEl('span', undefined, `${event.type === 'worldWar' ? 'World War' : event.type} — ${formatScenarioHistoricalEventDate(event)}`),
+    );
+    const actions = ndEl('div', 'sd-event-actions');
+    const editButton = ndEl('button', undefined, 'Edit');
+    editButton.type = 'button';
+    editButton.addEventListener('click', () => openHistoricalEventDialog(index));
+    const removeButton = ndEl('button', 'danger', 'Remove');
+    removeButton.type = 'button';
+    removeButton.addEventListener('click', () => {
+      if (!window.confirm(`Remove ${event.name?.trim() || 'this historical event'}?`)) return;
+      scenarioDetailsHistoricalEventsDraft.splice(index, 1);
+      renderScenarioHistoricalEventsList();
+    });
+    actions.append(editButton, removeButton);
+    row.append(summary, actions);
+    list.appendChild(row);
+  });
+}
+
+function populateHistoricalEventNationSelect(select, selectedNationId, fallbackIndex = 0) {
+  select.innerHTML = '';
+  for (const nation of scenario.nations) {
+    const option = document.createElement('option');
+    option.value = nation.id;
+    option.textContent = getNationDisplayName(nation);
+    select.appendChild(option);
+  }
+  if (scenario.nations.some(nation => nation.id === selectedNationId)) select.value = selectedNationId;
+  else if (scenario.nations[fallbackIndex]) select.value = scenario.nations[fallbackIndex].id;
+}
+
+function renderHistoricalEventConflicts() {
+  const list = document.getElementById('he-conflict-list');
+  list.innerHTML = '';
+  const conflicts = historicalEventDialogDraft?.conflicts ?? [];
+  if (conflicts.length === 0) {
+    list.appendChild(ndEl('div', 'sd-events-empty', 'No conflicts added.'));
+    return;
+  }
+  conflicts.forEach((conflict, index) => {
+    const row = ndEl('div', 'he-conflict-row');
+    row.appendChild(ndEl('span', undefined, `${getNationNameById(conflict.nationAId)} ↔ ${getNationNameById(conflict.nationBId)}`));
+    const remove = ndEl('button', undefined, 'Remove');
+    remove.type = 'button';
+    remove.addEventListener('click', () => {
+      historicalEventDialogDraft.conflicts.splice(index, 1);
+      renderHistoricalEventConflicts();
+    });
+    row.appendChild(remove);
+    list.appendChild(row);
+  });
+}
+
+function openHistoricalEventDialog(index = null) {
+  historicalEventEditingIndex = index;
+  const existing = index === null ? null : scenarioDetailsHistoricalEventsDraft[index];
+  historicalEventDialogDraft = existing ? structuredCloneCompat(existing) : {
+    id: generateScenarioHistoricalEventId(),
+    type: 'worldWar',
+    name: '',
+    description: '',
+    startYear: Number(document.getElementById('sd-start-year').value) || DEFAULT_SCENARIO_START_YEAR,
+    startMonth: 1,
+    startYearIsBC: document.getElementById('sd-start-year-bc').checked,
+    conflicts: [],
+    endConditionNationId: scenario.nations[0]?.id ?? '',
+  };
+  if (!Array.isArray(historicalEventDialogDraft.conflicts)) historicalEventDialogDraft.conflicts = [];
+
+  const monthSelect = document.getElementById('he-start-month');
+  if (monthSelect.options.length === 0) {
+    HISTORICAL_EVENT_MONTHS.forEach((month, monthIndex) => {
+      const option = document.createElement('option');
+      option.value = String(monthIndex + 1);
+      option.textContent = month;
+      monthSelect.appendChild(option);
+    });
+  }
+  document.getElementById('he-dialog-title').textContent = existing ? 'Edit Historical Event' : 'Add Historical Event';
+  document.getElementById('he-type').value = historicalEventDialogDraft.type === 'worldWar' ? 'worldWar' : 'worldWar';
+  document.getElementById('he-name').value = historicalEventDialogDraft.name ?? '';
+  document.getElementById('he-description').value = historicalEventDialogDraft.description ?? '';
+  monthSelect.value = String(historicalEventDialogDraft.startMonth ?? 1);
+  document.getElementById('he-start-year').value = String(historicalEventDialogDraft.startYear ?? '');
+  document.getElementById('he-start-era').value = historicalEventDialogDraft.startYearIsBC ? 'BC' : 'AD';
+  populateHistoricalEventNationSelect(document.getElementById('he-conflict-a'), scenario.nations[0]?.id, 0);
+  populateHistoricalEventNationSelect(document.getElementById('he-conflict-b'), scenario.nations[1]?.id, 1);
+  populateHistoricalEventNationSelect(document.getElementById('he-end-condition-nation'), historicalEventDialogDraft.endConditionNationId, 0);
+  document.getElementById('he-error').textContent = '';
+  renderHistoricalEventConflicts();
+  document.getElementById('historical-event-overlay').classList.add('open');
+  document.getElementById('he-name').focus();
+}
+
+function closeHistoricalEventDialog() {
+  document.getElementById('historical-event-overlay').classList.remove('open');
+  historicalEventDialogDraft = null;
+  historicalEventEditingIndex = null;
+}
+
+function addHistoricalEventConflict() {
+  if (!historicalEventDialogDraft) return;
+  const error = document.getElementById('he-error');
+  const nationAId = document.getElementById('he-conflict-a').value;
+  const nationBId = document.getElementById('he-conflict-b').value;
+  if (!nationAId || !nationBId) { error.textContent = 'Both conflict nations must be selected.'; return; }
+  if (nationAId === nationBId) { error.textContent = 'A nation cannot be in conflict with itself.'; return; }
+  const key = scenarioWorldWarConflictKey(nationAId, nationBId);
+  if (historicalEventDialogDraft.conflicts.some(conflict => scenarioWorldWarConflictKey(conflict.nationAId, conflict.nationBId) === key)) {
+    error.textContent = 'That conflict already exists (reversed nation order counts as the same conflict).';
+    return;
+  }
+  historicalEventDialogDraft.conflicts.push({ nationAId, nationBId });
+  error.textContent = '';
+  renderHistoricalEventConflicts();
+}
+
+function saveHistoricalEventDialog() {
+  if (!historicalEventDialogDraft) return;
+  historicalEventDialogDraft.type = document.getElementById('he-type').value;
+  historicalEventDialogDraft.name = document.getElementById('he-name').value.trim();
+  historicalEventDialogDraft.description = document.getElementById('he-description').value.trim();
+  const startMonth = parseInt(document.getElementById('he-start-month').value, 10);
+  const startYear = parseInt(document.getElementById('he-start-year').value, 10);
+  historicalEventDialogDraft.startMonth = Number.isInteger(startMonth) ? startMonth : 0;
+  historicalEventDialogDraft.startYear = Number.isInteger(startYear) ? startYear : 0;
+  historicalEventDialogDraft.startYearIsBC = document.getElementById('he-start-era').value === 'BC';
+  historicalEventDialogDraft.endConditionNationId = document.getElementById('he-end-condition-nation').value;
+
+  if (historicalEventEditingIndex === null) scenarioDetailsHistoricalEventsDraft.push(structuredCloneCompat(historicalEventDialogDraft));
+  else scenarioDetailsHistoricalEventsDraft[historicalEventEditingIndex] = structuredCloneCompat(historicalEventDialogDraft);
+  closeHistoricalEventDialog();
+  renderScenarioHistoricalEventsList();
+}
+
 function openScenarioDetails() {
   if (!scenario) return;
   const meta = normalizeScenarioMeta();
@@ -5143,13 +5486,17 @@ function openScenarioDetails() {
   document.getElementById('sd-time-mode').value = meta.timeProgression.mode;
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
+  scenarioDetailsHistoricalEventsDraft = structuredCloneCompat(scenario.historicalEvents || []);
   document.getElementById('sd-error').textContent = '';
   updateScenarioDetailsStaticVisibility();
+  renderScenarioHistoricalEventsList();
   document.getElementById('scenario-details-overlay').classList.add('open');
   document.getElementById('sd-name').focus();
 }
 
 function closeScenarioDetails() {
+  if (isHistoricalEventDialogOpen()) closeHistoricalEventDialog();
+  scenarioDetailsHistoricalEventsDraft = [];
   document.getElementById('scenario-details-overlay').classList.remove('open');
 }
 
@@ -5190,6 +5537,7 @@ function saveScenarioDetails() {
   scenario.meta.startYearIsBC = document.getElementById('sd-start-year-bc').checked;
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
+  scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
 
   writeEditorAutosave();
   closeScenarioDetails();
@@ -5201,6 +5549,13 @@ document.getElementById('open-scenario-details-btn').addEventListener('click', o
 document.getElementById('scenario-details-cancel-btn').addEventListener('click', closeScenarioDetails);
 document.getElementById('scenario-details-save-btn').addEventListener('click', saveScenarioDetails);
 document.getElementById('sd-time-mode').addEventListener('change', updateScenarioDetailsStaticVisibility);
+document.getElementById('sd-add-event-btn').addEventListener('click', () => openHistoricalEventDialog(null));
+document.getElementById('he-add-conflict-btn').addEventListener('click', addHistoricalEventConflict);
+document.getElementById('he-cancel-btn').addEventListener('click', closeHistoricalEventDialog);
+document.getElementById('he-save-btn').addEventListener('click', saveHistoricalEventDialog);
+document.getElementById('historical-event-overlay').addEventListener('mousedown', (event) => {
+  if (event.target === event.currentTarget) closeHistoricalEventDialog();
+});
 document.getElementById('scenario-details-overlay').addEventListener('mousedown', (event) => {
   if (event.target === event.currentTarget) closeScenarioDetails();
 });
@@ -5222,6 +5577,16 @@ function isTypingTarget(target) {
 }
 
 window.addEventListener('keydown', (e) => {
+  // The nested Historical Event dialog owns keyboard input while it is open.
+  if (isHistoricalEventDialogOpen()) {
+    if (e.key === 'Escape') { closeHistoricalEventDialog(); e.preventDefault(); }
+    else if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLButtonElement)) {
+      saveHistoricalEventDialog();
+      e.preventDefault();
+    }
+    return;
+  }
+
   // While the Scenario Details dialog is open, swallow editor shortcuts; Escape
   // cancels, Enter (outside the textarea) saves.
   if (isScenarioDetailsOpen()) {
