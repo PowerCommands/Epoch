@@ -65,6 +65,38 @@ function comments(subject: string): readonly string[] {
   ];
 }
 
+/** Grantor (index 0) and beneficiary (index 1) display names for exploitation articles. */
+function exploitationNames(context: NewspaperArticleContext): { grantor: string; beneficiary: string } {
+  return {
+    grantor: context.nationNames[0] ?? 'a nation',
+    beneficiary: context.nationNames[1] ?? 'another nation',
+  };
+}
+
+function exploitationGrantedHeadline(context: NewspaperArticleContext): string {
+  const { grantor } = exploitationNames(context);
+  switch (context.event.metadata?.exploitationContext) {
+    case 'joinWar': return 'RESOURCES TRADED FOR MILITARY SUPPORT';
+    case 'peace': return 'PEACE BOUGHT WITH RESOURCE RIGHTS';
+    case 'capitulation': return 'VICTOR CLAIMS ECONOMIC PRIVILEGES';
+    default: return `FOREIGN ACCESS TO ${upper(grantor)}'S RESOURCES`;
+  }
+}
+
+function exploitationGrantedBody(context: NewspaperArticleContext): string {
+  const { grantor, beneficiary } = exploitationNames(context);
+  switch (context.event.metadata?.exploitationContext) {
+    case 'joinWar':
+      return `${grantor} has granted ${beneficiary} the right to exploit its natural resources as part of an agreement drawing ${beneficiary} into war.`;
+    case 'peace':
+      return `${grantor} has secured peace with ${beneficiary} after granting ${beneficiary} the right to exploit ${grantor}'s natural resources.`;
+    case 'capitulation':
+      return `Following ${grantor}'s capitulation, ${beneficiary} has secured extensive rights to exploit natural resources within ${grantor} territory.`;
+    default:
+      return `${beneficiary} has secured broad rights to develop natural resources inside ${grantor} territory, deepening economic ties while raising questions over ${grantor}'s control of its own wealth.`;
+  }
+}
+
 function definition(
   priority: number,
   imagePath: string,
@@ -114,6 +146,23 @@ export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, Ne
   peace: definition(82, NEWSPAPER_IMAGE_PATHS.peace, 'the peace agreement', (c) => {
     const [a, b] = names(c); return `${upper(a)} AND ${upper(b)} SIGN PEACE`;
   }, (c) => { const [a, b] = names(c); return `${a} and ${b} have agreed to end hostilities.`; }),
+  exploitationRightsGranted: definition(
+    45,
+    NEWSPAPER_IMAGE_PATHS.tradeRelations,
+    'the resource exploitation agreement',
+    exploitationGrantedHeadline,
+    exploitationGrantedBody,
+  ),
+  exploitationRightsEnded: definition(
+    46,
+    NEWSPAPER_IMAGE_PATHS.warDeclared,
+    'the end of a resource exploitation agreement',
+    (c) => `RESOURCE RIGHTS IN ${upper(exploitationNames(c).grantor)} REVOKED`,
+    (c) => {
+      const { grantor, beneficiary } = exploitationNames(c);
+      return `${beneficiary}'s rights to exploit natural resources within ${grantor} territory have ended as war broke out between the two nations.`;
+    },
+  ),
   joinedWar: definition(79, NEWSPAPER_IMAGE_PATHS.joinedWar, 'the widening war', (c) => {
     const [a, b] = names(c); return `${upper(a)} ENTERS WAR AGAINST ${upper(b)}`;
   }, (c) => { const [a, b] = names(c); return `${a} has joined the existing war against ${b}.`; }),

@@ -11,6 +11,8 @@ export type HistoricalEventType =
   | 'worldWarEnded'
   | 'joinedWar'
   | 'peace'
+  | 'exploitationRightsGranted'
+  | 'exploitationRightsEnded'
   | 'cityCaptured'
   | 'tradeRouteCompleted'
   | 'wonderBuilt'
@@ -42,6 +44,11 @@ export interface HistoricalEventMetadata {
   aggressorNationId?: string;
   targetNationId?: string;
   previousOwnerNationId?: string;
+  /** Directional Foreign Resource Exploitation Rights facts (grant/end events). */
+  exploitationGrantorNationId?: string;
+  exploitationBeneficiaryNationId?: string;
+  exploitationContext?: 'trade' | 'joinWar' | 'peace' | 'capitulation';
+  exploitationEndReason?: 'war';
   wonderId?: string;
   wonderName?: string;
   eraName?: string;

@@ -270,75 +270,9 @@ export class SaveLoadService {
       automation: unit.automation,
     }));
 
-    const tiles: SavedTile[] = [];
-    for (const row of mapData.tiles) {
-      for (const tile of row) {
-        if (
-          tile.ownerId === undefined
-          && tile.resourceOwnerNationId === undefined
-          && tile.resourceId === undefined
-          && tile.improvementId === undefined
-          && tile.improvementConstruction === undefined
-          && tile.buildingId === undefined
-          && tile.buildingBroken === undefined
-          && tile.buildingConstruction === undefined
-          && tile.wonderId === undefined
-          && tile.wonderConstruction === undefined
-          && tile.cultureOwnerId === undefined
-          && tile.cultureSourceCityId === undefined
-        ) continue;
-        tiles.push({
-          q: tile.x,
-          r: tile.y,
-          ownerId: tile.ownerId,
-          resourceOwnerNationId: tile.resourceOwnerNationId,
-          resourceId: tile.resourceId,
-          improvementId: tile.improvementId,
-          improvementConstruction: tile.improvementConstruction
-            ? { ...tile.improvementConstruction }
-            : undefined,
-          buildingId: tile.buildingId,
-          buildingBroken: tile.buildingBroken ? true : undefined,
-          buildingConstruction: tile.buildingConstruction
-            ? { ...tile.buildingConstruction }
-            : undefined,
-          wonderId: tile.wonderId,
-          wonderConstruction: tile.wonderConstruction
-            ? { ...tile.wonderConstruction }
-            : undefined,
-          cultureOwnerId: tile.cultureOwnerId,
-          cultureSourceCityId: tile.cultureSourceCityId,
-        });
-      }
-    }
+    const tiles = SaveLoadService.serializeTiles(mapData);
 
-    const diplomacy: SavedDiplomacyEntry[] = diplomacyManager.getAllStates().map((entry) => ({
-      nationA: entry.keys[0],
-      nationB: entry.keys[1],
-      state: entry.relation.state,
-      openBordersFromAToB: entry.relation.openBordersFromAToB,
-      openBordersFromBToA: entry.relation.openBordersFromBToA,
-      embassyFromAToB: entry.relation.embassyFromAToB,
-      embassyFromBToA: entry.relation.embassyFromBToA,
-      tradeRelations: entry.relation.tradeRelations,
-      trust: entry.relation.trust,
-      fear: entry.relation.fear,
-      hostility: entry.relation.hostility,
-      affinity: entry.relation.affinity,
-      suspicion: entry.relation.suspicion,
-      lastWarDeclarationTurn: entry.relation.lastWarDeclarationTurn,
-      lastPeaceProposalTurn: entry.relation.lastPeaceProposalTurn,
-      lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
-      lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
-      lastTradeRelationsChangeTurn: entry.relation.lastTradeRelationsChangeTurn,
-      peaceTreatyUntilTurn: entry.relation.peaceTreatyUntilTurn,
-      militaryUnitsLostA: entry.relation.militaryUnitsLostA,
-      militaryUnitsLostB: entry.relation.militaryUnitsLostB,
-      citiesLostA: entry.relation.citiesLostA,
-      citiesLostB: entry.relation.citiesLostB,
-      militaryStrengthAtWarStartA: entry.relation.militaryStrengthAtWarStartA,
-      militaryStrengthAtWarStartB: entry.relation.militaryStrengthAtWarStartB,
-    }));
+    const diplomacy = SaveLoadService.serializeDiplomacy(diplomacyManager);
 
     const discovery: SavedDiscoveryEntry[] = discoverySystem.getAllMetPairs().map(([a, b]) => ({
       nationA: a,
@@ -429,6 +363,88 @@ export class SaveLoadService {
     };
   }
 
+  /** Serialize the canonical pair state. Public for focused persistence tests. */
+  static serializeDiplomacy(diplomacyManager: DiplomacyManager): SavedDiplomacyEntry[] {
+    return diplomacyManager.getAllStates().map((entry) => ({
+      nationA: entry.keys[0],
+      nationB: entry.keys[1],
+      state: entry.relation.state,
+      openBordersFromAToB: entry.relation.openBordersFromAToB,
+      openBordersFromBToA: entry.relation.openBordersFromBToA,
+      exploitationRightsFromAToB: entry.relation.exploitationRightsFromAToB,
+      exploitationRightsFromBToA: entry.relation.exploitationRightsFromBToA,
+      embassyFromAToB: entry.relation.embassyFromAToB,
+      embassyFromBToA: entry.relation.embassyFromBToA,
+      tradeRelations: entry.relation.tradeRelations,
+      trust: entry.relation.trust,
+      fear: entry.relation.fear,
+      hostility: entry.relation.hostility,
+      affinity: entry.relation.affinity,
+      suspicion: entry.relation.suspicion,
+      lastWarDeclarationTurn: entry.relation.lastWarDeclarationTurn,
+      lastPeaceProposalTurn: entry.relation.lastPeaceProposalTurn,
+      lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
+      lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
+      lastTradeRelationsChangeTurn: entry.relation.lastTradeRelationsChangeTurn,
+      peaceTreatyUntilTurn: entry.relation.peaceTreatyUntilTurn,
+      militaryUnitsLostA: entry.relation.militaryUnitsLostA,
+      militaryUnitsLostB: entry.relation.militaryUnitsLostB,
+      citiesLostA: entry.relation.citiesLostA,
+      citiesLostB: entry.relation.citiesLostB,
+      militaryStrengthAtWarStartA: entry.relation.militaryStrengthAtWarStartA,
+      militaryStrengthAtWarStartB: entry.relation.militaryStrengthAtWarStartB,
+    }));
+  }
+
+  /** Serialize sparse canonical tile state, including economic improvement ownership. */
+  static serializeTiles(mapData: MapData): SavedTile[] {
+    const tiles: SavedTile[] = [];
+    for (const row of mapData.tiles) {
+      for (const tile of row) {
+        if (
+          tile.ownerId === undefined
+          && tile.resourceOwnerNationId === undefined
+          && tile.resourceId === undefined
+          && tile.improvementId === undefined
+          && tile.improvementOwnerId === undefined
+          && tile.improvementConstruction === undefined
+          && tile.buildingId === undefined
+          && tile.buildingBroken === undefined
+          && tile.buildingConstruction === undefined
+          && tile.wonderId === undefined
+          && tile.wonderConstruction === undefined
+          && tile.cultureOwnerId === undefined
+          && tile.cultureSourceCityId === undefined
+        ) continue;
+        tiles.push({
+          q: tile.x,
+          r: tile.y,
+          ownerId: tile.ownerId,
+          resourceOwnerNationId: tile.improvementId !== undefined ? tile.resourceOwnerNationId : undefined,
+          resourceId: tile.resourceId,
+          improvementId: tile.improvementId,
+          // Never persist ownership metadata without its completed improvement.
+          improvementOwnerId: tile.improvementId !== undefined ? tile.improvementOwnerId : undefined,
+          improvementConstruction: tile.improvementConstruction
+            ? { ...tile.improvementConstruction }
+            : undefined,
+          buildingId: tile.buildingId,
+          buildingBroken: tile.buildingBroken ? true : undefined,
+          buildingConstruction: tile.buildingConstruction
+            ? { ...tile.buildingConstruction }
+            : undefined,
+          wonderId: tile.wonderId,
+          wonderConstruction: tile.wonderConstruction
+            ? { ...tile.wonderConstruction }
+            : undefined,
+          cultureOwnerId: tile.cultureOwnerId,
+          cultureSourceCityId: tile.cultureSourceCityId,
+        });
+      }
+    }
+    return tiles;
+  }
+
   /**
    * Parse JSON text into a SavedGameState. Returns a structured result
    * so callers can show a clean error message without try/catch.
@@ -506,7 +522,7 @@ export class SaveLoadService {
    * Caller must refresh renderers and UI after this returns.
    */
   static apply(state: SavedGameState, context: SaveLoadContext): void {
-    SaveLoadService.applyTiles(state.tiles, context.mapData);
+    SaveLoadService.restoreTiles(state.tiles, context.mapData);
     SaveLoadService.applyNations(state.nations, context.nationManager);
     context.policySystem.loadAllNationPolicies(state.nations.map((nation) => ({
       nationId: nation.id,
@@ -541,7 +557,7 @@ export class SaveLoadService {
     }
 
     SaveLoadService.applyUnits(state.units, context.unitManager);
-    SaveLoadService.applyDiplomacy(state.diplomacy, context.diplomacyManager);
+    SaveLoadService.restoreDiplomacy(state.diplomacy, context.diplomacyManager);
     context.allianceManager?.restoreAlliances(state.alliances);
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
@@ -605,13 +621,14 @@ export class SaveLoadService {
     }
   }
 
-  private static applyTiles(tiles: SavedTile[], mapData: MapData): void {
+  static restoreTiles(tiles: readonly SavedTile[], mapData: MapData): void {
     for (const row of mapData.tiles) {
       for (const tile of row) {
         tile.ownerId = undefined;
         tile.resourceOwnerNationId = undefined;
         tile.resourceId = undefined;
         tile.improvementId = undefined;
+        tile.improvementOwnerId = undefined;
         tile.improvementConstruction = undefined;
         tile.buildingId = undefined;
         tile.buildingBroken = undefined;
@@ -626,9 +643,14 @@ export class SaveLoadService {
       const tile = mapData.tiles[saved.r]?.[saved.q];
       if (!tile) continue;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
-      if (saved.resourceOwnerNationId !== undefined) tile.resourceOwnerNationId = saved.resourceOwnerNationId;
       if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
+      if (saved.improvementId !== undefined && saved.resourceOwnerNationId !== undefined) {
+        tile.resourceOwnerNationId = saved.resourceOwnerNationId;
+      }
+      if (saved.improvementId !== undefined && saved.improvementOwnerId !== undefined) {
+        tile.improvementOwnerId = saved.improvementOwnerId;
+      }
       if (saved.improvementConstruction !== undefined) {
         tile.improvementConstruction = { ...saved.improvementConstruction };
       }
@@ -959,12 +981,14 @@ export class SaveLoadService {
     }
   }
 
-  private static applyDiplomacy(
-    entries: SavedDiplomacyEntry[],
+  static restoreDiplomacy(
+    entries: readonly SavedDiplomacyEntry[] | undefined,
     diplomacyManager: DiplomacyManager,
   ): void {
     diplomacyManager.resetAll();
-    for (const entry of entries) {
+    for (const entry of entries ?? []) {
+      if (!entry || typeof entry.nationA !== 'string' || typeof entry.nationB !== 'string') continue;
+      if (entry.nationA === entry.nationB) continue;
       // Older saves only store state/openBorders — normalizeRelation
       // backfills directional grants from the legacy boolean and fills in
       // trust/fear/hostility/affinity + last*Turn defaults.
@@ -973,6 +997,8 @@ export class SaveLoadService {
         openBorders: entry.openBorders,
         openBordersFromAToB: entry.openBordersFromAToB,
         openBordersFromBToA: entry.openBordersFromBToA,
+        exploitationRightsFromAToB: entry.exploitationRightsFromAToB,
+        exploitationRightsFromBToA: entry.exploitationRightsFromBToA,
         embassyFromAToB: entry.embassyFromAToB,
         embassyFromBToA: entry.embassyFromBToA,
         tradeRelations: entry.tradeRelations,

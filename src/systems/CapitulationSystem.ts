@@ -8,6 +8,11 @@ import type { PeaceTreatySystem } from './PeaceTreatySystem';
 import type { AIMilitaryEvaluationSystem } from './ai/AIMilitaryEvaluationSystem';
 import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import { getUnitTypeById } from '../data/units';
+import {
+  commitExploitationRightsConcession,
+  createExploitationRightsConcession,
+} from './diplomacy/ExploitationRightsConcession';
+import { getLeaderExploitationInterestByNationId } from '../data/leaders';
 
 /** War pressure at/above which demanding capitulation is at least plausible (button shows). */
 export const CAPITULATION_ELIGIBILITY_THRESHOLD = 0.42;
@@ -35,6 +40,8 @@ export interface CapitulationResult {
   removedUnitCount: number;
   restoredCityIds: string[];
   demilitarizedUntilTurn: number;
+  /** Whether the demanding nation's exploitation-rights demand was committed. */
+  exploitationRightsGranted: boolean;
 }
 
 export interface SavedCapitulationState {
@@ -66,6 +73,7 @@ export interface CapitulationAppliedEvent {
   removedUnitCount: number;
   restoredCityIds: string[];
   demilitarizedUntilTurn: number;
+  exploitationRightsGranted: boolean;
 }
 
 function clamp01(value: number): number {
@@ -164,6 +172,27 @@ export class CapitulationSystem {
     };
   }
 
+  /**
+   * Whether a demanding AI leader would add exploitation rights to a capitulation
+   * demand: it must have Colonialism, a nonzero exploitation interest, not already
+   * hold the exact directional right, and be at war with the target. Personality
+   * only — the defeated nation's resources are never inspected. An interest-0
+   * leader never demands them; higher interest makes the demand attractive.
+   *
+   * NOTE: no AI-initiated capitulation flow exists yet (only the human can demand
+   * capitulation today), so this helper is currently exercised by tests and ready
+   * for the future AI caller rather than driving live AI behavior.
+   */
+  shouldDemandExploitationRights(demandingNationId: string, targetNationId: string): boolean {
+    if (demandingNationId === targetNationId) return false;
+    if (this.deps.diplomacyManager.getState(demandingNationId, targetNationId) !== 'WAR') return false;
+    if (!this.deps.diplomacyManager.canUseExploitationRights(demandingNationId)) return false;
+    if (getLeaderExploitationInterestByNationId(demandingNationId) <= 0) return false;
+    // Grantor = the defeated nation, beneficiary = the demanding nation.
+    if (this.deps.diplomacyManager.hasExploitationRights(demandingNationId, targetNationId)) return false;
+    return true;
+  }
+
   // --- Application ----------------------------------------------------------
 
   /**
@@ -175,10 +204,12 @@ export class CapitulationSystem {
     demandingNationId: string,
     targetNationId: string,
     requestedReparations: number,
+    demandExploitationRights = false,
   ): CapitulationResult {
     const rejected: CapitulationResult = {
       accepted: false, reparationsPaid: 0, reparationShares: [], formerEnemyIds: [],
       removedUnitCount: 0, restoredCityIds: [], demilitarizedUntilTurn: 0,
+      exploitationRightsGranted: false,
     };
 
     // 1. Revalidate that capitulation can still be applied.
@@ -226,17 +257,29 @@ export class CapitulationSystem {
     const demilitarizedUntilTurn = this.deps.getCurrentTurn() + Math.max(0, Math.floor(this.deps.getDemilitarizationTurns()));
     this.demilitarizedUntilTurn.set(targetNationId, demilitarizedUntilTurn);
 
+    // 11b. Commit any demanded exploitation rights — the capitulator (grantor)
+    // yields rights in its territory to the demanding nation (beneficiary). This
+    // runs after the wars end above, so the two nations are already at PEACE and
+    // the core grant will accept it. The demanding nation introduces the demand
+    // and must therefore have Colonialism (enforced by the concession validator).
+    const exploitationRightsGranted = demandExploitationRights
+      && commitExploitationRightsConcession(
+        this.deps.diplomacyManager,
+        createExploitationRightsConcession(targetNationId, demandingNationId, demandingNationId, 'capitulation'),
+      );
+
     const result: CapitulationResult = {
       accepted: true, reparationsPaid: reparations, reparationShares, formerEnemyIds,
-      removedUnitCount, restoredCityIds, demilitarizedUntilTurn,
+      removedUnitCount, restoredCityIds, demilitarizedUntilTurn, exploitationRightsGranted,
     };
     // 12. Record history/diplomatic events.
     this.deps.log?.(`[Capitulation] ${targetNationId} capitulates to ${demandingNationId}: `
       + `reparations=${reparations} units=-${removedUnitCount} cities=${restoredCityIds.length} `
-      + `wars=${formerEnemyIds.length} demilUntil=${demilitarizedUntilTurn}`);
+      + `wars=${formerEnemyIds.length} demilUntil=${demilitarizedUntilTurn} exploitation=${exploitationRightsGranted}`);
     this.deps.onCapitulation?.({
       demandingNationId, capitulatingNationId: targetNationId, reparationsPaid: reparations,
       reparationShares, formerEnemyIds, removedUnitCount, restoredCityIds, demilitarizedUntilTurn,
+      exploitationRightsGranted,
     });
     return result;
   }

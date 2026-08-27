@@ -4,6 +4,9 @@ function node(input: CultureNode): CultureNode {
   return input;
 }
 
+/** Canonical culture-node id for the existing Colonialism progression node. */
+export const COLONIALISM_CULTURE_NODE_ID = 'colonialism';
+
 export const CULTURE_TREE: CultureNode[] = [
   node({ id: 'code_of_laws', name: 'Code of Laws', era: 'ancient', cost: 16, description: 'Formal rules turn custom into authority. Shared laws give the first cities a common structure for justice, duty, and rule.', unlocks: [{ type: 'government', value: 'chiefdom' }, { type: 'policySlot', value: 'economic' }] }),
   node({ id: 'craftsmanship', name: 'Craftsmanship', era: 'ancient', cost: 32, description: 'Skilled hands organize labor, tools, and local defense. Craft traditions help settlements turn raw materials into lasting civic strength.', prerequisites: ['code_of_laws'], unlocks: [{ type: 'policySlot', value: 'military' }] }),
@@ -30,7 +33,7 @@ export const CULTURE_TREE: CultureNode[] = [
   node({ id: 'mercantilism', name: 'Mercantilism', era: 'renaissance', cost: 330, description: 'The state treats commerce as national strategy. Ports, charters, and controlled markets turn trade into power.', prerequisites: ['exploration'], unlocks: [{ type: 'policySlot', value: 'economic' }] }),
   node({ id: 'nationalism', name: 'Nationalism', era: 'renaissance', cost: 340, description: 'Shared language, memory, and symbols forge mass identity. Popular movements, independence struggles, and organized resistance take root.', prerequisites: ['humanism', 'mercantilism'], unlocks: [{ type: 'unit', value: 'corps' }, { type: 'unit', value: 'rebels' }] }),
   node({ id: 'enlightenment', name: 'The Enlightenment', era: 'industrial', cost: 370, description: 'Reason, rights, and public inquiry challenge inherited authority. Knowledge becomes a civic engine for reform and progress.', prerequisites: ['humanism', 'diplomatic_service'], unlocks: [{ type: 'building', value: 'university' }], effects: [{ type: 'happinessPerTurnFlat', value: 2 }] }),
-  node({ id: 'colonialism', name: 'Colonialism', era: 'industrial', cost: 400, description: 'Overseas ambition becomes administration, extraction, and settlement. Distant holdings reshape diplomacy and the home economy.', prerequisites: ['mercantilism'], unlocks: [{ type: 'diplomacy', value: 'colonial_charters' }] }),
+  node({ id: COLONIALISM_CULTURE_NODE_ID, name: 'Colonialism', era: 'industrial', cost: 400, description: 'Overseas ambition becomes administration, extraction, and settlement. Distant holdings reshape diplomacy and the home economy.', prerequisites: ['mercantilism'], unlocks: [{ type: 'diplomacy', value: 'colonial_charters' }] }),
   node({ id: 'civil_engineering', name: 'Civil Engineering', era: 'industrial', cost: 425, description: 'Public works become symbols of modern administration. Bridges, districts, and services let cities grow with intent.', prerequisites: ['enlightenment'], unlocks: [{ type: 'building', value: 'public_works' }] }),
   node({ id: 'urbanization', name: 'Urbanization', era: 'modern', cost: 500, description: 'City life becomes the dominant rhythm of society. Planning, housing, and services define the politics of modern growth.', prerequisites: ['civil_engineering'], unlocks: [{ type: 'building', value: 'neighborhood' }] }),
   node({ id: 'ideology', name: 'Ideology', era: 'modern', cost: 550, description: 'Politics hardens into competing visions for society. Parties, states, and citizens organize around total answers to modern life.', prerequisites: ['urbanization', 'nationalism'], unlocks: [{ type: 'government', value: 'ideological_state' }] }),

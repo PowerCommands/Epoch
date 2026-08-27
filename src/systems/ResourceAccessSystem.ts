@@ -3,6 +3,7 @@ import { getManufacturedResourceById } from '../data/manufacturedResources';
 import type { MapData, Tile } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';
 import { getTileResourceQuantity, isTileImprovedForResource } from './resource/ResourceQuantity';
+import { getImprovementOwnerId } from './ImprovementOwnership';
 
 export interface ResourceAccessSummary {
   owned: string[];
@@ -244,9 +245,9 @@ export class ResourceAccessSystem {
   }
 
   /**
-   * Sum the per-tile resource quantity across all tiles this nation owns
-   * that match `resourceId`. A bare resource tile contributes 1; a tile
-   * with the matching improvement contributes 2 (see ResourceQuantity).
+   * Sum per-tile resource quantity across sources economically controlled by
+   * this nation. A bare territorial resource contributes 1; a tile with the
+   * matching improvement contributes 2 to that improvement's owner.
    * Callers are responsible for the upstream usability check; this
    * helper only deals with ownership and quantity.
    */
@@ -279,11 +280,13 @@ export class ResourceAccessSystem {
   }
 
   private tileProvidesOwnResource(tile: Tile, nationId: string, resourceId: string): boolean {
-    if (tile.ownerId === nationId) return true;
-    if (tile.resourceOwnerNationId !== nationId) return false;
-
     const resource = getNaturalResourceById(resourceId);
-    return resource !== undefined && isTileImprovedForResource(tile, resource);
+    if (resource !== undefined && isTileImprovedForResource(tile, resource)) {
+      return getImprovementOwnerId(tile) === nationId;
+    }
+    // Unimproved resources remain controlled territorially. Once the canonical
+    // resource improvement exists, its economic owner is the sole recipient.
+    return tile.ownerId === nationId;
   }
 
   private getRawImportedResourceSourceCount(nationId: string, resourceId: string): number {

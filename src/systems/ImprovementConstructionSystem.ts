@@ -11,6 +11,7 @@ import {
 import type { CityManager } from './CityManager';
 import type { PolicySystem } from './PolicySystem';
 import type { UnitChangedEvent, UnitManager } from './UnitManager';
+import type { DiplomacyManager } from './DiplomacyManager';
 
 export interface ImprovementConstructionCompletedEvent {
   tile: Tile;
@@ -47,6 +48,7 @@ export class ImprovementConstructionSystem {
     private readonly unitManager: UnitManager,
     private readonly cityManager: CityManager,
     private readonly policySystem?: PolicySystem,
+    private readonly diplomacyManager?: DiplomacyManager,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
     this.syncUnitsFromTiles();
@@ -152,7 +154,12 @@ export class ImprovementConstructionSystem {
       if (!this.isValidSeaResourceClaim(tile, construction, unit)) return 'invalidTile';
       return null;
     }
-    if (tile.ownerId !== construction.ownerId) return 'invalidTile';
+    if (tile.ownerId !== construction.ownerId) {
+      if (tile.ownerId === undefined
+        || !this.diplomacyManager?.hasExploitationRights(construction.ownerId, tile.ownerId)
+        || !this.isCanonicalResourceImprovement(tile, construction.improvementId)) return 'invalidTile';
+      return null;
+    }
     if (construction.cityId === undefined) return 'missingCity';
     const city = this.cityManager.getCity(construction.cityId);
     if (city === undefined || city.ownerId !== construction.ownerId) return 'missingCity';
@@ -186,7 +193,9 @@ export class ImprovementConstructionSystem {
       this.cancel(tile, construction, 'missingImprovement');
       return;
     }
-    if (construction.resourceOwnerNationId === undefined && city === undefined) {
+    if (construction.resourceOwnerNationId === undefined
+      && city === undefined
+      && tile.ownerId === construction.ownerId) {
       this.cancel(tile, construction, 'missingCity');
       return;
     }
@@ -196,6 +205,12 @@ export class ImprovementConstructionSystem {
     }
 
     tile.improvementId = construction.improvementId;
+    // Domestic improvements keep the legacy implicit ownership semantics, so
+    // ordinary conquest/territory transfer behavior remains unchanged. Only a
+    // genuinely separate economic owner needs persistent metadata.
+    tile.improvementOwnerId = tile.ownerId !== construction.ownerId
+      ? construction.ownerId
+      : undefined;
     if (construction.resourceOwnerNationId !== undefined) {
       tile.resourceOwnerNationId = construction.resourceOwnerNationId;
     }
@@ -222,7 +237,17 @@ export class ImprovementConstructionSystem {
     if (resource === undefined) return false;
 
     const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
-    return improvementId === construction.improvementId;
+    if (improvementId !== construction.improvementId) return false;
+    return tile.ownerId === undefined
+      || tile.ownerId === construction.ownerId
+      || this.diplomacyManager?.hasExploitationRights(construction.ownerId, tile.ownerId) === true;
+  }
+
+  private isCanonicalResourceImprovement(tile: Tile, improvementId: string): boolean {
+    if (tile.resourceId === undefined) return false;
+    const resource = getNaturalResourceById(tile.resourceId);
+    return resource !== undefined
+      && getNaturalResourceImprovementIdForTile(resource, tile.type) === improvementId;
   }
 
   private syncUnitProgress(unit: Unit, construction: TileImprovementConstruction): void {

@@ -8,6 +8,7 @@ import { getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { getWonderById } from '../data/wonders';
 import { getAllegianceType } from '../entities/UnitType';
 import type { CovertSuspicionSystem } from './diplomacy/CovertSuspicionSystem';
+import { getImprovementOwnerId } from './ImprovementOwnership';
 
 export type DestroyActionKind = 'improvement' | 'building';
 
@@ -88,7 +89,7 @@ export class InfrastructureSabotageSystem {
     if (unit.unitType.canDestroyImprovement !== true && unit.unitType.canSabotageImprovements !== true) return false;
     const tile = this.getUnitTile(unit);
     if (!tile || tile.improvementId === undefined) return false;
-    return !this.isOwnedBy(tile, unit.ownerId);
+    return getImprovementOwnerId(tile) !== unit.ownerId;
   }
 
   /**
@@ -100,7 +101,7 @@ export class InfrastructureSabotageSystem {
     if (unit.unitType.canDestroyBuilding !== true && unit.unitType.canSabotageBuildings !== true) return false;
     const tile = this.getUnitTile(unit);
     if (!tile) return false;
-    if (this.isOwnedBy(tile, unit.ownerId)) return false; // never your own infrastructure
+    if (tile.ownerId === unit.ownerId) return false; // never your own territorial infrastructure
     return this.getBreakableTarget(tile) !== null;
   }
 
@@ -126,7 +127,7 @@ export class InfrastructureSabotageSystem {
       // Improvement ownership: territory owner, or the resource-only owner for
       // water improvements. canDestroyImprovement already guarantees it is not
       // the unit's own nation; an unowned improvement returns undefined (no war).
-      return tile.resourceOwnerNationId ?? tile.ownerId;
+      return getImprovementOwnerId(tile);
     }
 
     if (!this.canDestroyBuilding(unit)) return undefined;
@@ -141,9 +142,12 @@ export class InfrastructureSabotageSystem {
     if (!this.canDestroyImprovement(unit)) return false;
     const tile = this.getUnitTile(unit)!;
     const improvementId = tile.improvementId!;
-    const victimNationId = tile.resourceOwnerNationId ?? tile.ownerId;
+    const victimNationId = getImprovementOwnerId(tile);
 
     tile.improvementId = undefined;
+    tile.improvementOwnerId = undefined;
+    // Legacy sea claims are tied to their improvement and must not survive it.
+    tile.resourceOwnerNationId = undefined;
     this.consumeUnitTurn(unit);
 
     // Loot: the destroying nation gains gold, created from nothing (the previous
@@ -254,15 +258,6 @@ export class InfrastructureSabotageSystem {
   private consumeUnitTurn(unit: Unit): void {
     unit.movementPoints = 0;
     unit.queuedDestination = undefined;
-  }
-
-  /**
-   * Treats both territory ownership and resource-only ownership as "owned" so a
-   * unit never razes its own nation's infrastructure. Tiles with no owner are
-   * not owned by anyone, so razing them is allowed.
-   */
-  private isOwnedBy(tile: Tile, nationId: string): boolean {
-    return tile.ownerId === nationId || tile.resourceOwnerNationId === nationId;
   }
 
   private findCityOwningTile(tile: Tile): City | undefined {

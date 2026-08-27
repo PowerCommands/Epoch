@@ -20,4 +20,10 @@ export interface JointWarProposal {
   receiverNationId: string;
   targetNationId: string;
   kind: JointWarKind;
+  /**
+   * Whether the proposer sweetens the ask by granting the receiver exploitation
+   * rights in the proposer's own territory (committed on acceptance). Set by AI
+   * proposal-building only when it would meaningfully help persuade the receiver.
+   */
+  offerExploitationRights?: boolean;
 }

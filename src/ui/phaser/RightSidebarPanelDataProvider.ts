@@ -1,5 +1,6 @@
 import { ALL_BUILDINGS, GRAND_STADIUM, getBuildingById } from '../../data/buildings';
 import { getImprovementById } from '../../data/improvements';
+import { getImprovementOwnerId } from '../../systems/ImprovementOwnership';
 import { getLeaderById, getLeaderByNationId, getLeaderIdeologyByNationId } from '../../data/leaders';
 import {
   describeIdeologyCompatibility,
@@ -169,7 +170,12 @@ export class RightSidebarPanelDataProvider {
   private diplomacyManager: DiplomacyManager | null = null;
   private allianceManager: AllianceManager | null = null;
   private jointWarSystem: JointWarSystem | null = null;
-  private jointWarProposal: { receiverNationId: string; kind: JointWarKind; targetNationId: string | null } | null = null;
+  private jointWarProposal: {
+    receiverNationId: string;
+    kind: JointWarKind;
+    targetNationId: string | null;
+    offerExploitationRights: boolean;
+  } | null = null;
   private getCurrentTurn: (() => number) | null = null;
   private diplomaticEvaluationSystem: DiplomaticEvaluationSystem | null = null;
   private borderPressureSystem: BorderPressureSystem | null = null;
@@ -677,6 +683,17 @@ export class RightSidebarPanelDataProvider {
       textRow(`Resource: ${resource?.name ?? 'None'}`),
       textRow(`Improvement: ${improvement?.name ?? 'None'}`),
     ];
+    // A foreign-owned resource improvement (Foreign Resource Exploitation Rights):
+    // the improvement belongs to another nation while the tile's territory does
+    // not change owner. Surface both so the split ownership is understandable.
+    if (improvement) {
+      const improvementOwnerId = getImprovementOwnerId(tile);
+      if (improvementOwnerId && improvementOwnerId !== tile.ownerId) {
+        const improvementOwner = this.nationManager.getNation(improvementOwnerId);
+        rows.push(textRow(`Improvement owner: ${improvementOwner?.name ?? improvementOwnerId}`, false, false, improvementOwner?.color));
+        if (owner) rows.push(textRow(`Territory: ${owner.name}`, false, false, owner.color));
+      }
+    }
     if (improvementConstruction) {
       rows.push(textRow(
         `${constructingImprovement?.name ?? 'Improvement'} under construction: ${improvementConstruction.remainingTurns} turns remaining`,
@@ -1719,6 +1736,11 @@ export class RightSidebarPanelDataProvider {
     if (peaceTreatyRemaining > 0) {
       rows.push(textRow(`Peace Treaty: ${peaceTreatyRemaining} turn${peaceTreatyRemaining === 1 ? '' : 's'} remaining`));
     }
+    const exploitationRows = this.getExploitationRightsStatusRows(nationId);
+    if (exploitationRows.length > 0) {
+      rows.push(textRow('Resource Exploitation:', false, true));
+      rows.push(...exploitationRows);
+    }
     rows.push(...this.getAllianceFactRows(nationId));
 
     const deals = this.tradeDealSystem?.getDealsBetween(humanId, nationId) ?? [];
@@ -1752,6 +1774,7 @@ export class RightSidebarPanelDataProvider {
     if (dm.isOpenBorderGrantedFrom(humanId, nationId)) rows.push(textRow('Open Borders granted'));
     if (dm.hasEmbassy(humanId, nationId)) rows.push(textRow('Embassy established'));
     if (dm.hasTradeRelations(humanId, nationId)) rows.push(textRow('Trade Relations active'));
+    rows.push(...this.getExploitationRightsStatusRows(nationId));
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);
     if (peaceTreatyRemaining > 0) {
@@ -1851,6 +1874,7 @@ export class RightSidebarPanelDataProvider {
         nation?.color,
       ));
       if (exchangeMapsReason) rows.push(textRow(exchangeMapsReason, true));
+      rows.push(...this.buildExploitationRightsTradeRows(nationId, nation?.color));
     }
     rows.push(disabledReasonButtonRow(
       'Give Gift',
@@ -1984,7 +2008,7 @@ export class RightSidebarPanelDataProvider {
           kind === 'request' ? 'Request Joint War' : 'Ask to Join War',
           disabledReason,
           () => {
-            this.jointWarProposal = { receiverNationId, kind, targetNationId: null };
+            this.jointWarProposal = { receiverNationId, kind, targetNationId: null, offerExploitationRights: false };
             this.requestRefresh();
           },
           accentColor,
@@ -2020,8 +2044,36 @@ export class RightSidebarPanelDataProvider {
       }
     }
 
+    // Optional sweetener: the human offers the receiver exploitation rights in the
+    // human's own territory. Only when the human has Colonialism and does not
+    // already grant the receiver those rights; introduced by the human.
+    const canOfferExploitation = this.diplomacyManager?.canUseExploitationRights(humanId) === true
+      && !this.diplomacyManager.hasExploitationRights(receiverNationId, humanId);
+    if (canOfferExploitation) {
+      rows.push({ kind: 'separator' });
+      rows.push({
+        kind: 'button',
+        text: 'Offer Resource Exploitation Rights',
+        selected: proposal.offerExploitationRights,
+        accentColor,
+        onClick: () => {
+          if (this.jointWarProposal) {
+            this.jointWarProposal = {
+              ...this.jointWarProposal,
+              offerExploitationRights: !this.jointWarProposal.offerExploitationRights,
+            };
+            this.requestRefresh();
+          }
+        },
+      });
+      if (proposal.offerExploitationRights) {
+        rows.push(textRow('You will grant them exploitation rights in your territory if they accept.', true));
+      }
+    }
+
     rows.push({ kind: 'separator' });
     const chosenTargetId = proposal.targetNationId;
+    const offerExploitationRights = proposal.offerExploitationRights;
     rows.push(disabledReasonButtonRow(
       'Confirm',
       chosenTargetId ? undefined : 'Select a target nation first.',
@@ -2032,6 +2084,7 @@ export class RightSidebarPanelDataProvider {
             action: kind === 'request' ? 'requestJointWar' : 'askToJoinWar',
             targetNationId: receiverNationId,
             jointWarTargetNationId: chosenTargetId,
+            offerExploitationRights,
           },
         }));
         this.jointWarProposal = null;
@@ -2046,6 +2099,79 @@ export class RightSidebarPanelDataProvider {
         this.requestRefresh();
       },
     });
+    return rows;
+  }
+
+  /**
+   * Resource Exploitation Rights as a peacetime Trade Deal concession. The human
+   * always introduces the term, so the Colonialism gate falls on the human. Two
+   * independent directional options are exposed:
+   *   - "Grant …": the human opens its own territory to the other nation.
+   *   - "Request …": the human asks the other nation to open its territory.
+   * Each is disabled (with an existing-style reason) when the human lacks
+   * Colonialism or when that exact directional right already exists.
+   */
+  private buildExploitationRightsTradeRows(nationId: string, accentColor?: number): RightSidebarRow[] {
+    if (!this.diplomacyManager || !this.humanNationId) return [];
+    const dm = this.diplomacyManager;
+    const humanId = this.humanNationId;
+    const hasColonialism = dm.canUseExploitationRights(humanId);
+    const colonialismReason = hasColonialism ? undefined : 'Requires Colonialism.';
+
+    // Grant own rights: beneficiary = other nation, grantor = human.
+    const alreadyGranted = dm.hasExploitationRights(nationId, humanId);
+    const grantReason = colonialismReason
+      ?? (alreadyGranted ? 'They already hold these rights.' : undefined);
+    // Request foreign rights: beneficiary = human, grantor = other nation.
+    const alreadyHeld = dm.hasExploitationRights(humanId, nationId);
+    const requestReason = colonialismReason
+      ?? (alreadyHeld ? 'You already hold these rights.' : undefined);
+
+    const rows: RightSidebarRow[] = [
+      disabledReasonButtonRow(
+        'Grant Resource Exploitation Rights',
+        grantReason,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'grantExploitationRights', targetNationId: nationId },
+          }));
+        },
+        accentColor,
+      ),
+      disabledReasonButtonRow(
+        'Request Resource Exploitation Rights',
+        requestReason,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'requestExploitationRights', targetNationId: nationId },
+          }));
+        },
+        accentColor,
+      ),
+    ];
+    if (grantReason && grantReason === colonialismReason) rows.push(textRow(colonialismReason!, true));
+    return rows;
+  }
+
+  /**
+   * Directional active exploitation-right lines between the human and `nationId`,
+   * phrased so the player can see whose territory is affected and who benefits,
+   * without exposing internal grantor/beneficiary terms. Empty when neither
+   * direction is active.
+   */
+  private getExploitationRightsStatusRows(nationId: string): RightSidebarRow[] {
+    if (!this.diplomacyManager || !this.humanNationId) return [];
+    const dm = this.diplomacyManager;
+    const humanId = this.humanNationId;
+    const otherName = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const rows: RightSidebarRow[] = [];
+    // hasExploitationRights(beneficiary, grantor).
+    if (dm.hasExploitationRights(nationId, humanId)) {
+      rows.push(textRow(`${otherName} may exploit natural resources in your territory`));
+    }
+    if (dm.hasExploitationRights(humanId, nationId)) {
+      rows.push(textRow(`You may exploit natural resources in ${otherName}'s territory`));
+    }
     return rows;
   }
 

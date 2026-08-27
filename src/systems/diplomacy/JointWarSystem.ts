@@ -4,6 +4,8 @@ import type { AllianceManager } from './AllianceManager';
 import type { AIMilitaryEvaluationSystem } from '../ai/AIMilitaryEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from './DiplomaticEvaluationSystem';
 import type { JointWarKind, JointWarProposal, JointWarValidationResult } from '../../types/jointWar';
+import { getExploitationRightsJoinWarBonusForInterest } from './ExploitationRightsConcession';
+import { getLeaderExploitationInterestByNationId } from '../../data/leaders';
 
 /** AI willingness threshold; tuned conservatively so allied/strong asks pass. */
 const ACCEPT_THRESHOLD = 3;
@@ -77,7 +79,13 @@ export class JointWarSystem {
    * antipathy toward the target, alliance ties, and an alliance-aware military
    * comparison. Hard rejects guard the obvious no-go cases.
    */
-  shouldAccept(receiverId: string, proposerId: string, targetId: string, kind: JointWarKind): boolean {
+  shouldAccept(
+    receiverId: string,
+    proposerId: string,
+    targetId: string,
+    kind: JointWarKind,
+    offeredExploitationRights = false,
+  ): boolean {
     if (!this.canRequestJointWar(proposerId, receiverId, targetId, kind).ok) return false;
     if (this.allianceManager.areAllied(receiverId, targetId)) return false;
 
@@ -123,6 +131,14 @@ export class JointWarSystem {
     // Joining an existing war is a smaller commitment than starting a new one.
     if (kind === 'join') score += 0.5;
 
+    // A sweetener the proposer offers from its own territory. The receiver is the
+    // beneficiary, so its leader's exploitation interest scales the bonus: an
+    // interest-0 leader gains nothing from the offer; a very-high-interest leader
+    // is strongly swayed. Personality only — never the map or its resources.
+    if (offeredExploitationRights) {
+      score += getExploitationRightsJoinWarBonusForInterest(getLeaderExploitationInterestByNationId(receiverId));
+    }
+
     return score >= ACCEPT_THRESHOLD;
   }
 
@@ -145,22 +161,36 @@ export class JointWarSystem {
     if (receivers.length === 0) return null;
 
     for (const receiverId of receivers) {
+      const offerExploitationRights = this.shouldOfferExploitationRights(proposerId, receiverId);
       // Prefer recruiting help for a war the proposer is already fighting.
       for (const target of nations) {
         if (this.diplomacyManager.getState(proposerId, target.id) !== 'WAR') continue;
         if (this.canRequestJointWar(proposerId, receiverId, target.id, 'join').ok) {
-          return { proposerNationId: proposerId, receiverNationId: receiverId, targetNationId: target.id, kind: 'join' };
+          return { proposerNationId: proposerId, receiverNationId: receiverId, targetNationId: target.id, kind: 'join', offerExploitationRights };
         }
       }
       // Otherwise propose a coordinated new war against a disliked target.
       for (const target of nations) {
         if (this.diplomaticEvaluationSystem.evaluateAttitude(proposerId, target.id) !== 'hostile') continue;
         if (this.canRequestJointWar(proposerId, receiverId, target.id, 'request').ok) {
-          return { proposerNationId: proposerId, receiverNationId: receiverId, targetNationId: target.id, kind: 'request' };
+          return { proposerNationId: proposerId, receiverNationId: receiverId, targetNationId: target.id, kind: 'request', offerExploitationRights };
         }
       }
     }
     return null;
+  }
+
+  /**
+   * Whether an AI proposer should sweeten a joint-war ask with exploitation rights
+   * in its own territory: it has Colonialism, does not already grant the receiver
+   * those rights, and the receiver actually values them (nonzero interest) so the
+   * concession is not wasted. The proposer's own acquisition interest is
+   * irrelevant here — this is about giving, not acquiring.
+   */
+  private shouldOfferExploitationRights(proposerId: string, receiverId: string): boolean {
+    if (!this.diplomacyManager.canUseExploitationRights(proposerId)) return false;
+    if (this.diplomacyManager.hasExploitationRights(receiverId, proposerId)) return false;
+    return getLeaderExploitationInterestByNationId(receiverId) > 0;
   }
 
   private countActiveWars(nationId: string): number {

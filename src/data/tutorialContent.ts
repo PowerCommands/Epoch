@@ -287,6 +287,53 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       },
       { kind: 'heading', text: 'War' },
       { kind: 'paragraph', text: 'Nations can declare war and become hostile. War is required before military units can attack one another.' },
+      { kind: 'heading', text: 'Foreign Resource Exploitation' },
+      { kind: 'paragraph', text: 'Colonialism also unlocks Foreign Resource Exploitation Rights, letting resource access be used as a diplomatic concession in trade, war and peace. See the Foreign Resource Exploitation section for the full explanation.' },
+    ],
+  },
+  {
+    id: 'foreign-resource-exploitation',
+    title: 'Foreign Resource Exploitation',
+    blocks: [
+      { kind: 'paragraph', text: 'Foreign Resource Exploitation Rights let one nation develop natural resources inside another nation’s territory as a diplomatic arrangement. The option to introduce such rights becomes available once you unlock Colonialism in the Culture tree.' },
+      { kind: 'heading', text: 'What the agreement does' },
+      {
+        kind: 'list',
+        items: [
+          'Another nation may receive the right to exploit natural resources inside your territory — or you inside theirs.',
+          'The receiving nation’s Workers and Work Boats gain peaceful access to the granting nation’s territory.',
+          'Military units do NOT gain Open Borders from this agreement — only Workers and Work Boats may enter.',
+          'The receiving nation may build only on natural-resource tiles.',
+          'The tile must currently have no improvement.',
+          'Normal technology and terrain requirements for the improvement still apply.',
+        ],
+      },
+      { kind: 'heading', text: 'Ownership' },
+      {
+        kind: 'list',
+        items: [
+          'Territory does not change owner — the tile stays part of the granting nation.',
+          'The resource improvement belongs to the exploiting nation and is shown in that nation’s colour.',
+          'The exploiting nation receives the resource; the territorial owner does not also receive that exploited source.',
+        ],
+      },
+      { kind: 'heading', text: 'Existing improvements' },
+      {
+        kind: 'list',
+        items: [
+          'An existing improvement protects the resource — foreign Workers cannot replace or take over an improvement that is already there.',
+          'If that improvement is later destroyed and the agreement still exists, the resource can become exploitable again.',
+        ],
+      },
+      { kind: 'heading', text: 'Using rights in diplomacy' },
+      { kind: 'paragraph', text: 'Exploitation rights can be offered or requested in Trade Deals, offered as an incentive when asking another nation to join a war, offered as a concession in a Peace proposal, or demanded from a defeated enemy during Capitulation.' },
+      { kind: 'heading', text: 'Long-term consequence' },
+      { kind: 'paragraph', text: 'Allowing another nation to exploit your territory gradually damages your Affinity toward that nation. The friction is small each time but persistent, and over many turns it can turn a good relationship sour.' },
+      { kind: 'heading', text: 'Duration' },
+      { kind: 'paragraph', text: 'Exploitation rights have no normal expiry. They persist until the relationship is broken — under the current rules, war between the two nations ends the rights.' },
+      { kind: 'heading', text: 'AI leaders' },
+      { kind: 'paragraph', text: 'Leaders differ in how highly they value foreign resource exploitation. Some actively seek such rights and will bargain hard for them, while others have little or no interest.' },
+      { kind: 'note', text: 'Colonialism is a Culture advance — look for it in the Culture tree to unlock these options.' },
     ],
   },
   {
@@ -343,6 +390,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'paragraph', text: 'The trade route is still being established and is not yet producing benefits.' },
       { kind: 'heading', text: 'Active' },
       { kind: 'paragraph', text: 'The trade route is operating and generating benefits for both partners.' },
+      { kind: 'note', text: 'With Colonialism unlocked, a trade negotiation can also grant or request Foreign Resource Exploitation Rights — see the Foreign Resource Exploitation section.' },
     ],
   },
   {
@@ -432,6 +480,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Cities can be attacked and captured',
         ],
       },
+      { kind: 'note', text: 'When persuading another nation to join your war, or settling a war through Peace or Capitulation, Foreign Resource Exploitation Rights (unlocked by Colonialism) can be offered or demanded — see the Foreign Resource Exploitation section.' },
     ],
   },
   {
@@ -478,6 +527,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'New forms of government',
           'Policy slots, which let you run more policies at once',
           'Diplomatic options such as trade delegations and alliances',
+          'Colonialism, which unlocks Foreign Resource Exploitation Rights',
           'Certain buildings and units',
         ],
       },
@@ -592,6 +642,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'paragraph', text: 'Bonus resources such as wheat, cattle and fish simply boost the yields of the tiles they sit on. Building the matching tile improvement increases the benefit further.' },
       { kind: 'heading', text: 'Access' },
       { kind: 'paragraph', text: 'A resource must be inside territory you control before you can make use of it.' },
+      { kind: 'note', text: 'With Foreign Resource Exploitation Rights (unlocked by Colonialism), a nation can develop natural resources inside another nation’s territory; the resource then belongs to the exploiting nation, not the territorial owner. See the Foreign Resource Exploitation section.' },
     ],
   },
   {

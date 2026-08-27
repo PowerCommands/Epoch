@@ -10,7 +10,12 @@ import type { DiplomacyManager } from './DiplomacyManager';
 import type { IGridSystem } from './grid/IGridSystem';
 import type { NationManager } from './NationManager';
 import type { UnitBoardingManager } from './UnitBoardingManager';
-import { canUnitEndMovementOnTile, canUnitEnterTile, isWaterTile } from './UnitMovementRules';
+import {
+  canUnitEndMovementOnTile,
+  canUnitEnterTile,
+  canUnitPeacefullyEnterTerritory,
+  isWaterTile,
+} from './UnitMovementRules';
 import { isCovertOperative } from '../utils/unitRoleUtils';
 
 /** Return movement cost for entering a tile. */
@@ -96,6 +101,11 @@ export class MovementSystem {
 
   onWarRequired(listener: MovementWarRequiredListener): void {
     this.warRequiredListeners.push(listener);
+  }
+
+  /** Shared by real-game pathfinding so previews and executed movement agree. */
+  canUnitPeacefullyEnterTile(unit: Unit, tile: Tile): boolean {
+    return this.getClosedBorderOwner(unit, tile) === null;
   }
 
   private canMoveUnitToInternal(unit: Unit, tileX: number, tileY: number, respectDiplomacy: boolean): boolean {
@@ -261,14 +271,17 @@ export class MovementSystem {
     if (unit.unitType.isInsurgentForce === true) return null;
     // Covert operatives (Spy/Agent) likewise infiltrate foreign territory freely.
     if (isCovertOperative(unit.unitType)) return null;
-    if (unit.unitType.isNaval === true && isWaterTile(tile)) return null;
+    // Combat/cargo naval movement keeps its existing unrestricted water rule.
+    // Work Boats are the one naval type whose peaceful access is governed by
+    // Open Borders or the exploitation-right exception below.
+    if (unit.unitType.isNaval === true && isWaterTile(tile) && unit.unitType.id !== 'work_boat') return null;
     if (tile.ownerId === undefined || tile.ownerId === unit.ownerId) return null;
     if (this.diplomacyManager === undefined) return null;
 
     // canEnterTerritory already accounts for war state and directional
     // open-borders grants, so the legacy WAR / openBorders branches collapse
     // into a single check.
-    if (this.diplomacyManager.canEnterTerritory(unit.ownerId, tile.ownerId)) return null;
+    if (canUnitPeacefullyEnterTerritory(unit, tile.ownerId, this.diplomacyManager)) return null;
     if (this.canPeacekeeperEnterTerritory(unit, tile.ownerId)) return null;
     return tile.ownerId;
   }

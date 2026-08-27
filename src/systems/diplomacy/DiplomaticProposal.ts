@@ -3,6 +3,7 @@ export type DiplomaticProposalKind =
   | 'embassy'
   | 'resource_trade'
   | 'gold_trade'
+  | 'exploitation_rights'
   | 'peace';
 
 export type DiplomaticProposalStatus =
@@ -61,12 +62,25 @@ export interface DiplomaticGoldTradePayload {
   readonly goldAmount: number;
 }
 
+/**
+ * fromNation (the beneficiary/introducer) requests that toNation (the grantor)
+ * grant it Foreign Resource Exploitation Rights in toNation's territory. Direction
+ * is carried explicitly so it is never inferred from from/to. Committed through
+ * the shared concession module on acceptance.
+ */
+export interface DiplomaticExploitationRightsPayload {
+  readonly kind: 'exploitation_rights';
+  readonly grantorNationId: string;
+  readonly beneficiaryNationId: string;
+}
+
 export type DiplomaticProposalPayload =
   | DiplomaticOpenBordersPayload
   | DiplomaticEmbassyPayload
   | DiplomaticPeacePayload
   | DiplomaticResourceTradePayload
-  | DiplomaticGoldTradePayload;
+  | DiplomaticGoldTradePayload
+  | DiplomaticExploitationRightsPayload;
 
 export type DiplomaticProposal = DiplomaticProposalBase & {
   readonly kind: DiplomaticProposalKind;

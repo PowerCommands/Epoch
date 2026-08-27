@@ -32,6 +32,7 @@ import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
 import { BorderPressureSystem, type BorderPressureEvent } from '../systems/BorderPressureSystem';
+import { ExploitationResentmentSystem } from '../systems/ExploitationResentmentSystem';
 import { ForeignTroopViolationSystem } from '../systems/ForeignTroopViolationSystem';
 import { ExplorationMemorySystem } from '../systems/ExplorationMemorySystem';
 import { initializeWorldNaturalResources } from '../systems/WorldResourceInitialization';
@@ -85,7 +86,7 @@ import {
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
-import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, resolvePeaceTreatyCooldownTurns, type PeaceProposal } from '../systems/DiplomacyManager';
+import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, resolvePeaceTreatyCooldownTurns, type ExploitationGrantContext, type PeaceProposal } from '../systems/DiplomacyManager';
 import { GossipSystem } from '../systems/GossipSystem';
 import { GossipFlavorEventSystem } from '../systems/GossipFlavorEventSystem';
 import { recordGossipInsultInHistory } from '../systems/GossipHistoryRecorder';
@@ -98,6 +99,11 @@ import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
 import { ScenarioHistoricalEventSystem } from '../systems/ScenarioHistoricalEventSystem';
 import { ScenarioHistoricalEventPresentationSystem } from '../systems/ScenarioHistoricalEventPresentationSystem';
 import { JointWarSystem } from '../systems/diplomacy/JointWarSystem';
+import {
+  commitExploitationRightsConcession,
+  createExploitationRightsConcession,
+  getExploitationRightsValueForInterest,
+} from '../systems/diplomacy/ExploitationRightsConcession';
 import type { JointWarKind } from '../types/jointWar';
 import { AllianceCouncilManager } from '../systems/diplomacy/AllianceCouncilManager';
 import { AllianceCouncilDialog } from '../ui/AllianceCouncilDialog';
@@ -135,7 +141,7 @@ import { WorldWarAnnouncementDialog } from '../ui/WorldWarAnnouncementDialog';
 import { EraSystem, getEraRank, getHighestEra } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
-import { getLeaderByNationId, getLeaderPersonalityByNationId, setActiveLeaderSelections, setScenarioLeaderOverrides } from '../data/leaders';
+import { getLeaderByNationId, getLeaderExploitationInterestByNationId, getLeaderPersonalityByNationId, setActiveLeaderSelections, setScenarioLeaderOverrides } from '../data/leaders';
 import { GOSSIP_DEFINITIONS } from '../data/gossip';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
@@ -1028,7 +1034,7 @@ export class GameScene extends Phaser.Scene {
 
     // 13. Produktionssystem
     const tileBuildingRenderer = new TileBuildingRenderer(this, tileMap, mapData, productionSystem);
-    const tileImprovementOverlayRenderer = new TileImprovementOverlayRenderer(this, tileMap, mapData);
+    const tileImprovementOverlayRenderer = new TileImprovementOverlayRenderer(this, tileMap, mapData, nationManager);
     tileImprovementOverlayRenderer.rebuildAll();
     let hudLayer: HudLayer | null = null;
     let rightPanel: RightSidebarPanelDataProvider | null = null;
@@ -1054,6 +1060,7 @@ export class GameScene extends Phaser.Scene {
     const diplomacyManager = new DiplomacyManager(
       turnManager,
       resolvePeaceTreatyCooldownTurns(scenarioJson.meta?.peaceTreatyCooldownTurns),
+      (nationId, cultureNodeId) => cultureSystem.isUnlocked(nationId, cultureNodeId),
     );
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
@@ -1148,6 +1155,11 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       aiMilitaryEvaluationSystem,
       (a, b) => discoverySystem.hasMet(a, b),
+    );
+    const exploitationResentmentSystem = new ExploitationResentmentSystem(
+      diplomacyManager,
+      (nationId) => nationManager.getNation(nationId)?.name,
+      (message) => console.log(message),
     );
     const foreignTroopViolationSystem = new ForeignTroopViolationSystem(
       diplomacyManager,
@@ -1318,6 +1330,7 @@ export class GameScene extends Phaser.Scene {
       borderPressureEvents.length = 0;
       ideologicalDriftSystem.handleRoundStart(event.round);
       borderPressureSystem.handleRoundStart(event.round);
+      exploitationResentmentSystem.handleRoundStart(event.round);
       const summary = formatIdeologicalDriftSummary(
         event.round,
         ideologicalDriftEvents,
@@ -1497,6 +1510,21 @@ export class GameScene extends Phaser.Scene {
             resourceSystem.addGold(fromId, -amount);
             resourceSystem.addGold(toId, amount);
           }
+          break;
+        }
+        case 'exploitation_rights': {
+          // The requesting nation (introducer/beneficiary) gains rights in the
+          // grantor's territory. Committed through the shared concession module so
+          // Colonialism/war/duplicate rules are enforced exactly once.
+          commitExploitationRightsConcession(
+            diplomacyManager,
+            createExploitationRightsConcession(
+              proposal.payload.grantorNationId,
+              proposal.payload.beneficiaryNationId,
+              proposal.payload.beneficiaryNationId,
+              'trade',
+            ),
+          );
           break;
         }
       }
@@ -1814,6 +1842,7 @@ export class GameScene extends Phaser.Scene {
       unitManager,
       cityManager,
       policySystem,
+      diplomacyManager,
     );
     // `diagnostic`/cheat map reveal forces every resource icon visible,
     // bypassing both the reveal-tech gate and fog of war.
@@ -2164,6 +2193,7 @@ export class GameScene extends Phaser.Scene {
       gridSystem,
       researchSystem,
       eraSystem,
+      diplomacyManager,
     );
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     unitActionToolbox.setDismissAvailabilityProvider(unitManager);
@@ -2484,6 +2514,9 @@ export class GameScene extends Phaser.Scene {
         ),
       unitBoardingManager,
     );
+    pathfindingSystem.setTerritoryAccessPredicate((unit, tile) => (
+      movementSystem.canUnitPeacefullyEnterTile(unit, tile)
+    ));
 
     // Neutral barbarian faction: drives the units spawned by scenario-authored
     // Barbarian Camps, once per round (runRound) rather than via the participant
@@ -4023,7 +4056,14 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager.recordJointWarAgreement(proposerId, receiverId);
     };
 
-    const finalizeJointWar = (proposerId: string, receiverId: string, targetId: string, kind: JointWarKind, accepted: boolean): void => {
+    const finalizeJointWar = (
+      proposerId: string,
+      receiverId: string,
+      targetId: string,
+      kind: JointWarKind,
+      accepted: boolean,
+      offeredExploitationRights = false,
+    ): void => {
       const p = nationManager.getNation(proposerId)?.name ?? proposerId;
       const r = nationManager.getNation(receiverId)?.name ?? receiverId;
       const t = nationManager.getNation(targetId)?.name ?? targetId;
@@ -4042,6 +4082,19 @@ export class GameScene extends Phaser.Scene {
             ? `${r} accepted and entered the war against ${t}.`
             : `${r} accepted. ${p} and ${r} declared war on ${t}.`,
         });
+        // The proposer's own-territory exploitation-rights sweetener is committed
+        // atomically with the accepted war entry (proposer = grantor, receiver =
+        // beneficiary; proposer introduces the term and must have Colonialism).
+        if (offeredExploitationRights && commitExploitationRightsConcession(
+          diplomacyManager,
+          createExploitationRightsConcession(proposerId, receiverId, proposerId, 'joinWar'),
+        )) {
+          logManager.info({
+            nationIds: [proposerId, receiverId],
+            category: 'diplomacy',
+            message: `${p} granted ${r} the right to exploit natural resources in ${p}'s territory.`,
+          });
+        }
       } else {
         logManager.info({
           nationIds: [proposerId, receiverId, targetId],
@@ -4068,10 +4121,12 @@ export class GameScene extends Phaser.Scene {
       jointWarLastProposalTurn.set(proposerId, currentTurn);
 
       const { receiverNationId, targetNationId: jointTargetId, kind } = proposal;
+      const offerExploitationRights = proposal.offerExploitationRights === true;
       logManager.info({
         nationIds: [proposerId, receiverNationId, jointTargetId],
         category: 'diplomacy',
-        message: formatJointWarProposalLog(proposerId, receiverNationId, jointTargetId, kind),
+        message: formatJointWarProposalLog(proposerId, receiverNationId, jointTargetId, kind)
+          + (offerExploitationRights ? ' (offering resource exploitation rights)' : ''),
       });
 
       // Ask the human explicitly; never auto-accept on their behalf.
@@ -4079,22 +4134,26 @@ export class GameScene extends Phaser.Scene {
         const p = self.name;
         const t = nationManager.getNation(jointTargetId)?.name ?? jointTargetId;
         const accentColor = `#${(self.color ?? 0xcccccc).toString(16).padStart(6, '0')}`;
+        const exploitationLine = offerExploitationRights
+          ? `\n\n${p} also offers you the right to exploit natural resources in ${p}'s territory.`
+          : '';
         showDiplomacyModal({
           title: 'Joint War Request',
-          message: kind === 'join'
+          message: (kind === 'join'
             ? `${p} is at war with ${t} and asks you to join the war against ${t}.`
-            : `${p} proposes a joint war against ${t}. Both of you would declare war on ${t}.`,
+            : `${p} proposes a joint war against ${t}. Both of you would declare war on ${t}.`)
+            + exploitationLine,
           accentColor,
           confirmLabel: 'Accept',
           cancelLabel: 'Reject',
-          onConfirm: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, true),
+          onConfirm: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, true, offerExploitationRights),
           onCancel: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, false),
         });
         return;
       }
 
-      const accepted = jointWarSystem.shouldAccept(receiverNationId, proposerId, jointTargetId, kind);
-      finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, accepted);
+      const accepted = jointWarSystem.shouldAccept(receiverNationId, proposerId, jointTargetId, kind, offerExploitationRights);
+      finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, accepted, offerExploitationRights);
     };
 
     // ─── Alliance Council (Phases 1–3) ───────────────────────────────────────
@@ -5058,6 +5117,32 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
+      // Resource Exploitation Rights: a peace concession the proposer offers from
+      // its own territory. Only introduced by a proposer that has Colonialism, and
+      // only when the exact directional right does not already exist.
+      const humanName = humanNation.name;
+      const canOfferExploitation = diplomacyManager.canUseExploitationRights(humanNationIdForDiplomacy)
+        && !diplomacyManager.hasExploitationRights(targetNationId, humanNationIdForDiplomacy);
+      let exploitCheck: HTMLInputElement | null = null;
+      if (canOfferExploitation) {
+        const exploitHeader = document.createElement('div');
+        exploitHeader.style.cssText = 'font-weight:700;margin:6px 0;';
+        exploitHeader.textContent = 'Resource Exploitation Rights (optional)';
+        panel.appendChild(exploitHeader);
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 0;';
+        exploitCheck = document.createElement('input');
+        exploitCheck.type = 'checkbox';
+        row.appendChild(exploitCheck);
+        const text = document.createElement('span');
+        text.style.cssText = 'font-size:13px;color:#cdd9e8;';
+        text.textContent = `Grant ${targetNation.name} the right to exploit natural resources in `
+          + `${humanName}'s territory. Their Workers and Work Boats may enter your territory and build `
+          + 'improvements on unimproved natural resources. Territory ownership does not change.';
+        row.appendChild(text);
+        panel.appendChild(row);
+      }
+
       const summary = document.createElement('div');
       summary.style.cssText = 'margin:14px 0;padding:10px;border-radius:6px;background:#0b121b;'
         + 'border:1px solid rgba(143,163,190,0.35);font-size:13px;color:#cdd9e8;min-height:20px;';
@@ -5065,6 +5150,7 @@ export class GameScene extends Phaser.Scene {
 
       const readGold = (): number => Math.max(0, Math.min(availableGold, Math.floor(Number(goldInput.value) || 0)));
       const readCities = (): string[] => cityChecks.filter((c) => c.input.checked).map((c) => c.id);
+      const readExploit = (): boolean => exploitCheck?.checked === true;
       const updateSummary = (): void => {
         const gold = readGold();
         const cityIds = readCities();
@@ -5074,10 +5160,12 @@ export class GameScene extends Phaser.Scene {
           const names = cityIds.map((id) => cityManager.getCity(id)?.name ?? id).join(', ');
           parts.push(`cities: ${names}`);
         }
+        if (readExploit()) parts.push('resource exploitation rights');
         summary.textContent = `Offer: ${parts.join(' + ')}. Peace Treaty cooldown: ${cooldownTurns} turns.`;
       };
       goldInput.addEventListener('input', updateSummary);
       for (const c of cityChecks) c.input.addEventListener('change', updateSummary);
+      exploitCheck?.addEventListener('change', updateSummary);
       updateSummary();
 
       const buttons = document.createElement('div');
@@ -5094,7 +5182,7 @@ export class GameScene extends Phaser.Scene {
       buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
       buttons.appendChild(makeButton('Propose', true, () => {
         overlay.remove();
-        resolveHumanPeaceProposal(targetNationId, readGold(), readCities());
+        resolveHumanPeaceProposal(targetNationId, readGold(), readCities(), readExploit());
       }));
       panel.appendChild(buttons);
 
@@ -5103,12 +5191,18 @@ export class GameScene extends Phaser.Scene {
     };
 
     // Builds, evaluates and (if accepted) atomically settles a human → AI peace offer.
-    const resolveHumanPeaceProposal = (targetNationId: string, gold: number, cityIds: string[]): void => {
+    const resolveHumanPeaceProposal = (
+      targetNationId: string,
+      gold: number,
+      cityIds: string[],
+      offerExploitationRights: boolean,
+    ): void => {
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
       const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
       diplomacyManager.proposePeace(humanNationIdForDiplomacy, targetNationId, {
         goldReparations: gold,
         offeredCityIds: cityIds,
+        ...(offerExploitationRights ? { offeredExploitationRights: true } : {}),
       });
       const proposal = diplomacyManager.getPendingProposal(targetNationId);
       if (!proposal) return;
@@ -5122,10 +5216,13 @@ export class GameScene extends Phaser.Scene {
 
       if (evaluation.accepted) {
         logTreatyDetails(proposal);
-        peaceTreatySystem.settleAcceptedPeace(proposal);
-        showLeaderResponsePopup(targetNationId, `${aiLeaderName} accepts`, [
-          `${aiLeaderName} accepts your terms. Our nations are at peace.`,
-        ]);
+        const settlement = peaceTreatySystem.settleAcceptedPeace(proposal);
+        const lines = [`${aiLeaderName} accepts your terms. Our nations are at peace.`];
+        if (settlement.exploitationRightsGranted) {
+          const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
+          lines.push(`${targetName} may now exploit natural resources in ${humanName}'s territory.`);
+        }
+        showLeaderResponsePopup(targetNationId, `${aiLeaderName} accepts`, lines);
       } else {
         diplomacyManager.respondToPeace(humanNationIdForDiplomacy, targetNationId, false);
         logManager.info({
@@ -5206,6 +5303,29 @@ export class GameScene extends Phaser.Scene {
       updateSplit();
       panel.appendChild(split);
 
+      // Resource Exploitation Rights: an additional imposed term the demanding
+      // nation introduces (and must therefore have Colonialism for). Only shown
+      // when the exact directional right does not already exist.
+      const canDemandExploitation = diplomacyManager.canUseExploitationRights(humanNationIdForDiplomacy)
+        && !diplomacyManager.hasExploitationRights(humanNationIdForDiplomacy, targetNationId);
+      let exploitCheck: HTMLInputElement | null = null;
+      if (canDemandExploitation) {
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 0;margin-bottom:6px;';
+        exploitCheck = document.createElement('input');
+        exploitCheck.type = 'checkbox';
+        row.appendChild(exploitCheck);
+        const text = document.createElement('span');
+        text.style.cssText = 'font-size:13px;color:#e8cdcd;';
+        text.textContent = `Demand resource exploitation rights: ${targetNation.name} must let `
+          + `${humanName}'s Workers and Work Boats enter its territory and build improvements on `
+          + 'unimproved natural resources. Territory ownership does not change.';
+        row.appendChild(text);
+        panel.appendChild(row);
+      }
+      const readExploit = (): boolean => exploitCheck?.checked === true;
+
       const buttons = document.createElement('div');
       buttons.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;margin-top:8px;';
       const makeButton = (label: string, primary: boolean, handler: () => void): HTMLButtonElement => {
@@ -5220,7 +5340,7 @@ export class GameScene extends Phaser.Scene {
       buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
       buttons.appendChild(makeButton('Demand Surrender', true, () => {
         overlay.remove();
-        resolveCapitulationDemand(targetNationId, readReparations());
+        resolveCapitulationDemand(targetNationId, readReparations(), readExploit());
       }));
       panel.appendChild(buttons);
 
@@ -5229,7 +5349,11 @@ export class GameScene extends Phaser.Scene {
     };
 
     // Evaluates and (if accepted) atomically applies a human → AI capitulation demand.
-    const resolveCapitulationDemand = (targetNationId: string, reparations: number): void => {
+    const resolveCapitulationDemand = (
+      targetNationId: string,
+      reparations: number,
+      demandExploitationRights: boolean,
+    ): void => {
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
       const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
       const evaluation = capitulationSystem.evaluateCapitulationDemand(humanNationIdForDiplomacy, targetNationId);
@@ -5243,18 +5367,28 @@ export class GameScene extends Phaser.Scene {
         ]);
         return;
       }
-      const result = capitulationSystem.applyCapitulation(humanNationIdForDiplomacy, targetNationId, reparations);
+      const result = capitulationSystem.applyCapitulation(
+        humanNationIdForDiplomacy,
+        targetNationId,
+        reparations,
+        demandExploitationRights,
+      );
       if (!result.accepted) {
         showLeaderResponsePopup(targetNationId, `${aiLeaderName} refuses`, [
           `${aiLeaderName} refuses to capitulate. The war continues.`,
         ]);
         return;
       }
-      showLeaderResponsePopup(targetNationId, `${aiLeaderName} capitulates`, [
+      const lines = [
         `${aiLeaderName} accepts unconditional surrender.`,
         `Military disbanded. ${result.reparationsPaid} gold paid in reparations.`,
         `${result.restoredCityIds.length} cit${result.restoredCityIds.length === 1 ? 'y' : 'ies'} restored; ${result.formerEnemyIds.length} war(s) ended.`,
-      ]);
+      ];
+      if (result.exploitationRightsGranted) {
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
+        lines.push(`${humanName} may now exploit natural resources in ${targetName}'s territory.`);
+      }
+      showLeaderResponsePopup(targetNationId, `${aiLeaderName} capitulates`, lines);
       rightPanel?.refreshCurrent();
     };
 
@@ -5350,6 +5484,49 @@ export class GameScene extends Phaser.Scene {
         }
         hudLayer?.refresh();
         rightPanel?.refreshCurrent();
+      } else if (action === 'grantExploitationRights' || action === 'requestExploitationRights') {
+        // Standalone directional exploitation-rights deal (the human always
+        // introduces the term, so the Colonialism check falls on the human).
+        // "grant" = human offers its own territory; "request" = human asks the
+        // other nation to open its territory. Committed only if the AI accepts.
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+        const humanGrants = action === 'grantExploitationRights';
+        const grantorId = humanGrants ? humanNationIdForDiplomacy : targetNationId;
+        const beneficiaryId = humanGrants ? targetNationId : humanNationIdForDiplomacy;
+        const concession = createExploitationRightsConcession(grantorId, beneficiaryId, humanNationIdForDiplomacy, 'trade');
+        const attitude = diplomaticEvaluationSystem?.evaluateAttitude(targetNationId, humanNationIdForDiplomacy) ?? 'neutral';
+        // When the human grants, the AI is the beneficiary: it only cares if its
+        // leader values exploitation rights at all (interest > 0), and it will not
+        // deal with a hostile nation. When the human requests, the AI is giving its
+        // own territory away — a concession it makes only for a friendly nation, and
+        // its own acquisition interest is irrelevant (see Step 4 §5). Personality/
+        // attitude only — the map and its resources are never inspected.
+        const beneficiaryInterest = getLeaderExploitationInterestByNationId(beneficiaryId);
+        const beneficiaryValue = getExploitationRightsValueForInterest(beneficiaryInterest);
+        const accepted = humanGrants
+          ? (attitude !== 'hostile' && beneficiaryInterest > 0)
+          : attitude === 'friendly';
+        console.log(`[Exploitation] ${targetNation.name} evaluates ${humanGrants ? 'offered' : 'requested'} rights: `
+          + `beneficiary interest ${beneficiaryInterest} → value ${beneficiaryValue}, attitude ${attitude} → ${accepted ? 'ACCEPT' : 'DECLINE'}`);
+        const summary = humanGrants
+          ? `${humanName} grants ${targetNation.name} the right to exploit natural resources in ${humanName}'s territory.`
+          : `${targetNation.name} grants ${humanName} the right to exploit natural resources in ${targetNation.name}'s territory.`;
+        if (accepted && commitExploitationRightsConcession(diplomacyManager, concession)) {
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: summary,
+          });
+          showLeaderResponsePopup(targetNationId, `${targetNation.name} agrees`, [summary]);
+        } else {
+          showLeaderResponsePopup(targetNationId, `${targetNation.name} declines`, [
+            humanGrants
+              ? `${targetNation.name} declines the arrangement.`
+              : `${targetNation.name} refuses to open its territory to ${humanName}.`,
+          ]);
+        }
+        hudLayer?.refresh();
+        rightPanel?.refreshCurrent();
       } else if (action === 'giveGift') {
         showGiftDialog(targetNationId);
       } else if (action === 'proposeAlliance') {
@@ -5406,7 +5583,10 @@ export class GameScene extends Phaser.Scene {
         // Human (proposer) asks the viewed nation (receiver) to start/join a
         // war against a chosen third-party target.
         const kind: JointWarKind = action === 'requestJointWar' ? 'request' : 'join';
-        const jointDetail = (event as CustomEvent).detail as { jointWarTargetNationId?: string };
+        const jointDetail = (event as CustomEvent).detail as {
+          jointWarTargetNationId?: string;
+          offerExploitationRights?: boolean;
+        };
         const jointTargetId = jointDetail.jointWarTargetNationId;
         const receiverId = targetNationId;
         const proposerId = humanNationIdForDiplomacy;
@@ -5414,13 +5594,17 @@ export class GameScene extends Phaser.Scene {
           rightPanel?.refreshCurrent();
           return;
         }
+        // Only honor the sweetener when the human can actually introduce it.
+        const offerExploitationRights = jointDetail.offerExploitationRights === true
+          && diplomacyManager.canUseExploitationRights(proposerId)
+          && !diplomacyManager.hasExploitationRights(receiverId, proposerId);
         logManager.info({
           nationIds: [proposerId, receiverId, jointTargetId],
           category: 'diplomacy',
           message: formatJointWarProposalLog(proposerId, receiverId, jointTargetId, kind),
         });
-        const accepted = jointWarSystem.shouldAccept(receiverId, proposerId, jointTargetId, kind);
-        finalizeJointWar(proposerId, receiverId, jointTargetId, kind, accepted);
+        const accepted = jointWarSystem.shouldAccept(receiverId, proposerId, jointTargetId, kind, offerExploitationRights);
+        finalizeJointWar(proposerId, receiverId, jointTargetId, kind, accepted, offerExploitationRights);
         if (!isAutoplayActive()) {
           const receiverName = targetNation.name;
           const jointTargetName = nationManager.getNation(jointTargetId)?.name ?? jointTargetId;
@@ -6036,6 +6220,40 @@ export class GameScene extends Phaser.Scene {
         text: `${timelineNationName(a)} and ${timelineNationName(b)} became allies`,
         eventNationIds: [a, b],
         metadata: { aggressorNationId: a, targetNationId: b },
+      });
+    });
+    // Foreign Resource Exploitation Rights — established/terminated. Recorded at
+    // the shared DiplomacyManager grant/clear points so every source (Trade Deal,
+    // Join War, Peace, Capitulation, AI proposal) produces one consistent entry.
+    // These listeners never fire during silent save restoration.
+    diplomacyManager.onExploitationRightsGranted(({ grantorNationId, beneficiaryNationId, context }) => {
+      historicalTimeline.record({
+        type: 'exploitationRightsGranted',
+        icon: '⛏',
+        text: `${timelineNationName(grantorNationId)} granted ${timelineNationName(beneficiaryNationId)} `
+          + `the right to exploit natural resources within ${timelineNationName(grantorNationId)} territory`,
+        eventNationIds: [grantorNationId, beneficiaryNationId],
+        newsImportance: exploitationGrantNewsImportance(context),
+        metadata: {
+          exploitationGrantorNationId: grantorNationId,
+          exploitationBeneficiaryNationId: beneficiaryNationId,
+          exploitationContext: context,
+        },
+      });
+    });
+    diplomacyManager.onExploitationRightsEnded(({ grantorNationId, beneficiaryNationId, reason }) => {
+      historicalTimeline.record({
+        type: 'exploitationRightsEnded',
+        icon: '⛏',
+        text: `${timelineNationName(beneficiaryNationId)}'s resource exploitation rights in `
+          + `${timelineNationName(grantorNationId)} ended as war broke out between the two nations`,
+        eventNationIds: [grantorNationId, beneficiaryNationId],
+        newsImportance: 5,
+        metadata: {
+          exploitationGrantorNationId: grantorNationId,
+          exploitationBeneficiaryNationId: beneficiaryNationId,
+          exploitationEndReason: reason,
+        },
       });
     });
     combatSystem.onCityCombat((event) => {
@@ -9287,12 +9505,27 @@ function isDevBuild(): boolean {
   return isLocalHost && new URLSearchParams(window.location.search).get('epochDiagnostics') === '1';
 }
 
-function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' | 'gold_trade' | 'peace'): string {
+/**
+ * Chronicle relevance for an exploitation grant, by negotiation context (lower =
+ * more newsworthy). Capitulation (economic domination after defeat) ranks highest,
+ * then peace, then join-war intervention, with a routine trade grant the lowest.
+ */
+function exploitationGrantNewsImportance(context: ExploitationGrantContext | undefined): number {
+  switch (context) {
+    case 'capitulation': return 2;
+    case 'peace': return 3;
+    case 'joinWar': return 4;
+    default: return 6; // trade or unspecified
+  }
+}
+
+function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' | 'gold_trade' | 'exploitation_rights' | 'peace'): string {
   switch (kind) {
     case 'open_borders': return 'Open Borders proposal';
     case 'embassy': return 'Embassy proposal';
     case 'resource_trade': return 'resource trade';
     case 'gold_trade': return 'gold transfer';
+    case 'exploitation_rights': return 'resource exploitation rights request';
     case 'peace': return 'peace proposal';
   }
 }

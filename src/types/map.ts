@@ -41,6 +41,8 @@ export interface Tile {
   resourceOwnerNationId?: string; // resource-only claim; does not make the tile city territory
   resourceId?: string; // optional natural resource; undefined = none
   improvementId?: string; // optional tile improvement; undefined = none
+  /** Economic owner of the completed improvement; independent of territorial ownerId. */
+  improvementOwnerId?: string;
   improvementConstruction?: TileImprovementConstruction; // in-progress worker improvement
   buildingId?: string; // finished tile building; undefined = none
   buildingBroken?: boolean; // true = the tile's standalone buildingId is broken/ruined (e.g. a razed Barbarian Camp). City buildings track broken state in CityBuildings, not here.

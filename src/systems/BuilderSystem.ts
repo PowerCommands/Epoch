@@ -13,6 +13,7 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { ResearchSystem } from './ResearchSystem';
 import type { EraSystem } from './EraSystem';
 import type { Era } from '../data/technologies';
+import type { DiplomacyManager } from './DiplomacyManager';
 
 export interface BuildImprovementResult {
   unit: Unit;
@@ -47,6 +48,7 @@ export class BuilderSystem {
     private readonly gridSystem: IGridSystem,
     private readonly researchSystem?: ResearchSystem,
     private readonly eraSystem?: EraSystem,
+    private readonly diplomacyManager?: DiplomacyManager,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
     this.rebuildConstructionIndex();
@@ -73,10 +75,16 @@ export class BuilderSystem {
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
     if (isBarbarianCamp(tile.buildingId)) return false; // camp locks its tile
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return false;
-    if (tile.ownerId !== nationId) return false;
-    if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, nationId) === null) return false;
+    const isForeign = tile.ownerId !== undefined && tile.ownerId !== nationId;
+    if (isForeign) {
+      if (!this.diplomacyManager?.hasExploitationRights(nationId, tile.ownerId!)) return false;
+      if (tile.resourceId === undefined) return false;
+    } else {
+      if (tile.ownerId !== nationId) return false;
+      if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, nationId) === null) return false;
+    }
 
-    const improvement = this.resolveImprovementForTile(tile);
+    const improvement = isForeign ? this.getResourceImprovement(tile) : this.resolveImprovementForTile(tile);
     if (improvement === undefined) return false;
 
     const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
@@ -103,10 +111,11 @@ export class BuilderSystem {
     const preview = this.evaluateBuild(unit, tile, options);
     if (!preview.canBuild || preview.improvement === undefined) return null;
 
-    const city = preview.claimsSeaResource === true
+    const isForeign = tile.ownerId !== undefined && tile.ownerId !== unit.ownerId;
+    const city = preview.claimsSeaResource === true || isForeign
       ? undefined
       : this.getFriendlyCityForOwnedTile(tile.x, tile.y, unit.ownerId);
-    if (preview.claimsSeaResource !== true && city === null) return null;
+    if (preview.claimsSeaResource !== true && !isForeign && city === null) return null;
 
     const requiredTurns = getImprovementBuildTurnsForEra(
       this.eraSystem?.getNationEra(unit.ownerId) ?? 'ancient',
@@ -166,7 +175,30 @@ export class BuilderSystem {
       return this.evaluateNavalResourceBuild(unit, tile);
     }
 
-    if (tile.ownerId !== unit.ownerId) return { canBuild: false, reason: 'Must be inside your territory' };
+    if (tile.ownerId !== unit.ownerId) {
+      if (tile.ownerId === undefined) return { canBuild: false, reason: 'Must be inside your territory' };
+      if (!this.diplomacyManager?.hasExploitationRights(unit.ownerId, tile.ownerId)) {
+        return { canBuild: false, reason: 'Requires exploitation rights' };
+      }
+      if (tile.resourceId === undefined) {
+        return { canBuild: false, reason: 'Foreign exploitation is limited to natural resources' };
+      }
+      const foreignImprovement = this.getResourceImprovement(tile);
+      if (foreignImprovement === undefined) {
+        return { canBuild: false, reason: 'No valid improvement for this natural resource' };
+      }
+      const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(foreignImprovement.id);
+      if (requiredTechnology !== undefined
+        && !this.researchSystem?.isImprovementUnlocked(unit.ownerId, foreignImprovement.id)) {
+        return {
+          canBuild: false,
+          improvement: foreignImprovement,
+          improvementId: foreignImprovement.id,
+          reason: `Requires ${requiredTechnology.name}`,
+        };
+      }
+      return { canBuild: true, improvement: foreignImprovement, improvementId: foreignImprovement.id };
+    }
     if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, unit.ownerId) === null) {
       return { canBuild: false, reason: 'Tile must be owned by your territory' };
     }
@@ -192,6 +224,13 @@ export class BuilderSystem {
   private evaluateNavalResourceBuild(unit: Unit, tile: Tile): BuildImprovementPreview {
     if (!this.isSeaTile(tile)) return { canBuild: false, reason: 'Naval builders can only improve sea resources' };
     if (tile.resourceId === undefined) return { canBuild: false, reason: 'Sea resource required' };
+    if (tile.ownerId !== undefined && tile.ownerId !== unit.ownerId
+      && !this.diplomacyManager?.hasExploitationRights(unit.ownerId, tile.ownerId)) {
+      return { canBuild: false, reason: 'Requires exploitation rights' };
+    }
+    if (tile.resourceOwnerNationId !== undefined && tile.resourceOwnerNationId !== unit.ownerId) {
+      return { canBuild: false, reason: 'Resource is controlled by another nation' };
+    }
 
     const improvement = this.getResourceImprovement(tile);
     if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this sea resource' };

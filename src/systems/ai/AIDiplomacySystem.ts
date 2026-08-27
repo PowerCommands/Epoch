@@ -119,13 +119,15 @@ export class AIDiplomacySystem {
         if (!treaty) return;
         const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
         const offeredCities = 'offeredCityIds' in treaty ? treaty.offeredCityIds?.length ?? 0 : treaty.offeredCityId ? 1 : 0;
+        const offersExploitation = 'offeredExploitationRights' in treaty && treaty.offeredExploitationRights === true;
         const pressureText = plan
           ? `pressure=${plan.seeking.warPressure.toFixed(2)} disadvantage=${plan.seeking.strategicDisadvantage.toFixed(2)} `
             + `threshold=${Math.round(plan.recipientAcceptanceThreshold)}`
           : 'legacy peace evaluation';
         console.log(this.formatLog(
           selfId,
-          `seeks peace with ${otherName}: ${pressureText}; offer gold=${treaty.goldReparations ?? 0} cities=${offeredCities}; `
+          `seeks peace with ${otherName}: ${pressureText}; offer gold=${treaty.goldReparations ?? 0} cities=${offeredCities}`
+            + `${offersExploitation ? ' +exploitationRights' : ''}; `
             + `factors=${JSON.stringify(seeking ? this.roundFactors(seeking.factors) : {})}.`,
         ));
         const reason = this.createDecisionReason(
@@ -144,6 +146,7 @@ export class AIDiplomacySystem {
           offeredCityId: treaty.offeredCityId,
           offeredCityIds: 'offeredCityIds' in treaty ? treaty.offeredCityIds : undefined,
           goldReparations: treaty.goldReparations,
+          ...(offersExploitation ? { offeredExploitationRights: true } : {}),
         });
         this.emitDecision(reason);
       } else if (wantsPeace && !this.diplomacyManager.canProposePeace(selfId, otherId, currentTurn)) {

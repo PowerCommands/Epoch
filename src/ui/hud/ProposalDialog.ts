@@ -216,6 +216,10 @@ export class ProposalDialog {
       }
       case 'gold_trade':
         return `${fromName} offers:\n+ ${proposal.payload.goldAmount} gold`;
+      case 'exploitation_rights':
+        return `${fromName} requests the right to exploit natural resources in your territory.\n`
+          + 'Their Workers and Work Boats could enter your territory and build improvements on\n'
+          + 'unimproved natural resources. Territory ownership does not change.';
     }
   }
 

@@ -1,5 +1,6 @@
 import type { TurnManager } from './TurnManager';
 import { isBarbarianNation } from '../data/barbarians';
+import { COLONIALISM_CULTURE_NODE_ID } from '../data/cultureTree';
 
 export type DiplomacyState = 'WAR' | 'PEACE';
 
@@ -20,6 +21,8 @@ export interface DiplomacyRelation {
   // the alphabetically-first nation to the second.
   openBordersFromAToB: boolean;
   openBordersFromBToA: boolean;
+  exploitationRightsFromAToB: boolean;
+  exploitationRightsFromBToA: boolean;
   embassyFromAToB: boolean;
   embassyFromBToA: boolean;
   tradeRelations: boolean;
@@ -97,6 +100,12 @@ export interface PeaceProposal {
   offeredCityIds?: string[];
   /** Gold the proposer offers (their treasury caps it at settlement). */
   goldReparations?: number;
+  /**
+   * When true, the proposer also grants the recipient the right to exploit
+   * natural resources in the proposer's own territory. Committed only after the
+   * war transitions to PEACE (see PeaceTreatySystem.settleAcceptedPeace).
+   */
+  offeredExploitationRights?: boolean;
   warDuration: number;
 }
 
@@ -114,6 +123,31 @@ type WarDeclaredListener = (
 ) => void;
 type DiplomacyPairListener = (nationA: string, nationB: string) => void;
 type DiplomacyChangedListener = (nationA: string, nationB: string, relation: DiplomacyRelation) => void;
+
+/**
+ * Negotiation context in which an exploitation right was created, carried only so
+ * History/Chronicle can weight the event. Optional — direct/programmatic grants
+ * leave it undefined.
+ */
+export type ExploitationGrantContext = 'trade' | 'joinWar' | 'peace' | 'capitulation';
+
+export interface ExploitationRightsGrantedEvent {
+  readonly grantorNationId: string;
+  readonly beneficiaryNationId: string;
+  readonly context?: ExploitationGrantContext;
+}
+
+/** Why an active exploitation right ended. Currently only war clears rights. */
+export type ExploitationEndReason = 'war';
+
+export interface ExploitationRightsEndedEvent {
+  readonly grantorNationId: string;
+  readonly beneficiaryNationId: string;
+  readonly reason: ExploitationEndReason;
+}
+
+type ExploitationRightsGrantedListener = (event: ExploitationRightsGrantedEvent) => void;
+type ExploitationRightsEndedListener = (event: ExploitationRightsEndedEvent) => void;
 
 /**
  * Hook surface used by DiplomaticMemorySystem. The manager invokes these on
@@ -187,6 +221,8 @@ export function createDefaultRelation(): DiplomacyRelation {
     state: 'PEACE',
     openBordersFromAToB: false,
     openBordersFromBToA: false,
+    exploitationRightsFromAToB: false,
+    exploitationRightsFromBToA: false,
     embassyFromAToB: false,
     embassyFromBToA: false,
     tradeRelations: false,
@@ -220,10 +256,17 @@ export function createDefaultRelation(): DiplomacyRelation {
 export function normalizeRelation(partial: PartialDiplomacyRelationInput): DiplomacyRelation {
   const base = createDefaultRelation();
   const legacyBoth = partial.openBorders;
+  const state = partial.state ?? base.state;
   return {
-    state: partial.state ?? base.state,
+    state,
     openBordersFromAToB: partial.openBordersFromAToB ?? legacyBoth ?? base.openBordersFromAToB,
     openBordersFromBToA: partial.openBordersFromBToA ?? legacyBoth ?? base.openBordersFromBToA,
+    // A loaded WAR is restored quietly, but must still satisfy the invariant
+    // that belligerents cannot hold exploitation rights against one another.
+    exploitationRightsFromAToB:
+      state === 'WAR' ? false : partial.exploitationRightsFromAToB === true,
+    exploitationRightsFromBToA:
+      state === 'WAR' ? false : partial.exploitationRightsFromBToA === true,
     embassyFromAToB: partial.embassyFromAToB ?? base.embassyFromAToB,
     embassyFromBToA: partial.embassyFromBToA ?? base.embassyFromBToA,
     tradeRelations: partial.tradeRelations ?? base.tradeRelations,
@@ -275,6 +318,8 @@ export class DiplomacyManager {
   private readonly tradeRelationsEstablishedListeners: DiplomacyPairListener[] = [];
   private readonly allianceFormedListeners: DiplomacyPairListener[] = [];
   private readonly jointWarAgreementListeners: DiplomacyPairListener[] = [];
+  private readonly exploitationRightsGrantedListeners: ExploitationRightsGrantedListener[] = [];
+  private readonly exploitationRightsEndedListeners: ExploitationRightsEndedListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
@@ -285,6 +330,7 @@ export class DiplomacyManager {
   constructor(
     private readonly turnManager?: TurnManager,
     private readonly peaceTreatyCooldownTurns: number = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS,
+    private readonly hasCultureUnlock: (nationId: string, cultureNodeId: string) => boolean = () => false,
   ) {}
 
   /** The bilateral Peace Treaty cooldown length applied when a war ends in peace. */
@@ -391,6 +437,70 @@ export class DiplomacyManager {
     return this.readDirectionalGrant(fromNationId, toNationId, relation);
   }
 
+  /** Whether a nation has unlocked the culture capability used by future negotiations. */
+  canUseExploitationRights(nationId: string): boolean {
+    return this.hasCultureUnlock(nationId, COLONIALISM_CULTURE_NODE_ID);
+  }
+
+  /**
+   * Grantor owns the territory; beneficiary receives the right to exploit it.
+   * The optional `context` is the negotiation the grant came from; it is passed
+   * to `onExploitationRightsGranted` listeners only so History/Chronicle can
+   * weight the event, and never affects the stored right.
+   */
+  grantExploitationRights(
+    grantorNationId: string,
+    beneficiaryNationId: string,
+    context?: ExploitationGrantContext,
+  ): boolean {
+    if (grantorNationId === beneficiaryNationId) return false;
+    const key = this.pairKey(grantorNationId, beneficiaryNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    if (current.state === 'WAR'
+      || this.readExploitationRightsGrant(grantorNationId, beneficiaryNationId, current)) return false;
+    const next = { ...current };
+    this.writeExploitationRightsGrant(grantorNationId, beneficiaryNationId, next, true);
+    this.relations.set(key, next);
+    this.notifyChanged(grantorNationId, beneficiaryNationId);
+    for (const cb of this.exploitationRightsGrantedListeners) {
+      cb({ grantorNationId, beneficiaryNationId, context });
+    }
+    return true;
+  }
+
+  /** Remove one directional grant. Missing grants and self-references are harmless. */
+  revokeExploitationRights(grantorNationId: string, beneficiaryNationId: string): boolean {
+    if (grantorNationId === beneficiaryNationId) return false;
+    const key = this.pairKey(grantorNationId, beneficiaryNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    if (!this.readExploitationRightsGrant(grantorNationId, beneficiaryNationId, current)) return false;
+    const next = { ...current };
+    this.writeExploitationRightsGrant(grantorNationId, beneficiaryNationId, next, false);
+    this.relations.set(key, next);
+    this.notifyChanged(grantorNationId, beneficiaryNationId);
+    return true;
+  }
+
+  /** Does beneficiary have exploitation rights inside grantor's territory? */
+  hasExploitationRights(beneficiaryNationId: string, grantorNationId: string): boolean {
+    if (beneficiaryNationId === grantorNationId) return false;
+    const relation = this.relations.get(this.pairKey(grantorNationId, beneficiaryNationId))
+      ?? createDefaultRelation();
+    return relation.state !== 'WAR'
+      && this.readExploitationRightsGrant(grantorNationId, beneficiaryNationId, relation);
+  }
+
+  /** Enumerate active directional grants in stable pair/direction order. */
+  getAllExploitationRights(): Array<{ grantorNationId: string; beneficiaryNationId: string }> {
+    const rights: Array<{ grantorNationId: string; beneficiaryNationId: string }> = [];
+    for (const { keys: [a, b], relation } of this.getAllStates()) {
+      if (relation.state === 'WAR') continue;
+      if (relation.exploitationRightsFromAToB) rights.push({ grantorNationId: a, beneficiaryNationId: b });
+      if (relation.exploitationRightsFromBToA) rights.push({ grantorNationId: b, beneficiaryNationId: a });
+    }
+    return rights;
+  }
+
   declareWar(aggressorId: string, targetId: string): boolean {
     return this.transitionToWar(aggressorId, targetId, false, { source: 'standard' });
   }
@@ -428,6 +538,8 @@ export class DiplomacyManager {
       // War clears any active border grants in both directions.
       openBordersFromAToB: false,
       openBordersFromBToA: false,
+      exploitationRightsFromAToB: false,
+      exploitationRightsFromBToA: false,
       embassyFromAToB: false,
       embassyFromBToA: false,
       tradeRelations: false,
@@ -451,6 +563,10 @@ export class DiplomacyManager {
     // Clear any pending peace proposal between these nations
     this.pendingProposals.delete(aggressorId);
     this.pendingProposals.delete(targetId);
+    // War just cleared any active exploitation rights above; announce the ones
+    // that were actually live so History/Chronicle can record the termination.
+    // (Save restoration never runs through here, so it never emits these.)
+    if (previous) this.emitExploitationRightsEndedByWar(aggressorId, targetId, previous);
     for (const cb of this.warDeclaredListeners) cb(aggressorId, targetId, metadata);
     this.memoryHook?.onDeclareWar(aggressorId, targetId);
     this.notifyChanged(aggressorId, targetId);
@@ -460,7 +576,12 @@ export class DiplomacyManager {
   proposePeace(
     fromId: string,
     toId: string,
-    terms: { offeredCityId?: string; offeredCityIds?: string[]; goldReparations?: number } = {},
+    terms: {
+      offeredCityId?: string;
+      offeredCityIds?: string[];
+      goldReparations?: number;
+      offeredExploitationRights?: boolean;
+    } = {},
   ): void {
     if (this.getState(fromId, toId) !== 'WAR') return;
     const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
@@ -761,6 +882,7 @@ export class DiplomacyManager {
         ...(candidate.offeredCityId ? { offeredCityId: candidate.offeredCityId } : {}),
         ...(Array.isArray(candidate.offeredCityIds) ? { offeredCityIds: [...candidate.offeredCityIds] } : {}),
         ...(Number.isFinite(candidate.goldReparations) ? { goldReparations: candidate.goldReparations } : {}),
+        ...(candidate.offeredExploitationRights === true ? { offeredExploitationRights: true } : {}),
       };
       this.pendingProposals.set(proposal.toNationId, proposal);
     }
@@ -783,6 +905,30 @@ export class DiplomacyManager {
 
   onWarDeclared(callback: WarDeclaredListener): void {
     this.warDeclaredListeners.push(callback);
+  }
+
+  /** Fired whenever a new directional exploitation right is granted (any source). */
+  onExploitationRightsGranted(callback: ExploitationRightsGrantedListener): void {
+    this.exploitationRightsGrantedListeners.push(callback);
+  }
+
+  /** Fired for each active directional right cleared by an event (currently war). */
+  onExploitationRightsEnded(callback: ExploitationRightsEndedListener): void {
+    this.exploitationRightsEndedListeners.push(callback);
+  }
+
+  /** Announce the directional rights that were live between the two nations before war cleared them. */
+  private emitExploitationRightsEndedByWar(a: string, b: string, previous: DiplomacyRelation): void {
+    if (this.exploitationRightsEndedListeners.length === 0) return;
+    const [first, second] = this.sortedPair(a, b);
+    const ended: Array<{ grantorNationId: string; beneficiaryNationId: string }> = [];
+    if (previous.exploitationRightsFromAToB) ended.push({ grantorNationId: first, beneficiaryNationId: second });
+    if (previous.exploitationRightsFromBToA) ended.push({ grantorNationId: second, beneficiaryNationId: first });
+    for (const { grantorNationId, beneficiaryNationId } of ended) {
+      for (const cb of this.exploitationRightsEndedListeners) {
+        cb({ grantorNationId, beneficiaryNationId, reason: 'war' });
+      }
+    }
   }
 
   onEmbassyEstablished(callback: DiplomacyPairListener): void {
@@ -813,6 +959,7 @@ export class DiplomacyManager {
       ...(proposal.offeredCityId ? { offeredCityId: proposal.offeredCityId } : {}),
       ...(proposal.offeredCityIds ? { offeredCityIds: [...proposal.offeredCityIds] } : {}),
       ...(proposal.goldReparations !== undefined ? { goldReparations: proposal.goldReparations } : {}),
+      ...(proposal.offeredExploitationRights ? { offeredExploitationRights: true } : {}),
     };
   }
 
@@ -830,6 +977,8 @@ export class DiplomacyManager {
         relation.state === defaults.state &&
         relation.openBordersFromAToB === defaults.openBordersFromAToB &&
         relation.openBordersFromBToA === defaults.openBordersFromBToA &&
+        relation.exploitationRightsFromAToB === defaults.exploitationRightsFromAToB &&
+        relation.exploitationRightsFromBToA === defaults.exploitationRightsFromBToA &&
         relation.embassyFromAToB === defaults.embassyFromAToB &&
         relation.embassyFromBToA === defaults.embassyFromBToA &&
         relation.tradeRelations === defaults.tradeRelations &&
@@ -858,6 +1007,7 @@ export class DiplomacyManager {
    * listeners. Used by save-load restoration.
    */
   restoreState(a: string, b: string, partial: PartialDiplomacyRelationInput): void {
+    if (a === b) return;
     this.relations.set(this.pairKey(a, b), normalizeRelation(partial));
   }
 
@@ -1069,6 +1219,31 @@ export class DiplomacyManager {
       relation.openBordersFromAToB = value;
     } else if (fromId === b && toId === a) {
       relation.openBordersFromBToA = value;
+    }
+  }
+
+  private readExploitationRightsGrant(
+    grantorNationId: string,
+    beneficiaryNationId: string,
+    relation: DiplomacyRelation,
+  ): boolean {
+    const [a, b] = this.sortedPair(grantorNationId, beneficiaryNationId);
+    if (grantorNationId === a && beneficiaryNationId === b) return relation.exploitationRightsFromAToB;
+    if (grantorNationId === b && beneficiaryNationId === a) return relation.exploitationRightsFromBToA;
+    return false;
+  }
+
+  private writeExploitationRightsGrant(
+    grantorNationId: string,
+    beneficiaryNationId: string,
+    relation: DiplomacyRelation,
+    value: boolean,
+  ): void {
+    const [a, b] = this.sortedPair(grantorNationId, beneficiaryNationId);
+    if (grantorNationId === a && beneficiaryNationId === b) {
+      relation.exploitationRightsFromAToB = value;
+    } else if (grantorNationId === b && beneficiaryNationId === a) {
+      relation.exploitationRightsFromBToA = value;
     }
   }
 

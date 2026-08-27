@@ -16,6 +16,7 @@ import type { CovertPersonality } from '../../types/covertPersonality';
 import { isCovertOperative } from '../../utils/unitRoleUtils';
 import { isBarbarianNation } from '../../data/barbarians';
 import { PRIVATEER } from '../../data/units';
+import { getImprovementOwnerId } from '../ImprovementOwnership';
 
 export type CovertOpsLogger = (nationId: string, message: string) => void;
 
@@ -108,7 +109,9 @@ export class AICovertOperationsSystem {
 
   /** Sabotage: approach a valuable foreign improvement/building and raze it. */
   private pursueSabotage(unit: Unit, nationId: string, personality: CovertPersonality, target: Tile): boolean {
-    const victimId = target.resourceOwnerNationId ?? target.ownerId ?? '';
+    const victimId = target.buildingId !== undefined || target.wonderId !== undefined
+      ? target.ownerId ?? ''
+      : getImprovementOwnerId(target) ?? target.ownerId ?? '';
     const risk = this.assessRisk({ x: target.x, y: target.y }, nationId);
     if (!this.shouldAct(personality, victimId, nationId, risk)) {
       this.log(nationId, `mission rejected (sabotage at ${target.x},${target.y}): high suspicion/risk for ${personality.name} personality.`);
@@ -146,7 +149,9 @@ export class AICovertOperationsSystem {
     let best: Tile | undefined;
     let bestValue = 0;
     for (const tile of tiles) {
-      const owner = tile.resourceOwnerNationId ?? tile.ownerId;
+      const owner = tile.buildingId !== undefined || tile.wonderId !== undefined
+        ? tile.ownerId
+        : getImprovementOwnerId(tile) ?? tile.ownerId;
       if (!owner || owner === nationId || isBarbarianNation(owner)) continue;
       let value = 0;
       if (tile.wonderId !== undefined) value = 4;

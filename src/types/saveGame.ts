@@ -173,6 +173,8 @@ export interface SavedTile {
   resourceOwnerNationId?: string;
   resourceId?: string;
   improvementId?: string;
+  /** Optional for saves created before improvements had explicit economic ownership. */
+  improvementOwnerId?: string;
   improvementConstruction?: {
     improvementId: string;
     cityId?: string;
@@ -210,6 +212,9 @@ export interface SavedDiplomacyEntry {
   openBorders?: boolean;
   openBordersFromAToB?: boolean;
   openBordersFromBToA?: boolean;
+  /** Directional foreign-resource exploitation grants; optional for older saves. */
+  exploitationRightsFromAToB?: boolean;
+  exploitationRightsFromBToA?: boolean;
   embassyFromAToB?: boolean;
   embassyFromBToA?: boolean;
   tradeRelations?: boolean;

@@ -1,7 +1,9 @@
 import type { LeaderDefinition } from '../types/leader';
 import {
   DEFAULT_AI_LEADER_PERSONALITY,
+  resolveExploitationInterest,
   type AILeaderPersonality,
+  type ExploitationInterestLevel,
 } from '../types/aiLeaderPersonality';
 import { getIdeologyById } from './ideologies';
 import type { IdeologyDefinition } from '../types/ideology';
@@ -24,6 +26,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'militarism',
     aiMilitaryDoctrineId: 'navalPower',
     aiPersonality: {
+      resourceExploitationInterest: 3,
       aggressionBias: 15,
       expansionBias: 5,
       economyBias: 0,
@@ -47,6 +50,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     aiNationalAgendaId: 'culture',
     culturePriorities: ['code_of_laws', 'foreign_trade', 'mysticism', 'state_workforce', 'political_philosophy', 'drama_poetry', 'recorded_history'],
     aiPersonality: {
+      resourceExploitationInterest: 1,
       aggressionBias: -12,
       expansionBias: 6,
       economyBias: 5,
@@ -68,6 +72,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'conservatism',
     aiMilitaryDoctrineId: 'religiousMilitia',
     aiPersonality: {
+      resourceExploitationInterest: 1,
       aggressionBias: -5,
       expansionBias: 0,
       economyBias: 5,
@@ -89,6 +94,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'nationalism',
     aiMilitaryDoctrineId: 'navalPower',
     aiPersonality: {
+      resourceExploitationInterest: 2,
       aggressionBias: 5,
       expansionBias: 10,
       economyBias: 10,
@@ -110,6 +116,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'nationalism',
     aiMilitaryDoctrineId: 'economicMinimalArmy',
     aiPersonality: {
+      resourceExploitationInterest: 3,
       aggressionBias: 8,
       expansionBias: 12,
       economyBias: 0,
@@ -131,6 +138,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'conservatism',
     aiMilitaryDoctrineId: 'disciplinedInfantry',
     aiPersonality: {
+      resourceExploitationInterest: 1,
       aggressionBias: -8,
       expansionBias: -5,
       economyBias: 10,
@@ -152,6 +160,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'militarism',
     aiMilitaryDoctrineId: 'mountedAggression',
     aiPersonality: {
+      resourceExploitationInterest: 4,
       aggressionBias: 20,
       expansionBias: 15,
       economyBias: 0,
@@ -173,6 +182,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'traditionalism',
     aiMilitaryDoctrineId: 'cheapInfantrySwarm',
     aiPersonality: {
+      resourceExploitationInterest: 4,
       aggressionBias: 5,
       expansionBias: 5,
       economyBias: 5,
@@ -194,6 +204,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'globalism',
     aiMilitaryDoctrineId: 'religiousMilitia',
     aiPersonality: {
+      resourceExploitationInterest: 2,
       aggressionBias: 0,
       expansionBias: 5,
       economyBias: 12,
@@ -215,6 +226,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'liberalism',
     aiMilitaryDoctrineId: 'eliteArmy',
     aiPersonality: {
+      resourceExploitationInterest: 1,
       aggressionBias: -2,
       expansionBias: 8,
       economyBias: 8,
@@ -237,6 +249,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     aiMilitaryDoctrineId: 'defensiveModern',
     culturePriorities: ['early_empire', 'state_workforce', 'mysticism', 'political_philosophy', 'games_recreation'],
     aiPersonality: {
+      resourceExploitationInterest: 0,
       aggressionBias: -15,
       expansionBias: -5,
       economyBias: 4,
@@ -259,6 +272,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     aiMilitaryDoctrineId: 'imperialCombinedArms',
     culturePriorities: ['state_workforce', 'early_empire', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'guilds'],
     aiPersonality: {
+      resourceExploitationInterest: 3,
       aggressionBias: 5,
       expansionBias: 10,
       economyBias: 10,
@@ -281,6 +295,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     aiMilitaryDoctrineId: 'maritimeRaider',
     culturePriorities: ['foreign_trade', 'state_workforce', 'political_philosophy', 'recorded_history', 'civil_service_civics', 'diplomatic_service'],
     aiPersonality: {
+      resourceExploitationInterest: 2,
       aggressionBias: -4,
       expansionBias: 4,
       economyBias: 16,
@@ -302,6 +317,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'progressivism',
     aiMilitaryDoctrineId: 'fortifiedDefense',
     aiPersonality: {
+      resourceExploitationInterest: 1,
       aggressionBias: -5,
       expansionBias: 0,
       economyBias: 10,
@@ -323,6 +339,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'globalism',
     aiMilitaryDoctrineId: 'disciplinedInfantry',
     aiPersonality: {
+      resourceExploitationInterest: 3,
       aggressionBias: -5,
       expansionBias: 0,
       economyBias: 20,
@@ -345,6 +362,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     aiMilitaryDoctrineId: 'steppeHorde',
     culturePriorities: ['early_empire'],
     aiPersonality: {
+      resourceExploitationInterest: 4,
       aggressionBias: 18,
       expansionBias: 18,
       economyBias: 0,
@@ -366,6 +384,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'militarism',
     aiMilitaryDoctrineId: 'maritimeRaider',
     aiPersonality: {
+      resourceExploitationInterest: 3,
       aggressionBias: 15,
       expansionBias: 8,
       economyBias: 5,
@@ -390,6 +409,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     ideologyId: 'militarism',
     aiMilitaryDoctrineId: 'maritimeRaider',
     aiPersonality: {
+      resourceExploitationInterest: 2,
       aggressionBias: 15,
       expansionBias: 8,
       economyBias: 5,
@@ -421,6 +441,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     aiPersonality: {
       // Aggressive, opportunistic, and fickle: quick to war, slow to befriend,
       // but not suicidally stubborn — players can still buy his alliance.
+      resourceExploitationInterest: 1,
       aggressionBias: 22,
       expansionBias: -12,
       economyBias: 6,
@@ -452,6 +473,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
       // Fierce homeland defender: ready to fight and punish aggressors, resilient
       // to the end (high casualty tolerance), little interest in culture/science,
       // only moderate expansion. Wary of others but will ally against stronger foes.
+      resourceExploitationInterest: 0,
       aggressionBias: 10,
       expansionBias: 3,
       economyBias: 2,
@@ -497,6 +519,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
       // a lower war tolerance means he builds up military strength before striking,
       // while very low diplomacy and peace preference keep him alliance-averse, slow
       // to forgive, and hostile for long stretches.
+      resourceExploitationInterest: 4,
       aggressionBias: 14,
       expansionBias: 14,
       economyBias: 4,
@@ -530,6 +553,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     covertPersonalityId: 'paranoid',
     culturePriorities: ['state_workforce', 'early_empire', 'totalitarianism', 'class_struggle'],
     aiPersonality: {
+      resourceExploitationInterest: 3,
       aggressionBias: 12,
       expansionBias: 10,
       economyBias: 14,
@@ -566,6 +590,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     covertPersonalityId: 'opportunist',
     culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'nationalism', 'totalitarianism', 'mobilization'],
     aiPersonality: {
+      resourceExploitationInterest: 4,
       aggressionBias: 13,
       expansionBias: 15,
       economyBias: 3,
@@ -601,6 +626,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     covertPersonalityId: 'honorable',
     culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'defensive_tactics', 'civil_service_civics', 'diplomatic_service', 'nationalism', 'mobilization'],
     aiPersonality: {
+      resourceExploitationInterest: 0,
       aggressionBias: 5,
       expansionBias: -4,
       economyBias: 4,
@@ -692,6 +718,7 @@ export const CHARLES_DE_GAULLE: LeaderDefinition = {
   culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'nationalism', 'mobilization'],
   gamesOfNationsPreferences: { traditionalFavourite: 'javelin', additionalFavourite: 'fencing' },
   aiPersonality: {
+    resourceExploitationInterest: 1,
     aggressionBias: 7,
     expansionBias: -6,
     economyBias: 8,
@@ -729,6 +756,7 @@ export const ADOLF_HITLER: LeaderDefinition = {
   culturePriorities: ['state_workforce', 'early_empire', 'military_tradition', 'totalitarianism'],
   gamesOfNationsPreferences: { traditionalFavourite: 'javelin', additionalFavourite: 'boxing' },
   aiPersonality: {
+    resourceExploitationInterest: 4,
     aggressionBias: 20,
     expansionBias: 20,
     economyBias: 6,
@@ -858,6 +886,16 @@ export function getLeaderIdeologyById(leaderId: string): IdeologyDefinition {
 
 export function getLeaderPersonalityByNationId(nationId: string): AILeaderPersonality {
   return getLeaderByNationId(nationId)?.aiPersonality ?? DEFAULT_AI_LEADER_PERSONALITY;
+}
+
+/**
+ * The leader's Foreign Resource Exploitation Rights interest (0–4), normalized
+ * to a valid level. Nations without a leader-declared value fall back to the
+ * conservative default. This is the single source of truth every diplomatic
+ * exploitation valuation reads — never derived from the map or resources.
+ */
+export function getLeaderExploitationInterestByNationId(nationId: string): ExploitationInterestLevel {
+  return resolveExploitationInterest(getLeaderPersonalityByNationId(nationId).resourceExploitationInterest);
 }
 
 export function getLeaderMilitaryDoctrineByNationId(nationId: string): AIMilitaryDoctrine {

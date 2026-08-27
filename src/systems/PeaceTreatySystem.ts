@@ -11,8 +11,14 @@ import type { AIMilitaryThreatEvaluationSystem } from './ai/AIMilitaryThreatEval
 import type { DiplomaticEvaluationSystem } from './diplomacy/DiplomaticEvaluationSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
 import { CulturalSphereSystem } from './CulturalSphereSystem';
-import { getLeaderPersonalityByNationId } from '../data/leaders';
+import { getLeaderExploitationInterestByNationId, getLeaderPersonalityByNationId } from '../data/leaders';
 import type { NationCollapseSystem } from './NationCollapseSystem';
+import {
+  commitExploitationRightsConcession,
+  createExploitationRightsConcession,
+  getExploitationRightsValueForInterest,
+  validateExploitationRightsConcession,
+} from './diplomacy/ExploitationRightsConcession';
 
 export const MAX_REPARATIONS_GOLD = 10_000;
 export const REPARATIONS_FRACTION = 0.5;
@@ -54,6 +60,8 @@ export interface PeaceProposalEvaluation {
 export interface PeaceSettlementResult {
   goldTransferred: number;
   cityIdsTransferred: string[];
+  /** Whether the proposer's offered exploitation rights were committed post-peace. */
+  exploitationRightsGranted: boolean;
 }
 
 export interface AIPeaceSeekingEvaluation {
@@ -213,7 +221,9 @@ export class PeaceTreatySystem {
       this.resourceSystem.addGold(proposal.fromNationId, -goldTransferred);
       this.resourceSystem.addGold(proposal.toNationId, goldTransferred);
     }
-    return { goldTransferred, cityIdsTransferred };
+    // Exploitation rights are intentionally committed later, after the war ends —
+    // see settleAcceptedPeace. The core grant refuses wartime grants outright.
+    return { goldTransferred, cityIdsTransferred, exploitationRightsGranted: false };
   }
 
   /**
@@ -223,22 +233,58 @@ export class PeaceTreatySystem {
    */
   settleAcceptedPeace(proposal: PeaceProposal): PeaceSettlementResult {
     if (this.diplomacyManager.getState(proposal.fromNationId, proposal.toNationId) !== 'WAR') {
-      return { goldTransferred: 0, cityIdsTransferred: [] };
+      return { goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false };
     }
     const result = this.executeTreaty(proposal);
+    // Order matters: end the war first, then commit exploitation rights. The core
+    // grant refuses while the nations are still at WAR, so this ordering is what
+    // makes a peace-time exploitation concession legal.
     this.diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, true);
-    return result;
+    const exploitationRightsGranted = proposal.offeredExploitationRights === true
+      && commitExploitationRightsConcession(
+        this.diplomacyManager,
+        this.offeredExploitationRightsConcession(proposal),
+      );
+    return { ...result, exploitationRightsGranted };
   }
 
   /** Gold-equivalent value of everything the offer would actually transfer to the recipient. */
-  computeSettlementValue(proposal: PeaceProposal): { value: number; gold: number; cityValue: number } {
+  computeSettlementValue(
+    proposal: PeaceProposal,
+  ): { value: number; gold: number; cityValue: number; exploitationValue: number } {
     const gold = this.resolveOfferedGold(proposal);
     let cityValue = 0;
     for (const cityId of this.resolveOfferedCityIds(proposal)) {
       const city = this.cityManager.getCity(cityId);
       if (city) cityValue += this.cityConcessionValue(city);
     }
-    return { value: gold + cityValue, gold, cityValue };
+    // The recipient (toNationId) is the beneficiary of the offered rights, so its
+    // leader's exploitation interest determines how much the concession is worth
+    // to it. A recipient with zero interest values it at nothing.
+    const exploitationValue = this.offeredExploitationRightsCount(proposal)
+      ? getExploitationRightsValueForInterest(getLeaderExploitationInterestByNationId(proposal.toNationId))
+      : 0;
+    return { value: gold + cityValue + exploitationValue, gold, cityValue, exploitationValue };
+  }
+
+  /**
+   * The proposer offers exploitation rights in its own territory (grantor =
+   * proposer, beneficiary = recipient). Counts toward settlement value only when
+   * the grant would actually be committable once peace lands — i.e. the proposer
+   * has Colonialism and the exact directional right does not already exist. The
+   * still-active WAR state is expected here, so it is not treated as a blocker.
+   */
+  private offeredExploitationRightsConcession(proposal: PeaceProposal) {
+    return createExploitationRightsConcession(proposal.fromNationId, proposal.toNationId, proposal.fromNationId, 'peace');
+  }
+
+  private offeredExploitationRightsCount(proposal: PeaceProposal): boolean {
+    if (!proposal.offeredExploitationRights) return false;
+    return validateExploitationRightsConcession(
+      this.diplomacyManager,
+      this.offeredExploitationRightsConcession(proposal),
+      { allowWhileAtWar: true },
+    ).ok;
   }
 
   /**
@@ -365,11 +411,21 @@ export class PeaceTreatySystem {
       if (city) offeredCityIds.push(city.id);
     }
 
+    // A losing AI with Colonialism may also surrender its own exploitation rights
+    // as a peace sweetener when gold still falls short of the intended value. This
+    // does NOT depend on the offering leader's own acquisition interest — it is a
+    // desperation concession whose worth is set by the recipient's interest at
+    // evaluation time. It is committed only after the war ends (settleAcceptedPeace).
+    const offeredExploitationRights = goldReparations < intendedSettlementValue
+      && this.diplomacyManager.canUseExploitationRights(proposerNationId)
+      && !this.diplomacyManager.hasExploitationRights(receiverNationId, proposerNationId);
+
     return {
       proposal: {
         ...emptyProposal,
         ...(goldReparations > 0 ? { goldReparations } : {}),
         ...(offeredCityIds.length > 0 ? { offeredCityIds } : {}),
+        ...(offeredExploitationRights ? { offeredExploitationRights: true } : {}),
       },
       seeking,
       intendedSettlementValue,
@@ -398,6 +454,7 @@ export class PeaceTreatySystem {
         ...factors,
         settlementGold: settlement.gold,
         settlementCityValue: settlement.cityValue,
+        settlementExploitationValue: settlement.exploitationValue,
       },
       summary: `pressure=${pressure.toFixed(2)} settlement=${Math.round(settlement.value)} `
         + `threshold=${Math.round(acceptanceThreshold)} → ${accepted ? 'ACCEPT' : 'REJECT'}`,

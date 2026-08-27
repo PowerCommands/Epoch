@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { TileMap } from '../systems/TileMap';
 import type { MapData, Tile } from '../types/map';
 import type { WorldPoint } from '../systems/gridLayout/IGridLayout';
+import type { NationManager } from '../systems/NationManager';
+import { getImprovementOwnerId } from '../systems/ImprovementOwnership';
 
 const OVERLAY_DEPTH = 13;
 const COMPLETED_COLOR = 0xf5e6a3;
@@ -24,6 +26,7 @@ export class TileImprovementOverlayRenderer {
     private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
     private readonly mapData: MapData,
+    private readonly nationManager: NationManager,
   ) {}
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
@@ -76,9 +79,14 @@ export class TileImprovementOverlayRenderer {
     const graphics = this.scene.add.graphics();
     graphics.setDepth(OVERLAY_DEPTH);
     graphics.setAlpha(constructing ? CONSTRUCTION_ALPHA : COMPLETED_ALPHA);
+    const improvementOwnerId = getImprovementOwnerId(tile);
+    const isForeignOwned = improvementOwnerId !== undefined && improvementOwnerId !== tile.ownerId;
+    const completedColor = isForeignOwned
+      ? this.nationManager.getNation(improvementOwnerId)?.color ?? COMPLETED_COLOR
+      : COMPLETED_COLOR;
     graphics.lineStyle(
       LINE_WIDTH,
-      constructing ? CONSTRUCTION_COLOR : COMPLETED_COLOR,
+      constructing ? CONSTRUCTION_COLOR : completedColor,
       1,
     );
 

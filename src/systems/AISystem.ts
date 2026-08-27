@@ -113,7 +113,8 @@ import {
   type NavalExpeditionTarget,
 } from './ai/NavalExpeditionTargetingSystem';
 import { CITY_BASE_HEALTH } from '../data/cities';
-import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId, getLeaderMaxPreferredCitiesByNationId } from '../data/leaders';
+import { getLeaderByNationId, getLeaderPersonalityByNationId, getLeaderMilitaryDoctrineByNationId, getLeaderMaxPreferredCitiesByNationId, getLeaderExploitationInterestByNationId } from '../data/leaders';
+import { isExploitationRequestEligible } from './diplomacy/ExploitationRightsConcession';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { getEraIndex } from '../data/eraTimeline';
 import {
@@ -341,6 +342,10 @@ const MAX_WORKER_TARGET_DISTANCE = 12;
 // to path to the nearest few candidate cities so an unreachable (e.g. overseas)
 // city can't trigger repeated expensive full-map pathfinding.
 const MAX_WORKER_RELOCATION_CITY_CHECKS = 3;
+// Score penalty applied to foreign exploitation-rights targets so a Worker always
+// prefers domestic resource work of equal quality; foreign resource tiles still
+// outrank domestic filler tiles. Keeps AI use of exploitation rights conservative.
+const FOREIGN_EXPLOITATION_TARGET_PENALTY = 1000;
 const LOW_GOLD_PER_TURN = 0;
 const POST_TARGET_SETTLER_DEFAULT_INTERVAL = 8;
 const POST_TARGET_SETTLER_MIN_GOLD = 25;
@@ -1065,6 +1070,31 @@ export class AISystem {
         const humanId = other.id;
         const lastProposal = this.lastTradeProposalTurnByNation.get(nationId) ?? -999;
         if (currentRound - lastProposal < TRADE_PROPOSAL_CADENCE) continue;
+
+        // Personality-driven request to acquire exploitation rights in the human's
+        // territory. Interest-gated and resource-blind — the AI never scans the
+        // human's map; it only knows its own leader values such rights. Shares the
+        // trade-proposal cadence so it can never spam alongside trade offers.
+        const exploitationInterest = getLeaderExploitationInterestByNationId(nationId);
+        if (isExploitationRequestEligible(this.diplomacyManager!, nationId, humanId, exploitationInterest)) {
+          const hasPendingExploitation = this.diplomaticProposalSystem
+            .getPendingProposalsForNation(humanId)
+            .some((p) => p.fromNationId === nationId && p.payload.kind === 'exploitation_rights');
+          if (!hasPendingExploitation) {
+            this.diplomaticProposalSystem.createProposal({
+              fromNationId: nationId,
+              toNationId: humanId,
+              kind: 'exploitation_rights',
+              payload: { kind: 'exploitation_rights', grantorNationId: humanId, beneficiaryNationId: nationId },
+              createdTurn: currentRound,
+              expiresTurn: currentRound + TRADE_PROPOSAL_EXPIRY_TURNS,
+            });
+            this.lastTradeProposalTurnByNation.set(nationId, currentRound);
+            console.debug(this.formatLog(nationId, `requests exploitation rights from human player (leader interest ${exploitationInterest}).`));
+            break outer;
+          }
+        }
+
         const alreadyHasPending = this.diplomaticProposalSystem
           .getPendingProposalsForNation(humanId)
           .some((p) => p.fromNationId === nationId && p.payload.kind === 'resource_trade');
@@ -3636,7 +3666,15 @@ export class AISystem {
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
 
     const ownerNationId = tile.resourceOwnerNationId ?? tile.ownerId;
-    if (ownerNationId !== undefined && ownerNationId !== nationId) return false;
+    if (ownerNationId !== undefined && ownerNationId !== nationId) {
+      // Foreign territorial waters are eligible only under exploitation rights, and
+      // only when no third party already economically owns the resource. Mirrors
+      // BuilderSystem's naval exploitation gate so validity and build agree.
+      const canExploitForeign = tile.resourceOwnerNationId === undefined
+        && tile.ownerId !== undefined
+        && this.diplomacyManager?.hasExploitationRights(nationId, tile.ownerId) === true;
+      if (!canExploitForeign) return false;
+    }
 
     const resource = getNaturalResourceById(tile.resourceId);
     if (resource === undefined) return false;
@@ -3870,8 +3908,55 @@ export class AISystem {
       }
     }
 
+    this.addForeignExploitationLandCandidates(nationId, unit, ownCities, seen, assignedKeys, selfKey, candidates);
+
     candidates.sort((a, b) => b.score - a.score || a.y - b.y || a.x - b.x);
     return candidates.map(({ x, y }) => ({ x, y }));
+  }
+
+  /**
+   * Adds eligible foreign natural-resource tiles the nation may improve under
+   * existing exploitation rights (Step 2 mechanic) as extra Worker targets. This
+   * is the first deliberate AI use of acquired rights: it reuses the shared
+   * BuilderSystem validity check (which already enforces rights, unimproved
+   * resource, tech, etc.) rather than any new strategy engine. Foreign targets are
+   * deliberately penalized so a Worker always prefers domestic work of equal
+   * quality — the AI makes *some* practical use of rights, not optimal use. No
+   * economic payback is computed; interest/resource counts are never consulted.
+   */
+  private addForeignExploitationLandCandidates(
+    nationId: string,
+    unit: Unit,
+    ownCities: City[],
+    seen: Set<string>,
+    assignedKeys: Set<string>,
+    selfKey: string | undefined,
+    candidates: Array<{ x: number; y: number; score: number }>,
+  ): void {
+    if (!this.builderSystem || !this.diplomacyManager) return;
+    const grantorIds = this.diplomacyManager.getAllExploitationRights()
+      .filter((grant) => grant.beneficiaryNationId === nationId)
+      .map((grant) => grant.grantorNationId);
+    if (grantorIds.length === 0) return;
+
+    for (const grantorId of grantorIds) {
+      for (const city of this.cityManager.getCitiesByOwner(grantorId)) {
+        for (const coord of city.ownedTileCoords) {
+          const key = tileKey(coord.x, coord.y);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (assignedKeys.has(key) && key !== selfKey) continue;
+          const tile = this.mapData.tiles[coord.y]?.[coord.x];
+          if (!tile) continue;
+          if (this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, { x: tile.x, y: tile.y }) > MAX_WORKER_TARGET_DISTANCE) {
+            continue;
+          }
+          if (!this.builderSystem.canNationImproveLandTile(nationId, tile)) continue;
+          const score = this.scoreWorkerTile(tile, ownCities) - FOREIGN_EXPLOITATION_TARGET_PENALTY;
+          candidates.push({ x: tile.x, y: tile.y, score });
+        }
+      }
+    }
   }
 
   private scoreWorkerTile(tile: Tile, ownCities: City[]): number {

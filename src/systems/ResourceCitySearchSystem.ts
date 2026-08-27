@@ -3,6 +3,7 @@ import type { City } from '../entities/City';
 import type { CityManager } from './CityManager';
 import type { NationManager } from './NationManager';
 import type { MapData, Tile } from '../types/map';
+import { getImprovementOwnerId } from './ImprovementOwnership';
 
 export type ResourceCitySearchResult =
   | {
@@ -56,7 +57,7 @@ export class ResourceCitySearchSystem {
         if (!tile.resourceId) continue;
         const resource = getNaturalResourceById(tile.resourceId);
         if (!resource) continue;
-        const ownerNationId = tile.resourceOwnerNationId ?? tile.ownerId;
+        const ownerNationId = getImprovementOwnerId(tile) ?? tile.ownerId;
         entries.push({
           normalized: normalizeSearchText(`${resource.name} ${resource.id}`),
           result: {

@@ -3,6 +3,7 @@ import type { Nation } from '../entities/Nation';
 import type { Unit } from '../entities/Unit';
 import { compareEras, getHighestEra } from './EraSystem';
 import { TileType, type MapData, type Tile } from '../types/map';
+import type { DiplomacyManager } from './DiplomacyManager';
 
 export function canEmbark(unit: Unit, nation: Nation | undefined): boolean {
   if (unit.unitType.isNaval === true || nation === undefined) return false;
@@ -42,6 +43,32 @@ export function canUnitEndMovementOnTile(unit: Unit, tile: Tile, nation?: Nation
 
 export function isWaterTile(tile: Tile): boolean {
   return tile.type === TileType.Ocean || tile.type === TileType.Coast;
+}
+
+/**
+ * The narrow peaceful border exception granted by exploitation rights.
+ * It intentionally identifies the two canonical exploitation units rather
+ * than all civilians or all units capable of building.
+ */
+export function hasExploitationTerritoryAccess(
+  unit: Unit,
+  territoryOwnerId: string,
+  diplomacyManager: DiplomacyManager | undefined,
+): boolean {
+  if (unit.ownerId === territoryOwnerId || diplomacyManager === undefined) return false;
+  if (unit.unitType.id !== 'worker' && unit.unitType.id !== 'work_boat') return false;
+  return diplomacyManager.hasExploitationRights(unit.ownerId, territoryOwnerId);
+}
+
+/** Canonical ordinary diplomatic access plus the narrow exploitation exception. */
+export function canUnitPeacefullyEnterTerritory(
+  unit: Unit,
+  territoryOwnerId: string,
+  diplomacyManager: DiplomacyManager | undefined,
+): boolean {
+  if (unit.ownerId === territoryOwnerId || diplomacyManager === undefined) return true;
+  return diplomacyManager.canEnterTerritory(unit.ownerId, territoryOwnerId)
+    || hasExploitationTerritoryAccess(unit, territoryOwnerId, diplomacyManager);
 }
 
 function getHighestEraForNation(nation: Nation) {

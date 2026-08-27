@@ -12,6 +12,8 @@ interface FindPathOptions {
   respectMovementPoints?: boolean;
 }
 
+type TerritoryAccessPredicate = (unit: Unit, tile: Tile) => boolean;
+
 interface OpenEntry {
   key: number;
   f: number;
@@ -29,6 +31,7 @@ const GENERATION_MAX = 0xffffffff;
  * - Path reuse should stay out until it can be integrated without target churn.
  */
 export class PathfindingSystem {
+  private territoryAccessPredicate: TerritoryAccessPredicate = () => true;
   private readonly mapWidth: number;
   private readonly mapHeight: number;
   private gScore!: Float64Array;
@@ -47,6 +50,11 @@ export class PathfindingSystem {
     this.mapWidth = mapData.width;
     this.mapHeight = mapData.height;
     this.ensureBuffers();
+  }
+
+  /** Keep path previews/queues aligned with the authoritative movement border rule. */
+  setTerritoryAccessPredicate(predicate: TerritoryAccessPredicate): void {
+    this.territoryAccessPredicate = predicate;
   }
 
   findPath(
@@ -226,6 +234,7 @@ export class PathfindingSystem {
 
   private canEnter(unit: Unit, tile: Tile): boolean {
     if (!canUnitEnterTile(unit, tile, this.nationManager.getNation(unit.ownerId))) return false;
+    if (!this.territoryAccessPredicate(unit, tile)) return false;
 
     const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
     if (occupant !== null && occupant.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
@@ -235,6 +244,7 @@ export class PathfindingSystem {
 
   private canEndOn(unit: Unit, tile: Tile): boolean {
     if (!canUnitEndMovementOnTile(unit, tile, this.nationManager.getNation(unit.ownerId))) return false;
+    if (!this.territoryAccessPredicate(unit, tile)) return false;
 
     const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
     if (occupant !== null && occupant.id !== unit.id && unit.unitType.ignoresUnitCollision !== true) return false;
