@@ -6,6 +6,7 @@ export const NEWSPAPER_IMAGE_PATHS = {
   victory: `${NEWS_PATH}victory.png`,
   nationEliminated: `${NEWS_PATH}nation-defeated.png`,
   capitalCaptured: `${NEWS_PATH}capital-lost.png`,
+  capitulation: `${NEWS_PATH}nation-defeated.png`,
   warDeclared: `${NEWS_PATH}war-declared.png`,
   worldWarStarted: `${NEWS_PATH}war-declared.png`,
   worldWarEnded: `${NEWS_PATH}war-declared.png`,
@@ -84,6 +85,9 @@ export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, Ne
   capitalCaptured: definition(95, NEWSPAPER_IMAGE_PATHS.capitalCaptured, 'the capture of a capital', (c) => {
     const [captor] = names(c); return `${upper(c.cityName ?? 'CAPITAL')} FALLS TO ${upper(captor)}`;
   }, (c) => { const [captor, former] = names(c); return `${captor} has seized ${c.cityName ?? 'a rival capital'} from ${former}.`; }),
+  capitulation: definition(96, NEWSPAPER_IMAGE_PATHS.capitulation, 'the unconditional surrender', (c) => {
+    const [surrendered, victor] = names(c); return `${upper(surrendered)} CAPITULATES TO ${upper(victor)}`;
+  }, (c) => { const [surrendered, victor] = names(c); return `${surrendered} has capitulated to ${victor}, disbanding its armies and submitting to imposed terms.`; }),
   warDeclared: definition(90, NEWSPAPER_IMAGE_PATHS.warDeclared, 'the outbreak of war', (c) => {
     const [a, b] = names(c); return `WAR ERUPTS BETWEEN ${upper(a)} AND ${upper(b)}`;
   }, (c) => { const [a, b] = names(c); return `${a} has declared war on ${b}, ending the peace between them.`; }),

@@ -51,6 +51,7 @@ import type { WonderSystem } from './WonderSystem';
 import type { CorporationSystem } from './CorporationSystem';
 import type { AerospacePartSystem } from './AerospacePartSystem';
 import type { WorldCouncilSystem } from './WorldCouncilSystem';
+import type { CapitulationSystem } from './CapitulationSystem';
 import type { GossipSystem } from './GossipSystem';
 import type { GossipFlavorEventSystem } from './GossipFlavorEventSystem';
 import type { ScenarioHistoricalEventSystem } from './ScenarioHistoricalEventSystem';
@@ -101,6 +102,7 @@ export interface SaveLoadContext {
   covertSuspicionSystem?: CovertSuspicionSystem;
   victorySystem?: VictorySystem;
   worldCouncilSystem?: WorldCouncilSystem;
+  capitulationSystem?: CapitulationSystem;
   /** Snapshot supplied by the progressive guide; presentation state is excluded. */
   guideProgress?: SavedGuideProgress;
 }
@@ -394,12 +396,14 @@ export class SaveLoadService {
       cities,
       units,
       diplomacy,
+      pendingPeaceProposals: diplomacyManager.getPendingPeaceProposals(),
       discovery,
       symbolicGifts: symbolicGiftRegistry?.serialize(),
       gossip: gossipSystem?.serialize(),
       gossipFlavor: gossipFlavorEventSystem?.serialize(),
       wonders,
       worldCouncil: context.worldCouncilSystem?.getState() ?? undefined,
+      capitulation: context.capitulationSystem?.serialize(),
       alliances: allianceManager?.getAllAlliances().map((alliance) => ({
         ...alliance,
         memberNationIds: [...alliance.memberNationIds],
@@ -510,6 +514,7 @@ export class SaveLoadService {
     })));
     SaveLoadService.applyWonders(state.wonders ?? [], context.wonderSystem);
     context.worldCouncilSystem?.restore(state.worldCouncil);
+    context.capitulationSystem?.restore(state.capitulation);
     SaveLoadService.applyCorporations(state.corporations ?? [], context.corporationSystem);
     context.aerospacePartSystem?.restoreProgress(state.aerospaceParts ?? []);
     SaveLoadService.applyCitiesAndProduction(
@@ -561,6 +566,9 @@ export class SaveLoadService {
       state.turn.currentRound,
       state.turn.currentTurnIndex,
     );
+    // Re-emit only after the restored round is authoritative. Existing listeners
+    // then resume a Human offer UI or synchronously resolve an AI recipient.
+    context.diplomacyManager.restorePendingPeaceProposals(state.pendingPeaceProposals);
     // Restore lifecycle and its calendar anchor only after the round cursor is
     // in place, but before GameScene resumes with TurnManager.start().
     context.scenarioHistoricalEventSystem?.restore(state.scenarioHistoricalEvents);

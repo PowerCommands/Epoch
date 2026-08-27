@@ -40,6 +40,12 @@ export interface ScenarioMeta {
    * DEFAULT_BARBARIAN_SPAWN_INTERVAL (10).
    */
   barbarianSpawnInterval?: number;
+  /**
+   * Turns two nations are prevented from declaring war on each other after making
+   * peace. Authored in the Editor's Scenario Details. Absent/invalid falls back to
+   * DEFAULT_PEACE_TREATY_COOLDOWN_TURNS (10).
+   */
+  peaceTreatyCooldownTurns?: number;
 }
 
 export interface ScenarioMap {

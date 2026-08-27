@@ -705,6 +705,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Barbarian spawn interval (rounds)
         <input id="sd-barbarian-interval" type="number" min="1" step="1">
       </label>
+      <label class="field">Peace Treaty cooldown (turns)
+        <input id="sd-peace-treaty-cooldown" type="number" min="0" step="1">
+      </label>
       <section class="sd-events-section">
         <div class="sd-events-heading">
           <h3>Historical Events</h3>
@@ -937,6 +940,11 @@ function normalizeScenarioMeta() {
   } else {
     meta.barbarianSpawnInterval = Math.floor(meta.barbarianSpawnInterval);
   }
+  if (typeof meta.peaceTreatyCooldownTurns !== 'number' || !(meta.peaceTreatyCooldownTurns >= 0)) {
+    meta.peaceTreatyCooldownTurns = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
+  } else {
+    meta.peaceTreatyCooldownTurns = Math.floor(meta.peaceTreatyCooldownTurns);
+  }
 
   const progression = meta.timeProgression && typeof meta.timeProgression === 'object' ? meta.timeProgression : {};
   const mode = SCENARIO_TIME_PROGRESSION_MODES.includes(progression.mode)
@@ -991,6 +999,9 @@ const MIN_TEMPLATE_SCALE = 0.1, MAX_TEMPLATE_SCALE = 12;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
 let tileBuildings = null; // 2D array [r][q] of building ids or undefined
+// Default turns two nations cannot re-declare war after peace (mirrors the runtime
+// DEFAULT_PEACE_TREATY_COOLDOWN_TURNS in src/systems/DiplomacyManager.ts).
+const DEFAULT_PEACE_TREATY_COOLDOWN_TURNS = 10;
 const BARBARIAN_CAMP_BUILDING_ID = 'barbarian-camp';
 // Default rounds between barbarian spawns from a camp (mirrors the runtime
 // DEFAULT_BARBARIAN_SPAWN_INTERVAL in src/data/barbarians.ts).
@@ -5486,6 +5497,7 @@ function openScenarioDetails() {
   document.getElementById('sd-time-mode').value = meta.timeProgression.mode;
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
+  document.getElementById('sd-peace-treaty-cooldown').value = String(meta.peaceTreatyCooldownTurns);
   scenarioDetailsHistoricalEventsDraft = structuredCloneCompat(scenario.historicalEvents || []);
   document.getElementById('sd-error').textContent = '';
   updateScenarioDetailsStaticVisibility();
@@ -5529,6 +5541,12 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const peaceTreatyCooldownTurns = parseInt(document.getElementById('sd-peace-treaty-cooldown').value, 10);
+  if (!Number.isInteger(peaceTreatyCooldownTurns) || peaceTreatyCooldownTurns < 0) {
+    errorEl.textContent = 'Peace Treaty cooldown must be a non-negative integer (turns).';
+    return false;
+  }
+
   if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
   scenario.meta.name = name;
   scenario.meta.description = document.getElementById('sd-description').value.trim();
@@ -5537,6 +5555,7 @@ function saveScenarioDetails() {
   scenario.meta.startYearIsBC = document.getElementById('sd-start-year-bc').checked;
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
+  scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
   scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
 
   writeEditorAutosave();

@@ -56,6 +56,7 @@ import type { BuildImprovementPreview } from '../../systems/BuilderSystem';
 import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
 import type { WorldCouncilSystem } from '../../systems/WorldCouncilSystem';
+import type { CapitulationSystem } from '../../systems/CapitulationSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../../types/worldCouncil';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { AerospacePartSystem } from '../../systems/AerospacePartSystem';
@@ -181,6 +182,7 @@ export class RightSidebarPanelDataProvider {
   private cultureSystem: CultureSystem | null = null;
   private wonderSystem: WonderSystem | null = null;
   private worldCouncilSystem: WorldCouncilSystem | null = null;
+  private capitulationSystem: CapitulationSystem | null = null;
   private corporationSystem: CorporationSystem | null = null;
   private aerospacePartSystem: AerospacePartSystem | null = null;
   private requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS;
@@ -283,6 +285,10 @@ export class RightSidebarPanelDataProvider {
 
   setWorldCouncilSystem(worldCouncilSystem: WorldCouncilSystem): void {
     this.worldCouncilSystem = worldCouncilSystem;
+  }
+
+  setCapitulationSystem(capitulationSystem: CapitulationSystem): void {
+    this.capitulationSystem = capitulationSystem;
   }
 
   setCorporationSystem(corporationSystem: CorporationSystem): void {
@@ -1406,7 +1412,8 @@ export class RightSidebarPanelDataProvider {
               upkeepAffordabilityTurns: 10,
               getNationEra: (nationId) => this.eraSystem?.getNationEra(nationId) ?? 'ancient',
               getUnitProductionRestrictionReason: (nationId, unitTypeId) =>
-                this.worldCouncilSystem?.getUnitProductionRestrictionReason(nationId, unitTypeId),
+                this.worldCouncilSystem?.getUnitProductionRestrictionReason(nationId, unitTypeId)
+                ?? this.capitulationSystem?.getMilitaryProductionBlockReason(nationId, unitTypeId),
             },
           )) return;
         this.productionSystem.enqueue(city.id, item);
@@ -1783,67 +1790,68 @@ export class RightSidebarPanelDataProvider {
     const hasTradeRelations = dm.hasTradeRelations(humanId, nationId);
     const embassyValidation = dm.canEstablishEmbassy(humanId, nationId, validationContext);
     const tradeValidation = dm.canEstablishTradeRelations(humanId, nationId, validationContext);
-    const openBordersUnavailableReason = relation.state === 'WAR' ? 'Unavailable during war.' : undefined;
+    const isAtWar = relation.state === 'WAR';
     const rows: RightSidebarRow[] = [];
 
-    rows.push(disabledReasonButtonRow(
-      humanGrantsBorders ? 'Cancel Open Borders' : 'Open Borders',
-      openBordersUnavailableReason,
-      () => {
-        document.dispatchEvent(new CustomEvent('diplomacyAction', {
-          detail: { action: 'toggleOpenBorders', targetNationId: nationId },
-        }));
-      },
-      nation?.color,
-    ));
-    if (openBordersUnavailableReason) rows.push(textRow(openBordersUnavailableReason, true));
-    rows.push(disabledReasonButtonRow(
-      hasHumanEmbassy ? 'Embassy Established' : 'Establish Embassy',
-      hasHumanEmbassy ? 'Embassy already established.' : embassyValidation.reason,
-      () => {
-        document.dispatchEvent(new CustomEvent('diplomacyAction', {
-          detail: { action: 'establishEmbassy', targetNationId: nationId },
-        }));
-      },
-      nation?.color,
-    ));
-    if (!hasHumanEmbassy && embassyValidation.reason) rows.push(textRow(embassyValidation.reason, true));
-    rows.push(disabledReasonButtonRow(
-      hasTradeRelations ? 'Cancel Trade Relations' : 'Establish Trade Relations',
-      hasTradeRelations ? undefined : tradeValidation.reason,
-      () => {
-        document.dispatchEvent(new CustomEvent('diplomacyAction', {
-          detail: {
-            action: hasTradeRelations ? 'cancelTradeRelations' : 'establishTradeRelations',
-            targetNationId: nationId,
-          },
-        }));
-      },
-      hasTradeRelations ? 0xb86767 : nation?.color,
-    ));
-    if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
-    // Exchange Maps: one-time intelligence sharing. Tied directly to Writing —
-    // it only requires that the human knows Writing, the two nations have met,
-    // and they are not at war (no embassy or other diplomatic prerequisites).
-    // AI acceptance (handled elsewhere) still depends on attitude.
-    const exchangeMapsReason = relation.state === 'WAR'
-      ? 'Unavailable during war.'
-      : !validationContext.haveMet(humanId, nationId)
+    // While at war, peacetime diplomacy actions are filtered out entirely (item 5):
+    // no disabled buttons and no "Unavailable during war." text. Only actions that
+    // remain usable during war are shown, leaving room for future war-specific ones.
+    if (!isAtWar) {
+      rows.push(disabledReasonButtonRow(
+        humanGrantsBorders ? 'Cancel Open Borders' : 'Open Borders',
+        undefined,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'toggleOpenBorders', targetNationId: nationId },
+          }));
+        },
+        nation?.color,
+      ));
+      rows.push(disabledReasonButtonRow(
+        hasHumanEmbassy ? 'Embassy Established' : 'Establish Embassy',
+        hasHumanEmbassy ? 'Embassy already established.' : embassyValidation.reason,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'establishEmbassy', targetNationId: nationId },
+          }));
+        },
+        nation?.color,
+      ));
+      if (!hasHumanEmbassy && embassyValidation.reason) rows.push(textRow(embassyValidation.reason, true));
+      rows.push(disabledReasonButtonRow(
+        hasTradeRelations ? 'Cancel Trade Relations' : 'Establish Trade Relations',
+        hasTradeRelations ? undefined : tradeValidation.reason,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: {
+              action: hasTradeRelations ? 'cancelTradeRelations' : 'establishTradeRelations',
+              targetNationId: nationId,
+            },
+          }));
+        },
+        hasTradeRelations ? 0xb86767 : nation?.color,
+      ));
+      if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
+      // Exchange Maps: one-time intelligence sharing. Tied directly to Writing —
+      // it only requires that the human knows Writing and the two nations have met.
+      // AI acceptance (handled elsewhere) still depends on attitude.
+      const exchangeMapsReason = !validationContext.haveMet(humanId, nationId)
         ? 'You have not met this nation.'
         : !validationContext.hasTechnology(humanId, 'writing')
           ? 'Requires Writing.'
           : undefined;
-    rows.push(disabledReasonButtonRow(
-      'Exchange Maps',
-      exchangeMapsReason,
-      () => {
-        document.dispatchEvent(new CustomEvent('diplomacyAction', {
-          detail: { action: 'exchangeMaps', targetNationId: nationId },
-        }));
-      },
-      nation?.color,
-    ));
-    if (exchangeMapsReason) rows.push(textRow(exchangeMapsReason, true));
+      rows.push(disabledReasonButtonRow(
+        'Exchange Maps',
+        exchangeMapsReason,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'exchangeMaps', targetNationId: nationId },
+          }));
+        },
+        nation?.color,
+      ));
+      if (exchangeMapsReason) rows.push(textRow(exchangeMapsReason, true));
+    }
     rows.push(disabledReasonButtonRow(
       'Give Gift',
       undefined,
@@ -1854,9 +1862,10 @@ export class RightSidebarPanelDataProvider {
       },
       nation?.color,
     ));
-    rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
-    rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
-    const isAtWar = relation.state === 'WAR';
+    if (!isAtWar) {
+      rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
+      rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
+    }
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);
     const peaceTreatyReason = peaceTreatyRemaining > 0
@@ -1886,8 +1895,24 @@ export class RightSidebarPanelDataProvider {
     if (alliancePartnerReason) rows.push(textRow(alliancePartnerReason, true));
     if (peaceTreatyReason && !alliancePartnerReason) rows.push(textRow(peaceTreatyReason, true));
     if (peaceUnavailableReason) rows.push(textRow(peaceUnavailableReason, true));
-    rows.push({ kind: 'separator' });
-    rows.push(...this.buildTradeRouteProposalRows(nationId, nation?.color));
+    // Demand Capitulation: a separate, more severe wartime action, shown only when
+    // the target's position is dire enough that surrender is plausible.
+    if (isAtWar && this.capitulationSystem?.canDemandCapitulation(humanId, nationId)) {
+      rows.push(disabledReasonButtonRow(
+        'Demand Capitulation',
+        undefined,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'demandCapitulation', targetNationId: nationId },
+          }));
+        },
+        0x9c3b3b,
+      ));
+    }
+    if (!isAtWar) {
+      rows.push({ kind: 'separator' });
+      rows.push(...this.buildTradeRouteProposalRows(nationId, nation?.color));
+    }
     return rows;
   }
 

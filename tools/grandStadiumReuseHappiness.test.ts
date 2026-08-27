@@ -30,16 +30,18 @@ function systemHarness(options: {
   cities?: GamesOfNationsHostCityCandidate[];
   activeStadiums?: Set<string>;
   physicalStadiums?: Set<string>;
+  living?: string[];
 } = {}) {
   let turn = 80;
   const cities = options.cities ?? [candidate('paris', 10)];
   const active = options.activeStadiums ?? new Set<string>();
   const physical = options.physicalStadiums ?? active;
   const owners = new Map(cities.map((city) => [city.id, 'france']));
+  const living = options.living ?? ['france'];
   const logs: string[] = [];
   const dependencies: GamesOfNationsDependencies = {
     getCurrentTurn: () => turn,
-    getLivingNationIds: () => ['france'],
+    getLivingNationIds: () => living,
     getNationName: () => 'France',
     getCapitalCity: () => cities[0] ? { id: cities[0].id, name: cities[0].name } : undefined,
     getHostCityCandidates: () => cities.map((city) => ({ ...city, hasGrandStadium: active.has(city.id) })),
@@ -121,6 +123,7 @@ test('stadium reuse is city-specific, survives GoN save/load, and remains valid 
   const h = systemHarness({
     cities: [candidate('paris', 8, true), candidate('lyon', 30)],
     activeStadiums: new Set(['paris']),
+    living: ['france', 'england', 'sweden'], // three eligible participants let the Games proceed
   });
   assert.equal(h.system.canCityConstructGrandStadium('lyon', 'france'), false, 'only the selected host city gets special availability');
   const saved = JSON.parse(JSON.stringify(h.system.getState()));

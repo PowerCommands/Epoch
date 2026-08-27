@@ -93,6 +93,8 @@ export class ProductionSystem {
   private productionDiversionProvider: ProductionDiversionProvider = () => 0;
   private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
   private hasSkippedInitialTurnStart = false;
+  /** When set, returns a reason a nation may not produce a given military unit (e.g. demilitarization). */
+  private militaryUnitBlockReasonProvider: (nationId: string, unitTypeId: string) => string | undefined = () => undefined;
 
   constructor(
     cityManager: CityManager,
@@ -105,8 +107,25 @@ export class ProductionSystem {
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
   }
 
+  /**
+   * Authoritative single choke point for the demilitarization production ban. Any
+   * enqueue path (human UI, AI, buy, front-insert) funnels through here, so a
+   * blocked military unit can never enter a queue regardless of the caller.
+   */
+  setMilitaryUnitBlockReasonProvider(provider: (nationId: string, unitTypeId: string) => string | undefined): void {
+    this.militaryUnitBlockReasonProvider = provider;
+  }
+
+  private isMilitaryProductionBlocked(cityId: string, item: Producible): boolean {
+    if (item.kind !== 'unit') return false;
+    const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+    if (!ownerId) return false;
+    return this.militaryUnitBlockReasonProvider(ownerId, item.unitType.id) !== undefined;
+  }
+
   /** Add item to end of queue. */
   enqueue(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
+    if (this.isMilitaryProductionBlocked(cityId, item)) return;
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
@@ -118,6 +137,7 @@ export class ProductionSystem {
 
   /** Add item to the front of the queue, making it the active production. */
   enqueueFront(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
+    if (this.isMilitaryProductionBlocked(cityId, item)) return;
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
@@ -176,6 +196,8 @@ export class ProductionSystem {
 
   /** Legacy: clears queue and enqueues single item. Used by AI. */
   setProduction(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
+    // Never wipe an existing queue to replace it with a blocked military unit.
+    if (this.isMilitaryProductionBlocked(cityId, item)) return;
     const existing = this.queues.get(cityId) ?? [];
     for (const entry of existing) this.notifyRemoved(cityId, entry);
     this.queues.delete(cityId);
@@ -501,6 +523,25 @@ export class ProductionSystem {
       } else {
         this.queues.set(cityId, next);
       }
+      for (const entry of removed) this.notifyRemoved(cityId, entry);
+      this.notifyChanged(cityId);
+    }
+  }
+
+  /**
+   * Deterministically strip every military-unit entry from the given cities' queues.
+   * Used on capitulation so units started before surrender cannot emerge during the
+   * demilitarization window. Non-military production (buildings, settlers, …) is kept.
+   */
+  removeMilitaryUnitsFromQueues(cityIds: readonly string[], isMilitary: (unitTypeId: string) => boolean): void {
+    for (const cityId of cityIds) {
+      const queue = this.queues.get(cityId);
+      if (!queue) continue;
+      const removed = queue.filter((entry) => entry.item.kind === 'unit' && isMilitary(entry.item.unitType.id));
+      if (removed.length === 0) continue;
+      const next = queue.filter((entry) => !(entry.item.kind === 'unit' && isMilitary(entry.item.unitType.id)));
+      if (next.length === 0) this.queues.delete(cityId);
+      else this.queues.set(cityId, next);
       for (const entry of removed) this.notifyRemoved(cityId, entry);
       this.notifyChanged(cityId);
     }

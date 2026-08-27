@@ -85,11 +85,12 @@ import {
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
-import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, PEACE_TREATY_COOLDOWN_TURNS } from '../systems/DiplomacyManager';
+import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, resolvePeaceTreatyCooldownTurns, type PeaceProposal } from '../systems/DiplomacyManager';
 import { GossipSystem } from '../systems/GossipSystem';
 import { GossipFlavorEventSystem } from '../systems/GossipFlavorEventSystem';
 import { recordGossipInsultInHistory } from '../systems/GossipHistoryRecorder';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
+import { CapitulationSystem, type CapitulationAppliedEvent } from '../systems/CapitulationSystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
@@ -742,6 +743,10 @@ export class GameScene extends Phaser.Scene {
         resources.gold -= amount;
         return true;
       },
+      // Historical Event system (created later) owns World War lifecycle; diplomacy owns
+      // aggressor state. Both closures run only during gameplay, after those systems exist.
+      hasActiveWorldWar: () => scenarioHistoricalEventSystem.hasActiveWorldWar(),
+      isActiveWarAggressor: (nationId) => diplomacyManager.isActiveWarAggressor(nationId),
       getLeaderGamesPreferences: (nationId) => getLeaderByNationId(nationId)?.gamesOfNationsPreferences,
       getWorldEra: () => getHighestEra(nationManager.getAllNations().map((nation) => eraSystem.getNationEra(nation.id))),
       seed: `${data.mapKey}|${[...data.activeNationIds].sort().join(',')}|games-of-nations-v1`,
@@ -1046,7 +1051,10 @@ export class GameScene extends Phaser.Scene {
     let cityViewDismissedCityId: string | null = null;
 
     // 13b. Diplomacy system
-    const diplomacyManager = new DiplomacyManager(turnManager);
+    const diplomacyManager = new DiplomacyManager(
+      turnManager,
+      resolvePeaceTreatyCooldownTurns(scenarioJson.meta?.peaceTreatyCooldownTurns),
+    );
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
       nationManager,
@@ -1160,6 +1168,49 @@ export class GameScene extends Phaser.Scene {
       diplomaticEvaluationSystem,
     );
 
+    const recordCapitulationHistory = (event: CapitulationAppliedEvent): void => {
+      const surrenderName = timelineNationName(event.capitulatingNationId);
+      const victorName = timelineNationName(event.demandingNationId);
+      historicalTimeline.record({
+        type: 'capitulation',
+        icon: '🏳️',
+        text: `${surrenderName} capitulates to ${victorName}, disbanding its military and submitting to imposed terms.`,
+        eventNationIds: [event.capitulatingNationId, event.demandingNationId],
+        newsImportance: 6,
+        metadata: {
+          aggressorNationId: event.demandingNationId,
+          targetNationId: event.capitulatingNationId,
+        },
+      });
+      logManager.info({
+        nationIds: [event.capitulatingNationId, event.demandingNationId],
+        category: 'diplomacy',
+        message: `${surrenderName} capitulated to ${victorName}: military disbanded, ${event.reparationsPaid} gold in reparations, `
+          + `${event.restoredCityIds.length} cit${event.restoredCityIds.length === 1 ? 'y' : 'ies'} restored, ${event.formerEnemyIds.length} war(s) ended.`,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    };
+
+    const capitulationSystem = new CapitulationSystem({
+      diplomacyManager,
+      cityManager,
+      nationManager,
+      unitManager,
+      resourceSystem,
+      productionSystem,
+      peaceTreatySystem,
+      militaryEvaluationSystem: aiMilitaryEvaluationSystem,
+      getCurrentTurn: () => turnManager.getCurrentRound(),
+      getDemilitarizationTurns: () => diplomacyManager.getPeaceTreatyCooldownTurns(),
+      log: (message) => console.log(message),
+      onCapitulation: (event) => recordCapitulationHistory(event),
+    });
+    // Authoritative production choke point: military units cannot be queued anywhere
+    // by any caller (human, AI, buy) while a nation is demilitarized.
+    productionSystem.setMilitaryUnitBlockReasonProvider((nationId, unitTypeId) =>
+      capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId));
+
     const aiDiplomacySystem = new AIDiplomacySystem(
       diplomacyManager,
       diplomaticEvaluationSystem,
@@ -1238,7 +1289,8 @@ export class GameScene extends Phaser.Scene {
         Math.max(unit.unitType.baseStrength, unit.unitType.rangedStrength ?? 0) > 0,
       ));
     unitProductionRuleContext.getUnitProductionRestrictionReason = (nationId, unitTypeId) =>
-      worldCouncilSystem.getUnitProductionRestrictionReason(nationId, unitTypeId);
+      worldCouncilSystem.getUnitProductionRestrictionReason(nationId, unitTypeId)
+      ?? capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId);
     turnManager.on('turnStart', (event) => worldCouncilSystem.handleTurnStart(event));
     tradeDealSystem.setRestrictionProvider((input) =>
       worldCouncilSystem.getTradeRestrictionReason(
@@ -1347,11 +1399,11 @@ export class GameScene extends Phaser.Scene {
 
     turnManager.on('turnStart', (e) => diplomaticProposalSystem.update(e.round));
 
-    const shouldAutoplayAcceptPeace = (proposal: { fromNationId: string; toNationId: string; offeredCityId?: string; goldReparations?: number; warDuration: number }): boolean => {
-      return peaceTreatySystem.aiShouldAcceptTreaty(proposal, proposal.toNationId);
+    const shouldAutoplayAcceptPeace = (proposal: PeaceProposal): boolean => {
+      return peaceTreatySystem.evaluatePeaceProposal(proposal).accepted;
     };
 
-    const logTreatyDetails = (proposal: { fromNationId: string; toNationId: string; offeredCityId?: string; goldReparations?: number; warDuration: number }): void => {
+    const logTreatyDetails = (proposal: PeaceProposal): void => {
       const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
       const toName = nationManager.getNation(proposal.toNationId)?.name ?? proposal.toNationId;
       logManager.info({
@@ -1359,8 +1411,8 @@ export class GameScene extends Phaser.Scene {
         category: 'diplomacy',
         message: `${fromName} proposed peace to ${toName} after ${proposal.warDuration} turn${proposal.warDuration === 1 ? '' : 's'} of war.`,
       });
-      if (proposal.offeredCityId) {
-        const city = cityManager.getCity(proposal.offeredCityId);
+      for (const cityId of peaceTreatySystem.resolveOfferedCityIds(proposal)) {
+        const city = cityManager.getCity(cityId);
         if (city) {
           logManager.info({
             nationIds: [proposal.fromNationId, proposal.toNationId],
@@ -1378,7 +1430,7 @@ export class GameScene extends Phaser.Scene {
       }
     };
 
-    const logAutoplayPeaceResolution = (proposal: { fromNationId: string; toNationId: string; offeredCityId?: string; goldReparations?: number; warDuration: number }, accepted: boolean): void => {
+    const logAutoplayPeaceResolution = (proposal: PeaceProposal, accepted: boolean): void => {
       const fromName = nationManager.getNation(proposal.fromNationId)?.name ?? proposal.fromNationId;
       const toName = nationManager.getNation(proposal.toNationId)?.name ?? proposal.toNationId;
       logManager.info({
@@ -2750,6 +2802,9 @@ export class GameScene extends Phaser.Scene {
       gamesOfNationsSystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
+    // AI must not select military units for a demilitarized (capitulated) nation.
+    aiSystem.setUnitProductionRestrictionReason((nationId, unitTypeId) =>
+      capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId));
     const aiPolicySystem = new AIPolicySystem(policySystem, nationManager, happinessSystem);
 
     const runAutoplayNationTurn = (nation: Nation): void => {
@@ -4250,7 +4305,8 @@ export class GameScene extends Phaser.Scene {
       });
     });
 
-    // AI proposes peace when all units lost (subject to normal peace rules)
+    // Catastrophic unit loss gets an immediate consideration outside the normal
+    // AI turn, but still uses the same pressure gate and offer constructor.
     unitManager.onUnitChanged((event) => {
       if (event.reason !== 'removed') return;
       const deadOwnerId = event.unit.ownerId;
@@ -4260,9 +4316,13 @@ export class GameScene extends Phaser.Scene {
       if (unitManager.getUnitsByOwner(deadOwnerId).length > 0) return;
       const currentTurn = turnManager.getCurrentRound();
       if (!diplomacyManager.canProposePeace(deadOwnerId, humanNationIdForDiplomacy, currentTurn)) return;
-      const treaty = peaceTreatySystem.buildAIPeaceTreaty(deadOwnerId, humanNationIdForDiplomacy);
-      if (!treaty) return; // capital-only nation — fight to the end
-      diplomacyManager.proposePeace(deadOwnerId, humanNationIdForDiplomacy, treaty);
+      const warDuration = diplomacyManager.getWarDuration(deadOwnerId, humanNationIdForDiplomacy, currentTurn);
+      const plan = peaceTreatySystem.buildAIPeaceProposal(deadOwnerId, humanNationIdForDiplomacy, warDuration);
+      if (!plan.seeking.shouldInitiate) return;
+      diplomacyManager.proposePeace(deadOwnerId, humanNationIdForDiplomacy, {
+        offeredCityIds: plan.proposal.offeredCityIds,
+        goldReparations: plan.proposal.goldReparations,
+      });
     });
 
     // Peace proposal modal (incoming from AI only)
@@ -4272,12 +4332,18 @@ export class GameScene extends Phaser.Scene {
 
       // AI-to-AI peace: the receiving AI auto-evaluates without showing a player modal.
       if (proposal.toNationId !== humanNationIdForDiplomacy) {
-        const accepted = peaceTreatySystem.aiShouldAcceptTreaty(proposal, proposal.toNationId);
+        const evaluation = peaceTreatySystem.evaluatePeaceProposal(proposal);
+        const accepted = evaluation.accepted;
+        console.log(`[Peace] AI ${proposal.toNationId} evaluates ${proposal.fromNationId}'s offer: `
+          + `${evaluation.summary} | factors ${JSON.stringify(Object.fromEntries(
+            Object.entries(evaluation.factors).map(([key, value]) => [key, Number(value.toFixed(2))]),
+          ))}`);
         if (accepted) {
           logTreatyDetails(proposal);
-          peaceTreatySystem.executeTreaty(proposal);
+          peaceTreatySystem.settleAcceptedPeace(proposal);
+        } else {
+          diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, false);
         }
-        diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
         if (!isAutoplayActive()) rightPanel?.requestRefresh();
         return;
       }
@@ -4285,8 +4351,8 @@ export class GameScene extends Phaser.Scene {
       if (isAutoplayActive()) {
         const accepted = shouldAutoplayAcceptPeace(proposal);
         logTreatyDetails(proposal);
-        if (accepted) peaceTreatySystem.executeTreaty(proposal);
-        diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, accepted);
+        if (accepted) peaceTreatySystem.settleAcceptedPeace(proposal);
+        else diplomacyManager.respondToPeace(proposal.fromNationId, proposal.toNationId, false);
         logAutoplayPeaceResolution(proposal, accepted);
         return;
       }
@@ -4294,24 +4360,42 @@ export class GameScene extends Phaser.Scene {
       const nation = nationManager.getNation(proposal.fromNationId);
       if (!nation) return;
       const color = `#${nation.color.toString(16).padStart(6, '0')}`;
-
-      const offeredCity = proposal.offeredCityId ? cityManager.getCity(proposal.offeredCityId) : undefined;
-      const cityLine = offeredCity ? `\nOffers city: ${offeredCity.name}` : '';
-      const goldLine = proposal.goldReparations && proposal.goldReparations > 0
-        ? `\nWar reparations: ${proposal.goldReparations} gold`
-        : '';
-      const durationLine = `\nWar duration: ${proposal.warDuration} turn${proposal.warDuration === 1 ? '' : 's'}`;
+      const leader = getLeaderByNationId(proposal.fromNationId);
+      if (leader) this.leaderAudienceDialog?.open(leader.id);
+      const proposerPressure = peaceTreatySystem.computeWarPressure(
+        proposal.fromNationId,
+        humanNationIdForDiplomacy,
+        proposal.warDuration,
+      ).pressure;
+      const appeal = proposerPressure >= 0.82
+        ? 'We cannot allow this war to continue. Accept these terms and let there be peace.'
+        : proposerPressure >= 0.65
+          ? 'This conflict has cost us dearly. We are prepared to make concessions to end it.'
+          : 'We have both paid enough for this war. Let us discuss peace.';
+      const offeredCities = peaceTreatySystem.resolveOfferedCityIds(proposal)
+        .map((cityId) => cityManager.getCity(cityId)?.name ?? cityId);
+      const termParts = [
+        proposal.goldReparations && proposal.goldReparations > 0
+          ? `${peaceTreatySystem.resolveOfferedGold(proposal)} gold offered`
+          : 'No gold offered',
+        offeredCities.length > 0 ? `Cities offered: ${offeredCities.join(', ')}` : 'No cities offered',
+        `Hostilities end immediately`,
+        `Peace Treaty: ${diplomacyManager.getPeaceTreatyCooldownTurns()} turns`,
+      ];
 
       showDiplomacyModal({
-        title: 'Peace Proposal',
-        message: `${nation.name} proposes peace.${durationLine}${cityLine}${goldLine}\n\nAccept?`,
+        title: `${leader?.name ?? nation.name} proposes peace`,
+        message: `${appeal} ${termParts.join(' · ')}.`,
         accentColor: color,
         confirmLabel: 'Accept',
-        cancelLabel: 'Decline',
+        cancelLabel: 'Reject',
         onConfirm: () => {
+          if (diplomacyManager.getState(proposal.fromNationId, humanNationIdForDiplomacy) !== 'WAR') {
+            diplomacyManager.respondToPeace(proposal.fromNationId, humanNationIdForDiplomacy, false);
+            return;
+          }
           logTreatyDetails(proposal);
-          peaceTreatySystem.executeTreaty(proposal);
-          diplomacyManager.respondToPeace(proposal.fromNationId, humanNationIdForDiplomacy, true);
+          peaceTreatySystem.settleAcceptedPeace(proposal);
           rightPanel?.refreshCurrent();
         },
         onCancel: () => {
@@ -4334,7 +4418,7 @@ export class GameScene extends Phaser.Scene {
       logManager.info({
         nationIds: [nationA, nationB],
         category: 'diplomacy',
-        message: `${nameA} and ${nameB} entered enforced peace treaty for ${PEACE_TREATY_COOLDOWN_TURNS} turns.`,
+        message: `${nameA} and ${nameB} entered enforced peace treaty for ${diplomacyManager.getPeaceTreatyCooldownTurns()} turns.`,
       });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -4898,6 +4982,281 @@ export class GameScene extends Phaser.Scene {
       goldInput.focus();
     };
 
+    const showProposePeaceDialog = (targetNationId: string): void => {
+      const targetNation = nationManager.getNation(targetNationId);
+      const humanNation = nationManager.getNation(humanNationIdForDiplomacy);
+      if (!targetNation || !humanNation) return;
+      const currentTurn = turnManager.getCurrentRound();
+      if (!diplomacyManager.canProposePeace(humanNationIdForDiplomacy, targetNationId, currentTurn)) return;
+
+      document.getElementById('propose-peace-modal')?.remove();
+      const accent = `#${targetNation.color.toString(16).padStart(6, '0')}`;
+      const availableGold = Math.max(0, Math.floor(nationManager.getResources(humanNationIdForDiplomacy).gold));
+      const offerableCities = peaceTreatySystem.getOfferableCities(humanNationIdForDiplomacy);
+      const cooldownTurns = diplomacyManager.getPeaceTreatyCooldownTurns();
+      const warDuration = diplomacyManager.getWarDuration(humanNationIdForDiplomacy, targetNationId, currentTurn);
+
+      const overlay = document.createElement('div');
+      overlay.id = 'propose-peace-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.62);'
+        + 'display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#edf4ff;';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'width:min(560px,calc(100vw - 32px));max-height:min(760px,calc(100vh - 32px));'
+        + `overflow:auto;background:#111923;border:2px solid ${accent};border-radius:6px;`
+        + 'box-shadow:0 24px 80px rgba(0,0,0,0.55);padding:20px;';
+      overlay.appendChild(panel);
+
+      const title = document.createElement('h2');
+      title.textContent = `Propose Peace to ${targetNation.name}`;
+      title.style.cssText = 'margin:0 0 6px;font-size:22px;';
+      panel.appendChild(title);
+
+      const subtitle = document.createElement('div');
+      subtitle.style.cssText = 'color:#aebdd0;font-size:13px;margin-bottom:12px;';
+      subtitle.textContent = `War duration: ${warDuration} turn${warDuration === 1 ? '' : 's'}. `
+        + `Both nations agree not to attack each other for ${cooldownTurns} turn${cooldownTurns === 1 ? '' : 's'} after peace.`;
+      panel.appendChild(subtitle);
+
+      const goldLabel = document.createElement('label');
+      goldLabel.style.cssText = 'display:block;font-weight:700;margin-bottom:6px;';
+      goldLabel.textContent = `Gold (available: ${availableGold})`;
+      panel.appendChild(goldLabel);
+      const goldInput = document.createElement('input');
+      goldInput.type = 'number';
+      goldInput.min = '0';
+      goldInput.max = String(availableGold);
+      goldInput.step = '1';
+      goldInput.value = '0';
+      goldInput.style.cssText = 'width:140px;padding:6px;margin-bottom:14px;background:#0b121b;'
+        + 'border:1px solid rgba(143,163,190,0.4);border-radius:4px;color:#edf4ff;';
+      panel.appendChild(goldInput);
+
+      const citiesHeader = document.createElement('div');
+      citiesHeader.style.cssText = 'font-weight:700;margin-bottom:6px;';
+      citiesHeader.textContent = 'Cities to cede (optional)';
+      panel.appendChild(citiesHeader);
+      const cityChecks: Array<{ id: string; input: HTMLInputElement }> = [];
+      if (offerableCities.length === 0) {
+        const none = document.createElement('div');
+        none.style.cssText = 'color:#aebdd0;font-size:13px;margin-bottom:12px;';
+        none.textContent = 'You own no non-capital cities to offer. Your capital can never be ceded.';
+        panel.appendChild(none);
+      } else {
+        for (const city of offerableCities) {
+          const row = document.createElement('label');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;';
+          const check = document.createElement('input');
+          check.type = 'checkbox';
+          check.value = city.id;
+          row.appendChild(check);
+          const text = document.createElement('span');
+          text.textContent = `${city.name} (pop ${city.population})`;
+          row.appendChild(text);
+          panel.appendChild(row);
+          cityChecks.push({ id: city.id, input: check });
+        }
+      }
+
+      const summary = document.createElement('div');
+      summary.style.cssText = 'margin:14px 0;padding:10px;border-radius:6px;background:#0b121b;'
+        + 'border:1px solid rgba(143,163,190,0.35);font-size:13px;color:#cdd9e8;min-height:20px;';
+      panel.appendChild(summary);
+
+      const readGold = (): number => Math.max(0, Math.min(availableGold, Math.floor(Number(goldInput.value) || 0)));
+      const readCities = (): string[] => cityChecks.filter((c) => c.input.checked).map((c) => c.id);
+      const updateSummary = (): void => {
+        const gold = readGold();
+        const cityIds = readCities();
+        const parts: string[] = [];
+        parts.push(gold > 0 ? `${gold} gold` : 'no gold');
+        if (cityIds.length > 0) {
+          const names = cityIds.map((id) => cityManager.getCity(id)?.name ?? id).join(', ');
+          parts.push(`cities: ${names}`);
+        }
+        summary.textContent = `Offer: ${parts.join(' + ')}. Peace Treaty cooldown: ${cooldownTurns} turns.`;
+      };
+      goldInput.addEventListener('input', updateSummary);
+      for (const c of cityChecks) c.input.addEventListener('change', updateSummary);
+      updateSummary();
+
+      const buttons = document.createElement('div');
+      buttons.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;margin-top:8px;';
+      const makeButton = (label: string, primary: boolean, handler: () => void): HTMLButtonElement => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.cssText = `padding:8px 20px;font-size:15px;cursor:pointer;border-radius:4px;`
+          + `border:1px solid ${primary ? accent : '#5a6b80'};`
+          + `background:${primary ? accent : 'transparent'};color:${primary ? '#000' : '#cdd9e8'};`;
+        btn.addEventListener('click', handler);
+        return btn;
+      };
+      buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
+      buttons.appendChild(makeButton('Propose', true, () => {
+        overlay.remove();
+        resolveHumanPeaceProposal(targetNationId, readGold(), readCities());
+      }));
+      panel.appendChild(buttons);
+
+      document.body.appendChild(overlay);
+      goldInput.focus();
+    };
+
+    // Builds, evaluates and (if accepted) atomically settles a human → AI peace offer.
+    const resolveHumanPeaceProposal = (targetNationId: string, gold: number, cityIds: string[]): void => {
+      const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
+      diplomacyManager.proposePeace(humanNationIdForDiplomacy, targetNationId, {
+        goldReparations: gold,
+        offeredCityIds: cityIds,
+      });
+      const proposal = diplomacyManager.getPendingProposal(targetNationId);
+      if (!proposal) return;
+
+      const evaluation = peaceTreatySystem.evaluatePeaceProposal(proposal);
+      // Diagnostic-only (dev/autorun); raw scores are never shown in the player log.
+      console.log(`[Peace] ${targetName} evaluates ${nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'you'}'s offer: `
+        + `${evaluation.summary} | factors ${JSON.stringify(
+          Object.fromEntries(Object.entries(evaluation.factors).map(([k, v]) => [k, Number(v.toFixed(2))])),
+        )}`);
+
+      if (evaluation.accepted) {
+        logTreatyDetails(proposal);
+        peaceTreatySystem.settleAcceptedPeace(proposal);
+        showLeaderResponsePopup(targetNationId, `${aiLeaderName} accepts`, [
+          `${aiLeaderName} accepts your terms. Our nations are at peace.`,
+        ]);
+      } else {
+        diplomacyManager.respondToPeace(humanNationIdForDiplomacy, targetNationId, false);
+        logManager.info({
+          nationIds: [humanNationIdForDiplomacy, targetNationId],
+          category: 'diplomacy',
+          message: `${targetName} rejected the peace offer.`,
+        });
+        showLeaderResponsePopup(targetNationId, `${aiLeaderName} rejects`, [
+          `${aiLeaderName} rejects your offer. The war continues.`,
+        ]);
+      }
+      rightPanel?.refreshCurrent();
+    };
+
+    const showDemandCapitulationDialog = (targetNationId: string): void => {
+      const targetNation = nationManager.getNation(targetNationId);
+      if (!targetNation) return;
+      if (!capitulationSystem.canDemandCapitulation(humanNationIdForDiplomacy, targetNationId)) return;
+
+      document.getElementById('demand-capitulation-modal')?.remove();
+      const accent = `#${targetNation.color.toString(16).padStart(6, '0')}`;
+      const treasury = Math.max(0, Math.floor(nationManager.getResources(targetNationId).gold));
+      const enemyCount = diplomacyManager.getWarringNationIds(targetNationId).length;
+      const cooldownTurns = diplomacyManager.getPeaceTreatyCooldownTurns();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'demand-capitulation-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.62);'
+        + 'display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#edf4ff;';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'width:min(560px,calc(100vw - 32px));max-height:min(760px,calc(100vh - 32px));'
+        + `overflow:auto;background:#141019;border:2px solid ${accent};border-radius:6px;`
+        + 'box-shadow:0 24px 80px rgba(0,0,0,0.55);padding:20px;';
+      overlay.appendChild(panel);
+
+      const title = document.createElement('h2');
+      title.textContent = `Demand Capitulation from ${targetNation.name}`;
+      title.style.cssText = 'margin:0 0 8px;font-size:22px;color:#f4d3d3;';
+      panel.appendChild(title);
+
+      const terms = document.createElement('div');
+      terms.style.cssText = 'color:#cbb6b6;font-size:13px;margin-bottom:12px;line-height:1.5;';
+      terms.innerHTML = 'Unconditional surrender under imposed terms. If accepted, the enemy will:'
+        + '<ul style="margin:6px 0 0 18px;padding:0;">'
+        + '<li>disband its entire military</li>'
+        + `<li>be unable to produce military units for ${cooldownTurns} turns</li>`
+        + '<li>pay the financial reparations demanded below</li>'
+        + '<li>have conquered cities restored to their founding nations</li>'
+        + '<li>end all of its current wars</li>'
+        + `<li>be protected by a Peace Treaty for ${cooldownTurns} turns</li>`
+        + '</ul>';
+      panel.appendChild(terms);
+
+      const repLabel = document.createElement('label');
+      repLabel.style.cssText = 'display:block;font-weight:700;margin-bottom:6px;';
+      repLabel.textContent = `Reparations (max ${treasury}, their treasury)`;
+      panel.appendChild(repLabel);
+      const repInput = document.createElement('input');
+      repInput.type = 'number';
+      repInput.min = '0';
+      repInput.max = String(treasury);
+      repInput.step = '1';
+      repInput.value = String(Math.min(treasury, Math.floor(treasury / 2)));
+      repInput.style.cssText = 'width:160px;padding:6px;background:#0b0710;'
+        + 'border:1px solid rgba(190,143,143,0.4);border-radius:4px;color:#edf4ff;';
+      panel.appendChild(repInput);
+
+      const split = document.createElement('div');
+      split.style.cssText = 'margin:12px 0;color:#cbb6b6;font-size:13px;';
+      const readReparations = (): number => Math.max(0, Math.min(treasury, Math.floor(Number(repInput.value) || 0)));
+      const updateSplit = (): void => {
+        const amount = readReparations();
+        split.textContent = enemyCount > 0
+          ? `${amount} gold will be divided equally among all ${enemyCount} nation(s) at war with ${targetNation.name}.`
+          : `${amount} gold reparations.`;
+      };
+      repInput.addEventListener('input', updateSplit);
+      updateSplit();
+      panel.appendChild(split);
+
+      const buttons = document.createElement('div');
+      buttons.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;margin-top:8px;';
+      const makeButton = (label: string, primary: boolean, handler: () => void): HTMLButtonElement => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.cssText = 'padding:8px 20px;font-size:15px;cursor:pointer;border-radius:4px;'
+          + `border:1px solid ${primary ? accent : '#7a5a5a'};`
+          + `background:${primary ? accent : 'transparent'};color:${primary ? '#000' : '#e8cdcd'};`;
+        btn.addEventListener('click', handler);
+        return btn;
+      };
+      buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
+      buttons.appendChild(makeButton('Demand Surrender', true, () => {
+        overlay.remove();
+        resolveCapitulationDemand(targetNationId, readReparations());
+      }));
+      panel.appendChild(buttons);
+
+      document.body.appendChild(overlay);
+      repInput.focus();
+    };
+
+    // Evaluates and (if accepted) atomically applies a human → AI capitulation demand.
+    const resolveCapitulationDemand = (targetNationId: string, reparations: number): void => {
+      const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
+      const evaluation = capitulationSystem.evaluateCapitulationDemand(humanNationIdForDiplomacy, targetNationId);
+      console.log(`[Capitulation] ${targetName} evaluates surrender demand: ${evaluation.summary} | factors ${JSON.stringify(
+        Object.fromEntries(Object.entries(evaluation.factors).map(([k, v]) => [k, Number(v.toFixed(2))])),
+      )}`);
+
+      if (!evaluation.accepted) {
+        showLeaderResponsePopup(targetNationId, `${aiLeaderName} refuses`, [
+          `${aiLeaderName} refuses to capitulate. The war continues.`,
+        ]);
+        return;
+      }
+      const result = capitulationSystem.applyCapitulation(humanNationIdForDiplomacy, targetNationId, reparations);
+      if (!result.accepted) {
+        showLeaderResponsePopup(targetNationId, `${aiLeaderName} refuses`, [
+          `${aiLeaderName} refuses to capitulate. The war continues.`,
+        ]);
+        return;
+      }
+      showLeaderResponsePopup(targetNationId, `${aiLeaderName} capitulates`, [
+        `${aiLeaderName} accepts unconditional surrender.`,
+        `Military disbanded. ${result.reparationsPaid} gold paid in reparations.`,
+        `${result.restoredCityIds.length} cit${result.restoredCityIds.length === 1 ? 'y' : 'ies'} restored; ${result.formerEnemyIds.length} war(s) ended.`,
+      ]);
+      rightPanel?.refreshCurrent();
+    };
+
     // Diplomacy actions from right-side details buttons
     const onDiplomacyAction = (event: Event) => {
       const { action, targetNationId } = (event as CustomEvent<{ action: string; targetNationId: string; fromCityId?: string; toCityId?: string; setupPaymentGold?: number }>).detail;
@@ -4932,49 +5291,13 @@ export class GameScene extends Phaser.Scene {
           onCancel: () => {},
         });
       } else if (action === 'proposePeace') {
-        const currentTurn = turnManager.getCurrentRound();
-        if (!diplomacyManager.canProposePeace(humanNationIdForDiplomacy, targetNationId, currentTurn)) return;
-        const offeredCity = peaceTreatySystem.selectPeaceOfferCity(humanNationIdForDiplomacy);
-        if (!offeredCity) return; // capital-only — cannot propose peace
-        const aggressorId = diplomacyManager.getAggressorNationId(humanNationIdForDiplomacy, targetNationId);
-        const isAggressor = aggressorId === humanNationIdForDiplomacy;
-        const goldReparations = isAggressor ? peaceTreatySystem.calculateReparations(humanNationIdForDiplomacy) : undefined;
-
-        const cityLine = `\nOffering city: ${offeredCity.name}`;
-        const goldLine = goldReparations && goldReparations > 0 ? `\nWar reparations: ${goldReparations} gold` : '';
-        const warDuration = diplomacyManager.getWarDuration(humanNationIdForDiplomacy, targetNationId, currentTurn);
-        const durationLine = `\nWar duration: ${warDuration} turn${warDuration === 1 ? '' : 's'}`;
-
-        showDiplomacyModal({
-          title: 'Propose Peace',
-          message: `Propose peace to ${targetNation.name}?${durationLine}${cityLine}${goldLine}`,
-          accentColor: color,
-          confirmLabel: 'Propose',
-          cancelLabel: 'Cancel',
-          onConfirm: () => {
-            const treaty = { offeredCityId: offeredCity.id, goldReparations };
-            diplomacyManager.proposePeace(humanNationIdForDiplomacy, targetNationId, treaty);
-            const pendingProposal = diplomacyManager.getPendingProposal(targetNationId);
-            const accepted = pendingProposal
-              ? peaceTreatySystem.aiShouldAcceptTreaty(pendingProposal, targetNationId)
-              : false;
-            if (accepted && pendingProposal) {
-              logTreatyDetails(pendingProposal);
-              peaceTreatySystem.executeTreaty(pendingProposal);
-            }
-            diplomacyManager.respondToPeace(humanNationIdForDiplomacy, targetNationId, accepted);
-            if (!accepted) {
-              const toName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
-              logManager.info({
-                nationIds: [humanNationIdForDiplomacy, targetNationId],
-                category: 'diplomacy',
-                message: `${toName} rejected the peace offer.`,
-              });
-            }
-            rightPanel?.refreshCurrent();
-          },
-          onCancel: () => {},
-        });
+        // Negotiated peace: gold and/or optional non-capital city concessions.
+        showProposePeaceDialog(targetNationId);
+      } else if (action === 'demandCapitulation') {
+        // Unconditional surrender under imposed terms — only offered when eligible.
+        if (capitulationSystem.canDemandCapitulation(humanNationIdForDiplomacy, targetNationId)) {
+          showDemandCapitulationDialog(targetNationId);
+        }
       } else if (action === 'toggleOpenBorders') {
         if (diplomacyManager.getState(humanNationIdForDiplomacy, targetNationId) === 'WAR') return;
         diplomacyManager.toggleOpenBorders(humanNationIdForDiplomacy, targetNationId);
@@ -5615,6 +5938,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setWorldCouncilSystem(worldCouncilSystem);
+    rightPanel.setCapitulationSystem(capitulationSystem);
     rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setAerospacePartSystem(
       aerospacePartSystem,
@@ -7417,6 +7741,7 @@ export class GameScene extends Phaser.Scene {
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
+          capitulationSystem,
           guideProgress: guideProgression.getState(),
         }),
         focusFirstCity: (zoom = 2) => {
@@ -8014,6 +8339,7 @@ export class GameScene extends Phaser.Scene {
         gamesOfNationsSystem,
         covertSuspicionSystem,
         worldCouncilSystem,
+        capitulationSystem,
       });
       resourceAccessSystem.invalidateResourceIndex();
       updateFog();
@@ -8113,6 +8439,7 @@ export class GameScene extends Phaser.Scene {
           covertSuspicionSystem,
           victorySystem,
           worldCouncilSystem,
+          capitulationSystem,
           guideProgress: guideProgression.getState(),
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
@@ -8176,6 +8503,7 @@ export class GameScene extends Phaser.Scene {
         covertSuspicionSystem,
         victorySystem,
         worldCouncilSystem,
+        capitulationSystem,
         guideProgress: guideProgression.getState(),
       });
     const saveGameDialog = new SaveGameDialog({

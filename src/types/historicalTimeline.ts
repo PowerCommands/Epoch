@@ -6,6 +6,7 @@ export type HistoricalEventType =
   | 'embassyEstablished'
   | 'tradeRelations'
   | 'warDeclared'
+  | 'capitulation'
   | 'worldWarStarted'
   | 'worldWarEnded'
   | 'joinedWar'

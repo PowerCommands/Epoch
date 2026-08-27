@@ -19,7 +19,7 @@ import type { GamesOfNationsLeaderPreferences, SavedGamesOfNationsState } from '
 
 function createHarness(options: { human?: boolean; future?: boolean; saved?: SavedGamesOfNationsState } = {}) {
   let turn = 1;
-  const ids = ['alpha', 'beta', ...(options.human ? ['human'] : [])];
+  const ids = ['alpha', 'beta', 'gamma', ...(options.human ? ['human'] : [])];
   const gold: Record<string, number> = { alpha: 1000, beta: 800, human: 1200 };
   const spent: Array<{ nationId: string; amount: number }> = [];
   const preferences: Record<string, GamesOfNationsLeaderPreferences> = {
@@ -104,7 +104,7 @@ test('human sees fixed AI proposals, must exceed the leader, may abstain, and pe
   h.system.handleCultureCompleted('alpha', GAMES_AND_RECREATION_CULTURE_ID, 10);
   assert.equal(h.system.handleEraReached('renaissance', 11), true);
   const pending = h.system.getSummary().pendingSportAuction!;
-  assert.equal(pending.proposals.length, 2);
+  assert.equal(pending.proposals.length, 3);
   const saved = h.system.getState();
   const restored = createHarness({ human: true, saved });
   assert.deepEqual(restored.system.getSummary().pendingSportAuction?.proposals, pending.proposals);

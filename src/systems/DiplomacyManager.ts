@@ -91,7 +91,11 @@ export interface DiplomacyAgreementValidationResult {
 export interface PeaceProposal {
   fromNationId: string;
   toNationId: string;
+  /** @deprecated single-city legacy field; prefer offeredCityIds. Still honored. */
   offeredCityId?: string;
+  /** Cities the proposer offers to cede. Capital and non-owned cities are rejected at settlement. */
+  offeredCityIds?: string[];
+  /** Gold the proposer offers (their treasury caps it at settlement). */
   goldReparations?: number;
   warDuration: number;
 }
@@ -153,7 +157,21 @@ export const MAX_SUSPICION = 100;
 /** Passive suspicion decay applied to every tracked relation each round. */
 export const SUSPICION_DECAY_PER_ROUND = 1;
 export const MIN_WAR_TURNS_FOR_PEACE = 15;
-export const PEACE_TREATY_COOLDOWN_TURNS = 20;
+/**
+ * Default turns two nations cannot re-declare war after making peace. Overridable
+ * per scenario via ScenarioMeta.peaceTreatyCooldownTurns. Duplicated as a literal
+ * in the standalone editor (public/editor.html), which cannot import this module.
+ */
+export const DEFAULT_PEACE_TREATY_COOLDOWN_TURNS = 10;
+
+/**
+ * Resolve the scenario-authored Peace Treaty cooldown, falling back to
+ * {@link DEFAULT_PEACE_TREATY_COOLDOWN_TURNS} when absent or invalid.
+ */
+export function resolvePeaceTreatyCooldownTurns(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.floor(value);
+  return DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
+}
 
 /** Clamp a suspicion value to its valid 0–100 range. */
 export function clampSuspicion(value: number): number {
@@ -262,8 +280,17 @@ export class DiplomacyManager {
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
 
   // Optional so older callers/tests still work; when present, war/peace
-  // transitions get stamped with the current round.
-  constructor(private readonly turnManager?: TurnManager) {}
+  // transitions get stamped with the current round. The peace-treaty cooldown
+  // is scenario-configured; it defaults to DEFAULT_PEACE_TREATY_COOLDOWN_TURNS.
+  constructor(
+    private readonly turnManager?: TurnManager,
+    private readonly peaceTreatyCooldownTurns: number = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS,
+  ) {}
+
+  /** The bilateral Peace Treaty cooldown length applied when a war ends in peace. */
+  getPeaceTreatyCooldownTurns(): number {
+    return this.peaceTreatyCooldownTurns;
+  }
 
   /**
    * Register a predicate that blocks war declarations between two nations
@@ -300,6 +327,32 @@ export class DiplomacyManager {
   isAtWarWithAnyNation(nationId: string): boolean {
     for (const [key, relation] of this.relations) {
       if (relation.state !== 'WAR') continue;
+      const [a, b] = key.split(PAIR_KEY_SEPARATOR);
+      if (a === nationId || b === nationId) return true;
+    }
+    return false;
+  }
+
+  /** Every nation `nationId` is currently at WAR with. Used to weigh multi-front strain. */
+  getWarringNationIds(nationId: string): string[] {
+    const opponents: string[] = [];
+    for (const [key, relation] of this.relations) {
+      if (relation.state !== 'WAR') continue;
+      const [a, b] = key.split(PAIR_KEY_SEPARATOR);
+      if (a === nationId) opponents.push(b);
+      else if (b === nationId) opponents.push(a);
+    }
+    return opponents;
+  }
+
+  /**
+   * True if `nationId` is the recorded aggressor in at least one currently
+   * active WAR. Uses the canonical `aggressorNationId` stamped at declaration;
+   * never infers aggression from strength, territory, or momentum.
+   */
+  isActiveWarAggressor(nationId: string): boolean {
+    for (const [key, relation] of this.relations) {
+      if (relation.state !== 'WAR' || relation.aggressorNationId !== nationId) continue;
       const [a, b] = key.split(PAIR_KEY_SEPARATOR);
       if (a === nationId || b === nationId) return true;
     }
@@ -407,7 +460,7 @@ export class DiplomacyManager {
   proposePeace(
     fromId: string,
     toId: string,
-    terms: { offeredCityId?: string; goldReparations?: number } = {},
+    terms: { offeredCityId?: string; offeredCityIds?: string[]; goldReparations?: number } = {},
   ): void {
     if (this.getState(fromId, toId) !== 'WAR') return;
     const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
@@ -418,6 +471,14 @@ export class DiplomacyManager {
       warDuration,
       ...terms,
     };
+    // The proposal itself starts the pacing cooldown, whether accepted or
+    // rejected. This bilateral timestamp is already part of diplomacy save/load.
+    const key = this.pairKey(fromId, toId);
+    const relation = this.relations.get(key) ?? createDefaultRelation();
+    this.relations.set(key, normalizeRelation({
+      ...relation,
+      lastPeaceProposalTurn: currentTurn,
+    }));
     this.pendingProposals.set(toId, proposal);
     for (const cb of this.proposedListeners) cb(proposal);
   }
@@ -548,7 +609,7 @@ export class DiplomacyManager {
         // TODO: same as declareWar — stamp explicitly when the manager
         // doesn't have access to a TurnManager.
         lastPeaceProposalTurn: currentTurn,
-        peaceTreatyUntilTurn: currentTurn + PEACE_TREATY_COOLDOWN_TURNS,
+        peaceTreatyUntilTurn: currentTurn + this.peaceTreatyCooldownTurns,
       });
       this.relations.set(key, next);
       for (const cb of this.acceptedListeners) cb(fromId, toId);
@@ -678,7 +739,34 @@ export class DiplomacyManager {
   }
 
   getPendingProposal(toId: string): PeaceProposal | null {
-    return this.pendingProposals.get(toId) ?? null;
+    const proposal = this.pendingProposals.get(toId);
+    return proposal ? this.clonePeaceProposal(proposal) : null;
+  }
+
+  getPendingPeaceProposals(): PeaceProposal[] {
+    return [...this.pendingProposals.values()].map((proposal) => this.clonePeaceProposal(proposal));
+  }
+
+  /** Restore pending offers after relations; listeners re-present them to Human or AI. */
+  restorePendingPeaceProposals(proposals: readonly PeaceProposal[] | undefined): void {
+    this.pendingProposals.clear();
+    for (const candidate of proposals ?? []) {
+      if (!candidate || typeof candidate.fromNationId !== 'string' || typeof candidate.toNationId !== 'string') continue;
+      if (candidate.fromNationId === candidate.toNationId) continue;
+      if (this.getState(candidate.fromNationId, candidate.toNationId) !== 'WAR') continue;
+      const proposal: PeaceProposal = {
+        fromNationId: candidate.fromNationId,
+        toNationId: candidate.toNationId,
+        warDuration: Math.max(0, Math.floor(candidate.warDuration ?? 0)),
+        ...(candidate.offeredCityId ? { offeredCityId: candidate.offeredCityId } : {}),
+        ...(Array.isArray(candidate.offeredCityIds) ? { offeredCityIds: [...candidate.offeredCityIds] } : {}),
+        ...(Number.isFinite(candidate.goldReparations) ? { goldReparations: candidate.goldReparations } : {}),
+      };
+      this.pendingProposals.set(proposal.toNationId, proposal);
+    }
+    for (const proposal of this.pendingProposals.values()) {
+      for (const cb of this.proposedListeners) cb(this.clonePeaceProposal(proposal));
+    }
   }
 
   onPeaceProposed(callback: PeaceProposedListener): void {
@@ -715,6 +803,17 @@ export class DiplomacyManager {
 
   onDiplomacyChanged(callback: DiplomacyChangedListener): void {
     this.changedListeners.push(callback);
+  }
+
+  private clonePeaceProposal(proposal: PeaceProposal): PeaceProposal {
+    return {
+      fromNationId: proposal.fromNationId,
+      toNationId: proposal.toNationId,
+      warDuration: proposal.warDuration,
+      ...(proposal.offeredCityId ? { offeredCityId: proposal.offeredCityId } : {}),
+      ...(proposal.offeredCityIds ? { offeredCityIds: [...proposal.offeredCityIds] } : {}),
+      ...(proposal.goldReparations !== undefined ? { goldReparations: proposal.goldReparations } : {}),
+    };
   }
 
   /**

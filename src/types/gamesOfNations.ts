@@ -218,6 +218,12 @@ export interface SavedGamesOfNationsState {
   /** Last Games cycle for which the human answered the one-time Preparation prompt. */
   humanPreparationPromptAcknowledgedCompetitionNumber?: number;
   lastProcessedTurn: number;
+  /**
+   * True while the schedule is frozen for an active Historical World War. Persisted
+   * only so the suspend/resume transition is logged once; the authoritative source
+   * is always the live `hasActiveWorldWar()` query.
+   */
+  suspendedForWorldWar?: boolean;
 }
 
 export interface GamesOfNationsSummary {
@@ -248,6 +254,8 @@ export interface GamesOfNationsSummary {
   phaseStartTurn: number | null;
   nextTransitionTurn: number | null;
   turnsUntilNextPhase: number | null;
+  /** True while an active Historical World War has frozen the Games schedule. */
+  suspendedForWorldWar: boolean;
   nextGamesTurn: number | null;
   turnsUntilGames: number | null;
   activeSport: GamesOfNationsSport | null;

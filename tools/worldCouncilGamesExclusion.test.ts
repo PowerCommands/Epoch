@@ -25,22 +25,30 @@ function member(nationId: string): WorldCouncilMember {
 
 const meeting: WorldCouncilMeeting = { id: 9, kind: 'regular', turn: 95, cityId: 'council' };
 
-function harness(humanId?: string) {
+function harness(humanId?: string, extraNations: string[] = []) {
   let turn = 80;
   const exclusionEvents: GamesOfNationsExclusionEvent[] = [];
   const sportEvents: GamesOfNationsSportResolvedEvent[] = [];
-  const cities = {
+  const cities: Record<string, Array<{ id: string; name: string; productionPerTurn: number; canConstructGrandStadium: boolean; hasGrandStadium: boolean }>> = {
     france: [{ id: 'paris', name: 'Paris', productionPerTurn: 10, canConstructGrandStadium: true, hasGrandStadium: true }],
     england: [{ id: 'london', name: 'London', productionPerTurn: 14, canConstructGrandStadium: true, hasGrandStadium: true }],
     sweden: [{ id: 'stockholm', name: 'Stockholm', productionPerTurn: 8, canConstructGrandStadium: true, hasGrandStadium: true }],
   };
+  for (const nation of extraNations) {
+    cities[nation] = [{ id: `${nation}-city`, name: nation, productionPerTurn: 10, canConstructGrandStadium: true, hasGrandStadium: true }];
+  }
+  const ownerByCity = new Map<string, string>();
+  for (const [nation, nationCities] of Object.entries(cities)) {
+    for (const city of nationCities) ownerByCity.set(city.id, nation);
+  }
+  const living = ['france', 'england', 'sweden', ...extraNations];
   const dependencies: GamesOfNationsDependencies = {
     getCurrentTurn: () => turn,
-    getLivingNationIds: () => ['france', 'england', 'sweden'],
+    getLivingNationIds: () => living,
     getNationName: (id) => id,
-    getCapitalCity: (id) => cities[id as keyof typeof cities]?.[0],
-    getHostCityCandidates: (id) => cities[id as keyof typeof cities] ?? [],
-    getCityOwnerId: (id) => id === 'paris' ? 'france' : id === 'london' ? 'england' : 'sweden',
+    getCapitalCity: (id) => cities[id]?.[0],
+    getHostCityCandidates: (id) => cities[id] ?? [],
+    getCityOwnerId: (id) => ownerByCity.get(id),
     hasGrandStadium: () => true,
     isHumanNation: (id) => id === humanId,
     getCultureOutput: () => 20,
@@ -138,7 +146,7 @@ test('exclusion stops future commitments without refunds and stored GP has zero 
 });
 
 test('excluded nation cannot medal or become Chronicle favorite despite dominant stored GP', () => {
-  const h = harness();
+  const h = harness(undefined, ['italy']); // a fourth nation keeps three eligible after the exclusion
   const state = h.system.getState();
   state.phase = 'preparation';
   state.phaseStartTurn = 95;

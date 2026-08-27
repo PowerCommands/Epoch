@@ -14,10 +14,12 @@ import type { SavedTradeHistoryEntry } from '../systems/diplomacy/TradeDiplomacy
 import type { WorldMarker, WorldMarkerClaimEntry, WorldMarkerDiscoveryEntry } from './WorldMarker';
 import type { OverseasSettlementTarget } from './ai/OverseasSettlementTarget';
 import type { WorldCouncilState } from './worldCouncil';
+import type { SavedCapitulationState } from '../systems/CapitulationSystem';
 import type { SavedGossipState } from './gossip';
 import type { SavedGossipFlavorState } from './gossipFlavor';
 import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
+import type { PeaceProposal } from '../systems/DiplomacyManager';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -300,6 +302,8 @@ export interface SavedGameState {
   cities: SavedCity[];
   units: SavedUnit[];
   diplomacy: SavedDiplomacyEntry[];
+  /** Pending negotiated-peace offers, including AI offers awaiting a Human answer. */
+  pendingPeaceProposals?: PeaceProposal[];
   discovery: SavedDiscoveryEntry[];
   /** One-time symbolic-gift milestones. Optional so pre-feature saves still load. */
   symbolicGifts?: SavedSymbolicGifts;
@@ -310,6 +314,8 @@ export interface SavedGameState {
   wonders: SavedWonder[];
   /** Global World Council institution. Optional so older saves load with none. */
   worldCouncil?: WorldCouncilState;
+  /** Per-nation demilitarization windows from capitulation. Optional for older saves. */
+  capitulation?: SavedCapitulationState;
   /** Alliance Core v1. Optional so older saves load with no alliances. */
   alliances?: Alliance[];
   corporations?: SavedCorporation[];

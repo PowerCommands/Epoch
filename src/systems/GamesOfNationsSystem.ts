@@ -28,6 +28,8 @@ import {
 
 export const GAMES_AND_RECREATION_CULTURE_ID = 'games_recreation';
 export const GAMES_OF_NATIONS_INTERVAL = 25;
+/** A Competition may only begin with at least this many actually eligible participants. */
+export const GAMES_OF_NATIONS_MINIMUM_PARTICIPANTS = 3;
 export const GAMES_OF_NATIONS_PREPARATION_TURNS = 10;
 export const GAMES_OF_NATIONS_COMPETITION_TURNS = 5;
 export const GAMES_OF_NATIONS_COOLDOWN_TURNS = 10;
@@ -67,6 +69,10 @@ export interface GamesOfNationsDependencies {
   getCulturalPriority?: (nationId: string) => number;
   getGold?: (nationId: string) => number;
   spendGold?: (nationId: string, amount: number) => boolean;
+  /** Authoritative: true while any Historical World War is active (freezes the schedule). */
+  hasActiveWorldWar?: () => boolean;
+  /** Authoritative: true if the nation is the recorded aggressor in any active war. */
+  isActiveWarAggressor?: (nationId: string) => boolean;
   getLeaderGamesPreferences?: (nationId: string) => GamesOfNationsLeaderPreferences | undefined;
   getWorldEra?: () => GamesOfNationsIntroductionEra | string;
   seed?: string;
@@ -587,8 +593,50 @@ export class GamesOfNationsSystem {
     return true;
   }
 
+  /**
+   * True while an active Historical World War freezes the Games schedule. Only the
+   * founded institution has a clock to freeze; pre-founding rounds advance nothing.
+   */
+  isSuspendedByWorldWar(): boolean {
+    return this.state.founded && this.dependencies.hasActiveWorldWar?.() === true;
+  }
+
+  /**
+   * Freeze the schedule for one suspended round by shifting every absolute turn
+   * marker forward by the elapsed rounds, so relative distances (time until the
+   * next phase, competition day, hosting deadline) are preserved exactly. This is
+   * a deterministic paused clock: World War rounds consume zero Games cycle time.
+   */
+  private handleSuspendedRound(turn: number): void {
+    const elapsed = turn - this.state.lastProcessedTurn;
+    if (elapsed > 0) {
+      this.shiftScheduleForward(elapsed);
+      this.state.lastProcessedTurn = turn;
+    }
+    if (this.state.suspendedForWorldWar !== true) {
+      this.state.suspendedForWorldWar = true;
+      this.log('Suspended: active Historical World War');
+    }
+  }
+
+  private shiftScheduleForward(delta: number): void {
+    if (delta <= 0) return;
+    if (this.state.firstGamesTurn !== undefined) this.state.firstGamesTurn += delta;
+    if (this.state.phaseStartTurn !== undefined) this.state.phaseStartTurn += delta;
+    if (this.state.nextTransitionTurn !== undefined) this.state.nextTransitionTurn += delta;
+    if (this.state.scheduledGamesTurn !== undefined) this.state.scheduledGamesTurn += delta;
+  }
+
   /** Advance explicit phase boundaries and the active sport at round start. */
   handleRoundStart(turn: number): void {
+    if (this.isSuspendedByWorldWar()) {
+      this.handleSuspendedRound(turn);
+      return;
+    }
+    if (this.state.suspendedForWorldWar === true) {
+      this.state.suspendedForWorldWar = false;
+      this.log('Resumed after World War');
+    }
     this.resolveAutoplayHumanDecisions();
     if (this.state.phase === 'preparation') {
       this.initializeMissingAIStrategies();
@@ -759,7 +807,7 @@ export class GamesOfNationsSystem {
 
   /** Called once for each nation's turn, after yields are refreshed and before production/culture advance. */
   processNationPreparationTurn(nationId: string, turn: number): void {
-    if (this.state.phase !== 'preparation') return;
+    if (this.state.phase !== 'preparation' || this.isSuspendedByWorldWar()) return;
     const participant = this.getParticipant(nationId);
     if (!participant?.participating || this.isExcludedFromGames(nationId, this.state.competitionNumber) || participant.lastInvestmentTurn === turn) return;
     participant.lastInvestmentTurn = turn;
@@ -916,6 +964,7 @@ export class GamesOfNationsSystem {
       turnsUntilNextPhase: this.state.nextTransitionTurn === undefined
         ? null
         : Math.max(0, this.state.nextTransitionTurn - currentTurn),
+      suspendedForWorldWar: this.isSuspendedByWorldWar(),
       nextGamesTurn,
       turnsUntilGames: nextGamesTurn === null ? null : Math.max(0, nextGamesTurn - currentTurn),
       activeSport: this.getActiveSport(),
@@ -984,6 +1033,15 @@ export class GamesOfNationsSystem {
       return;
     }
     this.pruneInvalidParticipants();
+    // Eligibility is evaluated only here, at the exact competition-start boundary.
+    this.excludeWartimeAggressors();
+    const eligibleParticipants = this.countEligibleParticipants();
+    if (eligibleParticipants < GAMES_OF_NATIONS_MINIMUM_PARTICIPANTS) {
+      this.log(`Competition cancelled: only ${eligibleParticipants} eligible participant${eligibleParticipants === 1 ? '' : 's'}`);
+      this.cancelGames(turn, `Fewer than ${GAMES_OF_NATIONS_MINIMUM_PARTICIPANTS} nations were eligible to participate`);
+      this.startNextHostingSelection();
+      return;
+    }
     this.state.phase = 'competition';
     this.state.phaseStartTurn = turn;
     this.state.nextTransitionTurn = turn + this.cycleSports().length;
@@ -1280,6 +1338,33 @@ export class GamesOfNationsSystem {
   private pruneInvalidParticipants(): void {
     const living = new Set(this.dependencies.getLivingNationIds());
     this.state.participants = this.state.participants.filter((participant) => living.has(participant.nationId));
+  }
+
+  /**
+   * At competition start, drop every nation that is the recorded aggressor in an
+   * active war. Committed investment is not refunded — the nation simply forfeits
+   * its participation. Being a defender never triggers exclusion. The host is
+   * subject to the same rule as everyone else.
+   */
+  private excludeWartimeAggressors(): void {
+    if (!this.dependencies.isActiveWarAggressor) return;
+    for (const participant of this.state.participants) {
+      if (!participant.participating) continue;
+      if (this.isExcludedFromGames(participant.nationId, this.state.competitionNumber)) continue;
+      if (!this.dependencies.isActiveWarAggressor(participant.nationId)) continue;
+      participant.participating = false;
+      this.log(`${this.nationName(participant.nationId)} excluded from competition: active war aggressor`);
+    }
+  }
+
+  /** Final participant set after opt-out, World Council exclusion and aggressor exclusion. */
+  private countEligibleParticipants(): number {
+    const living = new Set(this.dependencies.getLivingNationIds());
+    return this.state.participants.filter((participant) =>
+      participant.participating
+      && living.has(participant.nationId)
+      && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber),
+    ).length;
   }
 
   private getActiveSport(): GamesOfNationsSport | null {

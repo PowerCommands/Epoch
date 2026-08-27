@@ -85,6 +85,7 @@ test('remains inactive before Games and Recreation is completed', () => {
     phaseStartTurn: null,
     nextTransitionTurn: null,
     turnsUntilNextPhase: null,
+    suspendedForWorldWar: false,
     nextGamesTurn: null,
     turnsUntilGames: null,
     activeSport: null,

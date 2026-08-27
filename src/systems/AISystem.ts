@@ -6377,11 +6377,19 @@ export class AISystem {
     return this.unitUpkeepSystem?.getUnitUpkeepAffordabilityReason(nationId, unitType, 10) === undefined;
   }
 
+  private unitProductionRestrictionReason?: (nationId: string, unitTypeId: string) => string | undefined;
+
+  /** Inject the authoritative per-nation production restriction (e.g. capitulation demilitarization). */
+  setUnitProductionRestrictionReason(fn: (nationId: string, unitTypeId: string) => string | undefined): void {
+    this.unitProductionRestrictionReason = fn;
+  }
+
   private getUnitProductionRuleContext(): UnitProductionRuleContext {
     return {
       strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
       unitUpkeepAffordability: this.unitUpkeepSystem,
       upkeepAffordabilityTurns: 10,
+      getUnitProductionRestrictionReason: this.unitProductionRestrictionReason,
       hasActiveUnitOfType: (nationId, unitTypeId) =>
         this.unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
       isResidenceCapital: (city) => city.isResidenceCapital,

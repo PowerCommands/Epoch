@@ -117,6 +117,7 @@ function generateAttempt(
       startYearIsBC: true,
       timeProgression: { mode: 'auto' },
       barbarianSpawnInterval: 10,
+      peaceTreatyCooldownTurns: 10,
     },
     map: {
       width,

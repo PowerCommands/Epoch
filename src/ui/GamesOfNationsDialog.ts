@@ -189,9 +189,16 @@ export class GamesOfNationsDialog {
 
     const header = element('header', 'gon-panel-header');
     const titleGroup = element('div');
-    titleGroup.append(heading('Games of Nations', 'h1'), text(`Games #${model.gamesNumber} · ${model.phaseLabel}`, 'gon-subtitle'));
+    const subtitle = model.suspendedForWorldWar
+      ? `Games #${model.gamesNumber} · ${model.phaseLabel} · SUSPENDED — WORLD WAR`
+      : `Games #${model.gamesNumber} · ${model.phaseLabel}`;
+    titleGroup.append(heading('Games of Nations', 'h1'), text(subtitle, 'gon-subtitle'));
     header.append(titleGroup, button('Close', 'gon-close', () => this.close()));
-    card.append(header, this.buildStatus(model), this.buildHostAdvantage(model));
+    card.append(header);
+    if (model.suspendedForWorldWar) {
+      card.appendChild(notice('SUSPENDED — WORLD WAR. The Games of Nations schedule is frozen and will resume when no Historical World War remains active. Committed investment and any competition results are preserved.'));
+    }
+    card.append(this.buildStatus(model), this.buildHostAdvantage(model));
 
     if (model.phase === 'waitingForFirstGames') {
       card.appendChild(notice(
@@ -254,9 +261,11 @@ export class GamesOfNationsDialog {
     const headingRow = element('div', 'gon-section-heading');
     headingRow.append(heading('Preparation investment', 'h2'), text(editable
       ? 'Changes affect future Preparation turns only.'
-      : model.excluded
-        ? 'Disabled: your nation has been excluded from this Games cycle by the World Council.'
-        : 'Read-only outside active participation in Preparation.', 'gon-muted'));
+      : model.suspendedForWorldWar
+        ? 'Investment suspended during World War. Committed resources are preserved; no further Culture or Production can be committed until the Games resume.'
+        : model.excluded
+          ? 'Disabled: your nation has been excluded from this Games cycle by the World Council.'
+          : 'Read-only outside active participation in Preparation.', 'gon-muted'));
     section.appendChild(headingRow);
 
     const commitments = element('div', 'gon-commitment-grid');

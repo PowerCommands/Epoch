@@ -50,6 +50,7 @@ export interface GamesOfNationsUiModel {
   firstGamesTurn: number | null;
   phase: GamesOfNationsSummary['phase'];
   phaseLabel: string;
+  suspendedForWorldWar: boolean;
   hostLabel: string;
   founderNationName: string | null;
   preparationProgress: string | null;
@@ -147,6 +148,7 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     firstGamesTurn: summary.firstGamesTurn,
     phase: summary.phase,
     phaseLabel: phaseLabel(summary.phase),
+    suspendedForWorldWar: summary.suspendedForWorldWar,
     hostLabel,
     founderNationName: context.founderNationName,
     preparationProgress,
@@ -161,7 +163,7 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     participant,
     participating,
     excluded,
-    controlsEditable: summary.humanInteractionSuppressed !== true && summary.phase === 'preparation' && participating && !excluded,
+    controlsEditable: summary.humanInteractionSuppressed !== true && summary.phase === 'preparation' && participating && !excluded && !summary.suspendedForWorldWar,
     promptPending: summary.humanInteractionSuppressed !== true && summary.phase === 'preparation'
       && !excluded
       && summary.humanPreparationPromptAcknowledgedCompetitionNumber !== summary.competitionNumber,
@@ -194,7 +196,9 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
       ? clamp((progressTurn ?? 0) / 10, 0, 1)
       : summary.phase === 'competition' ? 1 : 0,
     buttonActive: summary.phase === 'preparation' || summary.phase === 'competition',
-    buttonTooltip: buildTooltip(summary, hostLabel, preparationProgress, competitionProgress, turnsUntilPreparation),
+    buttonTooltip: summary.suspendedForWorldWar
+      ? `Games of Nations\nSUSPENDED — WORLD WAR\nThe schedule resumes when no Historical World War remains active.`
+      : buildTooltip(summary, hostLabel, preparationProgress, competitionProgress, turnsUntilPreparation),
     culture,
     production,
     theoreticalGamesPointsPerTurn: culture.potentialGamesPoints + production.potentialGamesPoints,
