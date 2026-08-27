@@ -174,6 +174,7 @@ test('special generation changes neither newspaper state nor ordinary cadence/ar
     getDominationRanking: () => ['a', 'b', 'c'],
     getNationName: (id) => NAMES[id],
     getLeaderName: () => undefined,
+    getWorldEra: () => 'renaissance',
     seed: 'ordinary-news',
   });
   const before = newspaper.getState();

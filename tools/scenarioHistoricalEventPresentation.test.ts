@@ -224,6 +224,7 @@ test('J: World War outranks ordinary events and uses authored Chronicle content 
     getDominationRanking: () => [SWEDEN, GERMANY, ENGLAND],
     getNationName: (id) => NAMES[id],
     getLeaderName: (id) => NAMES[id],
+    getWorldEra: () => 'modern',
     seed: 'world-war-presentation',
   });
   const issue = newspaper.consumeDueIssue(11, 'Issue Date')!;
@@ -231,7 +232,7 @@ test('J: World War outranks ordinary events and uses authored Chronicle content 
   assert.equal(issue.mainArticle.headline, 'WORLD WAR II BEGINS');
   assert.match(issue.mainArticle.body, /Germany's invasion of Poland has plunged Europe into war\./);
   assert.match(issue.mainArticle.body, /Germany ↔ England/);
-  assert.equal(issue.mainArticle.imagePath, '/assets/sprites/news/war-declared.png');
+  assert.equal(issue.mainArticle.imagePath, '/assets/sprites/news/war-start-modern.png');
 });
 
 test('same-round integration registers World War History before the human Chronicle turnStart', () => {
@@ -246,6 +247,7 @@ test('same-round integration registers World War History before the human Chroni
     getDominationRanking: () => [GERMANY, ENGLAND],
     getNationName: (id) => NAMES[id],
     getLeaderName: (id) => NAMES[id],
+    getWorldEra: () => 'atomic',
     seed: 'same-round-world-war',
   });
   let issue: ReturnType<NewspaperSystem['consumeDueIssue']> = null;

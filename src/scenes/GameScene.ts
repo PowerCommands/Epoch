@@ -2843,6 +2843,7 @@ export class GameScene extends Phaser.Scene {
       ).map((entry) => entry.nationId),
       getNationName: (nationId) => nationManager.getNation(nationId)?.name,
       getLeaderName: (nationId) => getLeaderByNationId(nationId)?.name,
+      getWorldEra: () => getHighestEra(nationManager.getAllNations().map((nation) => eraSystem.getNationEra(nation.id))),
       seed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|newspaper-v1`,
     }, data.savedState?.newspaper, data.savedState?.turn.currentRound ?? 1);
     const newspaperDialog = new NewspaperDialog();

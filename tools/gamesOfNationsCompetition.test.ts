@@ -239,6 +239,7 @@ test('Games History events carry exact importance and newspaper uses the normal 
     getDominationRanking: () => ['a', 'b', 'c'],
     getNationName: (id) => id.toUpperCase(),
     getLeaderName: (id) => id,
+    getWorldEra: () => 'ancient',
     seed: 'news-test',
   });
   const issue = newspaper.consumeDueIssue(11, 'Date')!;

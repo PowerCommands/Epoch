@@ -1,4 +1,9 @@
-import { NEWSPAPER_EVENT_DEFINITIONS, NEWSPAPER_IMAGE_PATHS } from '../data/newspaperContent';
+import {
+  NEWSPAPER_EVENT_DEFINITIONS,
+  NEWSPAPER_IMAGE_PATHS,
+  WAR_START_IMAGE_PATHS_BY_ERA,
+} from '../data/newspaperContent';
+import type { Era } from '../data/technologies';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { HistoricalEvent } from '../types/historicalTimeline';
 import { getWonderSpritePath } from '../utils/assetPaths';
@@ -20,6 +25,7 @@ export interface NewspaperSystemDependencies {
   getDominationRanking: () => readonly string[];
   getNationName: (nationId: string) => string | undefined;
   getLeaderName: (nationId: string) => string | undefined;
+  getWorldEra: () => Era;
   seed: string;
 }
 
@@ -279,7 +285,9 @@ export class NewspaperSystem {
       involvedNationIds: [...event.eventNationIds],
       involvedNationNames: context.nationNames,
       involvedLeaderNames: context.leaderNames,
-      imagePath: includeImage ? resolveArticleImagePath(event, definition.imagePath) : undefined,
+      imagePath: includeImage
+        ? resolveArticleImagePath(event, definition.imagePath, this.dependencies.getWorldEra())
+        : undefined,
     };
   }
 
@@ -347,7 +355,10 @@ function getDefinition(event: HistoricalEvent): NewspaperEventDefinitionValue {
 
 type NewspaperEventDefinitionValue = (typeof NEWSPAPER_EVENT_DEFINITIONS)[NewspaperEventType];
 
-function resolveArticleImagePath(event: HistoricalEvent, fallbackPath: string): string {
+function resolveArticleImagePath(event: HistoricalEvent, fallbackPath: string, worldEra: Era): string {
+  if (event.type === 'warDeclared' || event.type === 'joinedWar' || event.type === 'worldWarStarted') {
+    return WAR_START_IMAGE_PATHS_BY_ERA[worldEra];
+  }
   if (event.type !== 'wonderBuilt') return fallbackPath;
 
   const metadataWonder = event.metadata?.wonderId

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { NEWSPAPER_EVENT_DEFINITIONS } from '../src/data/newspaperContent';
+import { NEWSPAPER_EVENT_DEFINITIONS, WAR_START_IMAGE_PATHS_BY_ERA } from '../src/data/newspaperContent';
 import {
   isNewspaperRound,
   NewspaperSystem,
@@ -9,6 +10,7 @@ import {
 import { buildDominationRanking } from '../src/systems/DominationRanking';
 import type { HistoricalEvent, HistoricalEventType } from '../src/types/historicalTimeline';
 import type { SavedNewspaperState } from '../src/types/newspaper';
+import type { Era } from '../src/data/technologies';
 
 function event(
   id: number,
@@ -46,6 +48,7 @@ function harness(
   ranking = ['high', 'human', 'low'],
   saved?: SavedNewspaperState,
   currentRound = 1,
+  worldEra: Era = 'ancient',
 ): NewspaperSystem {
   const dependencies: NewspaperSystemDependencies = {
     humanNationId: 'human',
@@ -53,6 +56,7 @@ function harness(
     getDominationRanking: () => ranking,
     getNationName: (id) => ({ human: 'Humania', high: 'Highland', low: 'Lowland', other: 'Otherland' })[id],
     getLeaderName: (id) => ({ human: 'Helena', high: 'Hector', low: 'Lucius', other: 'Octavia' })[id],
+    getWorldEra: () => worldEra,
     seed: 'test-seed',
   };
   return saved
@@ -231,6 +235,7 @@ test('old saves consume past boundaries and wait for the next future one', () =>
     getDominationRanking: () => [],
     getNationName: () => undefined,
     getLeaderName: () => undefined,
+    getWorldEra: () => 'ancient',
     seed: 'old-save',
   }, undefined, 21);
   assert.equal(system.consumeDueIssue(21, 'Date'), null);
@@ -262,6 +267,47 @@ test('wonder news can infer an older history entry and otherwise uses the fallba
 
   assert.equal(inferredIssue.mainArticle.imagePath, '/assets/sprites/wonders/angkor-wat.png');
   assert.equal(fallbackIssue.mainArticle.imagePath, '/assets/sprites/news/wonder-built.png');
+});
+
+test('war outbreak news selects nation-neutral art from the current world era', () => {
+  const eras: Era[] = [
+    'ancient', 'classical', 'medieval', 'renaissance', 'industrial',
+    'modern', 'atomic', 'information', 'future',
+  ];
+  for (const era of eras) {
+    const issue = harness(
+      [event(1, 'warDeclared', 5, ['high', 'low'])],
+      undefined,
+      undefined,
+      1,
+      era,
+    ).consumeDueIssue(11, 'Date')!;
+    assert.equal(issue.mainArticle.imagePath, `/assets/sprites/news/war-start-${era}.png`);
+  }
+});
+
+test('every era-specific war-start asset exists at the Chronicle image size', () => {
+  for (const [era, assetPath] of Object.entries(WAR_START_IMAGE_PATHS_BY_ERA)) {
+    const png = readFileSync(`public${assetPath}`);
+    assert.equal(png.toString('ascii', 1, 4), 'PNG', `${era} asset must be a PNG`);
+    assert.equal(png.readUInt32BE(16), 320, `${era} asset width`);
+    assert.equal(png.readUInt32BE(20), 224, `${era} asset height`);
+  }
+});
+
+test('scenario World War and entry into an existing war use the same era-specific outbreak art', () => {
+  const worldWarIssue = harness([worldWarStart(1, 5)], undefined, undefined, 1, 'modern')
+    .consumeDueIssue(11, 'Date')!;
+  const joinedWarIssue = harness(
+    [event(1, 'joinedWar', 5, ['high', 'low'])],
+    undefined,
+    undefined,
+    1,
+    'atomic',
+  ).consumeDueIssue(11, 'Date')!;
+
+  assert.equal(worldWarIssue.mainArticle.imagePath, '/assets/sprites/news/war-start-modern.png');
+  assert.equal(joinedWarIssue.mainArticle.imagePath, '/assets/sprites/news/war-start-atomic.png');
 });
 
 test('every recurring event definition has exactly ten comments', () => {

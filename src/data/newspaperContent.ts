@@ -1,4 +1,5 @@
 import type { NewspaperArticleContext, NewspaperEventDefinition, NewspaperEventType } from '../types/newspaper';
+import type { Era } from './technologies';
 
 const NEWS_PATH = '/assets/sprites/news/';
 
@@ -28,6 +29,19 @@ export const NEWSPAPER_IMAGE_PATHS = {
   tradeRelations: `${NEWS_PATH}trade-relations.png`,
   gamesOfNations: '/assets/sprites/cultures/games_recreation.png',
 } as const;
+
+/** Nation-neutral war-outbreak art selected from the world's era at publication. */
+export const WAR_START_IMAGE_PATHS_BY_ERA: Readonly<Record<Era, string>> = {
+  ancient: `${NEWS_PATH}war-start-ancient.png`,
+  classical: `${NEWS_PATH}war-start-classical.png`,
+  medieval: `${NEWS_PATH}war-start-medieval.png`,
+  renaissance: `${NEWS_PATH}war-start-renaissance.png`,
+  industrial: `${NEWS_PATH}war-start-industrial.png`,
+  modern: `${NEWS_PATH}war-start-modern.png`,
+  atomic: `${NEWS_PATH}war-start-atomic.png`,
+  information: `${NEWS_PATH}war-start-information.png`,
+  future: `${NEWS_PATH}war-start-future.png`,
+};
 
 function names(context: NewspaperArticleContext): [string, string] {
   return [context.nationNames[0] ?? 'An unknown nation', context.nationNames[1] ?? 'another nation'];
