@@ -507,7 +507,7 @@ export class ResourceSystem {
   }
 
   private updateEnergyShortage(city: City, capacity: number): void {
-    if (city.population <= capacity) {
+    if (city.population < capacity) {
       if (city.energyShortageTurns !== undefined) {
         city.energyShortageTurns = undefined;
         this.cityEnergyLog(
@@ -519,7 +519,7 @@ export class ResourceSystem {
     }
 
     if (city.energyShortageTurns === undefined) {
-      city.energyShortageTurns = 0;
+      city.energyShortageTurns = 1;
       this.cityEnergyLog(
         city.ownerId,
         `[Energy] Energy shortage began in ${city.name}; population ${city.population}, capacity ${capacity}.`,
@@ -528,6 +528,9 @@ export class ResourceSystem {
     }
 
     city.energyShortageTurns += 1;
+    // At the exact capacity limit, growth is blocked and unhappiness continues
+    // to accumulate, but population decline remains exclusive to true over-cap.
+    if (city.population <= capacity) return;
     const firstDeclineTurn = ENERGY_SHORTAGE_GRACE_TURNS + ENERGY_SHORTAGE_DECLINE_INTERVAL;
     if (
       city.energyShortageTurns < firstDeclineTurn
@@ -541,7 +544,7 @@ export class ResourceSystem {
       `[Energy] ${city.name} lost 1 population to energy shortage; population ${city.population}, capacity ${capacity}.`,
     );
 
-    if (city.population <= capacity) {
+    if (city.population < capacity) {
       city.energyShortageTurns = undefined;
       this.cityEnergyLog(
         city.ownerId,

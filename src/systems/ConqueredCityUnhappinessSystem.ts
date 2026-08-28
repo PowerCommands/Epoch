@@ -1,8 +1,9 @@
 import type { CityManager } from './CityManager';
 
 const CONQUERED_TURNS = 30;
-const BASE_PENALTY = 5;
-const COURTHOUSE_PENALTY = 2;
+// Doubled from 5/2: Courthouse keeps the same proportional mitigation.
+const BASE_PENALTY = 10;
+const COURTHOUSE_PENALTY = 4;
 const COURTHOUSE_BUILDING_ID = 'courthouse';
 
 export class ConqueredCityUnhappinessSystem {

@@ -15,6 +15,7 @@ import { applyCityIntegrationOutput } from './CityIntegrationSystem';
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 1;
 export const POPULATION_UNHAPPINESS = 0.5;
+export const ENERGY_SHORTAGE_UNHAPPINESS_PER_TURN = 2;
 
 /**
  * Each unit of usable luxury resource quantity (1 per tile, 2 with the
@@ -35,6 +36,7 @@ export type CityCountPressureProvider = (nationId: string) => number;
 export type DistancePressureProvider = (nationId: string) => number;
 export type ConqueredCityUnhappinessProvider = (nationId: string) => number;
 export type WarWearinessProvider = (nationId: string) => number;
+export type MilitaryOverCapUnhappinessProvider = (nationId: string) => number;
 
 interface TierResult {
   state: HappinessState;
@@ -136,6 +138,7 @@ export class HappinessSystem {
     private readonly getConqueredCityUnhappiness: ConqueredCityUnhappinessProvider = () => 0,
     private readonly getWarWeariness: WarWearinessProvider = () => 0,
     private readonly getCurrentRound: () => number = () => 0,
+    private readonly getMilitaryOverCapUnhappiness: MilitaryOverCapUnhappinessProvider = () => 0,
   ) {
     this.recalculateAll();
   }
@@ -205,16 +208,23 @@ export class HappinessSystem {
     const unhappinessFromPolicyPopulationModifiers =
       adjustedUnhappinessFromPopulation - baseUnhappinessFromPopulation;
     const unhappinessFromMilitary = this.getMilitaryUnhappiness(nationId);
+    const unhappinessFromMilitaryOverCap = this.getMilitaryOverCapUnhappiness(nationId);
     const unhappinessFromCityCountPressure = this.getCityCountPressure(nationId);
     const unhappinessFromDistancePressure = this.getDistancePressure(nationId);
     const unhappinessFromConqueredCities = this.getConqueredCityUnhappiness(nationId);
+    const unhappinessFromEnergyShortages = cities.reduce(
+      (sum, city) => sum + (city.energyShortageTurns ?? 0) * ENERGY_SHORTAGE_UNHAPPINESS_PER_TURN,
+      0,
+    );
     const unhappinessFromWarWeariness = this.getWarWeariness(nationId);
     const totalUnhappiness = adjustedUnhappinessFromCities
       + adjustedUnhappinessFromPopulation
       + unhappinessFromMilitary
+      + unhappinessFromMilitaryOverCap
       + unhappinessFromCityCountPressure
       + unhappinessFromDistancePressure
       + unhappinessFromConqueredCities
+      + unhappinessFromEnergyShortages
       + unhappinessFromWarWeariness;
     const netHappiness = totalHappiness - totalUnhappiness;
 
@@ -236,9 +246,11 @@ export class HappinessSystem {
     state.unhappinessFromCities = adjustedUnhappinessFromCities;
     state.unhappinessFromPopulation = adjustedUnhappinessFromPopulation;
     state.unhappinessFromMilitary = unhappinessFromMilitary;
+    state.unhappinessFromMilitaryOverCap = unhappinessFromMilitaryOverCap;
     state.unhappinessFromCityCountPressure = unhappinessFromCityCountPressure;
     state.unhappinessFromDistancePressure = unhappinessFromDistancePressure;
     state.unhappinessFromConqueredCities = unhappinessFromConqueredCities;
+    state.unhappinessFromEnergyShortages = unhappinessFromEnergyShortages;
     state.unhappinessFromWarWeariness = unhappinessFromWarWeariness;
     state.unhappinessFromPolicyCityModifiers = unhappinessFromPolicyCityModifiers;
     state.unhappinessFromPolicyPopulationModifiers = unhappinessFromPolicyPopulationModifiers;
@@ -328,9 +340,11 @@ function snapshotState(state: NationHappiness): {
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
   unhappinessFromMilitary: number;
+  unhappinessFromMilitaryOverCap: number;
   unhappinessFromCityCountPressure: number;
   unhappinessFromDistancePressure: number;
   unhappinessFromConqueredCities: number;
+  unhappinessFromEnergyShortages: number;
   unhappinessFromWarWeariness: number;
   unhappinessFromPolicyCityModifiers: number;
   unhappinessFromPolicyPopulationModifiers: number;
@@ -357,9 +371,11 @@ function snapshotState(state: NationHappiness): {
     unhappinessFromCities: state.unhappinessFromCities,
     unhappinessFromPopulation: state.unhappinessFromPopulation,
     unhappinessFromMilitary: state.unhappinessFromMilitary,
+    unhappinessFromMilitaryOverCap: state.unhappinessFromMilitaryOverCap,
     unhappinessFromCityCountPressure: state.unhappinessFromCityCountPressure,
     unhappinessFromDistancePressure: state.unhappinessFromDistancePressure,
     unhappinessFromConqueredCities: state.unhappinessFromConqueredCities,
+    unhappinessFromEnergyShortages: state.unhappinessFromEnergyShortages,
     unhappinessFromWarWeariness: state.unhappinessFromWarWeariness,
     unhappinessFromPolicyCityModifiers: state.unhappinessFromPolicyCityModifiers,
     unhappinessFromPolicyPopulationModifiers: state.unhappinessFromPolicyPopulationModifiers,
@@ -394,9 +410,11 @@ function statesEqual(
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation
     && previous.unhappinessFromMilitary === next.unhappinessFromMilitary
+    && previous.unhappinessFromMilitaryOverCap === next.unhappinessFromMilitaryOverCap
     && previous.unhappinessFromCityCountPressure === next.unhappinessFromCityCountPressure
     && previous.unhappinessFromDistancePressure === next.unhappinessFromDistancePressure
     && previous.unhappinessFromConqueredCities === next.unhappinessFromConqueredCities
+    && previous.unhappinessFromEnergyShortages === next.unhappinessFromEnergyShortages
     && previous.unhappinessFromWarWeariness === next.unhappinessFromWarWeariness
     && previous.unhappinessFromPolicyCityModifiers === next.unhappinessFromPolicyCityModifiers
     && previous.unhappinessFromPolicyPopulationModifiers === next.unhappinessFromPolicyPopulationModifiers

@@ -51,6 +51,7 @@ import {
 import { NaturalResourceRenderer } from '../systems/NaturalResourceRenderer';
 import { HappinessSystem } from '../systems/HappinessSystem';
 import { MilitaryUnhappinessSystem } from '../systems/MilitaryUnhappinessSystem';
+import { getEffectiveMilitaryUnitCap } from '../systems/ai/AIMilitaryCapacity';
 import { ImperialOverstretchSystem } from '../systems/ImperialOverstretchSystem';
 import { ConqueredCityUnhappinessSystem } from '../systems/ConqueredCityUnhappinessSystem';
 import { WarWearinessSystem } from '../systems/WarWearinessSystem';
@@ -311,6 +312,12 @@ interface EpochNationStateSummary {
   currentCulture: string | null;
   cityCount: number;
   population: number;
+  happiness: {
+    net: number;
+    militaryOverCap: number;
+    occupation: number;
+    energyShortage: number;
+  };
   currency: {
     name: string;
     symbol: string;
@@ -685,6 +692,7 @@ export class GameScene extends Phaser.Scene {
     let cultureEffectSystem: CultureEffectSystem;
     let getManufacturedResourceHappiness: (nationId: string) => number = () => 0;
     let getMilitaryUnhappiness: (nationId: string) => number = () => 0;
+    let getMilitaryOverCapUnhappiness: (nationId: string) => number = () => 0;
     let getCityCountPressure: (nationId: string) => number = () => 0;
     let getDistancePressure: (nationId: string) => number = () => 0;
     let getConqueredCityUnhappiness: (nationId: string) => number = () => 0;
@@ -704,6 +712,7 @@ export class GameScene extends Phaser.Scene {
       (nationId) => getConqueredCityUnhappiness(nationId),
       (nationId) => getWarWeariness(nationId),
       () => turnManager.getCurrentRound(),
+      (nationId) => getMilitaryOverCapUnhappiness(nationId),
     );
     const formatLog = createAILogFormatter({
       nationManager,
@@ -1471,8 +1480,22 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.requestRefresh();
       }
     });
-    const militaryUnhappinessSystem = new MilitaryUnhappinessSystem(unitManager, diplomacyManager, nationManager);
+    const militaryUnhappinessSystem = new MilitaryUnhappinessSystem(
+      unitManager,
+      diplomacyManager,
+      nationManager,
+      (nationId) => getEffectiveMilitaryUnitCap(
+        nationId,
+        nationManager.getNation(nationId)?.aiStrategyId,
+      ),
+    );
     getMilitaryUnhappiness = (nationId) => militaryUnhappinessSystem.getUnhappiness(nationId);
+    getMilitaryOverCapUnhappiness = (nationId) => militaryUnhappinessSystem.getOverCapUnhappiness(nationId);
+    unitManager.onUnitChanged((event) => {
+      if (event.reason === 'created' || event.reason === 'removed' || event.reason === 'upgraded') {
+        happinessSystem.recalculateNation(event.unit.ownerId);
+      }
+    });
 
     const imperialOverstretchSystem = new ImperialOverstretchSystem(cityManager, gridSystem);
     getCityCountPressure = (nationId) => imperialOverstretchSystem.getCityCountPressure(nationId);
@@ -8299,6 +8322,7 @@ export class GameScene extends Phaser.Scene {
               turnManager.getCurrentRound(),
             );
             const culturalVictory = victorySystem.getCulturalVictoryProgress(nation.id);
+            const happiness = happinessSystem.getNationState(nation.id);
             return {
               id: nation.id,
               name: nation.name,
@@ -8323,6 +8347,12 @@ export class GameScene extends Phaser.Scene {
               currentCulture: cultureSystem.getCurrentCultureNode(nation.id)?.name ?? null,
               cityCount: cities.length,
               population: cities.reduce((sum, city) => sum + city.population, 0),
+              happiness: {
+                net: happiness.netHappiness,
+                militaryOverCap: happiness.unhappinessFromMilitaryOverCap,
+                occupation: happiness.unhappinessFromConqueredCities,
+                energyShortage: happiness.unhappinessFromEnergyShortages,
+              },
               currency: currency
                 ? {
                   name: currency.currencyName,

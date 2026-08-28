@@ -115,6 +115,7 @@ import {
   type OffensiveOperation,
 } from './ai/OffensiveOperationSystem';
 import { deriveReclaimObjective } from './ai/reclaimCapital';
+import { countMilitaryUnits, getEffectiveMilitaryUnitCap } from './ai/AIMilitaryCapacity';
 import {
   NavalExpeditionTargetingSystem,
   type NavalExpeditionTarget,
@@ -1290,6 +1291,9 @@ export class AISystem {
       nation.previousAiStrategyId = nation.aiStrategyId;
       nation.aiStrategyId = nextId;
       nation.aiStrategyStartedTurn = context.currentTurn;
+      // Strategy changes can alter the doctrine-adjusted military cap, so the
+      // over-cap Happiness component must update in the same AI turn.
+      this.happinessSystem?.recalculateNation(nationId);
       console.log(
         this.formatLog(nationId, `strategic focus: ${getStrategyDisplayName(nextId)}.`),
       );
@@ -4492,12 +4496,8 @@ export class AISystem {
     let plannedWorkBoatCount = this.countWorkBoats(nationId) + this.countQueuedWorkBoats(nationId);
     const coastalCityCount = this.countCoastalCities(nationId);
 
-    const doctrineBudget = this.doctrineEvaluator.getDesiredMilitaryBudget(nationId);
     const doctrine = this.doctrineEvaluator.getDoctrine(nationId);
-    const effectiveMaxUnits = Math.max(
-      Math.ceil(strategy.military.maxUnits * doctrineBudget.maxUnitsMultiplier),
-      1,
-    );
+    const effectiveMaxUnits = getEffectiveMilitaryUnitCap(nationId, strategy.id);
     this.logMilitaryBudgetStatusOnce(nationId, doctrine.id, plannedMilitaryCount, effectiveMaxUnits, strategy.military.maxUnits, this.computeBudgetModifier(plannedMilitaryCount, effectiveMaxUnits));
 
     const currentRound = this.turnManager.getCurrentRound();
@@ -4976,9 +4976,7 @@ export class AISystem {
   }
 
   private countMilitary(nationId: string): number {
-    return this.unitManager.getUnitsByOwner(nationId)
-      .filter((u) => u.unitType.baseStrength > 0)
-      .length;
+    return countMilitaryUnits(this.unitManager.getUnitsByOwner(nationId));
   }
 
   private countNavalUnits(nationId: string): number {

@@ -127,12 +127,15 @@ test('population below capacity grows normally, while population at capacity can
   primeFoodForGrowth(below);
   below.advanceOwnerTurns(1);
   assert.equal(below.city.population, 6);
+  assert.equal(below.city.energyShortageTurns, undefined);
 
   const capped = makeHarness(6);
   primeFoodForGrowth(capped);
   capped.advanceOwnerTurns(1);
   assert.equal(capped.city.population, 6);
   assert.equal(capped.city.foodStorage, 0);
+  assert.equal(capped.city.energyShortageTurns, 1);
+  assert.equal(capped.happinessSystem.getNationState(NATION_ID).unhappinessFromEnergyShortages, 2);
 });
 
 test('no plant, every active plant, and an inactive plant provide canonical capacities', () => {
@@ -196,16 +199,14 @@ test('every capacity building describes its canonical population support', () =>
 test('energy shortage has five grace turns and then declines every five turns', () => {
   const h = makeHarness(15);
   h.advanceOwnerTurns(1);
-  assert.equal(h.city.energyShortageTurns, 0);
+  assert.equal(h.city.energyShortageTurns, 1);
   assert.equal(h.city.population, 15);
   assert.equal(h.logs.filter((line) => line.includes('shortage began')).length, 1);
 
-  h.advanceOwnerTurns(5);
+  h.advanceOwnerTurns(4);
   assert.equal(h.city.energyShortageTurns, 5);
   assert.equal(h.city.population, 15);
-  h.advanceOwnerTurns(4);
-  assert.equal(h.city.population, 15);
-  h.advanceOwnerTurns(1);
+  h.advanceOwnerTurns(5);
   assert.equal(h.city.population, 14);
   h.advanceOwnerTurns(5);
   assert.equal(h.city.population, 13);
@@ -215,20 +216,21 @@ test('energy shortage has five grace turns and then declines every five turns', 
 test('sufficient capacity resolves shortage immediately', () => {
   const h = makeHarness(15);
   h.advanceOwnerTurns(4);
-  assert.equal(h.city.energyShortageTurns, 3);
+  assert.equal(h.city.energyShortageTurns, 4);
   h.constructPlant('coal_power_plant');
   h.advanceOwnerTurns(1);
   assert.equal(h.city.energyShortageTurns, undefined);
   assert.equal(h.city.population, 15);
+  assert.equal(h.happinessSystem.getNationState(NATION_ID).unhappinessFromEnergyShortages, 0);
   assert.equal(h.logs.filter((line) => line.includes('shortage resolved')).length, 1);
 });
 
 test('partial capacity recovery preserves the existing shortage countdown', () => {
   const h = makeHarness(30);
   h.advanceOwnerTurns(6);
-  assert.equal(h.city.energyShortageTurns, 5);
+  assert.equal(h.city.energyShortageTurns, 6);
   h.constructPlant('oil_power_plant');
-  h.advanceOwnerTurns(5);
+  h.advanceOwnerTurns(4);
   assert.equal(h.city.energyShortageTurns, 10);
   assert.equal(h.city.population, 29);
 });

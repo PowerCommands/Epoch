@@ -32,9 +32,11 @@ export class NationHappiness {
   unhappinessFromCities: number;
   unhappinessFromPopulation: number;
   unhappinessFromMilitary: number;
+  unhappinessFromMilitaryOverCap: number;
   unhappinessFromCityCountPressure: number;
   unhappinessFromDistancePressure: number;
   unhappinessFromConqueredCities: number;
+  unhappinessFromEnergyShortages: number;
   unhappinessFromWarWeariness: number;
   unhappinessFromPolicyCityModifiers: number;
   unhappinessFromPolicyPopulationModifiers: number;
@@ -63,9 +65,11 @@ export class NationHappiness {
     this.unhappinessFromCities = 0;
     this.unhappinessFromPopulation = 0;
     this.unhappinessFromMilitary = 0;
+    this.unhappinessFromMilitaryOverCap = 0;
     this.unhappinessFromCityCountPressure = 0;
     this.unhappinessFromDistancePressure = 0;
     this.unhappinessFromConqueredCities = 0;
+    this.unhappinessFromEnergyShortages = 0;
     this.unhappinessFromWarWeariness = 0;
     this.unhappinessFromPolicyCityModifiers = 0;
     this.unhappinessFromPolicyPopulationModifiers = 0;

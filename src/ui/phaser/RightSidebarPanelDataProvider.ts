@@ -960,6 +960,14 @@ export class RightSidebarPanelDataProvider {
           textRow('Unhappiness:', true),
           textRow(`Cities: -${happiness.unhappinessFromCities}`),
           textRow(`Population: -${happiness.unhappinessFromPopulation}`),
+          ...(happiness.unhappinessFromMilitary > 0
+            ? [textRow(`Military units: -${happiness.unhappinessFromMilitary}`)] : []),
+          ...(happiness.unhappinessFromMilitaryOverCap > 0
+            ? [textRow(`Military Over Capacity: -${happiness.unhappinessFromMilitaryOverCap}`)] : []),
+          ...(happiness.unhappinessFromConqueredCities > 0
+            ? [textRow(`Conquered cities: -${happiness.unhappinessFromConqueredCities}`)] : []),
+          ...(happiness.unhappinessFromEnergyShortages > 0
+            ? [textRow(`Energy Shortages: -${happiness.unhappinessFromEnergyShortages}`)] : []),
           textRow('Effects:', true),
           textRow(`Growth: ${formatPercent(happiness.growthModifier)}`),
           textRow(`Production: ${formatPercent(happiness.productionModifier)}`),

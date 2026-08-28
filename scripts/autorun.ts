@@ -78,6 +78,12 @@ interface NationStateSummary {
   currentCulture: string | null;
   cityCount: number;
   population: number;
+  happiness?: {
+    net: number;
+    militaryOverCap: number;
+    occupation: number;
+    energyShortage: number;
+  };
   currency: {
     name: string;
     symbol: string;
@@ -327,6 +333,15 @@ async function main(): Promise<void> {
 
   cityEnergyLogLines = formatCityEnergyDiagnostics(stateSummary?.cityEnergyDiagnostics ?? []);
   for (const line of cityEnergyLogLines) console.log(line);
+  for (const nation of stateSummary?.nations ?? []) {
+    if (!nation.happiness) continue;
+    console.log(
+      `[HappinessDiag] ${nation.name} net=${nation.happiness.net} `
+      + `militaryOverCap=-${nation.happiness.militaryOverCap} `
+      + `occupation=-${nation.happiness.occupation} `
+      + `energyShortage=-${nation.happiness.energyShortage}`,
+    );
+  }
 
   const durationMs = Date.now() - startedAt;
   const outputSavePath = path.join(outputDir, 'latest-save.json');
