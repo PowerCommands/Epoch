@@ -78,6 +78,8 @@ export class AllianceCouncilManager {
   /** The single council currently awaiting human input, if any. */
   private activeSession: CouncilSession | null = null;
   private proposalCounter = 0;
+  /** Current holder of a nation's lost capital; unset keeps legacy behavior. */
+  private getReclaimHolderId: (nationId: string) => string | undefined = () => undefined;
 
   constructor(
     private readonly allianceManager: AllianceManager,
@@ -88,6 +90,10 @@ export class AllianceCouncilManager {
     private readonly haveMet: (a: string, b: string) => boolean,
     private readonly context: AllianceCouncilContext,
   ) {}
+
+  setReclaimHolderProvider(provider: (nationId: string) => string | undefined): void {
+    this.getReclaimHolderId = provider;
+  }
 
   /** Open any alliance whose council round has arrived. Call once per round. */
   update(): void {
@@ -510,8 +516,10 @@ export class AllianceCouncilManager {
 
   private findWarTarget(proposerId: string, session: CouncilSession): string | null {
     const allianceStrength = this.allianceStrength(session.members);
+    const reclaimHolderId = this.getReclaimHolderId(proposerId);
     for (const nation of this.nationManager.getAllNations()) {
       const targetId = nation.id;
+      if (reclaimHolderId !== undefined && targetId !== reclaimHolderId) continue;
       if (!this.isValidWarTarget(session, targetId)) continue;
       if (!this.haveMet(proposerId, targetId)) continue;
       if (this.diplomaticEvaluationSystem.evaluateAttitude(proposerId, targetId) !== 'hostile') continue;
@@ -565,6 +573,11 @@ export class AllianceCouncilManager {
         return true;
       }
       case 'startWar': {
+        // An alliance-council war is an elective offensive commitment. A nation
+        // with Reclaim Capital therefore vetoes every target except the current
+        // holder. Defensive alliance obligations never pass through this path.
+        const reclaimHolderId = this.getReclaimHolderId(voterId);
+        if (reclaimHolderId !== undefined && reclaimHolderId !== targetId) return false;
         if (attitude === 'friendly') return false;
         if (this.countActiveWars(voterId) >= 2) return false;
         const voterPower = this.militaryEvaluationSystem.getMilitaryStrength(voterId).totalStrength;

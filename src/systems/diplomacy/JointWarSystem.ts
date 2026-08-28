@@ -6,6 +6,7 @@ import type { DiplomaticEvaluationSystem } from './DiplomaticEvaluationSystem';
 import type { JointWarKind, JointWarProposal, JointWarValidationResult } from '../../types/jointWar';
 import { getExploitationRightsJoinWarBonusForInterest } from './ExploitationRightsConcession';
 import { getLeaderExploitationInterestByNationId } from '../../data/leaders';
+import { RECLAIM_JOINT_WAR_BONUS } from '../ai/reclaimCapital';
 
 /** AI willingness threshold; tuned conservatively so allied/strong asks pass. */
 const ACCEPT_THRESHOLD = 3;
@@ -31,6 +32,19 @@ export class JointWarSystem {
     private readonly nationManager: NationManager,
     private readonly haveMet: (a: string, b: string) => boolean,
   ) {}
+
+  /**
+   * Reclaim Capital hook: the current holder of a nation's lost capital, or
+   * undefined. Defaults to none so existing callers/tests are unaffected; when
+   * wired it makes a nation more eager to join wars against its capital holder
+   * and to seek partners who already oppose that holder — a modifier on top of
+   * the ordinary relation/military scoring, never an override.
+   */
+  private getReclaimHolderId: (nationId: string) => string | undefined = () => undefined;
+
+  setReclaimHolderProvider(provider: (nationId: string) => string | undefined): void {
+    this.getReclaimHolderId = provider;
+  }
 
   /**
    * Validate a joint-war ask from `proposerId` to `receiverId` against
@@ -87,6 +101,11 @@ export class JointWarSystem {
     offeredExploitationRights = false,
   ): boolean {
     if (!this.canRequestJointWar(proposerId, receiverId, targetId, kind).ok) return false;
+    const reclaimHolderId = this.getReclaimHolderId(receiverId);
+    // Hard strategic restriction: a recovering nation never volunteers for an
+    // offensive joint war that does not directly target its capital holder.
+    // Defensive alliance activation is handled separately by AllianceWarSystem.
+    if (reclaimHolderId !== undefined && reclaimHolderId !== targetId) return false;
     if (this.allianceManager.areAllied(receiverId, targetId)) return false;
 
     const attitudeToTarget = this.diplomaticEvaluationSystem.evaluateAttitude(receiverId, targetId);
@@ -120,6 +139,10 @@ export class JointWarSystem {
     if (attitudeToTarget === 'hostile') score += 1.5;
     else if (attitudeToTarget === 'afraid') score += 0.8;
 
+    // Reclaim Capital: a war against the nation currently holding the receiver's
+    // own lost capital directly serves its overriding strategic objective.
+    if (this.getReclaimHolderId(receiverId) === targetId) score += RECLAIM_JOINT_WAR_BONUS;
+
     // Military advantage against the target's defensive bloc.
     if (receiverPower >= targetDefensivePower * 1.25) score += 2;
     else if (receiverPower >= targetDefensivePower) score += 1;
@@ -149,6 +172,7 @@ export class JointWarSystem {
    */
   findAIProposal(proposerId: string): JointWarProposal | null {
     const nations = this.nationManager.getAllNations();
+    const reclaimHolderId = this.getReclaimHolderId(proposerId);
     const receivers = nations
       .map((nation) => nation.id)
       .filter((receiverId) => receiverId !== proposerId)
@@ -156,9 +180,22 @@ export class JointWarSystem {
       .filter((receiverId) => this.diplomacyManager.getState(proposerId, receiverId) !== 'WAR')
       .filter((receiverId) => {
         const attitude = this.diplomaticEvaluationSystem.evaluateAttitude(proposerId, receiverId);
-        return attitude === 'friendly' || this.allianceManager.areAllied(proposerId, receiverId);
+        if (attitude === 'friendly' || this.allianceManager.areAllied(proposerId, receiverId)) return true;
+        if (!reclaimHolderId || !this.opposesHolder(receiverId, reclaimHolderId)) return false;
+        // Shared opposition makes a neutral nation worth approaching, but never
+        // turns a deeply hostile bilateral relationship into an automatic pact.
+        return attitude !== 'hostile'
+          && this.diplomaticEvaluationSystem.evaluateAttitude(receiverId, proposerId) !== 'hostile';
       });
     if (receivers.length === 0) return null;
+
+    // Reclaim Capital takes precedence: seek a partner against the nation holding
+    // the proposer's lost capital, favouring receivers who already oppose it.
+    const reclaimProposal = this.findReclaimJointWarProposal(proposerId, receivers);
+    // While reclaiming, this is the only offensive war proposal the nation may
+    // originate. If no suitable partner exists, wait instead of falling through
+    // to an unrelated ordinary joint-war proposal.
+    if (reclaimHolderId) return reclaimProposal;
 
     for (const receiverId of receivers) {
       const offerExploitationRights = this.shouldOfferExploitationRights(proposerId, receiverId);
@@ -178,6 +215,43 @@ export class JointWarSystem {
       }
     }
     return null;
+  }
+
+  /**
+   * A joint-war proposal targeting the proposer's capital holder, or null. The
+   * kind follows whether the proposer already fights the holder (join) or not
+   * (request), and receivers already opposing the holder are tried first.
+   */
+  private findReclaimJointWarProposal(
+    proposerId: string,
+    receivers: readonly string[],
+  ): JointWarProposal | null {
+    const holderId = this.getReclaimHolderId(proposerId);
+    if (!holderId) return null;
+    const kind: JointWarKind = this.diplomacyManager.getState(proposerId, holderId) === 'WAR'
+      ? 'join'
+      : 'request';
+
+    const ordered = [...receivers].sort(
+      (a, b) => Number(this.opposesHolder(b, holderId)) - Number(this.opposesHolder(a, holderId)),
+    );
+    for (const receiverId of ordered) {
+      if (!this.canRequestJointWar(proposerId, receiverId, holderId, kind).ok) continue;
+      return {
+        proposerNationId: proposerId,
+        receiverNationId: receiverId,
+        targetNationId: holderId,
+        kind,
+        offerExploitationRights: this.shouldOfferExploitationRights(proposerId, receiverId),
+      };
+    }
+    return null;
+  }
+
+  /** Whether `nationId` already opposes `holderId` (at war or hostile attitude). */
+  private opposesHolder(nationId: string, holderId: string): boolean {
+    return this.diplomacyManager.getState(nationId, holderId) === 'WAR'
+      || this.diplomaticEvaluationSystem.evaluateAttitude(nationId, holderId) === 'hostile';
   }
 
   /**

@@ -114,6 +114,7 @@ import {
   OFFENSIVE_STAGING_RADIUS,
   type OffensiveOperation,
 } from './ai/OffensiveOperationSystem';
+import { deriveReclaimObjective } from './ai/reclaimCapital';
 import {
   NavalExpeditionTargetingSystem,
   type NavalExpeditionTarget,
@@ -1338,6 +1339,7 @@ export class AISystem {
       atWar: this.isAtWarWithAnyone(nationId),
       enemyMilitaryNearby: highestThreatLevel !== 'none',
       highestThreatLevel,
+      reclaimRecovering: deriveReclaimObjective(nationId, this.cityManager.getAllCities()) !== null,
     };
   }
 
@@ -1375,6 +1377,11 @@ export class AISystem {
     const ownLandCombatUnits = this.unitManager.getUnitsByOwner(nationId)
       .filter((u) => !u.unitType.isNaval && u.unitType.baseStrength > 0);
 
+    // A nation recovering its lost capital fixes that city as the dominant land
+    // target (only relevant when the holder is among the current war enemies).
+    const reclaimTargetCityId = deriveReclaimObjective(nationId, this.cityManager.getAllCities())
+      ?.targetCityId;
+
     const op = this.offensiveOperationSystem.getOperation({
       nationId,
       round,
@@ -1384,6 +1391,7 @@ export class AISystem {
       ownLandCombatUnits,
       aggression: strategy.military.aggression,
       distanceFn: (a, b) => this.gridSystem.getDistance(a, b),
+      reclaimTargetCityId,
     });
 
     if (op) {
@@ -2689,6 +2697,8 @@ export class AISystem {
       gridSystem: this.gridSystem,
       homeUnderThreat,
       hasRangedNavalCapability: this.hasRangedNavalUnitAvailableOrProducible(nationId),
+      reclaimTargetCityId: deriveReclaimObjective(nationId, this.cityManager.getAllCities())
+        ?.targetCityId,
     });
 
     if (target) {

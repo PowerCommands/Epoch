@@ -43,7 +43,16 @@ export interface AIStrategyContext {
   readonly atWar: boolean;
   readonly enemyMilitaryNearby: boolean;
   readonly highestThreatLevel: ThreatLevel;
+  /**
+   * True while the nation has an active Reclaim Capital objective. Leans strategy
+   * toward rebuilding economy and defence without replacing the leader identity;
+   * the national agenda and personality still apply underneath.
+   */
+  readonly reclaimRecovering?: boolean;
 }
+
+/** Economy/defence lean applied while recovering toward a capital reclamation. */
+const RECLAIM_RECOVERY_BIAS = 15;
 
 /**
  * Picks the most appropriate AIStrategy id from a context snapshot.
@@ -93,6 +102,13 @@ export class AIStrategySelector {
     scores[CULTURAL_DOMINANCE_AI_STRATEGY_ID] += context.leaderPersonality.cultureBias * 2;
     scores[BALANCED_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.cultureBias / 4);
     scores[ECONOMIC_AI_STRATEGY_ID] += Math.floor(context.leaderPersonality.cultureBias / 5);
+
+    // Reclaim Capital recovery: a nation that lost its capital should husband
+    // its strength — rebuild economy and defence rather than adventuring.
+    if (context.reclaimRecovering) {
+      scores[ECONOMIC_AI_STRATEGY_ID] += RECLAIM_RECOVERY_BIAS;
+      scores[DEFENSIVE_AI_STRATEGY_ID] += RECLAIM_RECOVERY_BIAS;
+    }
 
     let bestStrategyId: string = STRATEGY_SCORE_ORDER[0];
     for (const strategyId of STRATEGY_SCORE_ORDER) {

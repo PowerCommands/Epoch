@@ -18,6 +18,7 @@ import type { GridCoord } from '../../types/grid';
 import type { AIMovementCandidate } from './AIMovementScoring';
 import { getMilitaryRole } from './MilitaryRoleBehavior';
 import { CITY_BASE_HEALTH } from '../../data/cities';
+import { RECLAIM_TARGET_BONUS } from './reclaimCapital';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,12 @@ export interface OperationParams {
   readonly ownLandCombatUnits: readonly Unit[];
   readonly aggression: number;
   readonly distanceFn: DistanceFn;
+  /**
+   * The nation's own lost original capital, when it has an active Reclaim
+   * Capital objective. Receives a large target bonus so a reclamation war stays
+   * focused on the capital instead of drifting into unrelated conquest.
+   */
+  readonly reclaimTargetCityId?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -77,19 +84,24 @@ function scoreCityAsTarget(
   ownAnchor: GridCoord,
   isFirstEnemyCity: boolean,
   distanceFn: DistanceFn,
+  reclaimTargetCityId: string | undefined,
 ): number {
   const dist = distanceFn(ownAnchor, { x: city.tileX, y: city.tileY });
-  if (dist > MAX_TARGET_DISTANCE) return -Infinity;
+  // The lost capital is exempt from the reachability cut-off: recovering it is
+  // the strategic objective even when it is far away.
+  const isReclaimTarget = city.id === reclaimTargetCityId;
+  if (dist > MAX_TARGET_DISTANCE && !isReclaimTarget) return -Infinity;
   const healthRatio = city.health / CITY_BASE_HEALTH;
   let score = 100;
   score -= dist * TARGET_DIST_PENALTY;
   score += (1 - healthRatio) * TARGET_HEALTH_BONUS;
   if (isFirstEnemyCity) score += TARGET_CAPITAL_BONUS;
+  if (isReclaimTarget) score += RECLAIM_TARGET_BONUS;
   return score;
 }
 
 function selectTarget(params: OperationParams): City | null {
-  const { warEnemyNationIds, allCities, ownAnchor, distanceFn } = params;
+  const { warEnemyNationIds, allCities, ownAnchor, distanceFn, reclaimTargetCityId } = params;
   const enemySet = new Set(warEnemyNationIds);
   const firstCityIdPerEnemy = new Map<string, string>();
 
@@ -105,7 +117,7 @@ function selectTarget(params: OperationParams): City | null {
   for (const city of allCities) {
     if (!enemySet.has(city.ownerId)) continue;
     const isFirst = firstCityIdPerEnemy.get(city.ownerId) === city.id;
-    const score = scoreCityAsTarget(city, ownAnchor, isFirst, distanceFn);
+    const score = scoreCityAsTarget(city, ownAnchor, isFirst, distanceFn, reclaimTargetCityId);
     if (score > bestScore) {
       bestScore = score;
       bestCity = city;

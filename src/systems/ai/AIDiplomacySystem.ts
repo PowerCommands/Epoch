@@ -19,6 +19,7 @@ import {
   type MilitaryIntent,
 } from './utils/AIMilitaryUtils';
 import type { AILogFormatter } from './AILogFormatter';
+import { NO_RECLAIM_WAR_MODIFIER, type ReclaimWarModifier } from './reclaimCapital';
 import type { PeaceTreatySystem } from '../PeaceTreatySystem';
 import { AI_PEACE_MODERATE_PRESSURE } from '../PeaceTreatySystem';
 import { MIN_WAR_TURNS_FOR_PEACE } from '../DiplomacyManager';
@@ -115,6 +116,13 @@ export class AIDiplomacySystem {
   private readonly decisionListeners: Array<(reason: AIDiplomacyDecisionReason) => void> = [];
   private readonly expiredPressureTurnByPair = new Map<string, number>();
   private capitulationController?: AICapitulationController;
+  /**
+   * Reclaim Capital war bias. Defaults to a no-op so callers/tests that do not
+   * wire the objective keep their existing behavior; production supplies the
+   * ReclaimCapitalSystem-backed provider.
+   */
+  private getReclaimWarModifier: (selfId: string, otherId: string) => ReclaimWarModifier =
+    () => NO_RECLAIM_WAR_MODIFIER;
   private isHumanNation: (nationId: string) => boolean = (nationId) =>
     this.nationManager.getNation(nationId)?.isHuman === true;
   private applyEconomicPressure: (
@@ -158,6 +166,18 @@ export class AIDiplomacySystem {
    */
   setCapitulationController(controller: AICapitulationController): void {
     this.capitulationController = controller;
+  }
+
+  /**
+   * Wire the Reclaim Capital objective's war bias: toward the current holder of
+   * a lost capital it can raise war interest when the opportunity is favourable;
+   * toward unrelated nations it discourages wars of choice during recovery. It
+   * never bypasses the existing military/cooldown safety gates.
+   */
+  setReclaimWarModifierProvider(
+    provider: (selfId: string, otherId: string) => ReclaimWarModifier,
+  ): void {
+    this.getReclaimWarModifier = provider;
   }
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
@@ -304,7 +324,12 @@ export class AIDiplomacySystem {
 
     // PEACE branch — hostile escalates to war (which itself clears border
     // grants), friendly opens borders, anything else stays put.
-    if (attitude === 'hostile') {
+    // Holding this nation's original capital is a persistent strategic
+    // grievance. It lets a genuinely high reclaim opportunity reach the normal
+    // war evaluation even if ordinary relations have cooled during a long
+    // peace; the reclaim modifier still supplies no aggression while weak.
+    const reclaimMod = this.getReclaimWarModifier(selfId, otherId);
+    if (attitude === 'hostile' || (!reclaimMod.suppressUnrelated && reclaimMod.warScoreDelta > 0)) {
       if (this.diplomacyManager.isPeaceTreatyActive(selfId, otherId, currentTurn)) return;
       if (this.diplomacyManager.isCeasefireActive(selfId, otherId, currentTurn)) return;
       // Alliance-aware: attacking an allied target means facing the defender
@@ -373,6 +398,10 @@ export class AIDiplomacySystem {
         warScore *= eraStrategy.diplomacyWeights.war;
       }
 
+      // Reclaim Capital: additive bias applied after the multiplicative shaping
+      // above so it is not amplified/dampened by personality or era weights.
+      warScore += reclaimMod.warScoreDelta;
+
       const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
       const suspicionNote = suspicionWarBonus > 0
         ? ` (war pressure increased by suspicion ${Math.round(relation.suspicion)}`
@@ -383,7 +412,12 @@ export class AIDiplomacySystem {
       );
 
       const goalWantsWar = warScore > 0.7;
-      if (!personalityWantsWar && !goalWantsWar) {
+      // A recovering nation avoids opening unrelated wars of choice, even when
+      // its personality would otherwise want one — it should husband its strength
+      // for the capital. Defensive/high-threat cases already returned above.
+      const wantsWar = (personalityWantsWar || goalWantsWar || reclaimMod.treatAsWarDesire)
+        && !reclaimMod.suppressUnrelated;
+      if (!wantsWar) {
         this.considerRoutineEconomicPressure(
           selfId,
           otherId,

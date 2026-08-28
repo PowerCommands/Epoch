@@ -124,6 +124,7 @@ import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposa
 import { IdeologicalDriftSystem, type IdeologicalDriftEvent } from '../systems/diplomacy/IdeologicalDriftSystem';
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
+import { ReclaimCapitalSystem } from '../systems/ai/ReclaimCapitalSystem';
 import { AIExplorationSystem } from '../systems/ai/AIExplorationSystem';
 import { AIOverseasExpansionSystem } from '../systems/AIOverseasExpansionSystem';
 import { AIPolicySystem } from '../systems/ai/AIPolicySystem';
@@ -1279,6 +1280,40 @@ export class GameScene extends Phaser.Scene {
         capitulationSystem.shouldDemandExploitationRights(demandingNationId, targetNationId),
       ),
     });
+
+    // Reclaim Capital: persistent objective a nation adopts after losing its
+    // capital. Derived from city state (no saved state); feeds war-declaration,
+    // joint-war, targeting and strategy systems with strategic modifiers.
+    const reclaimCapitalSystem = new ReclaimCapitalSystem({
+      getAllCities: () => cityManager.getAllCities(),
+      getAllNationIds: () => nationManager.getAllNations().map((n) => n.id),
+      getNonHumanNationIds: () => nationManager.getAllNations()
+        .filter((n) => n.id !== humanNationId).map((n) => n.id),
+      nationExists: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      getMilitaryStrength: (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
+      getWarringNationIds: (nationId) => diplomacyManager.getWarringNationIds(nationId),
+      isHostileTowards: (viewer, other) =>
+        diplomaticEvaluationSystem.evaluateAttitude(viewer, other) === 'hostile',
+      haveMet: (a, b) => discoverySystem.hasMet(a, b),
+      isEconomyHealthy: (nationId) => {
+        const r = nationManager.getResources(nationId);
+        return r.gold >= 0 && r.goldPerTurn >= 0;
+      },
+      isWarPermitted: (nationId, holderId) => {
+        if (diplomacyManager.getState(nationId, holderId) === 'WAR') return true;
+        const turn = turnManager.getCurrentRound();
+        return !diplomacyManager.isPeaceTreatyActive(nationId, holderId, turn)
+          && !diplomacyManager.isCeasefireActive(nationId, holderId, turn);
+      },
+      isAtWarWith: (nationId, holderId) => diplomacyManager.getState(nationId, holderId) === 'WAR',
+      log: (message) => console.log(message),
+    });
+    turnManager.on('roundStart', (event) => reclaimCapitalSystem.handleRoundStart(event.round));
+    aiDiplomacySystem.setReclaimWarModifierProvider(
+      (selfId, otherId) => reclaimCapitalSystem.getReclaimWarModifier(selfId, otherId),
+    );
+    jointWarSystem.setReclaimHolderProvider((nationId) => reclaimCapitalSystem.getReclaimHolderId(nationId));
+
     const tradeDealSystem = new TradeDealSystem(
       diplomacyManager,
       () => turnManager.getCurrentRound(),
@@ -3127,7 +3162,7 @@ export class GameScene extends Phaser.Scene {
       // Autoplay silences console.log to keep long headless runs quiet, but a
       // few prefixes are diagnostics the autorun pipeline exists to collect.
       // Suppressing those makes the run unobservable rather than merely quiet.
-      const autoplayLogAllowList = ['[autorun]', '[TechEra]', '[EmergencyDefense]', '[Diplomacy]', '[AggressionMemory]', '[ScienceVictoryAI]'];
+      const autoplayLogAllowList = ['[autorun]', '[TechEra]', '[EmergencyDefense]', '[Diplomacy]', '[AggressionMemory]', '[ScienceVictoryAI]', '[ReclaimCapital]'];
       console.log = (...args: unknown[]) => {
         const first = args[0];
         // Matched anywhere in the line, not just at the start: several systems
@@ -4425,6 +4460,9 @@ export class GameScene extends Phaser.Scene {
           rightPanel?.requestRefresh();
         },
       },
+    );
+    allianceCouncilManager.setReclaimHolderProvider(
+      (nationId) => reclaimCapitalSystem.getReclaimHolderId(nationId),
     );
     turnManager.on('roundStart', () => allianceCouncilManager.update());
     // Diplomatic upkeep: suspicion drifts back toward 0 a little each round.

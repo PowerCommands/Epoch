@@ -5,6 +5,7 @@ import { TileType, type MapData } from '../../types/map';
 import type { GridCoord } from '../../types/grid';
 import type { IGridSystem } from '../grid/IGridSystem';
 import { cityHasWaterTile } from '../ProductionRules';
+import { RECLAIM_TARGET_BONUS } from './reclaimCapital';
 
 export interface NavalExpeditionTarget {
   readonly type: 'navalExpeditionTarget';
@@ -26,6 +27,8 @@ export interface NavalExpeditionTargetingParams {
   readonly gridSystem: IGridSystem;
   readonly homeUnderThreat: boolean;
   readonly hasRangedNavalCapability: boolean;
+  /** Lost original capital to prioritize when it is a valid coastal target. */
+  readonly reclaimTargetCityId?: string;
 }
 
 interface ScoredNavalExpeditionTarget extends NavalExpeditionTarget {
@@ -127,6 +130,10 @@ export class NavalExpeditionTargetingSystem {
     if (city.isCapital || city.isResidenceCapital) {
       score += CAPITAL_VALUE_BONUS;
       reasons.push('strategic capital');
+    }
+    if (city.id === params.reclaimTargetCityId) {
+      score += RECLAIM_TARGET_BONUS;
+      reasons.push('lost original capital');
     }
     if (city.population > 1) score += Math.min(12, city.population * POPULATION_VALUE_WEIGHT);
 
