@@ -1954,6 +1954,10 @@ export class GameScene extends Phaser.Scene {
       turnManager.getCurrentRound(),
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
     );
+    resourceSystem.setCityEnergyProvider(
+      powerPlantSystem,
+      (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
+    );
     productionSystem.setItemProductionBlockReasonProvider((cityId, item) => (
       item.kind === 'building'
         ? powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)

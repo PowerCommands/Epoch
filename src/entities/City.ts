@@ -46,6 +46,8 @@ export class City {
   health: number;
   population: number;
   foodStorage: number;
+  /** Elapsed owner turns in the current energy shortage; absent when supplied. */
+  energyShortageTurns?: number;
   culture: number;
   culturalSphereProgress: number;
   ownedTileCoords: Array<{ x: number; y: number }>;
@@ -72,6 +74,7 @@ export class City {
     this.health = CITY_BASE_HEALTH;
     this.population = 1;
     this.foodStorage = 0;
+    this.energyShortageTurns = undefined;
     this.culture = 0;
     this.culturalSphereProgress = 0;
     this.ownedTileCoords = [];

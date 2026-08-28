@@ -27,6 +27,16 @@ import {
   applyCityIntegrationOutput,
   getNationOccupationGoldCost,
 } from './CityIntegrationSystem';
+import type { PowerPlantSystem } from './PowerPlantSystem';
+
+const ENERGY_SHORTAGE_GRACE_TURNS = 5;
+const ENERGY_SHORTAGE_DECLINE_INTERVAL = 5;
+
+type CityEnergyProvider = Pick<
+  PowerPlantSystem,
+  'getCityPopulationCapacity' | 'getCityProductionMultiplier'
+>;
+type CityEnergyLog = (nationId: string, message: string) => void;
 
 /**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
@@ -41,6 +51,8 @@ export class ResourceSystem {
   private readonly listeners: ResourceListener[] = [];
   private hasSkippedInitialTurnStart = false;
   private readonly cityTerritorySystem: CityTerritorySystem;
+  private cityEnergyProvider?: CityEnergyProvider;
+  private cityEnergyLog: CityEnergyLog = () => {};
 
   constructor(
     nationManager: NationManager,
@@ -75,6 +87,14 @@ export class ResourceSystem {
 
   on(callback: ResourceListener): void {
     this.listeners.push(callback);
+  }
+
+  setCityEnergyProvider(
+    provider: CityEnergyProvider,
+    log: CityEnergyLog = () => {},
+  ): void {
+    this.cityEnergyProvider = provider;
+    this.cityEnergyLog = log;
   }
 
   addGold(nationId: string, amount: number): number | null {
@@ -202,12 +222,17 @@ export class ResourceSystem {
     nationRes.happinessPerTurn = 0;
 
     for (const city of cities) {
+      const populationCapacity = this.getCityPopulationCapacity(city.id);
+      this.updateEnergyShortage(city, populationCapacity);
       const cityRes = this.cityManager.getResources(city.id);
       const buildings = this.cityManager.getBuildings(city.id);
       const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers);
-      const policyEconomy = this.applyCityIntegrationMultiplier(
+      const policyEconomy = this.applyCityEnergyProductionMultiplier(
         city,
-        this.applyPolicyEconomyModifiers(city.ownerId, economy),
+        this.applyCityIntegrationMultiplier(
+          city,
+          this.applyPolicyEconomyModifiers(city.ownerId, economy),
+        ),
       );
       const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
@@ -218,18 +243,21 @@ export class ResourceSystem {
         const adjustedGrowth = Math.floor(economy.netFood * growthModifier);
         city.foodStorage += adjustedGrowth;
         if (city.foodStorage >= economy.foodToGrow) {
-          city.population += 1;
           city.foodStorage = 0;
-          this.cityTerritorySystem.updateWorkedTiles(city, this.mapData);
-          this.cityTerritorySystem.refreshNextExpansionTile(city, this.mapData);
-          this.happinessSystem.recalculateNation(city.ownerId);
-          displayEconomy = this.applyCityIntegrationMultiplier(
-            city,
-            this.applyPolicyEconomyModifiers(
-              city.ownerId,
-              calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
-            ),
-          );
+          if (city.population < populationCapacity) {
+            city.population += 1;
+            this.refreshCityPopulationEffects(city);
+            displayEconomy = this.applyCityEnergyProductionMultiplier(
+              city,
+              this.applyCityIntegrationMultiplier(
+                city,
+                this.applyPolicyEconomyModifiers(
+                  city.ownerId,
+                  calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+                ),
+              ),
+            );
+          }
         }
       }
 
@@ -347,10 +375,76 @@ export class ResourceSystem {
     city: City,
     nationModifiers: Readonly<ModifierSet>,
   ): CityEconomySummary {
-    return this.applyCityIntegrationMultiplier(
+    return this.applyCityEnergyProductionMultiplier(
       city,
-      this.applyPolicyEconomyModifiers(city.ownerId, this.calculateEconomyForCity(city, nationModifiers)),
+      this.applyCityIntegrationMultiplier(
+        city,
+        this.applyPolicyEconomyModifiers(city.ownerId, this.calculateEconomyForCity(city, nationModifiers)),
+      ),
     );
+  }
+
+  private getCityPopulationCapacity(cityId: string): number {
+    return this.cityEnergyProvider?.getCityPopulationCapacity(cityId) ?? Number.POSITIVE_INFINITY;
+  }
+
+  private applyCityEnergyProductionMultiplier(
+    city: City,
+    economy: CityEconomySummary,
+  ): CityEconomySummary {
+    const multiplier = this.cityEnergyProvider?.getCityProductionMultiplier(city.id) ?? 1;
+    if (multiplier === 1) return economy;
+    return { ...economy, production: economy.production * multiplier };
+  }
+
+  private updateEnergyShortage(city: City, capacity: number): void {
+    if (city.population <= capacity) {
+      if (city.energyShortageTurns !== undefined) {
+        city.energyShortageTurns = undefined;
+        this.cityEnergyLog(
+          city.ownerId,
+          `[Energy] Energy shortage resolved in ${city.name}; population ${city.population}, capacity ${capacity}.`,
+        );
+      }
+      return;
+    }
+
+    if (city.energyShortageTurns === undefined) {
+      city.energyShortageTurns = 0;
+      this.cityEnergyLog(
+        city.ownerId,
+        `[Energy] Energy shortage began in ${city.name}; population ${city.population}, capacity ${capacity}.`,
+      );
+      return;
+    }
+
+    city.energyShortageTurns += 1;
+    const firstDeclineTurn = ENERGY_SHORTAGE_GRACE_TURNS + ENERGY_SHORTAGE_DECLINE_INTERVAL;
+    if (
+      city.energyShortageTurns < firstDeclineTurn
+      || city.energyShortageTurns % ENERGY_SHORTAGE_DECLINE_INTERVAL !== 0
+    ) return;
+
+    city.population -= 1;
+    this.refreshCityPopulationEffects(city);
+    this.cityEnergyLog(
+      city.ownerId,
+      `[Energy] ${city.name} lost 1 population to energy shortage; population ${city.population}, capacity ${capacity}.`,
+    );
+
+    if (city.population <= capacity) {
+      city.energyShortageTurns = undefined;
+      this.cityEnergyLog(
+        city.ownerId,
+        `[Energy] Energy shortage resolved in ${city.name}; population ${city.population}, capacity ${capacity}.`,
+      );
+    }
+  }
+
+  private refreshCityPopulationEffects(city: City): void {
+    this.cityTerritorySystem.updateWorkedTiles(city, this.mapData);
+    this.cityTerritorySystem.refreshNextExpansionTile(city, this.mapData);
+    this.happinessSystem.recalculateNation(city.ownerId);
   }
 
   private applyCityIntegrationMultiplier(city: City, economy: CityEconomySummary): CityEconomySummary {

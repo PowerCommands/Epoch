@@ -119,6 +119,8 @@ export interface SavedCity {
   health: number;
   population: number;
   foodStorage: number;
+  /** Elapsed owner turns in an active energy shortage. */
+  energyShortageTurns?: number;
   culture: number;
   culturalSphereProgress?: number;
   ownedTileCoords?: Array<{ x: number; y: number }>;

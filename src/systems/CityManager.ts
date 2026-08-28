@@ -170,6 +170,7 @@ export class CityManager {
     health: number;
     population: number;
     foodStorage: number;
+    energyShortageTurns?: number;
     culture: number;
     culturalSphereProgress?: number;
     lastTurnAttacked: number | null;
@@ -193,6 +194,7 @@ export class CityManager {
     city.health = config.health;
     city.population = config.population;
     city.foodStorage = config.foodStorage;
+    city.energyShortageTurns = config.energyShortageTurns;
     city.culture = config.culture;
     city.culturalSphereProgress = config.culturalSphereProgress ?? 0;
     city.lastTurnAttacked = config.lastTurnAttacked;

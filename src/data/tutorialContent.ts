@@ -144,6 +144,52 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Larger cities work more tiles and become more productive',
         ],
       },
+      { kind: 'heading', text: 'Power Plants & Energy' },
+      { kind: 'paragraph', text: 'As your civilization advances, a city can only keep growing if it has the energy to support its people. A city with no Power Plant supports at most 8 population, and a city can never grow beyond the population its current Power Plant allows. Building a Power Plant raises this limit:' },
+      {
+        kind: 'list',
+        items: [
+          'No Power Plant — up to 8 population',
+          'Coal Power Plant — up to 16 population',
+          'Oil Power Plant — up to 24 population',
+          'Gas Power Plant — up to 40 population',
+          'Nuclear Power Plant — up to 100 population',
+        ],
+      },
+      { kind: 'paragraph', text: 'An active Power Plant also multiplies the city\'s production. The bonus applies only while the plant is active:' },
+      {
+        kind: 'list',
+        items: [
+          'No Power Plant — ×1 production',
+          'Coal Power Plant — ×2 production',
+          'Oil Power Plant — ×3 production',
+          'Gas Power Plant — ×4 production',
+          'Nuclear Power Plant — ×6 production',
+        ],
+      },
+      { kind: 'paragraph', text: 'Every Power Plant runs on a strategic resource, and each source of that resource can power only one plant:' },
+      {
+        kind: 'list',
+        items: [
+          'Coal Power Plant needs Coal',
+          'Oil Power Plant needs Oil',
+          'Gas Power Plant needs Natural Gas',
+          'Nuclear Power Plant needs Uranium',
+        ],
+      },
+      { kind: 'note', text: 'This is stricter than military units, where one resource source can equip many units — a Power Plant claims a source of its own. Resource access can be domestic or gained through trade, so a city that relies on an imported energy resource will lose its Power Plant benefits if that access disappears. Secure your energy supply before you come to depend on it.' },
+      { kind: 'paragraph', text: 'Power Plants do not last forever. Each has a limited operational lifespan, after which it is removed and must be rebuilt at its full production cost:' },
+      {
+        kind: 'list',
+        items: [
+          'Coal Power Plant — 20 turns',
+          'Oil Power Plant — 40 turns',
+          'Gas Power Plant — 50 turns',
+          'Nuclear Power Plant — 100 turns',
+        ],
+      },
+      { kind: 'paragraph', text: 'A city can have only one Power Plant at a time. Building a new one replaces the old plant, letting a city move between Coal, Oil, Gas and Nuclear power as its technology and available resources change.' },
+      { kind: 'note', text: 'If a city\'s population is already above what its energy can support — because a plant expired, went inactive, or lost access to its resource — it does not lose people at once. There is a short grace period of about 5 turns to recover. If enough capacity is not restored, the city then loses 1 population every 5 turns until it settles at a level its energy can support. Restore capacity and the decline stops.' },
       { kind: 'heading', text: 'Territory' },
       {
         kind: 'list',

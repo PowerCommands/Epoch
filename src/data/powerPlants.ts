@@ -3,9 +3,9 @@ export interface PowerPlantMetadata {
   readonly requiredResourceId: 'coal' | 'oil' | 'natural_gas' | 'uranium';
   readonly plantsPerResourceSource: 1;
   readonly lifespanTurns: number;
-  /** Stored for the future population-cap layer; deliberately inert today. */
+  /** Maximum population supported while this plant is active. */
   readonly futurePopulationCap: number;
-  /** Stored for the future production layer; deliberately inert today. */
+  /** City production multiplier provided while this plant is active. */
   readonly futureProductionMultiplier: number;
 }
 

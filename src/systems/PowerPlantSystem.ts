@@ -241,6 +241,12 @@ export class PowerPlantSystem {
       ?? UNPOWERED_POPULATION_CAPACITY;
   }
 
+  getCityProductionMultiplier(cityId: string): number {
+    const plant = this.getCityPowerPlant(cityId);
+    if (!plant?.active) return 1;
+    return getPowerPlantMetadata(plant.buildingId)?.futureProductionMultiplier ?? 1;
+  }
+
   isCityInEnergyShortage(cityId: string, population: number): boolean {
     return population > this.getCityPopulationCapacity(cityId);
   }
