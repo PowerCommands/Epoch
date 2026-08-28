@@ -3,7 +3,14 @@ import type { GameSpeedId } from '../data/gameSpeeds';
 import type { CovertPersonalityId } from './covertPersonality';
 import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 
-export type ResourceAbundance = 'scarce' | 'normal' | 'abundant';
+/**
+ * Procedural natural-resource distribution level chosen at setup.
+ *
+ * `scarce` / `normal` / `abundant` seed resources procedurally at fresh start.
+ * `scenario` ("Scenario Only") skips all procedural augmentation and uses
+ * exactly the resources already stored in the scenario/map.
+ */
+export type ResourceAbundance = 'scarce' | 'normal' | 'abundant' | 'scenario';
 
 export interface ScienceVictoryConfig {
   enabled: boolean;

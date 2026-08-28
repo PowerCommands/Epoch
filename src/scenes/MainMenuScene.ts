@@ -270,6 +270,7 @@ export class MainMenuScene extends Phaser.Scene {
               <option value="scarce">Scarce</option>
               <option value="normal" selected>Normal</option>
               <option value="abundant">Abundant</option>
+              <option value="scenario">Scenario Only</option>
             </select>
 
             <label class="mm-field-label" for="mm-game-speed-select">Game Speed</label>
@@ -2612,7 +2613,7 @@ export class MainMenuScene extends Phaser.Scene {
 }
 
 function toResourceAbundance(value: string): ResourceAbundance {
-  if (value === 'scarce' || value === 'abundant') return value;
+  if (value === 'scarce' || value === 'abundant' || value === 'scenario') return value;
   return 'normal';
 }
 

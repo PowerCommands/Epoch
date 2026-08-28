@@ -1,6 +1,6 @@
 import type { MapData } from '../types/map';
 import type { ResourceAbundance } from '../types/gameConfig';
-import { NaturalResourceSystem } from './NaturalResourceSystem';
+import { generateNaturalResources } from './NaturalResourceSystem';
 import {
   VictoryResourceGuaranteeSystem,
   type VictoryResourceGuaranteeLogger,
@@ -34,11 +34,19 @@ export function initializeWorldNaturalResources(
     return { ordinaryGenerationRan: false, guarantee: null };
   }
 
-  new NaturalResourceSystem().generate(mapData, {
+  // "Scenario Only": the resources already placed in the scenario are
+  // authoritative. Skip both procedural generation and the victory guarantee so
+  // nothing is added, moved, removed, or rebalanced — even down to zero resources.
+  const density = options.resourceAbundance;
+  if (density === 'scenario') {
+    return { ordinaryGenerationRan: false, guarantee: null };
+  }
+
+  generateNaturalResources(mapData, {
     mapKey: options.mapKey,
     activeNationIds: [...options.activeNationIds],
     humanNationId: options.humanNationId,
-    resourceAbundance: options.resourceAbundance,
+    resourceAbundance: density,
     cityCoords: [...options.cityCoords],
     worldSeed: options.worldSeed,
   });

@@ -17,7 +17,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 }
 
 #toolbar {
-  width: 220px; flex-shrink: 0; background: #1a1a1a; padding: 12px;
+  width: 250px; flex-shrink: 0; background: #1a1a1a; padding: 12px;
   overflow-y: auto; border-right: 1px solid #333;
   display: flex; flex-direction: column; gap: 10px;
 }
@@ -164,7 +164,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 #canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
 
 #status {
-  position: fixed; bottom: 0; left: 220px; right: 0; height: 24px;
+  position: fixed; bottom: 0; left: 250px; right: 0; height: 24px;
   background: #1a1a1a; border-top: 1px solid #333; padding: 0 12px;
   font-size: 11px; color: #888; display: flex; align-items: center; gap: 16px;
 }
@@ -897,6 +897,8 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   </div>
 </div>
 
+<!-- Shared natural-resource generator, bundled from src/editor for reuse in the editor. -->
+<script src="./editor/epoch-editor-resources.js"></script>
 <script>
 const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert','beach','meadow'];
 const TILE_COLORS = {
@@ -2090,7 +2092,163 @@ function buildPalette() {
   updateInteractionModeUI();
 }
 
+// Density options for editor resource generation. Values are the shared
+// generator densities; labels are the Game Setup Low/Medium/High wording.
+const GENERATE_RESOURCE_DENSITIES = [
+  { id: 'scarce', label: 'Low' },
+  { id: 'normal', label: 'Medium' },
+  { id: 'abundant', label: 'High' },
+];
+let generateResourcesDensityId = 'normal';
+
+function densityLabel(id) {
+  return GENERATE_RESOURCE_DENSITIES.find((entry) => entry.id === id)?.label ?? id;
+}
+
+/** Resource generation + clear controls shown atop the resource palette. */
+function buildGenerateResourcesControl() {
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px;';
+
+  // Non-destructive generation row: density picker + Generate.
+  const generateRow = document.createElement('div');
+  generateRow.style.cssText = 'display: flex; gap: 4px; align-items: stretch;';
+
+  const select = document.createElement('select');
+  select.id = 'generate-resources-density';
+  select.title = 'Resource density (shared with Game Setup)';
+  select.style.cssText = 'flex: 1; background: #0e131c; border: 1px solid #3a4a63; border-radius: 4px; color: #dde6f2; font: inherit; font-size: 12px; padding: 4px;';
+  for (const entry of GENERATE_RESOURCE_DENSITIES) {
+    const option = document.createElement('option');
+    option.value = entry.id;
+    option.textContent = entry.label;
+    if (entry.id === generateResourcesDensityId) option.selected = true;
+    select.appendChild(option);
+  }
+  select.addEventListener('change', () => { generateResourcesDensityId = select.value; });
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'mode-btn';
+  button.textContent = 'Generate Resources';
+  button.title = 'Add procedural resources to empty tiles; existing resources are preserved';
+  button.style.cssText = 'flex: 1;';
+  button.addEventListener('click', runGenerateResources);
+
+  generateRow.appendChild(select);
+  generateRow.appendChild(button);
+
+  // Destructive clear, kept visually separate from non-destructive generation.
+  const clearAllBtn = document.createElement('button');
+  clearAllBtn.type = 'button';
+  clearAllBtn.className = 'mode-btn';
+  clearAllBtn.textContent = 'Clear All Resources';
+  clearAllBtn.title = 'Remove every natural resource from the map (undoable with Ctrl+Z)';
+  clearAllBtn.addEventListener('click', runClearAllResources);
+
+  wrapper.appendChild(generateRow);
+  wrapper.appendChild(clearAllBtn);
+  return wrapper;
+}
+
+/**
+ * Add a procedural resource base layer via the shared generator. Existing
+ * resources are preserved; only empty eligible tiles receive new resources. The
+ * change is recorded as a single undoable paint action.
+ */
+function runGenerateResources() {
+  const api = window.EpochEditorResources;
+  if (!api || typeof api.generateEditorResources !== 'function') {
+    setStatusInfo('Resource generator is unavailable.');
+    return;
+  }
+
+  const density = generateResourcesDensityId;
+  const before = tileResources.map((row) => row.slice());
+  const response = api.generateEditorResources({
+    width: mapW,
+    height: mapH,
+    tileSize,
+    tiles,
+    tileResources,
+    tileBuildings,
+    cityCoords: scenario.cities.map((city) => ({ q: city.q, r: city.r })),
+    density,
+  });
+
+  const changes = [];
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const prevResource = before[r][q];
+      const nextResource = response.tileResources[r]?.[q] ?? undefined;
+      if (prevResource === nextResource) continue;
+      changes.push({
+        q, r,
+        prevType: tiles[r][q], nextType: tiles[r][q],
+        prevResource, nextResource,
+        prevPainted: paintedTiles[r][q], nextPainted: paintedTiles[r][q],
+      });
+      tileResources[r][q] = nextResource;
+    }
+  }
+
+  const added = response.addedCount;
+  if (changes.length > 0) {
+    pushUndoAction({ type: 'paint', changes });
+    render();
+  }
+  setStatusInfo(`Generated ${densityLabel(density)} resources: ${added} resource${added === 1 ? '' : 's'} added.`);
+}
+
+/**
+ * Destructively remove every natural resource from the map. Only resource
+ * placement is touched (terrain, cities, units, buildings, etc. are untouched).
+ * Recorded as one undoable paint action so Ctrl+Z restores the prior layout.
+ */
+function runClearAllResources() {
+  const api = window.EpochEditorResources;
+  if (!api || typeof api.clearEditorResources !== 'function') {
+    setStatusInfo('Resource tools are unavailable.');
+    return;
+  }
+
+  const before = tileResources.map((row) => row.slice());
+  const response = api.clearEditorResources({ tileResources });
+  const removed = response.removedCount;
+
+  if (removed === 0) {
+    setStatusInfo('No natural resources to remove.');
+    return;
+  }
+
+  if (!window.confirm(`Remove all ${removed} natural resource${removed === 1 ? '' : 's'} from the map? You can undo this with Ctrl+Z.`)) {
+    return;
+  }
+
+  const changes = [];
+  for (let r = 0; r < mapH; r++) {
+    for (let q = 0; q < mapW; q++) {
+      const prevResource = before[r][q];
+      const nextResource = response.tileResources[r]?.[q] ?? undefined;
+      if (prevResource === nextResource) continue;
+      changes.push({
+        q, r,
+        prevType: tiles[r][q], nextType: tiles[r][q],
+        prevResource, nextResource,
+        prevPainted: paintedTiles[r][q], nextPainted: paintedTiles[r][q],
+      });
+      tileResources[r][q] = nextResource;
+    }
+  }
+
+  pushUndoAction({ type: 'paint', changes });
+  render();
+  setStatusInfo(`Removed ${removed} resource${removed === 1 ? '' : 's'}.`);
+}
+
 function buildResourcePalette(grid) {
+  grid.appendChild(buildGenerateResourcesControl());
+
   const clearBtn = document.createElement('button');
   clearBtn.className = 'palette-btn' + (currentResourceId === null ? ' active' : '');
   clearBtn.dataset.resourceId = '';

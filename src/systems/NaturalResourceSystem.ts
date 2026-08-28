@@ -3,27 +3,63 @@ import type { MapData, Tile } from '../types/map';
 import type { NaturalResourceDefinition } from '../types/naturalResources';
 import type { ResourceAbundance } from '../types/gameConfig';
 
+/**
+ * Procedural densities the generator can produce. This is the {@link ResourceAbundance}
+ * set minus `scenario`: "Scenario Only" is not a density — it means the generator
+ * is never called (gated out in {@link WorldResourceInitialization}).
+ */
+export type ProceduralResourceDensity = Exclude<ResourceAbundance, 'scenario'>;
+
 export interface NaturalResourceGenerationOptions {
   mapKey: string;
   activeNationIds: string[];
   humanNationId: string;
-  resourceAbundance: ResourceAbundance;
+  /** Procedural density (Low/Medium/High). "Scenario Only" is not a density here. */
+  resourceAbundance: ProceduralResourceDensity;
   cityCoords: Array<{ x: number; y: number }>;
   worldSeed: string;
+  /**
+   * Non-destructive generation (default `true`). Existing natural resources are
+   * always kept and never overwritten, and only empty eligible tiles receive new
+   * resources; existing resources always constrain adjacency spacing. When `true`,
+   * resources already on the map count toward the density target so the total
+   * honors the requested density — this is the Game Setup behavior. When `false`,
+   * a full target-sized layer is added on top of whatever already exists.
+   */
+  preserveExistingResources?: boolean;
 }
 
-const DENSITY_BY_ABUNDANCE: Record<ResourceAbundance, number> = {
+const DENSITY_BY_ABUNDANCE: Record<ProceduralResourceDensity, number> = {
   scarce: 0.02,
   normal: 0.03,
   abundant: 0.08,
 };
 
+/**
+ * Canonical procedural natural-resource generator. Both game startup and (in a
+ * later task) the Scenario Editor call this so there is a single implementation
+ * of the density, weighting, eligibility, spacing and seeding rules. It operates
+ * only on the supplied map and options, with no dependency on GameScene or UI.
+ */
+export function generateNaturalResources(
+  mapData: MapData,
+  options: NaturalResourceGenerationOptions,
+): void {
+  new NaturalResourceSystem().generate(mapData, options);
+}
+
 export class NaturalResourceSystem {
   generate(mapData: MapData, options: NaturalResourceGenerationOptions): void {
+    const preserveExisting = options.preserveExistingResources ?? true;
     const cityCoordKeys = new Set(options.cityCoords.map((coord) => this.coordKey(coord.x, coord.y)));
     this.warnAboutInvalidExistingResources(mapData, cityCoordKeys);
     const validResourceTileCount = this.countValidResourceTiles(mapData, cityCoordKeys);
-    const existingResourceCount = this.countExistingValidResources(mapData, cityCoordKeys);
+    // Preserving callers count resources already on the map against the density
+    // target so the total honors the requested density (Game Setup behavior).
+    // Either way, occupied tiles are never candidates, so nothing is overwritten.
+    const existingResourceCount = preserveExisting
+      ? this.countExistingValidResources(mapData, cityCoordKeys)
+      : 0;
     const targetTotalCount = Math.round(validResourceTileCount * DENSITY_BY_ABUNDANCE[options.resourceAbundance]);
     const remainingToPlace = Math.max(0, targetTotalCount - existingResourceCount);
     if (remainingToPlace <= 0) return;
