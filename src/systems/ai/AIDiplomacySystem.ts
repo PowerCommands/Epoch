@@ -95,10 +95,26 @@ export function evaluateEconomicPressureWillingness(
   };
 }
 
+/**
+ * Bridge to the existing CapitulationSystem so the AI can reach it without this
+ * module depending on the concrete system. `evaluate` mirrors
+ * `evaluateCapitulationDemand`; `apply` mirrors a full `applyCapitulation` call
+ * with the demanding leader's chosen reparations/terms already resolved.
+ */
+export interface AICapitulationController {
+  evaluate(demandingNationId: string, targetNationId: string): {
+    accepted: boolean;
+    pressure: number;
+    factors: Record<string, number>;
+  };
+  apply(demandingNationId: string, targetNationId: string): { accepted: boolean };
+}
+
 export class AIDiplomacySystem {
   // AI diplomacy reason logging explains decisions without changing them.
   private readonly decisionListeners: Array<(reason: AIDiplomacyDecisionReason) => void> = [];
   private readonly expiredPressureTurnByPair = new Map<string, number>();
+  private capitulationController?: AICapitulationController;
   private isHumanNation: (nationId: string) => boolean = (nationId) =>
     this.nationManager.getNation(nationId)?.isHuman === true;
   private applyEconomicPressure: (
@@ -133,6 +149,15 @@ export class AIDiplomacySystem {
   /** Stable Human identity; production must not depend on autoplay's temporary flag changes. */
   setHumanNationPredicate(predicate: (nationId: string) => boolean): void {
     this.isHumanNation = predicate;
+  }
+
+  /**
+   * Wire the existing capitulation system so a winning AI can demand
+   * unconditional surrender once a beaten opponent has collapsed far enough to
+   * accept it. Optional: without it, the AI simply never initiates capitulation.
+   */
+  setCapitulationController(controller: AICapitulationController): void {
+    this.capitulationController = controller;
   }
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
@@ -177,6 +202,31 @@ export class AIDiplomacySystem {
 
     if (relation.state === 'WAR') {
       const warDuration = this.diplomacyManager.getWarDuration(selfId, otherId, currentTurn);
+
+      // Decisive endpoint: once a beaten opponent has collapsed far enough that
+      // the existing capitulation system would accept an unconditional surrender,
+      // the winning AI demands it instead of fighting on forever. This is checked
+      // before ordinary peace because it only fires at a much higher pressure than
+      // peace initiation, so peace has already been attempted over prior turns.
+      // The human is never auto-capitulated: there is no UI path for an AI to
+      // demand the human's surrender, so we leave that case untouched.
+      if (this.capitulationController && !this.isHumanNation(otherId)) {
+        const capitulation = this.capitulationController.evaluate(selfId, otherId);
+        if (capitulation.accepted) {
+          const result = this.capitulationController.apply(selfId, otherId);
+          if (result.accepted) {
+            const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
+            console.log(this.formatLog(
+              selfId,
+              `[WarTerminationAI] ${selfId} -> ${otherId} (${otherName}): capitulation threshold reached, `
+                + `pressure=${capitulation.pressure.toFixed(2)}, warDuration=${warDuration}, `
+                + `factors=${JSON.stringify(this.roundFactors(capitulation.factors))}.`,
+            ));
+            return;
+          }
+        }
+      }
+
       const seeking = this.peaceTreatySystem?.evaluateAIPeaceSeeking(selfId, otherId, warDuration);
       // Compatibility fallback for callers/tests that do not wire PeaceTreatySystem.
       // Production uses the authoritative pressure evaluation above.
@@ -208,6 +258,16 @@ export class AIDiplomacySystem {
             + `${offersExploitation ? ' +exploitationRights' : ''}; `
             + `factors=${JSON.stringify(seeking ? this.roundFactors(seeking.factors) : {})}.`,
         ));
+        if (seeking) {
+          console.log(this.formatLog(
+            selfId,
+            `[WarTerminationAI] ${selfId} -> ${otherId} (${otherName}): seeking peace, `
+              + `capitalCaptured=${seeking.factors.capitalCaptured === 1}, `
+              + `objectiveAchieved=${seeking.factors.objectiveAchieved === 1}, `
+              + `warPressure=${seeking.warPressure.toFixed(2)}, `
+              + `strategicDisadvantage=${seeking.strategicDisadvantage.toFixed(2)}, warDuration=${warDuration}.`,
+          ));
+        }
         const reason = this.createDecisionReason(
           'proposePeace',
           selfId,

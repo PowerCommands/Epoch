@@ -3,6 +3,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import {
+  formatCityEnergyDiagnostics,
+  type NationCityEnergyDiagnostic,
+} from '../src/systems/CityEnergyDiagnostics';
 
 type VictoryTypeName = 'domination' | 'science' | 'cultural' | 'diplomatic';
 const ALL_VICTORY_TYPES: readonly VictoryTypeName[] = ['domination', 'science', 'cultural', 'diplomatic'];
@@ -118,6 +122,7 @@ interface StateSummary {
   scenario?: string;
   victory?: VictorySummary | null;
   nations?: NationStateSummary[];
+  cityEnergyDiagnostics?: NationCityEnergyDiagnostic[];
   eraMilestones?: EraMilestone[];
 }
 
@@ -196,6 +201,7 @@ async function main(): Promise<void> {
   let errorMessage: string | undefined;
   let logText = '';
   let stateSummary: StateSummary | undefined;
+  let cityEnergyLogLines: string[] = [];
   let inputSaveState: unknown;
   let saveState: unknown;
   let startScenario = options.scenario;
@@ -319,6 +325,9 @@ async function main(): Promise<void> {
     stopPreviewServer(server);
   }
 
+  cityEnergyLogLines = formatCityEnergyDiagnostics(stateSummary?.cityEnergyDiagnostics ?? []);
+  for (const line of cityEnergyLogLines) console.log(line);
+
   const durationMs = Date.now() - startedAt;
   const outputSavePath = path.join(outputDir, 'latest-save.json');
   const finalYear = typeof stateSummary?.worldYear === 'number' ? stateSummary.worldYear : getSavedYear(saveState);
@@ -350,6 +359,11 @@ async function main(): Promise<void> {
   const summary = buildSummary(metadata, calibration, browserMessages);
 
   await fs.writeFile(path.join(outputDir, 'latest-log.txt'), logText || '(no log entries)\n', 'utf8');
+  await fs.writeFile(
+    path.join(outputDir, 'latest-city-energy.log'),
+    cityEnergyLogLines.length > 0 ? `${cityEnergyLogLines.join('\n')}\n` : '(no city/energy diagnostics)\n',
+    'utf8',
+  );
   // The summary keeps only the last 20 browser messages, which discards every
   // console-only diagnostic the game emits (e.g. [Diplomacy], [AggressionMemory]).
   // Persist the full stream so post-run analysis can reconstruct it.

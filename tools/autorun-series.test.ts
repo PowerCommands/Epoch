@@ -178,6 +178,20 @@ test('buildSeriesReportModel + markdown render end-to-end', () => {
           { id: 'a', name: 'Alpha', isHuman: true, era: 'classical', technologyCount: 15, cultureNodeCount: 12, currentResearch: 'Theology', currentCulture: 'Drama', cityCount: 1, population: 20 },
           { id: 'b', name: 'Beta', isHuman: false, era: 'ancient', technologyCount: 8, cultureNodeCount: 5, currentResearch: null, currentCulture: null, cityCount: 0, population: 0 },
         ],
+        cityEnergyDiagnostics: [{
+          nationId: 'a', nationName: 'Alpha', cityCount: 1, population: 20,
+          plantCount: 0, noPlantCount: 1, energyShortageCityCount: 1,
+          plantCounts: [
+            { buildingId: 'coal_power_plant', name: 'Coal Power Plant', count: 0 },
+            { buildingId: 'oil_power_plant', name: 'Oil Power Plant', count: 0 },
+            { buildingId: 'gas_power_plant', name: 'Gas Power Plant', count: 0 },
+            { buildingId: 'nuclear_plant', name: 'Nuclear Power Plant', count: 0 },
+          ],
+          cities: [{
+            cityId: 'c1', cityName: 'Capital', population: 20, populationCapacity: 10,
+            energyShortageTurns: 4, inEnergyShortage: true, powerPlant: null,
+          }],
+        }],
       },
     },
     checkpointFile: 'checkpoint-turn-101.json',
@@ -200,10 +214,15 @@ test('buildSeriesReportModel + markdown render end-to-end', () => {
   assert.equal(model.finalWorldState.wars.length, 1);
   assert.equal(model.finalWorldState.wondersCompleted, 1);
   assert.equal(model.nationProgression[0].nations.find((n) => n.id === 'a')?.influence, 500);
+  assert.equal(model.cityEnergyInfrastructure.checkpoints[0].nations[0].noPlantCount, 1);
+  assert.equal(model.cityEnergyInfrastructure.finalCities[0].city.energyShortageTurns, 4);
 
   const md = renderSeriesReportMarkdown(model, new Map([['a', 'Alpha'], ['b', 'Beta']]));
   assert.ok(md.includes('# Maritime Expansion'));
   assert.ok(md.includes('## 1. Test summary'));
   assert.ok(md.includes('## 7. Diagnostic observations'));
+  assert.ok(md.includes('## City & Energy Infrastructure'));
+  assert.ok(md.includes('| Alpha | 1 | 20 | 0 | 0 | 0 | 0 | 1 | 1 |'));
+  assert.ok(md.includes('| Alpha | Capital | 20 | None | - | 10 | 4 |'));
   assert.ok(md.includes('Alpha ⚔ Beta'));
 });

@@ -10,6 +10,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { NationCityEnergyDiagnostic } from '../src/systems/CityEnergyDiagnostics';
 
 // ---------------------------------------------------------------------------
 // Shared shapes (a minimal, defensive view of the autorun/save artifacts)
@@ -44,6 +45,7 @@ export interface StateSummary {
   worldYearLabel?: string;
   scenario?: string;
   nations?: NationStateSummary[];
+  cityEnergyDiagnostics?: NationCityEnergyDiagnostic[];
 }
 
 export interface AutorunMetadata {
@@ -465,6 +467,18 @@ export interface SeriesReportModel {
       culturalVictory: NationStateSummary['culturalVictory'];
     }>;
   }>;
+  cityEnergyInfrastructure: {
+    checkpoints: Array<{
+      checkpointTurn: number | null;
+      blockNumber: number;
+      nations: NationCityEnergyDiagnostic[];
+    }>;
+    finalCities: Array<{
+      nationId: string;
+      nationName: string;
+      city: NationCityEnergyDiagnostic['cities'][number];
+    }>;
+  };
   importantEvents: CategorizedEvent[];
   eventCounts: {
     wars: number | null;
@@ -600,6 +614,12 @@ export function buildSeriesReportModel(ctx: SeriesRunContext): SeriesReportModel
   });
 
   const finalSaveNations = saveNationById(finalSave);
+  const cityEnergyCheckpoints = successfulBlocks.map((block) => ({
+    checkpointTurn: block.metadata?.finalTurn ?? null,
+    blockNumber: block.blockNumber,
+    nations: block.metadata?.stateSummary?.cityEnergyDiagnostics ?? [],
+  }));
+  const finalCityEnergy = cityEnergyCheckpoints.at(-1)?.nations ?? [];
 
   const model: SeriesReportModel = {
     generatedAt: ctx.generatedAt,
@@ -646,6 +666,14 @@ export function buildSeriesReportModel(ctx: SeriesRunContext): SeriesReportModel
       };
     }),
     nationProgression,
+    cityEnergyInfrastructure: {
+      checkpoints: cityEnergyCheckpoints,
+      finalCities: finalCityEnergy.flatMap((nation) => nation.cities.map((city) => ({
+        nationId: nation.nationId,
+        nationName: nation.nationName,
+        city,
+      }))),
+    },
     importantEvents: events,
     eventCounts: {
       wars: counts.warDeclared ?? 0,
@@ -722,6 +750,10 @@ function fmtDuration(ms: number | null | undefined): string {
   return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
+function compactPowerPlantName(name: string): string {
+  return name.replace(/ Power Plant$/, '').replace(/ Plant$/, '');
+}
+
 export function renderSeriesReportMarkdown(model: SeriesReportModel, names: Map<string, string>): string {
   const lines: string[] = [];
   const ts = model.testSummary;
@@ -772,6 +804,54 @@ export function renderSeriesReportMarkdown(model: SeriesReportModel, names: Map<
       const label = nation.isHuman ? `${nation.name} (human)` : nation.name;
       lines.push(
         `| ${label} | ${nation.era} | ${nation.technologyCount} | ${nation.cultureNodeCount} | ${nation.cityCount} | ${nation.population} | ${fmt(nation.influence)} | ${fmt(nation.gold)} | ${fmt(nation.currentResearch)} | ${fmt(nation.currentCulture)} | ${formatDiagnosticBoolean(nation.culturalVictory?.normalRequirementsMet)} | ${formatDiagnosticBoolean(nation.culturalVictory?.isReigningGamesChampion)} | ${formatDiagnosticBoolean(nation.culturalVictory?.victoryEligible)} |`,
+      );
+    }
+    lines.push('');
+  }
+
+  // City and energy infrastructure at the same block/checkpoint cadence.
+  lines.push('## City & Energy Infrastructure', '');
+  if (model.cityEnergyInfrastructure.checkpoints.length === 0) {
+    lines.push('- No city/energy checkpoint diagnostics were available.', '');
+  }
+  for (const checkpoint of model.cityEnergyInfrastructure.checkpoints) {
+    lines.push(`### Checkpoint turn ${fmt(checkpoint.checkpointTurn)} (block ${checkpoint.blockNumber})`, '');
+    if (checkpoint.nations.length === 0) {
+      lines.push('- No city/energy diagnostics were available for this checkpoint.', '');
+      continue;
+    }
+    const plantTypes = checkpoint.nations[0]?.plantCounts ?? [];
+    const plantHeaders = plantTypes.map((plant) => compactPowerPlantName(plant.name));
+    lines.push(
+      `| Nation | Cities | Population | ${plantHeaders.join(' | ')} | No Plant | Energy Shortage Cities |`,
+    );
+    lines.push(
+      `| --- | ---: | ---: | ${plantHeaders.map(() => '---:').join(' | ')} | ---: | ---: |`,
+    );
+    for (const nation of checkpoint.nations) {
+      const countsByBuildingId = new Map(nation.plantCounts.map((plant) => [plant.buildingId, plant.count]));
+      lines.push(
+        `| ${nation.nationName} | ${nation.cityCount} | ${nation.population} | `
+        + `${plantTypes.map((plant) => countsByBuildingId.get(plant.buildingId) ?? 0).join(' | ')} | `
+        + `${nation.noPlantCount} | ${nation.energyShortageCityCount} |`,
+      );
+    }
+    lines.push('');
+  }
+
+  lines.push('### Final checkpoint city details', '');
+  if (model.cityEnergyInfrastructure.finalCities.length === 0) {
+    lines.push('- No final city diagnostics were available.', '');
+  } else {
+    lines.push('| Nation | City | Population | Power Plant | Age | Capacity | Shortage Turns |');
+    lines.push('| --- | --- | ---: | --- | ---: | ---: | ---: |');
+    for (const entry of model.cityEnergyInfrastructure.finalCities) {
+      const plant = entry.city.powerPlant;
+      const plantName = plant ? `${plant.name}${plant.active ? '' : ' (inactive)'}` : 'None';
+      lines.push(
+        `| ${entry.nationName} | ${entry.city.cityName} | ${entry.city.population} | ${plantName} | `
+        + `${plant ? `${plant.age}/${plant.lifespan}` : '-'} | ${entry.city.populationCapacity} | `
+        + `${entry.city.energyShortageTurns} |`,
       );
     }
     lines.push('');

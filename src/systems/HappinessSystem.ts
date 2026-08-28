@@ -10,6 +10,7 @@ import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { PolicySystem } from './PolicySystem';
+import { applyCityIntegrationOutput } from './CityIntegrationSystem';
 
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 1;
@@ -134,6 +135,7 @@ export class HappinessSystem {
     private readonly getDistancePressure: DistancePressureProvider = () => 0,
     private readonly getConqueredCityUnhappiness: ConqueredCityUnhappinessProvider = () => 0,
     private readonly getWarWeariness: WarWearinessProvider = () => 0,
+    private readonly getCurrentRound: () => number = () => 0,
   ) {
     this.recalculateAll();
   }
@@ -148,12 +150,19 @@ export class HappinessSystem {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const totalPopulation = cities.reduce((sum, city) => sum + city.population, 0);
     const nationModifiers = this.getNationModifiers(nationId);
-    const happinessFromBuildings = cities.reduce((sum, city) => (
-      sum + this.cityManager.getBuildings(city.id).getAll()
+    // Building Happiness obeys the same occupation/recovery integration model as
+    // every other city output: an Occupied city contributes 0%, a Recovering
+    // city 50%, and an Integrated city 100%. This prevents a freshly conquered
+    // city from becoming an immediate national Happiness windfall while its own
+    // recently-conquered penalty is applied separately below.
+    const currentRound = this.getCurrentRound();
+    const happinessFromBuildings = cities.reduce((sum, city) => {
+      const cityBuildingHappiness = this.cityManager.getBuildings(city.id).getAll()
         .reduce((buildingSum, buildingId) => (
           buildingSum + (getBuildingById(buildingId)?.modifiers.happinessPerTurn ?? 0)
-        ), 0)
-    ), 0);
+        ), 0);
+      return sum + applyCityIntegrationOutput(cityBuildingHappiness, city, currentRound);
+    }, 0);
     // Nation-scope modifiers currently come only from wonders; if more
     // sources are added, split them with a dedicated getter.
     const happinessFromWonders = nationModifiers.happinessPerTurn ?? 0;

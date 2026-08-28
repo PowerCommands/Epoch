@@ -61,6 +61,10 @@ import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { PowerPlantSystem } from '../systems/PowerPlantSystem';
+import {
+  buildCityEnergyDiagnostics,
+  type NationCityEnergyDiagnostic,
+} from '../systems/CityEnergyDiagnostics';
 import { ProductionPurchaseSystem } from '../systems/ProductionPurchaseSystem';
 import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
@@ -371,6 +375,7 @@ interface EpochStateSummary {
   }>;
   activeWorldWar: boolean;
   nations: EpochNationStateSummary[];
+  cityEnergyDiagnostics: NationCityEnergyDiagnostic[];
   eraMilestones: EpochEraMilestone[];
 }
 
@@ -697,6 +702,7 @@ export class GameScene extends Phaser.Scene {
       (nationId) => getDistancePressure(nationId),
       (nationId) => getConqueredCityUnhappiness(nationId),
       (nationId) => getWarWeariness(nationId),
+      () => turnManager.getCurrentRound(),
     );
     const formatLog = createAILogFormatter({
       nationManager,
@@ -1253,6 +1259,26 @@ export class GameScene extends Phaser.Scene {
       ),
       peaceTreatySystem,
     );
+    // Let a winning AI reach the existing capitulation system for AI-vs-AI wars.
+    // Reparations reuse the same peace valuation; exploitation-rights demands
+    // reuse the existing leader-interest gate. Human targets are guarded inside
+    // AIDiplomacySystem (no AI→human capitulation UI exists).
+    aiDiplomacySystem.setCapitulationController({
+      evaluate: (demandingNationId, targetNationId) => {
+        const evaluation = capitulationSystem.evaluateCapitulationDemand(demandingNationId, targetNationId);
+        return {
+          accepted: evaluation.accepted,
+          pressure: evaluation.pressure,
+          factors: evaluation.factors,
+        };
+      },
+      apply: (demandingNationId, targetNationId) => capitulationSystem.applyCapitulation(
+        demandingNationId,
+        targetNationId,
+        peaceTreatySystem.calculateReparations(targetNationId),
+        capitulationSystem.shouldDemandExploitationRights(demandingNationId, targetNationId),
+      ),
+    });
     const tradeDealSystem = new TradeDealSystem(
       diplomacyManager,
       () => turnManager.getCurrentRound(),
@@ -8317,6 +8343,11 @@ export class GameScene extends Phaser.Scene {
             }),
             activeWorldWar: scenarioHistoricalEventSystem.hasActiveWorldWar(),
             nations,
+            cityEnergyDiagnostics: buildCityEnergyDiagnostics(
+              allNations,
+              (nationId) => cityManager.getCitiesByOwner(nationId),
+              powerPlantSystem,
+            ),
             eraMilestones: [...eraMilestones],
           };
         },

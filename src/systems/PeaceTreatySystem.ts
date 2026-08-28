@@ -43,6 +43,19 @@ export const CITY_CONCESSION_PRODUCTION_VALUE = 20;
 export const AI_PEACE_MODERATE_PRESSURE = 0.35;
 export const AI_PEACE_INITIATION_PRESSURE = 0.55;
 export const AI_PEACE_CITY_CONCESSION_PRESSURE = 0.78;
+/**
+ * War-pressure weight of having lost one's own original capital. A strong but
+ * not overwhelming signal: on its own it cannot reach the peace-initiation or
+ * capitulation bands, but it makes a losing nation clearly more willing to seek
+ * and accept peace.
+ */
+export const CAPITAL_LOST_PRESSURE_WEIGHT = 0.18;
+/**
+ * Highest strategic disadvantage a nation may have and still be considered the
+ * *winning* side for the "objective achieved" peace trigger (i.e. it captured
+ * the enemy capital without itself materially losing the war).
+ */
+export const AI_PEACE_OBJECTIVE_MAX_DISADVANTAGE = 0.18;
 
 /**
  * Deterministic, UI-independent result of evaluating a peace proposal from the
@@ -118,6 +131,34 @@ export class PeaceTreatySystem {
 
   setNationCollapseSystem(system: NationCollapseSystem): void {
     this.nationCollapseSystem = system;
+  }
+
+  /**
+   * All cities, or an empty list when the injected city source cannot enumerate
+   * them. This keeps the capital-based war signals inert for minimal callers and
+   * mocks while working fully against the real CityManager.
+   */
+  private getAllCitiesSafe(): readonly City[] {
+    const source = this.cityManager as { getAllCities?: () => readonly City[] };
+    return typeof source.getAllCities === 'function' ? source.getAllCities() : [];
+  }
+
+  /** True when `captorNationId` currently holds `victimNationId`'s original capital. */
+  hasCapturedOriginalCapital(captorNationId: string, victimNationId: string): boolean {
+    return this.getAllCitiesSafe().some((city) => (
+      city.isOriginalCapital === true
+      && city.originNationId === victimNationId
+      && city.ownerId === captorNationId
+    ));
+  }
+
+  /** True when `nationId` no longer holds its own original capital (it was captured). */
+  hasLostOriginalCapital(nationId: string): boolean {
+    return this.getAllCitiesSafe().some((city) => (
+      city.isOriginalCapital === true
+      && city.originNationId === nationId
+      && city.ownerId !== nationId
+    ));
   }
 
   selectPeaceOfferCity(nationId: string): City | null {
@@ -369,6 +410,10 @@ export class PeaceTreatySystem {
     const simultaneousWars = clamp01((this.diplomacyManager.getWarringNationIds(recipientId).length - 1) / 2);
     const duration = clamp01(warDuration / 40);
     const economic = this.nationManager.getResources(recipientId).gold < 0 ? 1 : 0;
+    // Losing one's own original capital is a distinct, strong peace-pressure
+    // signal on top of ordinary city losses. It does not feed strategicDisadvantage
+    // (see evaluateAIPeaceSeeking), so it never makes a winner look like a loser.
+    const capitalLost = this.hasLostOriginalCapital(recipientId) ? 1 : 0;
 
     const personality = getLeaderPersonalityByNationId(recipientId);
     const peaceBias = (personality.peacePreference - 50) / 50; // -1..1
@@ -384,6 +429,7 @@ export class PeaceTreatySystem {
       simultaneousWars: 0.10 * simultaneousWars,
       warDuration: 0.06 * duration,
       economicStrain: 0.05 * economic,
+      capitalLost: CAPITAL_LOST_PRESSURE_WEIGHT * capitalLost,
       peacePreference: 0.08 * peaceBias,
       warTolerance: 0.06 * warToleranceBias,
     };
@@ -405,11 +451,25 @@ export class PeaceTreatySystem {
     const strategicDisadvantage = (factors.outmatched ?? 0)
       + (factors.citiesLost ?? 0)
       + (factors.unitsLost ?? 0);
+
+    // Winner-side trigger: a major war objective (the enemy's original capital)
+    // has been achieved and the proposer is not itself materially losing. This
+    // makes a winning nation actively seek a (status-quo) peace instead of
+    // fighting on to exterminate a beaten opponent. Capital capture only raises
+    // peace *interest* — the recipient still evaluates and may refuse.
+    const capturedEnemyCapital = this.hasCapturedOriginalCapital(proposerNationId, opponentNationId);
+    const objectiveAchieved = capturedEnemyCapital
+      && strategicDisadvantage < AI_PEACE_OBJECTIVE_MAX_DISADVANTAGE;
+
     return {
-      shouldInitiate: pressure >= AI_PEACE_INITIATION_PRESSURE,
+      shouldInitiate: pressure >= AI_PEACE_INITIATION_PRESSURE || objectiveAchieved,
       warPressure: pressure,
       strategicDisadvantage,
-      factors,
+      factors: {
+        ...factors,
+        capitalCaptured: capturedEnemyCapital ? 1 : 0,
+        objectiveAchieved: objectiveAchieved ? 1 : 0,
+      },
     };
   }
 
