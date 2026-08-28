@@ -111,12 +111,15 @@ export class TradeDealSystem {
     }
   }
 
-  cancelDealsBetween(nationAId: string, nationBId: string, reason: TradeDealEndReason): void {
+  cancelDealsBetween(nationAId: string, nationBId: string, reason: TradeDealEndReason): number {
+    let cancelled = 0;
     for (const deal of Array.from(this.deals.values())) {
       if (!this.isDealBetween(deal, nationAId, nationBId)) continue;
       this.deals.delete(deal.id);
       this.emitCancelled(deal, reason);
+      cancelled++;
     }
+    return cancelled;
   }
 
   /** Cancel only purchases made by `buyer` from `seller` (Boycott semantics). */

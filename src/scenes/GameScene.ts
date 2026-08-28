@@ -1126,6 +1126,8 @@ export class GameScene extends Phaser.Scene {
       resolvePeaceTreatyCooldownTurns(scenarioJson.meta?.peaceTreatyCooldownTurns),
       (nationId, cultureNodeId) => cultureSystem.isUnlocked(nationId, cultureNodeId),
     );
+    // Resolve nation ids to display names for `[DIPLOMACY]` economic-pressure logs.
+    diplomacyManager.setNationNameResolver((id) => nationManager.getNation(id)?.name ?? id);
     // Post-war recovery: whenever a war ends (peace, ceasefire, capitulation),
     // each AI participant enters post-war Consolidation Mode.
     diplomacyManager.onWarEnded((a, b) => {

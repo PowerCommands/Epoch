@@ -9,6 +9,7 @@ import {
   strongerEconomicPressure,
   type EconomicPressureType,
 } from '../data/economicPressure';
+import { logEconomicPressureLifted, logRetaliatoryTariffImposed } from './diplomacy/economicPressureLog';
 
 export type DiplomacyState = 'WAR' | 'PEACE';
 
@@ -406,6 +407,8 @@ export class DiplomacyManager {
   private readonly warEndedListeners: WarEndedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
+  /** Resolves nation ids to display names for autorun/debug logging. Identity by default. */
+  private resolveNationName: (nationId: string) => string = (nationId) => nationId;
 
   // Optional so older callers/tests still work; when present, war/peace
   // transitions get stamped with the current round. The peace-treaty cooldown
@@ -608,6 +611,16 @@ export class DiplomacyManager {
     this.isTechnologyResearched = fn;
   }
 
+  /** Provide a nation-id → display-name resolver used only for `[DIPLOMACY]` logs. */
+  setNationNameResolver(fn: (nationId: string) => string): void {
+    this.resolveNationName = fn;
+  }
+
+  /** Display name for a nation id, for logging. Falls back to the id. */
+  getNationDisplayName(nationId: string): string {
+    return this.resolveNationName(nationId);
+  }
+
   /** Whether `source` may currently impose `type` on `target`, with a reason if not. */
   canImposeEconomicPressure(
     sourceNationId: string,
@@ -694,6 +707,7 @@ export class DiplomacyManager {
     this.writeEconomicPressure(sourceNationId, targetNationId, next, 'tariffs', turn);
     this.relations.set(key, next);
     this.logEconomicPressure(`${sourceNationId} automatically retaliated with Tariffs on ${targetNationId}`, turn);
+    logRetaliatoryTariffImposed(this.getNationDisplayName(sourceNationId), this.getNationDisplayName(targetNationId));
     this.emitEconomicPressureChanged(sourceNationId, targetNationId, null, 'tariffs', turn);
     this.notifyChanged(sourceNationId, targetNationId);
     return true;
@@ -712,6 +726,7 @@ export class DiplomacyManager {
     this.relations.set(key, next);
     const turn = this.turnManager?.getCurrentRound() ?? 0;
     this.logEconomicPressure(`${sourceNationId} lifted ${ECONOMIC_PRESSURE_LABEL[existing]} on ${targetNationId}`, turn);
+    logEconomicPressureLifted(this.getNationDisplayName(sourceNationId), this.getNationDisplayName(targetNationId), existing);
     this.emitEconomicPressureChanged(sourceNationId, targetNationId, existing, null, null);
     this.notifyChanged(sourceNationId, targetNationId);
     return true;

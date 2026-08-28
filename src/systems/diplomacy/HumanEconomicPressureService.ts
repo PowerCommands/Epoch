@@ -4,6 +4,7 @@ import {
 } from '../../data/economicPressure';
 import type { DiplomacyManager } from '../DiplomacyManager';
 import type { TradeDealSystem } from '../TradeDealSystem';
+import { logEconomicPressureImposed } from './economicPressureLog';
 
 export interface EconomicPressureTradeConnections {
   cancelConnectionsBetweenNations(nationAId: string, nationBId: string): unknown;
@@ -83,7 +84,14 @@ export class EconomicPressureActionService {
       };
     }
 
+    // One canonical `[DIPLOMACY]` line per imposed measure, at the shared
+    // AI+Human application point where cancellation counts are naturally
+    // available. Retaliation and lifting are logged by DiplomacyManager.
+    const initiatorName = this.diplomacy.getNationDisplayName(sourceNationId);
+    const targetDisplayName = this.diplomacy.getNationDisplayName(targetNationId);
+
     if (type === 'tariffs') {
+      logEconomicPressureImposed(initiatorName, targetDisplayName, 'tariffs');
       const reciprocalTariffsCreated = application.reciprocalTariffsCreated;
       return {
         ok: true,
@@ -100,6 +108,12 @@ export class EconomicPressureActionService {
 
     if (type === 'boycott') {
       const cancelledImports = this.tradeDeals.cancelImportDeals(sourceNationId, targetNationId, 'sanctions');
+      logEconomicPressureImposed(
+        initiatorName,
+        targetDisplayName,
+        'boycott',
+        `cancelled ${cancelledImports} import agreement${cancelledImports === 1 ? '' : 's'}`,
+      );
       return {
         ok: true,
         changed: true,
@@ -116,8 +130,14 @@ export class EconomicPressureActionService {
     // Embargo is the migration destination of the former Cancel Trade Relations
     // action: permission, active purchase agreements, and routes all end.
     this.diplomacy.cancelTradeRelations(sourceNationId, targetNationId);
-    this.tradeDeals.cancelDealsBetween(sourceNationId, targetNationId, 'sanctions');
+    const terminatedDeals = this.tradeDeals.cancelDealsBetween(sourceNationId, targetNationId, 'sanctions');
     this.tradeConnections?.cancelConnectionsBetweenNations(sourceNationId, targetNationId);
+    logEconomicPressureImposed(
+      initiatorName,
+      targetDisplayName,
+      'embargo',
+      `${terminatedDeals} active agreement${terminatedDeals === 1 ? '' : 's'} terminated`,
+    );
     return {
       ok: true,
       changed: true,
