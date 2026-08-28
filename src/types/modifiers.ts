@@ -12,6 +12,8 @@ export interface ModifierSet {
   culturePercent?: number;
   cityDefensePercent?: number;
   tradeCapacity?: number;
+  /** Minimum population capacity established by this infrastructure. Non-additive. */
+  populationCapacity?: number;
 }
 
 export const EMPTY_MODIFIERS: Readonly<ModifierSet> = Object.freeze({});
@@ -32,6 +34,7 @@ export function addModifiers(...modifiers: Readonly<ModifierSet>[]): ModifierSet
     total.sciencePercent = (total.sciencePercent ?? 0) + (modifier.sciencePercent ?? 0);
     total.culturePercent = (total.culturePercent ?? 0) + (modifier.culturePercent ?? 0);
     total.cityDefensePercent = (total.cityDefensePercent ?? 0) + (modifier.cityDefensePercent ?? 0);
+    total.populationCapacity = Math.max(total.populationCapacity ?? 0, modifier.populationCapacity ?? 0);
   }
 
   return total;

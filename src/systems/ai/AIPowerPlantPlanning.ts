@@ -1,4 +1,5 @@
-import { getBuildingById } from '../../data/buildings';
+import { ALL_BUILDINGS, getBuildingById } from '../../data/buildings';
+import { BASE_CITY_POPULATION_CAPACITY } from '../../data/populationCapacity';
 import {
   POWER_PLANTS,
   getPowerPlantMetadata,
@@ -8,13 +9,15 @@ import type { CityPowerPlantState } from '../PowerPlantSystem';
 
 export const AI_POWER_PLANT_APPROACHING_MARGIN = 2;
 export const AI_POWER_PLANT_REPLACEMENT_WINDOW = 5;
-export const UNPOWERED_CITY_POPULATION_CAPACITY = 8;
+export const UNPOWERED_CITY_POPULATION_CAPACITY = BASE_CITY_POPULATION_CAPACITY;
 
 export type AIPowerPlantDecisionReason =
   | 'first_plant_approaching_capacity'
   | 'energy_shortage'
   | 'aging_replacement'
   | 'capacity_upgrade'
+  | 'capacity_progression_approaching'
+  | 'capacity_progression_at_cap'
   | 'inactive_replacement'
   | 'emergency_downgrade';
 
@@ -23,7 +26,10 @@ export interface AIPowerPlantCityPlanningInput {
   readonly name: string;
   readonly population: number;
   readonly currentPlant?: CityPowerPlantState;
+  /** Effective capacity derived by the shared city capacity calculation. */
+  readonly currentCapacity?: number;
   readonly queuedPowerPlantIds: readonly string[];
+  readonly queuedCapacityInfrastructureIds?: readonly string[];
   readonly productionAvailable: boolean;
 }
 
@@ -39,8 +45,9 @@ export interface AIPowerPlantPlanningContext {
 export interface AIPowerPlantDecision {
   readonly cityId: string;
   readonly buildingId: string;
-  readonly requiredResourceId: PowerPlantMetadata['requiredResourceId'];
+  readonly requiredResourceId?: PowerPlantMetadata['requiredResourceId'];
   readonly currentCapacity: number;
+  readonly targetCapacity: number;
   readonly score: number;
   readonly reason: AIPowerPlantDecisionReason;
   readonly remainingLifespan?: number;
@@ -71,14 +78,21 @@ export function planAIPowerPlants(
   }
 
   const orderedCities = context.cities
-    .filter((city) => city.productionAvailable && city.queuedPowerPlantIds.length === 0)
+    .filter((city) => city.productionAvailable
+      && city.queuedPowerPlantIds.length === 0
+      && (city.queuedCapacityInfrastructureIds?.length ?? 0) === 0)
     .slice()
     .sort(compareEnergyPriority);
   const decisions = new Map<string, AIPowerPlantDecision>();
 
   for (const city of orderedCities) {
-    const currentCapacity = getSupportedPopulationCapacity(city.currentPlant);
-    const options = POWER_PLANTS
+    const currentCapacity = city.currentCapacity ?? getSupportedPopulationCapacity(city.currentPlant);
+    const buildingOptions = ALL_BUILDINGS
+      .filter((building) => (building.modifiers.populationCapacity ?? 0) > currentCapacity)
+      .filter((building) => context.canConstruct(city.id, building.id))
+      .map((building) => evaluateCapacityBuilding(city, currentCapacity, building.id, building.modifiers.populationCapacity!))
+      .filter((decision): decision is AIPowerPlantDecision => decision !== undefined);
+    const plantOptions = POWER_PLANTS
       .slice()
       .sort((a, b) => b.futurePopulationCap - a.futurePopulationCap)
       .filter((plant) => context.canConstruct(city.id, plant.buildingId))
@@ -86,10 +100,11 @@ export function planAIPowerPlants(
       .map((plant) => evaluateOption(context, city, currentCapacity, plant))
       .filter((decision): decision is AIPowerPlantDecision => decision !== undefined);
 
-    const choice = options[0];
+    const choice = [...buildingOptions, ...plantOptions]
+      .sort((a, b) => b.score - a.score || b.targetCapacity - a.targetCapacity || a.buildingId.localeCompare(b.buildingId))[0];
     if (!choice) continue;
     decisions.set(city.id, choice);
-    commit(choice.requiredResourceId, city.id);
+    if (choice.requiredResourceId) commit(choice.requiredResourceId, city.id);
   }
 
   return decisions;
@@ -105,8 +120,8 @@ function compareEnergyPriority(
   a: AIPowerPlantCityPlanningInput,
   b: AIPowerPlantCityPlanningInput,
 ): number {
-  const aCapacity = getSupportedPopulationCapacity(a.currentPlant);
-  const bCapacity = getSupportedPopulationCapacity(b.currentPlant);
+  const aCapacity = a.currentCapacity ?? getSupportedPopulationCapacity(a.currentPlant);
+  const bCapacity = b.currentCapacity ?? getSupportedPopulationCapacity(b.currentPlant);
   const shortageDelta = Number(b.population > bCapacity) - Number(a.population > aCapacity);
   if (shortageDelta !== 0) return shortageDelta;
   if (a.population !== b.population) return b.population - a.population;
@@ -135,6 +150,7 @@ function evaluateOption(
   const current = city.currentPlant;
   const population = city.population;
   const shortage = population > currentCapacity;
+  const atCapacity = population >= currentCapacity;
   const approaching = population >= currentCapacity - AI_POWER_PLANT_APPROACHING_MARGIN;
   const turns = context.estimateConstructionTurns(city.id, candidate.buildingId);
   const aging = current !== undefined
@@ -145,14 +161,14 @@ function evaluateOption(
 
   if (!current) {
     if (!approaching) return undefined;
-    return decision(city, candidate, currentCapacity, shortage ? 112 : 82,
-      shortage ? 'energy_shortage' : 'first_plant_approaching_capacity');
+    return decision(city, candidate, currentCapacity, shortage ? 170 : atCapacity ? 150 : 82,
+      shortage ? 'energy_shortage' : atCapacity ? 'capacity_progression_at_cap' : 'first_plant_approaching_capacity');
   }
 
   // Healthy plants are replaced for concrete growth pressure or aging only.
   if (current.active && !aging && !approaching && !shortage) return undefined;
   if (current.active && !aging && !candidateIsUpgrade) return undefined;
-  if (inactive && population < UNPOWERED_CITY_POPULATION_CAPACITY - AI_POWER_PLANT_APPROACHING_MARGIN && !aging) {
+  if (inactive && population <= UNPOWERED_CITY_POPULATION_CAPACITY - AI_POWER_PLANT_APPROACHING_MARGIN && !aging) {
     return undefined;
   }
 
@@ -170,7 +186,7 @@ function evaluateOption(
     score = shortage ? 110 : 88;
   } else if (shortage) {
     reason = 'energy_shortage';
-    score = 112;
+    score = 170;
   } else if (inactive) {
     reason = 'inactive_replacement';
     score = approaching ? 96 : 76;
@@ -180,8 +196,8 @@ function evaluateOption(
     score = 76 + Math.min(20, urgency * 3) + (approaching ? 8 : 0);
   } else {
     if (!candidateIsUpgrade) return undefined;
-    reason = 'capacity_upgrade';
-    score = 84;
+    reason = atCapacity ? 'capacity_progression_at_cap' : 'capacity_upgrade';
+    score = atCapacity ? 150 : 84;
   }
 
   return decision(city, candidate, currentCapacity, score, reason, current.remainingLifespan);
@@ -202,8 +218,29 @@ function decision(
     buildingId: plant.buildingId,
     requiredResourceId: plant.requiredResourceId,
     currentCapacity,
+    targetCapacity: plant.futurePopulationCap,
     score,
     reason,
     remainingLifespan,
+  };
+}
+
+function evaluateCapacityBuilding(
+  city: AIPowerPlantCityPlanningInput,
+  currentCapacity: number,
+  buildingId: string,
+  targetCapacity: number,
+): AIPowerPlantDecision | undefined {
+  const shortage = city.population > currentCapacity;
+  const atCapacity = city.population >= currentCapacity;
+  const approaching = city.population >= currentCapacity - AI_POWER_PLANT_APPROACHING_MARGIN;
+  if (!approaching || targetCapacity <= currentCapacity) return undefined;
+  return {
+    cityId: city.id,
+    buildingId,
+    currentCapacity,
+    targetCapacity,
+    score: shortage ? 170 : atCapacity ? 150 : 78,
+    reason: shortage || atCapacity ? 'capacity_progression_at_cap' : 'capacity_progression_approaching',
   };
 }

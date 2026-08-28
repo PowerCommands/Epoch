@@ -33,8 +33,9 @@ function city(
   population: number,
   currentPlant?: CityPowerPlantState,
   queuedPowerPlantIds: readonly string[] = [],
+  currentCapacity?: number,
 ): AIPowerPlantCityPlanningInput {
-  return { id, name: id, population, currentPlant, queuedPowerPlantIds, productionAvailable: queuedPowerPlantIds.length === 0 };
+  return { id, name: id, population, currentPlant, currentCapacity, queuedPowerPlantIds, productionAvailable: queuedPowerPlantIds.length === 0 };
 }
 
 function plan(options: {
@@ -55,12 +56,26 @@ function plan(options: {
   });
 }
 
-test('first plant is ignored for a small city, considered near 8, and urgent over capacity', () => {
-  assert.equal(plan({ cities: [city('small', 4)] }).size, 0);
-  assert.equal(plan({ cities: [city('near', 6)] }).get('near')?.reason, 'first_plant_approaching_capacity');
-  const shortage = plan({ cities: [city('short', 9)] }).get('short');
+test('first plant is ignored for a small city, considered near 6, and urgent at capacity', () => {
+  assert.equal(plan({ cities: [city('small', 3)] }).size, 0);
+  assert.equal(plan({ cities: [city('near', 4)] }).get('near')?.reason, 'first_plant_approaching_capacity');
+  const shortage = plan({ cities: [city('short', 7)] }).get('short');
   assert.equal(shortage?.reason, 'energy_shortage');
   assert.ok((shortage?.score ?? 0) >= 100);
+});
+
+test('sanitation infrastructure shares the planner and becomes urgent only at or near the current cap', () => {
+  assert.equal(plan({ cities: [city('small', 3, undefined, [], 6)], unlocked: ['sewers', 'aqueduct'] }).size, 0);
+  const near = plan({ cities: [city('near', 5, undefined, [], 6)], unlocked: ['sewers'] }).get('near');
+  assert.equal(near?.buildingId, 'sewers');
+  assert.equal(near?.reason, 'capacity_progression_approaching');
+  assert.ok((near?.score ?? 0) < 100);
+
+  const capped = plan({ cities: [city('capped', 8, undefined, [], 8)], unlocked: ['aqueduct'] }).get('capped');
+  assert.equal(capped?.buildingId, 'aqueduct');
+  assert.equal(capped?.targetCapacity, 10);
+  assert.equal(capped?.reason, 'capacity_progression_at_cap');
+  assert.ok((capped?.score ?? 0) >= 150);
 });
 
 test('selection respects technology and resource capacity and prefers the strongest valid plant', () => {

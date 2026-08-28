@@ -1651,6 +1651,9 @@ export class GameScene extends Phaser.Scene {
     researchSystem.setCultureUnitUnlockResolver((nationId, unitId) =>
       cultureSystem.isUnitCultureUnlocked(nationId, unitId),
     );
+    researchSystem.setCultureBuildingUnlockResolver((nationId, buildingId) =>
+      cultureSystem.isBuildingCultureUnlocked(nationId, buildingId),
+    );
     // Practical trade connections require Trade Networks on at least one side.
     tradeDealSystem.setHasTradeNetworks((nationId) =>
       researchSystem.isResearched(nationId, 'trade_networks'),
@@ -2018,6 +2021,7 @@ export class GameScene extends Phaser.Scene {
       turnManager.getCurrentRound(),
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
     );
+    cityView.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     resourceSystem.setCityEnergyProvider(
       powerPlantSystem,
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
@@ -6425,6 +6429,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setGamesOfNationsSystem(gamesOfNationsSystem);
     rightPanel.setVictorySystem(victorySystem);
     rightPanel.setCityDefenseSystem(cityDefenseSystem);
+    rightPanel.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.
@@ -6888,6 +6893,7 @@ export class GameScene extends Phaser.Scene {
             id: building.id,
             name: building.name,
             cost: productionSystem.getCost({ kind: 'building', buildingType: building }),
+            description: building.description,
             placement: building.placement,
             disabled: Boolean(productionBlockReason) || validCoords.length === 0,
             reason: productionBlockReason

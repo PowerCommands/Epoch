@@ -5613,8 +5613,12 @@ export class AISystem {
         name: city.name,
         population: city.population,
         currentPlant: this.powerPlantSystem?.getCityPowerPlant(city.id),
+        currentCapacity: this.powerPlantSystem?.getCityPopulationCapacity(city.id),
         queuedPowerPlantIds: this.productionSystem.getQueue(city.id)
           .filter((entry) => entry.item.kind === 'building' && this.powerPlantSystem?.isPowerPlant(entry.item.buildingType.id))
+          .map((entry) => entry.item.kind === 'building' ? entry.item.buildingType.id : ''),
+        queuedCapacityInfrastructureIds: this.productionSystem.getQueue(city.id)
+          .filter((entry) => entry.item.kind === 'building' && (entry.item.buildingType.modifiers.populationCapacity ?? 0) > 0)
           .map((entry) => entry.item.kind === 'building' ? entry.item.buildingType.id : ''),
         productionAvailable: this.productionSystem.getProduction(city.id) === undefined,
       })),
@@ -5650,7 +5654,8 @@ export class AISystem {
     const remaining = decision.remainingLifespan === undefined
       ? ''
       : `, remaining lifespan ${decision.remainingLifespan}`;
-    const message = `[EnergyAI] ${nationName} / ${city.name}: population ${city.population}, capacity ${decision.currentCapacity}, current ${currentName}, chose ${chosenName}, resource ${decision.requiredResourceId}${remaining}, reason ${decision.reason}.`;
+    const resource = decision.requiredResourceId ? `, resource ${decision.requiredResourceId}` : '';
+    const message = `[CapacityAI] ${nationName} / ${city.name}: population ${city.population}, capacity ${decision.currentCapacity}, current ${currentName}, chose ${chosenName} (capacity ${decision.targetCapacity})${resource}${remaining}, reason ${decision.reason}.`;
     console.log(this.formatLog(nationId, message));
     this.logStrategicEvent?.(nationId, message);
   }
@@ -5979,6 +5984,9 @@ export class AISystem {
       + (building.modifiers.goldPerTurn ?? 0) * 4
       + (building.modifiers.culturePerTurn ?? 0) * 5
       + (building.modifiers.culturePercent ?? 0)
+      // Capacity urgency is handled by the shared capacity planner; this small
+      // baseline keeps infrastructure available without making cities rush it.
+      + (building.modifiers.populationCapacity ?? 0)
       + (building.modifiers.cityDefensePercent ?? 0) * 2;
   }
 

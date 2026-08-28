@@ -210,6 +210,7 @@ export class RightSidebarPanelDataProvider {
   private gamesOfNationsSystem: GamesOfNationsSystem | null = null;
   private victorySystem: VictorySystem | null = null;
   private cityDefenseSystem: CityDefenseSystem | null = null;
+  private populationCapacityProvider: ((cityId: string) => number) | null = null;
   private readonly tradeMessages = new Map<string, string>();
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
@@ -347,6 +348,10 @@ export class RightSidebarPanelDataProvider {
 
   setCityDefenseSystem(system: CityDefenseSystem): void {
     this.cityDefenseSystem = system;
+  }
+
+  setPopulationCapacityProvider(provider: (cityId: string) => number): void {
+    this.populationCapacityProvider = provider;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -819,7 +824,7 @@ export class RightSidebarPanelDataProvider {
             ? [textRow(`Occupation cost: ${CITY_OCCUPATION_GOLD_COST_PER_TURN} gold/turn`, true)]
             : []),
           textRow(`Capital: ${city.isCapital ? 'Yes' : 'No'}`),
-          textRow(`Population: ${city.population}`),
+          textRow(`Population: ${city.population} / ${this.populationCapacityProvider?.(city.id) ?? '?'}`),
           textRow(`Health: ${city.health}/${CITY_BASE_HEALTH}`),
           progressRow('Health', city.health, CITY_BASE_HEALTH),
           textRow(`Tile position: ${city.tileX}, ${city.tileY}`),

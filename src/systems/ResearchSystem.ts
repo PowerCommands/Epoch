@@ -224,9 +224,14 @@ export class ResearchSystem {
    * Horseman, which culture also references decoratively) are unaffected.
    */
   private cultureUnitUnlockResolver?: (nationId: string, unitId: string) => boolean;
+  private cultureBuildingUnlockResolver?: (nationId: string, buildingId: string) => boolean;
 
   setCultureUnitUnlockResolver(resolver: (nationId: string, unitId: string) => boolean): void {
     this.cultureUnitUnlockResolver = resolver;
+  }
+
+  setCultureBuildingUnlockResolver(resolver: (nationId: string, buildingId: string) => boolean): void {
+    this.cultureBuildingUnlockResolver = resolver;
   }
 
   isUnitUnlocked(nationId: string, unitId: string): boolean {
@@ -238,8 +243,8 @@ export class ResearchSystem {
 
   isBuildingUnlocked(nationId: string, buildingId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForBuilding(buildingId);
-    if (!requiredTechnology) return true;
-    return this.isResearched(nationId, requiredTechnology.id);
+    if (requiredTechnology) return this.isResearched(nationId, requiredTechnology.id);
+    return this.cultureBuildingUnlockResolver?.(nationId, buildingId) ?? true;
   }
 
   isWonderUnlocked(nationId: string, wonderId: string): boolean {

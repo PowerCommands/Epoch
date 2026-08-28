@@ -1,5 +1,6 @@
 import type { BuildingModifiers, BuildingPlacement, BuildingType } from '../entities/Building';
 import type { Era } from './technologies';
+import { CITY_POPULATION_CAPACITY_LEVELS } from './populationCapacity';
 
 interface BuildingInput {
   id: string;
@@ -38,9 +39,12 @@ function describeModifiers(modifiers: BuildingModifiers): string {
     ['gold', modifiers.goldPercent, '%'],
     ['science', modifiers.sciencePercent, '%'],
     ['culture', modifiers.culturePercent, '%'],
+    ['population capacity', modifiers.populationCapacity],
   ]
     .filter(([, value]) => value !== undefined && value !== 0)
-    .map(([label, value, suffix]) => `+${value}${suffix ?? ''} ${label}`);
+    .map(([label, value, suffix]) => label === 'population capacity'
+      ? `Population Capacity: ${value}`
+      : `+${value}${suffix ?? ''} ${label}`);
 
   return parts.length > 0 ? parts.join(', ') : 'No direct local modifier';
 }
@@ -52,6 +56,15 @@ export const BARRACKS = building({ id: 'barracks', name: 'Barracks', era: 'ancie
 export const WALLS = building({ id: 'walls', name: 'Walls', era: 'ancient', placement: 'city', cost: 100, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense' });
 export const WATER_MILL = building({ id: 'water_mill', name: 'Water Mill', era: 'ancient', cost: 75, maintenance: 2, modifiers: { foodPerTurn: 2, productionPerTurn: 1, happinessPerTurn: 1 } });
 export const STONE_WORKS = building({ id: 'stone_works', name: 'Stone Works', era: 'ancient', cost: 75, maintenance: 1, modifiers: { productionPerTurn: 1 , happinessPerTurn: 1}, description: 'Resource requirements omitted; uses flat +1 production approximation' });
+export const SEWERS = building({
+  id: 'sewers',
+  name: 'Sewers',
+  era: 'ancient',
+  cost: 80,
+  maintenance: 1,
+  modifiers: { populationCapacity: CITY_POPULATION_CAPACITY_LEVELS.sewers },
+  description: `Organized drainage and waste removal allowed cities to support larger populations. Population Capacity: ${CITY_POPULATION_CAPACITY_LEVELS.sewers}.`,
+});
 
 export const LIBRARY = building({ id: 'library', name: 'Library', era: 'classical', cost: 75, maintenance: 1, modifiers: { sciencePerTurn: 2, happinessPerTurn: 2 }, description: 'Civ V is +1 science per 2 citizens; approximated as +2 science' });
 export const CIRCUS = building({ id: 'circus', name: 'Circus', era: 'classical', cost: 75, maintenance: 0, modifiers: { happinessPerTurn: 5 }, description: 'Resource requirement omitted' });
@@ -69,7 +82,7 @@ export const MINT = building({ id: 'mint', name: 'Mint', era: 'medieval', cost: 
 export const GARDEN = building({ id: 'garden', name: 'Garden', era: 'medieval', cost: 120, maintenance: 1, description: 'Great People modifier omitted' , modifiers: { foodPerTurn: 2 , happinessPerTurn: 1}});
 export const UNIVERSITY = building({ id: 'university', name: 'University', era: 'medieval', cost: 160, maintenance: 2, modifiers: { sciencePercent: 33, happinessPerTurn: 2 }, description: 'Jungle science omitted; keeps +33% science' });
 export const WORKSHOP = building({ id: 'workshop', name: 'Workshop', era: 'medieval', cost: 120, maintenance: 2, modifiers: { productionPerTurn: 2, productionPercent: 10, happinessPerTurn: 1 } });
-export const AQUEDUCT = building({ id: 'aqueduct', name: 'Aqueduct', era: 'medieval', cost: 100, maintenance: 1, description: 'Food carryover omitted until growth modifiers exist', modifiers: { foodPerTurn: 2 , happinessPerTurn: 1} });
+export const AQUEDUCT = building({ id: 'aqueduct', name: 'Aqueduct', era: 'medieval', cost: 100, maintenance: 1, description: `Carries reliable fresh water into the city. Population Capacity: ${CITY_POPULATION_CAPACITY_LEVELS.aqueduct}. Existing bonuses: +2 food, +1 happiness.`, modifiers: { foodPerTurn: 2, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_LEVELS.aqueduct } });
 export const HARBOR = building({ id: 'harbor', name: 'Harbor', era: 'medieval', placement: 'water', cost: 120, maintenance: 3, modifiers: { productionPerTurn: 1, happinessPerTurn: 2, tradeCapacity: 2 }, description: 'Sea trade route omitted; sea resource production approximated as +1 production' });
 export const OBSERVATORY = building({ id: 'observatory', name: 'Observatory', era: 'medieval', cost: 200, maintenance: 0, modifiers: { sciencePercent: 50 , happinessPerTurn: 1}, description: 'Mountain requirement omitted' });
 
@@ -84,9 +97,9 @@ export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 
 export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, description: 'Unit XP omitted until promotions exist', modifiers: { foodPerTurn: 2 } });
 export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', placement: 'city', cost: 400, maintenance: 0, modifiers: { foodPerTurn: 2, cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const FACTORY = building({ id: 'factory', name: 'Factory', era: 'industrial', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 4, productionPercent: 10, happinessPerTurn: 1 }, description: 'Civ V BNW factory is +10% and +4 production; coal requirement omitted' });
-export const COAL_POWER_PLANT = building({ id: 'coal_power_plant', name: 'Coal Power Plant', era: 'industrial', cost: 300, maintenance: 0, description: 'Requires Coal to construct and operate. Lifespan: 20 turns. Population and production effects are reserved for the future energy system.' });
-export const OIL_POWER_PLANT = building({ id: 'oil_power_plant', name: 'Oil Power Plant', era: 'industrial', cost: 340, maintenance: 0, description: 'Requires Oil to construct and operate. Lifespan: 40 turns. Population and production effects are reserved for the future energy system.' });
-export const GAS_POWER_PLANT = building({ id: 'gas_power_plant', name: 'Gas Power Plant', era: 'industrial', cost: 360, maintenance: 0, description: 'Requires Natural Gas to construct and operate. Lifespan: 50 turns. Population and production effects are reserved for the future energy system.' });
+export const COAL_POWER_PLANT = building({ id: 'coal_power_plant', name: 'Coal Power Plant', era: 'industrial', cost: 300, maintenance: 0, description: `Requires Coal to construct and operate. Lifespan: 20 turns. Population Capacity: ${CITY_POPULATION_CAPACITY_LEVELS.coalPowerPlant}. Active production multiplier: x2.` });
+export const OIL_POWER_PLANT = building({ id: 'oil_power_plant', name: 'Oil Power Plant', era: 'industrial', cost: 340, maintenance: 0, description: `Requires Oil to construct and operate. Lifespan: 40 turns. Population Capacity: ${CITY_POPULATION_CAPACITY_LEVELS.oilPowerPlant}. Active production multiplier: x3.` });
+export const GAS_POWER_PLANT = building({ id: 'gas_power_plant', name: 'Gas Power Plant', era: 'industrial', cost: 360, maintenance: 0, description: `Requires Natural Gas to construct and operate. Lifespan: 50 turns. Population Capacity: ${CITY_POPULATION_CAPACITY_LEVELS.gasPowerPlant}. Active production multiplier: x4.` });
 export const STOCK_EXCHANGE = building({ id: 'stock_exchange', name: 'Stock Exchange', era: 'industrial', cost: 500, maintenance: 0, modifiers: { goldPercent: 33, happinessPerTurn: 1, tradeCapacity: 2 } });
 export const HOSPITAL = building({ id: 'hospital', name: 'Hospital', era: 'industrial', cost: 360, maintenance: 2, modifiers: { foodPerTurn: 5, happinessPerTurn: 2 } });
 export const HOTEL = building({ id: 'hotel', name: 'Hotel', era: 'industrial', cost: 300, maintenance: 0, modifiers: { culturePercent: 10, happinessPerTurn: 4 }, description: 'Tourism conversion approximated as +10% culture' });
@@ -110,7 +123,7 @@ export const MEDICAL_LAB = building({ id: 'medical_lab', name: 'Medical Lab', er
 
 export const RESEARCH_LAB = building({ id: 'research_lab', name: 'Research Lab', era: 'atomic', cost: 500, maintenance: 3, modifiers: { sciencePerTurn: 4, sciencePercent: 50, happinessPerTurn: 1 } });
 export const SOLAR_PLANT = building({ id: 'solar_plant', name: 'Solar Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Desert and mutual-exclusion requirements omitted' });
-export const NUCLEAR_POWER_PLANT = building({ id: 'nuclear_plant', name: 'Nuclear Power Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Requires Uranium to construct and operate. Lifespan: 100 turns. Existing local modifiers are retained; future energy effects remain reserved.' });
+export const NUCLEAR_POWER_PLANT = building({ id: 'nuclear_plant', name: 'Nuclear Power Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: `Requires Uranium to construct and operate. Lifespan: 100 turns. Population Capacity: ${CITY_POPULATION_CAPACITY_LEVELS.nuclearPowerPlant}. Active production multiplier: x6. Existing local bonuses are retained.` });
 /** Legacy export retained for code that already referred to the existing Nuclear Plant definition. */
 export const NUCLEAR_PLANT = NUCLEAR_POWER_PLANT;
 export const HYDRO_PLANT = building({ id: 'hydro_plant', name: 'Hydro Plant', era: 'modern', cost: 500, maintenance: 3, modifiers: { productionPerTurn: 3, happinessPerTurn: 1 }, description: 'River-tile production approximated as +3 production' });
@@ -120,7 +133,7 @@ export const POLICE_STATION = building({ id: 'police_station', name: 'Police Sta
 export const SPACESHIP_FACTORY = building({ id: 'spaceship_factory', name: 'Spaceship Factory', era: 'information', cost: 360, maintenance: 3, modifiers: { productionPercent: 10, happinessPerTurn: 5 }, description: 'Spaceship-part production approximated as +10% production' });
 
 export const ALL_BUILDINGS: BuildingType[] = [
-  MONUMENT, GRANARY, SHRINE, BARRACKS, WALLS, WATER_MILL, STONE_WORKS,
+  MONUMENT, GRANARY, SHRINE, BARRACKS, WALLS, WATER_MILL, STONE_WORKS, SEWERS,
   LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,
   CASTLE, ARMORY, FORGE, MARKET, MINT, GARDEN, UNIVERSITY, WORKSHOP, AQUEDUCT, HARBOR, OBSERVATORY,
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,

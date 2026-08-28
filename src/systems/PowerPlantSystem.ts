@@ -1,5 +1,6 @@
 import { getBuildingById } from '../data/buildings';
 import { getNaturalResourceById } from '../data/naturalResources';
+import { BASE_CITY_POPULATION_CAPACITY } from '../data/populationCapacity';
 import {
   POWER_PLANTS,
   getPowerPlantMetadata,
@@ -11,7 +12,8 @@ import type { CityManager } from './CityManager';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 
 export type PowerPlantInactiveReason = 'missing_resource' | 'broken';
-export const UNPOWERED_POPULATION_CAPACITY = 8;
+/** @deprecated Prefer BASE_CITY_POPULATION_CAPACITY from populationCapacity. */
+export const UNPOWERED_POPULATION_CAPACITY = BASE_CITY_POPULATION_CAPACITY;
 
 export interface CityPowerPlantState {
   readonly cityId: string;
@@ -236,9 +238,13 @@ export class PowerPlantSystem {
 
   getCityPopulationCapacity(cityId: string): number {
     const plant = this.getCityPowerPlant(cityId);
-    if (!plant?.active) return UNPOWERED_POPULATION_CAPACITY;
-    return getPowerPlantMetadata(plant.buildingId)?.futurePopulationCap
-      ?? UNPOWERED_POPULATION_CAPACITY;
+    const plantCapacity = plant?.active
+      ? getPowerPlantMetadata(plant.buildingId)?.futurePopulationCap ?? BASE_CITY_POPULATION_CAPACITY
+      : BASE_CITY_POPULATION_CAPACITY;
+    const infrastructureCapacity = this.cityManager.getBuildings(cityId).getAll().reduce((highest, buildingId) => (
+      Math.max(highest, getBuildingById(buildingId)?.modifiers.populationCapacity ?? BASE_CITY_POPULATION_CAPACITY)
+    ), BASE_CITY_POPULATION_CAPACITY);
+    return Math.max(BASE_CITY_POPULATION_CAPACITY, infrastructureCapacity, plantCapacity);
   }
 
   getCityProductionMultiplier(cityId: string): number {

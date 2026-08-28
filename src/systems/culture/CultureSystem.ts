@@ -1,4 +1,9 @@
-import { CULTURE_TREE, getCultureNodeById, getRequiredCultureNodeForUnit } from '../../data/cultureTree';
+import {
+  CULTURE_TREE,
+  getCultureNodeById,
+  getRequiredCultureNodeForBuilding,
+  getRequiredCultureNodeForUnit,
+} from '../../data/cultureTree';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../../data/gameSpeeds';
 import { getEraPacingMultiplier } from '../../data/eraPacingMultipliers';
 import type { CultureNode } from '../../types/CultureNode';
@@ -145,6 +150,13 @@ export class CultureSystem {
    */
   isUnitCultureUnlocked(nationId: string, unitId: string): boolean {
     const node = getRequiredCultureNodeForUnit(unitId);
+    if (!node) return true;
+    return this.isUnlocked(nationId, node.id);
+  }
+
+  /** Whether a culture-gated building is available to this nation. */
+  isBuildingCultureUnlocked(nationId: string, buildingId: string): boolean {
+    const node = getRequiredCultureNodeForBuilding(buildingId);
     if (!node) return true;
     return this.isUnlocked(nationId, node.id);
   }

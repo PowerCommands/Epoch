@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getBuildingById } from '../src/data/buildings.ts';
+import { AQUEDUCT, SEWERS, getBuildingById } from '../src/data/buildings.ts';
 import { POWER_PLANTS } from '../src/data/powerPlants.ts';
 import { City } from '../src/entities/City.ts';
 import { Nation } from '../src/entities/Nation.ts';
@@ -122,22 +122,22 @@ function primeFoodForGrowth(harness: ReturnType<typeof makeHarness>): void {
   harness.city.foodStorage = economy.foodToGrow - gain;
 }
 
-test('population below energy capacity grows normally, while population at capacity cannot grow', () => {
-  const below = makeHarness(7);
+test('population below capacity grows normally, while population at capacity cannot grow', () => {
+  const below = makeHarness(5);
   primeFoodForGrowth(below);
   below.advanceOwnerTurns(1);
-  assert.equal(below.city.population, 8);
+  assert.equal(below.city.population, 6);
 
-  const capped = makeHarness(8);
+  const capped = makeHarness(6);
   primeFoodForGrowth(capped);
   capped.advanceOwnerTurns(1);
-  assert.equal(capped.city.population, 8);
+  assert.equal(capped.city.population, 6);
   assert.equal(capped.city.foodStorage, 0);
 });
 
 test('no plant, every active plant, and an inactive plant provide canonical capacities', () => {
   const unpowered = makeHarness();
-  assert.equal(unpowered.powerPlantSystem.getCityPopulationCapacity(unpowered.city.id), 8);
+  assert.equal(unpowered.powerPlantSystem.getCityPopulationCapacity(unpowered.city.id), 6);
 
   for (const metadata of POWER_PLANTS) {
     const active = makeHarness();
@@ -153,7 +153,44 @@ test('no plant, every active plant, and an inactive plant provide canonical capa
   inactive.constructPlant('coal_power_plant');
   inactive.mapData.tiles[8][8].resourceId = undefined;
   inactive.resourceAccessSystem.invalidateResourceIndex();
-  assert.equal(inactive.powerPlantSystem.getCityPopulationCapacity(inactive.city.id), 8);
+  assert.equal(inactive.powerPlantSystem.getCityPopulationCapacity(inactive.city.id), 6);
+});
+
+test('capacity infrastructure follows the complete non-stacking hierarchy', () => {
+  const h = makeHarness();
+  assert.equal(h.powerPlantSystem.getCityPopulationCapacity(h.city.id), 6);
+  h.cityManager.getBuildings(h.city.id).add(SEWERS);
+  assert.equal(h.powerPlantSystem.getCityPopulationCapacity(h.city.id), 8);
+  h.cityManager.getBuildings(h.city.id).add(AQUEDUCT);
+  assert.equal(h.powerPlantSystem.getCityPopulationCapacity(h.city.id), 10);
+
+  const expected = new Map([
+    ['coal_power_plant', 16],
+    ['oil_power_plant', 20],
+    ['gas_power_plant', 24],
+    ['nuclear_plant', 48],
+  ]);
+  for (const [buildingId, capacity] of expected) {
+    const withPlant = makeHarness();
+    withPlant.cityManager.getBuildings(withPlant.city.id).add(SEWERS);
+    withPlant.cityManager.getBuildings(withPlant.city.id).add(AQUEDUCT);
+    withPlant.constructPlant(buildingId);
+    assert.equal(withPlant.powerPlantSystem.getCityPopulationCapacity(withPlant.city.id), capacity);
+  }
+});
+
+test('every capacity building describes its canonical population support', () => {
+  const expected = new Map([
+    ['sewers', 8],
+    ['aqueduct', 10],
+    ['coal_power_plant', 16],
+    ['oil_power_plant', 20],
+    ['gas_power_plant', 24],
+    ['nuclear_plant', 48],
+  ]);
+  for (const [buildingId, capacity] of expected) {
+    assert.match(getBuildingById(buildingId)!.description, new RegExp(`Population Capacity: ${capacity}\\b`));
+  }
 });
 
 test('energy shortage has five grace turns and then declines every five turns', () => {
@@ -315,6 +352,9 @@ test('energy shortage countdown survives the real city save/load path', () => {
   );
 
   const restoredCity = restoredCityManager.getCity(original.city.id)!;
+  // Derived capacity is not migrated into the save and loading never clamps
+  // an existing city's population, even when it is already above capacity.
+  assert.equal(restoredCity.population, 15);
   assert.equal(restoredCity.energyShortageTurns, 9);
   const restoredAccess = new ResourceAccessSystem(original.mapData, { getAllDeals: () => [] });
   const restoredPower = new PowerPlantSystem(restoredCityManager, restoredAccess, original.mapData, 1);

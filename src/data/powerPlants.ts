@@ -1,3 +1,5 @@
+import { CITY_POPULATION_CAPACITY_LEVELS } from './populationCapacity';
+
 export interface PowerPlantMetadata {
   readonly buildingId: string;
   readonly requiredResourceId: 'coal' | 'oil' | 'natural_gas' | 'uranium';
@@ -15,7 +17,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'coal',
     plantsPerResourceSource: 1,
     lifespanTurns: 20,
-    futurePopulationCap: 16,
+    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.coalPowerPlant,
     futureProductionMultiplier: 2,
   },
   {
@@ -23,7 +25,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'oil',
     plantsPerResourceSource: 1,
     lifespanTurns: 40,
-    futurePopulationCap: 24,
+    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.oilPowerPlant,
     futureProductionMultiplier: 3,
   },
   {
@@ -31,7 +33,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'natural_gas',
     plantsPerResourceSource: 1,
     lifespanTurns: 50,
-    futurePopulationCap: 40,
+    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.gasPowerPlant,
     futureProductionMultiplier: 4,
   },
   {
@@ -39,7 +41,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'uranium',
     plantsPerResourceSource: 1,
     lifespanTurns: 100,
-    futurePopulationCap: 100,
+    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.nuclearPowerPlant,
     futureProductionMultiplier: 6,
   },
 ];

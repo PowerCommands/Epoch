@@ -12,7 +12,7 @@ export const CULTURE_TREE: CultureNode[] = [
   node({ id: 'craftsmanship', name: 'Craftsmanship', era: 'ancient', cost: 32, description: 'Skilled hands organize labor, tools, and local defense. Craft traditions help settlements turn raw materials into lasting civic strength.', prerequisites: ['code_of_laws'], unlocks: [{ type: 'policySlot', value: 'military' }] }),
   node({ id: 'foreign_trade', name: 'Foreign Trade', era: 'ancient', cost: 36, description: 'Merchants and envoys begin carrying goods beyond familiar borders. Trade customs make distant neighbors part of city life.', prerequisites: ['code_of_laws'], unlocks: [{ type: 'diplomacy', value: 'trade_delegations' }] }),
   node({ id: 'early_empire', name: 'Early Empire', era: 'ancient', cost: 46, description: 'Small settlements learn to think as a realm. Borders, tribute, and local chiefs become the first shape of expansion.', prerequisites: ['craftsmanship'], unlocks: [{ type: 'government', value: 'tribal_council' }] }),
-  node({ id: 'state_workforce', name: 'State Workforce', era: 'ancient', cost: 50, description: 'Public labor becomes an instrument of government. Organized work crews raise monuments, roads, and shared civic projects.', prerequisites: ['craftsmanship'], unlocks: [{ type: 'building', value: 'monument' }] }),
+  node({ id: 'state_workforce', name: 'State Workforce', era: 'ancient', cost: 50, description: 'Public labor becomes an instrument of government. Organized work crews raise monuments, roads, and shared civic projects.', prerequisites: ['craftsmanship'], unlocks: [{ type: 'building', value: 'monument' }, { type: 'building', value: 'sewers' }] }),
   node({ id: 'mysticism', name: 'Mysticism', era: 'ancient', cost: 56, description: 'Ritual, omen, and sacred authority bind people through wonder. Flexible traditions make room for leaders who act beyond ordinary law.', prerequisites: ['foreign_trade'], unlocks: [{ type: 'policySlot', value: 'wildcard' }] }),
   node({ id: 'military_tradition', name: 'Military Tradition', era: 'classical', cost: 80, description: 'War stories become doctrine, ceremony, and inherited command. Armies fight with shared memory as much as weapons.', prerequisites: ['early_empire'], unlocks: [{ type: 'unit', value: 'horseman' }] }),
   node({ id: 'political_philosophy', name: 'Political Philosophy', era: 'classical', cost: 90, description: 'Debate turns rule into an idea that can be compared and chosen. Citizens and rulers begin asking what government is for.', prerequisites: ['early_empire', 'state_workforce'], unlocks: [{ type: 'government', value: 'classical_republic' }, { type: 'government', value: 'autocracy' }] }),
@@ -56,5 +56,12 @@ export function getCultureNodeById(id: string): CultureNode | undefined {
 export function getRequiredCultureNodeForUnit(unitId: string): CultureNode | undefined {
   return CULTURE_TREE.find((cultureNode) =>
     (cultureNode.unlocks ?? []).some((unlock) => unlock.type === 'unit' && unlock.value === unitId),
+  );
+}
+
+/** The culture node that unlocks a given building, if any. */
+export function getRequiredCultureNodeForBuilding(buildingId: string): CultureNode | undefined {
+  return CULTURE_TREE.find((cultureNode) =>
+    (cultureNode.unlocks ?? []).some((unlock) => unlock.type === 'building' && unlock.value === buildingId),
   );
 }

@@ -50,6 +50,13 @@
       "iconPath": "assets/sprites/buildings/stone_works.png"
     },
     {
+      "id": "sewers",
+      "name": "Sewers",
+      "era": "ancient",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/sewers.png"
+    },
+    {
       "id": "library",
       "name": "Library",
       "era": "classical",

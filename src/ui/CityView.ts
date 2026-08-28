@@ -26,6 +26,7 @@ export interface CityViewBuildingOption {
   id: string;
   name: string;
   cost: number;
+  description?: string;
   placement: 'land' | 'water' | 'city';
   disabled?: boolean;
   reason?: string;
@@ -132,6 +133,7 @@ export class CityView {
   private dragOffsetY = 0;
   private userPositioned = false;
   private anchorProvider: CityViewAnchorProvider | null = null;
+  private populationCapacityProvider: ((cityId: string) => number) | null = null;
   private editingTitleCityId: string | null = null;
   private lastRenderState: {
     city: City;
@@ -290,6 +292,10 @@ export class CityView {
 
   onCloseRequested(callback: CloseCallback): void {
     this.closeCallbacks.push(callback);
+  }
+
+  setPopulationCapacityProvider(provider: (cityId: string) => number): void {
+    this.populationCapacityProvider = provider;
   }
 
   onPlacementRequested(callback: PlacementRequestCallback): void {
@@ -581,7 +587,7 @@ export class CityView {
     this.syncTitleEditingState(isEditingCurrentCity);
 
     const statRows = [
-      `Population: ${city.population}`,
+      `Population: ${city.population} / ${this.populationCapacityProvider?.(city.id) ?? '?'}`,
       `Culture: ${city.culture}`,
       `Owned tiles: ${city.ownedTileCoords.length}`,
       `Worked tiles: ${city.workedTileCoords.length}`,
@@ -639,7 +645,12 @@ export class CityView {
         button.classList.add('city-view-placement-button-active');
       }
       button.disabled = option.disabled ?? false;
-      if (option.reason) button.title = option.reason;
+      this.attachProductionTooltip(button, [
+        option.name,
+        option.description,
+        `Cost: ${option.cost}`,
+        option.reason ? `Requirements: ${option.reason}` : undefined,
+      ]);
       button.addEventListener('click', () => {
         if (button.disabled) return;
         for (const callback of this.placementRequestCallbacks) callback(option.id);
