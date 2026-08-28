@@ -461,6 +461,10 @@ export class CityBannerRenderer {
       return { textureKey: undefined, fallbackLabel: '↔' };
     }
 
+    if (production.kind === 'project') {
+      return { textureKey: undefined, fallbackLabel: getAbbreviation(production.projectType.name) };
+    }
+
     if (production.kind === 'manufacturedResource') {
       const textureKey = this.ensureProductionTexture(
         'manufacturedResource',
@@ -573,6 +577,7 @@ function getKindLabel(kind: Producible['kind']): string {
     case 'wonder': return 'Wonder';
     case 'corporation': return 'Corporation';
     case 'manufacturedResource': return 'Manufactured Resource';
+    case 'project': return 'Project';
     case 'tradeRoute': return 'Trade Route';
   }
 }
@@ -584,6 +589,7 @@ function getItemName(item: Producible): string {
     case 'wonder': return item.wonderType.name;
     case 'corporation': return item.corporationType.name;
     case 'manufacturedResource': return item.productionType.name;
+    case 'project': return item.projectType.name;
     case 'tradeRoute': return item.displayName;
   }
 }

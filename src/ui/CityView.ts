@@ -10,10 +10,11 @@ type RenameRequestCallback = (cityId: string, name: string) => void;
 type UnitRequestCallback = (unitId: string) => void;
 type WonderRequestCallback = (wonderId: string) => void;
 type CorporationRequestCallback = (corporationId: string) => void;
+type ProjectRequestCallback = (projectId: string) => void;
 type QueueRemoveRequestCallback = (index: number) => void;
 type QueueBuyRequestCallback = (index: number) => void;
 type CityViewMode = 'production' | 'queue';
-type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations';
+type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations' | 'projects';
 
 export interface CityViewAnchor {
   screenX: number;
@@ -63,6 +64,15 @@ export interface CityViewCorporationOption {
   turnsRemaining?: number;
 }
 
+export interface CityViewProjectOption {
+  id: string;
+  name: string;
+  description: string;
+  /** Live gold-per-turn the project would generate given the city's production. */
+  goldPerTurn: number;
+  active: boolean;
+}
+
 export interface CityViewPlacementPanelState {
   active: boolean;
   mode?: 'building' | 'wonder';
@@ -92,6 +102,10 @@ export interface CityViewQueueItem {
   buyCost?: number;
   buyLabel?: string;
   canBuy?: boolean;
+  /** Repeatable project: no completion, shown as a continuous "+X Gold / turn". */
+  isProject?: boolean;
+  /** For projects: the current gold-per-turn result to display. */
+  projectGoldPerTurn?: number;
 }
 
 export class CityView {
@@ -117,6 +131,7 @@ export class CityView {
   private readonly unitRequestCallbacks: UnitRequestCallback[] = [];
   private readonly wonderRequestCallbacks: WonderRequestCallback[] = [];
   private readonly corporationRequestCallbacks: CorporationRequestCallback[] = [];
+  private readonly projectRequestCallbacks: ProjectRequestCallback[] = [];
   private readonly queueRemoveRequestCallbacks: QueueRemoveRequestCallback[] = [];
   private readonly queueBuyRequestCallbacks: QueueBuyRequestCallback[] = [];
   private currentCityId: string | null = null;
@@ -126,6 +141,7 @@ export class CityView {
     buildings: false,
     wonders: false,
     corporations: false,
+    projects: false,
   };
   private open = false;
   private dragging = false;
@@ -143,6 +159,7 @@ export class CityView {
     tilePurchaseState: CityViewTilePurchaseState;
     wonderOptions: CityViewWonderOption[];
     corporationOptions: CityViewCorporationOption[];
+    projectOptions: CityViewProjectOption[];
     queueItems: CityViewQueueItem[];
   } | null = null;
 
@@ -326,6 +343,10 @@ export class CityView {
     this.corporationRequestCallbacks.push(callback);
   }
 
+  onProjectRequested(callback: ProjectRequestCallback): void {
+    this.projectRequestCallbacks.push(callback);
+  }
+
   onQueueRemoveRequested(callback: QueueRemoveRequestCallback): void {
     this.queueRemoveRequestCallbacks.push(callback);
   }
@@ -361,6 +382,7 @@ export class CityView {
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
     corporationOptions: CityViewCorporationOption[],
+    projectOptions: CityViewProjectOption[],
     queueItems: CityViewQueueItem[],
     anchor?: CityViewAnchor | CityViewAnchorProvider,
   ): void {
@@ -376,7 +398,7 @@ export class CityView {
     this.currentCityId = city.id;
     this.open = true;
     this.root.style.display = 'block';
-    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, queueItems);
+    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, projectOptions, queueItems);
     this.positionNearAnchor();
   }
 
@@ -388,10 +410,11 @@ export class CityView {
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
     corporationOptions: CityViewCorporationOption[],
+    projectOptions: CityViewProjectOption[],
     queueItems: CityViewQueueItem[],
   ): void {
     if (!this.isOpenForCity(city.id)) return;
-    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, queueItems);
+    this.render(city, unitOptions, buildingOptions, placementState, tilePurchaseState, wonderOptions, corporationOptions, projectOptions, queueItems);
   }
 
   close(): void {
@@ -567,6 +590,7 @@ export class CityView {
     tilePurchaseState: CityViewTilePurchaseState,
     wonderOptions: CityViewWonderOption[],
     corporationOptions: CityViewCorporationOption[],
+    projectOptions: CityViewProjectOption[],
     queueItems: CityViewQueueItem[],
   ): void {
     this.lastRenderState = {
@@ -577,6 +601,7 @@ export class CityView {
       tilePurchaseState,
       wonderOptions,
       corporationOptions,
+      projectOptions,
       queueItems,
     };
     const isEditingCurrentCity = this.editingTitleCityId === city.id;
@@ -607,7 +632,7 @@ export class CityView {
     if (this.mode === 'queue') {
       this.renderQueueMode(queueItems);
     } else {
-      this.renderProductionMode(unitOptions, buildingOptions, placementState, wonderOptions, corporationOptions);
+      this.renderProductionMode(unitOptions, buildingOptions, placementState, wonderOptions, corporationOptions, projectOptions);
     }
   }
 
@@ -617,6 +642,7 @@ export class CityView {
     placementState: CityViewPlacementPanelState,
     wonderOptions: CityViewWonderOption[],
     corporationOptions: CityViewCorporationOption[],
+    projectOptions: CityViewProjectOption[],
   ): void {
     const units = this.renderProductionAccordion('units', 'Units', unitOptions, (grid, option) => {
       const button = this.createProductionButton(
@@ -699,7 +725,25 @@ export class CityView {
       grid.append(button);
     }, 'No corporations available.');
 
-    this.modeContentEl.replaceChildren(units, buildings, wonders, corporations);
+    const projects = this.renderProductionAccordion('projects', 'Projects', projectOptions, (grid, option) => {
+      const button = this.createProductionButton(
+        undefined,
+        `${option.name} — +${option.goldPerTurn} Gold / turn`,
+      );
+      if (option.active) button.classList.add('city-view-placement-button-active');
+      this.attachProductionTooltip(button, [
+        option.name,
+        option.description,
+        `Current: +${option.goldPerTurn} Gold / turn`,
+        'Continuous — never completes; select another item to stop.',
+      ]);
+      button.addEventListener('click', () => {
+        for (const callback of this.projectRequestCallbacks) callback(option.id);
+      });
+      grid.append(button);
+    }, 'No projects available.');
+
+    this.modeContentEl.replaceChildren(units, buildings, wonders, corporations, projects);
   }
 
   private renderTilePurchase(tilePurchaseState: CityViewTilePurchaseState): void {
@@ -847,22 +891,33 @@ export class CityView {
 
     const title = document.createElement('div');
     title.className = 'city-view-queue-title';
-    title.textContent = `${item.index + 1}. ${item.name}${item.active ? ' [active]' : ''}`;
 
-    const turns = item.blockedReason
-      ? 'blocked'
-      : `${item.turnsRemaining} turn${item.turnsRemaining !== 1 ? 's' : ''}`;
-    const meta = document.createElement('div');
-    meta.className = 'city-view-queue-meta';
-    meta.textContent = `${item.progress}/${item.cost} production • ${turns}`;
+    if (item.isProject) {
+      // Repeatable project: no progress bar, no turns, no fake completion —
+      // just what it is and its current continuous result.
+      title.textContent = `Producing: ${item.name}`;
+      const meta = document.createElement('div');
+      meta.className = 'city-view-queue-meta';
+      meta.textContent = `+${item.projectGoldPerTurn ?? 0} Gold / turn`;
+      body.append(title, meta);
+    } else {
+      title.textContent = `${item.index + 1}. ${item.name}${item.active ? ' [active]' : ''}`;
 
-    const progress = document.createElement('div');
-    progress.className = 'city-view-queue-progress';
-    const fill = document.createElement('div');
-    fill.style.width = `${Math.max(0, Math.min(100, Math.floor((item.progress / Math.max(1, item.cost)) * 100)))}%`;
-    progress.append(fill);
+      const turns = item.blockedReason
+        ? 'blocked'
+        : `${item.turnsRemaining} turn${item.turnsRemaining !== 1 ? 's' : ''}`;
+      const meta = document.createElement('div');
+      meta.className = 'city-view-queue-meta';
+      meta.textContent = `${item.progress}/${item.cost} production • ${turns}`;
 
-    body.append(title, meta, progress);
+      const progress = document.createElement('div');
+      progress.className = 'city-view-queue-progress';
+      const fill = document.createElement('div');
+      fill.style.width = `${Math.max(0, Math.min(100, Math.floor((item.progress / Math.max(1, item.cost)) * 100)))}%`;
+      progress.append(fill);
+
+      body.append(title, meta, progress);
+    }
     if (item.blockedReason) {
       const reason = document.createElement('div');
       reason.className = 'city-view-placement-empty';
@@ -935,6 +990,7 @@ export class CityView {
       this.lastRenderState.tilePurchaseState,
       this.lastRenderState.wonderOptions,
       this.lastRenderState.corporationOptions,
+      this.lastRenderState.projectOptions,
       this.lastRenderState.queueItems,
     );
   }

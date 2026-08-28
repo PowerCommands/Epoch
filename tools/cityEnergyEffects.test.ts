@@ -358,6 +358,8 @@ test('energy shortage countdown survives the real city save/load path', () => {
   // an existing city's population, even when it is already above capacity.
   assert.equal(restoredCity.population, 15);
   assert.equal(restoredCity.energyShortageTurns, 9);
+  restoredHappiness.recalculateNation(NATION_ID);
+  assert.equal(restoredHappiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 1);
   const restoredAccess = new ResourceAccessSystem(original.mapData, { getAllDeals: () => [] });
   const restoredPower = new PowerPlantSystem(restoredCityManager, restoredAccess, original.mapData, 1);
   const restoredResources = new ResourceSystem(
@@ -374,4 +376,5 @@ test('energy shortage countdown survives the real city save/load path', () => {
   restoredTurnManager.endCurrentTurn();
   assert.equal(restoredCity.population, 14);
   assert.equal(restoredCity.energyShortageTurns, 10);
+  assert.equal(restoredHappiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 1);
 });

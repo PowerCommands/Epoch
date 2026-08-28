@@ -21,6 +21,8 @@ import {
   type CurrencyStrength,
 } from '../systems/CurrencySystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
+import { ConsolidationSystem } from '../systems/ConsolidationSystem';
+import { ALL_PROJECTS, calculateProjectGoldPerTurn, getProjectById } from '../data/projects';
 import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 import { UnitLifetimeSystem } from '../systems/UnitLifetimeSystem';
 import { WorldMarkerSystem } from '../systems/WorldMarkerSystem';
@@ -208,7 +210,7 @@ import { SaveGameDialog } from '../ui/SaveGameDialog';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
 import { isAutofocusOnEndTurn, isAutoEndTurn } from '../systems/PlayerSettings';
-import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
+import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewProjectOption, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
@@ -995,6 +997,9 @@ export class GameScene extends Phaser.Scene {
       (nationId, message) => logManager.info({ nationId, category: 'city', message }),
       (city) => resourceSystem.recalculateForNation(city.ownerId),
     );
+    // Forward-declared so the upkeep system can notify it of forced dismissals
+    // before it is constructed (it needs the upkeep system for net income).
+    let consolidationSystem: ConsolidationSystem | undefined;
     const unitUpkeepSystem = new UnitUpkeepSystem(
       nationManager,
       unitManager,
@@ -1003,8 +1008,20 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       policySystem,
       (nationId, message) => logManager.info({ nationId, category: 'upkeep', message }),
+      (nationId) => consolidationSystem?.enterEconomicCrisis(nationId),
     );
     turnManager.on('turnStart', (e) => unitUpkeepSystem.handleTurnStart(e));
+    consolidationSystem = new ConsolidationSystem({
+      getCurrentRound: () => turnManager.getCurrentRound(),
+      // Net national income = per-turn gold minus current unit upkeep. Uses the
+      // existing economy/upkeep calculations; no new economic-health model.
+      getNetIncome: (nationId) =>
+        nationManager.getResources(nationId).goldPerTurn - unitUpkeepSystem.calculateUpkeep(nationId),
+      isHuman: (nationId) => nationManager.getNation(nationId)?.isHuman ?? false,
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      logEvent: (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
+    });
+    turnManager.on('turnStart', (e) => consolidationSystem?.handleTurnStart(e));
 
     // 12. Selection-system (hover depth 20, selection depth 21)
     const selectionManager = new SelectionManager(
@@ -1029,6 +1046,14 @@ export class GameScene extends Phaser.Scene {
         turnManager.getCurrentRound(),
       )
     ));
+    // Repeatable projects (Economic Development) convert part of the city's
+    // production into national Gold each turn instead of building anything.
+    productionSystem.setProjectTurnHandler((cityId, project, availableProduction) => {
+      const projectCity = cityManager.getCity(cityId);
+      if (!projectCity) return;
+      const gold = calculateProjectGoldPerTurn(project, availableProduction);
+      if (gold > 0) resourceSystem.addGold(projectCity.ownerId, gold);
+    });
     const productionPurchaseSystem = new ProductionPurchaseSystem(
       cityManager,
       nationManager,
@@ -1101,6 +1126,12 @@ export class GameScene extends Phaser.Scene {
       resolvePeaceTreatyCooldownTurns(scenarioJson.meta?.peaceTreatyCooldownTurns),
       (nationId, cultureNodeId) => cultureSystem.isUnlocked(nationId, cultureNodeId),
     );
+    // Post-war recovery: whenever a war ends (peace, ceasefire, capitulation),
+    // each AI participant enters post-war Consolidation Mode.
+    diplomacyManager.onWarEnded((a, b) => {
+      consolidationSystem?.enterPostWar(a);
+      consolidationSystem?.enterPostWar(b);
+    });
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
       nationManager,
@@ -3065,6 +3096,7 @@ export class GameScene extends Phaser.Scene {
       powerPlantSystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
+    if (consolidationSystem) aiSystem.setConsolidationSystem(consolidationSystem);
     // AI must not select military units for a demilitarized (capitulated) nation.
     aiSystem.setUnitProductionRestrictionReason((nationId, unitTypeId) =>
       capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId));
@@ -3965,6 +3997,10 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.requestRefresh();
         return; // Allow item to be removed from queue
       }
+
+      // Repeatable projects never complete, so this listener never fires for
+      // them; guard anyway to narrow the union to units below.
+      if (item.kind === 'project') return;
 
       const placement = this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
       if (placement === null) return false;
@@ -7048,6 +7084,7 @@ export class GameScene extends Phaser.Scene {
           const rawBuyCost = productionSystem.getBuyCost(city.id, index);
           const buyCost = quote.ok ? quote.cost : rawBuyCost;
           const canBuy = quote.ok;
+          const isProject = entry.item.kind === 'project';
           return {
             index,
             name: getProducibleName(entry.item),
@@ -7057,6 +7094,8 @@ export class GameScene extends Phaser.Scene {
             turnsRemaining: entry.turnsRemaining,
             blockedReason: entry.blockedReason,
             active: index === 0,
+            isProject,
+            projectGoldPerTurn: isProject ? productionSystem.getProjectGoldPerTurn(city.id) ?? 0 : undefined,
             buyCost: buyCost ?? undefined,
             buyLabel: buyCost === null
               ? undefined
@@ -7178,6 +7217,17 @@ export class GameScene extends Phaser.Scene {
         });
       }
       return corporationOptions;
+    };
+    const getCityViewProjectOptions = (city: City): CityViewProjectOption[] => {
+      const activeItem = productionSystem.getProduction(city.id)?.item;
+      const cityProduction = productionSystem.getCityProductionPerTurn(city.id);
+      return ALL_PROJECTS.map((project) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        goldPerTurn: calculateProjectGoldPerTurn(project, cityProduction),
+        active: activeItem?.kind === 'project' && activeItem.projectType.id === project.id,
+      }));
     };
     const getCityViewPlacementRenderState = (city: City): CityViewPlacementRenderState => {
       const placementState = buildingPlacementSystem.getState();
@@ -7624,6 +7674,22 @@ export class GameScene extends Phaser.Scene {
       cityView.switchToQueueMode();
       refreshOpenCityView();
     });
+    cityView.onProjectRequested((projectId) => {
+      const city = getOpenCityViewCity();
+      if (!city) return;
+      const projectType = getProjectById(projectId);
+      if (!projectType) return;
+      // A repeatable project replaces the active production; queuing another item
+      // afterwards interrupts it through the normal selection flow.
+      productionSystem.setProduction(city.id, { kind: 'project', projectType });
+      rightPanel?.requestRefresh();
+      if (cityView.isAutoCloseEnabled()) {
+        closeOpenCityView();
+        return;
+      }
+      cityView.switchToQueueMode();
+      refreshOpenCityView();
+    });
 
     const onCityViewPointerDown = (pointer: Phaser.Input.Pointer): void => {
       if (pointer.button !== 0) return;
@@ -7761,6 +7827,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewTilePurchaseState(city),
         getCityViewWonderOptions(city),
         getCityViewCorporationOptions(city),
+        getCityViewProjectOptions(city),
         getCityViewQueueItems(city),
       );
       cityViewRenderer.showWithState(
@@ -8475,6 +8542,7 @@ export class GameScene extends Phaser.Scene {
           victorySystem,
           worldCouncilSystem,
           capitulationSystem,
+          consolidationSystem,
           guideProgress: guideProgression.getState(),
         }),
         focusFirstCity: (zoom = 2) => {
@@ -9074,6 +9142,7 @@ export class GameScene extends Phaser.Scene {
         covertSuspicionSystem,
         worldCouncilSystem,
         capitulationSystem,
+        consolidationSystem,
       });
       resourceAccessSystem.invalidateResourceIndex();
       powerPlantSystem.refreshAllocation(false);
@@ -9176,6 +9245,7 @@ export class GameScene extends Phaser.Scene {
           victorySystem,
           worldCouncilSystem,
           capitulationSystem,
+          consolidationSystem,
           guideProgress: guideProgression.getState(),
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
@@ -9241,6 +9311,7 @@ export class GameScene extends Phaser.Scene {
         victorySystem,
         worldCouncilSystem,
         capitulationSystem,
+        consolidationSystem,
         guideProgress: guideProgression.getState(),
       });
     const saveGameDialog = new SaveGameDialog({
@@ -9434,6 +9505,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewTilePurchaseState(selected.city),
         getCityViewWonderOptions(selected.city),
         getCityViewCorporationOptions(selected.city),
+        getCityViewProjectOptions(selected.city),
         getCityViewQueueItems(selected.city),
       );
       cityViewRenderer.showWithState(
@@ -9470,6 +9542,7 @@ export class GameScene extends Phaser.Scene {
         getCityViewTilePurchaseState(city),
         getCityViewWonderOptions(city),
         getCityViewCorporationOptions(city),
+        getCityViewProjectOptions(city),
         getCityViewQueueItems(city),
         // Resolve after Phaser has applied camera bounds for this frame. Near
         // map edges, calculating this eagerly points at the requested camera
@@ -9796,6 +9869,8 @@ function getProducibleName(item: Producible): string {
       return item.corporationType.name;
     case 'manufacturedResource':
       return item.productionType.name;
+    case 'project':
+      return item.projectType.name;
     case 'tradeRoute':
       return item.displayName;
   }

@@ -182,6 +182,8 @@ import {
   planAIPowerPlants,
   type AIPowerPlantDecision,
 } from './ai/AIPowerPlantPlanning';
+import type { ConsolidationSystem } from './ConsolidationSystem';
+import { ECONOMIC_DEVELOPMENT, calculateProjectGoldPerTurn } from '../data/projects';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -340,6 +342,10 @@ const SCORE_SCIENCE_BUILDING = 78;
 const SCORE_CULTURE_BUILDING = 75;
 const SCORE_WORLD_WONDER = 68;
 const SCORE_FALLBACK = 25;
+// Economic Development during consolidation: above marginal fallbacks (25) so it
+// beats churning another unit or marginal building, but below genuine-need
+// buildings (55+), power plants and acute defenders so those still override.
+const SCORE_CONSOLIDATION_PROJECT = 30;
 const SCORE_NAVAL = 40;
 const SCORE_WORK_BOAT = 42;
 const SCORE_WORKER = 62;
@@ -451,6 +457,7 @@ function describeProducible(item: Producible): string {
     case 'wonder': return `wonder:${item.wonderType.name}`;
     case 'corporation': return `corporation:${item.corporationType.name}`;
     case 'manufacturedResource': return `manufacturedResource:${item.productionType.name}`;
+    case 'project': return `project:${item.projectType.name}`;
     case 'tradeRoute': return `tradeRoute:${item.displayName}`;
   }
 }
@@ -655,6 +662,28 @@ export class AISystem {
 
   setCultureSystem(cultureSystem: CultureSystem): void {
     this.cultureSystem = cultureSystem;
+  }
+
+  /**
+   * Optional consolidation state, injected after construction. When a nation is
+   * consolidating, city production strongly prefers Economic Development over
+   * ordinary military and marginal construction (see chooseCityProduction).
+   */
+  private consolidationSystem?: ConsolidationSystem;
+
+  setConsolidationSystem(consolidationSystem: ConsolidationSystem): void {
+    this.consolidationSystem = consolidationSystem;
+  }
+
+  /**
+   * Whether ordinary buildup should be suppressed for this nation right now.
+   * True only while consolidating AND not at war — an active war overrides
+   * post-war-style restrictions so the AI can still defend/fight.
+   */
+  private isConsolidationSuppressionActive(nationId: string): boolean {
+    if (!this.consolidationSystem?.isConsolidating(nationId)) return false;
+    if (this.diplomacyManager?.isAtWarWithAnyNation(nationId) === true) return false;
+    return true;
   }
 
   isHuman(nationId: string): boolean {
@@ -5120,6 +5149,10 @@ export class AISystem {
       );
       return { kind: 'building', buildingType: happinessBuilding };
     }
+    // Consolidation Mode: suppress ordinary buildup so productive capacity goes
+    // into the treasury (Economic Development) rather than more permanent units
+    // or marginal construction. Emergency/urgent needs below still override it.
+    const consolidationSuppression = this.isConsolidationSuppressionActive(nationId);
     const defensivePressure = this.isDefensivePressureActive(nationId);
     const doctrineBudget = this.doctrineEvaluator.getDesiredMilitaryBudget(nationId);
     const isOverBudget = plannedMilitaryCount >= effectiveMaxUnits;
@@ -5232,7 +5265,7 @@ export class AISystem {
       });
     }
 
-    if (canBuildGeneralMilitary) {
+    if (canBuildGeneralMilitary && !consolidationSuppression) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         const navalSaturationModifier = this.getNavalSaturationUrgencyModifier(
@@ -5264,6 +5297,7 @@ export class AISystem {
 
     if (
       canBuildGeneralMilitary &&
+      !consolidationSuppression &&
       coastalCityCount > 0 &&
       cityHasWaterTile(city, this.mapData) &&
       plannedNavalCount < navalCap
@@ -5477,7 +5511,7 @@ export class AISystem {
     }
 
     // Fallback so the city always has something to do when room is left.
-    if (canBuildGeneralMilitary) {
+    if (canBuildGeneralMilitary && !consolidationSuppression) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
@@ -5486,6 +5520,17 @@ export class AISystem {
           category: 'military',
         });
       }
+    }
+
+    // Consolidation fallback: convert idle production into gold rather than
+    // manufacturing another permanent unit or a marginal building. Ranked above
+    // marginal fallbacks but below genuine-need buildings and emergencies.
+    if (consolidationSuppression) {
+      candidates.push({
+        item: { kind: 'project', projectType: ECONOMIC_DEVELOPMENT },
+        baseScore: SCORE_CONSOLIDATION_PROJECT,
+        category: 'project',
+      });
     }
 
     // Foundation Phase: if the city has any unbuilt available building, offer
@@ -5506,7 +5551,7 @@ export class AISystem {
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
     const cityFocus = city.focus ?? 'balanced';
-    const rhythmPick = spaceRaceFactoryCandidate || (powerPlantPlan?.score ?? 0) >= 100 ? undefined : this.pickProductionRhythmCandidate(
+    const rhythmPick = consolidationSuppression || spaceRaceFactoryCandidate || (powerPlantPlan?.score ?? 0) >= 100 ? undefined : this.pickProductionRhythmCandidate(
       city,
       nationId,
       strategy,
@@ -5516,6 +5561,18 @@ export class AISystem {
       happinessBuildingThreshold,
     );
     const best = rhythmPick ?? pickBestAIProductionCandidate(weightedCandidates, strategy, eraStrategy, cityFocus);
+    if (best?.item.kind === 'project') {
+      const goldPerTurn = calculateProjectGoldPerTurn(
+        best.item.projectType,
+        this.productionSystem.getCityProductionPerTurn(city.id),
+      );
+      const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+      console.log(
+        `[AI][${nationName}][${city.name}] Consolidation production: ${best.item.projectType.name} (+${goldPerTurn} Gold)`,
+      );
+      this.logStrategicEvent?.(nationId, `${city.name} consolidation production: ${best.item.projectType.name} (+${goldPerTurn} Gold/turn)`);
+      return best.item;
+    }
     if (best) {
       if (best.item.kind === 'unit' && best.item.unitType.baseStrength > 0) {
         this.logDoctrineProductionIfMaterial(nationId, best.item.unitType, militaryDoctrineCtx, city.name, budgetModifier);
@@ -6013,6 +6070,8 @@ export class AISystem {
         return `corporation:${item.corporationType.name}`;
       case 'manufacturedResource':
         return `manufacturedResource:${item.productionType.name}`;
+      case 'project':
+        return `project:${item.projectType.name}`;
       case 'tradeRoute':
         return `tradeRoute:${item.displayName}`;
     }
@@ -6881,6 +6940,7 @@ export class AISystem {
     if (item.kind === 'corporation') return 'corporation';
     if (item.kind === 'manufacturedResource') return 'science victory';
     if (item.kind === 'tradeRoute') return 'infrastructure';
+    if (item.kind === 'project') return 'consolidation';
     const bt = item.buildingType;
     if ((bt.modifiers.happinessPerTurn ?? 0) > 0) return 'low happiness';
     if (bt.id === GRANARY.id) return 'city growth';
@@ -6897,6 +6957,7 @@ export class AISystem {
     if (item.kind === 'corporation') return item.corporationType.name;
     if (item.kind === 'manufacturedResource') return item.productionType.name;
     if (item.kind === 'tradeRoute') return item.displayName;
+    if (item.kind === 'project') return item.projectType.name;
     return item.buildingType.name;
   }
 

@@ -32,7 +32,7 @@ import type { PeaceProposal } from '../systems/DiplomacyManager';
 export const SAVED_GAME_VERSION = 4 as const;
 
 export interface SavedProducible {
-  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'manufacturedResource' | 'tradeRoute';
+  kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'manufacturedResource' | 'project' | 'tradeRoute';
   id: string;
   /** Extra fields for tradeRoute queue entries. Optional for backward compat. */
   fromCityId?: string;
@@ -103,6 +103,18 @@ export interface SavedNation {
   influence?: number;
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
+  /** AI Consolidation Mode state. Optional; absent means not consolidating. */
+  consolidation?: SavedConsolidationState;
+}
+
+/** Persisted AI Consolidation Mode state for a single nation. */
+export interface SavedConsolidationState {
+  reason: 'postWar' | 'economicCrisis';
+  startedTurn: number;
+  /** Earliest turn consolidation may end (minimum-duration guard). */
+  minimumUntilTurn: number;
+  /** Whether the "minimum reached but economy still negative" line was logged. */
+  loggedMinimumReached?: boolean;
 }
 
 export interface SavedCity {

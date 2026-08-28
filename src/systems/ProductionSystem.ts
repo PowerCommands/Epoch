@@ -2,6 +2,7 @@ import { CityManager } from './CityManager';
 import { TurnManager } from './TurnManager';
 import { HappinessSystem } from './HappinessSystem';
 import type { Producible } from '../types/producible';
+import { calculateProjectGoldPerTurn, type ProjectDefinition } from '../data/projects';
 import type { TurnStartEvent } from '../types/events';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { PolicySystem } from './PolicySystem';
@@ -56,6 +57,18 @@ export interface CityProduction {
   placement?: ProductionPlacement;
 }
 
+/**
+ * Applies a repeatable project's per-turn effect (e.g. Economic Development
+ * converting Production into Gold). Called once per turn while the project is
+ * the active production. `availableProduction` is the city's current per-turn
+ * Production, so the effect tracks live production changes.
+ */
+export type ProjectTurnHandler = (
+  cityId: string,
+  project: ProjectDefinition,
+  availableProduction: number,
+) => void;
+
 export type ProductionCompletedListener = (cityId: string, item: Producible, entry: QueueEntry) => boolean | void;
 export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Producible, entry: QueueEntry) => void;
 export type ProductionChangedListener = (cityId: string) => void;
@@ -103,6 +116,7 @@ export class ProductionSystem {
   private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
   private itemProductionBlockReasonProvider: ItemProductionBlockReasonProvider = () => undefined;
   private hasSkippedInitialTurnStart = false;
+  private projectTurnHandler: ProjectTurnHandler = () => {};
   /** When set, returns a reason a nation may not produce a given military unit (e.g. demilitarization). */
   private militaryUnitBlockReasonProvider: (nationId: string, unitTypeId: string) => string | undefined = () => undefined;
 
@@ -190,6 +204,18 @@ export class ProductionSystem {
     if (!queue || queue.length === 0) return [];
 
     return queue.map((entry, i) => {
+      // Repeatable projects have no cost, no progress and never complete.
+      if (entry.item.kind === 'project') {
+        return {
+          item: entry.item,
+          progress: 0,
+          cost: 0,
+          lockedProductionCost: undefined,
+          turnsRemaining: 0,
+          blockedReason: i === 0 ? entry.blockedReason : undefined,
+          placement: undefined,
+        };
+      }
       const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, entry.item));
       const cost = this.getEntryCost(entry, cityId);
       const progress = entry.accumulated;
@@ -247,6 +273,9 @@ export class ProductionSystem {
     if (!queue || queue.length === 0) return { kind: 'empty' };
 
     const entry = queue[0];
+    if (entry.item.kind === 'project') {
+      return { kind: 'blocked', item: entry.item, reason: 'Projects never complete' };
+    }
     entry.accumulated = this.getEntryCost(entry, cityId);
 
     const completed = this.tryComplete(cityId, entry);
@@ -277,6 +306,8 @@ export class ProductionSystem {
     }
     const entries = this.getQueue(cityId);
     if (index < 0 || index >= entries.length) return null;
+    // Repeatable projects never complete, so they can't be bought.
+    if (entries[index].item.kind === 'project') return null;
     return entries[index].turnsRemaining * BUY_COST_PER_TURN;
   }
 
@@ -304,6 +335,9 @@ export class ProductionSystem {
       return { ok: false, reason: 'Queue entry not found' };
     }
     const entry = queue[index];
+    if (entry.item.kind === 'project') {
+      return { ok: false, reason: 'Projects never complete' };
+    }
     const completed = this.tryComplete(cityId, entry);
     if (!completed) {
       const reason = entry.blockedReason ?? this.getBlockedReason(entry.item) ?? 'Production blocked';
@@ -399,6 +433,30 @@ export class ProductionSystem {
     this.itemProductionBlockReasonProvider = provider;
   }
 
+  /** Register the effect applied each turn a repeatable project is active. */
+  setProjectTurnHandler(handler: ProjectTurnHandler): void {
+    this.projectTurnHandler = handler;
+  }
+
+  /**
+   * Gold this city would generate this turn if it is running the given project
+   * (defaults to the currently active project). Returns undefined when no
+   * project is active. Recomputed from live production so it tracks changes.
+   */
+  getProjectGoldPerTurn(cityId: string): number | undefined {
+    const active = this.queues.get(cityId)?.[0]?.item;
+    if (!active || active.kind !== 'project') return undefined;
+    return calculateProjectGoldPerTurn(active.projectType, this.getEffectiveProductionPerTurn(cityId));
+  }
+
+  /**
+   * The city's effective per-turn Production (after happiness and diversion,
+   * before item-specific bonuses). Exposed so callers can size project yields.
+   */
+  getCityProductionPerTurn(cityId: string): number {
+    return this.getEffectiveProductionPerTurn(cityId);
+  }
+
   getItemProductionBlockReason(cityId: string, item: Producible): string | undefined {
     if (this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
       return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
@@ -418,6 +476,20 @@ export class ProductionSystem {
       if (!queue || queue.length === 0) continue;
 
       const entry = queue[0];
+
+      // Repeatable projects never accumulate toward completion; they apply a
+      // per-turn effect and stay active until replaced through normal selection.
+      if (entry.item.kind === 'project') {
+        entry.blockedReason = undefined;
+        this.projectTurnHandler(
+          city.id,
+          entry.item.projectType,
+          this.getEffectiveProductionPerTurn(city.id),
+        );
+        this.notifyChanged(city.id);
+        continue;
+      }
+
       const cost = this.getEntryCost(entry, city.id);
 
       if (entry.accumulated < cost) {
@@ -550,6 +622,9 @@ export class ProductionSystem {
         return item.corporationType.productionCost;
       case 'manufacturedResource':
         return item.productionType.productionCost;
+      case 'project':
+        // Repeatable projects never accumulate toward completion.
+        return 0;
       case 'tradeRoute':
         return item.productionCost;
     }
@@ -569,6 +644,8 @@ export class ProductionSystem {
         return 'Corporation already founded or requirements no longer met';
       case 'manufacturedResource':
         return 'Manufactured resource requirements are no longer met';
+      case 'project':
+        return undefined;
       case 'tradeRoute':
         return undefined;
     }

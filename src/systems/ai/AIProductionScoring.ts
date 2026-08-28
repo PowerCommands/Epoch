@@ -20,7 +20,8 @@ export type AIProductionCategory =
   | 'corporation'
   | 'aerospacePart'
   | 'worker'
-  | 'workBoat';
+  | 'workBoat'
+  | 'project';
 
 export interface AIProductionCandidate {
   readonly item: Producible;
@@ -52,6 +53,7 @@ function getProductionWeight(
     case 'aerospacePart':
     case 'worker':
     case 'workBoat':
+    case 'project':
       return 1;
     case 'military':
       return strategy.production.militaryWeight;
@@ -105,6 +107,8 @@ function getEraProductionMultiplier(
       return weights.worker ?? 1;
     case 'workBoat':
       return weights.workBoat ?? 1;
+    case 'project':
+      return 1;
     case 'military': {
       const subWeight = getMilitarySubweight(candidate, weights);
       return weights.military * subWeight;

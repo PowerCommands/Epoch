@@ -16,7 +16,9 @@ import { applyCityIntegrationOutput } from './CityIntegrationSystem';
 export const BASE_HAPPINESS = 6;
 export const CITY_UNHAPPINESS = 1;
 export const POPULATION_UNHAPPINESS = 0.5;
-export const ENERGY_SHORTAGE_UNHAPPINESS_PER_TURN = 1;
+export const ENERGY_SHORTAGE_UNHAPPINESS_PER_CITY = 1;
+/** @deprecated The mechanic is current-state per city, not cumulative per turn. */
+export const ENERGY_SHORTAGE_UNHAPPINESS_PER_TURN = ENERGY_SHORTAGE_UNHAPPINESS_PER_CITY;
 const RENAISSANCE_START_YEAR = getEraTimelineEntry('renaissance')!.startYear;
 
 /**
@@ -216,13 +218,13 @@ export class HappinessSystem {
     const unhappinessFromCityCountPressure = this.getCityCountPressure(nationId);
     const unhappinessFromDistancePressure = this.getDistancePressure(nationId);
     const unhappinessFromConqueredCities = this.getConqueredCityUnhappiness(nationId);
-    const renaissanceEligibleTurns = this.getRenaissanceEligibleTurns();
-    const unhappinessFromEnergyShortages = cities.reduce(
-      (sum, city) => sum
-        + Math.min(city.energyShortageTurns ?? 0, renaissanceEligibleTurns)
-          * ENERGY_SHORTAGE_UNHAPPINESS_PER_TURN,
-      0,
-    );
+    const unhappinessFromEnergyShortages = this.hasReachedHistoricalRenaissance()
+      ? cities.reduce(
+        (sum, city) => sum
+          + (city.energyShortageTurns === undefined ? 0 : ENERGY_SHORTAGE_UNHAPPINESS_PER_CITY),
+        0,
+      )
+      : 0;
     const unhappinessFromWarWeariness = this.getWarWeariness(nationId);
     const totalUnhappiness = adjustedUnhappinessFromCities
       + adjustedUnhappinessFromPopulation
@@ -286,23 +288,10 @@ export class HappinessSystem {
     return this.getNationState(nationId).netHappiness;
   }
 
-  private getRenaissanceEligibleTurns(): number {
-    if (!this.getHistoricalYear) return Number.POSITIVE_INFINITY;
-
+  private hasReachedHistoricalRenaissance(): boolean {
+    if (!this.getHistoricalYear) return true;
     const currentRound = Math.max(1, this.getCurrentRound());
-    if (this.getHistoricalYear(currentRound) < RENAISSANCE_START_YEAR) return 0;
-
-    // Find the first round on the scenario's canonical clock that is in the
-    // Renaissance. Capping the shortage counter to rounds since that boundary
-    // prevents Medieval shortage turns from becoming retroactive unhappiness.
-    let first = 1;
-    let last = currentRound;
-    while (first < last) {
-      const middle = Math.floor((first + last) / 2);
-      if (this.getHistoricalYear(middle) >= RENAISSANCE_START_YEAR) last = middle;
-      else first = middle + 1;
-    }
-    return currentRound - first + 1;
+    return this.getHistoricalYear(currentRound) >= RENAISSANCE_START_YEAR;
   }
 
   getHappinessForNation(nationId: string): number {

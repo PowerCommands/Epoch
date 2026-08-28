@@ -50,6 +50,8 @@ export class UnitUpkeepSystem {
     private readonly cityManager?: CityManager,
     private readonly policySystem?: PolicySystem,
     private readonly logEvent?: (nationId: string, message: string) => void,
+    /** Notified when a nation is forced to disband ≥1 unit because it cannot afford upkeep. */
+    private readonly onForcedDismissal?: (nationId: string, dismissedUnits: readonly Unit[]) => void,
   ) {}
 
   handleTurnStart(event: TurnStartEvent): void {
@@ -74,6 +76,9 @@ export class UnitUpkeepSystem {
 
   enforceAndApplyUpkeepForNation(nationId: string): UnitUpkeepEnforcementResult {
     const dismissedUnits = this.dismissUnitsUntilUpkeepAffordable(nationId);
+    if (dismissedUnits.length > 0) {
+      this.onForcedDismissal?.(nationId, dismissedUnits);
+    }
     const totalUpkeep = this.calculateUpkeep(nationId);
     if (totalUpkeep <= 0) {
       return {

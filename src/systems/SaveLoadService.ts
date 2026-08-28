@@ -20,6 +20,7 @@ import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { getUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
+import { getProjectById } from '../data/projects';
 import { AEROSPACE_PART_PRODUCTION, AEROSPACE_PARTS_ID } from '../data/scienceVictory';
 import type { Producible } from '../types/producible';
 import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
@@ -52,6 +53,7 @@ import type { CorporationSystem } from './CorporationSystem';
 import type { AerospacePartSystem } from './AerospacePartSystem';
 import type { WorldCouncilSystem } from './WorldCouncilSystem';
 import type { CapitulationSystem } from './CapitulationSystem';
+import type { ConsolidationSystem } from './ConsolidationSystem';
 import type { GossipSystem } from './GossipSystem';
 import type { GossipFlavorEventSystem } from './GossipFlavorEventSystem';
 import type { ScenarioHistoricalEventSystem } from './ScenarioHistoricalEventSystem';
@@ -105,6 +107,7 @@ export interface SaveLoadContext {
   victorySystem?: VictorySystem;
   worldCouncilSystem?: WorldCouncilSystem;
   capitulationSystem?: CapitulationSystem;
+  consolidationSystem?: ConsolidationSystem;
   /** Snapshot supplied by the progressive guide; presentation state is excluded. */
   guideProgress?: SavedGuideProgress;
 }
@@ -196,6 +199,7 @@ export class SaveLoadService {
         influence: res.influence,
         knownIslandTargets: nation.knownIslandTargets?.map((target) => ({ ...target })),
         handledOverseasRegionNames: nation.handledOverseasRegionNames ? [...nation.handledOverseasRegionNames] : undefined,
+        consolidation: context.consolidationSystem?.getSavedState(nation.id),
       };
     });
 
@@ -535,6 +539,7 @@ export class SaveLoadService {
   static apply(state: SavedGameState, context: SaveLoadContext): void {
     SaveLoadService.restoreTiles(state.tiles, context.mapData);
     SaveLoadService.applyNations(state.nations, context.nationManager);
+    context.consolidationSystem?.restore(state.nations);
     context.policySystem.loadAllNationPolicies(state.nations.map((nation) => ({
       nationId: nation.id,
       activePolicies: nation.activePolicies ?? [],
@@ -1067,6 +1072,8 @@ function toSavedProducible(item: Producible): SavedProducible {
       return { kind: 'corporation', id: item.corporationType.id };
     case 'manufacturedResource':
       return { kind: 'manufacturedResource', id: item.productionType.id };
+    case 'project':
+      return { kind: 'project', id: item.projectType.id };
     case 'tradeRoute':
       return {
         kind: 'tradeRoute',
@@ -1117,6 +1124,14 @@ function fromSavedProducible(item: SavedProducible): Producible | null {
       return null;
     }
     return { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION };
+  }
+  if (item.kind === 'project') {
+    const project = getProjectById(item.id);
+    if (!project) {
+      console.warn(`[SaveLoadService] Unknown project id during restore: ${item.id}`);
+      return null;
+    }
+    return { kind: 'project', projectType: project };
   }
   const def = getBuildingById(item.id);
   return def ? { kind: 'building', buildingType: def } : null;

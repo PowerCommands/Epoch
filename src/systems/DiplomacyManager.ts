@@ -179,6 +179,8 @@ type WarDeclaredListener = (
 ) => void;
 type DiplomacyPairListener = (nationA: string, nationB: string) => void;
 type DiplomacyChangedListener = (nationA: string, nationB: string, relation: DiplomacyRelation) => void;
+/** Fired whenever a WAR between two nations transitions to PEACE (any mechanism). */
+type WarEndedListener = (nationA: string, nationB: string) => void;
 
 /**
  * Negotiation context in which an exploitation right was created, carried only so
@@ -401,6 +403,7 @@ export class DiplomacyManager {
   private readonly exploitationRightsEndedListeners: ExploitationRightsEndedListener[] = [];
   private readonly economicPressureChangedListeners: EconomicPressureChangedListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
+  private readonly warEndedListeners: WarEndedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
 
@@ -434,6 +437,18 @@ export class DiplomacyManager {
    */
   attachMemoryHook(hook: DiplomaticMemoryHook): void {
     this.memoryHook = hook;
+  }
+
+  /**
+   * Subscribe to war→peace transitions (ordinary peace, ceasefire, capitulation).
+   * Fired after the relation has been committed to PEACE.
+   */
+  onWarEnded(listener: WarEndedListener): void {
+    this.warEndedListeners.push(listener);
+  }
+
+  private notifyWarEnded(a: string, b: string): void {
+    for (const cb of this.warEndedListeners) cb(a, b);
   }
 
   private sortedPair(a: string, b: string): [string, string] {
@@ -1134,6 +1149,7 @@ export class DiplomacyManager {
     this.pendingProposals.delete(b);
     this.memoryHook?.onMakePeace(a, b);
     this.notifyChanged(a, b);
+    this.notifyWarEnded(a, b);
     return true;
   }
 
@@ -1146,6 +1162,7 @@ export class DiplomacyManager {
     if (accept) {
       const key = this.pairKey(fromId, toId);
       const previous = this.relations.get(key);
+      const wasAtWar = previous?.state === 'WAR';
       const currentTurn = this.turnManager?.getCurrentRound() ?? previous?.lastPeaceProposalTurn ?? 0;
       const next = normalizeRelation({
         ...previous,
@@ -1163,6 +1180,7 @@ export class DiplomacyManager {
       for (const cb of this.acceptedListeners) cb(fromId, toId);
       this.memoryHook?.onMakePeace(fromId, toId);
       this.notifyChanged(fromId, toId);
+      if (wasAtWar) this.notifyWarEnded(fromId, toId);
     } else {
       for (const cb of this.declinedListeners) cb(fromId, toId);
     }

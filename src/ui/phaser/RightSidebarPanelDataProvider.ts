@@ -1350,7 +1350,13 @@ export class RightSidebarPanelDataProvider {
     queue.forEach(({ entry, index }, visibleIndex) => {
       const name = getProducibleName(entry.item);
       const spritePath = getProducibleSpritePath(entry.item);
-      const turnsText = entry.blockedReason ? 'blocked' : `${entry.turnsRemaining} turn${entry.turnsRemaining !== 1 ? 's' : ''}`;
+      // Repeatable projects never complete — show the continuous gold result
+      // instead of turns/progress.
+      const isProject = entry.item.kind === 'project';
+      const projectGold = isProject ? this.productionSystem.getProjectGoldPerTurn(city.id) ?? 0 : 0;
+      const turnsText = isProject
+        ? `+${projectGold} Gold / turn`
+        : entry.blockedReason ? 'blocked' : `${entry.turnsRemaining} turn${entry.turnsRemaining !== 1 ? 's' : ''}`;
       const label = `${visibleIndex + 1}. ${name} (${turnsText})${index === 0 ? ' [active]' : ''}`;
       rows.push(isHuman
         ? buttonRow(label, () => {
@@ -1380,7 +1386,7 @@ export class RightSidebarPanelDataProvider {
           });
         }
       }
-      if (index === 0 && !entry.blockedReason) rows.push(progressRow('Progress', entry.progress, entry.cost));
+      if (index === 0 && !entry.blockedReason && !isProject) rows.push(progressRow('Progress', entry.progress, entry.cost));
       if (entry.blockedReason) rows.push(textRow(entry.blockedReason, true));
     });
     return { title: 'Production Queue', rows };
@@ -2972,6 +2978,8 @@ function getProducibleName(item: Producible): string {
       return item.corporationType.name;
     case 'manufacturedResource':
       return item.productionType.name;
+    case 'project':
+      return item.projectType.name;
     case 'tradeRoute':
       return item.displayName;
   }
@@ -2988,6 +2996,7 @@ function getProducibleSpritePath(item: Producible): string | undefined {
     case 'manufacturedResource':
       return getCorporationSpritePath(AEROSPACE_PARTS_ID);
     case 'building':
+    case 'project':
     case 'tradeRoute':
       return undefined;
   }

@@ -78,7 +78,7 @@ test('energy shortage unhappiness is suppressed before the historical Renaissanc
   assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 0);
 });
 
-test('energy shortage unhappiness is one per canonical shortage turn from Renaissance onward', () => {
+test('energy shortage unhappiness is one per currently blocked city from Renaissance onward', () => {
   const nations = new NationManager();
   nations.addNation(new Nation({ id: NATION_ID, name: 'England', color: 0xff0000 }));
   const cities = new CityManager();
@@ -93,7 +93,7 @@ test('energy shortage unhappiness is one per canonical shortage turn from Renais
     () => 1400,
   );
 
-  for (const [turns, expected] of [[0, 0], [1, 1], [5, 5], [10, 10]] as const) {
+  for (const [turns, expected] of [[0, 0], [1, 1], [5, 1], [20, 1]] as const) {
     first.energyShortageTurns = turns === 0 ? undefined : turns;
     second.energyShortageTurns = undefined;
     happiness.recalculateNation(NATION_ID);
@@ -103,9 +103,12 @@ test('energy shortage unhappiness is one per canonical shortage turn from Renais
   first.energyShortageTurns = 5;
   second.energyShortageTurns = 3;
   happiness.recalculateNation(NATION_ID);
-  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 8);
+  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 2);
 
   first.energyShortageTurns = undefined;
+  happiness.recalculateNation(NATION_ID);
+  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 1);
+
   second.energyShortageTurns = undefined;
   happiness.recalculateNation(NATION_ID);
   assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 0);
@@ -147,5 +150,5 @@ test('the detailed Happiness breakdown exposes all three pressure sources', () =
   const tooltip = buildHappinessTooltip(happiness.getNationState(NATION_ID));
   assert.match(tooltip, /Military Over Capacity: -8/);
   assert.match(tooltip, /Conquered cities: -20/);
-  assert.match(tooltip, /Energy Shortages: -7/);
+  assert.match(tooltip, /Energy Shortages: -1/);
 });

@@ -982,6 +982,8 @@ function producibleName(item: Producible): string {
       return item.corporationType.name;
     case 'manufacturedResource':
       return item.productionType.name;
+    case 'project':
+      return item.projectType.name;
     case 'tradeRoute':
       return item.displayName;
   }
