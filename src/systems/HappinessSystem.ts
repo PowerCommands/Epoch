@@ -28,6 +28,7 @@ export type AvailableLuxuryResourcesProvider = (
 ) => ReadonlyArray<LuxuryResourceEntry>;
 export type CultureHappinessProvider = (nationId: string) => number;
 export type CorporationHappinessProvider = (nationId: string) => number;
+export type ManufacturedResourceHappinessProvider = (nationId: string) => number;
 export type MilitaryUnhappinessProvider = (nationId: string) => number;
 export type CityCountPressureProvider = (nationId: string) => number;
 export type DistancePressureProvider = (nationId: string) => number;
@@ -127,6 +128,7 @@ export class HappinessSystem {
     private readonly policySystem?: PolicySystem,
     private readonly getCultureHappinessBonus: CultureHappinessProvider = () => 0,
     private readonly getCorporationHappinessBonus: CorporationHappinessProvider = () => 0,
+    private readonly getManufacturedResourceHappinessBonus: ManufacturedResourceHappinessProvider = () => 0,
     private readonly getMilitaryUnhappiness: MilitaryUnhappinessProvider = () => 0,
     private readonly getCityCountPressure: CityCountPressureProvider = () => 0,
     private readonly getDistancePressure: DistancePressureProvider = () => 0,
@@ -168,6 +170,7 @@ export class HappinessSystem {
       + (this.getPolicyFlat(nationId, 'happinessPerLuxuryResource') * availableLuxuryResourceIds.length);
     const happinessFromCultureEffects = this.getCultureHappinessBonus(nationId);
     const happinessFromCorporations = this.getCorporationHappinessBonus(nationId);
+    const happinessFromManufacturedResources = this.getManufacturedResourceHappinessBonus(nationId);
 
     const totalHappiness = happinessFromBase
       + happinessFromBuildings
@@ -175,7 +178,8 @@ export class HappinessSystem {
       + happinessFromLuxuryResources
       + happinessFromPolicies
       + happinessFromCultureEffects
-      + happinessFromCorporations;
+      + happinessFromCorporations
+      + happinessFromManufacturedResources;
     const baseUnhappinessFromCities = cities.length * CITY_UNHAPPINESS;
     const policyCityUnhappinessPerCity = this.getPolicyFlat(nationId, 'unhappinessPerCityFlat');
     const adjustedUnhappinessPerCity = Math.max(0, CITY_UNHAPPINESS + policyCityUnhappinessPerCity);
@@ -217,6 +221,7 @@ export class HappinessSystem {
     state.happinessFromPolicies = happinessFromPolicies;
     state.happinessFromCultureEffects = happinessFromCultureEffects;
     state.happinessFromCorporations = happinessFromCorporations;
+    state.happinessFromManufacturedResources = happinessFromManufacturedResources;
     state.availableLuxuryResourceIds = availableLuxuryResourceIds;
     state.availableLuxuryResourceQuantities = luxuryEntries;
     state.unhappinessFromCities = adjustedUnhappinessFromCities;
@@ -308,6 +313,7 @@ function snapshotState(state: NationHappiness): {
   happinessFromPolicies: number;
   happinessFromCultureEffects: number;
   happinessFromCorporations: number;
+  happinessFromManufacturedResources: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
@@ -336,6 +342,7 @@ function snapshotState(state: NationHappiness): {
     happinessFromPolicies: state.happinessFromPolicies,
     happinessFromCultureEffects: state.happinessFromCultureEffects,
     happinessFromCorporations: state.happinessFromCorporations,
+    happinessFromManufacturedResources: state.happinessFromManufacturedResources,
     availableLuxuryResourceIds: [...state.availableLuxuryResourceIds],
     availableLuxuryResourceQuantities: state.availableLuxuryResourceQuantities.map((entry) => ({ ...entry })),
     unhappinessFromCities: state.unhappinessFromCities,
@@ -374,6 +381,7 @@ function statesEqual(
     && previous.happinessFromPolicies === next.happinessFromPolicies
     && previous.happinessFromCultureEffects === next.happinessFromCultureEffects
     && previous.happinessFromCorporations === next.happinessFromCorporations
+    && previous.happinessFromManufacturedResources === next.happinessFromManufacturedResources
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation
     && previous.unhappinessFromMilitary === next.unhappinessFromMilitary

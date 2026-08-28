@@ -30,6 +30,12 @@ import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { TradeConnectionSystem } from '../systems/TradeConnectionSystem';
 import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
+import {
+  getManufacturedEffectTotal,
+  distributeAcrossCities,
+  getCityCreationOrder,
+  type DistributableCity,
+} from '../systems/ManufacturedResourceEffects';
 import { ResourceCitySearchSystem } from '../systems/ResourceCitySearchSystem';
 import { BorderPressureSystem, type BorderPressureEvent } from '../systems/BorderPressureSystem';
 import { ExploitationResentmentSystem } from '../systems/ExploitationResentmentSystem';
@@ -671,6 +677,7 @@ export class GameScene extends Phaser.Scene {
       nationId: string,
     ) => ReadonlyArray<{ readonly resourceId: string; readonly quantity: number }> = () => [];
     let cultureEffectSystem: CultureEffectSystem;
+    let getManufacturedResourceHappiness: (nationId: string) => number = () => 0;
     let getMilitaryUnhappiness: (nationId: string) => number = () => 0;
     let getCityCountPressure: (nationId: string) => number = () => 0;
     let getDistancePressure: (nationId: string) => number = () => 0;
@@ -684,6 +691,7 @@ export class GameScene extends Phaser.Scene {
       policySystem,
       (nationId) => cultureEffectSystem?.getCultureHappinessBonus(nationId) ?? 0,
       (nationId) => corporationSystem?.getNationHappinessBonus(nationId) ?? 0,
+      (nationId) => getManufacturedResourceHappiness(nationId),
       (nationId) => getMilitaryUnhappiness(nationId),
       (nationId) => getCityCountPressure(nationId),
       (nationId) => getDistancePressure(nationId),
@@ -1302,6 +1310,8 @@ export class GameScene extends Phaser.Scene {
     const resourceCitySearchSystem = new ResourceCitySearchSystem(mapData, cityManager, nationManager);
     getAvailableLuxuryResourceQuantities = (nationId) =>
       resourceAccessSystem.getAvailableLuxuryResourceQuantities(nationId);
+    getManufacturedResourceHappiness = (nationId) =>
+      getManufacturedEffectTotal(resourceAccessSystem, nationId, 'happiness');
     happinessSystem.recalculateAll();
     const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
     const unitProductionRuleContext = {
@@ -2026,6 +2036,31 @@ export class GameScene extends Phaser.Scene {
       powerPlantSystem,
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
     );
+    // Manufactured-resource yields are distributed deterministically across the
+    // nation's cities, based purely on current resource access (domestic +
+    // imported), so the effects follow trade just like the national Happiness
+    // and Gold effects do. Food (Maritime Goods) and Production (Tools, Refined
+    // Fuel, Steel Goods, Chips) share one distribution mechanism.
+    const buildDistributableCities = (nationId: string): DistributableCity[] =>
+      cityManager.getCitiesByOwner(nationId).map((city) => ({
+        id: city.id,
+        population: city.population,
+        canGrow: city.population < powerPlantSystem.getCityPopulationCapacity(city.id),
+        creationOrder: getCityCreationOrder(city.id),
+      }));
+    const distributeManufacturedYield = (
+      nationId: string,
+      effect: 'food' | 'production',
+    ): ReadonlyMap<string, number> => {
+      const total = getManufacturedEffectTotal(resourceAccessSystem, nationId, effect);
+      if (total <= 0) return new Map<string, number>();
+      return distributeAcrossCities(buildDistributableCities(nationId), total);
+    };
+    resourceSystem.setMaritimeFoodProvider((nationId) => distributeManufacturedYield(nationId, 'food'));
+    resourceSystem.setManufacturedProductionProvider((nationId) =>
+      distributeManufacturedYield(nationId, 'production'));
+    resourceSystem.setManufacturedGoldProvider((nationId) =>
+      getManufacturedEffectTotal(resourceAccessSystem, nationId, 'gold'));
     productionSystem.setItemProductionBlockReasonProvider((cityId, item) => (
       item.kind === 'building'
         ? powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)

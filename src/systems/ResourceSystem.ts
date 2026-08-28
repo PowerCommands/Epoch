@@ -31,6 +31,7 @@ import type { PowerPlantSystem } from './PowerPlantSystem';
 
 const ENERGY_SHORTAGE_GRACE_TURNS = 5;
 const ENERGY_SHORTAGE_DECLINE_INTERVAL = 5;
+const EMPTY_YIELD_DISTRIBUTION: ReadonlyMap<string, number> = new Map();
 
 type CityEnergyProvider = Pick<
   PowerPlantSystem,
@@ -53,6 +54,22 @@ export class ResourceSystem {
   private readonly cityTerritorySystem: CityTerritorySystem;
   private cityEnergyProvider?: CityEnergyProvider;
   private cityEnergyLog: CityEnergyLog = () => {};
+  /**
+   * Per-city Food granted by the nation's available Maritime Goods. The
+   * distribution is owned by the manufactured-resource effect layer; this
+   * system only folds the resulting Food into the normal city economy.
+   */
+  private getMaritimeFoodDistribution: (nationId: string) => ReadonlyMap<string, number> =
+    () => EMPTY_YIELD_DISTRIBUTION;
+  /**
+   * Per-city Production granted by the nation's available Production-yielding
+   * manufactured resources (Tools, Refined Fuel, Steel Goods, Chips). Added as a
+   * flat bonus to final city Production so the assigned total equals the bonus.
+   */
+  private getManufacturedProductionDistribution: (nationId: string) => ReadonlyMap<string, number> =
+    () => EMPTY_YIELD_DISTRIBUTION;
+  /** National Gold/turn granted by available Banking Services. */
+  private getManufacturedGoldPerTurn: (nationId: string) => number = () => 0;
 
   constructor(
     nationManager: NationManager,
@@ -95,6 +112,33 @@ export class ResourceSystem {
   ): void {
     this.cityEnergyProvider = provider;
     this.cityEnergyLog = log;
+  }
+
+  /**
+   * Inject the Maritime Goods → per-city Food distribution. The provider is
+   * expected to be deterministic and based on the nation's current resource
+   * access, so imported and domestic Maritime Goods behave identically.
+   */
+  setMaritimeFoodProvider(provider: (nationId: string) => ReadonlyMap<string, number>): void {
+    this.getMaritimeFoodDistribution = provider;
+  }
+
+  /**
+   * Inject the manufactured-resource → per-city Production distribution. Like
+   * the Food provider it must be deterministic and derived from current
+   * resource access.
+   */
+  setManufacturedProductionProvider(provider: (nationId: string) => ReadonlyMap<string, number>): void {
+    this.getManufacturedProductionDistribution = provider;
+  }
+
+  /**
+   * Inject the manufactured-resource → national Gold/turn contribution (Banking
+   * Services). Folded into normal national income so gaining or losing access
+   * changes income automatically, with no persistent treasury mutation.
+   */
+  setManufacturedGoldProvider(provider: (nationId: string) => number): void {
+    this.getManufacturedGoldPerTurn = provider;
   }
 
   addGold(nationId: string, amount: number): number | null {
@@ -156,13 +200,22 @@ export class ResourceSystem {
 
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nationId, cities);
     nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId)
+      + this.getManufacturedGoldPerTurn(nationId)
       - getNationOccupationGoldCost(nationId, this.cityManager, this.turnManager.getCurrentRound());
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
+    const maritimeFood = this.getMaritimeFoodDistribution(nationId);
+    const manufacturedProduction = this.getManufacturedProductionDistribution(nationId);
+
     for (const city of cities) {
       const cityRes = this.cityManager.getResources(city.id);
-      const economy = this.calculateIntegratedEconomyForCity(city, nationModifiers);
+      const economy = this.calculateIntegratedEconomyForCity(
+        city,
+        nationModifiers,
+        maritimeFood.get(city.id) ?? 0,
+        manufacturedProduction.get(city.id) ?? 0,
+      );
       cityRes.foodPerTurn = economy.food;
       cityRes.productionPerTurn = economy.production;
       cityRes.goldPerTurn = economy.gold;
@@ -221,18 +274,29 @@ export class ResourceSystem {
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
 
+    const maritimeFood = this.getMaritimeFoodDistribution(nation.id);
+    const manufacturedProduction = this.getManufacturedProductionDistribution(nation.id);
+
     for (const city of cities) {
       const populationCapacity = this.getCityPopulationCapacity(city.id);
       this.updateEnergyShortage(city, populationCapacity);
       const cityRes = this.cityManager.getResources(city.id);
       const buildings = this.cityManager.getBuildings(city.id);
-      const economy = calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers);
-      const policyEconomy = this.applyCityEnergyProductionMultiplier(
-        city,
-        this.applyCityIntegrationMultiplier(
+      const maritimeBonus = maritimeFood.get(city.id) ?? 0;
+      const productionBonus = manufacturedProduction.get(city.id) ?? 0;
+      const economy = this.applyMaritimeFood(
+        calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+        maritimeBonus,
+      );
+      const policyEconomy = this.applyFlatProduction(
+        this.applyCityEnergyProductionMultiplier(
           city,
-          this.applyPolicyEconomyModifiers(city.ownerId, economy),
+          this.applyCityIntegrationMultiplier(
+            city,
+            this.applyPolicyEconomyModifiers(city.ownerId, economy),
+          ),
         ),
+        productionBonus,
       );
       const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
@@ -247,15 +311,21 @@ export class ResourceSystem {
           if (city.population < populationCapacity) {
             city.population += 1;
             this.refreshCityPopulationEffects(city);
-            displayEconomy = this.applyCityEnergyProductionMultiplier(
-              city,
-              this.applyCityIntegrationMultiplier(
+            displayEconomy = this.applyFlatProduction(
+              this.applyCityEnergyProductionMultiplier(
                 city,
-                this.applyPolicyEconomyModifiers(
-                  city.ownerId,
-                  calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+                this.applyCityIntegrationMultiplier(
+                  city,
+                  this.applyPolicyEconomyModifiers(
+                    city.ownerId,
+                    this.applyMaritimeFood(
+                      calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
+                      maritimeBonus,
+                    ),
+                  ),
                 ),
               ),
+              productionBonus,
             );
           }
         }
@@ -305,10 +375,18 @@ export class ResourceSystem {
       nationRes.culturePerTurn = 0;
       nationRes.happinessPerTurn = 0;
 
+      const maritimeFood = this.getMaritimeFoodDistribution(nation.id);
+      const manufacturedProduction = this.getManufacturedProductionDistribution(nation.id);
+
       for (const city of cities) {
         const cityRes = this.cityManager.getResources(city.id);
         const buildings = this.cityManager.getBuildings(city.id);
-        const economy = this.calculateIntegratedEconomyForCity(city, nationModifiers);
+        const economy = this.calculateIntegratedEconomyForCity(
+          city,
+          nationModifiers,
+          maritimeFood.get(city.id) ?? 0,
+          manufacturedProduction.get(city.id) ?? 0,
+        );
         cityRes.foodPerTurn = economy.food;
         cityRes.productionPerTurn = economy.production;
         cityRes.goldPerTurn = economy.gold;
@@ -355,7 +433,9 @@ export class ResourceSystem {
       return sum + economy.gold;
     }, 0);
 
-    return baseGoldPerTurn + this.getTradeGoldPerTurnDelta(nation.id);
+    return baseGoldPerTurn
+      + this.getTradeGoldPerTurnDelta(nation.id)
+      + this.getManufacturedGoldPerTurn(nation.id);
   }
 
   private calculateEconomyForCity(
@@ -374,14 +454,43 @@ export class ResourceSystem {
   private calculateIntegratedEconomyForCity(
     city: City,
     nationModifiers: Readonly<ModifierSet>,
+    maritimeFoodBonus = 0,
+    manufacturedProductionBonus = 0,
   ): CityEconomySummary {
-    return this.applyCityEnergyProductionMultiplier(
-      city,
-      this.applyCityIntegrationMultiplier(
+    return this.applyFlatProduction(
+      this.applyCityEnergyProductionMultiplier(
         city,
-        this.applyPolicyEconomyModifiers(city.ownerId, this.calculateEconomyForCity(city, nationModifiers)),
+        this.applyCityIntegrationMultiplier(
+          city,
+          this.applyPolicyEconomyModifiers(
+            city.ownerId,
+            this.applyMaritimeFood(this.calculateEconomyForCity(city, nationModifiers), maritimeFoodBonus),
+          ),
+        ),
       ),
+      manufacturedProductionBonus,
     );
+  }
+
+  /**
+   * Fold a flat Maritime Goods Food bonus into a city economy. It behaves like
+   * any other flat Food source: it raises Food and net Food, feeding the normal
+   * food-storage / growth loop without touching population capacity.
+   */
+  private applyMaritimeFood(economy: CityEconomySummary, bonus: number): CityEconomySummary {
+    if (bonus <= 0) return economy;
+    return { ...economy, food: economy.food + bonus, netFood: economy.netFood + bonus };
+  }
+
+  /**
+   * Fold a manufactured-resource Production bonus into final city Production.
+   * Applied after all percentage multipliers so the total Production assigned
+   * across cities equals the calculated national bonus, then flows through the
+   * normal production progress like any other Production.
+   */
+  private applyFlatProduction(economy: CityEconomySummary, bonus: number): CityEconomySummary {
+    if (bonus <= 0) return economy;
+    return { ...economy, production: economy.production + bonus };
   }
 
   private getCityPopulationCapacity(cityId: string): number {

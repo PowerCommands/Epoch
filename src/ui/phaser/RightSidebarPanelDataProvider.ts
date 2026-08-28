@@ -13,6 +13,7 @@ import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
 import { CORPORATIONS } from '../../data/corporations';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
+import { getManufacturedResourceEffectSummary } from '../../systems/ManufacturedResourceEffects';
 import {
   ECONOMIC_PRESSURE_LABEL,
   ECONOMIC_PRESSURE_REMOVAL_PRICE,
@@ -999,7 +1000,9 @@ export class RightSidebarPanelDataProvider {
       title: 'Manufactured Resources',
       rows: entries.map((entry) => {
         const resource = getManufacturedResourceById(entry.resourceId);
-        return textRow(`${resource?.name ?? entry.resourceId}: ${entry.quantity}`);
+        const summary = getManufacturedResourceEffectSummary(entry.resourceId);
+        const effect = summary ? ` — ${summary}` : '';
+        return textRow(`${resource?.name ?? entry.resourceId}: ${entry.quantity}${effect}`);
       }),
     };
   }

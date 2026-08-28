@@ -3,10 +3,10 @@ import type { ManufacturedResourceDefinition } from '../entities/ManufacturedRes
 export const MANUFACTURED_RESOURCES: ManufacturedResourceDefinition[] = [
   { id: 'trade_goods', name: 'Trade Goods', category: 'manufactured', tradeGoldPerTurn: 4 },
   { id: 'maritime_goods', name: 'Maritime Goods', category: 'manufactured', tradeGoldPerTurn: 4 },
-  { id: 'engineered_goods', name: 'Engineered Goods', category: 'manufactured', tradeGoldPerTurn: 5 },
+  // Display name is "Tools"; the resource id stays `engineered_goods` for save compatibility.
+  { id: 'engineered_goods', name: 'Tools', category: 'manufactured', tradeGoldPerTurn: 5 },
   { id: 'banking_services', name: 'Banking Services', category: 'manufactured', tradeGoldPerTurn: 5 },
   { id: 'colonial_goods', name: 'Colonial Goods', category: 'manufactured', tradeGoldPerTurn: 6 },
-  { id: 'finance', name: 'Finance', category: 'manufactured', tradeGoldPerTurn: 5 },
   { id: 'refined_fuel', name: 'Refined Fuel', category: 'manufactured', tradeGoldPerTurn: 7 },
   { id: 'steel_goods', name: 'Steel Goods', category: 'manufactured', tradeGoldPerTurn: 7 },
   { id: 'vehicles', name: 'Vehicles', category: 'manufactured', tradeGoldPerTurn: 8 },

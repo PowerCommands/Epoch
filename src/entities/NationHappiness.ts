@@ -26,6 +26,7 @@ export class NationHappiness {
   happinessFromPolicies: number;
   happinessFromCultureEffects: number;
   happinessFromCorporations: number;
+  happinessFromManufacturedResources: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
   unhappinessFromCities: number;
@@ -56,6 +57,7 @@ export class NationHappiness {
     this.happinessFromPolicies = 0;
     this.happinessFromCultureEffects = 0;
     this.happinessFromCorporations = 0;
+    this.happinessFromManufacturedResources = 0;
     this.availableLuxuryResourceIds = [];
     this.availableLuxuryResourceQuantities = [];
     this.unhappinessFromCities = 0;

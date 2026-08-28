@@ -7,8 +7,18 @@ import {
 import { NATURAL_RESOURCES } from './naturalResources';
 import { getResourceDefinitionById } from './resources';
 import { getTechnologyById } from './technologies';
-import { SCIENCE_VICTORY_TECH_ID } from './scienceVictory';
+import { AEROSPACE_PARTS_ID, SCIENCE_VICTORY_TECH_ID } from './scienceVictory';
 import type { ManufacturedResourceDefinition } from '../entities/ManufacturedResource';
+
+/**
+ * Manufactured resources that are produced outside the corporation
+ * resource-per-building system (built directly through city production).
+ * They are legitimate even without a corporation acting as their producer, so
+ * the producer validation below treats them as having a source.
+ */
+const EXTERNALLY_PRODUCED_MANUFACTURED_RESOURCE_IDS: ReadonlySet<string> = new Set([
+  AEROSPACE_PARTS_ID,
+]);
 
 export interface CorporationDefinition {
   readonly id: string;
@@ -237,6 +247,18 @@ export function validateCorporationDefinitions(
     }
     if (!manufacturedResourceIds.has(corporation.manufacturedResourceId)) {
       errors.push(`${corporation.id} references unknown manufactured resource: ${corporation.manufacturedResourceId}`);
+    }
+  }
+
+  // Inverse check: every manufactured resource intended for gameplay must have
+  // at least one producer, either a corporation or an explicit external source.
+  const producedResourceIds = new Set<string>(EXTERNALLY_PRODUCED_MANUFACTURED_RESOURCE_IDS);
+  for (const corporation of definitions) {
+    producedResourceIds.add(corporation.manufacturedResourceId);
+  }
+  for (const resource of MANUFACTURED_RESOURCES) {
+    if (!producedResourceIds.has(resource.id)) {
+      errors.push(`Manufactured resource has no producer: ${resource.id}`);
     }
   }
 

@@ -446,7 +446,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'paragraph', text: 'Corporations are powerful economic institutions your cities can found once you meet their requirements. Each Corporation produces a Manufactured Good, which then flows into your trade and wider economy.' },
 
       { kind: 'heading', text: 'Manufactured Goods' },
-      { kind: 'paragraph', text: 'Manufactured Goods are different from the natural resources found on the map. Where Silk, Iron or Oil occur naturally, Manufactured Goods are created by Corporations. Examples include Trade Goods, Maritime Goods, Engineered Goods, Colonial Goods, Banking Services, Refined Fuel, Steel Goods, Vehicles, Chips and Media. These goods take part in the economic and trade systems according to the normal game rules.' },
+      { kind: 'paragraph', text: 'Manufactured Goods are different from the natural resources found on the map. Where Silk, Iron or Oil occur naturally, Manufactured Goods are created by Corporations. Examples include Trade Goods, Maritime Goods, Tools, Colonial Goods, Banking Services, Refined Fuel, Steel Goods, Vehicles, Chips and Media. These goods take part in the economic and trade systems according to the normal game rules.' },
 
       { kind: 'heading', text: 'Global Uniqueness' },
       { kind: 'paragraph', text: 'Each specific Corporation is globally unique. Once any nation has founded a Corporation, no other nation can ever found that same Corporation.' },
