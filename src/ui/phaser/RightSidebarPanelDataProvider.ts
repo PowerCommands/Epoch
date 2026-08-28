@@ -1416,7 +1416,10 @@ export class RightSidebarPanelDataProvider {
     );
     for (const unitType of ALL_UNIT_TYPES) {
       if (this.researchSystem && !this.researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
-      const disabledReason = getCityUnitProductionBlockReason(
+      const item: Producible = { kind: 'unit', unitType };
+      const productionBlockReason = this.productionSystem.getItemProductionBlockReason(city.id, item);
+      const disabledReason = productionBlockReason
+        ?? getCityUnitProductionBlockReason(
         city,
         unitType,
         this.mapData,
@@ -1430,18 +1433,24 @@ export class RightSidebarPanelDataProvider {
             this.worldCouncilSystem?.getUnitProductionRestrictionReason(nationId, unitTypeId),
         },
       );
-      if (disabledReason && !unitType.requiredResource && !isUnitUpkeepAffordabilityReason(disabledReason)) continue;
-      const item: Producible = { kind: 'unit', unitType };
+      if (
+        disabledReason
+        && !productionBlockReason
+        && !unitType.requiredResource
+        && !isUnitUpkeepAffordabilityReason(disabledReason)
+      ) continue;
       rows.push({
         kind: 'button',
         text: disabledReason
-          ? `${getProducibleName(item)} (${this.productionSystem.getCost(item)}) - ${disabledReason}`
-          : `${getProducibleName(item)} (${this.productionSystem.getCost(item)})`,
+          ? `${getProducibleName(item)} (${this.productionSystem.getCost(item, city.id)}) - ${disabledReason}`
+          : `${getProducibleName(item)} (${this.productionSystem.getCost(item, city.id)})`,
         disabled: disabledReason !== undefined,
         accentColor: 0x6aa7d8,
         spritePath: getProducibleSpritePath(item),
         onClick: () => {
-          if (!canCityProduceUnit(
+          if (
+            this.productionSystem.getItemProductionBlockReason(city.id, item) !== undefined
+            || !canCityProduceUnit(
             city,
             unitType,
             this.mapData,

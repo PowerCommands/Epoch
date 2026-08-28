@@ -6,6 +6,14 @@ import type { TurnStartEvent } from '../types/events';
 import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { PolicySystem } from './PolicySystem';
 import { getCityIntegrationProgress } from './CityIntegrationSystem';
+import type { NationManager } from './NationManager';
+
+export const SETTLER_PRODUCTION_SLOT_BLOCK_REASON = 'Another Settler is already being produced.';
+export const SETTLER_PRODUCTION_COST_INCREASE = 0.25;
+
+export function calculateSettlerProductionCost(baseCost: number, settlersProduced: number): number {
+  return Math.round(baseCost * (1 + SETTLER_PRODUCTION_COST_INCREASE * Math.max(0, Math.floor(settlersProduced))));
+}
 
 /**
  * A single entry in a city's production queue.
@@ -104,6 +112,7 @@ export class ProductionSystem {
     private readonly happinessSystem: HappinessSystem,
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
     private readonly policySystem?: PolicySystem,
+    private readonly nationManager?: NationManager,
   ) {
     this.cityManager = cityManager;
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
@@ -391,6 +400,9 @@ export class ProductionSystem {
   }
 
   getItemProductionBlockReason(cityId: string, item: Producible): string | undefined {
+    if (this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
+      return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
+    }
     return this.itemProductionBlockReasonProvider(cityId, item);
   }
 
@@ -431,7 +443,9 @@ export class ProductionSystem {
   }
 
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
-    const externalBlockReason = this.getItemProductionBlockReason(cityId, entry.item);
+    // The queued Settler itself owns the nation slot, so completion only checks
+    // external blockers here; the slot guard applies when committing new work.
+    const externalBlockReason = this.itemProductionBlockReasonProvider(cityId, entry.item);
     if (externalBlockReason !== undefined) {
       entry.blockedReason = externalBlockReason;
       return false;
@@ -449,6 +463,11 @@ export class ProductionSystem {
     }
 
     if (didBlock) return false;
+    if (this.isSettler(entry.item)) {
+      const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+      const nation = ownerId ? this.nationManager?.getNation(ownerId) : undefined;
+      if (nation) nation.settlersProduced += 1;
+    }
     for (const cb of this.completedSuccessfullyListeners) cb(cityId, entry.item, entry);
     return true;
   }
@@ -457,7 +476,7 @@ export class ProductionSystem {
     const baseCost = this.getBaseCost(item);
     const providedCost = cityId === undefined
       ? baseCost
-      : this.itemProductionCostProvider(cityId, item, baseCost);
+      : this.getItemProductionCost(cityId, item, baseCost);
     const resolvedBaseCost = typeof providedCost === 'number' ? providedCost : providedCost.cost;
     return scaleGameSpeedCost(resolvedBaseCost, this.gameSpeed);
   }
@@ -474,7 +493,7 @@ export class ProductionSystem {
     options: { placement?: ProductionPlacement },
   ): QueueEntry {
     const baseCost = this.getBaseCost(item);
-    const providedCost = this.itemProductionCostProvider(cityId, item, baseCost);
+    const providedCost = this.getItemProductionCost(cityId, item, baseCost);
     return {
       item,
       accumulated: 0,
@@ -489,6 +508,34 @@ export class ProductionSystem {
     return entry.lockedProductionCost === undefined
       ? this.getCost(entry.item, cityId)
       : scaleGameSpeedCost(entry.lockedProductionCost, this.gameSpeed);
+  }
+
+  private getItemProductionCost(cityId: string, item: Producible, baseCost: number): number | ItemProductionCost {
+    if (this.isSettler(item)) {
+      const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+      const nation = ownerId ? this.nationManager?.getNation(ownerId) : undefined;
+      if (nation) {
+        return {
+          cost: calculateSettlerProductionCost(baseCost, nation.settlersProduced),
+          lock: true,
+        };
+      }
+    }
+    return this.itemProductionCostProvider(cityId, item, baseCost);
+  }
+
+  private isSettler(item: Producible): boolean {
+    return item.kind === 'unit' && item.unitType.id === 'settler';
+  }
+
+  private hasQueuedSettlerForCityOwner(cityId: string): boolean {
+    const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+    if (!ownerId) return false;
+    for (const [queuedCityId, queue] of this.queues) {
+      if (this.cityManager.getCity(queuedCityId)?.ownerId !== ownerId) continue;
+      if (queue.some((entry) => this.isSettler(entry.item))) return true;
+    }
+    return false;
   }
 
   private getBaseCost(item: Producible): number {

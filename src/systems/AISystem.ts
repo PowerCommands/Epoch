@@ -4897,7 +4897,8 @@ export class AISystem {
     if (!this.canAffordUnitProduction(nationId, SETTLER)) return;
 
     const city = cities.find((candidate) => (
-      canCityProduceUnit(candidate, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      this.productionSystem.getItemProductionBlockReason(candidate.id, { kind: 'unit', unitType: SETTLER }) === undefined
+      && canCityProduceUnit(candidate, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
     ));
     if (!city) return;
 
@@ -4932,6 +4933,7 @@ export class AISystem {
       cityCount < this.getEffectiveDesiredCityCount(nationId, strategy) &&
       plannedSettlerCount === 0 &&
       this.canBuildUnit(nationId, SETTLER.id) &&
+      this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType: SETTLER }) === undefined &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext()) &&
       !this.isSettlerProductionBlockedByHappiness(nationId)
     ) {
@@ -5132,6 +5134,7 @@ export class AISystem {
     const wantsMoreCities = cityCount < this.getEffectiveDesiredCityCount(nationId, strategy);
     const canProduceSettler =
       this.canBuildUnit(nationId, SETTLER.id) &&
+      this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType: SETTLER }) === undefined &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext());
     const settlerPlan = this.getSettlerProductionPlan(
       city,

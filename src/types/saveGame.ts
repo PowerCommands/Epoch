@@ -95,6 +95,8 @@ export interface SavedNation {
   unlockedCultureNodeIds?: string[];
   currentCultureNodeId?: string;
   cultureProgress?: number;
+  /** Settlers historically completed through production. Optional for older saves. */
+  settlersProduced?: number;
   activePolicies?: ActivePolicyAssignment[];
   gold: number;
   culture: number;

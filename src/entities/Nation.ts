@@ -23,6 +23,7 @@ export interface NationConfig {
   unlockedCultureNodeIds?: string[];
   currentCultureNodeId?: string;
   cultureProgress?: number;
+  settlersProduced?: number;
 }
 
 /**
@@ -51,6 +52,8 @@ export class Nation {
   unlockedCultureNodeIds: string[];
   currentCultureNodeId?: string;
   cultureProgress: number;
+  /** Historical Settlers completed through city production. */
+  settlersProduced: number;
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
@@ -72,5 +75,6 @@ export class Nation {
     this.unlockedCultureNodeIds = [...(config.unlockedCultureNodeIds ?? [])];
     this.currentCultureNodeId = config.currentCultureNodeId;
     this.cultureProgress = config.cultureProgress ?? 0;
+    this.settlersProduced = Math.max(0, Math.floor(config.settlersProduced ?? 0));
   }
 }

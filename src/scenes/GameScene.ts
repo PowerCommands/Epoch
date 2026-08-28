@@ -1014,7 +1014,14 @@ export class GameScene extends Phaser.Scene {
     const pathPreviewRenderer = new PathPreviewRenderer(this, tileMap);
     const invalidTileFeedbackRenderer = new InvalidTileFeedbackRenderer(this, tileMap);
     const rangedPreviewRenderer = new RangedPreviewRenderer(this, tileMap);
-    const productionSystem = new ProductionSystem(cityManager, turnManager, happinessSystem, gameSpeed, policySystem);
+    const productionSystem = new ProductionSystem(
+      cityManager,
+      turnManager,
+      happinessSystem,
+      gameSpeed,
+      policySystem,
+      nationManager,
+    );
     productionSystem.setProductionDiversionProvider((nationId, cityId) => (
       gamesOfNationsSystem.getProductionDiversionForTurn(
         nationId,
@@ -7066,18 +7073,26 @@ export class GameScene extends Phaser.Scene {
       ALL_UNIT_TYPES
         .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
         .flatMap((unitType) => {
-          const reason = getCityUnitProductionBlockReason(
+          const item: Producible = { kind: 'unit', unitType };
+          const productionBlockReason = productionSystem.getItemProductionBlockReason(city.id, item);
+          const reason = productionBlockReason
+            ?? getCityUnitProductionBlockReason(
             city,
             unitType,
             mapData,
             gridSystem,
             unitProductionRuleContext,
           );
-          if (reason && !unitType.requiredResource && !isUnitUpkeepAffordabilityReason(reason)) return [];
+          if (
+            reason
+            && !productionBlockReason
+            && !unitType.requiredResource
+            && !isUnitUpkeepAffordabilityReason(reason)
+          ) return [];
           return [{
             id: unitType.id,
             name: unitType.name,
-            cost: productionSystem.getCost({ kind: 'unit', unitType }),
+            cost: productionSystem.getCost(item, city.id),
             disabled: reason !== undefined,
             reason,
           }];
@@ -7512,6 +7527,7 @@ export class GameScene extends Phaser.Scene {
       if (!city) return;
       const unitType = ALL_UNIT_TYPES.find((candidate) => candidate.id === unitId);
       if (!unitType) return;
+      if (productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType })) return;
       if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
       productionSystem.enqueue(city.id, { kind: 'unit', unitType });
