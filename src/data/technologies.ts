@@ -554,10 +554,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Biology',
     era: 'industrial',
     cost: 2550,
-    description: 'Studies living systems, medicine, and organic resources. Unlocks Hospitals, Oil Wells, and Offshore Platforms.',
+    description: 'Studies living systems, medicine, and organic resources. Unlocks Hospitals, Oil Power Plants, Oil Wells, and Offshore Platforms.',
     prerequisites: ['archaeology', 'scientific_theory'],
     leadsTo: ['refrigeration'],
-    unlocks: [{ kind: 'building', id: 'hospital' }, { kind: 'improvement', id: 'oil_well' }, { kind: 'improvement', id: 'offshore_platform' }],
+    unlocks: [{ kind: 'building', id: 'hospital' }, { kind: 'building', id: 'oil_power_plant' }, { kind: 'improvement', id: 'oil_well' }, { kind: 'improvement', id: 'offshore_platform' }],
     // TODO: reveals Oil.
   },
   {
@@ -576,10 +576,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Industrialization',
     era: 'industrial',
     cost: 1900,
-    description: 'Builds factories, machine labor, and mass production. Unlocks Gatling Guns and Factories.',
+    description: 'Builds factories, machine labor, and mass production. Unlocks Gatling Guns, Factories, and Coal Power Plants.',
     prerequisites: ['economics'],
     leadsTo: ['steam_power'],
-    unlocks: [{ kind: 'unit', id: 'gatling_gun' }, { kind: 'building', id: 'factory' }, { kind: 'wonder', id: 'big-ben' }],
+    unlocks: [{ kind: 'unit', id: 'gatling_gun' }, { kind: 'building', id: 'factory' }, { kind: 'building', id: 'coal_power_plant' }, { kind: 'wonder', id: 'big-ben' }],
     // TODO: reveals Coal.
   },
   {
@@ -660,10 +660,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Combustion',
     era: 'industrial',
     cost: 4100,
-    description: 'Turns fuel engines into fast ships and armored vehicles. Unlocks Destroyers and Landships.',
+    description: 'Turns fuel engines into fast ships, armored vehicles, and efficient gas turbines. Unlocks Destroyers, Landships, and Gas Power Plants.',
     prerequisites: ['railroad'],
     leadsTo: ['combined_arms'],
-    unlocks: [{ kind: 'unit', id: 'destroyer' }, { kind: 'unit', id: 'landship' }],
+    unlocks: [{ kind: 'unit', id: 'destroyer' }, { kind: 'unit', id: 'landship' }, { kind: 'building', id: 'gas_power_plant' }],
   },
   {
     id: 'ballistics',
@@ -785,7 +785,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Nuclear Fission',
     era: 'modern',
     cost: 6400,
-    description: 'Splits atoms for immense energy and destructive weapons. Unlocks Atomic Bombs, Bazookas, and Nuclear Plants.',
+    description: 'Splits atoms for immense energy and destructive weapons. Unlocks Atomic Bombs, Bazookas, and Nuclear Power Plants.',
     prerequisites: ['atomic_theory', 'radar'],
     leadsTo: ['advanced_ballistics', 'mobile_tactics'],
     unlocks: [{ kind: 'unit', id: 'atomic_bomb' }, { kind: 'unit', id: 'bazooka' }, { kind: 'building', id: 'nuclear_plant' }, { kind: 'wonder', id: 'hoover-dam' }],

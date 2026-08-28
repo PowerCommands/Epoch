@@ -18,7 +18,7 @@ import {
   happinessStateColor,
 } from '../happinessFormat';
 
-const STRATEGIC_RESOURCE_IDS = ['horses', 'iron', 'niter', 'coal', 'oil', 'aluminum', 'uranium'] as const;
+const STRATEGIC_RESOURCE_IDS = ['horses', 'iron', 'niter', 'coal', 'oil', 'natural_gas', 'aluminum', 'uranium'] as const;
 
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}`;

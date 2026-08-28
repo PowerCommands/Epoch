@@ -264,6 +264,20 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     requiredTechId: 'biology',
   },
   {
+    id: 'natural_gas',
+    name: 'Natural Gas',
+    category: 'strategic',
+    allowedTileTypes: [TileType.Desert, TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Ice],
+    yieldBonus: yieldBonus({ production: 2 }),
+    iconKey: iconKey('natural_gas'),
+    // Keep authored scenarios unchanged; Natural Gas is editor-placeable but is
+    // not added by ordinary resource generation until a later gameplay step.
+    weight: 0,
+    improvementId: 'oil_well',
+    revealTechId: 'biology',
+    requiredTechId: 'biology',
+  },
+  {
     id: 'aluminum',
     name: 'Aluminum',
     category: 'strategic',

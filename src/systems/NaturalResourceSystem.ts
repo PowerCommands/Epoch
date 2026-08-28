@@ -160,7 +160,9 @@ export class NaturalResourceSystem {
       options.humanNationId,
       [...options.activeNationIds].sort().join(','),
       options.resourceAbundance,
-      NATURAL_RESOURCES.length,
+      // Registered, editor-only resources use zero weight and must not perturb
+      // the deterministic placement of existing scenarios.
+      NATURAL_RESOURCES.filter((resource) => resource.weight > 0).length,
     ].join('|');
   }
 

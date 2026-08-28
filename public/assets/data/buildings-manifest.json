@@ -246,6 +246,27 @@
       "iconPath": "assets/sprites/buildings/factory.png"
     },
     {
+      "id": "coal_power_plant",
+      "name": "Coal Power Plant",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/coal_power_plant.png"
+    },
+    {
+      "id": "oil_power_plant",
+      "name": "Oil Power Plant",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/oil_power_plant.png"
+    },
+    {
+      "id": "gas_power_plant",
+      "name": "Gas Power Plant",
+      "era": "industrial",
+      "placement": "land",
+      "iconPath": "assets/sprites/buildings/gas_power_plant.png"
+    },
+    {
       "id": "stock_exchange",
       "name": "Stock Exchange",
       "era": "industrial",
@@ -310,7 +331,7 @@
     },
     {
       "id": "nuclear_plant",
-      "name": "Nuclear Plant",
+      "name": "Nuclear Power Plant",
       "era": "atomic",
       "placement": "land",
       "iconPath": "assets/sprites/buildings/nuclear_plant.png"

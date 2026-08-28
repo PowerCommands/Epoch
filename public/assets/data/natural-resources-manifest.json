@@ -246,6 +246,19 @@
       "iconPath": "/assets/sprites/resources/oil.png"
     },
     {
+      "id": "natural_gas",
+      "name": "Natural Gas",
+      "category": "strategic",
+      "allowedTileTypes": [
+        "desert",
+        "plains",
+        "beach",
+        "meadow",
+        "ice"
+      ],
+      "iconPath": "/assets/sprites/resources/natural_gas.png"
+    },
+    {
       "id": "aluminum",
       "name": "Aluminum",
       "category": "strategic",

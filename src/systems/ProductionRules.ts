@@ -16,7 +16,6 @@ export interface UnitProductionRuleContext {
   isResidenceCapital?: (city: City) => boolean;
   getNationEra?: (nationId: string) => Era;
   getUnitProductionRestrictionReason?: (nationId: string, unitTypeId: string) => string | undefined;
-  onObsoleteUnitBlocked?: (city: City, unitType: UnitType, nationEra: Era) => void;
 }
 
 const ERA_OBSOLESCENCE_GRACE = 1;
@@ -81,7 +80,6 @@ export function getCityUnitProductionBlockReason(
     isMilitaryProductionUnit(unitType) &&
     isUnitObsoleteForNationEra(unitType.era, nationEra)
   ) {
-    context.onObsoleteUnitBlocked?.(city, unitType, nationEra);
     return `${unitType.name} is obsolete for ${nationEra} era production`;
   }
 

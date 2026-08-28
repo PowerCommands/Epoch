@@ -84,6 +84,9 @@ export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 
 export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, description: 'Unit XP omitted until promotions exist', modifiers: { foodPerTurn: 2 } });
 export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', placement: 'city', cost: 400, maintenance: 0, modifiers: { foodPerTurn: 2, cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const FACTORY = building({ id: 'factory', name: 'Factory', era: 'industrial', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 4, productionPercent: 10, happinessPerTurn: 1 }, description: 'Civ V BNW factory is +10% and +4 production; coal requirement omitted' });
+export const COAL_POWER_PLANT = building({ id: 'coal_power_plant', name: 'Coal Power Plant', era: 'industrial', cost: 300, maintenance: 0, description: 'Requires Coal to construct and operate. Lifespan: 20 turns. Population and production effects are reserved for the future energy system.' });
+export const OIL_POWER_PLANT = building({ id: 'oil_power_plant', name: 'Oil Power Plant', era: 'industrial', cost: 340, maintenance: 0, description: 'Requires Oil to construct and operate. Lifespan: 40 turns. Population and production effects are reserved for the future energy system.' });
+export const GAS_POWER_PLANT = building({ id: 'gas_power_plant', name: 'Gas Power Plant', era: 'industrial', cost: 360, maintenance: 0, description: 'Requires Natural Gas to construct and operate. Lifespan: 50 turns. Population and production effects are reserved for the future energy system.' });
 export const STOCK_EXCHANGE = building({ id: 'stock_exchange', name: 'Stock Exchange', era: 'industrial', cost: 500, maintenance: 0, modifiers: { goldPercent: 33, happinessPerTurn: 1, tradeCapacity: 2 } });
 export const HOSPITAL = building({ id: 'hospital', name: 'Hospital', era: 'industrial', cost: 360, maintenance: 2, modifiers: { foodPerTurn: 5, happinessPerTurn: 2 } });
 export const HOTEL = building({ id: 'hotel', name: 'Hotel', era: 'industrial', cost: 300, maintenance: 0, modifiers: { culturePercent: 10, happinessPerTurn: 4 }, description: 'Tourism conversion approximated as +10% culture' });
@@ -107,7 +110,9 @@ export const MEDICAL_LAB = building({ id: 'medical_lab', name: 'Medical Lab', er
 
 export const RESEARCH_LAB = building({ id: 'research_lab', name: 'Research Lab', era: 'atomic', cost: 500, maintenance: 3, modifiers: { sciencePerTurn: 4, sciencePercent: 50, happinessPerTurn: 1 } });
 export const SOLAR_PLANT = building({ id: 'solar_plant', name: 'Solar Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Desert and mutual-exclusion requirements omitted' });
-export const NUCLEAR_PLANT = building({ id: 'nuclear_plant', name: 'Nuclear Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Uranium and mutual-exclusion requirements omitted' });
+export const NUCLEAR_POWER_PLANT = building({ id: 'nuclear_plant', name: 'Nuclear Power Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Requires Uranium to construct and operate. Lifespan: 100 turns. Existing local modifiers are retained; future energy effects remain reserved.' });
+/** Legacy export retained for code that already referred to the existing Nuclear Plant definition. */
+export const NUCLEAR_PLANT = NUCLEAR_POWER_PLANT;
 export const HYDRO_PLANT = building({ id: 'hydro_plant', name: 'Hydro Plant', era: 'modern', cost: 500, maintenance: 3, modifiers: { productionPerTurn: 3, happinessPerTurn: 1 }, description: 'River-tile production approximated as +3 production' });
 export const RECYCLING_CENTER = building({ id: 'recycling_center', name: 'Recycling Center', era: 'information', cost: 300, maintenance: 2, modifiers: { productionPerTurn: 2, happinessPerTurn: 1 }, description: 'Aluminum source effect approximated as +2 production' });
 export const BOMB_SHELTER = building({ id: 'bomb_shelter', name: 'Bomb Shelter', era: 'atomic', cost: 300, maintenance: 0, description: 'Nuke damage reduction omitted', modifiers: { foodPerTurn: 2 } });
@@ -119,9 +124,9 @@ export const ALL_BUILDINGS: BuildingType[] = [
   LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,
   CASTLE, ARMORY, FORGE, MARKET, MINT, GARDEN, UNIVERSITY, WORKSHOP, AQUEDUCT, HARBOR, OBSERVATORY,
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
-  MILITARY_ACADEMY, ARSENAL, FACTORY, STOCK_EXCHANGE, HOSPITAL, HOTEL,
+  MILITARY_ACADEMY, ARSENAL, FACTORY, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
   BROADCAST_TOWER, STADIUM, MILITARY_BASE, MEDICAL_LAB,
-  RESEARCH_LAB, SOLAR_PLANT, NUCLEAR_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, POLICE_STATION, SPACESHIP_FACTORY,
+  RESEARCH_LAB, SOLAR_PLANT, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, POLICE_STATION, SPACESHIP_FACTORY,
 ];
 
 /**

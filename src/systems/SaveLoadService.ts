@@ -64,6 +64,7 @@ import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
 import { getActiveLeaderSelections, getLeaderCovertPersonalityByNationId } from '../data/leaders';
 import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes';
+import type { PowerPlantSystem } from './PowerPlantSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -76,6 +77,7 @@ export interface SaveLoadContext {
   cityManager: CityManager;
   unitManager: UnitManager;
   productionSystem: ProductionSystem;
+  powerPlantSystem?: PowerPlantSystem;
   policySystem: PolicySystem;
   diplomacyManager: DiplomacyManager;
   allianceManager?: AllianceManager;
@@ -244,6 +246,7 @@ export class SaveLoadService {
           ? city.recentlyConqueredTurnsRemaining
           : undefined,
         integrationStartedRound: city.integrationStartedRound,
+        powerPlantAge: context.powerPlantSystem?.getPowerPlantAge(city.id),
         buildings,
         productionQueue,
       };
@@ -541,6 +544,7 @@ export class SaveLoadService {
       context.gridSystem,
       state.gameSpeedId ?? context.gameSpeedId,
     );
+    context.powerPlantSystem?.restore(state.cities, state.turn.currentRound);
     SaveLoadService.applyCompletedWonderTiles(state.wonders ?? [], context.mapData);
 
     // Backfill culture for old saves that pre-date the culture layer.

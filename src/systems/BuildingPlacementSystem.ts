@@ -1,4 +1,5 @@
 import { getBuildingById } from '../data/buildings';
+import { isPowerPlantBuilding } from '../data/powerPlants';
 import type { BuildingType } from '../entities/Building';
 import type { City } from '../entities/City';
 import { TileType, type MapData, type Tile } from '../types/map';
@@ -163,7 +164,10 @@ export class BuildingPlacementSystem {
 
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
     if (building.placement === 'city') return false;
-    if (tile.buildingId !== undefined) return false;
+    const replacingPowerPlant = tile.buildingId !== undefined
+      && isPowerPlantBuilding(building.id)
+      && isPowerPlantBuilding(tile.buildingId);
+    if (tile.buildingId !== undefined && !replacingPowerPlant) return false;
     if (tile.buildingConstruction !== undefined) return false;
     if (tile.wonderId !== undefined) return false;
     if (tile.wonderConstruction !== undefined) return false;

@@ -52,6 +52,7 @@ export type ProductionCompletedListener = (cityId: string, item: Producible, ent
 export type ProductionCompletedSuccessfullyListener = (cityId: string, item: Producible, entry: QueueEntry) => void;
 export type ProductionChangedListener = (cityId: string) => void;
 export type ProductionRemovedListener = (cityId: string, entry: QueueEntry) => void;
+export type ItemProductionBlockReasonProvider = (cityId: string, item: Producible) => string | undefined;
 export type ItemProductionPercentProvider = (nationId: string, item: Producible) => number;
 export type ProductionDiversionProvider = (nationId: string, cityId: string) => number;
 export interface ItemProductionCost {
@@ -92,6 +93,7 @@ export class ProductionSystem {
   private itemProductionPercentProvider: ItemProductionPercentProvider = () => 0;
   private productionDiversionProvider: ProductionDiversionProvider = () => 0;
   private itemProductionCostProvider: ItemProductionCostProvider = (_cityId, _item, baseCost) => baseCost;
+  private itemProductionBlockReasonProvider: ItemProductionBlockReasonProvider = () => undefined;
   private hasSkippedInitialTurnStart = false;
   /** When set, returns a reason a nation may not produce a given military unit (e.g. demilitarization). */
   private militaryUnitBlockReasonProvider: (nationId: string, unitTypeId: string) => string | undefined = () => undefined;
@@ -126,6 +128,7 @@ export class ProductionSystem {
   /** Add item to end of queue. */
   enqueue(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
     if (this.isMilitaryProductionBlocked(cityId, item)) return;
+    if (this.getItemProductionBlockReason(cityId, item) !== undefined) return;
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
@@ -138,6 +141,7 @@ export class ProductionSystem {
   /** Add item to the front of the queue, making it the active production. */
   enqueueFront(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
     if (this.isMilitaryProductionBlocked(cityId, item)) return;
+    if (this.getItemProductionBlockReason(cityId, item) !== undefined) return;
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
@@ -198,6 +202,7 @@ export class ProductionSystem {
   setProduction(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
     // Never wipe an existing queue to replace it with a blocked military unit.
     if (this.isMilitaryProductionBlocked(cityId, item)) return;
+    if (this.getItemProductionBlockReason(cityId, item) !== undefined) return;
     const existing = this.queues.get(cityId) ?? [];
     for (const entry of existing) this.notifyRemoved(cityId, entry);
     this.queues.delete(cityId);
@@ -381,6 +386,14 @@ export class ProductionSystem {
     this.itemProductionCostProvider = provider;
   }
 
+  setItemProductionBlockReasonProvider(provider: ItemProductionBlockReasonProvider): void {
+    this.itemProductionBlockReasonProvider = provider;
+  }
+
+  getItemProductionBlockReason(cityId: string, item: Producible): string | undefined {
+    return this.itemProductionBlockReasonProvider(cityId, item);
+  }
+
   private handleTurnStart(e: TurnStartEvent): void {
     if (!this.hasSkippedInitialTurnStart) {
       this.hasSkippedInitialTurnStart = true;
@@ -418,6 +431,12 @@ export class ProductionSystem {
   }
 
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
+    const externalBlockReason = this.getItemProductionBlockReason(cityId, entry.item);
+    if (externalBlockReason !== undefined) {
+      entry.blockedReason = externalBlockReason;
+      return false;
+    }
+
     let didBlock = false;
     for (const cb of this.completedListeners) {
       if (cb(cityId, entry.item, entry) === false) didBlock = true;

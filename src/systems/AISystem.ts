@@ -31,7 +31,13 @@ import { TurnManager } from './TurnManager';
 import { getTileMovementCost, MovementSystem } from './MovementSystem';
 import { CombatSystem } from './CombatSystem';
 import { ProductionSystem } from './ProductionSystem';
-import { canCityProduceUnit, cityHasWaterTile, type UnitProductionRuleContext } from './ProductionRules';
+import {
+  canCityProduceUnit,
+  cityHasWaterTile,
+  isMilitaryProductionUnit,
+  isUnitObsoleteForNationEra,
+  type UnitProductionRuleContext,
+} from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
 import type { BuilderSystem } from './BuilderSystem';
@@ -169,6 +175,11 @@ import {
 } from './ai/EmergencyCityDefense';
 import type { ProductionPurchaseSystem } from './ProductionPurchaseSystem';
 import type { GamesOfNationsSystem } from './GamesOfNationsSystem';
+import type { PowerPlantSystem } from './PowerPlantSystem';
+import {
+  planAIPowerPlants,
+  type AIPowerPlantDecision,
+} from './ai/AIPowerPlantPlanning';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -543,7 +554,7 @@ export class AISystem {
     };
   });
   private readonly cityFocusSystem: CityFocusSystem;
-  private readonly obsoleteUnitProductionBlockLogKeys = new Set<string>();
+  private readonly obsoleteMilitaryStarvationLogKeys = new Set<string>();
   private readonly aerospaceEligibilityLoggedNationIds = new Set<string>();
   private readonly aerospaceManufacturingStateByNation = new Map<string, string>();
   private readonly spaceRaceFactoryPriorityStateByNation = new Map<string, string>();
@@ -557,6 +568,7 @@ export class AISystem {
   private readonly emergencyThreatsByNation = new Map<string, EmergencyCityThreat[]>();
   private readonly emergencyThreatStateByNation = new Map<string, Map<string, EmergencyCityThreatSeverity>>();
   private readonly emergencyAssignmentCityByUnit = new Map<string, string>();
+  private powerPlantPlans = new Map<string, AIPowerPlantDecision>();
 
   constructor(
     unitManager: UnitManager,
@@ -591,7 +603,6 @@ export class AISystem {
     private readonly wonderPlacementSystem?: WonderPlacementSystem,
     private readonly buildingPlacementSystem?: BuildingPlacementSystem,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
-    private readonly shouldLogObsoleteUnitProductionBlocks: () => boolean = () => false,
     private readonly cityDefenseSystem?: CityDefenseSystem,
     private readonly overseasExpansionSystem?: AIOverseasExpansionSystem,
     private readonly exileProtectionSystem?: ExileProtectionSystem,
@@ -604,6 +615,7 @@ export class AISystem {
     private readonly requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS,
     private readonly productionPurchaseSystem?: ProductionPurchaseSystem,
     private readonly gamesOfNationsSystem?: GamesOfNationsSystem,
+    private readonly powerPlantSystem?: PowerPlantSystem,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -4462,6 +4474,7 @@ export class AISystem {
 
     const strategy = this.getStrategy(nationId);
     const eraStrategy = this.getActiveEraStrategy(nationId);
+    this.powerPlantPlans = this.createPowerPlantPlans(nationId, cities);
     let plannedMilitaryCount = this.countMilitary(nationId);
     let plannedSettlerCount = this.countSettlers(nationId);
     let plannedNavalCount = this.countNavalUnits(nationId) + this.countQueuedNavalCombatUnits(nationId);
@@ -5126,6 +5139,17 @@ export class AISystem {
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
+    const powerPlantPlan = this.powerPlantPlans.get(city.id);
+    if (powerPlantPlan) {
+      const buildingType = getBuildingById(powerPlantPlan.buildingId);
+      if (buildingType) {
+        candidates.push({
+          item: { kind: 'building', buildingType },
+          baseScore: powerPlantPlan.score,
+          category: 'productionBuilding',
+        });
+      }
+    }
     const spaceRaceFactoryPriority = this.getSpaceRaceFactoryPriority(nationId);
     const spaceRaceFactoryCandidate = spaceRaceFactoryPriority.applies
       && !buildings.has(FACTORY.id)
@@ -5471,7 +5495,7 @@ export class AISystem {
     const goalWeights = getProductionWeights(nation?.aiGoals);
     const weightedCandidates = applyGoalWeights(candidates, goalWeights);
     const cityFocus = city.focus ?? 'balanced';
-    const rhythmPick = spaceRaceFactoryCandidate ? undefined : this.pickProductionRhythmCandidate(
+    const rhythmPick = spaceRaceFactoryCandidate || (powerPlantPlan?.score ?? 0) >= 100 ? undefined : this.pickProductionRhythmCandidate(
       city,
       nationId,
       strategy,
@@ -5512,6 +5536,9 @@ export class AISystem {
         console.log(
           this.formatLog(nationId, `prioritizing culture building: ${best.item.buildingType.name}`),
         );
+      }
+      if (powerPlantPlan && best.item.kind === 'building' && best.item.buildingType.id === powerPlantPlan.buildingId) {
+        this.logPowerPlantDecision(nationId, city, powerPlantPlan);
       }
       if (best.item.kind === 'wonder') {
         console.log(
@@ -5571,6 +5598,61 @@ export class AISystem {
       }
     }
     return best?.item;
+  }
+
+  private createPowerPlantPlans(
+    nationId: string,
+    cities: readonly City[],
+  ): Map<string, AIPowerPlantDecision> {
+    if (!this.powerPlantSystem) return new Map();
+    return new Map(planAIPowerPlants({
+      nationId,
+      isHuman: this.isHuman(nationId),
+      cities: cities.map((city) => ({
+        id: city.id,
+        name: city.name,
+        population: city.population,
+        currentPlant: this.powerPlantSystem?.getCityPowerPlant(city.id),
+        queuedPowerPlantIds: this.productionSystem.getQueue(city.id)
+          .filter((entry) => entry.item.kind === 'building' && this.powerPlantSystem?.isPowerPlant(entry.item.buildingType.id))
+          .map((entry) => entry.item.kind === 'building' ? entry.item.buildingType.id : ''),
+        productionAvailable: this.productionSystem.getProduction(city.id) === undefined,
+      })),
+      getResourceCapacity: (resourceId) => this.powerPlantSystem?.getNationPowerPlantResourceCapacity(nationId, resourceId) ?? 0,
+      canConstruct: (cityId, buildingId) => {
+        const building = getBuildingById(buildingId);
+        const city = this.cityManager.getCity(cityId);
+        return Boolean(
+          building
+          && city
+          && this.canCityBuildBuilding(city, nationId, building)
+          && this.productionSystem.getItemProductionBlockReason(cityId, { kind: 'building', buildingType: building }) === undefined
+        );
+      },
+      estimateConstructionTurns: (cityId, buildingId) => {
+        const building = getBuildingById(buildingId);
+        return building
+          ? this.productionSystem.getTurnsEstimate(cityId, { kind: 'building', buildingType: building })
+          : Number.POSITIVE_INFINITY;
+      },
+    }));
+  }
+
+  private logPowerPlantDecision(
+    nationId: string,
+    city: City,
+    decision: AIPowerPlantDecision,
+  ): void {
+    const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const current = this.powerPlantSystem?.getCityPowerPlant(city.id);
+    const currentName = current ? getBuildingById(current.buildingId)?.name ?? current.buildingId : 'None';
+    const chosenName = getBuildingById(decision.buildingId)?.name ?? decision.buildingId;
+    const remaining = decision.remainingLifespan === undefined
+      ? ''
+      : `, remaining lifespan ${decision.remainingLifespan}`;
+    const message = `[EnergyAI] ${nationName} / ${city.name}: population ${city.population}, capacity ${decision.currentCapacity}, current ${currentName}, chose ${chosenName}, resource ${decision.requiredResourceId}${remaining}, reason ${decision.reason}.`;
+    console.log(this.formatLog(nationId, message));
+    this.logStrategicEvent?.(nationId, message);
   }
 
   private getSpaceRaceFactoryPriority(nationId: string): AISpaceRaceFactoryPriority {
@@ -6300,18 +6382,47 @@ export class AISystem {
     return 1;
   }
 
+  /**
+   * Logs once per city/round when the era-obsolescence filter removed every
+   * buildable military option, leaving no valid production candidate. This is
+   * the only obsolete-filtering situation worth surfacing.
+   */
+  private warnNoValidMilitaryCandidate(city: City, nationId: string, nationEra: Era): void {
+    const key = `${this.turnManager.getCurrentRound()}:${city.id}`;
+    if (this.obsoleteMilitaryStarvationLogKeys.has(key)) return;
+    this.obsoleteMilitaryStarvationLogKeys.add(key);
+    this.logStrategicEvent?.(
+      nationId,
+      `no valid military candidate for ${city.name}: every buildable unit is obsolete for the ${nationEra} era.`,
+    );
+  }
+
   private pickMilitaryUnitForCity(
     city: City,
     nationId: string,
     doctrineCtx?: { doctrine: AIMilitaryDoctrine; nationEraIndex: number },
   ): UnitType | undefined {
     const maritime = doctrineCtx !== undefined && isMaritimeDoctrine(doctrineCtx.doctrine);
-    const available = MILITARY_OPTIONS.filter((u) => (
-      (!u.isNaval || maritime) &&
-      this.canBuildUnit(nationId, u.id) &&
-      canCityProduceUnit(city, u, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
-    ));
-    if (available.length === 0) return undefined;
+    const ctx = this.getUnitProductionRuleContext();
+    const nationEra = this.getNationEra(nationId);
+    const buildableMilitary = MILITARY_OPTIONS.filter((u) =>
+      (!u.isNaval || maritime) && this.canBuildUnit(nationId, u.id));
+    // Drop era-obsolete options as the candidate list is built, before any
+    // doctrine scoring. Legal producibility is unchanged — canCityProduceUnit
+    // still gates obsolete units for every other caller (e.g. human UI).
+    const nonObsolete = buildableMilitary.filter((u) =>
+      !(isMilitaryProductionUnit(u) && isUnitObsoleteForNationEra(u.era, nationEra)));
+    const available = nonObsolete.filter((u) =>
+      canCityProduceUnit(city, u, this.mapData, this.gridSystem, ctx));
+    if (available.length === 0) {
+      // Only surface the abnormal outcome: obsolescence removed every buildable
+      // military option, so no valid candidate remains. Routine per-unit
+      // obsolete rejections are silent.
+      if (buildableMilitary.length > 0 && nonObsolete.length === 0) {
+        this.warnNoValidMilitaryCandidate(city, nationId, nationEra);
+      }
+      return undefined;
+    }
 
     if (doctrineCtx) {
       const { doctrine, nationEraIndex } = doctrineCtx;
@@ -6479,16 +6590,6 @@ export class AISystem {
         this.unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === unitTypeId),
       isResidenceCapital: (city) => city.isResidenceCapital,
       getNationEra: (nationId) => this.getNationEra(nationId),
-      onObsoleteUnitBlocked: (city, unitType, nationEra) => {
-        if (!this.shouldLogObsoleteUnitProductionBlocks()) return;
-        const key = `${this.turnManager.getCurrentRound()}:${city.ownerId}:${unitType.id}`;
-        if (this.obsoleteUnitProductionBlockLogKeys.has(key)) return;
-        this.obsoleteUnitProductionBlockLogKeys.add(key);
-        this.logStrategicEvent?.(
-          city.ownerId,
-          `blocked obsolete unit production: ${unitType.name} (${unitType.era}) while nation era is ${nationEra}.`,
-        );
-      },
     };
   }
 

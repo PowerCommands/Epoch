@@ -54,6 +54,7 @@ import { PolicySystem } from '../systems/PolicySystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
+import { PowerPlantSystem } from '../systems/PowerPlantSystem';
 import { ProductionPurchaseSystem } from '../systems/ProductionPurchaseSystem';
 import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
@@ -1946,6 +1947,28 @@ export class GameScene extends Phaser.Scene {
       if (!resource.requiredTechId) return true;
       return researchSystem.isResearched(nationId, resource.requiredTechId);
     });
+    const powerPlantSystem = new PowerPlantSystem(
+      cityManager,
+      resourceAccessSystem,
+      mapData,
+      turnManager.getCurrentRound(),
+      (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
+    );
+    productionSystem.setItemProductionBlockReasonProvider((cityId, item) => (
+      item.kind === 'building'
+        ? powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)
+        : undefined
+    ));
+    powerPlantSystem.onChanged((event) => {
+      if (event.kind === 'replaced' || event.kind === 'expired') {
+        for (const coord of event.removedTileCoords) tileBuildingRenderer.refreshTile(coord.x, coord.y);
+      }
+      resourceSystem.recalculateForNation(event.nationId);
+      rightPanel?.requestRefresh();
+      refreshOpenCityView();
+    });
+    turnManager.on('roundStart', (event) => powerPlantSystem.handleRoundStart(event.round));
+    turnManager.on('turnStart', () => powerPlantSystem.refreshAllocation(true));
     happinessSystem.recalculateAll();
     for (const nation of nationManager.getAllNations()) {
       resourceSystem.recalculateForNation(nation.id);
@@ -2820,7 +2843,6 @@ export class GameScene extends Phaser.Scene {
       wonderPlacementSystem,
       buildingPlacementSystem,
       (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
-      () => isAutoplayActive() || this.diagnosticSystem?.isTurnLoggingEnabled() === true,
       cityDefenseSystem,
       aiOverseasExpansionSystem,
       exileProtectionSystem,
@@ -2833,6 +2855,7 @@ export class GameScene extends Phaser.Scene {
       victorySystem.getScienceVictorySettings().requiredAerospaceParts,
       productionPurchaseSystem,
       gamesOfNationsSystem,
+      powerPlantSystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
     // AI must not select military units for a demilitarized (capitulated) nation.
@@ -3548,7 +3571,19 @@ export class GameScene extends Phaser.Scene {
           return false;
         }
 
-        cityManager.getBuildings(cityId).add(item.buildingType);
+        if (powerPlantSystem.isPowerPlant(item.buildingType.id)) {
+          const result = powerPlantSystem.completeConstruction(
+            cityId,
+            item.buildingType.id,
+            completedTile ? { x: completedTile.x, y: completedTile.y } : undefined,
+          );
+          if (!result.ok) {
+            console.warn(`[PowerPlant] Could not complete ${item.buildingType.id} in ${city.name}: ${result.reason}`);
+            return false;
+          }
+        } else {
+          cityManager.getBuildings(cityId).add(item.buildingType);
+        }
         if ((item.buildingType.modifiers.cityDefensePercent ?? 0) > 0) {
           cityRenderer.refreshCity(city);
         }
@@ -6663,13 +6698,18 @@ export class GameScene extends Phaser.Scene {
           const validCoords = building.placement === 'city'
             ? [{ x: city.tileX, y: city.tileY }]
             : buildingPlacementSystem.getValidPlacementCoords(city, building, mapData);
+          const productionBlockReason = productionSystem.getItemProductionBlockReason(city.id, {
+            kind: 'building',
+            buildingType: building,
+          });
           return {
             id: building.id,
             name: building.name,
             cost: productionSystem.getCost({ kind: 'building', buildingType: building }),
             placement: building.placement,
-            disabled: validCoords.length === 0,
-            reason: validCoords.length === 0 ? 'No valid owned tile matches this building placement.' : undefined,
+            disabled: Boolean(productionBlockReason) || validCoords.length === 0,
+            reason: productionBlockReason
+              ?? (validCoords.length === 0 ? 'No valid owned tile matches this building placement.' : undefined),
           };
         });
     };
@@ -6907,6 +6947,12 @@ export class GameScene extends Phaser.Scene {
       const building = getBuildingById(buildingId);
       if (!building) return { ok: false, message: 'Unknown building.' };
 
+      const productionBlockReason = productionSystem.getItemProductionBlockReason(city.id, {
+        kind: 'building',
+        buildingType: building,
+      });
+      if (productionBlockReason) return { ok: false, message: productionBlockReason };
+
       if (
         buildingId === GRAND_STADIUM_BUILDING_ID
         && !gamesOfNationsSystem.canCityConstructGrandStadium(city.id, city.ownerId)
@@ -7069,6 +7115,10 @@ export class GameScene extends Phaser.Scene {
 
       const building = getBuildingById(buildingId);
       if (!building) return;
+      if (productionSystem.getItemProductionBlockReason(city.id, { kind: 'building', buildingType: building })) {
+        refreshOpenCityView();
+        return;
+      }
       if (building.placement === 'city') {
         if (!cityManager.getBuildings(city.id).has(buildingId) && !isBuildingQueued(city.id, buildingId)) {
           productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
@@ -7289,6 +7339,19 @@ export class GameScene extends Phaser.Scene {
         if (result.status === 'invalid') return;
       }
       if (buildingPlacementSystem.isActiveForCity(city.id)) {
+        const placementState = buildingPlacementSystem.getState();
+        const placementBuilding = placementState ? getBuildingById(placementState.buildingId) : undefined;
+        if (
+          placementBuilding
+          && productionSystem.getItemProductionBlockReason(city.id, {
+            kind: 'building',
+            buildingType: placementBuilding,
+          })
+        ) {
+          buildingPlacementSystem.cancelPlacement();
+          refreshOpenCityView();
+          return;
+        }
         const result = buildingPlacementSystem.selectTile(city, coord, mapData);
         if (result.status === 'reserved') {
           const buildingDef = getBuildingById(result.buildingId);
@@ -8039,6 +8102,7 @@ export class GameScene extends Phaser.Scene {
           cityManager,
           unitManager,
           productionSystem,
+          powerPlantSystem,
           diplomacyManager,
           allianceManager,
           discoverySystem,
@@ -8638,6 +8702,7 @@ export class GameScene extends Phaser.Scene {
         cityManager,
         unitManager,
         productionSystem,
+        powerPlantSystem,
         diplomacyManager,
         allianceManager,
         discoverySystem,
@@ -8666,6 +8731,7 @@ export class GameScene extends Phaser.Scene {
         capitulationSystem,
       });
       resourceAccessSystem.invalidateResourceIndex();
+      powerPlantSystem.refreshAllocation(false);
       updateFog();
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
@@ -8737,6 +8803,7 @@ export class GameScene extends Phaser.Scene {
           cityManager,
           unitManager,
           productionSystem,
+          powerPlantSystem,
           diplomacyManager,
           allianceManager,
           discoverySystem,
@@ -8801,6 +8868,7 @@ export class GameScene extends Phaser.Scene {
         cityManager,
         unitManager,
         productionSystem,
+        powerPlantSystem,
         diplomacyManager,
         allianceManager,
         discoverySystem,

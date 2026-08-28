@@ -128,6 +128,8 @@ export interface SavedCity {
   lastTilePurchaseTurn?: number;
   recentlyConqueredTurnsRemaining?: number;
   integrationStartedRound?: number;
+  /** Age of the city's canonical power plant. Optional for pre-system saves. */
+  powerPlantAge?: number;
   // Backward-compatible: old saves store plain building ids; newer saves may
   // store objects carrying broken state. Strings load as working (not broken).
   buildings: Array<string | SavedBuilding>;
