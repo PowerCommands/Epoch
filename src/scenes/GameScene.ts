@@ -713,6 +713,7 @@ export class GameScene extends Phaser.Scene {
       (nationId) => getWarWeariness(nationId),
       () => turnManager.getCurrentRound(),
       (nationId) => getMilitaryOverCapUnhappiness(nationId),
+      (round) => turnManager.getGameDateForRound(round).signedYear,
     );
     const formatLog = createAILogFormatter({
       nationManager,

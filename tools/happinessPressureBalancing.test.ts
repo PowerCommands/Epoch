@@ -60,7 +60,25 @@ test('conquered-city penalties are exactly doubled, including Courthouse mitigat
   assert.equal(pressure.getUnhappiness(NATION_ID), 0);
 });
 
-test('energy shortage unhappiness is two per canonical shortage turn and sums by city', () => {
+test('energy shortage unhappiness is suppressed before the historical Renaissance', () => {
+  const nations = new NationManager();
+  nations.addNation(new Nation({ id: NATION_ID, name: 'England', color: 0xff0000 }));
+  const cities = new CityManager();
+  const city = new City({ id: 'city', name: 'City', ownerId: NATION_ID, tileX: 0, tileY: 0 });
+  city.energyShortageTurns = 5;
+  cities.addCity(city);
+  const happiness = new HappinessSystem(
+    nations, cities,
+    undefined, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, () => 5, undefined,
+    () => 1399,
+  );
+
+  happiness.recalculateNation(NATION_ID);
+  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 0);
+});
+
+test('energy shortage unhappiness is one per canonical shortage turn from Renaissance onward', () => {
   const nations = new NationManager();
   nations.addNation(new Nation({ id: NATION_ID, name: 'England', color: 0xff0000 }));
   const cities = new CityManager();
@@ -68,9 +86,14 @@ test('energy shortage unhappiness is two per canonical shortage turn and sums by
   const second = new City({ id: 'second', name: 'Second', ownerId: NATION_ID, tileX: 1, tileY: 0 });
   cities.addCity(first);
   cities.addCity(second);
-  const happiness = new HappinessSystem(nations, cities);
+  const happiness = new HappinessSystem(
+    nations, cities,
+    undefined, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, () => 10, undefined,
+    () => 1400,
+  );
 
-  for (const [turns, expected] of [[0, 0], [1, 2], [5, 10], [10, 20]] as const) {
+  for (const [turns, expected] of [[0, 0], [1, 1], [5, 5], [10, 10]] as const) {
     first.energyShortageTurns = turns === 0 ? undefined : turns;
     second.energyShortageTurns = undefined;
     happiness.recalculateNation(NATION_ID);
@@ -80,12 +103,30 @@ test('energy shortage unhappiness is two per canonical shortage turn and sums by
   first.energyShortageTurns = 5;
   second.energyShortageTurns = 3;
   happiness.recalculateNation(NATION_ID);
-  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 16);
+  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 8);
 
   first.energyShortageTurns = undefined;
   second.energyShortageTurns = undefined;
   happiness.recalculateNation(NATION_ID);
   assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 0);
+});
+
+test('pre-Renaissance shortage turns do not become retroactive at the era boundary', () => {
+  const nations = new NationManager();
+  nations.addNation(new Nation({ id: NATION_ID, name: 'England', color: 0xff0000 }));
+  const cities = new CityManager();
+  const city = new City({ id: 'city', name: 'City', ownerId: NATION_ID, tileX: 0, tileY: 0 });
+  city.energyShortageTurns = 6;
+  cities.addCity(city);
+  const happiness = new HappinessSystem(
+    nations, cities,
+    undefined, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, () => 6, undefined,
+    (round) => round < 6 ? 1399 : 1400,
+  );
+
+  happiness.recalculateNation(NATION_ID);
+  assert.equal(happiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 1);
 });
 
 test('the detailed Happiness breakdown exposes all three pressure sources', () => {
@@ -106,5 +147,5 @@ test('the detailed Happiness breakdown exposes all three pressure sources', () =
   const tooltip = buildHappinessTooltip(happiness.getNationState(NATION_ID));
   assert.match(tooltip, /Military Over Capacity: -8/);
   assert.match(tooltip, /Conquered cities: -20/);
-  assert.match(tooltip, /Energy Shortages: -14/);
+  assert.match(tooltip, /Energy Shortages: -7/);
 });

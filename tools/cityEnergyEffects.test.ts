@@ -135,7 +135,7 @@ test('population below capacity grows normally, while population at capacity can
   assert.equal(capped.city.population, 6);
   assert.equal(capped.city.foodStorage, 0);
   assert.equal(capped.city.energyShortageTurns, 1);
-  assert.equal(capped.happinessSystem.getNationState(NATION_ID).unhappinessFromEnergyShortages, 2);
+  assert.equal(capped.happinessSystem.getNationState(NATION_ID).unhappinessFromEnergyShortages, 1);
 });
 
 test('no plant, every active plant, and an inactive plant provide canonical capacities', () => {
