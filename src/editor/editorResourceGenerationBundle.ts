@@ -41,29 +41,40 @@ export interface EditorResourceGenerationResponse {
 export interface EditorResourceClearRequest {
   /** [r][q] resource id, or undefined/null when empty. */
   tileResources: Array<Array<string | undefined | null>>;
+  /** Resource ids currently visible in the editor. Empty/omitted means all. */
+  visibleResourceIds?: readonly string[];
 }
 
 export interface EditorResourceClearResponse {
   removedCount: number;
-  /** [r][q] resource ids after clearing (all empty). */
+  /** [r][q] resource ids after clearing; hidden resources are preserved. */
   tileResources: Array<Array<string | undefined>>;
 }
 
 /**
- * Remove every natural resource from the editor's grid. Only natural-resource
+ * Remove the natural resources currently visible through the editor filter.
+ * An empty filter means that every resource is visible. Only natural-resource
  * placement is affected — terrain, cities, units and buildings live in other
- * editor arrays and are never touched here. The input array is not mutated; the
- * editor applies the returned all-empty grid itself so it can record undo.
- * Works generically over the resource grid, with no hardcoded resource ids.
+ * editor arrays and are never touched here. The input array is not mutated so
+ * the editor can apply the returned grid as one undoable action.
  */
 export function clearEditorResources(
   request: EditorResourceClearRequest,
 ): EditorResourceClearResponse {
   let removedCount = 0;
+  const visibleResourceIds = new Set(request.visibleResourceIds ?? []);
+  const allResourcesVisible = visibleResourceIds.size === 0;
   const tileResources = request.tileResources.map((row) => (
     row.map((resourceId) => {
-      if (resourceId !== undefined && resourceId !== null) removedCount += 1;
-      return undefined;
+      if (
+        resourceId !== undefined
+        && resourceId !== null
+        && (allResourcesVisible || visibleResourceIds.has(resourceId))
+      ) {
+        removedCount += 1;
+        return undefined;
+      }
+      return resourceId ?? undefined;
     })
   ));
   return { removedCount, tileResources };

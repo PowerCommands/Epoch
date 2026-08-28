@@ -39,7 +39,7 @@ export const MINE: TileImprovementDefinition = {
 export const PASTURE: TileImprovementDefinition = {
   id: 'pasture',
   name: 'Pasture',
-  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Desert],
   yieldBonus: { food: 1, production: 1, gold: 0 },
 };
 

@@ -211,9 +211,9 @@ test('the editor adapter preserves manually placed resources', () => {
   assert.equal(response.tileResources[5][8], 'iron');
 });
 
-// ─── Clear All Resources ─────────────────────────────────────────────────────
+// ─── Clear Visible Resources ─────────────────────────────────────────────────
 
-test('Clear All Resources removes every natural resource', () => {
+test('Clear Visible Resources without a filter removes every natural resource', () => {
   const editor = makeEditorArrays();
   // Strategic and non-strategic resources mixed across the map.
   editor.tileResources[0][0] = 'coal';
@@ -240,6 +240,41 @@ test('Clear removes both strategic and non-strategic resources', () => {
   assert.equal(response.removedCount, 2);
   assert.equal(response.tileResources[0][0], undefined);
   assert.equal(response.tileResources[1][1], undefined);
+});
+
+test('Clear Visible Resources removes only cumulatively filtered resource types', () => {
+  const editor = makeEditorArrays(4, 4);
+  editor.tileResources[0][0] = 'oil';
+  editor.tileResources[0][1] = 'coal';
+  editor.tileResources[1][0] = 'oil';
+  editor.tileResources[1][1] = 'iron';
+  editor.tileResources[2][2] = 'wheat';
+
+  const response = clearEditorResources({
+    tileResources: editor.tileResources,
+    visibleResourceIds: ['oil', 'coal'],
+  });
+
+  assert.equal(response.removedCount, 3);
+  assert.equal(response.tileResources[0][0], undefined);
+  assert.equal(response.tileResources[0][1], undefined);
+  assert.equal(response.tileResources[1][0], undefined);
+  assert.equal(response.tileResources[1][1], 'iron');
+  assert.equal(response.tileResources[2][2], 'wheat');
+});
+
+test('an empty visibility filter means all resources are visible and clearable', () => {
+  const editor = makeEditorArrays(3, 3);
+  editor.tileResources[0][0] = 'oil';
+  editor.tileResources[1][1] = 'coal';
+
+  const response = clearEditorResources({
+    tileResources: editor.tileResources,
+    visibleResourceIds: [],
+  });
+
+  assert.equal(response.removedCount, 2);
+  assert.ok(response.tileResources.flat().every((id) => id === undefined));
 });
 
 test('Clear does not mutate the input grid, so cancelling leaves resources intact', () => {

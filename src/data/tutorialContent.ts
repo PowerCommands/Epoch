@@ -6,10 +6,11 @@
  * it safely and consistently, and so new chapters can be added here without
  * touching any UI logic.
  *
- * The special `cheat-commands` and `corporations` blocks are placeholders: the
- * view fills them in at render time from the live cheat command definitions and
- * the canonical `CORPORATIONS` data, so the documentation never drifts from the
- * implemented commands or Corporation requirements.
+ * The special `cheat-commands`, `corporations` and `manufactured-resource-effects`
+ * blocks are placeholders: the view fills them in at render time from the live
+ * cheat command definitions, the canonical `CORPORATIONS` data and the shared
+ * `MANUFACTURED_RESOURCE_EFFECTS` table, so the documentation never drifts from
+ * the implemented commands, Corporation requirements or resource effects.
  */
 
 export type TutorialBlock =
@@ -19,6 +20,7 @@ export type TutorialBlock =
   | { kind: 'note'; text: string }
   | { kind: 'image'; src: string; alt: string }
   | { kind: 'corporations' }
+  | { kind: 'manufactured-resource-effects' }
   | { kind: 'cheat-commands' };
 
 export interface TutorialSection {
@@ -145,15 +147,15 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         ],
       },
       { kind: 'heading', text: 'Power Plants & Energy' },
-      { kind: 'paragraph', text: 'As your civilization advances, a city can only keep growing if it has the energy to support its people. A city with no Power Plant supports at most 8 population, and a city can never grow beyond the population its current Power Plant allows. Building a Power Plant raises this limit:' },
+      { kind: 'paragraph', text: 'As your civilization advances, a city can only keep growing if it has the infrastructure to support its people. A new city supports up to 6 population; sanitation buildings raise this modestly — Sewers to 8 and an Aqueduct to 10 — without needing any energy. Beyond that, only a Power Plant can push the ceiling higher, and a city can never grow past the limit its current infrastructure allows:' },
       {
         kind: 'list',
         items: [
-          'No Power Plant — up to 8 population',
+          'No Power Plant — up to 6 population (8 with Sewers, 10 with an Aqueduct)',
           'Coal Power Plant — up to 16 population',
-          'Oil Power Plant — up to 24 population',
-          'Gas Power Plant — up to 40 population',
-          'Nuclear Power Plant — up to 100 population',
+          'Oil Power Plant — up to 20 population',
+          'Gas Power Plant — up to 24 population',
+          'Nuclear Power Plant — up to 48 population',
         ],
       },
       { kind: 'paragraph', text: 'An active Power Plant also multiplies the city\'s production. The bonus applies only while the plant is active:' },
@@ -242,7 +244,8 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         items: [
           'Happiness buildings such as temples and colosseums',
           'World Wonders',
-          'Luxury resources inside your territory',
+          'Luxury resources you have access to, whether owned or imported',
+          'Manufactured Goods such as Trade Goods, Colonial Goods, Vehicles and Media, plus some Corporations',
           'Certain policies and culture effects',
         ],
       },
@@ -331,6 +334,19 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Can become drawn into each other’s conflicts',
         ],
       },
+      { kind: 'heading', text: 'Economic Pressure: Tariffs, Boycotts & Embargoes' },
+      { kind: 'paragraph', text: 'Economic Pressure lets you punish and pressure a rival without going to war. The three measures form an escalating ladder — Tariffs, then Boycott, then Embargo — each unlocked further along the economic technology line: Tariffs need Currency, Boycotts need Banking, and Embargoes need Economics. You impose them from a leader’s Audience.' },
+      {
+        kind: 'list',
+        items: [
+          'Tariffs — symbolic. Trade continues, but relations sour, and imposing them from an Audience makes the target retaliate with automatic reciprocal Tariffs.',
+          'Boycott — you stop buying from the target: your imports from them (and the effects those goods gave) are suspended. One-directional — they can still buy from you.',
+          'Embargo — a total, two-way trade shutdown while either side imposes it, including trade routes and all imports. The heaviest blow to relations.',
+        ],
+      },
+      { kind: 'paragraph', text: 'Sanctions suspend agreements rather than delete them. Existing trade deals caught by a Boycott or Embargo simply stop working while the measure is active and resume automatically if it is lifted, and new deals cannot be created in a blocked direction. Tariffs never block trade or change a deal’s value.' },
+      { kind: 'paragraph', text: 'Ending a measure: the nation that imposed it can lift it at any time. AI-to-AI sanctions expire on their own after about 25 turns. A sanction that involves you does not expire automatically, but after roughly 25 turns it becomes negotiable — you can pay gold to have an incoming sanction lifted, and an AI may offer you gold to drop one of yours.' },
+      { kind: 'note', text: 'Because these effects follow live resource access, a Boycott or Embargo is a real economic weapon against a nation that depends on imported Manufactured Goods — cutting the import also removes the Happiness, Production, Gold or Food it was providing.' },
       { kind: 'heading', text: 'War' },
       { kind: 'paragraph', text: 'Nations can declare war and become hostile. War is required before military units can attack one another.' },
       { kind: 'heading', text: 'Foreign Resource Exploitation' },
@@ -448,6 +464,13 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'heading', text: 'Manufactured Goods' },
       { kind: 'paragraph', text: 'Manufactured Goods are different from the natural resources found on the map. Where Silk, Iron or Oil occur naturally, Manufactured Goods are created by Corporations. Examples include Trade Goods, Maritime Goods, Tools, Colonial Goods, Banking Services, Refined Fuel, Steel Goods, Vehicles, Chips and Media. These goods take part in the economic and trade systems according to the normal game rules.' },
 
+      { kind: 'heading', text: 'Manufactured Good Effects' },
+      { kind: 'paragraph', text: 'Beyond being valuable trade commodities, most Manufactured Goods now give your nation a direct, ongoing bonus. Each available unit contributes its effect, and the bonuses stack — so the more units you have access to, the larger the benefit.' },
+      { kind: 'paragraph', text: 'What matters is access, not where the good comes from. A unit you produce yourself and a unit you import through a trade agreement give exactly the same effect. If you lose access — a trade deal ends, or a Boycott or Embargo cuts off an import — the matching bonus disappears at the same time.' },
+      { kind: 'paragraph', text: 'The current effects are:' },
+      { kind: 'manufactured-resource-effects' },
+      { kind: 'note', text: 'Production and Food bonuses are shared out automatically across your cities (smaller, still-growing cities are favoured); Happiness and Gold bonuses are national. Aerospace Parts are the exception — they carry no economic bonus and are used only for the Science Victory (see below).' },
+
       { kind: 'heading', text: 'Global Uniqueness' },
       { kind: 'paragraph', text: 'Each specific Corporation is globally unique. Once any nation has founded a Corporation, no other nation can ever found that same Corporation.' },
       { kind: 'note', text: 'For example, if one nation founds the Silk Road Consortium, the Silk Road Consortium is no longer available to anyone else. This makes founding Corporations competitive — reaching their requirements before your rivals is what secures them.' },
@@ -518,6 +541,8 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         ],
       },
       { kind: 'paragraph', text: 'Naval transport uses embark and debark mechanics: land units can board the water to cross seas and disembark onto land on the far side.' },
+      { kind: 'heading', text: 'Strategic Resource Requirements' },
+      { kind: 'paragraph', text: 'Most advanced units cannot be built without access to a specific Strategic Resource — for example Niter for gunpowder units, Oil for tanks, aircraft and modern ships, Aluminum for the most advanced jets, and Uranium for nuclear forces. Each accessible source supports only a limited number of such units, so securing and importing the right resources is part of fielding a modern army. See the Resources section for the full list.' },
       { kind: 'heading', text: 'Combat' },
       {
         kind: 'list',
@@ -674,20 +699,29 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     title: 'Resources',
     blocks: [
       { kind: 'heading', text: 'Strategic Resources' },
-      { kind: 'paragraph', text: 'Strategic resources are required to build advanced units. Examples:' },
+      { kind: 'paragraph', text: 'Strategic resources gate your most important military units and your power plants. Without access to the right resource you simply cannot build the units — or run the power plants — that depend on it, which is why controlling them (or importing them) matters so much.' },
+      { kind: 'paragraph', text: 'Each strategic resource has concrete uses in the current game:' },
       {
         kind: 'list',
         items: [
-          'Iron',
-          'Horses',
+          'Horses — mounted units: Horseman, Knight and Cavalry.',
+          'Iron — the melee line: Swordsman and Longswordsman. It also feeds the Steel Goods Corporation (together with Coal).',
+          'Niter — the gunpowder era. Every gunpowder unit needs it: Musketman, Cannon, Rifleman and Artillery, so a supply of Niter is essential for staying competitive from the Renaissance into the Industrial era.',
+          'Coal — runs the Coal Power Plant (city energy and population capacity) and, with Iron, supplies the Steel Goods Corporation.',
+          'Oil — the backbone of modern war: Landship, Tank, Fighter, Bomber, Battleship and Carrier all require it. It also runs the Oil Power Plant and supplies oil-based Corporations.',
+          'Natural Gas — runs the Natural Gas Power Plant.',
+          'Aluminum — required by the most advanced aircraft: Jet Fighter and Stealth Bomber. It also supplies aluminum-based Corporations.',
+          'Uranium — required for nuclear forces: Nuclear Submarine, Atomic Bomb and Nuclear Missile, and to run the Nuclear Power Plant.',
         ],
       },
+      { kind: 'paragraph', text: 'Quantity matters, not just presence. Every accessible source of a strategic resource supports a limited number of units that need it (currently four units per source). Field more than that and you will not be able to build additional units of that type until you secure another source — by taking territory that contains it or importing it through trade.' },
+      { kind: 'note', text: 'Imported strategic resources count exactly like ones inside your own territory, so trade agreements are a valid way to unlock a unit or power plant you have no local supply for — and losing that import removes the capacity again.' },
       { kind: 'heading', text: 'Luxury Resources' },
       { kind: 'paragraph', text: 'Luxury resources such as wine, silver and gems improve happiness and the prosperity of your civilization.' },
       { kind: 'heading', text: 'Bonus Resources' },
       { kind: 'paragraph', text: 'Bonus resources such as wheat, cattle and fish simply boost the yields of the tiles they sit on. Building the matching tile improvement increases the benefit further.' },
       { kind: 'heading', text: 'Access' },
-      { kind: 'paragraph', text: 'A resource must be inside territory you control before you can make use of it.' },
+      { kind: 'paragraph', text: 'You gain access to a resource in one of two ways: by controlling the tile it sits on inside your borders, or by importing it through an active trade agreement. Imported resources count exactly like ones you own — for building units, running power plants, and every other effect — and that access disappears again if the trade ends or is cut off by a Boycott or Embargo.' },
       { kind: 'note', text: 'With Foreign Resource Exploitation Rights (unlocked by Colonialism), a nation can develop natural resources inside another nation’s territory; the resource then belongs to the exploiting nation, not the territorial owner. See the Foreign Resource Exploitation section.' },
     ],
   },

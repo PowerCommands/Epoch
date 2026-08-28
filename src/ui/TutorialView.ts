@@ -5,6 +5,10 @@ import { getTechnologyById } from '../data/technologies';
 import { getBuildingById } from '../data/buildings';
 import { getResourceDisplayName } from '../data/resources';
 import { getManufacturedResourceById } from '../data/manufacturedResources';
+import {
+  MANUFACTURED_RESOURCE_EFFECTS,
+  getManufacturedResourceEffectSummary,
+} from '../systems/ManufacturedResourceEffects';
 import { AEROSPACE_INDUSTRIES_ID } from '../data/scienceVictory';
 
 /**
@@ -239,6 +243,8 @@ export class TutorialView {
       }
       case 'corporations':
         return this.renderCorporations();
+      case 'manufactured-resource-effects':
+        return this.renderManufacturedResourceEffects();
       case 'cheat-commands':
         return this.renderCheatCommands();
       default:
@@ -327,6 +333,41 @@ export class TutorialView {
 
     row.append(key, val);
     return row;
+  }
+
+  /**
+   * Manufactured-resource effect list, generated from the same shared
+   * `MANUFACTURED_RESOURCE_EFFECTS` table gameplay uses, so the values shown
+   * here can never drift from the actual effects. Names come from the resource
+   * definitions, so the player-facing "Tools" name is used automatically.
+   */
+  private renderManufacturedResourceEffects(): HTMLElement {
+    const container = document.createElement('div');
+    container.style.cssText = 'margin: 6px 0 4px; display: flex; flex-direction: column; gap: 6px;';
+
+    for (const effect of MANUFACTURED_RESOURCE_EFFECTS) {
+      const summary = getManufacturedResourceEffectSummary(effect.resourceId);
+      if (!summary) continue;
+      const name = getManufacturedResourceById(effect.resourceId)?.name ?? effect.resourceId;
+
+      const row = document.createElement('div');
+      row.style.cssText = `
+        padding: 8px 12px; border: 1px solid #25344a; border-radius: 6px;
+        background: rgba(255, 255, 255, 0.03); font-size: 13px; color: #dbe4ee;
+      `;
+
+      const key = document.createElement('span');
+      key.textContent = `${name}: `;
+      key.style.cssText = 'color: #a8d8ff; font-weight: 700;';
+
+      const val = document.createElement('span');
+      val.textContent = summary;
+
+      row.append(key, val);
+      container.appendChild(row);
+    }
+
+    return container;
   }
 
   private renderCheatCommands(): HTMLElement {

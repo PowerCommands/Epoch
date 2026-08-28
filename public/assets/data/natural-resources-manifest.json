@@ -192,8 +192,9 @@
       "category": "strategic",
       "allowedTileTypes": [
         "plains",
+        "meadow",
         "beach",
-        "meadow"
+        "desert"
       ],
       "iconPath": "/assets/sprites/resources/horses.png"
     },
@@ -202,10 +203,12 @@
       "name": "Iron",
       "category": "strategic",
       "allowedTileTypes": [
-        "mountain",
         "plains",
+        "meadow",
         "beach",
-        "meadow"
+        "forest",
+        "desert",
+        "mountain"
       ],
       "iconPath": "/assets/sprites/resources/iron.png"
     },
@@ -215,9 +218,10 @@
       "category": "strategic",
       "allowedTileTypes": [
         "plains",
-        "beach",
         "meadow",
-        "desert"
+        "beach",
+        "desert",
+        "mountain"
       ],
       "iconPath": "/assets/sprites/resources/niter.png"
     },
@@ -227,7 +231,9 @@
       "category": "strategic",
       "allowedTileTypes": [
         "forest",
-        "mountain"
+        "mountain",
+        "plains",
+        "meadow"
       ],
       "iconPath": "/assets/sprites/resources/coal.png"
     },
@@ -236,12 +242,13 @@
       "name": "Oil",
       "category": "strategic",
       "allowedTileTypes": [
-        "desert",
-        "ocean",
-        "ice",
         "plains",
+        "meadow",
         "beach",
-        "meadow"
+        "desert",
+        "ice",
+        "coast",
+        "ocean"
       ],
       "iconPath": "/assets/sprites/resources/oil.png"
     },
@@ -250,11 +257,13 @@
       "name": "Natural Gas",
       "category": "strategic",
       "allowedTileTypes": [
-        "desert",
         "plains",
-        "beach",
         "meadow",
-        "ice"
+        "beach",
+        "desert",
+        "ice",
+        "coast",
+        "ocean"
       ],
       "iconPath": "/assets/sprites/resources/natural_gas.png"
     },
@@ -264,9 +273,11 @@
       "category": "strategic",
       "allowedTileTypes": [
         "plains",
-        "beach",
         "meadow",
+        "beach",
+        "forest",
         "desert",
+        "mountain",
         "ice"
       ],
       "iconPath": "/assets/sprites/resources/aluminum.png"
@@ -276,8 +287,10 @@
       "name": "Uranium",
       "category": "strategic",
       "allowedTileTypes": [
-        "mountain",
+        "plains",
+        "meadow",
         "desert",
+        "mountain",
         "ice"
       ],
       "iconPath": "/assets/sprites/resources/uranium.png"

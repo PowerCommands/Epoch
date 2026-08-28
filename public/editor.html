@@ -38,6 +38,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 /* The active button sits on a dark (#333) fill, so its label stays light; the
    unselected buttons use the browser-default light fill and need dark text. */
 .palette-btn.active { border-color: #fff; background: #333; color: #eee; }
+.palette-btn.painting { box-shadow: inset 0 0 0 1px #7bbcff; }
 .palette-btn.invalid { opacity: 0.45; }
 .palette-swatch { width: 14px; height: 14px; border-radius: 2px; flex-shrink: 0; }
 .palette-resource-img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; image-rendering: pixelated; }
@@ -1028,6 +1029,9 @@ let currentTool = 'paint';
 let currentPaintMode = 'terrain';
 let currentTerrain = 'plains';
 let currentResourceId = null;
+// Empty means no filter: every placed resource is visible. Resource palette
+// clicks add ids cumulatively; the None button resets the filter.
+const visibleResourceIds = new Set();
 let interactionMode = 'paint';
 let brushSize = 1;
 let selectedEntity = null; // { kind: 'city'|'unit', index: number }
@@ -1087,6 +1091,8 @@ function startEditor(map, scenarioData, customEntry) {
   currentMap = map;
   currentCustomEntry = customEntry ?? null;
   scenario = scenarioData;
+  currentResourceId = null;
+  visibleResourceIds.clear();
   selectedEntity = null;
   currentCityEditMode = 'tiles';
   selectedCityBuildingId = '';
@@ -2139,15 +2145,15 @@ function buildGenerateResourcesControl() {
   generateRow.appendChild(button);
 
   // Destructive clear, kept visually separate from non-destructive generation.
-  const clearAllBtn = document.createElement('button');
-  clearAllBtn.type = 'button';
-  clearAllBtn.className = 'mode-btn';
-  clearAllBtn.textContent = 'Clear All Resources';
-  clearAllBtn.title = 'Remove every natural resource from the map (undoable with Ctrl+Z)';
-  clearAllBtn.addEventListener('click', runClearAllResources);
+  const clearVisibleBtn = document.createElement('button');
+  clearVisibleBtn.type = 'button';
+  clearVisibleBtn.className = 'mode-btn';
+  clearVisibleBtn.textContent = 'Clear visible resources';
+  clearVisibleBtn.title = 'Remove only resources currently shown by the palette filter (undoable with Ctrl+Z)';
+  clearVisibleBtn.addEventListener('click', runClearVisibleResources);
 
   wrapper.appendChild(generateRow);
-  wrapper.appendChild(clearAllBtn);
+  wrapper.appendChild(clearVisibleBtn);
   return wrapper;
 }
 
@@ -2201,11 +2207,11 @@ function runGenerateResources() {
 }
 
 /**
- * Destructively remove every natural resource from the map. Only resource
- * placement is touched (terrain, cities, units, buildings, etc. are untouched).
- * Recorded as one undoable paint action so Ctrl+Z restores the prior layout.
+ * Destructively remove resources currently shown by the palette filter. Only
+ * resource placement is touched (terrain, cities, units, buildings, etc. are
+ * untouched). Recorded as one undoable paint action so Ctrl+Z restores it.
  */
-function runClearAllResources() {
+function runClearVisibleResources() {
   const api = window.EpochEditorResources;
   if (!api || typeof api.clearEditorResources !== 'function') {
     setStatusInfo('Resource tools are unavailable.');
@@ -2213,15 +2219,18 @@ function runClearAllResources() {
   }
 
   const before = tileResources.map((row) => row.slice());
-  const response = api.clearEditorResources({ tileResources });
+  const response = api.clearEditorResources({
+    tileResources,
+    visibleResourceIds: [...visibleResourceIds],
+  });
   const removed = response.removedCount;
 
   if (removed === 0) {
-    setStatusInfo('No natural resources to remove.');
+    setStatusInfo('No visible natural resources to remove.');
     return;
   }
 
-  if (!window.confirm(`Remove all ${removed} natural resource${removed === 1 ? '' : 's'} from the map? You can undo this with Ctrl+Z.`)) {
+  if (!window.confirm(`Remove ${removed} visible natural resource${removed === 1 ? '' : 's'} from the map? You can undo this with Ctrl+Z.`)) {
     return;
   }
 
@@ -2243,23 +2252,27 @@ function runClearAllResources() {
 
   pushUndoAction({ type: 'paint', changes });
   render();
-  setStatusInfo(`Removed ${removed} resource${removed === 1 ? '' : 's'}.`);
+  setStatusInfo(`Removed ${removed} visible resource${removed === 1 ? '' : 's'}.`);
 }
 
 function buildResourcePalette(grid) {
   grid.appendChild(buildGenerateResourcesControl());
 
   const clearBtn = document.createElement('button');
-  clearBtn.className = 'palette-btn' + (currentResourceId === null ? ' active' : '');
+  clearBtn.className = 'palette-btn'
+    + (visibleResourceIds.size === 0 ? ' active' : '')
+    + (currentResourceId === null ? ' painting' : '');
   clearBtn.dataset.resourceId = '';
   clearBtn.innerHTML = `<span class="palette-swatch" style="background:#111; border:1px solid #666"></span>None`;
-  clearBtn.title = 'Clear resource';
+  clearBtn.title = 'Show all resources and select the resource eraser';
   clearBtn.addEventListener('click', () => selectResource(null));
   grid.appendChild(clearBtn);
 
   for (const resource of naturalResourceManifest.resources) {
     const btn = document.createElement('button');
-    btn.className = 'palette-btn' + (resource.id === currentResourceId ? ' active' : '');
+    btn.className = 'palette-btn'
+      + (visibleResourceIds.has(resource.id) ? ' active' : '')
+      + (resource.id === currentResourceId ? ' painting' : '');
     btn.dataset.resourceId = resource.id;
     btn.title = `${resource.name} (${resource.allowedTileTypes.join(', ')})`;
     const iconPath = resource.iconPath || `/assets/sprites/resources/${resource.id}.png`;
@@ -2271,6 +2284,8 @@ function buildResourcePalette(grid) {
 
 function selectResource(resourceId) {
   currentResourceId = resourceId;
+  if (resourceId === null) visibleResourceIds.clear();
+  else visibleResourceIds.add(resourceId);
   currentTool = 'paint';
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'paint'));
   updateToolPanels();
@@ -3734,6 +3749,10 @@ function getNaturalResource(resourceId) {
   return naturalResourceManifest.resources.find(resource => resource.id === resourceId) || null;
 }
 
+function isResourceVisible(resourceId) {
+  return visibleResourceIds.size === 0 || visibleResourceIds.has(resourceId);
+}
+
 function isResourceAllowedOnTile(resourceId, tileType) {
   const resource = getNaturalResource(resourceId);
   return !!resource && resource.allowedTileTypes.includes(tileType);
@@ -4366,7 +4385,7 @@ viewport.addEventListener('mousemove', (e) => {
   if (pos) {
     document.getElementById('status-pos').textContent = `q/r (${pos.q}, ${pos.r})`;
     const resourceId = tileResources[pos.r][pos.q];
-    const resource = resourceId ? getNaturalResource(resourceId) : null;
+    const resource = resourceId && isResourceVisible(resourceId) ? getNaturalResource(resourceId) : null;
     document.getElementById('status-tile').textContent = resource
       ? `${tiles[pos.r][pos.q]} • ${resource.name}`
       : tiles[pos.r][pos.q];
@@ -4888,7 +4907,7 @@ function render() {
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
       const resourceId = tileResources[r][q];
-      if (!resourceId) continue;
+      if (!resourceId || !isResourceVisible(resourceId)) continue;
       const rect = hexRect(q, r);
       if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) {
         continue;

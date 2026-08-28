@@ -23,6 +23,8 @@ test('Natural Gas is a strategic, Biology-gated natural resource', () => {
   assert.equal(resource.requiredTechId, 'biology');
   assert.equal(resource.improvementId, 'oil_well');
   assert.equal(isResourceAllowedOnTile(resource.id, TileType.Plains), true);
+  assert.equal(isResourceAllowedOnTile(resource.id, TileType.Coast), true);
+  assert.equal(isResourceAllowedOnTile(resource.id, TileType.Ocean), true);
 });
 
 test('the editor manifest exposes Natural Gas with its canonical icon', () => {
@@ -35,7 +37,7 @@ test('the editor manifest exposes Natural Gas with its canonical icon', () => {
     id: 'natural_gas',
     name: 'Natural Gas',
     category: 'strategic',
-    allowedTileTypes: ['desert', 'plains', 'beach', 'meadow', 'ice'],
+    allowedTileTypes: ['plains', 'meadow', 'beach', 'desert', 'ice', 'coast', 'ocean'],
     iconPath: '/assets/sprites/resources/natural_gas.png',
   });
 });

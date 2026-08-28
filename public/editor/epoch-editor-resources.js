@@ -201,7 +201,7 @@
       id: "horses",
       name: "Horses",
       category: "strategic",
-      allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */, "desert" /* Desert */],
       yieldBonus: yieldBonus({ production: 1 }),
       iconKey: iconKey("horses"),
       weight: 12,
@@ -213,7 +213,7 @@
       id: "iron",
       name: "Iron",
       category: "strategic",
-      allowedTileTypes: ["mountain" /* Mountain */, "plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */, "forest" /* Forest */, "desert" /* Desert */, "mountain" /* Mountain */],
       yieldBonus: yieldBonus({ production: 1 }),
       iconKey: iconKey("iron"),
       weight: 9,
@@ -225,7 +225,7 @@
       id: "niter",
       name: "Niter",
       category: "strategic",
-      allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "desert" /* Desert */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */, "desert" /* Desert */, "mountain" /* Mountain */],
       yieldBonus: yieldBonus({ production: 1 }),
       iconKey: iconKey("niter"),
       weight: 6,
@@ -237,7 +237,7 @@
       id: "coal",
       name: "Coal",
       category: "strategic",
-      allowedTileTypes: ["forest" /* Forest */, "mountain" /* Mountain */],
+      allowedTileTypes: ["forest" /* Forest */, "mountain" /* Mountain */, "plains" /* Plains */, "meadow" /* Meadow */],
       yieldBonus: yieldBonus({ production: 3 }),
       iconKey: iconKey("coal"),
       weight: 6,
@@ -249,7 +249,7 @@
       id: "oil",
       name: "Oil",
       category: "strategic",
-      allowedTileTypes: ["desert" /* Desert */, "ocean" /* Ocean */, "ice" /* Ice */, "plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */, "desert" /* Desert */, "ice" /* Ice */, "coast" /* Coast */, "ocean" /* Ocean */],
       yieldBonus: yieldBonus({ production: 5 }),
       iconKey: iconKey("oil"),
       weight: 2,
@@ -265,13 +265,17 @@
       id: "natural_gas",
       name: "Natural Gas",
       category: "strategic",
-      allowedTileTypes: ["desert" /* Desert */, "plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "ice" /* Ice */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */, "desert" /* Desert */, "ice" /* Ice */, "coast" /* Coast */, "ocean" /* Ocean */],
       yieldBonus: yieldBonus({ production: 2 }),
       iconKey: iconKey("natural_gas"),
       // Keep authored scenarios unchanged; Natural Gas is editor-placeable but is
       // not added by ordinary resource generation until a later gameplay step.
       weight: 0,
       improvementId: "oil_well",
+      improvementIdByTileType: {
+        ["coast" /* Coast */]: "offshore_platform",
+        ["ocean" /* Ocean */]: "offshore_platform"
+      },
       revealTechId: "biology",
       requiredTechId: "biology"
     },
@@ -279,7 +283,7 @@
       id: "aluminum",
       name: "Aluminum",
       category: "strategic",
-      allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "desert" /* Desert */, "ice" /* Ice */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */, "forest" /* Forest */, "desert" /* Desert */, "mountain" /* Mountain */, "ice" /* Ice */],
       yieldBonus: yieldBonus({ science: 1, production: 2 }),
       iconKey: iconKey("aluminum"),
       weight: 4,
@@ -291,7 +295,7 @@
       id: "uranium",
       name: "Uranium",
       category: "strategic",
-      allowedTileTypes: ["mountain" /* Mountain */, "desert" /* Desert */, "ice" /* Ice */],
+      allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "desert" /* Desert */, "mountain" /* Mountain */, "ice" /* Ice */],
       yieldBonus: yieldBonus({ production: 10, science: 1 }),
       iconKey: iconKey("uranium"),
       weight: 3,
@@ -509,9 +513,14 @@
   // src/editor/editorResourceGenerationBundle.ts
   function clearEditorResources(request) {
     let removedCount = 0;
+    const visibleResourceIds = new Set(request.visibleResourceIds ?? []);
+    const allResourcesVisible = visibleResourceIds.size === 0;
     const tileResources = request.tileResources.map((row) => row.map((resourceId) => {
-      if (resourceId !== void 0 && resourceId !== null) removedCount += 1;
-      return void 0;
+      if (resourceId !== void 0 && resourceId !== null && (allResourcesVisible || visibleResourceIds.has(resourceId))) {
+        removedCount += 1;
+        return void 0;
+      }
+      return resourceId ?? void 0;
     }));
     return { removedCount, tileResources };
   }
