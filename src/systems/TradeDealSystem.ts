@@ -94,6 +94,8 @@ export class TradeDealSystem {
     for (const deal of Array.from(this.deals.values())) {
       if (deal.buyerNationId !== nationId) continue;
 
+      // Tariffs are a symbolic diplomatic action and never alter trade value.
+      // Boycott/Embargo deals are removed when imposed and blocked at creation.
       if (this.goldAccess.getGold(deal.buyerNationId) < deal.goldPerTurn) {
         this.cancelDeal(deal.id, 'buyer_cannot_pay');
         continue;
@@ -115,6 +117,14 @@ export class TradeDealSystem {
       this.deals.delete(deal.id);
       this.emitCancelled(deal, reason);
     }
+  }
+
+  /** Cancel only purchases made by `buyer` from `seller` (Boycott semantics). */
+  cancelImportDeals(buyerNationId: string, sellerNationId: string, reason: TradeDealEndReason): number {
+    return this.cancelDealsMatching(
+      (deal) => deal.buyerNationId === buyerNationId && deal.sellerNationId === sellerNationId,
+      reason,
+    );
   }
 
   cancelDealsForNation(nationId: string, reason: TradeDealEndReason): number {

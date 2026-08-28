@@ -222,6 +222,15 @@ export interface SavedDiplomacyEntry {
   embassyFromAToB?: boolean;
   embassyFromBToA?: boolean;
   tradeRelations?: boolean;
+  // Directional Economic Pressure (None → Tariffs → Boycott → Embargo) and the
+  // turn it was imposed. Optional so saves predating the feature load as "no
+  // active Economic Pressure".
+  economicPressureFromAToB?: 'tariffs' | 'boycott' | 'embargo' | null;
+  economicPressureFromAToBTurn?: number | null;
+  economicPressureFromAToBRemovalOfferPresented?: boolean;
+  economicPressureFromBToA?: 'tariffs' | 'boycott' | 'embargo' | null;
+  economicPressureFromBToATurn?: number | null;
+  economicPressureFromBToARemovalOfferPresented?: boolean;
   // New fields are optional so saves written before the diplomatic memory
   // groundwork still load cleanly. Missing values fall back to defaults.
   trust?: number;

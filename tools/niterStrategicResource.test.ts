@@ -3,14 +3,18 @@ import { test } from 'node:test';
 
 import {
   ARTILLERY,
+  BOMBER,
   CANNON,
   CAVALRY,
+  FIGHTER,
   GATLING_GUN,
   GREAT_WAR_INFANTRY,
+  JET_FIGHTER,
   MACHINE_GUN,
   MUSKETMAN,
   RIFLEMAN,
   ROCKET_ARTILLERY,
+  STEALTH_BOMBER,
   SWORDSMAN,
 } from '../src/data/units.ts';
 import { Unit } from '../src/entities/Unit.ts';
@@ -80,4 +84,62 @@ test('explicitly out-of-scope gunpowder units and existing Iron/Horses behavior 
   );
   assert.equal(system.getCapacity(NATION_ID, 'horses').capacity, 4);
   assert.equal(system.canProduceUnit(NATION_ID, CAVALRY), false);
+});
+
+test('the two most advanced aircraft require one Aluminum', () => {
+  for (const unitType of [JET_FIGHTER, STEALTH_BOMBER]) {
+    assert.deepEqual(unitType.requiredResource, { resourceId: 'aluminum', amount: 1 }, unitType.name);
+  }
+});
+
+test('the standard modern aircraft require one Oil', () => {
+  for (const unitType of [FIGHTER, BOMBER]) {
+    assert.deepEqual(unitType.requiredResource, { resourceId: 'oil', amount: 1 }, unitType.name);
+  }
+});
+
+test('standard aircraft are gated by the generic Oil requirement', () => {
+  let oilSources = 0;
+  const units: Unit[] = [];
+  const system = new StrategicResourceCapacitySystem(
+    { getResourceSourceCount: (_nationId, resourceId) => resourceId === 'oil' ? oilSources : 0 },
+    { getUnitsByOwner: () => units },
+  );
+
+  // No Oil access: neither aircraft can be produced, and the reason comes from
+  // the existing strategic-resource UI text.
+  for (const unitType of [FIGHTER, BOMBER]) {
+    assert.equal(system.canProduceUnit(NATION_ID, unitType), false, unitType.name);
+    assert.equal(system.getMissingRequirementReason(NATION_ID, unitType), 'Requires Oil', unitType.name);
+  }
+
+  // With an Oil source available, both can be produced normally.
+  oilSources = 1;
+  for (const unitType of [FIGHTER, BOMBER]) {
+    assert.equal(system.canProduceUnit(NATION_ID, unitType), true, unitType.name);
+    assert.equal(system.getMissingRequirementReason(NATION_ID, unitType), undefined, unitType.name);
+  }
+});
+
+test('advanced aircraft are gated by the generic Aluminum requirement', () => {
+  let aluminumSources = 0;
+  const units: Unit[] = [];
+  const system = new StrategicResourceCapacitySystem(
+    { getResourceSourceCount: (_nationId, resourceId) => resourceId === 'aluminum' ? aluminumSources : 0 },
+    { getUnitsByOwner: () => units },
+  );
+
+  // No Aluminum access: neither aircraft can be produced, and the reason comes
+  // from the existing strategic-resource UI text.
+  for (const unitType of [JET_FIGHTER, STEALTH_BOMBER]) {
+    assert.equal(system.canProduceUnit(NATION_ID, unitType), false, unitType.name);
+    assert.equal(system.getMissingRequirementReason(NATION_ID, unitType), 'Requires Aluminum', unitType.name);
+  }
+
+  // With an Aluminum source available, both can be produced normally.
+  aluminumSources = 1;
+  for (const unitType of [JET_FIGHTER, STEALTH_BOMBER]) {
+    assert.equal(system.canProduceUnit(NATION_ID, unitType), true, unitType.name);
+    assert.equal(system.getMissingRequirementReason(NATION_ID, unitType), undefined, unitType.name);
+  }
 });

@@ -81,6 +81,8 @@ export interface CovertIncidentResult {
   readonly newSuspicion: number;
 }
 
+export interface CovertIncidentEvent extends CovertIncidentResult, CovertIncidentInput {}
+
 /** Player-facing log (attacker hidden unless exposed). */
 export type CovertPlayerLogger = (nationId: string, message: string) => void;
 /** Balancing/autorun-only debug log (may reveal attacker). */
@@ -89,6 +91,7 @@ export type CovertDebugLogger = (message: string) => void;
 export class CovertSuspicionSystem {
   /** Detected incidents per ordered "attacker>victim" pair (repeat-offender memory). */
   private readonly offenseCounts = new Map<string, number>();
+  private readonly incidentListeners: Array<(event: CovertIncidentEvent) => void> = [];
 
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
@@ -132,7 +135,15 @@ export class CovertSuspicionSystem {
     this.offenseCounts.set(key, priorCount + 1);
     this.emitLogs(input, profile, outcome, suspicionAdded, priorCount + 1, victimPersonality);
 
+    const event = { ...input, outcome, suspicionAdded, newSuspicion };
+    for (const listener of this.incidentListeners) listener(event);
+
     return { outcome, suspicionAdded, newSuspicion };
+  }
+
+  /** Reliable notification for detected covert incidents; callers may filter exposure. */
+  onIncident(listener: (event: CovertIncidentEvent) => void): void {
+    this.incidentListeners.push(listener);
   }
 
   // ── Detection ──────────────────────────────────────────────────────────

@@ -213,7 +213,15 @@ export class AudienceActionList {
     let colX = innerX;
     for (const btn of buttons) {
       const nextY = this.renderButtonAt(
-        { kind: 'button', text: btn.text, disabled: btn.disabled, accentColor: btn.accentColor, onClick: btn.onClick },
+        {
+          kind: 'button',
+          text: btn.text,
+          disabled: btn.disabled,
+          disabledReason: btn.disabledReason,
+          selected: btn.selected,
+          accentColor: btn.accentColor,
+          onClick: btn.onClick,
+        },
         colX,
         y,
         colWidth,

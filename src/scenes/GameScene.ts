@@ -219,6 +219,12 @@ import { NationHudDataProvider } from '../ui/hud/NationHudDataProvider';
 import { RightSidebarPanel } from '../ui/phaser/RightSidebarPanel';
 import { RightSidebarPanelDataProvider } from '../ui/phaser/RightSidebarPanelDataProvider';
 import { LeaderAudienceDialog } from '../ui/dialogs/LeaderAudienceDialog';
+import {
+  EconomicPressureActionService,
+  HumanEconomicPressureService,
+} from '../systems/diplomacy/HumanEconomicPressureService';
+import { EconomicPressureNegotiationService } from '../systems/diplomacy/EconomicPressureNegotiationService';
+import { ECONOMIC_PRESSURE_DURATION_TURNS, ECONOMIC_PRESSURE_LABEL } from '../data/economicPressure';
 import { LeaderGossipDialog } from '../ui/dialogs/LeaderGossipDialog';
 import { filterGossipTargets } from '../ui/dialogs/GossipDialogModel';
 import { SaveLoadService } from '../systems/SaveLoadService';
@@ -1258,6 +1264,40 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       (message, nationId) => logManager.info({ nationId, category: 'diplomacy', message }),
     );
+    const economicPressureActionService = new EconomicPressureActionService(
+      diplomacyManager,
+      tradeDealSystem,
+      tradeConnectionSystem,
+    );
+    const economicPressureNegotiationService = new EconomicPressureNegotiationService(
+      diplomacyManager,
+      {
+        getGold: (nationId) => nationManager.getResources(nationId).gold,
+        transferGold: (fromNationId, toNationId, amount) => {
+          if (!Number.isInteger(amount) || amount < 0) return false;
+          if (nationManager.getResources(fromNationId).gold < amount) return false;
+          resourceSystem.addGold(fromNationId, -amount);
+          resourceSystem.addGold(toNationId, amount);
+          return true;
+        },
+      },
+    );
+    aiDiplomacySystem.setHumanNationPredicate((nationId) => nationId === humanNationId);
+    aiDiplomacySystem.setEconomicPressureApplier((sourceNationId, targetNationId, type) =>
+      economicPressureActionService.impose(
+        sourceNationId,
+        targetNationId,
+        type,
+        nationManager.getNation(targetNationId)?.name ?? targetNationId,
+      ).ok);
+    diplomacyManager.onEconomicPressureChanged((event) => {
+      if (event.type !== 'embargo') return;
+      aiDiplomacySystem.handleEconomicPressureEvent({
+        kind: 'embargo_received',
+        aggressorNationId: event.sourceNationId,
+        victimNationId: event.targetNationId,
+      });
+    });
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
     const resourceCitySearchSystem = new ResourceCitySearchSystem(mapData, cityManager, nationManager);
     getAvailableLuxuryResourceQuantities = (nationId) =>
@@ -1305,14 +1345,22 @@ export class GameScene extends Phaser.Scene {
       worldCouncilSystem.getUnitProductionRestrictionReason(nationId, unitTypeId)
       ?? capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId);
     turnManager.on('turnStart', (event) => worldCouncilSystem.handleTurnStart(event));
-    tradeDealSystem.setRestrictionProvider((input) =>
-      worldCouncilSystem.getTradeRestrictionReason(
+    tradeDealSystem.setRestrictionProvider((input) => {
+      const category = getTradeResourceCategory(input.resourceId);
+      if (diplomacyManager.isEconomicExchangeBlocked(input.buyerNationId, input.sellerNationId, category)) {
+        const level = diplomacyManager.getEffectiveEconomicPressure(input.sellerNationId, input.buyerNationId);
+        return `Blocked by ${level === 'embargo' ? 'an Embargo' : 'a Boycott'} between these nations.`;
+      }
+      return worldCouncilSystem.getTradeRestrictionReason(
         input.sellerNationId,
         input.buyerNationId,
-        getTradeResourceCategory(input.resourceId),
-      ));
+        category,
+      );
+    });
     tradeConnectionSystem.setRestrictionProvider((a, b) =>
-      worldCouncilSystem.getTradeRestrictionReason(a, b, 'unknown'));
+      diplomacyManager.getEffectiveEconomicPressure(a, b) === 'embargo'
+        ? 'Blocked by an active Embargo.'
+        : worldCouncilSystem.getTradeRestrictionReason(a, b, 'unknown'));
     tradeDealSystem.setConnectionCapacityProvider((a, b) =>
       tradeConnectionSystem.getActiveDealCapacityBetweenNations(a, b)
       + worldCouncilSystem.getTradeAgreementCapacityBetweenNations(a, b),
@@ -1375,6 +1423,11 @@ export class GameScene extends Phaser.Scene {
     getWarWeariness = (nationId) => warWearinessSystem.getWarWeariness(nationId);
 
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
+      aiDiplomacySystem.handleEconomicPressureEvent({
+        kind: 'war_declared',
+        aggressorNationId: aggressorId,
+        victimNationId: targetId,
+      });
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
       const cancelledConns = tradeConnectionSystem.cancelConnectionsBetweenNations(aggressorId, targetId);
       if (cancelledConns.length > 0) {
@@ -1947,6 +2000,17 @@ export class GameScene extends Phaser.Scene {
       if (!resource.requiredTechId) return true;
       return researchSystem.isResearched(nationId, resource.requiredTechId);
     });
+    // Economic Pressure: prerequisites resolve through canonical research, and a
+    // Boycott/Embargo hides the counterpart's imported resources at the shared
+    // access layer (covering natural and manufactured resources alike).
+    diplomacyManager.setEconomicPressureTechnologyChecker((nationId, techId) =>
+      researchSystem.isResearched(nationId, techId));
+    resourceAccessSystem.setImportBlockedPredicate((buyerNationId, sellerNationId, resourceId) =>
+      diplomacyManager.isEconomicExchangeBlocked(
+        buyerNationId,
+        sellerNationId,
+        getTradeResourceCategory(resourceId),
+      ));
     const powerPlantSystem = new PowerPlantSystem(
       cityManager,
       resourceAccessSystem,
@@ -2246,6 +2310,14 @@ export class GameScene extends Phaser.Scene {
       (message) => console.log(`[autorun] ${message}`),
       (id) => nationManager.getCovertPersonality(id),
     );
+    covertSuspicionSystem.onIncident((event) => {
+      if (event.outcome !== 'exposed') return;
+      aiDiplomacySystem.handleEconomicPressureEvent({
+        kind: 'covert_exposure',
+        aggressorNationId: event.attackerNationId,
+        victimNationId: event.victimNationId,
+      });
+    });
     combatSystem.setCovertSuspicionSystem(covertSuspicionSystem);
     infrastructureSabotageSystem.setCovertSuspicionSystem(covertSuspicionSystem);
     const infrastructureRepairSystem = new InfrastructureRepairSystem(
@@ -3914,6 +3986,12 @@ export class GameScene extends Phaser.Scene {
         // Diplomatic memory: capturing a city scars the relationship.
         if (e.previousOwnerId) {
           diplomaticMemorySystem.onCityCaptured(e.attacker.ownerId, e.previousOwnerId);
+          aiDiplomacySystem.handleEconomicPressureEvent({
+            kind: 'city_captured',
+            aggressorNationId: e.attacker.ownerId,
+            victimNationId: e.previousOwnerId,
+            cityName: e.city.name,
+          });
           // ...and the rest of the known world takes note. Exactly one observer
           // event per capture — the capital variant replaces the ordinary one
           // rather than stacking on top of it.
@@ -4070,6 +4148,56 @@ export class GameScene extends Phaser.Scene {
       overlay.appendChild(box);
       document.body.appendChild(overlay);
     };
+
+    // At the Human turn boundary, surface at most one affordable mature offer.
+    // Unaffordable AI nations remain unmarked and are checked again next turn.
+    turnManager.on('turnStart', (event) => {
+      if (event.nation.id !== humanNationIdForDiplomacy || isAutoplayActive()) return;
+      const offer = economicPressureNegotiationService.takeNextAutomaticOffer(
+        humanNationIdForDiplomacy,
+        event.round,
+      );
+      if (!offer) return;
+      const aiNation = nationManager.getNation(offer.aiNationId);
+      const humanNation = nationManager.getNation(offer.humanNationId);
+      if (!aiNation || !humanNation) return;
+      const sanctionLabel = ECONOMIC_PRESSURE_LABEL[offer.type];
+      const accentColor = `#${aiNation.color.toString(16).padStart(6, '0')}`;
+      const offerMessage = `${aiNation.name} offers ${offer.price} gold if you lift your ${sanctionLabel}.`;
+      console.debug(
+        `[EconomicPressure] ${aiNation.name} offered ${humanNation.name} ${offer.price} gold to lift ${sanctionLabel} after ${ECONOMIC_PRESSURE_DURATION_TURNS} turns.`,
+      );
+      logManager.info({
+        nationIds: [offer.aiNationId, offer.humanNationId],
+        category: 'diplomacy',
+        message: offerMessage,
+      });
+      showDiplomacyModal({
+        title: `${aiNation.name} offers a settlement`,
+        message: offerMessage,
+        accentColor,
+        confirmLabel: 'Accept',
+        cancelLabel: 'Refuse',
+        onConfirm: () => {
+          const result = economicPressureNegotiationService.acceptAutomaticOffer(offer);
+          if (result.ok) {
+            const message = `${humanNation.name} accepted ${aiNation.name}'s offer. ${sanctionLabel} lifted for ${result.price} gold.`;
+            console.debug(`[EconomicPressure] ${message}`);
+            logManager.info({ nationIds: [offer.humanNationId, offer.aiNationId], category: 'diplomacy', message });
+          } else if (result.reason) {
+            console.debug(`[EconomicPressure] Removal negotiation unavailable: ${result.reason}`);
+            logManager.info({ nationIds: [offer.humanNationId, offer.aiNationId], category: 'diplomacy', message: result.reason });
+          }
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+        },
+        onCancel: () => {
+          const message = `${humanNation.name} refused ${aiNation.name}'s offer. ${sanctionLabel} remains active.`;
+          console.debug(`[EconomicPressure] ${message}`);
+          logManager.info({ nationIds: [offer.humanNationId, offer.aiNationId], category: 'diplomacy', message });
+        },
+      });
+    });
 
     // ─── Joint War Requests ──────────────────────────────────────────────────
     // Execution + side effects orchestrated here; validation and AI acceptance
@@ -5538,7 +5666,14 @@ export class GameScene extends Phaser.Scene {
 
     // Diplomacy actions from right-side details buttons
     const onDiplomacyAction = (event: Event) => {
-      const { action, targetNationId } = (event as CustomEvent<{ action: string; targetNationId: string; fromCityId?: string; toCityId?: string; setupPaymentGold?: number }>).detail;
+      const { action, targetNationId, economicPressureType } = (event as CustomEvent<{
+        action: string;
+        targetNationId: string;
+        economicPressureType?: 'tariffs' | 'boycott' | 'embargo';
+        fromCityId?: string;
+        toCityId?: string;
+        setupPaymentGold?: number;
+      }>).detail;
       const targetNation = nationManager.getNation(targetNationId);
       if (!targetNation) return;
       const color = `#${targetNation.color.toString(16).padStart(6, '0')}`;
@@ -5597,8 +5732,51 @@ export class GameScene extends Phaser.Scene {
         ).ok) return;
         diplomacyManager.establishTradeRelations(humanNationIdForDiplomacy, targetNationId);
         rightPanel?.refreshCurrent();
-      } else if (action === 'cancelTradeRelations') {
-        diplomacyManager.cancelTradeRelations(humanNationIdForDiplomacy, targetNationId);
+      } else if (action === 'economicPressure' && economicPressureType) {
+        const pressureService = new HumanEconomicPressureService(
+          diplomacyManager,
+          tradeDealSystem,
+          tradeConnectionSystem,
+        );
+        const result = pressureService.apply(
+          humanNationIdForDiplomacy,
+          targetNationId,
+          economicPressureType,
+          targetNation.name,
+        );
+        if (!result.ok && result.reason) {
+          logManager.info({ nationId: humanNationIdForDiplomacy, category: 'diplomacy', message: result.reason });
+          return;
+        }
+        for (const message of result.feedback) {
+          logManager.info({
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message,
+          });
+        }
+        hudLayer?.refresh();
+        rightPanel?.refreshCurrent();
+      } else if (action === 'negotiateEconomicPressureRemoval') {
+        const incoming = diplomacyManager.getEconomicPressureRecord(targetNationId, humanNationIdForDiplomacy);
+        const result = economicPressureNegotiationService.payToLiftIncomingSanction(
+          humanNationIdForDiplomacy,
+          targetNationId,
+          turnManager.getCurrentRound(),
+        );
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+        if (!result.ok) {
+          const reason = result.reason ?? 'Removal negotiation is unavailable.';
+          console.debug(`[EconomicPressure] Removal negotiation unavailable: ${reason}`);
+          logManager.info({ nationIds: [humanNationIdForDiplomacy, targetNationId], category: 'diplomacy', message: reason });
+          rightPanel?.refreshCurrent();
+          return;
+        }
+        const sanctionLabel = incoming ? ECONOMIC_PRESSURE_LABEL[incoming.type] : 'Sanction';
+        const message = `${humanName} paid ${targetNation.name} ${result.price} gold to lift ${sanctionLabel}.`;
+        console.debug(`[EconomicPressure] ${message}`);
+        logManager.info({ nationIds: [humanNationIdForDiplomacy, targetNationId], category: 'diplomacy', message });
+        hudLayer?.refresh();
         rightPanel?.refreshCurrent();
       } else if (action === 'exchangeMaps') {
         const leaderName = getLeaderByNationId(targetNationId)?.name ?? targetNation.name;
@@ -7530,6 +7708,12 @@ export class GameScene extends Phaser.Scene {
           recordGossipInsultInHistory(result, historicalTimeline, {
             getNationName: (nationId) => nationManager.getNation(nationId)?.name,
             getLeaderName: (nationId) => getLeaderByNationId(nationId)?.name,
+          });
+          aiDiplomacySystem.handleEconomicPressureEvent({
+            kind: 'gossip_insult',
+            aggressorNationId: result.sourceNationId!,
+            victimNationId: result.recipientNationId!,
+            insultWeight: result.insultWeight ?? 1,
           });
         }
         rightPanel?.requestRefresh();

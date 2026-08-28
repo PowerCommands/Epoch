@@ -27,6 +27,12 @@ import {
   suspicionBlocksOpenBorders,
   getSuspicionWarScoreBonus,
 } from '../diplomacy/suspicionEffects';
+import {
+  ECONOMIC_PRESSURE_AI_AI_DURATION_TURNS,
+  ECONOMIC_PRESSURE_LABEL,
+  ECONOMIC_PRESSURE_LEVEL,
+  type EconomicPressureType,
+} from '../../data/economicPressure';
 
 // AIDiplomacySystem v1:
 // Uses diplomatic attitude to trigger simple decisions.
@@ -39,11 +45,69 @@ const PEACE_COOLDOWN = 5;
 const OPEN_BORDERS_COOLDOWN = 5;
 const NO_IMMEDIATE_PEACE_AFTER_WAR = 3;
 const NO_IMMEDIATE_WAR_AFTER_PEACE = 5;
+const ECONOMIC_PRESSURE_ESCALATION_COOLDOWN = 8;
 const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
+
+export type EconomicPressureAIEvent =
+  | { readonly kind: 'war_declared'; readonly aggressorNationId: string; readonly victimNationId: string }
+  | { readonly kind: 'city_captured'; readonly aggressorNationId: string; readonly victimNationId: string; readonly cityName?: string }
+  | { readonly kind: 'gossip_insult'; readonly aggressorNationId: string; readonly victimNationId: string; readonly insultWeight: number }
+  | { readonly kind: 'covert_exposure'; readonly aggressorNationId: string; readonly victimNationId: string }
+  | { readonly kind: 'embargo_received'; readonly aggressorNationId: string; readonly victimNationId: string };
+
+export interface EconomicPressureWillingnessInput {
+  readonly attitude: DiplomaticAttitude;
+  readonly trust: number;
+  readonly hostility: number;
+  readonly affinity: number;
+  readonly suspicion: number;
+  readonly ideologyCompatibility: number;
+  readonly militaryComparison: MilitaryComparison;
+  readonly threatLevel: ThreatLevel;
+  readonly warTooRisky: boolean;
+  readonly currentPressure: EconomicPressureType | null;
+  readonly diplomacyBias: number;
+}
+
+export interface EconomicPressureWillingness {
+  readonly tariffs: number;
+  readonly embargo: number;
+}
+
+/** Pure deterministic weighting, exported so AI tests do not rely on luck. */
+export function evaluateEconomicPressureWillingness(
+  input: EconomicPressureWillingnessInput,
+): EconomicPressureWillingness {
+  const hostility = clamp01(input.hostility / 100) * 0.5;
+  const lowTrust = clamp01((50 - input.trust) / 50) * 0.25;
+  const lowAffinity = clamp01(-input.affinity / 50) * 0.15;
+  const ideologyTension = clamp01(-input.ideologyCompatibility / 50) * 0.1;
+  const suspicion = clamp01(input.suspicion / 100) * 0.1;
+  const deterioration = hostility + lowTrust + lowAffinity + ideologyTension + suspicion;
+  const hostile = input.attitude === 'hostile' ? 0.12 : 0;
+  const antiDiplomacyBias = clamp01(-input.diplomacyBias / 50) * 0.08;
+  const weaknessOutlet = input.warTooRisky || input.militaryComparison === 'weaker' ? 0.3 : 0;
+  const highThreatOutlet = input.threatLevel === 'high' ? 0.18 : 0;
+  return {
+    tariffs: deterioration + hostile * 0.65 + antiDiplomacyBias,
+    embargo: deterioration + hostile + weaknessOutlet + highThreatOutlet
+      + (input.currentPressure === 'tariffs' ? 0.1 : 0),
+  };
+}
 
 export class AIDiplomacySystem {
   // AI diplomacy reason logging explains decisions without changing them.
   private readonly decisionListeners: Array<(reason: AIDiplomacyDecisionReason) => void> = [];
+  private readonly expiredPressureTurnByPair = new Map<string, number>();
+  private isHumanNation: (nationId: string) => boolean = (nationId) =>
+    this.nationManager.getNation(nationId)?.isHuman === true;
+  private applyEconomicPressure: (
+    sourceNationId: string,
+    targetNationId: string,
+    type: EconomicPressureType,
+  ) => boolean = (sourceNationId, targetNationId, type) => {
+    return this.diplomacyManager.imposeEconomicPressureAction(sourceNationId, targetNationId, type).imposed;
+  };
 
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
@@ -56,7 +120,20 @@ export class AIDiplomacySystem {
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly getEraStrategy?: (nationId: string) => AILeaderEraStrategy | undefined,
     private readonly peaceTreatySystem?: PeaceTreatySystem,
+    /** Injectable deterministic roll for tests; production hashes pair/turn/action. */
+    private readonly economicPressureRoll: (seed: string) => number = hashToUnit,
   ) {}
+
+  setEconomicPressureApplier(
+    apply: (sourceNationId: string, targetNationId: string, type: EconomicPressureType) => boolean,
+  ): void {
+    this.applyEconomicPressure = apply;
+  }
+
+  /** Stable Human identity; production must not depend on autoplay's temporary flag changes. */
+  setHumanNationPredicate(predicate: (nationId: string) => boolean): void {
+    this.isHumanNation = predicate;
+  }
 
   onDecision(listener: (reason: AIDiplomacyDecisionReason) => void): void {
     this.decisionListeners.push(listener);
@@ -64,7 +141,7 @@ export class AIDiplomacySystem {
 
   runTurn(nationId: string): void {
     const self = this.nationManager.getNation(nationId);
-    if (!self || self.isHuman) return; // human players control their own diplomacy
+    if (!self || this.isHumanNation(nationId)) return; // human players control their own diplomacy
 
     const intent = getMilitaryIntent(self.aiGoals);
     console.log(
@@ -72,6 +149,7 @@ export class AIDiplomacySystem {
     );
 
     const currentTurn = this.turnManager.getCurrentRound();
+    this.expireAIToAISanctions(nationId, currentTurn);
     for (const other of this.nationManager.getAllNations()) {
       if (other.id === nationId) continue;
       if (!this.haveMet(nationId, other.id)) continue;
@@ -192,7 +270,20 @@ export class AIDiplomacySystem {
       }
       // Don't pick a fight we'll obviously lose, or while the enemy is
       // already threatening our cities.
-      if (warComparison === 'weaker' || threat === 'high') return;
+      if (warComparison === 'weaker' || threat === 'high') {
+        this.considerRoutineEconomicPressure(
+          selfId,
+          otherId,
+          currentTurn,
+          relation,
+          evaluation,
+          warComparison,
+          threat,
+          personality,
+          true,
+        );
+        return;
+      }
       const adjustedWarTolerance = personality.warTolerance + ideologyWarModifier;
       const personalityWantsWar = adjustedWarTolerance >= 50 || personality.aggressionBias > 0;
 
@@ -232,7 +323,20 @@ export class AIDiplomacySystem {
       );
 
       const goalWantsWar = warScore > 0.7;
-      if (!personalityWantsWar && !goalWantsWar) return;
+      if (!personalityWantsWar && !goalWantsWar) {
+        this.considerRoutineEconomicPressure(
+          selfId,
+          otherId,
+          currentTurn,
+          relation,
+          evaluation,
+          warComparison,
+          threat,
+          personality,
+          false,
+        );
+        return;
+      }
 
       if (
         this.turnsSince(relation.lastWarDeclarationTurn, currentTurn) >= WAR_COOLDOWN &&
@@ -254,10 +358,37 @@ export class AIDiplomacySystem {
             evaluation,
             ideologyWarModifier,
           ));
+          return;
         }
       }
+      this.considerRoutineEconomicPressure(
+        selfId,
+        otherId,
+        currentTurn,
+        relation,
+        evaluation,
+        warComparison,
+        threat,
+        personality,
+        false,
+      );
       return;
     }
+
+    // A deteriorating relation can produce symbolic Tariffs before it crosses
+    // the coarse hostile-attitude threshold. Friendly/ordinary neutral pairs
+    // score too low, and a successful sanction consumes this pair's action.
+    if (this.considerRoutineEconomicPressure(
+      selfId,
+      otherId,
+      currentTurn,
+      relation,
+      evaluation,
+      comparison,
+      threat,
+      personality,
+      false,
+    )) return;
 
     // Suspicion reduces open-borders willingness (penalty on the trust/bias
     // gate) and, when very high, refuses to grant outright unless an
@@ -301,6 +432,136 @@ export class AIDiplomacySystem {
           `suspicion ${Math.round(relation.suspicion)} reduced open borders willingness toward ${targetName}.`,
         ));
       }
+    }
+  }
+
+  /**
+   * Event-driven Boycott entry point. Third-party aggression is filtered by
+   * the observer's support for the victim; direct insults/exposure target only
+   * the offended AI. Returns the nations that actually imposed a Boycott.
+   */
+  handleEconomicPressureEvent(event: EconomicPressureAIEvent): string[] {
+    const actors = event.kind === 'war_declared' || event.kind === 'city_captured'
+      ? this.nationManager.getAllNations()
+        .filter((nation) => !this.isHumanNation(nation.id) && nation.id !== event.aggressorNationId && nation.id !== event.victimNationId)
+        .map((nation) => nation.id)
+      : [event.victimNationId];
+    const imposedBy: string[] = [];
+    for (const reactorId of actors) {
+      const reactor = this.nationManager.getNation(reactorId);
+      if (!reactor || this.isHumanNation(reactorId)) continue;
+      if (!this.haveMet(reactorId, event.aggressorNationId)) continue;
+      if (!this.diplomacyManager.canImposeEconomicPressure(reactorId, event.aggressorNationId, 'boycott').ok) continue;
+      const current = this.diplomacyManager.getEconomicPressure(reactorId, event.aggressorNationId);
+      if (current === 'boycott' || current === 'embargo') continue;
+
+      const aggressorRelation = this.diplomacyManager.getRelation(reactorId, event.aggressorNationId);
+      let score = aggressorRelation.hostility / 200 + Math.max(0, 40 - aggressorRelation.trust) / 100;
+      let reason: string;
+      if (event.kind === 'war_declared' || event.kind === 'city_captured') {
+        if (!this.haveMet(reactorId, event.victimNationId)) continue;
+        const victimRelation = this.diplomacyManager.getRelation(reactorId, event.victimNationId);
+        const supportsVictim = this.evaluationSystem.evaluateAttitude(reactorId, event.victimNationId) === 'friendly'
+          || (victimRelation.trust >= 65 && victimRelation.affinity >= 10);
+        if (!supportsVictim) continue;
+        if (this.evaluationSystem.evaluateAttitude(reactorId, event.aggressorNationId) === 'friendly') continue;
+        score += (event.kind === 'city_captured' ? 0.5 : 0.42)
+          + Math.max(0, victimRelation.trust - 60) / 100
+          + Math.max(0, victimRelation.affinity) / 200;
+        const victimName = this.nationManager.getNation(event.victimNationId)?.name ?? event.victimNationId;
+        reason = event.kind === 'city_captured'
+          ? `after the capture of ${event.cityName ?? 'a city'} from ${victimName}; strong relations with ${victimName}`
+          : `after war was declared on ${victimName}; strong relations with ${victimName}`;
+      } else if (event.kind === 'gossip_insult') {
+        score += 0.28 + clamp01(event.insultWeight / 2) * 0.4;
+        reason = `after a hostile Gossip Insult (weight ${event.insultWeight.toFixed(1)})`;
+      } else if (event.kind === 'covert_exposure') {
+        score += 0.65;
+        reason = 'after an exposed hostile covert operation';
+      } else {
+        score += 0.48;
+        reason = 'as an asymmetric response to an incoming Embargo';
+      }
+
+      const turn = this.turnManager.getCurrentRound();
+      const roll = this.economicPressureRoll(`boycott|${event.kind}|${reactorId}|${event.aggressorNationId}|${turn}`);
+      if (score < 0.55 || roll >= Math.min(0.85, (score - 0.35) * 1.5)) continue;
+      if (!this.applyEconomicPressure(reactorId, event.aggressorNationId, 'boycott')) continue;
+      imposedBy.push(reactorId);
+      const reactorName = reactor.name;
+      const aggressorName = this.nationManager.getNation(event.aggressorNationId)?.name ?? event.aggressorNationId;
+      console.debug(`[EconomicPressureAI] ${reactorName} imposed Boycott on ${aggressorName} ${reason}.`);
+    }
+    return imposedBy;
+  }
+
+  private considerRoutineEconomicPressure(
+    selfId: string,
+    otherId: string,
+    currentTurn: number,
+    relation: DiplomacyRelation,
+    evaluation: DiplomaticEvaluationResult,
+    militaryComparison: MilitaryComparison,
+    threatLevel: ThreatLevel,
+    personality: AILeaderPersonality,
+    warTooRisky: boolean,
+  ): boolean {
+    if (this.expiredPressureTurnByPair.get(`${selfId}>${otherId}`) === currentTurn) return false;
+    const current = this.diplomacyManager.getEconomicPressureRecord(selfId, otherId);
+    if (current?.type === 'boycott' || current?.type === 'embargo') return false;
+    if (current && currentTurn - current.imposedTurn < ECONOMIC_PRESSURE_ESCALATION_COOLDOWN) return false;
+
+    const willingness = evaluateEconomicPressureWillingness({
+      attitude: evaluation.attitude,
+      trust: relation.trust,
+      hostility: relation.hostility,
+      affinity: relation.affinity,
+      suspicion: relation.suspicion,
+      ideologyCompatibility: evaluation.ideologyCompatibility,
+      militaryComparison,
+      threatLevel,
+      warTooRisky,
+      currentPressure: current?.type ?? null,
+      diplomacyBias: personality.diplomacyBias,
+    });
+    const candidates: Array<{ type: EconomicPressureType; score: number; threshold: number }> = [
+      { type: 'embargo', score: willingness.embargo, threshold: 0.78 },
+      { type: 'tariffs', score: willingness.tariffs, threshold: 0.48 },
+    ];
+    for (const candidate of candidates) {
+      if (current && ECONOMIC_PRESSURE_LEVEL[candidate.type] <= ECONOMIC_PRESSURE_LEVEL[current.type]) continue;
+      if (!this.diplomacyManager.canImposeEconomicPressure(selfId, otherId, candidate.type).ok) continue;
+      const chance = Math.min(0.75, Math.max(0, (candidate.score - candidate.threshold + 0.18) * 1.4));
+      const roll = this.economicPressureRoll(`${candidate.type}|${selfId}|${otherId}|${currentTurn}`);
+      if (candidate.score < candidate.threshold || roll >= chance) continue;
+      if (!this.applyEconomicPressure(selfId, otherId, candidate.type)) continue;
+      const selfName = this.nationManager.getNation(selfId)?.name ?? selfId;
+      const targetName = this.nationManager.getNation(otherId)?.name ?? otherId;
+      const weaknessReason = candidate.type === 'embargo' && warTooRisky
+        ? '; military comparison weaker/high threat made war too risky'
+        : '';
+      console.debug(
+        `[EconomicPressureAI] ${selfName} imposed ${ECONOMIC_PRESSURE_LABEL[candidate.type]} on ${targetName}: `
+        + `score ${candidate.score.toFixed(2)}, trust ${Math.round(relation.trust)}, hostility ${Math.round(relation.hostility)}${weaknessReason}.`,
+      );
+      return true;
+    }
+    return false;
+  }
+
+  private expireAIToAISanctions(sourceNationId: string, currentTurn: number): void {
+    const source = this.nationManager.getNation(sourceNationId);
+    if (!source || this.isHumanNation(sourceNationId)) return;
+    for (const record of this.diplomacyManager.getEconomicPressureAgainst(sourceNationId)) {
+      const target = this.nationManager.getNation(record.targetNationId);
+      if (!target || this.isHumanNation(record.targetNationId)) continue;
+      if (currentTurn - record.imposedTurn < ECONOMIC_PRESSURE_AI_AI_DURATION_TURNS) continue;
+      if (!this.diplomacyManager.liftEconomicPressure(sourceNationId, record.targetNationId)) continue;
+      this.expiredPressureTurnByPair.set(`${sourceNationId}>${record.targetNationId}`, currentTurn);
+      console.debug(
+        `[EconomicPressure] ${source.name}'s ${ECONOMIC_PRESSURE_LABEL[record.type]} against ${target.name} `
+        + `expired after ${ECONOMIC_PRESSURE_AI_AI_DURATION_TURNS} turns.`,
+      );
     }
   }
 
@@ -552,4 +813,18 @@ function formatTolerance(value: number, label: string): string {
 
 function formatSignedBias(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+/** Stable FNV-1a roll keeps autorun reproducible without global RNG coupling. */
+function hashToUnit(seed: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
 }

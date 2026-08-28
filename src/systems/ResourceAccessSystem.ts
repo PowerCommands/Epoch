@@ -18,6 +18,17 @@ export interface ImportedDealsProvider {
 
 export type ResourceUsabilityPredicate = (nationId: string, resourceId: string) => boolean;
 export type ManufacturedResourceProvider = (nationId: string) => ReadonlyMap<string, number>;
+/**
+ * Returns true when a trade deal's imported resource must not count for the
+ * buyer — e.g. an active Economic Pressure Boycott/Embargo between the deal's
+ * two nations. Applied uniformly to natural and manufactured imports so there
+ * is no alternate resource path around the restriction.
+ */
+export type ImportBlockedPredicate = (
+  buyerNationId: string,
+  sellerNationId: string,
+  resourceId: string,
+) => boolean;
 
 /**
  * Owns the rules for who has access to which natural resources, taking into
@@ -28,6 +39,7 @@ export type ManufacturedResourceProvider = (nationId: string) => ReadonlyMap<str
 export class ResourceAccessSystem {
   private canUseResource: ResourceUsabilityPredicate = () => true;
   private getManufacturedResourceQuantities: ManufacturedResourceProvider = () => new Map();
+  private isImportBlocked: ImportBlockedPredicate = () => false;
   private resourceTileIndex: Map<string, Tile[]> | null = null;
 
   constructor(
@@ -41,6 +53,16 @@ export class ResourceAccessSystem {
 
   setManufacturedResourceProvider(provider: ManufacturedResourceProvider): void {
     this.getManufacturedResourceQuantities = provider;
+  }
+
+  /**
+   * Inject the Economic Pressure (or other) import block. Imports blocked by
+   * this predicate are excluded from a nation's accessible/imported resources
+   * while the underlying trade deals are left intact, so lifting the pressure
+   * restores access automatically.
+   */
+  setImportBlockedPredicate(predicate: ImportBlockedPredicate): void {
+    this.isImportBlocked = predicate;
   }
 
   invalidateResourceIndex(): void {
@@ -91,7 +113,8 @@ export class ResourceAccessSystem {
     if (!getManufacturedResourceById(resourceId) && !this.canUseResource(nationId, resourceId)) return 0;
     let count = 0;
     for (const deal of this.tradeDealSource.getAllDeals()) {
-      if (deal.buyerNationId === nationId && deal.resourceId === resourceId) count += 1;
+      if (deal.buyerNationId === nationId && deal.resourceId === resourceId
+        && !this.isImportBlocked(deal.buyerNationId, deal.sellerNationId, deal.resourceId)) count += 1;
     }
     return count;
   }
@@ -123,6 +146,7 @@ export class ResourceAccessSystem {
     const ids = new Set<string>();
     for (const deal of this.tradeDealSource.getAllDeals()) {
       if (deal.buyerNationId !== nationId) continue;
+      if (this.isImportBlocked(deal.buyerNationId, deal.sellerNationId, deal.resourceId)) continue;
       if (!getManufacturedResourceById(deal.resourceId) && !this.canUseResource(nationId, deal.resourceId)) continue;
       ids.add(deal.resourceId);
     }
@@ -292,7 +316,8 @@ export class ResourceAccessSystem {
   private getRawImportedResourceSourceCount(nationId: string, resourceId: string): number {
     let count = 0;
     for (const deal of this.tradeDealSource.getAllDeals()) {
-      if (deal.buyerNationId === nationId && deal.resourceId === resourceId) count += 1;
+      if (deal.buyerNationId === nationId && deal.resourceId === resourceId
+        && !this.isImportBlocked(deal.buyerNationId, deal.sellerNationId, deal.resourceId)) count += 1;
     }
     return count;
   }

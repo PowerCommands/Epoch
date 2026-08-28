@@ -49,6 +49,8 @@ export interface RightSidebarButtonRow {
 export interface ButtonGroupItem {
   text: string;
   disabled?: boolean;
+  disabledReason?: string;
+  selected?: boolean;
   accentColor?: number;
   onClick: () => void;
 }

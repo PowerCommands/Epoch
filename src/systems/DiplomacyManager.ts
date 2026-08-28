@@ -1,8 +1,42 @@
 import type { TurnManager } from './TurnManager';
 import { isBarbarianNation } from '../data/barbarians';
 import { COLONIALISM_CULTURE_NODE_ID } from '../data/cultureTree';
+import {
+  ECONOMIC_PRESSURE_DIPLOMATIC_MODIFIER,
+  ECONOMIC_PRESSURE_LABEL,
+  ECONOMIC_PRESSURE_LEVEL,
+  ECONOMIC_PRESSURE_PREREQUISITES,
+  strongerEconomicPressure,
+  type EconomicPressureType,
+} from '../data/economicPressure';
 
 export type DiplomacyState = 'WAR' | 'PEACE';
+
+/** A single directional Economic Pressure measure (source pressuring target). */
+export interface EconomicPressureRecord {
+  readonly sourceNationId: string;
+  readonly targetNationId: string;
+  readonly type: EconomicPressureType;
+  readonly imposedTurn: number;
+  /** Whether the one-time AI payment offer for this exact sanction instance was shown. */
+  readonly removalOfferPresented: boolean;
+}
+
+/** Blocked/allowed result with a reason, following existing eligibility patterns. */
+export interface EconomicPressureEligibility {
+  readonly ok: boolean;
+  readonly reason?: string;
+}
+
+export interface EconomicPressureChangedEvent {
+  readonly sourceNationId: string;
+  readonly targetNationId: string;
+  readonly previousType: EconomicPressureType | null;
+  readonly type: EconomicPressureType | null;
+  readonly imposedTurn: number | null;
+}
+
+type EconomicPressureChangedListener = (event: EconomicPressureChangedEvent) => void;
 
 /**
  * Open borders are now directional.
@@ -26,6 +60,17 @@ export interface DiplomacyRelation {
   embassyFromAToB: boolean;
   embassyFromBToA: boolean;
   tradeRelations: boolean;
+
+  // Directional Economic Pressure. A/B follow the sorted pairKey order (same as
+  // the other directional grants). Each side holds only its current effective
+  // measure (None → Tariffs → Boycott → Embargo) plus the turn it was imposed;
+  // the two directions are fully independent. null = no active pressure.
+  economicPressureFromAToB: EconomicPressureType | null;
+  economicPressureFromAToBTurn: number | null;
+  economicPressureFromAToBRemovalOfferPresented: boolean;
+  economicPressureFromBToA: EconomicPressureType | null;
+  economicPressureFromBToATurn: number | null;
+  economicPressureFromBToARemovalOfferPresented: boolean;
 
   trust: number;
   fear: number;
@@ -237,6 +282,12 @@ export function createDefaultRelation(): DiplomacyRelation {
     embassyFromAToB: false,
     embassyFromBToA: false,
     tradeRelations: false,
+    economicPressureFromAToB: null,
+    economicPressureFromAToBTurn: null,
+    economicPressureFromAToBRemovalOfferPresented: false,
+    economicPressureFromBToA: null,
+    economicPressureFromBToATurn: null,
+    economicPressureFromBToARemovalOfferPresented: false,
     trust: DEFAULT_TRUST,
     fear: DEFAULT_FEAR,
     hostility: DEFAULT_HOSTILITY,
@@ -281,6 +332,23 @@ export function normalizeRelation(partial: PartialDiplomacyRelationInput): Diplo
     embassyFromAToB: partial.embassyFromAToB ?? base.embassyFromAToB,
     embassyFromBToA: partial.embassyFromBToA ?? base.embassyFromBToA,
     tradeRelations: partial.tradeRelations ?? base.tradeRelations,
+    // Economic Pressure and war are mutually exclusive (war already severs the
+    // trade it would restrict), so a loaded WAR drops any stored pressure. Older
+    // saves without these fields default to no pressure.
+    economicPressureFromAToB: state === 'WAR' ? null : partial.economicPressureFromAToB ?? base.economicPressureFromAToB,
+    economicPressureFromAToBTurn: state === 'WAR' ? null : partial.economicPressureFromAToBTurn ?? base.economicPressureFromAToBTurn,
+    economicPressureFromAToBRemovalOfferPresented: state === 'WAR'
+      ? false
+      : partial.economicPressureFromAToB !== undefined
+        && partial.economicPressureFromAToB !== null
+        && partial.economicPressureFromAToBRemovalOfferPresented === true,
+    economicPressureFromBToA: state === 'WAR' ? null : partial.economicPressureFromBToA ?? base.economicPressureFromBToA,
+    economicPressureFromBToATurn: state === 'WAR' ? null : partial.economicPressureFromBToATurn ?? base.economicPressureFromBToATurn,
+    economicPressureFromBToARemovalOfferPresented: state === 'WAR'
+      ? false
+      : partial.economicPressureFromBToA !== undefined
+        && partial.economicPressureFromBToA !== null
+        && partial.economicPressureFromBToARemovalOfferPresented === true,
     trust: partial.trust ?? base.trust,
     fear: partial.fear ?? base.fear,
     hostility: partial.hostility ?? base.hostility,
@@ -331,6 +399,7 @@ export class DiplomacyManager {
   private readonly jointWarAgreementListeners: DiplomacyPairListener[] = [];
   private readonly exploitationRightsGrantedListeners: ExploitationRightsGrantedListener[] = [];
   private readonly exploitationRightsEndedListeners: ExploitationRightsEndedListener[] = [];
+  private readonly economicPressureChangedListeners: EconomicPressureChangedListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
@@ -512,6 +581,342 @@ export class DiplomacyManager {
     return rights;
   }
 
+  // ─── Economic Pressure ─────────────────────────────────────────────────────
+  // Directional, bilateral, escalating measures (None → Tariffs → Boycott →
+  // Embargo). State lives on the relation; economic systems consult it rather
+  // than having pressure permanently mutate their data.
+
+  /** Injected prerequisite check; wired to the research system by GameScene. */
+  private isTechnologyResearched: (nationId: string, techId: string) => boolean = () => true;
+
+  setEconomicPressureTechnologyChecker(fn: (nationId: string, techId: string) => boolean): void {
+    this.isTechnologyResearched = fn;
+  }
+
+  /** Whether `source` may currently impose `type` on `target`, with a reason if not. */
+  canImposeEconomicPressure(
+    sourceNationId: string,
+    targetNationId: string,
+    type: EconomicPressureType,
+  ): EconomicPressureEligibility {
+    if (sourceNationId === targetNationId) return { ok: false, reason: 'Cannot pressure your own nation' };
+    if (isBarbarianNation(sourceNationId) || isBarbarianNation(targetNationId)) {
+      return { ok: false, reason: 'Barbarians have no economy to pressure' };
+    }
+    if (this.getState(sourceNationId, targetNationId) === 'WAR') {
+      return { ok: false, reason: 'Cannot impose Economic Pressure during war' };
+    }
+    const prerequisite = ECONOMIC_PRESSURE_PREREQUISITES[type];
+    const unlocked = prerequisite.kind === 'culture'
+      ? this.hasCultureUnlock(sourceNationId, prerequisite.id)
+      : this.isTechnologyResearched(sourceNationId, prerequisite.id);
+    if (!unlocked) {
+      return { ok: false, reason: `Requires ${ECONOMIC_PRESSURE_LABEL[type]} prerequisite (${prerequisite.id})` };
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Set the current effective measure `source` imposes on `target` to `type`.
+   * This replaces any existing measure in that direction (escalating or lowering)
+   * — a single effective level per directional pair, never stacked. Re-imposing
+   * the same measure is a harmless no-op. Returns false if ineligible or a no-op.
+   */
+  imposeEconomicPressure(
+    sourceNationId: string,
+    targetNationId: string,
+    type: EconomicPressureType,
+  ): boolean {
+    if (!this.canImposeEconomicPressure(sourceNationId, targetNationId, type).ok) return false;
+    const key = this.pairKey(sourceNationId, targetNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    const existing = this.readEconomicPressure(sourceNationId, targetNationId, current);
+    if (existing === type) return false; // already at this exact measure
+    const next = { ...current };
+    const turn = this.turnManager?.getCurrentRound() ?? 0;
+    this.writeEconomicPressure(sourceNationId, targetNationId, next, type, turn);
+    this.relations.set(key, next);
+    const verb = existing === null
+      ? 'imposed'
+      : ECONOMIC_PRESSURE_LEVEL[type] > ECONOMIC_PRESSURE_LEVEL[existing] ? 'escalated to' : 'lowered to';
+    this.logEconomicPressure(`${sourceNationId} ${verb} ${ECONOMIC_PRESSURE_LABEL[type]} on ${targetNationId}`, turn);
+    this.emitEconomicPressureChanged(sourceNationId, targetNationId, existing, type, turn);
+    this.notifyChanged(sourceNationId, targetNationId);
+    return true;
+  }
+
+  /** Canonical action application, including the one-hop Tariff retaliation rule. */
+  imposeEconomicPressureAction(
+    sourceNationId: string,
+    targetNationId: string,
+    type: EconomicPressureType,
+  ): { imposed: boolean; reciprocalTariffsCreated: boolean } {
+    const imposed = this.imposeEconomicPressure(sourceNationId, targetNationId, type);
+    const reciprocalTariffsCreated = imposed && type === 'tariffs'
+      ? this.imposeReciprocalTariffs(targetNationId, sourceNationId)
+      : false;
+    return { imposed, reciprocalTariffsCreated };
+  }
+
+  /**
+   * Automatic, non-strategic Tariff retaliation used by Human Audience actions.
+   * It bypasses the retaliator's technology prerequisite, never replaces an
+   * existing (possibly stronger) reverse sanction, and still uses canonical
+   * directional state plus diagnostics.
+   */
+  imposeReciprocalTariffs(sourceNationId: string, targetNationId: string): boolean {
+    if (
+      sourceNationId === targetNationId
+      || isBarbarianNation(sourceNationId)
+      || isBarbarianNation(targetNationId)
+      || this.getState(sourceNationId, targetNationId) === 'WAR'
+    ) return false;
+    const key = this.pairKey(sourceNationId, targetNationId);
+    const current = this.relations.get(key) ?? createDefaultRelation();
+    if (this.readEconomicPressure(sourceNationId, targetNationId, current) !== null) return false;
+    const next = { ...current };
+    const turn = this.turnManager?.getCurrentRound() ?? 0;
+    this.writeEconomicPressure(sourceNationId, targetNationId, next, 'tariffs', turn);
+    this.relations.set(key, next);
+    this.logEconomicPressure(`${sourceNationId} automatically retaliated with Tariffs on ${targetNationId}`, turn);
+    this.emitEconomicPressureChanged(sourceNationId, targetNationId, null, 'tariffs', turn);
+    this.notifyChanged(sourceNationId, targetNationId);
+    return true;
+  }
+
+  /** Remove the measure `source` imposes on `target`. Missing measures are harmless. */
+  liftEconomicPressure(sourceNationId: string, targetNationId: string): boolean {
+    if (sourceNationId === targetNationId) return false;
+    const key = this.pairKey(sourceNationId, targetNationId);
+    const current = this.relations.get(key);
+    if (!current) return false;
+    const existing = this.readEconomicPressure(sourceNationId, targetNationId, current);
+    if (existing === null) return false;
+    const next = { ...current };
+    this.writeEconomicPressure(sourceNationId, targetNationId, next, null, null);
+    this.relations.set(key, next);
+    const turn = this.turnManager?.getCurrentRound() ?? 0;
+    this.logEconomicPressure(`${sourceNationId} lifted ${ECONOMIC_PRESSURE_LABEL[existing]} on ${targetNationId}`, turn);
+    this.emitEconomicPressureChanged(sourceNationId, targetNationId, existing, null, null);
+    this.notifyChanged(sourceNationId, targetNationId);
+    return true;
+  }
+
+  /** The measure `source` currently imposes on `target`, or null. */
+  getEconomicPressure(sourceNationId: string, targetNationId: string): EconomicPressureType | null {
+    if (sourceNationId === targetNationId) return null;
+    const relation = this.relations.get(this.pairKey(sourceNationId, targetNationId));
+    return relation ? this.readEconomicPressure(sourceNationId, targetNationId, relation) : null;
+  }
+
+  /** Full record (with imposed turn) for the measure `source` imposes on `target`. */
+  getEconomicPressureRecord(sourceNationId: string, targetNationId: string): EconomicPressureRecord | null {
+    if (sourceNationId === targetNationId) return null;
+    const relation = this.relations.get(this.pairKey(sourceNationId, targetNationId));
+    if (!relation) return null;
+    const type = this.readEconomicPressure(sourceNationId, targetNationId, relation);
+    if (type === null) return null;
+    return {
+      sourceNationId,
+      targetNationId,
+      type,
+      imposedTurn: this.readEconomicPressureTurn(sourceNationId, targetNationId, relation) ?? 0,
+      removalOfferPresented: this.readEconomicPressureRemovalOfferPresented(
+        sourceNationId,
+        targetNationId,
+        relation,
+      ),
+    };
+  }
+
+  /** Mark the one automatic removal offer for an unchanged sanction instance as presented. */
+  markEconomicPressureRemovalOfferPresented(
+    sourceNationId: string,
+    targetNationId: string,
+    type: EconomicPressureType,
+    imposedTurn: number,
+  ): boolean {
+    const key = this.pairKey(sourceNationId, targetNationId);
+    const current = this.relations.get(key);
+    if (!current
+      || this.readEconomicPressure(sourceNationId, targetNationId, current) !== type
+      || this.readEconomicPressureTurn(sourceNationId, targetNationId, current) !== imposedTurn
+      || this.readEconomicPressureRemovalOfferPresented(sourceNationId, targetNationId, current)) return false;
+    const next = { ...current };
+    this.writeEconomicPressureRemovalOfferPresented(sourceNationId, targetNationId, next, true);
+    this.relations.set(key, next);
+    this.notifyChanged(sourceNationId, targetNationId);
+    return true;
+  }
+
+  /** True if `source` imposes any pressure on `target`, or exactly `type` when given. */
+  hasEconomicPressure(sourceNationId: string, targetNationId: string, type?: EconomicPressureType): boolean {
+    const current = this.getEconomicPressure(sourceNationId, targetNationId);
+    return type === undefined ? current !== null : current === type;
+  }
+
+  /** Every measure `sourceNationId` imposes on other nations. */
+  getEconomicPressureAgainst(sourceNationId: string): EconomicPressureRecord[] {
+    const records: EconomicPressureRecord[] = [];
+    for (const { keys: [a, b] } of this.getAllStates()) {
+      const other = sourceNationId === a ? b : sourceNationId === b ? a : null;
+      if (other === null) continue;
+      const record = this.getEconomicPressureRecord(sourceNationId, other);
+      if (record) records.push(record);
+    }
+    return records;
+  }
+
+  /** Every measure imposed on `targetNationId` by other nations. */
+  getEconomicPressureTargeting(targetNationId: string): EconomicPressureRecord[] {
+    const records: EconomicPressureRecord[] = [];
+    for (const { keys: [a, b] } of this.getAllStates()) {
+      const other = targetNationId === a ? b : targetNationId === b ? a : null;
+      if (other === null) continue;
+      const record = this.getEconomicPressureRecord(other, targetNationId);
+      if (record) records.push(record);
+    }
+    return records;
+  }
+
+  /**
+   * The strongest measure in either direction. Used for pair-level display,
+   * diplomatic modifiers, and the bilateral Embargo rule. Directional Boycott
+   * enforcement intentionally consults each direction separately.
+   */
+  getEffectiveEconomicPressure(a: string, b: string): EconomicPressureType | null {
+    return strongerEconomicPressure(this.getEconomicPressure(a, b), this.getEconomicPressure(b, a));
+  }
+
+  /**
+   * Compatibility query for economic consumers. Sanctions alter which deals
+   * may exist, never the value of a surviving deal; Tariffs are symbolic.
+   */
+  getEconomicPressureTradeValueMultiplier(a: string, b: string): number {
+    void a;
+    void b;
+    return 1;
+  }
+
+  /**
+   * Whether `buyer` may import from `seller`. A Boycott is directional: only
+   * the boycotting nation's purchases are blocked. An Embargo blocks both
+   * directions if either nation imposed it. Tariffs never block exchange.
+   */
+  isEconomicExchangeBlocked(buyer: string, seller: string, resourceCategory: string): boolean {
+    void resourceCategory; // all natural and manufactured resource paths obey the same rule
+    const buyerPressure = this.getEconomicPressure(buyer, seller);
+    const sellerPressure = this.getEconomicPressure(seller, buyer);
+    return buyerPressure === 'boycott'
+      || buyerPressure === 'embargo'
+      || sellerPressure === 'embargo';
+  }
+
+  /** The single strongest active sanction modifier between this pair. */
+  getEconomicPressureDiplomaticModifier(a: string, b: string): { hostility: number; affinity: number } {
+    const level = this.getEffectiveEconomicPressure(a, b);
+    return level === null
+      ? { hostility: 0, affinity: 0 }
+      : ECONOMIC_PRESSURE_DIPLOMATIC_MODIFIER[level];
+  }
+
+  private readEconomicPressure(
+    sourceNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+  ): EconomicPressureType | null {
+    const [a, b] = this.sortedPair(sourceNationId, targetNationId);
+    if (sourceNationId === a && targetNationId === b) return relation.economicPressureFromAToB;
+    if (sourceNationId === b && targetNationId === a) return relation.economicPressureFromBToA;
+    return null;
+  }
+
+  private readEconomicPressureTurn(
+    sourceNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+  ): number | null {
+    const [a, b] = this.sortedPair(sourceNationId, targetNationId);
+    if (sourceNationId === a && targetNationId === b) return relation.economicPressureFromAToBTurn;
+    if (sourceNationId === b && targetNationId === a) return relation.economicPressureFromBToATurn;
+    return null;
+  }
+
+  private writeEconomicPressure(
+    sourceNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+    type: EconomicPressureType | null,
+    turn: number | null,
+  ): void {
+    const [a, b] = this.sortedPair(sourceNationId, targetNationId);
+    if (sourceNationId === a && targetNationId === b) {
+      relation.economicPressureFromAToB = type;
+      relation.economicPressureFromAToBTurn = type === null ? null : turn;
+      relation.economicPressureFromAToBRemovalOfferPresented = false;
+    } else if (sourceNationId === b && targetNationId === a) {
+      relation.economicPressureFromBToA = type;
+      relation.economicPressureFromBToATurn = type === null ? null : turn;
+      relation.economicPressureFromBToARemovalOfferPresented = false;
+    }
+  }
+
+  private readEconomicPressureRemovalOfferPresented(
+    sourceNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+  ): boolean {
+    const [a, b] = this.sortedPair(sourceNationId, targetNationId);
+    if (sourceNationId === a && targetNationId === b) {
+      return relation.economicPressureFromAToBRemovalOfferPresented;
+    }
+    if (sourceNationId === b && targetNationId === a) {
+      return relation.economicPressureFromBToARemovalOfferPresented;
+    }
+    return false;
+  }
+
+  private writeEconomicPressureRemovalOfferPresented(
+    sourceNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+    presented: boolean,
+  ): void {
+    const [a, b] = this.sortedPair(sourceNationId, targetNationId);
+    if (sourceNationId === a && targetNationId === b) {
+      relation.economicPressureFromAToBRemovalOfferPresented = presented;
+    } else if (sourceNationId === b && targetNationId === a) {
+      relation.economicPressureFromBToARemovalOfferPresented = presented;
+    }
+  }
+
+  private logEconomicPressureClearedByWar(a: string, b: string, previous: DiplomacyRelation): void {
+    const turn = this.turnManager?.getCurrentRound() ?? 0;
+    if (previous.economicPressureFromAToB !== null) {
+      const [x, y] = this.sortedPair(a, b);
+      this.logEconomicPressure(`${x}'s ${ECONOMIC_PRESSURE_LABEL[previous.economicPressureFromAToB]} on ${y} removed by war`, turn);
+    }
+    if (previous.economicPressureFromBToA !== null) {
+      const [x, y] = this.sortedPair(a, b);
+      this.logEconomicPressure(`${y}'s ${ECONOMIC_PRESSURE_LABEL[previous.economicPressureFromBToA]} on ${x} removed by war`, turn);
+    }
+  }
+
+  private logEconomicPressure(message: string, turn: number): void {
+    console.debug(`[EconomicPressure] ${message} (turn ${turn})`);
+  }
+
+  private emitEconomicPressureChanged(
+    sourceNationId: string,
+    targetNationId: string,
+    previousType: EconomicPressureType | null,
+    type: EconomicPressureType | null,
+    imposedTurn: number | null,
+  ): void {
+    const event = { sourceNationId, targetNationId, previousType, type, imposedTurn };
+    for (const listener of this.economicPressureChangedListeners) listener(event);
+  }
+
   declareWar(aggressorId: string, targetId: string): boolean {
     return this.transitionToWar(aggressorId, targetId, false, { source: 'standard' });
   }
@@ -554,6 +959,14 @@ export class DiplomacyManager {
       embassyFromAToB: false,
       embassyFromBToA: false,
       tradeRelations: false,
+      // War supersedes Economic Pressure: the blocked trade is already gone, so
+      // clear both directions rather than leaving contradictory stale records.
+      economicPressureFromAToB: null,
+      economicPressureFromAToBTurn: null,
+      economicPressureFromAToBRemovalOfferPresented: false,
+      economicPressureFromBToA: null,
+      economicPressureFromBToATurn: null,
+      economicPressureFromBToARemovalOfferPresented: false,
       // If TurnManager is unavailable, normalizeRelation falls back to turn 0
       // for WAR so peace-duration logic still advances instead of freezing.
       lastWarDeclarationTurn:
@@ -578,6 +991,7 @@ export class DiplomacyManager {
     // that were actually live so History/Chronicle can record the termination.
     // (Save restoration never runs through here, so it never emits these.)
     if (previous) this.emitExploitationRightsEndedByWar(aggressorId, targetId, previous);
+    if (previous) this.logEconomicPressureClearedByWar(aggressorId, targetId, previous);
     for (const cb of this.warDeclaredListeners) cb(aggressorId, targetId, metadata);
     this.memoryHook?.onDeclareWar(aggressorId, targetId);
     this.notifyChanged(aggressorId, targetId);
@@ -830,6 +1244,9 @@ export class DiplomacyManager {
       return { ok: false, reason: 'Requires both nations to have Foreign Trade culture.' };
     }
     if (this.getState(nationAId, nationBId) === 'WAR') return { ok: false, reason: 'Unavailable during war.' };
+    if (this.getEffectiveEconomicPressure(nationAId, nationBId) === 'embargo') {
+      return { ok: false, reason: 'Unavailable while an Embargo is active.' };
+    }
     if (!this.hasMutualEmbassies(nationAId, nationBId)) return { ok: false, reason: 'Requires mutual embassies.' };
     if (this.hasTradeRelations(nationAId, nationBId)) return { ok: false, reason: 'Trade Relations already active.' };
     return { ok: true };
@@ -839,7 +1256,12 @@ export class DiplomacyManager {
     if (nationAId === nationBId) return false;
     const key = this.pairKey(nationAId, nationBId);
     const current = this.relations.get(key) ?? createDefaultRelation();
-    if (current.state === 'WAR' || current.tradeRelations || !this.hasMutualEmbassies(nationAId, nationBId)) return false;
+    if (
+      current.state === 'WAR'
+      || current.tradeRelations
+      || !this.hasMutualEmbassies(nationAId, nationBId)
+      || this.getEffectiveEconomicPressure(nationAId, nationBId) === 'embargo'
+    ) return false;
     const next: DiplomacyRelation = {
       ...current,
       tradeRelations: true,
@@ -922,6 +1344,11 @@ export class DiplomacyManager {
     this.warDeclaredListeners.push(callback);
   }
 
+  /** Fired for explicit directional sanction changes (not passive save restore). */
+  onEconomicPressureChanged(callback: EconomicPressureChangedListener): void {
+    this.economicPressureChangedListeners.push(callback);
+  }
+
   /** Fired whenever a new directional exploitation right is granted (any source). */
   onExploitationRightsGranted(callback: ExploitationRightsGrantedListener): void {
     this.exploitationRightsGrantedListeners.push(callback);
@@ -999,6 +1426,10 @@ export class DiplomacyManager {
         relation.embassyFromAToB === defaults.embassyFromAToB &&
         relation.embassyFromBToA === defaults.embassyFromBToA &&
         relation.tradeRelations === defaults.tradeRelations &&
+        relation.economicPressureFromAToB === defaults.economicPressureFromAToB &&
+        relation.economicPressureFromAToBRemovalOfferPresented === defaults.economicPressureFromAToBRemovalOfferPresented &&
+        relation.economicPressureFromBToA === defaults.economicPressureFromBToA &&
+        relation.economicPressureFromBToARemovalOfferPresented === defaults.economicPressureFromBToARemovalOfferPresented &&
         relation.trust === defaults.trust &&
         relation.fear === defaults.fear &&
         relation.hostility === defaults.hostility &&

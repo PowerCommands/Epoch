@@ -52,19 +52,25 @@ export class DiplomaticEvaluationSystem {
    */
   evaluateRelation(viewerNationId: string, targetNationId: string): DiplomaticEvaluationResult {
     const relation = this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    const pressure = this.diplomacyManager.getEconomicPressureDiplomaticModifier(viewerNationId, targetNationId);
     const sourceIdeology = getLeaderIdeologyByNationId(viewerNationId);
     const targetIdeology = getLeaderIdeologyByNationId(targetNationId);
     const ideologyCompatibility = getIdeologyCompatibility(sourceIdeology.id, targetIdeology.id);
     const ideologyCompatibilityLabel = describeIdeologyCompatibility(ideologyCompatibility);
     const memoryAttitude = this.evaluateMemoryAttitude(viewerNationId, targetNationId);
-    const attitude = applyIdeologyAttitudeNudge(memoryAttitude, relation, ideologyCompatibility);
+    const effectiveRelation = {
+      ...relation,
+      hostility: Math.min(100, relation.hostility + pressure.hostility),
+      affinity: Math.max(-100, relation.affinity + pressure.affinity),
+    };
+    const attitude = applyIdeologyAttitudeNudge(memoryAttitude, effectiveRelation, ideologyCompatibility);
 
     return {
       attitude,
       trust: relation.trust,
       fear: relation.fear,
-      hostility: relation.hostility,
-      affinity: relation.affinity,
+      hostility: effectiveRelation.hostility,
+      affinity: effectiveRelation.affinity,
       ideologyCompatibility,
       ideologyCompatibilityLabel,
       sourceIdeologyName: sourceIdeology.name,
@@ -88,23 +94,26 @@ export class DiplomaticEvaluationSystem {
     if (viewerNationId === targetNationId) return 'neutral';
 
     const relation = this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    const pressure = this.diplomacyManager.getEconomicPressureDiplomaticModifier(viewerNationId, targetNationId);
+    const hostility = Math.min(100, relation.hostility + pressure.hostility);
+    const affinity = Math.max(-100, relation.affinity + pressure.affinity);
     // The viewer's covert personality scales how strongly suspicion colours its
     // attitude (a paranoid nation turns hostile on far less suspicion).
     const effectiveSuspicion = relation.suspicion * this.getPersonality(viewerNationId).suspicionToWar;
 
     if (relation.fear >= HIGH_FEAR_THRESHOLD) return 'afraid';
     if (
-      relation.hostility >= HIGH_HOSTILITY_THRESHOLD ||
+      hostility >= HIGH_HOSTILITY_THRESHOLD ||
       relation.trust <= LOW_TRUST_THRESHOLD ||
       // Suspicion amplifies pre-existing hostility into a hostile attitude (it
       // never flips attitude on its own — real hostility must already exist).
-      suspicionAmplifiesHostile(effectiveSuspicion, relation.hostility)
+      suspicionAmplifiesHostile(effectiveSuspicion, hostility)
     ) {
       return 'hostile';
     }
     if (
       relation.trust >= HIGH_TRUST_THRESHOLD &&
-      relation.affinity >= HIGH_AFFINITY_THRESHOLD &&
+      affinity >= HIGH_AFFINITY_THRESHOLD &&
       // A suspicious nation stays guarded (neutral) instead of friendly unless
       // trust is very high.
       !suspicionSuppressesFriendly(effectiveSuspicion, relation.trust)

@@ -13,6 +13,12 @@ import { ALL_WONDERS } from '../../data/wonders';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../../data/cities';
 import { CORPORATIONS } from '../../data/corporations';
 import { getManufacturedResourceById } from '../../data/manufacturedResources';
+import {
+  ECONOMIC_PRESSURE_LABEL,
+  ECONOMIC_PRESSURE_REMOVAL_PRICE,
+  ECONOMIC_PRESSURE_TYPES,
+  type EconomicPressureType,
+} from '../../data/economicPressure';
 import { getResourceDisplayName } from '../../data/resources';
 import {
   AEROSPACE_PART_PRODUCTION,
@@ -27,6 +33,7 @@ import type { CityManager } from '../../systems/CityManager';
 import type { CityDefenseSystem } from '../../systems/CityDefenseSystem';
 import type { CityTerritorySystem } from '../../systems/CityTerritorySystem';
 import type { DiplomacyManager } from '../../systems/DiplomacyManager';
+import { isEconomicPressureNegotiable } from '../../systems/diplomacy/EconomicPressureNegotiationService';
 import { MIN_WAR_TURNS_FOR_PEACE } from '../../systems/DiplomacyManager';
 import type { AllianceManager } from '../../systems/diplomacy/AllianceManager';
 import type { AllianceProposalContext } from '../../types/alliance';
@@ -1774,6 +1781,10 @@ export class RightSidebarPanelDataProvider {
     if (dm.isOpenBorderGrantedFrom(humanId, nationId)) rows.push(textRow('Open Borders granted'));
     if (dm.hasEmbassy(humanId, nationId)) rows.push(textRow('Embassy established'));
     if (dm.hasTradeRelations(humanId, nationId)) rows.push(textRow('Trade Relations active'));
+    const humanPressure = dm.getEconomicPressure(humanId, nationId);
+    const targetPressure = dm.getEconomicPressure(nationId, humanId);
+    rows.push(textRow(`Your sanction: ${humanPressure ? ECONOMIC_PRESSURE_LABEL[humanPressure] : 'None'}`));
+    if (targetPressure) rows.push(textRow(`Their sanction: ${ECONOMIC_PRESSURE_LABEL[targetPressure]}`));
     rows.push(...this.getExploitationRightsStatusRows(nationId));
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);
@@ -1841,20 +1852,47 @@ export class RightSidebarPanelDataProvider {
         nation?.color,
       ));
       if (!hasHumanEmbassy && embassyValidation.reason) rows.push(textRow(embassyValidation.reason, true));
-      rows.push(disabledReasonButtonRow(
-        hasTradeRelations ? 'Cancel Trade Relations' : 'Establish Trade Relations',
-        hasTradeRelations ? undefined : tradeValidation.reason,
+      if (!hasTradeRelations) {
+        rows.push(disabledReasonButtonRow(
+          'Establish Trade Relations',
+          tradeValidation.reason,
+          () => {
+            document.dispatchEvent(new CustomEvent('diplomacyAction', {
+              detail: { action: 'establishTradeRelations', targetNationId: nationId },
+            }));
+          },
+          nation?.color,
+        ));
+      }
+      if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
+
+      rows.push(textRow('Economic sanctions', false, true));
+      const currentPressure = dm.getEconomicPressure(humanId, nationId);
+      rows.push(buildEconomicPressureButtonGroup(dm, humanId, nationId, nation?.color, (type) => {
+        document.dispatchEvent(new CustomEvent('diplomacyAction', {
+          detail: { action: 'economicPressure', targetNationId: nationId, economicPressureType: type },
+        }));
+      }));
+      rows.push(textRow(
+        currentPressure
+          ? `${ECONOMIC_PRESSURE_LABEL[currentPressure]} active — select it again to lift.`
+          : 'No active sanction.',
+        true,
+      ));
+      const removalRow = buildEconomicPressureRemovalRow(
+        dm,
+        humanId,
+        nationId,
+        this.getCurrentTurn?.() ?? 0,
+        this.nationManager.getResources(humanId).gold,
+        nation?.color,
         () => {
           document.dispatchEvent(new CustomEvent('diplomacyAction', {
-            detail: {
-              action: hasTradeRelations ? 'cancelTradeRelations' : 'establishTradeRelations',
-              targetNationId: nationId,
-            },
+            detail: { action: 'negotiateEconomicPressureRemoval', targetNationId: nationId },
           }));
         },
-        hasTradeRelations ? 0xb86767 : nation?.color,
-      ));
-      if (!hasTradeRelations && tradeValidation.reason) rows.push(textRow(tradeValidation.reason, true));
+      );
+      if (removalRow) rows.push(removalRow);
       // Exchange Maps: one-time intelligence sharing. Tied directly to Writing —
       // it only requires that the human knows Writing and the two nations have met.
       // AI acceptance (handled elsewhere) still depends on attitude.
@@ -2846,6 +2884,55 @@ function disabledReasonButtonRow(
 
 function progressRow(label: string, current: number, max: number): RightSidebarRow {
   return { kind: 'progress', label, current, max };
+}
+
+/** Pure row builder used by the Audience and focused UI eligibility tests. */
+export function buildEconomicPressureButtonGroup(
+  diplomacy: DiplomacyManager,
+  humanNationId: string,
+  targetNationId: string,
+  accentColor: number | undefined,
+  onSelect: (type: EconomicPressureType) => void,
+): RightSidebarRow {
+  const current = diplomacy.getEconomicPressure(humanNationId, targetNationId);
+  return {
+    kind: 'buttonGroup',
+    buttons: ECONOMIC_PRESSURE_TYPES.map((type) => {
+      const selected = current === type;
+      const eligibility = diplomacy.canImposeEconomicPressure(humanNationId, targetNationId, type);
+      return {
+        text: ECONOMIC_PRESSURE_LABEL[type],
+        selected,
+        disabled: !selected && !eligibility.ok,
+        disabledReason: !selected && !eligibility.ok ? eligibility.reason : undefined,
+        accentColor: selected ? 0xf4d06f : accentColor,
+        onClick: () => onSelect(type),
+      };
+    }),
+  };
+}
+
+/** Pure Audience row builder for paying an AI to remove its mature sanction. */
+export function buildEconomicPressureRemovalRow(
+  diplomacy: DiplomacyManager,
+  humanNationId: string,
+  aiNationId: string,
+  currentTurn: number,
+  humanGold: number,
+  accentColor: number | undefined,
+  onSelect: () => void,
+): RightSidebarRow | null {
+  const incoming = diplomacy.getEconomicPressureRecord(aiNationId, humanNationId);
+  if (!isEconomicPressureNegotiable(incoming, currentTurn)) return null;
+  const canAfford = humanGold >= ECONOMIC_PRESSURE_REMOVAL_PRICE;
+  return disabledReasonButtonRow(
+    `Negotiate removal — ${ECONOMIC_PRESSURE_REMOVAL_PRICE} gold`,
+    canAfford
+      ? undefined
+      : `Insufficient gold (have ${Math.floor(humanGold)}, need ${ECONOMIC_PRESSURE_REMOVAL_PRICE}).`,
+    onSelect,
+    accentColor,
+  );
 }
 
 function getProducibleName(item: Producible): string {

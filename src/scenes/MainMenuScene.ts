@@ -48,6 +48,10 @@ import {
   type RuntimeScenarioNation,
   type ScenarioNationReplacementMap,
 } from '../utils/scenarioNationReplacements';
+import {
+  RESOURCE_ABUNDANCE_OPTIONS,
+  defaultResourceAbundanceForScenario,
+} from './setup/resourceAbundanceSetup';
 
 /** Sentinel value for the "Load scenario…" entry in the scenario dropdown. */
 const LOAD_SCENARIO_OPTION_VALUE = '__load_scenario__';
@@ -189,6 +193,9 @@ export class MainMenuScene extends Phaser.Scene {
     const gameSpeedOptions = GAME_SPEEDS
       .map(speed => `<option value="${speed.id}"${speed.id === DEFAULT_GAME_SPEED_ID ? ' selected' : ''}>${speed.name}</option>`)
       .join('');
+    const resourceAbundanceOptions = RESOURCE_ABUNDANCE_OPTIONS
+      .map(option => `<option value="${option.value}"${option.value === this.selectedResourceAbundance ? ' selected' : ''}>${option.label}</option>`)
+      .join('');
 
     return `
       <div class="mm-root" data-screen="landing">
@@ -267,10 +274,7 @@ export class MainMenuScene extends Phaser.Scene {
 
             <label class="mm-field-label" for="mm-resource-abundance-select">Resource Abundance</label>
             <select id="mm-resource-abundance-select" class="mm-select">
-              <option value="scarce">Scarce</option>
-              <option value="normal" selected>Normal</option>
-              <option value="abundant">Abundant</option>
-              <option value="scenario">Scenario Only</option>
+              ${resourceAbundanceOptions}
             </select>
 
             <label class="mm-field-label" for="mm-game-speed-select">Game Speed</label>
@@ -624,8 +628,20 @@ export class MainMenuScene extends Phaser.Scene {
     root?.setAttribute('data-screen', 'landing');
   }
 
+  /** Reset Resource Abundance to the default for the newly selected scenario. */
+  private applyDefaultResourceAbundanceForScenario(mapKey: string): void {
+    const isRandomScenario = this.generatedRandomScenario?.mapKey === mapKey;
+    this.selectedResourceAbundance = defaultResourceAbundanceForScenario(isRandomScenario);
+    const select = document.getElementById('mm-resource-abundance-select') as HTMLSelectElement | null;
+    if (select) select.value = this.selectedResourceAbundance;
+  }
+
   private onMapChanged(mapKey: string): void {
     this.currentMapKey = mapKey;
+    // Fresh default for the newly selected scenario: Random → Normal, authored →
+    // Scenario. Applied only here (a genuine scenario-selection point), so a
+    // player's explicit change persists until they switch scenarios again.
+    this.applyDefaultResourceAbundanceForScenario(mapKey);
     this.selectedNationId = null;
     this.scenarioNationReplacements.clear();
     this.scenarioNationCustomizations.clear();
