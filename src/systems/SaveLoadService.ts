@@ -196,6 +196,7 @@ export class SaveLoadService {
         currentCultureNodeId: nation.currentCultureNodeId,
         cultureProgress: nation.cultureProgress,
         settlersProduced: nation.settlersProduced,
+        aiVictoryFocus: nation.aiVictoryFocus ? { ...nation.aiVictoryFocus } : undefined,
         activePolicies: policySystem.getActivePolicyAssignments(nation.id),
         gold: res.gold,
         culture: res.culture,
@@ -790,6 +791,7 @@ export class SaveLoadService {
       nation.currentCultureNodeId = saved.currentCultureNodeId;
       nation.cultureProgress = saved.cultureProgress ?? 0;
       nation.settlersProduced = Math.max(0, Math.floor(saved.settlersProduced ?? 0));
+      nation.aiVictoryFocus = saved.aiVictoryFocus ? { ...saved.aiVictoryFocus } : undefined;
       nation.knownIslandTargets = saved.knownIslandTargets?.map((target) => ({ ...target }));
       nation.handledOverseasRegionNames = saved.handledOverseasRegionNames ? [...saved.handledOverseasRegionNames] : undefined;
 

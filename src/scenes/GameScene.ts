@@ -3109,6 +3109,7 @@ export class GameScene extends Phaser.Scene {
       productionPurchaseSystem,
       gamesOfNationsSystem,
       powerPlantSystem,
+      victorySystem,
     );
     aiSystem.setCultureSystem(cultureSystem);
     if (consolidationSystem) aiSystem.setConsolidationSystem(consolidationSystem);

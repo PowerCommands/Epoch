@@ -5,6 +5,7 @@ import type { AINationalAgendaId } from '../types/aiNationalAgenda';
 import type { CovertPersonalityId } from '../types/covertPersonality';
 import { DEFAULT_COVERT_PERSONALITY_ID } from '../data/covertPersonalities';
 import type { OverseasSettlementTarget } from '../types/ai/OverseasSettlementTarget';
+import type { AIVictoryFocusState } from '../types/aiVictoryFocus';
 
 export interface NationConfig {
   id: string;
@@ -24,6 +25,7 @@ export interface NationConfig {
   currentCultureNodeId?: string;
   cultureProgress?: number;
   settlersProduced?: number;
+  aiVictoryFocus?: AIVictoryFocusState;
 }
 
 /**
@@ -54,6 +56,7 @@ export class Nation {
   cultureProgress: number;
   /** Historical Settlers completed through city production. */
   settlersProduced: number;
+  aiVictoryFocus?: AIVictoryFocusState;
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
@@ -76,5 +79,6 @@ export class Nation {
     this.currentCultureNodeId = config.currentCultureNodeId;
     this.cultureProgress = config.cultureProgress ?? 0;
     this.settlersProduced = Math.max(0, Math.floor(config.settlersProduced ?? 0));
+    this.aiVictoryFocus = config.aiVictoryFocus ? { ...config.aiVictoryFocus } : undefined;
   }
 }

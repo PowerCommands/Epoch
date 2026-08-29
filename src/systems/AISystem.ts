@@ -184,6 +184,11 @@ import {
 } from './ai/AIPowerPlantPlanning';
 import type { ConsolidationSystem } from './ConsolidationSystem';
 import { ECONOMIC_DEVELOPMENT, calculateProjectGoldPerTurn } from '../data/projects';
+import type { VictorySystem } from './VictorySystem';
+import {
+  applyVictoryFocusProductionPriority,
+  evaluateAIVictoryFocus,
+} from './ai/AIVictoryFocus';
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -565,6 +570,7 @@ export class AISystem {
   private readonly cityFocusSystem: CityFocusSystem;
   private readonly obsoleteMilitaryStarvationLogKeys = new Set<string>();
   private readonly aerospaceEligibilityLoggedNationIds = new Set<string>();
+  private readonly victoryFocusPriorityLoggedKeys = new Set<string>();
   private readonly aerospaceManufacturingStateByNation = new Map<string, string>();
   private readonly spaceRaceFactoryPriorityStateByNation = new Map<string, string>();
   private readonly doctrineEvaluator: AIMilitaryDoctrineEvaluator;
@@ -625,6 +631,7 @@ export class AISystem {
     private readonly productionPurchaseSystem?: ProductionPurchaseSystem,
     private readonly gamesOfNationsSystem?: GamesOfNationsSystem,
     private readonly powerPlantSystem?: PowerPlantSystem,
+    private readonly victorySystem?: Pick<VictorySystem, 'getScienceVictoryProgress'>,
   ) {
     this.unitManager = unitManager;
     this.cityManager = cityManager;
@@ -717,6 +724,7 @@ export class AISystem {
   }
 
   runTurn(nationId: string): void {
+    this.updateVictoryFocus(nationId);
     this.refreshEmergencyCityThreats(nationId);
     this.cityFocusSystem.updateFocusForNation(nationId);
     this.updateStrategyForNation(nationId);
@@ -748,6 +756,85 @@ export class AISystem {
         this.formatLog(nationId, `AI goals: ${nation.aiGoals.map((g) => `${g.type}(${g.remainingTurns})`).join(', ')}`),
       );
     }
+  }
+
+  private updateVictoryFocus(nationId: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation || !this.victorySystem) return;
+
+    const progress = this.victorySystem.getScienceVictoryProgress(nationId);
+    const evaluation = evaluateAIVictoryFocus(
+      nation.aiVictoryFocus,
+      this.scienceVictoryEnabled,
+      progress,
+      this.turnManager.getCurrentRound(),
+    );
+    nation.aiVictoryFocus = evaluation.focus;
+
+    if (evaluation.transition === 'entered') {
+      this.logVictoryFocus(
+        nationId,
+        `${nation.name} entered Science Victory Focus: ${progress.fulfilledMilestones}/4 milestones completed.`,
+      );
+      this.logVictoryFocusAvailabilityIfBlocked(nationId);
+    } else if (evaluation.transition === 'objectiveAdvanced') {
+      this.logVictoryFocus(
+        nationId,
+        `${nation.name} Science focus objective advanced: AeroSpace Industries founded globally, prioritizing Aerospace Parts.`,
+      );
+    } else if (evaluation.transition === 'exited') {
+      const reason = evaluation.reason === 'scienceVictoryAchieved'
+        ? 'Science Victory achieved'
+        : evaluation.reason === 'scienceVictoryDisabled'
+          ? 'Science Victory disabled'
+          : 'victory path substantially invalidated';
+      this.logVictoryFocus(nationId, `${nation.name} left Science Victory Focus: ${reason}.`);
+    }
+  }
+
+  private logVictoryFocusAvailabilityIfBlocked(nationId: string): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (nation?.aiVictoryFocus?.objective !== 'foundAerospaceIndustries' || !this.corporationSystem) return;
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    const eligible = cities.filter((city) => (
+      this.corporationSystem?.canCityProduceCorporation(city, AEROSPACE_INDUSTRIES_ID) === true
+    ));
+    if (eligible.some((city) => this.productionSystem.getProduction(city.id) === undefined)) return;
+    const blocker = eligible.length > 0
+      ? 'all eligible cities are occupied by existing production'
+      : 'no city satisfies the normal corporation requirements';
+    this.logVictoryFocus(
+      nationId,
+      `${nation?.name ?? nationId} cannot currently consider AeroSpace Industries: ${blocker}.`,
+    );
+  }
+
+  private applyVictoryFocusPriority(
+    nationId: string,
+    candidate: AIProductionCandidate,
+    urgentOverride: boolean,
+  ): AIProductionCandidate {
+    const nation = this.nationManager.getNation(nationId);
+    const result = applyVictoryFocusProductionPriority(candidate, nation?.aiVictoryFocus, urgentOverride);
+    if (result.strategicBonus <= 0) return result.candidate;
+
+    const key = `${nationId}:${nation?.aiVictoryFocus?.objective}`;
+    if (!this.victoryFocusPriorityLoggedKeys.has(key)) {
+      this.victoryFocusPriorityLoggedKeys.add(key);
+      const itemName = result.candidate.item.kind === 'corporation'
+        ? result.candidate.item.corporationType.name
+        : 'Aerospace Parts';
+      this.logVictoryFocus(
+        nationId,
+        `${nation?.name ?? nationId} Science focus boosted ${itemName}: base=${Math.round(candidate.baseScore)} strategic=+${Math.round(result.strategicBonus)} final=${Math.round(result.candidate.baseScore)}.`,
+      );
+    }
+    return result.candidate;
+  }
+
+  private logVictoryFocus(nationId: string, message: string): void {
+    console.log(`[VictoryFocus] ${message}`);
+    this.logStrategicEvent?.(nationId, `[VictoryFocus] ${message}`);
   }
 
   getEmergencyCityThreats(nationId: string): readonly EmergencyCityThreat[] {
@@ -5419,7 +5506,11 @@ export class AISystem {
         corporationSystem: this.corporationSystem,
         productionSystem: this.productionSystem,
         scienceVictoryEnabled: this.scienceVictoryEnabled,
-      });
+      }).map((candidate) => this.applyVictoryFocusPriority(
+        nationId,
+        candidate,
+        acuteDefenderNeeded || (powerPlantPlan?.score ?? 0) >= 100,
+      ));
       candidates.push(...corporationCandidates);
 
       const aerospace = corporationCandidates.find((candidate) => (
@@ -5453,7 +5544,13 @@ export class AISystem {
         scienceVictoryEnabled: this.scienceVictoryEnabled,
         requiredAerospaceParts: this.requiredAerospaceParts,
       });
-      if (aerospacePartCandidate) candidates.push(aerospacePartCandidate);
+      if (aerospacePartCandidate) {
+        candidates.push(this.applyVictoryFocusPriority(
+          nationId,
+          aerospacePartCandidate,
+          acuteDefenderNeeded || (powerPlantPlan?.score ?? 0) >= 100,
+        ));
+      }
 
       if (this.scienceVictoryEnabled && nationCities[0]?.id === city.id) {
         const eligibleCity = nationCities.find((ownedCity) => this.aerospacePartSystem?.canCityProduce(ownedCity));

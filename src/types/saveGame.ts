@@ -21,6 +21,7 @@ import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScen
 import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
 import type { PeaceProposal } from '../systems/DiplomacyManager';
 import type { SavedJointWarEscalation } from './jointWar';
+import type { AIVictoryFocusState } from './aiVictoryFocus';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -98,6 +99,8 @@ export interface SavedNation {
   cultureProgress?: number;
   /** Settlers historically completed through production. Optional for older saves. */
   settlersProduced?: number;
+  /** Active AI endgame strategy. Optional for saves predating Victory Focus. */
+  aiVictoryFocus?: AIVictoryFocusState;
   activePolicies?: ActivePolicyAssignment[];
   gold: number;
   culture: number;

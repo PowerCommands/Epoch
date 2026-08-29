@@ -57,3 +57,8 @@ src/
 ```bash
 build https://github.com/PowerCommands/Epoch.git "epoch" --publish --platform=linux/amd64
 ```
+
+## Autorun test example
+```bash
+npx tsx tools/autorun-series.ts --scenario map_world --max-turns 1000 --block-size 100 --timeout-ms 10800000 --output autorun-output/calendar-brake-test
+```
