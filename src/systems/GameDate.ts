@@ -17,13 +17,13 @@ export const YEAR_PROGRESS_DECAY = 0.026225;
 /**
  * Modern-era Auto calendar cadence. Once the normal Auto progression first reaches
  * astronomical year 1900, the calendar stops using the dynamic yearly progression
- * and instead advances a fixed six months per turn. Displayed dates then alternate
- * cleanly between January 1 and July 1 (January 1900, July 1900, January 1901, …).
+ * and instead advances a fixed three months per turn. Displayed dates then advance
+ * quarterly (January 1900, April 1900, July 1900, October 1900, January 1901, …).
  * Only the normal `auto` progression is affected — `staticYear`, `monthly`, and the
  * temporary monthly World War progression are untouched.
  */
 export const AUTO_MODERN_CADENCE_ASTRO_YEAR = 1900;
-export const AUTO_MODERN_CADENCE_MONTHS_PER_TURN = 6;
+export const AUTO_MODERN_CADENCE_MONTHS_PER_TURN = 3;
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -48,7 +48,7 @@ export function metaToAstroStart(meta: ResolvedScenarioMeta): number {
 
 /**
  * First Auto round (1-based) whose unslowed progression reaches astronomical year
- * 1900 — the round where the fixed six-month modern cadence begins. The caller
+ * 1900 — the round where the fixed quarterly modern cadence begins. The caller
  * passes an upper bound already known to sit at/after the threshold; because the
  * year progression is monotonic non-decreasing this is a plain binary search.
  */
@@ -73,7 +73,7 @@ function autoModernCadenceStartRound(
 /**
  * Absolute month ordinal for the normal Auto calendar at a given round. Before the
  * 1900 threshold this is January of the dynamically-progressed year (unchanged
- * legacy behavior); from the threshold round onward it advances a fixed six months
+ * legacy behavior); from the threshold round onward it advances a fixed three months
  * per turn anchored at January 1900. Returned as a month ordinal so both the direct
  * date computation and the runtime World-War continuation can take clean, drift-free
  * differences.

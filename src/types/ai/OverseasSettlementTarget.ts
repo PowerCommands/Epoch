@@ -41,4 +41,11 @@ export interface OverseasSettlementTarget {
   /** Active intermediate recovery waypoint the transport is routing to, if any. */
   recoveryWaypointX?: number;
   recoveryWaypointY?: number;
+  /**
+   * Chosen origin embarkation coast (land tile on the Settler's own reachable
+   * landmass whose adjacent water the Transport can also reach). Transient runtime
+   * state; safe to be absent after load — it is recomputed on demand.
+   */
+  embarkCoastX?: number;
+  embarkCoastY?: number;
 }

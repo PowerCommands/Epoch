@@ -17,7 +17,7 @@ import type { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import { TileType } from '../types/map';
 import { cityHasWaterTile } from './ProductionRules';
-import { canNationEmbarkLandUnits, canUnitEndMovementOnTile, isWaterTile } from './UnitMovementRules';
+import { canNationEmbarkLandUnits, canUnitEndMovementOnTile, canUnitEnterTile, isWaterTile } from './UnitMovementRules';
 import { SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
 import { getEraIndex } from '../data/eraTimeline';
 import { getLeaderMaxPreferredCitiesByNationId } from '../data/leaders';
@@ -33,6 +33,13 @@ const LANDING_RADIUS_START = 3;
 const LANDING_RADIUS_EXPAND = 5;
 const LANDING_RADIUS_MAX = 8;
 const DEFAULT_CITY_WITHIN_MARKER_RADIUS = 8;
+/**
+ * Upper bound on how many destination-biased embarkation coasts we validate for
+ * Transport reachability per staging turn. The best (closest-to-destination)
+ * reachable coast almost always passes, so this keeps the naval reachability
+ * probes cheap without a full water flood-fill.
+ */
+const MAX_EMBARK_TRANSPORT_CHECKS = 12;
 
 interface MarkerTargetCoord {
   readonly x: number;
@@ -231,9 +238,21 @@ export class AIOverseasExpansionSystem {
       return;
     }
 
-    const plan = this.findStagingPlan(nationId, settler, transport);
+    // Invalid/badly-authored MapPoint: its circle contains no coastal land at all
+    // (e.g. a radius placed fully inland). Fail cleanly and release the units so the
+    // target-selection mechanism can retarget, instead of embarking on a doomed trip.
+    if (!this.hasGeographicCoastalLanding(target)) {
+      this.cancelExpedition(
+        nationId,
+        target,
+        `no valid coastal landing exists inside MapPoint ${target.name}; retargeting/aborting`,
+      );
+      return;
+    }
+
+    const plan = this.findStagingPlan(target, settler, transport);
     if (!plan) {
-      this.log(nationId, `overseas expedition ${target.name} could not find a coastal staging tile.`);
+      this.log(nationId, `overseas expedition ${target.name} could not find a reachable embarkation coast.`);
       return;
     }
 
@@ -242,7 +261,7 @@ export class AIOverseasExpansionSystem {
       this.log(nationId, `staging overseas expedition ${target.name}.`);
     }
 
-    this.moveUnitToward(settler, plan.coastalTile, 'Settler', target.name, 'coastal staging tile');
+    this.moveUnitToward(settler, plan.coastalTile, 'Settler', target.name, 'embarkation coast');
 
     if (transportRequired && transport && plan.boardingTile) {
       if (target.status === 'readyToBoard') {
@@ -250,7 +269,7 @@ export class AIOverseasExpansionSystem {
         return;
       }
 
-      this.moveUnitToward(transport, plan.boardingTile, 'Transport', target.name, 'boarding tile');
+      this.moveUnitToward(transport, plan.boardingTile, 'Transport', target.name, 'boarding water tile');
       if (this.isAt(settler, plan.coastalTile) && this.isAt(transport, plan.boardingTile) && this.areAdjacent(settler, transport)) {
         if (this.boardExpeditionSettler(nationId, target, settler, transport)) return;
         target.status = 'readyToBoard';
@@ -759,6 +778,8 @@ export class AIOverseasExpansionSystem {
     target.stallTurns = undefined;
     target.recoveryWaypointX = undefined;
     target.recoveryWaypointY = undefined;
+    target.embarkCoastX = undefined;
+    target.embarkCoastY = undefined;
   }
 
   private isTargetReady(nationId: string, target: OverseasSettlementTarget): boolean {
@@ -889,15 +910,12 @@ export class AIOverseasExpansionSystem {
       .filter((tile) => this.isCandidateLandingTile(nationId, settler, tile))
       .filter((tile) => this.unitBoardingManager?.canUnboard(settler, tile.x, tile.y) === true);
 
-    const withinRadius: Tile[] = [];
-    for (const tile of candidates) {
-      const distance = this.gridSystem.getDistance(tile, targetCoord);
-      if (distance > LANDING_RADIUS_MAX) {
-        this.log(nationId, `rejected landing tile (${tile.x},${tile.y}) for ${target.name}: outside target radius.`);
-      } else {
-        withinRadius.push(tile);
-      }
-    }
+    // Coasts outside the target MapPoint circle are simply not landing candidates.
+    // This is the normal case whenever the Transport sails past an intervening
+    // landmass, so it is intentionally silent rather than logged every turn.
+    const withinRadius = candidates.filter(
+      (tile) => this.gridSystem.getDistance(tile, targetCoord) <= LANDING_RADIUS_MAX,
+    );
 
     return withinRadius.sort((a, b) => {
       const scoreDelta = this.getLandingTileScore(a, targetCoord) - this.getLandingTileScore(b, targetCoord);
@@ -942,77 +960,174 @@ export class AIOverseasExpansionSystem {
     return score;
   }
 
+  /**
+   * Choose an origin embarkation coast under the "reachable area" model:
+   *   1. The Settler must reach the coast by normal LAND pathfinding (guaranteed by
+   *      flood-filling its own landmass), and be able to end there.
+   *   2. The Transport must reach a water tile adjacent to that coast by normal
+   *      NAVAL pathfinding.
+   * Only a coast satisfying BOTH is accepted. Among valid coasts the one closest to
+   * the destination MapPoint is preferred, so the expedition boards on the side of
+   * its landmass facing the target rather than making a large detour. A geometrically
+   * near coast on a different landmass is never chosen, because it is not land-reachable.
+   */
   private findStagingPlan(
-    nationId: string,
+    target: OverseasSettlementTarget,
     settler: Unit,
     transport: Unit | undefined,
   ): StagingPlan | undefined {
-    const transportPos = transport ? { x: transport.tileX, y: transport.tileY } : undefined;
-    const candidates = this.getFriendlyCoastalStagingTiles(nationId, settler.id)
-      .map((coastalTile) => {
-        const boardingTile = this.getBestBoardingTile(coastalTile, transport?.id, transportPos);
-        const settlerDistance = this.gridSystem.getDistance(
-          { x: settler.tileX, y: settler.tileY },
-          { x: coastalTile.x, y: coastalTile.y },
-        );
-        const transportDistance = transportPos && boardingTile
-          ? this.gridSystem.getDistance(transportPos, boardingTile)
-          : 0;
-        return { coastalTile, boardingTile, settlerDistance, transportDistance };
-      })
-      .filter((candidate) => !this.requiresTransportForOverseasExpansion(nationId) || candidate.boardingTile !== undefined)
-      .sort((a, b) => {
-        if (a.settlerDistance !== b.settlerDistance) return a.settlerDistance - b.settlerDistance;
-        if (a.transportDistance !== b.transportDistance) return a.transportDistance - b.transportDistance;
-        if (a.coastalTile.y !== b.coastalTile.y) return a.coastalTile.y - b.coastalTile.y;
-        return a.coastalTile.x - b.coastalTile.x;
-      });
+    const transportRequired = this.requiresTransportForOverseasExpansion(settler.ownerId);
 
-    const best = candidates[0];
-    if (!best) return undefined;
-    return {
-      coastalTile: best.coastalTile,
-      boardingTile: best.boardingTile,
-    };
-  }
+    // Reuse a previously chosen, still-valid embarkation coast for stability across
+    // turns (and so the "selected embarkation coast" line is logged only on change).
+    if (target.embarkCoastX !== undefined && target.embarkCoastY !== undefined) {
+      const stored = this.buildStagingPlanForCoast(
+        { x: target.embarkCoastX, y: target.embarkCoastY }, settler, transport, transportRequired,
+      );
+      if (stored) return stored;
+      target.embarkCoastX = undefined;
+      target.embarkCoastY = undefined;
+    }
 
-  private getFriendlyCoastalStagingTiles(nationId: string, settlerId: string): MarkerTargetCoord[] {
-    const result: MarkerTargetCoord[] = [];
-    for (let y = 0; y < this.mapData.height; y++) {
-      for (let x = 0; x < this.mapData.width; x++) {
-        const tile = this.mapData.tiles[y]?.[x];
-        if (!tile || tile.ownerId !== nationId) continue;
-        if (tile.type === TileType.Coast || tile.type === TileType.Ocean || tile.type === TileType.Mountain) continue;
-        const occupant = this.unitManager.getUnitAt(x, y);
-        if (occupant && occupant.id !== settlerId) continue;
-        if (!this.hasAdjacentWaterTile(x, y)) continue;
-        result.push({ x, y });
+    const destination = { x: target.targetX, y: target.targetY };
+    const candidates = this.computeReachableEmbarkCoasts(settler).sort((a, b) => {
+      const da = this.gridSystem.getDistance(a, destination);
+      const db = this.gridSystem.getDistance(b, destination);
+      if (da !== db) return da - db;            // bias toward the destination MapPoint
+      if (a.dist !== b.dist) return a.dist - b.dist; // then the shorter Settler walk
+      return (a.y - b.y) || (a.x - b.x);
+    });
+
+    let transportChecks = 0;
+    for (const coast of candidates) {
+      if (transportRequired && transport && transportChecks >= MAX_EMBARK_TRANSPORT_CHECKS) break;
+      if (transportRequired) transportChecks += 1;
+      const plan = this.buildStagingPlanForCoast(coast, settler, transport, transportRequired);
+      if (plan) {
+        this.recordEmbarkCoast(settler.ownerId, target, coast);
+        return plan;
       }
     }
-    return result;
+    return undefined;
   }
 
-  private getBestBoardingTile(
-    coastalTile: MarkerTargetCoord,
-    carrierUnitId: string | undefined,
-    transportPos?: MarkerTargetCoord,
-  ): MarkerTargetCoord | undefined {
-    return this.gridSystem.getAdjacentCoords(coastalTile)
+  /**
+   * Build a staging plan for one candidate coast if it is usable now: it is a valid
+   * embark coast, the Settler can actually reach it with normal LAND pathfinding (not
+   * merely the landmass flood-fill — this also respects territory access and units
+   * blocking the corridor), and, when a Transport is required, the Transport can
+   * naval-path to an adjacent water tile. Requiring the real land path here is what
+   * guarantees the Settler is never handed a staging tile it cannot reach.
+   */
+  private buildStagingPlanForCoast(
+    coast: MarkerTargetCoord,
+    settler: Unit,
+    transport: Unit | undefined,
+    transportRequired: boolean,
+  ): StagingPlan | undefined {
+    const coastTile = this.mapData.tiles[coast.y]?.[coast.x];
+    if (!coastTile || !this.isEmbarkCoastTile(settler, coastTile)) return undefined;
+    if (!this.isReachableByLand(settler, coast.x, coast.y)) return undefined;
+
+    if (!transportRequired) return { coastalTile: { x: coast.x, y: coast.y } };
+    if (!transport) return undefined;
+
+    const boardingTile = this.findReachableBoardingTile(coast, transport);
+    if (!boardingTile) return undefined;
+    return { coastalTile: { x: coast.x, y: coast.y }, boardingTile };
+  }
+
+  private recordEmbarkCoast(nationId: string, target: OverseasSettlementTarget, coast: MarkerTargetCoord): void {
+    if (target.embarkCoastX === coast.x && target.embarkCoastY === coast.y) return;
+    target.embarkCoastX = coast.x;
+    target.embarkCoastY = coast.y;
+    this.log(nationId, `expedition ${target.name} selected reachable embarkation coast at (${coast.x},${coast.y}).`);
+  }
+
+  /**
+   * Flood-fill the Settler's own landmass with normal land movement rules and
+   * collect every coastal land tile it can actually reach and end on. Because a
+   * Settler that requires a Transport cannot enter water, the fill never crosses to
+   * another landmass — so every returned coast is genuinely land-reachable.
+   */
+  private computeReachableEmbarkCoasts(settler: Unit): Array<MarkerTargetCoord & { dist: number }> {
+    const nation = this.nationManager.getNation(settler.ownerId);
+    const startKey = `${settler.tileX},${settler.tileY}`;
+    const visited = new Set<string>([startKey]);
+    const queue: Array<MarkerTargetCoord & { dist: number }> = [{ x: settler.tileX, y: settler.tileY, dist: 0 }];
+    const coasts: Array<MarkerTargetCoord & { dist: number }> = [];
+
+    for (let head = 0; head < queue.length; head += 1) {
+      const current = queue[head];
+      const currentTile = this.mapData.tiles[current.y]?.[current.x];
+      if (currentTile && this.isEmbarkCoastTile(settler, currentTile)) {
+        coasts.push(current);
+      }
+      for (const neighbor of this.gridSystem.getNeighbors({ x: current.x, y: current.y }, this.mapData)) {
+        const key = `${neighbor.x},${neighbor.y}`;
+        if (visited.has(key)) continue;
+        // Stay on the Settler's own landmass: never flood across water, even for
+        // embark-capable nations (whose land units could otherwise "enter" water).
+        // The embarkation coast is by definition the boundary where that landmass
+        // meets the sea.
+        if (isWaterTile(neighbor) || !canUnitEnterTile(settler, neighbor, nation)) continue;
+        visited.add(key);
+        queue.push({ x: neighbor.x, y: neighbor.y, dist: current.dist + 1 });
+      }
+    }
+    return coasts;
+  }
+
+  /** A land tile the Settler can end on that borders water — a candidate boarding coast. */
+  private isEmbarkCoastTile(settler: Unit, tile: Tile): boolean {
+    if (isWaterTile(tile)) return false;
+    if (!canUnitEndMovementOnTile(settler, tile, this.nationManager.getNation(settler.ownerId))) return false;
+    const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
+    if (occupant && occupant.id !== settler.id) return false;
+    return this.hasAdjacentWaterTile(tile.x, tile.y);
+  }
+
+  private isReachableByLand(settler: Unit, x: number, y: number): boolean {
+    if (settler.tileX === x && settler.tileY === y) return true;
+    return this.pathfindingSystem.findPath(settler, x, y, { respectMovementPoints: false }) !== null;
+  }
+
+  /** First water tile adjacent to `coast` that the Transport can naval-path to. */
+  private findReachableBoardingTile(coast: MarkerTargetCoord, transport: Unit): MarkerTargetCoord | undefined {
+    const transportPos = { x: transport.tileX, y: transport.tileY };
+    const waters = this.gridSystem.getAdjacentCoords(coast)
       .map((coord) => this.mapData.tiles[coord.y]?.[coord.x])
+      .filter((tile): tile is Tile => tile !== undefined && (tile.type === TileType.Coast || tile.type === TileType.Ocean))
       .filter((tile) => {
-        if (!tile) return false;
-        if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
         const occupant = this.unitManager.getUnitAt(tile.x, tile.y);
-        return occupant === null || occupant.id === carrierUnitId;
+        return occupant === null || occupant.id === transport.id;
       })
       .sort((a, b) => {
-        if (transportPos) {
-          const distA = this.gridSystem.getDistance({ x: a.x, y: a.y }, transportPos);
-          const distB = this.gridSystem.getDistance({ x: b.x, y: b.y }, transportPos);
-          if (distA !== distB) return distA - distB;
-        }
+        const distDelta = this.gridSystem.getDistance(a, transportPos) - this.gridSystem.getDistance(b, transportPos);
+        if (distDelta !== 0) return distDelta;
         return (a.y - b.y) || (a.x - b.x);
-      })[0];
+      });
+
+    for (const water of waters) {
+      if (transport.tileX === water.x && transport.tileY === water.y) return { x: water.x, y: water.y };
+      if (this.pathfindingSystem.findPath(transport, water.x, water.y, { respectMovementPoints: false })) {
+        return { x: water.x, y: water.y };
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Pure-geography test for whether a MapPoint circle contains any coastal land at
+   * all (a land tile within the landing radius that borders water). Ignores ownership
+   * and occupancy so it detects a badly-authored, fully-inland MapPoint rather than a
+   * transiently blocked one.
+   */
+  private hasGeographicCoastalLanding(target: OverseasSettlementTarget): boolean {
+    const center = { x: target.targetX, y: target.targetY };
+    return this.gridSystem
+      .getTilesInRange(center, LANDING_RADIUS_MAX, this.mapData, { includeCenter: true })
+      .some((tile) => !isWaterTile(tile) && this.hasAdjacentWaterTile(tile.x, tile.y));
   }
 
   private hasAdjacentWaterTile(x: number, y: number): boolean {

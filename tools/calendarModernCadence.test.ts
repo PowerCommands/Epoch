@@ -76,41 +76,47 @@ test('2: transition lands on January 1900 with no strange intermediate date', ()
 
   const next = computeGameDate(m, r0 + 1, 1);
   assert.equal(next.signedYear, 1900);
-  assert.equal(next.monthName, 'July');
+  assert.equal(next.monthName, 'April');
 });
 
-// ── 3 & 4 & 5. Exactly six months per turn, alternating Jan/Jul, no drift ─────
-test('3-5: every post-1900 turn advances exactly six months, alternating Jan/Jul', () => {
+// ── 3 & 4 & 5. Exactly three months per turn, quarterly, with no drift ─────────
+test('3-5: every post-1900 turn advances exactly three months on quarter boundaries', () => {
   const m = meta();
   const r0 = roundReachingYear(1900);
 
   let previousOrdinal = gameDateToMonthOrdinal(computeGameDate(m, r0, 1));
   for (let k = 0; k <= 400; k += 1) {
     const date = computeGameDate(m, r0 + k, 1);
-    // Alternation and absence of accumulated drift: closed-form expectation.
-    const expectedYear = 1900 + Math.floor(k / 2);
-    const expectedMonth = (k % 2) * AUTO_MODERN_CADENCE_MONTHS_PER_TURN; // 0 or 6
+    // Quarterly sequence and absence of accumulated drift: closed-form expectation.
+    const expectedYear = 1900 + Math.floor(k / 4);
+    const expectedMonth = (k % 4) * AUTO_MODERN_CADENCE_MONTHS_PER_TURN;
     assert.equal(date.signedYear, expectedYear, `year at k=${k}`);
     assert.equal(date.monthIndex, expectedMonth, `month at k=${k}`);
-    assert.equal(date.monthName, k % 2 === 0 ? 'January' : 'July');
+    assert.equal(date.monthName, ['January', 'April', 'July', 'October'][k % 4]);
 
     if (k > 0) {
       const ordinal = gameDateToMonthOrdinal(date);
-      assert.equal(ordinal - previousOrdinal, 6, `six-month step at k=${k}`);
+      assert.equal(ordinal - previousOrdinal, 3, `three-month step at k=${k}`);
       previousOrdinal = ordinal;
     }
   }
+  assert.equal(
+    gameDateToMonthOrdinal(computeGameDate(m, r0 + 100, 1))
+      - gameDateToMonthOrdinal(computeGameDate(m, r0, 1)),
+    25 * 12,
+    '100 post-brake turns advance exactly 25 years',
+  );
 });
 
 // The fixed cadence must hold across game speeds (progression multiplier).
-test('3-5 (game speeds): six-month cadence holds for quick and marathon speeds', () => {
+test('3-5 (game speeds): quarterly cadence holds for quick and marathon speeds', () => {
   for (const mult of [1.25, 0.5]) {
     const m = meta();
     const r0 = roundReachingYear(1900, mult);
     for (let k = 0; k <= 100; k += 1) {
       const date = computeGameDate(m, r0 + k, mult);
-      assert.equal(date.signedYear, 1900 + Math.floor(k / 2), `mult ${mult} year k=${k}`);
-      assert.equal(date.monthIndex, (k % 2) * 6, `mult ${mult} month k=${k}`);
+      assert.equal(date.signedYear, 1900 + Math.floor(k / 4), `mult ${mult} year k=${k}`);
+      assert.equal(date.monthIndex, (k % 4) * 3, `mult ${mult} month k=${k}`);
     }
   }
 });
@@ -194,10 +200,24 @@ test('6b: reaching 1939 is a pure function of round and unaffected by mode plumb
   assert.equal(computeGameDate(m, r - 1, 1).signedYear, 1938);
 });
 
+test('6c: an event between quarter boundaries is crossed and anchored at its authored date', () => {
+  const january1939Round = roundReachingYear(1939);
+  const h = harness([war('February event', 1939, 2)]);
+  h.turns.restoreTurnState(january1939Round, 0);
+  h.turns.start();
+  assert.equal(h.turns.getGameDateLabel(), 'January 1939');
+  assert.equal(h.system.hasTriggered('February event'), false);
+
+  h.advanceRound(); // Normal Auto would move directly from January to April.
+  assert.equal(h.system.hasTriggered('February event'), true);
+  assert.equal(h.turns.getGameDateLabel(), 'February 1939');
+  assert.equal(h.turns.getRuntimeDateProgression()?.mode, 'monthly');
+});
+
 // ── 7. Save/load during the post-1900 period resumes the same cadence ─────────
-test('7: save/load in the post-1900 period resumes the six-month cadence', () => {
+test('7: save/load in the post-1900 period resumes the quarterly cadence', () => {
   // Pure Auto (no war): a saved round deterministically reproduces its date and
-  // continues alternating Jan/Jul six months per turn after "loading".
+  // continues on quarter boundaries three months per turn after "loading".
   const m = meta();
   const r0 = roundReachingYear(1900);
   const savedRound = r0 + 25; // deep into the modern cadence
@@ -209,7 +229,7 @@ test('7: save/load in the post-1900 period resumes the six-month cadence', () =>
   for (let k = 1; k <= 10; k += 1) {
     const step = gameDateToMonthOrdinal(computeGameDate(m, savedRound + k, 1))
       - gameDateToMonthOrdinal(computeGameDate(m, savedRound + k - 1, 1));
-    assert.equal(step, 6);
+    assert.equal(step, 3);
   }
 });
 
@@ -235,7 +255,7 @@ test('7b: save/load across a World War resumes an identical Auto cadence', () =>
   assert.equal(loaded.turns.getGameDateLabel(), savedLabel);
 
   // End the war on both, then confirm resumed Auto stays identical and steps by
-  // exactly six months per turn.
+  // exactly three months per turn.
   h.makePeace(GERMANY, ENGLAND);
   h.makePeace(GERMANY, FRANCE);
   loaded.makePeace(GERMANY, ENGLAND);
@@ -251,7 +271,7 @@ test('7b: save/load across a World War resumes an identical Auto cadence', () =>
     loaded.advanceRound();
     assert.equal(loaded.turns.getGameDateLabel(), h.turns.getGameDateLabel());
     const now = gameDateToMonthOrdinal(h.turns.getGameDate());
-    assert.equal(now - prev, 6, 'resumed Auto steps six months per turn');
+    assert.equal(now - prev, 3, 'resumed Auto steps three months per turn');
     prev = now;
   }
 });
