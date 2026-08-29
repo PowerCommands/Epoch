@@ -168,6 +168,127 @@ export function executeEmergencyDefenseAssignment(input: {
   return true;
 }
 
+/**
+ * True for units that can provide meaningful naval fire support: military naval
+ * units with a real ranged attack. Uses actual unit properties (naval, combat
+ * strength, ranged strength, range) rather than hardcoded ship names, so any
+ * current or future ranged warship qualifies automatically. Melee-only ships,
+ * civilian sea units (Work Boat), naval recon (Scout Boat) and land units are
+ * excluded.
+ */
+export function isSuitableNavalFireSupportUnitType(unitType: UnitType): boolean {
+  if (unitType.isNaval !== true) return false;
+  if (unitType.baseStrength <= 0) return false; // military naval only (excludes Work/Scout Boat)
+  // Mirror the combat system's ranged-attack gate exactly (range >= 2 and a
+  // positive ranged strength) so this matches what a ship can actually do —
+  // category-independent, so any current/future ranged warship qualifies.
+  if ((unitType.range ?? 1) < 2) return false;
+  if ((unitType.rangedStrength ?? 0) <= 0) return false;
+  return true;
+}
+
+export function isSuitableNavalFireSupportUnit(unit: Unit): boolean {
+  return isSuitableNavalFireSupportUnitType(unit.unitType);
+}
+
+export interface NavalFireSupportAssignment {
+  readonly unit: Unit;
+  readonly threat: EmergencyCityThreat;
+}
+
+/**
+ * Assigns a bounded number of suitable ranged warships to genuinely threatened
+ * coastal cities. EmergencyCityDefense stays the sole threat authority; this
+ * only maps existing threats to nearby ships so the naval AI can move them into
+ * firing position. Movement and combat remain the naval AI's responsibility.
+ *
+ * Selection order per threat (critical cities first, as pre-sorted by
+ * {@link detectEmergencyCityThreats}):
+ *   1. ships already able to fire on the threat (so they are kept, not pulled)
+ *   2. ships already assigned to this city last turn (hysteresis — avoids
+ *      pathological oscillation between two equidistant threatened cities)
+ *   3. closest ships
+ * Ships beyond `reachRadius` are never recruited, so a minor local threat does
+ * not drag distant fleets across the map. Each ship serves at most one city.
+ */
+export function allocateNavalFireSupport(input: {
+  readonly nationId: string;
+  readonly threats: readonly EmergencyCityThreat[];
+  readonly friendlyUnits: readonly Unit[];
+  readonly isCoastalCity: (city: City) => boolean;
+  readonly getDistance: (a: GridCoord, b: GridCoord) => number;
+  readonly isInFiringRange: (unit: Unit, threat: EmergencyCityThreat) => boolean;
+  readonly reachRadius: number;
+  readonly maxShipsPerThreat: number;
+  readonly previousCityByUnit?: ReadonlyMap<string, string>;
+}): NavalFireSupportAssignment[] {
+  const suitable = input.friendlyUnits
+    .filter((unit) => unit.ownerId === input.nationId)
+    .filter(isSuitableNavalFireSupportUnit);
+  if (suitable.length === 0) return [];
+
+  const coastalThreats = input.threats.filter((threat) => input.isCoastalCity(threat.city));
+  if (coastalThreats.length === 0) return [];
+
+  const assignedUnitIds = new Set<string>();
+  const assignments: NavalFireSupportAssignment[] = [];
+  const remainingByCity = new Map<string, number>();
+  for (const threat of coastalThreats) {
+    remainingByCity.set(
+      threat.city.id,
+      Math.max(1, Math.min(threat.hostileUnits.length, input.maxShipsPerThreat)),
+    );
+  }
+
+  const withinReach = (unit: Unit, threat: EmergencyCityThreat): boolean =>
+    input.getDistance({ x: unit.tileX, y: unit.tileY }, { x: threat.city.tileX, y: threat.city.tileY })
+      <= input.reachRadius;
+
+  // Retention pass: keep a ship on the city it defended last turn (if that city
+  // is still a genuine coastal threat within reach and has capacity). This gives
+  // hysteresis so ships don't oscillate between equidistant threatened cities.
+  if (input.previousCityByUnit) {
+    const threatByCity = new Map(coastalThreats.map((threat) => [threat.city.id, threat]));
+    for (const unit of [...suitable].sort((a, b) => a.id.localeCompare(b.id))) {
+      const previousCityId = input.previousCityByUnit.get(unit.id);
+      if (previousCityId === undefined) continue;
+      const threat = threatByCity.get(previousCityId);
+      if (!threat || !withinReach(unit, threat)) continue;
+      const remaining = remainingByCity.get(previousCityId) ?? 0;
+      if (remaining <= 0) continue;
+      assignedUnitIds.add(unit.id);
+      assignments.push({ unit, threat });
+      remainingByCity.set(previousCityId, remaining - 1);
+    }
+  }
+
+  // Greedy fill: assign remaining capacity per threat (critical cities first, as
+  // pre-sorted by detectEmergencyCityThreats), preferring ships already able to
+  // fire, then closest. Each ship serves at most one city.
+  for (const threat of coastalThreats) {
+    const remaining = remainingByCity.get(threat.city.id) ?? 0;
+    if (remaining <= 0) continue;
+    const cityPosition = { x: threat.city.tileX, y: threat.city.tileY };
+    const candidates = suitable
+      .filter((unit) => !assignedUnitIds.has(unit.id))
+      .map((unit) => ({
+        unit,
+        distance: input.getDistance({ x: unit.tileX, y: unit.tileY }, cityPosition),
+        inRange: input.isInFiringRange(unit, threat),
+      }))
+      .filter(({ distance }) => distance <= input.reachRadius)
+      .sort((a, b) => Number(b.inRange) - Number(a.inRange)
+        || a.distance - b.distance
+        || a.unit.id.localeCompare(b.unit.id));
+    for (const candidate of candidates.slice(0, remaining)) {
+      assignedUnitIds.add(candidate.unit.id);
+      assignments.push({ unit: candidate.unit, threat });
+    }
+  }
+
+  return assignments;
+}
+
 export function getEmergencyProductionThreats(
   threats: readonly EmergencyCityThreat[],
   hasAdequateLocalDefense: (threat: EmergencyCityThreat) => boolean,

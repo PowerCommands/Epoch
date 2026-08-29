@@ -16,6 +16,7 @@ import {
   POST_WAR_CONSOLIDATION_TURNS,
   ECONOMIC_CRISIS_MIN_CONSOLIDATION_TURNS,
 } from '../src/systems/ConsolidationSystem.ts';
+import { canBuildRoutineCityDefender } from '../src/systems/AISystem.ts';
 import {
   pickBestAIProductionCandidate,
   type AIProductionCandidate,
@@ -123,6 +124,33 @@ test('economic crisis outranks post-war and never shortens the minimum period', 
   h.setRound(12);
   h.sys.evaluate(FRANCE);
   assert.equal(h.sys.isConsolidating(FRANCE), true);
+});
+
+test('routine defender override is denied only for an insolvent over-cap economic crisis', () => {
+  const distressedOverCap = {
+    isEconomicCrisis: true,
+    structuralNetIncome: -61,
+    militaryCount: 12,
+    effectiveMilitaryMax: 7,
+    hasEmergencyThreat: false,
+  };
+
+  assert.equal(canBuildRoutineCityDefender(distressedOverCap), false);
+  assert.equal(canBuildRoutineCityDefender({ ...distressedOverCap, militaryCount: 7 }), false);
+  assert.equal(canBuildRoutineCityDefender({ ...distressedOverCap, militaryCount: 6 }), true);
+  assert.equal(canBuildRoutineCityDefender({ ...distressedOverCap, militaryCount: 0 }), true);
+  assert.equal(canBuildRoutineCityDefender({ ...distressedOverCap, structuralNetIncome: 0 }), true);
+  assert.equal(canBuildRoutineCityDefender({ ...distressedOverCap, isEconomicCrisis: false }), true);
+});
+
+test('a genuine emergency threat overrides routine defender economic suppression', () => {
+  assert.equal(canBuildRoutineCityDefender({
+    isEconomicCrisis: true,
+    structuralNetIncome: -200,
+    militaryCount: 13,
+    effectiveMilitaryMax: 7,
+    hasEmergencyThreat: true,
+  }), true);
 });
 
 test('consolidation state survives save/load without resetting or duplicating', () => {

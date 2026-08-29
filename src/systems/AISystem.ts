@@ -167,6 +167,7 @@ import {
 } from './ai/AIScienceVictoryFactoryProduction';
 import {
   allocateEmergencyCityDefenders,
+  allocateNavalFireSupport,
   detectEmergencyCityThreats,
   executeEmergencyDefenseAssignment,
   getEmergencyProductionThreats,
@@ -249,6 +250,13 @@ interface EnemyCoastalTargets {
   readonly enemyCities: readonly City[];         // all war-enemy cities (ranged: geometry filters per unit)
   readonly allEnemyLandUnits: readonly Unit[];   // all enemy land combat units (ranged: firing-pos calc)
   readonly coastAdjacentUnits: readonly Unit[];  // melee naval: land units directly adjacent to coast
+}
+
+// A scored bombardment target for ranged-naval firing-position selection.
+interface NavalBombardTarget {
+  readonly pos: GridCoord;
+  readonly value: number;
+  readonly key: string; // tile key of the target itself (claimed once fired on)
 }
 
 interface NavalPatrolContext {
@@ -430,6 +438,10 @@ const NAVAL_ENEMY_NEAR_CITY_RADIUS = 3;
 const NAVAL_PATROL_RESOURCE_BONUS = 3;
 const MIN_KNOWN_SEA_RESOURCE_TARGETS = 3;
 const DESIRED_EARLY_NAVAL_RECON_COUNT = 1;
+// Permanent civilian maritime presence for maritime-doctrine AI: at least one
+// active/in-production Scout Boat and one Worker Boat, maintained for the whole
+// game. This is a minimum, not a maximum — regular scoring may still add more.
+const MARITIME_MINIMUM_UNITS = 1;
 const MAX_EARLY_WORK_BOATS_COASTAL_FOUNDATION = 2;
 
 // Naval offensive behavior. Cap on how far a ship will travel to reach an
@@ -447,6 +459,11 @@ const BOMBARD_DAMAGED_BONUS = 10;     // extra value for targets below 60 % HP
 const BOMBARD_IMMEDIATE_BONUS = 15;   // bonus when firing position reachable this turn
 const BOMBARD_DISTANCE_WEIGHT = 2;    // score -= distFromUnit * weight
 const BOMBARD_ADJ_ENEMY_NAVAL_PENALTY = 8; // per adjacent enemy naval unit at firing tile
+// Naval emergency fire support: how far a ranged warship may be from a
+// genuinely threatened coastal city to be recruited to defend it (keeps distant
+// fleets from being dragged across the map), and the ship cap per threat.
+const NAVAL_FIRE_SUPPORT_REACH_RADIUS = 12;
+const NAVAL_FIRE_SUPPORT_MAX_SHIPS_PER_THREAT = 3;
 const NAVAL_EXPEDITION_MAX_SHIPS = 4;
 const NAVAL_EXPEDITION_MIN_SHIPS = 2;
 const NAVAL_EXPEDITION_HOME_RESERVE = 1;
@@ -503,6 +520,26 @@ function describeProducible(item: Producible): string {
   }
 }
 
+export interface RoutineCityDefenderOverrideContext {
+  readonly isEconomicCrisis: boolean;
+  readonly structuralNetIncome: number;
+  readonly militaryCount: number;
+  readonly effectiveMilitaryMax: number;
+  readonly hasEmergencyThreat: boolean;
+}
+
+/** Whether routine local-garrison demand may override normal military restrictions. */
+export function canBuildRoutineCityDefender(
+  context: RoutineCityDefenderOverrideContext,
+): boolean {
+  if (context.hasEmergencyThreat) return true;
+  return !(
+    context.isEconomicCrisis
+    && context.structuralNetIncome < 0
+    && context.militaryCount >= context.effectiveMilitaryMax
+  );
+}
+
 /** Returns -1 when the mandatory stadium must be enqueued, its queue index when it must move, or null when already first. */
 export function getGrandStadiumPriorityQueueAction(
   queue: readonly { item: Producible }[],
@@ -541,6 +578,9 @@ export class AISystem {
   private readonly workerMovementLogKeyByUnit = new Map<string, string>();
   private readonly workerNoTargetLoggedUnits = new Set<string>();
   private readonly coastalSpacingLoggedBySettler = new Set<string>();
+  // Nations for which the maritime-minimum war-deferral has already been logged
+  // this war, so the deferral note is emitted once rather than every turn.
+  private readonly maritimeWarDeferLogged = new Set<string>();
   private readonly strategySelector = new AIStrategySelector();
   private readonly strategyEvaluationSystem = new AIStrategyEvaluationSystem();
   // Pass-1 evaluation rollout: only Mongolia logs the result for now.
@@ -619,6 +659,15 @@ export class AISystem {
   private readonly emergencyThreatsByNation = new Map<string, EmergencyCityThreat[]>();
   private readonly emergencyThreatStateByNation = new Map<string, Map<string, EmergencyCityThreatSeverity>>();
   private readonly emergencyAssignmentCityByUnit = new Map<string, string>();
+  // Naval fire support: ship id → the coastal emergency threat it is assigned to
+  // defend this turn, computed once per nation turn from EmergencyCityDefense.
+  private readonly navalFireSupportThreatByUnit = new Map<string, Map<string, EmergencyCityThreat>>();
+  // Previous turn's ship id → threatened city id, used for assignment hysteresis
+  // so ships don't oscillate between equidistant threatened cities each turn.
+  private readonly navalFireSupportCityByUnit = new Map<string, Map<string, string>>();
+  // Last logged assigned-ship count per threatened city, to avoid per-turn noise.
+  private readonly navalFireSupportLoggedByNation = new Map<string, Map<string, number>>();
+  private readonly routineDefenderSuppressionLoggedCityIds = new Set<string>();
   private powerPlantPlans = new Map<string, AIPowerPlantDecision>();
 
   constructor(
@@ -762,6 +811,7 @@ export class AISystem {
   runTurn(nationId: string): void {
     this.updateVictoryFocus(nationId);
     this.refreshEmergencyCityThreats(nationId);
+    this.refreshNavalFireSupport(nationId);
     this.cityFocusSystem.updateFocusForNation(nationId);
     this.updateStrategyForNation(nationId);
     this.evaluateStrategyForNation(nationId);
@@ -907,6 +957,77 @@ export class AISystem {
       this.logEmergencyDefense(nationId, `${cityName} left emergency defense state.`);
     }
     this.emergencyThreatStateByNation.set(nationId, next);
+  }
+
+  /** Emergency threats limited to coastal cities (those a fleet can support). */
+  private getCoastalEmergencyThreats(nationId: string): EmergencyCityThreat[] {
+    return this.getEmergencyCityThreats(nationId)
+      .filter((threat) => cityHasWaterTile(threat.city, this.mapData));
+  }
+
+  /** True if the ship can already reach a threatening unit with its ranged attack. */
+  private isShipInThreatFiringRange(unit: Unit, threat: EmergencyCityThreat): boolean {
+    const range = unit.unitType.range ?? 1;
+    const unitPos = { x: unit.tileX, y: unit.tileY };
+    return threat.hostileUnits.some(
+      (hostile) => this.gridSystem.getDistance(unitPos, { x: hostile.tileX, y: hostile.tileY }) <= range,
+    );
+  }
+
+  /**
+   * Computes this turn's naval fire-support assignments (ship → coastal
+   * emergency threat) from the existing EmergencyCityDefense threats, and logs
+   * newly assigned support. Movement into firing position happens later in the
+   * naval patrol phase; combat remains autonomous.
+   */
+  private refreshNavalFireSupport(nationId: string): void {
+    const threats = this.getCoastalEmergencyThreats(nationId);
+    const previousCityByUnit = this.navalFireSupportCityByUnit.get(nationId);
+    const assignments = allocateNavalFireSupport({
+      nationId,
+      threats,
+      friendlyUnits: this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit)),
+      isCoastalCity: (city) => cityHasWaterTile(city, this.mapData),
+      getDistance: (a, b) => this.gridSystem.getDistance(a, b),
+      isInFiringRange: (unit, threat) => this.isShipInThreatFiringRange(unit, threat),
+      reachRadius: NAVAL_FIRE_SUPPORT_REACH_RADIUS,
+      maxShipsPerThreat: NAVAL_FIRE_SUPPORT_MAX_SHIPS_PER_THREAT,
+      previousCityByUnit,
+    });
+
+    const threatByUnit = new Map<string, EmergencyCityThreat>();
+    const cityByUnit = new Map<string, string>();
+    for (const assignment of assignments) {
+      threatByUnit.set(assignment.unit.id, assignment.threat);
+      cityByUnit.set(assignment.unit.id, assignment.threat.city.id);
+    }
+    this.navalFireSupportThreatByUnit.set(nationId, threatByUnit);
+    this.navalFireSupportCityByUnit.set(nationId, cityByUnit);
+    this.logNavalFireSupportChanges(nationId, assignments);
+  }
+
+  private logNavalFireSupportChanges(
+    nationId: string,
+    assignments: readonly { unit: Unit; threat: EmergencyCityThreat }[],
+  ): void {
+    const perCity = new Map<string, { threat: EmergencyCityThreat; count: number }>();
+    for (const { threat } of assignments) {
+      const entry = perCity.get(threat.city.id) ?? { threat, count: 0 };
+      entry.count += 1;
+      perCity.set(threat.city.id, entry);
+    }
+
+    const previous = this.navalFireSupportLoggedByNation.get(nationId) ?? new Map<string, number>();
+    const next = new Map<string, number>();
+    for (const [cityId, { threat, count }] of perCity) {
+      next.set(cityId, count);
+      if (previous.get(cityId) === count) continue; // unchanged — avoid per-turn noise
+      this.logEmergencyDefense(
+        nationId,
+        `naval fire support: assigned ${count} ranged ship(s) to defend ${threat.city.name} (${threat.severity}).`,
+      );
+    }
+    this.navalFireSupportLoggedByNation.set(nationId, next);
   }
 
   private buildEmergencyDefenseAssignments(
@@ -2830,7 +2951,11 @@ export class AISystem {
   private buildNavalPatrolContext(nationId: string): NavalPatrolContext {
     const targets = this.getCoastalDefenseTargets(nationId);
     const enemyTargets = this.getEnemyCoastalTargets(nationId);
-    const ownZoneHasEnemy = this.ownCoastalZoneHasEnemy(nationId, targets);
+    // A genuine coastal EmergencyCityThreat counts as the home coast being
+    // threatened, so offensive expeditions yield priority (reusing the existing
+    // home-defense recall) and the home fleet stays defensive.
+    const ownZoneHasEnemy = this.ownCoastalZoneHasEnemy(nationId, targets)
+      || this.getCoastalEmergencyThreats(nationId).length > 0;
     const expeditionTarget = this.getNavalExpeditionTarget(nationId, ownZoneHasEnemy);
     const expeditionAssignment = this.getNavalExpeditionAssignment(nationId, expeditionTarget, ownZoneHasEnemy);
     // Pre-claim tiles that own naval units already occupy so other ships
@@ -3132,6 +3257,12 @@ export class AISystem {
     strategy: AIStrategy,
     context: NavalPatrolContext,
   ): void {
+    // Highest priority: a suitable ranged warship assigned to defend a
+    // genuinely threatened coastal city moves into naval fire-support position.
+    // This outranks routine patrol, exploration and non-critical offensive
+    // moves; combat then fires autonomously.
+    if (this.tryNavalEmergencyFireSupport(unit, nationId, context)) return;
+
     // Combat naval first try to intercept high-priority enemies near our
     // coast. The combat phase already attacks adjacent ones; this just
     // closes distance so the next turn's combat phase can finish the job.
@@ -3247,22 +3378,56 @@ export class AISystem {
     claimed: Set<string>,
     expeditionTarget: NavalExpeditionTarget | null = null,
   ): boolean {
-    const unitRange = unit.unitType.range ?? 1;
-    const unitPos = { x: unit.tileX, y: unit.tileY };
-
     const enemyNavalKeys = new Set(
       enemyTargets.navalUnits.map((u) => tileKey(u.tileX, u.tileY)),
     );
+
+    const targets: NavalBombardTarget[] = [];
+    for (const city of enemyTargets.enemyCities) {
+      const healthRatio = city.health / CITY_BASE_HEALTH;
+      const expeditionBonus = expeditionTarget?.cityId === city.id ? Math.max(10, Math.round(expeditionTarget.score / 4)) : 0;
+      const cityValue = BOMBARD_CITY_VALUE + expeditionBonus + Math.round((1 - healthRatio) * BOMBARD_DAMAGED_BONUS);
+      targets.push({ pos: { x: city.tileX, y: city.tileY }, value: cityValue, key: tileKey(city.tileX, city.tileY) });
+    }
+    for (const enemy of enemyTargets.allEnemyLandUnits) {
+      const healthRatio = enemy.health / enemy.unitType.baseHealth;
+      const unitValue = BOMBARD_UNIT_VALUE + (healthRatio < 0.6 ? BOMBARD_DAMAGED_BONUS : 0);
+      targets.push({ pos: { x: enemy.tileX, y: enemy.tileY }, value: unitValue, key: tileKey(enemy.tileX, enemy.tileY) });
+    }
+
+    const best = this.findBestNavalFiringPosition(unit, targets, claimed, enemyNavalKeys);
+    if (!best) return false;
+    if (!this.moveNavalUnitToward(unit, best.firingPos, true)) return false;
+
+    claimed.add(tileKey(best.firingPos.x, best.firingPos.y));
+    claimed.add(best.targetKey);
+    return true;
+  }
+
+  /**
+   * Shared ranged-naval positioning kernel: given scored targets, returns the
+   * best water/coast firing tile within the unit's own `range` of a target,
+   * preferring closer tiles, tiles reachable this turn, and tiles away from
+   * enemy ships. Used for offensive bombardment and for emergency fire support
+   * so both reuse one ranged-position algorithm.
+   */
+  private findBestNavalFiringPosition(
+    unit: Unit,
+    targets: readonly NavalBombardTarget[],
+    claimed: Set<string>,
+    enemyNavalKeys: Set<string>,
+  ): { firingPos: GridCoord; targetKey: string } | null {
+    const unitRange = unit.unitType.range ?? 1;
+    const unitPos = { x: unit.tileX, y: unit.tileY };
 
     let bestFiringPos: GridCoord | null = null;
     let bestTargetKey = '';
     let bestScore = -Infinity;
 
-    const evaluateTarget = (targetPos: GridCoord, targetValue: number, targetKey: string): void => {
-      if (claimed.has(targetKey)) return;
-
+    for (const target of targets) {
+      if (claimed.has(target.key)) continue;
       for (const tile of this.gridSystem.getTilesInRange(
-        targetPos, unitRange, this.mapData, { includeCenter: false },
+        target.pos, unitRange, this.mapData, { includeCenter: false },
       )) {
         if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
         const posKey = tileKey(tile.x, tile.y);
@@ -3279,34 +3444,66 @@ export class AISystem {
           .filter((adj) => enemyNavalKeys.has(tileKey(adj.x, adj.y))).length;
         posScore -= adjEnemyNaval * BOMBARD_ADJ_ENEMY_NAVAL_PENALTY;
 
-        const totalScore = targetValue + posScore;
+        const totalScore = target.value + posScore;
         if (totalScore > bestScore) {
           bestScore = totalScore;
           bestFiringPos = tilePos;
-          bestTargetKey = targetKey;
+          bestTargetKey = target.key;
         }
       }
-    };
-
-    for (const city of enemyTargets.enemyCities) {
-      const healthRatio = city.health / CITY_BASE_HEALTH;
-      const expeditionBonus = expeditionTarget?.cityId === city.id ? Math.max(10, Math.round(expeditionTarget.score / 4)) : 0;
-      const cityValue = BOMBARD_CITY_VALUE + expeditionBonus + Math.round((1 - healthRatio) * BOMBARD_DAMAGED_BONUS);
-      evaluateTarget({ x: city.tileX, y: city.tileY }, cityValue, tileKey(city.tileX, city.tileY));
     }
 
-    for (const enemy of enemyTargets.allEnemyLandUnits) {
-      const healthRatio = enemy.health / enemy.unitType.baseHealth;
-      const unitValue = BOMBARD_UNIT_VALUE + (healthRatio < 0.6 ? BOMBARD_DAMAGED_BONUS : 0);
-      evaluateTarget({ x: enemy.tileX, y: enemy.tileY }, unitValue, tileKey(enemy.tileX, enemy.tileY));
+    if (!bestFiringPos) return null;
+    return { firingPos: bestFiringPos, targetKey: bestTargetKey };
+  }
+
+  /**
+   * Moves a ranged warship assigned (by {@link refreshNavalFireSupport}) to a
+   * threatened coastal city into naval fire-support position against the units
+   * threatening it. A ship already able to fire holds station so the combat
+   * phase can shoot; otherwise it moves to the best firing tile, falling back to
+   * closing on the city when no firing tile is reachable. Returns true when the
+   * assignment was handled (the ship should take no other naval action).
+   */
+  private tryNavalEmergencyFireSupport(
+    unit: Unit,
+    nationId: string,
+    context: NavalPatrolContext,
+  ): boolean {
+    const threat = this.navalFireSupportThreatByUnit.get(nationId)?.get(unit.id);
+    if (!threat) return false;
+
+    // Already in a firing position: hold and let the combat phase fire rather
+    // than repositioning merely to satisfy the assignment.
+    if (this.isShipInThreatFiringRange(unit, threat)) {
+      context.claimedNavalTiles.add(tileKey(unit.tileX, unit.tileY));
+      return true;
     }
 
-    if (!bestFiringPos) return false;
-    if (!this.moveNavalUnitToward(unit, bestFiringPos, true)) return false;
+    const enemyNavalKeys = new Set(
+      threat.hostileUnits
+        .filter((hostile) => hostile.unitType.isNaval === true)
+        .map((hostile) => tileKey(hostile.tileX, hostile.tileY)),
+    );
+    const targets: NavalBombardTarget[] = threat.hostileUnits.map((hostile) => {
+      const healthRatio = hostile.health / hostile.unitType.baseHealth;
+      const value = BOMBARD_UNIT_VALUE + (healthRatio < 0.6 ? BOMBARD_DAMAGED_BONUS : 0);
+      return { pos: { x: hostile.tileX, y: hostile.tileY }, value, key: tileKey(hostile.tileX, hostile.tileY) };
+    });
 
-    claimed.add(tileKey((bestFiringPos as GridCoord).x, (bestFiringPos as GridCoord).y));
-    claimed.add(bestTargetKey);
-    return true;
+    const best = this.findBestNavalFiringPosition(unit, targets, context.claimedNavalTiles, enemyNavalKeys);
+    if (best && this.moveNavalUnitToward(unit, best.firingPos, true)) {
+      context.claimedNavalTiles.add(tileKey(best.firingPos.x, best.firingPos.y));
+      return true;
+    }
+
+    // No firing tile reachable this turn: close on the threatened city so the
+    // ship stays engaged instead of wandering into offensive/patrol behavior.
+    if (this.moveNavalUnitToward(unit, { x: threat.city.tileX, y: threat.city.tileY }, true)) {
+      context.claimedNavalTiles.add(tileKey(unit.tileX, unit.tileY));
+      return true;
+    }
+    return false;
   }
 
   private tryMoveTowardNearestEnemyUnit(
@@ -4652,6 +4849,7 @@ export class AISystem {
     this.ensureScoutProduction(nationId, cities);
     this.ensureFoundationSettlerProduction(nationId, cities);
     this.ensureNavalReconProduction(nationId, cities);
+    this.ensureMaritimeMinimumProduction(nationId, cities);
     this.runMilitaryModernization(nationId);
     this.ensureGrandStadiumProduction(nationId);
 
@@ -4693,7 +4891,15 @@ export class AISystem {
 
       let usedFallback = false;
       if (!choice) {
-        choice = this.pickFallbackProduction(city, nationId, strategy, plannedSettlerCount, doctrine);
+        choice = this.pickFallbackProduction(
+          city,
+          nationId,
+          strategy,
+          plannedMilitaryCount,
+          plannedSettlerCount,
+          effectiveMaxUnits,
+          doctrine,
+        );
         usedFallback = choice !== undefined;
       }
 
@@ -5155,6 +5361,108 @@ export class AISystem {
     return count;
   }
 
+  // Permanent civilian maritime presence: maritime AI nations keep at least one
+  // active Scout Boat and one active Worker Boat at all times, representing
+  // continuous exploration and sea-resource exploitation. Unlike
+  // ensureNavalReconProduction, there is deliberately no exploration-complete /
+  // known-resource stop condition — the minimum is maintained regardless of
+  // how much ocean remains or whether a sea resource is currently known.
+  //
+  // Maritime identity is read from the nation's active military doctrine
+  // (navalPower / maritimeRaider / navalProjection / pirateCode all qualify via
+  // isMaritimeDoctrine), keeping the rule nation-agnostic: any current or future
+  // nation configured with a maritime doctrine gets this behavior automatically.
+  private ensureMaritimeMinimumProduction(nationId: string, cities: City[]): void {
+    if (cities.length === 0) return;
+    const doctrine = this.doctrineEvaluator.getDoctrine(nationId);
+    if (!isMaritimeDoctrine(doctrine)) return;
+
+    const coastalCities = cities.filter((city) => cityHasWaterTile(city, this.mapData));
+    if (coastalCities.length === 0) return;
+
+    // Count both active units and units already in production (current build +
+    // queue) so multiple coastal cities do not each independently produce a
+    // replacement in the same window.
+    const scoutBoatMissing = this.countNavalReconUnits(nationId)
+      + this.countUnitsInProduction(
+        nationId,
+        (unitType) => unitType.id === SCOUT_BOAT.id || unitType.category === 'naval_recon',
+      ) < MARITIME_MINIMUM_UNITS;
+    const workBoatMissing = this.countWorkBoats(nationId)
+      + this.countQueuedWorkBoats(nationId) < MARITIME_MINIMUM_UNITS;
+
+    // At war, drop the peacetime priority advantage: emergency defense and
+    // wartime doctrine production must outrank civilian maritime replacements.
+    // The minimum still exists as a preference and is restored once peace
+    // returns.
+    if (this.isAtWarWithAnyone(nationId)) {
+      if (scoutBoatMissing || workBoatMissing) {
+        if (!this.maritimeWarDeferLogged.has(nationId)) {
+          this.maritimeWarDeferLogged.add(nationId);
+          console.debug(this.formatLog(nationId, 'maritime minimum deferred by active war'));
+        }
+      }
+      return;
+    }
+    this.maritimeWarDeferLogged.delete(nationId);
+
+    if (scoutBoatMissing) {
+      this.ensureMaritimeMinimumUnit(nationId, coastalCities, SCOUT_BOAT, 'Scout Boat');
+    }
+    if (workBoatMissing) {
+      this.ensureMaritimeMinimumUnit(nationId, coastalCities, WORK_BOAT, 'Worker Boat');
+    }
+  }
+
+  // Enqueues one maritime-minimum vessel with peacetime priority over routine
+  // military production. Prefers an idle coastal city (so the replacement takes
+  // the slot the scoring loop would otherwise fill with a routine military
+  // unit); otherwise enqueues at the front of a busy city without interrupting
+  // its current build.
+  private ensureMaritimeMinimumUnit(
+    nationId: string,
+    coastalCities: readonly City[],
+    unitType: UnitType,
+    label: string,
+  ): void {
+    if (!this.canBuildUnit(nationId, unitType.id)) return;
+    if (!this.canAffordUnitProduction(nationId, unitType)) return;
+
+    const ctx = this.getUnitProductionRuleContext();
+    const buildable = coastalCities.filter((city) => (
+      canCityProduceUnit(city, unitType, this.mapData, this.gridSystem, ctx)
+    ));
+    if (buildable.length === 0) return;
+
+    const idleCity = buildable.find((city) => this.productionSystem.getProduction(city.id) === undefined);
+    const target = idleCity ?? buildable[0];
+    if (idleCity) {
+      this.productionSystem.setProduction(target.id, { kind: 'unit', unitType });
+    } else {
+      this.productionSystem.enqueueFront(target.id, { kind: 'unit', unitType });
+    }
+    console.debug(
+      this.formatLog(nationId, `maritime minimum: ${label} replacement prioritized (${target.name})`),
+    );
+  }
+
+  // Counts units of a given kind currently in production across all of a
+  // nation's cities, including both the active build and queued entries.
+  private countUnitsInProduction(
+    nationId: string,
+    matches: (unitType: UnitType) => boolean,
+  ): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const current = this.productionSystem.getProduction(city.id);
+      if (current?.item.kind === 'unit' && matches(current.item.unitType)) count++;
+      for (const entry of this.productionSystem.getQueue(city.id)) {
+        if (entry.item.kind === 'unit' && matches(entry.item.unitType)) count++;
+      }
+    }
+    return count;
+  }
+
   // Foundation Phase settler push: enqueues a single settler at the front of
   // a producible city's queue when the nation has none active or in flight.
   // Symmetric to ensureScoutProduction so settlers and scouts share the
@@ -5188,13 +5496,22 @@ export class AISystem {
     city: City,
     nationId: string,
     strategy: AIStrategy,
+    plannedMilitaryCount: number,
     plannedSettlerCount: number,
+    effectiveMaxUnits: number,
     doctrine?: AIMilitaryDoctrine,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
 
     // 1. Defender if no friendly combat unit at or adjacent to the city.
-    if (this.needsDefender(city, nationId, doctrine)) {
+    const routineDefenderNeeded = this.needsDefender(city, nationId, doctrine);
+    const routineDefenderAllowed = !routineDefenderNeeded || this.canBuildRoutineCityDefenderForCity(
+      city,
+      nationId,
+      plannedMilitaryCount,
+      effectiveMaxUnits,
+    );
+    if (routineDefenderNeeded && routineDefenderAllowed) {
       const defender = this.pickAnyValidMilitaryForCity(city, nationId);
       if (defender) return { kind: 'unit', unitType: defender };
     }
@@ -5218,6 +5535,10 @@ export class AISystem {
         return { kind: 'building', buildingType };
       }
     }
+
+    // Do not let later generic military fallbacks recreate a routine defender
+    // that the economic-crisis gate above explicitly denied.
+    if (!routineDefenderAllowed) return undefined;
 
     // 6-7. Warrior, then Archer if the city can actually build them.
     // Skip for maritime doctrines: capability scoring via pickAnyValidMilitaryForCity
@@ -5449,8 +5770,16 @@ export class AISystem {
       : undefined;
     if (spaceRaceFactoryCandidate) candidates.push(spaceRaceFactoryCandidate);
 
-    // Defenders bypass the budget gate — emergency defense is always permitted.
-    const acuteDefenderNeeded = this.needsDefender(city, nationId, militaryDoctrineCtx?.doctrine);
+    // Routine defenders normally bypass the budget gate. During an economic
+    // crisis, an over-cap nation needs a real emergency threat to do so.
+    const routineDefenderNeeded = this.needsDefender(city, nationId, militaryDoctrineCtx?.doctrine);
+    const acuteDefenderNeeded = routineDefenderNeeded && this.canBuildRoutineCityDefenderForCity(
+      city,
+      nationId,
+      plannedMilitaryCount,
+      effectiveMaxUnits,
+    );
+    const routineDefenderSuppressed = routineDefenderNeeded && !acuteDefenderNeeded;
     if (acuteDefenderNeeded) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
@@ -5508,7 +5837,7 @@ export class AISystem {
       });
     }
 
-    if (canBuildGeneralMilitary && !consolidationSuppression) {
+    if (canBuildGeneralMilitary && !consolidationSuppression && !routineDefenderSuppressed) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         const navalSaturationModifier = this.getNavalSaturationUrgencyModifier(
@@ -5541,6 +5870,7 @@ export class AISystem {
     if (
       canBuildGeneralMilitary &&
       !consolidationSuppression &&
+      !routineDefenderSuppressed &&
       coastalCityCount > 0 &&
       cityHasWaterTile(city, this.mapData) &&
       plannedNavalCount < navalCap
@@ -5764,7 +6094,7 @@ export class AISystem {
     }
 
     // Fallback so the city always has something to do when room is left.
-    if (canBuildGeneralMilitary && !consolidationSuppression) {
+    if (canBuildGeneralMilitary && !consolidationSuppression && !routineDefenderSuppressed) {
       const militaryUnit = this.pickMilitaryUnitForCity(city, nationId, militaryDoctrineCtx);
       if (militaryUnit) {
         candidates.push({
@@ -7240,6 +7570,43 @@ export class AISystem {
     }
 
     return true;
+  }
+
+  private canBuildRoutineCityDefenderForCity(
+    city: City,
+    nationId: string,
+    militaryCount: number,
+    effectiveMilitaryMax: number,
+  ): boolean {
+    const hasEmergencyThreat = this.getEmergencyCityThreats(nationId)
+      .some((threat) => threat.city.id === city.id);
+    const upkeep = this.unitUpkeepSystem?.calculateUpkeep(nationId);
+    const structuralNetIncome = upkeep === undefined
+      ? Number.POSITIVE_INFINITY
+      : this.nationManager.getResources(nationId).goldPerTurn - upkeep;
+    const allowed = canBuildRoutineCityDefender({
+      isEconomicCrisis:
+        this.consolidationSystem?.isConsolidating(nationId) === true
+        && this.consolidationSystem.getReason(nationId) === 'economicCrisis',
+      structuralNetIncome,
+      militaryCount,
+      effectiveMilitaryMax,
+      hasEmergencyThreat,
+    });
+    const logKey = `${nationId}:${city.id}`;
+
+    if (allowed) {
+      this.routineDefenderSuppressionLoggedCityIds.delete(logKey);
+      return true;
+    }
+
+    if (!this.routineDefenderSuppressionLoggedCityIds.has(logKey)) {
+      this.routineDefenderSuppressionLoggedCityIds.add(logKey);
+      const message = `${city.name} routine defender production suppressed: economic crisis, negative structural income, at/over effective military max, no emergency threat.`;
+      console.log(this.formatLog(nationId, message));
+      this.logStrategicEvent?.(nationId, message);
+    }
+    return false;
   }
 
   private hasFriendlyRangedUnitNearby(city: City, nationId: string): boolean {
