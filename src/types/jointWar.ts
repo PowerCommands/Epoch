@@ -26,4 +26,20 @@ export interface JointWarProposal {
    * proposal-building only when it would meaningfully help persuade the receiver.
    */
   offerExploitationRights?: boolean;
+  /** Linear AI retry sweetener. Zero/absent preserves the original offer. */
+  offeredGold?: number;
+  /** Consecutive prior rejections for this proposer/receiver/target situation. */
+  rejectionCount?: number;
+  /** Snapshot used by the orchestrator for reserve diagnostics. */
+  proposerTreasury?: number;
+  /** True when this retry must be skipped rather than reducing its fixed bid. */
+  goldOfferBlockedByReserve?: boolean;
+}
+
+/** Persistent, situation-scoped AI Join War rejection memory. */
+export interface SavedJointWarEscalation {
+  proposerNationId: string;
+  receiverNationId: string;
+  targetNationId: string;
+  rejectionCount: number;
 }

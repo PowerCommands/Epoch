@@ -14,6 +14,8 @@ import {
   computeGameDate,
   formatGameDate,
   autoProgressedYears,
+  applyAutoLateGameSlowdown,
+  metaToAstroStart,
   addMonths,
   type GameDate,
 } from './GameDate';
@@ -149,10 +151,21 @@ export class TurnManager {
         case 'staticYear':
           return addMonths(runtime.anchorDate, elapsedRounds * runtime.staticYearStep * 12);
         case 'auto': {
-          const progressedYears = autoProgressedYears(
+          // Continue the Auto curve from the anchored World War end date. The
+          // post-1900 slowdown is preserved by advancing along the *slowed*
+          // absolute-year curve (both endpoints lie past 1900 after a war), so
+          // resumed Auto progression keeps its 25% late-game rate.
+          const astroStart = metaToAstroStart(this.scenarioMeta);
+          const unslowedAtAnchor = astroStart + autoProgressedYears(
+            runtime.autoRoundAtAnchor,
+            this.yearProgressionMultiplier,
+          );
+          const unslowedNow = astroStart + autoProgressedYears(
             runtime.autoRoundAtAnchor + elapsedRounds,
             this.yearProgressionMultiplier,
-          ) - autoProgressedYears(runtime.autoRoundAtAnchor, this.yearProgressionMultiplier);
+          );
+          const progressedYears = Math.round(applyAutoLateGameSlowdown(unslowedNow))
+            - Math.round(applyAutoLateGameSlowdown(unslowedAtAnchor));
           return addMonths(runtime.anchorDate, progressedYears * 12);
         }
       }

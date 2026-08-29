@@ -31,4 +31,14 @@ export interface OverseasSettlementTarget {
   settlerRequested?: boolean;
   transportRequested?: boolean;
   requestedTransportUnitTypeId?: string;
+  /**
+   * Overseas route-recovery runtime state (in-memory; safe to be absent after
+   * load). Tracks progress of the naval transit toward the objective so a stalled
+   * expedition can reroute instead of freezing indefinitely.
+   */
+  stallBestDistance?: number;
+  stallTurns?: number;
+  /** Active intermediate recovery waypoint the transport is routing to, if any. */
+  recoveryWaypointX?: number;
+  recoveryWaypointY?: number;
 }

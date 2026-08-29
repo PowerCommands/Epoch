@@ -112,13 +112,13 @@ import { AllianceManager } from '../systems/diplomacy/AllianceManager';
 import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
 import { ScenarioHistoricalEventSystem } from '../systems/ScenarioHistoricalEventSystem';
 import { ScenarioHistoricalEventPresentationSystem } from '../systems/ScenarioHistoricalEventPresentationSystem';
-import { JointWarSystem } from '../systems/diplomacy/JointWarSystem';
+import { JOIN_WAR_MINIMUM_GOLD_RESERVE, JointWarSystem } from '../systems/diplomacy/JointWarSystem';
 import {
   commitExploitationRightsConcession,
   createExploitationRightsConcession,
   getExploitationRightsValueForInterest,
 } from '../systems/diplomacy/ExploitationRightsConcession';
-import type { JointWarKind } from '../types/jointWar';
+import type { JointWarKind, JointWarProposal } from '../types/jointWar';
 import { AllianceCouncilManager } from '../systems/diplomacy/AllianceCouncilManager';
 import { AllianceCouncilDialog } from '../ui/AllianceCouncilDialog';
 import { TradeDiplomacySystem } from '../systems/diplomacy/TradeDiplomacySystem';
@@ -1218,6 +1218,16 @@ export class GameScene extends Phaser.Scene {
       allianceManager,
       nationManager,
       (a, b) => discoverySystem.hasMet(a, b),
+      {
+        getGold: (nationId) => nationManager.getResources(nationId).gold,
+        transferGold: (fromNationId, toNationId, amount) => {
+          if (!Number.isInteger(amount) || amount < 0) return false;
+          if (nationManager.getResources(fromNationId).gold < amount) return false;
+          resourceSystem.addGold(fromNationId, -amount);
+          resourceSystem.addGold(toNationId, amount);
+          return true;
+        },
+      },
     );
     const borderPressureSystem = new BorderPressureSystem(
       diplomacyManager,
@@ -4399,6 +4409,7 @@ export class GameScene extends Phaser.Scene {
       kind: JointWarKind,
       accepted: boolean,
       offeredExploitationRights = false,
+      aiProposal?: JointWarProposal,
     ): void => {
       const p = nationManager.getNation(proposerId)?.name ?? proposerId;
       const r = nationManager.getNation(receiverId)?.name ?? receiverId;
@@ -4410,6 +4421,22 @@ export class GameScene extends Phaser.Scene {
           rightPanel?.requestRefresh();
           return;
         }
+        // A delayed Human response can arrive after the treasury changed. The
+        // reserve is authoritative at settlement, so never declare the war and
+        // then discover that its promised payment cannot be made.
+        if (aiProposal && !jointWarSystem.transferAcceptedGold(aiProposal)) {
+          const treasury = Math.max(0, Math.floor(nationManager.getResources(proposerId).gold));
+          logManager.info({
+            nationIds: [proposerId, receiverId, targetId],
+            category: 'diplomacy',
+            message: `Join War acceptance cancelled: ${p}'s ${aiProposal.offeredGold ?? 0} gold offer would leave `
+              + `${treasury - (aiProposal.offeredGold ?? 0)} gold (minimum reserve ${JOIN_WAR_MINIMUM_GOLD_RESERVE}).`,
+          });
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+          return;
+        }
+        if (aiProposal) jointWarSystem.clearAcceptedProposal(aiProposal);
         executeJointWar(proposerId, receiverId, targetId, kind);
         logManager.info({
           nationIds: [proposerId, receiverId, targetId],
@@ -4432,12 +4459,26 @@ export class GameScene extends Phaser.Scene {
           });
         }
       } else {
+        if (aiProposal) jointWarSystem.recordRejectedProposal(aiProposal);
         logManager.info({
           nationIds: [proposerId, receiverId, targetId],
           category: 'diplomacy',
           message: kind === 'join'
             ? `${r} rejected ${p}'s request to join the war against ${t}.`
             : `${r} rejected ${p}'s joint war proposal against ${t}.`,
+        });
+      }
+      if (aiProposal?.kind === 'join') {
+        const offeredGold = aiProposal.offeredGold ?? 0;
+        const treasury = aiProposal.proposerTreasury
+          ?? Math.max(0, Math.floor(nationManager.getResources(proposerId).gold + (accepted ? offeredGold : 0)));
+        logManager.info({
+          nationIds: [proposerId, receiverId, targetId],
+          category: 'diplomacy',
+          message: `[JoinWar] requester=${p} requested=${r} target=${t} `
+            + `rejections=${aiProposal.rejectionCount ?? 0} goldOffered=${offeredGold} `
+            + `treasury=${treasury} treasuryIfAccepted=${treasury - offeredGold} `
+            + `result=${accepted ? 'ACCEPTED' : 'REJECTED'}.`,
         });
       }
       hudLayer?.refresh();
@@ -4458,11 +4499,27 @@ export class GameScene extends Phaser.Scene {
 
       const { receiverNationId, targetNationId: jointTargetId, kind } = proposal;
       const offerExploitationRights = proposal.offerExploitationRights === true;
+      const offeredGold = proposal.offeredGold ?? 0;
+      if (proposal.goldOfferBlockedByReserve) {
+        const treasury = proposal.proposerTreasury ?? Math.max(0, Math.floor(nationManager.getResources(proposerId).gold));
+        const remaining = treasury - offeredGold;
+        const receiverName = nationManager.getNation(receiverNationId)?.name ?? receiverNationId;
+        const targetName = nationManager.getNation(jointTargetId)?.name ?? jointTargetId;
+        logManager.info({
+          nationIds: [proposerId, receiverNationId, jointTargetId],
+          category: 'diplomacy',
+          message: `Join War retry skipped: next gold offer ${offeredGold} would leave ${self.name} with `
+            + `${remaining} gold (minimum reserve ${JOIN_WAR_MINIMUM_GOLD_RESERVE}). `
+            + `requested=${receiverName} target=${targetName} rejections=${proposal.rejectionCount ?? 0}.`,
+        });
+        return;
+      }
       logManager.info({
         nationIds: [proposerId, receiverNationId, jointTargetId],
         category: 'diplomacy',
         message: formatJointWarProposalLog(proposerId, receiverNationId, jointTargetId, kind)
-          + (offerExploitationRights ? ' (offering resource exploitation rights)' : ''),
+          + (offerExploitationRights ? ' (offering resource exploitation rights)' : '')
+          + (offeredGold > 0 ? ` (offering ${offeredGold} gold)` : ''),
       });
 
       // Ask the human explicitly; never auto-accept on their behalf.
@@ -4473,23 +4530,32 @@ export class GameScene extends Phaser.Scene {
         const exploitationLine = offerExploitationRights
           ? `\n\n${p} also offers you the right to exploit natural resources in ${p}'s territory.`
           : '';
+        const goldLine = offeredGold > 0 ? `\n\n${p} also offers ${offeredGold} gold.` : '';
         showDiplomacyModal({
           title: 'Joint War Request',
           message: (kind === 'join'
             ? `${p} is at war with ${t} and asks you to join the war against ${t}.`
             : `${p} proposes a joint war against ${t}. Both of you would declare war on ${t}.`)
-            + exploitationLine,
+            + exploitationLine
+            + goldLine,
           accentColor,
           confirmLabel: 'Accept',
           cancelLabel: 'Reject',
-          onConfirm: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, true, offerExploitationRights),
-          onCancel: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, false),
+          onConfirm: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, true, offerExploitationRights, proposal),
+          onCancel: () => finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, false, false, proposal),
         });
         return;
       }
 
-      const accepted = jointWarSystem.shouldAccept(receiverNationId, proposerId, jointTargetId, kind, offerExploitationRights);
-      finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, accepted, offerExploitationRights);
+      const accepted = jointWarSystem.shouldAccept(
+        receiverNationId,
+        proposerId,
+        jointTargetId,
+        kind,
+        offerExploitationRights,
+        offeredGold,
+      );
+      finalizeJointWar(proposerId, receiverNationId, jointTargetId, kind, accepted, offerExploitationRights, proposal);
     };
 
     // ─── Alliance Council (Phases 1–3) ───────────────────────────────────────
@@ -8518,6 +8584,7 @@ export class GameScene extends Phaser.Scene {
           productionSystem,
           powerPlantSystem,
           diplomacyManager,
+          jointWarSystem,
           allianceManager,
           discoverySystem,
           symbolicGiftRegistry,
@@ -9119,6 +9186,7 @@ export class GameScene extends Phaser.Scene {
         productionSystem,
         powerPlantSystem,
         diplomacyManager,
+        jointWarSystem,
         allianceManager,
         discoverySystem,
         symbolicGiftRegistry,
@@ -9221,6 +9289,7 @@ export class GameScene extends Phaser.Scene {
           productionSystem,
           powerPlantSystem,
           diplomacyManager,
+          jointWarSystem,
           allianceManager,
           discoverySystem,
           symbolicGiftRegistry,
@@ -9287,6 +9356,7 @@ export class GameScene extends Phaser.Scene {
         productionSystem,
         powerPlantSystem,
         diplomacyManager,
+        jointWarSystem,
         allianceManager,
         discoverySystem,
         symbolicGiftRegistry,

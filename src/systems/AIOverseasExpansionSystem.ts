@@ -21,6 +21,11 @@ import { canNationEmbarkLandUnits, canUnitEndMovementOnTile, isWaterTile } from 
 import { SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
 import { getEraIndex } from '../data/eraTimeline';
 import { getLeaderMaxPreferredCitiesByNationId } from '../data/leaders';
+import {
+  isExpeditionStalled,
+  selectExpeditionRecoveryWaypoint,
+  updateExpeditionProgress,
+} from './ai/expeditionRecovery';
 
 const SAILING_TECH_ID = 'sailing';
 const ISLAND_DISCOVERY_MARKER_TYPE = 'islandDiscovery';
@@ -537,9 +542,64 @@ export class AIOverseasExpansionSystem {
       );
     }
 
-    const path = this.pathfindingSystem.findBestPathToAnyTarget(transport, destinationWaterTiles, {
-      respectMovementPoints: false,
+    // ── Multi-turn progress tracking & stuck recovery ──────────────────────────
+    // Measure how close the transport is to the objective and detect a genuine
+    // multi-turn stall (see expeditionRecovery). This never touches the boarded
+    // Settler cargo — only the transport is repositioned.
+    const targetCoord = { x: target.targetX, y: target.targetY };
+    const currentDistance = this.gridSystem.getDistance(
+      { x: transport.tileX, y: transport.tileY },
+      targetCoord,
+    );
+
+    // Reaching an active recovery waypoint escapes the blockage: clear it and
+    // resume normal routing toward the original target from a fresh baseline.
+    if (
+      target.recoveryWaypointX !== undefined
+      && target.recoveryWaypointY !== undefined
+      && transport.tileX === target.recoveryWaypointX
+      && transport.tileY === target.recoveryWaypointY
+    ) {
+      this.log(
+        nationId,
+        `[Colonization] Expedition ${this.nationName(nationId)} reached recovery waypoint (${target.recoveryWaypointX},${target.recoveryWaypointY}); resuming route to ${target.name} (${target.targetX},${target.targetY}).`,
+      );
+      target.recoveryWaypointX = undefined;
+      target.recoveryWaypointY = undefined;
+      target.stallBestDistance = currentDistance;
+      target.stallTurns = 0;
+    }
+
+    const progress = updateExpeditionProgress(currentDistance, {
+      bestDistance: target.stallBestDistance,
+      stallTurns: target.stallTurns,
     });
+    target.stallBestDistance = progress.bestDistance;
+    target.stallTurns = progress.stallTurns;
+
+    if (isExpeditionStalled(progress)) {
+      this.attemptExpeditionRecovery(nationId, target, transport);
+    }
+
+    // A recovery waypoint, when set, takes precedence over normal routing so the
+    // transport moves toward the escape tile instead of re-attempting the same
+    // blocked destination.
+    let path: Tile[] | null = null;
+    if (target.recoveryWaypointX !== undefined && target.recoveryWaypointY !== undefined) {
+      path = this.pathfindingSystem.findPath(transport, target.recoveryWaypointX, target.recoveryWaypointY, {
+        respectMovementPoints: false,
+      });
+      if (!path) {
+        // The waypoint became unreachable — drop it and fall back to normal routing.
+        target.recoveryWaypointX = undefined;
+        target.recoveryWaypointY = undefined;
+      }
+    }
+    if (!path) {
+      path = this.pathfindingSystem.findBestPathToAnyTarget(transport, destinationWaterTiles, {
+        respectMovementPoints: false,
+      });
+    }
     if (!path) {
       this.cancelExpedition(nationId, target, `${transport.unitType.name} could not find a naval path to ${target.name}`);
       return;
@@ -555,9 +615,13 @@ export class AIOverseasExpansionSystem {
       return;
     }
 
+    // Single-turn "could not advance" cancel only applies to normal routing, so an
+    // in-progress recovery attempt is never aborted by it. A genuinely stuck
+    // recovery instead re-triggers via the stall counter and tries another tile.
     const destination = path[path.length - 1];
     if (
-      destination
+      target.recoveryWaypointX === undefined
+      && destination
       && transport.tileX === beforeX
       && transport.tileY === beforeY
       && (transport.tileX !== destination.x || transport.tileY !== destination.y)
@@ -565,6 +629,65 @@ export class AIOverseasExpansionSystem {
     ) {
       this.cancelExpedition(nationId, target, `${transport.unitType.name} could not advance toward ${target.name}`);
     }
+  }
+
+  /**
+   * Attempt to break a stalled naval transit by choosing a nearby reachable water
+   * tile as an intermediate waypoint. Always resets the stall window (so recovery
+   * is never attempted every turn) and preserves the original colonization target,
+   * so a failed attempt is simply retried later rather than freezing the expedition.
+   */
+  private attemptExpeditionRecovery(
+    nationId: string,
+    target: OverseasSettlementTarget,
+    transport: Unit,
+  ): void {
+    const nationName = this.nationName(nationId);
+    this.log(
+      nationId,
+      `[Colonization] Expedition ${nationName} -> target (${target.targetX},${target.targetY}) stalled for ${target.stallTurns ?? 0} turns; attempting reroute.`,
+    );
+
+    const exclude: Array<{ x: number; y: number }> = [];
+    if (target.recoveryWaypointX !== undefined && target.recoveryWaypointY !== undefined) {
+      exclude.push({ x: target.recoveryWaypointX, y: target.recoveryWaypointY });
+    }
+    // Drop the failed waypoint before searching for a fresh one.
+    target.recoveryWaypointX = undefined;
+    target.recoveryWaypointY = undefined;
+
+    const waypoint = selectExpeditionRecoveryWaypoint({
+      transport,
+      targetX: target.targetX,
+      targetY: target.targetY,
+      mapData: this.mapData,
+      gridSystem: this.gridSystem,
+      pathfindingSystem: this.pathfindingSystem,
+      unitManager: this.unitManager,
+      exclude,
+    });
+
+    // Reset the stall window regardless of outcome so we do not reroute every turn.
+    target.stallTurns = 0;
+
+    if (!waypoint) {
+      this.log(
+        nationId,
+        `[Colonization] Expedition ${nationName} found no recovery waypoint near (${transport.tileX},${transport.tileY}); will retry later.`,
+      );
+      return;
+    }
+
+    target.recoveryWaypointX = waypoint.x;
+    target.recoveryWaypointY = waypoint.y;
+    this.log(
+      nationId,
+      `[Colonization] Recovery waypoint selected at (${waypoint.x},${waypoint.y}); original target remains (${target.targetX},${target.targetY}).`,
+    );
+  }
+
+  private nationName(nationId: string): string {
+    return this.nationManager.getNation(nationId)?.name ?? nationId;
   }
 
   private completeLanding(
@@ -605,6 +728,7 @@ export class AIOverseasExpansionSystem {
     target.settlerRequested = false;
     target.transportRequested = false;
     target.requestedTransportUnitTypeId = undefined;
+    this.resetExpeditionRecoveryState(target);
 
     if (transportId) {
       const transport = this.unitManager.getUnit(transportId);
@@ -626,7 +750,15 @@ export class AIOverseasExpansionSystem {
     target.settlerRequested = false;
     target.transportRequested = false;
     target.requestedTransportUnitTypeId = undefined;
+    this.resetExpeditionRecoveryState(target);
     this.log(nationId, `overseas expedition ${target.name} cancelled: ${reason}.`);
+  }
+
+  private resetExpeditionRecoveryState(target: OverseasSettlementTarget): void {
+    target.stallBestDistance = undefined;
+    target.stallTurns = undefined;
+    target.recoveryWaypointX = undefined;
+    target.recoveryWaypointY = undefined;
   }
 
   private isTargetReady(nationId: string, target: OverseasSettlementTarget): boolean {

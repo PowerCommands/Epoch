@@ -3,7 +3,12 @@ import type { NationManager } from '../NationManager';
 import type { AllianceManager } from './AllianceManager';
 import type { AIMilitaryEvaluationSystem } from '../ai/AIMilitaryEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from './DiplomaticEvaluationSystem';
-import type { JointWarKind, JointWarProposal, JointWarValidationResult } from '../../types/jointWar';
+import type {
+  JointWarKind,
+  JointWarProposal,
+  JointWarValidationResult,
+  SavedJointWarEscalation,
+} from '../../types/jointWar';
 import { getExploitationRightsJoinWarBonusForInterest } from './ExploitationRightsConcession';
 import { getLeaderExploitationInterestByNationId } from '../../data/leaders';
 import { RECLAIM_JOINT_WAR_BONUS } from '../ai/reclaimCapital';
@@ -14,6 +19,17 @@ const ACCEPT_THRESHOLD = 3;
 const MAX_CONCURRENT_WARS = 2;
 /** Reject outright when the target's defensive power dwarfs the receiver. */
 const OVERMATCH_RATIO = 1.6;
+/** Each rejected AI Join War ask raises the next bid by this fixed amount. */
+export const JOIN_WAR_GOLD_ESCALATION_STEP = 10_000;
+/** A proposer may never cross this treasury floor by paying a Join War bid. */
+export const JOIN_WAR_MINIMUM_GOLD_RESERVE = 20_000;
+/** One fixed bid step adds one point to the existing acceptance score. */
+const JOIN_WAR_GOLD_SCORE_PER_STEP = 1;
+
+export interface JointWarEconomy {
+  getGold(nationId: string): number;
+  transferGold(fromNationId: string, toNationId: string, amount: number): boolean;
+}
 
 /**
  * Joint War Requests — pure validation and deterministic AI acceptance rules.
@@ -24,6 +40,8 @@ const OVERMATCH_RATIO = 1.6;
  * (alliance-aware) military systems rather than inventing a parallel model.
  */
 export class JointWarSystem {
+  private readonly rejectedJoinWarAttempts = new Map<string, SavedJointWarEscalation>();
+
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
     private readonly diplomaticEvaluationSystem: DiplomaticEvaluationSystem,
@@ -31,7 +49,11 @@ export class JointWarSystem {
     private readonly allianceManager: AllianceManager,
     private readonly nationManager: NationManager,
     private readonly haveMet: (a: string, b: string) => boolean,
-  ) {}
+    private readonly economy?: JointWarEconomy,
+  ) {
+    // A later war against the same enemy is a new diplomatic situation.
+    this.diplomacyManager.onWarEnded?.((a, b) => this.clearForEndedWar(a, b));
+  }
 
   /**
    * Reclaim Capital hook: the current holder of a nation's lost capital, or
@@ -99,6 +121,7 @@ export class JointWarSystem {
     targetId: string,
     kind: JointWarKind,
     offeredExploitationRights = false,
+    offeredGold = 0,
   ): boolean {
     if (!this.canRequestJointWar(proposerId, receiverId, targetId, kind).ok) return false;
     const reclaimHolderId = this.getReclaimHolderId(receiverId);
@@ -162,7 +185,77 @@ export class JointWarSystem {
       score += getExploitationRightsJoinWarBonusForInterest(getLeaderExploitationInterestByNationId(receiverId));
     }
 
+    // Gold is additive to every existing term and strategic factor. Keeping the
+    // conversion linear makes successive 10,000 bids progressively persuasive
+    // without changing the original zero-gold decision.
+    score += Math.max(0, offeredGold) / JOIN_WAR_GOLD_ESCALATION_STEP * JOIN_WAR_GOLD_SCORE_PER_STEP;
+
     return score >= ACCEPT_THRESHOLD;
+  }
+
+  /** Consecutive rejections for one requester/receiver/enemy situation. */
+  getRejectionCount(proposerId: string, receiverId: string, targetId: string): number {
+    return this.rejectedJoinWarAttempts.get(this.escalationKey(proposerId, receiverId, targetId))?.rejectionCount ?? 0;
+  }
+
+  /** Fixed linear bid for the next retry; the initial attempt remains zero. */
+  getGoldOffer(proposerId: string, receiverId: string, targetId: string): number {
+    return this.getRejectionCount(proposerId, receiverId, targetId) * JOIN_WAR_GOLD_ESCALATION_STEP;
+  }
+
+  recordRejectedProposal(proposal: JointWarProposal): void {
+    if (proposal.kind !== 'join') return;
+    if (this.diplomacyManager.getState(proposal.proposerNationId, proposal.targetNationId) !== 'WAR') return;
+    const key = this.escalationKey(proposal.proposerNationId, proposal.receiverNationId, proposal.targetNationId);
+    const rejectionCount = this.getRejectionCount(
+      proposal.proposerNationId,
+      proposal.receiverNationId,
+      proposal.targetNationId,
+    ) + 1;
+    this.rejectedJoinWarAttempts.set(key, {
+      proposerNationId: proposal.proposerNationId,
+      receiverNationId: proposal.receiverNationId,
+      targetNationId: proposal.targetNationId,
+      rejectionCount,
+    });
+  }
+
+  clearAcceptedProposal(proposal: JointWarProposal): void {
+    this.rejectedJoinWarAttempts.delete(this.escalationKey(
+      proposal.proposerNationId,
+      proposal.receiverNationId,
+      proposal.targetNationId,
+    ));
+  }
+
+  /** Re-check the reserve at acceptance time, then use the normal economy hook. */
+  transferAcceptedGold(proposal: JointWarProposal): boolean {
+    const offeredGold = Math.max(0, Math.floor(proposal.offeredGold ?? 0));
+    if (offeredGold === 0) return true;
+    if (!this.economy) return false;
+    const treasury = Math.max(0, Math.floor(this.economy.getGold(proposal.proposerNationId)));
+    if (treasury - offeredGold < JOIN_WAR_MINIMUM_GOLD_RESERVE) return false;
+    return this.economy.transferGold(proposal.proposerNationId, proposal.receiverNationId, offeredGold);
+  }
+
+  serialize(): SavedJointWarEscalation[] {
+    return [...this.rejectedJoinWarAttempts.values()].map((entry) => ({ ...entry }));
+  }
+
+  restore(entries: readonly SavedJointWarEscalation[] | undefined): void {
+    this.rejectedJoinWarAttempts.clear();
+    for (const entry of entries ?? []) {
+      if (!entry || typeof entry.proposerNationId !== 'string'
+        || typeof entry.receiverNationId !== 'string' || typeof entry.targetNationId !== 'string') continue;
+      if (!Number.isFinite(entry.rejectionCount)) continue;
+      if (this.diplomacyManager.getState(entry.proposerNationId, entry.targetNationId) !== 'WAR') continue;
+      const rejectionCount = Math.max(0, Math.floor(entry.rejectionCount));
+      if (rejectionCount === 0) continue;
+      this.rejectedJoinWarAttempts.set(
+        this.escalationKey(entry.proposerNationId, entry.receiverNationId, entry.targetNationId),
+        { ...entry, rejectionCount },
+      );
+    }
   }
 
   /**
@@ -203,7 +296,7 @@ export class JointWarSystem {
       for (const target of nations) {
         if (this.diplomacyManager.getState(proposerId, target.id) !== 'WAR') continue;
         if (this.canRequestJointWar(proposerId, receiverId, target.id, 'join').ok) {
-          return { proposerNationId: proposerId, receiverNationId: receiverId, targetNationId: target.id, kind: 'join', offerExploitationRights };
+          return this.withRetryOffer({ proposerNationId: proposerId, receiverNationId: receiverId, targetNationId: target.id, kind: 'join', offerExploitationRights });
         }
       }
       // Otherwise propose a coordinated new war against a disliked target.
@@ -237,13 +330,14 @@ export class JointWarSystem {
     );
     for (const receiverId of ordered) {
       if (!this.canRequestJointWar(proposerId, receiverId, holderId, kind).ok) continue;
-      return {
+      const proposal: JointWarProposal = {
         proposerNationId: proposerId,
         receiverNationId: receiverId,
         targetNationId: holderId,
         kind,
         offerExploitationRights: this.shouldOfferExploitationRights(proposerId, receiverId),
       };
+      return kind === 'join' ? this.withRetryOffer(proposal) : proposal;
     }
     return null;
   }
@@ -274,5 +368,38 @@ export class JointWarSystem {
       if (this.diplomacyManager.getState(nationId, other.id) === 'WAR') count += 1;
     }
     return count;
+  }
+
+  private withRetryOffer(proposal: JointWarProposal): JointWarProposal {
+    const rejectionCount = this.getRejectionCount(
+      proposal.proposerNationId,
+      proposal.receiverNationId,
+      proposal.targetNationId,
+    );
+    const offeredGold = rejectionCount * JOIN_WAR_GOLD_ESCALATION_STEP;
+    const proposerTreasury = this.economy
+      ? Math.max(0, Math.floor(this.economy.getGold(proposal.proposerNationId)))
+      : undefined;
+    return {
+      ...proposal,
+      rejectionCount,
+      offeredGold,
+      proposerTreasury,
+      goldOfferBlockedByReserve: offeredGold > 0 && proposerTreasury !== undefined
+        && proposerTreasury - offeredGold < JOIN_WAR_MINIMUM_GOLD_RESERVE,
+    };
+  }
+
+  private escalationKey(proposerId: string, receiverId: string, targetId: string): string {
+    return JSON.stringify([proposerId, receiverId, targetId]);
+  }
+
+  private clearForEndedWar(a: string, b: string): void {
+    for (const [key, entry] of this.rejectedJoinWarAttempts) {
+      if ((entry.proposerNationId === a && entry.targetNationId === b)
+        || (entry.proposerNationId === b && entry.targetNationId === a)) {
+        this.rejectedJoinWarAttempts.delete(key);
+      }
+    }
   }
 }

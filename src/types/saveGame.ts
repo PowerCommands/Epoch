@@ -20,6 +20,7 @@ import type { SavedGossipFlavorState } from './gossipFlavor';
 import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
 import type { PeaceProposal } from '../systems/DiplomacyManager';
+import type { SavedJointWarEscalation } from './jointWar';
 
 /**
  * Explicit JSON shape used to save/restore a running game.
@@ -336,6 +337,8 @@ export interface SavedGameState {
   diplomacy: SavedDiplomacyEntry[];
   /** Pending negotiated-peace offers, including AI offers awaiting a Human answer. */
   pendingPeaceProposals?: PeaceProposal[];
+  /** Situation-scoped rejected AI Join War attempts; absent in older saves. */
+  jointWarEscalations?: SavedJointWarEscalation[];
   discovery: SavedDiscoveryEntry[];
   /** One-time symbolic-gift milestones. Optional so pre-feature saves still load. */
   symbolicGifts?: SavedSymbolicGifts;

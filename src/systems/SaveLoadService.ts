@@ -67,6 +67,7 @@ import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
 import { getActiveLeaderSelections, getLeaderCovertPersonalityByNationId } from '../data/leaders';
 import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes';
 import type { PowerPlantSystem } from './PowerPlantSystem';
+import type { JointWarSystem } from './diplomacy/JointWarSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -82,6 +83,7 @@ export interface SaveLoadContext {
   powerPlantSystem?: PowerPlantSystem;
   policySystem: PolicySystem;
   diplomacyManager: DiplomacyManager;
+  jointWarSystem?: JointWarSystem;
   allianceManager?: AllianceManager;
   discoverySystem: DiscoverySystem;
   symbolicGiftRegistry?: SymbolicGiftRegistry;
@@ -154,6 +156,7 @@ export class SaveLoadService {
       productionSystem,
       policySystem,
       diplomacyManager,
+      jointWarSystem,
       allianceManager,
       discoverySystem,
       symbolicGiftRegistry,
@@ -340,6 +343,7 @@ export class SaveLoadService {
       units,
       diplomacy,
       pendingPeaceProposals: diplomacyManager.getPendingPeaceProposals(),
+      jointWarEscalations: jointWarSystem?.serialize(),
       discovery,
       symbolicGifts: symbolicGiftRegistry?.serialize(),
       gossip: gossipSystem?.serialize(),
@@ -575,6 +579,7 @@ export class SaveLoadService {
 
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.restoreDiplomacy(state.diplomacy, context.diplomacyManager);
+    context.jointWarSystem?.restore(state.jointWarEscalations);
     context.allianceManager?.restoreAlliances(state.alliances);
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);

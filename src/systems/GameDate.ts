@@ -14,6 +14,16 @@ import type { ScenarioMeta } from '../types/scenario';
 export const BASE_YEARS_PER_ROUND = 167;
 export const YEAR_PROGRESS_DECAY = 0.026225;
 
+/**
+ * Late-game Auto slowdown. From January 1900 (astronomical year 1900) onward the
+ * normal Auto calendar advances at {@link AUTO_LATE_GAME_SLOWDOWN_FACTOR} of its
+ * usual rate, so the 20th/21st centuries take more gameplay turns to traverse.
+ * Only the normal `auto` progression is affected — `staticYear`, `monthly`, and
+ * the temporary monthly World War progression are untouched.
+ */
+export const AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR = 1900;
+export const AUTO_LATE_GAME_SLOWDOWN_FACTOR = 0.25;
+
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -31,8 +41,21 @@ export interface GameDate {
 }
 
 /** Map resolved start metadata to its astronomical year integer. */
-function metaToAstroStart(meta: ResolvedScenarioMeta): number {
+export function metaToAstroStart(meta: ResolvedScenarioMeta): number {
   return meta.startYearIsBC ? 1 - meta.startYear : meta.startYear;
+}
+
+/**
+ * Continuous late-game slowdown transform for the normal Auto calendar. Applied
+ * to the *unslowed* absolute astronomical year. Before 1900 the year is returned
+ * unchanged; from 1900 onward only 25% of each additional year is kept. The
+ * function is continuous and monotonically non-decreasing at the 1900 boundary,
+ * so crossing 1900 never causes the displayed date to jump backward or forward.
+ */
+export function applyAutoLateGameSlowdown(unslowedAstroYear: number): number {
+  if (unslowedAstroYear <= AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR) return unslowedAstroYear;
+  return AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR
+    + (unslowedAstroYear - AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR) * AUTO_LATE_GAME_SLOWDOWN_FACTOR;
 }
 
 /** Convert an astronomical year integer into historical parts (no year 0). */
@@ -114,7 +137,8 @@ export function computeGameDate(
     }
     case 'auto':
     default: {
-      astro = astroStart + autoProgressedYears(round, yearProgressionMultiplier);
+      const unslowedAstro = astroStart + autoProgressedYears(round, yearProgressionMultiplier);
+      astro = Math.round(applyAutoLateGameSlowdown(unslowedAstro));
       break;
     }
   }
