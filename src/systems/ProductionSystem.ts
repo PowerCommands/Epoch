@@ -311,6 +311,22 @@ export class ProductionSystem {
     return entries[index].turnsRemaining * BUY_COST_PER_TURN;
   }
 
+  /**
+   * Gold cost for purchasing a newly queued item with no accumulated progress.
+   * Uses the same city restrictions, production modifiers and per-turn buy rate
+   * as {@link getBuyCost}; callers still complete the transaction through the
+   * shared ProductionPurchaseSystem.
+   */
+  getNewItemBuyCost(cityId: string, item: Producible): number | null {
+    const city = this.cityManager.getCity(cityId);
+    if (!city) return null;
+    if (getCityIntegrationProgress(city, this.turnManager.getCurrentRound()).state === 'occupied') {
+      return null;
+    }
+    if (item.kind === 'project') return null;
+    return this.getTurnsEstimate(cityId, item) * BUY_COST_PER_TURN;
+  }
+
   getTurnsEstimate(cityId: string, item: Producible): number {
     const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, item));
     return Math.max(1, Math.ceil(this.getCost(item, cityId) / ppt));

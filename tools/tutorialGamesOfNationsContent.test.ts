@@ -104,14 +104,16 @@ test('both World Council resolutions and their Competition restriction are docum
   assert.match(text, /After Competition begins, neither host replacement nor participant exclusion is available/);
 });
 
-test('Cultural Victory states the reigning-champion gate and its timing exceptions', () => {
+test('Cultural Victory states the normal gates, timing exceptions and overwhelming route', () => {
   const victory = sectionText('victory');
   const games = sectionText('games-of-nations');
-  assert.match(victory, /only achieve Cultural Victory while it is the reigning winner of the most recently completed Games of Nations/);
+  assert.match(victory, /normally achieves Cultural Victory while it is the reigning winner of the most recently completed Games of Nations/);
   assert.match(victory, /Winning the Games does not grant Cultural Victory by itself/);
   assert.match(victory, /Accumulate at least 75,000 Culture/);
   assert.match(victory, /at least 8 completed, unbroken World Wonders/);
   assert.match(victory, /currency ranked Dominant/);
+  assert.match(victory, /overwhelming cultural dominance upon reaching 250,000 Culture/);
+  assert.match(victory, /regardless of its Wonder count, currency status or Games of Nations champion status/);
   assert.match(victory, /another nation wins a later Games.*previous champion loses/);
   assert.match(victory, /Exclusion from an upcoming Games does not immediately remove/);
   assert.match(victory, /cancelled Games creates no new champion/);

@@ -10,6 +10,7 @@ import { CityManager } from '../src/systems/CityManager.ts';
 import {
   CULTURAL_VICTORY_REQUIRED_CULTURE,
   CULTURAL_VICTORY_REQUIRED_WONDERS,
+  OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
 } from '../src/systems/CulturalVictory.ts';
 import { CurrencySystem, type CurrencyEconomicMetrics } from '../src/systems/CurrencySystem.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
@@ -99,6 +100,7 @@ function makeHarness(options: {
   const gamesChampionSource = {
     getLatestCompletedGames: () => latestCompletedGames,
   };
+  const victoryLogs: string[] = [];
 
   const victorySystem = new VictorySystem(
     cityManager,
@@ -111,7 +113,7 @@ function makeHarness(options: {
       cultural: { enabled: true },
       diplomatic: { enabled: false },
     },
-    undefined,
+    (_nationId, message) => victoryLogs.push(message),
     researchSystem,
     undefined,
     wonderSystem,
@@ -138,6 +140,7 @@ function makeHarness(options: {
     setEconomicStrength,
     setReigningGamesChampion,
     evaluateVictory,
+    victoryLogs,
   };
 }
 
@@ -146,6 +149,76 @@ test('75,000 Culture, 8 Wonders, and Dominant Currency produce Cultural Victory'
   harness.evaluateVictory();
   assert.deepEqual(harness.victorySystem.getVictoryState()?.type, 'cultural');
   assert.equal(harness.victorySystem.getVictoryState()?.nationId, TARGET_ID);
+  assert.equal(harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).victoryRoute, 'normal');
+  assert.match(harness.victoryLogs.join('\n'), /achieved Cultural Victory: culture=/);
+});
+
+test('75,000 Culture does not bypass missing normal secondary requirements', () => {
+  const harness = makeHarness({
+    targetCulture: CULTURAL_VICTORY_REQUIRED_CULTURE,
+    targetWonderCount: 0,
+    targetHasCurrency: false,
+    gamesChampionId: null,
+  });
+  const progress = harness.victorySystem.getCulturalVictoryProgress(TARGET_ID);
+  assert.equal(progress.normalRequirementsMet, false);
+  assert.equal(progress.overwhelmingCultureThresholdMet, false);
+  assert.equal(progress.victoryEligible, false);
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+});
+
+test('exactly 250,000 Culture wins despite Wonders, Currency and Games gates', () => {
+  const harness = makeHarness({
+    targetCulture: OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
+    targetWonderCount: 0,
+    targetHasCurrency: false,
+    gamesChampionId: null,
+  });
+  const progress = harness.victorySystem.getCulturalVictoryProgress(TARGET_ID);
+  assert.equal(progress.normalRequirementsMet, false);
+  assert.equal(progress.overwhelmingCultureThreshold, OVERWHELMING_CULTURE_VICTORY_THRESHOLD);
+  assert.equal(progress.overwhelmingCultureThresholdMet, true);
+  assert.equal(progress.victoryRoute, 'overwhelming');
+  assert.equal(progress.victoryEligible, true);
+
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState()?.type, 'cultural');
+  assert.equal(harness.victorySystem.getVictoryState()?.nationId, TARGET_ID);
+  assert.match(
+    harness.victoryLogs.join('\n'),
+    /achieved Cultural Victory through overwhelming cultural dominance: 250,000 \/ 250,000 Culture/,
+  );
+});
+
+test('249,999 Culture does not trigger overwhelming Cultural Victory', () => {
+  const harness = makeHarness({
+    targetCulture: OVERWHELMING_CULTURE_VICTORY_THRESHOLD - 1,
+    targetWonderCount: 0,
+    targetHasCurrency: false,
+    gamesChampionId: null,
+  });
+  assert.equal(
+    harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).overwhelmingCultureThresholdMet,
+    false,
+  );
+  harness.evaluateVictory();
+  assert.equal(harness.victorySystem.getVictoryState(), null);
+});
+
+test('human and AI nations use the same overwhelming Culture threshold', () => {
+  for (const targetIsHuman of [true, false]) {
+    const harness = makeHarness({
+      targetCulture: OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
+      targetWonderCount: 0,
+      targetHasCurrency: false,
+      targetIsHuman,
+      gamesChampionId: null,
+    });
+    harness.evaluateVictory();
+    assert.equal(harness.victorySystem.getVictoryState()?.nationId, TARGET_ID);
+    assert.equal(harness.victorySystem.getCulturalVictoryProgress(TARGET_ID).victoryRoute, 'overwhelming');
+  }
 });
 
 test('normal Cultural Victory requirements are blocked before the first completed Games', () => {

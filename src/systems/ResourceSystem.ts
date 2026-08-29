@@ -19,6 +19,9 @@ import type { CultureEffectSystem } from './culture/CultureEffectSystem';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 import type { City } from '../entities/City';
 import type { CityBuildings } from '../entities/CityBuildings';
+import { CityBuildings as MutableCityBuildings } from '../entities/CityBuildings';
+import type { BuildingType } from '../entities/Building';
+import { getBuildingById } from '../data/buildings';
 import type { Nation } from '../entities/Nation';
 import type { PolicySystem } from './PolicySystem';
 import type { CulturalSphereSystem } from './CulturalSphereSystem';
@@ -232,6 +235,30 @@ export class ResourceSystem {
     this.notify({ nationId });
   }
 
+  /**
+   * Exact recurring national Gold/turn delta produced by completing a building
+   * in this city. This runs the same city economy, policy and integration
+   * pipeline used by recalculateForNation without mutating live city state.
+   */
+  getBuildingGoldPerTurnImprovement(cityId: string, building: BuildingType): number {
+    const city = this.cityManager.getCity(cityId);
+    if (!city) return 0;
+    const current = this.cityManager.getBuildings(cityId);
+    if (current.has(building.id)) return 0;
+
+    const projected = new MutableCityBuildings(cityId);
+    for (const buildingId of current.getAll()) {
+      const existing = getBuildingById(buildingId);
+      if (existing) projected.add(existing);
+    }
+    projected.add(building);
+
+    const nationModifiers = this.getNationModifiers(city.ownerId);
+    const before = this.calculateIntegratedEconomyForCity(city, nationModifiers, 0, 0, current).gold;
+    const after = this.calculateIntegratedEconomyForCity(city, nationModifiers, 0, 0, projected).gold;
+    return after - before;
+  }
+
   private handleTurnStart(e: TurnStartEvent): void {
     if (!this.hasSkippedInitialTurnStart) {
       this.hasSkippedInitialTurnStart = true;
@@ -441,11 +468,12 @@ export class ResourceSystem {
   private calculateEconomyForCity(
     city: City,
     nationModifiers: Readonly<ModifierSet>,
+    buildings: CityBuildings = this.cityManager.getBuildings(city.id),
   ): CityEconomySummary {
     return calculateCityEconomy(
       city,
       this.mapData,
-      this.cityManager.getBuildings(city.id),
+      buildings,
       this.gridSystem,
       nationModifiers,
     );
@@ -456,6 +484,7 @@ export class ResourceSystem {
     nationModifiers: Readonly<ModifierSet>,
     maritimeFoodBonus = 0,
     manufacturedProductionBonus = 0,
+    buildings: CityBuildings = this.cityManager.getBuildings(city.id),
   ): CityEconomySummary {
     return this.applyFlatProduction(
       this.applyCityEnergyProductionMultiplier(
@@ -464,7 +493,7 @@ export class ResourceSystem {
           city,
           this.applyPolicyEconomyModifiers(
             city.ownerId,
-            this.applyMaritimeFood(this.calculateEconomyForCity(city, nationModifiers), maritimeFoodBonus),
+            this.applyMaritimeFood(this.calculateEconomyForCity(city, nationModifiers, buildings), maritimeFoodBonus),
           ),
         ),
       ),

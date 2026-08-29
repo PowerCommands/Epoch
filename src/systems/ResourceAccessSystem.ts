@@ -1,5 +1,6 @@
 import { getNaturalResourceById } from '../data/naturalResources';
 import { getManufacturedResourceById } from '../data/manufacturedResources';
+import { AEROSPACE_PARTS_ID } from '../data/scienceVictory';
 import type { MapData, Tile } from '../types/map';
 import type { TradeDeal } from '../types/tradeDeal';
 import { getTileResourceQuantity, isTileImprovedForResource } from './resource/ResourceQuantity';
@@ -29,6 +30,23 @@ export type ImportBlockedPredicate = (
   sellerNationId: string,
   resourceId: string,
 ) => boolean;
+
+/**
+ * Resources that can be owned/produced but must never be offered on the
+ * international market. Aerospace Parts are a national Science Victory
+ * component (see AerospacePartSystem / ManufacturedResourceEffects) rather than
+ * an ordinary tradable commodity, so they are excluded from export eligibility
+ * here — the single place both the human trade UI and the AI trade candidate
+ * generation consult. This keeps the victory semantics intact without a
+ * resource-specific branch scattered across the trade paths.
+ */
+const NON_EXPORTABLE_RESOURCE_IDS: ReadonlySet<string> = new Set<string>([
+  AEROSPACE_PARTS_ID,
+]);
+
+export function isResourceExportEligible(resourceId: string): boolean {
+  return !NON_EXPORTABLE_RESOURCE_IDS.has(resourceId);
+}
 
 /**
  * Owns the rules for who has access to which natural resources, taking into
@@ -235,6 +253,10 @@ export class ResourceAccessSystem {
   }
 
   canExportResource(sellerNationId: string, resourceId: string): boolean {
+    // Some owned resources are never tradable (e.g. Aerospace Parts, a Science
+    // Victory component). Enforced centrally so every trade path — human UI and
+    // AI candidate generation — shares the same eligibility rule.
+    if (!isResourceExportEligible(resourceId)) return false;
     // A nation can never export more of a resource than it owns: each active
     // export deal consumes one unit of the owned quantity. Exporting does not
     // reduce the seller's own *internal* access — the owned quantity is still
@@ -252,6 +274,7 @@ export class ResourceAccessSystem {
     const entries: { resourceId: string; quantity: number }[] = [];
 
     for (const resourceId of ids) {
+      if (!isResourceExportEligible(resourceId)) continue;
       const available = this.getOwnedResourceSourceCount(nationId, resourceId);
       if (available <= 0) continue;
       entries.push({ resourceId, quantity: available });

@@ -1,8 +1,10 @@
 import type { WonderSystem } from './WonderSystem';
 
-/** Current-state thresholds for Cultural Victory. All must be met together. */
+/** Current-state thresholds for the normal multi-part Cultural Victory route. */
 export const CULTURAL_VICTORY_REQUIRED_CULTURE = 75_000;
 export const CULTURAL_VICTORY_REQUIRED_WONDERS = 8;
+/** Extreme fallback: Culture alone is sufficient at this absolute threshold. */
+export const OVERWHELMING_CULTURE_VICTORY_THRESHOLD = 250_000;
 
 /** Minimal city-ownership lookup, satisfied by CityManager. */
 interface CityOwnerLookup {

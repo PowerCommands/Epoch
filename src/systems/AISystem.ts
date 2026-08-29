@@ -21,6 +21,7 @@ import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, GRAND_STADIUM, GRAND
 import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
+import { getManufacturedResourceById } from '../data/manufacturedResources';
 import type { BuildingType } from '../entities/Building';
 import type { WonderType } from '../entities/Wonder';
 import type { CityBuildings } from '../entities/CityBuildings';
@@ -376,6 +377,37 @@ const POST_TARGET_SETTLER_MIN_GOLD = 25;
 const POST_TARGET_SETTLER_MIN_GOLD_PER_TURN = -1;
 const TILE_PURCHASE_DEFAULT_RESERVE = 100;
 const TILE_PURCHASE_DEFAULT_MIN_SCORE = 45;
+
+export interface EconomicRecoveryInvestment {
+  readonly city: City;
+  readonly building: BuildingType;
+  readonly queueIndex?: number;
+  readonly cost: number;
+  readonly goldPerTurnImprovement: number;
+}
+
+/** Highest structural GPT return per gold; deterministic ties aid tests/replays. */
+export function pickBestEconomicRecoveryInvestment(
+  candidates: readonly EconomicRecoveryInvestment[],
+): EconomicRecoveryInvestment | undefined {
+  return [...candidates].sort((a, b) => {
+    const efficiencyDelta = (b.goldPerTurnImprovement / b.cost)
+      - (a.goldPerTurnImprovement / a.cost);
+    if (Math.abs(efficiencyDelta) > Number.EPSILON) return efficiencyDelta;
+    return b.goldPerTurnImprovement - a.goldPerTurnImprovement
+      || a.cost - b.cost
+      || a.city.id.localeCompare(b.city.id)
+      || a.building.id.localeCompare(b.building.id);
+  })[0];
+}
+
+export function canFundEconomicRecoveryInvestment(
+  treasury: number,
+  purchaseCost: number,
+  reserve: number,
+): boolean {
+  return treasury - purchaseCost >= reserve;
+}
 // Foundation Phase production tuning. Building base scores get a flat boost
 // so they outscore the regular military candidate (70) when food/production/
 // gold thresholds fire — a Foundation city with a real building need always
@@ -446,6 +478,10 @@ const TRADE_PROPOSAL_EXPIRY_TURNS = 5;
 const TRADE_PROPOSAL_CADENCE = 10;
 
 function getProposalGoldPerTurn(resourceId: string, luxuryMultiplier: number): number {
+  // Manufactured resources carry their own trade price (see manufacturedResources.ts);
+  // reuse it rather than the natural-resource category pricing below.
+  const manufactured = getManufacturedResourceById(resourceId);
+  if (manufactured) return manufactured.tradeGoldPerTurn ?? 4;
   const resource = getNaturalResourceById(resourceId);
   if (!resource) return 4;
   switch (resource.category) {
@@ -1235,8 +1271,12 @@ export class AISystem {
         const connUsed = this.tradeDealSystem.getDealsBetween(nationId, humanId).length;
         if (connCapacity <= connUsed) continue;
 
-        // Try "buy from human": human sells a resource this AI lacks
-        const humanResources = this.resourceAccessSystem.getOwnedNaturalResources(humanId);
+        // Try "buy from human": human sells a resource this AI lacks. Candidates
+        // are everything the human can legally export (natural + manufactured),
+        // so corporation goods enter the AI trade pool alongside raw resources.
+        const humanResources = this.resourceAccessSystem
+          .getExportableResourceQuantities(humanId)
+          .map((entry) => entry.resourceId);
         for (const resourceId of humanResources) {
           if (available.has(resourceId)) continue;
           const alreadyImporting = this.tradeDealSystem.getDealsBetween(nationId, humanId)
@@ -1260,9 +1300,12 @@ export class AISystem {
           break outer;
         }
 
-        // Try "sell to human": AI offers a resource the human lacks
+        // Try "sell to human": AI offers a resource the human lacks. Candidates
+        // are everything this AI can legally export (natural + manufactured).
         const humanAvailable = new Set(this.resourceAccessSystem.getAvailableResources(humanId));
-        const aiResources = this.resourceAccessSystem.getOwnedNaturalResources(nationId);
+        const aiResources = this.resourceAccessSystem
+          .getExportableResourceQuantities(nationId)
+          .map((entry) => entry.resourceId);
         for (const resourceId of aiResources) {
           if (humanAvailable.has(resourceId)) continue;
           const alreadySelling = this.tradeDealSystem.getDealsBetween(nationId, humanId)
@@ -1287,8 +1330,12 @@ export class AISystem {
         continue; // No suitable proposal found; try next seller (AI)
       }
 
-      // Non-human: direct deal (existing behavior)
-      const ownedResources = this.resourceAccessSystem.getOwnedNaturalResources(other.id);
+      // Non-human: direct deal (existing behavior). Candidates are everything the
+      // seller can legally export (natural + manufactured), so corporation goods
+      // participate in AI ↔ AI trade the same way raw resources do.
+      const ownedResources = this.resourceAccessSystem
+        .getExportableResourceQuantities(other.id)
+        .map((entry) => entry.resourceId);
       const orderedResources = luxuryValueMultiplier > 1.0
         ? [...ownedResources].sort((a, b) => luxuryRank(b) - luxuryRank(a))
         : ownedResources;
@@ -1296,10 +1343,15 @@ export class AISystem {
       for (const resourceId of orderedResources) {
         if (available.has(resourceId)) continue;
         if (this.resourceAccessSystem.hasImportedResource(nationId, resourceId)) continue;
+        // Manufactured goods carry their own trade price; naturals keep the
+        // existing base/luxury pricing so natural-resource trades are unchanged.
+        const manufactured = getManufacturedResourceById(resourceId);
         const isLuxury = getNaturalResourceById(resourceId)?.category === 'luxury';
-        const offerGoldPerTurn = isLuxury
-          ? Math.round(baseGoldPerTurn * luxuryValueMultiplier)
-          : baseGoldPerTurn;
+        const offerGoldPerTurn = manufactured
+          ? manufactured.tradeGoldPerTurn ?? baseGoldPerTurn
+          : isLuxury
+            ? Math.round(baseGoldPerTurn * luxuryValueMultiplier)
+            : baseGoldPerTurn;
         if (this.nationManager.getResources(nationId).gold < offerGoldPerTurn * (dealsCreated + 1)) break outer;
 
         const result = this.tradeDealSystem.createDeal({
@@ -4594,6 +4646,7 @@ export class AISystem {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     this.ensureEmergencyMilitaryProduction(nationId);
     this.runEmergencyMilitaryPurchase(nationId);
+    this.runEconomicConsolidationRecoveryPurchases(nationId);
     this.logSpaceRaceFactoryPriorityState(nationId);
     this.updateAndLogAIPhase(nationId);
     this.ensureScoutProduction(nationId, cities);
@@ -4838,6 +4891,109 @@ export class AISystem {
         return;
       }
     }
+  }
+
+  /**
+   * Spend accumulated consolidation liquidity on one legal structural-income
+   * building. Purchasing through ProductionPurchaseSystem preserves the normal
+   * cost, completion, placement, refund and resource-recalculation pipeline.
+   */
+  private runEconomicConsolidationRecoveryPurchases(nationId: string): void {
+    if (!this.productionPurchaseSystem) return;
+    if (!this.consolidationSystem?.isConsolidating(nationId)) return;
+
+    const resources = this.nationManager.getResources(nationId);
+    const netIncome = resources.goldPerTurn
+      - (this.unitUpkeepSystem?.calculateUpkeep(nationId) ?? 0);
+    if (netIncome >= 0) return;
+
+    const reserve = getModernizationGoldReserve(getLeaderMilitaryDoctrineByNationId(nationId));
+    const investments: EconomicRecoveryInvestment[] = [];
+
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const buildings = this.cityManager.getBuildings(city.id);
+      const queue = this.productionSystem.getQueue(city.id);
+
+      for (const building of ALL_BUILDINGS) {
+        if (buildings.has(building.id)) continue;
+        if (!this.canBuildBuilding(nationId, building.id)) continue;
+
+        const item: Producible = { kind: 'building', buildingType: building };
+        if (this.productionSystem.getItemProductionBlockReason(city.id, item) !== undefined) continue;
+
+        const queueIndex = queue.findIndex((entry) => (
+          entry.item.kind === 'building' && entry.item.buildingType.id === building.id
+        ));
+        if (queueIndex < 0 && this.hasPlacedOrReservedBuilding(city, building.id)) continue;
+
+        const goldPerTurnImprovement = this.productionPurchaseSystem
+          .getBuildingGoldPerTurnImprovement(city.id, building);
+        if (goldPerTurnImprovement <= 0) continue;
+
+        if (queueIndex < 0 && !this.canCityBuildBuilding(city, nationId, building)) continue;
+
+        const cost = queueIndex >= 0
+          ? this.productionSystem.getBuyCost(city.id, queueIndex)
+          : this.productionSystem.getNewItemBuyCost(city.id, item);
+        if (cost === null || cost <= 0) continue;
+        if (!canFundEconomicRecoveryInvestment(resources.gold, cost, reserve)) continue;
+
+        investments.push({
+          city,
+          building,
+          queueIndex: queueIndex >= 0 ? queueIndex : undefined,
+          cost,
+          goldPerTurnImprovement,
+        });
+      }
+    }
+
+    const selected = pickBestEconomicRecoveryInvestment(investments);
+    if (!selected) return;
+
+    let purchaseIndex = selected.queueIndex;
+    if (purchaseIndex === undefined) {
+      const placement = this.reserveAIBuildingPlacement(selected.city, selected.building);
+      if (
+        selected.building.placement !== 'city'
+        && this.buildingPlacementSystem
+        && !placement
+      ) return;
+      this.productionSystem.enqueueFront(
+        selected.city.id,
+        { kind: 'building', buildingType: selected.building },
+        { placement },
+      );
+      const queued = this.productionSystem.getQueue(selected.city.id)[0];
+      if (queued?.item.kind !== 'building' || queued.item.buildingType.id !== selected.building.id) {
+        this.buildingPlacementSystem?.releaseCityBuildingReservation(
+          selected.city.id,
+          selected.building.id,
+          this.mapData,
+        );
+        return;
+      }
+      purchaseIndex = 0;
+    }
+
+    const result = this.productionPurchaseSystem.purchase(selected.city.id, purchaseIndex);
+    if (!result.ok) {
+      if (selected.queueIndex === undefined) this.productionSystem.removeFromQueue(selected.city.id, purchaseIndex);
+      return;
+    }
+    const nationName = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const improvement = selected.goldPerTurnImprovement;
+    const message = `[EconomicConsolidation] ${nationName} purchased ${selected.building.name} in ${selected.city.name} for ${result.cost} gold: structural GPT recovery investment (+${improvement} GPT).`;
+    console.log(message);
+    this.logStrategicEvent?.(nationId, message);
+  }
+
+  private hasPlacedOrReservedBuilding(city: City, buildingId: string): boolean {
+    return city.ownedTileCoords.some((coord) => {
+      const tile = this.mapData.tiles[coord.y]?.[coord.x];
+      return tile?.buildingId === buildingId
+        || tile?.buildingConstruction?.buildingId === buildingId;
+    });
   }
 
   private runMilitaryModernization(nationId: string): void {

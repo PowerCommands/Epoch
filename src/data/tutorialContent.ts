@@ -514,7 +514,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Corporations and banks',
         ],
       },
-      { kind: 'note', text: 'Only the highest-ranked currency is Dominant, and a Dominant currency is one of the four requirements for a Cultural Victory. A strong economy therefore feeds directly into your victory options.' },
+      { kind: 'note', text: 'Only the highest-ranked currency is Dominant, and a Dominant currency is one of the four requirements for the normal Cultural Victory route. A strong economy therefore feeds directly into your victory options.' },
     ],
   },
   {
@@ -606,7 +606,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'heading', text: 'Cultural Expansion' },
       { kind: 'paragraph', text: 'Culture also expands your cities’ borders, claiming new tiles for your civilization over time. Each city works toward a planned expansion tile, which you can retarget, and tiles and resources brought inside your borders become available to work.' },
       { kind: 'heading', text: 'Cultural Victory' },
-      { kind: 'paragraph', text: 'Sustained cultural output is a victory path in its own right, combined with World Wonders, a dominant currency and victory in Games of Nations. See Games of Nations for the sporting system and Victory & Objectives for the full victory requirements.' },
+      { kind: 'paragraph', text: 'Sustained cultural output is a victory path in its own right, normally combined with World Wonders, a dominant currency and victory in Games of Nations. A civilization can instead achieve Cultural Victory through overwhelming cultural dominance at 250,000 Culture regardless of those other requirements. See Games of Nations for the sporting system and Victory & Objectives for the full victory requirements.' },
     ],
   },
   {
@@ -667,7 +667,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'note', text: 'After Competition begins, neither host replacement nor participant exclusion is available. Results and medals already being decided cannot be rewritten halfway through a tournament.' },
 
       { kind: 'heading', text: 'Games and Cultural Victory' },
-      { kind: 'paragraph', text: 'Winning Games of Nations does not grant victory by itself. It makes your nation the reigning winner of the most recently completed Games and opens the Games-based eligibility window for Cultural Victory while you also meet all other cultural requirements. See Victory & Objectives for the exact requirements.' },
+      { kind: 'paragraph', text: 'Winning Games of Nations does not grant victory by itself. It makes your nation the reigning winner of the most recently completed Games and opens the Games-based eligibility window for the normal Cultural Victory route while you also meet all other cultural requirements. The separate 250,000-Culture overwhelming-dominance route does not require a Games title. See Victory & Objectives for the exact requirements.' },
       { kind: 'note', text: 'A rival nearing Cultural Victory may be checked by competing hard in selected sports, learning leader preferences or using World Council politics before Competition. No single approach guarantees success.' },
     ],
   },
@@ -757,7 +757,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       },
 
       { kind: 'heading', text: 'Cultural Victory' },
-      { kind: 'paragraph', text: 'A nation can only achieve Cultural Victory while it is the reigning winner of the most recently completed Games of Nations. Winning the Games does not grant Cultural Victory by itself; it opens a temporary opportunity to win if all four requirements are met simultaneously:' },
+      { kind: 'paragraph', text: 'A nation normally achieves Cultural Victory while it is the reigning winner of the most recently completed Games of Nations. Winning the Games does not grant Cultural Victory by itself; it opens a temporary opportunity to win if all four normal requirements are met simultaneously:' },
       {
         kind: 'list',
         items: [
@@ -767,6 +767,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'Be the reigning winner of the most recently completed Games of Nations.',
         ],
       },
+      { kind: 'paragraph', text: 'Alternatively, a civilization achieves Cultural Victory through overwhelming cultural dominance upon reaching 250,000 Culture, regardless of its Wonder count, currency status or Games of Nations champion status.' },
       { kind: 'paragraph', text: 'World Wonders count for the nation that currently owns their city. Conquering or losing a Wonder city therefore changes Cultural Victory progress. Currency strength is relative to other active currencies, and only the highest-ranked currency is Dominant.' },
       { kind: 'paragraph', text: 'When another nation wins a later Games, the previous champion loses this Games-based eligibility. A culturally dominant nation may therefore need to win the Games and then satisfy or maintain the other three requirements before the next completed tournament replaces it as champion.' },
       { kind: 'paragraph', text: 'Exclusion from an upcoming Games does not immediately remove the reigning champion’s current eligibility: it remains champion until another Games is successfully completed, although it cannot defend its title while excluded. A cancelled Games creates no new champion, so the winner of the latest successfully completed Games remains reigning champion.' },

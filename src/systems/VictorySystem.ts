@@ -12,6 +12,7 @@ import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
 import {
   CULTURAL_VICTORY_REQUIRED_CULTURE,
   CULTURAL_VICTORY_REQUIRED_WONDERS,
+  OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
   getOwnedWonderCount,
 } from './CulturalVictory';
 import {
@@ -83,9 +84,12 @@ export interface CulturalVictoryProgress {
   requiredWonders: number;
   currencyStatus: CurrencyStrength | null;
   normalRequirementsMet: boolean;
+  overwhelmingCultureThreshold: number;
+  overwhelmingCultureThresholdMet: boolean;
   latestCompletedGamesNumber: number | null;
   reigningGamesChampionNationId: string | null;
   isReigningGamesChampion: boolean;
+  victoryRoute: 'normal' | 'overwhelming' | null;
   victoryEligible: boolean;
 }
 
@@ -105,9 +109,8 @@ export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_
  * VictorySystem checks for win conditions after each turn end.
  * Domination: one nation owns every active nation's original capital.
  * Science: one nation produces enough aerospace_parts.
- * Cultural: one nation simultaneously has enough accumulated Culture, owns
- * enough World Wonders, has the current Dominant currency, and is the reigning
- * Games of Nations champion.
+ * Cultural: one nation either meets the normal multi-part requirements or
+ * reaches the overwhelming absolute Culture threshold.
  * Diplomatic: one nation reaches the Diplomatic Score threshold.
  */
 export class VictorySystem {
@@ -312,6 +315,14 @@ export class VictorySystem {
     const latestGames = this.gamesOfNationsSystem?.getLatestCompletedGames();
     const reigningGamesChampionNationId = latestGames?.overallWinnerNationId ?? null;
     const isReigningGamesChampion = reigningGamesChampionNationId === nationId;
+    const normalVictoryEligible = normalRequirementsMet && isReigningGamesChampion;
+    const overwhelmingCultureThresholdMet = accumulatedCulture
+      >= OVERWHELMING_CULTURE_VICTORY_THRESHOLD;
+    const victoryRoute = normalVictoryEligible
+      ? 'normal' as const
+      : overwhelmingCultureThresholdMet
+        ? 'overwhelming' as const
+        : null;
     return {
       nationId,
       accumulatedCulture,
@@ -320,14 +331,17 @@ export class VictorySystem {
       requiredWonders: CULTURAL_VICTORY_REQUIRED_WONDERS,
       currencyStatus,
       normalRequirementsMet,
+      overwhelmingCultureThreshold: OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
+      overwhelmingCultureThresholdMet,
       latestCompletedGamesNumber: latestGames?.gamesNumber ?? null,
       reigningGamesChampionNationId,
       isReigningGamesChampion,
-      victoryEligible: normalRequirementsMet && isReigningGamesChampion,
+      victoryRoute,
+      victoryEligible: victoryRoute !== null,
     };
   }
 
-  /** Diagnostic ordering only; the victory rule itself remains a strict conjunction. */
+  /** Diagnostic ordering only; the normal route remains a strict conjunction. */
   getCulturalVictoryRanking(): CulturalVictoryProgress[] {
     return this.nationManager.getAllNations()
       .map((n) => this.getCulturalVictoryProgress(n.id))
@@ -357,17 +371,9 @@ export class VictorySystem {
   }
 
   private checkCulturalVictory(): string | null {
-    if (!this.wonderSystem || !this.currencySystem) return null;
     for (const nation of this.nationManager.getAllNations()) {
       const progress = this.getCulturalVictoryProgress(nation.id);
-      if (
-        progress.accumulatedCulture >= progress.requiredCulture
-        && progress.ownedWonders >= progress.requiredWonders
-        && progress.currencyStatus === 'Dominant'
-        && progress.isReigningGamesChampion
-      ) {
-        return nation.id;
-      }
+      if (progress.victoryEligible) return nation.id;
     }
     return null;
   }
@@ -438,6 +444,13 @@ export class VictorySystem {
     if (!this.log) return;
     const name = this.nationManager.getNation(nationId)?.name ?? nationId;
     const progress = this.getCulturalVictoryProgress(nationId);
+    if (progress.victoryRoute === 'overwhelming') {
+      this.log(
+        nationId,
+        `[r${round}] [Victory] ${name} achieved Cultural Victory through overwhelming cultural dominance: ${progress.accumulatedCulture.toLocaleString()} / ${progress.overwhelmingCultureThreshold.toLocaleString()} Culture.`,
+      );
+      return;
+    }
     this.log(nationId,
       `[r${round}] ${name} achieved Cultural Victory: culture=${progress.accumulatedCulture}/${progress.requiredCulture} wonders=${progress.ownedWonders}/${progress.requiredWonders} currency=${progress.currencyStatus ?? 'Not established'} latestGames=${progress.latestCompletedGamesNumber ?? 'none'} reigningGoNChampion=true.`,
     );
@@ -454,8 +467,9 @@ export class VictorySystem {
       const cultureReady = p.accumulatedCulture >= p.requiredCulture ? ' [READY]' : '';
       const wondersReady = p.ownedWonders >= p.requiredWonders ? ' [READY]' : '';
       const currencyReady = p.currencyStatus === 'Dominant' ? ' [READY]' : '';
+      const overwhelmingReady = p.overwhelmingCultureThresholdMet ? ' [READY]' : '';
       lines.push(
-        `- ${name}: culture=${p.accumulatedCulture}/${p.requiredCulture}${cultureReady} wonders=${p.ownedWonders}/${p.requiredWonders}${wondersReady} currency=${p.currencyStatus ?? 'Not established'}${currencyReady} normalRequirements=${p.normalRequirementsMet} latestGames=${p.latestCompletedGamesNumber ?? 'none'} reigningGoNChampion=${p.isReigningGamesChampion} victoryEligible=${p.victoryEligible}`,
+        `- ${name}: culture=${p.accumulatedCulture}/${p.requiredCulture}${cultureReady} wonders=${p.ownedWonders}/${p.requiredWonders}${wondersReady} currency=${p.currencyStatus ?? 'Not established'}${currencyReady} normalRequirements=${p.normalRequirementsMet} latestGames=${p.latestCompletedGamesNumber ?? 'none'} reigningGoNChampion=${p.isReigningGamesChampion} overwhelmingCulture=${p.accumulatedCulture}/${p.overwhelmingCultureThreshold}${overwhelmingReady} victoryRoute=${p.victoryRoute ?? 'none'} victoryEligible=${p.victoryEligible}`,
       );
     }
     this.log(ranking[0].nationId, lines.join('\n'));

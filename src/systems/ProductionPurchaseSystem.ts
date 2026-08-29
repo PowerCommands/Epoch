@@ -3,6 +3,7 @@ import type { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
 import type { ResourceSystem } from './ResourceSystem';
 import { isMilitaryProductionUnit } from './ProductionRules';
+import type { BuildingType } from '../entities/Building';
 
 export type ProductionPurchaseQuote =
   | { ok: true; cost: number; isMilitaryUnit: boolean }
@@ -74,5 +75,10 @@ export class ProductionPurchaseSystem {
       goldBefore,
       goldAfter: this.nationManager.getResources(city.ownerId).gold,
     };
+  }
+
+  /** Exact structural Gold/turn effect used by the normal resource economy. */
+  getBuildingGoldPerTurnImprovement(cityId: string, building: BuildingType): number {
+    return this.resourceSystem.getBuildingGoldPerTurnImprovement(cityId, building);
   }
 }

@@ -14,7 +14,7 @@ export function buildGamesOfNationsLeaderboardSections(
     title: 'Cultural Victory',
     rows: [{
       kind: 'text',
-      text: 'To win a Cultural Victory, a nation must be the Reigning GoN Champion.',
+      text: 'The normal Cultural Victory route requires the Reigning GoN Champion; 250,000 Culture wins through overwhelming cultural dominance without that title.',
       muted: true,
     }],
   };

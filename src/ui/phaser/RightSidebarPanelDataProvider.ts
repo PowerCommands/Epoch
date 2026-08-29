@@ -90,6 +90,7 @@ import { getCitySpritePath, getCorporationSpritePath, getNaturalResourceSpritePa
 import {
   CULTURAL_VICTORY_REQUIRED_CULTURE,
   CULTURAL_VICTORY_REQUIRED_WONDERS,
+  OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
   getOwnedWonderCount,
 } from '../../systems/CulturalVictory';
 import type {
@@ -2678,7 +2679,7 @@ export class RightSidebarPanelDataProvider {
   private getCulturalVictorySection(): RightSidebarSection {
     const entries = this.getCulturalVictoryLeaderboard();
     const headerRow = textRow(
-      `Cultural Victory — ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, a Dominant currency, and Reigning GoN Champion.`,
+      `Cultural Victory — normal route: ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, a Dominant currency, and Reigning GoN Champion; OR ${OVERWHELMING_CULTURE_VICTORY_THRESHOLD.toLocaleString()} Culture through overwhelming cultural dominance.`,
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0
@@ -2702,6 +2703,7 @@ export class RightSidebarPanelDataProvider {
         ?.getCulturalVictoryProgress(nation.id).isReigningGamesChampion === true;
       const details = [
         `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}`,
+        `Overwhelming ${culture.toLocaleString()} / ${OVERWHELMING_CULTURE_VICTORY_THRESHOLD.toLocaleString()}`,
         `Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}`,
         currency === 'Dominant' ? 'Currency Dominant' : undefined,
         champion ? 'Reigning GoN Champion' : undefined,
