@@ -88,6 +88,72 @@ export function applyVictoryFocusProductionPriority(
   };
 }
 
+/**
+ * Deterministic plan for actively executing a Science Victory once a nation is
+ * in Science Victory Focus. Decides whether to found AeroSpace Industries or to
+ * manufacture Aerospace Parts, using booleans derived from the canonical
+ * requirement checks (passed in — never duplicated here). It never cancels an
+ * in-progress build and yields to genuine emergencies.
+ */
+export type ScienceVictoryExecutionPlan =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'foundAerospaceIndustries'; readonly cityId: string; readonly immediate: boolean }
+  | { readonly kind: 'deferFounding'; readonly reason: string }
+  | { readonly kind: 'produceAerospaceParts'; readonly cityIds: readonly string[] };
+
+export interface ScienceVictoryCorporationCity {
+  readonly cityId: string;
+  /** No current production — can be committed immediately, ahead of scoring. */
+  readonly idle: boolean;
+  /** Turns estimate for founding here; lower is preferred. */
+  readonly turns: number;
+}
+
+export interface ScienceVictoryExecutionInput {
+  readonly inScienceFocus: boolean;
+  readonly hasAerospaceIndustries: boolean;
+  /** Canonical corporationSystem.canFoundCorporation result for this nation. */
+  readonly canFoundAerospaceIndustries: boolean;
+  /** AeroSpace Industries already being produced or queued somewhere. */
+  readonly aerospaceIndustriesInProduction: boolean;
+  /** A genuine emergency is active (existential threat) — yield the queue jump. */
+  readonly emergencyActive: boolean;
+  readonly accumulatedParts: number;
+  readonly inFlightParts: number;
+  readonly requiredParts: number;
+  /** Cities where canCityProduceCorporation(AeroSpace Industries) holds. */
+  readonly corporationEligibleCities: readonly ScienceVictoryCorporationCity[];
+  /** Idle cities that can manufacture an Aerospace Part right now. */
+  readonly partEligibleIdleCityIds: readonly string[];
+}
+
+export function planScienceVictoryProduction(
+  input: ScienceVictoryExecutionInput,
+): ScienceVictoryExecutionPlan {
+  if (!input.inScienceFocus) return { kind: 'none' };
+  if (input.accumulatedParts >= input.requiredParts) return { kind: 'none' };
+
+  if (!input.hasAerospaceIndustries) {
+    if (!input.canFoundAerospaceIndustries) return { kind: 'none' };
+    if (input.aerospaceIndustriesInProduction) return { kind: 'none' }; // do not reshuffle
+    const eligible = [...input.corporationEligibleCities]
+      .sort((a, b) => a.turns - b.turns || a.cityId.localeCompare(b.cityId));
+    if (eligible.length === 0) return { kind: 'none' };
+    const idle = eligible.find((city) => city.idle);
+    if (idle) return { kind: 'foundAerospaceIndustries', cityId: idle.cityId, immediate: true };
+    if (input.emergencyActive) {
+      return { kind: 'deferFounding', reason: 'all eligible cities busy while an emergency is active' };
+    }
+    return { kind: 'foundAerospaceIndustries', cityId: eligible[0].cityId, immediate: false };
+  }
+
+  const remaining = input.requiredParts - (input.accumulatedParts + input.inFlightParts);
+  if (remaining <= 0) return { kind: 'none' };
+  const cityIds = input.partEligibleIdleCityIds.slice(0, remaining);
+  if (cityIds.length === 0) return { kind: 'none' };
+  return { kind: 'produceAerospaceParts', cityIds };
+}
+
 function isCurrentFocusObjective(
   candidate: AIProductionCandidate,
   objective: AIVictoryFocusObjective,

@@ -66,6 +66,9 @@ const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nat
 export class AIOverseasExpansionSystem {
   private readonly lastBlockedReasonByNation = new Map<string, string>();
   private readonly lastExpeditionStateByNation = new Map<string, string>();
+  // Dedupe key (per nation) for the "waiting for a busy Cargo Ship" log so it is
+  // not emitted every turn while the transport is unavailable.
+  private readonly lastTransportWaitByNation = new Map<string, string>();
 
   constructor(
     private readonly worldMarkerSystem: WorldMarkerSystem,
@@ -316,7 +319,12 @@ export class AIOverseasExpansionSystem {
     const target = this.getMutableSelectedTarget(nationId);
     if (!target || target.status === 'expeditionReady') return false;
     if (target.assignedTransportUnitId && this.unitManager.getUnit(target.assignedTransportUnitId)) return false;
-    return !this.hasQueuedSettlerTransport(nationId);
+    if (this.hasQueuedSettlerTransport(nationId)) return false;
+    // Reuse existing Cargo Ships as reusable strategic assets: never request a
+    // new transport while the nation already owns one. A free ship will be
+    // reserved via updateExpeditionIntent; a busy ship is waited for. Production
+    // is only needed when the nation owns no Cargo Ship at all.
+    return !this.nationOwnsSettlerTransport(nationId);
   }
 
   isExpeditionReady(nationId: string): boolean {
@@ -445,10 +453,26 @@ export class AIOverseasExpansionSystem {
     }
 
     if (this.requiresTransportForOverseasExpansion(nationId)) {
-      if (!mutableTarget.assignedTransportUnitId && !mutableTarget.transportRequested) {
-        mutableTarget.transportRequested = true;
-        mutableTarget.status = 'transportRequested';
-        this.log(nationId, `wants Transport for overseas expedition target ${mutableTarget.name}.`);
+      // Drop a stale assignment (the assigned Cargo Ship was destroyed/removed)
+      // so we can reuse another owned ship or, if none exists, request one.
+      if (mutableTarget.assignedTransportUnitId && !this.unitManager.getUnit(mutableTarget.assignedTransportUnitId)) {
+        mutableTarget.assignedTransportUnitId = undefined;
+      }
+      if (mutableTarget.assignedTransportUnitId === undefined) {
+        // Reuse an idle Cargo Ship the nation already owns before building one.
+        if (!this.tryReuseExistingTransport(nationId, mutableTarget)) {
+          if (this.nationOwnsSettlerTransport(nationId)) {
+            // A Cargo Ship exists but is busy with another expedition: wait for
+            // it rather than producing a second transport.
+            this.logExpeditionWaitingForBusyTransportOnce(nationId, mutableTarget);
+            if (mutableTarget.status === 'selected') mutableTarget.status = 'expeditionPreparing';
+          } else if (!mutableTarget.transportRequested) {
+            // No Cargo Ship exists anywhere: allow the normal request/production.
+            mutableTarget.transportRequested = true;
+            mutableTarget.status = 'transportRequested';
+            this.log(nationId, `no Cargo Ship available; requesting new transport for overseas expedition target ${mutableTarget.name}.`);
+          }
+        }
       }
     } else if (mutableTarget.status === 'settlerRequested' || mutableTarget.status === 'selected') {
       this.log(nationId, `does not require Transport for ${mutableTarget.name} because land embarkation is available.`);
@@ -484,6 +508,7 @@ export class AIOverseasExpansionSystem {
     ) {
       target.assignedTransportUnitId = unit.id;
       target.status = 'expeditionPreparing';
+      this.lastTransportWaitByNation.delete(unit.ownerId);
       this.log(unit.ownerId, `assigned ${unit.unitType.name} to overseas expedition target ${target.name}.`);
       this.updateTargetReadiness(unit.ownerId, target);
     }
@@ -749,12 +774,15 @@ export class AIOverseasExpansionSystem {
     target.requestedTransportUnitTypeId = undefined;
     this.resetExpeditionRecoveryState(target);
 
+    // Release the Cargo Ship for reuse instead of retiring it: transports are
+    // reusable strategic assets. Clearing assignedTransportUnitId above already
+    // frees it, so a later expedition can reserve the same ship (see
+    // tryReuseExistingTransport) rather than building a new one.
     if (transportId) {
       const transport = this.unitManager.getUnit(transportId);
       if (transport && transport.cargoUnitIds.length === 0) {
         const nation = this.nationManager.getNation(nationId);
-        this.log(nationId, `[Expedition] ${nation?.name ?? nationId} retired expedition transport near ${target.name} after successful settler landing.`);
-        this.unitManager.removeUnit(transportId);
+        this.log(nationId, `[Expedition] ${nation?.name ?? nationId} released ${transport.unitType.name} near ${target.name} for reuse after successful settler landing.`);
       }
     }
 
@@ -823,6 +851,69 @@ export class AIOverseasExpansionSystem {
 
   private isTransportCapableUnit(unit: Unit): boolean {
     return this.isSettlerTransportUnitType(unit.unitType);
+  }
+
+  /** Every settler-transport-capable unit the nation currently owns. */
+  private getOwnedSettlerTransports(nationId: string): Unit[] {
+    return this.unitManager.getUnitsByOwner(nationId).filter((unit) => this.isTransportCapableUnit(unit));
+  }
+
+  /** True when the nation owns at least one settler-transport (free or busy). */
+  private nationOwnsSettlerTransport(nationId: string): boolean {
+    return this.getOwnedSettlerTransports(nationId).length > 0;
+  }
+
+  /**
+   * A Cargo Ship the nation owns that is free to be reassigned: not currently
+   * carrying cargo and not assigned to any other active expedition. Used so a
+   * completed expedition's transport is reused instead of building a new one.
+   */
+  private findReusableTransport(nationId: string): Unit | undefined {
+    return this.getOwnedSettlerTransports(nationId).find((unit) => (
+      unit.cargoUnitIds.length === 0
+      && !this.isUnitAssignedToActiveExpedition(unit.id)
+    ));
+  }
+
+  /**
+   * Assign an existing free Cargo Ship to the target instead of producing a new
+   * one. Returns true when a reusable transport was reserved (or one is already
+   * assigned), false when none is available for reuse.
+   */
+  private tryReuseExistingTransport(nationId: string, target: OverseasSettlementTarget): boolean {
+    if (!this.requiresTransportForOverseasExpansion(nationId)) return false;
+    if (target.assignedTransportUnitId && this.unitManager.getUnit(target.assignedTransportUnitId)) return true;
+
+    const reusable = this.findReusableTransport(nationId);
+    if (!reusable) return false;
+
+    target.assignedTransportUnitId = reusable.id;
+    target.transportRequested = false;
+    target.requestedTransportUnitTypeId = undefined;
+    this.lastTransportWaitByNation.delete(nationId);
+    if (
+      target.status === 'selected'
+      || target.status === 'settlerRequested'
+      || target.status === 'transportRequested'
+    ) {
+      target.status = 'expeditionPreparing';
+    }
+    this.log(
+      nationId,
+      `reserved existing ${reusable.unitType.name} to collect the Settler for overseas expedition target ${target.name} (reused, no new transport built).`,
+    );
+    this.updateTargetReadiness(nationId, target);
+    return true;
+  }
+
+  private logExpeditionWaitingForBusyTransportOnce(nationId: string, target: OverseasSettlementTarget): void {
+    const key = this.targetKey(target);
+    if (this.lastTransportWaitByNation.get(nationId) === key) return;
+    this.lastTransportWaitByNation.set(nationId, key);
+    this.log(
+      nationId,
+      `overseas expedition ${target.name} is waiting for a busy Cargo Ship to become available (not building another).`,
+    );
   }
 
   private isSettlerTransportUnitType(unitType: UnitType): boolean {

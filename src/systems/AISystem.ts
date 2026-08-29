@@ -157,10 +157,12 @@ import type { CorporationSystem } from './CorporationSystem';
 import {
   AEROSPACE_INDUSTRIES_ID,
   getAICorporationProductionCandidates,
+  isCorporationQueuedByNation,
 } from './ai/AICorporationProduction';
 import type { AerospacePartSystem } from './AerospacePartSystem';
 import { getAIAerospacePartProductionCandidate } from './ai/AIAerospacePartProduction';
-import { DEFAULT_REQUIRED_AEROSPACE_PARTS, SCIENCE_VICTORY_TECH_ID } from '../data/scienceVictory';
+import { AEROSPACE_PART_PRODUCTION, DEFAULT_REQUIRED_AEROSPACE_PARTS, SCIENCE_VICTORY_TECH_ID } from '../data/scienceVictory';
+import { CORPORATIONS } from '../data/corporations';
 import {
   getAISpaceRaceFactoryPriority,
   type AISpaceRaceFactoryPriority,
@@ -190,7 +192,13 @@ import type { VictorySystem } from './VictorySystem';
 import {
   applyVictoryFocusProductionPriority,
   evaluateAIVictoryFocus,
+  planScienceVictoryProduction,
+  type ScienceVictoryExecutionPlan,
 } from './ai/AIVictoryFocus';
+
+// Canonical AeroSpace Industries corporation definition, used when the Science
+// Victory focus commits a city to found it.
+const AEROSPACE_INDUSTRIES_DEFINITION = CORPORATIONS.find((corporation) => corporation.id === AEROSPACE_INDUSTRIES_ID);
 
 // Friendly-support radius is not yet exposed via AIStrategy; preserved here
 // so baseline behavior matches the pre-refactor profile.
@@ -648,6 +656,12 @@ export class AISystem {
   private readonly aerospaceEligibilityLoggedNationIds = new Set<string>();
   private readonly victoryFocusPriorityLoggedKeys = new Set<string>();
   private readonly aerospaceManufacturingStateByNation = new Map<string, string>();
+  // Nations for which "Science focus actionable (can found AeroSpace Industries)"
+  // has already been logged, so the transition is announced once.
+  private readonly aerospaceFoundingActionableLoggedNationIds = new Set<string>();
+  // Last forced Science-Victory production message per nation, to dedupe the
+  // per-turn commit/defer logging when nothing has changed.
+  private readonly forcedScienceVictoryStateByNation = new Map<string, string>();
   private readonly spaceRaceFactoryPriorityStateByNation = new Map<string, string>();
   private readonly doctrineEvaluator: AIMilitaryDoctrineEvaluator;
   private readonly militaryPickRationaleByNation = new Map<string, {
@@ -4852,6 +4866,7 @@ export class AISystem {
     this.ensureMaritimeMinimumProduction(nationId, cities);
     this.runMilitaryModernization(nationId);
     this.ensureGrandStadiumProduction(nationId);
+    this.ensureScienceVictoryProduction(nationId, cities);
 
     const strategy = this.getStrategy(nationId);
     const eraStrategy = this.getActiveEraStrategy(nationId);
@@ -7279,6 +7294,128 @@ export class AISystem {
     }
     this.productionSystem.enqueueFront(cityId, { kind: 'building', buildingType: GRAND_STADIUM }, { placement });
     this.logStrategicEvent?.(nationId, `Grand Stadium set as highest production priority in ${city.name}.`);
+  }
+
+  /**
+   * Science Victory execution: once a nation is in Science Victory Focus, force
+   * the victory chain (found AeroSpace Industries → manufacture Aerospace Parts)
+   * so routine city production cannot indefinitely starve an available win path.
+   *
+   * This runs before the normal per-city production loop, so it commits idle
+   * cities ahead of ordinary scoring/rhythm choices. It reuses the canonical
+   * corporation and Aerospace-Part requirement checks; it never cancels an
+   * in-progress build, and it yields to genuine emergencies (threatened cities
+   * are already committed to defenders by ensureEmergencyMilitaryProduction, and
+   * the queue-jump path is skipped while any emergency threat is active).
+   */
+  private ensureScienceVictoryProduction(nationId: string, cities: readonly City[]): void {
+    const corporationSystem = this.corporationSystem;
+    if (!this.scienceVictoryEnabled || !corporationSystem || !this.victorySystem) return;
+    if (cities.length === 0) return;
+    const nation = this.nationManager.getNation(nationId);
+    if (nation?.aiVictoryFocus?.type !== 'science') return;
+
+    const progress = this.victorySystem.getScienceVictoryProgress(nationId);
+    const corporationDefinition = AEROSPACE_INDUSTRIES_DEFINITION;
+    const canFound = !progress.hasAerospaceIndustries
+      && corporationSystem.canFoundCorporation(nationId, AEROSPACE_INDUSTRIES_ID);
+
+    if (canFound && !this.aerospaceFoundingActionableLoggedNationIds.has(nationId)) {
+      this.aerospaceFoundingActionableLoggedNationIds.add(nationId);
+      this.logScienceVictoryAI(
+        nationId,
+        `${nation.name} Science Victory Focus is actionable: AeroSpace Industries requirements satisfied — prioritizing founding.`,
+      );
+    }
+
+    const corporationInProduction = cities.some((city) => {
+      const current = this.productionSystem.getProduction(city.id);
+      return current?.item.kind === 'corporation' && current.item.corporationType.id === AEROSPACE_INDUSTRIES_ID;
+    }) || isCorporationQueuedByNation(cities, AEROSPACE_INDUSTRIES_ID, this.productionSystem);
+
+    const corporationItem: Producible | undefined = corporationDefinition
+      ? { kind: 'corporation', corporationType: corporationDefinition }
+      : undefined;
+    const corporationEligibleCities = corporationItem
+      ? cities
+        .filter((city) => corporationSystem.canCityProduceCorporation(city, AEROSPACE_INDUSTRIES_ID))
+        .map((city) => ({
+          cityId: city.id,
+          idle: this.productionSystem.getProduction(city.id) === undefined,
+          turns: this.productionSystem.getTurnsEstimate(city.id, corporationItem),
+        }))
+      : [];
+
+    const aerospacePartSystem = this.aerospacePartSystem;
+    const partEligibleIdleCityIds = aerospacePartSystem
+      ? cities
+        .filter((city) => (
+          this.productionSystem.getProduction(city.id) === undefined
+          && aerospacePartSystem.canCityProduce(city)
+        ))
+        .map((city) => city.id)
+      : [];
+
+    const plan = planScienceVictoryProduction({
+      inScienceFocus: true,
+      hasAerospaceIndustries: progress.hasAerospaceIndustries,
+      canFoundAerospaceIndustries: canFound,
+      aerospaceIndustriesInProduction: corporationInProduction,
+      emergencyActive: this.getEmergencyCityThreats(nationId).length > 0,
+      accumulatedParts: progress.aerospaceParts,
+      inFlightParts: aerospacePartSystem?.getInFlightQuantity(nationId) ?? 0,
+      requiredParts: progress.requiredAerospaceParts,
+      corporationEligibleCities,
+      partEligibleIdleCityIds,
+    });
+
+    this.executeScienceVictoryPlan(nationId, cities, plan, corporationItem, progress.aerospaceParts, progress.requiredAerospaceParts);
+  }
+
+  private executeScienceVictoryPlan(
+    nationId: string,
+    cities: readonly City[],
+    plan: ScienceVictoryExecutionPlan,
+    corporationItem: Producible | undefined,
+    accumulatedParts: number,
+    requiredParts: number,
+  ): void {
+    const cityName = (cityId: string): string => cities.find((city) => city.id === cityId)?.name ?? cityId;
+
+    switch (plan.kind) {
+      case 'foundAerospaceIndustries': {
+        if (!corporationItem) return;
+        if (plan.immediate) {
+          this.productionSystem.setProduction(plan.cityId, corporationItem);
+          this.logForcedScienceVictory(nationId, `selected ${cityName(plan.cityId)} for AeroSpace Industries; production started (Science Victory Focus).`);
+        } else {
+          // Never interrupts the current build — queued ahead of routine work.
+          this.productionSystem.enqueueFront(plan.cityId, corporationItem);
+          this.logForcedScienceVictory(nationId, `queued AeroSpace Industries at the front in ${cityName(plan.cityId)}; builds after the current item (not blocked by routine production).`);
+        }
+        return;
+      }
+      case 'deferFounding':
+        this.logForcedScienceVictory(nationId, `AeroSpace Industries deferred: ${plan.reason}.`);
+        return;
+      case 'produceAerospaceParts': {
+        const item: Producible = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION };
+        for (const cityId of plan.cityIds) this.productionSystem.setProduction(cityId, item);
+        this.logForcedScienceVictory(
+          nationId,
+          `prioritized ${plan.cityIds.length} Aerospace Part slot(s) in idle cities; progress ${accumulatedParts}/${requiredParts}.`,
+        );
+        return;
+      }
+      case 'none':
+        return;
+    }
+  }
+
+  private logForcedScienceVictory(nationId: string, message: string): void {
+    if (this.forcedScienceVictoryStateByNation.get(nationId) === message) return; // dedupe unchanged state
+    this.forcedScienceVictoryStateByNation.set(nationId, message);
+    this.logScienceVictoryAI(nationId, message);
   }
 
   private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
