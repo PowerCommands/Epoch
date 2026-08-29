@@ -15,14 +15,15 @@ export const BASE_YEARS_PER_ROUND = 167;
 export const YEAR_PROGRESS_DECAY = 0.026225;
 
 /**
- * Late-game Auto slowdown. From January 1900 (astronomical year 1900) onward the
- * normal Auto calendar advances at {@link AUTO_LATE_GAME_SLOWDOWN_FACTOR} of its
- * usual rate, so the 20th/21st centuries take more gameplay turns to traverse.
- * Only the normal `auto` progression is affected — `staticYear`, `monthly`, and
- * the temporary monthly World War progression are untouched.
+ * Modern-era Auto calendar cadence. Once the normal Auto progression first reaches
+ * astronomical year 1900, the calendar stops using the dynamic yearly progression
+ * and instead advances a fixed six months per turn. Displayed dates then alternate
+ * cleanly between January 1 and July 1 (January 1900, July 1900, January 1901, …).
+ * Only the normal `auto` progression is affected — `staticYear`, `monthly`, and the
+ * temporary monthly World War progression are untouched.
  */
-export const AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR = 1900;
-export const AUTO_LATE_GAME_SLOWDOWN_FACTOR = 0.25;
+export const AUTO_MODERN_CADENCE_ASTRO_YEAR = 1900;
+export const AUTO_MODERN_CADENCE_MONTHS_PER_TURN = 6;
 
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -46,16 +47,47 @@ export function metaToAstroStart(meta: ResolvedScenarioMeta): number {
 }
 
 /**
- * Continuous late-game slowdown transform for the normal Auto calendar. Applied
- * to the *unslowed* absolute astronomical year. Before 1900 the year is returned
- * unchanged; from 1900 onward only 25% of each additional year is kept. The
- * function is continuous and monotonically non-decreasing at the 1900 boundary,
- * so crossing 1900 never causes the displayed date to jump backward or forward.
+ * First Auto round (1-based) whose unslowed progression reaches astronomical year
+ * 1900 — the round where the fixed six-month modern cadence begins. The caller
+ * passes an upper bound already known to sit at/after the threshold; because the
+ * year progression is monotonic non-decreasing this is a plain binary search.
  */
-export function applyAutoLateGameSlowdown(unslowedAstroYear: number): number {
-  if (unslowedAstroYear <= AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR) return unslowedAstroYear;
-  return AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR
-    + (unslowedAstroYear - AUTO_LATE_GAME_SLOWDOWN_ASTRO_YEAR) * AUTO_LATE_GAME_SLOWDOWN_FACTOR;
+function autoModernCadenceStartRound(
+  astroStart: number,
+  yearProgressionMultiplier: number,
+  maxRound: number,
+): number {
+  let lo = 1;
+  let hi = Math.max(1, maxRound);
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (astroStart + autoProgressedYears(mid, yearProgressionMultiplier) >= AUTO_MODERN_CADENCE_ASTRO_YEAR) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return lo;
+}
+
+/**
+ * Absolute month ordinal for the normal Auto calendar at a given round. Before the
+ * 1900 threshold this is January of the dynamically-progressed year (unchanged
+ * legacy behavior); from the threshold round onward it advances a fixed six months
+ * per turn anchored at January 1900. Returned as a month ordinal so both the direct
+ * date computation and the runtime World-War continuation can take clean, drift-free
+ * differences.
+ */
+export function autoProgressedMonthOrdinal(
+  round: number,
+  astroStart: number,
+  yearProgressionMultiplier = 1,
+): number {
+  const unslowedAstro = astroStart + autoProgressedYears(round, yearProgressionMultiplier);
+  if (unslowedAstro < AUTO_MODERN_CADENCE_ASTRO_YEAR) return unslowedAstro * 12;
+  const startRound = autoModernCadenceStartRound(astroStart, yearProgressionMultiplier, round);
+  return AUTO_MODERN_CADENCE_ASTRO_YEAR * 12
+    + AUTO_MODERN_CADENCE_MONTHS_PER_TURN * (round - startRound);
 }
 
 /** Convert an astronomical year integer into historical parts (no year 0). */
@@ -137,8 +169,9 @@ export function computeGameDate(
     }
     case 'auto':
     default: {
-      const unslowedAstro = astroStart + autoProgressedYears(round, yearProgressionMultiplier);
-      astro = Math.round(applyAutoLateGameSlowdown(unslowedAstro));
+      const ordinal = autoProgressedMonthOrdinal(round, astroStart, yearProgressionMultiplier);
+      astro = Math.floor(ordinal / 12);
+      monthIndex = ordinal - astro * 12;
       break;
     }
   }

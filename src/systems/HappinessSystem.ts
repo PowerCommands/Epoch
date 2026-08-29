@@ -19,6 +19,7 @@ export const POPULATION_UNHAPPINESS = 0.5;
 export const ENERGY_SHORTAGE_UNHAPPINESS_PER_CITY = 1;
 /** @deprecated The mechanic is current-state per city, not cumulative per turn. */
 export const ENERGY_SHORTAGE_UNHAPPINESS_PER_TURN = ENERGY_SHORTAGE_UNHAPPINESS_PER_CITY;
+export const RISING_EXPECTATIONS_START_YEAR = 1700;
 const RENAISSANCE_START_YEAR = getEraTimelineEntry('renaissance')!.startYear;
 
 /**
@@ -43,7 +44,7 @@ export type WarWearinessProvider = (nationId: string) => number;
 export type MilitaryOverCapUnhappinessProvider = (nationId: string) => number;
 export type HistoricalYearProvider = (round: number) => number;
 
-interface TierResult {
+export interface HappinessTierResult {
   state: HappinessState;
   growthModifier: number;
   productionModifier: number;
@@ -51,8 +52,15 @@ interface TierResult {
   goldModifier: number;
 }
 
-function resolveTier(netHappiness: number): TierResult {
-  if (netHappiness >= 30) {
+/** Resolve the derived state without changing any Happiness sources or effects. */
+export function resolveHappinessTier(
+  netHappiness: number,
+  historicalYear?: number,
+): HappinessTierResult {
+  const risingExpectations = historicalYear !== undefined
+    && historicalYear >= RISING_EXPECTATIONS_START_YEAR;
+
+  if (netHappiness >= (risingExpectations ? 301 : 30)) {
     return {
       state: 'golden_age',
       growthModifier: 1.15,
@@ -61,7 +69,7 @@ function resolveTier(netHappiness: number): TierResult {
       goldModifier: 1.15,
     };
   }
-  if (netHappiness >= 15) {
+  if (netHappiness >= (risingExpectations ? 151 : 15)) {
     return {
       state: 'prosperous',
       growthModifier: 1.10,
@@ -70,7 +78,7 @@ function resolveTier(netHappiness: number): TierResult {
       goldModifier: 1.10,
     };
   }
-  if (netHappiness >= 5) {
+  if (netHappiness >= (risingExpectations ? 51 : 5)) {
     return {
       state: 'happy',
       growthModifier: 1.05,
@@ -218,7 +226,8 @@ export class HappinessSystem {
     const unhappinessFromCityCountPressure = this.getCityCountPressure(nationId);
     const unhappinessFromDistancePressure = this.getDistancePressure(nationId);
     const unhappinessFromConqueredCities = this.getConqueredCityUnhappiness(nationId);
-    const unhappinessFromEnergyShortages = this.hasReachedHistoricalRenaissance()
+    const historicalYear = this.getCurrentHistoricalYear();
+    const unhappinessFromEnergyShortages = this.hasReachedHistoricalRenaissance(historicalYear)
       ? cities.reduce(
         (sum, city) => sum
           + (city.energyShortageTurns === undefined ? 0 : ENERGY_SHORTAGE_UNHAPPINESS_PER_CITY),
@@ -237,7 +246,7 @@ export class HappinessSystem {
       + unhappinessFromWarWeariness;
     const netHappiness = totalHappiness - totalUnhappiness;
 
-    const tier = resolveTier(netHappiness);
+    const tier = resolveHappinessTier(netHappiness, historicalYear);
 
     state.totalHappiness = totalHappiness;
     state.totalUnhappiness = totalUnhappiness;
@@ -288,10 +297,13 @@ export class HappinessSystem {
     return this.getNationState(nationId).netHappiness;
   }
 
-  private hasReachedHistoricalRenaissance(): boolean {
-    if (!this.getHistoricalYear) return true;
-    const currentRound = Math.max(1, this.getCurrentRound());
-    return this.getHistoricalYear(currentRound) >= RENAISSANCE_START_YEAR;
+  private getCurrentHistoricalYear(): number | undefined {
+    if (!this.getHistoricalYear) return undefined;
+    return this.getHistoricalYear(Math.max(1, this.getCurrentRound()));
+  }
+
+  private hasReachedHistoricalRenaissance(historicalYear: number | undefined): boolean {
+    return historicalYear === undefined || historicalYear >= RENAISSANCE_START_YEAR;
   }
 
   getHappinessForNation(nationId: string): number {

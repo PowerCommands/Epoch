@@ -2209,7 +2209,10 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
       refreshOpenCityView();
     });
-    turnManager.on('roundStart', (event) => powerPlantSystem.handleRoundStart(event.round));
+    turnManager.on('roundStart', (event) => {
+      powerPlantSystem.handleRoundStart(event.round);
+      happinessSystem.recalculateAll();
+    });
     turnManager.on('turnStart', () => powerPlantSystem.refreshAllocation(true));
     happinessSystem.recalculateAll();
     for (const nation of nationManager.getAllNations()) {

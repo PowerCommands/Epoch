@@ -155,7 +155,7 @@ export class NationHudDataProvider {
         displayMode: 'happinessState',
         stateLabel: formatHappinessStateLabel(happiness.state),
         textColor: happinessStateColor(happiness.state),
-        tooltip: buildHappinessTooltip(happiness),
+        tooltip: buildHappinessTooltip(happiness, this.turnManager.getGameDate().signedYear),
       },
       {
         key: 'production',

@@ -4,6 +4,7 @@ import type {
   LuxuryResourceEntry,
   NationHappiness,
 } from '../entities/NationHappiness';
+import { RISING_EXPECTATIONS_START_YEAR } from '../systems/HappinessSystem';
 
 export function formatPercent(modifier: number): string {
   const pct = Math.round((modifier - 1) * 100);
@@ -43,9 +44,15 @@ export function happinessStateColor(state: HappinessState): string {
   }
 }
 
-export function buildHappinessTooltip(happiness: Readonly<NationHappiness>): string {
+export function buildHappinessTooltip(
+  happiness: Readonly<NationHappiness>,
+  historicalYear?: number,
+): string {
   const lines: string[] = [];
   lines.push(`Happiness: ${formatSignedNumber(happiness.netHappiness)} — ${formatHappinessStateLabel(happiness.state)}`);
+  if (historicalYear !== undefined && historicalYear >= RISING_EXPECTATIONS_START_YEAR) {
+    lines.push('Rising Expectations (since 1700): Stable 0–50, Happy 51–150, Prosperous 151–300, Golden Age 301+.');
+  }
   lines.push('');
   lines.push('Sources:');
   lines.push(`Base: ${formatSignedNumber(happiness.happinessFromBase)}`);
