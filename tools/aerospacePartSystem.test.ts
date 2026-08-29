@@ -236,7 +236,7 @@ test('AeroSpace Industries owner receives exactly +50% part Production', () => {
   harness.foundAerospaceIndustries();
   const item = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION } as const;
   assert.equal(harness.aerospacePartSystem.getProductionBonusPercent(OWNER_ID), 50);
-  assert.equal(harness.productionSystem.getTurnsEstimate(harness.ownerCity.id, item), 20);
+  assert.equal(harness.productionSystem.getTurnsEstimate(harness.ownerCity.id, item), 40);
 });
 
 test('non-owner receives no Aerospace Part Production bonus', () => {
@@ -244,7 +244,7 @@ test('non-owner receives no Aerospace Part Production bonus', () => {
   harness.foundAerospaceIndustries();
   const item = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION } as const;
   assert.equal(harness.aerospacePartSystem.getProductionBonusPercent(RIVAL_ID), 0);
-  assert.equal(harness.productionSystem.getTurnsEstimate(harness.rivalCity.id, item), 30);
+  assert.equal(harness.productionSystem.getTurnsEstimate(harness.rivalCity.id, item), 60);
 });
 
 test('first Aerospace Part uses the configured 1200 base production cost', () => {
@@ -420,8 +420,8 @@ test('restored progress deterministically reconstructs next-part and queued cost
   restored.productionSystem.restoreQueue(restored.ownerCity.id, savedQueue ? [savedQueue] : []);
 
   assert.equal(restored.aerospacePartSystem.getProductionCost(OWNER_ID), 2338);
-  // Standard speed applies the existing 0.5 cost multiplier after progression.
-  assert.equal(restored.productionSystem.getQueue(restored.ownerCity.id)[0]?.cost, 1063);
+  // Standard speed preserves the locked base cost after progression.
+  assert.equal(restored.productionSystem.getQueue(restored.ownerCity.id)[0]?.cost, 2126);
 });
 
 test('AeroSpace Industries bonus does not affect ordinary city production', () => {

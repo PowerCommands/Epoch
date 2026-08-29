@@ -7,6 +7,10 @@ import {
   formatCityEnergyDiagnostics,
   type NationCityEnergyDiagnostic,
 } from '../src/systems/CityEnergyDiagnostics';
+import {
+  formatWorkerImprovementDiagnostics,
+  type NationWorkerImprovementDiagnostic,
+} from '../src/systems/WorkerImprovementDiagnostics';
 
 type VictoryTypeName = 'domination' | 'science' | 'cultural' | 'diplomatic';
 const ALL_VICTORY_TYPES: readonly VictoryTypeName[] = ['domination', 'science', 'cultural', 'diplomatic'];
@@ -129,6 +133,7 @@ interface StateSummary {
   victory?: VictorySummary | null;
   nations?: NationStateSummary[];
   cityEnergyDiagnostics?: NationCityEnergyDiagnostic[];
+  workerImprovementDiagnostics?: NationWorkerImprovementDiagnostic[];
   eraMilestones?: EraMilestone[];
 }
 
@@ -208,6 +213,7 @@ async function main(): Promise<void> {
   let logText = '';
   let stateSummary: StateSummary | undefined;
   let cityEnergyLogLines: string[] = [];
+  let workerImprovementLogLines: string[] = [];
   let inputSaveState: unknown;
   let saveState: unknown;
   let startScenario = options.scenario;
@@ -333,6 +339,8 @@ async function main(): Promise<void> {
 
   cityEnergyLogLines = formatCityEnergyDiagnostics(stateSummary?.cityEnergyDiagnostics ?? []);
   for (const line of cityEnergyLogLines) console.log(line);
+  workerImprovementLogLines = formatWorkerImprovementDiagnostics(stateSummary?.workerImprovementDiagnostics ?? []);
+  for (const line of workerImprovementLogLines) console.log(line);
   for (const nation of stateSummary?.nations ?? []) {
     if (!nation.happiness) continue;
     console.log(
@@ -377,6 +385,11 @@ async function main(): Promise<void> {
   await fs.writeFile(
     path.join(outputDir, 'latest-city-energy.log'),
     cityEnergyLogLines.length > 0 ? `${cityEnergyLogLines.join('\n')}\n` : '(no city/energy diagnostics)\n',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(outputDir, 'latest-worker-improvements.log'),
+    workerImprovementLogLines.length > 0 ? `${workerImprovementLogLines.join('\n')}\n` : '(no worker/improvement diagnostics)\n',
     'utf8',
   );
   // The summary keeps only the last 20 browser messages, which discards every

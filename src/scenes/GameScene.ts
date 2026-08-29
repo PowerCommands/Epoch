@@ -68,6 +68,10 @@ import {
   buildCityEnergyDiagnostics,
   type NationCityEnergyDiagnostic,
 } from '../systems/CityEnergyDiagnostics';
+import {
+  buildWorkerImprovementDiagnostics,
+  type NationWorkerImprovementDiagnostic,
+} from '../systems/WorkerImprovementDiagnostics';
 import { ProductionPurchaseSystem } from '../systems/ProductionPurchaseSystem';
 import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
@@ -386,6 +390,7 @@ interface EpochStateSummary {
   activeWorldWar: boolean;
   nations: EpochNationStateSummary[];
   cityEnergyDiagnostics: NationCityEnergyDiagnostic[];
+  workerImprovementDiagnostics: NationWorkerImprovementDiagnostic[];
   eraMilestones: EpochEraMilestone[];
 }
 
@@ -2451,6 +2456,7 @@ export class GameScene extends Phaser.Scene {
       {
         logEvent: (nationId, message) => logManager.info({ nationId, category: 'unit', message }),
       },
+      strategicResourceCapacitySystem,
     );
     // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
@@ -8571,6 +8577,11 @@ export class GameScene extends Phaser.Scene {
               allNations,
               (nationId) => cityManager.getCitiesByOwner(nationId),
               powerPlantSystem,
+            ),
+            workerImprovementDiagnostics: buildWorkerImprovementDiagnostics(
+              allNations,
+              (nationId) => unitManager.getUnitsByOwner(nationId),
+              mapData,
             ),
             eraMilestones: [...eraMilestones],
           };

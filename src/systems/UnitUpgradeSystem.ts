@@ -4,6 +4,7 @@ import type { Era } from '../data/technologies';
 import { getUnitTypeById } from '../data/units';
 import type { NationManager } from './NationManager';
 import type { ResearchSystem } from './ResearchSystem';
+import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
 import type { UnitManager } from './UnitManager';
 
 const BASE_UPGRADE_FEE = 5;
@@ -59,6 +60,7 @@ export class UnitUpgradeSystem {
     private readonly unitManager: UnitManager,
     private readonly researchSystem?: ResearchSystem,
     private readonly logContext: UnitUpgradeLogContext = {},
+    private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
   ) {}
 
   static getEraMultiplier(era: Era): number {
@@ -99,6 +101,18 @@ export class UnitUpgradeSystem {
     if (this.hasUpgradeCycle(unit.unitType)) return { canUpgrade: false, target, reason: 'Upgrade path contains a cycle.' };
     if (!this.isTargetUnlocked(nationId, target.id)) {
       return { canUpgrade: false, target, reason: `${target.name} has not been unlocked.` };
+    }
+
+    // Enforce the target unit's strategic-resource requirement using the same
+    // canonical capacity/access logic as normal production, so an upgrade cannot
+    // create a resource-gated unit (e.g. Horseman) the nation could not build.
+    const resourceReason = this.strategicResourceCapacitySystem?.getMissingUpgradeRequirementReason(
+      nationId,
+      unit.unitType,
+      target,
+    );
+    if (resourceReason) {
+      return { canUpgrade: false, target, reason: resourceReason };
     }
 
     const cost = this.getUpgradeCost(unit);

@@ -551,6 +551,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <span class="mode-icon" aria-hidden="true">&#10052;</span>
         <span>Spray Unpainted Tiles</span>
       </button>
+      <button class="mode-btn" id="paint-coastline-btn" type="button" title="Add coast wherever open sea meets land, using the same rule as the Magic Wand's 'Add coast where sea meets land' option">
+        <span class="mode-icon" aria-hidden="true">&#127754;</span>
+        <span>Paint coastline</span>
+      </button>
       <div class="palette-grid" id="palette"></div>
     </div>
 
@@ -3469,6 +3473,7 @@ function toggleSprayMode() {
 }
 
 document.getElementById('spray-mode-btn').addEventListener('click', toggleSprayMode);
+document.getElementById('paint-coastline-btn').addEventListener('click', paintCoastline);
 
 function updateInteractionModeUI() {
   const panModeBtn = document.getElementById('pan-mode-btn');
@@ -4656,6 +4661,34 @@ function addCoastBorder(grid) {
     }
   }
   return out;
+}
+
+/**
+ * Editor action: add coastline to the currently painted map. Reuses the same
+ * addCoastBorder rule as the Magic Wand's "Add coast where sea meets land"
+ * option — every open-sea tile bordering land becomes coast; land and inner sea
+ * are untouched — but runs directly on the live map without opening the Magic
+ * Wand dialog. Idempotent: once the coast ring exists, no ocean borders land, so
+ * a second run changes nothing. Uses the normal brush-stroke commit so the edit
+ * is undoable, saveable, and reflected in the viewport immediately.
+ */
+function paintCoastline() {
+  const result = addCoastBorder(tiles);
+  beginBrushStroke();
+  let changed = 0;
+  for (let r = 0; r < mapH; r += 1) {
+    for (let q = 0; q < mapW; q += 1) {
+      if (tiles[r][q] === result[r][q]) continue; // only ocean-bordering-land is affected
+      recordTileBefore(q, r);
+      tiles[r][q] = result[r][q];
+      clearInvalidResourceForTerrain(q, r);
+      paintedTiles[r][q] = true;
+      changed += 1;
+    }
+  }
+  commitBrushStroke();
+  render();
+  setStatusInfo(`Paint Coastline: added coast to ${changed} sea tile${changed === 1 ? '' : 's'} along the land border.`);
 }
 
 /** Majority filter over the 6 hex neighbors; removes noise and softens borders. */

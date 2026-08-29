@@ -59,7 +59,39 @@ export class StrategicResourceCapacitySystem {
     const capacity = this.getCapacity(nationId, requirement.resourceId);
     if (capacity.available >= requirement.amount) return undefined;
 
-    const resourceName = getNaturalResourceById(requirement.resourceId)?.name ?? requirement.resourceId;
+    return this.describeMissingRequirement(requirement.resourceId, capacity);
+  }
+
+  /**
+   * Missing-resource reason for upgrading `fromType` into `toType`. Reuses the
+   * canonical {@link getCapacity} (so imports, Foreign Resource Exploitation
+   * Rights, and the per-source capacity rule count exactly as in production),
+   * but credits back the source unit's own reservation because upgrading
+   * replaces it — a same-resource upgrade (e.g. Horseman → Knight) is
+   * capacity-neutral, while a newly-gated upgrade (e.g. Chariot Archer →
+   * Horseman) must find real available capacity.
+   */
+  getMissingUpgradeRequirementReason(
+    nationId: string,
+    fromType: UnitType,
+    toType: UnitType,
+  ): string | undefined {
+    const requirement = toType.requiredResource;
+    if (!requirement) return undefined;
+
+    const capacity = this.getCapacity(nationId, requirement.resourceId);
+    // The unit being upgraded is already counted in `capacity.used`; if it
+    // requires the same resource, replacing it frees that reservation.
+    const freed = fromType.requiredResource?.resourceId === requirement.resourceId
+      ? fromType.requiredResource.amount
+      : 0;
+    if (capacity.available + freed >= requirement.amount) return undefined;
+
+    return this.describeMissingRequirement(requirement.resourceId, capacity);
+  }
+
+  private describeMissingRequirement(resourceId: string, capacity: StrategicResourceCapacity): string {
+    const resourceName = getNaturalResourceById(resourceId)?.name ?? resourceId;
     return capacity.sources <= 0
       ? `Requires ${resourceName}`
       : `Requires ${resourceName} capacity`;

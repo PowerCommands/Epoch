@@ -10,7 +10,7 @@ export interface GameSpeedDefinition {
 
 export const GAME_SPEEDS: GameSpeedDefinition[] = [
   { id: 'quick', name: 'Quick', costMultiplier: 0.50, movementBonus: 5, yearProgressionMultiplier: 1.25 },
-  { id: 'standard', name: 'Standard', costMultiplier: 0.50, movementBonus: 2, yearProgressionMultiplier: 1.00 },
+  { id: 'standard', name: 'Standard', costMultiplier: 1.00, movementBonus: 2, yearProgressionMultiplier: 1.00 },
   { id: 'epic', name: 'Epic', costMultiplier: 0.67, movementBonus: 1, yearProgressionMultiplier: 0.75 },
   { id: 'marathon', name: 'Marathon', costMultiplier: 1.00, movementBonus: 0, yearProgressionMultiplier: 0.50 },
 ];

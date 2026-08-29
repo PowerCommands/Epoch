@@ -432,7 +432,14 @@ export class MainMenuScene extends Phaser.Scene {
       mapKey: scenarioKey,
       humanNationId,
       activeNationIds: finalActiveNationIds,
-      resourceAbundance: options.resourceAbundance ?? 'normal',
+      // Diagnostic/Autorun new games default to Scenario Mode ('scenario'): only
+      // resources explicitly placed in the scenario exist, with no procedural
+      // generation or victory-resource guarantee. This matches manually starting
+      // the scenario with Scenario Mode selected in Game Setup and keeps
+      // resource-balancing runs faithful. An explicit resourceAbundance option
+      // still overrides it. Both paths converge on the same GameConfig flag read
+      // by initializeWorldNaturalResources, so they cannot silently diverge.
+      resourceAbundance: options.resourceAbundance ?? 'scenario',
       gameSpeedId: options.gameSpeedId ?? DEFAULT_GAME_SPEED_ID,
       autofocusOnEndTurn: false,
       worldSeed: generateNewGameSeed(),
