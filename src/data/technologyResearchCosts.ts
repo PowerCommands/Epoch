@@ -34,7 +34,7 @@ export function getTechnologyEraCostMultiplier(era: Era): number {
  * This is technology-only. Culture/Civic pacing lives in eraPacingMultipliers.ts
  * and is deliberately left untouched.
  */
-export const RESEARCH_SPEED_FACTOR = 1.4;
+export const RESEARCH_SPEED_FACTOR = 1.5;
 
 /**
  * Timeline resistance is calibrated so that 100 years early adds 70% cost.
