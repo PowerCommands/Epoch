@@ -8,8 +8,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CityManager } from '../src/systems/CityManager.ts';
+import type { HappinessSystem } from '../src/systems/HappinessSystem.ts';
 import type { ResourceAccessSystem } from '../src/systems/ResourceAccessSystem.ts';
+import type { TurnManager } from '../src/systems/TurnManager.ts';
+import { getBuildingById } from '../src/data/buildings.ts';
 import { BuildingResourceRequirementSystem } from '../src/systems/BuildingResourceRequirementSystem.ts';
+import { ProductionSystem } from '../src/systems/ProductionSystem.ts';
+import { filterAvailableAIProductionCandidates, type AIProductionCandidate } from '../src/systems/ai/AIProductionScoring.ts';
+import { formatBuildingCompletionMessage } from '../src/systems/productionLogging.ts';
 import {
   StrategicResourceDemandSystem,
   type StrategicResourceDemandContext,
@@ -231,7 +237,7 @@ test('Demands are returned ranked by score (highest first)', () => {
 test('Diagnostics: compact summary and transition logging', () => {
   const state = baseState({ cityIds: ['a'], unlockedBuildings: new Set(['workshop']) });
   const logs: string[] = [];
-  const system = new StrategicResourceDemandSystem(makeContext(state), (m) => logs.push(m));
+  const system = new StrategicResourceDemandSystem(makeContext(state), (_nationId, m) => logs.push(m));
 
   assert.equal(system.getDemandSummaryText('france'), 'Iron=20');
 
@@ -242,4 +248,60 @@ test('Diagnostics: compact summary and transition logging', () => {
   state.access.add('iron'); // obtained
   system.logTransitions('france', 'France');
   assert.ok(logs.some((l) => /resolved: Iron/.test(l)));
+});
+
+test('AI candidate validation does not report Workshop selected when Iron is unavailable', () => {
+  const access = new Set<string>();
+  const requirements = makeRequirementSystem(access);
+  const workshop = getBuildingById('workshop')!;
+  const candidates: AIProductionCandidate[] = [{
+    item: { kind: 'building', buildingType: workshop },
+    baseScore: 100,
+    category: 'productionBuilding',
+  }];
+  const available = filterAvailableAIProductionCandidates(
+    candidates,
+    (item) => item.kind === 'building'
+      ? requirements.getConstructionBlockReason('paris', item.buildingType.id)
+      : undefined,
+  );
+
+  assert.deepEqual(available, []);
+  assert.equal(requirements.getConstructionBlockReason('paris', 'workshop'), 'Requires Iron');
+});
+
+test('Workshop with Iron enters production, completes, and produces the canonical completion log', () => {
+  const city = { id: 'paris', ownerId: 'france', name: 'Paris' };
+  const cityManager = {
+    getCity: () => city,
+    getResources: () => ({ productionPerTurn: 10 }),
+  } as unknown as CityManager;
+  const resourceAccessSystem = {
+    hasResource: (_nationId: string, resourceId: string) => resourceId === 'iron',
+  } as unknown as ResourceAccessSystem;
+  const requirements = new BuildingResourceRequirementSystem(cityManager, resourceAccessSystem);
+  const production = new ProductionSystem(
+    cityManager,
+    { on: () => {}, getCurrentRound: () => 1 } as unknown as TurnManager,
+    { getProductionModifier: () => 1 } as unknown as HappinessSystem,
+  );
+  production.setItemProductionBlockReasonProvider((cityId, item) => (
+    item.kind === 'building'
+      ? requirements.getConstructionBlockReason(cityId, item.buildingType.id)
+      : undefined
+  ));
+
+  const logs: string[] = [];
+  production.onCompleted((cityId, item) => {
+    if (cityId === city.id && item.kind === 'building') {
+      logs.push(formatBuildingCompletionMessage('France', item.buildingType.name, city.name));
+    }
+    return true;
+  });
+
+  const workshop = getBuildingById('workshop')!;
+  production.setProduction(city.id, { kind: 'building', buildingType: workshop });
+  assert.equal(production.getProduction(city.id)?.item.kind, 'building');
+  assert.equal(production.completeCurrentProduction(city.id).kind, 'completed');
+  assert.deepEqual(logs, ['France completed Workshop in Paris.']);
 });

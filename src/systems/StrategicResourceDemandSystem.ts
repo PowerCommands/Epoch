@@ -74,7 +74,7 @@ export const STRATEGIC_RESOURCE_DEMAND_WEIGHTS = {
 
 const WEIGHTS = STRATEGIC_RESOURCE_DEMAND_WEIGHTS;
 
-type Logger = (message: string) => void;
+type Logger = (nationId: string, message: string) => void;
 
 /**
  * Answers the single question: *what strategic resources does this nation need
@@ -260,12 +260,12 @@ export class StrategicResourceDemandSystem {
     for (const [resourceId, demand] of current) {
       const before = previous.get(resourceId) ?? 0;
       if (before === 0) {
-        this.log(`${nationName} strategic demand created: ${demand.resourceName}=${demand.score}`
+        this.log(nationId, `${nationName} strategic demand created: ${demand.resourceName}=${demand.score}`
           + ` (${demand.reasons[0]?.description ?? 'resource blocked'})`);
       } else if (demand.score > before) {
-        this.log(`${nationName} strategic demand increased: ${demand.resourceName} ${before} → ${demand.score}`);
+        this.log(nationId, `${nationName} strategic demand increased: ${demand.resourceName} ${before} → ${demand.score}`);
       } else if (demand.score < before) {
-        this.log(`${nationName} strategic demand decreased: ${demand.resourceName} ${before} → ${demand.score}`);
+        this.log(nationId, `${nationName} strategic demand decreased: ${demand.resourceName} ${before} → ${demand.score}`);
       }
       next.set(resourceId, demand.score);
     }
@@ -273,7 +273,7 @@ export class StrategicResourceDemandSystem {
     for (const [resourceId, before] of previous) {
       if (before > 0 && !current.has(resourceId)) {
         const resourceName = getNaturalResourceById(resourceId)?.name ?? resourceId;
-        this.log(`${nationName} strategic demand resolved: ${resourceName} (Reason: resource obtained or opportunity taken)`);
+        this.log(nationId, `${nationName} strategic demand resolved: ${resourceName} (Reason: resource obtained or opportunity taken)`);
       }
     }
 

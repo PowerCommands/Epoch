@@ -29,6 +29,19 @@ export interface AIProductionCandidate {
   readonly category: AIProductionCategory;
 }
 
+/**
+ * Remove candidates rejected by the authoritative ProductionSystem gate before
+ * scoring or selection diagnostics run. Candidate generation intentionally
+ * remains concerned with strategy; this final filter keeps rule validation in
+ * its existing single source of truth.
+ */
+export function filterAvailableAIProductionCandidates(
+  candidates: readonly AIProductionCandidate[],
+  getBlockReason: (item: Producible) => string | undefined,
+): AIProductionCandidate[] {
+  return candidates.filter((candidate) => getBlockReason(candidate.item) === undefined);
+}
+
 export function scoreAIProductionCandidate(
   candidate: AIProductionCandidate,
   strategy: AIStrategy,

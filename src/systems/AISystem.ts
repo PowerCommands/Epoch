@@ -79,6 +79,7 @@ import {
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from './ai/AIMilitaryThreatEvaluationSystem';
 import type { AIExplorationSystem } from './ai/AIExplorationSystem';
 import {
+  filterAvailableAIProductionCandidates,
   pickBestAIProductionCandidate,
   scoreAIProductionCandidate,
   type AIProductionCandidate,
@@ -5490,9 +5491,9 @@ export class AISystem {
   // systems: domestic improvement is realized by a Worker-target priority bonus
   // (scoreWorkerTile), foreign purchase by ordering the existing resource trade
   // toward the demanded resource (runTradeForNation), and neutral land expansion
-  // by the existing Settler/settlement-memory path. This method only classifies
-  // and logs the decision; it never spawns units, founds cities, creates deals or
-  // declares war.
+  // by the existing Settler/settlement-memory path. This method classifies and
+  // registers existing-system priorities; it never spawns units, founds cities,
+  // creates deals or declares war.
 
   private getSignificantResourceDemands(nationId: string): StrategicResourceDemand[] {
     const demands = this.strategicResourceDemandSystem?.getDemands(nationId) ?? [];
@@ -5522,8 +5523,24 @@ export class AISystem {
         { resourceId: demand.resourceId, resourceName: demand.resourceName, score: demand.score },
         context,
       );
+      this.registerDemandedLandExpansionOpportunity(nationId, plan);
       this.logResourceAcquisitionTransition(nationId, plan);
     }
+  }
+
+  /** Feed the classified neutral-land target into the existing Settler memory. */
+  private registerDemandedLandExpansionOpportunity(
+    nationId: string,
+    plan: ResourceAcquisitionPlan,
+  ): void {
+    if (plan.path !== 'neutral-land-expand' || !plan.tile) return;
+    const evaluation = this.settlementMemorySystem.evaluateTile(
+      plan.tile.x,
+      plan.tile.y,
+      this.turnManager.getCurrentRound(),
+    );
+    if (!evaluation) return;
+    this.settlementMemorySystem.addCandidate(nationId, evaluation.candidate);
   }
 
   private buildResourceAcquisitionContext(
@@ -5925,7 +5942,13 @@ export class AISystem {
 
     // 3-5. Core economy buildings (granary -> workshop -> market) if missing.
     for (const buildingType of [GRANARY, WORKSHOP, MARKET]) {
-      if (!buildings.has(buildingType.id) && this.canBuildBuilding(nationId, buildingType.id)) {
+      if (
+        !buildings.has(buildingType.id)
+        && this.canBuildBuilding(nationId, buildingType.id)
+        && this.productionSystem.getItemProductionBlockReason(city.id, {
+          kind: 'building', buildingType,
+        }) === undefined
+      ) {
         return { kind: 'building', buildingType };
       }
     }
@@ -6101,6 +6124,10 @@ export class AISystem {
       happiness
       && happiness.netHappiness <= criticalHappinessThreshold
       && happinessBuilding
+      && this.productionSystem.getItemProductionBlockReason(city.id, {
+        kind: 'building',
+        buildingType: happinessBuilding,
+      }) === undefined
     ) {
       console.debug(
         this.formatLog(nationId, `AI prioritizing ${happinessBuilding.name} due to happiness stabilization priority (${happiness.netHappiness}, state: ${happiness.state}).`),
@@ -6156,6 +6183,9 @@ export class AISystem {
     const spaceRaceFactoryCandidate = spaceRaceFactoryPriority.applies
       && !buildings.has(FACTORY.id)
       && this.canBuildBuilding(nationId, FACTORY.id)
+      && this.productionSystem.getItemProductionBlockReason(city.id, {
+        kind: 'building', buildingType: FACTORY,
+      }) === undefined
       ? {
           item: { kind: 'building' as const, buildingType: FACTORY },
           baseScore: spaceRaceFactoryPriority.resultingScore,
@@ -6526,7 +6556,10 @@ export class AISystem {
 
     const nation = this.nationManager.getNation(nationId);
     const goalWeights = getProductionWeights(nation?.aiGoals);
-    const weightedCandidates = applyGoalWeights(candidates, goalWeights);
+    const weightedCandidates = filterAvailableAIProductionCandidates(
+      applyGoalWeights(candidates, goalWeights),
+      (item) => this.productionSystem.getItemProductionBlockReason(city.id, item),
+    );
     const cityFocus = city.focus ?? 'balanced';
     const rhythmPick = consolidationSuppression || spaceRaceFactoryCandidate || (powerPlantPlan?.score ?? 0) >= 100 ? undefined : this.pickProductionRhythmCandidate(
       city,
@@ -6929,7 +6962,11 @@ export class AISystem {
       return undefined;
     }
 
-    const best = pickBestAIProductionCandidate(candidates, strategy, eraStrategy, cityFocus ?? 'balanced');
+    const availableCandidates = filterAvailableAIProductionCandidates(
+      candidates,
+      (item) => this.productionSystem.getItemProductionBlockReason(city.id, item),
+    );
+    const best = pickBestAIProductionCandidate(availableCandidates, strategy, eraStrategy, cityFocus ?? 'balanced');
     if (!best) return undefined;
 
     this.logProductionRhythm(nationId, `${city.name} production rhythm selected ${this.describeRhythmItem(best.item)}.`);

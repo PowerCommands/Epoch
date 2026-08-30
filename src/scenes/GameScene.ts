@@ -272,6 +272,7 @@ import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
 import { BuildingResourceRequirementSystem } from '../systems/BuildingResourceRequirementSystem';
 import { StrategicResourceDemandSystem } from '../systems/StrategicResourceDemandSystem';
+import { formatBuildingCompletionMessage } from '../systems/productionLogging';
 import { TileType, type Tile, type MapData } from '../types/map';
 import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
@@ -2228,7 +2229,11 @@ export class GameScene extends Phaser.Scene {
         isTechResearched: (nationId, techId) => researchSystem.isResearched(nationId, techId),
         isCorporationFounded: (corporationId) => corporationSystem?.isFounded(corporationId) ?? false,
       },
-      (message) => console.info(`[Strategic Resource Demand] ${message}`),
+      (nationId, message) => {
+        const tagged = `[Strategic Resource Demand] ${message}`;
+        console.info(tagged);
+        logManager.info({ nationId, category: 'ai', message: tagged });
+      },
     );
     powerPlantSystem.onChanged((event) => {
       if (event.kind === 'replaced' || event.kind === 'expired') {
@@ -3877,6 +3882,12 @@ export class GameScene extends Phaser.Scene {
         } else {
           cityManager.getBuildings(cityId).add(item.buildingType);
         }
+        const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
+        logManager.info({
+          nationIds: [city.ownerId],
+          category: 'production',
+          message: formatBuildingCompletionMessage(nationName, item.buildingType.name, city.name),
+        });
         if ((item.buildingType.modifiers.cityDefensePercent ?? 0) > 0) {
           cityRenderer.refreshCity(city);
         }
