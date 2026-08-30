@@ -26,6 +26,17 @@ export function getTechnologyEraCostMultiplier(era: Era): number {
 }
 
 /**
+ * Global research pacing factor. Research progresses this many times faster than
+ * the raw (era- and timeline-adjusted) cost would otherwise allow. Because the
+ * canonical value is a *cost*, a speed factor of 1.40 (40% faster) is applied by
+ * dividing the effective cost, i.e. multiplying by 1 / 1.40.
+ *
+ * This is technology-only. Culture/Civic pacing lives in eraPacingMultipliers.ts
+ * and is deliberately left untouched.
+ */
+export const RESEARCH_SPEED_FACTOR = 1.4;
+
+/**
  * Timeline resistance is calibrated so that 100 years early adds 70% cost.
  * The base power curve keeps the first few decades manageable. A quadratic tail
  * begins smoothly at 150 years ahead and steepens extreme historical compression.
@@ -84,7 +95,8 @@ export function getAheadOfTimeResearchCostMultiplier(era: Era, currentYear: numb
  * Existing game-speed scaling remains in place, then the technology's era
  * multiplier and timeline multiplier are applied. The existing progressive
  * result is rounded exactly as before; timeline resistance is then applied once
- * and rounded to the nearest integer.
+ * and rounded to the nearest integer. Finally the global research pacing factor
+ * is applied so research progresses 40% faster (cost divided by 1.40).
  */
 export function getEffectiveTechnologyCost(
   technology: TechnologyDefinition,
@@ -96,8 +108,9 @@ export function getEffectiveTechnologyCost(
     1,
     Math.round(speedAdjustedBaseCost * getTechnologyEraCostMultiplier(technology.era)),
   );
-  return Math.max(
+  const timelineAdjustedCost = Math.max(
     1,
     Math.round(progressiveCost * getAheadOfTimeResearchCostMultiplier(technology.era, currentYear)),
   );
+  return Math.max(1, Math.round(timelineAdjustedCost / RESEARCH_SPEED_FACTOR));
 }
