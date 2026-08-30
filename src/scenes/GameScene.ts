@@ -270,6 +270,8 @@ import {
 } from '../utils/assetPaths';
 import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems/ProductionRules';
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
+import { BuildingResourceRequirementSystem } from '../systems/BuildingResourceRequirementSystem';
+import { StrategicResourceDemandSystem } from '../systems/StrategicResourceDemandSystem';
 import { TileType, type Tile, type MapData } from '../types/map';
 import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
@@ -342,6 +344,8 @@ interface EpochNationStateSummary {
     isReigningGamesChampion: boolean;
     victoryEligible: boolean;
   };
+  /** Compact strategic-resource demand, e.g. `Iron=94, Coal=48`; empty when none. */
+  resourceDemand: string;
 }
 
 /** First observed actual era transition during a diagnostics/autorun session. */
@@ -2201,11 +2205,31 @@ export class GameScene extends Phaser.Scene {
       distributeManufacturedYield(nationId, 'production'));
     resourceSystem.setManufacturedGoldProvider((nationId) =>
       getManufacturedEffectTotal(resourceAccessSystem, nationId, 'gold'));
-    productionSystem.setItemProductionBlockReasonProvider((cityId, item) => (
-      item.kind === 'building'
-        ? powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)
-        : undefined
-    ));
+    const buildingResourceRequirementSystem = new BuildingResourceRequirementSystem(
+      cityManager,
+      resourceAccessSystem,
+    );
+    productionSystem.setItemProductionBlockReasonProvider((cityId, item) => {
+      if (item.kind !== 'building') return undefined;
+      // Power plants keep their own resource gate; ordinary resource-gated
+      // buildings (Workshop → Iron, Factory → Coal) go through the shared
+      // canonical resource-access check. Both surface a "Requires <Resource>"
+      // reason that the existing production UI already renders.
+      return powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)
+        ?? buildingResourceRequirementSystem.getConstructionBlockReason(cityId, item.buildingType.id);
+    });
+    const strategicResourceDemandSystem = new StrategicResourceDemandSystem(
+      {
+        getCityIds: (nationId) => cityManager.getCitiesByOwner(nationId).map((city) => city.id),
+        cityHasBuilding: (cityId, buildingId) => cityManager.getBuildings(cityId).hasActive(buildingId),
+        hasResourceAccess: (nationId, resourceId) => resourceAccessSystem.hasResource(nationId, resourceId),
+        isBuildingUnlocked: (nationId, buildingId) => researchSystem.isBuildingUnlocked(nationId, buildingId),
+        isUnitUnlocked: (nationId, unitId) => researchSystem.isUnitUnlocked(nationId, unitId),
+        isTechResearched: (nationId, techId) => researchSystem.isResearched(nationId, techId),
+        isCorporationFounded: (corporationId) => corporationSystem?.isFounded(corporationId) ?? false,
+      },
+      (message) => console.info(`[Strategic Resource Demand] ${message}`),
+    );
     powerPlantSystem.onChanged((event) => {
       if (event.kind === 'replaced' || event.kind === 'expired') {
         for (const coord of event.removedTileCoords) tileBuildingRenderer.refreshTile(coord.x, coord.y);
@@ -2217,6 +2241,13 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('roundStart', (event) => {
       powerPlantSystem.handleRoundStart(event.round);
       happinessSystem.recalculateAll();
+      // Event-driven strategic-resource demand transitions, once per round per
+      // nation (deterministic order) so autorun logs show created/increased/
+      // resolved demand without per-turn spam. Recognition only — no acquisition.
+      for (const nation of nationManager.getAllNations()) {
+        if (nation.isHuman) continue;
+        strategicResourceDemandSystem.logTransitions(nation.id, nation.name);
+      }
     });
     turnManager.on('turnStart', () => powerPlantSystem.refreshAllocation(true));
     happinessSystem.recalculateAll();
@@ -3119,6 +3150,7 @@ export class GameScene extends Phaser.Scene {
     );
     aiSystem.setCultureSystem(cultureSystem);
     if (consolidationSystem) aiSystem.setConsolidationSystem(consolidationSystem);
+    aiSystem.setStrategicResourceDemandSystem(strategicResourceDemandSystem);
     // AI must not select military units for a demilitarized (capitulated) nation.
     aiSystem.setUnitProductionRestrictionReason((nationId, unitTypeId) =>
       capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId));
@@ -8531,6 +8563,7 @@ export class GameScene extends Phaser.Scene {
                 isReigningGamesChampion: culturalVictory.isReigningGamesChampion,
                 victoryEligible: culturalVictory.victoryEligible,
               },
+              resourceDemand: strategicResourceDemandSystem.getDemandSummaryText(nation.id),
             };
           });
           const victoryState = victorySystem.getVictoryState();

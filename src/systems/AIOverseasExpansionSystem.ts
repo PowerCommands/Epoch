@@ -41,6 +41,24 @@ const DEFAULT_CITY_WITHIN_MARKER_RADIUS = 8;
  */
 const MAX_EMBARK_TRANSPORT_CHECKS = 12;
 
+/** Prefix for the synthetic markerId of a resource-driven expedition target. */
+const RESOURCE_TARGET_MARKER_PREFIX = 'resource:';
+
+/**
+ * A neutral overseas strategic-resource opportunity offered to the Expedition
+ * system as a reason to launch. Produced by the AI acquisition classifier
+ * (Prompt 3 `neutral-overseas`); this system decides only whether/when to act on
+ * it, reusing all existing expedition machinery.
+ */
+export interface ResourceExpeditionCandidate {
+  readonly resourceId: string;
+  readonly resourceName: string;
+  readonly x: number;
+  readonly y: number;
+  /** Current Strategic Resource Demand score for this resource (the priority signal). */
+  readonly demandScore: number;
+}
+
 interface MarkerTargetCoord {
   readonly x: number;
   readonly y: number;
@@ -208,6 +226,87 @@ export class AIOverseasExpansionSystem {
   getKnownIslandTargets(nationId: string): OverseasSettlementTarget[] {
     const nation = this.nationManager.getNation(nationId);
     return (nation?.knownIslandTargets ?? []).map((target) => ({ ...normalizeTarget(target) }));
+  }
+
+  /**
+   * Reconcile the nation's resource-driven overseas expedition candidates against
+   * the current set of valid `neutral-overseas` opportunities (recomputed every
+   * turn from live demand + legitimate knowledge, so this doubles as the
+   * revalidation gate). Candidates coexist with marker/normal expedition targets
+   * in `knownIslandTargets`; the existing selection/one-active rules pick at most
+   * one. This never spawns a Settler or Cargo Ship — it only adds/updates/removes
+   * *reasons* the existing Expedition system may act on.
+   *
+   * A candidate that is no longer valid is:
+   *   - cancelled and removed if still pre-departure (units released, not deleted);
+   *   - left untouched once the voyage has departed (strategic inertia — the
+   *     expedition finishes and lands normally).
+   */
+  refreshResourceExpeditionTargets(nationId: string, candidates: readonly ResourceExpeditionCandidate[]): void {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return;
+    if (!nation.knownIslandTargets) nation.knownIslandTargets = [];
+    const targets = nation.knownIslandTargets;
+
+    const desiredByMarkerId = new Map<string, ResourceExpeditionCandidate>();
+    for (const candidate of candidates) {
+      desiredByMarkerId.set(this.resourceTargetMarkerId(candidate), candidate);
+    }
+
+    // Add new candidates and refresh priority on still-valid existing ones.
+    for (const [markerId, candidate] of desiredByMarkerId) {
+      const existing = targets.find((target) => target.markerId === markerId);
+      if (existing) {
+        existing.priority = candidate.demandScore;
+        continue;
+      }
+      targets.push({
+        markerId,
+        name: `${candidate.resourceName} (overseas)`,
+        targetX: candidate.x,
+        targetY: candidate.y,
+        source: 'resource',
+        priority: candidate.demandScore,
+        discoveredTurn: this.turnManager.getCurrentRound(),
+        selected: false,
+        status: 'candidate',
+      });
+      this.log(
+        nationId,
+        `resource expedition candidate: ${candidate.resourceName} at (${candidate.x},${candidate.y}), demand ${candidate.demandScore}, classification neutral-overseas (not land-reachable)`,
+      );
+    }
+
+    // Prune resource targets that are no longer valid opportunities.
+    const survivors: OverseasSettlementTarget[] = [];
+    for (const target of targets) {
+      if (target.source !== 'resource' || desiredByMarkerId.has(target.markerId)) {
+        survivors.push(target);
+        continue;
+      }
+      if (this.isDepartedStatus(target.status)) {
+        // Underway: keep it — the voyage continues to a safe landing.
+        survivors.push(target);
+        continue;
+      }
+      if (target.status !== 'candidate' && target.status !== 'cancelled' && target.status !== 'completed') {
+        // Prepared but not departed: cancel to release any produced Settler/Cargo Ship.
+        this.cancelExpedition(nationId, target, 'resource opportunity no longer valid (demand resolved, claimed, or now land-reachable)');
+      } else {
+        this.log(nationId, `resource expedition candidate removed: ${target.name} no longer a valid neutral-overseas opportunity`);
+      }
+      // Drop candidate/cancelled resource targets from the list entirely.
+    }
+    nation.knownIslandTargets = survivors;
+    this.sortTargets(nation.knownIslandTargets);
+  }
+
+  private resourceTargetMarkerId(candidate: ResourceExpeditionCandidate): string {
+    return `${RESOURCE_TARGET_MARKER_PREFIX}${candidate.resourceId}:${candidate.x},${candidate.y}`;
+  }
+
+  private isDepartedStatus(status: OverseasSettlementTarget['status']): boolean {
+    return status === 'embarked' || status === 'enRoute' || status === 'landing';
   }
 
   runStaging(nationId: string): void {

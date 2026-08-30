@@ -50,6 +50,22 @@ interface NationExplorationKnowledge {
   readonly loggedForeignNationIds: Set<string>;
 }
 
+/**
+ * A strategic-resource source a nation legitimately knows about. Ownership is a
+ * live read of the tile at query time. Later prompts use this to plan Settlers,
+ * expeditions and diplomacy; Prompt 2 only reads/queries it.
+ */
+export interface KnownResourceOpportunity {
+  readonly resourceId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly isWater: boolean;
+  readonly ownerId?: string;
+  readonly ownedBySelf: boolean;
+  readonly ownedByOther: boolean;
+  readonly neutral: boolean;
+}
+
 interface PointOfInterest {
   readonly type: PointOfInterestType;
   readonly tileIndex: TileIndex;
@@ -238,6 +254,62 @@ export class AIExplorationSystem {
   }
 
   /**
+   * Strategic-resource opportunities this nation legitimately knows about,
+   * derived from the existing exploration knowledge (tiles seen by scouts /
+   * scout boats / military observers under the normal reveal-tech rule) plus the
+   * nation's own territory. No hidden or fogged tiles are ever included. This is
+   * the single query the resource-driven exploration decision and later
+   * acquisition prompts consult — it does not build a second world-memory store.
+   */
+  getKnownResourceOpportunities(nationId: string): KnownResourceOpportunity[] {
+    const opportunities: KnownResourceOpportunity[] = [];
+    const seen = new Set<TileIndex>();
+
+    const record = (tile: Tile | undefined): void => {
+      if (tile === undefined || tile.resourceId === undefined) return;
+      const index = this.getTileIndex(tile.x, tile.y);
+      if (seen.has(index)) return;
+      seen.add(index);
+      const ownerId = tile.ownerId;
+      opportunities.push({
+        resourceId: tile.resourceId,
+        x: tile.x,
+        y: tile.y,
+        isWater: this.isWaterTile(tile),
+        ownerId,
+        ownedBySelf: ownerId === nationId,
+        ownedByOther: ownerId !== undefined && ownerId !== nationId,
+        neutral: ownerId === undefined,
+      });
+    };
+
+    for (const index of this.getKnowledge(nationId).seenResources) {
+      record(this.getTileByIndex(index));
+    }
+    // Own territory is always known, even where a resource is not yet usable
+    // (e.g. lacking the reveal tech) — exploring elsewhere would not help.
+    for (const tile of this.getOwnedResourceTiles(nationId)) record(tile);
+
+    return opportunities;
+  }
+
+  /** True when the nation knows at least one plausible source of the resource. */
+  hasKnownResourceSource(nationId: string, resourceId: string): boolean {
+    return this.getKnownResourceOpportunities(nationId)
+      .some((opportunity) => opportunity.resourceId === resourceId);
+  }
+
+  private getOwnedResourceTiles(nationId: string): Tile[] {
+    const tiles: Tile[] = [];
+    for (const row of this.mapData.tiles) {
+      for (const tile of row) {
+        if (tile.resourceId !== undefined && tile.ownerId === nationId) tiles.push(tile);
+      }
+    }
+    return tiles;
+  }
+
+  /**
    * Run one unit's exploration turn using the exact same target selection and
    * movement the AI uses (moveScout). Drives human auto-exploration without
    * duplicating any AI logic. No-op if the unit is gone, not a recon unit, or
@@ -392,8 +464,18 @@ export class AIExplorationSystem {
 
     for (const scout of scouts) {
       for (const tile of this.getTilesInRadius(scout.tileX, scout.tileY, SCOUT_VISION_RADIUS)) {
-        if (this.isNavalReconUnit(scout) && !this.isWaterTile(tile)) continue;
         const tileIndex = this.getTileIndex(tile.x, tile.y);
+        if (this.isNavalReconUnit(scout) && !this.isWaterTile(tile)) {
+          // A Scout Boat still discovers a strategic/natural resource on a
+          // coastal LAND tile that falls within its normal vision (same
+          // reveal-tech rule as any observer), but it does not treat land as
+          // explorable naval frontier — movement and settlement memory stay
+          // water-focused, so nothing beyond legitimate visibility is revealed.
+          if (tile.resourceId !== undefined && this.canSeeNaturalResource(nationId, tile.resourceId)) {
+            knowledge.seenResources.add(tileIndex);
+          }
+          continue;
+        }
         if (!knowledge.knownTiles.has(tileIndex)) {
           if (scout.unitType.id === SCOUT.id) {
             this.rememberSettlementCandidate(nationId, tile);

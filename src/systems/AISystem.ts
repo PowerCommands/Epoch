@@ -187,6 +187,21 @@ import {
   type AIPowerPlantDecision,
 } from './ai/AIPowerPlantPlanning';
 import type { ConsolidationSystem } from './ConsolidationSystem';
+import type { StrategicResourceDemandSystem, StrategicResourceDemand } from './StrategicResourceDemandSystem';
+import {
+  evaluateResourceExplorationNeed,
+  describeUnresolvedDemand,
+  type ResourceExplorationNeed,
+} from './ai/resourceExplorationNeed';
+import {
+  classifyResourceAcquisition,
+  isSignificantDemand,
+  type ResourceAcquisitionPath,
+  type ResourceAcquisitionPlan,
+} from './ai/resourceAcquisitionPlanner';
+import type { ResourceExpeditionCandidate } from './AIOverseasExpansionSystem';
+import type { KnownResourceOpportunity } from './ai/AIExplorationSystem';
+import { evaluateExploitationRequestDesirability } from './ai/exploitationRightsDemand';
 import { ECONOMIC_DEVELOPMENT, calculateProjectGoldPerTurn } from '../data/projects';
 import type { VictorySystem } from './VictorySystem';
 import {
@@ -387,6 +402,11 @@ const MAX_WORKER_RELOCATION_CITY_CHECKS = 3;
 // prefers domestic resource work of equal quality; foreign resource tiles still
 // outrank domestic filler tiles. Keeps AI use of exploitation rights conservative.
 const FOREIGN_EXPLOITATION_TARGET_PENALTY = 1000;
+// Extra Worker-target priority for a tile carrying a significantly-demanded
+// strategic resource (Prompt 3). Larger than the flat resource bonus (1000) so a
+// demanded Iron/Coal tile is improved ahead of ordinary resource tiles, without
+// overriding the reachability/assignment safeguards around it.
+const WORKER_DEMANDED_RESOURCE_BONUS = 3000;
 const LOW_GOLD_PER_TURN = 0;
 const POST_TARGET_SETTLER_DEFAULT_INTERVAL = 8;
 const POST_TARGET_SETTLER_MIN_GOLD = 25;
@@ -781,6 +801,20 @@ export class AISystem {
     this.consolidationSystem = consolidationSystem;
   }
 
+  /** Optional Strategic Resource Demand source, injected for resource-driven exploration. */
+  private strategicResourceDemandSystem?: StrategicResourceDemandSystem;
+  /** Last-known unresolved demanded resource ids per nation (transition logging only). */
+  private readonly resourceExplorationUnresolvedByNation = new Map<string, Set<string>>();
+
+  setStrategicResourceDemandSystem(system: StrategicResourceDemandSystem): void {
+    this.strategicResourceDemandSystem = system;
+  }
+
+  /** Last logged acquisition path per nation+resource (transition logging only). */
+  private readonly resourceAcquisitionLoggedByNation = new Map<string, Map<string, ResourceAcquisitionPath>>();
+  /** Cached land-reachable tile keys per nation, valid for one round. */
+  private landReachableCache?: { round: number; byNation: Map<string, Set<string>> };
+
   /**
    * Whether ordinary buildup should be suppressed for this nation right now.
    * True only while consolidating AND not at war — an active war overrides
@@ -839,6 +873,15 @@ export class AISystem {
       );
     }
 
+    // Offer neutral-overseas strategic-resource opportunities to the existing
+    // Expedition system as launch reasons (revalidated every turn) before it
+    // selects/advances an expedition. One expedition per nation still applies.
+    if (this.overseasExpansionSystem && this.strategicResourceDemandSystem && this.aiExplorationSystem) {
+      this.overseasExpansionSystem.refreshResourceExpeditionTargets(
+        nationId,
+        this.getNeutralOverseasResourceCandidates(nationId),
+      );
+    }
     this.overseasExpansionSystem?.runTurn(nationId);
     this.runSettlers(nationId);
     this.overseasExpansionSystem?.runStaging(nationId);
@@ -847,6 +890,7 @@ export class AISystem {
     this.runMovement(nationId);
     this.runTilePurchases(nationId);
     this.runProduction(nationId);
+    this.runResourceAcquisitionForNation(nationId);
     this.runDiplomacyForNation(nationId);
     this.runTradeForNation(nationId);
     this.runTradeRoutesForNation(nationId);
@@ -1336,6 +1380,16 @@ export class AISystem {
     const luxuryValueMultiplier = resolveLuxuryValueMultiplier(happiness?.netHappiness);
 
     const available = new Set(this.resourceAccessSystem.getAvailableResources(nationId));
+    // Strategic Resource Demand raises the buyer's priority to seek the resource:
+    // demanded resources are attempted first through the *existing* trade path
+    // (same pricing, seller evaluation, capacity and cooldowns). It never forces
+    // a seller to accept.
+    const demandedResourceIds = this.getSignificantlyDemandedResourceIds(nationId);
+    const prioritizeDemanded = (ids: string[]): string[] => (
+      demandedResourceIds.size === 0
+        ? ids
+        : [...ids.filter((id) => demandedResourceIds.has(id)), ...ids.filter((id) => !demandedResourceIds.has(id))]
+    );
     let dealsCreated = 0;
 
     if (luxuryValueMultiplier > 1.0) {
@@ -1378,6 +1432,14 @@ export class AISystem {
         // trade-proposal cadence so it can never spam alongside trade offers.
         const exploitationInterest = getLeaderExploitationInterestByNationId(nationId);
         if (isExploitationRequestEligible(this.diplomacyManager!, nationId, humanId, exploitationInterest)) {
+          // Actual Strategic Resource Demand now co-drives desirability: a nation
+          // blocked from Workshop/Factory that knows an exploitable foreign tile
+          // holding the demanded resource has substantially more reason to ask.
+          // Eligibility (Colonialism, interest, war, already-held) and the shared
+          // proposal cadence are unchanged, and the grantor still evaluates the
+          // proposal on its own terms — demand influences the requester only.
+          const matched = this.getMatchedExploitationDemand(nationId, humanId);
+          const desirability = evaluateExploitationRequestDesirability(exploitationInterest, matched?.demandScore ?? 0);
           const hasPendingExploitation = this.diplomaticProposalSystem
             .getPendingProposalsForNation(humanId)
             .some((p) => p.fromNationId === nationId && p.payload.kind === 'exploitation_rights');
@@ -1391,7 +1453,14 @@ export class AISystem {
               expiresTurn: currentRound + TRADE_PROPOSAL_EXPIRY_TURNS,
             });
             this.lastTradeProposalTurnByNation.set(nationId, currentRound);
-            console.debug(this.formatLog(nationId, `requests exploitation rights from human player (leader interest ${exploitationInterest}).`));
+            if (desirability.demandDriven && matched) {
+              console.log(this.formatLog(
+                nationId,
+                `requested Foreign Resource Exploitation Rights from human player; target strategic need: ${matched.resourceName} at (${matched.x},${matched.y}), demand ${matched.demandScore} (leader interest ${exploitationInterest}, desirability ${desirability.desirability}).`,
+              ));
+            } else {
+              console.debug(this.formatLog(nationId, `requests exploitation rights from human player (leader interest ${exploitationInterest}).`));
+            }
             break outer;
           }
         }
@@ -1409,9 +1478,9 @@ export class AISystem {
         // Try "buy from human": human sells a resource this AI lacks. Candidates
         // are everything the human can legally export (natural + manufactured),
         // so corporation goods enter the AI trade pool alongside raw resources.
-        const humanResources = this.resourceAccessSystem
+        const humanResources = prioritizeDemanded(this.resourceAccessSystem
           .getExportableResourceQuantities(humanId)
-          .map((entry) => entry.resourceId);
+          .map((entry) => entry.resourceId));
         for (const resourceId of humanResources) {
           if (available.has(resourceId)) continue;
           const alreadyImporting = this.tradeDealSystem.getDealsBetween(nationId, humanId)
@@ -1471,9 +1540,9 @@ export class AISystem {
       const ownedResources = this.resourceAccessSystem
         .getExportableResourceQuantities(other.id)
         .map((entry) => entry.resourceId);
-      const orderedResources = luxuryValueMultiplier > 1.0
+      const orderedResources = prioritizeDemanded(luxuryValueMultiplier > 1.0
         ? [...ownedResources].sort((a, b) => luxuryRank(b) - luxuryRank(a))
-        : ownedResources;
+        : [...ownedResources]);
 
       for (const resourceId of orderedResources) {
         if (available.has(resourceId)) continue;
@@ -4291,6 +4360,7 @@ export class AISystem {
 
     const assignedKeys = new Set(this.workerTargetsByUnit.values());
     const selfKey = this.workerTargetsByUnit.get(unit.id);
+    const demandedResourceIds = this.getSignificantlyDemandedResourceIds(nationId);
     const seen = new Set<string>();
     const candidates: Array<{ x: number; y: number; score: number }> = [];
 
@@ -4309,11 +4379,11 @@ export class AISystem {
           continue;
         }
         if (!this.builderSystem.canNationImproveLandTile(nationId, tile)) continue;
-        candidates.push({ x: tile.x, y: tile.y, score: this.scoreWorkerTile(tile, ownCities) });
+        candidates.push({ x: tile.x, y: tile.y, score: this.scoreWorkerTile(tile, ownCities, demandedResourceIds) });
       }
     }
 
-    this.addForeignExploitationLandCandidates(nationId, unit, ownCities, seen, assignedKeys, selfKey, candidates);
+    this.addForeignExploitationLandCandidates(nationId, unit, ownCities, seen, assignedKeys, selfKey, candidates, demandedResourceIds);
 
     candidates.sort((a, b) => b.score - a.score || a.y - b.y || a.x - b.x);
     return candidates.map(({ x, y }) => ({ x, y }));
@@ -4337,6 +4407,7 @@ export class AISystem {
     assignedKeys: Set<string>,
     selfKey: string | undefined,
     candidates: Array<{ x: number; y: number; score: number }>,
+    demandedResourceIds: ReadonlySet<string>,
   ): void {
     if (!this.builderSystem || !this.diplomacyManager) return;
     const grantorIds = this.diplomacyManager.getAllExploitationRights()
@@ -4357,16 +4428,23 @@ export class AISystem {
             continue;
           }
           if (!this.builderSystem.canNationImproveLandTile(nationId, tile)) continue;
-          const score = this.scoreWorkerTile(tile, ownCities) - FOREIGN_EXPLOITATION_TARGET_PENALTY;
+          const score = this.scoreWorkerTile(tile, ownCities, demandedResourceIds) - FOREIGN_EXPLOITATION_TARGET_PENALTY;
           candidates.push({ x: tile.x, y: tile.y, score });
         }
       }
     }
   }
 
-  private scoreWorkerTile(tile: Tile, ownCities: City[]): number {
+  private scoreWorkerTile(tile: Tile, ownCities: City[], demandedResourceIds: ReadonlySet<string>): number {
     let score = 0;
     if (tile.resourceId !== undefined) score += 1000; // resource tiles first
+    // Strategic Resource Demand is a strong priority signal: a tile carrying a
+    // significantly-demanded resource (e.g. unimproved Iron while Workshop is
+    // blocked) is improved ahead of ordinary resource tiles. Passive — it only
+    // reorders existing Worker targets; no extra Worker is produced here.
+    if (tile.resourceId !== undefined && demandedResourceIds.has(tile.resourceId)) {
+      score += WORKER_DEMANDED_RESOURCE_BONUS;
+    }
     const yields = getTileYield(tile);
     score += (yields.food + yields.production + yields.gold) * 10; // high-yield next
     score -= this.distanceToNearestCity(tile, ownCities); // prefer near a city
@@ -4864,6 +4942,7 @@ export class AISystem {
     this.ensureFoundationSettlerProduction(nationId, cities);
     this.ensureNavalReconProduction(nationId, cities);
     this.ensureMaritimeMinimumProduction(nationId, cities);
+    this.ensureResourceExplorationProduction(nationId, cities);
     this.runMilitaryModernization(nationId);
     this.ensureGrandStadiumProduction(nationId);
     this.ensureScienceVictoryProduction(nationId, cities);
@@ -5312,6 +5391,306 @@ export class AISystem {
       }
     }
     return count;
+  }
+
+  /**
+   * Resource-driven exploration: when the nation has significant unresolved
+   * Strategic Resource Demand and does not know a plausible source, invest a
+   * little Production into additional exploration capacity (Scout / Scout Boat).
+   * All demands feed one national need — never one explorer per resource — and
+   * existing/queued explorers count toward the caps. Explorers are produced
+   * through the normal rules (eligibility, upkeep, coastal requirement, queue);
+   * nothing is spawned. Idle cities without a better task fall through to the
+   * existing Economic Development → Gold behavior unchanged.
+   */
+  private ensureResourceExplorationProduction(nationId: string, cities: City[]): void {
+    if (cities.length === 0) return;
+    const demandSystem = this.strategicResourceDemandSystem;
+    const exploration = this.aiExplorationSystem;
+    if (!demandSystem || !exploration) return;
+
+    const activeScouts = this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => unit.unitType.id === SCOUT.id).length;
+    const seaScoutCapacity = this.countNavalReconUnits(nationId) + this.countQueuedNavalRecon(nationId);
+    const coastalCities = cities.filter((city) => cityHasWaterTile(city, this.mapData));
+    const canExploreSea = coastalCities.length > 0 && this.canBuildUnit(nationId, SCOUT_BOAT.id);
+
+    const need = evaluateResourceExplorationNeed({
+      demands: demandSystem.getDemands(nationId),
+      hasKnownSource: (resourceId) => exploration.hasKnownResourceSource(nationId, resourceId),
+      landScoutCapacity: activeScouts + this.countQueuedScouts(nationId),
+      seaScoutCapacity,
+      canExploreSea,
+    });
+
+    this.logResourceExplorationTransition(nationId, need);
+    if (!need.active) return;
+
+    if (need.wantScout && this.canBuildUnit(nationId, SCOUT.id) && this.canAffordUnitProduction(nationId, SCOUT)) {
+      const city = cities.find((candidate) => (
+        this.productionSystem.getProduction(candidate.id) === undefined
+        && canCityProduceUnit(candidate, SCOUT, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      ));
+      if (city) {
+        this.productionSystem.setProduction(city.id, { kind: 'unit', unitType: SCOUT });
+        console.log(this.formatLog(
+          nationId,
+          `Economic Development requested Scout in ${city.name}: unresolved strategic-resource demand `
+          + `(${describeUnresolvedDemand(need.unresolved)}); land exploration capacity ${activeScouts} active Scouts`,
+        ));
+        return; // one explorer per pass
+      }
+    }
+
+    if (need.wantScoutBoat && this.canAffordUnitProduction(nationId, SCOUT_BOAT)) {
+      const city = coastalCities.find((candidate) => (
+        this.productionSystem.getProduction(candidate.id) === undefined
+        && canCityProduceUnit(candidate, SCOUT_BOAT, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      ));
+      if (city) {
+        this.productionSystem.setProduction(city.id, { kind: 'unit', unitType: SCOUT_BOAT });
+        console.log(this.formatLog(
+          nationId,
+          `Economic Development requested Scout Boat in ${city.name}: unresolved strategic-resource demand `
+          + `(${describeUnresolvedDemand(need.unresolved)}) and no known source`,
+        ));
+      }
+    }
+  }
+
+  private logResourceExplorationTransition(nationId: string, need: ResourceExplorationNeed): void {
+    const previous = this.resourceExplorationUnresolvedByNation.get(nationId) ?? new Set<string>();
+    const current = new Set(need.unresolved.map((demand) => demand.resourceId));
+
+    if (previous.size === 0 && current.size > 0) {
+      console.log(this.formatLog(
+        nationId,
+        `resource exploration need activated. Reason: ${describeUnresolvedDemand(need.unresolved)}, no known obtainable source`,
+      ));
+    } else if (previous.size > 0 && current.size === 0) {
+      console.log(this.formatLog(nationId, 'resource exploration need cleared: all demanded resources have a known source or demand fell'));
+    } else {
+      // Log resources that transitioned from unresolved to resolved.
+      const resolved = [...previous].filter((resourceId) => !current.has(resourceId));
+      for (const resourceId of resolved) {
+        const name = getNaturalResourceById(resourceId)?.name ?? resourceId;
+        const remaining = need.unresolved.length > 0 ? describeUnresolvedDemand(need.unresolved) : 'none';
+        console.log(this.formatLog(
+          nationId,
+          `resource exploration need reduced. Reason: known ${name} source discovered. Remaining unresolved demand: ${remaining}`,
+        ));
+      }
+    }
+
+    this.resourceExplorationUnresolvedByNation.set(nationId, current);
+  }
+
+  // ─── Strategic resource acquisition (Prompt 3) ───────────────────────────────
+  // Turns significant Strategic Resource Demand into action through the EXISTING
+  // systems: domestic improvement is realized by a Worker-target priority bonus
+  // (scoreWorkerTile), foreign purchase by ordering the existing resource trade
+  // toward the demanded resource (runTradeForNation), and neutral land expansion
+  // by the existing Settler/settlement-memory path. This method only classifies
+  // and logs the decision; it never spawns units, founds cities, creates deals or
+  // declares war.
+
+  private getSignificantResourceDemands(nationId: string): StrategicResourceDemand[] {
+    const demands = this.strategicResourceDemandSystem?.getDemands(nationId) ?? [];
+    return demands.filter((demand) => isSignificantDemand(demand.score));
+  }
+
+  /** Resource ids the nation significantly demands — the strong Worker priority signal. */
+  private getSignificantlyDemandedResourceIds(nationId: string): Set<string> {
+    return new Set(this.getSignificantResourceDemands(nationId).map((demand) => demand.resourceId));
+  }
+
+  private runResourceAcquisitionForNation(nationId: string): void {
+    if (this.isHuman(nationId)) return;
+    const demandSystem = this.strategicResourceDemandSystem;
+    const exploration = this.aiExplorationSystem;
+    if (!demandSystem || !exploration) return;
+
+    const significant = this.getSignificantResourceDemands(nationId);
+    if (significant.length === 0) {
+      this.resourceAcquisitionLoggedByNation.get(nationId)?.clear();
+      return;
+    }
+
+    const context = this.buildResourceAcquisitionContext(nationId, exploration.getKnownResourceOpportunities(nationId));
+    for (const demand of significant) {
+      const plan = classifyResourceAcquisition(
+        { resourceId: demand.resourceId, resourceName: demand.resourceName, score: demand.score },
+        context,
+      );
+      this.logResourceAcquisitionTransition(nationId, plan);
+    }
+  }
+
+  private buildResourceAcquisitionContext(
+    nationId: string,
+    opportunities: readonly KnownResourceOpportunity[],
+  ) {
+    return {
+      opportunities,
+      canImproveDomesticTile: (x: number, y: number) => {
+        const tile = this.mapData.tiles[y]?.[x];
+        return tile !== undefined && (this.builderSystem?.canNationImproveLandTile(nationId, tile) ?? false);
+      },
+      isReachableByLand: (x: number, y: number) => this.isLandReachable(nationId, x, y),
+      getKnownSuppliers: (resourceId: string) => this.getKnownResourceSuppliers(nationId, resourceId),
+    };
+  }
+
+  /**
+   * Neutral overseas strategic-resource opportunities (Prompt 3 classification),
+   * one per significantly-demanded resource, offered to the Expedition system as
+   * launch reasons. Reuses the same classifier and the Prompt 3 land flood-fill
+   * reachability gate — no second reachability calculation, no hidden knowledge.
+   */
+  private getNeutralOverseasResourceCandidates(nationId: string): ResourceExpeditionCandidate[] {
+    const demandSystem = this.strategicResourceDemandSystem;
+    const exploration = this.aiExplorationSystem;
+    if (!demandSystem || !exploration) return [];
+    const significant = this.getSignificantResourceDemands(nationId);
+    if (significant.length === 0) return [];
+
+    const context = this.buildResourceAcquisitionContext(nationId, exploration.getKnownResourceOpportunities(nationId));
+    const candidates: ResourceExpeditionCandidate[] = [];
+    for (const demand of significant) {
+      const plan = classifyResourceAcquisition(
+        { resourceId: demand.resourceId, resourceName: demand.resourceName, score: demand.score },
+        context,
+      );
+      if (plan.path === 'neutral-overseas' && plan.tile) {
+        candidates.push({
+          resourceId: plan.resourceId,
+          resourceName: plan.resourceName,
+          x: plan.tile.x,
+          y: plan.tile.y,
+          demandScore: plan.demandScore,
+        });
+      }
+    }
+    return candidates;
+  }
+
+  /**
+   * The most-demanded strategic resource the grantor is legitimately known to own
+   * on an exploitable (foreign-owned, unimproved) tile — the concrete opportunity
+   * that justifies a demand-driven exploitation-rights request. Uses only known
+   * opportunities (no hidden map data); returns undefined when there is no real
+   * match, so demand never triggers a *generic* request.
+   */
+  private getMatchedExploitationDemand(
+    nationId: string,
+    grantorId: string,
+  ): { resourceId: string; resourceName: string; x: number; y: number; demandScore: number } | undefined {
+    const exploration = this.aiExplorationSystem;
+    if (!exploration) return undefined;
+    const demandByResource = new Map<string, { name: string; score: number }>();
+    for (const demand of this.getSignificantResourceDemands(nationId)) {
+      demandByResource.set(demand.resourceId, { name: demand.resourceName, score: demand.score });
+    }
+    if (demandByResource.size === 0) return undefined;
+
+    let best: { resourceId: string; resourceName: string; x: number; y: number; demandScore: number } | undefined;
+    for (const opportunity of exploration.getKnownResourceOpportunities(nationId)) {
+      if (opportunity.ownerId !== grantorId) continue; // must be owned by the prospective grantor
+      const demand = demandByResource.get(opportunity.resourceId);
+      if (!demand) continue;
+      const tile = this.mapData.tiles[opportunity.y]?.[opportunity.x];
+      if (!tile || tile.improvementId !== undefined) continue; // already improved → not a new exploitation opportunity
+      if (best === undefined || demand.score > best.demandScore) {
+        best = { resourceId: opportunity.resourceId, resourceName: demand.name, x: opportunity.x, y: opportunity.y, demandScore: demand.score };
+      }
+    }
+    return best;
+  }
+
+  /** Nations the buyer has met that can currently export the resource (existing trade info model). */
+  private getKnownResourceSuppliers(nationId: string, resourceId: string): string[] {
+    if (!this.diplomacyManager || !this.resourceAccessSystem) return [];
+    return this.nationManager.getAllNations()
+      .filter((other) => {
+        if (other.id === nationId) return false;
+        if (this.discoverySystem && !this.discoverySystem.hasMet(nationId, other.id)) return false;
+        if (this.diplomacyManager!.getState(nationId, other.id) === 'WAR') return false;
+        return this.resourceAccessSystem!.canExportResource(other.id, resourceId);
+      })
+      .map((other) => other.id)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  private isLandReachable(nationId: string, x: number, y: number): boolean {
+    const round = this.turnManager.getCurrentRound();
+    if (this.landReachableCache?.round !== round) {
+      this.landReachableCache = { round, byNation: new Map() };
+    }
+    let set = this.landReachableCache.byNation.get(nationId);
+    if (!set) {
+      set = this.computeLandReachableSet(nationId);
+      this.landReachableCache.byNation.set(nationId, set);
+    }
+    return set.has(tileKey(x, y));
+  }
+
+  /**
+   * Flood-fill the land tiles connected (by ordinary land adjacency, water
+   * blocks) to any of the nation's cities. Mirrors the overseas system's
+   * own-landmass concept so a neutral resource on another landmass is correctly
+   * treated as overseas (deferred to Prompt 4) rather than land expansion.
+   */
+  private computeLandReachableSet(nationId: string): Set<string> {
+    const reachable = new Set<string>();
+    const queue: Array<{ x: number; y: number }> = [];
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const key = tileKey(city.tileX, city.tileY);
+      if (reachable.has(key)) continue;
+      reachable.add(key);
+      queue.push({ x: city.tileX, y: city.tileY });
+    }
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const neighbor of this.gridSystem.getAdjacentCoords(current)) {
+        const tile = this.mapData.tiles[neighbor.y]?.[neighbor.x];
+        if (!tile) continue;
+        if (tile.type === TileType.Coast || tile.type === TileType.Ocean) continue; // water blocks land reach
+        const key = tileKey(neighbor.x, neighbor.y);
+        if (reachable.has(key)) continue;
+        reachable.add(key);
+        queue.push({ x: neighbor.x, y: neighbor.y });
+      }
+    }
+    return reachable;
+  }
+
+  private logResourceAcquisitionTransition(nationId: string, plan: ResourceAcquisitionPlan): void {
+    let logged = this.resourceAcquisitionLoggedByNation.get(nationId);
+    if (!logged) {
+      logged = new Map<string, ResourceAcquisitionPath>();
+      this.resourceAcquisitionLoggedByNation.set(nationId, logged);
+    }
+    if (logged.get(plan.resourceId) === plan.path) return; // only log on a path change
+    logged.set(plan.resourceId, plan.path);
+
+    const header = `resource acquisition: ${plan.resourceName} (demand ${plan.demandScore})`;
+    switch (plan.path) {
+      case 'domestic-improve':
+        console.log(this.formatLog(nationId, `${header}; known opportunity: domestic unimproved ${plan.resourceName} at (${plan.tile?.x},${plan.tile?.y}); action: prioritize improvement`));
+        break;
+      case 'foreign-trade':
+        console.log(this.formatLog(nationId, `${header}; known supplier: ${this.nationManager.getNation(plan.supplierNationId ?? '')?.name ?? plan.supplierNationId}; action: attempting resource trade`));
+        break;
+      case 'neutral-land-expand':
+        console.log(this.formatLog(nationId, `${header}; known opportunity: neutral ${plan.resourceName} at (${plan.tile?.x},${plan.tile?.y}); access: reachable by land; action: expansion opportunity registered (existing Settler AI)`));
+        break;
+      case 'neutral-overseas':
+        console.log(this.formatLog(nationId, `${header}; known opportunity: neutral ${plan.resourceName} at (${plan.tile?.x},${plan.tile?.y}); access: overseas; action: deferred to expedition system`));
+        break;
+      case 'none':
+        console.log(this.formatLog(nationId, `${header}; no known source; action: continue exploration / Economic Development fallback`));
+        break;
+    }
   }
 
   private ensureNavalReconProduction(nationId: string, cities: City[]): void {

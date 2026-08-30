@@ -14,7 +14,7 @@ export type OverseasTargetStatus =
   | 'completed'
   | 'cancelled';
 
-export type OverseasTargetSource = 'marker' | 'settlementTargetMetadata';
+export type OverseasTargetSource = 'marker' | 'settlementTargetMetadata' | 'resource';
 
 export interface OverseasSettlementTarget {
   markerId: string;
