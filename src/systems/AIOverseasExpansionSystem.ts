@@ -511,6 +511,31 @@ export class AIOverseasExpansionSystem {
     }
   }
 
+  /**
+   * True when this nation has a real, otherwise-pursuable overseas expansion that
+   * is blocked *only* because `Sailing` is missing. Mirrors the eligibility gates
+   * of {@link evaluateNation} (leader city cap, coastal access, a live known
+   * target) but reorders them so Sailing is isolated as the sole blocker — the
+   * research planner turns this into a temporary demand for Sailing. Deterministic
+   * and read-only: derived entirely from authoritative nation/city state.
+   */
+  demandsSailingResearch(nationId: string): boolean {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return false;
+    // Only a genuine missing-Sailing block creates demand; once researched, none.
+    if (nation.researchedTechIds.includes(SAILING_TECH_ID)) return false;
+    // Same leader city cap that blocks voluntary founding in evaluateNation.
+    const leaderCap = getLeaderMaxPreferredCitiesByNationId(nationId);
+    if (leaderCap !== undefined && this.cityManager.getCitiesByOwner(nationId).length >= leaderCap) {
+      return false;
+    }
+    // Must otherwise be able to pursue the expedition right now.
+    if (!this.hasCoastalCityAccess(nationId)) return false;
+    return (nation.knownIslandTargets ?? [])
+      .map(normalizeTarget)
+      .some((target) => target.status !== 'completed' && target.status !== 'cancelled');
+  }
+
   private evaluateNation(
     nationId: string,
     targets: readonly OverseasSettlementTarget[],

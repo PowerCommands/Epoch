@@ -146,6 +146,12 @@ export class AIDiplomacySystem {
    * keep their existing behavior.
    */
   private isCulturalJealousyTarget: (selfId: string, otherId: string) => boolean = () => false;
+  /** Optional directional, temporary relation view used by one-shot systems. */
+  private modifyRelationForDecision: (
+    selfId: string,
+    otherId: string,
+    relation: DiplomacyRelation,
+  ) => DiplomacyRelation = (_selfId, _otherId, relation) => relation;
   private applyEconomicPressure: (
     sourceNationId: string,
     targetNationId: string,
@@ -182,6 +188,16 @@ export class AIDiplomacySystem {
    */
   setCulturalJealousyTargetPredicate(predicate: (selfId: string, otherId: string) => boolean): void {
     this.isCulturalJealousyTarget = predicate;
+  }
+
+  /**
+   * Apply a transient directional relation view only while this AI evaluates a
+   * decision. The stored bilateral memory is untouched.
+   */
+  setDecisionRelationModifier(
+    modifier: (selfId: string, otherId: string, relation: DiplomacyRelation) => DiplomacyRelation,
+  ): void {
+    this.modifyRelationForDecision = modifier;
   }
 
   /** Stable Human identity; production must not depend on autoplay's temporary flag changes. */
@@ -251,8 +267,9 @@ export class AIDiplomacySystem {
   private decideAgainst(selfId: string, otherId: string, currentTurn: number, intent: MilitaryIntent): void {
     if (!this.haveMet(selfId, otherId)) return;
 
-    const relation = this.diplomacyManager.getRelation(selfId, otherId);
-    const evaluation = this.evaluationSystem.evaluateRelation(selfId, otherId);
+    const storedRelation = this.diplomacyManager.getRelation(selfId, otherId);
+    const relation = this.modifyRelationForDecision(selfId, otherId, storedRelation);
+    const evaluation = this.evaluationSystem.evaluateRelation(selfId, otherId, relation);
     const attitude = evaluation.attitude;
     const comparison = this.militaryEvaluationSystem.compareMilitaryStrength(selfId, otherId);
     const threat = this.threatEvaluationSystem.getThreatLevel(selfId, otherId);

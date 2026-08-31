@@ -1,4 +1,4 @@
-import type { DiplomacyManager } from '../DiplomacyManager';
+import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
 import type { NationManager } from '../NationManager';
 import type { GameDate } from '../GameDate';
 import { compareGameDates, createGameDate, formatGameDate } from '../GameDate';
@@ -13,16 +13,15 @@ import { compareGameDates, createGameDate, formatGameDate } from '../GameDate';
  * living AI nation as the "unlucky winner" (never the human) and, walking the
  * Cultural Victory ranking from weakest upward, the first other living nation not
  * already at war with it (the human may be that target). It then temporarily
- * sours only the attacker's relationship toward that target — strongly enough
+ * presents a temporary, directional relation view only to the attacker's AI
+ * evaluation — strongly enough
  * that normal AI war logic chooses to declare war on its own. The event never
  * calls a forced war declaration.
  *
- * Like Cultural Jealousy this is a spark, not a permanent state: every memory
- * delta it applies is recorded in an influence ledger, and the moment the
- * intended war actually starts the recorded influence is subtracted back out of
- * the *current* relation. This removes only Unlucky Winner's own contribution;
- * the normal war-declaration penalties and any later diplomacy remain, so the
- * post-war relationship reflects real history rather than the artificial shock.
+ * Like Cultural Jealousy this is a spark, not a permanent state: its temporary
+ * influence is recorded in a save-safe ledger but is never written into the
+ * pair's symmetric stored memory. The moment the intended attacker declares,
+ * the directional view is removed; normal war memory remains untouched.
  *
  * If the attacker is already at war with every valid nation, the event is NOT
  * consumed — it retries on a short cadence until a valid new target exists.
@@ -104,6 +103,8 @@ export interface SavedUnluckyWinnerTurningPointState {
   targetId?: string;
   /** Net applied delta on attacker→target, so only this influence is removed later. */
   influence?: MemoryInfluence;
+  /** Present on saves using the non-persistent directional AI relation overlay. */
+  directionalOverlay?: boolean;
 }
 
 export interface UnluckyWinnerTurningPointContext {
@@ -133,7 +134,34 @@ export class UnluckyWinnerTurningPointSystem {
   private targetId: string | undefined;
   private influence: MemoryInfluence | undefined;
 
-  constructor(private readonly context: UnluckyWinnerTurningPointContext) {}
+  constructor(private readonly context: UnluckyWinnerTurningPointContext) {
+    // Declaration provenance is authoritative. Pair state alone cannot tell
+    // which side initiated a symmetric WAR relation.
+    this.context.diplomacyManager.onWarDeclared((aggressorId, targetId) => {
+      this.handleWarDeclared(aggressorId, targetId, this.context.getCurrentTurn());
+    });
+  }
+
+  /** Directional relation view wired into normal AI diplomacy evaluation. */
+  applyTemporaryRelationInfluence(
+    viewerNationId: string,
+    targetNationId: string,
+    relation: DiplomacyRelation,
+  ): DiplomacyRelation {
+    if (
+      !this.armed
+      || viewerNationId !== this.attackerId
+      || targetNationId !== this.targetId
+      || !this.influence
+    ) return relation;
+    return {
+      ...relation,
+      trust: clampMemory(relation.trust + this.influence.trust),
+      hostility: clampMemory(relation.hostility + this.influence.hostility),
+      affinity: clampMemory(relation.affinity + this.influence.affinity),
+      suspicion: clampMemory(relation.suspicion + this.influence.suspicion),
+    };
+  }
 
   handleTurnStart(turn = this.context.getCurrentTurn()): void {
     if (this.completed) return;
@@ -162,6 +190,7 @@ export class UnluckyWinnerTurningPointSystem {
       ...(this.attackerId ? { attackerId: this.attackerId } : {}),
       ...(this.targetId ? { targetId: this.targetId } : {}),
       ...(this.influence ? { influence: { ...this.influence } } : {}),
+      directionalOverlay: true,
     };
   }
 
@@ -191,6 +220,12 @@ export class UnluckyWinnerTurningPointSystem {
       this.attackerId = undefined;
       this.targetId = undefined;
       this.influence = undefined;
+    }
+    // Older armed saves wrote the temporary delta into symmetric pair memory.
+    // Remove that persisted copy once; the saved ledger now supplies the same
+    // effective values only to attacker→target AI evaluation.
+    if (this.armed && saved?.directionalOverlay !== true) {
+      this.removeLegacyStoredInfluence();
     }
   }
 
@@ -245,10 +280,18 @@ export class UnluckyWinnerTurningPointSystem {
     this.influence = emptyInfluence();
     this.applyActivationSwing(attacker.nationId, target.nationId);
 
-    const relation = this.context.diplomacyManager.getRelation(attacker.nationId, target.nationId);
+    const storedRelation = this.context.diplomacyManager.getRelation(attacker.nationId, target.nationId);
+    const relation = this.applyTemporaryRelationInfluence(
+      attacker.nationId,
+      target.nationId,
+      storedRelation,
+    );
     this.log(
-      `[TurningPoint:UnluckyWinner] Temporary relation influence applied — ${this.name(attacker.nationId)} `
-      + `hostility toward ${this.name(target.nationId)} now ${Math.round(relation.hostility)}; `
+      `[TurningPoint:UnluckyWinner] aggressor=${this.name(attacker.nationId)} target=${this.name(target.nationId)}; `
+      + `temporary relation before={trust:${Math.round(storedRelation.trust)}, hostility:${Math.round(storedRelation.hostility)}, `
+      + `affinity:${Math.round(storedRelation.affinity)}, suspicion:${Math.round(storedRelation.suspicion)}} `
+      + `after={trust:${Math.round(relation.trust)}, hostility:${Math.round(relation.hostility)}, `
+      + `affinity:${Math.round(relation.affinity)}, suspicion:${Math.round(relation.suspicion)}}; `
       + 'normal AI war logic should now declare war.',
     );
   }
@@ -276,7 +319,9 @@ export class UnluckyWinnerTurningPointSystem {
     }
 
     if (this.context.diplomacyManager.getState(attackerId, targetId) === 'WAR') {
-      this.complete(attackerId, targetId, turn);
+      const actualAggressorId = this.context.diplomacyManager.getAggressorNationId(attackerId, targetId);
+      if (actualAggressorId === attackerId) this.complete(attackerId, targetId, turn);
+      else this.handleWrongSideWar(attackerId, targetId, actualAggressorId, turn);
       return;
     }
 
@@ -285,12 +330,13 @@ export class UnluckyWinnerTurningPointSystem {
   }
 
   private complete(attackerId: string, targetId: string, turn: number): void {
-    this.log(`[TurningPoint:UnluckyWinner] ${this.name(attackerId)} declared war on ${this.name(targetId)}.`);
+    if (this.completed) return;
+    this.log(`[TurningPoint:UnluckyWinner] war initiated by=${this.name(attackerId)} against=${this.name(targetId)}.`);
 
     const removed = this.removeInfluence();
     if (removed) {
       this.log(
-        `[TurningPoint:UnluckyWinner] Temporary relation influence removed — `
+        `[TurningPoint:UnluckyWinner] temporary relation restored=`
         + `hostility ${Math.round(removed.before.hostility)}→${Math.round(removed.after.hostility)}, `
         + `suspicion ${Math.round(removed.before.suspicion)}→${Math.round(removed.after.suspicion)}, `
         + `trust ${Math.round(removed.before.trust)}→${Math.round(removed.after.trust)}, `
@@ -305,7 +351,7 @@ export class UnluckyWinnerTurningPointSystem {
     this.completed = true;
     this.armed = false;
     this.nextRetryTurn = null;
-    this.log(`[TurningPoint:UnluckyWinner] Event completed — ${this.name(attackerId)} vs ${this.name(targetId)}.`);
+    this.log(`[TurningPoint:UnluckyWinner] event completed — ${this.name(attackerId)} vs ${this.name(targetId)}.`);
     this.context.recordHistory?.({ attackerNationId: attackerId, targetNationId: targetId, turn });
   }
 
@@ -327,7 +373,7 @@ export class UnluckyWinnerTurningPointSystem {
 
   private applyActivationSwing(attackerId: string, targetId: string): void {
     const relation = this.context.diplomacyManager.getRelation(attackerId, targetId);
-    this.writeMemoryRecording(attackerId, targetId, {
+    this.recordEffectiveRelation(relation, {
       trust: clampMemory(relation.trust - ACTIVATION_TRUST_LOSS),
       fear: relation.fear,
       hostility: clampMemory(relation.hostility + ACTIVATION_HOSTILITY_GAIN),
@@ -337,8 +383,12 @@ export class UnluckyWinnerTurningPointSystem {
   }
 
   private reinforceTowardTarget(attackerId: string, targetId: string): void {
-    const relation = this.context.diplomacyManager.getRelation(attackerId, targetId);
-    this.writeMemoryRecording(attackerId, targetId, {
+    const relation = this.applyTemporaryRelationInfluence(
+      attackerId,
+      targetId,
+      this.context.diplomacyManager.getRelation(attackerId, targetId),
+    );
+    this.recordEffectiveRelation(relation, {
       trust: fallToward(relation.trust, REINFORCE_TRUST_FLOOR, REINFORCE_TRUST_STEP),
       fear: relation.fear,
       hostility: riseToward(relation.hostility, REINFORCE_HOSTILITY_CEILING, REINFORCE_HOSTILITY_STEP),
@@ -347,14 +397,11 @@ export class UnluckyWinnerTurningPointSystem {
     });
   }
 
-  /** Write memory values AND record the actual (post-clamp) applied delta. */
-  private writeMemoryRecording(
-    a: string,
-    b: string,
+  /** Record a directional effective-memory delta without mutating stored memory. */
+  private recordEffectiveRelation(
+    before: DiplomacyRelation,
     next: { trust: number; fear: number; hostility: number; affinity: number; suspicion: number },
   ): void {
-    const before = this.context.diplomacyManager.getRelation(a, b);
-    this.context.diplomacyManager.setMemoryValues(a, b, next);
     const delta: MemoryInfluence = {
       trust: next.trust - before.trust,
       hostility: next.hostility - before.hostility,
@@ -369,10 +416,8 @@ export class UnluckyWinnerTurningPointSystem {
   }
 
   /**
-   * Subtract the recorded influence out of the *current* attacker→target
-   * relation (never a pre-event snapshot), then forget it. War-declaration
-   * penalties and any later diplomacy that changed the relation after arming are
-   * preserved (fear is never touched by Unlucky Winner).
+   * Drop the transient overlay. Stored war-declaration memory and any later
+   * diplomacy were never modified, so they remain exactly as recorded.
    */
   private removeInfluence(): { before: MemoryInfluence; after: MemoryInfluence } | undefined {
     const delta = this.influence;
@@ -381,27 +426,64 @@ export class UnluckyWinnerTurningPointSystem {
     if (!delta || !attackerId || !targetId) return undefined;
 
     const relation = this.context.diplomacyManager.getRelation(attackerId, targetId);
+    const effective = this.applyTemporaryRelationInfluence(attackerId, targetId, relation);
     const before: MemoryInfluence = {
+      trust: effective.trust,
+      hostility: effective.hostility,
+      affinity: effective.affinity,
+      suspicion: effective.suspicion,
+    };
+    const after: MemoryInfluence = {
       trust: relation.trust,
       hostility: relation.hostility,
       affinity: relation.affinity,
       suspicion: relation.suspicion,
     };
-    const after: MemoryInfluence = {
+    this.influence = undefined;
+    return { before, after };
+  }
+
+  private removeLegacyStoredInfluence(): void {
+    const delta = this.influence;
+    const attackerId = this.attackerId;
+    const targetId = this.targetId;
+    if (!delta || !attackerId || !targetId) return;
+    const relation = this.context.diplomacyManager.getRelation(attackerId, targetId);
+    this.context.diplomacyManager.setMemoryValues(attackerId, targetId, {
       trust: clampMemory(relation.trust - delta.trust),
+      fear: relation.fear,
       hostility: clampMemory(relation.hostility - delta.hostility),
       affinity: clampMemory(relation.affinity - delta.affinity),
       suspicion: clampMemory(relation.suspicion - delta.suspicion),
-    };
-    this.context.diplomacyManager.setMemoryValues(attackerId, targetId, {
-      trust: after.trust,
-      fear: relation.fear,
-      hostility: after.hostility,
-      affinity: after.affinity,
-      suspicion: after.suspicion,
     });
-    this.influence = undefined;
-    return { before, after };
+  }
+
+  private handleWarDeclared(aggressorId: string, targetId: string, turn: number): void {
+    if (!this.armed || !this.attackerId || !this.targetId) return;
+    const isSelectedPair = (aggressorId === this.attackerId && targetId === this.targetId)
+      || (aggressorId === this.targetId && targetId === this.attackerId);
+    if (!isSelectedPair) return;
+    if (aggressorId === this.attackerId) {
+      this.complete(this.attackerId, this.targetId, turn);
+      return;
+    }
+    this.handleWrongSideWar(this.attackerId, this.targetId, aggressorId, turn);
+  }
+
+  private handleWrongSideWar(
+    attackerId: string,
+    targetId: string,
+    actualAggressorId: string | undefined,
+    turn: number,
+  ): void {
+    const removed = this.removeInfluence();
+    this.log(
+      `[TurningPoint:UnluckyWinner] selected target ${this.name(targetId)} initiated the war against `
+      + `${this.name(attackerId)}${actualAggressorId ? ` (recorded aggressor=${this.name(actualAggressorId)})` : ''}; `
+      + `event not completed${removed ? ', temporary relation restored' : ''}. Reselecting next turn.`,
+    );
+    this.disarm();
+    this.nextRetryTurn = turn + 1;
   }
 
   private isHuman(nationId: string): boolean {

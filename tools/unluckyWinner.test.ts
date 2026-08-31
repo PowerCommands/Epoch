@@ -6,6 +6,11 @@ import { test } from 'node:test';
 import { Nation } from '../src/entities/Nation.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
 import { DiplomacyManager } from '../src/systems/DiplomacyManager.ts';
+import { TurnManager } from '../src/systems/TurnManager.ts';
+import { AIDiplomacySystem } from '../src/systems/ai/AIDiplomacySystem.ts';
+import type { AIMilitaryEvaluationSystem } from '../src/systems/ai/AIMilitaryEvaluationSystem.ts';
+import type { AIMilitaryThreatEvaluationSystem } from '../src/systems/ai/AIMilitaryThreatEvaluationSystem.ts';
+import { DiplomaticEvaluationSystem } from '../src/systems/diplomacy/DiplomaticEvaluationSystem.ts';
 import { createGameDate, type GameDate } from '../src/systems/GameDate.ts';
 import {
   UnluckyWinnerTurningPointSystem,
@@ -63,6 +68,11 @@ function makeHarness(input: HarnessInput) {
     setDate: (value: GameDate) => { date = value; },
     setTurn: (value: number) => { turn = value; },
     kill: (id: string) => living.delete(id),
+    effectiveRelation: (viewerId: string, targetId: string) => system.applyTemporaryRelationInfluence(
+      viewerId,
+      targetId,
+      diplomacy.getRelation(viewerId, targetId),
+    ),
     tick: (t?: number) => { if (t !== undefined) turn = t; system.handleTurnStart(turn); },
   };
 }
@@ -88,7 +98,9 @@ test('in July 1914 the strongest AI attacks the weakest available nation', () =>
   assert.equal(saved.attackerId, 'China', 'strongest AI is the attacker');
   assert.equal(saved.targetId, 'England', 'culturally weakest available nation is the target');
   // Attacker is now hostile enough for normal AI war logic (>= 50 hostile bar).
-  assert.ok(h.diplomacy.getRelation('China', 'England').hostility >= 50);
+  assert.ok(h.effectiveRelation('China', 'England').hostility >= 50);
+  assert.equal(h.diplomacy.getRelation('China', 'England').hostility, 0, 'stored bilateral memory is untouched');
+  assert.equal(h.effectiveRelation('England', 'China').hostility, 0, 'target receives no artificial hostility');
   assert.ok(h.messages.some((m) => /China selected as cultural leader/.test(m)));
   assert.ok(h.messages.some((m) => /England selected as culturally weakest available target/.test(m)));
 });
@@ -157,7 +169,7 @@ test('once the intended war starts the event completes and removes only its own 
     cultureByNation: { China: 40000, France: 20000, USA: 15000, Mongolia: 8000, England: 3000 },
   });
   h.tick(1); // arms China -> England
-  const afterArm = h.diplomacy.getRelation('China', 'England');
+  const afterArm = h.effectiveRelation('China', 'England');
   assert.ok(afterArm.hostility >= 50);
 
   // Normal AI logic declares the war; the declaration + a capture then apply
@@ -172,7 +184,8 @@ test('once the intended war starts the event completes and removes only its own 
     suspicion: atWar.suspicion,
   });
 
-  h.tick(2); // detects war → completes and removes influence
+  // The declaration listener completes immediately; no next-turn confirmation
+  // or duplicate declaration log is needed.
   const saved = h.system.serialize();
   assert.equal(saved.completed, true);
   assert.equal(saved.armed, false);
@@ -183,9 +196,9 @@ test('once the intended war starts the event completes and removes only its own 
   assert.equal(after.fear, 40, 'war-driven fear preserved');
   assert.equal(after.trust, 50, 'UW trust loss removed, back to untouched baseline');
   assert.equal(after.suspicion, 0, 'UW suspicion removed');
-  assert.ok(h.messages.some((m) => /China declared war on England/.test(m)));
-  assert.ok(h.messages.some((m) => /Temporary relation influence removed/.test(m)));
-  assert.ok(h.messages.some((m) => /Event completed/.test(m)));
+  assert.ok(h.messages.some((m) => /war initiated by=China against=England/.test(m)));
+  assert.ok(h.messages.some((m) => /temporary relation restored=/.test(m)));
+  assert.ok(h.messages.some((m) => /event completed/.test(m)));
 });
 
 test('the event fires only once — it never re-arms after completing', () => {
@@ -194,7 +207,6 @@ test('the event fires only once — it never re-arms after completing', () => {
   });
   h.tick(1);
   h.diplomacy.declareWar('China', 'England');
-  h.tick(2); // completes
   assert.equal(h.system.serialize().completed, true);
 
   const messagesBefore = h.messages.length;
@@ -208,11 +220,11 @@ test('while armed and not yet at war the hostility pressure is maintained', () =
     cultureByNation: { China: 40000, France: 20000, USA: 15000, Mongolia: 8000, England: 3000 },
   });
   h.tick(1);
-  const armed = h.diplomacy.getRelation('China', 'England').hostility;
+  const armed = h.effectiveRelation('China', 'England').hostility;
   // The AI has not declared war yet; the turning point keeps the pressure on.
   h.tick(2);
   h.tick(3);
-  const later = h.diplomacy.getRelation('China', 'England').hostility;
+  const later = h.effectiveRelation('China', 'England').hostility;
   assert.ok(later >= armed, 'hostility does not fall away while waiting for the AI to act');
   assert.equal(h.system.serialize().armed, true, 'still armed until the war starts');
 });
@@ -238,14 +250,36 @@ test('an armed event survives save/load and still removes its influence after re
     suspicion: savedRelation.suspicion,
   });
   reloaded.system.restore(saved);
+  assert.ok(reloaded.effectiveRelation('China', 'England').hostility >= 50, 'directional pressure restored');
+  assert.equal(reloaded.effectiveRelation('England', 'China').hostility, 0, 'reloaded target remains unaffected');
 
   reloaded.diplomacy.declareWar('China', 'England');
-  reloaded.tick(2);
   const after = reloaded.diplomacy.getRelation('China', 'England');
   assert.equal(reloaded.system.serialize().completed, true, 'completes after reload');
   assert.equal(after.hostility, 0, 'persisted UW hostility removed after reload');
   assert.equal(after.suspicion, 0, 'persisted UW suspicion removed after reload');
   assert.equal(after.trust, 50, 'persisted UW trust loss removed after reload');
+});
+
+test('an old armed save migrates its symmetric stored influence to the directional overlay', () => {
+  const first = makeHarness({ cultureByNation: { China: 40000, England: 3000 } });
+  first.tick(1);
+  const legacySaved = first.system.serialize();
+  delete legacySaved.directionalOverlay;
+  const oldEffective = first.effectiveRelation('China', 'England');
+
+  const reloaded = makeHarness({ cultureByNation: { China: 40000, England: 3000 } });
+  // Old implementation persisted the effective values in shared pair memory.
+  reloaded.diplomacy.setMemoryValues('China', 'England', oldEffective);
+  reloaded.system.restore(legacySaved);
+
+  assert.equal(reloaded.diplomacy.getRelation('China', 'England').hostility, 0, 'legacy stored pressure removed');
+  assert.equal(reloaded.effectiveRelation('England', 'China').hostility, 0, 'target direction normalized');
+  assert.equal(
+    reloaded.effectiveRelation('China', 'England').hostility,
+    oldEffective.hostility,
+    'attacker retains the intended effective pressure',
+  );
 });
 
 test('a completed event stays completed across save/load', () => {
@@ -254,7 +288,6 @@ test('a completed event stays completed across save/load', () => {
   });
   first.tick(1);
   first.diplomacy.declareWar('China', 'England');
-  first.tick(2);
   const saved = first.system.serialize();
   assert.equal(saved.completed, true);
 
@@ -265,4 +298,79 @@ test('a completed event stays completed across save/load', () => {
   for (let t = 3; t <= 30; t += 1) reloaded.tick(t);
   assert.equal(reloaded.system.serialize().armed, false, 'never re-arms after a reloaded completion');
   assert.equal(reloaded.system.serialize().completed, true);
+});
+
+test('a target declaration does not complete or get mislabeled as the intended attack', () => {
+  const h = makeHarness({
+    cultureByNation: { China: 40000, France: 20000, USA: 15000, Mongolia: 8000, England: 3000 },
+  });
+  h.tick(1); // arms China -> England
+
+  assert.equal(h.diplomacy.declareWar('England', 'China'), true);
+  const afterWrongDeclaration = h.system.serialize();
+  assert.equal(afterWrongDeclaration.completed, false, 'wrong-side declaration cannot complete the event');
+  assert.equal(afterWrongDeclaration.armed, false, 'invalid pairing is released');
+  assert.equal(h.effectiveRelation('China', 'England').hostility, 0, 'temporary pressure is removed');
+  assert.ok(h.messages.some((m) => /event not completed/.test(m)));
+  assert.ok(h.messages.every((m) => !/war initiated by=China/.test(m)), 'no false China declaration log');
+
+  h.tick(2);
+  assert.equal(h.system.serialize().attackerId, 'China');
+  assert.equal(h.system.serialize().targetId, 'Mongolia', 'already-warring England is skipped on reselection');
+});
+
+test('normal AI evaluation makes only the selected aggressor initiate the war', () => {
+  const CHINA = 'nation_china';
+  const ENGLAND = 'nation_england';
+  const h = makeHarness({
+    cultureByNation: {
+      [CHINA]: 40000,
+      nation_france: 20000,
+      nation_usa: 15000,
+      nation_mongolia: 8000,
+      [ENGLAND]: 3000,
+    },
+  });
+  h.tick(1);
+
+  const turns = new TurnManager(h.nations);
+  const evaluation = new DiplomaticEvaluationSystem(h.diplomacy);
+  const military = {
+    compareMilitaryStrength: () => 'stronger',
+    compareMilitaryStrengthForWar: () => 'stronger',
+    getDefensiveWarPowerBreakdown: () => ({
+      defenderPower: 50,
+      alliancePower: 0,
+      peacekeepingPower: 0,
+      totalDefensivePower: 50,
+      allianceName: null,
+      allyNationId: null,
+    }),
+  } as unknown as AIMilitaryEvaluationSystem;
+  const threat = { getThreatLevel: () => 'none' } as unknown as AIMilitaryThreatEvaluationSystem;
+  const ai = new AIDiplomacySystem(
+    h.diplomacy,
+    evaluation,
+    h.nations,
+    turns,
+    military,
+    threat,
+    () => true,
+    (_nationId, message) => message,
+  );
+  ai.setDecisionRelationModifier((selfId, otherId, relation) =>
+    h.system.applyTemporaryRelationInfluence(selfId, otherId, relation));
+  const declarations: Array<[string, string]> = [];
+  h.diplomacy.onWarDeclared((aggressorId, targetId) => declarations.push([aggressorId, targetId]));
+
+  ai.runTurn(ENGLAND);
+  assert.equal(h.diplomacy.getState(CHINA, ENGLAND), 'PEACE', 'target AI receives no artificial war motive');
+
+  ai.runTurn(CHINA);
+  assert.equal(h.diplomacy.getState(CHINA, ENGLAND), 'WAR');
+  assert.equal(h.diplomacy.getAggressorNationId(CHINA, ENGLAND), CHINA);
+  assert.deepEqual(declarations.filter(([a, b]) => (
+    (a === CHINA && b === ENGLAND) || (a === ENGLAND && b === CHINA)
+  )), [[CHINA, ENGLAND]], 'one normal declaration, with China as initiator');
+  assert.equal(h.system.serialize().completed, true);
 });

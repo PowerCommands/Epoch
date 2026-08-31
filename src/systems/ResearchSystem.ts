@@ -10,7 +10,10 @@ import { getLeaderByNationId } from '../data/leaders';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import type { CityManager } from './CityManager';
 import type { NationManager } from './NationManager';
-import { pickBestAIResearchTechnology } from './ai/AIResearchPlanningSystem';
+import {
+  pickBestAIResearchTechnology,
+  type ResearchDemand,
+} from './ai/AIResearchPlanningSystem';
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
 import { getHighestEra } from './EraSystem';
 import type { City } from '../entities/City';
@@ -32,6 +35,12 @@ type ScienceProvider = (nationId: string) => number;
 export class ResearchSystem {
   private readonly listeners: ChangedListener[] = [];
   private readonly completedListeners: ResearchCompletedListener[] = [];
+  /**
+   * Optional source of gameplay-driven research demands for a non-human nation,
+   * consulted only when that nation needs to pick new research. Injected by the
+   * scene so ResearchSystem stays decoupled from the demand producers.
+   */
+  private researchDemandProvider?: (nationId: string) => readonly ResearchDemand[];
 
   constructor(
     private readonly nationManager: NationManager,
@@ -163,6 +172,10 @@ export class ResearchSystem {
     if (!nation || nation.currentResearchTechId) return false;
 
     const availableTechnologies = this.getAvailableTechnologies(nationId);
+    // Strategic demand is AI-only; humans keep the unchanged definition-order pick.
+    const researchDemands = nation.isHuman
+      ? []
+      : this.researchDemandProvider?.(nationId) ?? [];
     const nextTechnology = nation.isHuman
       ? availableTechnologies[0]
       : pickBestAIResearchTechnology({
@@ -171,14 +184,29 @@ export class ResearchSystem {
         currentTurn: this.getCurrentRound(),
         earlyGameTurnLimit: this.earlyGameTurnLimit,
         eraStrategy: this.getActiveEraStrategy(nationId),
+        researchDemands,
       });
     if (!nextTechnology) return false;
 
     if (!nation.isHuman) {
-      const eraStrategy = this.getActiveEraStrategy(nationId);
-      console.log(`${nation.name} selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`);
+      const demand = researchDemands.find((entry) => entry.techId === nextTechnology.id);
+      if (demand) {
+        console.log(`${nation.name} selected ${nextTechnology.name} for research (strategic demand: ${demand.reason}).`);
+      } else {
+        const eraStrategy = this.getActiveEraStrategy(nationId);
+        console.log(`${nation.name} selected research ${nextTechnology.name} (strategy: ${eraStrategy.id})`);
+      }
     }
     return this.startResearch(nationId, nextTechnology.id);
+  }
+
+  /**
+   * Inject a source of gameplay-driven research demands for non-human nations.
+   * Consulted only inside {@link ensureResearchSelected}; there is no per-turn
+   * global demand scan.
+   */
+  setResearchDemandProvider(provider: (nationId: string) => readonly ResearchDemand[]): void {
+    this.researchDemandProvider = provider;
   }
 
   isResearched(nationId: string, techId: string): boolean {

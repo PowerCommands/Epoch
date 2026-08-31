@@ -1,4 +1,4 @@
-import type { DiplomacyManager } from '../DiplomacyManager';
+import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
 import { getLeaderIdeologyByNationId } from '../../data/leaders';
 import {
   describeIdeologyCompatibility,
@@ -50,14 +50,18 @@ export class DiplomaticEvaluationSystem {
    * static leader ideology compatibility for diagnostics/future consumers, but
    * does not create diplomacy actions by itself.
    */
-  evaluateRelation(viewerNationId: string, targetNationId: string): DiplomaticEvaluationResult {
-    const relation = this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+  evaluateRelation(
+    viewerNationId: string,
+    targetNationId: string,
+    relationOverride?: DiplomacyRelation,
+  ): DiplomaticEvaluationResult {
+    const relation = relationOverride ?? this.diplomacyManager.getRelation(viewerNationId, targetNationId);
     const pressure = this.diplomacyManager.getEconomicPressureDiplomaticModifier(viewerNationId, targetNationId);
     const sourceIdeology = getLeaderIdeologyByNationId(viewerNationId);
     const targetIdeology = getLeaderIdeologyByNationId(targetNationId);
     const ideologyCompatibility = getIdeologyCompatibility(sourceIdeology.id, targetIdeology.id);
     const ideologyCompatibilityLabel = describeIdeologyCompatibility(ideologyCompatibility);
-    const memoryAttitude = this.evaluateMemoryAttitude(viewerNationId, targetNationId);
+    const memoryAttitude = this.evaluateMemoryAttitude(viewerNationId, targetNationId, relation);
     const effectiveRelation = {
       ...relation,
       hostility: Math.min(100, relation.hostility + pressure.hostility),
@@ -90,10 +94,14 @@ export class DiplomaticEvaluationSystem {
     return this.evaluateMemoryAttitude(viewerNationId, targetNationId);
   }
 
-  private evaluateMemoryAttitude(viewerNationId: string, targetNationId: string): DiplomaticAttitude {
+  private evaluateMemoryAttitude(
+    viewerNationId: string,
+    targetNationId: string,
+    relationOverride?: DiplomacyRelation,
+  ): DiplomaticAttitude {
     if (viewerNationId === targetNationId) return 'neutral';
 
-    const relation = this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    const relation = relationOverride ?? this.diplomacyManager.getRelation(viewerNationId, targetNationId);
     const pressure = this.diplomacyManager.getEconomicPressureDiplomaticModifier(viewerNationId, targetNationId);
     const hostility = Math.min(100, relation.hostility + pressure.hostility);
     const affinity = Math.max(-100, relation.affinity + pressure.affinity);

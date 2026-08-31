@@ -276,6 +276,8 @@ export const MIN_SUSPICION = 0;
 export const MAX_SUSPICION = 100;
 /** Passive suspicion decay applied to every tracked relation each round. */
 export const SUSPICION_DECAY_PER_ROUND = 1;
+/** Negative-memory cooling applied once for each configured Peace Treaty turn. */
+export const PEACE_TREATY_COOLING_PER_ROUND = 2;
 export const MIN_WAR_TURNS_FOR_PEACE = 15;
 /**
  * Default turns two nations cannot re-declare war after making peace. Overridable
@@ -1854,6 +1856,56 @@ export class DiplomacyManager {
       if (a !== undefined && b !== undefined) changed.push({ a, b, from, to });
     }
     return changed;
+  }
+
+  /**
+   * Authoritative once-per-round diplomatic upkeep.
+   *
+   * A Peace Treaty accepted on round N with duration D blocks declarations on
+   * rounds N..N+D-1. Round-start processing therefore cools on N+1..N+D: the
+   * last step happens as the restriction expires, immediately before normal
+   * diplomacy resumes that round. This provides exactly D cooling steps without
+   * applying a partial step at the instant peace is signed.
+   *
+   * Suspicion already has a global -1 drift. Treaty pairs receive the treaty's
+   * exact -2 instead of stacking both effects into an unintended -3.
+   */
+  processDiplomaticUpkeep(currentTurn: number): void {
+    for (const [key, relation] of this.relations) {
+      const treatyStartTurn = relation.lastPeaceProposalTurn;
+      const treatyUntilTurn = relation.peaceTreatyUntilTurn;
+      const isTreatyCoolingTurn = relation.state === 'PEACE'
+        && typeof treatyUntilTurn === 'number'
+        // Known start turns prevent a same-round step if another roundStart
+        // listener happened to accept peace before upkeep. Older saves without
+        // the start stamp still cool safely from their authoritative until-turn.
+        && (typeof treatyStartTurn !== 'number' || currentTurn > treatyStartTurn)
+        && currentTurn <= treatyUntilTurn;
+      const suspicionDecrease = isTreatyCoolingTurn
+        ? PEACE_TREATY_COOLING_PER_ROUND
+        : SUSPICION_DECAY_PER_ROUND;
+      const nextSuspicion = Math.max(MIN_SUSPICION, relation.suspicion - suspicionDecrease);
+      const nextHostility = isTreatyCoolingTurn
+        ? Math.max(0, relation.hostility - PEACE_TREATY_COOLING_PER_ROUND)
+        : relation.hostility;
+      const nextFear = isTreatyCoolingTurn
+        ? Math.max(0, relation.fear - PEACE_TREATY_COOLING_PER_ROUND)
+        : relation.fear;
+      if (
+        nextSuspicion === relation.suspicion
+        && nextHostility === relation.hostility
+        && nextFear === relation.fear
+      ) continue;
+      const [a, b] = key.split(PAIR_KEY_SEPARATOR);
+      if (a === undefined || b === undefined) continue;
+      this.setMemoryValues(a, b, {
+        trust: relation.trust,
+        fear: nextFear,
+        hostility: nextHostility,
+        affinity: relation.affinity,
+        suspicion: nextSuspicion,
+      });
+    }
   }
 
   /** Reset all diplomacy state. Used before applying a loaded save. */

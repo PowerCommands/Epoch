@@ -7,12 +7,34 @@ import type { Nation } from '../../entities/Nation';
 import type { AILeaderEraResearchWeights, AILeaderEraStrategy } from '../../types/aiLeaderEraStrategy';
 import type { Technology } from '../ResearchSystem';
 import { getBehaviorWeights } from '../AIStrategyService';
+/**
+ * A concrete, gameplay-driven reason to prioritize one technology now. Produced
+ * by systems with a blocked strategic intent (currently only overseas expansion
+ * demanding `sailing`) and consumed as a scoring bonus — never as an override, so
+ * prerequisites and the rest of the AI's research personality still apply.
+ */
+export interface ResearchDemand {
+  readonly techId: string;
+  readonly bonus: number;
+  readonly reason: string;
+}
+
+/**
+ * Overcomes the observed static disadvantage for `sailing` under a naval-averse
+ * era strategy: a top production tech scores ~+4.5 while sailing's naval modifier
+ * is ~-3.5 (gap ~8). A +12 demand bonus makes a genuinely blocked overseas intent
+ * reliably win the next selection without touching any existing research weight.
+ */
+export const SAILING_OVERSEAS_RESEARCH_DEMAND_BONUS = 12;
+
 export interface AIResearchPlanningContext {
   nation: Nation;
   availableTechnologies: Technology[];
   currentTurn: number;
   earlyGameTurnLimit?: number;
   eraStrategy?: AILeaderEraStrategy;
+  /** Active strategic demands; a matching available tech gets its `bonus` added. */
+  researchDemands?: readonly ResearchDemand[];
 }
 
 export function pickBestAIResearchTechnology(context: AIResearchPlanningContext): Technology | undefined {
@@ -30,7 +52,8 @@ export function pickBestAIResearchTechnology(context: AIResearchPlanningContext)
       + baselineScore
       + getStrategyModifier(context.nation, technology.id)
       + getEraStrategyResearchModifier(technology.id, context.eraStrategy)
-      + getPersonalityModifier(context.nation.id, technology.id);
+      + getPersonalityModifier(context.nation.id, technology.id)
+      + getResearchDemandBonus(technology.id, context.researchDemands);
 
     if (baselineScore > 0) {
       console.debug(`AI research baseline priority applied for ${context.nation.name}: ${technology.id} (+${baselineScore})`);
@@ -58,6 +81,23 @@ export function applyBaselineTechPriority(
   }
 
   return 0;
+}
+
+/**
+ * Sum of every active demand for this tech. Applied only inside the available-tech
+ * scoring loop, so a demand for a tech whose prerequisites are unmet never appears
+ * here — prerequisites are respected by construction.
+ */
+function getResearchDemandBonus(
+  techId: string,
+  demands: readonly ResearchDemand[] | undefined,
+): number {
+  if (!demands || demands.length === 0) return 0;
+  let bonus = 0;
+  for (const demand of demands) {
+    if (demand.techId === techId) bonus += demand.bonus;
+  }
+  return bonus;
 }
 
 function getStrategyModifier(nation: Nation, techId: string): number {

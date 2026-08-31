@@ -62,6 +62,7 @@ import { CultureSystem } from '../systems/culture/CultureSystem';
 import { CultureEffectSystem } from '../systems/culture/CultureEffectSystem';
 import { PolicySystem } from '../systems/PolicySystem';
 import { ResearchSystem } from '../systems/ResearchSystem';
+import { SAILING_OVERSEAS_RESEARCH_DEMAND_BONUS } from '../systems/ai/AIResearchPlanningSystem';
 import { TileResourceGenerator } from '../systems/ResourceGenerator';
 import { ProductionSystem } from '../systems/ProductionSystem';
 import { PowerPlantSystem } from '../systems/PowerPlantSystem';
@@ -1579,6 +1580,8 @@ export class GameScene extends Phaser.Scene {
     aiDiplomacySystem.setCulturalJealousyTargetPredicate((selfId, otherId) =>
       culturalJealousySystem.isJealousyTargeting(selfId, otherId),
     );
+    aiDiplomacySystem.setDecisionRelationModifier((selfId, otherId, relation) =>
+      unluckyWinnerTurningPointSystem.applyTemporaryRelationInfluence(selfId, otherId, relation));
     // Let a winning AI reach the existing capitulation system for AI-vs-AI wars.
     // Reparations reuse the same peace valuation; exploitation-rights demands
     // reuse the existing leader-interest gate. Human targets are guarded inside
@@ -3369,6 +3372,15 @@ export class GameScene extends Phaser.Scene {
       (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
       foundCitySystem,
     );
+    // Strategic research demand: when a non-human nation has a real, otherwise
+    // pursuable overseas expansion blocked only by missing Sailing, prioritize
+    // Sailing on its next research pick. Evaluated lazily during research
+    // selection (no new per-turn scan); the demand disappears the moment Sailing
+    // is researched, returning the AI to its normal research personality.
+    researchSystem.setResearchDemandProvider((nationId) =>
+      aiOverseasExpansionSystem.demandsSailingResearch(nationId)
+        ? [{ techId: 'sailing', bonus: SAILING_OVERSEAS_RESEARCH_DEMAND_BONUS, reason: 'overseas expansion' }]
+        : []);
     const aiExplorationSystem = new AIExplorationSystem(
       unitManager,
       cityManager,
@@ -4946,8 +4958,9 @@ export class GameScene extends Phaser.Scene {
       (nationId) => reclaimCapitalSystem.getReclaimHolderId(nationId),
     );
     turnManager.on('roundStart', () => allianceCouncilManager.update());
-    // Diplomatic upkeep: suspicion drifts back toward 0 a little each round.
-    turnManager.on('roundStart', () => { diplomacyManager.decaySuspicion(); });
+    // Diplomatic upkeep: ordinary suspicion drift, plus stronger negative-memory
+    // cooling for pairs completing an enforced post-war Peace Treaty turn.
+    turnManager.on('roundStart', ({ round }) => { diplomacyManager.processDiplomaticUpkeep(round); });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => allianceCouncilDialog.hide());
 
     foreignTroopViolationSystem.onWarning((event) => {
