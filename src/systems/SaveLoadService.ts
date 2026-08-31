@@ -198,6 +198,7 @@ export class SaveLoadService {
         settlersProduced: nation.settlersProduced,
         aiVictoryFocus: nation.aiVictoryFocus ? { ...nation.aiVictoryFocus } : undefined,
         culturalJealousyTargetId: nation.culturalJealousyTargetId,
+        lastCityFoundedTurn: nation.lastCityFoundedTurn,
         activePolicies: policySystem.getActivePolicyAssignments(nation.id),
         gold: res.gold,
         culture: res.culture,
@@ -794,6 +795,7 @@ export class SaveLoadService {
       nation.settlersProduced = Math.max(0, Math.floor(saved.settlersProduced ?? 0));
       nation.aiVictoryFocus = saved.aiVictoryFocus ? { ...saved.aiVictoryFocus } : undefined;
       nation.culturalJealousyTargetId = saved.culturalJealousyTargetId;
+      nation.lastCityFoundedTurn = saved.lastCityFoundedTurn;
       nation.knownIslandTargets = saved.knownIslandTargets?.map((target) => ({ ...target }));
       nation.handledOverseasRegionNames = saved.handledOverseasRegionNames ? [...saved.handledOverseasRegionNames] : undefined;
 

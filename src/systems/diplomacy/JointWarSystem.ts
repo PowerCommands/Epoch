@@ -63,9 +63,17 @@ export class JointWarSystem {
    * the ordinary relation/military scoring, never an override.
    */
   private getReclaimHolderId: (nationId: string) => string | undefined = () => undefined;
+  private isCulturalJealousyTarget: (nationId: string, targetId: string) => boolean = () => false;
 
   setReclaimHolderProvider(provider: (nationId: string) => string | undefined): void {
     this.getReclaimHolderId = provider;
+  }
+
+  /** Authoritative Cultural Jealousy hook, wired by GameScene from that system. */
+  setCulturalJealousyTargetPredicate(
+    predicate: (nationId: string, targetId: string) => boolean,
+  ): void {
+    this.isCulturalJealousyTarget = predicate;
   }
 
   /**
@@ -83,6 +91,8 @@ export class JointWarSystem {
     if (targetId === proposerId || targetId === receiverId) return { ok: false, reason: 'The target must be a third nation.' };
     if (!this.haveMet(proposerId, receiverId)) return { ok: false, reason: 'You have not met this nation.' };
     if (!this.haveMet(proposerId, targetId)) return { ok: false, reason: 'You have not met the target nation.' };
+    if (!this.militaryEvaluationSystem.isNationActive(proposerId)) return { ok: false, reason: 'The proposing nation is no longer active.' };
+    if (!this.militaryEvaluationSystem.isNationActive(receiverId)) return { ok: false, reason: 'The requested nation is no longer active.' };
     if (!this.militaryEvaluationSystem.isNationActive(targetId)) return { ok: false, reason: 'The target nation is no longer active.' };
     if (this.diplomacyManager.getState(proposerId, receiverId) === 'WAR') return { ok: false, reason: 'You are at war with this nation.' };
     if (this.allianceManager.areAllied(proposerId, targetId) || this.allianceManager.areAllied(receiverId, targetId)) {
@@ -99,6 +109,12 @@ export class JointWarSystem {
       if (this.diplomacyManager.getState(proposerId, targetId) !== 'WAR') {
         return { ok: false, reason: 'You are not at war with the target — request a joint war instead.' };
       }
+    }
+    if (this.diplomacyManager.canDeclareWar?.(receiverId, targetId) === false) {
+      return { ok: false, reason: 'The requested nation cannot currently declare war on the target.' };
+    }
+    if (kind === 'request' && this.diplomacyManager.canDeclareWar?.(proposerId, targetId) === false) {
+      return { ok: false, reason: 'The proposing nation cannot currently declare war on the target.' };
     }
     return { ok: true };
   }
@@ -124,6 +140,14 @@ export class JointWarSystem {
     offeredGold = 0,
   ): boolean {
     if (!this.canRequestJointWar(proposerId, receiverId, targetId, kind).ok) return false;
+
+    // Coalition opportunism: once the ordinary hard legality gate above has
+    // accepted a genuine joint-war ask, active Cultural Jealousy supplies all
+    // motivation needed to attack its current antagonist. This intentionally
+    // precedes every strategic/desirability rejection below (fear, friendship,
+    // military overmatch, other wars, recovery priorities, and score/payment).
+    if (this.isCulturalJealousyTarget(receiverId, targetId)) return true;
+
     const reclaimHolderId = this.getReclaimHolderId(receiverId);
     // Hard strategic restriction: a recovering nation never volunteers for an
     // offensive joint war that does not directly target its capital holder.
@@ -200,6 +224,7 @@ export class JointWarSystem {
 
   /** Fixed linear bid for the next retry; the initial attempt remains zero. */
   getGoldOffer(proposerId: string, receiverId: string, targetId: string): number {
+    if (this.isCulturalJealousyTarget(receiverId, targetId)) return 0;
     return this.getRejectionCount(proposerId, receiverId, targetId) * JOIN_WAR_GOLD_ESCALATION_STEP;
   }
 
@@ -376,7 +401,11 @@ export class JointWarSystem {
       proposal.receiverNationId,
       proposal.targetNationId,
     );
-    const offeredGold = rejectionCount * JOIN_WAR_GOLD_ESCALATION_STEP;
+    const offeredGold = this.getGoldOffer(
+      proposal.proposerNationId,
+      proposal.receiverNationId,
+      proposal.targetNationId,
+    );
     const proposerTreasury = this.economy
       ? Math.max(0, Math.floor(this.economy.getGold(proposal.proposerNationId)))
       : undefined;

@@ -27,6 +27,7 @@ export interface NationConfig {
   settlersProduced?: number;
   aiVictoryFocus?: AIVictoryFocusState;
   culturalJealousyTargetId?: string;
+  lastCityFoundedTurn?: number;
 }
 
 /**
@@ -64,6 +65,12 @@ export class Nation {
    * cleared when this nation goes to war with that target. Undefined = no agenda.
    */
   culturalJealousyTargetId?: string;
+  /**
+   * Turn on which this nation most recently founded a city (AISystem records it
+   * via FoundCitySystem.onCityFounded). Drives the AI-only normal-expansion
+   * Settler cooldown. Undefined until the nation founds its first city in-game.
+   */
+  lastCityFoundedTurn?: number;
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
@@ -88,5 +95,6 @@ export class Nation {
     this.settlersProduced = Math.max(0, Math.floor(config.settlersProduced ?? 0));
     this.aiVictoryFocus = config.aiVictoryFocus ? { ...config.aiVictoryFocus } : undefined;
     this.culturalJealousyTargetId = config.culturalJealousyTargetId;
+    this.lastCityFoundedTurn = config.lastCityFoundedTurn;
   }
 }

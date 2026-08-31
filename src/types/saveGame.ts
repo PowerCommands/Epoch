@@ -103,6 +103,8 @@ export interface SavedNation {
   aiVictoryFocus?: AIVictoryFocusState;
   /** Active Cultural Jealousy target. Optional for saves predating the agenda. */
   culturalJealousyTargetId?: string;
+  /** Turn the nation last founded a city; drives the AI expansion cooldown. */
+  lastCityFoundedTurn?: number;
   activePolicies?: ActivePolicyAssignment[];
   gold: number;
   culture: number;

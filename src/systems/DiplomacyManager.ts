@@ -951,6 +951,18 @@ export class DiplomacyManager {
     return this.transitionToWar(aggressorId, targetId, false, { source: 'standard' });
   }
 
+  /** Whether the canonical non-forced war transition is currently legal. */
+  canDeclareWar(aggressorId: string, targetId: string): boolean {
+    if (aggressorId === targetId) return false;
+    const key = this.pairKey(aggressorId, targetId);
+    if (this.relations.get(key)?.state === 'WAR') return false;
+    if (this.allianceGuard?.(aggressorId, targetId)) return false;
+    const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
+    if (this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
+    if (this.isCeasefireActive(aggressorId, targetId, currentTurn)) return false;
+    return true;
+  }
+
   /**
    * Enter war through the canonical transition while bypassing diplomatic
    * permission checks. Intended for explicit scenario/system rules, not AI.
@@ -972,11 +984,9 @@ export class DiplomacyManager {
     if (aggressorId === targetId) return false;
     const key = this.pairKey(aggressorId, targetId);
     if (this.relations.get(key)?.state === 'WAR') return false;
-    // Alliance partners cannot declare war on each other (covers human + AI).
-    if (!bypassRestrictions && this.allianceGuard?.(aggressorId, targetId)) return false;
-    const currentTurn = this.turnManager?.getCurrentRound() ?? 0;
-    if (!bypassRestrictions && this.isPeaceTreatyActive(aggressorId, targetId, currentTurn)) return false;
-    if (!bypassRestrictions && this.isCeasefireActive(aggressorId, targetId, currentTurn)) return false;
+    // Alliance, peace-treaty, and ceasefire checks share the same authoritative
+    // query used by proposal systems; forced scenario transitions bypass them.
+    if (!bypassRestrictions && !this.canDeclareWar(aggressorId, targetId)) return false;
     const previous = this.relations.get(key);
     const next = normalizeRelation({
       ...previous,

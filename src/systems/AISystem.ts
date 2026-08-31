@@ -89,7 +89,7 @@ import {
   getCandidateGoalCategory,
   getProductionWeights,
 } from './ai/utils/AIProductionGoalWeights';
-import { hasGoalOfType } from './ai/utils/AIExpansionUtils';
+import { hasGoalOfType, isNormalExpansionSettlerOnCooldown } from './ai/utils/AIExpansionUtils';
 import { getMilitaryIntent } from './ai/utils/AIMilitaryUtils';
 import { scoreCombatTarget, type AICombatContext } from './ai/AICombatScoring';
 import {
@@ -775,7 +775,14 @@ export class AISystem {
       (nationId) => this.getActiveEraStrategy(nationId),
       this.logStrategicEvent,
     );
-    this.foundCitySystem.onCityFounded((city) => this.cityFocusSystem.updateFocusForCity(city));
+    this.foundCitySystem.onCityFounded((city) => {
+      this.cityFocusSystem.updateFocusForCity(city);
+      // Reset the AI normal-expansion cooldown from the turn a city is actually
+      // founded. Recorded for every nation (harmless for humans, who never read
+      // it); only AI normal-expansion Settler pathways gate on it.
+      const nation = this.nationManager.getNation(city.ownerId);
+      if (nation) nation.lastCityFoundedTurn = this.turnManager.getCurrentRound();
+    });
     this.productionSystem.onCompletedSuccessfully((cityId, item) => {
       this.recordCompletedProductionCycle(cityId, item);
     });
@@ -5883,6 +5890,7 @@ export class AISystem {
     if (cities.length === 0) return;
     if (this.getAIPhase(nationId) !== 'FOUNDATION') return;
     if (this.isSettlerProductionBlockedByHappiness(nationId)) return;
+    if (this.isNormalExpansionSettlerOnCooldown(nationId)) return; // post-founding pacing
     if (this.countSettlers(nationId) > 0) return; // already have or queued one
     if (!this.canBuildUnit(nationId, SETTLER.id)) return;
     if (!this.canAffordUnitProduction(nationId, SETTLER)) return;
@@ -5935,7 +5943,8 @@ export class AISystem {
       this.canBuildUnit(nationId, SETTLER.id) &&
       this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType: SETTLER }) === undefined &&
       canCityProduceUnit(city, SETTLER, this.mapData, this.gridSystem, this.getUnitProductionRuleContext()) &&
-      !this.isSettlerProductionBlockedByHappiness(nationId)
+      !this.isSettlerProductionBlockedByHappiness(nationId) &&
+      !this.isNormalExpansionSettlerOnCooldown(nationId)
     ) {
       return { kind: 'unit', unitType: SETTLER };
     }
@@ -6854,6 +6863,18 @@ export class AISystem {
     ));
   }
 
+  // AI-only. True while normal expansion must wait after a recent city founding:
+  // 20 turns after the capital (nation still at one city), 10 turns after any
+  // later city. Expedition-driven settlement ignores this entirely. Nations that
+  // never founded a city in-game (e.g. scenario pre-placed) have no cooldown.
+  private isNormalExpansionSettlerOnCooldown(nationId: string): boolean {
+    return isNormalExpansionSettlerOnCooldown({
+      lastCityFoundedTurn: this.nationManager.getNation(nationId)?.lastCityFoundedTurn,
+      cityCount: this.cityManager.getCitiesByOwner(nationId).length,
+      currentTurn: this.turnManager.getCurrentRound(),
+    });
+  }
+
   private getSettlerProductionPlan(
     city: City,
     nationId: string,
@@ -6864,6 +6885,9 @@ export class AISystem {
     netHappiness: number | undefined,
   ): 'earlyTarget' | 'longTerm' | undefined {
     if (plannedSettlerCount > 0 || !canProduceSettler) return undefined;
+    // Normal expansion respects the post-founding cooldown; expeditions do not
+    // route through this plan and remain eligible.
+    if (this.isNormalExpansionSettlerOnCooldown(nationId)) return undefined;
 
     const cityCount = this.cityManager.getCitiesByOwner(nationId).length;
     if (cityCount < this.getEffectiveDesiredCityCount(nationId, strategy)) return 'earlyTarget';

@@ -1256,6 +1256,8 @@ export class GameScene extends Phaser.Scene {
         },
       },
     );
+    jointWarSystem.setCulturalJealousyTargetPredicate((nationId, targetId) =>
+      culturalJealousySystem.isJealousyTargeting(nationId, targetId));
     const borderPressureSystem = new BorderPressureSystem(
       diplomacyManager,
       cityManager,
