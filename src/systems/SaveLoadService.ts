@@ -71,6 +71,7 @@ import type { JointWarSystem } from './diplomacy/JointWarSystem';
 import type { ReconciliationTurningPointSystem } from './diplomacy/ReconciliationTurningPointSystem';
 import type { LuckyLoserTurningPointSystem } from './diplomacy/LuckyLoserTurningPointSystem';
 import type { CulturalJealousySystem } from './diplomacy/CulturalJealousySystem';
+import type { UnluckyWinnerTurningPointSystem } from './diplomacy/UnluckyWinnerTurningPointSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -109,6 +110,7 @@ export interface SaveLoadContext {
   reconciliationTurningPointSystem?: ReconciliationTurningPointSystem;
   luckyLoserTurningPointSystem?: LuckyLoserTurningPointSystem;
   culturalJealousySystem?: CulturalJealousySystem;
+  unluckyWinnerTurningPointSystem?: UnluckyWinnerTurningPointSystem;
   newspaperSystem?: NewspaperSystem;
   gamesOfNationsSystem?: GamesOfNationsSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
@@ -184,6 +186,7 @@ export class SaveLoadService {
       reconciliationTurningPointSystem,
       luckyLoserTurningPointSystem,
       culturalJealousySystem,
+      unluckyWinnerTurningPointSystem,
       newspaperSystem,
       gamesOfNationsSystem,
     } = context;
@@ -388,6 +391,7 @@ export class SaveLoadService {
       reconciliationTurningPoint: reconciliationTurningPointSystem?.serialize(),
       luckyLoserTurningPoint: luckyLoserTurningPointSystem?.serialize(),
       culturalJealousyTurningPoint: culturalJealousySystem?.serialize(),
+      unluckyWinnerTurningPoint: unluckyWinnerTurningPointSystem?.serialize(),
       covertIncidents: context.covertSuspicionSystem?.getOffenseRecords(),
     };
   }
@@ -631,6 +635,7 @@ export class SaveLoadService {
     context.reconciliationTurningPointSystem?.restore(state.reconciliationTurningPoint);
     context.luckyLoserTurningPointSystem?.restore(state.luckyLoserTurningPoint);
     context.culturalJealousySystem?.restore(state.culturalJealousyTurningPoint);
+    context.unluckyWinnerTurningPointSystem?.restore(state.unluckyWinnerTurningPoint);
   }
 
   private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {

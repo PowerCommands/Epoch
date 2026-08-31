@@ -4,6 +4,7 @@ export type NewspaperEventType = Exclude<HistoricalEventType,
   | 'leaderInsult'
   | 'reconciliation'
   | 'luckyLoser'
+  | 'unluckyWinner'
   | 'worldCouncilActive'
   | 'worldCouncilMeeting'
 >;

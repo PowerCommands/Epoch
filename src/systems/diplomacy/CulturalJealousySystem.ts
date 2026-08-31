@@ -23,16 +23,38 @@ import type { DiplomacyManager } from '../DiplomacyManager';
  * elimination) without ever reopening the turning point. A round on which no
  * valid pair can be found does NOT consume the event — it simply retries later.
  *
+ * Cultural Jealousy is a spark, not a permanent state: it only injects an
+ * artificial diplomatic shock to ignite a war against the antagonist. Every
+ * memory delta it applies (activation swing + per-round reinforcement) is
+ * recorded in an influence ledger. The moment an agenda fulfils its purpose
+ * (its jealous nation is at war with the target — or the pairing otherwise
+ * ends), that recorded influence is subtracted back out of the *current*
+ * relation. This removes only CJ's own contribution; the normal war-declaration
+ * penalties, city-capture effects and any other later diplomacy all remain, so
+ * post-war relations reflect what actually happened, not the artificial shock.
+ *
  * State is intentionally tiny and deterministic: each jealous nation stores its
- * target on `Nation.culturalJealousyTargetId`, and the consumed flag persists on
- * the turning point itself — both survive save/load.
+ * target on `Nation.culturalJealousyTargetId`, and the consumed flag plus the
+ * influence ledger persist on the turning point itself — all survive save/load.
  */
 export const CULTURAL_JEALOUSY_ACTIVATION_YEAR = 1500;
+
+/** One pair's net CJ-applied memory delta, so it can be removed later. */
+export interface SavedCulturalJealousyInfluenceEntry {
+  a: string;
+  b: string;
+  trust: number;
+  hostility: number;
+  affinity: number;
+  suspicion: number;
+}
 
 /** Persistent turning-point state (survives save/load). */
 export interface SavedCulturalJealousyTurningPointState {
   /** True once a valid jealous pair has been selected and applied — never re-fires. */
   consumed: boolean;
+  /** Net CJ-applied memory deltas per pair, so only CJ's influence is removed at termination. */
+  influence?: SavedCulturalJealousyInfluenceEntry[];
 }
 
 /** Need at least this many living nations for a distinct leader + two resenters. */
@@ -95,6 +117,24 @@ interface MemoryDelta {
   suspicion?: number;
 }
 
+/** Net delta CJ has applied to a pair's memory (fear is never touched by CJ). */
+interface MemoryInfluence {
+  trust: number;
+  hostility: number;
+  affinity: number;
+  suspicion: number;
+}
+
+const INFLUENCE_KEY_SEPARATOR = '␟';
+
+function emptyInfluence(): MemoryInfluence {
+  return { trust: 0, hostility: 0, affinity: 0, suspicion: 0 };
+}
+
+function isNegligibleInfluence(delta: MemoryInfluence): boolean {
+  return delta.trust === 0 && delta.hostility === 0 && delta.affinity === 0 && delta.suspicion === 0;
+}
+
 export interface CulturalJealousyContext {
   readonly nationManager: NationManager;
   readonly diplomacyManager: DiplomacyManager;
@@ -108,6 +148,9 @@ export interface CulturalJealousyContext {
 export class CulturalJealousySystem {
   /** Whether the one-time turning point has already fired this game. */
   private consumed = false;
+
+  /** Net memory delta CJ has applied per pair, keyed by ordered id pair. */
+  private readonly influence = new Map<string, MemoryInfluence>();
 
   constructor(private readonly context: CulturalJealousyContext) {}
 
@@ -132,12 +175,29 @@ export class CulturalJealousySystem {
 
   /** Serialize the one-time turning-point state for the save file. */
   serialize(): SavedCulturalJealousyTurningPointState {
-    return { consumed: this.consumed };
+    const influence: SavedCulturalJealousyInfluenceEntry[] = [];
+    for (const [key, delta] of this.influence) {
+      const [a, b] = key.split(INFLUENCE_KEY_SEPARATOR);
+      if (!a || !b) continue;
+      influence.push({ a, b, ...delta });
+    }
+    influence.sort((x, y) => (x.a.localeCompare(y.a)) || x.b.localeCompare(y.b));
+    return { consumed: this.consumed, influence };
   }
 
   /** Restore the one-time turning-point state from a save file. */
   restore(saved: SavedCulturalJealousyTurningPointState | undefined): void {
     this.consumed = saved?.consumed === true;
+    this.influence.clear();
+    for (const entry of saved?.influence ?? []) {
+      if (!entry?.a || !entry?.b) continue;
+      this.influence.set(this.influenceKey(entry.a, entry.b), {
+        trust: entry.trust ?? 0,
+        hostility: entry.hostility ?? 0,
+        affinity: entry.affinity ?? 0,
+        suspicion: entry.suspicion ?? 0,
+      });
+    }
   }
 
   /** The target a jealous nation currently resents, or undefined. */
@@ -177,6 +237,10 @@ export class CulturalJealousySystem {
         const reason = targetGone ? `${this.name(targetId)} is no longer a living power` : `${this.name(jealousId)} has fallen`;
         this.log(`CULTURAL JEALOUSY: ${this.name(jealousId)}'s jealousy agenda ended (${reason}).`);
       }
+      // The spark has done its work — strip CJ's artificial relation influence
+      // back out so only real history (war penalties, captures, later diplomacy)
+      // shapes what follows.
+      this.removeJealousyInfluence(jealousId, targetId);
     }
   }
 
@@ -269,7 +333,7 @@ export class CulturalJealousySystem {
 
   private reinforceTowardTarget(jealousId: string, targetId: string): void {
     const relation = this.context.diplomacyManager.getRelation(jealousId, targetId);
-    this.context.diplomacyManager.setMemoryValues(jealousId, targetId, {
+    this.writeMemoryRecording(jealousId, targetId, {
       trust: fallToward(relation.trust, REINFORCE_TARGET_TRUST_FLOOR, REINFORCE_TARGET_TRUST_STEP),
       fear: relation.fear,
       hostility: riseToward(relation.hostility, REINFORCE_TARGET_HOSTILITY_CEILING, REINFORCE_TARGET_HOSTILITY_STEP),
@@ -280,7 +344,7 @@ export class CulturalJealousySystem {
 
   private reinforcePeer(firstId: string, secondId: string): void {
     const relation = this.context.diplomacyManager.getRelation(firstId, secondId);
-    this.context.diplomacyManager.setMemoryValues(firstId, secondId, {
+    this.writeMemoryRecording(firstId, secondId, {
       trust: riseToward(relation.trust, REINFORCE_PEER_TRUST_CEILING, REINFORCE_PEER_TRUST_STEP),
       fear: relation.fear,
       hostility: fallToward(relation.hostility, REINFORCE_PEER_HOSTILITY_FLOOR, REINFORCE_PEER_HOSTILITY_STEP),
@@ -291,13 +355,114 @@ export class CulturalJealousySystem {
 
   private applyDelta(a: string, b: string, delta: MemoryDelta): void {
     const relation = this.context.diplomacyManager.getRelation(a, b);
-    this.context.diplomacyManager.setMemoryValues(a, b, {
+    this.writeMemoryRecording(a, b, {
       trust: clampMemory(relation.trust + (delta.trust ?? 0)),
       fear: relation.fear,
       hostility: clampMemory(relation.hostility + (delta.hostility ?? 0)),
       affinity: clampMemory(relation.affinity + (delta.affinity ?? 0)),
       suspicion: clampMemory(relation.suspicion + (delta.suspicion ?? 0)),
     });
+  }
+
+  /**
+   * Write memory values AND record the actual (post-clamp) delta CJ applied to
+   * this pair, so the same influence can later be subtracted back out.
+   */
+  private writeMemoryRecording(
+    a: string,
+    b: string,
+    next: { trust: number; fear: number; hostility: number; affinity: number; suspicion: number },
+  ): void {
+    const before = this.context.diplomacyManager.getRelation(a, b);
+    this.context.diplomacyManager.setMemoryValues(a, b, next);
+    this.recordInfluence(a, b, {
+      trust: next.trust - before.trust,
+      hostility: next.hostility - before.hostility,
+      affinity: next.affinity - before.affinity,
+      suspicion: next.suspicion - before.suspicion,
+    });
+  }
+
+  private recordInfluence(a: string, b: string, delta: MemoryInfluence): void {
+    if (isNegligibleInfluence(delta)) return;
+    const key = this.influenceKey(a, b);
+    const current = this.influence.get(key) ?? emptyInfluence();
+    this.influence.set(key, {
+      trust: current.trust + delta.trust,
+      hostility: current.hostility + delta.hostility,
+      affinity: current.affinity + delta.affinity,
+      suspicion: current.suspicion + delta.suspicion,
+    });
+  }
+
+  /**
+   * Subtract CJ's recorded influence for this pair back out of the *current*
+   * relation (never a pre-CJ snapshot), then forget it. Everything that changed
+   * for other reasons after activation — war-declaration penalties, city
+   * captures, later diplomacy — is preserved. Returns the applied removal for
+   * logging, or undefined when no CJ influence was outstanding.
+   */
+  private removeInfluencePair(a: string, b: string): {
+    delta: MemoryInfluence;
+    before: MemoryInfluence;
+    after: MemoryInfluence;
+  } | undefined {
+    const key = this.influenceKey(a, b);
+    const delta = this.influence.get(key);
+    if (!delta) return undefined;
+    this.influence.delete(key);
+    const relation = this.context.diplomacyManager.getRelation(a, b);
+    const before: MemoryInfluence = {
+      trust: relation.trust,
+      hostility: relation.hostility,
+      affinity: relation.affinity,
+      suspicion: relation.suspicion,
+    };
+    const after: MemoryInfluence = {
+      trust: clampMemory(relation.trust - delta.trust),
+      hostility: clampMemory(relation.hostility - delta.hostility),
+      affinity: clampMemory(relation.affinity - delta.affinity),
+      suspicion: clampMemory(relation.suspicion - delta.suspicion),
+    };
+    // Direct write — this removal must NOT itself be recorded as CJ influence.
+    this.context.diplomacyManager.setMemoryValues(a, b, {
+      trust: after.trust,
+      fear: relation.fear,
+      hostility: after.hostility,
+      affinity: after.affinity,
+      suspicion: after.suspicion,
+    });
+    return { delta, before, after };
+  }
+
+  /**
+   * Remove every remaining CJ relation manipulation involving a jealous nation
+   * whose agenda has just ended: its artificial hostility toward the antagonist
+   * and any shared-rival warmth with its peer. From here normal diplomacy and
+   * war memory alone govern those relationships.
+   */
+  private removeJealousyInfluence(jealousId: string, targetId: string): void {
+    for (const key of [...this.influence.keys()]) {
+      const [first, second] = key.split(INFLUENCE_KEY_SEPARATOR);
+      if (first === undefined || second === undefined) continue;
+      if (first !== jealousId && second !== jealousId) continue;
+      const other = first === jealousId ? second : first;
+      const removed = this.removeInfluencePair(first, second);
+      if (!removed) continue;
+      const kind = other === targetId ? 'antagonist hostility' : 'shared-rival warmth';
+      this.log(
+        `CULTURAL JEALOUSY: removed temporary ${kind} between ${this.name(jealousId)} and ${this.name(other)} — `
+        + `hostility ${Math.round(removed.before.hostility)}→${Math.round(removed.after.hostility)}, `
+        + `suspicion ${Math.round(removed.before.suspicion)}→${Math.round(removed.after.suspicion)}, `
+        + `trust ${Math.round(removed.before.trust)}→${Math.round(removed.after.trust)}, `
+        + `affinity ${Math.round(removed.before.affinity)}→${Math.round(removed.after.affinity)}; `
+        + 'war-driven and later diplomatic changes preserved.',
+      );
+    }
+  }
+
+  private influenceKey(a: string, b: string): string {
+    return a < b ? `${a}${INFLUENCE_KEY_SEPARATOR}${b}` : `${b}${INFLUENCE_KEY_SEPARATOR}${a}`;
   }
 
   private setAgenda(nationId: string, targetId: string): void {

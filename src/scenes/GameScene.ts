@@ -118,6 +118,7 @@ import {
   LUCKY_LOSER_GOLD_REWARD,
   LuckyLoserTurningPointSystem,
 } from '../systems/diplomacy/LuckyLoserTurningPointSystem';
+import { UnluckyWinnerTurningPointSystem } from '../systems/diplomacy/UnluckyWinnerTurningPointSystem';
 import {
   MilitaryVassalizationSystem,
   STRONG_ANTAGONIST_HOSTILITY_THRESHOLD,
@@ -1245,6 +1246,31 @@ export class GameScene extends Phaser.Scene {
       },
     });
     turnManager.on('roundStart', ({ round }) => luckyLoserTurningPointSystem.handleTurnStart(round));
+    // Unlucky Winner: in July 1914 the culturally strongest AI nation is pushed
+    // into one new war (never the human as attacker; the human may be the
+    // target). It only sours the attacker's relationship strongly enough that
+    // normal AI war logic declares war, then removes that artificial influence
+    // once the war has actually started. One-time; state persists with the save.
+    const unluckyWinnerTurningPointSystem = new UnluckyWinnerTurningPointSystem({
+      nationManager,
+      diplomacyManager,
+      getGameDate: () => turnManager.getGameDate(),
+      getCurrentTurn: () => turnManager.getCurrentRound(),
+      getCulturalRanking: () => victorySystem.getCulturalVictoryRanking()
+        .map((progress) => ({ nationId: progress.nationId, cultureValue: progress.accumulatedCulture })),
+      isNationLiving: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      log: (message) => logManager.info({ category: 'diplomacy', message }),
+      recordHistory: (event) => historicalTimeline.record({
+        type: 'unluckyWinner',
+        icon: '⚔️',
+        text: `${timelineNationName(event.attackerNationId)}, the cultural leader, was drawn into a `
+          + `new war against ${timelineNationName(event.targetNationId)}`,
+        eventNationIds: [event.attackerNationId, event.targetNationId],
+        newsImportance: 3,
+      }),
+    });
+    turnManager.on('roundStart', ({ round }) => unluckyWinnerTurningPointSystem.handleTurnStart(round));
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
       nationManager,
@@ -9063,6 +9089,7 @@ export class GameScene extends Phaser.Scene {
           reconciliationTurningPointSystem,
           luckyLoserTurningPointSystem,
           culturalJealousySystem,
+          unluckyWinnerTurningPointSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -9668,6 +9695,7 @@ export class GameScene extends Phaser.Scene {
         reconciliationTurningPointSystem,
         luckyLoserTurningPointSystem,
         culturalJealousySystem,
+        unluckyWinnerTurningPointSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,
@@ -9774,6 +9802,7 @@ export class GameScene extends Phaser.Scene {
           reconciliationTurningPointSystem,
           luckyLoserTurningPointSystem,
           culturalJealousySystem,
+          unluckyWinnerTurningPointSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -9844,6 +9873,7 @@ export class GameScene extends Phaser.Scene {
         reconciliationTurningPointSystem,
         luckyLoserTurningPointSystem,
         culturalJealousySystem,
+        unluckyWinnerTurningPointSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,

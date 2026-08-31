@@ -35,6 +35,7 @@ export type HistoricalEventType =
   | 'gamesSportIntroduced'
   | 'reconciliation'
   | 'luckyLoser'
+  | 'unluckyWinner'
   | 'leaderInsult';
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */

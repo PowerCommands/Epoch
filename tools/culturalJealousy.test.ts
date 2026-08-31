@@ -208,6 +208,83 @@ test('the consumed flag survives save/load — a reloaded game cannot fire a sec
   assert.equal(reloaded.system.getActiveJealousNationIds().length, 0, 'reloaded game never re-fires');
 });
 
+test('terminating an agenda removes only CJ influence and preserves later war changes', () => {
+  const h = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, mid: 20000 },
+  });
+  const before = h.diplomacy.getRelation('weakA', 'leader'); // neutral defaults
+  assert.equal(before.hostility, 0);
+  assert.equal(before.trust, 50);
+
+  h.system.handleRoundStart(1);
+  const afterActivation = h.diplomacy.getRelation('weakA', 'leader');
+  assert.ok(afterActivation.hostility > 0, 'CJ modified relations (point 1)');
+  assert.ok(afterActivation.suspicion > 0);
+  assert.ok(afterActivation.trust < 50);
+
+  // The intended war actually starts (point 2), then independent, non-CJ damage
+  // occurs during it: war-driven fear and a city-capture hostility spike.
+  h.diplomacy.declareWar('weakA', 'leader');
+  const relAtWar = h.diplomacy.getRelation('weakA', 'leader');
+  h.diplomacy.setMemoryValues('weakA', 'leader', {
+    trust: relAtWar.trust,
+    fear: 40, // war-driven fear (CJ never touches fear)
+    hostility: relAtWar.hostility + 20, // capture-driven hostility
+    affinity: relAtWar.affinity,
+    suspicion: relAtWar.suspicion,
+  });
+
+  h.system.handleRoundStart(2); // weakA is at war → agenda completes (point 3), CJ influence removed (point 4)
+
+  const afterRemoval = h.diplomacy.getRelation('weakA', 'leader');
+  // CJ's own hostility swing is gone; only the +20 capture damage remains (point 5).
+  assert.equal(afterRemoval.hostility, 20, 'only the non-CJ war/capture hostility remains');
+  assert.equal(afterRemoval.fear, 40, 'war-driven fear is preserved');
+  assert.equal(afterRemoval.trust, 50, 'CJ trust loss removed, back to the untouched baseline');
+  assert.equal(afterRemoval.suspicion, 0, 'CJ suspicion removed');
+  // The influence ledger no longer carries this pair (no lingering artificial state).
+  assert.ok(!h.system.serialize().influence?.some((e) =>
+    (e.a === 'weakA' && e.b === 'leader') || (e.a === 'leader' && e.b === 'weakA')));
+  assert.ok(h.messages.some((m) => /removed temporary antagonist hostility between weakA and leader/.test(m)));
+});
+
+test('CJ influence ledger survives serialize/restore and is still removed correctly after reload', () => {
+  const first = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, mid: 20000 },
+  });
+  first.system.handleRoundStart(1);
+  const saved = first.system.serialize();
+  assert.ok((saved.influence?.length ?? 0) > 0, 'activation recorded influence to persist');
+  const savedRelation = first.diplomacy.getRelation('weakA', 'leader');
+
+  // Rebuild a fresh game the way save/load does: nation agenda flags, relation
+  // memory, and the turning-point state are each restored independently.
+  const reloaded = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, mid: 20000 },
+  });
+  reloaded.nations.getNation('weakA')!.culturalJealousyTargetId = 'leader';
+  reloaded.nations.getNation('weakB')!.culturalJealousyTargetId = 'leader';
+  reloaded.diplomacy.setMemoryValues('weakA', 'leader', {
+    trust: savedRelation.trust,
+    fear: savedRelation.fear,
+    hostility: savedRelation.hostility,
+    affinity: savedRelation.affinity,
+    suspicion: savedRelation.suspicion,
+  });
+  reloaded.system.restore(saved);
+
+  // War starts after the reload; terminating still subtracts the persisted CJ delta.
+  reloaded.diplomacy.declareWar('weakA', 'leader');
+  reloaded.system.handleRoundStart(2);
+  const afterRemoval = reloaded.diplomacy.getRelation('weakA', 'leader');
+  assert.equal(afterRemoval.hostility, 0, 'persisted CJ hostility removed after reload');
+  assert.equal(afterRemoval.suspicion, 0, 'persisted CJ suspicion removed after reload');
+  assert.equal(afterRemoval.trust, 50, 'persisted CJ trust loss removed after reload');
+});
+
 test('tariff willingness rises above threshold for a jealousy target', () => {
   const base: EconomicPressureWillingnessInput = {
     attitude: 'neutral',
