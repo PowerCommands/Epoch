@@ -33,6 +33,7 @@ export type HistoricalEventType =
   | 'gamesParticipantExcluded'
   | 'gamesCancelled'
   | 'gamesSportIntroduced'
+  | 'reconciliation'
   | 'leaderInsult';
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */

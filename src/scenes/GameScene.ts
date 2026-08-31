@@ -57,6 +57,7 @@ import { getEffectiveMilitaryUnitCap } from '../systems/ai/AIMilitaryCapacity';
 import { ImperialOverstretchSystem } from '../systems/ImperialOverstretchSystem';
 import { ConqueredCityUnhappinessSystem } from '../systems/ConqueredCityUnhappinessSystem';
 import { WarWearinessSystem } from '../systems/WarWearinessSystem';
+import { AIWarTimeoutSystem } from '../systems/diplomacy/AIWarTimeoutSystem';
 import { CultureSystem } from '../systems/culture/CultureSystem';
 import { CultureEffectSystem } from '../systems/culture/CultureEffectSystem';
 import { PolicySystem } from '../systems/PolicySystem';
@@ -112,6 +113,7 @@ import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { CapitulationSystem, type CapitulationAppliedEvent } from '../systems/CapitulationSystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { CulturalJealousySystem } from '../systems/diplomacy/CulturalJealousySystem';
+import { ReconciliationTurningPointSystem } from '../systems/diplomacy/ReconciliationTurningPointSystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
 import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
@@ -1159,6 +1161,28 @@ export class GameScene extends Phaser.Scene {
       log: (message) => logManager.info({ category: 'diplomacy', message }),
     });
     turnManager.on('roundStart', () => culturalJealousySystem.handleRoundStart());
+    const reconciliationTurningPointSystem = new ReconciliationTurningPointSystem({
+      nationManager,
+      diplomacyManager,
+      getGlobalYear: () => turnManager.getGlobalYear(),
+      getCurrentRound: () => turnManager.getCurrentRound(),
+      isNationLiving: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      isCulturalJealousyParticipant: (nationId) => culturalJealousySystem
+        .getActiveJealousNationIds()
+        .some((jealousId) => jealousId === nationId
+          || culturalJealousySystem.getJealousyTargetId(jealousId) === nationId),
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      log: (message) => logManager.info({ category: 'diplomacy', message }),
+      recordHistory: (firstNationId, secondNationId) => historicalTimeline.record({
+        type: 'reconciliation',
+        icon: '🤝',
+        text: `${timelineNationName(firstNationId)} and ${timelineNationName(secondNationId)} `
+          + 'set aside their old grievances and opened a new chapter in their relations',
+        eventNationIds: [firstNationId, secondNationId],
+        newsImportance: 2,
+      }),
+    });
+    turnManager.on('roundStart', ({ round }) => reconciliationTurningPointSystem.handleRoundStart(round));
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
       nationManager,
@@ -1599,6 +1623,18 @@ export class GameScene extends Phaser.Scene {
 
     const warWearinessSystem = new WarWearinessSystem(nationManager, diplomacyManager, () => turnManager.getCurrentRound());
     getWarWeariness = (nationId) => warWearinessSystem.getWarWeariness(nationId);
+
+    // AI-initiated wars that drag on without capitulation auto-resolve: after 100
+    // turns the AI attacker sues for peace paying 20% of its treasury. AI defenders
+    // accept immediately; a human defender gets a normal peace offer to decide on.
+    const aiWarTimeoutSystem = new AIWarTimeoutSystem(
+      diplomacyManager,
+      nationManager,
+      peaceTreatySystem,
+      () => turnManager.getCurrentRound(),
+      (message) => console.log(message),
+    );
+    turnManager.on('roundStart', () => aiWarTimeoutSystem.handleRoundStart());
 
     diplomacyManager.onWarDeclared((aggressorId, targetId) => {
       aiDiplomacySystem.handleEconomicPressureEvent({
@@ -8688,6 +8724,7 @@ export class GameScene extends Phaser.Scene {
           foreignTroopViolationSystem,
           historicalTimeline,
           scenarioHistoricalEventSystem,
+          reconciliationTurningPointSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -9290,6 +9327,7 @@ export class GameScene extends Phaser.Scene {
         foreignTroopViolationSystem,
         historicalTimeline,
         scenarioHistoricalEventSystem,
+        reconciliationTurningPointSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,
@@ -9393,6 +9431,7 @@ export class GameScene extends Phaser.Scene {
           foreignTroopViolationSystem,
           historicalTimeline,
           scenarioHistoricalEventSystem,
+          reconciliationTurningPointSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -9460,6 +9499,7 @@ export class GameScene extends Phaser.Scene {
         foreignTroopViolationSystem,
         historicalTimeline,
         scenarioHistoricalEventSystem,
+        reconciliationTurningPointSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,

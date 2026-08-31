@@ -68,6 +68,7 @@ import { getActiveLeaderSelections, getLeaderCovertPersonalityByNationId } from 
 import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes';
 import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { JointWarSystem } from './diplomacy/JointWarSystem';
+import type { ReconciliationTurningPointSystem } from './diplomacy/ReconciliationTurningPointSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -103,6 +104,7 @@ export interface SaveLoadContext {
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
   scenarioHistoricalEventSystem?: ScenarioHistoricalEventSystem;
+  reconciliationTurningPointSystem?: ReconciliationTurningPointSystem;
   newspaperSystem?: NewspaperSystem;
   gamesOfNationsSystem?: GamesOfNationsSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
@@ -175,6 +177,7 @@ export class SaveLoadService {
       foreignTroopViolationSystem,
       historicalTimeline,
       scenarioHistoricalEventSystem,
+      reconciliationTurningPointSystem,
       newspaperSystem,
       gamesOfNationsSystem,
     } = context;
@@ -375,6 +378,7 @@ export class SaveLoadService {
       foreignTroopViolationWarnings,
       historicalTimeline: historicalTimeline?.serialize(),
       scenarioHistoricalEvents: scenarioHistoricalEventSystem?.serialize(),
+      reconciliationTurningPoint: reconciliationTurningPointSystem?.serialize(),
       covertIncidents: context.covertSuspicionSystem?.getOffenseRecords(),
     };
   }
@@ -404,6 +408,7 @@ export class SaveLoadService {
       affinity: entry.relation.affinity,
       suspicion: entry.relation.suspicion,
       lastWarDeclarationTurn: entry.relation.lastWarDeclarationTurn,
+      aggressorNationId: entry.relation.aggressorNationId,
       lastPeaceProposalTurn: entry.relation.lastPeaceProposalTurn,
       lastOpenBordersChangeTurn: entry.relation.lastOpenBordersChangeTurn,
       lastEmbassyChangeTurn: entry.relation.lastEmbassyChangeTurn,
@@ -613,6 +618,7 @@ export class SaveLoadService {
     // Restore lifecycle and its calendar anchor only after the round cursor is
     // in place, but before GameScene resumes with TurnManager.start().
     context.scenarioHistoricalEventSystem?.restore(state.scenarioHistoricalEvents);
+    context.reconciliationTurningPointSystem?.restore(state.reconciliationTurningPoint);
   }
 
   private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {
@@ -1044,6 +1050,7 @@ export class SaveLoadService {
         affinity: entry.affinity,
         suspicion: entry.suspicion,
         lastWarDeclarationTurn: entry.lastWarDeclarationTurn,
+        aggressorNationId: entry.aggressorNationId,
         lastPeaceProposalTurn: entry.lastPeaceProposalTurn,
         lastOpenBordersChangeTurn: entry.lastOpenBordersChangeTurn,
         lastEmbassyChangeTurn: entry.lastEmbassyChangeTurn,

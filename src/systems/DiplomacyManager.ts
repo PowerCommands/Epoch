@@ -166,6 +166,16 @@ export interface PeaceProposal {
   warDuration: number;
 }
 
+/** One active bilateral war, as reported by {@link DiplomacyManager.getActiveWars}. */
+export interface ActiveWarSummary {
+  nationA: string;
+  nationB: string;
+  /** Original declarer of this war, stamped at declaration. Undefined if unknown. */
+  aggressorNationId: string | undefined;
+  /** Turn this specific bilateral war was declared. Null if never stamped. */
+  declarationTurn: number | null;
+}
+
 type PeaceProposedListener = (proposal: PeaceProposal) => void;
 type PeaceAcceptedListener = (nationA: string, nationB: string) => void;
 type PeaceDeclinedListener = (nationA: string, nationB: string) => void;
@@ -501,6 +511,27 @@ export class DiplomacyManager {
       if (a === nationId || b === nationId) return true;
     }
     return false;
+  }
+
+  /**
+   * Snapshot of every active bilateral WAR, each with its recorded original
+   * aggressor and the turn it was declared. Each pair appears exactly once
+   * (canonical pair key), and each war keeps its own declaration turn — a later
+   * war or Join War never rewrites another pair's entry.
+   */
+  getActiveWars(): ActiveWarSummary[] {
+    const wars: ActiveWarSummary[] = [];
+    for (const [key, relation] of this.relations) {
+      if (relation.state !== 'WAR') continue;
+      const [nationA, nationB] = key.split(PAIR_KEY_SEPARATOR);
+      wars.push({
+        nationA,
+        nationB,
+        aggressorNationId: relation.aggressorNationId,
+        declarationTurn: relation.lastWarDeclarationTurn,
+      });
+    }
+    return wars;
   }
 
   getRelation(a: string, b: string): DiplomacyRelation {

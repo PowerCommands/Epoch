@@ -19,6 +19,7 @@ import type { SavedGossipState } from './gossip';
 import type { SavedGossipFlavorState } from './gossipFlavor';
 import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
+import type { SavedReconciliationTurningPointState } from '../systems/diplomacy/ReconciliationTurningPointSystem';
 import type { PeaceProposal } from '../systems/DiplomacyManager';
 import type { SavedJointWarEscalation } from './jointWar';
 import type { AIVictoryFocusState } from './aiVictoryFocus';
@@ -262,6 +263,9 @@ export interface SavedDiplomacyEntry {
   // Optional so saves written before suspicion existed still load (defaults to 0).
   suspicion?: number;
   lastWarDeclarationTurn?: number | null;
+  // Original aggressor of an active WAR. Optional so older saves load cleanly;
+  // required for the AI war-timeout rule to survive a save/load roundtrip.
+  aggressorNationId?: string;
   lastPeaceProposalTurn?: number | null;
   lastOpenBordersChangeTurn?: number | null;
   lastEmbassyChangeTurn?: number | null;
@@ -374,6 +378,8 @@ export interface SavedGameState {
   historicalTimeline?: HistoricalEvent[];
   /** Authored Historical Event lifecycle and runtime calendar anchors. */
   scenarioHistoricalEvents?: SavedScenarioHistoricalEventsState;
+  /** One-shot Diplomatic Turning Point cursor. Optional for older saves. */
+  reconciliationTurningPoint?: SavedReconciliationTurningPointState;
   /**
    * Repeated-offender memory for covert suspicion (per ordered attacker→victim
    * pair). Optional so older saves load cleanly (treated as no prior incidents).
