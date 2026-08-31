@@ -131,7 +131,7 @@ test('an agenda terminates when the jealous nation goes to war with its target',
   assert.ok(h.messages.some((m) => /at war with leader — jealousy agenda fulfilled/.test(m)));
 });
 
-test('a fresh pair is only selected once no agenda remains active', () => {
+test('an active agenda blocks re-selection but a single terminated one leaves its peer running', () => {
   const h = makeHarness({
     year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
     cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, mid: 20000 },
@@ -141,10 +141,71 @@ test('a fresh pair is only selected once no agenda remains active', () => {
   h.system.handleRoundStart(2);
   // weakB still active → no re-selection; targets remain stable.
   assert.deepEqual(h.system.getActiveJealousNationIds(), ['weakB']);
+});
+
+test('a failed candidate search does NOT consume the turning point (retries normally)', () => {
+  const h = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000 },
+  });
+  // Both eligible AI nations already at war with the leader → no valid pair.
+  h.diplomacy.declareWar('weakA', 'leader');
   h.diplomacy.declareWar('weakB', 'leader');
-  h.system.handleRoundStart(3);
-  // Both terminated → a fresh pair may form from remaining peaceful pairs.
-  assert.ok(!h.system.getActiveJealousNationIds().includes('weakA'));
+  h.system.handleRoundStart(1);
+  assert.equal(h.system.getActiveJealousNationIds().length, 0, 'no pair could form');
+  assert.equal(h.system.serialize().consumed, false, 'a failed search must not consume the event');
+
+  // Peace restores eligibility → on a later round the turning point still fires.
+  h.diplomacy.enforceCeasefire('weakA', 'leader', 5, 1);
+  h.diplomacy.enforceCeasefire('weakB', 'leader', 5, 1);
+  h.system.handleRoundStart(2);
+  assert.deepEqual(h.system.getActiveJealousNationIds(), ['weakA', 'weakB'], 'retry succeeds later');
+  assert.equal(h.system.serialize().consumed, true, 'a successful pair consumes the event');
+});
+
+test('the turning point fires exactly once — terminated agendas never reopen it', () => {
+  // Five weak AI nations so a *second* pair would be trivially available after
+  // the first pair terminates; the fix must still refuse to form one.
+  const h = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, weakC: 3000, weakD: 4000 },
+  });
+  h.system.handleRoundStart(1);
+  assert.deepEqual(h.system.getActiveJealousNationIds(), ['weakA', 'weakB']);
+  assert.equal(h.system.serialize().consumed, true);
+
+  // Both agendas terminate (war with the leader) — purpose served.
+  h.diplomacy.declareWar('weakA', 'leader');
+  h.diplomacy.declareWar('weakB', 'leader');
+  h.system.handleRoundStart(2);
+  assert.equal(h.system.getActiveJealousNationIds().length, 0, 'both agendas terminated');
+
+  // Many further rounds: weakC/weakD are perfectly eligible, yet no pair forms.
+  for (let round = 3; round <= 40; round += 1) h.system.handleRoundStart(round);
+  assert.equal(h.system.getActiveJealousNationIds().length, 0, 'no second Cultural Jealousy pair ever forms');
+  assert.equal(h.nations.getNation('weakC')?.culturalJealousyTargetId, undefined);
+  assert.equal(h.nations.getNation('weakD')?.culturalJealousyTargetId, undefined);
+});
+
+test('the consumed flag survives save/load — a reloaded game cannot fire a second pair', () => {
+  const first = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, weakC: 3000, weakD: 4000 },
+  });
+  first.system.handleRoundStart(1);
+  assert.equal(first.system.serialize().consumed, true);
+
+  // Simulate save → load into a brand-new game/system with the same nations,
+  // none of them yet carrying a jealousy agenda (agendas long since ended).
+  const saved = first.system.serialize();
+  const reloaded = makeHarness({
+    year: CULTURAL_JEALOUSY_ACTIVATION_YEAR + 20,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, weakC: 3000, weakD: 4000 },
+  });
+  reloaded.system.restore(saved);
+
+  for (let round = 1; round <= 30; round += 1) reloaded.system.handleRoundStart(round);
+  assert.equal(reloaded.system.getActiveJealousNationIds().length, 0, 'reloaded game never re-fires');
 });
 
 test('tariff willingness rises above threshold for a jealousy target', () => {

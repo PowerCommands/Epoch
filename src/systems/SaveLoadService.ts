@@ -70,6 +70,7 @@ import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { JointWarSystem } from './diplomacy/JointWarSystem';
 import type { ReconciliationTurningPointSystem } from './diplomacy/ReconciliationTurningPointSystem';
 import type { LuckyLoserTurningPointSystem } from './diplomacy/LuckyLoserTurningPointSystem';
+import type { CulturalJealousySystem } from './diplomacy/CulturalJealousySystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -107,6 +108,7 @@ export interface SaveLoadContext {
   scenarioHistoricalEventSystem?: ScenarioHistoricalEventSystem;
   reconciliationTurningPointSystem?: ReconciliationTurningPointSystem;
   luckyLoserTurningPointSystem?: LuckyLoserTurningPointSystem;
+  culturalJealousySystem?: CulturalJealousySystem;
   newspaperSystem?: NewspaperSystem;
   gamesOfNationsSystem?: GamesOfNationsSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
@@ -181,6 +183,7 @@ export class SaveLoadService {
       scenarioHistoricalEventSystem,
       reconciliationTurningPointSystem,
       luckyLoserTurningPointSystem,
+      culturalJealousySystem,
       newspaperSystem,
       gamesOfNationsSystem,
     } = context;
@@ -384,6 +387,7 @@ export class SaveLoadService {
       scenarioHistoricalEvents: scenarioHistoricalEventSystem?.serialize(),
       reconciliationTurningPoint: reconciliationTurningPointSystem?.serialize(),
       luckyLoserTurningPoint: luckyLoserTurningPointSystem?.serialize(),
+      culturalJealousyTurningPoint: culturalJealousySystem?.serialize(),
       covertIncidents: context.covertSuspicionSystem?.getOffenseRecords(),
     };
   }
@@ -626,6 +630,7 @@ export class SaveLoadService {
     context.scenarioHistoricalEventSystem?.restore(state.scenarioHistoricalEvents);
     context.reconciliationTurningPointSystem?.restore(state.reconciliationTurningPoint);
     context.luckyLoserTurningPointSystem?.restore(state.luckyLoserTurningPoint);
+    context.culturalJealousySystem?.restore(state.culturalJealousyTurningPoint);
   }
 
   private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {

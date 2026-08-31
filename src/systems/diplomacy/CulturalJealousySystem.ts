@@ -17,10 +17,23 @@ import type { DiplomacyManager } from '../DiplomacyManager';
  * V1 stability a jealous nation keeps its assigned target until termination, and
  * a fresh pair is only selected once no agenda is active.
  *
+ * Cultural Jealousy is a one-time historical turning point: it may successfully
+ * fire at most once per game. Selecting a valid pair permanently consumes the
+ * trigger; the individual agendas then live and die on their own (war, peace,
+ * elimination) without ever reopening the turning point. A round on which no
+ * valid pair can be found does NOT consume the event — it simply retries later.
+ *
  * State is intentionally tiny and deterministic: each jealous nation stores its
- * target on `Nation.culturalJealousyTargetId`, which persists with the save.
+ * target on `Nation.culturalJealousyTargetId`, and the consumed flag persists on
+ * the turning point itself — both survive save/load.
  */
 export const CULTURAL_JEALOUSY_ACTIVATION_YEAR = 1500;
+
+/** Persistent turning-point state (survives save/load). */
+export interface SavedCulturalJealousyTurningPointState {
+  /** True once a valid jealous pair has been selected and applied — never re-fires. */
+  consumed: boolean;
+}
 
 /** Need at least this many living nations for a distinct leader + two resenters. */
 const MIN_LIVING_NATIONS = 3;
@@ -93,11 +106,15 @@ export interface CulturalJealousyContext {
 }
 
 export class CulturalJealousySystem {
+  /** Whether the one-time turning point has already fired this game. */
+  private consumed = false;
+
   constructor(private readonly context: CulturalJealousyContext) {}
 
   /**
    * Main entry, wired to `roundStart`. Terminates finished agendas, reinforces
-   * active ones, and (only when none are active) selects a fresh jealous pair.
+   * active ones, and (only when none are active and the turning point has not
+   * yet fired) selects a fresh jealous pair.
    */
   handleRoundStart(_round?: number): void {
     if (this.context.getGlobalYear() < CULTURAL_JEALOUSY_ACTIVATION_YEAR) return;
@@ -105,10 +122,22 @@ export class CulturalJealousySystem {
     this.terminateFinishedAgendas();
     const activeJealousIds = this.getActiveJealousNationIds();
     if (activeJealousIds.length === 0) {
-      this.activateNewPair();
+      // The turning point may only ever fire once. Terminated agendas must not
+      // reopen it, so a fresh pair is selected only while it is still unconsumed.
+      if (!this.consumed) this.activateNewPair();
       return;
     }
     this.reinforceActiveAgendas(activeJealousIds);
+  }
+
+  /** Serialize the one-time turning-point state for the save file. */
+  serialize(): SavedCulturalJealousyTurningPointState {
+    return { consumed: this.consumed };
+  }
+
+  /** Restore the one-time turning-point state from a save file. */
+  restore(saved: SavedCulturalJealousyTurningPointState | undefined): void {
+    this.consumed = saved?.consumed === true;
   }
 
   /** The target a jealous nation currently resents, or undefined. */
@@ -199,6 +228,12 @@ export class CulturalJealousySystem {
 
     const [firstJealous, secondJealous] = jealousCandidates;
     if (!firstJealous || !secondJealous) return;
+
+    // Valid participants found — permanently consume the turning point before any
+    // agenda is applied, so it can never fire a second time (even after these
+    // agendas later terminate on war/peace/elimination). A failed search above
+    // returns early and leaves the trigger available to retry.
+    this.consumed = true;
 
     this.setAgenda(firstJealous.id, leader.id);
     this.setAgenda(secondJealous.id, leader.id);

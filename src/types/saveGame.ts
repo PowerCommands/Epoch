@@ -21,6 +21,7 @@ import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScen
 import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
 import type { SavedReconciliationTurningPointState } from '../systems/diplomacy/ReconciliationTurningPointSystem';
 import type { SavedLuckyLoserTurningPointState } from '../systems/diplomacy/LuckyLoserTurningPointSystem';
+import type { SavedCulturalJealousyTurningPointState } from '../systems/diplomacy/CulturalJealousySystem';
 import type { PeaceProposal, VassalRelationship } from '../systems/DiplomacyManager';
 import type { SavedJointWarEscalation } from './jointWar';
 import type { AIVictoryFocusState } from './aiVictoryFocus';
@@ -385,6 +386,8 @@ export interface SavedGameState {
   reconciliationTurningPoint?: SavedReconciliationTurningPointState;
   /** One-shot Lucky Loser activation, retry cursor, and winner. */
   luckyLoserTurningPoint?: SavedLuckyLoserTurningPointState;
+  /** One-time Cultural Jealousy turning-point consumed flag. Optional for older saves. */
+  culturalJealousyTurningPoint?: SavedCulturalJealousyTurningPointState;
   /**
    * Repeated-offender memory for covert suspicion (per ordered attacker→victim
    * pair). Optional so older saves load cleanly (treated as no prior incidents).
