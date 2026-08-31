@@ -48,7 +48,7 @@ export class FoundCitySystem {
   private readonly mapData: MapData;
   private readonly cityTerritorySystem = new CityTerritorySystem();
   private readonly culturalSphereSystem = new CulturalSphereSystem();
-  private readonly foundedListeners: ((city: City) => void)[] = [];
+  private readonly foundedListeners: ((city: City, foundingUnit: Unit) => void)[] = [];
   private nextCityNumber = 1;
 
   constructor(
@@ -130,12 +130,12 @@ export class FoundCitySystem {
     // Recalculate resources for nation (new city adds income)
     this.resourceSystem.recalculateForNation(unit.ownerId);
 
-    for (const cb of this.foundedListeners) cb(city);
+    for (const cb of this.foundedListeners) cb(city, unit);
 
     return city;
   }
 
-  onCityFounded(cb: (city: City) => void): void {
+  onCityFounded(cb: (city: City, foundingUnit: Unit) => void): void {
     this.foundedListeners.push(cb);
   }
 

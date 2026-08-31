@@ -111,6 +111,7 @@ import { recordGossipInsultInHistory } from '../systems/GossipHistoryRecorder';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
 import { CapitulationSystem, type CapitulationAppliedEvent } from '../systems/CapitulationSystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
+import { CulturalJealousySystem } from '../systems/diplomacy/CulturalJealousySystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
 import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
@@ -1144,6 +1145,20 @@ export class GameScene extends Phaser.Scene {
       consolidationSystem?.enterPostWar(a);
       consolidationSystem?.enterPostWar(b);
     });
+    // Cultural Jealousy: from year 1500 the two culturally weakest AI nations
+    // resent the cultural leader, warming toward each other and souring toward
+    // the leader — feeding the existing tariff/insult/war systems (never forcing
+    // a war). State persists on each jealous Nation and is cleared on war.
+    const culturalJealousySystem = new CulturalJealousySystem({
+      nationManager,
+      diplomacyManager,
+      getGlobalYear: () => turnManager.getGlobalYear(),
+      isNationLiving: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      getCultureScore: (nationId) => nationManager.getResources(nationId).culture,
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      log: (message) => logManager.info({ category: 'diplomacy', message }),
+    });
+    turnManager.on('roundStart', () => culturalJealousySystem.handleRoundStart());
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
       nationManager,
@@ -1209,6 +1224,8 @@ export class GameScene extends Phaser.Scene {
       getRound: () => turnManager.getCurrentRound(),
       getMilitaryPower: (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
       isNationActive: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      isCulturalJealousyAggressor: (speakerId, recipientId) =>
+        culturalJealousySystem.isJealousyTargeting(speakerId, recipientId),
       // Save files do not currently persist worldSeed. Use stable session
       // identity fields so flavor rolls remain identical after save/load.
       randomSeed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|gossip-flavor-v1`,
@@ -1329,6 +1346,10 @@ export class GameScene extends Phaser.Scene {
         eraSystem.getNationEra(nationId),
       ),
       peaceTreatySystem,
+    );
+    // Cultural Jealousy strongly prefers the cultural leader as a tariff target.
+    aiDiplomacySystem.setCulturalJealousyTargetPredicate((selfId, otherId) =>
+      culturalJealousySystem.isJealousyTargeting(selfId, otherId),
     );
     // Let a winning AI reach the existing capitulation system for AI-vs-AI wars.
     // Reparations reuse the same peace valuation; exploitation-rights demands
@@ -3090,6 +3111,7 @@ export class GameScene extends Phaser.Scene {
       unitBoardingManager,
       formatLog,
       (nationId, message) => logManager.info({ nationId, category: 'ai', message }),
+      foundCitySystem,
     );
     const aiExplorationSystem = new AIExplorationSystem(
       unitManager,

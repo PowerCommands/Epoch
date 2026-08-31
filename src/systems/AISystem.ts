@@ -7763,13 +7763,18 @@ export class AISystem {
       : [];
 
     const aerospacePartSystem = this.aerospacePartSystem;
-    const partEligibleIdleCityIds = aerospacePartSystem
+    const aerospacePartItem: Producible = {
+      kind: 'manufacturedResource',
+      productionType: AEROSPACE_PART_PRODUCTION,
+    };
+    const partEligibleCities = aerospacePartSystem
       ? cities
-        .filter((city) => (
-          this.productionSystem.getProduction(city.id) === undefined
-          && aerospacePartSystem.canCityProduce(city)
-        ))
-        .map((city) => city.id)
+        .filter((city) => aerospacePartSystem.canCityProduce(city))
+        .map((city) => ({
+          cityId: city.id,
+          idle: this.productionSystem.getProduction(city.id) === undefined,
+          turns: this.productionSystem.getTurnsEstimate(city.id, aerospacePartItem),
+        }))
       : [];
 
     const plan = planScienceVictoryProduction({
@@ -7782,7 +7787,7 @@ export class AISystem {
       inFlightParts: aerospacePartSystem?.getInFlightQuantity(nationId) ?? 0,
       requiredParts: progress.requiredAerospaceParts,
       corporationEligibleCities,
-      partEligibleIdleCityIds,
+      partEligibleCities,
     });
 
     this.executeScienceVictoryPlan(nationId, cities, plan, corporationItem, progress.aerospaceParts, progress.requiredAerospaceParts);
@@ -7816,7 +7821,18 @@ export class AISystem {
         return;
       case 'produceAerospaceParts': {
         const item: Producible = { kind: 'manufacturedResource', productionType: AEROSPACE_PART_PRODUCTION };
-        for (const cityId of plan.cityIds) this.productionSystem.setProduction(cityId, item);
+        if (plan.immediate) {
+          for (const cityId of plan.cityIds) this.productionSystem.setProduction(cityId, item);
+        } else {
+          const cityId = plan.cityIds[0];
+          if (!cityId) return;
+          this.productionSystem.enqueueFront(cityId, item);
+          this.logForcedScienceVictory(
+            nationId,
+            `reprioritized eligible busy city ${cityName(cityId)} for an Aerospace Part; inserted at the front of its queue (Science Victory Focus).`,
+          );
+          return;
+        }
         this.logForcedScienceVictory(
           nationId,
           `prioritized ${plan.cityIds.length} Aerospace Part slot(s) in idle cities; progress ${accumulatedParts}/${requiredParts}.`,

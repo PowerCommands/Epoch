@@ -26,6 +26,7 @@ export interface NationConfig {
   cultureProgress?: number;
   settlersProduced?: number;
   aiVictoryFocus?: AIVictoryFocusState;
+  culturalJealousyTargetId?: string;
 }
 
 /**
@@ -57,6 +58,12 @@ export class Nation {
   /** Historical Settlers completed through city production. */
   settlersProduced: number;
   aiVictoryFocus?: AIVictoryFocusState;
+  /**
+   * Active Cultural Jealousy agenda target (the current cultural leader this
+   * nation resents). Set by CulturalJealousySystem from year 1500 onward and
+   * cleared when this nation goes to war with that target. Undefined = no agenda.
+   */
+  culturalJealousyTargetId?: string;
   aiGoals?: AIGoal[];
   knownIslandTargets?: OverseasSettlementTarget[];
   handledOverseasRegionNames?: string[];
@@ -80,5 +87,6 @@ export class Nation {
     this.cultureProgress = config.cultureProgress ?? 0;
     this.settlersProduced = Math.max(0, Math.floor(config.settlersProduced ?? 0));
     this.aiVictoryFocus = config.aiVictoryFocus ? { ...config.aiVictoryFocus } : undefined;
+    this.culturalJealousyTargetId = config.culturalJealousyTargetId;
   }
 }

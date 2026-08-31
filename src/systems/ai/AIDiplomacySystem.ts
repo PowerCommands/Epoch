@@ -47,6 +47,8 @@ const OPEN_BORDERS_COOLDOWN = 5;
 const NO_IMMEDIATE_PEACE_AFTER_WAR = 3;
 const NO_IMMEDIATE_WAR_AFTER_PEACE = 5;
 const ECONOMIC_PRESSURE_ESCALATION_COOLDOWN = 8;
+/** Tariff willingness bump toward a Cultural Jealousy target (threshold is 0.48). */
+const CULTURAL_JEALOUSY_TARIFF_BIAS = 0.35;
 const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
 
 export type EconomicPressureAIEvent =
@@ -68,6 +70,12 @@ export interface EconomicPressureWillingnessInput {
   readonly warTooRisky: boolean;
   readonly currentPressure: EconomicPressureType | null;
   readonly diplomacyBias: number;
+  /**
+   * Extra tariff willingness when the target is this nation's Cultural Jealousy
+   * target. Feeds the agenda into the existing tariff decision rather than
+   * creating a separate mechanic. Defaults to 0 (no agenda).
+   */
+  readonly culturalJealousyBias?: number;
 }
 
 export interface EconomicPressureWillingness {
@@ -89,8 +97,9 @@ export function evaluateEconomicPressureWillingness(
   const antiDiplomacyBias = clamp01(-input.diplomacyBias / 50) * 0.08;
   const weaknessOutlet = input.warTooRisky || input.militaryComparison === 'weaker' ? 0.3 : 0;
   const highThreatOutlet = input.threatLevel === 'high' ? 0.18 : 0;
+  const culturalJealousy = Math.max(0, input.culturalJealousyBias ?? 0);
   return {
-    tariffs: deterioration + hostile * 0.65 + antiDiplomacyBias,
+    tariffs: deterioration + hostile * 0.65 + antiDiplomacyBias + culturalJealousy,
     embargo: deterioration + hostile + weaknessOutlet + highThreatOutlet
       + (input.currentPressure === 'tariffs' ? 0.1 : 0),
   };
@@ -125,6 +134,12 @@ export class AIDiplomacySystem {
     () => NO_RECLAIM_WAR_MODIFIER;
   private isHumanNation: (nationId: string) => boolean = (nationId) =>
     this.nationManager.getNation(nationId)?.isHuman === true;
+  /**
+   * Cultural Jealousy hook. Returns whether `selfId` is currently jealous of
+   * `otherId`; defaults to never, so callers/tests that do not wire the agenda
+   * keep their existing behavior.
+   */
+  private isCulturalJealousyTarget: (selfId: string, otherId: string) => boolean = () => false;
   private applyEconomicPressure: (
     sourceNationId: string,
     targetNationId: string,
@@ -152,6 +167,15 @@ export class AIDiplomacySystem {
     apply: (sourceNationId: string, targetNationId: string, type: EconomicPressureType) => boolean,
   ): void {
     this.applyEconomicPressure = apply;
+  }
+
+  /**
+   * Wire the Cultural Jealousy agenda so a jealous nation strongly prefers its
+   * cultural-leader target for routine Tariffs. Optional: unset, the AI keeps
+   * its ordinary economic-pressure targeting.
+   */
+  setCulturalJealousyTargetPredicate(predicate: (selfId: string, otherId: string) => boolean): void {
+    this.isCulturalJealousyTarget = predicate;
   }
 
   /** Stable Human identity; production must not depend on autoplay's temporary flag changes. */
@@ -617,6 +641,7 @@ export class AIDiplomacySystem {
       warTooRisky,
       currentPressure: current?.type ?? null,
       diplomacyBias: personality.diplomacyBias,
+      culturalJealousyBias: this.isCulturalJealousyTarget(selfId, otherId) ? CULTURAL_JEALOUSY_TARIFF_BIAS : 0,
     });
     const candidates: Array<{ type: EconomicPressureType; score: number; threshold: number }> = [
       { type: 'embargo', score: willingness.embargo, threshold: 0.78 },
@@ -634,9 +659,12 @@ export class AIDiplomacySystem {
       const weaknessReason = candidate.type === 'embargo' && warTooRisky
         ? '; military comparison weaker/high threat made war too risky'
         : '';
+      const jealousyReason = candidate.type === 'tariffs' && this.isCulturalJealousyTarget(selfId, otherId)
+        ? '; Cultural Jealousy prioritized this target'
+        : '';
       console.debug(
         `[EconomicPressureAI] ${selfName} imposed ${ECONOMIC_PRESSURE_LABEL[candidate.type]} on ${targetName}: `
-        + `score ${candidate.score.toFixed(2)}, trust ${Math.round(relation.trust)}, hostility ${Math.round(relation.hostility)}${weaknessReason}.`,
+        + `score ${candidate.score.toFixed(2)}, trust ${Math.round(relation.trust)}, hostility ${Math.round(relation.hostility)}${weaknessReason}${jealousyReason}.`,
       );
       return true;
     }

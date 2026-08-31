@@ -99,13 +99,21 @@ export type ScienceVictoryExecutionPlan =
   | { readonly kind: 'none' }
   | { readonly kind: 'foundAerospaceIndustries'; readonly cityId: string; readonly immediate: boolean }
   | { readonly kind: 'deferFounding'; readonly reason: string }
-  | { readonly kind: 'produceAerospaceParts'; readonly cityIds: readonly string[] };
+  | { readonly kind: 'produceAerospaceParts'; readonly cityIds: readonly string[]; readonly immediate: boolean };
 
 export interface ScienceVictoryCorporationCity {
   readonly cityId: string;
   /** No current production — can be committed immediately, ahead of scoring. */
   readonly idle: boolean;
   /** Turns estimate for founding here; lower is preferred. */
+  readonly turns: number;
+}
+
+export interface ScienceVictoryPartCity {
+  readonly cityId: string;
+  /** No current production — can begin a Part without reprioritizing a queue. */
+  readonly idle: boolean;
+  /** Turns estimate for manufacturing here; lower is preferred. */
   readonly turns: number;
 }
 
@@ -123,8 +131,8 @@ export interface ScienceVictoryExecutionInput {
   readonly requiredParts: number;
   /** Cities where canCityProduceCorporation(AeroSpace Industries) holds. */
   readonly corporationEligibleCities: readonly ScienceVictoryCorporationCity[];
-  /** Idle cities that can manufacture an Aerospace Part right now. */
-  readonly partEligibleIdleCityIds: readonly string[];
+  /** Cities where AerospacePartSystem.canCityProduce holds right now. */
+  readonly partEligibleCities: readonly ScienceVictoryPartCity[];
 }
 
 export function planScienceVictoryProduction(
@@ -149,9 +157,21 @@ export function planScienceVictoryProduction(
 
   const remaining = input.requiredParts - (input.accumulatedParts + input.inFlightParts);
   if (remaining <= 0) return { kind: 'none' };
-  const cityIds = input.partEligibleIdleCityIds.slice(0, remaining);
-  if (cityIds.length === 0) return { kind: 'none' };
-  return { kind: 'produceAerospaceParts', cityIds };
+  const idleCityIds = input.partEligibleCities
+    .filter((city) => city.idle)
+    .slice(0, remaining)
+    .map((city) => city.cityId);
+  if (idleCityIds.length > 0) {
+    return { kind: 'produceAerospaceParts', cityIds: idleCityIds, immediate: true };
+  }
+  // A busy-city queue jump is a starvation escape hatch, not a way to stack a
+  // fresh Part ahead of one that is already progressing elsewhere.
+  if (input.inFlightParts > 0) return { kind: 'none' };
+  const busy = input.partEligibleCities
+    .filter((city) => !city.idle)
+    .sort((a, b) => a.turns - b.turns || a.cityId.localeCompare(b.cityId))[0];
+  if (!busy || input.emergencyActive) return { kind: 'none' };
+  return { kind: 'produceAerospaceParts', cityIds: [busy.cityId], immediate: false };
 }
 
 function isCurrentFocusObjective(

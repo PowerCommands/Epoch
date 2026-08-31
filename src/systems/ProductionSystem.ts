@@ -24,6 +24,12 @@ export interface ProductionPlacement {
   tileY: number;
 }
 
+export interface ProductionEnqueueOptions {
+  placement?: ProductionPlacement;
+  /** The sole permitted exception to the nation-wide Settler queue slot. */
+  settlerProductionSlotException?: 'expeditionFollowUp';
+}
+
 export interface QueueEntry {
   item: Producible;
   accumulated: number;
@@ -149,9 +155,9 @@ export class ProductionSystem {
   }
 
   /** Add item to end of queue. */
-  enqueue(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
+  enqueue(cityId: string, item: Producible, options: ProductionEnqueueOptions = {}): void {
     if (this.isMilitaryProductionBlocked(cityId, item)) return;
-    if (this.getItemProductionBlockReason(cityId, item) !== undefined) return;
+    if (this.getItemProductionBlockReason(cityId, item, options) !== undefined) return;
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
@@ -162,9 +168,9 @@ export class ProductionSystem {
   }
 
   /** Add item to the front of the queue, making it the active production. */
-  enqueueFront(cityId: string, item: Producible, options: { placement?: ProductionPlacement } = {}): void {
+  enqueueFront(cityId: string, item: Producible, options: ProductionEnqueueOptions = {}): void {
     if (this.isMilitaryProductionBlocked(cityId, item)) return;
-    if (this.getItemProductionBlockReason(cityId, item) !== undefined) return;
+    if (this.getItemProductionBlockReason(cityId, item, options) !== undefined) return;
     let queue = this.queues.get(cityId);
     if (!queue) {
       queue = [];
@@ -473,8 +479,12 @@ export class ProductionSystem {
     return this.getEffectiveProductionPerTurn(cityId);
   }
 
-  getItemProductionBlockReason(cityId: string, item: Producible): string | undefined {
-    if (this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
+  getItemProductionBlockReason(
+    cityId: string,
+    item: Producible,
+    options: Pick<ProductionEnqueueOptions, 'settlerProductionSlotException'> = {},
+  ): string | undefined {
+    if (options.settlerProductionSlotException !== 'expeditionFollowUp' && this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
       return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
     }
     return this.itemProductionBlockReasonProvider(cityId, item);

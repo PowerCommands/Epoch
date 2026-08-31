@@ -3,6 +3,7 @@ import type { CityManager } from './CityManager';
 import type { TurnManager } from './TurnManager';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { ProductionSystem } from './ProductionSystem';
+import type { FoundCitySystem } from './FoundCitySystem';
 import type { UnitChangedEvent, UnitManager } from './UnitManager';
 import type { MovementSystem } from './MovementSystem';
 import type { PathfindingSystem } from './PathfindingSystem';
@@ -18,7 +19,7 @@ import type { UnitType } from '../entities/UnitType';
 import { TileType } from '../types/map';
 import { cityHasWaterTile } from './ProductionRules';
 import { canNationEmbarkLandUnits, canUnitEndMovementOnTile, canUnitEnterTile, isWaterTile } from './UnitMovementRules';
-import { SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
+import { CARGO_SHIP, SETTLER, canCarryUnitType, getUnitTypeById, hasCargoCapacity } from '../data/units';
 import { getEraIndex } from '../data/eraTimeline';
 import { getLeaderMaxPreferredCitiesByNationId } from '../data/leaders';
 import {
@@ -102,8 +103,10 @@ export class AIOverseasExpansionSystem {
     private readonly unitBoardingManager?: UnitBoardingManager,
     private readonly formatLog: AILogFormatter = fallbackFormatLog,
     private readonly logStrategicEvent?: (nationId: string, message: string) => void,
+    foundCitySystem?: FoundCitySystem,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
+    foundCitySystem?.onCityFounded((city, foundingUnit) => this.handleCityFounded(city, foundingUnit));
   }
 
   runTurn(nationId: string): void {
@@ -280,7 +283,11 @@ export class AIOverseasExpansionSystem {
     // Prune resource targets that are no longer valid opportunities.
     const survivors: OverseasSettlementTarget[] = [];
     for (const target of targets) {
-      if (target.source !== 'resource' || desiredByMarkerId.has(target.markerId)) {
+      if (
+        target.source !== 'resource'
+        || desiredByMarkerId.has(target.markerId)
+        || (target.localFollowUpSettlerUnitId !== undefined && target.localFollowUpSettlerHandled !== true)
+      ) {
         survivors.push(target);
         continue;
       }
@@ -585,6 +592,47 @@ export class AIOverseasExpansionSystem {
     this.assignProducedUnit(event.unit);
   }
 
+  private handleCityFounded(city: City, foundingUnit: Unit): void {
+    const nation = this.nationManager.getNation(city.ownerId);
+    const target = nation?.knownIslandTargets?.find((candidate) => (
+      candidate.localFollowUpSettlerUnitId === foundingUnit.id
+      && candidate.localFollowUpSettlerHandled !== true
+    ));
+    if (!target) return;
+
+    // Consume the grant before validation so a malformed city or production
+    // configuration cannot retry and enqueue repeatedly on later events/turns.
+    target.localFollowUpSettlerHandled = true;
+
+    if (foundingUnit.ownerId !== city.ownerId || this.cityManager.getCity(city.id) !== city) {
+      this.log(city.ownerId, `EXPEDITION FOLLOW-UP: could not queue a local Settler in ${city.name}: founded city identity or ownership was invalid.`);
+      return;
+    }
+
+    const item = { kind: 'unit' as const, unitType: SETTLER };
+    const blockReason = this.productionSystem.getItemProductionBlockReason(
+      city.id,
+      item,
+      { settlerProductionSlotException: 'expeditionFollowUp' },
+    );
+    if (blockReason) {
+      this.log(city.ownerId, `EXPEDITION FOLLOW-UP: could not queue a local Settler in ${city.name}: ${blockReason}.`);
+      return;
+    }
+
+    this.productionSystem.enqueueFront(city.id, item, { settlerProductionSlotException: 'expeditionFollowUp' });
+    const queued = this.productionSystem.getQueue(city.id)[0];
+    if (queued?.item.kind !== 'unit' || queued.item.unitType.id !== SETTLER.id) {
+      this.log(city.ownerId, `EXPEDITION FOLLOW-UP: could not queue a local Settler in ${city.name}: production queue rejected the unit.`);
+      return;
+    }
+
+    this.log(
+      city.ownerId,
+      `EXPEDITION FOLLOW-UP: ${nation?.name ?? city.ownerId} queued a local Settler in ${city.name} after successful overseas settlement.`,
+    );
+  }
+
   private assignProducedUnit(unit: Unit): void {
     const target = this.getMutableSelectedTarget(unit.ownerId);
     if (!target || target.status === 'expeditionReady') return;
@@ -864,6 +912,11 @@ export class AIOverseasExpansionSystem {
     this.log(nationId, `Settler unboarded near ${target.name} at (${landingTile.x},${landingTile.y}).`);
 
     const transportId = target.assignedTransportUnitId;
+    const transport = transportId ? this.unitManager.getUnit(transportId) : undefined;
+    if (transport?.unitType.id === CARGO_SHIP.id) {
+      target.localFollowUpSettlerUnitId = settler.id;
+      target.localFollowUpSettlerHandled = false;
+    }
     target.status = 'completed';
     target.selected = false;
     target.assignedSettlerUnitId = undefined;

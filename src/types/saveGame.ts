@@ -101,6 +101,8 @@ export interface SavedNation {
   settlersProduced?: number;
   /** Active AI endgame strategy. Optional for saves predating Victory Focus. */
   aiVictoryFocus?: AIVictoryFocusState;
+  /** Active Cultural Jealousy target. Optional for saves predating the agenda. */
+  culturalJealousyTargetId?: string;
   activePolicies?: ActivePolicyAssignment[];
   gold: number;
   culture: number;

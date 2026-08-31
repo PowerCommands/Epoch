@@ -31,6 +31,10 @@ export interface OverseasSettlementTarget {
   settlerRequested?: boolean;
   transportRequested?: boolean;
   requestedTransportUnitTypeId?: string;
+  /** Settler whose Cargo Ship landing earned one local follow-up build. */
+  localFollowUpSettlerUnitId?: string;
+  /** Persisted one-shot guard; true after the follow-up was queued or rejected. */
+  localFollowUpSettlerHandled?: boolean;
   /**
    * Overseas route-recovery runtime state (in-memory; safe to be absent after
    * load). Tracks progress of the naval transit toward the objective so a stalled

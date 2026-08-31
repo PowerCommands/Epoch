@@ -34,6 +34,13 @@ export interface GossipFlavorEventContext {
   readonly getRound: () => number;
   readonly getMilitaryPower: (nationId: string) => number;
   readonly isNationActive: (nationId: string) => boolean;
+  /**
+   * Cultural Jealousy hook: whether `speakerId` currently resents `recipientId`
+   * as its cultural-leader target. When set, a jealous nation preferentially
+   * insults its target even before the relation is severely hostile, feeding the
+   * agenda into this existing insult path. Defaults to never.
+   */
+  readonly isCulturalJealousyAggressor?: (speakerId: string, recipientId: string) => boolean;
   readonly randomSeed: string;
   /** Injectable deterministic roll for focused tests. */
   readonly roll?: (key: string) => number;
@@ -80,13 +87,18 @@ export class GossipFlavorEventSystem {
         const first = nations[firstIndex]!;
         const second = nations[secondIndex]!;
         if (first.isHuman && second.isHuman) continue;
-        const trigger: GossipFlavorContext | undefined = this.context.diplomacyManager.getState(first.id, second.id) === 'WAR'
+        const atWar = this.context.diplomacyManager.getState(first.id, second.id) === 'WAR';
+        const severelyHostile = isSeverelyHostileRelation(this.context.diplomacyManager.getRelation(first.id, second.id));
+        // Cultural Jealousy makes a jealous nation preferentially taunt its
+        // cultural-leader target; direction is forced jealous → target.
+        const jealousDirection = this.getCulturalJealousyDirection(first.id, second.id);
+        const trigger: GossipFlavorContext | undefined = atWar
           ? 'ongoing_war'
-          : isSeverelyHostileRelation(this.context.diplomacyManager.getRelation(first.id, second.id))
-            ? 'hostile_peacetime'
-            : undefined;
+          : (severelyHostile || (!atWar && jealousDirection)) ? 'hostile_peacetime' : undefined;
         if (!trigger) continue;
-        const [speaker, recipient] = this.chooseAutomaticDirection(first.id, first.isHuman, second.id, second.isHuman, trigger, round);
+        const [speaker, recipient] = (trigger === 'hostile_peacetime' && jealousDirection)
+          ? jealousDirection
+          : this.chooseAutomaticDirection(first.id, first.isHuman, second.id, second.isHuman, trigger, round);
         const result = this.tryGenerate({
           trigger, speakerNationId: speaker, recipientNationId: recipient, round,
         });
@@ -198,9 +210,21 @@ export class GossipFlavorEventSystem {
   private isCurrentContextValid(trigger: GossipFlavorContext, speakerNationId: string, recipientNationId: string): boolean {
     const atWar = this.context.diplomacyManager.getState(speakerNationId, recipientNationId) === 'WAR';
     if (trigger === 'war_declaration' || trigger === 'city_capture' || trigger === 'ongoing_war') return atWar;
-    return !atWar && isSeverelyHostileRelation(
-      this.context.diplomacyManager.getRelation(speakerNationId, recipientNationId),
-    );
+    if (atWar) return false;
+    return isSeverelyHostileRelation(this.context.diplomacyManager.getRelation(speakerNationId, recipientNationId))
+      || (this.context.isCulturalJealousyAggressor?.(speakerNationId, recipientNationId) ?? false);
+  }
+
+  /**
+   * The [jealousAggressor, target] direction for this pair, or undefined when
+   * neither side holds a Cultural Jealousy agenda against the other.
+   */
+  private getCulturalJealousyDirection(firstId: string, secondId: string): [string, string] | undefined {
+    const predicate = this.context.isCulturalJealousyAggressor;
+    if (!predicate) return undefined;
+    if (predicate(firstId, secondId)) return [firstId, secondId];
+    if (predicate(secondId, firstId)) return [secondId, firstId];
+    return undefined;
   }
 
   private chooseAutomaticDirection(

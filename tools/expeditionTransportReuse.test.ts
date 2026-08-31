@@ -139,6 +139,8 @@ test('a completed expedition releases the Cargo Ship for reuse instead of retiri
   for (let i = 0; i < 12 && target.status !== 'completed'; i += 1) h.system.runStaging(NATION);
 
   assert.equal(target.status, 'completed', 'expedition reached completion');
+  assert.equal(target.localFollowUpSettlerUnitId, 'settler', 'Cargo landing records the exact founding Settler');
+  assert.equal(target.localFollowUpSettlerHandled, false, 'follow-up remains pending until that Settler founds');
   assert.equal(target.assignedTransportUnitId, undefined, 'transport assignment cleared on completion');
   assert.notEqual(h.units.getUnit('transport'), undefined, 'Cargo Ship still exists (released, not destroyed)');
   assert.ok(h.logs.some((l) => l.includes('released') && l.includes('for reuse')), 'release-for-reuse was logged');
