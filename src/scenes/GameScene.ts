@@ -4464,13 +4464,28 @@ export class GameScene extends Phaser.Scene {
         unitRenderer.refreshUnitPosition(e.attacker.id);
       }
 
-      // Record per-war losses for city combat.
-      if (diplomacyManager.getState(e.attacker.ownerId, e.city.ownerId) === 'WAR') {
+      // Record per-war losses for city combat. On a capture, captureCity() has
+      // already transferred ownership, so e.city.ownerId is the attacker; the
+      // defender must come from defendingNationId (pre-capture owner). Using
+      // e.city.ownerId here degenerated the guard to getState(attacker, attacker)
+      // === PEACE, so conquests never incremented citiesLost.
+      if (diplomacyManager.getState(e.attacker.ownerId, defendingNationId) === 'WAR') {
         if (e.result.attackerDied && e.attacker.unitType.baseStrength > 0) {
-          diplomacyManager.recordWarUnitLoss(e.attacker.ownerId, e.city.ownerId);
+          diplomacyManager.recordWarUnitLoss(e.attacker.ownerId, defendingNationId);
         }
         if (e.captured && e.previousOwnerId) {
           diplomacyManager.recordWarCityLoss(e.previousOwnerId, e.attacker.ownerId);
+          // One concise, capture-only line so the corrected counter is directly
+          // observable in autoruns without diffing save state.
+          const citiesLostThisWar = diplomacyManager
+            .getWarExhaustion(e.previousOwnerId, e.attacker.ownerId).citiesLost;
+          const loserName = nationManager.getNation(e.previousOwnerId)?.name ?? e.previousOwnerId;
+          const captorName = nationManager.getNation(e.attacker.ownerId)?.name ?? e.attacker.ownerId;
+          logManager.info({
+            nationId: e.previousOwnerId,
+            category: 'diplomacy',
+            message: `[War] ${loserName} lost ${e.city.name} to ${captorName}. citiesLostThisWar=${citiesLostThisWar}`,
+          });
         }
       }
 
