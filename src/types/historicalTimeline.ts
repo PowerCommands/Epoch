@@ -34,6 +34,7 @@ export type HistoricalEventType =
   | 'gamesCancelled'
   | 'gamesSportIntroduced'
   | 'reconciliation'
+  | 'luckyLoser'
   | 'leaderInsult';
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */
@@ -65,6 +66,7 @@ export interface HistoricalEventMetadata {
   discoveryName?: string;
   leaderInsultSubtype?: 'insult' | 'threat';
   leaderInsultText?: string;
+  luckyLoserGold?: number;
   gamesNumber?: number;
   gamesSport?: string;
   gamesSportId?: string;

@@ -120,11 +120,17 @@ export interface AICapitulationController {
   apply(demandingNationId: string, targetNationId: string): { accepted: boolean };
 }
 
+export interface AIIndependenceController {
+  canBuyIndependence(nationId: string): boolean;
+  buyIndependence(nationId: string): boolean;
+}
+
 export class AIDiplomacySystem {
   // AI diplomacy reason logging explains decisions without changing them.
   private readonly decisionListeners: Array<(reason: AIDiplomacyDecisionReason) => void> = [];
   private readonly expiredPressureTurnByPair = new Map<string, number>();
   private capitulationController?: AICapitulationController;
+  private independenceController?: AIIndependenceController;
   /**
    * Reclaim Capital war bias. Defaults to a no-op so callers/tests that do not
    * wire the objective keep their existing behavior; production supplies the
@@ -192,6 +198,11 @@ export class AIDiplomacySystem {
     this.capitulationController = controller;
   }
 
+  /** AI vassals use the same authoritative purchase path as human players. */
+  setIndependenceController(controller: AIIndependenceController): void {
+    this.independenceController = controller;
+  }
+
   /**
    * Wire the Reclaim Capital objective's war bias: toward the current holder of
    * a lost capital it can raise war interest when the opportunity is favourable;
@@ -211,6 +222,12 @@ export class AIDiplomacySystem {
   runTurn(nationId: string): void {
     const self = this.nationManager.getNation(nationId);
     if (!self || this.isHumanNation(nationId)) return; // human players control their own diplomacy
+
+    // Initial deterministic rule: an AI vassal buys independence as soon as it
+    // can afford the fixed price. Economic strategy can become richer later.
+    if (this.independenceController?.canBuyIndependence(nationId)) {
+      this.independenceController.buyIndependence(nationId);
+    }
 
     const intent = getMilitaryIntent(self.aiGoals);
     console.log(

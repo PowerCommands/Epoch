@@ -729,16 +729,16 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     id: 'victory',
     title: 'Victory & Objectives',
     blocks: [
-      { kind: 'paragraph', text: 'Epoch has four formal victory conditions: Domination, Science, Cultural and Diplomatic Victory. A victory is awarded when a nation meets all requirements for one of these conditions at the end of a turn.' },
+      { kind: 'paragraph', text: 'Epoch has four formal victory conditions: Domination, Science, Cultural and Diplomatic Victory. A victory is awarded when a nation meets all requirements for one of these conditions.' },
 
       { kind: 'heading', text: 'Domination Victory' },
-      { kind: 'paragraph', text: 'Win by controlling every active nation’s original capital at the same time.' },
+      { kind: 'paragraph', text: 'Win by making every other surviving nation your direct vassal state.' },
       {
         kind: 'list',
         items: [
-          'You must own your own original capital and the original capital of every rival still in the game.',
-          'Capturing ordinary cities helps your campaign but does not directly satisfy the victory condition.',
-          'An original capital remains a required objective after it changes hands, so another nation can recapture it and prevent your victory.',
+          'Domination progress is your current direct vassals divided by all other living nations.',
+          'Capturing a current capital immediately vassalizes its nation, after which the capital is returned to the new vassal.',
+          'Progress is reversible: released vassals and nations that buy independence no longer count.',
         ],
       },
 

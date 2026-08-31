@@ -1,4 +1,4 @@
-/** Small deterministic PRNG reserved for procedural scenario generation. */
+/** Small deterministic PRNG for reproducible procedural and simulation choices. */
 export class SeededRandom {
   private state: number;
 

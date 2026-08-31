@@ -1,4 +1,5 @@
 import type { CityManager } from './CityManager';
+import type { DiplomacyManager } from './DiplomacyManager';
 import type { CorporationSystem } from './CorporationSystem';
 import type { CurrencyStrength, CurrencySystem } from './CurrencySystem';
 import type { NationManager } from './NationManager';
@@ -21,6 +22,12 @@ import {
   DEFAULT_REQUIRED_AEROSPACE_PARTS,
   SCIENCE_VICTORY_TECH_ID,
 } from '../data/scienceVictory';
+import {
+  buildDominationRanking,
+  getDominationProgress,
+  type DominationProgress,
+  type DominationRankingEntry,
+} from './DominationRanking';
 
 export type VictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
 
@@ -103,11 +110,12 @@ export interface DiplomaticVictoryProgress {
 const SCIENCE_PROGRESS_INTERVAL = 25;
 const CULTURAL_PROGRESS_INTERVAL = 25;
 const DIPLOMATIC_PROGRESS_INTERVAL = 25;
+const DOMINATION_PROGRESS_INTERVAL = 25;
 export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
 
 /**
  * VictorySystem checks for win conditions after each turn end.
- * Domination: one nation owns every active nation's original capital.
+ * Domination: every other living nation is the winner's direct vassal.
  * Science: one nation produces enough aerospace_parts.
  * Cultural: one nation either meets the normal multi-part requirements or
  * reaches the overwhelming absolute Culture threshold.
@@ -124,6 +132,7 @@ export class VictorySystem {
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
   private lastCulturalProgressRound = -CULTURAL_PROGRESS_INTERVAL;
   private lastDiplomaticProgressRound = -DIPLOMATIC_PROGRESS_INTERVAL;
+  private lastDominationProgressRound = -DOMINATION_PROGRESS_INTERVAL;
 
   constructor(
     private readonly cityManager: CityManager,
@@ -138,6 +147,7 @@ export class VictorySystem {
     private readonly worldCouncilSystem?: WorldCouncilSystem,
     private readonly currencySystem?: CurrencySystem,
     private readonly gamesOfNationsSystem?: GamesOfNationsChampionSource,
+    private readonly diplomacyManager?: Pick<DiplomacyManager, 'getVassalHost'>,
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
@@ -177,12 +187,7 @@ export class VictorySystem {
         return;
       }
 
-      const dominationWinner = this.dominationEnabled ? this.checkDominationVictory() : null;
-      if (dominationWinner) {
-        this.recordVictory(dominationWinner, 'domination', e.round);
-        this.logVictory(dominationWinner, 'domination', e.round);
-        for (const cb of this.listeners) cb(dominationWinner, 'domination');
-      }
+      this.resolveDominationVictoryNow(e.round);
     });
 
     turnManager.on('roundEnd', (e) => {
@@ -205,11 +210,34 @@ export class VictorySystem {
       this.lastDiplomaticProgressRound = e.round;
       this.logDiplomaticProgress(e.round);
     });
+
+    turnManager.on('roundEnd', (e) => {
+      if (this.won || !this.dominationEnabled || !this.diplomacyManager) return;
+      if (e.round - this.lastDominationProgressRound < DOMINATION_PROGRESS_INTERVAL) return;
+      this.lastDominationProgressRound = e.round;
+      this.logDominationProgress(e.round);
+    });
   }
 
   /** Public entry point kept for external callers. Checks domination only. */
   checkVictory(): string | null {
     return this.checkDominationVictory();
+  }
+
+  /**
+   * Resolve Domination immediately after a completed geopolitical transition.
+   * Step 3 calls this only after every inherited-vassal decision and capital
+   * restoration has completed, so no intermediate succession state can win.
+   */
+  resolveDominationVictoryNow(round = this.turnManager.getCurrentRound()): string | null {
+    if (this.won || !this.dominationEnabled) return null;
+    const winner = this.checkDominationVictory();
+    if (!winner) return null;
+    this.recordVictory(winner, 'domination', round);
+    this.logDominationVictory(winner, round);
+    this.logVictory(winner, 'domination', round);
+    for (const cb of this.listeners) cb(winner, 'domination');
+    return winner;
   }
 
   /** Which victory types are active. Persisted so saves restore the same rules. */
@@ -244,7 +272,13 @@ export class VictorySystem {
     if (!this.log) return;
     const name = this.nationManager.getNation(nationId)?.name ?? nationId;
     const dateLabel = this.turnManager.getGameDateLabel();
-    this.log(nationId, `VICTORY: ${name} won by ${type} victory on round ${round} (${dateLabel}).`);
+    const dominationDetail = type === 'domination'
+      ? ` All other living nations are ${name}'s vassal states.`
+      : '';
+    this.log(
+      nationId,
+      `VICTORY: ${name} won by ${type} victory on round ${round} (${dateLabel}).${dominationDetail}`,
+    );
   }
 
   getScienceVictoryProgress(nationId: string): ScienceVictoryProgress {
@@ -370,6 +404,22 @@ export class VictorySystem {
       );
   }
 
+  getDominationVictoryProgress(nationId: string): DominationProgress {
+    return getDominationProgress(
+      this.nationManager.getAllNations(),
+      nationId,
+      (candidateId) => this.diplomacyManager?.getVassalHost(candidateId),
+    );
+  }
+
+  getDominationVictoryRanking(): DominationRankingEntry[] {
+    return buildDominationRanking(
+      this.nationManager.getAllNations(),
+      (nationId) => this.diplomacyManager?.getVassalHost(nationId),
+      () => 0,
+    );
+  }
+
   private checkCulturalVictory(): string | null {
     for (const nation of this.nationManager.getAllNations()) {
       const progress = this.getCulturalVictoryProgress(nation.id);
@@ -379,17 +429,8 @@ export class VictorySystem {
   }
 
   private checkDominationVictory(): string | null {
-    const activeNations = this.nationManager.getAllNations();
-    if (activeNations.length < 2) return null;
-
-    const activeNationIds = new Set(activeNations.map((nation) => nation.id));
-    const capitals = this.cityManager.getAllCities()
-      .filter((c) => c.isOriginalCapital && activeNationIds.has(c.originNationId));
-    if (capitals.length < activeNations.length) return null;
-
-    const owners = new Set(capitals.map((c) => c.ownerId));
-    if (owners.size === 1) return capitals[0].ownerId;
-    return null;
+    if (!this.diplomacyManager) return null;
+    return this.getDominationVictoryRanking().find((entry) => entry.fulfilled)?.nationId ?? null;
   }
 
   private checkDiplomaticVictory(): string | null {
@@ -423,6 +464,33 @@ export class VictorySystem {
       AEROSPACE_PARTS_ID,
     );
     this.log(nationId, `[r${round}] ${name} achieved Science Victory with ${count} aerospace parts.`);
+  }
+
+  private logDominationVictory(nationId: string, round: number): void {
+    if (!this.log) return;
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const progress = this.getDominationVictoryProgress(nationId);
+    this.log(
+      nationId,
+      `[r${round}] [Victory] ${name} achieved Domination Victory through vassal control: `
+        + `vassals=${progress.directVassalCount}/${progress.otherLivingNationCount}. `
+        + `All other living nations are ${name}'s vassal states.`,
+    );
+  }
+
+  private logDominationProgress(round: number): void {
+    if (!this.log) return;
+    const ranking = this.getDominationVictoryRanking();
+    if (ranking.length === 0) return;
+    const lines = [`[r${round}] [Victory] Domination Victory Ranking:`];
+    for (const progress of ranking) {
+      const name = this.nationManager.getNation(progress.nationId)?.name ?? progress.nationId;
+      lines.push(
+        `- ${name}: vassals=${progress.directVassalCount}/${progress.otherLivingNationCount} `
+          + `fulfilled=${progress.fulfilled}`,
+      );
+    }
+    this.log(ranking[0].nationId, lines.join('\n'));
   }
 
   private logScienceProgress(round: number): void {

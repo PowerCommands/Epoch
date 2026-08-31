@@ -333,3 +333,18 @@ test('a human player is never silently auto-capitulated', () => {
   assert.deepEqual(h.capitulationEvents, []);
   assert.equal(h.diplomacy.getState(AI, OPP), 'WAR');
 });
+
+test('an AI vassal has a turn-time path to buy independence when affordable', () => {
+  const h = harness({
+    strength: { [AI]: 100, [OPP]: 100 },
+    cities: [city('karakorum', AI), city('stockholm', OPP)],
+  });
+  h.diplomacy.establishVassal(AI, 'host');
+  let purchased = false;
+  h.ai.setIndependenceController({
+    canBuyIndependence: (nationId) => nationId === AI,
+    buyIndependence: (nationId) => { purchased = nationId === AI; return purchased; },
+  });
+  h.run();
+  assert.equal(purchased, true);
+});

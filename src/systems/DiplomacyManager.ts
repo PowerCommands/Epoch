@@ -179,7 +179,7 @@ export interface ActiveWarSummary {
 type PeaceProposedListener = (proposal: PeaceProposal) => void;
 type PeaceAcceptedListener = (nationA: string, nationB: string) => void;
 type PeaceDeclinedListener = (nationA: string, nationB: string) => void;
-export type WarDeclarationSource = 'standard' | 'scenarioHistoricalEvent';
+export type WarDeclarationSource = 'standard' | 'scenarioHistoricalEvent' | 'vassalObligation';
 export interface WarDeclarationMetadata {
   source: WarDeclarationSource;
 }
@@ -192,6 +192,7 @@ type DiplomacyPairListener = (nationA: string, nationB: string) => void;
 type DiplomacyChangedListener = (nationA: string, nationB: string, relation: DiplomacyRelation) => void;
 /** Fired whenever a WAR between two nations transitions to PEACE (any mechanism). */
 type WarEndedListener = (nationA: string, nationB: string) => void;
+type VassalReleasedListener = (result: VassalReleaseResult) => void;
 
 /**
  * Negotiation context in which an exploitation right was created, carried only so
@@ -248,6 +249,22 @@ export interface DiplomaticMemoryValues {
   hostility: number;
   affinity: number;
   suspicion: number;
+}
+
+/** Persistent directional geopolitical relationship: one vassal, one host. */
+export interface VassalRelationship {
+  readonly vassalNationId: string;
+  readonly hostNationId: string;
+}
+
+export interface VassalReleaseResult extends VassalRelationship {
+  readonly previousAffinity: number;
+  readonly affinity: number;
+}
+
+export interface AmicableRelationshipResetResult {
+  readonly previousAffinity: number;
+  readonly affinity: number;
 }
 
 export const DEFAULT_TRUST = 50;
@@ -401,6 +418,8 @@ const PAIR_KEY_SEPARATOR = '|';
  */
 export class DiplomacyManager {
   private readonly relations = new Map<string, DiplomacyRelation>();
+  /** vassal nation id -> host nation id. Kept separate from bilateral memory. */
+  private readonly vassalHosts = new Map<string, string>();
   private readonly pendingProposals = new Map<string, PeaceProposal>();
   private readonly proposedListeners: PeaceProposedListener[] = [];
   private readonly acceptedListeners: PeaceAcceptedListener[] = [];
@@ -415,6 +434,7 @@ export class DiplomacyManager {
   private readonly economicPressureChangedListeners: EconomicPressureChangedListener[] = [];
   private readonly changedListeners: DiplomacyChangedListener[] = [];
   private readonly warEndedListeners: WarEndedListener[] = [];
+  private readonly vassalReleasedListeners: VassalReleasedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
   /** Resolves nation ids to display names for autorun/debug logging. Identity by default. */
@@ -475,6 +495,116 @@ export class DiplomacyManager {
 
   getState(a: string, b: string): DiplomacyState {
     return this.getRelation(a, b).state;
+  }
+
+  isVassal(nationId: string): boolean {
+    return this.vassalHosts.has(nationId);
+  }
+
+  getVassalHost(nationId: string): string | undefined {
+    return this.vassalHosts.get(nationId);
+  }
+
+  /** Concise alias for callers displaying a vassal's overlord. */
+  getHost(nationId: string): string | undefined {
+    return this.getVassalHost(nationId);
+  }
+
+  getVassals(hostNationId: string): string[] {
+    return [...this.vassalHosts.entries()]
+      .filter(([, hostId]) => hostId === hostNationId)
+      .map(([vassalId]) => vassalId)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  getAllVassalRelationships(): VassalRelationship[] {
+    return [...this.vassalHosts.entries()]
+      .map(([vassalNationId, hostNationId]) => ({ vassalNationId, hostNationId }))
+      .sort((a, b) => a.vassalNationId.localeCompare(b.vassalNationId));
+  }
+
+  areHostAndVassal(a: string, b: string): boolean {
+    return this.vassalHosts.get(a) === b || this.vassalHosts.get(b) === a;
+  }
+
+  /** Establish or transfer a nation's single authoritative host. */
+  establishVassal(vassalNationId: string, hostNationId: string): boolean {
+    if (!this.canEstablishVassal(vassalNationId, hostNationId)) return false;
+    if (this.vassalHosts.get(vassalNationId) === hostNationId) return false;
+    this.vassalHosts.set(vassalNationId, hostNationId);
+    this.notifyChanged(vassalNationId, hostNationId);
+    return true;
+  }
+
+  /** Step 2 deliberately supports direct relationships only, never chains. */
+  canEstablishVassal(vassalNationId: string, hostNationId: string): boolean {
+    if (vassalNationId === hostNationId) return false;
+    if (this.isVassal(hostNationId)) return false;
+    if (this.getVassals(vassalNationId).length > 0) return false;
+    return true;
+  }
+
+  /**
+   * Host-only peaceful release. The former vassal has no API that can release
+   * itself; successful release also applies the Reconciliation goodwill reset.
+   */
+  releaseVassal(hostNationId: string, vassalNationId: string): VassalReleaseResult | null {
+    if (this.vassalHosts.get(vassalNationId) !== hostNationId) return null;
+    this.vassalHosts.delete(vassalNationId);
+    const reset = this.applyAmicableRelationshipReset(hostNationId, vassalNationId);
+    const result = {
+      hostNationId,
+      vassalNationId,
+      ...reset,
+    };
+    for (const listener of this.vassalReleasedListeners) listener(result);
+    return result;
+  }
+
+  /** Remove a verified host/vassal relationship without changing diplomatic memory. */
+  terminateVassalage(hostNationId: string, vassalNationId: string): boolean {
+    if (this.vassalHosts.get(vassalNationId) !== hostNationId) return false;
+    this.vassalHosts.delete(vassalNationId);
+    this.notifyChanged(hostNationId, vassalNationId);
+    return true;
+  }
+
+  /** Subscribe to every successful host-initiated release, including future AI callers. */
+  onVassalReleased(listener: VassalReleasedListener): void {
+    this.vassalReleasedListeners.push(listener);
+  }
+
+  /** Shared Reconciliation reset used by turning points and peaceful release. */
+  applyAmicableRelationshipReset(a: string, b: string): AmicableRelationshipResetResult {
+    const relation = this.getRelation(a, b);
+    const affinity = Math.max(relation.affinity, 50);
+    this.setMemoryValues(a, b, {
+      trust: 0,
+      fear: 0,
+      suspicion: 0,
+      hostility: 0,
+      affinity,
+    });
+    this.notifyChanged(a, b);
+    return {
+      previousAffinity: relation.affinity,
+      affinity,
+    };
+  }
+
+  /** Quiet save-load restoration; malformed/self relationships are ignored. */
+  restoreVassalRelationships(relationships: readonly VassalRelationship[] | undefined): void {
+    this.vassalHosts.clear();
+    const ordered = [...(relationships ?? [])]
+      .sort((a, b) => String(a?.vassalNationId).localeCompare(String(b?.vassalNationId)));
+    for (const relationship of ordered) {
+      if (!relationship
+        || typeof relationship.vassalNationId !== 'string'
+        || typeof relationship.hostNationId !== 'string'
+        || relationship.vassalNationId === relationship.hostNationId) continue;
+      if (!this.canEstablishVassal(relationship.vassalNationId, relationship.hostNationId)) continue;
+      this.vassalHosts.set(relationship.vassalNationId, relationship.hostNationId);
+    }
   }
 
   /** Authoritative check for any active diplomatic WAR involving a nation. */
@@ -985,6 +1115,8 @@ export class DiplomacyManager {
   /** Whether the canonical non-forced war transition is currently legal. */
   canDeclareWar(aggressorId: string, targetId: string): boolean {
     if (aggressorId === targetId) return false;
+    if (this.isVassal(aggressorId)) return false;
+    if (this.areHostAndVassal(aggressorId, targetId)) return false;
     const key = this.pairKey(aggressorId, targetId);
     if (this.relations.get(key)?.state === 'WAR') return false;
     if (this.allianceGuard?.(aggressorId, targetId)) return false;
@@ -1006,13 +1138,45 @@ export class DiplomacyManager {
     return this.transitionToWar(aggressorId, targetId, true, metadata);
   }
 
+  /**
+   * Narrow system path for a direct vassal following its host into an existing
+   * war. It cannot be used to originate an independent vassal war.
+   */
+  joinWarForHost(vassalNationId: string, hostNationId: string, enemyNationId: string): boolean {
+    if (this.getVassalHost(vassalNationId) !== hostNationId) return false;
+    if (this.getState(hostNationId, enemyNationId) !== 'WAR') return false;
+    return this.transitionToWar(
+      vassalNationId,
+      enemyNationId,
+      true,
+      { source: 'vassalObligation' },
+      true,
+    );
+  }
+
+  /** Host acceptance path after its direct vassal has been attacked. */
+  joinWarToDefendVassal(hostNationId: string, vassalNationId: string, attackerNationId: string): boolean {
+    if (this.getVassalHost(vassalNationId) !== hostNationId) return false;
+    if (this.getState(vassalNationId, attackerNationId) !== 'WAR') return false;
+    return this.transitionToWar(
+      hostNationId,
+      attackerNationId,
+      true,
+      { source: 'vassalObligation' },
+    );
+  }
+
   private transitionToWar(
     aggressorId: string,
     targetId: string,
     bypassRestrictions: boolean,
     metadata: WarDeclarationMetadata,
+    allowVassalObligation = false,
   ): boolean {
     if (aggressorId === targetId) return false;
+    if (this.areHostAndVassal(aggressorId, targetId)) return false;
+    // Only the validated obligation entry point above may pull a vassal into war.
+    if (this.isVassal(aggressorId) && !allowVassalObligation) return false;
     const key = this.pairKey(aggressorId, targetId);
     if (this.relations.get(key)?.state === 'WAR') return false;
     // Alliance, peace-treaty, and ceasefire checks share the same authoritative
@@ -1696,6 +1860,7 @@ export class DiplomacyManager {
   resetAll(): void {
     this.relations.clear();
     this.pendingProposals.clear();
+    this.vassalHosts.clear();
   }
 
   removeNationRelations(nationId: string): number {
@@ -1707,6 +1872,10 @@ export class DiplomacyManager {
       removed++;
     }
     this.pendingProposals.delete(nationId);
+    this.vassalHosts.delete(nationId);
+    for (const [vassalId, hostId] of Array.from(this.vassalHosts.entries())) {
+      if (hostId === nationId) this.vassalHosts.delete(vassalId);
+    }
     for (const [toId, proposal] of Array.from(this.pendingProposals.entries())) {
       if (proposal.fromNationId !== nationId && proposal.toNationId !== nationId) continue;
       this.pendingProposals.delete(toId);

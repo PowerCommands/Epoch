@@ -60,5 +60,5 @@ build https://github.com/PowerCommands/Epoch.git "epoch" --publish --platform=li
 
 ## Autorun test example
 ```bash
-npx tsx tools/autorun-series.ts --scenario map_world --max-turns 1300 --block-size 100 --timeout-ms 10800000 --output autorun-output/naval-improved-test
+npx tsx tools/autorun-series.ts --scenario map_world --max-turns 1500 --block-size 100 --timeout-ms 10800000 --output autorun-output/sweden-test
 ```

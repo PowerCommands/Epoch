@@ -227,7 +227,7 @@ export class MainMenuScene extends Phaser.Scene {
           <button class="mm-victory-card active" type="button" data-victory="domination">
             <span class="mm-victory-check" aria-hidden="true"></span>
             <span class="mm-victory-title">Domination</span>
-            <span class="mm-victory-copy">Conquer rival capitals.</span>
+            <span class="mm-victory-copy">Make every surviving rival your vassal.</span>
           </button>
           <button class="mm-victory-card active" type="button" data-victory="diplomatic">
             <span class="mm-victory-check" aria-hidden="true"></span>

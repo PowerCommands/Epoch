@@ -69,6 +69,7 @@ import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes
 import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { JointWarSystem } from './diplomacy/JointWarSystem';
 import type { ReconciliationTurningPointSystem } from './diplomacy/ReconciliationTurningPointSystem';
+import type { LuckyLoserTurningPointSystem } from './diplomacy/LuckyLoserTurningPointSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -105,6 +106,7 @@ export interface SaveLoadContext {
   historicalTimeline?: HistoricalTimelineService;
   scenarioHistoricalEventSystem?: ScenarioHistoricalEventSystem;
   reconciliationTurningPointSystem?: ReconciliationTurningPointSystem;
+  luckyLoserTurningPointSystem?: LuckyLoserTurningPointSystem;
   newspaperSystem?: NewspaperSystem;
   gamesOfNationsSystem?: GamesOfNationsSystem;
   covertSuspicionSystem?: CovertSuspicionSystem;
@@ -178,6 +180,7 @@ export class SaveLoadService {
       historicalTimeline,
       scenarioHistoricalEventSystem,
       reconciliationTurningPointSystem,
+      luckyLoserTurningPointSystem,
       newspaperSystem,
       gamesOfNationsSystem,
     } = context;
@@ -348,6 +351,7 @@ export class SaveLoadService {
       cities,
       units,
       diplomacy,
+      vassalStates: diplomacyManager.getAllVassalRelationships(),
       pendingPeaceProposals: diplomacyManager.getPendingPeaceProposals(),
       jointWarEscalations: jointWarSystem?.serialize(),
       discovery,
@@ -379,6 +383,7 @@ export class SaveLoadService {
       historicalTimeline: historicalTimeline?.serialize(),
       scenarioHistoricalEvents: scenarioHistoricalEventSystem?.serialize(),
       reconciliationTurningPoint: reconciliationTurningPointSystem?.serialize(),
+      luckyLoserTurningPoint: luckyLoserTurningPointSystem?.serialize(),
       covertIncidents: context.covertSuspicionSystem?.getOffenseRecords(),
     };
   }
@@ -587,6 +592,7 @@ export class SaveLoadService {
 
     SaveLoadService.applyUnits(state.units, context.unitManager);
     SaveLoadService.restoreDiplomacy(state.diplomacy, context.diplomacyManager);
+    context.diplomacyManager.restoreVassalRelationships(state.vassalStates);
     context.jointWarSystem?.restore(state.jointWarEscalations);
     context.allianceManager?.restoreAlliances(state.alliances);
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
@@ -619,6 +625,7 @@ export class SaveLoadService {
     // in place, but before GameScene resumes with TurnManager.start().
     context.scenarioHistoricalEventSystem?.restore(state.scenarioHistoricalEvents);
     context.reconciliationTurningPointSystem?.restore(state.reconciliationTurningPoint);
+    context.luckyLoserTurningPointSystem?.restore(state.luckyLoserTurningPoint);
   }
 
   private static applyWonders(wonders: SavedWonder[], wonderSystem: WonderSystem): void {

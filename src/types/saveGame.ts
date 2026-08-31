@@ -20,7 +20,8 @@ import type { SavedGossipFlavorState } from './gossipFlavor';
 import type { GeneratedScenarioSnapshot } from '../systems/procedural/RandomScenarioTypes';
 import type { SavedScenarioHistoricalEventsState } from '../systems/ScenarioHistoricalEventSystem';
 import type { SavedReconciliationTurningPointState } from '../systems/diplomacy/ReconciliationTurningPointSystem';
-import type { PeaceProposal } from '../systems/DiplomacyManager';
+import type { SavedLuckyLoserTurningPointState } from '../systems/diplomacy/LuckyLoserTurningPointSystem';
+import type { PeaceProposal, VassalRelationship } from '../systems/DiplomacyManager';
 import type { SavedJointWarEscalation } from './jointWar';
 import type { AIVictoryFocusState } from './aiVictoryFocus';
 
@@ -346,6 +347,8 @@ export interface SavedGameState {
   cities: SavedCity[];
   units: SavedUnit[];
   diplomacy: SavedDiplomacyEntry[];
+  /** Persistent vassal -> host relationships. Optional for older saves. */
+  vassalStates?: VassalRelationship[];
   /** Pending negotiated-peace offers, including AI offers awaiting a Human answer. */
   pendingPeaceProposals?: PeaceProposal[];
   /** Situation-scoped rejected AI Join War attempts; absent in older saves. */
@@ -380,6 +383,8 @@ export interface SavedGameState {
   scenarioHistoricalEvents?: SavedScenarioHistoricalEventsState;
   /** One-shot Diplomatic Turning Point cursor. Optional for older saves. */
   reconciliationTurningPoint?: SavedReconciliationTurningPointState;
+  /** One-shot Lucky Loser activation, retry cursor, and winner. */
+  luckyLoserTurningPoint?: SavedLuckyLoserTurningPointState;
   /**
    * Repeated-offender memory for covert suspicion (per ordered attacker→victim
    * pair). Optional so older saves load cleanly (treated as no prior incidents).

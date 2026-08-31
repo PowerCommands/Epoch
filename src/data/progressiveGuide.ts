@@ -124,7 +124,7 @@ function buildVictoryTip(options: ProgressiveGuideContentOptions): GuideTip {
     body: `Only victory conditions enabled for this game count. The following pages describe the active paths. Progress information can help you compare nations and detect a rival approaching victory.`,
   }];
   if (options.enabledVictories.domination) {
-    pages.push({ title: 'Domination', body: `Own every active nation's original capital. Capturing ordinary cities is not sufficient, and original-capital status remains tied to the civilization that founded it. Domination therefore demands both offensive reach and the ability to hold a dispersed set of strategic targets.` });
+    pages.push({ title: 'Domination', body: `Make every other surviving nation your direct vassal state. Capital capture remains strategically decisive because it immediately forces vassalization, but the capital is returned afterward and does not need to be held. Releasing a vassal or allowing it to buy independence reduces your current progress.` });
   }
   if (options.enabledVictories.science) {
     pages.push({ title: 'Science', body: `Produce ${options.requiredAerospaceParts} Aerospace Parts. The aerospace path depends on Rocketry, Aluminum, an active Factory, and the Aerospace Industries corporation before parts can be manufactured. Research alone does not win; the scientific plan must be converted into industrial output.` });

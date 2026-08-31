@@ -114,9 +114,22 @@ import { CapitulationSystem, type CapitulationAppliedEvent } from '../systems/Ca
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
 import { CulturalJealousySystem } from '../systems/diplomacy/CulturalJealousySystem';
 import { ReconciliationTurningPointSystem } from '../systems/diplomacy/ReconciliationTurningPointSystem';
+import {
+  LUCKY_LOSER_GOLD_REWARD,
+  LuckyLoserTurningPointSystem,
+} from '../systems/diplomacy/LuckyLoserTurningPointSystem';
+import {
+  MilitaryVassalizationSystem,
+  STRONG_ANTAGONIST_HOSTILITY_THRESHOLD,
+} from '../systems/diplomacy/MilitaryVassalizationSystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
 import { AllianceWarSystem } from '../systems/diplomacy/AllianceWarSystem';
+import { VassalWarSystem } from '../systems/diplomacy/VassalWarSystem';
+import {
+  VASSAL_INDEPENDENCE_COST,
+  VassalIndependenceSystem,
+} from '../systems/diplomacy/VassalIndependenceSystem';
 import { ScenarioHistoricalEventSystem } from '../systems/ScenarioHistoricalEventSystem';
 import { ScenarioHistoricalEventPresentationSystem } from '../systems/ScenarioHistoricalEventPresentationSystem';
 import { JOIN_WAR_MINIMUM_GOLD_RESERVE, JointWarSystem } from '../systems/diplomacy/JointWarSystem';
@@ -1141,6 +1154,18 @@ export class GameScene extends Phaser.Scene {
     );
     // Resolve nation ids to display names for `[DIPLOMACY]` economic-pressure logs.
     diplomacyManager.setNationNameResolver((id) => nationManager.getNation(id)?.name ?? id);
+    diplomacyManager.onVassalReleased((released) => {
+      const hostName = nationManager.getNation(released.hostNationId)?.name ?? released.hostNationId;
+      const vassalName = nationManager.getNation(released.vassalNationId)?.name ?? released.vassalNationId;
+      logManager.info({
+        nationIds: [released.hostNationId, released.vassalNationId],
+        category: 'diplomacy',
+        message: `${hostName} released ${vassalName} from vassal status. Amicable reset: `
+          + `trust 0, fear 0, suspicion 0, hostility 0, affinity ${released.previousAffinity}→${released.affinity}.`,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
     // Post-war recovery: whenever a war ends (peace, ceasefire, capitulation),
     // each AI participant enters post-war Consolidation Mode.
     diplomacyManager.onWarEnded((a, b) => {
@@ -1183,6 +1208,43 @@ export class GameScene extends Phaser.Scene {
       }),
     });
     turnManager.on('roundStart', ({ round }) => reconciliationTurningPointSystem.handleRoundStart(round));
+    const luckyLoserTurningPointSystem = new LuckyLoserTurningPointSystem({
+      nationManager,
+      diplomacyManager,
+      getGlobalYear: () => turnManager.getGlobalYear(),
+      getCurrentTurn: () => turnManager.getCurrentRound(),
+      randomSeed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|lucky-loser-v1`,
+      getGold: (nationId) => nationManager.getResources(nationId).gold,
+      addGold: (nationId, amount) => resourceSystem.addGold(nationId, amount),
+      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
+      log: (message) => logManager.info({ category: 'diplomacy', message }),
+      recordHistory: (event) => historicalTimeline.record({
+        type: 'luckyLoser',
+        icon: '🍀',
+        text: `${timelineNationName(event.winnerNationId)} became the Lucky Loser and received `
+          + `${event.goldAwarded.toLocaleString('en-US')} Gold while remaining a vassal state`,
+        eventNationIds: [event.winnerNationId],
+        newsImportance: 4,
+        metadata: { luckyLoserGold: event.goldAwarded },
+      }),
+      notifyHuman: (event) => {
+        if (isAutoplayActive()) return;
+        const nationName = nationManager.getNation(event.winnerNationId)?.name ?? event.winnerNationId;
+        showDiplomacyModal({
+          title: 'Lucky Loser',
+          message: `A defeated nation has received an extraordinary financial windfall. `
+            + `${nationName} receives ${LUCKY_LOSER_GOLD_REWARD.toLocaleString('en-US')} Gold.`,
+          accentColor: '#d4af37',
+          confirmLabel: 'Continue',
+          cancelLabel: '',
+          onConfirm: () => {},
+          onCancel: () => {},
+        });
+        hudLayer?.refresh();
+        rightPanel?.requestRefresh();
+      },
+    });
+    turnManager.on('roundStart', ({ round }) => luckyLoserTurningPointSystem.handleTurnStart(round));
     let getGossipMilitaryPower: (nationId: string) => number = () => 0;
     const gossipSystem = new GossipSystem(
       nationManager,
@@ -1280,6 +1342,31 @@ export class GameScene extends Phaser.Scene {
         },
       },
     );
+    const vassalIndependenceSystem = new VassalIndependenceSystem(
+      diplomacyManager,
+      {
+        getGold: (nationId) => nationManager.getResources(nationId).gold,
+        transferGold: (fromNationId, toNationId, amount) => {
+          if (!Number.isInteger(amount) || amount < 0) return false;
+          if (nationManager.getResources(fromNationId).gold < amount) return false;
+          resourceSystem.addGold(fromNationId, -amount);
+          resourceSystem.addGold(toNationId, amount);
+          return true;
+        },
+      },
+    );
+    vassalIndependenceSystem.onPurchased((event) => {
+      const vassalName = nationManager.getNation(event.vassalNationId)?.name ?? event.vassalNationId;
+      const hostName = nationManager.getNation(event.hostNationId)?.name ?? event.hostNationId;
+      logManager.info({
+        nationIds: [event.vassalNationId, event.hostNationId],
+        category: 'diplomacy',
+        message: `${vassalName} purchased independence from ${hostName} for `
+          + `${event.goldTransferred.toLocaleString('en-US')} Gold. Diplomatic relationship values were preserved.`,
+      });
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
     jointWarSystem.setCulturalJealousyTargetPredicate((nationId, targetId) =>
       culturalJealousySystem.isJealousyTargeting(nationId, targetId));
     const borderPressureSystem = new BorderPressureSystem(
@@ -1314,6 +1401,94 @@ export class GameScene extends Phaser.Scene {
       aiMilitaryThreatEvaluationSystem,
       diplomaticEvaluationSystem,
     );
+    const militaryVassalizationSystem = new MilitaryVassalizationSystem(
+      diplomacyManager,
+      {
+        isHumanNation: (nationId) => nationId === humanNationIdForDiplomacy,
+        endWar: (nationAId, nationBId) => {
+          if (diplomacyManager.getState(nationAId, nationBId) === 'WAR') {
+            diplomacyManager.respondToPeace(nationAId, nationBId, true);
+          }
+        },
+        separateAlliance: (nationAId, nationBId) => {
+          allianceManager.separateAlliedNations(nationAId, nationBId);
+        },
+        restoreCapital: (cityId, defeatedNationId) => {
+          const restored = peaceTreatySystem.transferCityOwnership(cityId, defeatedNationId);
+          const city = cityManager.getCity(cityId);
+          if (restored && city) {
+            city.occupiedOriginalNationId = undefined;
+            city.recentlyConqueredTurnsRemaining = 0;
+          }
+          return restored;
+        },
+        requestHumanDecision: (request, resolve) => {
+          const defeatedName = nationManager.getNation(request.defeatedHostNationId)?.name
+            ?? request.defeatedHostNationId;
+          const inheritedName = nationManager.getNation(request.inheritedVassalNationId)?.name
+            ?? request.inheritedVassalNationId;
+          showDiplomacyModal({
+            title: `Fate of ${inheritedName}`,
+            message: `${defeatedName} has been defeated. Keep ${inheritedName} as your direct vassal, `
+              + `or liberate it as an independent nation?`,
+            accentColor: '#9a7b3a',
+            confirmLabel: `Keep ${inheritedName} as Vassal`,
+            cancelLabel: `Liberate ${inheritedName}`,
+            onConfirm: () => resolve('keep'),
+            onCancel: () => resolve('liberate'),
+          });
+        },
+      },
+    );
+    militaryVassalizationSystem.onVassalized((event) => {
+      if (event.reason !== 'capitalCapture' || !event.capturedCapital) return;
+      const victorName = nationManager.getNation(event.victorNationId)?.name ?? event.victorNationId;
+      const defeatedName = nationManager.getNation(event.defeatedNationId)?.name ?? event.defeatedNationId;
+      logManager.info({
+        nationIds: [event.victorNationId, event.defeatedNationId],
+        category: 'diplomacy',
+        message: `${victorName} captured ${event.capturedCapital.cityName}, the capital of ${defeatedName}. `
+          + `${defeatedName} became a vassal state of ${victorName}.`,
+      });
+    });
+    militaryVassalizationSystem.onSuccessionResolved((event) => {
+      const victorName = nationManager.getNation(event.victorNationId)?.name ?? event.victorNationId;
+      const defeatedName = nationManager.getNation(event.defeatedHostNationId)?.name ?? event.defeatedHostNationId;
+      const inheritedName = nationManager.getNation(event.inheritedVassalNationId)?.name
+        ?? event.inheritedVassalNationId;
+      const aiReason = event.decisionSource === 'strongAntagonism'
+        ? ` due to strong antagonism (hostility ${event.hostility} ≥ ${STRONG_ANTAGONIST_HOSTILITY_THRESHOLD})`
+        : event.decisionSource === 'notStronglyAntagonistic'
+          ? `; relations were not strongly antagonistic (hostility ${event.hostility} < ${STRONG_ANTAGONIST_HOSTILITY_THRESHOLD})`
+          : '';
+      logManager.info({
+        nationIds: [event.victorNationId, event.defeatedHostNationId, event.inheritedVassalNationId],
+        category: 'diplomacy',
+        message: event.decision === 'keep'
+          ? `${victorName} defeated ${defeatedName} and chose to retain ${inheritedName} as a vassal${aiReason}.`
+          : `${victorName} defeated ${defeatedName} and liberated ${inheritedName} from vassal status${aiReason}.`,
+      });
+    });
+    militaryVassalizationSystem.onCapitalReturned((event) => {
+      const defeatedName = nationManager.getNation(event.defeatedNationId)?.name ?? event.defeatedNationId;
+      logManager.info({
+        nationIds: [event.victorNationId, event.defeatedNationId],
+        category: 'diplomacy',
+        message: `${event.cityName} was returned to ${defeatedName} following its vassalization.`,
+      });
+      const city = cityManager.getCity(event.cityId);
+      if (city) {
+        cityRenderer.refreshCity(city);
+        cityBannerRenderer.refreshCity(city);
+      }
+      territoryRenderer.invalidate();
+      rebuildMinimapForGameplay();
+      refreshCultureOverlay();
+      resourceSystem.recalculateForNation(event.victorNationId);
+      resourceSystem.recalculateForNation(event.defeatedNationId);
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
 
     const recordCapitulationHistory = (event: CapitulationAppliedEvent): void => {
       const surrenderName = timelineNationName(event.capitulatingNationId);
@@ -1321,7 +1496,7 @@ export class GameScene extends Phaser.Scene {
       historicalTimeline.record({
         type: 'capitulation',
         icon: '🏳️',
-        text: `${surrenderName} capitulates to ${victorName}, disbanding its military and submitting to imposed terms.`,
+        text: `${surrenderName} capitulates to ${victorName}, becoming a vassal state under imposed terms.`,
         eventNationIds: [event.capitulatingNationId, event.demandingNationId],
         newsImportance: 6,
         metadata: {
@@ -1332,7 +1507,7 @@ export class GameScene extends Phaser.Scene {
       logManager.info({
         nationIds: [event.capitulatingNationId, event.demandingNationId],
         category: 'diplomacy',
-        message: `${surrenderName} capitulated to ${victorName}: military disbanded, ${event.reparationsPaid} gold in reparations, `
+        message: `${surrenderName} capitulated to ${victorName} and became a vassal state: military disbanded, ${event.reparationsPaid} gold in reparations, `
           + `${event.restoredCityIds.length} cit${event.restoredCityIds.length === 1 ? 'y' : 'ies'} restored, ${event.formerEnemyIds.length} war(s) ended.`,
       });
       hudLayer?.refresh();
@@ -1352,6 +1527,7 @@ export class GameScene extends Phaser.Scene {
       getDemilitarizationTurns: () => diplomacyManager.getPeaceTreatyCooldownTurns(),
       log: (message) => console.log(message),
       onCapitulation: (event) => recordCapitulationHistory(event),
+      militaryVassalizationSystem,
     });
     // Authoritative production choke point: military units cannot be queued anywhere
     // by any caller (human, AI, buy) while a nation is demilitarized.
@@ -1396,6 +1572,10 @@ export class GameScene extends Phaser.Scene {
         peaceTreatySystem.calculateReparations(targetNationId),
         capitulationSystem.shouldDemandExploitationRights(demandingNationId, targetNationId),
       ),
+    });
+    aiDiplomacySystem.setIndependenceController({
+      canBuyIndependence: (nationId) => vassalIndependenceSystem.canBuyIndependence(nationId).ok,
+      buyIndependence: (nationId) => vassalIndependenceSystem.buyIndependence(nationId) !== null,
     });
 
     // Reclaim Capital: persistent objective a nation adopts after losing its
@@ -2539,6 +2719,13 @@ export class GameScene extends Phaser.Scene {
       cityIntegrationSystem,
       (nationId, message) => logManager.info({ nationId, category: 'city', message }),
     );
+    combatSystem.setCapitalCaptureResolver((city, defeatedNationId, victorNationId) =>
+      militaryVassalizationSystem.vassalize({
+        victorNationId,
+        defeatedNationId,
+        reason: 'capitalCapture',
+        capturedCapital: { cityId: city.id, cityName: city.name },
+      }));
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
       nationManager,
@@ -3113,7 +3300,12 @@ export class GameScene extends Phaser.Scene {
       worldCouncilSystem,
       currencySystem,
       gamesOfNationsSystem,
+      diplomacyManager,
     );
+    militaryVassalizationSystem.onCompleted(() => {
+      victorySystem.resolveDominationVictoryNow();
+      rightPanel?.requestRefresh();
+    });
 
     // 18. Stadsgrundningssystem
     foundCitySystem = new FoundCitySystem(
@@ -3252,7 +3444,7 @@ export class GameScene extends Phaser.Scene {
       getTimelineEvents: () => historicalTimeline.getEvents(),
       getDominationRanking: () => buildDominationRanking(
         nationManager.getAllNations(),
-        cityManager.getAllCities().filter((city) => city.isCapital),
+        (nationId) => diplomacyManager.getVassalHost(nationId),
         (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
       ).map((entry) => entry.nationId),
       getNationName: (nationId) => nationManager.getNation(nationId)?.name,
@@ -4222,7 +4414,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     combatSystem.onCityCombat(async (e) => {
-      aiMilitaryEvaluationSystem.invalidate(e.city.ownerId);
+      aiMilitaryEvaluationSystem.invalidate(e.attacker.ownerId);
       if (e.previousOwnerId) aiMilitaryEvaluationSystem.invalidate(e.previousOwnerId);
       const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
       const defendingNationId = e.previousOwnerId ?? e.city.ownerId;
@@ -4258,7 +4450,7 @@ export class GameScene extends Phaser.Scene {
 
       // Om staden erövrades
       if (e.captured) {
-        if (e.previousOwnerId) {
+        if (e.previousOwnerId && !e.capitalVassalizationResolved) {
           politicalCapitalSystem.handleCityCaptured(e.city, e.previousOwnerId);
         }
         // Den erövrande enheten flyttades in på stadens tile
@@ -4776,6 +4968,12 @@ export class GameScene extends Phaser.Scene {
     });
 
     const getPeaceTreatyBlockReason = (targetNationId: string): string | null => {
+      if (diplomacyManager.isVassal(humanNationIdForDiplomacy)) {
+        return 'A vassal state cannot declare war.';
+      }
+      if (diplomacyManager.areHostAndVassal(humanNationIdForDiplomacy, targetNationId)) {
+        return 'A host cannot declare war on its own vassal state.';
+      }
       const ceasefireRemaining = diplomacyManager.getCeasefireRemainingTurns(
         humanNationIdForDiplomacy,
         targetNationId,
@@ -4792,6 +4990,8 @@ export class GameScene extends Phaser.Scene {
       return remaining > 0 ? `Peace treaty active for ${remaining} more turn${remaining === 1 ? '' : 's'}.` : null;
     };
     const logBlockedHumanWarDeclaration = (targetNationId: string): void => {
+      const humanIsVassal = diplomacyManager.isVassal(humanNationIdForDiplomacy);
+      const isOwnVassal = diplomacyManager.getVassalHost(targetNationId) === humanNationIdForDiplomacy;
       const ceasefireRemaining = diplomacyManager.getCeasefireRemainingTurns(
         humanNationIdForDiplomacy,
         targetNationId,
@@ -4802,10 +5002,14 @@ export class GameScene extends Phaser.Scene {
         targetNationId,
         turnManager.getCurrentRound(),
       );
-      if (remaining <= 0 && ceasefireRemaining <= 0) return;
+      if (!humanIsVassal && !isOwnVassal && remaining <= 0 && ceasefireRemaining <= 0) return;
       const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
-      const reason = ceasefireRemaining > 0
+      const reason = humanIsVassal
+        ? 'vassal status'
+        : isOwnVassal
+          ? 'the host-vassal protection relationship'
+        : ceasefireRemaining > 0
         ? `active UN ceasefire for ${ceasefireRemaining} more turn${ceasefireRemaining === 1 ? '' : 's'}`
         : `active peace treaty for ${remaining} more turn${remaining === 1 ? '' : 's'}`;
       logManager.info({
@@ -5006,8 +5210,8 @@ export class GameScene extends Phaser.Scene {
     // whether the current declaration is a defensive ally join (logged
     // separately with alliance context, so the generic line is skipped).
     let allianceWarSystem: AllianceWarSystem | null = null;
-    diplomacyManager.onWarDeclared((aggressorId, targetId) => {
-      if (allianceWarSystem?.isActivating()) return;
+    diplomacyManager.onWarDeclared((aggressorId, targetId, metadata) => {
+      if (allianceWarSystem?.isActivating() || metadata.source === 'vassalObligation') return;
       const nameA = nationManager.getNation(aggressorId)?.name ?? aggressorId;
       const nameB = nationManager.getNation(targetId)?.name ?? targetId;
       console.log(`[Diplomacy] War declared: ${nameA} → ${nameB}`);
@@ -5040,6 +5244,59 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
     diplomacyManager.onDiplomacyChanged(() => {
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
+
+    const vassalWarSystem = new VassalWarSystem(diplomacyManager, {
+      isHumanNation: (nationId) => nationId === humanNationIdForDiplomacy,
+      shouldAIDefend: ({ hostNationId, vassalNationId, attackerNationId }) => {
+        const relation = diplomacyManager.getRelation(hostNationId, vassalNationId);
+        const attitude = diplomaticEvaluationSystem.evaluateAttitude(hostNationId, vassalNationId);
+        const comparison = aiMilitaryEvaluationSystem.compareMilitaryStrength(hostNationId, attackerNationId);
+        // Hosts are strongly biased toward fulfilling the protection contract;
+        // only a weaker host with a genuinely hostile/low-trust relationship refuses.
+        return comparison !== 'weaker' || attitude !== 'hostile' || relation.trust >= 50;
+      },
+      requestHumanDefense: (request, resolve) => {
+        const vassalName = nationManager.getNation(request.vassalNationId)?.name ?? request.vassalNationId;
+        const attackerName = nationManager.getNation(request.attackerNationId)?.name ?? request.attackerNationId;
+        showDiplomacyModal({
+          title: 'Defend Vassal State?',
+          message: `${attackerName} attacked your vassal ${vassalName}. Defend it and enter the war, `
+            + `or refuse and immediately lose ${vassalName} as a vassal?`,
+          accentColor: '#c44',
+          confirmLabel: 'Defend Vassal',
+          cancelLabel: 'Refuse Defence',
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      },
+    });
+    vassalWarSystem.onVassalJoinedWar((event) => {
+      const hostName = nationManager.getNation(event.hostNationId)?.name ?? event.hostNationId;
+      const vassalName = nationManager.getNation(event.vassalNationId)?.name ?? event.vassalNationId;
+      const enemyName = nationManager.getNation(event.enemyNationId)?.name ?? event.enemyNationId;
+      const message = event.cause === 'hostDeclaredWar'
+        ? `${hostName} declared war on ${enemyName}. Its vassal ${vassalName} automatically joined the war.`
+        : `${enemyName} attacked ${hostName}. Its vassal ${vassalName} automatically joined the defensive war.`;
+      logManager.info({
+        nationIds: [event.hostNationId, event.vassalNationId, event.enemyNationId],
+        category: 'diplomacy',
+        message,
+      });
+    });
+    vassalWarSystem.onDefenseResolved((event) => {
+      const hostName = nationManager.getNation(event.hostNationId)?.name ?? event.hostNationId;
+      const vassalName = nationManager.getNation(event.vassalNationId)?.name ?? event.vassalNationId;
+      const attackerName = nationManager.getNation(event.attackerNationId)?.name ?? event.attackerNationId;
+      logManager.info({
+        nationIds: [event.hostNationId, event.vassalNationId, event.attackerNationId],
+        category: 'diplomacy',
+        message: event.defended && event.joinedWar
+          ? `${attackerName} attacked ${vassalName}. ${hostName} agreed to defend its vassal and joined the war against ${attackerName}.`
+          : `${hostName} refused to defend ${vassalName}. ${vassalName} is no longer a vassal of ${hostName}; relationship values were preserved.`,
+      });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
@@ -6055,6 +6312,54 @@ export class GameScene extends Phaser.Scene {
           },
           onCancel: () => {},
         });
+      } else if (action === 'releaseVassal') {
+        if (diplomacyManager.getVassalHost(targetNationId) !== humanNationIdForDiplomacy) return;
+        showDiplomacyModal({
+          title: 'Release Vassal',
+          message: `Release ${targetNation.name} from vassal status? This will restore an amicable relationship.`,
+          accentColor: color,
+          confirmLabel: 'Release Vassal',
+          cancelLabel: 'Cancel',
+          onConfirm: () => {
+            const released = diplomacyManager.releaseVassal(humanNationIdForDiplomacy, targetNationId);
+            if (!released) return;
+            const hostName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+            showLeaderResponsePopup(targetNationId, `${targetNation.name} is independent`, [
+              `${hostName} peacefully released ${targetNation.name} from vassal status.`,
+            ]);
+            rightPanel?.refreshCurrent();
+          },
+          onCancel: () => {},
+        });
+      } else if (action === 'buyIndependence') {
+        if (diplomacyManager.getVassalHost(humanNationIdForDiplomacy) !== targetNationId) return;
+        const eligibility = vassalIndependenceSystem.canBuyIndependence(humanNationIdForDiplomacy);
+        if (!eligibility.ok) {
+          logManager.info({
+            nationId: humanNationIdForDiplomacy,
+            nationIds: [humanNationIdForDiplomacy, targetNationId],
+            category: 'diplomacy',
+            message: eligibility.reason ?? 'Independence cannot currently be purchased.',
+          });
+          rightPanel?.refreshCurrent();
+          return;
+        }
+        showDiplomacyModal({
+          title: 'Buy Independence',
+          message: `Pay ${VASSAL_INDEPENDENCE_COST.toLocaleString('en-US')} Gold to ${targetNation.name} `
+            + 'and become fully independent? Existing diplomatic relationship values will remain unchanged.',
+          accentColor: color,
+          confirmLabel: 'Buy Independence',
+          cancelLabel: 'Cancel',
+          onConfirm: () => {
+            if (!vassalIndependenceSystem.buyIndependence(humanNationIdForDiplomacy)) return;
+            showLeaderResponsePopup(targetNationId, 'Independence Purchased', [
+              `You are no longer a vassal of ${targetNation.name}.`,
+            ]);
+            rightPanel?.refreshCurrent();
+          },
+          onCancel: () => {},
+        });
       } else if (action === 'proposePeace') {
         // Negotiated peace: gold and/or optional non-capital city concessions.
         showProposePeaceDialog(targetNationId);
@@ -6063,6 +6368,34 @@ export class GameScene extends Phaser.Scene {
         if (capitulationSystem.canDemandCapitulation(humanNationIdForDiplomacy, targetNationId)) {
           showDemandCapitulationDialog(targetNationId);
         }
+      } else if (action === 'capitulate') {
+        const evaluation = capitulationSystem.evaluateCapitulationDemand(
+          targetNationId,
+          humanNationIdForDiplomacy,
+        );
+        if (!evaluation.accepted) return;
+        showDiplomacyModal({
+          title: `Capitulate to ${targetNation.name}?`,
+          message: `Accept unconditional surrender and become a vassal state of ${targetNation.name}? `
+            + 'Your nation will continue playing normally, but your host will control war policy.',
+          accentColor: '#9c3b3b',
+          confirmLabel: 'Capitulate',
+          cancelLabel: 'Continue War',
+          onConfirm: () => {
+            const result = capitulationSystem.applyCapitulation(
+              targetNationId,
+              humanNationIdForDiplomacy,
+              peaceTreatySystem.calculateReparations(humanNationIdForDiplomacy),
+              capitulationSystem.shouldDemandExploitationRights(targetNationId, humanNationIdForDiplomacy),
+            );
+            if (!result.accepted) return;
+            showLeaderResponsePopup(targetNationId, 'Your Nation Capitulated', [
+              `You are now a vassal state of ${targetNation.name}. Your civilization continues under host-controlled war policy.`,
+            ]);
+            rightPanel?.refreshCurrent();
+          },
+          onCancel: () => {},
+        });
       } else if (action === 'toggleOpenBorders') {
         if (diplomacyManager.getState(humanNationIdForDiplomacy, targetNationId) === 'WAR') return;
         diplomacyManager.toggleOpenBorders(humanNationIdForDiplomacy, targetNationId);
@@ -6798,6 +7131,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setWonderSystem(wonderSystem);
     rightPanel.setWorldCouncilSystem(worldCouncilSystem);
     rightPanel.setCapitulationSystem(capitulationSystem);
+    rightPanel.setVassalIndependenceSystem(vassalIndependenceSystem);
     rightPanel.setCorporationSystem(corporationSystem);
     rightPanel.setAerospacePartSystem(
       aerospacePartSystem,
@@ -6832,12 +7166,14 @@ export class GameScene extends Phaser.Scene {
         metadata: { aggressorNationId: a, targetNationId: b },
       });
     });
-    diplomacyManager.onWarDeclared((aggressorId, targetId) => {
-      worldCouncilSystem.triggerEmergencyMeeting(turnManager.getCurrentRound(), {
-        eventType: 'warDeclared',
-        aggressorNationId: aggressorId,
-        targetNationId: targetId,
-      });
+    diplomacyManager.onWarDeclared((aggressorId, targetId, metadata) => {
+      if (metadata.source !== 'vassalObligation') {
+        worldCouncilSystem.triggerEmergencyMeeting(turnManager.getCurrentRound(), {
+          eventType: 'warDeclared',
+          aggressorNationId: aggressorId,
+          targetNationId: targetId,
+        });
+      }
       // If the target was already at war with another nation, this reads as
       // joining an existing war rather than starting a fresh one.
       const targetAlreadyAtWar = nationManager.getAllNations().some((nation) =>
@@ -6935,17 +7271,17 @@ export class GameScene extends Phaser.Scene {
       historicalTimeline.record({
         type: event.city.isOriginalCapital ? 'capitalCaptured' : 'cityCaptured',
         icon: '🏴',
-        text: `${timelineNationName(event.city.ownerId)} captured ${event.city.name} from ${timelineNationName(event.previousOwnerId)}`,
-        eventNationIds: [event.city.ownerId, event.previousOwnerId],
+        text: `${timelineNationName(event.attacker.ownerId)} captured ${event.city.name} from ${timelineNationName(event.previousOwnerId)}`,
+        eventNationIds: [event.attacker.ownerId, event.previousOwnerId],
         metadata: {
           cityId: event.city.id,
           cityName: event.city.name,
-          aggressorNationId: event.city.ownerId,
+          aggressorNationId: event.attacker.ownerId,
           targetNationId: event.previousOwnerId,
           previousOwnerNationId: event.previousOwnerId,
         },
       });
-      gossipFlavorEventSystem.handleCityCaptured(event.city.ownerId, event.previousOwnerId, event.city.name);
+      gossipFlavorEventSystem.handleCityCaptured(event.attacker.ownerId, event.previousOwnerId, event.city.name);
     });
     tradeConnectionSystem.onConnectionActivated((connection) => {
       const cityAName = cityManager.getCity(connection.cityAId)?.name ?? connection.cityAId;
@@ -8725,6 +9061,7 @@ export class GameScene extends Phaser.Scene {
           historicalTimeline,
           scenarioHistoricalEventSystem,
           reconciliationTurningPointSystem,
+          luckyLoserTurningPointSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -9225,7 +9562,7 @@ export class GameScene extends Phaser.Scene {
           ? `Cultural Victory\n${nationName} has achieved global cultural preeminence.`
           : type === 'diplomatic'
             ? `Diplomatic Victory\n${nationName} commands global influence.`
-            : `${nationName} has conquered all capitals!\nVICTORY`;
+            : `Domination Victory\nEvery other living nation is a vassal state of ${nationName}.`;
 
       this.add.text(width / 2, height / 2 - 30, victoryText, {
           fontSize: '32px',
@@ -9328,6 +9665,7 @@ export class GameScene extends Phaser.Scene {
         historicalTimeline,
         scenarioHistoricalEventSystem,
         reconciliationTurningPointSystem,
+        luckyLoserTurningPointSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,
@@ -9432,6 +9770,7 @@ export class GameScene extends Phaser.Scene {
           historicalTimeline,
           scenarioHistoricalEventSystem,
           reconciliationTurningPointSystem,
+          luckyLoserTurningPointSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -9500,6 +9839,7 @@ export class GameScene extends Phaser.Scene {
         historicalTimeline,
         scenarioHistoricalEventSystem,
         reconciliationTurningPointSystem,
+        luckyLoserTurningPointSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,

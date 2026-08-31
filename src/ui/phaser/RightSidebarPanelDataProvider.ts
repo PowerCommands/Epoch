@@ -66,6 +66,10 @@ import type { CultureSystem } from '../../systems/culture/CultureSystem';
 import type { WonderSystem } from '../../systems/WonderSystem';
 import type { WorldCouncilSystem } from '../../systems/WorldCouncilSystem';
 import type { CapitulationSystem } from '../../systems/CapitulationSystem';
+import {
+  VASSAL_INDEPENDENCE_COST,
+  type VassalIndependenceSystem,
+} from '../../systems/diplomacy/VassalIndependenceSystem';
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../../types/worldCouncil';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { AerospacePartSystem } from '../../systems/AerospacePartSystem';
@@ -198,6 +202,7 @@ export class RightSidebarPanelDataProvider {
   private wonderSystem: WonderSystem | null = null;
   private worldCouncilSystem: WorldCouncilSystem | null = null;
   private capitulationSystem: CapitulationSystem | null = null;
+  private vassalIndependenceSystem: VassalIndependenceSystem | null = null;
   private corporationSystem: CorporationSystem | null = null;
   private aerospacePartSystem: AerospacePartSystem | null = null;
   private requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS;
@@ -305,6 +310,10 @@ export class RightSidebarPanelDataProvider {
 
   setCapitulationSystem(capitulationSystem: CapitulationSystem): void {
     this.capitulationSystem = capitulationSystem;
+  }
+
+  setVassalIndependenceSystem(system: VassalIndependenceSystem): void {
+    this.vassalIndependenceSystem = system;
   }
 
   setCorporationSystem(corporationSystem: CorporationSystem): void {
@@ -1768,6 +1777,13 @@ export class RightSidebarPanelDataProvider {
     rows.push({ kind: 'separator' });
     rows.push(textRow('Agreements', false, true));
     rows.push(textRow(`Status: ${relation.state}`));
+    const humanHostId = dm.getVassalHost(humanId);
+    const targetHostId = dm.getVassalHost(nationId);
+    if (targetHostId === humanId) rows.push(textRow('Vassal State: Your vassal'));
+    else if (humanHostId === nationId) rows.push(textRow('Host State: Your overlord'));
+    else if (targetHostId) {
+      rows.push(textRow(`Vassal State: Subject of ${this.nationManager.getNation(targetHostId)?.name ?? targetHostId}`));
+    }
     rows.push(textRow(`Open Borders: ${humanGrantsBorders ? 'Open' : 'Closed'}`));
     rows.push(textRow(`Your Embassy: ${hasHumanEmbassy ? 'Established' : 'Not established'}`));
     rows.push(textRow(`Their Embassy: ${hasTheirEmbassy ? 'Established' : 'Not established'}`));
@@ -1806,6 +1822,13 @@ export class RightSidebarPanelDataProvider {
     const humanId = this.humanNationId;
     const relation = dm.getRelation(humanId, nationId);
     const rows: RightSidebarRow[] = [textRow(relation.state === 'WAR' ? 'At War' : 'At Peace')];
+    const humanHostId = dm.getVassalHost(humanId);
+    const targetHostId = dm.getVassalHost(nationId);
+    if (targetHostId === humanId) rows.push(textRow('Your Vassal State'));
+    else if (humanHostId === nationId) rows.push(textRow('Your Host State'));
+    else if (targetHostId) {
+      rows.push(textRow(`Vassal of ${this.nationManager.getNation(targetHostId)?.name ?? targetHostId}`));
+    }
     const alliance = this.allianceManager?.getAllianceForNation(humanId);
     if (alliance && this.allianceManager?.areAllied(humanId, nationId)) {
       rows.push(textRow(`Allied — ${alliance.name}`));
@@ -1973,8 +1996,14 @@ export class RightSidebarPanelDataProvider {
     const alliancePartnerReason = this.allianceManager?.areAllied(humanId, nationId)
       ? 'You cannot declare war on an alliance partner.'
       : undefined;
+    const ownVassalReason = dm.getVassalHost(nationId) === humanId
+      ? 'A host cannot declare war on its own vassal state.'
+      : undefined;
+    const vassalWarReason = dm.isVassal(humanId)
+      ? 'A vassal state cannot declare war.'
+      : undefined;
     const warPeaceReason = relation.state === 'PEACE'
-      ? (alliancePartnerReason ?? peaceTreatyReason)
+      ? (vassalWarReason ?? ownVassalReason ?? alliancePartnerReason ?? peaceTreatyReason)
       : peaceUnavailableReason;
     rows.push(disabledReasonButtonRow(
       relation.state === 'PEACE' ? 'Declare War' : 'Propose Peace',
@@ -1987,8 +2016,36 @@ export class RightSidebarPanelDataProvider {
       relation.state === 'PEACE' ? 0xb86767 : nation?.color,
     ));
     if (alliancePartnerReason) rows.push(textRow(alliancePartnerReason, true));
-    if (peaceTreatyReason && !alliancePartnerReason) rows.push(textRow(peaceTreatyReason, true));
+    if (ownVassalReason) rows.push(textRow(ownVassalReason, true));
+    if (vassalWarReason) rows.push(textRow(vassalWarReason, true));
+    if (peaceTreatyReason && !alliancePartnerReason && !ownVassalReason && !vassalWarReason) rows.push(textRow(peaceTreatyReason, true));
     if (peaceUnavailableReason) rows.push(textRow(peaceUnavailableReason, true));
+    if (!isAtWar && dm.getVassalHost(nationId) === humanId) {
+      rows.push(disabledReasonButtonRow(
+        'Release Vassal',
+        undefined,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'releaseVassal', targetNationId: nationId },
+          }));
+        },
+        nation?.color,
+      ));
+    }
+    if (!isAtWar && dm.getVassalHost(humanId) === nationId && this.vassalIndependenceSystem) {
+      const eligibility = this.vassalIndependenceSystem.canBuyIndependence(humanId);
+      rows.push(disabledReasonButtonRow(
+        `Buy Independence – ${VASSAL_INDEPENDENCE_COST.toLocaleString('en-US')} Gold`,
+        eligibility.ok ? undefined : eligibility.reason,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'buyIndependence', targetNationId: nationId },
+          }));
+        },
+        nation?.color,
+      ));
+      if (!eligibility.ok && eligibility.reason) rows.push(textRow(eligibility.reason, true));
+    }
     // Demand Capitulation: a separate, more severe wartime action, shown only when
     // the target's position is dire enough that surrender is plausible.
     if (isAtWar && this.capitulationSystem?.canDemandCapitulation(humanId, nationId)) {
@@ -1998,6 +2055,21 @@ export class RightSidebarPanelDataProvider {
         () => {
           document.dispatchEvent(new CustomEvent('diplomacyAction', {
             detail: { action: 'demandCapitulation', targetNationId: nationId },
+          }));
+        },
+        0x9c3b3b,
+      ));
+    }
+    // A human nation is never silently auto-capitulated. When the opposing
+    // nation could successfully demand surrender, the human may choose it here
+    // and continues playing as that nation's vassal.
+    if (isAtWar && this.capitulationSystem?.evaluateCapitulationDemand(nationId, humanId).accepted) {
+      rows.push(disabledReasonButtonRow(
+        'Capitulate',
+        undefined,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'capitulate', targetNationId: nationId },
           }));
         },
         0x9c3b3b,
@@ -2747,7 +2819,6 @@ export class RightSidebarPanelDataProvider {
   }
 
   private getDominationLeaderboard(): LeaderboardEntry[] {
-    const capitals = this.cityManager.getAllCities().filter((city) => city.isCapital);
     const nations = this.nationManager.getAllNations();
     let totalWorldStrength = 0;
     for (const nation of nations) {
@@ -2757,11 +2828,11 @@ export class RightSidebarPanelDataProvider {
     const nationById = new Map(nations.map((nation) => [nation.id, nation]));
     return buildDominationRanking(
       nations,
-      capitals,
+      (nationId) => this.diplomacyManager?.getVassalHost(nationId),
       (nationId) => this.militaryEvaluationSystem?.getMilitaryStrength(nationId).totalStrength ?? 0,
     ).map((ranked) => {
       const nation = nationById.get(ranked.nationId)!;
-      const score = ranked.capitalCount;
+      const score = ranked.directVassalCount;
       const milStrength = ranked.militaryStrength;
       const milPct = totalWorldStrength > 0 ? Math.round(milStrength / totalWorldStrength * 100) : 0;
       return {
@@ -2769,7 +2840,7 @@ export class RightSidebarPanelDataProvider {
         name: nation.name,
         color: nation.color,
         score,
-        detail: `${score}/${capitals.length} caps, mil ${milPct}%`,
+        detail: `Vassal States: ${score} / ${ranked.otherLivingNationCount}, military ${milPct}%`,
         secondaryScore: milStrength,
       };
     });
@@ -2778,13 +2849,13 @@ export class RightSidebarPanelDataProvider {
   private getDominationVictorySection(): RightSidebarSection {
     const entries = this.getDominationLeaderboard();
     const headerRow = textRow(
-      'Domination Victory — control every active nation\'s original capital at the same time.',
+      'Domination Victory — make every other surviving nation your direct vassal state.',
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0
       ? [textRow('No leaderboard data available.', true)]
       : entries.map((entry, index) => textRow(
-        `${index + 1}. ${entry.name}: ${entry.score} (${entry.detail})`,
+        `${index + 1}. ${entry.name}: ${entry.detail}`,
         false,
         false,
         entry.color,

@@ -151,10 +151,10 @@ test('publication cursor survives save/load and retains later same-round events'
   assert.equal(next.secondaryArticles.some((article) => article.historicalEventId === 1), false);
 });
 
-test('shared Domination ranking orders capitals, military strength, then name', () => {
+test('shared Domination ranking orders direct vassals, military strength, then name', () => {
   const ranking = buildDominationRanking(
     [{ id: 'low', name: 'Zulu' }, { id: 'high', name: 'Alpha' }, { id: 'other', name: 'Beta' }],
-    [{ ownerId: 'low' }, { ownerId: 'high' }, { ownerId: 'other' }, { ownerId: 'other' }],
+    (id) => id === 'high' || id === 'low' ? 'other' : undefined,
     (id) => ({ low: 20, high: 50, other: 1 })[id] ?? 0,
   );
   assert.deepEqual(ranking.map((entry) => entry.nationId), ['other', 'high', 'low']);

@@ -428,7 +428,7 @@ const VICTORY_PRESENTATION: Readonly<Record<NewspaperVictoryType, {
   headline: (nationName: string) => string;
   comment: string;
 }>> = {
-  domination: { displayName: 'Domination', headline: (name) => `${name.toLocaleUpperCase()} CONQUERS THE WORLD`, comment: 'The age of rival capitals has come to an end.' },
+  domination: { displayName: 'Domination', headline: (name) => `${name.toLocaleUpperCase()} SUBJUGATES THE WORLD`, comment: 'Every other surviving nation now answers as a vassal state.' },
   science: { displayName: 'Science', headline: (name) => `${name.toLocaleUpperCase()} LEADS HUMANITY INTO A NEW AGE`, comment: 'A new chapter in human achievement has begun.' },
   cultural: { displayName: 'Cultural', headline: (name) => `${name.toLocaleUpperCase()} CULTURE CAPTURES THE WORLD`, comment: 'Across every frontier, its influence is now unmistakable.' },
   diplomatic: { displayName: 'Diplomatic', headline: (name) => `${name.toLocaleUpperCase()} EMERGES AS LEADER OF THE WORLD`, comment: 'The nations of the world acknowledge a new center of global influence.' },

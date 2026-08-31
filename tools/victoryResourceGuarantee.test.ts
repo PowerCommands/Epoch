@@ -138,7 +138,9 @@ test('existing resources and city tiles are never overwritten', () => {
 });
 
 test('invalid Aluminum terrain is never used', () => {
-  const mapData = makeMap(6, 3, TileType.Forest);
+  // Jungle is not in Aluminum's allowedTileTypes, so it is the invalid filler
+  // that isolates the two valid tiles below (Forest/Mountain are now valid).
+  const mapData = makeMap(6, 3, TileType.Jungle);
   mapData.tiles[0][0].type = TileType.Plains;
   mapData.tiles[2][5].type = TileType.Desert;
 
@@ -146,7 +148,7 @@ test('invalid Aluminum terrain is never used', () => {
 
   assert.deepEqual(aluminumCoords(mapData), ['0,0', '5,2']);
   assert.ok(mapData.tiles.flat()
-    .filter((tile) => tile.type === TileType.Forest)
+    .filter((tile) => tile.type === TileType.Jungle)
     .every((tile) => tile.resourceId !== 'aluminum'));
 });
 
@@ -209,7 +211,8 @@ test('loaded-game initialization does not generate or duplicate resources', () =
 });
 
 test('insufficient eligible tiles warns and places the available subset', () => {
-  const mapData = makeMap(4, 2, TileType.Forest);
+  // Jungle filler is invalid Aluminum terrain, leaving a single valid tile.
+  const mapData = makeMap(4, 2, TileType.Jungle);
   mapData.tiles[0][0].type = TileType.Plains;
   const { logger, warnings } = makeLogger();
 
@@ -297,12 +300,12 @@ test('Maritime Expansion fresh setup adds valid bonus Aluminum after ordinary ge
   }, makeLogger().logger);
   const resourceResult = result.guarantee?.resources[0];
   const after = aluminumCoords(initialized.mapData).length;
+  const expectedBonus = getScienceVictoryResourceBonusCount(activeNationIds.length);
 
-  assert.equal(activeNationIds.length, 6);
   assert.equal(resourceResult?.existingBefore, before);
-  assert.equal(resourceResult?.requested, 3);
-  assert.equal(resourceResult?.placed, 3);
-  assert.equal(after, before + 3);
+  assert.equal(resourceResult?.requested, expectedBonus);
+  assert.equal(resourceResult?.placed, expectedBonus);
+  assert.equal(after, before + expectedBonus);
   for (const placement of resourceResult?.placements ?? []) {
     const tile = initialized.mapData.tiles[placement.y][placement.x];
     assert.equal(tile.resourceId, 'aluminum');

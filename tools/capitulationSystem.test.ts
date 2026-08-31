@@ -56,6 +56,8 @@ function harness(config: {
   let currentTurn = config.currentTurn ?? 100;
   const respondCalls: Array<[string, string, boolean]> = [];
   const removedFromQueues: string[][] = [];
+  const vassalHosts = new Map<string, string>();
+  const logs: string[] = [];
 
   const cityManager = {
     getCitiesByOwner: (owner: string) => [...cities.values()].filter((c) => c.ownerId === owner),
@@ -87,6 +89,9 @@ function harness(config: {
     getWarExhaustion: (a: string, b: string) => config.exhaustion?.[`${a}|${b}`] ?? { unitsLost: 0, citiesLost: 0, startStrength: 0 },
     getRelation: (a: string, b: string) => ({ fear: config.fear?.[`${a}|${b}`] ?? 0 }),
     respondToPeace: (f: string, t: string, accept: boolean) => { respondCalls.push([f, t, accept]); },
+    canEstablishVassal: () => true,
+    establishVassal: (vassalId: string, hostId: string) => { vassalHosts.set(vassalId, hostId); return true; },
+    getNationDisplayName: (id: string) => id,
   } as unknown as DiplomacyManager;
   const mil = {
     getMilitaryStrength: (id: string) => ({ totalStrength: config.strength?.[id] ?? 0, unitStrength: 0, cityStrength: 0 }),
@@ -109,9 +114,10 @@ function harness(config: {
     peaceTreatySystem, militaryEvaluationSystem: mil,
     getCurrentTurn: () => currentTurn,
     getDemilitarizationTurns: () => config.cooldownTurns ?? 10,
+    log: (message) => logs.push(message),
   });
   return {
-    system, cities, units, gold, respondCalls, removedFromQueues,
+    system, cities, units, gold, respondCalls, removedFromQueues, vassalHosts, logs,
     setTurn: (t: number) => { currentTurn = t; },
   };
 }
@@ -242,6 +248,14 @@ test('capitulation ends all of the surrendered nation\'s wars and starts peace t
   assert.deepEqual(result.formerEnemyIds, ['atk', 'brb']);
   // respondToPeace(target, enemy, true) both ends the war and begins the Peace Treaty.
   assert.deepEqual(h.respondCalls.sort(), [['target', 'atk', true], ['target', 'brb', true]].sort());
+});
+
+test('accepted capitulation creates a lasting vassal relationship and canonical log', () => {
+  const h = harness({ ...collapse, cities: [city('t1', 'target')], gold: { target: 100 } });
+  const result = h.system.applyCapitulation('atk', 'target', 0);
+  assert.equal(result.accepted, true);
+  assert.equal(h.vassalHosts.get('target'), 'atk');
+  assert.match(h.logs.join('\n'), /target capitulated to atk and became a vassal state\./);
 });
 
 // --- Demilitarization production block (items 6-11) --------------------------

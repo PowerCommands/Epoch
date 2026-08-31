@@ -91,16 +91,7 @@ export class ReconciliationTurningPointSystem {
   }
 
   private applyReconciliation(firstId: string, secondId: string): void {
-    const relation = this.context.diplomacyManager.getRelation(firstId, secondId);
-    const previousAffinity = relation.affinity;
-    const nextAffinity = Math.max(previousAffinity, 50);
-    this.context.diplomacyManager.setMemoryValues(firstId, secondId, {
-      trust: 0,
-      fear: 0,
-      suspicion: 0,
-      hostility: 0,
-      affinity: nextAffinity,
-    });
+    const reset = this.context.diplomacyManager.applyAmicableRelationshipReset(firstId, secondId);
 
     // Mark complete before callbacks so re-entrant save/log activity cannot duplicate it.
     this.occurred = true;
@@ -109,7 +100,7 @@ export class ReconciliationTurningPointSystem {
     const secondName = this.context.getNationName(secondId);
     this.context.log?.(
       `[TurningPoint:Reconciliation] ${firstName} and ${secondName} reconcile. `
-      + `trust→0, fear→0, suspicion→0, hostility→0, affinity ${previousAffinity}→${nextAffinity}.`,
+      + `trust→0, fear→0, suspicion→0, hostility→0, affinity ${reset.previousAffinity}→${reset.affinity}.`,
     );
     this.context.recordHistory?.(firstId, secondId);
   }

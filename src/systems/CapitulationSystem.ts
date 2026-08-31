@@ -13,6 +13,7 @@ import {
   createExploitationRightsConcession,
 } from './diplomacy/ExploitationRightsConcession';
 import { getLeaderExploitationInterestByNationId } from '../data/leaders';
+import type { MilitaryVassalizationSystem } from './diplomacy/MilitaryVassalizationSystem';
 
 /** War pressure at/above which demanding capitulation is at least plausible (button shows). */
 export const CAPITULATION_ELIGIBILITY_THRESHOLD = 0.42;
@@ -64,6 +65,8 @@ export interface CapitulationSystemDependencies {
   getDemilitarizationTurns: () => number;
   log?: (message: string) => void;
   onCapitulation?: (event: CapitulationAppliedEvent) => void;
+  /** Production common path shared with capital capture; optional for focused legacy callers. */
+  militaryVassalizationSystem?: MilitaryVassalizationSystem;
 }
 
 export interface CapitulationAppliedEvent {
@@ -120,6 +123,7 @@ export class CapitulationSystem {
   /** True when the button should be offered: at war and the target is plausibly collapsing. */
   canDemandCapitulation(demandingNationId: string, targetNationId: string): boolean {
     if (demandingNationId === targetNationId) return false;
+    if (!this.canCreateVassalOutcome(demandingNationId, targetNationId)) return false;
     if (this.deps.diplomacyManager.getState(demandingNationId, targetNationId) !== 'WAR') return false;
     return this.computeCapitulationPressure(targetNationId, demandingNationId).pressure
       >= CAPITULATION_ELIGIBILITY_THRESHOLD;
@@ -164,8 +168,9 @@ export class CapitulationSystem {
   evaluateCapitulationDemand(demandingNationId: string, targetNationId: string): CapitulationEvaluation {
     const { pressure, factors } = this.computeCapitulationPressure(targetNationId, demandingNationId);
     const atWar = this.deps.diplomacyManager.getState(demandingNationId, targetNationId) === 'WAR';
-    const eligible = atWar && pressure >= CAPITULATION_ELIGIBILITY_THRESHOLD;
-    const accepted = atWar && pressure >= CAPITULATION_ACCEPTANCE_THRESHOLD;
+    const canBecomeVassal = this.canCreateVassalOutcome(demandingNationId, targetNationId);
+    const eligible = atWar && canBecomeVassal && pressure >= CAPITULATION_ELIGIBILITY_THRESHOLD;
+    const accepted = atWar && canBecomeVassal && pressure >= CAPITULATION_ACCEPTANCE_THRESHOLD;
     return {
       eligible,
       accepted,
@@ -217,6 +222,7 @@ export class CapitulationSystem {
 
     // 1. Revalidate that capitulation can still be applied.
     if (this.deps.diplomacyManager.getState(demandingNationId, targetNationId) !== 'WAR') return rejected;
+    if (!this.canCreateVassalOutcome(demandingNationId, targetNationId)) return rejected;
     if (!this.evaluateCapitulationDemand(demandingNationId, targetNationId).accepted) return rejected;
 
     // 2. Capture the complete enemy list before any war ends (needed for reparations + treaties).
@@ -260,6 +266,18 @@ export class CapitulationSystem {
     const demilitarizedUntilTurn = this.deps.getCurrentTurn() + Math.max(0, Math.floor(this.deps.getDemilitarizationTurns()));
     this.demilitarizedUntilTurn.set(targetNationId, demilitarizedUntilTurn);
 
+    // Capitulation's lasting geopolitical result. This changes only foreign
+    // policy state; the nation and all of its normal gameplay systems remain live.
+    if (this.deps.militaryVassalizationSystem) {
+      this.deps.militaryVassalizationSystem.vassalize({
+        victorNationId: demandingNationId,
+        defeatedNationId: targetNationId,
+        reason: 'capitulation',
+      });
+    } else {
+      this.deps.diplomacyManager.establishVassal(targetNationId, demandingNationId);
+    }
+
     // 11b. Commit any demanded exploitation rights — the capitulator (grantor)
     // yields rights in its territory to the demanding nation (beneficiary). This
     // runs after the wars end above, so the two nations are already at PEACE and
@@ -288,7 +306,9 @@ export class CapitulationSystem {
       exploitationHoldingsRemoved,
     };
     // 12. Record history/diplomatic events.
-    this.deps.log?.(`[Capitulation] ${targetNationId} capitulates to ${demandingNationId}: `
+    const targetName = this.deps.diplomacyManager.getNationDisplayName(targetNationId);
+    const demandingName = this.deps.diplomacyManager.getNationDisplayName(demandingNationId);
+    this.deps.log?.(`[Capitulation] ${targetName} capitulated to ${demandingName} and became a vassal state. `
       + `reparations=${reparations} units=-${removedUnitCount} cities=${restoredCityIds.length} `
       + `wars=${formerEnemyIds.length} demilUntil=${demilitarizedUntilTurn} exploitation=${exploitationRightsGranted} `
       + `holdingsRemoved=${exploitationHoldingsRemoved}`);
@@ -331,6 +351,12 @@ export class CapitulationSystem {
       .filter((unit) => isMilitaryUnitType(unit.unitType));
     for (const unit of military) this.deps.unitManager.removeUnit(unit.id);
     return military.length;
+  }
+
+  private canCreateVassalOutcome(victorNationId: string, defeatedNationId: string): boolean {
+    return this.deps.militaryVassalizationSystem
+      ? this.deps.militaryVassalizationSystem.canVassalize(victorNationId, defeatedNationId)
+      : this.deps.diplomacyManager.canEstablishVassal(defeatedNationId, victorNationId);
   }
 
   /** Never creates or destroys money: the shares always sum exactly to `amount`. */

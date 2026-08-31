@@ -44,6 +44,8 @@ export interface CityCombatEvent {
   result: CityCombatResult;
   captured: boolean;
   previousOwnerId?: string;
+  /** Capital capture was converted into vassalization and ownership restoration. */
+  capitalVassalizationResolved?: boolean;
 }
 
 export interface CombatRejectedEvent {
@@ -80,6 +82,7 @@ type CombatRejectedListener = (e: CombatRejectedEvent) => void;
 type WarRequiredListener = (e: WarRequiredEvent) => void;
 type UnitCombatBlocker = (unit: Unit) => boolean;
 type PeacekeepingCombatAuthorizer = (attacker: Unit, target: Unit, tileOwnerId?: string) => boolean;
+type CapitalCaptureResolver = (city: City, previousOwnerId: string, captorNationId: string) => boolean;
 
 const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
 
@@ -106,6 +109,7 @@ export class CombatSystem {
   // Diagnostic-only: lightweight per-city siege tracking so a capture can report
   // how long the city was under sustained pressure. Never read by gameplay.
   private readonly siegeTracker = new Map<string, { firstRound: number; lastRound: number; attacks: number }>();
+  private capitalCaptureResolver: CapitalCaptureResolver | null = null;
 
   constructor(
     unitManager: UnitManager,
@@ -135,6 +139,10 @@ export class CombatSystem {
 
   setCovertSuspicionSystem(system: CovertSuspicionSystem): void {
     this.covertSuspicionSystem = system;
+  }
+
+  setCapitalCaptureResolver(resolver: CapitalCaptureResolver): void {
+    this.capitalCaptureResolver = resolver;
   }
 
   on(callback: CombatListener): void {
@@ -369,6 +377,7 @@ export class CombatSystem {
 
     let captured = false;
     let previousOwnerId: string | undefined;
+    let capitalVassalizationResolved = false;
     if (!isRanged && result.cityFell && !result.attackerDied) {
       previousOwnerId = city.ownerId;
       captureCity(
@@ -382,14 +391,19 @@ export class CombatSystem {
         this.cityIntegrationSystem,
       );
       captured = true;
-      this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);
+      if (city.isResidenceCapital && this.capitalCaptureResolver) {
+        capitalVassalizationResolved = this.capitalCaptureResolver(city, previousOwnerId, attacker.ownerId);
+      }
+      if (!capitalVassalizationResolved) {
+        this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);
+      }
       this.emitConquestDiagnostic(attacker, city, result, preAttack);
     }
 
     this.reportCovertCityCombat(attacker, city);
 
     for (const cb of this.cityCombatListeners) {
-      cb({ attacker, city, result, captured, previousOwnerId });
+      cb({ attacker, city, result, captured, previousOwnerId, capitalVassalizationResolved });
     }
 
     return true;
