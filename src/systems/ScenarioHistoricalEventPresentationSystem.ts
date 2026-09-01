@@ -1,4 +1,4 @@
-import type { ScenarioHistoricalEvent } from '../types/scenario';
+import type { ScenarioWorldWarHistoricalEvent } from '../types/scenario';
 import type { HistoricalTimelineService } from './HistoricalTimelineService';
 import {
   formatGameDate,
@@ -131,7 +131,7 @@ export class ScenarioHistoricalEventPresentationSystem {
     this.emit(announcement);
   }
 
-  private conflicts(definition: ScenarioHistoricalEvent): WorldWarConflictPresentation[] {
+  private conflicts(definition: ScenarioWorldWarHistoricalEvent): WorldWarConflictPresentation[] {
     const seen = new Set<string>();
     const result: WorldWarConflictPresentation[] = [];
     for (const conflict of definition.conflicts) {
@@ -150,7 +150,7 @@ export class ScenarioHistoricalEventPresentationSystem {
     return result;
   }
 
-  private participantIds(definition: ScenarioHistoricalEvent): string[] {
+  private participantIds(definition: ScenarioWorldWarHistoricalEvent): string[] {
     const ids = new Set<string>();
     for (const conflict of definition.conflicts) {
       ids.add(conflict.nationAId);

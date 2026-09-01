@@ -232,6 +232,10 @@ export class PeaceTreatySystem {
   /** Gold the proposer can actually pay: non-negative and capped by its treasury. */
   resolveOfferedGold(proposal: PeaceProposal): number {
     const requested = Math.max(0, Math.floor(proposal.goldReparations ?? 0));
+    // The proposer can be gone by the time a queued proposal settles (e.g. it was
+    // eliminated during the same combat that triggered the peace). Treat a missing
+    // nation as offering nothing instead of dereferencing absent resources.
+    if (requested <= 0 || !this.nationManager.getNation(proposal.fromNationId)) return 0;
     const treasury = Math.max(0, Math.floor(this.nationManager.getResources(proposal.fromNationId).gold));
     return Math.min(requested, treasury);
   }
@@ -294,6 +298,16 @@ export class PeaceTreatySystem {
    * the scenario-configured Peace Treaty cooldown). Reusable for any initiator.
    */
   settleAcceptedPeace(proposal: PeaceProposal): PeaceSettlementResult {
+    // Never settle a treaty involving a nation that no longer exists — a proposal
+    // can outlive its proposer when the same combat that prompted peace also
+    // eliminated one side.
+    if (!this.nationManager.getNation(proposal.fromNationId)
+      || !this.nationManager.getNation(proposal.toNationId)) {
+      return {
+        goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false,
+        proposerHoldingsRemoved: 0, recipientHoldingsRemoved: 0,
+      };
+    }
     if (this.diplomacyManager.getState(proposal.fromNationId, proposal.toNationId) !== 'WAR') {
       return {
         goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false,

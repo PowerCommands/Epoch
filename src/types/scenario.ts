@@ -164,6 +164,25 @@ export interface ScenarioHistoricalEventBase {
   startYearIsBC?: boolean;
 }
 
+export type ScenarioTurningPointEventType =
+  | 'culturalJealousy'
+  | 'reconciliation'
+  | 'luckyLoser'
+  | 'unluckyWinner';
+
+/**
+ * A scenario-controlled entry point into built-in Turning Point gameplay.
+ * Effects and candidate rules remain code-defined; only presence and year are
+ * authored. Turning Points always use their existing built-in month/date rules.
+ */
+export interface ScenarioTurningPointHistoricalEvent {
+  id: string;
+  type: ScenarioTurningPointEventType;
+  name: string;
+  /** Positive AD year in which the built-in system begins its normal logic. */
+  startYear: number;
+}
+
 /** An unordered pair of scenario nations that will later begin at war. */
 export interface ScenarioWorldWarConflict {
   nationAId: string;
@@ -181,7 +200,9 @@ export interface ScenarioWorldWarHistoricalEvent extends ScenarioHistoricalEvent
 }
 
 /** Extensible union of scenario-authored historical event definitions. */
-export type ScenarioHistoricalEvent = ScenarioWorldWarHistoricalEvent;
+export type ScenarioHistoricalEvent =
+  | ScenarioWorldWarHistoricalEvent
+  | ScenarioTurningPointHistoricalEvent;
 
 export interface ScenarioData {
   meta: ScenarioMeta;
@@ -196,4 +217,9 @@ export interface ScenarioData {
   initialDiplomacy: ScenarioInitialDiplomacyEntry[];
   /** Authored future events. Absent in older scenarios. */
   historicalEvents?: ScenarioHistoricalEvent[];
+  /**
+   * True once the scenario has been saved with scenario-authored Turning Point
+   * entries. If absent, legacy default years are retained for compatibility.
+   */
+  turningPointEventsConfigured?: true;
 }

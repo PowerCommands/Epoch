@@ -85,8 +85,13 @@ export class NationCollapseSystem {
       occupiedCitiesById.set(input.triggerCity.id, input.triggerCity);
     }
 
+    // Clear only the collapsing nation's own residence capital. A previous version
+    // also matched `|| city.isResidenceCapital`, which wiped EVERY surviving
+    // nation's residence-capital flag on any collapse — silently disabling the
+    // capital-capture vassalization safeguard for the whole world. The trigger
+    // city (already transferred to the conqueror) is handled explicitly above.
     for (const city of this.cityManager.getAllCities()) {
-      if (city.ownerId === input.nationId || city.isResidenceCapital) {
+      if (city.ownerId === input.nationId && city.isResidenceCapital) {
         city.isResidenceCapital = false;
       }
     }

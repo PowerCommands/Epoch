@@ -207,12 +207,19 @@ export class CapitulationSystem {
    * Apply a full, unconditional surrender atomically in a deliberate order. Returns
    * the result (accepted:false with no side effects if the target refuses or the
    * demand is no longer valid). Initiator-agnostic.
+   *
+   * `force` bypasses only the willingness gate (the war-pressure acceptance check),
+   * for callers that already carry their own deterministic trigger — e.g. an attack
+   * that pushes the target's original capital below its defensive collapse
+   * threshold. The hierarchy/integrity checks (must be at war, must be able to form
+   * the vassal outcome) are always enforced.
    */
   applyCapitulation(
     demandingNationId: string,
     targetNationId: string,
     requestedReparations: number,
     demandExploitationRights = false,
+    force = false,
   ): CapitulationResult {
     const rejected: CapitulationResult = {
       accepted: false, reparationsPaid: 0, reparationShares: [], formerEnemyIds: [],
@@ -223,7 +230,7 @@ export class CapitulationSystem {
     // 1. Revalidate that capitulation can still be applied.
     if (this.deps.diplomacyManager.getState(demandingNationId, targetNationId) !== 'WAR') return rejected;
     if (!this.canCreateVassalOutcome(demandingNationId, targetNationId)) return rejected;
-    if (!this.evaluateCapitulationDemand(demandingNationId, targetNationId).accepted) return rejected;
+    if (!force && !this.evaluateCapitulationDemand(demandingNationId, targetNationId).accepted) return rejected;
 
     // 2. Capture the complete enemy list before any war ends (needed for reparations + treaties).
     const formerEnemyIds = [...this.deps.diplomacyManager.getWarringNationIds(targetNationId)].sort();

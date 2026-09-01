@@ -21,6 +21,7 @@ interface HarnessInput {
   cultureByNation: Record<string, number>;
   humanIds?: string[];
   year: number;
+  triggerYear?: number | null;
 }
 
 function makeHarness(input: HarnessInput) {
@@ -37,6 +38,7 @@ function makeHarness(input: HarnessInput) {
     nationManager: nations,
     diplomacyManager: diplomacy,
     getGlobalYear: () => year,
+    triggerYear: input.triggerYear,
     isNationLiving: (id) => living.has(id),
     getCultureScore: (id) => nations.getResources(id).culture,
     getNationName: (id) => id,
@@ -60,6 +62,27 @@ test('nothing happens before the activation year', () => {
   h.system.handleRoundStart(1);
   assert.equal(h.system.getActiveJealousNationIds().length, 0);
   assert.equal(h.nations.getNation('weakA')?.culturalJealousyTargetId, undefined);
+});
+
+test('scenario trigger year overrides the legacy year and null disables activation', () => {
+  const configured = makeHarness({
+    year: 1700,
+    triggerYear: 1750,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000, mid: 20000 },
+  });
+  configured.system.handleRoundStart(1);
+  assert.deepEqual(configured.system.getActiveJealousNationIds(), []);
+  configured.setYear(1750);
+  configured.system.handleRoundStart(2);
+  assert.deepEqual(configured.system.getActiveJealousNationIds(), ['weakA', 'weakB']);
+
+  const disabled = makeHarness({
+    year: 3000,
+    triggerYear: null,
+    cultureByNation: { leader: 40000, weakA: 1000, weakB: 2000 },
+  });
+  disabled.system.handleRoundStart(1);
+  assert.deepEqual(disabled.system.getActiveJealousNationIds(), []);
 });
 
 test('at the activation year the two lowest AI nations resent the cultural leader', () => {

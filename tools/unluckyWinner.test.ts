@@ -25,6 +25,7 @@ interface HarnessInput {
   humanIds?: string[];
   /** Initial in-game date; defaults to exactly July 1914. */
   date?: GameDate;
+  triggerYear?: number | null;
 }
 
 const JULY_1914 = createGameDate(UNLUCKY_WINNER_TRIGGER_YEAR, false, UNLUCKY_WINNER_TRIGGER_MONTH_INDEX);
@@ -53,6 +54,7 @@ function makeHarness(input: HarnessInput) {
     nationManager: nations,
     diplomacyManager: diplomacy,
     getGameDate: () => date,
+    triggerYear: input.triggerYear,
     getCurrentTurn: () => turn,
     getCulturalRanking: ranking,
     isNationLiving: (id) => living.has(id),
@@ -86,6 +88,27 @@ test('nothing happens before July 1914', () => {
   assert.equal(h.system.serialize().armed, false);
   assert.equal(h.system.serialize().completed, false);
   assert.equal(h.messages.length, 0);
+});
+
+test('scenario trigger year replaces 1914 while preserving July, and null disables activation', () => {
+  const configured = makeHarness({
+    date: createGameDate(2000, false, 5),
+    triggerYear: 2000,
+    cultureByNation: { China: 40000, France: 20000, England: 3000 },
+  });
+  configured.tick(1);
+  assert.equal(configured.system.serialize().armed, false, 'June remains before the built-in July gate');
+  configured.setDate(createGameDate(2000, false, 6));
+  configured.tick(2);
+  assert.equal(configured.system.serialize().armed, true);
+
+  const disabled = makeHarness({
+    date: createGameDate(3000, false, 11),
+    triggerYear: null,
+    cultureByNation: { China: 40000, France: 20000, England: 3000 },
+  });
+  disabled.tick(1);
+  assert.equal(disabled.system.serialize().armed, false);
 });
 
 test('in July 1914 the strongest AI attacks the weakest available nation', () => {

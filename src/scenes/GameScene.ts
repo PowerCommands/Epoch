@@ -134,6 +134,7 @@ import {
 } from '../systems/diplomacy/VassalIndependenceSystem';
 import { ScenarioHistoricalEventSystem } from '../systems/ScenarioHistoricalEventSystem';
 import { ScenarioHistoricalEventPresentationSystem } from '../systems/ScenarioHistoricalEventPresentationSystem';
+import { resolveScenarioTurningPointTriggerYears } from '../systems/scenarioTurningPoints';
 import { JOIN_WAR_MINIMUM_GOLD_RESERVE, JointWarSystem } from '../systems/diplomacy/JointWarSystem';
 import {
   commitExploitationRightsConcession,
@@ -192,7 +193,7 @@ import { InfrastructureSabotageSystem, IMPROVEMENT_DESTRUCTION_LOOT_GOLD } from 
 import { InfrastructureRepairSystem } from '../systems/InfrastructureRepairSystem';
 import { InsurgentBehaviorSystem } from '../systems/InsurgentBehaviorSystem';
 import { BarbarianSystem } from '../systems/BarbarianSystem';
-import { resolveBarbarianSpawnInterval } from '../data/barbarians';
+import { resolveBarbarianSpawnInterval, isBarbarianNation } from '../data/barbarians';
 import { CovertSuspicionSystem } from '../systems/diplomacy/CovertSuspicionSystem';
 import { AICovertOperationsSystem } from '../systems/ai/AICovertOperationsSystem';
 import { IntelReportDialog } from '../ui/IntelReportDialog';
@@ -502,6 +503,7 @@ export class GameScene extends Phaser.Scene {
     setActiveLeaderSelections(runtimeLeaderSelections);
 
     const scenario = ScenarioLoader.parse(runtimeScenarioJson);
+    const turningPointTriggerYears = resolveScenarioTurningPointTriggerYears(runtimeScenarioJson);
     const mapData = scenario.mapData;
     // "No barbarians" setup option: strip every Barbarian Camp from the scenario
     // up front, as if it never had any. Done before any system/renderer reads the
@@ -1174,7 +1176,7 @@ export class GameScene extends Phaser.Scene {
       consolidationSystem?.enterPostWar(a);
       consolidationSystem?.enterPostWar(b);
     });
-    // Cultural Jealousy: from year 1500 the two culturally weakest AI nations
+    // Cultural Jealousy: from its scenario year the two culturally weakest AI nations
     // resent the cultural leader, warming toward each other and souring toward
     // the leader — feeding the existing tariff/insult/war systems (never forcing
     // a war). State persists on each jealous Nation and is cleared on war.
@@ -1182,6 +1184,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       diplomacyManager,
       getGlobalYear: () => turnManager.getGlobalYear(),
+      triggerYear: turningPointTriggerYears.culturalJealousy,
       isNationLiving: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
       getCultureScore: (nationId) => nationManager.getResources(nationId).culture,
       getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
@@ -1192,6 +1195,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       diplomacyManager,
       getGlobalYear: () => turnManager.getGlobalYear(),
+      triggerYear: turningPointTriggerYears.reconciliation,
       getCurrentRound: () => turnManager.getCurrentRound(),
       isNationLiving: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
       isCulturalJealousyParticipant: (nationId) => culturalJealousySystem
@@ -1214,6 +1218,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       diplomacyManager,
       getGlobalYear: () => turnManager.getGlobalYear(),
+      triggerYear: turningPointTriggerYears.luckyLoser,
       getCurrentTurn: () => turnManager.getCurrentRound(),
       randomSeed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|lucky-loser-v1`,
       getGold: (nationId) => nationManager.getResources(nationId).gold,
@@ -1247,7 +1252,7 @@ export class GameScene extends Phaser.Scene {
       },
     });
     turnManager.on('roundStart', ({ round }) => luckyLoserTurningPointSystem.handleTurnStart(round));
-    // Unlucky Winner: in July 1914 the culturally strongest AI nation is pushed
+    // Unlucky Winner: in July of its scenario year the culturally strongest AI nation is pushed
     // into one new war (never the human as attacker; the human may be the
     // target). It only sours the attacker's relationship strongly enough that
     // normal AI war logic declares war, then removes that artificial influence
@@ -1256,6 +1261,7 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       diplomacyManager,
       getGameDate: () => turnManager.getGameDate(),
+      triggerYear: turningPointTriggerYears.unluckyWinner,
       getCurrentTurn: () => turnManager.getCurrentRound(),
       getCulturalRanking: () => victorySystem.getCulturalVictoryRanking()
         .map((progress) => ({ nationId: progress.nationId, cultureValue: progress.accumulatedCulture })),
@@ -1468,14 +1474,17 @@ export class GameScene extends Phaser.Scene {
       },
     );
     militaryVassalizationSystem.onVassalized((event) => {
-      if (event.reason !== 'capitalCapture' || !event.capturedCapital) return;
+      if ((event.reason !== 'capitalCapture' && event.reason !== 'subjugation') || !event.capturedCapital) return;
       const victorName = nationManager.getNation(event.victorNationId)?.name ?? event.victorNationId;
       const defeatedName = nationManager.getNation(event.defeatedNationId)?.name ?? event.defeatedNationId;
       logManager.info({
         nationIds: [event.victorNationId, event.defeatedNationId],
         category: 'diplomacy',
-        message: `${victorName} captured ${event.capturedCapital.cityName}, the capital of ${defeatedName}. `
-          + `${defeatedName} became a vassal state of ${victorName}.`,
+        message: event.reason === 'capitalCapture'
+          ? `${victorName} captured ${event.capturedCapital.cityName}, the capital of ${defeatedName}. `
+            + `${defeatedName} became a vassal state of ${victorName}.`
+          : `${victorName} overran ${event.capturedCapital.cityName}, the last city of ${defeatedName}. `
+            + `Facing annihilation, ${defeatedName} capitulated and became a vassal state of ${victorName}.`,
       });
     });
     militaryVassalizationSystem.onSuccessionResolved((event) => {
@@ -2755,11 +2764,41 @@ export class GameScene extends Phaser.Scene {
         reason: 'capitalCapture',
         capturedCapital: { cityId: city.id, cityName: city.name },
       }));
+    // Last-city safeguard (see CombatSystem.setSubjugationResolver): a defeated
+    // nation whose final city just fell is vassalized instead of eliminated, and the
+    // city is returned to it, so complete conquest normally routes through the vassal
+    // system rather than bypassing it. Never applies to a neutral/barbarian captor.
+    combatSystem.setSubjugationResolver((city, defeatedNationId, victorNationId) => {
+      if (isBarbarianNation(victorNationId) || !nationManager.getNation(victorNationId)) return false;
+      return militaryVassalizationSystem.vassalize({
+        victorNationId,
+        defeatedNationId,
+        reason: 'subjugation',
+        capturedCapital: { cityId: city.id, cityName: city.name },
+      });
+    });
+    // Original-capital collapse safeguard (see CombatSystem.setOriginalCapitalCollapseResolver):
+    // an attack that pushes a nation's own original capital below its defensive
+    // collapse threshold forces capitulation to the responsible attacker, reusing the
+    // existing capitulation/vassalization path (force bypasses only the war-pressure
+    // willingness gate; the hierarchy/integrity checks still apply). No capture needed.
+    combatSystem.setOriginalCapitalCollapseResolver((_city, defeatedNationId, victorNationId) => {
+      if (isBarbarianNation(victorNationId) || !nationManager.getNation(victorNationId)) return false;
+      return capitulationSystem.applyCapitulation(victorNationId, defeatedNationId, 0, false, true).accepted;
+    });
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
       nationManager,
       turnManager,
     );
+    // Safety net: keep exactly one residence capital per surviving nation so the
+    // capital-capture / last-city vassalization safeguards can always fire. Runs
+    // at round start (before combat) and once now so a freshly loaded save with a
+    // dropped flag is repaired on turn one.
+    const ensureResidenceCapitals = (): void =>
+      politicalCapitalSystem.ensureResidenceCapitals(nationManager.getAllNations().map((nation) => nation.id));
+    turnManager.on('roundStart', ensureResidenceCapitals);
+    ensureResidenceCapitals();
     const unitUpgradeSystem = new UnitUpgradeSystem(
       nationManager,
       unitManager,
@@ -9049,10 +9088,9 @@ export class GameScene extends Phaser.Scene {
             victory,
             gamesOfNations: gamesOfNationsSystem.getSummary(),
             historicalEvents: scenarioHistoricalEventSystem.getRuntimeStates().map((state) => {
-              const definition = scenario.historicalEvents.find((event) => event.id === state.eventId);
               return {
                 id: state.eventId,
-                type: definition?.type ?? 'worldWar',
+                type: 'worldWar' as const,
                 status: state.status,
                 triggeredRound: state.triggeredRound,
                 triggeredDate: state.triggeredDate

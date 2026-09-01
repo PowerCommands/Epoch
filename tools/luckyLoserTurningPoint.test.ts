@@ -20,6 +20,7 @@ function makeHarness(options: {
   turn?: number;
   seed?: string;
   humanIds?: readonly string[];
+  triggerYear?: number | null;
 } = {}) {
   const nationManager = new NationManager();
   for (const id of [HOST, ...VASSALS]) {
@@ -40,6 +41,7 @@ function makeHarness(options: {
     nationManager,
     diplomacyManager: diplomacy,
     getGlobalYear: () => year,
+    triggerYear: options.triggerYear,
     getCurrentTurn: () => turn,
     randomSeed: options.seed ?? 'lucky-loser-test',
     getGold: (nationId) => nationManager.getResources(nationId).gold,
@@ -79,6 +81,21 @@ test('Lucky Loser cannot activate before calendar year 1500', () => {
   });
   assert.equal(h.nationManager.getResources('england').gold, 0);
   assert.deepEqual(h.logs, []);
+});
+
+test('scenario trigger year replaces the legacy gate and null disables Lucky Loser', () => {
+  const configured = makeHarness({ year: 1999, triggerYear: 2000 });
+  configured.makeVassal('england');
+  configured.system.handleTurnStart();
+  assert.equal(configured.system.serialize().occurred, false);
+  configured.setYear(2000);
+  configured.system.handleTurnStart();
+  assert.equal(configured.system.serialize().occurred, true);
+
+  const disabled = makeHarness({ year: 3000, triggerYear: null });
+  disabled.makeVassal('england');
+  disabled.system.handleTurnStart();
+  assert.equal(disabled.system.serialize().occurred, false);
 });
 
 test('the only living vassal receives exactly +100,000 Gold and remains a vassal', () => {

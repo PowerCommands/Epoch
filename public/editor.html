@@ -734,22 +734,27 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Event Type
         <select id="he-type">
           <option value="worldWar">World War</option>
+          <option value="culturalJealousy">Cultural Jealousy</option>
+          <option value="reconciliation">Reconciliation</option>
+          <option value="luckyLoser">Lucky Loser</option>
+          <option value="unluckyWinner">Unlucky Winner</option>
         </select>
       </label>
-      <label class="field">Name
+      <div id="he-built-in-hint" class="he-hint" style="display:none"></div>
+      <label id="he-name-field" class="field">Name
         <input id="he-name" type="text" maxlength="120" placeholder="World War II">
       </label>
-      <label class="field">Description
+      <label id="he-description-field" class="field">Description
         <textarea id="he-description" rows="4"></textarea>
       </label>
       <div class="he-date-row">
-        <label class="field">Start Month<select id="he-start-month"></select></label>
-        <label class="field">Start Year<input id="he-start-year" type="number" min="1" step="1"></label>
-        <label class="field">Era
+        <label id="he-start-month-field" class="field">Start Month<select id="he-start-month"></select></label>
+        <label class="field"><span id="he-start-year-label">Start Year</span><input id="he-start-year" type="number" min="1" step="1"></label>
+        <label id="he-start-era-field" class="field">Era
           <select id="he-start-era"><option value="AD">AD</option><option value="BC">BC</option></select>
         </label>
       </div>
-      <section class="he-section">
+      <section id="he-conflicts-section" class="he-section">
         <h3>Conflicts</h3>
         <div class="he-conflict-add-row">
           <label class="field">Nation A<select id="he-conflict-a"></select></label>
@@ -758,7 +763,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         </div>
         <div id="he-conflict-list" class="he-conflict-list"></div>
       </section>
-      <section class="he-section">
+      <section id="he-end-condition-section" class="he-section">
         <h3>End Condition</h3>
         <label class="field">End Condition Nation<select id="he-end-condition-nation"></select></label>
         <div class="he-hint">The World War ends when this nation is no longer at war with any nation, or has been eliminated.</div>
@@ -929,6 +934,34 @@ const HISTORICAL_EVENT_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+const TURNING_POINT_EVENT_DEFINITIONS = {
+  culturalJealousy: { name: 'Cultural Jealousy', legacyYear: 1500 },
+  reconciliation: { name: 'Reconciliation', legacyYear: 1800 },
+  luckyLoser: { name: 'Lucky Loser', legacyYear: 1500 },
+  unluckyWinner: { name: 'Unlucky Winner', legacyYear: 1914 },
+};
+
+function isTurningPointEventType(type) {
+  return Object.prototype.hasOwnProperty.call(TURNING_POINT_EVENT_DEFINITIONS, type);
+}
+
+/** Make legacy implicit defaults explicit before an old scenario is edited/saved. */
+function migrateLegacyTurningPointEventsForEditor() {
+  if (scenario.turningPointEventsConfigured === true) return;
+  const present = new Set(scenario.historicalEvents
+    .filter(event => isTurningPointEventType(event?.type))
+    .map(event => event.type));
+  for (const [type, definition] of Object.entries(TURNING_POINT_EVENT_DEFINITIONS)) {
+    if (present.has(type)) continue;
+    scenario.historicalEvents.push({
+      id: `turning-point-${type}`,
+      type,
+      name: definition.name,
+      startYear: definition.legacyYear,
+    });
+  }
+  scenario.turningPointEventsConfigured = true;
+}
 
 /**
  * Ensure scenario.meta carries every Scenario Details field, filling defaults
@@ -1107,6 +1140,7 @@ function startEditor(map, scenarioData, customEntry) {
 
   normalizeScenarioMeta();
   if (!Array.isArray(scenario.historicalEvents)) scenario.historicalEvents = [];
+  migrateLegacyTurningPointEventsForEditor();
   loadTemplateImage(scenario.meta?.template ?? null);
   refreshBackgroundTemplateSelect();
   refreshBackgroundZoomSlider();
@@ -1587,6 +1621,8 @@ function buildBlankScenario(name, nationIds, width, height, tileSizeValue, templ
     // Nation-specific setup (tech/culture) and pair diplomacy live here.
     nationDetails: {},
     initialDiplomacy: [],
+    historicalEvents: [],
+    turningPointEventsConfigured: true,
   };
 }
 
@@ -5271,6 +5307,13 @@ function validateScenarioHistoricalEvents(activeIds) {
     else if (ids.has(event.id)) warnings.push(`${label} duplicates historical event ID ${event.id}`);
     else ids.add(event.id);
     if (typeof event.name !== 'string' || !event.name.trim()) warnings.push(`Historical event ${eventIndex + 1} has an empty name`);
+    if (isTurningPointEventType(event.type)) {
+      if (!Number.isInteger(event.startYear) || event.startYear <= 0) warnings.push(`${label} has an invalid or missing trigger year`);
+      if (events.filter(candidate => candidate?.type === event.type).length > 1) {
+        warnings.push(`${label} duplicates the built-in ${TURNING_POINT_EVENT_DEFINITIONS[event.type].name} event`);
+      }
+      return;
+    }
     if (event.type !== 'worldWar') {
       warnings.push(`${label} has unsupported historical event type ${event.type || '(missing)'}`);
       return;
@@ -5514,6 +5557,7 @@ function buildScenarioOutput() {
     nationDetails,
     initialDiplomacy,
     historicalEvents: structuredCloneCompat(scenario.historicalEvents || []),
+    turningPointEventsConfigured: true,
   };
 }
 
@@ -5543,6 +5587,10 @@ function generateScenarioHistoricalEventId() {
 }
 
 function formatScenarioHistoricalEventDate(event) {
+  if (isTurningPointEventType(event?.type)) {
+    const year = Number.isInteger(event?.startYear) && event.startYear > 0 ? event.startYear : '?';
+    return `${year} AD`;
+  }
   const month = HISTORICAL_EVENT_MONTHS[event?.startMonth - 1] || `Month ${event?.startMonth ?? '?'}`;
   const year = Number.isInteger(event?.startYear) && event.startYear > 0 ? event.startYear : '?';
   return `${month} ${year} ${event?.startYearIsBC ? 'BC' : 'AD'}`;
@@ -5561,7 +5609,7 @@ function renderScenarioHistoricalEventsList() {
     const summary = ndEl('div', 'sd-event-summary');
     summary.append(
       ndEl('strong', undefined, event.name?.trim() || 'Unnamed historical event'),
-      ndEl('span', undefined, `${event.type === 'worldWar' ? 'World War' : event.type} — ${formatScenarioHistoricalEventDate(event)}`),
+      ndEl('span', undefined, `${event.type === 'worldWar' ? 'World War' : (TURNING_POINT_EVENT_DEFINITIONS[event.type]?.name || event.type)} — ${formatScenarioHistoricalEventDate(event)}`),
     );
     const actions = ndEl('div', 'sd-event-actions');
     const editButton = ndEl('button', undefined, 'Edit');
@@ -5614,6 +5662,28 @@ function renderHistoricalEventConflicts() {
   });
 }
 
+function updateHistoricalEventTypeFields() {
+  if (!historicalEventDialogDraft) return;
+  const type = document.getElementById('he-type').value;
+  const definition = TURNING_POINT_EVENT_DEFINITIONS[type];
+  const builtIn = !!definition;
+  document.getElementById('he-built-in-hint').style.display = builtIn ? '' : 'none';
+  document.getElementById('he-built-in-hint').textContent = builtIn
+    ? `${definition.name} is a built-in Turning Point event. Only its trigger year is configured by the scenario. Eligible nations and event effects are determined dynamically during gameplay.`
+    : '';
+  document.getElementById('he-name-field').style.display = builtIn ? 'none' : '';
+  document.getElementById('he-description-field').style.display = builtIn ? 'none' : '';
+  document.getElementById('he-start-month-field').style.display = builtIn ? 'none' : '';
+  document.getElementById('he-start-era-field').style.display = builtIn ? 'none' : '';
+  document.getElementById('he-start-year-label').textContent = builtIn ? 'Trigger Year' : 'Start Year';
+  document.getElementById('he-conflicts-section').style.display = builtIn ? 'none' : '';
+  document.getElementById('he-end-condition-section').style.display = builtIn ? 'none' : '';
+  if (builtIn) {
+    historicalEventDialogDraft.type = type;
+    historicalEventDialogDraft.name = definition.name;
+  }
+}
+
 function openHistoricalEventDialog(index = null) {
   historicalEventEditingIndex = index;
   const existing = index === null ? null : scenarioDetailsHistoricalEventsDraft[index];
@@ -5640,7 +5710,7 @@ function openHistoricalEventDialog(index = null) {
     });
   }
   document.getElementById('he-dialog-title').textContent = existing ? 'Edit Historical Event' : 'Add Historical Event';
-  document.getElementById('he-type').value = historicalEventDialogDraft.type === 'worldWar' ? 'worldWar' : 'worldWar';
+  document.getElementById('he-type').value = historicalEventDialogDraft.type;
   document.getElementById('he-name').value = historicalEventDialogDraft.name ?? '';
   document.getElementById('he-description').value = historicalEventDialogDraft.description ?? '';
   monthSelect.value = String(historicalEventDialogDraft.startMonth ?? 1);
@@ -5651,8 +5721,9 @@ function openHistoricalEventDialog(index = null) {
   populateHistoricalEventNationSelect(document.getElementById('he-end-condition-nation'), historicalEventDialogDraft.endConditionNationId, 0);
   document.getElementById('he-error').textContent = '';
   renderHistoricalEventConflicts();
+  updateHistoricalEventTypeFields();
   document.getElementById('historical-event-overlay').classList.add('open');
-  document.getElementById('he-name').focus();
+  document.getElementById(isTurningPointEventType(historicalEventDialogDraft.type) ? 'he-start-year' : 'he-name').focus();
 }
 
 function closeHistoricalEventDialog() {
@@ -5681,14 +5752,35 @@ function addHistoricalEventConflict() {
 function saveHistoricalEventDialog() {
   if (!historicalEventDialogDraft) return;
   historicalEventDialogDraft.type = document.getElementById('he-type').value;
-  historicalEventDialogDraft.name = document.getElementById('he-name').value.trim();
-  historicalEventDialogDraft.description = document.getElementById('he-description').value.trim();
+  const turningPointDefinition = TURNING_POINT_EVENT_DEFINITIONS[historicalEventDialogDraft.type];
+  historicalEventDialogDraft.name = turningPointDefinition?.name || document.getElementById('he-name').value.trim();
   const startMonth = parseInt(document.getElementById('he-start-month').value, 10);
   const startYear = parseInt(document.getElementById('he-start-year').value, 10);
-  historicalEventDialogDraft.startMonth = Number.isInteger(startMonth) ? startMonth : 0;
   historicalEventDialogDraft.startYear = Number.isInteger(startYear) ? startYear : 0;
-  historicalEventDialogDraft.startYearIsBC = document.getElementById('he-start-era').value === 'BC';
-  historicalEventDialogDraft.endConditionNationId = document.getElementById('he-end-condition-nation').value;
+  if (turningPointDefinition) {
+    if (!Number.isInteger(startYear) || startYear <= 0) {
+      document.getElementById('he-error').textContent = 'Trigger year must be a positive integer.';
+      return;
+    }
+    const duplicateIndex = scenarioDetailsHistoricalEventsDraft.findIndex((event, index) => (
+      event?.type === historicalEventDialogDraft.type && index !== historicalEventEditingIndex
+    ));
+    if (duplicateIndex >= 0) {
+      document.getElementById('he-error').textContent = `${turningPointDefinition.name} can only be added once per scenario.`;
+      return;
+    }
+    historicalEventDialogDraft = {
+      id: historicalEventDialogDraft.id,
+      type: historicalEventDialogDraft.type,
+      name: turningPointDefinition.name,
+      startYear,
+    };
+  } else {
+    historicalEventDialogDraft.description = document.getElementById('he-description').value.trim();
+    historicalEventDialogDraft.startMonth = Number.isInteger(startMonth) ? startMonth : 0;
+    historicalEventDialogDraft.startYearIsBC = document.getElementById('he-start-era').value === 'BC';
+    historicalEventDialogDraft.endConditionNationId = document.getElementById('he-end-condition-nation').value;
+  }
 
   if (historicalEventEditingIndex === null) scenarioDetailsHistoricalEventsDraft.push(structuredCloneCompat(historicalEventDialogDraft));
   else scenarioDetailsHistoricalEventsDraft[historicalEventEditingIndex] = structuredCloneCompat(historicalEventDialogDraft);
@@ -5767,6 +5859,7 @@ function saveScenarioDetails() {
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
   scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
   scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
+  scenario.turningPointEventsConfigured = true;
 
   writeEditorAutosave();
   closeScenarioDetails();
@@ -5782,6 +5875,7 @@ document.getElementById('sd-add-event-btn').addEventListener('click', () => open
 document.getElementById('he-add-conflict-btn').addEventListener('click', addHistoricalEventConflict);
 document.getElementById('he-cancel-btn').addEventListener('click', closeHistoricalEventDialog);
 document.getElementById('he-save-btn').addEventListener('click', saveHistoricalEventDialog);
+document.getElementById('he-type').addEventListener('change', updateHistoricalEventTypeFields);
 document.getElementById('historical-event-overlay').addEventListener('mousedown', (event) => {
   if (event.target === event.currentTarget) closeHistoricalEventDialog();
 });

@@ -1,4 +1,4 @@
-import type { ScenarioHistoricalEvent } from '../types/scenario';
+import type { ScenarioHistoricalEvent, ScenarioWorldWarHistoricalEvent } from '../types/scenario';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { AllianceManager } from './diplomacy/AllianceManager';
 import {
@@ -29,12 +29,12 @@ export interface ScenarioHistoricalEventRuntimeState {
 }
 
 export interface WorldWarStartedEvent {
-  definition: ScenarioHistoricalEvent;
+  definition: ScenarioWorldWarHistoricalEvent;
   state: ScenarioHistoricalEventRuntimeState;
 }
 
 export interface WorldWarCompletedEvent {
-  definition: ScenarioHistoricalEvent;
+  definition: ScenarioWorldWarHistoricalEvent;
   state: ScenarioHistoricalEventRuntimeState;
   completionReason: WorldWarCompletionReason;
   timelineRestored: boolean;
@@ -57,7 +57,7 @@ export interface ScenarioHistoricalEventSystemOptions {
 }
 
 interface PendingEvent {
-  event: ScenarioHistoricalEvent;
+  event: ScenarioWorldWarHistoricalEvent;
   date: GameDate;
   scenarioIndex: number;
 }
@@ -81,7 +81,9 @@ export class ScenarioHistoricalEventSystem {
     private readonly allianceManager: AllianceManager,
     options: ScenarioHistoricalEventSystemOptions = {},
   ) {
-    this.events = (events ?? []).map((event, scenarioIndex) => ({
+    this.events = (events ?? []).filter(
+      (event): event is ScenarioWorldWarHistoricalEvent => event.type === 'worldWar',
+    ).map((event, scenarioIndex) => ({
       event,
       date: createGameDate(event.startYear, event.startYearIsBC ?? false, event.startMonth - 1),
       scenarioIndex,
@@ -116,7 +118,7 @@ export class ScenarioHistoricalEventSystem {
     return [...this.states.values()].some((state) => state.status === 'active');
   }
 
-  getActiveWorldWars(): ScenarioHistoricalEvent[] {
+  getActiveWorldWars(): ScenarioWorldWarHistoricalEvent[] {
     return this.events
       .filter(({ event }) => this.states.get(event.id)?.status === 'active')
       .map(({ event }) => event);
@@ -218,7 +220,7 @@ export class ScenarioHistoricalEventSystem {
 
     const completedDate = this.turnManager.getGameDateForRound(round);
     const completionEvents: Array<{
-      definition: ScenarioHistoricalEvent;
+      definition: ScenarioWorldWarHistoricalEvent;
       state: ScenarioHistoricalEventRuntimeState;
       completionReason: WorldWarCompletionReason;
     }> = [];

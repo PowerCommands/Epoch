@@ -11,7 +11,16 @@ import {
   type CityCombatResult,
 } from './CombatResolver';
 import { captureCity } from './CityCombat';
-import { CITY_BASE_DEFENSE } from '../data/cities';
+import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
+
+/**
+ * Fraction of a city's maximum defensive health at/below which an original capital
+ * is considered to have collapsed. An attack that pushes the original capital from
+ * above this line to below it makes the defender militarily defeated and triggers
+ * capitulation to the responsible attacker — no capture required.
+ */
+export const ORIGINAL_CAPITAL_COLLAPSE_FRACTION = 0.1;
+export const ORIGINAL_CAPITAL_COLLAPSE_HEALTH = CITY_BASE_HEALTH * ORIGINAL_CAPITAL_COLLAPSE_FRACTION;
 import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import {
   getCityIntegrationProgress,
@@ -110,6 +119,8 @@ export class CombatSystem {
   // how long the city was under sustained pressure. Never read by gameplay.
   private readonly siegeTracker = new Map<string, { firstRound: number; lastRound: number; attacks: number }>();
   private capitalCaptureResolver: CapitalCaptureResolver | null = null;
+  private subjugationResolver: CapitalCaptureResolver | null = null;
+  private originalCapitalCollapseResolver: CapitalCaptureResolver | null = null;
 
   constructor(
     unitManager: UnitManager,
@@ -143,6 +154,27 @@ export class CombatSystem {
 
   setCapitalCaptureResolver(resolver: CapitalCaptureResolver): void {
     this.capitalCaptureResolver = resolver;
+  }
+
+  /**
+   * Last-city safeguard: invoked when a capture leaves the defeated nation with no
+   * cities and the residence-capital path did not already resolve a vassalization.
+   * Mirrors {@link setCapitalCaptureResolver} so a nation whose capital was lost in
+   * an earlier war (and therefore carries no residence-capital flag) is still routed
+   * through the vassal system before outright collapse.
+   */
+  setSubjugationResolver(resolver: CapitalCaptureResolver): void {
+    this.subjugationResolver = resolver;
+  }
+
+  /**
+   * Original-capital collapse: invoked when an attack pushes a nation's own original
+   * capital from at-or-above {@link ORIGINAL_CAPITAL_COLLAPSE_HEALTH} to below it.
+   * The defender capitulates to the attacker responsible for that crossing hit — no
+   * capture required. Returns true when capitulation was actually applied.
+   */
+  setOriginalCapitalCollapseResolver(resolver: CapitalCaptureResolver): void {
+    this.originalCapitalCollapseResolver = resolver;
   }
 
   on(callback: CombatListener): void {
@@ -375,10 +407,30 @@ export class CombatSystem {
       this.unitManager.removeUnit(attacker.id);
     }
 
+    // Original-capital collapse capitulation: an attack that pushes a nation's own
+    // original capital from at-or-above the defensive collapse threshold to below it
+    // makes the defender militarily defeated, and it capitulates to the attacker
+    // responsible for that crossing hit — no capture required. Attribution keys on
+    // the crossing (was >= threshold, now < threshold) so credit is unambiguous in a
+    // coalition war, and a capital already below the line never re-triggers.
+    let capitulationResolved = false;
+    if (city.isOriginalCapital
+      && city.ownerId === city.originNationId
+      && this.originalCapitalCollapseResolver
+      && preAttack.cityHealth >= ORIGINAL_CAPITAL_COLLAPSE_HEALTH
+      && city.health < ORIGINAL_CAPITAL_COLLAPSE_HEALTH) {
+      capitulationResolved = this.originalCapitalCollapseResolver(city, city.ownerId, attacker.ownerId);
+      // The capital collapsed defensively but was not razed: keep it standing as the
+      // new vassal's city rather than leaving an uncaptured 0-HP city behind.
+      if (capitulationResolved) city.health = Math.max(city.health, 1);
+    }
+
     let captured = false;
     let previousOwnerId: string | undefined;
     let capitalVassalizationResolved = false;
-    if (!isRanged && result.cityFell && !result.attackerDied) {
+    // A resolved capitulation ends the war and vassalizes the defender, so this same
+    // attack must not go on to capture the city or collapse the nation.
+    if (!isRanged && result.cityFell && !result.attackerDied && !capitulationResolved) {
       previousOwnerId = city.ownerId;
       captureCity(
         city,
@@ -393,6 +445,15 @@ export class CombatSystem {
       captured = true;
       if (city.isResidenceCapital && this.capitalCaptureResolver) {
         capitalVassalizationResolved = this.capitalCaptureResolver(city, previousOwnerId, attacker.ownerId);
+      }
+      // Final-city safeguard: if this capture wiped out the defeated nation's last
+      // city and the residence-capital path did not fire (e.g. the capital was lost
+      // in a prior war, so no city carried the flag), still try to vassalize before
+      // collapse. The resolver restores this city to the defeated nation.
+      if (!capitalVassalizationResolved
+        && this.subjugationResolver
+        && this.cityManager.getCitiesByOwner(previousOwnerId).length === 0) {
+        capitalVassalizationResolved = this.subjugationResolver(city, previousOwnerId, attacker.ownerId);
       }
       if (!capitalVassalizationResolved) {
         this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);

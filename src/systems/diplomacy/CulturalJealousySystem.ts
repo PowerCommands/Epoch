@@ -1,11 +1,12 @@
 import type { NationManager } from '../NationManager';
 import type { DiplomacyManager } from '../DiplomacyManager';
+import { LEGACY_TURNING_POINT_TRIGGER_YEARS } from '../scenarioTurningPoints';
 
 /**
  * Cultural Jealousy — a small geopolitical agenda layered onto the existing
  * diplomacy systems (relations, tariffs, Gossip/Insults, war).
  *
- * From calendar year 1500 onward the two culturally weakest living AI nations
+ * From its scenario-configured year onward the two culturally weakest living AI nations
  * grow jealous of the culturally strongest nation. Their mutual relationship
  * warms (shared-rival cooperation) while their relationship toward the leader
  * sours. The agenda never scripts a war: it only feeds increasingly hostile
@@ -37,7 +38,8 @@ import type { DiplomacyManager } from '../DiplomacyManager';
  * target on `Nation.culturalJealousyTargetId`, and the consumed flag plus the
  * influence ledger persist on the turning point itself — all survive save/load.
  */
-export const CULTURAL_JEALOUSY_ACTIVATION_YEAR = 1500;
+/** Legacy default used only when a scenario predates explicit Turning Point entries. */
+export const CULTURAL_JEALOUSY_ACTIVATION_YEAR = LEGACY_TURNING_POINT_TRIGGER_YEARS.culturalJealousy;
 
 /** One pair's net CJ-applied memory delta, so it can be removed later. */
 export interface SavedCulturalJealousyInfluenceEntry {
@@ -139,6 +141,8 @@ export interface CulturalJealousyContext {
   readonly nationManager: NationManager;
   readonly diplomacyManager: DiplomacyManager;
   readonly getGlobalYear: () => number;
+  /** Null disables this Turning Point; omitted retains the legacy default for direct callers. */
+  readonly triggerYear?: number | null;
   readonly isNationLiving: (nationId: string) => boolean;
   readonly getCultureScore: (nationId: string) => number;
   readonly getNationName: (nationId: string) => string;
@@ -160,7 +164,10 @@ export class CulturalJealousySystem {
    * yet fired) selects a fresh jealous pair.
    */
   handleRoundStart(_round?: number): void {
-    if (this.context.getGlobalYear() < CULTURAL_JEALOUSY_ACTIVATION_YEAR) return;
+    const triggerYear = this.context.triggerYear === undefined
+      ? CULTURAL_JEALOUSY_ACTIVATION_YEAR
+      : this.context.triggerYear;
+    if (triggerYear === null || this.context.getGlobalYear() < triggerYear) return;
 
     this.terminateFinishedAgendas();
     const activeJealousIds = this.getActiveJealousNationIds();

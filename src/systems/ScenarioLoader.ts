@@ -30,7 +30,7 @@ export interface ParsedScenario {
   worldMarkers: WorldMarker[];
   /** Pre-configured diplomacy pairs, applied by the game when starting fresh. */
   initialDiplomacy: ScenarioInitialDiplomacyEntry[];
-  /** Authored definitions only; runtime triggering is intentionally not implemented. */
+  /** Authored definitions; each runtime system consumes its supported event type. */
   historicalEvents: ScenarioHistoricalEvent[];
 }
 

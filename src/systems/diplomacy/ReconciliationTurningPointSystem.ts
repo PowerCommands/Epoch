@@ -1,8 +1,9 @@
 import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
 import type { NationManager } from '../NationManager';
+import { LEGACY_TURNING_POINT_TRIGGER_YEARS } from '../scenarioTurningPoints';
 
-/** First calendar year in which Reconciliation may be attempted. */
-export const RECONCILIATION_TRIGGER_YEAR = 1800;
+/** Legacy default used only when a scenario predates explicit Turning Point entries. */
+export const RECONCILIATION_TRIGGER_YEAR = LEGACY_TURNING_POINT_TRIGGER_YEARS.reconciliation;
 /** Failed attempts are retried on this exact round cadence. */
 export const RECONCILIATION_RETRY_ROUNDS = 10;
 
@@ -10,7 +11,7 @@ const POOR_RELATION_SCORE_THRESHOLD = 50;
 
 export interface SavedReconciliationTurningPointState {
   occurred: boolean;
-  /** Null until 1800 is reached, and after the event has occurred. */
+  /** Null until the configured trigger year is reached, and after the event has occurred. */
   nextAttemptRound: number | null;
 }
 
@@ -18,6 +19,8 @@ export interface ReconciliationTurningPointContext {
   readonly nationManager: NationManager;
   readonly diplomacyManager: DiplomacyManager;
   readonly getGlobalYear: () => number;
+  /** Null disables this Turning Point; omitted retains the legacy default for direct callers. */
+  readonly triggerYear?: number | null;
   readonly getCurrentRound: () => number;
   readonly isNationLiving: (nationId: string) => boolean;
   /** True for either a jealous nation or the target of an active agenda. */
@@ -38,7 +41,10 @@ export class ReconciliationTurningPointSystem {
   constructor(private readonly context: ReconciliationTurningPointContext) {}
 
   handleRoundStart(round = this.context.getCurrentRound()): void {
-    if (this.occurred || this.context.getGlobalYear() < RECONCILIATION_TRIGGER_YEAR) return;
+    const triggerYear = this.context.triggerYear === undefined
+      ? RECONCILIATION_TRIGGER_YEAR
+      : this.context.triggerYear;
+    if (this.occurred || triggerYear === null || this.context.getGlobalYear() < triggerYear) return;
     if (this.nextAttemptRound !== null && round < this.nextAttemptRound) return;
 
     const pair = this.findCandidatePair();

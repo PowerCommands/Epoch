@@ -1,9 +1,10 @@
 import type { DiplomacyManager } from '../DiplomacyManager';
 import type { NationManager } from '../NationManager';
 import { SeededRandom } from '../procedural/SeededRandom';
+import { LEGACY_TURNING_POINT_TRIGGER_YEARS } from '../scenarioTurningPoints';
 
-/** First calendar year in which Lucky Loser may be resolved. */
-export const LUCKY_LOSER_TRIGGER_YEAR = 1500;
+/** Legacy default used only when a scenario predates explicit Turning Point entries. */
+export const LUCKY_LOSER_TRIGGER_YEAR = LEGACY_TURNING_POINT_TRIGGER_YEARS.luckyLoser;
 /** Exact turn interval between failed candidate checks. */
 export const LUCKY_LOSER_RETRY_TURNS = 100;
 /** One-time treasury injection. It never purchases independence automatically. */
@@ -29,6 +30,8 @@ export interface LuckyLoserTurningPointContext {
   readonly nationManager: NationManager;
   readonly diplomacyManager: DiplomacyManager;
   readonly getGlobalYear: () => number;
+  /** Null disables this Turning Point; omitted retains the legacy default for direct callers. */
+  readonly triggerYear?: number | null;
   readonly getCurrentTurn: () => number;
   readonly randomSeed: string;
   readonly getGold: (nationId: string) => number;
@@ -55,7 +58,10 @@ export class LuckyLoserTurningPointSystem {
     if (this.occurred) return;
 
     if (!this.activationReached) {
-      if (this.context.getGlobalYear() < LUCKY_LOSER_TRIGGER_YEAR) return;
+      const triggerYear = this.context.triggerYear === undefined
+        ? LUCKY_LOSER_TRIGGER_YEAR
+        : this.context.triggerYear;
+      if (triggerYear === null || this.context.getGlobalYear() < triggerYear) return;
       this.activationReached = true;
     }
 

@@ -3,7 +3,7 @@ import type { DiplomacyManager } from '../DiplomacyManager';
 /** Single authoritative signal for the initial AI succession rule. */
 export const STRONG_ANTAGONIST_HOSTILITY_THRESHOLD = 70;
 
-export type MilitaryVassalizationReason = 'capitulation' | 'capitalCapture';
+export type MilitaryVassalizationReason = 'capitulation' | 'capitalCapture' | 'subjugation';
 
 export interface MilitaryVassalizationInput {
   readonly victorNationId: string;

@@ -2,6 +2,7 @@ import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
 import type { NationManager } from '../NationManager';
 import type { GameDate } from '../GameDate';
 import { compareGameDates, createGameDate, formatGameDate } from '../GameDate';
+import { LEGACY_TURNING_POINT_TRIGGER_YEARS } from '../scenarioTurningPoints';
 
 /**
  * Unlucky Winner — a one-time historical turning point that pushes the
@@ -9,7 +10,7 @@ import { compareGameDates, createGameDate, formatGameDate } from '../GameDate';
  * military/diplomatic/economic turbulence around a cultural runaway without ever
  * applying a direct cultural penalty.
  *
- * It fires once, in July 1914. At that moment it picks the culturally strongest
+ * It fires once, in July of its scenario-configured year. At that moment it picks the culturally strongest
  * living AI nation as the "unlucky winner" (never the human) and, walking the
  * Cultural Victory ranking from weakest upward, the first other living nation not
  * already at war with it (the human may be that target). It then temporarily
@@ -26,7 +27,8 @@ import { compareGameDates, createGameDate, formatGameDate } from '../GameDate';
  * If the attacker is already at war with every valid nation, the event is NOT
  * consumed — it retries on a short cadence until a valid new target exists.
  */
-export const UNLUCKY_WINNER_TRIGGER_YEAR = 1914;
+/** Legacy default used only when a scenario predates explicit Turning Point entries. */
+export const UNLUCKY_WINNER_TRIGGER_YEAR = LEGACY_TURNING_POINT_TRIGGER_YEARS.unluckyWinner;
 /** 0-based month index — July. */
 export const UNLUCKY_WINNER_TRIGGER_MONTH_INDEX = 6;
 /** Short retry cadence used only while no valid new-war target exists. */
@@ -111,6 +113,8 @@ export interface UnluckyWinnerTurningPointContext {
   readonly nationManager: NationManager;
   readonly diplomacyManager: DiplomacyManager;
   readonly getGameDate: () => GameDate;
+  /** Null disables this Turning Point; omitted retains the legacy default for direct callers. */
+  readonly triggerYear?: number | null;
   readonly getCurrentTurn: () => number;
   /** Authoritative Cultural Victory ranking, strongest → weakest. */
   readonly getCulturalRanking: () => readonly CulturalRankEntry[];
@@ -122,7 +126,7 @@ export interface UnluckyWinnerTurningPointContext {
 
 /**
  * One-shot Turning Point lifecycle:
- * `not triggered → (July 1914) search/retry → arm attacker→target → AI declares
+ * `not triggered → (configured July) search/retry → arm attacker→target → AI declares
  * war → remove temporary influence → completed (never re-fires)`.
  */
 export class UnluckyWinnerTurningPointSystem {
@@ -230,7 +234,11 @@ export class UnluckyWinnerTurningPointSystem {
   }
 
   private hasReachedTriggerDate(): boolean {
-    const target = createGameDate(UNLUCKY_WINNER_TRIGGER_YEAR, false, UNLUCKY_WINNER_TRIGGER_MONTH_INDEX);
+    const triggerYear = this.context.triggerYear === undefined
+      ? UNLUCKY_WINNER_TRIGGER_YEAR
+      : this.context.triggerYear;
+    if (triggerYear === null) return false;
+    const target = createGameDate(triggerYear, false, UNLUCKY_WINNER_TRIGGER_MONTH_INDEX);
     return compareGameDates(this.context.getGameDate(), target) >= 0;
   }
 

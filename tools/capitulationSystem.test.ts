@@ -334,3 +334,25 @@ test('the production system refuses to queue military units for a blocked nation
   ps.setProduction('c2', warrior); // a free nation still builds military
   assert.equal((ps.getProduction('c2')?.item as { unitType: { id: string } }).unitType.id, 'warrior');
 });
+
+// --- Forced capitulation (Fix 2B: original-capital collapse) ----------------
+
+test('force bypasses the willingness gate and vassalizes the target to the demander', () => {
+  // A balanced war never accepts a normal capitulation demand (pressure < 0.42)...
+  const h = harness({ ...balanced, cities: [city('t1', 'target')], activeNations: ['target', 'atk'] });
+  assert.equal(h.system.evaluateCapitulationDemand('atk', 'target').accepted, false);
+
+  // ...but a forced capitulation (the original capital crossing below its collapse
+  // threshold) still applies, making the target a vassal of the demander.
+  const forced = h.system.applyCapitulation('atk', 'target', 0, false, true);
+  assert.equal(forced.accepted, true);
+  assert.equal(h.vassalHosts.get('target'), 'atk');
+});
+
+test('force still refuses when the demander is not at war with the target', () => {
+  // No war declared: the war/hierarchy integrity checks are not bypassed by force.
+  const h = harness({ cities: [city('t1', 'target')], activeNations: ['target', 'atk'] });
+  const forced = h.system.applyCapitulation('atk', 'target', 0, false, true);
+  assert.equal(forced.accepted, false);
+  assert.equal(h.vassalHosts.get('target'), undefined);
+});

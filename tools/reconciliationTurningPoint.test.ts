@@ -11,7 +11,7 @@ import {
   type SavedReconciliationTurningPointState,
 } from '../src/systems/diplomacy/ReconciliationTurningPointSystem.ts';
 
-function makeHarness(options: { humanIds?: string[]; year?: number } = {}) {
+function makeHarness(options: { humanIds?: string[]; year?: number; triggerYear?: number | null } = {}) {
   const nations = new NationManager();
   for (const id of ['england', 'france', 'sweden', 'spain']) {
     nations.addNation(new Nation({
@@ -32,6 +32,7 @@ function makeHarness(options: { humanIds?: string[]; year?: number } = {}) {
     nationManager: nations,
     diplomacyManager: diplomacy,
     getGlobalYear: () => year,
+    triggerYear: options.triggerYear,
     getCurrentRound: () => round,
     isNationLiving: (id) => living.has(id),
     isCulturalJealousyParticipant: (id) => jealousyParticipants.has(id),
@@ -73,6 +74,21 @@ test('Reconciliation first becomes eligible from calendar year 1800', () => {
   h.system.handleRoundStart(101);
   assert.equal(h.system.serialize().occurred, true);
   assert.deepEqual(h.history, [['england', 'france']]);
+});
+
+test('scenario trigger year replaces the legacy gate and null disables Reconciliation', () => {
+  const configured = makeHarness({ year: 1899, triggerYear: 1900 });
+  configured.damage('england', 'france');
+  configured.system.handleRoundStart(100);
+  assert.equal(configured.system.serialize().occurred, false);
+  configured.setYear(1900);
+  configured.system.handleRoundStart(101);
+  assert.equal(configured.system.serialize().occurred, true);
+
+  const disabled = makeHarness({ year: 3000, triggerYear: null });
+  disabled.damage('england', 'france');
+  disabled.system.handleRoundStart(100);
+  assert.equal(disabled.system.serialize().occurred, false);
 });
 
 test('deterministically selects the first valid AI pair and logs names and transformation', () => {
