@@ -1,6 +1,7 @@
 export type DiplomaticProposalKind =
   | 'open_borders'
   | 'embassy'
+  | 'trade_relations'
   | 'resource_trade'
   | 'gold_trade'
   | 'exploitation_rights'
@@ -27,6 +28,15 @@ export interface DiplomaticOpenBordersPayload {
 
 export interface DiplomaticEmbassyPayload {
   readonly kind: 'embassy';
+}
+
+/**
+ * fromNation offers to open mutual Trade Relations with toNation. Trade Relations
+ * are a symmetric diplomatic status (not a specific resource deal); accepting
+ * establishes them for both nations.
+ */
+export interface DiplomaticTradeRelationsPayload {
+  readonly kind: 'trade_relations';
 }
 
 export interface DiplomaticPeacePayload {
@@ -77,6 +87,7 @@ export interface DiplomaticExploitationRightsPayload {
 export type DiplomaticProposalPayload =
   | DiplomaticOpenBordersPayload
   | DiplomaticEmbassyPayload
+  | DiplomaticTradeRelationsPayload
   | DiplomaticPeacePayload
   | DiplomaticResourceTradePayload
   | DiplomaticGoldTradePayload

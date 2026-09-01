@@ -203,6 +203,8 @@ export class ProposalDialog {
         return `${fromName} proposes Open Borders.`;
       case 'embassy':
         return `${fromName} proposes to establish an Embassy.`;
+      case 'trade_relations':
+        return `${fromName} proposes to open Trade Relations.`;
       case 'peace':
         return `${fromName} sues for peace.`;
       case 'resource_trade': {

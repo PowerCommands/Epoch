@@ -1962,6 +1962,11 @@ export class GameScene extends Phaser.Scene {
           if (accepted) diplomaticProposalSystem.acceptProposal(proposal.id);
           else diplomaticProposalSystem.rejectProposal(proposal.id);
           logAutoplayPeaceResolution(peaceProposal, accepted);
+        } else if (proposal.payload.kind === 'trade_relations' || proposal.payload.kind === 'embassy') {
+          // No human is answering in autoplay; auto-accept so the human-seat nation
+          // still forms Trade Relations / Embassies exactly as it did before these
+          // became proposals.
+          diplomaticProposalSystem.acceptProposal(proposal.id);
         }
         return;
       }
@@ -1983,6 +1988,10 @@ export class GameScene extends Phaser.Scene {
         }
         case 'embassy': {
           diplomacyManager.establishEmbassy(fromId, toId);
+          break;
+        }
+        case 'trade_relations': {
+          diplomacyManager.establishTradeRelations(fromId, toId);
           break;
         }
         case 'peace': {
@@ -6600,12 +6609,22 @@ export class GameScene extends Phaser.Scene {
             category: 'diplomacy',
             message: `${leaderName} agrees to exchange maps.`,
           });
+          showLeaderResponsePopup(targetNationId, `${leaderName} agrees`, [
+            `"A fair exchange. Let our cartographers share what they know."`,
+            `${leaderName} shares their world map with you.`,
+          ]);
         } else {
+          // Mirror the accept/decline test above: refusal is either because the
+          // two nations are at war, or because the leader is too hostile to share.
+          const reason = atWar
+            ? `"We are at war. I will not hand our maps to an enemy."`
+            : `"I do not trust you enough to share our maps."`;
           logManager.info({
             nationIds: [humanNationIdForDiplomacy, targetNationId],
             category: 'diplomacy',
             message: `${leaderName} refuses to exchange maps.`,
           });
+          showLeaderResponsePopup(targetNationId, `${leaderName} refuses`, [reason]);
         }
         hudLayer?.refresh();
         rightPanel?.refreshCurrent();
@@ -10776,10 +10795,11 @@ function exploitationGrantNewsImportance(context: ExploitationGrantContext | und
   }
 }
 
-function formatProposalKind(kind: 'open_borders' | 'embassy' | 'resource_trade' | 'gold_trade' | 'exploitation_rights' | 'peace'): string {
+function formatProposalKind(kind: 'open_borders' | 'embassy' | 'trade_relations' | 'resource_trade' | 'gold_trade' | 'exploitation_rights' | 'peace'): string {
   switch (kind) {
     case 'open_borders': return 'Open Borders proposal';
     case 'embassy': return 'Embassy proposal';
+    case 'trade_relations': return 'Trade Relations proposal';
     case 'resource_trade': return 'resource trade';
     case 'gold_trade': return 'gold transfer';
     case 'exploitation_rights': return 'resource exploitation rights request';

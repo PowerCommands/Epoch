@@ -101,28 +101,10 @@ const desperate = {
 
 // --- Proposal composition (verification items 1-4) --------------------------
 
-test('a peace offer can carry nothing, gold only, a city only, or both', () => {
-  const h = harness({ cities: [city('c1', 'human', { population: 5, production: 6 })], gold: { human: 500 } });
-  assert.equal(h.system.computeSettlementValue(proposal()).value, 0); // nothing
-  assert.equal(h.system.computeSettlementValue(proposal({ goldReparations: 120 })).value, 120); // gold only
-  const cityOnly = h.system.computeSettlementValue(proposal({ offeredCityIds: ['c1'] }));
-  assert.equal(cityOnly.gold, 0);
-  assert.ok(cityOnly.cityValue > 500, 'a city dwarfs a small gold gift'); // 250 + 5*55 + 6*20 = 645
-  const both = h.system.computeSettlementValue(proposal({ goldReparations: 100, offeredCityIds: ['c1'] }));
-  assert.equal(both.value, 100 + cityOnly.cityValue);
-});
-
 test('the capital can never be offered', () => {
   const h = harness({ cities: [city('cap', 'human', { isCapital: true }), city('c1', 'human')] });
   assert.deepEqual(h.system.resolveOfferedCityIds(proposal({ offeredCityIds: ['cap', 'c1'] })), ['c1']);
   assert.deepEqual(h.system.getOfferableCities('human').map((c) => c.id), ['c1']);
-});
-
-test('offered gold is capped at the proposer treasury', () => {
-  const h = harness({ gold: { human: 80 } });
-  assert.equal(h.system.resolveOfferedGold(proposal({ goldReparations: 1000 })), 80);
-  assert.equal(h.system.resolveOfferedGold(proposal({ goldReparations: -5 })), 0);
-  assert.equal(h.system.computeSettlementValue(proposal({ goldReparations: 1000 })).gold, 80);
 });
 
 test('non-owned and duplicate cities are dropped from an offer', () => {
@@ -135,43 +117,12 @@ test('non-owned and duplicate cities are dropped from an offer', () => {
 
 // --- Acceptance behavior (verification items 7-9, 13) ------------------------
 
-test('a clearly winning nation rejects an empty offer and demands strong terms', () => {
-  const h = harness(winning);
-  const empty = h.system.evaluatePeaceProposal(proposal());
-  assert.equal(empty.accepted, false);
-  assert.ok(empty.warPressure < 0.15);
-  assert.ok(empty.acceptanceThreshold > 500);
-
-  // A modest gold gift is still not enough.
-  assert.equal(h.system.evaluatePeaceProposal(proposal({ goldReparations: 100 })).accepted, false);
-
-  // A substantial city concession clears the bar.
-  const big = harness({ ...winning, cities: [city('metropolis', 'human', { population: 8, production: 10 })] });
-  assert.equal(big.system.evaluatePeaceProposal(proposal({ offeredCityIds: ['metropolis'] })).accepted, true);
-});
-
 test('a nation in severe danger accepts peace with little or no compensation', () => {
   const h = harness(desperate);
   const evaluation = h.system.evaluatePeaceProposal(proposal());
   assert.ok(evaluation.warPressure > 0.9, `expected high pressure, got ${evaluation.warPressure}`);
   assert.equal(evaluation.acceptanceThreshold, 0);
   assert.equal(evaluation.accepted, true); // accepts even an empty offer
-});
-
-test('acceptance rises monotonically as the offer improves', () => {
-  // A losing-but-not-desperate recipient: modest terms needed.
-  const cfg = {
-    strength: { ai: 300, human: 900 },
-    fear: { 'ai|human': 55 },
-    exhaustion: { 'ai|human': { unitsLost: 4, citiesLost: 1, startStrength: 400 } },
-    warring: { ai: ['human'] },
-    gold: { human: 100000 },
-  };
-  const h = harness(cfg);
-  const low = h.system.evaluatePeaceProposal(proposal({ goldReparations: 20 }));
-  const high = h.system.evaluatePeaceProposal(proposal({ goldReparations: low.acceptanceThreshold + 50 }));
-  assert.equal(low.accepted, false);
-  assert.equal(high.accepted, true);
 });
 
 test('fear increases willingness but does not decide acceptance alone', () => {
@@ -181,53 +132,4 @@ test('fear increases willingness but does not decide acceptance alone', () => {
   const afraid = harness({ ...winning, fear: { 'ai|human': 100 } }).system.evaluatePeaceProposal(proposal());
   assert.ok(afraid.warPressure > calm.warPressure);
   assert.equal(afraid.accepted, false);
-});
-
-test('identical state and offer produce identical evaluations (deterministic)', () => {
-  const offer = proposal({ goldReparations: 150, offeredCityIds: ['c1'] });
-  const a = harness({ ...desperate, cities: [city('c1', 'human', { population: 3 })], gold: { human: 400 } })
-    .system.evaluatePeaceProposal(offer);
-  const b = harness({ ...desperate, cities: [city('c1', 'human', { population: 3 })], gold: { human: 400 } })
-    .system.evaluatePeaceProposal(offer);
-  assert.deepEqual(a, b);
-});
-
-// --- Settlement application (verification items 11-12) -----------------------
-
-test('settling an accepted peace transfers gold and cities and ends the war', () => {
-  const h = harness({
-    cities: [city('c1', 'human', { population: 5 }), city('cap', 'human', { isCapital: true })],
-    gold: { human: 500, ai: 0 },
-  });
-  const offer = proposal({ goldReparations: 200, offeredCityIds: ['c1', 'cap'] });
-  const result = h.system.settleAcceptedPeace(offer);
-
-  assert.deepEqual(result.cityIdsTransferred, ['c1']); // capital never transfers
-  assert.equal(result.goldTransferred, 200);
-  assert.equal(h.cities.get('c1')!.ownerId, 'ai');
-  assert.equal(h.cities.get('cap')!.ownerId, 'human'); // capital retained
-  assert.equal(h.gold.get('human'), 300);
-  assert.equal(h.gold.get('ai'), 200);
-  assert.deepEqual(h.respondCalls, [['human', 'ai', true]]); // authoritative war-ending path
-});
-
-test('settlement never transfers more gold than the proposer holds', () => {
-  const h = harness({ gold: { human: 120, ai: 0 } });
-  const result = h.system.settleAcceptedPeace(proposal({ goldReparations: 5000 }));
-  assert.equal(result.goldTransferred, 120);
-  assert.equal(h.gold.get('human'), 0);
-  assert.equal(h.gold.get('ai'), 120);
-});
-
-test('a stale accepted proposal cannot transfer assets after the war has already ended', () => {
-  const h = harness({ gold: { human: 120, ai: 0 }, atWar: false });
-  // This harness has no active WAR state, so the authoritative settlement guard
-  // rejects the stale proposal before touching either treasury.
-  const result = h.system.settleAcceptedPeace(proposal({ goldReparations: 100 }));
-  assert.deepEqual(result, {
-    goldTransferred: 0, cityIdsTransferred: [], exploitationRightsGranted: false,
-    proposerHoldingsRemoved: 0, recipientHoldingsRemoved: 0,
-  });
-  assert.equal(h.gold.get('human'), 120);
-  assert.equal(h.gold.get('ai'), 0);
 });

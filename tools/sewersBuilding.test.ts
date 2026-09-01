@@ -145,7 +145,7 @@ test('save/load preserves constructed Sewers and its capacity effect', () => {
     unitManager: { getAllUnits: () => [] },
     productionSystem: original.production,
     policySystem: { getActivePolicyAssignments: () => [] },
-    diplomacyManager: { getAllStates: () => [], getPendingPeaceProposals: () => [] },
+    diplomacyManager: { getAllStates: () => [], getAllVassalRelationships: () => [], getPendingPeaceProposals: () => [] },
     discoverySystem: { getAllMetPairs: () => [] },
     turnManager: original.turnManager,
     gridSystem: new HexGridSystem(),

@@ -650,6 +650,10 @@ export class AISystem {
   private readonly navalSaturationLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
   private readonly lastTradeProposalTurnByNation = new Map<string, number>();
+  /** Per-AI cooldown so a rejected/expired Trade Relations offer to the human is not re-sent every turn. */
+  private readonly lastTradeRelationsProposalTurnByNation = new Map<string, number>();
+  /** Per-AI cooldown so a rejected/expired Embassy offer to the human is not re-sent every turn. */
+  private readonly lastEmbassyProposalTurnByNation = new Map<string, number>();
   private readonly longTermExpansionLoggedRound = new Map<string, number>();
   private readonly peacetimeSpreadLoggedRound = new Map<string, number>();
   private readonly offensiveOperationSystem = new OffensiveOperationSystem();
@@ -1343,6 +1347,10 @@ export class AISystem {
           const gate = evaluateEmbassyUnderSuspicion(relation.suspicion, relation.trust);
           if (!gate.allow) {
             if (gate.reason) console.debug(this.formatLog(nationId, `AI declined embassy with ${other.name}: ${gate.reason}.`));
+          } else if (other.isHuman) {
+            // Opening an embassy is a diplomatic act the human must consent to:
+            // send a proposal instead of establishing it unilaterally.
+            this.proposeEmbassyToHuman(nationId, other.id);
           } else if (dm.establishEmbassy(nationId, other.id)) {
             const suffix = gate.reason ? ` (${gate.reason})` : '';
             console.debug(this.formatLog(nationId, `AI established embassy with ${other.name}${suffix}`));
@@ -1362,6 +1370,10 @@ export class AISystem {
           const gate = evaluateTradeUnderSuspicion(effectiveSuspicion, relation.trust, weights.trade);
           if (!gate.allow) {
             if (gate.reason) console.debug(this.formatLog(nationId, `AI declined trade relations with ${other.name}: ${gate.reason}.`));
+          } else if (other.isHuman) {
+            // Trade Relations are a mutual diplomatic status, so the human must
+            // consent: send a proposal instead of opening them unilaterally.
+            this.proposeTradeRelationsToHuman(nationId, other.id);
           } else if (dm.establishTradeRelations(nationId, other.id)) {
             const suffix = gate.reason ? ` (${gate.reason})` : '';
             console.debug(this.formatLog(nationId, `AI established trade relations with ${other.name}${suffix}`));
@@ -1369,6 +1381,64 @@ export class AISystem {
         }
       }
     }
+  }
+
+  /**
+   * Offer mutual Trade Relations to the human as a proposal they answer, instead
+   * of opening them silently. Guarded so a single pending offer stands at a time
+   * and a rejected/expired offer is not re-sent for a cooldown window.
+   */
+  private proposeTradeRelationsToHuman(fromNationId: string, humanId: string): void {
+    if (!this.diplomaticProposalSystem) return;
+
+    const alreadyPending = this.diplomaticProposalSystem
+      .getPendingProposalsForNation(humanId)
+      .some((p) => p.fromNationId === fromNationId && p.payload.kind === 'trade_relations');
+    if (alreadyPending) return;
+
+    const currentRound = this.turnManager.getCurrentRound();
+    const lastOffer = this.lastTradeRelationsProposalTurnByNation.get(fromNationId) ?? -999;
+    if (currentRound - lastOffer < TRADE_PROPOSAL_CADENCE) return;
+
+    this.diplomaticProposalSystem.createProposal({
+      fromNationId,
+      toNationId: humanId,
+      kind: 'trade_relations',
+      payload: { kind: 'trade_relations' },
+      createdTurn: currentRound,
+      expiresTurn: currentRound + TRADE_PROPOSAL_EXPIRY_TURNS,
+    });
+    this.lastTradeRelationsProposalTurnByNation.set(fromNationId, currentRound);
+    console.debug(this.formatLog(fromNationId, 'AI proposed Trade Relations to human player.'));
+  }
+
+  /**
+   * Offer to open an Embassy in the human's territory as a proposal they answer,
+   * instead of establishing it silently. Guarded so a single pending offer stands
+   * at a time and a rejected/expired offer is not re-sent for a cooldown window.
+   */
+  private proposeEmbassyToHuman(fromNationId: string, humanId: string): void {
+    if (!this.diplomaticProposalSystem) return;
+
+    const alreadyPending = this.diplomaticProposalSystem
+      .getPendingProposalsForNation(humanId)
+      .some((p) => p.fromNationId === fromNationId && p.payload.kind === 'embassy');
+    if (alreadyPending) return;
+
+    const currentRound = this.turnManager.getCurrentRound();
+    const lastOffer = this.lastEmbassyProposalTurnByNation.get(fromNationId) ?? -999;
+    if (currentRound - lastOffer < TRADE_PROPOSAL_CADENCE) return;
+
+    this.diplomaticProposalSystem.createProposal({
+      fromNationId,
+      toNationId: humanId,
+      kind: 'embassy',
+      payload: { kind: 'embassy' },
+      createdTurn: currentRound,
+      expiresTurn: currentRound + TRADE_PROPOSAL_EXPIRY_TURNS,
+    });
+    this.lastEmbassyProposalTurnByNation.set(fromNationId, currentRound);
+    console.debug(this.formatLog(fromNationId, 'AI proposed an Embassy to human player.'));
   }
 
   // ─── Trade ───────────────────────────────────────────────────────────────────
