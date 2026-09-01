@@ -88,7 +88,7 @@ import { InvalidTileFeedbackRenderer } from '../renderers/InvalidTileFeedbackRen
 import { canUnitEnterTile, isWaterTile } from '../systems/UnitMovementRules';
 import { RangedPreviewRenderer } from '../systems/RangedPreviewRenderer';
 import { TurnOrderSystem } from '../systems/TurnOrderSystem';
-import { CombatSystem } from '../systems/CombatSystem';
+import { CombatSystem, resolveOriginalCapitalCollapsePercent } from '../systems/CombatSystem';
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
 import { BuildingPlacementSystem } from '../systems/BuildingPlacementSystem';
@@ -269,6 +269,7 @@ import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { CULTURE_TREE } from '../data/cultureTree';
+import { getPoliciesByRequiredCultureNodeId } from '../data/policies';
 import { getImprovementById } from '../data/improvements';
 import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
 import { ALL_UNIT_TYPES, WORK_BOAT, getUnitTypeById } from '../data/units';
@@ -280,6 +281,8 @@ import {
   getCorporationSpritePath,
   getCultureSpriteKey,
   getCultureSpritePath,
+  getPolicySpriteKey,
+  getPolicySpritePath,
   getTechnologySpriteKey,
   getTechnologySpritePath,
   getUnitSpriteKey,
@@ -818,6 +821,7 @@ export class GameScene extends Phaser.Scene {
       hasActiveWorldWar: () => scenarioHistoricalEventSystem.hasActiveWorldWar(),
       isActiveWarAggressor: (nationId) => diplomacyManager.isActiveWarAggressor(nationId),
       getLeaderGamesPreferences: (nationId) => getLeaderByNationId(nationId)?.gamesOfNationsPreferences,
+      getSportScoreBonus: (nationId, sportId) => policySystem.getGamesOfNationsSportScoreBonus(nationId, sportId),
       getWorldEra: () => getHighestEra(nationManager.getAllNations().map((nation) => eraSystem.getNationEra(nation.id))),
       seed: `${data.mapKey}|${[...data.activeNationIds].sort().join(',')}|games-of-nations-v1`,
       log: (message) => logManager.info({ category: 'games-of-nations', message }),
@@ -1290,6 +1294,7 @@ export class GameScene extends Phaser.Scene {
       },
       (nationId) => eraSystem.getNationEra(nationId),
       (nationId) => getGossipMilitaryPower(nationId),
+      (nationId) => policySystem.getPercentModifierTotal(nationId, 'gossipManipulationInfluenceCostPercent'),
     );
     const unitLifetimeSystem = new UnitLifetimeSystem(
       unitManager,
@@ -1703,6 +1708,11 @@ export class GameScene extends Phaser.Scene {
       });
     });
     const resourceAccessSystem = new ResourceAccessSystem(mapData, tradeDealSystem);
+    resourceAccessSystem.setForeignExploitationYieldPercentProvider((beneficiaryNationId, ownerNationId) => (
+      diplomacyManager.hasExploitationRights(beneficiaryNationId, ownerNationId)
+        ? policySystem.getPercentModifierTotal(beneficiaryNationId, 'foreignExploitationYieldPercent')
+        : 0
+    ));
     const resourceCitySearchSystem = new ResourceCitySearchSystem(mapData, cityManager, nationManager);
     getAvailableLuxuryResourceQuantities = (nationId) =>
       resourceAccessSystem.getAvailableLuxuryResourceQuantities(nationId);
@@ -1735,6 +1745,9 @@ export class GameScene extends Phaser.Scene {
       discoverySystem,
       (nationId, message) => logManager.info({ nationId, category: 'diplomacy', message }),
     );
+    resourceSystem.setWorldCouncilVoteActiveProvider(() => (
+      worldCouncilSystem.isVoteActive(turnManager.getCurrentRound())
+    ));
     aiMilitaryEvaluationSystem.setPeacekeepingDefensivePowerProvider((attackerNationId, defenderNationId, getMilitaryStrength) =>
       worldCouncilSystem.getPeacekeepingDefensivePowerAgainst(
         attackerNationId,
@@ -2263,7 +2276,15 @@ export class GameScene extends Phaser.Scene {
       imageKey: getCultureSpriteKey(cultureNode.id),
       imagePath: getCultureSpritePath(cultureNode.id),
       description: cultureNode.description,
-      unlockRows: cultureNode.unlocks.map((unlock) => buildCultureUnlockRow(unlock)),
+      unlockRows: [
+        ...cultureNode.unlocks.map((unlock) => buildCultureUnlockRow(unlock)),
+        ...getPoliciesByRequiredCultureNodeId(cultureNode.id).map((policy) => ({
+          label: `Policy: ${policy.name}`,
+          imageKey: getPolicySpriteKey(policy.id),
+          imagePath: getPolicySpritePath(policy.id),
+          fallbackLabel: getDiscoveryFallbackLabel(policy.name),
+        })),
+      ],
       leadsToRows: getCultureLeadsTo(cultureNode.id).map((nextNode) => ({
         label: nextNode.name,
         imageKey: getCultureSpriteKey(nextNode.id),
@@ -2786,6 +2807,11 @@ export class GameScene extends Phaser.Scene {
       if (isBarbarianNation(victorNationId) || !nationManager.getNation(victorNationId)) return false;
       return capitulationSystem.applyCapitulation(victorNationId, defeatedNationId, 0, false, true).accepted;
     });
+    // Scenario-authored collapse threshold (Editor → Scenario Details). Absent/invalid
+    // falls back to DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT; 0 disables the rule.
+    combatSystem.setOriginalCapitalCollapsePercent(
+      resolveOriginalCapitalCollapsePercent(scenarioJson.meta?.originalCapitalCollapsePercent),
+    );
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
       nationManager,
@@ -7141,6 +7167,9 @@ export class GameScene extends Phaser.Scene {
     });
     worldCouncilSystem.onChanged(() => {
       cityDefenseSystem.setWorldHeritageProtectionActive(worldCouncilSystem.hasWorldHeritageProtection());
+      for (const nation of nationManager.getAllNations()) {
+        resourceSystem.recalculateForNation(nation.id);
+      }
       if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();

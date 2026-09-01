@@ -118,6 +118,7 @@ function generateAttempt(
       timeProgression: { mode: 'auto' },
       barbarianSpawnInterval: 10,
       peaceTreatyCooldownTurns: 10,
+      originalCapitalCollapsePercent: 10,
     },
     map: {
       width,

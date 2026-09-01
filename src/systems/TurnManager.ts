@@ -15,6 +15,7 @@ import {
   formatGameDate,
   autoProgressedYears,
   autoProgressedMonthOrdinal,
+  metaToAstroQuarterlyTurnsStart,
   metaToAstroStart,
   addMonths,
   type GameDate,
@@ -153,18 +154,20 @@ export class TurnManager {
         case 'auto': {
           // Continue the Auto curve from the anchored World War end date. Advancing
           // by the difference of absolute Auto month ordinals keeps whatever regime
-          // applies — the dynamic yearly progression before 1900, or the fixed
-          // quarterly modern cadence once past 1900 (both endpoints lie past 1900
-          // after a 20th-century war, so this resumes at three months per turn).
+          // applies — the dynamic yearly progression before the scenario threshold,
+          // or the fixed quarterly cadence once past it.
           const astroStart = metaToAstroStart(this.scenarioMeta);
+          const quarterlyTurnsStartAstroYear = metaToAstroQuarterlyTurnsStart(this.scenarioMeta);
           const progressedMonths = autoProgressedMonthOrdinal(
             runtime.autoRoundAtAnchor + elapsedRounds,
             astroStart,
             this.yearProgressionMultiplier,
+            quarterlyTurnsStartAstroYear,
           ) - autoProgressedMonthOrdinal(
             runtime.autoRoundAtAnchor,
             astroStart,
             this.yearProgressionMultiplier,
+            quarterlyTurnsStartAstroYear,
           );
           return addMonths(runtime.anchorDate, progressedMonths);
         }

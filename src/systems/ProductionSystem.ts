@@ -619,7 +619,22 @@ export class ProductionSystem {
         };
       }
     }
-    return this.itemProductionCostProvider(cityId, item, baseCost);
+    const providedCost = this.itemProductionCostProvider(cityId, item, baseCost);
+    if (item.kind !== 'unit') return providedCost;
+
+    const ownerId = this.cityManager.getCity(cityId)?.ownerId;
+    const percent = ownerId
+      ? (this.policySystem?.getUnitProductionCostPercent(ownerId, item.unitType.id) ?? 0)
+      : 0;
+    if (percent === 0) return providedCost;
+
+    if (typeof providedCost === 'number') {
+      return applyPercent(providedCost, percent);
+    }
+    return {
+      ...providedCost,
+      cost: applyPercent(providedCost.cost, percent),
+    };
   }
 
   private isSettler(item: Producible): boolean {

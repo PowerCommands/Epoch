@@ -64,6 +64,16 @@ export type WorldCouncilResolutionExpiredListener = (
   resolution: WorldCouncilEnactedResolution,
   state: WorldCouncilState,
 ) => void;
+
+export function isWorldCouncilVoteActive(
+  state: Pick<WorldCouncilState, 'status' | 'nextRegularMeetingTurn' | 'meetings'> | null,
+  currentRound: number,
+): boolean {
+  if (!state || state.status !== 'active') return false;
+  if (state.nextRegularMeetingTurn === currentRound) return true;
+  const latestMeeting = state.meetings[state.meetings.length - 1];
+  return latestMeeting?.turn === currentRound && (latestMeeting.proposals?.length ?? 0) > 0;
+}
 export type WorldCouncilTradeResourceCategory = 'luxury' | 'strategic' | 'bonus' | 'manufactured' | 'unknown';
 
 const MINIMUM_COUNCIL_SCIENCE_PERCENT = 1;
@@ -289,6 +299,16 @@ export class WorldCouncilSystem {
 
   hasPendingHumanContribution(nationId: string): boolean {
     return this.state?.pendingContributionNegotiation?.awaitingHumanNationId === nationId;
+  }
+
+  /**
+   * Votes resolve during their scheduled Council round rather than through a
+   * second phase timer. Derive the active window from the existing meeting
+   * schedule and resolved meeting record so every nation turn in that round
+   * observes the same state.
+   */
+  isVoteActive(currentRound: number): boolean {
+    return isWorldCouncilVoteActive(this.state, currentRound);
   }
 
   submitHumanContribution(nationId: string, offer: WorldCouncilContributionOffer): boolean {

@@ -45,6 +45,7 @@ export class AIPolicySystem {
         .map((assignment) => assignment.policyId),
     );
     return this.policySystem.getUnlockedPolicies(nationId)
+      .filter((policy) => !policy.humanOnly)
       .filter((policy) => !activePolicyIds.has(policy.id))
       .filter((policy) => this.policySystem.canActivatePolicy(nationId, policy.id));
   }
@@ -101,6 +102,13 @@ function scoreModifier(modifier: PolicyModifier, isUnhappy: boolean): number {
       return Math.max(0, -modifier.value) * 10;
     case 'improvementBuildSpeedPercent':
       return modifier.value * 15;
+    case 'unitProductionCostPercent':
+    case 'gossipManipulationInfluenceCostPercent':
+    case 'foreignExploitationYieldPercent':
+    case 'activeWorldCouncilVoteInfluencePercent':
+    case 'foreignInsurgentEffectivenessPercent':
+    case 'gamesOfNationsSportScoreBonus':
+      return 0;
   }
 }
 

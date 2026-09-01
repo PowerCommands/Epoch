@@ -2,11 +2,19 @@ export type PolicyCategory =
   | 'economic'
   | 'military'
   | 'diplomatic'
+  | 'culture'
   | 'ideology';
 
 export type PolicySlotCategory =
   | PolicyCategory
   | 'wildcard';
+
+export type GamesOfNationsPolicySportId =
+  | import('./gamesOfNations').GamesOfNationsSportId
+  | 'archery'
+  | 'equestrian'
+  | 'cycling'
+  | 'gymnastics';
 
 export type PolicyModifier =
   | { readonly type: 'happinessFlat'; readonly value: number }
@@ -29,7 +37,21 @@ export type PolicyModifier =
   | { readonly type: 'cityDefenseFlat'; readonly value: number }
   | { readonly type: 'ownedTerritoryCombatFlat'; readonly value: number }
   | { readonly type: 'unitUpkeepPercent'; readonly value: number }
-  | { readonly type: 'improvementBuildSpeedPercent'; readonly value: number };
+  | { readonly type: 'improvementBuildSpeedPercent'; readonly value: number }
+  | {
+      readonly type: 'unitProductionCostPercent';
+      readonly unitTypeIds: readonly string[];
+      readonly value: number;
+    }
+  | { readonly type: 'gossipManipulationInfluenceCostPercent'; readonly value: number }
+  | { readonly type: 'foreignExploitationYieldPercent'; readonly value: number }
+  | { readonly type: 'activeWorldCouncilVoteInfluencePercent'; readonly value: number }
+  | { readonly type: 'foreignInsurgentEffectivenessPercent'; readonly value: number }
+  | {
+      readonly type: 'gamesOfNationsSportScoreBonus';
+      readonly sportId: GamesOfNationsPolicySportId;
+      readonly value: number;
+    };
 
 export interface PolicyDefinition {
   readonly id: string;
@@ -38,4 +60,6 @@ export interface PolicyDefinition {
   readonly requiredCultureNodeId: string;
   readonly description: string;
   readonly modifiers: readonly PolicyModifier[];
+  /** Policies whose effects and selection are intentionally reserved for the human player. */
+  readonly humanOnly?: boolean;
 }

@@ -4,6 +4,7 @@ export interface PolicySlotCounts {
   readonly economic: number;
   readonly military: number;
   readonly diplomatic: number;
+  readonly culture: number;
   readonly ideology: number;
   readonly wildcard: number;
 }

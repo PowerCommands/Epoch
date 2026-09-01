@@ -14,6 +14,8 @@ export const DEFAULT_SCENARIO_DESCRIPTION = '';
 export const DEFAULT_SCENARIO_AUTHOR = '';
 export const DEFAULT_SCENARIO_START_YEAR = 4000;
 export const DEFAULT_SCENARIO_START_YEAR_IS_BC = true;
+export const DEFAULT_QUARTERLY_TURNS_START_YEAR = 1900;
+export const DEFAULT_QUARTERLY_TURNS_START_YEAR_IS_BC = false;
 export const DEFAULT_SCENARIO_TIME_PROGRESSION_MODE: ScenarioTimeProgressionMode = 'auto';
 
 /** Scenario metadata with every Scenario Details field resolved to a value. */
@@ -23,6 +25,8 @@ export interface ResolvedScenarioMeta {
   author: string;
   startYear: number;
   startYearIsBC: boolean;
+  quarterlyTurnsStartYear: number;
+  quarterlyTurnsStartYearIsBC: boolean;
   timeProgression: ScenarioTimeProgression;
 }
 
@@ -31,6 +35,10 @@ export function resolveScenarioMeta(meta: ScenarioMeta | undefined): ResolvedSce
   const startYearRaw = typeof meta?.startYear === 'number' && meta.startYear > 0
     ? Math.floor(meta.startYear)
     : DEFAULT_SCENARIO_START_YEAR;
+  const quarterlyTurnsStartYear = typeof meta?.quarterlyTurnsStartYear === 'number'
+    && meta.quarterlyTurnsStartYear > 0
+    ? Math.floor(meta.quarterlyTurnsStartYear)
+    : DEFAULT_QUARTERLY_TURNS_START_YEAR;
 
   const mode: ScenarioTimeProgressionMode = meta?.timeProgression?.mode ?? DEFAULT_SCENARIO_TIME_PROGRESSION_MODE;
   const staticYearStep = typeof meta?.timeProgression?.staticYearStep === 'number' && meta.timeProgression.staticYearStep > 0
@@ -43,6 +51,9 @@ export function resolveScenarioMeta(meta: ScenarioMeta | undefined): ResolvedSce
     author: meta?.author ?? DEFAULT_SCENARIO_AUTHOR,
     startYear: startYearRaw,
     startYearIsBC: meta?.startYearIsBC ?? DEFAULT_SCENARIO_START_YEAR_IS_BC,
+    quarterlyTurnsStartYear,
+    quarterlyTurnsStartYearIsBC: meta?.quarterlyTurnsStartYearIsBC
+      ?? DEFAULT_QUARTERLY_TURNS_START_YEAR_IS_BC,
     timeProgression: { mode, staticYearStep },
   };
 }

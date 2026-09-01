@@ -126,6 +126,16 @@
       "era": "industrial"
     },
     {
+      "id": "natural_history",
+      "name": "Natural History",
+      "era": "industrial"
+    },
+    {
+      "id": "opera_ballet",
+      "name": "Opera and Ballet",
+      "era": "industrial"
+    },
+    {
       "id": "colonialism",
       "name": "Colonialism",
       "era": "industrial"

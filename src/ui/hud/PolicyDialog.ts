@@ -8,7 +8,8 @@ import { getPolicySpriteKey } from '../../utils/assetPaths';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
-const DEPTH = 220;
+// Above the normal HUD/sidebar/minimap layers, but below full-screen leader dialogs.
+const DEPTH = 2000;
 const OVERLAY_DEPTH = DEPTH;
 const PANEL_DEPTH = DEPTH + 1;
 const HEADER_DEPTH = DEPTH + 2;
@@ -18,15 +19,15 @@ const DRAG_GHOST_DEPTH = DEPTH + 40;
 const TOOLTIP_DEPTH = DEPTH + 50;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
-const POLICY_CATEGORIES: readonly PolicyCategory[] = ['military', 'economic', 'diplomatic', 'ideology'];
-const POLICY_SLOT_CATEGORIES: readonly PolicySlotCategory[] = ['military', 'economic', 'diplomatic', 'ideology', 'wildcard'];
+const POLICY_CATEGORIES: readonly PolicyCategory[] = ['military', 'economic', 'culture', 'diplomatic', 'ideology'];
+const POLICY_SLOT_CATEGORIES: readonly PolicySlotCategory[] = ['military', 'economic', 'culture', 'diplomatic', 'ideology', 'wildcard'];
 
-const PANEL_WIDTH_RATIO = 0.8;
-const PANEL_HEIGHT_RATIO = 0.8;
-const HEADER_HEIGHT = 56;
-const PANEL_PADDING = 18;
-const SECTION_GAP = 18;
-const RIGHT_PANEL_WIDTH = 360;
+const PANEL_WIDTH_RATIO = 0.95;
+const PANEL_HEIGHT_RATIO = 0.95;
+const HEADER_HEIGHT = 48;
+const PANEL_PADDING = 14;
+const SECTION_GAP = 14;
+const SLOT_AREA_WIDTH_RATIO = 0.68;
 
 const CARD_WIDTH = 168;
 const CARD_HEIGHT = 232;
@@ -37,9 +38,9 @@ const CARD_IMAGE_SIZE = 96;
 const CARD_DESCRIPTION_LINES = 2;
 
 const SLOT_CARD_WIDTH = 140;
-const SLOT_CARD_HEIGHT = 188;
+const SLOT_CARD_HEIGHT = 170;
 const SLOT_GAP = 12;
-const SLOT_GROUP_GAP = 16;
+const SLOT_GROUP_GAP = 12;
 
 const SCROLL_STEP = 60;
 const SCROLLBAR_WIDTH = 10;
@@ -94,6 +95,9 @@ interface DragState {
 
 export class PolicyDialog {
   private readonly addOwned: AddOwned;
+  private readonly owned = new Set<Phaser.GameObjects.GameObject>();
+  private readonly modalCamera: Phaser.Cameras.Scene2D.Camera;
+  private readonly onAddedToScene: (object: Phaser.GameObjects.GameObject) => void;
   private readonly wheelBlockerId = `policy-dialog-wheel-${Math.random().toString(36).slice(2)}`;
 
   private readonly overlay: Phaser.GameObjects.Rectangle;
@@ -142,38 +146,55 @@ export class PolicyDialog {
   private tooltipTimer: ReturnType<typeof setTimeout> | null = null;
   private tooltipPointer: Phaser.Input.Pointer | null = null;
 
-  private slotCounts: PolicySlotCounts = { economic: 0, military: 0, diplomatic: 0, ideology: 0, wildcard: 0 };
+  private slotCounts: PolicySlotCounts = { economic: 0, military: 0, diplomatic: 0, culture: 0, ideology: 0, wildcard: 0 };
   private activeAssignments: ActivePolicyAssignment[] = [];
   private unlockedPolicies: PolicyDefinition[] = [];
   private onPoliciesChanged: ((nationId: string) => void) | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
-    addOwned: AddOwned,
+    addOwnedToHud: AddOwned,
     private readonly worldInputGate: WorldInputGate,
     private readonly policySystem: PolicySystem,
     private readonly getNationId: () => string | undefined,
   ) {
-    this.addOwned = addOwned;
+    this.modalCamera = scene.cameras.add(0, 0, scene.scale.width, scene.scale.height);
+    this.modalCamera.setScroll(0, 0).setZoom(1).setVisible(false);
+    this.modalCamera.roundPixels = true;
+    this.modalCamera.ignore(scene.children.list);
+    this.onAddedToScene = (object) => {
+      if (this.owned.has(object)) {
+        object.cameraFilter &= ~this.modalCamera.id;
+      } else {
+        this.modalCamera.ignore(object);
+      }
+    };
+    scene.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.onAddedToScene);
+    this.addOwned = (object) => {
+      const owned = addOwnedToHud(object);
+      this.owned.add(owned);
+      owned.cameraFilter &= ~this.modalCamera.id;
+      return owned;
+    };
 
-    this.overlay = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x000000, 0.62))
+    this.overlay = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x000000, 0.62))
       .setOrigin(0, 0)
       .setDepth(OVERLAY_DEPTH)
       .setScrollFactor(0)
       .setInteractive()
       .setVisible(false);
-    this.panelBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x0c1620, 0.97))
+    this.panelBackground = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x0c1620, 0.97))
       .setOrigin(0, 0)
       .setDepth(PANEL_DEPTH)
       .setScrollFactor(0)
       .setInteractive()
       .setVisible(false);
-    this.headerBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, HEADER_HEIGHT, 0x182434, 1))
+    this.headerBackground = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, HEADER_HEIGHT, 0x182434, 1))
       .setOrigin(0, 0)
       .setDepth(HEADER_DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
-    this.headerTitle = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Policies', {
+    this.headerTitle = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Policies', {
       fontFamily: 'sans-serif',
       fontSize: '22px',
       color: '#f4f1e7',
@@ -184,14 +205,14 @@ export class PolicyDialog {
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
-    this.closeButton = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 32, 32, 0x331e1e, 1))
+    this.closeButton = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 32, 32, 0x331e1e, 1))
       .setOrigin(0, 0)
       .setDepth(HEADER_DEPTH + 1)
       .setScrollFactor(0)
       .setStrokeStyle(1, 0x9c4242, 0.9)
       .setInteractive({ useHandCursor: true })
       .setVisible(false);
-    this.closeText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'X', {
+    this.closeText = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'X', {
       fontFamily: 'sans-serif',
       fontSize: '16px',
       color: '#f4f1e7',
@@ -203,7 +224,7 @@ export class PolicyDialog {
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
 
-    this.leftHeading = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Available Policies', {
+    this.leftHeading = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Available Policies', {
       fontFamily: 'sans-serif',
       fontSize: '15px',
       color: '#9fc9aa',
@@ -214,7 +235,7 @@ export class PolicyDialog {
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
-    this.leftEmptyText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'No unlocked policies. Research civics to unlock policies.', {
+    this.leftEmptyText = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'No unlocked policies. Research civics to unlock policies.', {
       fontFamily: 'sans-serif',
       fontSize: '14px',
       color: '#b9c8bc',
@@ -225,7 +246,7 @@ export class PolicyDialog {
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
-    this.rightHeading = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Slots', {
+    this.rightHeading = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'Slots', {
       fontFamily: 'sans-serif',
       fontSize: '15px',
       color: '#9fc9aa',
@@ -238,7 +259,7 @@ export class PolicyDialog {
       .setVisible(false);
 
     for (const category of POLICY_SLOT_CATEGORIES) {
-      const heading = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, formatCategory(category), {
+      const heading = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, formatCategory(category), {
         fontFamily: 'sans-serif',
         fontSize: '14px',
         color: getCategoryHexColor(category),
@@ -257,24 +278,24 @@ export class PolicyDialog {
     this.rightMaskGraphics = new Phaser.GameObjects.Graphics(scene);
     this.rightMask = this.rightMaskGraphics.createGeometryMask();
 
-    this.scrollbarTrack = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 10, 0x16251b, 0.9))
+    this.scrollbarTrack = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 10, 0x16251b, 0.9))
       .setOrigin(0, 0)
       .setDepth(CONTENT_DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
-    this.scrollbarThumb = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 32, 0x9fc9aa, 0.95))
+    this.scrollbarThumb = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 32, 0x9fc9aa, 0.95))
       .setOrigin(0, 0)
       .setDepth(CONTENT_DEPTH + 1)
       .setScrollFactor(0)
       .setVisible(false);
 
-    this.tooltipBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x081018, 0.96))
+    this.tooltipBackground = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x081018, 0.96))
       .setOrigin(0, 0)
       .setDepth(TOOLTIP_DEPTH)
       .setScrollFactor(0)
       .setStrokeStyle(1, 0x6f89a2, 0.75)
       .setVisible(false);
-    this.tooltipText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
+    this.tooltipText = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
       fontFamily: 'sans-serif',
       fontSize: '13px',
       color: '#edf5ff',
@@ -399,6 +420,10 @@ export class PolicyDialog {
   open(): void {
     if (this.isOpen) return;
     this.isOpen = true;
+    this.modalCamera.setVisible(true);
+    const cameras = this.scene.cameras.cameras;
+    const cameraIndex = cameras.indexOf(this.modalCamera);
+    if (cameraIndex >= 0) cameras.push(...cameras.splice(cameraIndex, 1));
     this.scrollOffset = 0;
     this.refresh();
     this.overlay.setVisible(true);
@@ -417,6 +442,7 @@ export class PolicyDialog {
     this.cancelDrag();
     this.hideTooltip();
     this.isOpen = false;
+    this.modalCamera.setVisible(false);
     this.overlay.setVisible(false);
     this.panelBackground.setVisible(false);
     this.headerBackground.setVisible(false);
@@ -439,7 +465,7 @@ export class PolicyDialog {
     this.hideTooltip();
     const nationId = this.getNationId();
     if (!nationId) {
-      this.slotCounts = { economic: 0, military: 0, diplomatic: 0, ideology: 0, wildcard: 0 };
+      this.slotCounts = { economic: 0, military: 0, diplomatic: 0, culture: 0, ideology: 0, wildcard: 0 };
       this.activeAssignments = [];
       this.unlockedPolicies = [];
     } else {
@@ -459,6 +485,7 @@ export class PolicyDialog {
     this.scene.input.off(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
     this.scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize);
+    this.scene.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.onAddedToScene);
     this.worldInputGate.unregisterWheelBlocker(this.wheelBlockerId);
     this.destroyCards();
     this.destroySlots();
@@ -478,6 +505,8 @@ export class PolicyDialog {
     this.tooltipBackground.destroy();
     this.tooltipText.destroy();
     for (const heading of this.slotCategoryHeadings.values()) heading.destroy();
+    this.owned.clear();
+    this.scene.cameras.remove(this.modalCamera);
   }
 
   private rebuildVisuals(): void {
@@ -718,23 +747,23 @@ export class PolicyDialog {
 
   private destroyCards(): void {
     for (const card of this.cards) {
-      card.background.destroy();
-      card.headerBackground.destroy();
-      card.headerText.destroy();
-      card.imageFrame.destroy();
-      card.image.destroy();
-      card.fallbackInitials.destroy();
-      card.description.destroy();
-      card.hitArea.destroy();
+      this.destroyOwned(card.background);
+      this.destroyOwned(card.headerBackground);
+      this.destroyOwned(card.headerText);
+      this.destroyOwned(card.imageFrame);
+      this.destroyOwned(card.image);
+      this.destroyOwned(card.fallbackInitials);
+      this.destroyOwned(card.description);
+      this.destroyOwned(card.hitArea);
     }
     this.cards.length = 0;
   }
 
   private destroySlots(): void {
     for (const slot of this.slotsByKey.values()) {
-      slot.background.destroy();
-      slot.label.destroy();
-      slot.hitArea.destroy();
+      this.destroyOwned(slot.background);
+      this.destroyOwned(slot.label);
+      this.destroyOwned(slot.hitArea);
     }
     this.slotsByKey.clear();
     this.slotKeysInOrder.length = 0;
@@ -743,6 +772,7 @@ export class PolicyDialog {
   private layout(): void {
     if (!this.isOpen) return;
     const { width: vw, height: vh } = this.scene.scale;
+    this.modalCamera.setSize(vw, vh);
     this.overlay.setPosition(0, 0).setDisplaySize(vw, vh);
 
     const panelW = Math.round(vw * PANEL_WIDTH_RATIO);
@@ -762,7 +792,10 @@ export class PolicyDialog {
     const contentY = panelY + HEADER_HEIGHT + PANEL_PADDING;
     const contentBottom = panelY + panelH - PANEL_PADDING;
     const contentHeight = contentBottom - contentY;
-    const rightWidth = Math.min(RIGHT_PANEL_WIDTH, Math.max(280, Math.round(panelW * 0.32)));
+    const rightWidth = Math.min(
+      panelW - PANEL_PADDING * 2 - SECTION_GAP - 220,
+      Math.max(480, Math.round(panelW * SLOT_AREA_WIDTH_RATIO)),
+    );
     const rightX = panelX + panelW - PANEL_PADDING - rightWidth;
     const leftX = panelX + PANEL_PADDING;
     const leftWidth = rightX - SECTION_GAP - leftX;
@@ -832,35 +865,26 @@ export class PolicyDialog {
   }
 
   private layoutRightSlots(rightX: number, rightY: number, rightWidth: number): void {
+    for (const heading of this.slotCategoryHeadings.values()) heading.setVisible(false);
+
+    const columnGap = SLOT_GROUP_GAP;
+    const halfWidth = Math.floor((rightWidth - columnGap) / 2);
     let cursor = rightY;
-    for (const category of POLICY_SLOT_CATEGORIES) {
-      const total = this.slotCounts[category];
-      const heading = this.slotCategoryHeadings.get(category);
-      if (!heading) continue;
-      if (total === 0) {
-        heading.setVisible(false);
-        continue;
-      }
-      heading
-        .setText(`${formatCategory(category)} (${this.countOccupiedSlots(category)} / ${total})`)
-        .setPosition(rightX, cursor)
-        .setVisible(true);
-      cursor += 18;
-      const cols = Math.max(1, Math.floor((rightWidth + SLOT_GAP) / (SLOT_CARD_WIDTH + SLOT_GAP)));
-      let i = 0;
-      for (const slotKey of this.slotKeysInOrder) {
-        const slot = this.slotsByKey.get(slotKey);
-        if (!slot || slot.category !== category) continue;
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const x = rightX + col * (SLOT_CARD_WIDTH + SLOT_GAP);
-        const y = cursor + row * (SLOT_CARD_HEIGHT + SLOT_GAP);
-        this.placeSlot(slot, x, y);
-        i += 1;
-      }
-      const rows = Math.ceil(total / cols);
-      cursor += rows * (SLOT_CARD_HEIGHT + SLOT_GAP);
-      cursor += SLOT_GROUP_GAP;
+    const placePairRow = (left: PolicySlotCategory, right: PolicySlotCategory): void => {
+      const leftHeight = this.layoutSlotCategory(left, rightX, cursor, halfWidth);
+      const rightHeight = this.layoutSlotCategory(right, rightX + halfWidth + columnGap, cursor, halfWidth);
+      const rowHeight = Math.max(leftHeight, rightHeight);
+      if (rowHeight > 0) cursor += rowHeight + SLOT_GROUP_GAP;
+    };
+
+    // Broad, predictable policy-slot grid: Military/Economic, Culture/Diplomatic,
+    // then the flexible slots across the bottom.
+    placePairRow('military', 'economic');
+    placePairRow('culture', 'diplomatic');
+    if (this.slotCounts.ideology > 0) {
+      placePairRow('ideology', 'wildcard');
+    } else {
+      this.layoutSlotCategory('wildcard', rightX, cursor, rightWidth);
     }
 
     for (const slotKey of this.slotKeysInOrder) {
@@ -871,6 +895,35 @@ export class PolicyDialog {
       if (!card) continue;
       this.placeCard(card, slot.background.x, slot.background.y, SLOT_CARD_WIDTH, SLOT_CARD_HEIGHT);
     }
+  }
+
+  private layoutSlotCategory(
+    category: PolicySlotCategory,
+    x: number,
+    y: number,
+    width: number,
+  ): number {
+    const total = this.slotCounts[category];
+    const heading = this.slotCategoryHeadings.get(category);
+    if (!heading || total === 0) return 0;
+
+    heading
+      .setText(`${formatCategory(category)} (${this.countOccupiedSlots(category)} / ${total})`)
+      .setPosition(x, y)
+      .setVisible(true);
+    const slotsY = y + 18;
+    const cols = Math.max(1, Math.floor((width + SLOT_GAP) / (SLOT_CARD_WIDTH + SLOT_GAP)));
+    let i = 0;
+    for (const slotKey of this.slotKeysInOrder) {
+      const slot = this.slotsByKey.get(slotKey);
+      if (!slot || slot.category !== category) continue;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      this.placeSlot(slot, x + col * (SLOT_CARD_WIDTH + SLOT_GAP), slotsY + row * (SLOT_CARD_HEIGHT + SLOT_GAP));
+      i += 1;
+    }
+    return 18 + Math.ceil(total / cols) * SLOT_CARD_HEIGHT
+      + Math.max(0, Math.ceil(total / cols) - 1) * SLOT_GAP;
   }
 
   private countOccupiedSlots(category: PolicySlotCategory): number {
@@ -1198,13 +1251,13 @@ export class PolicyDialog {
         this.refreshSlotVisual(slot);
       }
     }
-    this.dragState.ghostBg.destroy();
-    this.dragState.ghostHeader.destroy();
-    this.dragState.ghostHeaderText.destroy();
-    this.dragState.ghostImageFrame.destroy();
-    this.dragState.ghostImage?.destroy();
-    this.dragState.ghostFallbackInitials.destroy();
-    this.dragState.ghostDescription.destroy();
+    this.destroyOwned(this.dragState.ghostBg);
+    this.destroyOwned(this.dragState.ghostHeader);
+    this.destroyOwned(this.dragState.ghostHeaderText);
+    this.destroyOwned(this.dragState.ghostImageFrame);
+    if (this.dragState.ghostImage) this.destroyOwned(this.dragState.ghostImage);
+    this.destroyOwned(this.dragState.ghostFallbackInitials);
+    this.destroyOwned(this.dragState.ghostDescription);
     this.dragState.card.pressed = false;
     this.refreshCardVisual(this.dragState.card);
     this.dragState = null;
@@ -1256,6 +1309,11 @@ export class PolicyDialog {
     this.tooltipBackground.setVisible(false);
     this.tooltipText.setVisible(false);
   }
+
+  private destroyOwned(object: Phaser.GameObjects.GameObject): void {
+    this.owned.delete(object);
+    object.destroy();
+  }
 }
 
 function getCategoryFillColor(category: PolicySlotCategory): number {
@@ -1265,7 +1323,9 @@ function getCategoryFillColor(category: PolicySlotCategory): number {
     case 'economic':
       return 0x2c5e3a;
     case 'diplomatic':
-      return 0x7a3a8b;
+      return 0x24646b;
+    case 'culture':
+      return 0x56386f;
     case 'ideology':
       return 0x7a3f24;
     case 'wildcard':
@@ -1280,7 +1340,9 @@ function getCategoryHeaderColor(category: PolicySlotCategory): number {
     case 'economic':
       return 0x214e2c;
     case 'diplomatic':
-      return 0x652d75;
+      return 0x194f55;
+    case 'culture':
+      return 0x432856;
     case 'ideology':
       return 0x613119;
     case 'wildcard':
@@ -1295,7 +1357,9 @@ function getCategoryStrokeColor(category: PolicySlotCategory): number {
     case 'economic':
       return 0x9fdbac;
     case 'diplomatic':
-      return 0xd6a3df;
+      return 0x8fd7dc;
+    case 'culture':
+      return 0xc49bd8;
     case 'ideology':
       return 0xe3a172;
     case 'wildcard':
@@ -1310,7 +1374,9 @@ function getCategoryHexColor(category: PolicySlotCategory): string {
     case 'economic':
       return '#9fdbac';
     case 'diplomatic':
-      return '#d6a3df';
+      return '#8fd7dc';
+    case 'culture':
+      return '#c49bd8';
     case 'ideology':
       return '#e3a172';
     case 'wildcard':
@@ -1326,6 +1392,8 @@ function formatCategory(category: PolicySlotCategory): string {
       return 'Economic';
     case 'diplomatic':
       return 'Diplomatic';
+    case 'culture':
+      return 'Culture';
     case 'ideology':
       return 'Ideology';
     case 'wildcard':

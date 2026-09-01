@@ -697,6 +697,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
           <input id="sd-start-year-bc" type="checkbox"> BC
         </label>
       </div>
+      <div class="sd-year-row">
+        <label class="field" style="flex:1">Quarterly turns start year
+          <input id="sd-quarterly-start-year" type="number" min="1" step="1">
+        </label>
+        <label class="sd-checkbox">
+          <input id="sd-quarterly-start-year-bc" type="checkbox"> BC
+        </label>
+      </div>
       <label class="field">Time progression
         <select id="sd-time-mode">
           <option value="auto">Auto</option>
@@ -712,6 +720,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       </label>
       <label class="field">Peace Treaty cooldown (turns)
         <input id="sd-peace-treaty-cooldown" type="number" min="0" step="1">
+      </label>
+      <label class="field">Capital capitulation threshold (%)
+        <input id="sd-capital-collapse-threshold" type="number" min="0" max="100" step="1">
       </label>
       <section class="sd-events-section">
         <div class="sd-events-heading">
@@ -928,6 +939,8 @@ const TILE_COLORS = {
 // scenarios that predate these fields load with sensible values.
 const DEFAULT_SCENARIO_START_YEAR = 4000;
 const DEFAULT_SCENARIO_START_YEAR_IS_BC = true;
+const DEFAULT_QUARTERLY_TURNS_START_YEAR = 1900;
+const DEFAULT_QUARTERLY_TURNS_START_YEAR_IS_BC = false;
 const DEFAULT_SCENARIO_TIME_PROGRESSION_MODE = 'auto';
 const SCENARIO_TIME_PROGRESSION_MODES = ['auto', 'staticYear', 'monthly'];
 const HISTORICAL_EVENT_MONTHS = [
@@ -975,6 +988,14 @@ function normalizeScenarioMeta() {
   if (typeof meta.startYear !== 'number' || !(meta.startYear > 0)) meta.startYear = DEFAULT_SCENARIO_START_YEAR;
   else meta.startYear = Math.floor(meta.startYear);
   if (typeof meta.startYearIsBC !== 'boolean') meta.startYearIsBC = DEFAULT_SCENARIO_START_YEAR_IS_BC;
+  if (typeof meta.quarterlyTurnsStartYear !== 'number' || !(meta.quarterlyTurnsStartYear > 0)) {
+    meta.quarterlyTurnsStartYear = DEFAULT_QUARTERLY_TURNS_START_YEAR;
+  } else {
+    meta.quarterlyTurnsStartYear = Math.floor(meta.quarterlyTurnsStartYear);
+  }
+  if (typeof meta.quarterlyTurnsStartYearIsBC !== 'boolean') {
+    meta.quarterlyTurnsStartYearIsBC = DEFAULT_QUARTERLY_TURNS_START_YEAR_IS_BC;
+  }
   if (typeof meta.barbarianSpawnInterval !== 'number' || !(meta.barbarianSpawnInterval >= 1)) {
     meta.barbarianSpawnInterval = DEFAULT_BARBARIAN_SPAWN_INTERVAL;
   } else {
@@ -984,6 +1005,12 @@ function normalizeScenarioMeta() {
     meta.peaceTreatyCooldownTurns = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
   } else {
     meta.peaceTreatyCooldownTurns = Math.floor(meta.peaceTreatyCooldownTurns);
+  }
+  if (typeof meta.originalCapitalCollapsePercent !== 'number'
+    || !(meta.originalCapitalCollapsePercent >= 0) || meta.originalCapitalCollapsePercent > 100) {
+    meta.originalCapitalCollapsePercent = DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT;
+  } else {
+    meta.originalCapitalCollapsePercent = Math.floor(meta.originalCapitalCollapsePercent);
   }
 
   const progression = meta.timeProgression && typeof meta.timeProgression === 'object' ? meta.timeProgression : {};
@@ -1046,6 +1073,10 @@ const BARBARIAN_CAMP_BUILDING_ID = 'barbarian-camp';
 // Default rounds between barbarian spawns from a camp (mirrors the runtime
 // DEFAULT_BARBARIAN_SPAWN_INTERVAL in src/data/barbarians.ts).
 const DEFAULT_BARBARIAN_SPAWN_INTERVAL = 10;
+// Default % of max city health at/below which an attack on a nation's own original
+// capital forces capitulation (mirrors the runtime
+// DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT in src/systems/CombatSystem.ts). 0 disables.
+const DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT = 10;
 // Land terrain a Barbarian Camp may be placed on (land, non-water). Mirrors the
 // runtime BarbarianSystem placement rule.
 const BARBARIAN_CAMP_LAND_TYPES = ['plains', 'forest', 'jungle', 'desert', 'beach', 'meadow'];
@@ -5796,10 +5827,13 @@ function openScenarioDetails() {
   document.getElementById('sd-author').value = meta.author ?? '';
   document.getElementById('sd-start-year').value = String(meta.startYear);
   document.getElementById('sd-start-year-bc').checked = !!meta.startYearIsBC;
+  document.getElementById('sd-quarterly-start-year').value = String(meta.quarterlyTurnsStartYear);
+  document.getElementById('sd-quarterly-start-year-bc').checked = !!meta.quarterlyTurnsStartYearIsBC;
   document.getElementById('sd-time-mode').value = meta.timeProgression.mode;
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
   document.getElementById('sd-peace-treaty-cooldown').value = String(meta.peaceTreatyCooldownTurns);
+  document.getElementById('sd-capital-collapse-threshold').value = String(meta.originalCapitalCollapsePercent);
   scenarioDetailsHistoricalEventsDraft = structuredCloneCompat(scenario.historicalEvents || []);
   document.getElementById('sd-error').textContent = '';
   updateScenarioDetailsStaticVisibility();
@@ -5826,6 +5860,12 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const quarterlyTurnsStartYear = parseInt(document.getElementById('sd-quarterly-start-year').value, 10);
+  if (!Number.isInteger(quarterlyTurnsStartYear) || quarterlyTurnsStartYear <= 0) {
+    errorEl.textContent = 'Quarterly turns start year must be a positive integer.';
+    return false;
+  }
+
   const mode = document.getElementById('sd-time-mode').value;
   const timeProgression = { mode };
   if (mode === 'staticYear') {
@@ -5849,15 +5889,25 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const originalCapitalCollapsePercent = parseInt(document.getElementById('sd-capital-collapse-threshold').value, 10);
+  if (!Number.isInteger(originalCapitalCollapsePercent)
+    || originalCapitalCollapsePercent < 0 || originalCapitalCollapsePercent > 100) {
+    errorEl.textContent = 'Capital capitulation threshold must be an integer between 0 and 100 (%).';
+    return false;
+  }
+
   if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
   scenario.meta.name = name;
   scenario.meta.description = document.getElementById('sd-description').value.trim();
   scenario.meta.author = document.getElementById('sd-author').value.trim();
   scenario.meta.startYear = startYear;
   scenario.meta.startYearIsBC = document.getElementById('sd-start-year-bc').checked;
+  scenario.meta.quarterlyTurnsStartYear = quarterlyTurnsStartYear;
+  scenario.meta.quarterlyTurnsStartYearIsBC = document.getElementById('sd-quarterly-start-year-bc').checked;
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
   scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
+  scenario.meta.originalCapitalCollapsePercent = originalCapitalCollapsePercent;
   scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
   scenario.turningPointEventsConfigured = true;
 

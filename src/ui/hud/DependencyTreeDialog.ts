@@ -22,7 +22,7 @@ const SCROLLBAR_GAP = 10;
 const SCROLL_STEP = 72;
 
 const CARD_WIDTH = 220;
-const CARD_HEIGHT = 118;
+const CARD_HEIGHT = 148;
 const CARD_GAP_X = 92;
 const CARD_GAP_Y = 18;
 const ICON_SIZE = 58;
@@ -42,6 +42,7 @@ interface TreeCardView {
   fallback: Phaser.GameObjects.Text;
   title: Phaser.GameObjects.Text;
   description: Phaser.GameObjects.Text;
+  policyUnlocks: Phaser.GameObjects.Text;
   status: Phaser.GameObjects.Text;
 }
 
@@ -349,6 +350,25 @@ export class DependencyTreeDialog {
       .setScrollFactor(0)
       .setResolution(TEXT_RESOLUTION)
       .setMask(this.contentMask);
+    const policyUnlocks = this.addOwned(new Phaser.GameObjects.Text(
+      this.scene,
+      0,
+      0,
+      formatPolicyUnlocks(node.policyUnlockNames ?? []),
+      {
+        fontFamily: 'sans-serif',
+        fontSize: '11px',
+        color: '#d7b7ff',
+        fontStyle: 'bold',
+        wordWrap: { width: CARD_WIDTH - 22, useAdvancedWrap: true },
+        maxLines: 2,
+      },
+    ))
+      .setOrigin(0, 0)
+      .setDepth(CARD_DEPTH + 2)
+      .setScrollFactor(0)
+      .setResolution(TEXT_RESOLUTION)
+      .setMask(this.contentMask);
     const status = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, formatStatus(node.status), {
       fontFamily: 'sans-serif',
       fontSize: '12px',
@@ -360,7 +380,7 @@ export class DependencyTreeDialog {
       .setScrollFactor(0)
       .setResolution(TEXT_RESOLUTION)
       .setMask(this.contentMask);
-    return { id: node.id, background, imageFrame, image, fallback, title, description, status };
+    return { id: node.id, background, imageFrame, image, fallback, title, description, policyUnlocks, status };
   }
 
   private destroyCards(): void {
@@ -371,6 +391,7 @@ export class DependencyTreeDialog {
       card.fallback.destroy();
       card.title.destroy();
       card.description.destroy();
+      card.policyUnlocks.destroy();
       card.status.destroy();
     }
     this.cards.length = 0;
@@ -437,6 +458,7 @@ export class DependencyTreeDialog {
       card.fallback.setPosition(Math.round(x + 10 + ICON_SIZE / 2), Math.round(y + 12 + ICON_SIZE / 2)).setVisible(this.isOpen && !hasImage);
       card.title.setPosition(Math.round(x + 80), Math.round(y + 12));
       card.description.setPosition(Math.round(x + 10), Math.round(y + 78));
+      card.policyUnlocks.setPosition(Math.round(x + 10), Math.round(y + 116));
       card.status.setPosition(Math.round(x + 80), Math.round(y + 54));
     }
 
@@ -789,6 +811,12 @@ function formatStatus(status: HudTreeNodeStatus): string {
   if (status === 'active') return 'In progress';
   if (status === 'available') return 'Available';
   return 'Locked';
+}
+
+function formatPolicyUnlocks(policyNames: readonly string[]): string {
+  if (policyNames.length === 0) return '';
+  const label = policyNames.length === 1 ? 'Unlocks Policy' : 'Unlocks Policies';
+  return `${label}: ${policyNames.join(', ')}`;
 }
 
 function getInitials(name: string): string {

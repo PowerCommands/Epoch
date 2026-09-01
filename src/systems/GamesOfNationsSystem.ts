@@ -74,6 +74,7 @@ export interface GamesOfNationsDependencies {
   /** Authoritative: true if the nation is the recorded aggressor in any active war. */
   isActiveWarAggressor?: (nationId: string) => boolean;
   getLeaderGamesPreferences?: (nationId: string) => GamesOfNationsLeaderPreferences | undefined;
+  getSportScoreBonus?: (nationId: string, sportId: GamesOfNationsSportId) => number;
   getWorldEra?: () => GamesOfNationsIntroductionEra | string;
   seed?: string;
   log?: (message: string) => void;
@@ -1414,7 +1415,11 @@ export class GamesOfNationsSystem {
         && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber))
       .map((participant) => ({
         nationId: participant.nationId,
-        weight: this.getEffectiveGamesPoints(participant.nationId, sport),
+        weight: this.getEffectiveGamesPoints(participant.nationId, sport)
+          + whole(this.dependencies.getSportScoreBonus?.(
+            participant.nationId,
+            getGamesSportByName(sport).id,
+          ) ?? 0),
       }))
       .filter((entry) => entry.weight > 0);
     const medals = drawSportMedals(

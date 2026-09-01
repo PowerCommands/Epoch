@@ -73,6 +73,8 @@ export class ResourceSystem {
     () => EMPTY_YIELD_DISTRIBUTION;
   /** National Gold/turn granted by available Banking Services. */
   private getManufacturedGoldPerTurn: (nationId: string) => number = () => 0;
+  /** Uses the World Council's existing scheduled/current meeting state; no separate timer is kept here. */
+  private isWorldCouncilVoteActive: () => boolean = () => false;
 
   constructor(
     nationManager: NationManager,
@@ -142,6 +144,11 @@ export class ResourceSystem {
    */
   setManufacturedGoldProvider(provider: (nationId: string) => number): void {
     this.getManufacturedGoldPerTurn = provider;
+  }
+
+  setWorldCouncilVoteActiveProvider(provider: () => boolean): void {
+    this.isWorldCouncilVoteActive = provider;
+    this.recalculatePerTurnForAll();
   }
 
   addGold(nationId: string, amount: number): number | null {
@@ -446,7 +453,10 @@ export class ResourceSystem {
   ): number {
     const baseInfluence = cities.reduce((sum, city) => sum + city.population * 0.2, 0);
     const withFlat = baseInfluence + this.getPolicyFlat(nationId, 'influenceFlat');
-    return applyPercent(withFlat, this.getPolicyPercent(nationId, 'influencePercent'));
+    const councilVotePercent = this.isWorldCouncilVoteActive()
+      ? this.getPolicyPercent(nationId, 'activeWorldCouncilVoteInfluencePercent')
+      : 0;
+    return applyPercent(withFlat, this.getPolicyPercent(nationId, 'influencePercent') + councilVotePercent);
   }
 
   private calculateNationGoldPerTurn(

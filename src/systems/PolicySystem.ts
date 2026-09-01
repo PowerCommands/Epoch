@@ -4,7 +4,7 @@ import { NationPolicies, type ActivePolicyAssignment, type PolicySlotCounts } fr
 import type { PolicyCategory, PolicyDefinition, PolicyModifier, PolicySlotCategory } from '../types/policy';
 import type { NationManager } from './NationManager';
 
-const POLICY_SLOT_CATEGORIES: readonly PolicySlotCategory[] = ['economic', 'military', 'diplomatic', 'ideology', 'wildcard'];
+const POLICY_SLOT_CATEGORIES: readonly PolicySlotCategory[] = ['economic', 'military', 'diplomatic', 'culture', 'ideology', 'wildcard'];
 
 type MutablePolicySlotCounts = {
   -readonly [K in keyof PolicySlotCounts]: PolicySlotCounts[K];
@@ -48,7 +48,10 @@ export class PolicySystem {
     if (!nation) return [];
 
     const unlockedCultureNodeIds = new Set(nation.unlockedCultureNodeIds);
-    return ALL_POLICIES.filter((policy) => unlockedCultureNodeIds.has(policy.requiredCultureNodeId));
+    return ALL_POLICIES.filter((policy) =>
+      unlockedCultureNodeIds.has(policy.requiredCultureNodeId)
+      && (!policy.humanOnly || nation.isHuman),
+    );
   }
 
   getActivePolicyAssignments(nationId: string): ActivePolicyAssignment[] {
@@ -107,6 +110,24 @@ export class PolicySystem {
 
   getUnitUpkeepPercentModifier(nationId: string): number {
     return this.getPercentModifierTotal(nationId, 'unitUpkeepPercent');
+  }
+
+  getUnitProductionCostPercent(nationId: string, unitTypeId: string): number {
+    return this.getActiveModifiers(nationId)
+      .filter((modifier) => (
+        modifier.type === 'unitProductionCostPercent'
+        && modifier.unitTypeIds.includes(unitTypeId)
+      ))
+      .reduce((sum, modifier) => sum + modifier.value, 0);
+  }
+
+  getGamesOfNationsSportScoreBonus(
+    nationId: string,
+    sportId: import('../types/gamesOfNations').GamesOfNationsSportId,
+  ): number {
+    return this.getActiveModifiers(nationId)
+      .filter((modifier) => modifier.type === 'gamesOfNationsSportScoreBonus' && modifier.sportId === sportId)
+      .reduce((sum, modifier) => sum + modifier.value, 0);
   }
 
   canActivatePolicy(
@@ -195,7 +216,9 @@ export class PolicySystem {
   ): PolicySlotCategory | null {
     const policy = getPolicyById(policyId);
     if (!policy) return null;
-    if (!this.nationManager.getNation(nationId)) return null;
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return null;
+    if (policy.humanOnly && !nation.isHuman) return null;
     if (!this.isPolicyUnlocked(nationId, policy)) return null;
 
     const policies = this.getNationPolicies(nationId);
@@ -223,7 +246,8 @@ export class PolicySystem {
 
   private isPolicyUnlocked(nationId: string, policy: PolicyDefinition): boolean {
     const nation = this.nationManager.getNation(nationId);
-    return nation?.unlockedCultureNodeIds.includes(policy.requiredCultureNodeId) === true;
+    return nation?.unlockedCultureNodeIds.includes(policy.requiredCultureNodeId) === true
+      && (!policy.humanOnly || nation.isHuman);
   }
 
   private canUseSlot(
@@ -251,6 +275,7 @@ function createEmptySlotCounts(): MutablePolicySlotCounts {
     economic: 0,
     military: 0,
     diplomatic: 0,
+    culture: 0,
     ideology: 0,
     wildcard: 0,
   };

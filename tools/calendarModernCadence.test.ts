@@ -31,12 +31,50 @@ function meta(
   progression: ScenarioTimeProgression = { mode: 'auto' },
   startYear = 4000,
   startYearIsBC = true,
+  quarterlyTurnsStartYear?: number,
+  quarterlyTurnsStartYearIsBC?: boolean,
 ) {
   const raw: ScenarioMeta = {
     name: 'Calendar test', version: 1, startYear, startYearIsBC, timeProgression: progression,
+    quarterlyTurnsStartYear,
+    quarterlyTurnsStartYearIsBC,
   };
   return resolveScenarioMeta(raw);
 }
+
+test('scenario metadata defaults the quarterly cadence threshold to the legacy 1900 AD year', () => {
+  const resolved = meta();
+  assert.equal(resolved.quarterlyTurnsStartYear, 1900);
+  assert.equal(resolved.quarterlyTurnsStartYearIsBC, false);
+});
+
+test('Auto quarterly cadence begins at a scenario-configured AD year', () => {
+  const configured = meta({ mode: 'auto' }, 1700, false, 1800, false);
+  let thresholdRound = 1;
+  while (computeGameDate(configured, thresholdRound, 1).signedYear < 1800) thresholdRound += 1;
+
+  assert.equal(computeGameDate(configured, thresholdRound, 1).signedYear, 1800);
+  assert.equal(computeGameDate(configured, thresholdRound, 1).monthIndex, 0);
+  assert.equal(computeGameDate(configured, thresholdRound + 1, 1).signedYear, 1800);
+  assert.equal(computeGameDate(configured, thresholdRound + 1, 1).monthIndex, 3);
+});
+
+test('Auto quarterly cadence uses the existing historical BC year representation', () => {
+  const configured = meta({ mode: 'auto' }, 1000, true, 500, true);
+  let thresholdRound = 1;
+  while (computeGameDate(configured, thresholdRound, 1).signedYear < -500) thresholdRound += 1;
+
+  const atThreshold = computeGameDate(configured, thresholdRound, 1);
+  const next = computeGameDate(configured, thresholdRound + 1, 1);
+  assert.deepEqual(
+    { year: atThreshold.year, isBC: atThreshold.isBC, monthIndex: atThreshold.monthIndex },
+    { year: 500, isBC: true, monthIndex: 0 },
+  );
+  assert.deepEqual(
+    { year: next.year, isBC: next.isBC, monthIndex: next.monthIndex },
+    { year: 500, isBC: true, monthIndex: 3 },
+  );
+});
 
 /** First round whose Auto date reaches/passes the given AD year. */
 function roundReachingYear(year: number, mult = 1): number {

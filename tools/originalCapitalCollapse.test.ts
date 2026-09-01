@@ -16,7 +16,12 @@ import { Nation } from '../src/entities/Nation.ts';
 import { Unit } from '../src/entities/Unit.ts';
 import type { UnitType } from '../src/entities/UnitType.ts';
 import { CityManager } from '../src/systems/CityManager.ts';
-import { CombatSystem, ORIGINAL_CAPITAL_COLLAPSE_HEALTH } from '../src/systems/CombatSystem.ts';
+import {
+  CombatSystem,
+  DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT,
+  ORIGINAL_CAPITAL_COLLAPSE_HEALTH,
+  resolveOriginalCapitalCollapsePercent,
+} from '../src/systems/CombatSystem.ts';
 import { DiplomacyManager } from '../src/systems/DiplomacyManager.ts';
 import { HappinessSystem } from '../src/systems/HappinessSystem.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
@@ -213,4 +218,40 @@ test('without the capitulation the same last-city melee hit captures and collaps
   assert.equal(h.calls.length, 1, 'the crossing was still detected and offered');
   assert.equal(city.ownerId, ATTACKER_A, 'capture proceeds when capitulation is refused');
   assert.deepEqual(h.collapses, [DEFENDER], 'normal collapse handling runs');
+});
+
+// --- Scenario-configurable threshold ---------------------------------------
+
+test('resolveOriginalCapitalCollapsePercent clamps and defaults', () => {
+  assert.equal(resolveOriginalCapitalCollapsePercent(undefined), DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT);
+  assert.equal(resolveOriginalCapitalCollapsePercent(25), 25);
+  assert.equal(resolveOriginalCapitalCollapsePercent(0), 0); // valid: disables the rule
+  assert.equal(resolveOriginalCapitalCollapsePercent(100), 100);
+  assert.equal(resolveOriginalCapitalCollapsePercent(-5), DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT);
+  assert.equal(resolveOriginalCapitalCollapsePercent(150), DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT);
+  assert.equal(resolveOriginalCapitalCollapsePercent(12.9), 12); // floored
+});
+
+test('a higher configured threshold triggers capitulation earlier', () => {
+  const h = harness();
+  h.combat.setOriginalCapitalCollapsePercent(25); // threshold = 25% of 200 = 50 HP
+  h.diplomacy.declareWar(ATTACKER_A, DEFENDER);
+  h.addCity(60); // above 50, but far above the default 20
+  const attacker = h.addAttacker(ATTACKER_A, rangedType(15), 'a', CITY_X, CITY_Y - 1);
+
+  h.attack(attacker); // 60 -> 45, crosses the 50 line (would NOT cross the default 20)
+
+  assert.deepEqual(h.calls, [{ defender: DEFENDER, attacker: ATTACKER_A }]);
+});
+
+test('a threshold of 0 disables original-capital capitulation entirely', () => {
+  const h = harness();
+  h.combat.setOriginalCapitalCollapsePercent(0);
+  h.diplomacy.declareWar(ATTACKER_A, DEFENDER);
+  h.addCity(25);
+  const attacker = h.addAttacker(ATTACKER_A, rangedType(20), 'a', CITY_X, CITY_Y - 1);
+
+  h.attack(attacker); // 25 -> 5; with the rule disabled nothing triggers
+
+  assert.equal(h.calls.length, 0);
 });

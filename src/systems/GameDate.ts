@@ -16,12 +16,13 @@ export const YEAR_PROGRESS_DECAY = 0.026225;
 
 /**
  * Modern-era Auto calendar cadence. Once the normal Auto progression first reaches
- * astronomical year 1900, the calendar stops using the dynamic yearly progression
+ * the scenario's configured quarterly-turn year, the calendar stops using the dynamic yearly progression
  * and instead advances a fixed three months per turn. Displayed dates then advance
- * quarterly (January 1900, April 1900, July 1900, October 1900, January 1901, …).
+ * quarterly from that January (January, April, July, October, …).
  * Only the normal `auto` progression is affected — `staticYear`, `monthly`, and the
  * temporary monthly World War progression are untouched.
  */
+/** Legacy/default threshold retained for direct callers and older scenarios. */
 export const AUTO_MODERN_CADENCE_ASTRO_YEAR = 1900;
 export const AUTO_MODERN_CADENCE_MONTHS_PER_TURN = 3;
 
@@ -46,9 +47,16 @@ export function metaToAstroStart(meta: ResolvedScenarioMeta): number {
   return meta.startYearIsBC ? 1 - meta.startYear : meta.startYear;
 }
 
+/** Map the scenario's historical quarterly-turn threshold to an astronomical year. */
+export function metaToAstroQuarterlyTurnsStart(meta: ResolvedScenarioMeta): number {
+  return meta.quarterlyTurnsStartYearIsBC
+    ? 1 - meta.quarterlyTurnsStartYear
+    : meta.quarterlyTurnsStartYear;
+}
+
 /**
- * First Auto round (1-based) whose unslowed progression reaches astronomical year
- * 1900 — the round where the fixed quarterly modern cadence begins. The caller
+ * First Auto round (1-based) whose unslowed progression reaches the configured
+ * astronomical year — the round where the fixed quarterly cadence begins. The caller
  * passes an upper bound already known to sit at/after the threshold; because the
  * year progression is monotonic non-decreasing this is a plain binary search.
  */
@@ -56,12 +64,13 @@ function autoModernCadenceStartRound(
   astroStart: number,
   yearProgressionMultiplier: number,
   maxRound: number,
+  quarterlyTurnsStartAstroYear: number,
 ): number {
   let lo = 1;
   let hi = Math.max(1, maxRound);
   while (lo < hi) {
     const mid = (lo + hi) >> 1;
-    if (astroStart + autoProgressedYears(mid, yearProgressionMultiplier) >= AUTO_MODERN_CADENCE_ASTRO_YEAR) {
+    if (astroStart + autoProgressedYears(mid, yearProgressionMultiplier) >= quarterlyTurnsStartAstroYear) {
       hi = mid;
     } else {
       lo = mid + 1;
@@ -72,9 +81,9 @@ function autoModernCadenceStartRound(
 
 /**
  * Absolute month ordinal for the normal Auto calendar at a given round. Before the
- * 1900 threshold this is January of the dynamically-progressed year (unchanged
+ * configured threshold this is January of the dynamically-progressed year (unchanged
  * legacy behavior); from the threshold round onward it advances a fixed three months
- * per turn anchored at January 1900. Returned as a month ordinal so both the direct
+ * per turn anchored at January of that year. Returned as a month ordinal so both the direct
  * date computation and the runtime World-War continuation can take clean, drift-free
  * differences.
  */
@@ -82,11 +91,17 @@ export function autoProgressedMonthOrdinal(
   round: number,
   astroStart: number,
   yearProgressionMultiplier = 1,
+  quarterlyTurnsStartAstroYear = AUTO_MODERN_CADENCE_ASTRO_YEAR,
 ): number {
   const unslowedAstro = astroStart + autoProgressedYears(round, yearProgressionMultiplier);
-  if (unslowedAstro < AUTO_MODERN_CADENCE_ASTRO_YEAR) return unslowedAstro * 12;
-  const startRound = autoModernCadenceStartRound(astroStart, yearProgressionMultiplier, round);
-  return AUTO_MODERN_CADENCE_ASTRO_YEAR * 12
+  if (unslowedAstro < quarterlyTurnsStartAstroYear) return unslowedAstro * 12;
+  const startRound = autoModernCadenceStartRound(
+    astroStart,
+    yearProgressionMultiplier,
+    round,
+    quarterlyTurnsStartAstroYear,
+  );
+  return quarterlyTurnsStartAstroYear * 12
     + AUTO_MODERN_CADENCE_MONTHS_PER_TURN * (round - startRound);
 }
 
@@ -169,7 +184,12 @@ export function computeGameDate(
     }
     case 'auto':
     default: {
-      const ordinal = autoProgressedMonthOrdinal(round, astroStart, yearProgressionMultiplier);
+      const ordinal = autoProgressedMonthOrdinal(
+        round,
+        astroStart,
+        yearProgressionMultiplier,
+        metaToAstroQuarterlyTurnsStart(meta),
+      );
       astro = Math.floor(ordinal / 12);
       monthIndex = ordinal - astro * 12;
       break;

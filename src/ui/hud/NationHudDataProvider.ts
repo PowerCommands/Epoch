@@ -10,6 +10,7 @@ import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
 import { CULTURE_TREE, getCultureNodeById } from '../../data/cultureTree';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import { ALL_TECHNOLOGIES } from '../../data/technologies';
+import { getPoliciesByRequiredCultureNodeId } from '../../data/policies';
 import type { AheadOfTimeResearchCostDetails } from '../../data/technologyResearchCosts';
 import { getCultureSpriteKey, getCultureSpritePath, getTechnologySpriteKey } from '../../utils/assetPaths';
 import {
@@ -19,6 +20,10 @@ import {
 } from '../happinessFormat';
 
 const STRATEGIC_RESOURCE_IDS = ['horses', 'iron', 'niter', 'coal', 'oil', 'natural_gas', 'aluminum', 'uranium'] as const;
+
+export function getCulturePolicyUnlockNames(cultureNodeId: string): string[] {
+  return getPoliciesByRequiredCultureNodeId(cultureNodeId).map((policy) => policy.name);
+}
 
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}`;
@@ -93,6 +98,7 @@ export interface HudDependencyTreeNode {
   imageKey: string;
   prerequisites: string[];
   status: HudTreeNodeStatus;
+  policyUnlockNames?: readonly string[];
 }
 
 export interface HudDependencyTreeState {
@@ -299,7 +305,10 @@ export class NationHudDataProvider {
         description: entry.node.description,
         imageKey: getCultureSpriteKey(entry.node.id),
         imagePath: getCultureSpritePath(entry.node.id),
-        unlocks: entry.node.unlocks.map((unlock) => `${unlock.type}: ${unlock.value}`),
+        unlocks: [
+          ...entry.node.unlocks.map((unlock) => `${unlock.type}: ${unlock.value}`),
+          ...getCulturePolicyUnlockNames(entry.node.id).map((name) => `Policy: ${name}`),
+        ],
         effectiveCost: entry.effectiveCost,
         isUnlocked: entry.isUnlocked,
         isActive: entry.isActive,
@@ -345,6 +354,7 @@ export class NationHudDataProvider {
             id: node.id,
             name: node.name,
             description: node.description,
+            policyUnlockNames: getCulturePolicyUnlockNames(node.id),
             imageKey: getCultureSpriteKey(node.id),
             prerequisites: node.prerequisites ?? [],
             status: entry?.isUnlocked

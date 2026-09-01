@@ -32,6 +32,10 @@ export interface ScenarioMeta {
   startYear?: number;
   /** True when startYear is BC, false when AD. */
   startYearIsBC?: boolean;
+  /** Year when Auto progression switches to one quarter per turn. */
+  quarterlyTurnsStartYear?: number;
+  /** True when quarterlyTurnsStartYear is BC, false when AD. */
+  quarterlyTurnsStartYearIsBC?: boolean;
   /** Time progression setup (metadata only for now). */
   timeProgression?: ScenarioTimeProgression;
   /**
@@ -46,6 +50,13 @@ export interface ScenarioMeta {
    * DEFAULT_PEACE_TREATY_COOLDOWN_TURNS (10).
    */
   peaceTreatyCooldownTurns?: number;
+  /**
+   * Percentage of a city's maximum defensive health at/below which an attack on a
+   * nation's own original capital forces its capitulation. Authored in the Editor's
+   * Scenario Details. Absent/invalid falls back to
+   * DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT (10). 0 disables the rule.
+   */
+  originalCapitalCollapsePercent?: number;
 }
 
 export interface ScenarioMap {

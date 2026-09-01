@@ -19,6 +19,10 @@ export interface ImportedDealsProvider {
 
 export type ResourceUsabilityPredicate = (nationId: string, resourceId: string) => boolean;
 export type ManufacturedResourceProvider = (nationId: string) => ReadonlyMap<string, number>;
+export type ForeignExploitationYieldPercentProvider = (
+  beneficiaryNationId: string,
+  territorialOwnerNationId: string,
+) => number;
 /**
  * Returns true when a trade deal's imported resource must not count for the
  * buyer — e.g. an active Economic Pressure Boycott/Embargo between the deal's
@@ -58,6 +62,7 @@ export class ResourceAccessSystem {
   private canUseResource: ResourceUsabilityPredicate = () => true;
   private getManufacturedResourceQuantities: ManufacturedResourceProvider = () => new Map();
   private isImportBlocked: ImportBlockedPredicate = () => false;
+  private getForeignExploitationYieldPercent: ForeignExploitationYieldPercentProvider = () => 0;
   private resourceTileIndex: Map<string, Tile[]> | null = null;
 
   constructor(
@@ -71,6 +76,10 @@ export class ResourceAccessSystem {
 
   setManufacturedResourceProvider(provider: ManufacturedResourceProvider): void {
     this.getManufacturedResourceQuantities = provider;
+  }
+
+  setForeignExploitationYieldPercentProvider(provider: ForeignExploitationYieldPercentProvider): void {
+    this.getForeignExploitationYieldPercent = provider;
   }
 
   /**
@@ -305,7 +314,14 @@ export class ResourceAccessSystem {
       // makes removal visible until a save-load invalidation rebuilds the index.
       if (tile.resourceId !== resourceId) continue;
       if (!this.tileProvidesOwnResource(tile, nationId, resourceId)) continue;
-      count += getTileResourceQuantity(tile, getNaturalResourceById);
+      const quantity = getTileResourceQuantity(tile, getNaturalResourceById);
+      const isForeignExploitation = tile.ownerId !== undefined
+        && tile.ownerId !== nationId
+        && getImprovementOwnerId(tile) === nationId;
+      const percent = isForeignExploitation
+        ? this.getForeignExploitationYieldPercent(nationId, tile.ownerId!)
+        : 0;
+      count += Math.round(quantity * Math.max(0, 1 + (percent / 100)));
     }
     return count;
   }

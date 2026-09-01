@@ -119,6 +119,7 @@ export class GossipSystem {
     private readonly knowledgeGateway: GossipKnowledgeGateway = { hasMet: () => true },
     private readonly getSourceEra: (nationId: string) => Era = () => 'ancient',
     private readonly getMilitaryPower: (nationId: string) => number = () => 0,
+    private readonly getManipulationInfluenceCostPercent: (nationId: string) => number = () => 0,
   ) {}
 
   /** Authoritative preview; execution uses this same calculation and rounds upward. */
@@ -135,6 +136,8 @@ export class GossipSystem {
     const sourceEra = this.getSourceEra(sourceNationId);
     const eraMultiplier = GOSSIP_MANIPULATION_ERA_MULTIPLIERS[sourceEra];
     const itemWeight = definition.manipulationWeight ?? 1;
+    const undiscountedCost = Math.ceil(selectedInfluenceTier * eraMultiplier * itemWeight);
+    const costMultiplier = Math.max(0, 1 + (this.getManipulationInfluenceCostPercent(sourceNationId) / 100));
     return {
       itemId,
       sourceNationId,
@@ -142,7 +145,7 @@ export class GossipSystem {
       sourceEra,
       eraMultiplier,
       itemWeight,
-      actualCost: Math.ceil(selectedInfluenceTier * eraMultiplier * itemWeight),
+      actualCost: Math.ceil(undiscountedCost * costMultiplier),
     };
   }
 

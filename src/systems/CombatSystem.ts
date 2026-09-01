@@ -14,13 +14,28 @@ import { captureCity } from './CityCombat';
 import { CITY_BASE_DEFENSE, CITY_BASE_HEALTH } from '../data/cities';
 
 /**
- * Fraction of a city's maximum defensive health at/below which an original capital
- * is considered to have collapsed. An attack that pushes the original capital from
- * above this line to below it makes the defender militarily defeated and triggers
- * capitulation to the responsible attacker — no capture required.
+ * Percentage of a city's maximum defensive health at/below which an original
+ * capital is considered to have collapsed. An attack that pushes the original
+ * capital from above this line to below it makes the defender militarily defeated
+ * and triggers capitulation to the responsible attacker — no capture required.
+ * Scenario-configurable via ScenarioMeta.originalCapitalCollapsePercent; this is
+ * the fallback. 0 disables the rule.
  */
-export const ORIGINAL_CAPITAL_COLLAPSE_FRACTION = 0.1;
-export const ORIGINAL_CAPITAL_COLLAPSE_HEALTH = CITY_BASE_HEALTH * ORIGINAL_CAPITAL_COLLAPSE_FRACTION;
+export const DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT = 10;
+/** Default collapse threshold expressed in city HP (used by the default config). */
+export const ORIGINAL_CAPITAL_COLLAPSE_HEALTH =
+  CITY_BASE_HEALTH * DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT / 100;
+
+/**
+ * Clamp an authored collapse percentage to a valid 0..100 integer, falling back to
+ * {@link DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT} when absent or invalid.
+ */
+export function resolveOriginalCapitalCollapsePercent(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100) {
+    return Math.floor(value);
+  }
+  return DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT;
+}
 import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import {
   getCityIntegrationProgress,
@@ -94,6 +109,18 @@ type PeacekeepingCombatAuthorizer = (attacker: Unit, target: Unit, tileOwnerId?:
 type CapitalCaptureResolver = (city: City, previousOwnerId: string, captorNationId: string) => boolean;
 
 const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
+const FOREIGN_INSURGENT_UNIT_IDS: ReadonlySet<string> = new Set(['partisans', 'rebels']);
+
+export function getForeignInsurgentStrengthMultiplier(
+  unitTypeId: string,
+  attackerNationId: string,
+  territorialOwnerNationId: string | undefined,
+  effectivenessPercent: number,
+): number {
+  if (!FOREIGN_INSURGENT_UNIT_IDS.has(unitTypeId)) return 1;
+  if (!territorialOwnerNationId || territorialOwnerNationId === attackerNationId) return 1;
+  return Math.max(0, 1 + (effectivenessPercent / 100));
+}
 
 /**
  * CombatSystem hanterar strid mellan enheter och mot städer.
@@ -121,6 +148,8 @@ export class CombatSystem {
   private capitalCaptureResolver: CapitalCaptureResolver | null = null;
   private subjugationResolver: CapitalCaptureResolver | null = null;
   private originalCapitalCollapseResolver: CapitalCaptureResolver | null = null;
+  /** Original-capital collapse threshold in city HP; scenario-configurable. */
+  private originalCapitalCollapseHealth = ORIGINAL_CAPITAL_COLLAPSE_HEALTH;
 
   constructor(
     unitManager: UnitManager,
@@ -175,6 +204,15 @@ export class CombatSystem {
    */
   setOriginalCapitalCollapseResolver(resolver: CapitalCaptureResolver): void {
     this.originalCapitalCollapseResolver = resolver;
+  }
+
+  /**
+   * Configure the original-capital collapse threshold from an authored scenario
+   * percentage (0..100 of maximum city health). 0 disables the rule.
+   */
+  setOriginalCapitalCollapsePercent(percent: number): void {
+    this.originalCapitalCollapseHealth =
+      CITY_BASE_HEALTH * resolveOriginalCapitalCollapsePercent(percent) / 100;
   }
 
   on(callback: CombatListener): void {
@@ -293,6 +331,7 @@ export class CombatSystem {
 
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
+      attackerStrengthMultiplier: this.getForeignInsurgentStrengthMultiplier(attacker, target.tileX, target.tileY),
       defenderStrengthBonus: this.getOwnedTerritoryCombatBonus(target),
       defenderStrengthMultiplier: isEmbarked(target, this.mapData) ? EMBARKED_DEFENSE_MULTIPLIER : 1,
     };
@@ -364,6 +403,7 @@ export class CombatSystem {
     const cityDefenseMultiplier = this.cityDefenseSystem?.getDefenseMultiplier(city) ?? 1;
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
+      attackerStrengthMultiplier: this.getForeignInsurgentStrengthMultiplier(attacker, city.tileX, city.tileY),
       cityDefenseBonus: this.policySystem?.getFlatModifierTotal(city.ownerId, 'cityDefenseFlat') ?? 0,
       cityDefenseMultiplier,
       cityDamageTakenMultiplier: this.cityDefenseSystem?.getDamageTakenMultiplier(city) ?? 1,
@@ -417,8 +457,9 @@ export class CombatSystem {
     if (city.isOriginalCapital
       && city.ownerId === city.originNationId
       && this.originalCapitalCollapseResolver
-      && preAttack.cityHealth >= ORIGINAL_CAPITAL_COLLAPSE_HEALTH
-      && city.health < ORIGINAL_CAPITAL_COLLAPSE_HEALTH) {
+      && this.originalCapitalCollapseHealth > 0
+      && preAttack.cityHealth >= this.originalCapitalCollapseHealth
+      && city.health < this.originalCapitalCollapseHealth) {
       capitulationResolved = this.originalCapitalCollapseResolver(city, city.ownerId, attacker.ownerId);
       // The capital collapsed defensively but was not razed: keep it standing as the
       // new vassal's city rather than leaving an uncaptured 0-HP city behind.
@@ -630,6 +671,20 @@ export class CombatSystem {
     const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
     if (tile?.ownerId !== unit.ownerId) return 0;
     return this.policySystem?.getFlatModifierTotal(unit.ownerId, 'ownedTerritoryCombatFlat') ?? 0;
+  }
+
+  private getForeignInsurgentStrengthMultiplier(attacker: Unit, tileX: number, tileY: number): number {
+    const territorialOwnerId = this.mapData.tiles[tileY]?.[tileX]?.ownerId;
+    const percent = this.policySystem?.getPercentModifierTotal(
+      attacker.ownerId,
+      'foreignInsurgentEffectivenessPercent',
+    ) ?? 0;
+    return getForeignInsurgentStrengthMultiplier(
+      attacker.unitType.id,
+      attacker.ownerId,
+      territorialOwnerId,
+      percent,
+    );
   }
 
   private notifyWarRequired(
