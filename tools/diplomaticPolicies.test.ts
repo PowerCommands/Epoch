@@ -233,3 +233,26 @@ test('five Diplomatic policy artworks are unique 256x256 RGBA non-interlaced PNG
   }
   assert.equal(hashes.size, DIPLOMATIC_POLICIES.length);
 });
+
+test('the first Diplomatic slot (Foreign Trade) also grants a Diplomatic policy so the slot is never empty', () => {
+  // Regression: Foreign Trade unlocks the first Diplomatic slot in the ancient
+  // era. Before Trade Agreements was tied here, the earliest diplomatic policy
+  // was several eras later, leaving the slot with nothing to fill it.
+  const tradeAgreements = getPolicyById('trade_agreements')!;
+  assert.equal(tradeAgreements.category, 'diplomatic');
+  assert.equal(tradeAgreements.requiredCultureNodeId, 'foreign_trade');
+
+  const nations = new NationManager();
+  nations.addNation(new Nation({
+    id: HUMAN,
+    name: 'Human',
+    color: 0,
+    isHuman: true,
+    unlockedCultureNodeIds: ['foreign_trade'],
+  }));
+  const policies = new PolicySystem(nations);
+  assert.ok(policies.getSlotCounts(HUMAN).diplomatic >= 1);
+  const availableDiplomatic = policies.getUnlockedPolicies(HUMAN).filter((p) => p.category === 'diplomatic');
+  assert.ok(availableDiplomatic.some((p) => p.id === 'trade_agreements'));
+  assert.equal(policies.activatePolicy(HUMAN, 'trade_agreements', 'diplomatic'), true);
+});

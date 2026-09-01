@@ -105,10 +105,13 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
     modifiers: [{ type: 'influenceFlat', value: 1 }],
   }),
   policy({
+    // Tied to Foreign Trade so the very first Diplomatic slot (which Foreign Trade
+    // unlocks) also has a diplomatic policy to fill it. Without this the Diplomatic
+    // slot sits empty from the ancient era until the first later diplomatic node.
     id: 'trade_agreements',
     name: 'Trade Agreements',
     category: 'diplomatic',
-    requiredCultureNodeId: 'civil_service_civics',
+    requiredCultureNodeId: 'foreign_trade',
     description: 'Nationwide gold output increases by 10%.',
     modifiers: [{ type: 'goldPercent', value: 10 }],
   }),
