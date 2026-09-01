@@ -25,6 +25,23 @@ export function getCulturePolicyUnlockNames(cultureNodeId: string): string[] {
   return getPoliciesByRequiredCultureNodeId(cultureNodeId).map((policy) => policy.name);
 }
 
+/**
+ * Human-readable labels for the policy slots a culture node unlocks, e.g.
+ * "Culture Policy Slot". Slots are read straight from the node's data-driven
+ * `policySlot` unlocks so the Culture Tree stays the single source of truth.
+ */
+export function getCulturePolicySlotUnlockLabels(cultureNodeId: string): string[] {
+  const node = getCultureNodeById(cultureNodeId);
+  if (!node) return [];
+  return node.unlocks
+    .filter((unlock) => unlock.type === 'policySlot')
+    .map((unlock) => `${formatPolicySlotCategory(unlock.value)} Policy Slot`);
+}
+
+function formatPolicySlotCategory(category: string): string {
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
+
 export interface HudResourceEntry {
   key: 'turn' | 'happiness' | 'production' | 'culture' | 'gold' | 'science' | 'influence' | `strategic:${string}`;
   icon: string;
@@ -99,6 +116,7 @@ export interface HudDependencyTreeNode {
   prerequisites: string[];
   status: HudTreeNodeStatus;
   policyUnlockNames?: readonly string[];
+  policySlotUnlockLabels?: readonly string[];
 }
 
 export interface HudDependencyTreeState {
@@ -355,6 +373,7 @@ export class NationHudDataProvider {
             name: node.name,
             description: node.description,
             policyUnlockNames: getCulturePolicyUnlockNames(node.id),
+            policySlotUnlockLabels: getCulturePolicySlotUnlockLabels(node.id),
             imageKey: getCultureSpriteKey(node.id),
             prerequisites: node.prerequisites ?? [],
             status: entry?.isUnlocked

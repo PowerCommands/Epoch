@@ -354,7 +354,7 @@ export class DependencyTreeDialog {
       this.scene,
       0,
       0,
-      formatPolicyUnlocks(node.policyUnlockNames ?? []),
+      formatNodeUnlocks(node.policySlotUnlockLabels ?? [], node.policyUnlockNames ?? []),
       {
         fontFamily: 'sans-serif',
         fontSize: '11px',
@@ -659,6 +659,7 @@ export class DependencyTreeDialog {
       card.fallback.setVisible(visible);
       card.title.setVisible(visible);
       card.description.setVisible(visible);
+      card.policyUnlocks.setVisible(visible);
       card.status.setVisible(visible);
     }
   }
@@ -813,10 +814,16 @@ function formatStatus(status: HudTreeNodeStatus): string {
   return 'Locked';
 }
 
-function formatPolicyUnlocks(policyNames: readonly string[]): string {
-  if (policyNames.length === 0) return '';
-  const label = policyNames.length === 1 ? 'Unlocks Policy' : 'Unlocks Policies';
-  return `${label}: ${policyNames.join(', ')}`;
+function formatNodeUnlocks(
+  policySlotLabels: readonly string[],
+  policyNames: readonly string[],
+): string {
+  const entries = [
+    ...policySlotLabels,
+    ...policyNames.map((name) => `Policy: ${name}`),
+  ];
+  if (entries.length === 0) return '';
+  return `Unlocks: ${entries.join(', ')}`;
 }
 
 function getInitials(name: string): string {

@@ -66,7 +66,9 @@ test('five ordinary Diplomatic policies use the requested conflict-free culture 
 test('new Diplomatic policies use normal Diplomatic slots, remain wildcard-compatible, and survive save/load', () => {
   for (const [policyId, nodeId] of DIPLOMATIC_POLICIES) {
     const { nations, policies } = makePolicyHarness(nodeId);
-    assert.equal(policies.getSlotCounts(HUMAN).diplomatic, 1);
+    // Diplomatic Service always grants a Diplomatic slot; Cold War now grants a
+    // second one, so assert on availability rather than an exact count.
+    assert.ok(policies.getSlotCounts(HUMAN).diplomatic >= 1);
     assert.equal(policies.activatePolicy(HUMAN, policyId, 'diplomatic'), true);
     const saved = policies.getActivePolicyAssignments(HUMAN);
     const restored = new PolicySystem(nations);
