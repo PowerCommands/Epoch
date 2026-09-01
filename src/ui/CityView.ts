@@ -691,7 +691,10 @@ export class CityView {
         `${option.name} (${option.cost})${suffix}`,
       );
       button.disabled = option.disabled ?? false;
-      button.title = option.description;
+      // When the wonder can't be built the reason is the more useful tooltip;
+      // otherwise fall back to the flavour description. `reason` is set exactly
+      // when the wonder is unbuildable (queued / blocked / no placement tile).
+      button.title = option.reason ?? option.description;
       button.addEventListener('click', () => {
         if (button.disabled) return;
         for (const callback of this.wonderRequestCallbacks) callback(option.id);

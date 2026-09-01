@@ -6529,20 +6529,56 @@ export class GameScene extends Phaser.Scene {
         diplomacyManager.toggleOpenBorders(humanNationIdForDiplomacy, targetNationId);
         rightPanel?.refreshCurrent();
       } else if (action === 'establishEmbassy') {
-        if (!diplomacyManager.canEstablishEmbassy(
+        // Opening an embassy is directional: this establishes the human's embassy
+        // in the target's capital. The target opening its own embassy in the human
+        // is a separate act (the AI proposes it on its own turn). The action always
+        // succeeds when allowed, so the leader acknowledges rather than deciding.
+        const leaderName = getLeaderByNationId(targetNationId)?.name ?? targetNation.name;
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+        const embassyCheck = diplomacyManager.canEstablishEmbassy(
           humanNationIdForDiplomacy,
           targetNationId,
           validationContext,
-        ).ok) return;
+        );
+        if (!embassyCheck.ok) {
+          showLeaderResponsePopup(targetNationId, `${leaderName} declines`, [
+            embassyCheck.reason ?? 'An embassy cannot be established right now.',
+          ]);
+          return;
+        }
         diplomacyManager.establishEmbassy(humanNationIdForDiplomacy, targetNationId);
+        logManager.info({
+          nationIds: [humanNationIdForDiplomacy, targetNationId],
+          category: 'diplomacy',
+          message: `${humanName} established an embassy in ${targetNation.name}.`,
+        });
+        showLeaderResponsePopup(targetNationId, `${leaderName} agrees`, [
+          `"Your envoys are welcome. Our capital will host your embassy."`,
+        ]);
         rightPanel?.refreshCurrent();
       } else if (action === 'establishTradeRelations') {
-        if (!diplomacyManager.canEstablishTradeRelations(
+        const leaderName = getLeaderByNationId(targetNationId)?.name ?? targetNation.name;
+        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
+        const tradeCheck = diplomacyManager.canEstablishTradeRelations(
           humanNationIdForDiplomacy,
           targetNationId,
           validationContext,
-        ).ok) return;
+        );
+        if (!tradeCheck.ok) {
+          showLeaderResponsePopup(targetNationId, `${leaderName} declines`, [
+            tradeCheck.reason ?? 'Trade Relations cannot be opened right now.',
+          ]);
+          return;
+        }
         diplomacyManager.establishTradeRelations(humanNationIdForDiplomacy, targetNationId);
+        logManager.info({
+          nationIds: [humanNationIdForDiplomacy, targetNationId],
+          category: 'diplomacy',
+          message: `${humanName} opened Trade Relations with ${targetNation.name}.`,
+        });
+        showLeaderResponsePopup(targetNationId, `${leaderName} agrees`, [
+          `"Then let our merchants trade freely between our lands."`,
+        ]);
         rightPanel?.refreshCurrent();
       } else if (action === 'economicPressure' && economicPressureType) {
         const pressureService = new HumanEconomicPressureService(
