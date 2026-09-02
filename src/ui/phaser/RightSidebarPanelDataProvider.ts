@@ -145,6 +145,8 @@ type BuyProductionRequestHandler = (city: City, index: number) => void;
 
 /** Most recent timeline entries rendered in the History panel (older ones stay saved). */
 const TIMELINE_RENDER_LIMIT = 200;
+/** Buy/Sell goods spread across this many columns (33/34/33) to use the width. */
+const TRADING_GOODS_COLUMNS = 3;
 
 export function buildLeaderDialogSection(
   leader: LeaderDefinition,
@@ -605,32 +607,22 @@ export class RightSidebarPanelDataProvider {
     };
   }
 
-  /** Buy tab — the summary header plus the goods the human can import. */
-  getTradingBuyContent(): RightSidebarContent {
-    return this.buildTradingModeContent('buy');
+  /** Trade partners = foreign nations with active Trade Relations, alphabetised. */
+  private getTradePartners(): Nation[] {
+    if (!this.humanNationId || !this.diplomacyManager) return [];
+    const humanId = this.humanNationId;
+    return this.nationManager.getAllNations()
+      .filter((nation) => nation.id !== humanId && this.diplomacyManager!.hasTradeRelations(humanId, nation.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  /** Sell tab — the summary header plus the goods the human can export. */
-  getTradingSellContent(): RightSidebarContent {
-    return this.buildTradingModeContent('sell');
-  }
-
-  /**
-   * Buy and Sell tabs share the Overview summary and live-activity feedback; only
-   * the middle goods section differs. Splitting the two directions into separate
-   * tabs is a pure UI reorganisation — no trade logic changes here.
-   */
-  private buildTradingModeContent(mode: 'buy' | 'sell'): RightSidebarContent {
-    if (!this.humanNationId || !this.tradeDealSystem || !this.tradeConnectionSystem
-      || !this.humanTradeDealWorkflow || !this.resourceAccessSystem || !this.diplomacyManager) {
+  /** Overview tab — the at-a-glance summary plus the live trade activity feed. */
+  getTradingOverviewContent(): RightSidebarContent {
+    if (!this.humanNationId || !this.tradeDealSystem || !this.humanTradeDealWorkflow || !this.diplomacyManager) {
       return { title: 'Trading', sections: [{ title: 'Overview', rows: [textRow('Trade system unavailable.', true)] }] };
     }
-
     const humanId = this.humanNationId;
-    const foreignNations = this.nationManager.getAllNations()
-      .filter((nation) => nation.id !== humanId)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const tradePartners = foreignNations.filter((nation) => this.diplomacyManager!.hasTradeRelations(humanId, nation.id));
+    const tradePartners = this.getTradePartners();
     const activeDeals = this.tradeDealSystem.getDealsForNation(humanId);
     const imports = activeDeals.filter((deal) => deal.buyerNationId === humanId);
     const exports = activeDeals.filter((deal) => deal.sellerNationId === humanId);
@@ -651,18 +643,38 @@ export class RightSidebarPanelDataProvider {
         rows: [[String(tradePartners.length), String(activeDeals.length), String(imports.length), String(exports.length), `${signedBalance}g/turn`]],
       }],
     }];
-
     if (tradePartners.length === 0) {
       sections.push({
         title: 'International trade',
         rows: [textRow('No Trade Relations established.', true), textRow('Establish Trade Relations through Diplomacy to begin international trade.', true)],
       });
     }
-    sections.push(mode === 'sell'
-      ? { title: 'Goods available to sell', rows: this.buildTradingSellRows(tradePartners) }
-      : { title: 'Goods available to buy', rows: this.buildTradingBuyRows(tradePartners) });
     sections.push({ title: 'Current trade activity', rows: this.buildTradingActivityRows() });
     return { title: 'Trading', sections };
+  }
+
+  /** Buy tab — only the foreign goods that can actually be bought, in a 3-up grid. */
+  getTradingBuyContent(): RightSidebarContent {
+    if (!this.resourceAccessSystem || !this.tradeDealSystem || !this.humanNationId) {
+      return { title: 'Trading', sections: [{ title: 'Goods available to buy', rows: [textRow('Trade system unavailable.', true)] }] };
+    }
+    const cells = this.buildTradingBuyCells(this.getTradePartners());
+    const rows: RightSidebarRow[] = cells.length > 0
+      ? [{ kind: 'grid', columns: TRADING_GOODS_COLUMNS, cells }]
+      : [textRow('No foreign goods currently available to buy.', true)];
+    return { title: 'Trading', sections: [{ title: 'Goods available to buy', rows }] };
+  }
+
+  /** Sell tab — only the goods that can actually be sold, in a 3-up grid. */
+  getTradingSellContent(): RightSidebarContent {
+    if (!this.resourceAccessSystem || !this.humanNationId || !this.humanTradeDealWorkflow) {
+      return { title: 'Trading', sections: [{ title: 'Goods available to sell', rows: [textRow('Trade system unavailable.', true)] }] };
+    }
+    const cells = this.buildTradingSellCells(this.getTradePartners());
+    const rows: RightSidebarRow[] = cells.length > 0
+      ? [{ kind: 'grid', columns: TRADING_GOODS_COLUMNS, cells }]
+      : [textRow('No goods can be sold right now.', true)];
+    return { title: 'Trading', sections: [{ title: 'Goods available to sell', rows }] };
   }
 
   getTradingNationTabs(): TradingNationTab[] {
@@ -684,7 +696,7 @@ export class RightSidebarPanelDataProvider {
     if (!nation || !this.humanNationId || !this.diplomacyManager
       || !this.diplomacyManager.hasTradeRelations(this.humanNationId, nationId)
       || !this.tradeDealSystem || !this.humanTradeDealWorkflow || !this.tradeConnectionSystem) {
-      return this.getTradingBuyContent();
+      return this.getTradingOverviewContent();
     }
 
     const humanId = this.humanNationId;
@@ -718,13 +730,16 @@ export class RightSidebarPanelDataProvider {
             rows: [['Active', String(bilateralDeals.length), String(imports.length), String(exports.length), `${formatSigned(netGold)}g/turn`]],
           }],
         },
-        { title: 'Exports', rows: this.buildTradingNationExportRows(nation.name, exports) },
-        { title: 'Imports', rows: this.buildTradingNationImportRows(nation.name, imports) },
-        { title: 'Pending', rows: this.buildTradingNationPendingRows(pending) },
-        { title: 'Trade Routes', rows: this.buildTradingNationRouteRows(routes) },
-        { title: 'Trade Capacity', rows: this.buildTradingNationCapacityRows(nationId) },
+        // Left column: what is actually flowing (Imports, Exports, Pending).
+        { title: 'Imports', column: 'left', rows: this.buildTradingNationImportRows(nation.name, imports) },
+        { title: 'Exports', column: 'left', rows: this.buildTradingNationExportRows(nation.name, exports) },
+        { title: 'Pending', column: 'left', rows: this.buildTradingNationPendingRows(pending) },
+        // Right column: the infrastructure and totals behind it.
+        { title: 'Trade Routes', column: 'right', rows: this.buildTradingNationRouteRows(routes) },
+        { title: 'Trade Capacity', column: 'right', rows: this.buildTradingNationCapacityRows(nationId) },
         {
           title: 'Bilateral Trade Value',
+          column: 'right',
           rows: [
             textRow(`Exports: +${exportGold} gold/turn`),
             textRow(`Imports: -${importGold} gold/turn`),
@@ -2464,46 +2479,48 @@ export class RightSidebarPanelDataProvider {
     ];
   }
 
-  private buildTradingSellRows(tradePartners: readonly Nation[]): RightSidebarRow[] {
-    if (!this.resourceAccessSystem || !this.humanNationId || !this.humanTradeDealWorkflow) {
-      return [textRow('Trade system unavailable.', true)];
-    }
-    const resources = this.resourceAccessSystem.getExportableResourceQuantities(this.humanNationId);
-    if (resources.length === 0) return [textRow('No goods currently available to sell.', true)];
-
-    const rows: RightSidebarRow[] = [];
-    for (const { resourceId, quantity } of resources) {
+  /**
+   * One grid cell per sellable resource. Only goods that can actually be sold
+   * right now are included; each cell carries its header, destination + duration
+   * selectors and an always-enabled Sell button (no separators — the grid gaps
+   * separate cells).
+   */
+  private buildTradingSellCells(tradePartners: readonly Nation[]): RightSidebarRow[][] {
+    if (!this.resourceAccessSystem || !this.humanNationId || !this.humanTradeDealWorkflow) return [];
+    const cells: RightSidebarRow[][] = [];
+    for (const { resourceId, quantity } of this.resourceAccessSystem.getExportableResourceQuantities(this.humanNationId)) {
       const available = Math.max(0, quantity - this.resourceAccessSystem.getExportedResourceSourceCount(this.humanNationId, resourceId));
+      if (available <= 0) continue;
       const duration = this.getTradingDuration(this.tradingExportDurations, resourceId);
       const goldPerTurn = this.getHumanTradeGoldPerTurn(resourceId, duration);
       const options: Array<{ value: string; label: string }> = [];
-      const rejectedReasons: string[] = [];
 
-      if (available > 0) {
-        for (const nation of tradePartners) {
-          for (const city of [...this.cityManager.getCitiesByOwner(nation.id)].sort((a, b) => a.name.localeCompare(b.name))) {
-            const evaluation = this.humanTradeDealWorkflow.evaluateExportDestination({
-              sellerNationId: this.humanNationId,
-              buyerNationId: nation.id,
-              buyerCityId: city.id,
-              resourceId,
-              turns: duration,
-              goldPerTurn,
-            });
-            if (evaluation.ok) options.push({ value: city.id, label: `${nation.name} — ${city.name}` });
-            else rejectedReasons.push(evaluation.reason);
-          }
+      for (const nation of tradePartners) {
+        for (const city of [...this.cityManager.getCitiesByOwner(nation.id)].sort((a, b) => a.name.localeCompare(b.name))) {
+          const evaluation = this.humanTradeDealWorkflow.evaluateExportDestination({
+            sellerNationId: this.humanNationId,
+            buyerNationId: nation.id,
+            buyerCityId: city.id,
+            resourceId,
+            turns: duration,
+            goldPerTurn,
+          });
+          if (evaluation.ok) options.push({ value: city.id, label: `${nation.name} — ${city.name}` });
         }
       }
 
-      let selectedCityId = this.tradingExportDestinations.get(resourceId) ?? '';
-      if (!options.some((option) => option.value === selectedCityId)) selectedCityId = options[0]?.value ?? '';
-      if (selectedCityId) this.tradingExportDestinations.set(resourceId, selectedCityId);
-      const selectedCity = selectedCityId ? this.cityManager.getCity(selectedCityId) : undefined;
+      // No eligible destination → not actionable, so omit the resource entirely.
+      if (options.length === 0) continue;
 
-      rows.push(textRow(`${this.formatResourceName(resourceId)} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true));
-      if (options.length > 0) {
-        rows.push({
+      let selectedCityId = this.tradingExportDestinations.get(resourceId) ?? '';
+      if (!options.some((option) => option.value === selectedCityId)) selectedCityId = options[0]!.value;
+      this.tradingExportDestinations.set(resourceId, selectedCityId);
+      const selectedCity = this.cityManager.getCity(selectedCityId);
+      if (!selectedCity) continue;
+
+      cells.push([
+        textRow(`${this.formatResourceName(resourceId)} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true),
+        {
           kind: 'select',
           label: 'Sell to',
           value: selectedCityId,
@@ -2512,34 +2529,27 @@ export class RightSidebarPanelDataProvider {
             this.tradingExportDestinations.set(resourceId, value);
             this.requestRefresh();
           },
-        });
-      } else {
-        const reason = available <= 0
-          ? 'Already committed — no supply is currently available.'
-          : tradePartners.length === 0
-            ? 'No Trade Relations.'
-            : rejectedReasons[0] ?? 'No eligible foreign cities.';
-        rows.push(textRow(reason, true));
-      }
-      rows.push(this.buildTradingDurationSelect(this.tradingExportDurations, resourceId, duration));
-      rows.push({
-        kind: 'button',
-        text: `Sell — ${goldPerTurn}g/turn`,
-        accentColor: selectedCity ? this.nationManager.getNation(selectedCity.ownerId)?.color : undefined,
-        disabled: options.length === 0 || !selectedCity,
-        disabledReason: options.length === 0 ? 'No eligible destination.' : undefined,
-        onClick: () => this.startTradingExport(resourceId),
-      });
-      rows.push({ kind: 'separator' });
+        },
+        this.buildTradingDurationSelect(this.tradingExportDurations, resourceId, duration),
+        {
+          kind: 'button',
+          text: `Sell — ${goldPerTurn}g/turn`,
+          accentColor: this.nationManager.getNation(selectedCity.ownerId)?.color,
+          onClick: () => this.startTradingExport(resourceId),
+        },
+      ]);
     }
-    return rows;
+    return cells;
   }
 
-  private buildTradingBuyRows(tradePartners: readonly Nation[]): RightSidebarRow[] {
-    if (!this.resourceAccessSystem || !this.tradeDealSystem || !this.humanNationId) {
-      return [textRow('Trade system unavailable.', true)];
-    }
-    const rows: RightSidebarRow[] = [];
+  /**
+   * One grid cell per buyable foreign resource. Only goods whose Buy would
+   * succeed are included; each cell carries its header, duration selector and an
+   * always-enabled Buy button.
+   */
+  private buildTradingBuyCells(tradePartners: readonly Nation[]): RightSidebarRow[][] {
+    if (!this.resourceAccessSystem || !this.tradeDealSystem || !this.humanNationId) return [];
+    const cells: RightSidebarRow[][] = [];
     for (const seller of tradePartners) {
       for (const { resourceId, quantity } of this.resourceAccessSystem.getExportableResourceQuantities(seller.id)) {
         const available = Math.max(0, quantity - this.resourceAccessSystem.getExportedResourceSourceCount(seller.id, resourceId));
@@ -2553,25 +2563,21 @@ export class RightSidebarPanelDataProvider {
           turns: duration,
           goldPerTurn,
         };
-        const validation = available > 0
-          ? this.tradeDealSystem.validateDeal(input)
-          : { ok: false as const, reason: 'Already committed — no supply is currently available.' };
-        rows.push(textRow(`${this.formatResourceName(resourceId)} — ${seller.name} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true));
-        rows.push(this.buildTradingDurationSelect(this.tradingImportDurations, key, duration));
-        if (!validation.ok && validation.reason) rows.push(textRow(validation.reason, true));
-        rows.push({
-          kind: 'button',
-          text: `Buy — ${goldPerTurn}g/turn`,
-          accentColor: seller.color,
-          disabled: !validation.ok,
-          disabledReason: validation.ok ? undefined : validation.reason,
-          onClick: () => this.startTradingImport(seller.id, resourceId),
-        });
-        rows.push({ kind: 'separator' });
+        // Only surface goods that can actually be bought right now.
+        if (available <= 0 || !this.tradeDealSystem.validateDeal(input).ok) continue;
+        cells.push([
+          textRow(`${this.formatResourceName(resourceId)} — ${seller.name} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true),
+          this.buildTradingDurationSelect(this.tradingImportDurations, key, duration),
+          {
+            kind: 'button',
+            text: `Buy — ${goldPerTurn}g/turn`,
+            accentColor: seller.color,
+            onClick: () => this.startTradingImport(seller.id, resourceId),
+          },
+        ]);
       }
     }
-    if (rows.length === 0) rows.push(textRow('No foreign goods currently available to buy.', true));
-    return rows;
+    return cells;
   }
 
   private buildTradingActivityRows(): RightSidebarRow[] {

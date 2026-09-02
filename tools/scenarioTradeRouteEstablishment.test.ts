@@ -15,6 +15,7 @@ import type { TradeConnection } from '../src/types/tradeConnection.ts';
 const editor = readFileSync(new URL('../public/editor.html', import.meta.url), 'utf8');
 const aiSource = readFileSync(new URL('../src/systems/AISystem.ts', import.meta.url), 'utf8');
 const saveLoadSource = readFileSync(new URL('../src/systems/SaveLoadService.ts', import.meta.url), 'utf8');
+const gameSceneSource = readFileSync(new URL('../src/scenes/GameScene.ts', import.meta.url), 'utf8');
 
 type TurnHandler = (event: { nation: { id: string } }) => void;
 
@@ -165,6 +166,17 @@ test('Scenario Details exposes and validates the short/long trade deal durations
 test('AI route creation consumes the same canonical duration and immediate-activation status', () => {
   assert.match(aiSource, /establishmentTurns: this\.tradeConnectionSystem\.getEstablishmentTurns\(\)/);
   assert.match(aiSource, /if \(connection\.status === 'building'\)[\s\S]*this\.productionSystem\.enqueue/);
+});
+
+test('AI trade offers use the scenario-configured deal duration, not a hardcoded value', () => {
+  // The AI deal length is a configurable field, defaulted to the short duration
+  // constant and used for every proposal/deal it creates (no literal 10 turns).
+  assert.match(aiSource, /private tradeDealTurns = DEFAULT_SHORT_TRADE_DEAL_DURATION/);
+  assert.match(aiSource, /setTradeDealTurns\(turns: number\)/);
+  assert.match(aiSource, /const dealTurns = this\.tradeDealTurns/);
+  assert.doesNotMatch(aiSource, /const dealTurns = 10/);
+  // GameScene feeds the scenario-configured short duration into the AI.
+  assert.match(gameSceneSource, /aiSystem\.setTradeDealTurns\(humanTradeDealDurations\.short\)/);
 });
 
 test('normal saves persist both the active scenario value and queued route duration', () => {

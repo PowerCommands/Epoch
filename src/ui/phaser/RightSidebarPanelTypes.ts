@@ -124,6 +124,17 @@ export interface RightSidebarCompactTableRow {
   rows: string[][];
 }
 
+/**
+ * A grid of "cells", each cell being its own small stack of rows. Cells flow
+ * left-to-right and wrap after `columns` of them, so items spread across the
+ * panel width instead of stacking in a single tall list.
+ */
+export interface RightSidebarGridRow {
+  kind: 'grid';
+  columns: number;
+  cells: RightSidebarRow[][];
+}
+
 export type RightSidebarRow =
   | RightSidebarTextRow
   | RightSidebarButtonRow
@@ -133,12 +144,19 @@ export type RightSidebarRow =
   | RightSidebarSearchInputRow
   | RightSidebarSelectRow
   | RightSidebarRelationsTableRow
-  | RightSidebarCompactTableRow;
+  | RightSidebarCompactTableRow
+  | RightSidebarGridRow;
 
 export interface RightSidebarSection {
   title: string;
   titleRight?: string;
   rows: RightSidebarRow[];
+  /**
+   * When set, the section is placed in a two-column band instead of spanning the
+   * full panel width. Contiguous columned sections share one 50/50 band; sections
+   * without this field render full-width as before.
+   */
+  column?: 'left' | 'right';
 }
 
 export interface RightSidebarContent {

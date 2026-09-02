@@ -120,12 +120,28 @@ function createOverviewHarness(establishmentTurns: number, includeFrance = false
   };
 }
 
+// Buy/Sell goods are packed into a grid row of cells; flatten them so tests can
+// find the header/select/button rows directly.
+function flattenRows(rows: RightSidebarRow[]): RightSidebarRow[] {
+  return rows.flatMap((row) => row.kind === 'grid' ? row.cells.flat() : [row]);
+}
+
 function sellRows(provider: RightSidebarPanelDataProvider): RightSidebarRow[] {
-  return provider.getTradingSellContent().sections.flatMap((section) => section.rows);
+  return flattenRows(provider.getTradingSellContent().sections.flatMap((section) => section.rows));
 }
 
 function buyRows(provider: RightSidebarPanelDataProvider): RightSidebarRow[] {
-  return provider.getTradingBuyContent().sections.flatMap((section) => section.rows);
+  return flattenRows(provider.getTradingBuyContent().sections.flatMap((section) => section.rows));
+}
+
+function overviewRows(provider: RightSidebarPanelDataProvider): RightSidebarRow[] {
+  return provider.getTradingOverviewContent().sections.flatMap((section) => section.rows);
+}
+
+function overviewText(provider: RightSidebarPanelDataProvider): string {
+  return overviewRows(provider)
+    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
+    .map((row) => row.text).join('\n');
 }
 
 function button(rows: RightSidebarRow[], label: string) {
@@ -140,10 +156,10 @@ function contentText(content: ReturnType<RightSidebarPanelDataProvider['getTradi
     .map((row) => row.text).join('\n');
 }
 
-test('Trading navigation is between Leaderboard and Diplomacy and exposes Buy/Sell tabs', () => {
+test('Trading navigation is between Leaderboard and Diplomacy and exposes Overview/Buy/Sell tabs', () => {
   const source = readFileSync(new URL('../src/ui/phaser/RightSidebarPanel.ts', import.meta.url), 'utf8');
   assert.match(source, /mode: 'leaderboard'[\s\S]*mode: 'trading'[\s\S]*mode: 'diplomacy-graph'/);
-  assert.match(source, /TRADING_TABS = \[\s*\{ id: 'buy', label: 'Buy'[\s\S]*\{ id: 'sell', label: 'Sell'/);
+  assert.match(source, /TRADING_TABS = \[\s*\{ id: 'overview', label: 'Overview'[\s\S]*\{ id: 'buy', label: 'Buy'[\s\S]*\{ id: 'sell', label: 'Sell'/);
   assert.deepEqual([DEFAULT_SHORT_TRADE_DEAL_DURATION, DEFAULT_LONG_TRADE_DEAL_DURATION], [25, 50]);
 });
 
@@ -156,9 +172,9 @@ test('nation tabs are alphabetical, relationship-driven, and safely fall back to
   assert.deepEqual(h.provider.getTradingNationTabs().map((tab) => tab.label), ['China', 'France', 'Germany']);
 
   h.setTradeRelations(CHINA, false);
-  const validIds = ['buy', 'sell', ...h.provider.getTradingNationTabs().map((tab) => tab.id)];
+  const validIds = ['overview', 'buy', 'sell', ...h.provider.getTradingNationTabs().map((tab) => tab.id)];
   assert.ok(!validIds.includes('nation:china'));
-  assert.equal(resolveTradingTabId('nation:china', validIds), 'buy');
+  assert.equal(resolveTradingTabId('nation:china', validIds), 'overview');
 });
 
 test('an empty nation relationship remains informative and shows authoritative city-global capacity', () => {
@@ -234,9 +250,7 @@ test('Overview starts a 25-turn pending export to the selected Nation — City',
   assert.equal(h.workflow.getPendingDeals()[0]?.buyerCityId, 'shanghai');
   assert.equal(h.deals.getAllDeals().length, 0);
   assert.equal(h.queues.get('london')?.[0]?.turnsRemaining, 5);
-  const statusText = sellRows(h.provider)
-    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
-    .map((row) => row.text).join('\n');
+  const statusText = overviewText(h.provider);
   assert.match(statusText, /Fish → China — Shanghai/);
   assert.match(statusText, /Establishing trade route — 5 turns remaining/);
 });
@@ -260,9 +274,7 @@ test('Overview immediately shows an active export in a zero-turn scenario', () =
   assert.equal(h.workflow.getPendingDeals().length, 0);
   assert.equal(h.connections.getAllConnections()[0]?.status, 'active');
   assert.equal(h.deals.getAllDeals()[0]?.remainingTurns, 25);
-  const statusText = sellRows(h.provider)
-    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
-    .map((row) => row.text).join('\n');
+  const statusText = overviewText(h.provider);
   assert.match(statusText, /Active — 25 turns remaining/);
 });
 
@@ -275,9 +287,7 @@ test('route completion replaces pending status with the full active duration', (
 
   assert.equal(h.workflow.getPendingDeals().length, 0);
   assert.equal(h.deals.getAllDeals()[0]?.remainingTurns, 25);
-  const statusText = sellRows(h.provider)
-    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
-    .map((row) => row.text).join('\n');
+  const statusText = overviewText(h.provider);
   assert.doesNotMatch(statusText, /Establishing trade route — 5 turns remaining/);
   assert.match(statusText, /Active — 25 turns remaining/);
 });
@@ -293,9 +303,7 @@ test('resource loss removes a failed pending deal while the completed route rema
   assert.equal(h.workflow.getPendingDeals().length, 0);
   assert.equal(h.deals.getAllDeals().length, 0);
   assert.equal(h.connections.getAllConnections()[0]?.status, 'active');
-  const statusText = sellRows(h.provider)
-    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
-    .map((row) => row.text).join('\n');
+  const statusText = overviewText(h.provider);
   assert.match(statusText, /Seller does not currently have access to that resource/);
 });
 
@@ -311,9 +319,7 @@ test('restored pending and active deals are represented by the same Overview sta
   pendingAfter.queues.set('london', queueJson);
   pendingAfter.workflow.restorePendingDeals(pendingJson);
   assert.deepEqual(pendingAfter.provider.getTradingNationTabs().map((tab) => tab.label), ['China']);
-  let statusText = sellRows(pendingAfter.provider)
-    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
-    .map((row) => row.text).join('\n');
+  let statusText = overviewText(pendingAfter.provider);
   assert.match(statusText, /Establishing trade route — 5 turns remaining/);
   assert.match(contentText(pendingAfter.provider.getTradingNationContent(CHINA)), /Establishing trade route · 5 turns remaining/);
 
@@ -322,9 +328,7 @@ test('restored pending and active deals are represented by the same Overview sta
   const activeAfter = createOverviewHarness(5);
   activeAfter.connections.restoreConnections(pendingAfter.connections.getAllConnections());
   activeAfter.deals.restoreDeals(activeJson);
-  statusText = sellRows(activeAfter.provider)
-    .filter((row): row is Extract<RightSidebarRow, { kind: 'text' }> => row.kind === 'text')
-    .map((row) => row.text).join('\n');
+  statusText = overviewText(activeAfter.provider);
   assert.match(statusText, /Active — 25 turns remaining/);
   assert.match(contentText(activeAfter.provider.getTradingNationContent(CHINA)), /Fish ×1[\s\S]*25 turns remaining/);
 });

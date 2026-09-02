@@ -15,6 +15,9 @@ import type {
   RightSidebarRow,
   RightSidebarSearchInputRow,
   RightSidebarSelectRow,
+  RightSidebarSection,
+  RightSidebarTextRow,
+  RightSidebarGridRow,
 } from './RightSidebarPanelTypes';
 import { resolveTradingTabId } from './RightSidebarPanelTypes';
 import type { DiplomacyRelationshipType } from './DiplomacyGraphTypes';
@@ -55,6 +58,8 @@ interface ContentInput {
   element: HTMLInputElement | HTMLSelectElement;
   baseY: number;
   height: number;
+  x: number;
+  width: number;
 }
 
 const DEPTH = 1200;
@@ -80,7 +85,7 @@ const COLLAPSE_HEIGHT = 42;
 const SECTION_GAP = 18;
 const ROW_GAP = 8;
 const SCROLL_STEP = 52;
-const SCROLLBAR_WIDTH = 6;
+const SCROLLBAR_WIDTH = 12;
 const SCROLLBAR_MARGIN = 8;
 const SCROLLBAR_MIN_THUMB_HEIGHT = 28;
 const WHEEL_BLOCKER_ID = 'right-sidebar-panel';
@@ -107,10 +112,11 @@ const MODES: ModeDefinition[] = [
 ];
 
 /**
- * Fixed Trading tabs shown before the dynamic per-nation tabs: Buy lists the
- * goods the human can import, Sell lists the goods it can export.
+ * Fixed Trading tabs shown before the dynamic per-nation tabs: Overview shows the
+ * summary and live activity, Buy lists importable goods, Sell lists exportable ones.
  */
 export const TRADING_TABS = [
+  { id: 'overview', label: 'Overview', accentColor: 0x7fc8a9 },
   { id: 'buy', label: 'Buy', accentColor: 0x7fc8a9 },
   { id: 'sell', label: 'Sell', accentColor: 0x7fc8a9 },
 ] as const;
@@ -202,7 +208,7 @@ export class RightSidebarPanel {
   private contentHeight = 0;
   private scrollableContentTop = CONTENT_TOP;
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
-  private tradingTabId = 'buy';
+  private tradingTabId = 'overview';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
   private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
   private lastDetailsCityId: string | null = null;
@@ -321,7 +327,10 @@ export class RightSidebarPanel {
       if (this.collapsed || !this.isPointerOverPanel(pointer)) return;
       consumePointerEvent(pointer);
       event.preventDefault?.();
-      if (this.maxScroll <= 0) return;
+      // In Trading the vertical scroll is intentionally driven only by the
+      // scrollbar on the right, so the wheel is consumed but does not scroll.
+      // Other modes keep normal wheel scrolling.
+      if (this.activeMode === 'trading' || this.maxScroll <= 0) return;
       this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
     };
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
@@ -358,7 +367,7 @@ export class RightSidebarPanel {
       this.leaderboardCategory = 'domination';
     }
     if (mode === 'trading' && this.activeMode !== 'trading') {
-      this.tradingTabId = 'buy';
+      this.tradingTabId = 'overview';
     }
     if (mode === 'diplomacy-graph' && this.activeMode !== 'diplomacy-graph') {
       this.diplomacyGraphFocusNation = null;
@@ -660,9 +669,9 @@ export class RightSidebarPanel {
     this.tradingTabId = resolveTradingTabId(this.tradingTabId, tabs.map((tab) => tab.id));
     const selected = tabs.find((tab) => tab.id === this.tradingTabId)!;
     if (selected.nationId) return this.dataProvider.getTradingNationContent(selected.nationId);
-    return selected.id === 'sell'
-      ? this.dataProvider.getTradingSellContent()
-      : this.dataProvider.getTradingBuyContent();
+    if (selected.id === 'buy') return this.dataProvider.getTradingBuyContent();
+    if (selected.id === 'sell') return this.dataProvider.getTradingSellContent();
+    return this.dataProvider.getTradingOverviewContent();
   }
 
   private ensureRenderableContent(content: RightSidebarContent): RightSidebarContent {
@@ -695,26 +704,77 @@ export class RightSidebarPanel {
     if (this.activeMode === 'trading') {
       y = this.addTradingTabs(y);
     }
-    for (const section of content.sections) {
-      const heading = this.addContentText(section.title, 17, '#91a9c4', 'bold');
-      heading.setPosition(PANEL_PADDING, y);
-      heading.setData('baseY', y);
-      let headingHeight = heading.height;
-      if (section.titleRight) {
-        const headingWidth = this.getContentWidth();
-        const rightHeading = this.addContentText(section.titleRight, 15, '#d8c686', 'bold', headingWidth);
-        rightHeading.setOrigin(1, 0);
-        rightHeading.setPosition(PANEL_PADDING + headingWidth, y + 1);
-        rightHeading.setData('baseY', y + 1);
-        headingHeight = Math.max(headingHeight, rightHeading.height);
+    const sections = content.sections;
+    let i = 0;
+    while (i < sections.length) {
+      const section = sections[i];
+      if (!section.column) {
+        y = this.addFullWidthSection(section, y);
+        i++;
+        continue;
       }
-      y += headingHeight + 9;
-      for (const row of section.rows) {
-        y = this.addContentRow(row, y);
-      }
-      y += SECTION_GAP;
+      // Gather the contiguous run of columned sections into one 50/50 band.
+      const run: RightSidebarSection[] = [];
+      while (i < sections.length && sections[i].column) run.push(sections[i++]);
+      y = this.addTwoColumnBand(run, y);
     }
     return Math.max(0, y - scrollContentStartY);
+  }
+
+  /** Render one section spanning the whole content width (the default layout). */
+  private addFullWidthSection(section: RightSidebarSection, y: number): number {
+    const width = this.getContentWidth();
+    y = this.addSectionHeading(section, PANEL_PADDING, y, width, true);
+    for (const row of section.rows) y = this.addContentRow(row, y);
+    return y + SECTION_GAP;
+  }
+
+  /**
+   * Render a run of `column` sections as a 50/50 band: 'left' sections stack in
+   * the left half, 'right' sections in the right half. The band's height is the
+   * taller of the two stacks. Columned sections only carry text rows.
+   */
+  private addTwoColumnBand(run: readonly RightSidebarSection[], y: number): number {
+    const COLUMN_GAP = 16;
+    const colWidth = Math.floor((this.getContentWidth() - COLUMN_GAP) / 2);
+    const leftX = PANEL_PADDING;
+    const rightX = PANEL_PADDING + colWidth + COLUMN_GAP;
+    let leftY = y;
+    let rightY = y;
+    for (const section of run) {
+      if (section.column === 'right') rightY = this.addColumnSection(section, rightX, rightY, colWidth);
+      else leftY = this.addColumnSection(section, leftX, leftY, colWidth);
+    }
+    return Math.max(leftY, rightY);
+  }
+
+  /** Render one section (heading + rows) confined to the box [x, x + width]. */
+  private addColumnSection(section: RightSidebarSection, x: number, y: number, width: number): number {
+    y = this.addSectionHeading(section, x, y, width, false);
+    for (const row of section.rows) {
+      y = row.kind === 'text'
+        ? this.addTextRow(row, y, x, width)
+        // Columned sections are text-only by construction; anything else falls
+        // back to a full-width row so nothing is silently dropped.
+        : this.addContentRow(row, y);
+    }
+    return y + SECTION_GAP;
+  }
+
+  /** Shared section-title rendering; `withTitleRight` enables the optional right label. */
+  private addSectionHeading(section: RightSidebarSection, x: number, y: number, width: number, withTitleRight: boolean): number {
+    const heading = this.addContentText(section.title, 17, '#91a9c4', 'bold', width);
+    heading.setPosition(x, y);
+    heading.setData('baseY', y);
+    let headingHeight = heading.height;
+    if (withTitleRight && section.titleRight) {
+      const rightHeading = this.addContentText(section.titleRight, 15, '#d8c686', 'bold', width);
+      rightHeading.setOrigin(1, 0);
+      rightHeading.setPosition(x + width, y + 1);
+      rightHeading.setData('baseY', y + 1);
+      headingHeight = Math.max(headingHeight, rightHeading.height);
+    }
+    return y + headingHeight + 9;
   }
 
   private buildDiplomacyGraphContent(): void {
@@ -1267,34 +1327,8 @@ export class RightSidebarPanel {
 
   private addContentRow(row: RightSidebarRow, y: number): number {
     switch (row.kind) {
-      case 'text': {
-        const hasAccent = row.color !== undefined;
-        const icon = row.spritePath ? this.addContentIcon(row.spritePath, PANEL_PADDING + (hasAccent ? 15 : 0), y + 1) : null;
-        const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
-        const textX = (hasAccent ? PANEL_PADDING + 15 : PANEL_PADDING) + iconWidth;
-        const contentWidth = this.getContentWidth();
-        const wrapWidth = (hasAccent ? contentWidth - 15 : contentWidth) - iconWidth;
-        const color = row.muted ? '#c1cbd8' : row.large ? '#ffffff' : '#edf4ff';
-        if (hasAccent) {
-          const marker = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 5, 6, Math.max(14, row.large ? 20 : 16), row.color, 0.95))
-            .setOrigin(0, 0)
-            .setScrollFactor(0);
-          marker.setData('baseY', y + 5);
-          this.panelContainer.add(marker);
-          this.contentObjects.push(marker);
-          marker.setMask(this.contentMask);
-        }
-        if (icon) {
-          this.panelContainer.add(icon);
-          this.contentObjects.push(icon);
-          icon.setMask(this.contentMask);
-        }
-        const text = this.addContentText(row.text, row.large ? 21 : 16, color, row.large ? 'bold' : 'normal');
-        text.setWordWrapWidth(wrapWidth, true);
-        text.setPosition(textX, y);
-        text.setData('baseY', y);
-        return y + Math.max(text.height, icon ? CONTENT_ICON_SIZE : 0) + ROW_GAP;
-      }
+      case 'text':
+        return this.addTextRow(row, y, PANEL_PADDING, this.getContentWidth());
       case 'button':
         return this.addContentButton(row, y);
       case 'buttonGroup':
@@ -1319,7 +1353,92 @@ export class RightSidebarPanel {
         return this.addRelationsTableRow(row, y);
       case 'compactTable':
         return this.addCompactTableRow(row, y);
+      case 'grid':
+        return this.addGridRow(row, y);
     }
+  }
+
+  /**
+   * Lay a grid row's cells out left-to-right, wrapping after `columns` of them.
+   * Each cell is its own small stack of rows, sized to one grid column, so items
+   * fill the panel width instead of forming one tall single-column list.
+   */
+  private addGridRow(row: RightSidebarGridRow, y: number): number {
+    const GAP = 12;
+    const cols = Math.max(1, row.columns);
+    const colWidth = Math.floor((this.getContentWidth() - GAP * (cols - 1)) / cols);
+    let rowTopY = y;
+    let maxRowBottom = y;
+    row.cells.forEach((cell, index) => {
+      const column = index % cols;
+      if (column === 0 && index > 0) {
+        rowTopY = maxRowBottom + GAP;
+        maxRowBottom = rowTopY;
+      }
+      const x = PANEL_PADDING + column * (colWidth + GAP);
+      let cellY = rowTopY;
+      for (const cellRow of cell) cellY = this.addCellRow(cellRow, cellY, x, colWidth);
+      maxRowBottom = Math.max(maxRowBottom, cellY);
+    });
+    return maxRowBottom;
+  }
+
+  /** Render one row confined to a grid/column box [x, x + width]. */
+  private addCellRow(row: RightSidebarRow, y: number, x: number, width: number): number {
+    switch (row.kind) {
+      case 'text':
+        return this.addTextRow(row, y, x, width);
+      case 'select':
+        return this.addSelectRow(row, y, x, width);
+      case 'button':
+        return this.addContentButton(row, y, x, width);
+      case 'separator': {
+        const line = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y + 6, width, 1, 0x7f8b99, 0.28))
+          .setOrigin(0, 0)
+          .setScrollFactor(0);
+        line.setData('baseY', y + 6);
+        this.panelContainer.add(line);
+        this.contentObjects.push(line);
+        line.setMask(this.contentMask);
+        return y + 16;
+      }
+      // Other row kinds are not used inside grid cells; fall back to full width.
+      default:
+        return this.addContentRow(row, y);
+    }
+  }
+
+  /**
+   * Render a single text row inside the box [x, x + width]. Extracted from
+   * {@link addContentRow} so both the full-width flow and the two-column trading
+   * band can place text rows with the same accent/icon/wrap behaviour.
+   */
+  private addTextRow(row: RightSidebarTextRow, y: number, x: number, width: number): number {
+    const hasAccent = row.color !== undefined;
+    const icon = row.spritePath ? this.addContentIcon(row.spritePath, x + (hasAccent ? 15 : 0), y + 1) : null;
+    const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
+    const textX = (hasAccent ? x + 15 : x) + iconWidth;
+    const wrapWidth = (hasAccent ? width - 15 : width) - iconWidth;
+    const color = row.muted ? '#c1cbd8' : row.large ? '#ffffff' : '#edf4ff';
+    if (hasAccent) {
+      const marker = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y + 5, 6, Math.max(14, row.large ? 20 : 16), row.color, 0.95))
+        .setOrigin(0, 0)
+        .setScrollFactor(0);
+      marker.setData('baseY', y + 5);
+      this.panelContainer.add(marker);
+      this.contentObjects.push(marker);
+      marker.setMask(this.contentMask);
+    }
+    if (icon) {
+      this.panelContainer.add(icon);
+      this.contentObjects.push(icon);
+      icon.setMask(this.contentMask);
+    }
+    const text = this.addContentText(row.text, row.large ? 21 : 16, color, row.large ? 'bold' : 'normal');
+    text.setWordWrapWidth(wrapWidth, true);
+    text.setPosition(textX, y);
+    text.setData('baseY', y);
+    return y + Math.max(text.height, icon ? CONTENT_ICON_SIZE : 0) + ROW_GAP;
   }
 
   private addCompactTableRow(row: RightSidebarCompactTableRow, y: number): number {
@@ -1389,7 +1508,7 @@ export class RightSidebarPanel {
     input.style.cssText = `
       position: fixed;
       z-index: ${DEPTH + 20};
-      width: ${CONTENT_WIDTH}px;
+      width: ${this.getContentWidth()}px;
       height: ${height}px;
       box-sizing: border-box;
       border: 1px solid rgba(126, 183, 214, 0.55);
@@ -1420,7 +1539,7 @@ export class RightSidebarPanel {
     });
     document.body.append(input);
 
-    const contentInput: ContentInput = { element: input, baseY: y, height };
+    const contentInput: ContentInput = { element: input, baseY: y, height, x: PANEL_PADDING, width: this.getContentWidth() };
     this.contentInputs.push(contentInput);
     this.positionContentInput(contentInput);
     if (this.focusSearchInputAfterRender) {
@@ -1431,9 +1550,9 @@ export class RightSidebarPanel {
     return y + height + ROW_GAP;
   }
 
-  private addSelectRow(row: RightSidebarSelectRow, y: number): number {
-    const label = this.addContentText(row.label, 13, '#a8b6c8', 'bold');
-    label.setPosition(PANEL_PADDING, y);
+  private addSelectRow(row: RightSidebarSelectRow, y: number, x = PANEL_PADDING, width = this.getContentWidth()): number {
+    const label = this.addContentText(row.label, 13, '#a8b6c8', 'bold', width);
+    label.setPosition(x, y);
     label.setData('baseY', y);
 
     const height = 34;
@@ -1445,7 +1564,7 @@ export class RightSidebarPanel {
     select.style.cssText = `
       position: fixed;
       z-index: ${DEPTH + 20};
-      width: ${this.getContentWidth()}px;
+      width: ${width}px;
       height: ${height}px;
       box-sizing: border-box;
       border: 1px solid rgba(126, 183, 214, 0.55);
@@ -1470,7 +1589,7 @@ export class RightSidebarPanel {
       select.addEventListener(eventName, (event) => event.stopPropagation());
     }
     document.body.append(select);
-    const contentInput: ContentInput = { element: select, baseY: selectY, height };
+    const contentInput: ContentInput = { element: select, baseY: selectY, height, x, width };
     this.contentInputs.push(contentInput);
     this.positionContentInput(contentInput);
     return selectY + height + ROW_GAP;
@@ -1853,8 +1972,9 @@ export class RightSidebarPanel {
     const contentBottom = this.scrollableContentTop + this.getVisibleContentHeight();
     const inView = visibleY + input.height >= contentTop && visibleY <= contentBottom;
     input.element.style.display = !this.collapsed && inView ? 'block' : 'none';
-    input.element.style.left = `${rect.left + this.panelContainer.x + PANEL_PADDING}px`;
+    input.element.style.left = `${rect.left + this.panelContainer.x + input.x}px`;
     input.element.style.top = `${rect.top + this.panelContainer.y + visibleY}px`;
+    input.element.style.width = `${input.width}px`;
   }
 
   private applyScroll(delta: number): void {

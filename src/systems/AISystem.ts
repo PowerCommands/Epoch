@@ -59,6 +59,7 @@ import type { DiscoverySystem } from './DiscoverySystem';
 import type { HappinessSystem } from './HappinessSystem';
 import type { TradeDealSystem } from './TradeDealSystem';
 import type { TradeConnectionSystem } from './TradeConnectionSystem';
+import { DEFAULT_SHORT_TRADE_DEAL_DURATION } from '../types/tradeDeal';
 import type { DiplomaticProposalSystem } from './diplomacy/DiplomaticProposalSystem';
 import { evaluateEmbassyUnderSuspicion, evaluateTradeUnderSuspicion } from './diplomacy/suspicionEffects';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
@@ -812,6 +813,18 @@ export class AISystem {
     this.consolidationSystem = consolidationSystem;
   }
 
+  /**
+   * Length (turns) the AI uses for the trade deals and proposals it creates.
+   * Defaults to the backward-compatible short human duration and is overridden at
+   * setup with the scenario-configured short trade deal duration so AI offers use
+   * the same durations the player can (25/50 by default) instead of a hardcoded 10.
+   */
+  private tradeDealTurns = DEFAULT_SHORT_TRADE_DEAL_DURATION;
+
+  setTradeDealTurns(turns: number): void {
+    if (Number.isInteger(turns) && turns >= 1) this.tradeDealTurns = turns;
+  }
+
   /** Optional Strategic Resource Demand source, injected for resource-driven exploration. */
   private strategicResourceDemandSystem?: StrategicResourceDemandSystem;
   /** Last-known unresolved demanded resource ids per nation (transition logging only). */
@@ -1449,7 +1462,7 @@ export class AISystem {
     const maxDeals = getMaxTradeDealsPerTurn(weights.trade);
     if (maxDeals <= 0) return;
 
-    const dealTurns = 10;
+    const dealTurns = this.tradeDealTurns;
     const baseGoldPerTurn = 5;
     if (this.nationManager.getResources(nationId).gold < baseGoldPerTurn) return;
 

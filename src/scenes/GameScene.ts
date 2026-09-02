@@ -3539,6 +3539,9 @@ export class GameScene extends Phaser.Scene {
     aiSystem.setCultureSystem(cultureSystem);
     if (consolidationSystem) aiSystem.setConsolidationSystem(consolidationSystem);
     aiSystem.setStrategicResourceDemandSystem(strategicResourceDemandSystem);
+    // AI trade offers use the scenario-configured short trade-deal duration (25 by
+    // default) instead of a hardcoded value, matching the durations the player uses.
+    aiSystem.setTradeDealTurns(humanTradeDealDurations.short);
     // AI must not select military units for a demilitarized (capitulated) nation.
     aiSystem.setUnitProductionRestrictionReason((nationId, unitTypeId) =>
       capitulationSystem.getMilitaryProductionBlockReason(nationId, unitTypeId));
