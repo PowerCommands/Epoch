@@ -3,6 +3,8 @@ import { BARBARIAN_CAMP_BUILDING_ID } from '../../data/barbarians';
 import type { ScenarioData, ScenarioNation, ScenarioUnit } from '../../types/scenario';
 import { MapGenerationValidator, buildLandComponentSizes, hexDistance, isValidStartTerrain } from './MapGenerationValidator';
 import { SeededRandom } from './SeededRandom';
+import { DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS } from '../../types/tradeConnection';
+import { DEFAULT_LONG_TRADE_DEAL_DURATION, DEFAULT_SHORT_TRADE_DEAL_DURATION } from '../../types/tradeDeal';
 import {
   normalizeTerrainWeights,
   RANDOM_CAMP_MIN_CAMP_DISTANCE,
@@ -118,6 +120,9 @@ function generateAttempt(
       timeProgression: { mode: 'auto' },
       barbarianSpawnInterval: 10,
       peaceTreatyCooldownTurns: 10,
+      tradeRouteEstablishmentTurns: DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS,
+      shortTradeDealDuration: DEFAULT_SHORT_TRADE_DEAL_DURATION,
+      longTradeDealDuration: DEFAULT_LONG_TRADE_DEAL_DURATION,
       originalCapitalCollapsePercent: 10,
     },
     map: {

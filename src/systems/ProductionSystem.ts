@@ -222,7 +222,9 @@ export class ProductionSystem {
           placement: undefined,
         };
       }
-      const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, entry.item));
+      const ppt = entry.item.kind === 'tradeRoute'
+        ? 1
+        : Math.max(1, this.getEffectiveProductionPerTurn(cityId, entry.item));
       const cost = this.getEntryCost(entry, cityId);
       const progress = entry.accumulated;
       const remaining = cost - (i === 0 ? progress : 0);
@@ -334,6 +336,7 @@ export class ProductionSystem {
   }
 
   getTurnsEstimate(cityId: string, item: Producible): number {
+    if (item.kind === 'tradeRoute') return item.establishmentTurns;
     const ppt = Math.max(1, this.getEffectiveProductionPerTurn(cityId, item));
     return Math.max(1, Math.ceil(this.getCost(item, cityId) / ppt));
   }
@@ -521,7 +524,9 @@ export class ProductionSystem {
       if (entry.accumulated < cost) {
         entry.accumulated = Math.min(
           cost,
-          entry.accumulated + this.getEffectiveProductionPerTurn(city.id, entry.item),
+          entry.accumulated + (entry.item.kind === 'tradeRoute'
+            ? 1
+            : this.getEffectiveProductionPerTurn(city.id, entry.item)),
         );
         entry.blockedReason = undefined;
       }
@@ -571,6 +576,7 @@ export class ProductionSystem {
   }
 
   getCost(item: Producible, cityId?: string): number {
+    if (item.kind === 'tradeRoute') return item.establishmentTurns;
     const baseCost = this.getBaseCost(item);
     const providedCost = cityId === undefined
       ? baseCost
@@ -667,7 +673,7 @@ export class ProductionSystem {
         // Repeatable projects never accumulate toward completion.
         return 0;
       case 'tradeRoute':
-        return item.productionCost;
+        return item.establishmentTurns;
     }
   }
 

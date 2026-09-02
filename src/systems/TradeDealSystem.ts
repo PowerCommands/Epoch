@@ -213,7 +213,8 @@ export class TradeDealSystem {
   private readonly cancelledListeners: TradeDealListener[] = [];
   private readonly changedListeners: TradeDealListener[] = [];
 
-  private validateDeal(input: CreateTradeDealInput): TradeDealResult {
+  /** Validate a deal, optionally before an establishing route provides capacity. */
+  validateDeal(input: CreateTradeDealInput, requireActiveConnectionCapacity = true): TradeDealResult {
     if (input.sellerNationId === input.buyerNationId) {
       return { ok: false, reason: 'Seller and buyer must be different nations.' };
     }
@@ -249,9 +250,11 @@ export class TradeDealSystem {
     if (alreadyImportingFromSeller) {
       return { ok: false, reason: 'Buyer is already importing that resource from this seller.' };
     }
-    const totalCapacity = this.connectionCapacityProvider(input.sellerNationId, input.buyerNationId);
-    if (this.countUsedCapacity(input) >= totalCapacity) {
-      return { ok: false, reason: 'No active trade route with available capacity.' };
+    if (requireActiveConnectionCapacity) {
+      const totalCapacity = this.connectionCapacityProvider(input.sellerNationId, input.buyerNationId);
+      if (this.countUsedCapacity(input) >= totalCapacity) {
+        return { ok: false, reason: 'No active trade route with available capacity.' };
+      }
     }
     return { ok: true };
   }

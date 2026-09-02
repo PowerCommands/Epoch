@@ -48,7 +48,7 @@ test('Standard preserves costs across the shared production pipeline', () => {
     toCityId: 'to',
     targetNationId: 'target',
     displayName: 'Test Route',
-    productionCost: 75,
+    establishmentTurns: 75,
   }), 75);
   // Repeatable projects do not complete or accumulate a declared production cost.
   assert.equal(production.getCost({ kind: 'project', projectType: ECONOMIC_DEVELOPMENT }), 1);

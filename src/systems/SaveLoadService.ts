@@ -23,7 +23,7 @@ import { getCorporationById } from '../data/corporations';
 import { getProjectById } from '../data/projects';
 import { AEROSPACE_PART_PRODUCTION, AEROSPACE_PARTS_ID } from '../data/scienceVictory';
 import type { Producible } from '../types/producible';
-import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
+import { resolveTradeRouteEstablishmentTurns } from '../types/tradeConnection';
 import type { CityManager } from './CityManager';
 import type { City } from '../entities/City';
 import type { Nation } from '../entities/Nation';
@@ -72,6 +72,8 @@ import type { ReconciliationTurningPointSystem } from './diplomacy/Reconciliatio
 import type { LuckyLoserTurningPointSystem } from './diplomacy/LuckyLoserTurningPointSystem';
 import type { CulturalJealousySystem } from './diplomacy/CulturalJealousySystem';
 import type { UnluckyWinnerTurningPointSystem } from './diplomacy/UnluckyWinnerTurningPointSystem';
+import type { HumanTradeDealWorkflow } from './HumanTradeDealWorkflow';
+import type { HumanTradeDealDurations } from '../types/tradeDeal';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -99,7 +101,9 @@ export interface SaveLoadContext {
   corporationSystem?: CorporationSystem;
   aerospacePartSystem?: AerospacePartSystem;
   tradeDealSystem?: TradeDealSystem;
+  humanTradeDealWorkflow?: HumanTradeDealWorkflow;
   tradeConnectionSystem?: TradeConnectionSystem;
+  humanTradeDealDurations?: HumanTradeDealDurations;
   tradeDiplomacySystem?: TradeDiplomacySystem;
   visibilitySystem?: VisibilitySystem;
   exileProtectionSystem?: ExileProtectionSystem;
@@ -339,6 +343,9 @@ export class SaveLoadService {
         return Object.keys(selections).length > 0 ? selections : undefined;
       })(),
       gameSpeedId,
+      tradeRouteEstablishmentTurns: tradeConnectionSystem?.getEstablishmentTurns(),
+      shortTradeDealDuration: context.humanTradeDealDurations?.short,
+      longTradeDealDuration: context.humanTradeDealDurations?.long,
       victoryConditions: context.victorySystem
         ? {
             ...context.victorySystem.getEnabledConditions(),
@@ -374,6 +381,7 @@ export class SaveLoadService {
       corporations,
       aerospaceParts: aerospacePartSystem?.getProgressForSave() ?? [],
       tradeDeals: tradeDealSystem?.getAllDeals().map((deal) => ({ ...deal })),
+      pendingTradeDeals: context.humanTradeDealWorkflow?.getPendingDeals(),
       tradeConnections: tradeConnectionSystem?.getAllConnections(),
       tradeHistory: tradeDiplomacySystem?.getAllEntries(),
       fogOfWar: visibilitySystem
@@ -581,6 +589,7 @@ export class SaveLoadService {
       context.mapData,
       context.gridSystem,
       state.gameSpeedId ?? context.gameSpeedId,
+      context.tradeConnectionSystem?.getEstablishmentTurns(),
     );
     context.powerPlantSystem?.restore(state.cities, state.turn.currentRound);
     SaveLoadService.applyCompletedWonderTiles(state.wonders ?? [], context.mapData);
@@ -606,6 +615,7 @@ export class SaveLoadService {
     context.foreignTroopViolationSystem?.restoreWarnings(state.foreignTroopViolationWarnings);
     context.tradeDealSystem?.restoreDeals(state.tradeDeals ?? []);
     context.tradeConnectionSystem?.restoreConnections(state.tradeConnections ?? []);
+    context.humanTradeDealWorkflow?.restorePendingDeals(state.pendingTradeDeals);
     context.tradeDiplomacySystem?.restoreEntries(state.tradeHistory ?? []);
     if (state.fogOfWar && context.visibilitySystem) {
       context.visibilitySystem.restoreExplored(state.fogOfWar.explored);
@@ -836,6 +846,7 @@ export class SaveLoadService {
     mapData: MapData,
     gridSystem: IGridSystem,
     gameSpeedId: GameSpeedId,
+    tradeRouteEstablishmentTurns?: number,
   ): void {
     cityManager.clearAllSilently();
     productionSystem.clearAllQueues();
@@ -900,7 +911,10 @@ export class SaveLoadService {
 
       const queueEntries: QueueEntry[] = [];
       for (const entry of saved.productionQueue) {
-        const producible = fromSavedProducible(entry.item);
+        const producible = fromSavedProducible(
+          entry.item,
+          tradeRouteEstablishmentTurns,
+        );
         if (!producible) continue;
         queueEntries.push({
           item: producible,
@@ -1117,11 +1131,15 @@ function toSavedProducible(item: Producible): SavedProducible {
         toCityId: item.toCityId,
         targetNationId: item.targetNationId,
         displayName: item.displayName,
+        establishmentTurns: item.establishmentTurns,
       };
   }
 }
 
-function fromSavedProducible(item: SavedProducible): Producible | null {
+function fromSavedProducible(
+  item: SavedProducible,
+  tradeRouteEstablishmentTurns?: number,
+): Producible | null {
   if (item.kind === 'tradeRoute') {
     return {
       kind: 'tradeRoute',
@@ -1130,7 +1148,9 @@ function fromSavedProducible(item: SavedProducible): Producible | null {
       toCityId: item.toCityId ?? '',
       targetNationId: item.targetNationId ?? '',
       displayName: item.displayName ?? 'Trade Route',
-      productionCost: TRADE_ROUTE_PRODUCTION_COST,
+      establishmentTurns: resolveTradeRouteEstablishmentTurns(
+        item.establishmentTurns ?? tradeRouteEstablishmentTurns,
+      ),
     };
   }
   if (item.kind === 'unit') {

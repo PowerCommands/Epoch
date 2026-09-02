@@ -51,6 +51,16 @@ export interface ScenarioMeta {
    */
   peaceTreatyCooldownTurns?: number;
   /**
+   * Turns a newly accepted trade route remains under establishment before it
+   * becomes active. 0 activates the route as part of its creation operation.
+   * Absent/invalid values fall back to the legacy establishment duration.
+   */
+  tradeRouteEstablishmentTurns?: number;
+  /** Shorter human-facing trade agreement option. Absent/invalid defaults to 25. */
+  shortTradeDealDuration?: number;
+  /** Longer human-facing trade agreement option. Must exceed the short option; defaults to 50. */
+  longTradeDealDuration?: number;
+  /**
    * Percentage of a city's maximum defensive health at/below which an attack on a
    * nation's own original capital forces its capitulation. Authored in the Editor's
    * Scenario Details. Absent/invalid falls back to

@@ -11,7 +11,7 @@ import {
   isBarbarianNation,
 } from '../data/barbarians';
 import { NationResources } from '../entities/NationResources';
-import { MapData } from '../types/map';
+import { MapData, TileType } from '../types/map';
 import type { ScenarioNation } from '../types/scenario';
 import type { IGridSystem } from './grid/IGridSystem';
 
@@ -104,6 +104,32 @@ export class NationManager {
       }
     }
     return count;
+  }
+
+  /**
+   * Andel (0–100) av kartans totala landyta som ägs av en viss nation.
+   * Land = allt utom hav, kust och is. Beräknas on-demand (en O(tiles)-svep,
+   * samma kostnad som getTileCount) — anropas när Leader Details-vyn renderas,
+   * inte varje turn, så ingen cache behövs.
+   */
+  getLandTilePercent(nationId: string, mapData: MapData): number {
+    let ownedLand = 0;
+    let totalLand = 0;
+    for (const row of mapData.tiles) {
+      for (const tile of row) {
+        if (
+          tile.type === TileType.Ocean ||
+          tile.type === TileType.Coast ||
+          tile.type === TileType.Ice
+        ) {
+          continue;
+        }
+        totalLand++;
+        if (tile.ownerId === nationId) ownedLand++;
+      }
+    }
+    if (totalLand === 0) return 0;
+    return (ownedLand / totalLand) * 100;
   }
 
   /**

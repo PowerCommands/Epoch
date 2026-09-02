@@ -23,8 +23,6 @@ export interface LeaderAudienceContext {
   getStatusRows(nationId: string): RightSidebarRow[];
   /** Interactive diplomacy controls (Embassy, Open Borders, War/Peace, …). */
   getDiplomacyActionRows(nationId: string): RightSidebarRow[];
-  /** Interactive trade controls. */
-  getTradeRows(nationId: string): RightSidebarRow[];
   /** Subscribe to data changes so the open chamber can refresh in place. */
   onChanged(listener: () => void): void;
 }
@@ -73,12 +71,15 @@ const TEXT_RESOLUTION = getHudTextResolution();
  * logic — all data and actions arrive through {@link LeaderAudienceContext},
  * which delegates to the existing diplomacy/trade data provider.
  *
- * The left panel is intentionally organised into three sections so future
+ * The left panel is intentionally organised into sections so future
  * additions (leader greetings, AI dialogue, agendas, alliances, gifts, …) can
  * be slotted in without restructuring:
  *   1. Leader information + relationship + active agreements
  *   2. Diplomatic actions
- *   3. Trade
+ *
+ * Actual buying and selling now lives in the dedicated Trading screen; the
+ * audience only governs whether the two nations may trade (Establish Trade
+ * Relations, sanctions, embargoes).
  */
 export class LeaderAudienceDialog {
   private readonly uiCamera: Phaser.Cameras.Scene2D.Camera;
@@ -307,9 +308,6 @@ export class LeaderAudienceDialog {
     }
     rows.push({ kind: 'text', text: 'Diplomatic Actions', large: true });
     rows.push(...this.context.getDiplomacyActionRows(nationId));
-    rows.push({ kind: 'separator' });
-    rows.push({ kind: 'text', text: 'Trade', large: true });
-    rows.push(...this.context.getTradeRows(nationId));
     return rows;
   }
 

@@ -2,11 +2,16 @@ import type { City } from '../../entities/City';
 import type { Unit } from '../../entities/Unit';
 import type { Tile } from '../../types/map';
 
-export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'timeline' | 'diplomacy-graph';
+export type RightSidebarPanelMode = 'details' | 'leaderboard' | 'trading' | 'timeline' | 'diplomacy-graph';
 export type RightSidebarDetailsView = 'tile' | 'city' | 'unit' | 'nation' | 'leader' | null;
 export type RightSidebarLeaderboardCategory = 'domination' | 'diplomacy' | 'research' | 'cultural' | 'gon';
 export type RightSidebarCityDetailsTab = 'city' | 'growth' | 'output';
-export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'economics' | 'trade' | 'deals';
+export type LeaderPanelTab = 'details' | 'units' | 'cities' | 'diplomacy' | 'relations' | 'economics';
+
+export function resolveTradingTabId(selectedId: string, validTabIds: readonly string[]): string {
+  if (validTabIds.includes(selectedId)) return selectedId;
+  return validTabIds[0] ?? 'buy';
+}
 
 /**
  * One row in the Relations tab, from the selected leader's perspective.
@@ -79,6 +84,20 @@ export interface RightSidebarSearchInputRow {
   onChange: (value: string) => void;
 }
 
+export interface RightSidebarSelectOption {
+  value: string;
+  label: string;
+}
+
+export interface RightSidebarSelectRow {
+  kind: 'select';
+  label: string;
+  value: string;
+  options: RightSidebarSelectOption[];
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}
+
 export interface RelationsTableRowCells {
   leader: string;
   trust: string;
@@ -105,32 +124,6 @@ export interface RightSidebarCompactTableRow {
   rows: string[][];
 }
 
-/** One selectable city in a {@link RightSidebarCityPairPickerRow} column. */
-export interface CityPickerItem {
-  id: string;
-  label: string;
-  disabled?: boolean;
-  /** Shown on disabled cities to explain why they cannot be selected. */
-  disabledReason?: string;
-  selected?: boolean;
-  onClick: () => void;
-}
-
-/**
- * Side-by-side city selector for proposing a trade route: the human's cities on
- * the left, the target nation's cities on the right. The player picks one from
- * each column, making the proposed connection visually obvious.
- */
-export interface RightSidebarCityPairPickerRow {
-  kind: 'cityPairPicker';
-  leftHeader: string;
-  rightHeader: string;
-  leftItems: CityPickerItem[];
-  rightItems: CityPickerItem[];
-  emptyLabel: string;
-  accentColor?: number;
-}
-
 export type RightSidebarRow =
   | RightSidebarTextRow
   | RightSidebarButtonRow
@@ -138,9 +131,9 @@ export type RightSidebarRow =
   | RightSidebarProgressRow
   | RightSidebarSeparatorRow
   | RightSidebarSearchInputRow
+  | RightSidebarSelectRow
   | RightSidebarRelationsTableRow
-  | RightSidebarCompactTableRow
-  | RightSidebarCityPairPickerRow;
+  | RightSidebarCompactTableRow;
 
 export interface RightSidebarSection {
   title: string;

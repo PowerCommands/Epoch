@@ -61,7 +61,6 @@ import type { TradeDealSystem } from './TradeDealSystem';
 import type { TradeConnectionSystem } from './TradeConnectionSystem';
 import type { DiplomaticProposalSystem } from './diplomacy/DiplomaticProposalSystem';
 import { evaluateEmbassyUnderSuspicion, evaluateTradeUnderSuspicion } from './diplomacy/suspicionEffects';
-import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
 import type { ResourceAccessSystem } from './ResourceAccessSystem';
 import type { ExplorationMemorySystem } from './ExplorationMemorySystem';
 import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacitySystem';
@@ -1721,10 +1720,14 @@ export class AISystem {
         toCityId: toCity.id,
         targetNationId: other.id,
         displayName: `Trade Route to ${toCity.name}`,
-        productionCost: TRADE_ROUTE_PRODUCTION_COST,
+        establishmentTurns: this.tradeConnectionSystem.getEstablishmentTurns(),
       };
-      this.productionSystem.enqueue(fromCity.id, tradeRouteItem);
-      console.debug(this.formatLog(nationId, `AI started trade route project ${fromCity.name} ↔ ${toCity.name}.`));
+      if (connection.status === 'building') {
+        this.productionSystem.enqueue(fromCity.id, tradeRouteItem);
+        console.debug(this.formatLog(nationId, `AI started trade route project ${fromCity.name} ↔ ${toCity.name}.`));
+      } else {
+        console.debug(this.formatLog(nationId, `AI activated trade route ${fromCity.name} ↔ ${toCity.name} immediately.`));
+      }
       break; // One route per evaluation
     }
   }

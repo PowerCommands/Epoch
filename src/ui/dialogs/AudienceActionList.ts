@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
-import type { CityPickerItem, RightSidebarButtonGroupRow, RightSidebarButtonRow, RightSidebarCityPairPickerRow, RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
+import type { RightSidebarButtonGroupRow, RightSidebarButtonRow, RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 type RemoveOwned = (object: Phaser.GameObjects.GameObject) => void;
@@ -147,8 +147,6 @@ export class AudienceActionList {
       }
       case 'progress':
         return this.renderProgress(row.label, row.current, row.max, x, y, width);
-      case 'cityPairPicker':
-        return this.renderCityPairPicker(row, x, y, width);
       default:
         return y;
     }
@@ -174,8 +172,8 @@ export class AudienceActionList {
 
   /**
    * Render a button at an explicit background x / width. Extracted from
-   * {@link renderButton} so the two-column city picker can place buttons inside
-   * its columns while reusing all the hover/disabled/selected behaviour.
+   * {@link renderButton} so button groups can place buttons inside their
+   * columns while reusing all the hover/disabled/selected behaviour.
    */
   private renderButtonAt(row: RightSidebarButtonRow, bgX: number, y: number, w: number): number {
     const height = row.disabled && row.disabledReason ? DISABLED_BUTTON_HEIGHT : BUTTON_HEIGHT;
@@ -199,7 +197,7 @@ export class AudienceActionList {
 
   /**
    * Render several buttons side by side on one row, splitting the available
-   * width evenly (with a small gap). Used to keep the Buy (10/20 turns) options
+   * width evenly (with a small gap). Used to keep the standard Buy duration options
    * on a single line; degrades to narrower buttons on small sidebar widths.
    */
   private renderButtonGroup(row: RightSidebarButtonGroupRow, x: number, y: number, width: number): number {
@@ -230,56 +228,6 @@ export class AudienceActionList {
       colX += colWidth + GAP;
     }
     return maxNextY;
-  }
-
-  /**
-   * Two-column city selector (human cities left, target nation cities right).
-   * Every city is rendered — cities without trade capacity appear disabled with
-   * their reason — so the table is always visible regardless of selection state.
-   */
-  private renderCityPairPicker(row: RightSidebarCityPairPickerRow, x: number, y: number, width: number): number {
-    const COLUMN_GAP = 10;
-    const innerX = x + LEFT_PAD;
-    const innerWidth = width - LEFT_PAD * 2;
-    const colWidth = Math.floor((innerWidth - COLUMN_GAP) / 2);
-    const leftX = innerX;
-    const rightX = innerX + colWidth + COLUMN_GAP;
-
-    const leftHeader = this.track(this.makeText(row.leftHeader, 14, '#a8b6c8', 'bold'));
-    leftHeader.setWordWrapWidth(colWidth, true);
-    leftHeader.setPosition(leftX, y);
-    const rightHeader = this.track(this.makeText(row.rightHeader, 14, '#a8b6c8', 'bold'));
-    rightHeader.setWordWrapWidth(colWidth, true);
-    rightHeader.setPosition(rightX, y);
-
-    let cursorY = y + Math.max(leftHeader.height, rightHeader.height) + 6;
-
-    const rowCount = Math.max(row.leftItems.length, row.rightItems.length);
-    if (rowCount === 0) {
-      const empty = this.track(this.makeText(row.emptyLabel, 15, '#c1cbd8', 'normal'));
-      empty.setWordWrapWidth(innerWidth, true);
-      empty.setPosition(innerX, cursorY);
-      return cursorY + empty.height + ROW_GAP;
-    }
-
-    const toButtonRow = (item: CityPickerItem): RightSidebarButtonRow => ({
-      kind: 'button',
-      text: item.label,
-      disabled: item.disabled,
-      disabledReason: item.disabledReason,
-      selected: item.selected,
-      accentColor: row.accentColor,
-      onClick: item.onClick,
-    });
-
-    for (let i = 0; i < rowCount; i++) {
-      const left = row.leftItems[i];
-      const right = row.rightItems[i];
-      const leftNextY = left ? this.renderButtonAt(toButtonRow(left), leftX, cursorY, colWidth) : cursorY;
-      const rightNextY = right ? this.renderButtonAt(toButtonRow(right), rightX, cursorY, colWidth) : cursorY;
-      cursorY = Math.max(leftNextY, rightNextY);
-    }
-    return cursorY;
   }
 
   private renderProgress(label: string, current: number, max: number, x: number, y: number, width: number): number {

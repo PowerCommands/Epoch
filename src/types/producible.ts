@@ -16,4 +16,4 @@ export type Producible =
   | { kind: 'corporation'; corporationType: CorporationDefinition }
   | { kind: 'manufacturedResource'; productionType: ManufacturedResourceProductionDefinition }
   | { kind: 'project'; projectType: ProjectDefinition }
-  | { kind: 'tradeRoute'; connectionId: string; fromCityId: string; toCityId: string; targetNationId: string; displayName: string; productionCost: number };
+  | { kind: 'tradeRoute'; connectionId: string; fromCityId: string; toCityId: string; targetNationId: string; displayName: string; establishmentTurns: number };

@@ -2,7 +2,11 @@ import { getBuildingById } from '../data/buildings';
 import type { CityManager } from './CityManager';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { NationManager } from './NationManager';
-import type { TradeConnection, TradeConnectionStatus } from '../types/tradeConnection';
+import type { TradeConnection } from '../types/tradeConnection';
+import {
+  DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS,
+  resolveTradeRouteEstablishmentTurns,
+} from '../types/tradeConnection';
 
 export type TradeConnectionValidationResult =
   | { ok: true }
@@ -18,6 +22,7 @@ export const BASE_CITY_TRADE_CAPACITY = 1;
 export class TradeConnectionSystem {
   private readonly connections = new Map<string, TradeConnection>();
   private readonly activatedListeners: ((connection: TradeConnection) => void)[] = [];
+  private readonly cancelledListeners: ((connection: TradeConnection) => void)[] = [];
   private nextConnectionNumber = 1;
   private restrictionProvider: (nationAId: string, nationBId: string) => string | undefined = () => undefined;
 
@@ -26,7 +31,16 @@ export class TradeConnectionSystem {
     private readonly diplomacyManager: DiplomacyManager,
     private readonly nationManager: NationManager,
     private readonly log?: (message: string, nationId: string) => void,
-  ) {}
+    establishmentTurns: number = DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS,
+  ) {
+    this.establishmentTurns = resolveTradeRouteEstablishmentTurns(establishmentTurns);
+  }
+
+  private readonly establishmentTurns: number;
+
+  getEstablishmentTurns(): number {
+    return this.establishmentTurns;
+  }
 
   setRestrictionProvider(fn: (nationAId: string, nationBId: string) => string | undefined): void {
     this.restrictionProvider = fn;
@@ -121,7 +135,11 @@ export class TradeConnectionSystem {
       cityA.ownerId,
     );
 
-    return { ...connection };
+    // Zero is deliberately resolved here, inside creation, so every caller
+    // (human or AI) observes an active route before this operation returns.
+    if (this.establishmentTurns === 0) this.activateTradeConnection(connection.id);
+
+    return { ...(this.connections.get(connection.id) ?? connection) };
   }
 
   activateTradeConnection(connectionId: string): void {
@@ -166,7 +184,14 @@ export class TradeConnectionSystem {
   }
 
   cancelConnection(connectionId: string): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
     this.connections.delete(connectionId);
+    for (const listener of this.cancelledListeners) listener({ ...connection });
+  }
+
+  onConnectionCancelled(listener: (connection: TradeConnection) => void): void {
+    this.cancelledListeners.push(listener);
   }
 
   /** Total active connection capacity between two nations (used for deal slot availability). */
@@ -193,7 +218,7 @@ export class TradeConnectionSystem {
         (conn.nationAId === nationBId && conn.nationBId === nationAId)
       ) {
         cancelled.push({ ...conn });
-        this.connections.delete(id);
+        this.cancelConnection(id);
       }
     }
     return cancelled;
@@ -218,7 +243,7 @@ export class TradeConnectionSystem {
   removeConnectionsForNation(nationId: string): void {
     for (const [id, conn] of Array.from(this.connections.entries())) {
       if (conn.nationAId === nationId || conn.nationBId === nationId) {
-        this.connections.delete(id);
+        this.cancelConnection(id);
       }
     }
   }

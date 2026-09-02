@@ -721,6 +721,18 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Peace Treaty cooldown (turns)
         <input id="sd-peace-treaty-cooldown" type="number" min="0" step="1">
       </label>
+      <label class="field" title="0 establishes new trade routes immediately.">Trade Route Establishment Time (turns)
+        <input id="sd-trade-route-establishment-turns" type="number" min="0" step="1">
+        <span class="hint">0 = trade routes are established immediately.</span>
+      </label>
+      <label class="field" title="Duration of the shorter trade agreement option.">Short Trade Deal Duration (turns)
+        <input id="sd-short-trade-deal-duration" type="number" min="1" step="1">
+        <span class="hint">Duration of the shorter trade agreement option.</span>
+      </label>
+      <label class="field" title="Duration of the longer trade agreement option.">Long Trade Deal Duration (turns)
+        <input id="sd-long-trade-deal-duration" type="number" min="1" step="1">
+        <span class="hint">Duration of the longer trade agreement option.</span>
+      </label>
       <label class="field">Capital capitulation threshold (%)
         <input id="sd-capital-collapse-threshold" type="number" min="0" max="100" step="1">
       </label>
@@ -942,6 +954,11 @@ const DEFAULT_SCENARIO_START_YEAR_IS_BC = true;
 const DEFAULT_QUARTERLY_TURNS_START_YEAR = 1900;
 const DEFAULT_QUARTERLY_TURNS_START_YEAR_IS_BC = false;
 const DEFAULT_SCENARIO_TIME_PROGRESSION_MODE = 'auto';
+// Mirrors DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS in src/types/tradeConnection.ts.
+const DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS = 80;
+// Mirrors the backward-compatible defaults in src/types/tradeDeal.ts.
+const DEFAULT_SHORT_TRADE_DEAL_DURATION = 25;
+const DEFAULT_LONG_TRADE_DEAL_DURATION = 50;
 const SCENARIO_TIME_PROGRESSION_MODES = ['auto', 'staticYear', 'monthly'];
 const HISTORICAL_EVENT_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -1005,6 +1022,21 @@ function normalizeScenarioMeta() {
     meta.peaceTreatyCooldownTurns = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
   } else {
     meta.peaceTreatyCooldownTurns = Math.floor(meta.peaceTreatyCooldownTurns);
+  }
+  if (typeof meta.tradeRouteEstablishmentTurns !== 'number'
+    || !Number.isFinite(meta.tradeRouteEstablishmentTurns)
+    || !Number.isInteger(meta.tradeRouteEstablishmentTurns)
+    || meta.tradeRouteEstablishmentTurns < 0) {
+    meta.tradeRouteEstablishmentTurns = DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS;
+  }
+  const validShortTradeDealDuration = typeof meta.shortTradeDealDuration === 'number'
+    && Number.isInteger(meta.shortTradeDealDuration) && meta.shortTradeDealDuration >= 1;
+  const validLongTradeDealDuration = typeof meta.longTradeDealDuration === 'number'
+    && Number.isInteger(meta.longTradeDealDuration) && meta.longTradeDealDuration >= 1;
+  if (!validShortTradeDealDuration || !validLongTradeDealDuration
+    || meta.longTradeDealDuration <= meta.shortTradeDealDuration) {
+    meta.shortTradeDealDuration = DEFAULT_SHORT_TRADE_DEAL_DURATION;
+    meta.longTradeDealDuration = DEFAULT_LONG_TRADE_DEAL_DURATION;
   }
   if (typeof meta.originalCapitalCollapsePercent !== 'number'
     || !(meta.originalCapitalCollapsePercent >= 0) || meta.originalCapitalCollapsePercent > 100) {
@@ -5833,6 +5865,9 @@ function openScenarioDetails() {
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
   document.getElementById('sd-peace-treaty-cooldown').value = String(meta.peaceTreatyCooldownTurns);
+  document.getElementById('sd-trade-route-establishment-turns').value = String(meta.tradeRouteEstablishmentTurns);
+  document.getElementById('sd-short-trade-deal-duration').value = String(meta.shortTradeDealDuration);
+  document.getElementById('sd-long-trade-deal-duration').value = String(meta.longTradeDealDuration);
   document.getElementById('sd-capital-collapse-threshold').value = String(meta.originalCapitalCollapsePercent);
   scenarioDetailsHistoricalEventsDraft = structuredCloneCompat(scenario.historicalEvents || []);
   document.getElementById('sd-error').textContent = '';
@@ -5889,6 +5924,28 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const tradeRouteEstablishmentTurns = Number(document.getElementById('sd-trade-route-establishment-turns').value);
+  if (!Number.isInteger(tradeRouteEstablishmentTurns) || tradeRouteEstablishmentTurns < 0) {
+    errorEl.textContent = 'Trade Route Establishment Time must be a non-negative integer (turns).';
+    return false;
+  }
+
+  const shortTradeDealDuration = Number(document.getElementById('sd-short-trade-deal-duration').value);
+  if (!Number.isInteger(shortTradeDealDuration) || shortTradeDealDuration < 1) {
+    errorEl.textContent = 'Short Trade Deal Duration must be a positive integer (turns).';
+    return false;
+  }
+
+  const longTradeDealDuration = Number(document.getElementById('sd-long-trade-deal-duration').value);
+  if (!Number.isInteger(longTradeDealDuration) || longTradeDealDuration < 1) {
+    errorEl.textContent = 'Long Trade Deal Duration must be a positive integer (turns).';
+    return false;
+  }
+  if (longTradeDealDuration <= shortTradeDealDuration) {
+    errorEl.textContent = 'Long Trade Deal Duration must be greater than Short Trade Deal Duration.';
+    return false;
+  }
+
   const originalCapitalCollapsePercent = parseInt(document.getElementById('sd-capital-collapse-threshold').value, 10);
   if (!Number.isInteger(originalCapitalCollapsePercent)
     || originalCapitalCollapsePercent < 0 || originalCapitalCollapsePercent > 100) {
@@ -5907,6 +5964,9 @@ function saveScenarioDetails() {
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
   scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
+  scenario.meta.tradeRouteEstablishmentTurns = tradeRouteEstablishmentTurns;
+  scenario.meta.shortTradeDealDuration = shortTradeDealDuration;
+  scenario.meta.longTradeDealDuration = longTradeDealDuration;
   scenario.meta.originalCapitalCollapsePercent = originalCapitalCollapsePercent;
   scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
   scenario.turningPointEventsConfigured = true;

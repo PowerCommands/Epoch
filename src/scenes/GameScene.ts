@@ -30,7 +30,9 @@ import { WorldMarkerRenderer } from '../systems/WorldMarkerRenderer';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { TradeConnectionSystem } from '../systems/TradeConnectionSystem';
-import { TRADE_ROUTE_PRODUCTION_COST } from '../types/tradeConnection';
+import { HumanTradeDealWorkflow } from '../systems/HumanTradeDealWorkflow';
+import { resolveTradeRouteEstablishmentTurns } from '../types/tradeConnection';
+import { resolveHumanTradeDealDurations } from '../types/tradeDeal';
 import { ResourceAccessSystem } from '../systems/ResourceAccessSystem';
 import {
   getManufacturedEffectTotal,
@@ -1667,11 +1669,28 @@ export class GameScene extends Phaser.Scene {
     );
     getTradeGoldPerTurnDelta = (nationId) =>
       tradeDealSystem.getGoldPerTurnDeltaForNation(nationId);
+    const humanTradeDealDurations = resolveHumanTradeDealDurations(
+      data.savedState?.shortTradeDealDuration ?? scenarioJson.meta?.shortTradeDealDuration,
+      data.savedState?.longTradeDealDuration ?? scenarioJson.meta?.longTradeDealDuration,
+    );
     const tradeConnectionSystem = new TradeConnectionSystem(
       cityManager,
       diplomacyManager,
       nationManager,
       (message, nationId) => logManager.info({ nationId, category: 'diplomacy', message }),
+      resolveTradeRouteEstablishmentTurns(
+        data.savedState?.tradeRouteEstablishmentTurns
+          ?? scenarioJson.meta?.tradeRouteEstablishmentTurns,
+      ),
+    );
+    const humanTradeDealWorkflow = new HumanTradeDealWorkflow(
+      data.humanNationId,
+      cityManager,
+      tradeConnectionSystem,
+      productionSystem,
+      tradeDealSystem,
+      () => turnManager.getCurrentRound(),
+      (message, nationIds) => logManager.info({ nationIds: [...nationIds], category: 'diplomacy', message }),
     );
     const economicPressureActionService = new EconomicPressureActionService(
       diplomacyManager,
@@ -4212,6 +4231,20 @@ export class GameScene extends Phaser.Scene {
       city.productionRhythm.completedInfrastructureSinceUnit += 1;
     };
 
+    // Listen to activation itself so 0-turn and queued routes share all
+    // downstream diplomacy consequences.
+    tradeConnectionSystem.onConnectionActivated((activated) => {
+      tradeDiplomacySystem.onTradeRouteActivated(activated.nationAId, activated.nationBId);
+      const nameA = nationManager.getNation(activated.nationAId)?.name ?? activated.nationAId;
+      const nameB = nationManager.getNation(activated.nationBId)?.name ?? activated.nationBId;
+      logManager.info({
+        nationIds: [activated.nationAId, activated.nationBId],
+        category: 'diplomacy',
+        message: `${nameA} and ${nameB} strengthened relations through a new trade route.`,
+      });
+      rightPanel?.requestRefresh();
+    });
+
     // Hantera färdig produktion
     productionSystem.onCompleted((cityId, item, entry) => {
       const city = cityManager.getCity(cityId);
@@ -4412,18 +4445,6 @@ export class GameScene extends Phaser.Scene {
           return; // Allow item to be removed from queue (connection already cancelled)
         }
         tradeConnectionSystem.activateTradeConnection(item.connectionId);
-        const activated = tradeConnectionSystem.getConnection(item.connectionId);
-        if (activated) {
-          tradeDiplomacySystem.onTradeRouteActivated(activated.nationAId, activated.nationBId);
-          const nameA = nationManager.getNation(activated.nationAId)?.name ?? activated.nationAId;
-          const nameB = nationManager.getNation(activated.nationBId)?.name ?? activated.nationBId;
-          logManager.info({
-            nationIds: [activated.nationAId, activated.nationBId],
-            category: 'diplomacy',
-            message: `${nameA} and ${nameB} strengthened relations through a new trade route.`,
-          });
-        }
-        rightPanel?.requestRefresh();
         return; // Allow item to be removed from queue
       }
 
@@ -6803,80 +6824,6 @@ export class GameScene extends Phaser.Scene {
           });
         }
         rightPanel?.refreshCurrent();
-      } else if (action === 'proposeTradeRoute') {
-        const detail = (event as CustomEvent).detail as { fromCityId: string; toCityId: string; setupPaymentGold: number };
-        const { fromCityId, toCityId, setupPaymentGold } = detail;
-        if (!fromCityId || !toCityId) return;
-
-        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? humanNationIdForDiplomacy;
-        const fromCity = cityManager.getCity(fromCityId);
-        const toCity = cityManager.getCity(toCityId);
-        if (!fromCity || !toCity) return;
-
-        const validation = tradeConnectionSystem.canCreateTradeConnection(fromCityId, toCityId);
-        if (!validation.ok) return;
-
-        const humanResources = nationManager.getResources(humanNationIdForDiplomacy);
-        if (humanResources.gold < setupPaymentGold) return;
-
-        const targetAttitude = diplomaticEvaluationSystem?.evaluateAttitude(targetNationId, humanNationIdForDiplomacy) ?? 'neutral';
-        const accepted = targetAttitude !== 'hostile';
-
-        const routeLabel = `${fromCity.name} ↔ ${toCity.name}`;
-        logManager.info({
-          nationIds: [humanNationIdForDiplomacy, targetNationId],
-          category: 'diplomacy',
-          message: `${humanName} proposed trade route ${routeLabel} to ${targetNation.name}${setupPaymentGold > 0 ? ` for ${setupPaymentGold} gold` : ''}.`,
-        });
-
-        if (accepted) {
-          humanResources.gold -= setupPaymentGold;
-          nationManager.getResources(targetNationId).gold += setupPaymentGold;
-          const connection = tradeConnectionSystem.createTradeConnectionDraft(fromCityId, toCityId, turnManager.getCurrentRound());
-          logManager.info({
-            nationIds: [humanNationIdForDiplomacy, targetNationId],
-            category: 'diplomacy',
-            message: `${targetNation.name} accepted trade route ${routeLabel}.`,
-          });
-          const tradeRouteItem: Producible = {
-            kind: 'tradeRoute',
-            connectionId: connection.id,
-            fromCityId,
-            toCityId,
-            targetNationId,
-            displayName: `Trade Route to ${toCity.name}`,
-            productionCost: TRADE_ROUTE_PRODUCTION_COST,
-          };
-          productionSystem.enqueue(fromCityId, tradeRouteItem);
-          logManager.info({
-            nationId: humanNationIdForDiplomacy,
-            category: 'diplomacy',
-            message: `${fromCity.name} queued Trade Route to ${toCity.name}.`,
-          });
-          hudLayer?.refresh();
-
-          // Estimate completion using the city's normal production logic so the
-          // figure matches what the player will see in the production queue.
-          const estimatedTurns = productionSystem.getTurnsEstimate(fromCityId, tradeRouteItem);
-          showLeaderResponsePopup(targetNationId, 'Trade Route Accepted', [
-            `${targetNation.name} has accepted the proposal.`,
-            `A trade route between ${fromCity.name} and ${toCity.name} has been established.`,
-            `${fromCity.name} will now begin constructing the trade route.`,
-            `Estimated completion time: ${estimatedTurns} turn${estimatedTurns === 1 ? '' : 's'}.`,
-            `The trade route has been added to ${fromCity.name}'s production queue.`,
-          ]);
-        } else {
-          logManager.info({
-            nationIds: [humanNationIdForDiplomacy, targetNationId],
-            category: 'diplomacy',
-            message: `${targetNation.name} rejected the trade route proposal.`,
-          });
-          showLeaderResponsePopup(targetNationId, 'Trade Route Rejected', [
-            `${targetNation.name} has declined the proposal.`,
-            'Reason: relations are too poor.',
-          ]);
-        }
-        rightPanel?.refreshCurrent();
       }
     };
     document.addEventListener('diplomacyAction', onDiplomacyAction);
@@ -7316,6 +7263,8 @@ export class GameScene extends Phaser.Scene {
     );
     rightPanel.setTradeDealSystem(tradeDealSystem);
     rightPanel.setTradeConnectionSystem(tradeConnectionSystem);
+    rightPanel.setHumanTradeDealWorkflow(humanTradeDealWorkflow);
+    rightPanel.setHumanTradeDealDurations(humanTradeDealDurations.short, humanTradeDealDurations.long);
     rightPanel.setTradeDiplomacySystem(tradeDiplomacySystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
     rightPanel.setResourceCitySearchSystem(resourceCitySearchSystem);
@@ -8566,7 +8515,6 @@ export class GameScene extends Phaser.Scene {
       },
       getStatusRows: (nationId) => rightPanel?.getAudienceStatusRows(nationId) ?? [],
       getDiplomacyActionRows: (nationId) => rightPanel?.getAudienceDiplomacyActionRows(nationId) ?? [],
-      getTradeRows: (nationId) => rightPanel?.getAudienceTradeRows(nationId) ?? [],
       onChanged: (listener) => rightPanel?.onChanged(listener),
     }, {
       onOpened: (nationId) => onAudienceOpened(nationId),
@@ -9227,6 +9175,8 @@ export class GameScene extends Phaser.Scene {
           policySystem,
           tradeDealSystem,
           tradeConnectionSystem,
+          humanTradeDealDurations,
+          humanTradeDealWorkflow,
           tradeDiplomacySystem,
           visibilitySystem,
           exileProtectionSystem,
@@ -9833,6 +9783,7 @@ export class GameScene extends Phaser.Scene {
         policySystem,
         tradeDealSystem,
         tradeConnectionSystem,
+        humanTradeDealWorkflow,
         tradeDiplomacySystem,
         visibilitySystem,
         exileProtectionSystem,
@@ -9940,6 +9891,8 @@ export class GameScene extends Phaser.Scene {
           policySystem,
           tradeDealSystem,
           tradeConnectionSystem,
+          humanTradeDealDurations,
+          humanTradeDealWorkflow,
           tradeDiplomacySystem,
           visibilitySystem,
           exileProtectionSystem,
@@ -10011,6 +9964,8 @@ export class GameScene extends Phaser.Scene {
         policySystem,
         tradeDealSystem,
         tradeConnectionSystem,
+        humanTradeDealDurations,
+        humanTradeDealWorkflow,
         tradeDiplomacySystem,
         visibilitySystem,
         exileProtectionSystem,

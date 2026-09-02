@@ -1,4 +1,11 @@
-export const TRADE_ROUTE_PRODUCTION_COST = 80;
+/** Legacy hardcoded route-establishment value, retained as the scenario fallback. */
+export const DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS = 80;
+
+export function resolveTradeRouteEstablishmentTurns(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.floor(value)
+    : DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS;
+}
 
 export type TradeConnectionStatus = 'building' | 'active';
 
@@ -12,6 +19,4 @@ export interface TradeConnection {
   /** Capacity consumed at each endpoint city. Always 1 for now. */
   capacity: number;
   createdRound: number;
-  /** Reserved for future production queue integration. */
-  remainingProduction?: number;
 }

@@ -75,6 +75,7 @@ import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { AerospacePartSystem } from '../../systems/AerospacePartSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
+import type { HumanTradeDealWorkflow } from '../../systems/HumanTradeDealWorkflow';
 import type { TradeConnection } from '../../types/tradeConnection';
 import type { TradeDiplomacySystem } from '../../systems/diplomacy/TradeDiplomacySystem';
 import type { ResourceAccessSystem } from '../../systems/ResourceAccessSystem';
@@ -85,7 +86,14 @@ import type { GamesOfNationsSystem } from '../../systems/GamesOfNationsSystem';
 import type { VictorySystem } from '../../systems/VictorySystem';
 import { buildDominationRanking } from '../../systems/DominationRanking';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
-import type { TradeDeal } from '../../types/tradeDeal';
+import {
+  DEFAULT_LONG_TRADE_DEAL_DURATION,
+  DEFAULT_SHORT_TRADE_DEAL_DURATION,
+  resolveHumanTradeDealDurations,
+  type HumanTradeDealDurations,
+  type PendingTradeDeal,
+  type TradeDeal,
+} from '../../types/tradeDeal';
 import type { Producible } from '../../types/producible';
 import type { LeaderDefinition } from '../../types/leader';
 import type { MapData, Tile } from '../../types/map';
@@ -107,7 +115,6 @@ import type {
   RightSidebarLeaderboardCategory,
   RightSidebarRow,
   RightSidebarSection,
-  CityPickerItem,
 } from './RightSidebarPanelTypes';
 import type { DiplomacyGraph, DiplomacyGraphEdge, DiplomacyGraphNode, DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 import { RafScheduler } from '../../utils/RafScheduler';
@@ -177,6 +184,13 @@ interface LeaderboardEntry {
   secondaryScore?: number;
 }
 
+export interface TradingNationTab {
+  id: string;
+  label: string;
+  nationId: string;
+  accentColor: number;
+}
+
 export class RightSidebarPanelDataProvider {
   private readonly scheduler = new RafScheduler();
   private readonly listeners: ChangedListener[] = [];
@@ -208,9 +222,9 @@ export class RightSidebarPanelDataProvider {
   private requiredAerospaceParts = DEFAULT_REQUIRED_AEROSPACE_PARTS;
   private tradeDealSystem: TradeDealSystem | null = null;
   private tradeConnectionSystem: TradeConnectionSystem | null = null;
+  private humanTradeDealWorkflow: HumanTradeDealWorkflow | null = null;
   private tradeDiplomacySystem: TradeDiplomacySystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
-  private tradeRouteProposal: { targetNationId: string; fromCityId: string | null; toCityId: string | null } | null = null;
   private resourceCitySearchSystem: ResourceCitySearchSystem | null = null;
   private detailsSearchQuery = '';
   private eraSystem: EraSystem | null = null;
@@ -218,7 +232,14 @@ export class RightSidebarPanelDataProvider {
   private victorySystem: VictorySystem | null = null;
   private cityDefenseSystem: CityDefenseSystem | null = null;
   private populationCapacityProvider: ((cityId: string) => number) | null = null;
-  private readonly tradeMessages = new Map<string, string>();
+  private readonly tradingExportDestinations = new Map<string, string>();
+  private readonly tradingExportDurations = new Map<string, number>();
+  private readonly tradingImportDurations = new Map<string, number>();
+  private tradingFeedback: string | null = null;
+  private humanTradeDealDurations: HumanTradeDealDurations = {
+    short: DEFAULT_SHORT_TRADE_DEAL_DURATION,
+    long: DEFAULT_LONG_TRADE_DEAL_DURATION,
+  };
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
@@ -331,6 +352,23 @@ export class RightSidebarPanelDataProvider {
 
   setTradeConnectionSystem(system: TradeConnectionSystem): void {
     this.tradeConnectionSystem = system;
+  }
+
+  setHumanTradeDealWorkflow(workflow: HumanTradeDealWorkflow): void {
+    this.humanTradeDealWorkflow = workflow;
+    workflow.onPendingDealResolved((event) => {
+      this.tradingFeedback = event.outcome === 'activated'
+        ? 'Trade route established — deal is now Active.'
+        : event.reason ?? 'Pending trade deal ended.';
+      this.requestRefresh();
+    });
+  }
+
+  setHumanTradeDealDurations(shortDuration: number, longDuration: number): void {
+    this.humanTradeDealDurations = resolveHumanTradeDealDurations(shortDuration, longDuration);
+    this.tradingExportDurations.clear();
+    this.tradingImportDurations.clear();
+    this.requestRefresh();
   }
 
   setTradeDiplomacySystem(system: TradeDiplomacySystem): void {
@@ -564,6 +602,136 @@ export class RightSidebarPanelDataProvider {
     return {
       title: 'Leaderboard',
       sections: [section],
+    };
+  }
+
+  /** Buy tab — the summary header plus the goods the human can import. */
+  getTradingBuyContent(): RightSidebarContent {
+    return this.buildTradingModeContent('buy');
+  }
+
+  /** Sell tab — the summary header plus the goods the human can export. */
+  getTradingSellContent(): RightSidebarContent {
+    return this.buildTradingModeContent('sell');
+  }
+
+  /**
+   * Buy and Sell tabs share the Overview summary and live-activity feedback; only
+   * the middle goods section differs. Splitting the two directions into separate
+   * tabs is a pure UI reorganisation — no trade logic changes here.
+   */
+  private buildTradingModeContent(mode: 'buy' | 'sell'): RightSidebarContent {
+    if (!this.humanNationId || !this.tradeDealSystem || !this.tradeConnectionSystem
+      || !this.humanTradeDealWorkflow || !this.resourceAccessSystem || !this.diplomacyManager) {
+      return { title: 'Trading', sections: [{ title: 'Overview', rows: [textRow('Trade system unavailable.', true)] }] };
+    }
+
+    const humanId = this.humanNationId;
+    const foreignNations = this.nationManager.getAllNations()
+      .filter((nation) => nation.id !== humanId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const tradePartners = foreignNations.filter((nation) => this.diplomacyManager!.hasTradeRelations(humanId, nation.id));
+    const activeDeals = this.tradeDealSystem.getDealsForNation(humanId);
+    const imports = activeDeals.filter((deal) => deal.buyerNationId === humanId);
+    const exports = activeDeals.filter((deal) => deal.sellerNationId === humanId);
+    const balance = this.tradeDealSystem.getGoldPerTurnDeltaForNation(humanId);
+    const signedBalance = `${balance >= 0 ? '+' : ''}${balance}`;
+
+    const sections: RightSidebarSection[] = [{
+      title: 'Overview',
+      rows: [{
+        kind: 'compactTable',
+        columns: [
+          { label: 'Trade Relations', weight: 1.3, align: 'center' },
+          { label: 'Active Deals', weight: 1, align: 'center' },
+          { label: 'Imports', weight: 0.8, align: 'center' },
+          { label: 'Exports', weight: 0.8, align: 'center' },
+          { label: 'Balance', weight: 1, align: 'center' },
+        ],
+        rows: [[String(tradePartners.length), String(activeDeals.length), String(imports.length), String(exports.length), `${signedBalance}g/turn`]],
+      }],
+    }];
+
+    if (tradePartners.length === 0) {
+      sections.push({
+        title: 'International trade',
+        rows: [textRow('No Trade Relations established.', true), textRow('Establish Trade Relations through Diplomacy to begin international trade.', true)],
+      });
+    }
+    sections.push(mode === 'sell'
+      ? { title: 'Goods available to sell', rows: this.buildTradingSellRows(tradePartners) }
+      : { title: 'Goods available to buy', rows: this.buildTradingBuyRows(tradePartners) });
+    sections.push({ title: 'Current trade activity', rows: this.buildTradingActivityRows() });
+    return { title: 'Trading', sections };
+  }
+
+  getTradingNationTabs(): TradingNationTab[] {
+    if (!this.humanNationId || !this.diplomacyManager) return [];
+    return this.nationManager.getAllNations()
+      .filter((nation) => nation.id !== this.humanNationId
+        && this.diplomacyManager!.hasTradeRelations(this.humanNationId!, nation.id))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .map((nation) => ({
+        id: `nation:${nation.id}`,
+        label: nation.name,
+        nationId: nation.id,
+        accentColor: nation.color,
+      }));
+  }
+
+  getTradingNationContent(nationId: string): RightSidebarContent {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation || !this.humanNationId || !this.diplomacyManager
+      || !this.diplomacyManager.hasTradeRelations(this.humanNationId, nationId)
+      || !this.tradeDealSystem || !this.humanTradeDealWorkflow || !this.tradeConnectionSystem) {
+      return this.getTradingBuyContent();
+    }
+
+    const humanId = this.humanNationId;
+    const bilateralDeals = this.tradeDealSystem.getDealsBetween(humanId, nationId);
+    const exports = bilateralDeals.filter((deal) => deal.sellerNationId === humanId);
+    const imports = bilateralDeals.filter((deal) => deal.buyerNationId === humanId);
+    const pending = this.humanTradeDealWorkflow.getPendingDeals().filter((deal) =>
+      (deal.sellerNationId === humanId && deal.buyerNationId === nationId)
+      || (deal.sellerNationId === nationId && deal.buyerNationId === humanId));
+    const routes = this.tradeConnectionSystem.getAllConnections().filter((route) =>
+      (route.nationAId === humanId && route.nationBId === nationId)
+      || (route.nationAId === nationId && route.nationBId === humanId));
+    const exportGold = exports.reduce((sum, deal) => sum + deal.goldPerTurn, 0);
+    const importGold = imports.reduce((sum, deal) => sum + deal.goldPerTurn, 0);
+    const netGold = exportGold - importGold;
+
+    return {
+      title: 'Trading',
+      sections: [
+        {
+          title: nation.name,
+          rows: [{
+            kind: 'compactTable',
+            columns: [
+              { label: 'Trade Relations', weight: 1.4, align: 'center' },
+              { label: 'Active Deals', weight: 1, align: 'center' },
+              { label: 'Imports', weight: 0.8, align: 'center' },
+              { label: 'Exports', weight: 0.8, align: 'center' },
+              { label: 'Balance', weight: 1, align: 'center' },
+            ],
+            rows: [['Active', String(bilateralDeals.length), String(imports.length), String(exports.length), `${formatSigned(netGold)}g/turn`]],
+          }],
+        },
+        { title: 'Exports', rows: this.buildTradingNationExportRows(nation.name, exports) },
+        { title: 'Imports', rows: this.buildTradingNationImportRows(nation.name, imports) },
+        { title: 'Pending', rows: this.buildTradingNationPendingRows(pending) },
+        { title: 'Trade Routes', rows: this.buildTradingNationRouteRows(routes) },
+        { title: 'Trade Capacity', rows: this.buildTradingNationCapacityRows(nationId) },
+        {
+          title: 'Bilateral Trade Value',
+          rows: [
+            textRow(`Exports: +${exportGold} gold/turn`),
+            textRow(`Imports: -${importGold} gold/turn`),
+            textRow(`Net: ${formatSigned(netGold)} gold/turn`, false, true),
+          ],
+        },
+      ],
     };
   }
 
@@ -1045,10 +1213,6 @@ export class RightSidebarPanelDataProvider {
         return this.getLeaderRelationsContent(leader);
       case 'economics':
         return this.getLeaderEconomicsContent(leader);
-      case 'trade':
-        return this.getLeaderTradeContent(leader);
-      case 'deals':
-        return this.getLeaderDealsContent(leader);
     }
   }
 
@@ -1286,70 +1450,6 @@ export class RightSidebarPanelDataProvider {
         },
       ],
     };
-  }
-
-  /**
-   * Trade tab — now read-only. It surfaces what each side can trade and the
-   * gating reasons, but the interactive Buy controls live in the Leader
-   * Audience chamber (see {@link getAudienceTradeRows}).
-   */
-  private getLeaderTradeContent(leader: { nationId: string }): RightSidebarContent {
-    const rows = this.buildTradeRows(leader.nationId, false);
-    if (leader.nationId !== this.humanNationId) {
-      rows.push({ kind: 'separator' });
-      rows.push(textRow('Propose trades in an audience with this leader.', true));
-    }
-    return { title: 'Leader Details', sections: [{ title: 'Trade', rows }] };
-  }
-
-  /** Interactive trade rows hosted by the Leader Audience chamber. */
-  getAudienceTradeRows(nationId: string): RightSidebarRow[] {
-    return this.buildTradeRows(nationId, true);
-  }
-
-  private buildTradeRows(otherNationId: string, interactive: boolean): RightSidebarRow[] {
-    const rows: RightSidebarRow[] = [];
-    if (otherNationId === this.humanNationId) {
-      rows.push(textRow('Select another nation to trade with.', true));
-      return rows;
-    }
-    if (!this.diplomacyManager || !this.humanNationId || !this.isNationKnown(otherNationId)) {
-      rows.push(textRow('You have not met this nation.', true));
-      return rows;
-    }
-    if (this.diplomacyManager.getState(this.humanNationId, otherNationId) === 'WAR') {
-      rows.push(textRow('Unavailable during war.', true));
-      return rows;
-    }
-    if (!this.diplomacyManager.hasTradeRelations(this.humanNationId, otherNationId)) {
-      rows.push(textRow('Trade requires active Trade Relations.', true));
-      return rows;
-    }
-    const humanHasTradeNetworks = this.researchSystem?.isResearched(this.humanNationId, 'trade_networks') ?? false;
-    const otherHasTradeNetworks = this.researchSystem?.isResearched(otherNationId, 'trade_networks') ?? false;
-    if (!humanHasTradeNetworks && !otherHasTradeNetworks) {
-      rows.push(textRow('Requires at least one nation to know Trade Networks.', true));
-      return rows;
-    }
-    rows.push(...this.getTradeTabRows(otherNationId, interactive));
-    return rows;
-  }
-
-  private getLeaderDealsContent(leader: { nationId: string }): RightSidebarContent {
-    const rows: RightSidebarRow[] = [];
-    if (!this.tradeDealSystem || !this.humanNationId) {
-      rows.push(textRow('Trade system unavailable.', true));
-      return { title: 'Leader Details', sections: [{ title: 'Deals', rows }] };
-    }
-    const deals = leader.nationId === this.humanNationId
-      ? this.tradeDealSystem.getDealsForNation(this.humanNationId)
-      : this.tradeDealSystem.getDealsBetween(this.humanNationId, leader.nationId);
-    if (deals.length === 0) {
-      rows.push(textRow('No active deals.', true));
-      return { title: 'Leader Details', sections: [{ title: 'Deals', rows }] };
-    }
-    for (const deal of deals) rows.push(textRow(this.formatDealRow(deal)));
-    return { title: 'Leader Details', sections: [{ title: 'Deals', rows }] };
   }
 
   private getProductionQueueSection(city: City, isHuman: boolean): RightSidebarSection {
@@ -1686,6 +1786,7 @@ export class RightSidebarPanelDataProvider {
       title: 'Territory',
       rows: [
         textRow(`Territory: ${this.nationManager.getTileCount(nationId, this.mapData)} tiles`),
+        textRow(`Land control: ${this.nationManager.getLandTilePercent(nationId, this.mapData).toFixed(1)}% of land tiles`),
         textRow(`😀 ${formatSigned(value)} (${formatHappinessStateLabel(happiness.state)})`),
       ],
     };
@@ -2075,10 +2176,6 @@ export class RightSidebarPanelDataProvider {
         0x9c3b3b,
       ));
     }
-    if (!isAtWar) {
-      rows.push({ kind: 'separator' });
-      rows.push(...this.buildTradeRouteProposalRows(nationId, nation?.color));
-    }
     return rows;
   }
 
@@ -2330,128 +2427,6 @@ export class RightSidebarPanelDataProvider {
     ];
   }
 
-  private computeTradeRouteSetupPayment(targetNationId: string): number | null {
-    if (!this.diplomaticEvaluationSystem || !this.humanNationId) return 25;
-    const attitude = this.diplomaticEvaluationSystem.evaluateAttitude(targetNationId, this.humanNationId);
-    switch (attitude) {
-      case 'friendly': return 0;
-      case 'neutral': return 25;
-      case 'afraid': return 75;
-      case 'hostile': return null;
-    }
-  }
-
-  private buildTradeRouteProposalRows(targetNationId: string, accentColor?: number): RightSidebarRow[] {
-    const rows: RightSidebarRow[] = [];
-    if (!this.tradeConnectionSystem || !this.humanNationId) return rows;
-
-    const humanId = this.humanNationId;
-    const dm = this.diplomacyManager;
-    const isAtWar = dm?.getState(humanId, targetNationId) === 'WAR';
-    const hasTradeRelations = dm?.hasTradeRelations(humanId, targetNationId) ?? false;
-    const setupPayment = this.computeTradeRouteSetupPayment(targetNationId);
-    const proposalOpen = this.tradeRouteProposal?.targetNationId === targetNationId;
-
-    if (!proposalOpen) {
-      let disabledReason: string | undefined;
-      if (isAtWar) disabledReason = 'Unavailable during war.';
-      else if (!hasTradeRelations) disabledReason = 'Requires active Trade Relations.';
-      else if (setupPayment === null) disabledReason = 'Relations too hostile to propose a trade route.';
-
-      rows.push(disabledReasonButtonRow(
-        'Propose Trade Route',
-        disabledReason,
-        () => {
-          this.tradeRouteProposal = { targetNationId, fromCityId: null, toCityId: null };
-          this.requestRefresh();
-        },
-        accentColor,
-      ));
-      if (disabledReason) rows.push(textRow(disabledReason, true));
-      return rows;
-    }
-
-    rows.push(textRow('Propose Trade Route', false, true));
-
-    const humanCities = this.cityManager.getCitiesByOwner(humanId);
-    const targetCities = this.cityManager.getCitiesByOwner(targetNationId);
-    const fromCityId = this.tradeRouteProposal!.fromCityId;
-    const toCityId = this.tradeRouteProposal!.toCityId;
-
-    // Two-column selector: pick one of your cities (left) and one of theirs
-    // (right). The selected pair is the proposed connection.
-    const toPickerItem = (city: City, selectedId: string | null, isFrom: boolean): CityPickerItem => {
-      const total = this.tradeConnectionSystem!.getCityTradeCapacity(city.id);
-      const available = this.tradeConnectionSystem!.getCityAvailableTradeCapacity(city.id);
-      const hasCapacity = available >= 1;
-      return {
-        id: city.id,
-        label: `${city.name}  ${available}/${total}`,
-        disabled: !hasCapacity,
-        disabledReason: hasCapacity ? undefined : 'No trade capacity',
-        selected: city.id === selectedId,
-        onClick: () => {
-          if (!this.tradeRouteProposal) return;
-          this.tradeRouteProposal = isFrom
-            ? { ...this.tradeRouteProposal, fromCityId: city.id }
-            : { ...this.tradeRouteProposal, toCityId: city.id };
-          this.requestRefresh();
-        },
-      };
-    };
-
-    rows.push({
-      kind: 'cityPairPicker',
-      leftHeader: 'Your cities',
-      rightHeader: this.nationManager.getNation(targetNationId)?.name ?? 'Their cities',
-      leftItems: humanCities.map((city) => toPickerItem(city, fromCityId, true)),
-      rightItems: targetCities.map((city) => toPickerItem(city, toCityId, false)),
-      emptyLabel: 'No cities available.',
-      accentColor,
-    });
-
-    rows.push({ kind: 'separator' });
-
-    if (!fromCityId || !toCityId) {
-      rows.push(textRow('Select cities above to propose a route.', true));
-    } else {
-      const validation = this.tradeConnectionSystem.canCreateTradeConnection(fromCityId, toCityId);
-      rows.push(textRow(validation.ok ? 'Valid route.' : `Cannot create route: ${validation.reason}`, !validation.ok));
-
-      const paymentGold = setupPayment ?? 0;
-      rows.push(textRow(paymentGold === 0 ? 'Setup payment: Free' : `Setup payment: ${paymentGold} gold`));
-      const humanGold = this.nationManager.getResources(humanId).gold;
-      if (setupPayment !== null && humanGold < paymentGold) {
-        rows.push(textRow(`Insufficient gold (have ${Math.floor(humanGold)}, need ${paymentGold}).`, true));
-      }
-
-      const canConfirm = validation.ok && setupPayment !== null && humanGold >= paymentGold;
-      rows.push(disabledReasonButtonRow(
-        'Confirm Proposal',
-        canConfirm ? undefined : 'Route not valid.',
-        () => {
-          if (!canConfirm || !fromCityId || !toCityId || setupPayment === null) return;
-          document.dispatchEvent(new CustomEvent('diplomacyAction', {
-            detail: { action: 'proposeTradeRoute', targetNationId, fromCityId, toCityId, setupPaymentGold: setupPayment },
-          }));
-          this.tradeRouteProposal = null;
-        },
-        accentColor,
-      ));
-    }
-
-    rows.push({
-      kind: 'button',
-      text: 'Cancel',
-      onClick: () => {
-        this.tradeRouteProposal = null;
-        this.requestRefresh();
-      },
-    });
-
-    return rows;
-  }
-
   private getDiplomaticBreakdownRows(viewerNationId: string, targetNationId: string): RightSidebarRow[] {
     const relation = this.diplomacyManager?.getRelation(viewerNationId, targetNationId);
     if (!relation) return [];
@@ -2489,142 +2464,286 @@ export class RightSidebarPanelDataProvider {
     ];
   }
 
-  private getTradeTabRows(otherNationId: string, interactive: boolean): RightSidebarRow[] {
+  private buildTradingSellRows(tradePartners: readonly Nation[]): RightSidebarRow[] {
+    if (!this.resourceAccessSystem || !this.humanNationId || !this.humanTradeDealWorkflow) {
+      return [textRow('Trade system unavailable.', true)];
+    }
+    const resources = this.resourceAccessSystem.getExportableResourceQuantities(this.humanNationId);
+    if (resources.length === 0) return [textRow('No goods currently available to sell.', true)];
+
     const rows: RightSidebarRow[] = [];
-    if (!this.tradeDealSystem || !this.resourceAccessSystem || !this.humanNationId) {
-      rows.push(textRow('Trade system unavailable.', true));
-      return rows;
-    }
-    const playerId = this.humanNationId;
-    const otherNation = this.nationManager.getNation(otherNationId);
-    const otherOwned = this.resourceAccessSystem.getExportableResourceQuantities(otherNationId);
-    const playerOwned = this.resourceAccessSystem.getExportableResourceQuantities(playerId);
-    const existingDeals = this.tradeDealSystem.getDealsBetween(playerId, otherNationId);
-    const importedFromSeller = new Set(
-      existingDeals
-        .filter((deal) => deal.sellerNationId === otherNationId && deal.buyerNationId === playerId)
-        .map((deal) => deal.resourceId),
-    );
-    const exportedToBuyer = new Set(
-      existingDeals
-        .filter((deal) => deal.sellerNationId === playerId && deal.buyerNationId === otherNationId)
-        .map((deal) => deal.resourceId),
-    );
+    for (const { resourceId, quantity } of resources) {
+      const available = Math.max(0, quantity - this.resourceAccessSystem.getExportedResourceSourceCount(this.humanNationId, resourceId));
+      const duration = this.getTradingDuration(this.tradingExportDurations, resourceId);
+      const goldPerTurn = this.getHumanTradeGoldPerTurn(resourceId, duration);
+      const options: Array<{ value: string; label: string }> = [];
+      const rejectedReasons: string[] = [];
 
-    rows.push(...this.buildTradeRoutesOverviewRows(otherNationId));
-    rows.push({ kind: 'separator' });
-
-    // A deal needs an active trade route with a free slot between the nations
-    // (mirrors TradeDealSystem.validateDeal). Human deals use directional slots:
-    // imports (buying) and exports (selling) each get their own pool, so the
-    // player can run one of each over a single route. Buttons render disabled
-    // with an explanation when their direction has no free slot, instead of
-    // clicks failing silently.
-    const dealCapacityTotal = this.tradeDealSystem.getDealCapacityBetweenNations(playerId, otherNationId);
-    const importsUsed = existingDeals.filter((deal) => deal.buyerNationId === playerId && deal.sellerNationId === otherNationId).length;
-    const exportsUsed = existingDeals.filter((deal) => deal.sellerNationId === playerId && deal.buyerNationId === otherNationId).length;
-    const hasImportCapacity = importsUsed < dealCapacityTotal;
-    const hasExportCapacity = exportsUsed < dealCapacityTotal;
-
-    rows.push(textRow(`${otherNation?.name ?? otherNationId} can sell to you`, false, true));
-    if (otherOwned.length === 0) {
-      rows.push(textRow('No resources to sell.', true));
-    } else {
-      if (interactive && !hasImportCapacity) {
-        rows.push(textRow('An active trade route with available import capacity is required before resources can be traded.', true));
-      }
-      for (const { resourceId, quantity } of otherOwned) {
-        const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
-        rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)}`));
-        const alreadyImporting = importedFromSeller.has(resourceId);
-        // The seller can only offer a resource while it owns more than it is
-        // already exporting elsewhere (mirrors canExportResource).
-        const sellerHasSupply = quantity > this.resourceAccessSystem.getExportedResourceSourceCount(otherNationId, resourceId);
-        if (!interactive) {
-          if (alreadyImporting) rows.push(textRow('Currently importing', true));
-          continue;
+      if (available > 0) {
+        for (const nation of tradePartners) {
+          for (const city of [...this.cityManager.getCitiesByOwner(nation.id)].sort((a, b) => a.name.localeCompare(b.name))) {
+            const evaluation = this.humanTradeDealWorkflow.evaluateExportDestination({
+              sellerNationId: this.humanNationId,
+              buyerNationId: nation.id,
+              buyerCityId: city.id,
+              resourceId,
+              turns: duration,
+              goldPerTurn,
+            });
+            if (evaluation.ok) options.push({ value: city.id, label: `${nation.name} — ${city.name}` });
+            else rejectedReasons.push(evaluation.reason);
+          }
         }
-        const buyDisabled = alreadyImporting || !hasImportCapacity || !sellerHasSupply;
-        const buyLabel = (turns: number, gold: number): string =>
-          alreadyImporting ? 'Already importing'
-            : !sellerHasSupply ? 'Fully exported'
-              : `Buy ${turns}t — ${gold}g/turn`;
-        const twentyTurnGold = Math.max(1, tradeGold - 1);
-        // Buy: seller = AI nation, buyer = human. Both durations on one row.
-        rows.push({
-          kind: 'buttonGroup',
-          buttons: [
-            {
-              text: buyLabel(10, tradeGold),
-              accentColor: otherNation?.color,
-              disabled: buyDisabled,
-              onClick: () => this.createTradeDealRequest(otherNationId, playerId, resourceId, 10, tradeGold),
-            },
-            {
-              text: buyLabel(20, twentyTurnGold),
-              accentColor: otherNation?.color,
-              disabled: buyDisabled,
-              onClick: () => this.createTradeDealRequest(otherNationId, playerId, resourceId, 20, twentyTurnGold),
-            },
-          ],
-        });
       }
-    }
 
-    rows.push({ kind: 'separator' });
-    rows.push(textRow('You can sell to them', false, true));
-    if (playerOwned.length === 0) {
-      rows.push(textRow('You have no resources to offer.', true));
-    } else {
-      if (interactive && !hasExportCapacity) {
-        rows.push(textRow('No available export capacity to this nation.', true));
-      }
-      for (const { resourceId, quantity } of playerOwned) {
-        const tradeGold = this.getResourceTradeGoldPerTurn(resourceId);
-        const exportedCount = this.resourceAccessSystem.getExportedResourceSourceCount(playerId, resourceId);
-        // You can never export more than you own: each existing export deal for
-        // this resource consumes one unit of the owned quantity (mirrors
-        // canExportResource). Show remaining supply so the cap is visible.
-        const remainingSupply = Math.max(0, quantity - exportedCount);
-        rows.push(textRow(`${this.formatResourceName(resourceId)} x${quantity}${this.getResourceTypeSuffix(resourceId)} — ${remainingSupply} free to export`));
-        const alreadyExporting = exportedToBuyer.has(resourceId);
-        if (!interactive) {
-          if (alreadyExporting) rows.push(textRow('Currently exporting', true));
-          continue;
-        }
-        const hasRemainingSupply = remainingSupply > 0;
-        const sellDisabled = alreadyExporting || !hasExportCapacity || !hasRemainingSupply;
-        const sellLabel = (turns: number, gold: number): string =>
-          alreadyExporting ? 'Already exporting'
-            : !hasRemainingSupply ? 'Fully exported'
-              : `Sell ${turns}t — ${gold}g/turn`;
-        const twentyTurnGold = Math.max(1, tradeGold - 1);
-        // Sell: seller = human, buyer = AI nation. Mirrors the Buy controls.
-        rows.push({
-          kind: 'buttonGroup',
-          buttons: [
-            {
-              text: sellLabel(10, tradeGold),
-              accentColor: otherNation?.color,
-              disabled: sellDisabled,
-              onClick: () => this.createTradeDealRequest(playerId, otherNationId, resourceId, 10, tradeGold),
-            },
-            {
-              text: sellLabel(20, twentyTurnGold),
-              accentColor: otherNation?.color,
-              disabled: sellDisabled,
-              onClick: () => this.createTradeDealRequest(playerId, otherNationId, resourceId, 20, twentyTurnGold),
-            },
-          ],
-        });
-      }
-    }
+      let selectedCityId = this.tradingExportDestinations.get(resourceId) ?? '';
+      if (!options.some((option) => option.value === selectedCityId)) selectedCityId = options[0]?.value ?? '';
+      if (selectedCityId) this.tradingExportDestinations.set(resourceId, selectedCityId);
+      const selectedCity = selectedCityId ? this.cityManager.getCity(selectedCityId) : undefined;
 
-    const message = this.tradeMessages.get(otherNationId);
-    if (message) {
-      rows.push(textRow(message, true));
+      rows.push(textRow(`${this.formatResourceName(resourceId)} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true));
+      if (options.length > 0) {
+        rows.push({
+          kind: 'select',
+          label: 'Sell to',
+          value: selectedCityId,
+          options,
+          onChange: (value) => {
+            this.tradingExportDestinations.set(resourceId, value);
+            this.requestRefresh();
+          },
+        });
+      } else {
+        const reason = available <= 0
+          ? 'Already committed — no supply is currently available.'
+          : tradePartners.length === 0
+            ? 'No Trade Relations.'
+            : rejectedReasons[0] ?? 'No eligible foreign cities.';
+        rows.push(textRow(reason, true));
+      }
+      rows.push(this.buildTradingDurationSelect(this.tradingExportDurations, resourceId, duration));
+      rows.push({
+        kind: 'button',
+        text: `Sell — ${goldPerTurn}g/turn`,
+        accentColor: selectedCity ? this.nationManager.getNation(selectedCity.ownerId)?.color : undefined,
+        disabled: options.length === 0 || !selectedCity,
+        disabledReason: options.length === 0 ? 'No eligible destination.' : undefined,
+        onClick: () => this.startTradingExport(resourceId),
+      });
+      rows.push({ kind: 'separator' });
     }
     return rows;
+  }
+
+  private buildTradingBuyRows(tradePartners: readonly Nation[]): RightSidebarRow[] {
+    if (!this.resourceAccessSystem || !this.tradeDealSystem || !this.humanNationId) {
+      return [textRow('Trade system unavailable.', true)];
+    }
+    const rows: RightSidebarRow[] = [];
+    for (const seller of tradePartners) {
+      for (const { resourceId, quantity } of this.resourceAccessSystem.getExportableResourceQuantities(seller.id)) {
+        const available = Math.max(0, quantity - this.resourceAccessSystem.getExportedResourceSourceCount(seller.id, resourceId));
+        const key = `${seller.id}:${resourceId}`;
+        const duration = this.getTradingDuration(this.tradingImportDurations, key);
+        const goldPerTurn = this.getHumanTradeGoldPerTurn(resourceId, duration);
+        const input = {
+          sellerNationId: seller.id,
+          buyerNationId: this.humanNationId,
+          resourceId,
+          turns: duration,
+          goldPerTurn,
+        };
+        const validation = available > 0
+          ? this.tradeDealSystem.validateDeal(input)
+          : { ok: false as const, reason: 'Already committed — no supply is currently available.' };
+        rows.push(textRow(`${this.formatResourceName(resourceId)} — ${seller.name} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true));
+        rows.push(this.buildTradingDurationSelect(this.tradingImportDurations, key, duration));
+        if (!validation.ok && validation.reason) rows.push(textRow(validation.reason, true));
+        rows.push({
+          kind: 'button',
+          text: `Buy — ${goldPerTurn}g/turn`,
+          accentColor: seller.color,
+          disabled: !validation.ok,
+          disabledReason: validation.ok ? undefined : validation.reason,
+          onClick: () => this.startTradingImport(seller.id, resourceId),
+        });
+        rows.push({ kind: 'separator' });
+      }
+    }
+    if (rows.length === 0) rows.push(textRow('No foreign goods currently available to buy.', true));
+    return rows;
+  }
+
+  private buildTradingActivityRows(): RightSidebarRow[] {
+    if (!this.humanNationId || !this.tradeDealSystem || !this.humanTradeDealWorkflow) {
+      return [textRow('Trade system unavailable.', true)];
+    }
+    const rows: RightSidebarRow[] = [];
+    if (this.tradingFeedback) rows.push(textRow(this.tradingFeedback, true));
+    for (const pending of this.humanTradeDealWorkflow.getPendingDeals()) {
+      const buyer = this.nationManager.getNation(pending.buyerNationId)?.name ?? pending.buyerNationId;
+      const city = this.cityManager.getCity(pending.buyerCityId)?.name ?? pending.buyerCityId;
+      const route = this.tradeConnectionSystem?.getConnection(pending.routeId);
+      const remaining = route ? this.getTradeRouteTurnsRemaining(route) : null;
+      rows.push(textRow(`${this.formatResourceName(pending.resourceId)} → ${buyer} — ${city}`, false, true));
+      rows.push(textRow(remaining === null
+        ? 'Establishing trade route'
+        : `Establishing trade route — ${remaining} turn${remaining === 1 ? '' : 's'} remaining`, true));
+    }
+    for (const deal of this.tradeDealSystem.getDealsForNation(this.humanNationId)) {
+      const otherNationId = deal.sellerNationId === this.humanNationId ? deal.buyerNationId : deal.sellerNationId;
+      const other = this.nationManager.getNation(otherNationId)?.name ?? otherNationId;
+      const direction = deal.sellerNationId === this.humanNationId ? `→ ${other}` : `← ${other}`;
+      rows.push(textRow(`${this.formatResourceName(deal.resourceId)} ${direction}`, false, true));
+      rows.push(textRow(`Active — ${deal.remainingTurns} turn${deal.remainingTurns === 1 ? '' : 's'} remaining`, true));
+    }
+    if (rows.length === 0) rows.push(textRow('No active or pending trade deals.', true));
+    return rows;
+  }
+
+  private buildTradingNationExportRows(nationName: string, deals: readonly TradeDeal[]): RightSidebarRow[] {
+    if (deals.length === 0) return [textRow(`No active exports to ${nationName}.`, true)];
+    return deals.flatMap((deal) => [
+      textRow(`${this.formatResourceName(deal.resourceId)} ×1`, false, true),
+      textRow(`${deal.remainingTurns} turn${deal.remainingTurns === 1 ? '' : 's'} remaining · +${deal.goldPerTurn} gold/turn`, true),
+    ]);
+  }
+
+  private buildTradingNationImportRows(nationName: string, deals: readonly TradeDeal[]): RightSidebarRow[] {
+    if (deals.length === 0) return [textRow(`No active imports from ${nationName}.`, true)];
+    return deals.flatMap((deal) => [
+      textRow(`${this.formatResourceName(deal.resourceId)} ×1`, false, true),
+      textRow(`${deal.remainingTurns} turn${deal.remainingTurns === 1 ? '' : 's'} remaining · -${deal.goldPerTurn} gold/turn`, true),
+    ]);
+  }
+
+  private buildTradingNationPendingRows(deals: readonly PendingTradeDeal[]): RightSidebarRow[] {
+    if (deals.length === 0) return [textRow('No pending trades.', true)];
+    const rows: RightSidebarRow[] = [];
+    for (const deal of deals) {
+      const destination = this.cityManager.getCity(deal.buyerCityId)?.name ?? deal.buyerCityId;
+      const route = this.tradeConnectionSystem?.getConnection(deal.routeId);
+      const remaining = route ? this.getTradeRouteTurnsRemaining(route) : null;
+      rows.push(textRow(`${this.formatResourceName(deal.resourceId)} ×1 → ${destination}`, false, true));
+      rows.push(textRow(remaining === null
+        ? 'Establishing trade route · deal not active'
+        : `Establishing trade route · ${remaining} turn${remaining === 1 ? '' : 's'} remaining · deal not active`, true));
+    }
+    rows.push(textRow('Deal duration begins on activation; the resource is not reserved while pending.', true));
+    return rows;
+  }
+
+  private buildTradingNationRouteRows(routes: readonly TradeConnection[]): RightSidebarRow[] {
+    if (routes.length === 0) return [textRow('No active or establishing trade routes.', true)];
+    const humanId = this.humanNationId!;
+    return [...routes]
+      .sort((a, b) => Number(a.status === 'active') - Number(b.status === 'active') || a.id.localeCompare(b.id))
+      .flatMap((route) => {
+        const humanIsA = route.nationAId === humanId;
+        const humanCity = this.cityManager.getCity(humanIsA ? route.cityAId : route.cityBId)?.name
+          ?? (humanIsA ? route.cityAId : route.cityBId);
+        const foreignCity = this.cityManager.getCity(humanIsA ? route.cityBId : route.cityAId)?.name
+          ?? (humanIsA ? route.cityBId : route.cityAId);
+        const remaining = route.status === 'building' ? this.getTradeRouteTurnsRemaining(route) : null;
+        const status = route.status === 'active'
+          ? 'Active'
+          : remaining === null
+            ? 'Establishing'
+            : `Establishing — ${remaining} turn${remaining === 1 ? '' : 's'} remaining`;
+        return [textRow(`${humanCity} ↔ ${foreignCity}`, false, true), textRow(status, true)];
+      });
+  }
+
+  private buildTradingNationCapacityRows(nationId: string): RightSidebarRow[] {
+    if (!this.tradeConnectionSystem || !this.humanNationId) return [textRow('Trade capacity unavailable.', true)];
+    const rows: RightSidebarRow[] = [textRow('Capacity is shared globally by each city across all trade partners.', true)];
+    const addCities = (heading: string, ownerId: string): void => {
+      rows.push(textRow(heading, false, true));
+      const cities = [...this.cityManager.getCitiesByOwner(ownerId)].sort((a, b) => a.name.localeCompare(b.name));
+      if (cities.length === 0) {
+        rows.push(textRow('No eligible cities.', true));
+        return;
+      }
+      for (const city of cities) {
+        const used = this.tradeConnectionSystem!.getCityUsedTradeCapacity(city.id);
+        const total = this.tradeConnectionSystem!.getCityTradeCapacity(city.id);
+        rows.push(textRow(`${city.name}: ${used} / ${total} used`));
+      }
+    };
+    addCities('Your cities', this.humanNationId);
+    addCities(`${this.nationManager.getNation(nationId)?.name ?? nationId} cities`, nationId);
+    return rows;
+  }
+
+  private buildTradingDurationSelect(
+    store: Map<string, number>,
+    key: string,
+    duration: number,
+  ): RightSidebarRow {
+    return {
+      kind: 'select',
+      label: 'Duration',
+      value: String(duration),
+      options: [this.humanTradeDealDurations.short, this.humanTradeDealDurations.long]
+        .map((turns) => ({ value: String(turns), label: `${turns} turns` })),
+      onChange: (value) => {
+        const turns = Number(value);
+        if (turns === this.humanTradeDealDurations.short || turns === this.humanTradeDealDurations.long) store.set(key, turns);
+        this.requestRefresh();
+      },
+    };
+  }
+
+  private getTradingDuration(store: Map<string, number>, key: string): number {
+    const selected = store.get(key);
+    return selected === this.humanTradeDealDurations.short || selected === this.humanTradeDealDurations.long
+      ? selected!
+      : this.humanTradeDealDurations.short;
+  }
+
+  private startTradingExport(resourceId: string): void {
+    if (!this.humanNationId || !this.humanTradeDealWorkflow) return;
+    const buyerCityId = this.tradingExportDestinations.get(resourceId);
+    const buyerCity = buyerCityId ? this.cityManager.getCity(buyerCityId) : undefined;
+    if (!buyerCity) {
+      this.tradingFeedback = 'Choose an eligible destination city.';
+      this.requestRefresh();
+      return;
+    }
+    const turns = this.getTradingDuration(this.tradingExportDurations, resourceId);
+    const result = this.humanTradeDealWorkflow.startExport({
+      sellerNationId: this.humanNationId,
+      buyerNationId: buyerCity.ownerId,
+      buyerCityId: buyerCity.id,
+      resourceId,
+      turns,
+      goldPerTurn: this.getHumanTradeGoldPerTurn(resourceId, turns),
+    });
+    if (!result.ok) this.tradingFeedback = result.reason;
+    else if (result.status === 'active') this.tradingFeedback = 'Trade deal started — Active.';
+    else {
+      const route = this.tradeConnectionSystem?.getConnection(result.routeId);
+      const remaining = route ? this.getTradeRouteTurnsRemaining(route) : null;
+      this.tradingFeedback = remaining === null
+        ? 'Establishing trade route.'
+        : `Establishing trade route — ${remaining} turn${remaining === 1 ? '' : 's'} remaining.`;
+    }
+    this.requestRefresh();
+  }
+
+  private startTradingImport(sellerNationId: string, resourceId: string): void {
+    if (!this.humanNationId || !this.tradeDealSystem) return;
+    const key = `${sellerNationId}:${resourceId}`;
+    const turns = this.getTradingDuration(this.tradingImportDurations, key);
+    const result = this.tradeDealSystem.createDeal({
+      sellerNationId,
+      buyerNationId: this.humanNationId,
+      resourceId,
+      turns,
+      goldPerTurn: this.getHumanTradeGoldPerTurn(resourceId, turns),
+    });
+    this.tradingFeedback = result.ok ? 'Import deal started — Active.' : result.reason ?? 'Trade deal failed.';
+    this.requestRefresh();
   }
 
   /**
@@ -2632,46 +2751,6 @@ export class RightSidebarPanelDataProvider {
    * covering both routes still under construction ("In progress") and completed
    * ("Active") ones. Visibility only — no trade-route logic is touched here.
    */
-  private buildTradeRoutesOverviewRows(otherNationId: string): RightSidebarRow[] {
-    const rows: RightSidebarRow[] = [];
-    if (!this.tradeConnectionSystem || !this.humanNationId) return rows;
-    const humanId = this.humanNationId;
-
-    const connections = this.tradeConnectionSystem.getAllConnections().filter((conn) =>
-      (conn.nationAId === humanId && conn.nationBId === otherNationId) ||
-      (conn.nationAId === otherNationId && conn.nationBId === humanId),
-    );
-
-    rows.push(textRow('Trade Routes', false, true));
-    if (connections.length === 0) {
-      rows.push(textRow('No trade routes yet.', true));
-      return rows;
-    }
-
-    // Show routes still being built first, then completed (active) ones.
-    connections.sort((a, b) => Number(a.status === 'active') - Number(b.status === 'active'));
-
-    for (const conn of connections) {
-      const humanIsA = conn.nationAId === humanId;
-      const humanCityName = this.cityManager.getCity(humanIsA ? conn.cityAId : conn.cityBId)?.name
-        ?? (humanIsA ? conn.cityAId : conn.cityBId);
-      const foreignCityName = this.cityManager.getCity(humanIsA ? conn.cityBId : conn.cityAId)?.name
-        ?? (humanIsA ? conn.cityBId : conn.cityAId);
-
-      rows.push(textRow(`${humanCityName} → ${foreignCityName}`));
-      if (conn.status === 'active') {
-        rows.push(textRow('Active · —', true));
-      } else {
-        const turns = this.getTradeRouteTurnsRemaining(conn);
-        rows.push(textRow(
-          turns !== null ? `In progress · ${turns} turn${turns === 1 ? '' : 's'} remaining` : 'In progress',
-          true,
-        ));
-      }
-    }
-    return rows;
-  }
-
   /**
    * Turns left to finish a building route, read from the production queue entry
    * that builds it (lives in the initiating city, `cityAId`). Null if not found.
@@ -2681,32 +2760,6 @@ export class RightSidebarPanelDataProvider {
       (e) => e.item.kind === 'tradeRoute' && e.item.connectionId === conn.id,
     );
     return entry ? entry.turnsRemaining : null;
-  }
-
-  private createTradeDealRequest(
-    sellerNationId: string,
-    buyerNationId: string,
-    resourceId: string,
-    turns: number,
-    goldPerTurn: number,
-  ): void {
-    if (!this.tradeDealSystem || !this.humanNationId) return;
-    // The "other" nation (whose audience tab this is) keys the status message,
-    // regardless of trade direction.
-    const otherNationId = sellerNationId === this.humanNationId ? buyerNationId : sellerNationId;
-    const result = this.tradeDealSystem.createDeal({
-      sellerNationId,
-      buyerNationId,
-      resourceId,
-      turns,
-      goldPerTurn,
-    });
-    if (result.ok) {
-      this.tradeMessages.delete(otherNationId);
-      return;
-    }
-    this.tradeMessages.set(otherNationId, result.reason ?? 'Trade deal failed.');
-    this.requestRefresh();
   }
 
   private formatResourceName(resourceId: string): string {
@@ -2721,6 +2774,11 @@ export class RightSidebarPanelDataProvider {
     const manufactured = getManufacturedResourceById(resourceId);
     if (manufactured?.tradeGoldPerTurn !== undefined) return manufactured.tradeGoldPerTurn;
     return getNaturalResourceById(resourceId)?.category === 'luxury' ? 5 : 4;
+  }
+
+  private getHumanTradeGoldPerTurn(resourceId: string, duration: number): number {
+    const base = this.getResourceTradeGoldPerTurn(resourceId);
+    return duration === this.humanTradeDealDurations.long ? Math.max(1, base - 1) : base;
   }
 
   private formatDealRow(deal: TradeDeal): string {

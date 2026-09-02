@@ -6,6 +6,7 @@ import type { ActivePolicyAssignment } from '../entities/NationPolicies';
 import type { AINationalAgendaId } from './aiNationalAgenda';
 import type { CovertPersonalityId } from './covertPersonality';
 import type { TradeDeal } from './tradeDeal';
+import type { PendingTradeDeal } from './tradeDeal';
 import type { TradeConnection } from './tradeConnection';
 import type { HistoricalEvent } from './historicalTimeline';
 import type { SavedNewspaperState } from './newspaper';
@@ -45,6 +46,8 @@ export interface SavedProducible {
   toCityId?: string;
   targetNationId?: string;
   displayName?: string;
+  /** Fixed route duration. Optional so queues in older saves use the legacy default. */
+  establishmentTurns?: number;
 }
 
 export interface SavedBuilding {
@@ -328,6 +331,11 @@ export interface SavedGameState {
   /** Explicit active leader ids by nation. Optional for older saves. */
   leaderSelections?: Record<string, string>;
   gameSpeedId?: GameSpeedId;
+  /** Active scenario rule. Optional so older saves fall back through scenario metadata. */
+  tradeRouteEstablishmentTurns?: number;
+  /** Active scenario choices for newly created human deals. Optional for older saves. */
+  shortTradeDealDuration?: number;
+  longTradeDealDuration?: number;
   /**
    * Enabled victory conditions for the session. Optional so pre-feature saves
    * still load; loaders must default a missing field to all three enabled
@@ -373,6 +381,8 @@ export interface SavedGameState {
   /** Accumulated, deliberately manufactured Science Victory parts. */
   aerospaceParts?: SavedAerospacePartProgress[];
   tradeDeals?: TradeDeal[];
+  /** Human-requested deals waiting for their associated route to become active. */
+  pendingTradeDeals?: PendingTradeDeal[];
   tradeConnections?: TradeConnection[];
   tradeHistory?: SavedTradeHistoryEntry[];
   worldMarkers?: WorldMarker[];

@@ -11,12 +11,12 @@ import type {
   RightSidebarPanelMode,
   RightSidebarRelationsTableRow,
   RightSidebarCompactTableRow,
-  RightSidebarCityPairPickerRow,
   RightSidebarButtonGroupRow,
-  CityPickerItem,
   RightSidebarRow,
   RightSidebarSearchInputRow,
+  RightSidebarSelectRow,
 } from './RightSidebarPanelTypes';
+import { resolveTradingTabId } from './RightSidebarPanelTypes';
 import type { DiplomacyRelationshipType } from './DiplomacyGraphTypes';
 
 interface ModeDefinition {
@@ -52,7 +52,7 @@ interface ContentButton {
 }
 
 interface ContentInput {
-  element: HTMLInputElement;
+  element: HTMLInputElement | HTMLSelectElement;
   baseY: number;
   height: number;
 }
@@ -61,6 +61,8 @@ const DEPTH = 1200;
 const EDGE_MARGIN = 16;
 const PANEL_WIDTH = 778;
 const LEADERBOARD_PANEL_WIDTH = 1110;
+/** Trading spreads its Buy/Sell/nation content wide — up to half the viewport. */
+const TRADING_PANEL_WIDTH_FRACTION = 0.5;
 const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
 const PANEL_PADDING = 24;
@@ -84,6 +86,10 @@ const SCROLLBAR_MIN_THUMB_HEIGHT = 28;
 const WHEEL_BLOCKER_ID = 'right-sidebar-panel';
 const LEADERBOARD_TAB_GAP = 8;
 const LEADERBOARD_TAB_HEIGHT = 34;
+/** Trading tabs are taller so their labels have vertical breathing room. */
+const TRADING_TAB_HEIGHT = 44;
+/** Horizontal padding on each side of a trading tab's label (tab hugs its text). */
+const TRADING_TAB_PAD_X = 18;
 const CITY_TAB_GAP = 8;
 const CITY_TAB_HEIGHT = 34;
 const LEADER_TAB_GAP = 8;
@@ -96,8 +102,18 @@ const LOG_COPY_BUTTON_HEIGHT = 40;
 const MODES: ModeDefinition[] = [
   { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
   { mode: 'leaderboard', icon: '🏆', label: 'Leaderboard', accentColor: 0xf4d06f },
+  { mode: 'trading', icon: '⚖️', label: 'Trading', accentColor: 0x7fc8a9 },
   { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa },
 ];
+
+/**
+ * Fixed Trading tabs shown before the dynamic per-nation tabs: Buy lists the
+ * goods the human can import, Sell lists the goods it can export.
+ */
+export const TRADING_TABS = [
+  { id: 'buy', label: 'Buy', accentColor: 0x7fc8a9 },
+  { id: 'sell', label: 'Sell', accentColor: 0x7fc8a9 },
+] as const;
 
 export const LEADERBOARD_CATEGORIES: Array<{
   id: RightSidebarLeaderboardCategory;
@@ -132,8 +148,6 @@ const LEADER_DETAIL_TABS: Array<{
   { id: 'diplomacy', label: 'Diplomacy', accentColor: 0xa7f3d0 },
   { id: 'relations', label: 'Relations', accentColor: 0xf0a8c0 },
   { id: 'economics', label: 'Economics', accentColor: 0x7fc8a9 },
-  { id: 'trade', label: 'Trade', accentColor: 0xf4d06f },
-  { id: 'deals', label: 'Deals', accentColor: 0xc084fc },
 ];
 
 export class RightSidebarPanel {
@@ -188,6 +202,7 @@ export class RightSidebarPanel {
   private contentHeight = 0;
   private scrollableContentTop = CONTENT_TOP;
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
+  private tradingTabId = 'buy';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
   private leaderDetailsTab: RightSidebarLeaderDetailsTab = 'details';
   private lastDetailsCityId: string | null = null;
@@ -341,6 +356,9 @@ export class RightSidebarPanel {
     console.debug('[RightSidebarPanel] show mode', mode);
     if (mode === 'leaderboard' && this.activeMode !== 'leaderboard') {
       this.leaderboardCategory = 'domination';
+    }
+    if (mode === 'trading' && this.activeMode !== 'trading') {
+      this.tradingTabId = 'buy';
     }
     if (mode === 'diplomacy-graph' && this.activeMode !== 'diplomacy-graph') {
       this.diplomacyGraphFocusNation = null;
@@ -624,11 +642,27 @@ export class RightSidebarPanel {
         return this.dataProvider.getDetailsContent(this.cityDetailsTab, this.leaderDetailsTab);
       case 'leaderboard':
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
+      case 'trading':
+        return this.getTradingContent();
       case 'timeline':
         return this.dataProvider.getTimelineContent();
       case 'diplomacy-graph':
         return { title: 'Diplomacy Graph', sections: [] };
     }
+  }
+
+  private getTradingTabs(): Array<{ id: string; label: string; accentColor: number; nationId?: string }> {
+    return [...TRADING_TABS, ...this.dataProvider.getTradingNationTabs()];
+  }
+
+  private getTradingContent(): RightSidebarContent {
+    const tabs = this.getTradingTabs();
+    this.tradingTabId = resolveTradingTabId(this.tradingTabId, tabs.map((tab) => tab.id));
+    const selected = tabs.find((tab) => tab.id === this.tradingTabId)!;
+    if (selected.nationId) return this.dataProvider.getTradingNationContent(selected.nationId);
+    return selected.id === 'sell'
+      ? this.dataProvider.getTradingSellContent()
+      : this.dataProvider.getTradingBuyContent();
   }
 
   private ensureRenderableContent(content: RightSidebarContent): RightSidebarContent {
@@ -658,15 +692,19 @@ export class RightSidebarPanel {
     if (this.activeMode === 'leaderboard') {
       y = this.addLeaderboardTabs(y);
     }
+    if (this.activeMode === 'trading') {
+      y = this.addTradingTabs(y);
+    }
     for (const section of content.sections) {
       const heading = this.addContentText(section.title, 17, '#91a9c4', 'bold');
       heading.setPosition(PANEL_PADDING, y);
       heading.setData('baseY', y);
       let headingHeight = heading.height;
       if (section.titleRight) {
-        const rightHeading = this.addContentText(section.titleRight, 15, '#d8c686', 'bold', CONTENT_WIDTH);
+        const headingWidth = this.getContentWidth();
+        const rightHeading = this.addContentText(section.titleRight, 15, '#d8c686', 'bold', headingWidth);
         rightHeading.setOrigin(1, 0);
-        rightHeading.setPosition(PANEL_PADDING + CONTENT_WIDTH, y + 1);
+        rightHeading.setPosition(PANEL_PADDING + headingWidth, y + 1);
         rightHeading.setData('baseY', y + 1);
         headingHeight = Math.max(headingHeight, rightHeading.height);
       }
@@ -1036,6 +1074,83 @@ export class RightSidebarPanel {
     return y + LEADERBOARD_TAB_HEIGHT + SECTION_GAP;
   }
 
+  private addTradingTabs(y: number): number {
+    const tabs = this.getTradingTabs();
+    const availableWidth = this.getContentWidth();
+    const rightEdge = PANEL_PADDING + availableWidth;
+    let cursorX = PANEL_PADDING;
+    let cursorY = y;
+
+    for (const tab of tabs) {
+      const selected = tab.id === this.tradingTabId;
+      // Each tab is only as wide as its label plus padding; measure the label
+      // first (no wrap) so the background can be sized to it.
+      const label = this.addText(tab.label, 14, selected ? '#ffffff' : '#d7e2ee', 'bold');
+      const tabWidth = Math.min(availableWidth, Math.ceil(label.width) + TRADING_TAB_PAD_X * 2);
+
+      // Wrap onto a new row when the tab would overflow the content width.
+      if (cursorX > PANEL_PADDING && cursorX + tabWidth > rightEdge) {
+        cursorX = PANEL_PADDING;
+        cursorY += TRADING_TAB_HEIGHT + LEADERBOARD_TAB_GAP;
+      }
+      const x = cursorX;
+
+      const background = this.addOwned(new Phaser.GameObjects.Rectangle(
+        this.scene,
+        x,
+        cursorY,
+        tabWidth,
+        TRADING_TAB_HEIGHT,
+        selected ? 0x1f4b62 : 0x143044,
+        selected ? 1 : 0.92,
+      ))
+        .setOrigin(0, 0)
+        .setStrokeStyle(selected ? 2 : 1, tab.accentColor, selected ? 0.95 : 0.5)
+        .setScrollFactor(0);
+      background.setData('baseY', cursorY);
+      this.panelContainer.add(background);
+      this.contentObjects.push(background);
+      background.setMask(this.contentMask);
+
+      // Label centered both horizontally and vertically inside the tab.
+      const labelX = x + tabWidth / 2;
+      const labelY = cursorY + TRADING_TAB_HEIGHT / 2;
+      label.setOrigin(0.5, 0.5).setPosition(labelX, labelY);
+      label.setData('baseY', labelY);
+      this.panelContainer.add(label);
+      this.contentObjects.push(label);
+      label.setMask(this.contentMask);
+
+      const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, x, cursorY, tabWidth, TRADING_TAB_HEIGHT))
+        .setOrigin(0, 0)
+        .setScrollFactor(0)
+        .setInteractive({ cursor: 'pointer' });
+      hitArea.setData('baseY', cursorY);
+      hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        this.worldInputGate.claimPointer(pointer.id);
+        consumePointerEvent(pointer);
+      });
+      hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _localX: number, _localY: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation();
+        if (pointer.button !== 0) return;
+        consumePointerEvent(pointer);
+        this.worldInputGate.releasePointer(pointer.id);
+        if (this.tradingTabId !== tab.id) {
+          this.tradingTabId = tab.id;
+          this.scrollOffset = 0;
+          this.renderActiveContent();
+        }
+      });
+      this.panelContainer.add(hitArea);
+      this.contentObjects.push(hitArea);
+
+      cursorX = x + tabWidth + LEADERBOARD_TAB_GAP;
+    }
+    return cursorY + TRADING_TAB_HEIGHT + SECTION_GAP;
+  }
+
   private addCityDetailsTabs(y: number): number {
     const tabWidth = (CONTENT_WIDTH - CITY_TAB_GAP * (CITY_DETAIL_TABS.length - 1)) / CITY_DETAIL_TABS.length;
     let x = PANEL_PADDING;
@@ -1157,7 +1272,8 @@ export class RightSidebarPanel {
         const icon = row.spritePath ? this.addContentIcon(row.spritePath, PANEL_PADDING + (hasAccent ? 15 : 0), y + 1) : null;
         const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
         const textX = (hasAccent ? PANEL_PADDING + 15 : PANEL_PADDING) + iconWidth;
-        const wrapWidth = (hasAccent ? CONTENT_WIDTH - 15 : CONTENT_WIDTH) - iconWidth;
+        const contentWidth = this.getContentWidth();
+        const wrapWidth = (hasAccent ? contentWidth - 15 : contentWidth) - iconWidth;
         const color = row.muted ? '#c1cbd8' : row.large ? '#ffffff' : '#edf4ff';
         if (hasAccent) {
           const marker = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 5, 6, Math.max(14, row.large ? 20 : 16), row.color, 0.95))
@@ -1186,7 +1302,7 @@ export class RightSidebarPanel {
       case 'progress':
         return this.addProgressRow(row.label, row.current, row.max, y);
       case 'separator': {
-        const line = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 6, CONTENT_WIDTH, 1, 0x7f8b99, 0.28))
+        const line = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 6, this.getContentWidth(), 1, 0x7f8b99, 0.28))
           .setOrigin(0, 0)
           .setScrollFactor(0);
         line.setData('baseY', y + 6);
@@ -1197,12 +1313,12 @@ export class RightSidebarPanel {
       }
       case 'searchInput':
         return this.addSearchInputRow(row, y);
+      case 'select':
+        return this.addSelectRow(row, y);
       case 'relationsTable':
         return this.addRelationsTableRow(row, y);
       case 'compactTable':
         return this.addCompactTableRow(row, y);
-      case 'cityPairPicker':
-        return this.addCityPairPickerRow(row, y);
     }
   }
 
@@ -1261,56 +1377,6 @@ export class RightSidebarPanel {
     return cursorY + ROW_GAP;
   }
 
-  /**
-   * Two-column city selector: human cities on the left, target nation cities on
-   * the right. Each cell is a standard content button (so selection highlight,
-   * hover, disabled state and scrolling all behave like other buttons), letting
-   * the player pick one city per column to define the proposed trade route.
-   */
-  private addCityPairPickerRow(row: RightSidebarCityPairPickerRow, y: number): number {
-    const COLUMN_GAP = 12;
-    const colWidth = Math.floor((CONTENT_WIDTH - COLUMN_GAP) / 2);
-    const leftX = PANEL_PADDING;
-    const rightX = PANEL_PADDING + colWidth + COLUMN_GAP;
-
-    // Column headers.
-    const leftHeader = this.addContentText(row.leftHeader, 14, '#a8b6c8', 'bold', colWidth);
-    leftHeader.setPosition(leftX, y);
-    leftHeader.setData('baseY', y);
-    const rightHeader = this.addContentText(row.rightHeader, 14, '#a8b6c8', 'bold', colWidth);
-    rightHeader.setPosition(rightX, y);
-    rightHeader.setData('baseY', y);
-
-    let cursorY = y + Math.max(leftHeader.height, rightHeader.height) + 6;
-
-    const toButtonRow = (item: CityPickerItem): RightSidebarButtonRow => ({
-      kind: 'button',
-      text: item.label,
-      disabled: item.disabled,
-      selected: item.selected,
-      accentColor: row.accentColor,
-      onClick: item.onClick,
-    });
-
-    const rowCount = Math.max(row.leftItems.length, row.rightItems.length);
-    if (rowCount === 0) {
-      const empty = this.addContentText(row.emptyLabel, 15, '#c1cbd8', 'normal');
-      empty.setPosition(PANEL_PADDING, cursorY);
-      empty.setData('baseY', cursorY);
-      return cursorY + empty.height + ROW_GAP;
-    }
-
-    for (let i = 0; i < rowCount; i++) {
-      const left = row.leftItems[i];
-      const right = row.rightItems[i];
-      const leftNextY = left ? this.addContentButton(toButtonRow(left), cursorY, leftX, colWidth) : cursorY;
-      const rightNextY = right ? this.addContentButton(toButtonRow(right), cursorY, rightX, colWidth) : cursorY;
-      cursorY = Math.max(leftNextY, rightNextY);
-    }
-
-    return cursorY;
-  }
-
   private addSearchInputRow(row: RightSidebarSearchInputRow, y: number): number {
     const height = 34;
     const input = document.createElement('input');
@@ -1363,6 +1429,51 @@ export class RightSidebarPanel {
       this.focusSearchInputAfterRender = false;
     }
     return y + height + ROW_GAP;
+  }
+
+  private addSelectRow(row: RightSidebarSelectRow, y: number): number {
+    const label = this.addContentText(row.label, 13, '#a8b6c8', 'bold');
+    label.setPosition(PANEL_PADDING, y);
+    label.setData('baseY', y);
+
+    const height = 34;
+    const selectY = y + label.height + 4;
+    const select = document.createElement('select');
+    select.value = row.value;
+    select.disabled = row.disabled ?? false;
+    select.className = 'right-sidebar-select';
+    select.style.cssText = `
+      position: fixed;
+      z-index: ${DEPTH + 20};
+      width: ${this.getContentWidth()}px;
+      height: ${height}px;
+      box-sizing: border-box;
+      border: 1px solid rgba(126, 183, 214, 0.55);
+      border-radius: 7px;
+      background: rgba(8, 17, 25, 0.98);
+      color: #edf4ff;
+      outline: none;
+      padding: 6px 10px;
+      font: 15px Arial, sans-serif;
+    `;
+    for (const option of row.options) {
+      const element = document.createElement('option');
+      element.value = option.value;
+      element.textContent = option.label;
+      element.selected = option.value === row.value;
+      select.append(element);
+    }
+    select.addEventListener('change', () => {
+      row.onChange(select.value);
+    });
+    for (const eventName of ['pointerdown', 'wheel', 'keydown', 'keyup']) {
+      select.addEventListener(eventName, (event) => event.stopPropagation());
+    }
+    document.body.append(select);
+    const contentInput: ContentInput = { element: select, baseY: selectY, height };
+    this.contentInputs.push(contentInput);
+    this.positionContentInput(contentInput);
+    return selectY + height + ROW_GAP;
   }
 
   private addRelationsTableRow(row: RightSidebarRelationsTableRow, y: number): number {
@@ -1432,7 +1543,7 @@ export class RightSidebarPanel {
     return cursorY + (ROW_GAP - rowVerticalPadding);
   }
 
-  private addContentButton(row: RightSidebarButtonRow, y: number, x = PANEL_PADDING, width = CONTENT_WIDTH): number {
+  private addContentButton(row: RightSidebarButtonRow, y: number, x = PANEL_PADDING, width = this.getContentWidth()): number {
     const hasIcon = Boolean(row.spritePath && this.canUseContentIcon(row.spritePath));
     const height = hasIcon ? 40 : 34;
     const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y, width, height, 0x0f2635, row.disabled ? 0.72 : 0.98))
@@ -1480,7 +1591,7 @@ export class RightSidebarPanel {
     const buttons = row.buttons;
     if (buttons.length === 0) return y;
     const GAP = 8;
-    const colWidth = Math.floor((CONTENT_WIDTH - GAP * (buttons.length - 1)) / buttons.length);
+    const colWidth = Math.floor((this.getContentWidth() - GAP * (buttons.length - 1)) / buttons.length);
     let maxNextY = y;
     let x = PANEL_PADDING;
     for (const btn of buttons) {
@@ -1543,11 +1654,12 @@ export class RightSidebarPanel {
     const text = this.addContentText(`${label}: ${current} / ${max}`, 15, '#cfd9e6');
     text.setPosition(PANEL_PADDING, y);
     text.setData('baseY', y);
-    const track = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 25, CONTENT_WIDTH, 8, 0x223044, 0.9))
+    const progressWidth = this.getContentWidth();
+    const track = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 25, progressWidth, 8, 0x223044, 0.9))
       .setOrigin(0, 0.5)
       .setScrollFactor(0);
     track.setData('baseY', y + 25);
-    const fill = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 25, Math.max(2, CONTENT_WIDTH * percent), 8, 0x62c08a, 0.94))
+    const fill = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 25, Math.max(2, progressWidth * percent), 8, 0x62c08a, 0.94))
       .setOrigin(0, 0.5)
       .setScrollFactor(0);
     fill.setData('baseY', y + 25);
@@ -1564,7 +1676,7 @@ export class RightSidebarPanel {
     fontSize: number,
     color: string,
     fontStyle = 'normal',
-    wordWrapWidth = CONTENT_WIDTH,
+    wordWrapWidth = this.getContentWidth(),
   ): Phaser.GameObjects.Text {
     const object = this.addText(text, fontSize, color, fontStyle, wordWrapWidth);
     this.panelContainer.add(object);
@@ -1925,7 +2037,12 @@ export class RightSidebarPanel {
   }
 
   private getPanelWidth(): number {
-    return this.activeMode === 'leaderboard' ? LEADERBOARD_PANEL_WIDTH : PANEL_WIDTH;
+    if (this.activeMode === 'leaderboard') return LEADERBOARD_PANEL_WIDTH;
+    if (this.activeMode === 'trading') {
+      // Up to half the viewport, but never narrower than the standard panel.
+      return Math.max(PANEL_WIDTH, Math.round(this.scene.scale.width * TRADING_PANEL_WIDTH_FRACTION));
+    }
+    return PANEL_WIDTH;
   }
 
   private getContentWidth(): number {
