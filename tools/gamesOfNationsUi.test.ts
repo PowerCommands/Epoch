@@ -213,6 +213,23 @@ test('non-host human can inspect an AI host bonus without receiving selection co
   assert.equal(view.hostBonusEffectiveGamesPoints, 79);
 });
 
+test('active policy-card sport bonuses flow through to the investment model', () => {
+  const withPolicy = buildGamesOfNationsUiModel({
+    summary: summary({ participants: [participant({ gamesPointsBySport: { ...EQUAL, Wrestling: 30 } })] }),
+    humanNationId: HUMAN,
+    hostNationName: 'France',
+    hostCityName: 'Paris',
+    founderNationName: 'France',
+    currentCultureAvailable: 7,
+    currentBaseProductionAvailable: 8,
+    policySportBonuses: { Wrestling: 8 },
+  });
+  assert.deepEqual(withPolicy.policySportBonuses, { Wrestling: 8 });
+
+  // Absent context defaults to an empty map so older callers keep working.
+  assert.deepEqual(model().policySportBonuses, {});
+});
+
 test('phase presentation exposes waiting, active sport, and cooldown timing', () => {
   const waiting = model({ phase: 'waitingForFirstGames', turnsUntilNextPhase: 8, phaseProgressTurn: null, phaseTotalTurns: null });
   assert.equal(waiting.turnsUntilPreparation, 8);
@@ -267,8 +284,10 @@ test('dialog copy labels base Production accurately and explains bonus-amplified
   assert.match(source, /allocationButton\('\+50', 50\)/);
   assert.match(source, /allocationButton\('ALL', 'all'\)/);
   assert.match(source, /const selectedHostBonusSport = model\.hostBonusSport \?\? this\.hostBonusSportDraft/);
-  assert.match(source, /display\.chip\.hidden = !visible/);
-  assert.match(source, /display\.effective\.hidden = !visible/);
+  assert.match(source, /if \(display\.hostChip\) display\.hostChip\.hidden = hostBonus <= 0/);
+  assert.match(source, /if \(display\.policyChip\) display\.policyChip\.hidden = display\.policyBonus <= 0/);
+  assert.match(source, /display\.effective\.hidden = totalBonus <= 0/);
+  assert.match(source, /Policy Bonus \+\$\{policyBonus\} GP/);
   assert.doesNotMatch(source, /% future/);
   assert.doesNotMatch(source, /gon-allocation-/);
   assert.match(source, /Competition results/);

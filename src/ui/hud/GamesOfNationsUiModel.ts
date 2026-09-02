@@ -33,6 +33,12 @@ export interface GamesOfNationsUiContext {
   stadiumEstimatedTurns?: number | null;
   stadiumUnderConstruction?: boolean;
   humanTreasury?: number;
+  /**
+   * Human nation's active policy-card score bonus per sport (same value the
+   * scoring uses via getSportScoreBonus). Presentation only — the game already
+   * applies these when medals are drawn.
+   */
+  policySportBonuses?: Partial<Record<GamesOfNationsSport, number>>;
 }
 
 export interface GamesCommitmentView {
@@ -99,6 +105,8 @@ export interface GamesOfNationsUiModel {
   hostBonusLocked: boolean;
   hostBonusBaseGamesPoints: number | null;
   hostBonusEffectiveGamesPoints: number | null;
+  /** Human nation's active policy-card score bonus per sport (0/absent = none). */
+  policySportBonuses: Partial<Record<GamesOfNationsSport, number>>;
   sportAuction: {
     era: string;
     treasury: number;
@@ -230,6 +238,7 @@ export function buildGamesOfNationsUiModel(context: GamesOfNationsUiContext): Ga
     hostBonusEffectiveGamesPoints: hostBonusBaseGamesPoints === null
       ? null
       : hostBonusBaseGamesPoints + summary.hostBonusGamesPoints,
+    policySportBonuses: context.policySportBonuses ?? {},
     sportAuction: pendingAuction && summary.humanInteractionSuppressed !== true ? {
       era: pendingAuction.triggerEra,
       treasury: whole(context.humanTreasury ?? 0),

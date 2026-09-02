@@ -169,8 +169,10 @@ import { HistoricalTimelineService } from '../systems/HistoricalTimelineService'
 import { NewspaperSystem } from '../systems/NewspaperSystem';
 import {
   GamesOfNationsSystem,
+  GAMES_OF_NATIONS_ALL_SPORTS,
   type GamesOfNationsSportResolvedEvent,
 } from '../systems/GamesOfNationsSystem';
+import { getGamesSportByName } from '../data/gamesOfNationsSports';
 import { buildGamesOfNationsEdition } from '../systems/GamesOfNationsChronicle';
 import type { GamesOfNationsSportValues, GamesOfNationsSummary } from '../types/gamesOfNations';
 import { buildGamesOfNationsUiModel } from '../ui/hud/GamesOfNationsUiModel';
@@ -6957,6 +6959,15 @@ export class GameScene extends Phaser.Scene {
           entry.item.kind === 'building' && entry.item.buildingType.id === GRAND_STADIUM_BUILDING_ID,
         )
         : undefined;
+      // Human policy-card score bonuses per sport, from the same source the
+      // scoring uses (getSportScoreBonus → policySystem). Presentation only.
+      const policySportBonuses: Record<string, number> = {};
+      if (humanNationId) {
+        for (const sport of GAMES_OF_NATIONS_ALL_SPORTS) {
+          const bonus = policySystem.getGamesOfNationsSportScoreBonus(humanNationId, getGamesSportByName(sport).id);
+          if (bonus !== 0) policySportBonuses[sport] = bonus;
+        }
+      }
       return buildGamesOfNationsUiModel({
         summary,
         humanNationId: humanNationId ?? '',
@@ -6981,6 +6992,7 @@ export class GameScene extends Phaser.Scene {
             : null),
         stadiumUnderConstruction: stadiumQueueEntry !== undefined,
         humanTreasury: humanNationId ? nationManager.getResources(humanNationId).gold : 0,
+        policySportBonuses,
       });
     };
     hudLayer = new HudLayer(this, {

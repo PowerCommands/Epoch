@@ -328,7 +328,13 @@ export class GamesOfNationsDialog {
     allocationTable.setAttribute('role', 'group');
     allocationTable.setAttribute('aria-label', 'Direct Games Points allocation');
     const plannedLabels = new Map<GamesOfNationsSport, HTMLElement>();
-    const hostBonusDisplays = new Map<GamesOfNationsSport, { chip: HTMLElement; effective: HTMLElement }>();
+    const bonusDisplays = new Map<GamesOfNationsSport, {
+      hostChip?: HTMLElement;
+      policyChip?: HTMLElement;
+      effective: HTMLElement;
+      committed: number;
+      policyBonus: number;
+    }>();
     const strategyButtons: HTMLButtonElement[] = [];
     let refreshDraft = (): void => {};
     for (const sport of model.activeSports) {
@@ -364,13 +370,30 @@ export class GamesOfNationsDialog {
         plannedLabel,
         text(`${committed} GP invested this Games`, 'gon-sport-effective'),
       );
-      if (model.humanIsHost && model.hostBonusGamesPoints > 0) {
-        const chip = text(`Host Bonus +${model.hostBonusGamesPoints} GP`, 'gon-host-bonus-chip');
-        const effective = text(`Effective ${committed + model.hostBonusGamesPoints} GP`, 'gon-sport-effective');
-        chip.hidden = true;
-        effective.hidden = true;
-        hostBonusDisplays.set(sport, { chip, effective });
-        card.append(chip, effective);
+      // Bonuses that add to this sport's effective score are shown the same way
+      // for the host advantage and for active policy cards (chip + effective).
+      const hostPossible = model.humanIsHost && model.hostBonusGamesPoints > 0;
+      const policyBonus = model.policySportBonuses[sport] ?? 0;
+      if (hostPossible || policyBonus > 0) {
+        const entry: {
+          hostChip?: HTMLElement;
+          policyChip?: HTMLElement;
+          effective: HTMLElement;
+          committed: number;
+          policyBonus: number;
+        } = { effective: text('', 'gon-sport-effective'), committed, policyBonus };
+        if (hostPossible) {
+          entry.hostChip = text(`Host Bonus +${model.hostBonusGamesPoints} GP`, 'gon-host-bonus-chip');
+          entry.hostChip.hidden = true;
+          card.append(entry.hostChip);
+        }
+        if (policyBonus > 0) {
+          entry.policyChip = text(`Policy Bonus +${policyBonus} GP`, 'gon-host-bonus-chip');
+          card.append(entry.policyChip);
+        }
+        entry.effective.hidden = true;
+        card.append(entry.effective);
+        bonusDisplays.set(sport, entry);
       }
       card.appendChild(controls);
       allocationTable.appendChild(card);
@@ -414,10 +437,13 @@ export class GamesOfNationsDialog {
       unallocatedLabel.textContent = `Strategy unassigned: ${remaining} GP / turn${earnedPool > 0 ? ` · Previously earned unallocated: ${earnedPool} GP` : ''}`;
       for (const sport of model.activeSports) plannedLabels.get(sport)!.textContent = `${strategy[sport]} GP / turn planned`;
       const selectedHostBonusSport = model.hostBonusSport ?? this.hostBonusSportDraft;
-      for (const [sport, display] of hostBonusDisplays) {
-        const visible = sport === selectedHostBonusSport;
-        display.chip.hidden = !visible;
-        display.effective.hidden = !visible;
+      for (const [sport, display] of bonusDisplays) {
+        const hostBonus = display.hostChip && sport === selectedHostBonusSport ? model.hostBonusGamesPoints : 0;
+        if (display.hostChip) display.hostChip.hidden = hostBonus <= 0;
+        if (display.policyChip) display.policyChip.hidden = display.policyBonus <= 0;
+        const totalBonus = hostBonus + display.policyBonus;
+        display.effective.textContent = `Effective ${display.committed + totalBonus} GP`;
+        display.effective.hidden = totalBonus <= 0;
       }
       for (const control of strategyButtons) control.disabled = !editable;
       distributeEvenly.disabled = !editable || remaining <= 0;
