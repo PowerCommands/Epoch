@@ -19,6 +19,11 @@ import {
 } from '../data/corporations';
 import { getManufacturedResourceById } from '../data/manufacturedResources';
 import { ALL_TECHNOLOGIES, type TechnologyDefinition } from '../data/technologies';
+import { ALL_UNIT_TYPES } from '../data/units';
+import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
+import type { NaturalResourceDefinition } from '../types/naturalResources';
+import type { UnitType } from '../entities/UnitType';
+import type { MapData } from '../types/map';
 import type { Producible } from '../types/producible';
 
 export interface GameContext {
@@ -36,6 +41,13 @@ export interface GameContext {
   selectionManager: SelectionManager;
   unitManager: UnitManager;
   autoplaySystem: AutoplaySystem;
+  mapData: MapData;
+  /**
+   * Redraw a single tile after its resource or ownership changed: refreshes the
+   * natural-resource icon and territory borders (and dependent HUD). Wired in
+   * GameScene so the CheatSystem stays renderer-agnostic.
+   */
+  refreshTileVisuals: (tileX: number, tileY: number) => void;
   revealMapResourcesTemporarily: () => void;
   setFogEnabled: (enabled: boolean) => void;
   /**
@@ -227,6 +239,82 @@ export class CheatSystem {
         const label = unit.name;
         context.unitManager.removeUnit(unit.id);
         return `Killed ${label}`;
+      },
+    });
+
+    this.register({
+      name: 'unit',
+      description: 'Create any unit on the selected tile. Usage: "unit <unitType> [nation]" (nation defaults to the player). Ignores tech/culture requirements.',
+      execute: (args, context) => {
+        const unitArg = args[0];
+        if (unitArg === undefined || args.length > 2) return 'Usage: unit <unitType> [nation]';
+
+        const unitType = resolveUnitType(unitArg);
+        if (!unitType.ok) return unitType.message;
+
+        const target = resolveNationId(args[1], context);
+        if (!target.ok) return target.message;
+
+        const selection = context.selectionManager.getSelected();
+        const position = selection ? selectionTilePosition(selection) : null;
+        if (!position) return 'No tile selected';
+
+        const created = context.unitManager.createUnit({
+          type: unitType.type,
+          ownerId: target.nationId,
+          tileX: position.x,
+          tileY: position.y,
+        });
+        return `Created ${created.name} for ${target.label} at (${position.x}, ${position.y})`;
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeUnit(args[0]);
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
+      },
+    });
+
+    this.register({
+      name: 'resource',
+      description: 'Place a natural resource on the selected tile and assign the tile to a nation so it counts. Usage: "resource <resourceId> [nation]" (nation defaults to the player). Ignores tile-type and tech restrictions.',
+      execute: (args, context) => {
+        const resourceArg = args[0];
+        if (resourceArg === undefined || args.length > 2) return 'Usage: resource <resourceId> [nation]';
+
+        const resource = resolveNaturalResource(resourceArg);
+        if (!resource.ok) return resource.message;
+
+        const target = resolveNationId(args[1], context);
+        if (!target.ok) return target.message;
+
+        const selection = context.selectionManager.getSelected();
+        const position = selection ? selectionTilePosition(selection) : null;
+        if (!position) return 'No tile selected';
+        const tile = context.mapData.tiles[position.y]?.[position.x];
+        if (!tile) return 'No tile selected';
+
+        // Place the resource and hand the tile to the target nation: tile
+        // ownership is the game's own precondition for the resource to count
+        // toward that nation's access (yields already read the tile directly).
+        tile.resourceId = resource.resource.id;
+        tile.ownerId = target.nationId;
+        // The resource-access layer caches a tile index built once at load; it
+        // must be invalidated for the newly placed resource to be visible.
+        context.resourceAccessSystem.invalidateResourceIndex();
+        context.refreshTileVisuals(position.x, position.y);
+
+        // Access is still gated by the resource's required technology, so note
+        // when the target cannot yet use it (the yield bonus applies regardless).
+        const requiredTechId = resource.resource.requiredTechId;
+        const techNote = requiredTechId && !context.researchSystem.isResearched(target.nationId, requiredTechId)
+          ? ` (${target.label} needs ${getTechnologyName(requiredTechId)} to access it; the tile yield applies regardless)`
+          : '';
+        return `Placed ${resource.resource.name} on the selected tile for ${target.label}${techNote}`;
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeResource(args[0]);
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
       },
     });
 
@@ -766,6 +854,24 @@ function completeTechnology(input: string): CheatCompletionSuggestion[] {
   })));
 }
 
+function completeUnit(input: string): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, ALL_UNIT_TYPES.map((unitType) => ({
+    value: unitType.id,
+    label: unitType.name,
+    description: unitType.era,
+    matchText: [unitType.id, unitType.name],
+  })));
+}
+
+function completeResource(input: string): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, NATURAL_RESOURCES.map((resource) => ({
+    value: resource.id,
+    label: resource.name,
+    description: resource.category,
+    matchText: [resource.id, resource.name],
+  })));
+}
+
 function completeCorporation(input: string): CheatCompletionSuggestion[] {
   return matchSuggestions(input, CORPORATIONS.map((corporation) => ({
     value: corporation.id,
@@ -918,6 +1024,56 @@ function resolveTechnologyId(
 
 function normalizeTechnologyMatchText(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+function resolveUnitType(
+  input: string,
+): { ok: true; type: UnitType } | { ok: false; message: string } {
+  const normalizedInput = normalizeCompletionMatchText(input);
+  if (normalizedInput.length === 0) return { ok: false, message: `Unknown unit: ${input}` };
+
+  const exactMatches = ALL_UNIT_TYPES.filter((unitType) =>
+    normalizeCompletionMatchText(unitType.id) === normalizedInput ||
+    normalizeCompletionMatchText(unitType.name) === normalizedInput
+  );
+  if (exactMatches.length === 1) return { ok: true, type: exactMatches[0] };
+  if (exactMatches.length > 1) return { ok: false, message: `Ambiguous unit: ${input}` };
+
+  const partialMatches = ALL_UNIT_TYPES.filter((unitType) =>
+    normalizeCompletionMatchText(unitType.id).includes(normalizedInput) ||
+    normalizeCompletionMatchText(unitType.name).includes(normalizedInput)
+  );
+  if (partialMatches.length === 1) return { ok: true, type: partialMatches[0] };
+  if (partialMatches.length > 1) return { ok: false, message: `Ambiguous unit: ${input}` };
+
+  return { ok: false, message: `Unknown unit: ${input}` };
+}
+
+function resolveNaturalResource(
+  input: string,
+): { ok: true; resource: NaturalResourceDefinition } | { ok: false; message: string } {
+  const normalizedInput = normalizeCompletionMatchText(input);
+  if (normalizedInput.length === 0) return { ok: false, message: `Unknown resource: ${input}` };
+
+  const exactMatches = NATURAL_RESOURCES.filter((resource) =>
+    normalizeCompletionMatchText(resource.id) === normalizedInput ||
+    normalizeCompletionMatchText(resource.name) === normalizedInput
+  );
+  if (exactMatches.length === 1) return { ok: true, resource: exactMatches[0] };
+  if (exactMatches.length > 1) return { ok: false, message: `Ambiguous resource: ${input}` };
+
+  const partialMatches = NATURAL_RESOURCES.filter((resource) =>
+    normalizeCompletionMatchText(resource.id).includes(normalizedInput) ||
+    normalizeCompletionMatchText(resource.name).includes(normalizedInput)
+  );
+  if (partialMatches.length === 1) return { ok: true, resource: partialMatches[0] };
+  if (partialMatches.length > 1) return { ok: false, message: `Ambiguous resource: ${input}` };
+
+  return { ok: false, message: `Unknown resource: ${input}` };
+}
+
+function getTechnologyName(techId: string): string {
+  return ALL_TECHNOLOGIES.find((technology) => technology.id === techId)?.name ?? techId;
 }
 
 function resolveCorporationId(

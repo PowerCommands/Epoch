@@ -9340,6 +9340,14 @@ export class GameScene extends Phaser.Scene {
       selectionManager,
       unitManager,
       autoplaySystem,
+      mapData,
+      refreshTileVisuals: (tileX: number, tileY: number): void => {
+        naturalResourceRenderer.refreshTile(tileX, tileY);
+        territoryRenderer.invalidate();
+        rebuildMinimapForGameplay();
+        hudLayer?.refresh();
+        rightPanel?.requestRefresh();
+      },
       revealMapResourcesTemporarily,
       setFogEnabled: (enabled: boolean): void => {
         visibilitySystem.setEnabled(enabled);
