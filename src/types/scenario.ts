@@ -67,6 +67,18 @@ export interface ScenarioMeta {
    * DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT (10). 0 disables the rule.
    */
   originalCapitalCollapsePercent?: number;
+  /**
+   * Domination Victory land-control route: percentage (1–100) of all existing
+   * land tiles a nation must own to win. Authored in the Editor's Scenario
+   * Details. Absent/invalid falls back to DEFAULT_DOMINATION_LAND_PERCENT (20).
+   */
+  dominationLandPercent?: number;
+  /**
+   * Domination Victory vassal route: number of direct vassal states (integer ≥ 1)
+   * a nation must hold to win. Authored in the Editor's Scenario Details.
+   * Absent/invalid falls back to DEFAULT_DOMINATION_REQUIRED_VASSALS (3).
+   */
+  dominationRequiredVassals?: number;
 }
 
 export interface ScenarioMap {

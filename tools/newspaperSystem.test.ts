@@ -151,13 +151,17 @@ test('publication cursor survives save/load and retains later same-round events'
   assert.equal(next.secondaryArticles.some((article) => article.historicalEventId === 1), false);
 });
 
-test('shared Domination ranking orders direct vassals, military strength, then name', () => {
+test('shared Domination ranking orders direct vassals, then land control, then name', () => {
   const ranking = buildDominationRanking(
     [{ id: 'low', name: 'Zulu' }, { id: 'high', name: 'Alpha' }, { id: 'other', name: 'Beta' }],
     (id) => id === 'high' || id === 'low' ? 'other' : undefined,
-    (id) => ({ low: 20, high: 50, other: 1 })[id] ?? 0,
+    { requiredVassals: 3, requiredLandPercent: 20 },
+    { totalLandTiles: 100, getControlledLandTiles: (id) => ({ low: 40, high: 10, other: 1 } as Record<string, number>)[id] ?? 0 },
+    (id) => ({ low: 20, high: 50, other: 1 } as Record<string, number>)[id] ?? 0,
   );
-  assert.deepEqual(ranking.map((entry) => entry.nationId), ['other', 'high', 'low']);
+  // 'other' holds 2 vassals → ranks first. Among the vassal-less pair, 'low' wins
+  // on land control (40% vs 10%) despite lower military strength (informational only).
+  assert.deepEqual(ranking.map((entry) => entry.nationId), ['other', 'low', 'high']);
 });
 
 test('higher base priority beats a lower-priority human event', () => {

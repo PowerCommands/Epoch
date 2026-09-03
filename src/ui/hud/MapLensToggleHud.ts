@@ -13,6 +13,7 @@ const EDGE_MARGIN = 16;
 const LABEL_FONT_SIZE = '20px';
 const CULTURE_LABEL = '\u{1F3AD}';
 const RESOURCE_LABEL = '\u{1F48E}';
+const DETAILS_LABEL = '\u{1F50D}';
 
 const FILL_NORMAL = 0x101a26;
 const FILL_HOVER = 0x1c2c3f;
@@ -36,14 +37,25 @@ export class MapLensToggleHud {
   private readonly resourceBorder: Phaser.GameObjects.Arc;
   private readonly resourceLabel: Phaser.GameObjects.Text;
   private readonly resourceHitArea: Phaser.GameObjects.Zone;
+  // Details is an action button (inspect the current selection), not a lens
+  // toggle; it sits leftmost in this row and is disabled until a selection
+  // exists.
+  private readonly detailsBackground: Phaser.GameObjects.Arc;
+  private readonly detailsBorder: Phaser.GameObjects.Arc;
+  private readonly detailsLabel: Phaser.GameObjects.Text;
+  private readonly detailsHitArea: Phaser.GameObjects.Zone;
 
   private mode: MapLensMode = 'normal';
   private hovered = false;
   private pressed = false;
   private resourceHovered = false;
   private resourcePressed = false;
+  private detailsHovered = false;
+  private detailsPressed = false;
+  private detailsEnabled = false;
   private toggleHandler: (() => void) | null = null;
   private resourceToggleHandler: (() => void) | null = null;
+  private detailsHandler: (() => void) | null = null;
   private bottomOffset = EDGE_MARGIN;
 
   constructor(
@@ -96,6 +108,75 @@ export class MapLensToggleHud {
       .setScrollFactor(0)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
+
+    this.detailsBackground = addOwned(new Phaser.GameObjects.Arc(scene, 0, 0, BUTTON_RADIUS, 0, 360, false, FILL_NORMAL, 0.92))
+      .setDepth(DEPTH)
+      .setScrollFactor(0);
+    this.detailsBorder = addOwned(new Phaser.GameObjects.Arc(scene, 0, 0, BUTTON_RADIUS + 2, 0, 360, false, 0x000000, 0))
+      .setDepth(DEPTH + 1)
+      .setStrokeStyle(2, STROKE_INACTIVE, 0.85)
+      .setScrollFactor(0);
+    this.detailsLabel = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, DETAILS_LABEL, {
+      fontFamily: 'Segoe UI Emoji, Apple Color Emoji, sans-serif',
+      fontSize: LABEL_FONT_SIZE,
+      color: '#ffffff',
+    }))
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH + 2)
+      .setScrollFactor(0);
+    this.detailsHitArea = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, HIT_SIZE, HIT_SIZE))
+      .setName('map-selection-details')
+      .setDepth(DEPTH + 3)
+      .setScrollFactor(0)
+      .setOrigin(0.5);
+
+    this.detailsHitArea.on(Phaser.Input.Events.POINTER_OVER, (
+      _pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.detailsHovered = true;
+      this.refreshVisualState();
+    });
+    this.detailsHitArea.on(Phaser.Input.Events.POINTER_OUT, (
+      _pointer: Phaser.Input.Pointer,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      this.detailsHovered = false;
+      this.detailsPressed = false;
+      this.refreshVisualState();
+    });
+    this.detailsHitArea.on(Phaser.Input.Events.POINTER_DOWN, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      this.detailsPressed = true;
+      consumePointerEvent(pointer);
+      this.refreshVisualState();
+    });
+    this.detailsHitArea.on(Phaser.Input.Events.POINTER_UP, (
+      pointer: Phaser.Input.Pointer,
+      _localX: number,
+      _localY: number,
+      event: Phaser.Types.Input.EventData,
+    ) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      const shouldFire = this.detailsPressed;
+      this.detailsPressed = false;
+      this.worldInputGate.releasePointer(pointer.id);
+      if (shouldFire) this.detailsHandler?.();
+      this.refreshVisualState();
+    });
 
     this.hitArea.on(Phaser.Input.Events.POINTER_OVER, (
       _pointer: Phaser.Input.Pointer,
@@ -206,6 +287,21 @@ export class MapLensToggleHud {
     this.resourceToggleHandler = handler;
   }
 
+  setOnDetails(handler: () => void): void {
+    this.detailsHandler = handler;
+  }
+
+  /** Enable/disable the Details action (disabled while nothing is selected). */
+  setDetailsEnabled(enabled: boolean): void {
+    if (this.detailsEnabled === enabled) return;
+    this.detailsEnabled = enabled;
+    if (!enabled) {
+      this.detailsHovered = false;
+      this.detailsPressed = false;
+    }
+    this.refreshVisualState();
+  }
+
   setMode(mode: MapLensMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
@@ -219,9 +315,16 @@ export class MapLensToggleHud {
    */
   layout(viewportHeight: number, bottomReserved: number): void {
     this.bottomOffset = bottomReserved + EDGE_MARGIN;
-    const x = EDGE_MARGIN + BUTTON_RADIUS;
+    // Details is leftmost, then the Culture and Natural-Resources lens toggles,
+    // all on the same horizontal row.
+    const detailsX = EDGE_MARGIN + BUTTON_RADIUS;
+    const x = detailsX + BUTTON_RADIUS * 2 + BUTTON_GAP;
     const resourceX = x + BUTTON_RADIUS * 2 + BUTTON_GAP;
     const y = viewportHeight - this.bottomOffset - BUTTON_RADIUS;
+    this.detailsBackground.setPosition(detailsX, y);
+    this.detailsBorder.setPosition(detailsX, y);
+    this.detailsLabel.setPosition(detailsX, y);
+    this.detailsHitArea.setPosition(detailsX, y);
     this.background.setPosition(x, y);
     this.border.setPosition(x, y);
     this.label.setPosition(x, y);
@@ -241,6 +344,10 @@ export class MapLensToggleHud {
     this.resourceLabel.destroy();
     this.resourceBorder.destroy();
     this.resourceBackground.destroy();
+    this.detailsHitArea.destroy();
+    this.detailsLabel.destroy();
+    this.detailsBorder.destroy();
+    this.detailsBackground.destroy();
   }
 
   private refreshVisualState(): void {
@@ -270,5 +377,21 @@ export class MapLensToggleHud {
       .setStrokeStyle(this.resourceHovered ? 3 : 2, resourceActive ? STROKE_ACTIVE : STROKE_INACTIVE, 0.92)
       .setScale(resourceScale);
     this.resourceLabel.setScale(resourceScale);
+
+    // Details: an enabled action button with hover/press feedback; dimmed and
+    // non-interactive while disabled (no selection to inspect).
+    const detailsFill = this.detailsEnabled && (this.detailsPressed || this.detailsHovered) ? FILL_HOVER : FILL_NORMAL;
+    const detailsScale = !this.detailsEnabled ? 1 : this.detailsPressed ? 0.94 : this.detailsHovered ? 1.05 : 1;
+    const detailsAlpha = this.detailsEnabled ? 0.95 : 0.45;
+    this.detailsBackground.setFillStyle(detailsFill, detailsAlpha).setScale(detailsScale);
+    this.detailsBorder
+      .setStrokeStyle(this.detailsEnabled && this.detailsHovered ? 3 : 2, STROKE_INACTIVE, this.detailsEnabled ? 0.85 : 0.4)
+      .setScale(detailsScale);
+    this.detailsLabel.setScale(detailsScale).setAlpha(this.detailsEnabled ? 1 : 0.5);
+    if (this.detailsEnabled) {
+      if (!this.detailsHitArea.input?.enabled) this.detailsHitArea.setInteractive({ useHandCursor: true });
+    } else {
+      this.detailsHitArea.disableInteractive();
+    }
   }
 }

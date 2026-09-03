@@ -21,6 +21,16 @@ export interface ToggleableVictoryConfig {
   enabled: boolean;
 }
 
+/**
+ * Domination Victory configuration. `requiredVassals` and `requiredLandPercent`
+ * are the scenario-authored thresholds; absent fields fall back to the
+ * Domination defaults (3 vassals / 20% land).
+ */
+export interface DominationVictoryConfig extends ToggleableVictoryConfig {
+  requiredVassals: number;
+  requiredLandPercent: number;
+}
+
 /** Transient per-nation changes made in the Game Setup Nation Details dialog. */
 export interface ScenarioNationCustomization {
   leaderName: string | null;
@@ -32,7 +42,7 @@ export interface ScenarioNationCustomization {
 }
 
 export interface VictoryConditionsConfig {
-  domination?: Partial<ToggleableVictoryConfig>;
+  domination?: Partial<DominationVictoryConfig>;
   science?: Partial<ScienceVictoryConfig>;
   cultural?: Partial<ToggleableVictoryConfig>;
   diplomatic?: Partial<ToggleableVictoryConfig>;

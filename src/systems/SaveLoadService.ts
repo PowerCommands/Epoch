@@ -350,6 +350,8 @@ export class SaveLoadService {
         ? {
             ...context.victorySystem.getEnabledConditions(),
             scienceRequiredAerospaceParts: context.victorySystem.getScienceVictorySettings().requiredAerospaceParts,
+            dominationRequiredVassals: context.victorySystem.getDominationVictorySettings().requiredVassals,
+            dominationLandPercent: context.victorySystem.getDominationVictorySettings().requiredLandPercent,
           }
         : undefined,
       turn: {

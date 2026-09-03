@@ -84,7 +84,12 @@ import type { StrategicResourceCapacitySystem } from '../../systems/StrategicRes
 import type { UnitUpkeepSystem } from '../../systems/UnitUpkeepSystem';
 import type { GamesOfNationsSystem } from '../../systems/GamesOfNationsSystem';
 import type { VictorySystem } from '../../systems/VictorySystem';
-import { buildDominationRanking } from '../../systems/DominationRanking';
+import {
+  buildDominationRanking,
+  DEFAULT_DOMINATION_LAND_PERCENT,
+  DEFAULT_DOMINATION_REQUIRED_VASSALS,
+  type DominationVictoryConfig,
+} from '../../systems/DominationRanking';
 import { calculateUnitUpkeep } from '../../systems/UnitUpkeepSystem';
 import {
   DEFAULT_LONG_TRADE_DEAL_DURATION,
@@ -259,8 +264,12 @@ export class RightSidebarPanelDataProvider {
     city: null,
     unit: null,
     nationId: null,
-    leaderId: null,
   };
+  // Selected leader (Leader Details sidebar mode). Tracked independently of the
+  // map selection above so choosing a tile/city/unit never clears the leader,
+  // and choosing a leader never clears the map selection.
+  private currentLeaderId: string | null = null;
+  private currentLeaderNationId: string | null = null;
 
   constructor(
     private readonly productionSystem: ProductionSystem,
@@ -467,11 +476,11 @@ export class RightSidebarPanelDataProvider {
   }
 
   getCurrentLeaderId(): string | null {
-    return this.current.view === 'leader' ? this.current.leaderId : null;
+    return this.currentLeaderId;
   }
 
   getCurrentLeaderNationId(): string | null {
-    return this.current.view === 'leader' ? this.current.nationId : null;
+    return this.currentLeaderNationId;
   }
 
   getVisibleLeaderDiplomacyNations(): Nation[] {
@@ -490,43 +499,42 @@ export class RightSidebarPanelDataProvider {
 
   showTile(tile: Tile): void {
     console.debug('[RightSidebarPanelDataProvider] selected target', { kind: 'tile', x: tile.x, y: tile.y });
-    this.current = { view: 'tile', tile, city: null, unit: null, nationId: null, leaderId: null };
+    this.current = { view: 'tile', tile, city: null, unit: null, nationId: null };
     this.notifyChanged();
   }
 
   showCity(city: City): void {
     console.debug('[RightSidebarPanelDataProvider] selected target', { kind: 'city', id: city.id, name: city.name });
-    this.current = { view: 'city', tile: null, city, unit: null, nationId: null, leaderId: null };
+    this.current = { view: 'city', tile: null, city, unit: null, nationId: null };
     this.notifyChanged();
   }
 
   showUnit(unit: Unit): void {
     console.debug('[RightSidebarPanelDataProvider] selected target', { kind: 'unit', id: unit.id, name: unit.name });
-    this.current = { view: 'unit', tile: null, city: null, unit, nationId: null, leaderId: null };
+    this.current = { view: 'unit', tile: null, city: null, unit, nationId: null };
     this.notifyChanged();
   }
 
   showNation(nationId: string): void {
-    this.current = { view: 'nation', tile: null, city: null, unit: null, nationId, leaderId: null };
+    this.current = { view: 'nation', tile: null, city: null, unit: null, nationId };
     this.notifyChanged();
   }
 
+  /**
+   * Store the selected leader for the Leader Details sidebar mode. This is
+   * independent application state: it does not touch the map selection, so the
+   * Details popup keeps showing whatever tile/city/unit is selected.
+   */
   showLeader(leaderIdOrNationId: string): void {
     const leader = getLeaderById(leaderIdOrNationId) ?? getLeaderByNationId(leaderIdOrNationId);
-    this.current = {
-      view: 'leader',
-      tile: null,
-      city: null,
-      unit: null,
-      nationId: leader?.nationId ?? leaderIdOrNationId,
-      leaderId: leader?.id ?? leaderIdOrNationId,
-    };
+    this.currentLeaderId = leader?.id ?? leaderIdOrNationId;
+    this.currentLeaderNationId = leader?.nationId ?? leaderIdOrNationId;
     this.notifyChanged();
   }
 
   clear(): void {
     console.debug('[RightSidebarPanelDataProvider] selected target', { kind: 'none' });
-    this.current = { view: null, tile: null, city: null, unit: null, nationId: null, leaderId: null };
+    this.current = { view: null, tile: null, city: null, unit: null, nationId: null };
     this.notifyChanged();
   }
 
@@ -554,9 +562,13 @@ export class RightSidebarPanelDataProvider {
     this.scheduler.cancel();
   }
 
+  /**
+   * Content for the map-selection Details popup: tile, city or unit (plus the
+   * legacy nation view). The selected leader is handled separately by
+   * {@link getSelectedLeaderContent} so it is never shown here.
+   */
   getDetailsContent(
     cityTab: RightSidebarCityDetailsTab = 'city',
-    leaderTab: RightSidebarLeaderDetailsTab = 'details',
   ): RightSidebarContent {
     let content: RightSidebarContent;
     switch (this.current.view) {
@@ -574,11 +586,6 @@ export class RightSidebarPanelDataProvider {
           ? this.getNationContent(this.current.nationId)
           : this.getEmptyDetailsContent();
         break;
-      case 'leader':
-        content = this.current.leaderId
-          ? this.getLeaderContent(this.current.leaderId, leaderTab)
-          : this.getEmptyDetailsContent();
-        break;
       case null:
         content = this.getEmptyDetailsContent();
         break;
@@ -589,6 +596,20 @@ export class RightSidebarPanelDataProvider {
       rows: content.sections.reduce((sum, section) => sum + section.rows.length, 0),
     });
     return content;
+  }
+
+  /**
+   * Content for the Leader Details sidebar mode, rendered for the currently
+   * selected leader (set via {@link showLeader}). Independent of the map
+   * selection powering {@link getDetailsContent}.
+   */
+  getSelectedLeaderContent(
+    leaderTab: RightSidebarLeaderDetailsTab = 'details',
+  ): RightSidebarContent {
+    if (!this.currentLeaderId) {
+      return { title: 'Leader', sections: [{ title: 'Leader', rows: [textRow('No leader selected.', true)] }] };
+    }
+    return this.getLeaderContent(this.currentLeaderId, leaderTab);
   }
 
   getLeaderboardContent(category: RightSidebarLeaderboardCategory): RightSidebarContent {
@@ -2893,9 +2914,18 @@ export class RightSidebarPanelDataProvider {
       totalWorldStrength += strength;
     }
     const nationById = new Map(nations.map((nation) => [nation.id, nation]));
+    const config = this.getDominationVictoryConfig();
+    const landStats = this.nationManager.getLandControlStats(this.mapData);
+    // Same canonical ranking as the victory check: vassals → land% → name.
+    // Military strength is passed for informational display only.
     return buildDominationRanking(
       nations,
       (nationId) => this.diplomacyManager?.getVassalHost(nationId),
+      config,
+      {
+        totalLandTiles: landStats.totalLandTiles,
+        getControlledLandTiles: (id) => landStats.controlledLandTilesByNation.get(id) ?? 0,
+      },
       (nationId) => this.militaryEvaluationSystem?.getMilitaryStrength(nationId).totalStrength ?? 0,
     ).map((ranked) => {
       const nation = nationById.get(ranked.nationId)!;
@@ -2907,16 +2937,28 @@ export class RightSidebarPanelDataProvider {
         name: nation.name,
         color: nation.color,
         score,
-        detail: `Vassal States: ${score} / ${ranked.otherLivingNationCount}, military ${milPct}%`,
+        detail: `Vassals: ${score} / ${ranked.requiredVassalCount}, `
+          + `Land: ${ranked.landControlPercent.toFixed(1)}% / ${ranked.requiredLandControlPercent}%, `
+          + `military ${milPct}%`,
         secondaryScore: milStrength,
       };
     });
   }
 
+  /** Authoritative Domination thresholds from the victory system, or defaults. */
+  private getDominationVictoryConfig(): DominationVictoryConfig {
+    return this.victorySystem?.getDominationVictorySettings() ?? {
+      requiredVassals: DEFAULT_DOMINATION_REQUIRED_VASSALS,
+      requiredLandPercent: DEFAULT_DOMINATION_LAND_PERCENT,
+    };
+  }
+
   private getDominationVictorySection(): RightSidebarSection {
     const entries = this.getDominationLeaderboard();
+    const config = this.getDominationVictoryConfig();
     const headerRow = textRow(
-      'Domination Victory — make every other surviving nation your direct vassal state.',
+      `Domination Victory — control ${config.requiredLandPercent}% of all land tiles `
+        + `OR have ${config.requiredVassals} vassal ${config.requiredVassals === 1 ? 'state' : 'states'}.`,
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0

@@ -71,6 +71,14 @@ const LEADERBOARD_PANEL_WIDTH = 1110;
 const TRADING_PANEL_WIDTH_FRACTION = 0.5;
 const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
+/**
+ * Centered-dialog presentation (minimap Details control). The dialog reuses the
+ * full docked content renderer but floats centered over the game, keeping a
+ * comfortable margin from the viewport edges so it never becomes fullscreen.
+ */
+const DIALOG_VERTICAL_MARGIN = 64;
+/** Square close (✕) affordance shown at the dialog's top-right corner. */
+const CLOSE_BUTTON_SIZE = 34;
 const PANEL_PADDING = 24;
 const CONTENT_TOP = 74;
 const CONTENT_BOTTOM_GAP = 16;
@@ -105,8 +113,12 @@ const CONTENT_ICON_GAP = 8;
 const LOG_COPY_BUTTON_WIDTH = 148;
 const LOG_COPY_BUTTON_HEIGHT = 40;
 
+// Neither Details nor Leader Details is a top-navigation mode button. The
+// 'details' mode is map-selection inspection (tile/city/unit) opened as a
+// centered dialog from the minimap Details control (see openDetailsDialog). The
+// 'leader-details' mode is opened by clicking a leader portrait (see
+// showLeaderDetails). Both are intentionally absent from this strip.
 const MODES: ModeDefinition[] = [
-  { mode: 'details', icon: '🔍', label: 'Details', accentColor: 0x6ec6ff },
   { mode: 'leaderboard', icon: '🏆', label: 'Leaderboard', accentColor: 0xf4d06f },
   { mode: 'trading', icon: '⚖️', label: 'Trading', accentColor: 0x7fc8a9 },
   { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa },
@@ -177,6 +189,9 @@ export class RightSidebarPanel {
   private readonly collapseIcon: Phaser.GameObjects.Graphics;
   private readonly collapseLabel: Phaser.GameObjects.Text;
   private readonly collapseHitArea: Phaser.GameObjects.Zone;
+  private readonly closeButtonBackground: Phaser.GameObjects.Rectangle;
+  private readonly closeButtonLabel: Phaser.GameObjects.Text;
+  private readonly closeButtonHitArea: Phaser.GameObjects.Zone;
   private readonly modeButtons: ModeButton[];
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly contentButtons: ContentButton[] = [];
@@ -195,6 +210,17 @@ export class RightSidebarPanel {
   ) => void;
 
   private activeMode: RightSidebarPanelMode | null = null;
+  /**
+   * How the expanded panel is laid out: 'docked' pins it to the right edge (the
+   * normal sidebar), 'dialog' floats it centered over the game (minimap Details).
+   */
+  private presentation: 'docked' | 'dialog' = 'docked';
+  /**
+   * Docked sidebar state captured when the centered Details popup opens, so it
+   * can be restored when the popup closes (overlay semantics). Null when no
+   * popup is open.
+   */
+  private dialogReturnState: { mode: RightSidebarPanelMode | null; collapsed: boolean; scrollOffset: number } | null = null;
   private onExpandedChanged: ((expanded: boolean) => void) | null = null;
   private collapsed = true;
   private collapseHovered = false;
@@ -275,6 +301,20 @@ export class RightSidebarPanel {
       .setScrollFactor(0)
       .setInteractive({ cursor: 'pointer' });
 
+    this.closeButtonBackground = this.addOwned(scene.add.rectangle(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, 0x101b27, 0.96))
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x92a8c0, 0.5)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.closeButtonLabel = this.addText('✕', 20, '#e6edf7', 'bold')
+      .setOrigin(0.5)
+      .setVisible(false);
+    this.closeButtonHitArea = this.addOwned(scene.add.zone(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE))
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setInteractive({ cursor: 'pointer' })
+      .setVisible(false);
+
     this.panelContainer.add([
       this.panelBackground,
       this.panelHitArea,
@@ -288,6 +328,9 @@ export class RightSidebarPanel {
       this.collapseIcon,
       this.collapseLabel,
       this.collapseHitArea,
+      this.closeButtonBackground,
+      this.closeButtonLabel,
+      this.closeButtonHitArea,
     ]);
     this.container.add([this.panelContainer, this.buttonContainer]);
 
@@ -295,6 +338,7 @@ export class RightSidebarPanel {
     this.installPanelInput();
     this.installLogCopyButtonInput();
     this.installScrollbarInput();
+    this.installCloseButtonInput();
     // Collapse button replaced by mode-button toggle behavior — hide its visuals.
     this.collapseBackground.setVisible(false);
     this.collapseIcon.setVisible(false);
@@ -362,8 +406,12 @@ export class RightSidebarPanel {
     this.layout();
   }
 
-  show(mode: RightSidebarPanelMode): void {
-    console.debug('[RightSidebarPanel] show mode', mode);
+  show(mode: RightSidebarPanelMode, presentation: 'docked' | 'dialog' = 'docked'): void {
+    console.debug('[RightSidebarPanel] show mode', mode, presentation);
+    this.presentation = presentation;
+    // Any explicit docked navigation (nav button, leader portrait) supersedes a
+    // pending popup-return, so the popup no longer restores an outdated view.
+    if (presentation === 'docked') this.dialogReturnState = null;
     if (mode === 'leaderboard' && this.activeMode !== 'leaderboard') {
       this.leaderboardCategory = 'domination';
     }
@@ -383,8 +431,47 @@ export class RightSidebarPanel {
     this.onExpandedChanged?.(true);
   }
 
-  showDetails(): void {
-    this.show('details');
+  /**
+   * Open the explicit Leader Details sidebar mode for the currently selected
+   * leader (set via the provider's showLeader). This is global navigation and
+   * is independent of the map selection / Details popup.
+   */
+  showLeaderDetails(): void {
+    this.show('leader-details');
+  }
+
+  /**
+   * Open the Details view for the current map selection as a centered dialog
+   * (from the minimap Details control). It overlays whatever docked sidebar view
+   * is open: the docked state is snapshotted here and restored on close, so
+   * closing the popup returns to Leader Details / Leaderboard / Trading /
+   * Diplomacy exactly as it was.
+   */
+  openDetailsDialog(): void {
+    if (this.presentation === 'docked') {
+      this.dialogReturnState = {
+        mode: this.activeMode,
+        collapsed: this.collapsed,
+        scrollOffset: this.scrollOffset,
+      };
+    }
+    this.show('details', 'dialog');
+  }
+
+  /**
+   * Close the centered Details popup, restoring the docked sidebar view that was
+   * open underneath it (or staying collapsed if nothing was open).
+   */
+  private closeDialog(): void {
+    const restore = this.dialogReturnState;
+    this.dialogReturnState = null;
+    if (restore && !restore.collapsed && restore.mode) {
+      this.show(restore.mode, 'docked');
+      this.scrollOffset = Phaser.Math.Clamp(restore.scrollOffset, 0, this.maxScroll);
+      this.positionContentObjects();
+    } else {
+      this.collapse();
+    }
   }
 
   /** Notified when the panel expands (true) or collapses (false). */
@@ -406,16 +493,26 @@ export class RightSidebarPanel {
 
   collapse(): void {
     this.collapsed = true;
+    // Closing always returns to the docked presentation so the nav strip is
+    // restored and the dialog chrome (close button) is hidden.
+    this.presentation = 'docked';
     this.destroyContentObjects();
+    this.layout();
     this.refreshVisibility();
     this.refreshButtonVisuals();
     this.onExpandedChanged?.(false);
   }
 
-  /** Collapse one of the four normal player-facing panels in response to Escape. */
+  /** Dismiss an open sidebar view / popup in response to Escape. */
   collapseOnEscape(): boolean {
     if (this.collapsed || this.activeMode === null || this.activeMode === 'timeline') return false;
-    this.collapse();
+    // Escape over the centered popup closes just the popup, restoring the docked
+    // view underneath it; otherwise it collapses the docked view.
+    if (this.presentation === 'dialog') {
+      this.closeDialog();
+    } else {
+      this.collapse();
+    }
     return true;
   }
 
@@ -656,7 +753,9 @@ export class RightSidebarPanel {
   private getContentForMode(mode: RightSidebarPanelMode): RightSidebarContent {
     switch (mode) {
       case 'details':
-        return this.dataProvider.getDetailsContent(this.cityDetailsTab, this.leaderDetailsTab);
+        return this.dataProvider.getDetailsContent(this.cityDetailsTab);
+      case 'leader-details':
+        return this.dataProvider.getSelectedLeaderContent(this.leaderDetailsTab);
       case 'leaderboard':
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
       case 'trading':
@@ -689,7 +788,7 @@ export class RightSidebarPanel {
       title: content.title,
       sections: [{
         title: content.title,
-        rows: [{ kind: 'text', text: this.activeMode === 'details' ? 'No details available' : 'No content available', muted: true }],
+        rows: [{ kind: 'text', text: this.activeMode === 'details' || this.activeMode === 'leader-details' ? 'No details available' : 'No content available', muted: true }],
       }],
     };
   }
@@ -701,7 +800,7 @@ export class RightSidebarPanel {
     if (this.activeMode === 'details' && this.dataProvider.getView() === 'city') {
       y = this.addCityDetailsTabs(y);
     }
-    if (this.activeMode === 'details' && this.dataProvider.getView() === 'leader') {
+    if (this.activeMode === 'leader-details') {
       y = this.addLeaderDetailsTabs(y);
       this.scrollableContentTop = y;
       scrollContentStartY = y;
@@ -1954,9 +2053,21 @@ export class RightSidebarPanel {
     const viewportWidth = this.scene.scale.width;
     const viewportHeight = this.scene.scale.height;
     const panelWidth = this.getPanelWidth();
-    this.panelHeight = Math.max(260, viewportHeight - PANEL_TOP - PANEL_BOTTOM_MARGIN);
-    const panelX = viewportWidth - panelWidth - EDGE_MARGIN;
-    const panelY = PANEL_TOP;
+    const dialog = this.presentation === 'dialog';
+    // The nav strip stays anchored to the right edge regardless of presentation.
+    const dockedPanelX = viewportWidth - panelWidth - EDGE_MARGIN;
+    let panelX: number;
+    let panelY: number;
+    if (dialog) {
+      const available = viewportHeight - PANEL_TOP - PANEL_BOTTOM_MARGIN;
+      this.panelHeight = Math.max(260, Math.min(available, viewportHeight - DIALOG_VERTICAL_MARGIN * 2));
+      panelX = Math.round(Math.max(EDGE_MARGIN, (viewportWidth - panelWidth) / 2));
+      panelY = Math.round(Math.max(PANEL_BOTTOM_MARGIN, (viewportHeight - this.panelHeight) / 2));
+    } else {
+      this.panelHeight = Math.max(260, viewportHeight - PANEL_TOP - PANEL_BOTTOM_MARGIN);
+      panelX = dockedPanelX;
+      panelY = PANEL_TOP;
+    }
 
     this.container.setPosition(0, 0);
     this.buttonContainer.setPosition(0, 0);
@@ -1969,14 +2080,24 @@ export class RightSidebarPanel {
     this.logCopyButtonBackground.setPosition(copyX, copyY);
     this.logCopyButtonLabel.setPosition(copyX + LOG_COPY_BUTTON_WIDTH / 2, copyY + LOG_COPY_BUTTON_HEIGHT / 2);
     this.logCopyButtonHitArea.setPosition(copyX, copyY);
+    // Close (✕) affordance lives at the panel's top-right corner in dialog mode.
+    const closeX = panelWidth - PANEL_PADDING - CLOSE_BUTTON_SIZE;
+    const closeY = PANEL_PADDING - 6;
+    this.closeButtonBackground.setPosition(closeX, closeY);
+    this.closeButtonLabel.setPosition(closeX + CLOSE_BUTTON_SIZE / 2, closeY + CLOSE_BUTTON_SIZE / 2);
+    this.closeButtonHitArea.setPosition(closeX, closeY);
+    this.refreshDialogChrome();
     this.updateContentMask();
     this.updateScrollbar();
 
-    const visibleButtons = this.modeButtons.filter((b) => b.visible);
+    // The nav strip is hidden while the centered dialog is open, and anchored to
+    // the docked right-edge position otherwise (independent of the dialog).
+    const visibleButtons = dialog ? [] : this.modeButtons.filter((b) => b.visible);
+    this.setModeButtonsHidden(dialog);
     const buttonRowWidth = visibleButtons.length > 0
       ? (BUTTON_DIAMETER * visibleButtons.length) + (BUTTON_GAP * (visibleButtons.length - 1))
       : 0;
-    let buttonX = panelX + panelWidth - buttonRowWidth + BUTTON_RADIUS;
+    let buttonX = dockedPanelX + panelWidth - buttonRowWidth + BUTTON_RADIUS;
     const buttonY = BUTTON_ROW_TOP + BUTTON_RADIUS;
     for (const button of visibleButtons) {
       button.background.setPosition(buttonX, buttonY);
@@ -2244,9 +2365,11 @@ export class RightSidebarPanel {
   }
 
   private isPointerOverPanel(pointer: Phaser.Input.Pointer): boolean {
+    // Derive geometry from the live panel position so the test follows both the
+    // docked (right-edge) and the centered dialog presentations.
     const panelWidth = this.getPanelWidth();
-    const panelX = this.scene.scale.width - panelWidth - EDGE_MARGIN;
-    const panelY = PANEL_TOP;
+    const panelX = this.panelContainer.x;
+    const panelY = this.panelContainer.y;
     return pointer.x >= panelX
       && pointer.x <= panelX + panelWidth
       && pointer.y >= panelY
@@ -2254,15 +2377,67 @@ export class RightSidebarPanel {
   }
 
   private containsScreenPoint(screenX: number, screenY: number): boolean {
-    const panelWidth = this.getPanelWidth();
+    // Use the live panel position so wheel capture follows the docked and
+    // centered-dialog presentations alike.
     const panelBounds = new Phaser.Geom.Rectangle(
-      this.scene.scale.width - panelWidth - EDGE_MARGIN,
-      PANEL_TOP,
-      panelWidth,
+      this.panelContainer.x,
+      this.panelContainer.y,
+      this.getPanelWidth(),
       this.panelHeight,
     );
     if (!this.collapsed && panelBounds.contains(screenX, screenY)) return true;
     return this.modeButtons.filter((b) => b.visible).some((button) => button.hitArea.getBounds().contains(screenX, screenY));
+  }
+
+  private setModeButtonsHidden(hidden: boolean): void {
+    for (const button of this.modeButtons) {
+      const show = !hidden && button.visible;
+      button.background.setVisible(show);
+      button.rim.setVisible(show);
+      button.icon.setVisible(show);
+      button.label.setVisible(show);
+      if (show) {
+        if (!button.hitArea.input?.enabled) button.hitArea.setInteractive({ cursor: 'pointer' });
+      } else {
+        button.hitArea.disableInteractive();
+      }
+    }
+  }
+
+  private refreshDialogChrome(): void {
+    const showClose = this.presentation === 'dialog' && !this.collapsed;
+    this.closeButtonBackground.setVisible(showClose);
+    this.closeButtonLabel.setVisible(showClose);
+    this.closeButtonHitArea.setVisible(showClose);
+    if (showClose) {
+      if (!this.closeButtonHitArea.input?.enabled) this.closeButtonHitArea.setInteractive({ cursor: 'pointer' });
+    } else {
+      this.closeButtonHitArea.disableInteractive();
+    }
+  }
+
+  private installCloseButtonInput(): void {
+    this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_OVER, (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      this.closeButtonBackground.setFillStyle(0x172638, 0.96).setStrokeStyle(2, 0x92a8c0, 0.75);
+    });
+    this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_OUT, (_pointer: Phaser.Input.Pointer, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      this.closeButtonBackground.setFillStyle(0x101b27, 0.96).setStrokeStyle(1, 0x92a8c0, 0.5);
+    });
+    this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      this.worldInputGate.claimPointer(pointer.id);
+      consumePointerEvent(pointer);
+    });
+    this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+      event.stopPropagation();
+      if (pointer.button !== 0) return;
+      consumePointerEvent(pointer);
+      this.worldInputGate.releasePointer(pointer.id);
+      this.closeDialog();
+    });
   }
 }
 

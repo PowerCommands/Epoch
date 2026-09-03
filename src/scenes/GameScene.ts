@@ -176,7 +176,11 @@ import { getGamesSportByName } from '../data/gamesOfNationsSports';
 import { buildGamesOfNationsEdition } from '../systems/GamesOfNationsChronicle';
 import type { GamesOfNationsSportValues, GamesOfNationsSummary } from '../types/gamesOfNations';
 import { buildGamesOfNationsUiModel } from '../ui/hud/GamesOfNationsUiModel';
-import { buildDominationRanking } from '../systems/DominationRanking';
+import {
+  buildDominationRanking,
+  resolveDominationLandPercent,
+  resolveDominationRequiredVassals,
+} from '../systems/DominationRanking';
 import { TimelinePanel } from '../ui/TimelinePanel';
 import { NewspaperDialog } from '../ui/NewspaperDialog';
 import { WorldWarAnnouncementDialog } from '../ui/WorldWarAnnouncementDialog';
@@ -3436,9 +3440,26 @@ export class GameScene extends Phaser.Scene {
     // precedence over the start-up config so continuing a game preserves them.
     // Older saves without the field fall back to VictorySystem defaults (all on).
     const savedVictoryConditions = data.savedState?.victoryConditions;
+    // Domination thresholds are scenario-authored; a loaded save carries its own
+    // resolved values, older saves/scenarios fall back to the defaults via the
+    // resolvers. Land control percent and required vassals travel together.
+    const dominationRequiredVassals = resolveDominationRequiredVassals(
+      savedVictoryConditions?.dominationRequiredVassals
+        ?? data.victoryConditions?.domination?.requiredVassals
+        ?? scenarioJson?.meta?.dominationRequiredVassals,
+    );
+    const dominationLandPercent = resolveDominationLandPercent(
+      savedVictoryConditions?.dominationLandPercent
+        ?? data.victoryConditions?.domination?.requiredLandPercent
+        ?? scenarioJson?.meta?.dominationLandPercent,
+    );
     const effectiveVictoryConditions = savedVictoryConditions
       ? {
-        domination: { enabled: savedVictoryConditions.domination },
+        domination: {
+          enabled: savedVictoryConditions.domination,
+          requiredVassals: dominationRequiredVassals,
+          requiredLandPercent: dominationLandPercent,
+        },
         science: {
           ...data.victoryConditions?.science,
           enabled: savedVictoryConditions.science,
@@ -3448,7 +3469,14 @@ export class GameScene extends Phaser.Scene {
         cultural: { enabled: savedVictoryConditions.cultural },
         diplomatic: { enabled: savedVictoryConditions.diplomatic ?? true },
       }
-      : data.victoryConditions ?? {};
+      : {
+        ...(data.victoryConditions ?? {}),
+        domination: {
+          enabled: data.victoryConditions?.domination?.enabled ?? true,
+          requiredVassals: dominationRequiredVassals,
+          requiredLandPercent: dominationLandPercent,
+        },
+      };
     victorySystem = new VictorySystem(
       cityManager,
       nationManager,
@@ -3463,6 +3491,7 @@ export class GameScene extends Phaser.Scene {
       currencySystem,
       gamesOfNationsSystem,
       diplomacyManager,
+      mapData,
     );
     militaryVassalizationSystem.onCompleted(() => {
       victorySystem.resolveDominationVictoryNow();
@@ -3616,11 +3645,19 @@ export class GameScene extends Phaser.Scene {
     const newspaperSystem = NewspaperSystem.fromSave({
       humanNationId: data.humanNationId,
       getTimelineEvents: () => historicalTimeline.getEvents(),
-      getDominationRanking: () => buildDominationRanking(
-        nationManager.getAllNations(),
-        (nationId) => diplomacyManager.getVassalHost(nationId),
-        (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
-      ).map((entry) => entry.nationId),
+      getDominationRanking: () => {
+        const landStats = nationManager.getLandControlStats(mapData);
+        return buildDominationRanking(
+          nationManager.getAllNations(),
+          (nationId) => diplomacyManager.getVassalHost(nationId),
+          victorySystem.getDominationVictorySettings(),
+          {
+            totalLandTiles: landStats.totalLandTiles,
+            getControlledLandTiles: (id) => landStats.controlledLandTilesByNation.get(id) ?? 0,
+          },
+          (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
+        ).map((entry) => entry.nationId);
+      },
       getNationName: (nationId) => nationManager.getNation(nationId)?.name,
       getLeaderName: (nationId) => getLeaderByNationId(nationId)?.name,
       getWorldEra: () => getHighestEra(nationManager.getAllNations().map((nation) => eraSystem.getNationEra(nation.id))),
@@ -7293,6 +7330,10 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setCityDefenseSystem(cityDefenseSystem);
     rightPanel.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
+    // Tile/city/unit inspection ("Details") is opened as a centered dialog from
+    // the leftmost button in the map-lens control row, reusing the panel's
+    // current-selection view.
+    hudLayer?.setOnMapDetails(() => this.rightSidebarPanel?.openDetailsDialog());
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.
     this.rightSidebarPanel.setOnExpandedChanged((expanded) => timelinePanel.setHidden(expanded));
@@ -9466,7 +9507,7 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       if (
         rightPanel &&
-        (rightPanel.isShowingCity(event.cityId) || rightPanel.isShowingUnit(event.unit) || rightPanel.getView() === 'leader')
+        (rightPanel.isShowingCity(event.cityId) || rightPanel.isShowingUnit(event.unit) || rightPanel.getCurrentLeaderId() !== null)
       ) {
         rightPanel.requestRefresh();
       }
@@ -9484,6 +9525,9 @@ export class GameScene extends Phaser.Scene {
     // Map selection → right panel (clears nation highlight)
     selectionManager.onSelectionChanged((selection) => {
       leaderStrip?.setSelectedNation(null);
+      // The Details control inspects the current selection, so it is only
+      // enabled while a tile/city/unit is selected.
+      hudLayer?.setMapDetailsEnabled(selection != null);
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
       if (selection?.kind !== 'city' || selection.city.id !== cityViewDismissedCityId) {
@@ -9629,8 +9673,10 @@ export class GameScene extends Phaser.Scene {
 
     const onLeaderSelected = (event: Event) => {
       const { nationId, leaderId } = (event as CustomEvent<{ nationId: string; leaderId?: string }>).detail;
+      // Store the leader (data state), then explicitly open the Leader Details
+      // sidebar mode (navigation state) — independent of the map selection.
       rightPanel?.showLeader(leaderId ?? nationId);
-      this.rightSidebarPanel?.showDetails();
+      this.rightSidebarPanel?.showLeaderDetails();
       leaderStrip?.setSelectedNation(nationId);
     };
     document.addEventListener('leaderSelected', onLeaderSelected);

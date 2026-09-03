@@ -736,6 +736,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Capital capitulation threshold (%)
         <input id="sd-capital-collapse-threshold" type="number" min="0" max="100" step="1">
       </label>
+      <label class="field" title="Domination Victory land route: percent of all land tiles a nation must control to win.">Domination land control (%)
+        <input id="sd-domination-land-percent" type="number" min="1" max="100" step="1">
+        <span class="hint">Win Domination by controlling this share of all land tiles.</span>
+      </label>
+      <label class="field" title="Domination Victory vassal route: number of direct vassal states a nation must hold to win.">Domination vassal states
+        <input id="sd-domination-required-vassals" type="number" min="1" step="1">
+        <span class="hint">Win Domination by holding this many direct vassal states.</span>
+      </label>
       <section class="sd-events-section">
         <div class="sd-events-heading">
           <h3>Historical Events</h3>
@@ -959,6 +967,9 @@ const DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS = 10;
 // Mirrors the backward-compatible defaults in src/types/tradeDeal.ts.
 const DEFAULT_SHORT_TRADE_DEAL_DURATION = 25;
 const DEFAULT_LONG_TRADE_DEAL_DURATION = 50;
+// Mirrors DEFAULT_DOMINATION_* in src/systems/DominationRanking.ts.
+const DEFAULT_DOMINATION_LAND_PERCENT = 20;
+const DEFAULT_DOMINATION_REQUIRED_VASSALS = 3;
 const SCENARIO_TIME_PROGRESSION_MODES = ['auto', 'staticYear', 'monthly'];
 const HISTORICAL_EVENT_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -1043,6 +1054,16 @@ function normalizeScenarioMeta() {
     meta.originalCapitalCollapsePercent = DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT;
   } else {
     meta.originalCapitalCollapsePercent = Math.floor(meta.originalCapitalCollapsePercent);
+  }
+  if (typeof meta.dominationLandPercent !== 'number'
+    || !(meta.dominationLandPercent >= 1) || meta.dominationLandPercent > 100) {
+    meta.dominationLandPercent = DEFAULT_DOMINATION_LAND_PERCENT;
+  } else {
+    meta.dominationLandPercent = Math.floor(meta.dominationLandPercent);
+  }
+  if (typeof meta.dominationRequiredVassals !== 'number'
+    || !Number.isInteger(meta.dominationRequiredVassals) || meta.dominationRequiredVassals < 1) {
+    meta.dominationRequiredVassals = DEFAULT_DOMINATION_REQUIRED_VASSALS;
   }
 
   const progression = meta.timeProgression && typeof meta.timeProgression === 'object' ? meta.timeProgression : {};
@@ -5869,6 +5890,8 @@ function openScenarioDetails() {
   document.getElementById('sd-short-trade-deal-duration').value = String(meta.shortTradeDealDuration);
   document.getElementById('sd-long-trade-deal-duration').value = String(meta.longTradeDealDuration);
   document.getElementById('sd-capital-collapse-threshold').value = String(meta.originalCapitalCollapsePercent);
+  document.getElementById('sd-domination-land-percent').value = String(meta.dominationLandPercent);
+  document.getElementById('sd-domination-required-vassals').value = String(meta.dominationRequiredVassals);
   scenarioDetailsHistoricalEventsDraft = structuredCloneCompat(scenario.historicalEvents || []);
   document.getElementById('sd-error').textContent = '';
   updateScenarioDetailsStaticVisibility();
@@ -5953,6 +5976,18 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const dominationLandPercent = parseInt(document.getElementById('sd-domination-land-percent').value, 10);
+  if (!Number.isInteger(dominationLandPercent) || dominationLandPercent < 1 || dominationLandPercent > 100) {
+    errorEl.textContent = 'Domination land control must be an integer between 1 and 100 (%).';
+    return false;
+  }
+
+  const dominationRequiredVassals = parseInt(document.getElementById('sd-domination-required-vassals').value, 10);
+  if (!Number.isInteger(dominationRequiredVassals) || dominationRequiredVassals < 1) {
+    errorEl.textContent = 'Domination vassal states must be an integer of at least 1.';
+    return false;
+  }
+
   if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
   scenario.meta.name = name;
   scenario.meta.description = document.getElementById('sd-description').value.trim();
@@ -5968,6 +6003,8 @@ function saveScenarioDetails() {
   scenario.meta.shortTradeDealDuration = shortTradeDealDuration;
   scenario.meta.longTradeDealDuration = longTradeDealDuration;
   scenario.meta.originalCapitalCollapsePercent = originalCapitalCollapsePercent;
+  scenario.meta.dominationLandPercent = dominationLandPercent;
+  scenario.meta.dominationRequiredVassals = dominationRequiredVassals;
   scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
   scenario.turningPointEventsConfigured = true;
 

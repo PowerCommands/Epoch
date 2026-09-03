@@ -376,6 +376,16 @@ export class HudLayer {
     this.mapLensToggle.setMode(mode);
   }
 
+  /** Handler for the Details action button in the map-lens control row. */
+  setOnMapDetails(handler: () => void): void {
+    this.mapLensToggle.setOnDetails(handler);
+  }
+
+  /** Enable/disable the Details action button (disabled with no selection). */
+  setMapDetailsEnabled(enabled: boolean): void {
+    this.mapLensToggle.setDetailsEnabled(enabled);
+  }
+
   /**
    * Reserve vertical space at the bottom-left so the lens button stacks
    * above the minimap (or any other bottom-left HUD element).

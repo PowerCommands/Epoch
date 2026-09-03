@@ -411,6 +411,10 @@ export interface SavedGameState {
 /** Persisted enabled-state of each implemented victory type. */
 export interface SavedVictoryConditions {
   domination: boolean;
+  /** Direct vassal states required for Domination Victory. Older saves fall back to the default (3). */
+  dominationRequiredVassals?: number;
+  /** Percent of all land tiles required for Domination Victory. Older saves fall back to the default (20). */
+  dominationLandPercent?: number;
   science: boolean;
   scienceRequiredAerospaceParts?: number;
   cultural: boolean;

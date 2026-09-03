@@ -732,13 +732,14 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'paragraph', text: 'Epoch has four formal victory conditions: Domination, Science, Cultural and Diplomatic Victory. A victory is awarded when a nation meets all requirements for one of these conditions.' },
 
       { kind: 'heading', text: 'Domination Victory' },
-      { kind: 'paragraph', text: 'Win by making every other surviving nation your direct vassal state.' },
+      { kind: 'paragraph', text: 'Win by taking either of two routes: control enough of the world’s land, or make enough rival nations your direct vassal states. The exact thresholds are set by the scenario and shown on the Domination leaderboard.' },
       {
         kind: 'list',
         items: [
-          'Domination progress is your current direct vassals divided by all other living nations.',
+          'Land route: own at least the scenario’s required percentage of all existing land tiles (neutral land counts toward the world total).',
+          'Vassal route: hold at least the scenario’s required number of direct vassal states — you do not need to subjugate everyone.',
           'Capturing a current capital immediately vassalizes its nation, after which the capital is returned to the new vassal.',
-          'Progress is reversible: released vassals and nations that buy independence no longer count.',
+          'Vassal progress is reversible: released vassals and nations that buy independence no longer count.',
         ],
       },
 

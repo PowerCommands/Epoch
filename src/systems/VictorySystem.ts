@@ -25,9 +25,14 @@ import {
 import {
   buildDominationRanking,
   getDominationProgress,
+  resolveDominationLandPercent,
+  resolveDominationRequiredVassals,
   type DominationProgress,
   type DominationRankingEntry,
+  type DominationVictoryConfig,
+  type LandControlLookup,
 } from './DominationRanking';
+import type { MapData } from '../types/map';
 
 export type VictoryType = 'domination' | 'science' | 'cultural' | 'diplomatic';
 
@@ -44,7 +49,7 @@ interface ToggleableVictorySettings {
 }
 
 interface VictoryConditionsConfig {
-  domination?: ToggleableVictorySettings;
+  domination?: Partial<DominationVictoryConfig> & ToggleableVictorySettings;
   science?: Partial<ScienceVictorySettings>;
   cultural?: ToggleableVictorySettings;
   diplomatic?: ToggleableVictorySettings;
@@ -115,7 +120,8 @@ export const DIPLOMATIC_VICTORY_SCORE_THRESHOLD = WORLD_COUNCIL_DIPLOMACY_SCORE_
 
 /**
  * VictorySystem checks for win conditions after each turn end.
- * Domination: every other living nation is the winner's direct vassal.
+ * Domination: a nation satisfies EITHER the scenario's vassal-count route or its
+ * land-control-percentage route (see DominationRanking).
  * Science: one nation produces enough aerospace_parts.
  * Cultural: one nation either meets the normal multi-part requirements or
  * reaches the overwhelming absolute Culture threshold.
@@ -126,7 +132,7 @@ export class VictorySystem {
   private won = false;
   private victoryState: VictoryState | null = null;
   private readonly science: ScienceVictorySettings;
-  private readonly dominationEnabled: boolean;
+  private readonly domination: { enabled: boolean } & DominationVictoryConfig;
   private readonly culturalEnabled: boolean;
   private readonly diplomaticEnabled: boolean;
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
@@ -148,12 +154,17 @@ export class VictorySystem {
     private readonly currencySystem?: CurrencySystem,
     private readonly gamesOfNationsSystem?: GamesOfNationsChampionSource,
     private readonly diplomacyManager?: Pick<DiplomacyManager, 'getVassalHost'>,
+    private readonly mapData?: MapData,
   ) {
     this.science = {
       enabled: conditions.science?.enabled ?? true,
       requiredAerospaceParts: conditions.science?.requiredAerospaceParts ?? DEFAULT_REQUIRED_AEROSPACE_PARTS,
     };
-    this.dominationEnabled = conditions.domination?.enabled ?? true;
+    this.domination = {
+      enabled: conditions.domination?.enabled ?? true,
+      requiredVassals: resolveDominationRequiredVassals(conditions.domination?.requiredVassals),
+      requiredLandPercent: resolveDominationLandPercent(conditions.domination?.requiredLandPercent),
+    };
     this.culturalEnabled = conditions.cultural?.enabled ?? true;
     this.diplomaticEnabled = conditions.diplomatic?.enabled ?? true;
 
@@ -212,7 +223,7 @@ export class VictorySystem {
     });
 
     turnManager.on('roundEnd', (e) => {
-      if (this.won || !this.dominationEnabled || !this.diplomacyManager) return;
+      if (this.won || !this.domination.enabled || !this.diplomacyManager) return;
       if (e.round - this.lastDominationProgressRound < DOMINATION_PROGRESS_INTERVAL) return;
       this.lastDominationProgressRound = e.round;
       this.logDominationProgress(e.round);
@@ -230,7 +241,7 @@ export class VictorySystem {
    * restoration has completed, so no intermediate succession state can win.
    */
   resolveDominationVictoryNow(round = this.turnManager.getCurrentRound()): string | null {
-    if (this.won || !this.dominationEnabled) return null;
+    if (this.won || !this.domination.enabled) return null;
     const winner = this.checkDominationVictory();
     if (!winner) return null;
     this.recordVictory(winner, 'domination', round);
@@ -243,7 +254,7 @@ export class VictorySystem {
   /** Which victory types are active. Persisted so saves restore the same rules. */
   getEnabledConditions(): EnabledVictoryConditions {
     return {
-      domination: this.dominationEnabled,
+      domination: this.domination.enabled,
       science: this.science.enabled,
       cultural: this.culturalEnabled,
       diplomatic: this.diplomaticEnabled,
@@ -252,6 +263,14 @@ export class VictorySystem {
 
   getScienceVictorySettings(): Readonly<ScienceVictorySettings> {
     return { ...this.science };
+  }
+
+  /** Scenario-configured Domination thresholds. Persisted so saves restore them. */
+  getDominationVictorySettings(): Readonly<DominationVictoryConfig> {
+    return {
+      requiredVassals: this.domination.requiredVassals,
+      requiredLandPercent: this.domination.requiredLandPercent,
+    };
   }
 
   /** Structured outcome once a nation has won, else null. */
@@ -273,7 +292,7 @@ export class VictorySystem {
     const name = this.nationManager.getNation(nationId)?.name ?? nationId;
     const dateLabel = this.turnManager.getGameDateLabel();
     const dominationDetail = type === 'domination'
-      ? ` All other living nations are ${name}'s vassal states.`
+      ? ` ${this.describeDominationRoute(nationId)}`
       : '';
     this.log(
       nationId,
@@ -409,6 +428,8 @@ export class VictorySystem {
       this.nationManager.getAllNations(),
       nationId,
       (candidateId) => this.diplomacyManager?.getVassalHost(candidateId),
+      this.getDominationVictorySettings(),
+      this.buildLandControlLookup(),
     );
   }
 
@@ -416,8 +437,43 @@ export class VictorySystem {
     return buildDominationRanking(
       this.nationManager.getAllNations(),
       (nationId) => this.diplomacyManager?.getVassalHost(nationId),
+      this.getDominationVictorySettings(),
+      this.buildLandControlLookup(),
       () => 0,
     );
+  }
+
+  /**
+   * Build the authoritative land-ownership lookup from the same
+   * {@link NationManager.getLandControlStats} data the territory UI/pie chart
+   * uses. Stats are computed once here and reused across every candidate so a
+   * full ranking stays a single O(tiles) sweep. When no map is wired (e.g. unit
+   * tests that only exercise the vassal route) the lookup reports zero land.
+   */
+  private buildLandControlLookup(): LandControlLookup {
+    if (!this.mapData) {
+      return { totalLandTiles: 0, getControlledLandTiles: () => 0 };
+    }
+    const stats = this.nationManager.getLandControlStats(this.mapData);
+    return {
+      totalLandTiles: stats.totalLandTiles,
+      getControlledLandTiles: (id) => stats.controlledLandTilesByNation.get(id) ?? 0,
+    };
+  }
+
+  /** Human-readable statement of which route(s) satisfied Domination Victory. */
+  private describeDominationRoute(nationId: string): string {
+    const progress = this.getDominationVictoryProgress(nationId);
+    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
+    const land = `land=${progress.landControlPercent.toFixed(1)}%/${progress.requiredLandControlPercent}%`;
+    const vassals = `vassals=${progress.directVassalCount}/${progress.requiredVassalCount}`;
+    if (progress.vassalRequirementMet && progress.landRequirementMet) {
+      return `${name} achieved Domination Victory through both territorial control (${land}) and vassal control (${vassals}).`;
+    }
+    if (progress.landRequirementMet) {
+      return `${name} achieved Domination Victory through territorial control: ${land}.`;
+    }
+    return `${name} achieved Domination Victory through vassal control: ${vassals}.`;
   }
 
   private checkCulturalVictory(): string | null {
@@ -468,14 +524,7 @@ export class VictorySystem {
 
   private logDominationVictory(nationId: string, round: number): void {
     if (!this.log) return;
-    const name = this.nationManager.getNation(nationId)?.name ?? nationId;
-    const progress = this.getDominationVictoryProgress(nationId);
-    this.log(
-      nationId,
-      `[r${round}] [Victory] ${name} achieved Domination Victory through vassal control: `
-        + `vassals=${progress.directVassalCount}/${progress.otherLivingNationCount}. `
-        + `All other living nations are ${name}'s vassal states.`,
-    );
+    this.log(nationId, `[r${round}] [Victory] ${this.describeDominationRoute(nationId)}`);
   }
 
   private logDominationProgress(round: number): void {
@@ -486,7 +535,9 @@ export class VictorySystem {
     for (const progress of ranking) {
       const name = this.nationManager.getNation(progress.nationId)?.name ?? progress.nationId;
       lines.push(
-        `- ${name}: vassals=${progress.directVassalCount}/${progress.otherLivingNationCount} `
+        `- ${name}: vassals=${progress.directVassalCount}/${progress.requiredVassalCount} `
+          + `land=${progress.landControlPercent.toFixed(1)}%/${progress.requiredLandControlPercent}% `
+          + `vassalsMet=${progress.vassalRequirementMet} landMet=${progress.landRequirementMet} `
           + `fulfilled=${progress.fulfilled}`,
       );
     }
