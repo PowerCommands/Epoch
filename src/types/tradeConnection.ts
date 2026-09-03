@@ -1,5 +1,5 @@
-/** Legacy hardcoded route-establishment value, retained as the scenario fallback. */
-export const DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS = 80;
+/** Default route-establishment duration used when a scenario does not override it. */
+export const DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS = 10;
 
 export function resolveTradeRouteEstablishmentTurns(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0

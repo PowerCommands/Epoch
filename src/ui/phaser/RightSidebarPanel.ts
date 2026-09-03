@@ -411,6 +411,13 @@ export class RightSidebarPanel {
     this.onExpandedChanged?.(false);
   }
 
+  /** Collapse one of the four normal player-facing panels in response to Escape. */
+  collapseOnEscape(): boolean {
+    if (this.collapsed || this.activeMode === null || this.activeMode === 'timeline') return false;
+    this.collapse();
+    return true;
+  }
+
   setDiagnosticsEnabled(enabled: boolean): void {
     this.diagnosticsEnabled = enabled;
     for (const button of this.modeButtons) {

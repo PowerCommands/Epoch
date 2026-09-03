@@ -72,6 +72,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_move', 'assets/sprites/actions/move.png');
     this.load.image('action_attack', 'assets/sprites/actions/attack.png');
     this.load.image('action_ranged_attack', 'assets/sprites/actions/ranged-attack.png');
+    this.load.image('action_upgrade', 'assets/sprites/actions/upgrade.png');
     this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
     this.load.image('action_improve', 'assets/sprites/actions/improve.png');
     this.load.image('action_found_city', 'assets/sprites/actions/found-city.png');

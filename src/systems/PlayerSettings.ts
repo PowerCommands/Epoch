@@ -1,5 +1,10 @@
 const AUTOFOCUS_ON_END_TURN_KEY = 'epoch.autofocusOnEndTurn';
 const AUTO_END_TURN_KEY = 'epoch.autoEndTurn';
+const DEFAULT_CAMERA_ZOOM_KEY = 'epoch.defaultCameraZoom';
+
+export const DEFAULT_CAMERA_ZOOM = 1.5;
+export const MIN_DEFAULT_CAMERA_ZOOM = 1;
+export const MAX_DEFAULT_CAMERA_ZOOM = 2;
 
 /**
  * Persistent, cross-game player preferences shown in the Settings dialog.
@@ -45,4 +50,28 @@ export function setAutoEndTurn(value: boolean): void {
   } catch {
     // Ignore storage errors.
   }
+}
+
+/** Zoom used by ordinary camera-focus actions. City View keeps its own zoom. */
+export function getDefaultCameraZoom(): number {
+  try {
+    const saved = localStorage.getItem(DEFAULT_CAMERA_ZOOM_KEY);
+    return saved === null ? DEFAULT_CAMERA_ZOOM : normalizeDefaultCameraZoom(Number(saved));
+  } catch {
+    return DEFAULT_CAMERA_ZOOM;
+  }
+}
+
+export function setDefaultCameraZoom(value: number): void {
+  const normalized = normalizeDefaultCameraZoom(value);
+  try {
+    localStorage.setItem(DEFAULT_CAMERA_ZOOM_KEY, String(normalized));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+export function normalizeDefaultCameraZoom(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_CAMERA_ZOOM;
+  return Math.max(MIN_DEFAULT_CAMERA_ZOOM, Math.min(MAX_DEFAULT_CAMERA_ZOOM, value));
 }

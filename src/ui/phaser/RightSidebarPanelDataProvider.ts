@@ -1455,7 +1455,9 @@ export class RightSidebarPanelDataProvider {
         },
         {
           title: 'Natural Resources',
-          rows: naturalResourceRows.length > 0 ? naturalResourceRows : [textRow('None available.', true)],
+          rows: naturalResourceRows.length > 0
+            ? [{ kind: 'grid', columns: 3, cells: naturalResourceRows.map((r) => [r]) }]
+            : [textRow('None available.', true)],
         },
         {
           title: 'Manufactured Goods',

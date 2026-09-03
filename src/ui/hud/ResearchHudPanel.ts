@@ -25,7 +25,7 @@ const PANEL_SCROLLBAR_WIDTH = 10;
 const PANEL_SCROLLBAR_GAP = 12;
 const PANEL_CONTENT_WIDTH = PANEL_WIDTH - (PANEL_INNER_PADDING * 2) - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP;
 const LINE_HEIGHT = 29;
-const BUTTON_HEIGHT = 104;
+const MIN_BUTTON_HEIGHT = 104;
 const BUTTON_GAP = 10;
 const TECH_ICON_SIZE = 68;
 const TECH_ICON_PADDING = 14;
@@ -390,11 +390,24 @@ export class ResearchHudPanel {
     for (const button of this.techButtons) {
       const buttonY = baseY + contentCursor;
       const iconX = contentX + TECH_ICON_PADDING;
-      const iconY = buttonY + Math.round((BUTTON_HEIGHT - TECH_ICON_SIZE) / 2);
       const textX = iconX + TECH_ICON_SIZE + TECH_TEXT_GAP;
+
+      let textY = buttonY + 12;
+      button.nameText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+      textY += button.nameText.height + 2;
+      button.metaText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+      textY += button.metaText.height + 5;
+      button.descriptionText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+      const buttonHeight = Math.max(
+        MIN_BUTTON_HEIGHT,
+        Math.ceil(textY - buttonY + button.descriptionText.height + 12),
+        TECH_ICON_SIZE + 24,
+      );
+      const iconY = buttonY + Math.round((buttonHeight - TECH_ICON_SIZE) / 2);
+
       button.background.setVisible(panelVisible)
         .setPosition(Math.round(contentX), Math.round(buttonY))
-        .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
+        .setDisplaySize(PANEL_CONTENT_WIDTH, buttonHeight);
       button.iconFrame.setVisible(panelVisible)
         .setPosition(Math.round(iconX), Math.round(iconY))
         .setDisplaySize(TECH_ICON_SIZE, TECH_ICON_SIZE);
@@ -402,13 +415,7 @@ export class ResearchHudPanel {
         .setPosition(Math.round(iconX + (TECH_ICON_SIZE / 2)), Math.round(iconY + (TECH_ICON_SIZE / 2)));
       button.fallbackIcon.setVisible(panelVisible && !this.scene.textures.exists(getTechnologySpriteKey(button.id)))
         .setPosition(Math.round(iconX + (TECH_ICON_SIZE / 2)), Math.round(iconY + (TECH_ICON_SIZE / 2)));
-      button.nameText.setVisible(panelVisible)
-        .setPosition(Math.round(textX), Math.round(buttonY + 12));
-      button.metaText.setVisible(panelVisible)
-        .setPosition(Math.round(textX), Math.round(buttonY + 36));
-      button.descriptionText.setVisible(panelVisible)
-        .setPosition(Math.round(textX), Math.round(buttonY + 58));
-      contentCursor += BUTTON_HEIGHT + BUTTON_GAP;
+      contentCursor += buttonHeight + BUTTON_GAP;
     }
 
     if (this.techButtons.length === 0) {
@@ -483,7 +490,7 @@ export class ResearchHudPanel {
   private rebuildTechButtons(): void {
     this.destroyTechButtons();
     for (const tech of this.state.available) {
-      const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, BUTTON_HEIGHT, 0x153343, 0.96))
+      const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, MIN_BUTTON_HEIGHT, 0x153343, 0.96))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 1)
         .setScrollFactor(0)
@@ -519,6 +526,10 @@ export class ResearchHudPanel {
         fontSize: '18px',
         color: '#ddf2ff',
         fontStyle: 'bold',
+        wordWrap: {
+          width: PANEL_CONTENT_WIDTH - TECH_ICON_PADDING - TECH_ICON_SIZE - TECH_TEXT_GAP - 14,
+          useAdvancedWrap: true,
+        },
       }))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
@@ -529,6 +540,10 @@ export class ResearchHudPanel {
         fontFamily: 'sans-serif',
         fontSize: '14px',
         color: '#8fd0ff',
+        wordWrap: {
+          width: PANEL_CONTENT_WIDTH - TECH_ICON_PADDING - TECH_ICON_SIZE - TECH_TEXT_GAP - 14,
+          useAdvancedWrap: true,
+        },
       }))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)

@@ -112,10 +112,10 @@ test('0 turns activates synchronously during route creation', () => {
   assert.equal(harness.production.getQueue('human-city').length, 0);
 });
 
-test('scenario fallback preserves the previous hardcoded value', () => {
-  assert.equal(DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS, 80);
-  assert.equal(resolveTradeRouteEstablishmentTurns(undefined), 80);
-  assert.equal(resolveTradeRouteEstablishmentTurns(-1), 80);
+test('scenario fallback uses the default route-establishment duration', () => {
+  assert.equal(DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS, 10);
+  assert.equal(resolveTradeRouteEstablishmentTurns(undefined), 10);
+  assert.equal(resolveTradeRouteEstablishmentTurns(-1), 10);
   assert.equal(resolveTradeRouteEstablishmentTurns(5), 5);
   assert.equal(resolveTradeRouteEstablishmentTurns(1), 1);
   assert.equal(resolveTradeRouteEstablishmentTurns(0), 0);

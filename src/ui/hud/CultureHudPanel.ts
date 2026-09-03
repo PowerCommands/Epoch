@@ -24,7 +24,7 @@ const PANEL_SCROLLBAR_WIDTH = 10;
 const PANEL_SCROLLBAR_GAP = 12;
 const PANEL_CONTENT_WIDTH = PANEL_WIDTH - (PANEL_INNER_PADDING * 2) - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP;
 const LINE_HEIGHT = 29;
-const BUTTON_HEIGHT = 112;
+const MIN_BUTTON_HEIGHT = 112;
 const BUTTON_GAP = 10;
 const CULTURE_ICON_SIZE = 68;
 const CULTURE_ICON_PADDING = 14;
@@ -494,11 +494,26 @@ export class CultureHudPanel {
         const button = this.cultureButtons[buttonIndex];
         const buttonY = baseY + contentCursor;
         const iconX = innerX + CULTURE_ICON_PADDING;
-        const iconY = buttonY + Math.round((BUTTON_HEIGHT - CULTURE_ICON_SIZE) / 2);
         const textX = iconX + CULTURE_ICON_SIZE + CULTURE_TEXT_GAP;
+
+        let textY = buttonY + 10;
+        button.nameText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+        textY += button.nameText.height + 3;
+        button.metaText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+        textY += button.metaText.height + 4;
+        button.descriptionText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+        textY += button.descriptionText.height + 5;
+        button.prerequisite.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(textY));
+        const buttonHeight = Math.max(
+          MIN_BUTTON_HEIGHT,
+          Math.ceil(textY - buttonY + button.prerequisite.height + 10),
+          CULTURE_ICON_SIZE + 20,
+        );
+        const iconY = buttonY + Math.round((buttonHeight - CULTURE_ICON_SIZE) / 2);
+
         button.background.setVisible(panelVisible)
           .setPosition(Math.round(innerX), Math.round(buttonY))
-          .setDisplaySize(PANEL_CONTENT_WIDTH, BUTTON_HEIGHT);
+          .setDisplaySize(PANEL_CONTENT_WIDTH, buttonHeight);
         button.iconFrame.setVisible(panelVisible)
           .setPosition(Math.round(iconX), Math.round(iconY))
           .setDisplaySize(CULTURE_ICON_SIZE, CULTURE_ICON_SIZE);
@@ -506,11 +521,7 @@ export class CultureHudPanel {
           .setPosition(Math.round(iconX + (CULTURE_ICON_SIZE / 2)), Math.round(iconY + (CULTURE_ICON_SIZE / 2)));
         button.fallbackIcon.setVisible(panelVisible && !this.scene.textures.exists(button.imageKey))
           .setPosition(Math.round(iconX + (CULTURE_ICON_SIZE / 2)), Math.round(iconY + (CULTURE_ICON_SIZE / 2)));
-        button.nameText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 10));
-        button.metaText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 34));
-        button.descriptionText.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 55));
-        button.prerequisite.setVisible(panelVisible).setPosition(Math.round(textX), Math.round(buttonY + 90));
-        contentCursor += BUTTON_HEIGHT + BUTTON_GAP;
+        contentCursor += buttonHeight + BUTTON_GAP;
         buttonIndex += 1;
       }
 
@@ -622,7 +633,7 @@ export class CultureHudPanel {
   private createCultureButton(entry: HudCultureEntry): CultureButtonView {
     const style = getCultureNodeVisualState(entry);
     const background = this.addOwned(
-      new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, BUTTON_HEIGHT, style.fillColor, style.fillAlpha),
+      new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, MIN_BUTTON_HEIGHT, style.fillColor, style.fillAlpha),
     )
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)

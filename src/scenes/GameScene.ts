@@ -238,7 +238,7 @@ import { EscapeMenu } from '../ui/EscapeMenu';
 import { SaveGameDialog } from '../ui/SaveGameDialog';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
-import { isAutofocusOnEndTurn, isAutoEndTurn } from '../systems/PlayerSettings';
+import { getDefaultCameraZoom, isAutofocusOnEndTurn, isAutoEndTurn } from '../systems/PlayerSettings';
 import { CityView, type CityViewBuildingOption, type CityViewCorporationOption, type CityViewPlacementPanelState, type CityViewProjectOption, type CityViewQueueItem, type CityViewUnitOption, type CityViewWonderOption } from '../ui/CityView';
 import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
@@ -3793,7 +3793,7 @@ export class GameScene extends Phaser.Scene {
     const humanIdForFocus = data.humanNationId;
     const focusOnCity = (city: City): void => {
       const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
-      this.cameraController.focusOn(x, y, 1.5);
+      this.cameraController.focusOn(x, y, getDefaultCameraZoom());
     };
     const focusHumanCapital = () => {
       if (!humanIdForFocus) return;
@@ -3807,7 +3807,7 @@ export class GameScene extends Phaser.Scene {
       if (ownedUnits.length === 0) return;
       const settler = ownedUnits.find((u) => u.unitType.canFound) ?? ownedUnits[0];
       const { x, y } = tileMap.tileToWorld(settler.tileX, settler.tileY);
-      this.cameraController.focusOn(x, y, 1.5);
+      this.cameraController.focusOn(x, y, getDefaultCameraZoom());
     };
     const focusUnit = (unit: Unit) => {
       suppressPromote = true;
@@ -3817,7 +3817,7 @@ export class GameScene extends Phaser.Scene {
         suppressPromote = false;
       }
       const { x, y } = tileMap.tileToWorld(unit.tileX, unit.tileY);
-      this.cameraController.focusOn(x, y, 1.5);
+      this.cameraController.focusOn(x, y, getDefaultCameraZoom());
     };
     const getOrganizationDisplayName = (organizationKind: WorldCouncilOrganizationKind): string =>
       organizationKind === 'un' ? 'United Nations' : 'World Council';
@@ -7058,6 +7058,10 @@ export class GameScene extends Phaser.Scene {
         cityViewDismissedCityId = null;
         selectionManager.clearSelection();
         selectionManager.selectCity(city);
+        // Selecting the city opens City View, whose layout normally shifts the
+        // camera to leave room for its panel. This shortcut is specifically a
+        // "take me to the idle city" action, so finish by centring that city.
+        focusOnCity(city);
       },
       onSelectResearch: (technologyId) => {
         if (!humanNationId) return false;
@@ -8154,6 +8158,11 @@ export class GameScene extends Phaser.Scene {
       cityView.hideTooltip();
       this.cameraController.setPointerPanEnabled(true);
     };
+    const closeCityViewAndRestoreDefaultZoom = (): void => {
+      const wasOpen = cityView.getOpenCityId() !== null;
+      cityView.close();
+      if (wasOpen) this.cameraController.setZoom(getDefaultCameraZoom());
+    };
     const closeOpenCityView = (): boolean => {
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'city' || !cityView.isOpenForCity(selected.city.id)) {
@@ -8164,17 +8173,18 @@ export class GameScene extends Phaser.Scene {
       clearCityViewInteraction();
       if (selected?.kind === 'city' && selected.city.ownerId === humanNationId) {
         cityViewDismissedCityId = selected.city.id;
-        cityView.close();
+        closeCityViewAndRestoreDefaultZoom();
         cityViewRenderer.clear();
         territoryRenderer.setMode('normal');
         cityWorkTileRenderer.show(selected.city);
         cultureClaimTileRenderer.show(selected.city);
+        focusOnCity(selected.city);
         rightPanel?.requestRefresh();
         return true;
       }
 
       cityViewDismissedCityId = null;
-      cityView.close();
+      closeCityViewAndRestoreDefaultZoom();
       cityViewRenderer.clear();
       territoryRenderer.setMode('normal');
       return true;
@@ -9497,7 +9507,7 @@ export class GameScene extends Phaser.Scene {
         territoryRenderer.setMode('normal');
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
-        cityView.close();
+        closeCityViewAndRestoreDefaultZoom();
         cityViewRenderer.clear();
       } else if (selection?.kind === 'city') {
         clearCityViewInteraction();
@@ -9511,7 +9521,7 @@ export class GameScene extends Phaser.Scene {
           cultureClaimTileRenderer.clear();
         } else {
           territoryRenderer.setMode('normal');
-          cityView.close();
+          closeCityViewAndRestoreDefaultZoom();
           cityViewRenderer.clear();
           cityWorkTileRenderer.show(selection.city);
           cultureClaimTileRenderer.show(selection.city);
@@ -9524,7 +9534,7 @@ export class GameScene extends Phaser.Scene {
         territoryRenderer.setMode('normal');
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
-        cityView.close();
+        closeCityViewAndRestoreDefaultZoom();
         cityViewRenderer.clear();
       } else {
         clearCityViewInteraction();
@@ -9534,7 +9544,7 @@ export class GameScene extends Phaser.Scene {
         territoryRenderer.setMode('normal');
         cityWorkTileRenderer.clear();
         cultureClaimTileRenderer.clear();
-        cityView.close();
+        closeCityViewAndRestoreDefaultZoom();
         cityViewRenderer.clear();
       }
       refreshMovePreview();
@@ -10128,6 +10138,7 @@ export class GameScene extends Phaser.Scene {
         escapeMenu.close();
         return;
       }
+      if (this.rightSidebarPanel?.collapseOnEscape()) return;
       if (closeOpenCityView()) return;
       // If a human unit is in focus (selected, default move mode, not already in
       // free selection mode), Escape first "frees" it into inspect mode — the

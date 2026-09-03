@@ -76,8 +76,16 @@ export class CameraController {
 
   /** Centrera kameran på en världsposition och sätt ett specifikt zoom-värde. */
   focusOn(worldX: number, worldY: number, zoom: number): void {
-    this.cam.zoom = Phaser.Math.Clamp(zoom, this.minZoom, ZOOM_MAX);
+    this.setZoom(zoom);
     this.cam.centerOn(worldX, worldY);
+  }
+
+  /** Change zoom while preserving the current camera centre. */
+  setZoom(zoom: number): void {
+    const centerX = this.cam.midPoint.x;
+    const centerY = this.cam.midPoint.y;
+    this.cam.zoom = Phaser.Math.Clamp(zoom, this.minZoom, ZOOM_MAX);
+    this.cam.centerOn(centerX, centerY);
   }
 
   get zoom(): number {

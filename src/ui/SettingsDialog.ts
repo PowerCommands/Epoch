@@ -1,10 +1,14 @@
 import type { SetupMusicManager } from '../systems/SetupMusicManager';
 import { bindMusicControls } from './MusicControls';
 import {
+  getDefaultCameraZoom,
   isAutoEndTurn,
   isAutofocusOnEndTurn,
+  MAX_DEFAULT_CAMERA_ZOOM,
+  MIN_DEFAULT_CAMERA_ZOOM,
   setAutoEndTurn,
   setAutofocusOnEndTurn,
+  setDefaultCameraZoom,
 } from '../systems/PlayerSettings';
 import { isTutorialDontShowAgain, setTutorialDontShowAgain } from '../systems/TutorialSettings';
 
@@ -157,6 +161,7 @@ export class SettingsDialog {
       'Autofocus on end turn',
       'Center the camera on the active unit or capital each turn.',
     ));
+    group.appendChild(this.buildDefaultZoomControl());
     group.appendChild(this.buildCheckbox(
       'settings-auto-end-turn-toggle',
       'Auto end turn',
@@ -169,6 +174,30 @@ export class SettingsDialog {
     ));
 
     return group;
+  }
+
+  private buildDefaultZoomControl(): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.style.cssText = 'display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; cursor: pointer;';
+
+    const text = document.createElement('span');
+    text.textContent = 'Default zoom';
+    text.style.cssText = 'font-size: 13px; color: #aaa;';
+
+    const slider = document.createElement('input');
+    slider.className = 'settings-default-zoom';
+    slider.type = 'range';
+    slider.min = MIN_DEFAULT_CAMERA_ZOOM.toFixed(2);
+    slider.max = MAX_DEFAULT_CAMERA_ZOOM.toFixed(2);
+    slider.step = '0.05';
+    slider.style.cssText = 'width: 100%; accent-color: #4a90d9; cursor: pointer;';
+
+    const value = document.createElement('span');
+    value.className = 'settings-default-zoom-value';
+    value.style.cssText = 'font-size: 13px; color: #ccc; min-width: 36px; text-align: right;';
+
+    label.append(text, slider, value);
+    return label;
   }
 
   private buildCheckbox(className: string, labelText: string, hint: string): HTMLLabelElement {
@@ -202,6 +231,8 @@ export class SettingsDialog {
     const autofocus = this.overlay.querySelector<HTMLInputElement>('.settings-autofocus-toggle');
     const autoEndTurn = this.overlay.querySelector<HTMLInputElement>('.settings-auto-end-turn-toggle');
     const startGuide = this.overlay.querySelector<HTMLInputElement>('.settings-start-guide-toggle');
+    const defaultZoom = this.overlay.querySelector<HTMLInputElement>('.settings-default-zoom');
+    const defaultZoomValue = this.overlay.querySelector<HTMLSpanElement>('.settings-default-zoom-value');
     autofocus?.addEventListener('change', () => {
       setAutofocusOnEndTurn(autofocus.checked);
       this.options.onAutofocusChanged?.(autofocus.checked);
@@ -213,15 +244,25 @@ export class SettingsDialog {
     startGuide?.addEventListener('change', () => {
       setTutorialDontShowAgain(!startGuide.checked);
     });
+    defaultZoom?.addEventListener('input', () => {
+      const value = Number(defaultZoom.value);
+      setDefaultCameraZoom(value);
+      if (defaultZoomValue) defaultZoomValue.textContent = value.toFixed(2);
+    });
   }
 
   private syncPreferenceToggles(): void {
     const autofocus = this.overlay.querySelector<HTMLInputElement>('.settings-autofocus-toggle');
     const autoEndTurn = this.overlay.querySelector<HTMLInputElement>('.settings-auto-end-turn-toggle');
     const startGuide = this.overlay.querySelector<HTMLInputElement>('.settings-start-guide-toggle');
+    const defaultZoom = this.overlay.querySelector<HTMLInputElement>('.settings-default-zoom');
+    const defaultZoomValue = this.overlay.querySelector<HTMLSpanElement>('.settings-default-zoom-value');
     if (autofocus) autofocus.checked = isAutofocusOnEndTurn();
     if (autoEndTurn) autoEndTurn.checked = isAutoEndTurn();
     if (startGuide) startGuide.checked = !isTutorialDontShowAgain();
+    const zoom = getDefaultCameraZoom();
+    if (defaultZoom) defaultZoom.value = zoom.toFixed(2);
+    if (defaultZoomValue) defaultZoomValue.textContent = zoom.toFixed(2);
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
