@@ -17,6 +17,11 @@ import type { IGridSystem } from './grid/IGridSystem';
 
 const INITIAL_CLAIM_SIZE = 3;
 
+export interface LandControlStats {
+  totalLandTiles: number;
+  controlledLandTilesByNation: ReadonlyMap<string, number>;
+}
+
 /**
  * NationManager är "single source of truth" för all nationsdata.
  *
@@ -107,14 +112,13 @@ export class NationManager {
   }
 
   /**
-   * Andel (0–100) av kartans totala landyta som ägs av en viss nation.
-   * Land = allt utom hav, kust och is. Beräknas on-demand (en O(tiles)-svep,
-   * samma kostnad som getTileCount) — anropas när Leader Details-vyn renderas,
-   * inte varje turn, så ingen cache behövs.
+   * Current land-control snapshot used by territory UI. Land deliberately uses
+   * the same definition as the existing Leader Details percentage: everything
+   * except ocean, coast, and ice.
    */
-  getLandTilePercent(nationId: string, mapData: MapData): number {
-    let ownedLand = 0;
-    let totalLand = 0;
+  getLandControlStats(mapData: MapData): LandControlStats {
+    let totalLandTiles = 0;
+    const controlledLandTilesByNation = new Map<string, number>();
     for (const row of mapData.tiles) {
       for (const tile of row) {
         if (
@@ -124,12 +128,28 @@ export class NationManager {
         ) {
           continue;
         }
-        totalLand++;
-        if (tile.ownerId === nationId) ownedLand++;
+        totalLandTiles++;
+        if (tile.ownerId) {
+          controlledLandTilesByNation.set(
+            tile.ownerId,
+            (controlledLandTilesByNation.get(tile.ownerId) ?? 0) + 1,
+          );
+        }
       }
     }
-    if (totalLand === 0) return 0;
-    return (ownedLand / totalLand) * 100;
+    return { totalLandTiles, controlledLandTilesByNation };
+  }
+
+  /**
+   * Andel (0–100) av kartans totala landyta som ägs av en viss nation.
+   * Land = allt utom hav, kust och is. Beräknas on-demand (en O(tiles)-svep,
+   * samma kostnad som getTileCount) — anropas när Leader Details-vyn renderas,
+   * inte varje turn, så ingen cache behövs.
+   */
+  getLandTilePercent(nationId: string, mapData: MapData): number {
+    const stats = this.getLandControlStats(mapData);
+    if (stats.totalLandTiles === 0) return 0;
+    return ((stats.controlledLandTilesByNation.get(nationId) ?? 0) / stats.totalLandTiles) * 100;
   }
 
   /**

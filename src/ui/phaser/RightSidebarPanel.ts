@@ -9,6 +9,7 @@ import type {
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
   RightSidebarPanelMode,
+  RightSidebarPieChartRow,
   RightSidebarRelationsTableRow,
   RightSidebarCompactTableRow,
   RightSidebarButtonGroupRow,
@@ -1360,6 +1361,8 @@ export class RightSidebarPanel {
         return this.addRelationsTableRow(row, y);
       case 'compactTable':
         return this.addCompactTableRow(row, y);
+      case 'pieChart':
+        return this.addPieChartRow(row, y);
       case 'grid':
         return this.addGridRow(row, y);
     }
@@ -1446,6 +1449,70 @@ export class RightSidebarPanel {
     text.setPosition(textX, y);
     text.setData('baseY', y);
     return y + Math.max(text.height, icon ? CONTENT_ICON_SIZE : 0) + ROW_GAP;
+  }
+
+  private addPieChartRow(row: RightSidebarPieChartRow, y: number): number {
+    const width = this.getContentWidth();
+    const diameter = Math.round(width * 0.5);
+    const radius = diameter / 2;
+    const topPadding = 28;
+    const bottomPadding = 28;
+    const centerX = PANEL_PADDING + radius;
+    const centerY = topPadding + radius;
+    const total = row.slices.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
+    const graphics = this.addOwned(new Phaser.GameObjects.Graphics(this.scene)
+      .setPosition(0, y)
+      .setScrollFactor(0));
+    graphics.setData('baseY', y);
+
+    let startAngle = -Math.PI / 2;
+    for (const slice of row.slices) {
+      const value = Math.max(0, slice.value);
+      const angleSize = total > 0 ? (value / total) * Math.PI * 2 : 0;
+      const endAngle = startAngle + angleSize;
+      if (angleSize > 0) {
+        graphics.fillStyle(slice.color, 1);
+        graphics.beginPath();
+        graphics.moveTo(centerX, centerY);
+        graphics.arc(centerX, centerY, radius, startAngle, endAngle, false);
+        graphics.closePath();
+        graphics.fillPath();
+        graphics.lineStyle(1.5, 0x071017, 0.82);
+        graphics.strokePath();
+      }
+      startAngle = endAngle;
+    }
+    this.panelContainer.add(graphics);
+    this.contentObjects.push(graphics);
+    graphics.setMask(this.contentMask);
+
+    const legendGap = 12;
+    const markerSize = 14;
+    const legendRowHeight = 27;
+    const legendX = PANEL_PADDING + diameter + legendGap;
+    const legendWidth = width - diameter - legendGap;
+    const legendHeight = row.slices.length * legendRowHeight;
+    const legendTop = topPadding + Math.max(0, (diameter - legendHeight) / 2);
+    row.slices.forEach((slice, index) => {
+      const legendY = legendTop + index * legendRowHeight;
+      graphics.fillStyle(slice.color, 1);
+      graphics.fillRect(legendX, legendY + 3, markerSize, markerSize);
+      graphics.lineStyle(1, 0xffffff, 0.45);
+      graphics.strokeRect(legendX, legendY + 3, markerSize, markerSize);
+
+      const percentage = total > 0 ? (Math.max(0, slice.value) / total * 100).toFixed(1) : '0.0';
+      const label = this.addContentText(
+        `${slice.label} ${percentage}%`,
+        15,
+        '#edf4ff',
+        'normal',
+        Math.max(100, legendWidth - markerSize - 10),
+      );
+      label.setPosition(legendX + markerSize + 10, y + legendY);
+      label.setData('baseY', y + legendY);
+    });
+
+    return y + topPadding + Math.max(diameter, legendHeight) + bottomPadding + ROW_GAP;
   }
 
   private addCompactTableRow(row: RightSidebarCompactTableRow, y: number): number {

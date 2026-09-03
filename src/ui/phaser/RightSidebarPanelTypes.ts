@@ -124,6 +124,18 @@ export interface RightSidebarCompactTableRow {
   rows: string[][];
 }
 
+export interface RightSidebarPieChartSlice {
+  label: string;
+  value: number;
+  color: number;
+}
+
+/** A large, labelled pie chart that participates in the normal sidebar flow. */
+export interface RightSidebarPieChartRow {
+  kind: 'pieChart';
+  slices: RightSidebarPieChartSlice[];
+}
+
 /**
  * A grid of "cells", each cell being its own small stack of rows. Cells flow
  * left-to-right and wrap after `columns` of them, so items spread across the
@@ -145,6 +157,7 @@ export type RightSidebarRow =
   | RightSidebarSelectRow
   | RightSidebarRelationsTableRow
   | RightSidebarCompactTableRow
+  | RightSidebarPieChartRow
   | RightSidebarGridRow;
 
 export interface RightSidebarSection {

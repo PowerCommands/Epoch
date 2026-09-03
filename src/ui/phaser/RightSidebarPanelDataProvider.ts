@@ -113,6 +113,7 @@ import type {
   RightSidebarDetailsView,
   RightSidebarLeaderDetailsTab,
   RightSidebarLeaderboardCategory,
+  RightSidebarPieChartSlice,
   RightSidebarRow,
   RightSidebarSection,
 } from './RightSidebarPanelTypes';
@@ -2926,7 +2927,31 @@ export class RightSidebarPanelDataProvider {
         false,
         entry.color,
       ));
-    return { title: '⚔️ Domination', rows: [headerRow, ...rows] };
+    return {
+      title: '⚔️ Domination',
+      rows: [headerRow, ...rows, { kind: 'pieChart', slices: this.getLandControlSlices() }],
+    };
+  }
+
+  private getLandControlSlices(): RightSidebarPieChartSlice[] {
+    const nations = this.nationManager.getAllNations();
+    const stats = this.nationManager.getLandControlStats(this.mapData);
+    const nationSlices = nations
+      .map((nation) => ({
+        label: nation.name,
+        value: stats.controlledLandTilesByNation.get(nation.id) ?? 0,
+        color: nation.color,
+      }))
+      .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    const nationallyControlled = nationSlices.reduce((sum, slice) => sum + slice.value, 0);
+    return [
+      ...nationSlices,
+      {
+        label: 'Unclaimed',
+        value: Math.max(0, stats.totalLandTiles - nationallyControlled),
+        color: 0xd3d7dc,
+      },
+    ];
   }
 
   private getScienceVictorySection(): RightSidebarSection {
