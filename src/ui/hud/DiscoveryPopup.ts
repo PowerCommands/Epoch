@@ -29,6 +29,8 @@ export interface DiscoveryPopupData {
    * completion) that have no tech-tree progression to show.
    */
   hideProgression?: boolean;
+  /** Optional visual treatment for progression-specific discovery popups. */
+  theme?: 'culture';
 }
 
 type DiscoveryPopupCloseListener = () => void;
@@ -158,6 +160,7 @@ export class DiscoveryPopup {
     this.current = data;
     this.scrollOffset = 0;
     this.destroyRows();
+    this.applyTheme(data.theme);
     this.titleText.setText(data.title);
     this.subtitleText.setText(data.subtitle ?? '');
     this.descriptionText.setText(data.description);
@@ -349,26 +352,27 @@ export class DiscoveryPopup {
   }
 
   private createRows(rows: DiscoveryPopupRow[], target: PopupRowView[]): void {
+    const isCulture = this.current?.theme === 'culture';
     for (const row of rows) {
-      const background = this.addContentObject(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, 10, ROW_HEIGHT, 0x152636, 0.96))
+      const background = this.addContentObject(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, 10, ROW_HEIGHT, isCulture ? 0x2a2141 : 0x152636, 0.96))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
         .setScrollFactor(0)
-        .setStrokeStyle(1, 0x6fb2d4, 0.38);
-      const iconFrame = this.addContentObject(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, ROW_ICON_SIZE, ROW_ICON_SIZE, 0x0b1821, 0.95))
+        .setStrokeStyle(1, isCulture ? 0xc5a7f2 : 0x6fb2d4, 0.38);
+      const iconFrame = this.addContentObject(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, ROW_ICON_SIZE, ROW_ICON_SIZE, isCulture ? 0x21172f : 0x0b1821, 0.95))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 3)
         .setScrollFactor(0)
-        .setStrokeStyle(1, 0x86c9e8, 0.28);
+        .setStrokeStyle(1, isCulture ? 0xd7c7ff : 0x86c9e8, 0.28);
       const image = this.addContentObject(new Phaser.GameObjects.Image(this.scene, 0, 0, '__DEFAULT'))
         .setOrigin(0.5, 0.5)
         .setDepth(DEPTH + 4)
         .setScrollFactor(0)
         .setDisplaySize(ROW_ICON_SIZE - 6, ROW_ICON_SIZE - 6);
-      const fallbackText = this.createContentText(row.fallbackLabel ?? getInitials(row.label), 13, '#bfe9ff', 'bold')
+      const fallbackText = this.createContentText(row.fallbackLabel ?? getInitials(row.label), 13, isCulture ? '#eadfff' : '#bfe9ff', 'bold')
         .setOrigin(0.5, 0.5)
         .setDepth(DEPTH + 4);
-      const labelText = this.createContentText(row.label, 15, '#ddf2ff', 'bold');
+      const labelText = this.createContentText(row.label, 15, isCulture ? '#f0ebff' : '#ddf2ff', 'bold');
 
       target.push({
         background,
@@ -601,12 +605,31 @@ export class DiscoveryPopup {
   }
 
   private refreshButtonVisual(): void {
-    const fillColor = this.closeButton.pressed
-      ? 0x24546d
-      : this.closeButton.hovered
-        ? 0x3a85aa
-        : 0x2f6f8f;
+    const isCulture = this.current?.theme === 'culture';
+    const fillColor = isCulture
+      ? this.closeButton.pressed
+        ? 0x4a2f68
+        : this.closeButton.hovered
+          ? 0x70499a
+          : 0x5d3b82
+      : this.closeButton.pressed
+        ? 0x24546d
+        : this.closeButton.hovered
+          ? 0x3a85aa
+          : 0x2f6f8f;
     this.closeButton.background.setFillStyle(fillColor, 1);
+  }
+
+  private applyTheme(theme: DiscoveryPopupData['theme']): void {
+    const isCulture = theme === 'culture';
+    this.panel
+      .setFillStyle(isCulture ? 0xb56cff : 0x0e1722, isCulture ? 0.92 : 0.98)
+      .setStrokeStyle(2, isCulture ? 0xd7c7ff : 0x68a9d5, 0.85);
+    this.heroFrame
+      .setFillStyle(isCulture ? 0x2a163f : 0x0a111a, 0.96)
+      .setStrokeStyle(1, isCulture ? 0xd7c7ff : 0x86c9e8, 0.35);
+    this.heroFallbackText.setColor(isCulture ? '#eadfff' : '#bfe9ff');
+    this.closeButton.background.setStrokeStyle(1, isCulture ? 0xd7c7ff : 0x9ed8f0, 0.42);
   }
 
   private setContentVisible(visible: boolean): void {

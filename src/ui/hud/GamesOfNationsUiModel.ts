@@ -17,6 +17,17 @@ export const GAMES_HUD_BUTTON_LAYOUT = {
 
 export const GAMES_HUD_DARK_BLUE = 0x071d3a;
 
+/** Effective score represented by a recurring sport plan, including bonuses. */
+export function getEffectivePlannedGamesPoints(
+  plannedGamesPoints: number,
+  hostBonusGamesPoints = 0,
+  policyBonusGamesPoints = 0,
+): number {
+  return whole(plannedGamesPoints)
+    + whole(hostBonusGamesPoints)
+    + whole(policyBonusGamesPoints);
+}
+
 export interface GamesOfNationsUiContext {
   summary: GamesOfNationsSummary;
   humanNationId: string;

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import test from 'node:test';
 
 import { getGameSpeedById } from '../src/data/gameSpeeds.ts';
@@ -20,6 +21,7 @@ import { TurnManager } from '../src/systems/TurnManager.ts';
 import { HexGridSystem } from '../src/systems/grid/HexGridSystem.ts';
 import { TileType, type MapData, type Tile } from '../src/types/map.ts';
 import type { Producible } from '../src/types/producible.ts';
+import { getProjectSpritePath } from '../src/utils/assetPaths.ts';
 
 const NATION_ID = 'france';
 const CITY_ID = 'paris';
@@ -59,6 +61,12 @@ test('Economic Development is registered as a repeatable city project', () => {
   assert.equal(getProjectById('economic_development'), ECONOMIC_DEVELOPMENT);
   assert.ok(ALL_PROJECTS.includes(ECONOMIC_DEVELOPMENT));
   assert.equal(ECONOMIC_DEVELOPMENT.productionToGoldRatio, 0.5);
+});
+
+test('Economic Development has a project sprite mapped for the GUI', () => {
+  const spritePath = getProjectSpritePath(ECONOMIC_DEVELOPMENT.id);
+  assert.equal(spritePath, 'assets/sprites/projects/economic_development.png');
+  assert.equal(existsSync(new URL(`../public/${spritePath}`, import.meta.url)), true);
 });
 
 test('selecting Economic Development makes it the active production', () => {
@@ -159,7 +167,11 @@ test('a city running Economic Development survives save/load', () => {
     mapData, nationManager: h.nations, cityManager: h.cities,
     unitManager: { getAllUnits: () => [] }, productionSystem: h.production,
     policySystem: { getActivePolicyAssignments: () => [] },
-    diplomacyManager: { getAllStates: () => [], getPendingPeaceProposals: () => [] },
+    diplomacyManager: {
+      getAllStates: () => [],
+      getAllVassalRelationships: () => [],
+      getPendingPeaceProposals: () => [],
+    },
     discoverySystem: { getAllMetPairs: () => [] }, turnManager: h.turns,
     gridSystem, wonderSystem: { getCompletedWonders: () => [] },
   } as unknown as SaveLoadContext);

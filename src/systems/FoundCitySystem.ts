@@ -31,6 +31,25 @@ const FALLBACK_CITY_NAMES = [
   'Falmere', 'Galdor', 'Havenmoor', 'Iskara', 'Jorvik',
 ];
 
+const FOUNDED_CITY_NUMBER_PATTERN = /_founded_(\d+)$/;
+
+/**
+ * Return the first founded-city sequence number that cannot collide with any
+ * currently loaded city. Save restoration happens after FoundCitySystem is
+ * constructed, so this must be evaluated when a city is founded rather than
+ * only once in the constructor.
+ */
+export function getNextFoundedCityNumber(cities: ReadonlyArray<Pick<City, 'id'>>): number {
+  let highest = 0;
+  for (const city of cities) {
+    const match = FOUNDED_CITY_NUMBER_PATTERN.exec(city.id);
+    if (!match) continue;
+    const sequence = Number(match[1]);
+    if (Number.isSafeInteger(sequence) && sequence > highest) highest = sequence;
+  }
+  return highest + 1;
+}
+
 /**
  * FoundCitySystem hanterar grundande av nya städer via Settler-enheter.
  *
@@ -94,6 +113,13 @@ export class FoundCitySystem {
 
     const isCapital = this.cityManager.getCitiesByOwner(unit.ownerId).length === 0;
     const name = this.pickCityName(unit.ownerId);
+    // A loaded game replaces CityManager's contents after this system was
+    // created. Re-seed here from the live city set so nextCityNumber cannot
+    // restart at 1 and silently reuse an existing id after every load.
+    this.nextCityNumber = Math.max(
+      this.nextCityNumber,
+      getNextFoundedCityNumber(this.cityManager.getAllCities()),
+    );
     const cityId = `city_${unit.ownerId}_founded_${this.nextCityNumber}`;
     this.nextCityNumber++;
 

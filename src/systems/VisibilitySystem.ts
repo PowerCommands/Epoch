@@ -32,9 +32,9 @@ export class VisibilitySystem {
   private readonly width: number;
   private readonly height: number;
   /**
-   * When disabled (via the `fog off` cheat), every tile is reported as
-   * Visible so the whole map renders. The underlying explored/visible state is
-   * still tracked, so toggling fog back on restores the correct view.
+   * When disabled (via the `fog off` cheat), or when a permanent gameplay
+   * reveal is active, every tile is reported as Visible so the whole map
+   * renders. The underlying explored/visible state is still tracked.
    */
   private enabled = true;
 
@@ -48,6 +48,8 @@ export class VisibilitySystem {
   constructor(
     private readonly mapData: MapData,
     private readonly gridSystem: IGridSystem,
+    /** A gameplay reveal overrides fog without changing the independent cheat toggle. */
+    private readonly isPermanentFullMapRevealActive: () => boolean = () => false,
   ) {
     this.width = mapData.width;
     this.height = mapData.height;
@@ -57,17 +59,18 @@ export class VisibilitySystem {
   }
 
   getState(x: number, y: number): VisibilityState {
-    if (!this.enabled) return VisibilityState.Visible;
+    if (!this.isEnabled()) return VisibilityState.Visible;
     return this.states[y]?.[x] ?? VisibilityState.Unseen;
   }
 
-  /** Enable or disable fog of war (cheat). Disabled = whole map visible. */
+  /** Enable or disable the fog cheat override. A permanent reveal still wins. */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
   }
 
+  /** Whether fog is effectively active after cheat and gameplay reveals. */
   isEnabled(): boolean {
-    return this.enabled;
+    return this.enabled && !this.isPermanentFullMapRevealActive();
   }
 
   isVisible(x: number, y: number): boolean {

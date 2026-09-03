@@ -913,12 +913,12 @@ function getCultureNodeVisualState(entry: HudCultureEntry): {
   }
   if (entry.isAvailable) {
     return {
-      fillColor: 0x153343,
+      fillColor: 0x2a2141,
       fillAlpha: 0.96,
-      strokeColor: 0x6fb2d4,
-      labelColor: '#ddf2ff',
-      detailColor: '#c5dbeb',
-      prerequisiteColor: '#9fc0d5',
+      strokeColor: 0xa985d8,
+      labelColor: '#f0ebff',
+      detailColor: '#d5cfff',
+      prerequisiteColor: '#b7aadf',
       isSelectable: true,
     };
   }
@@ -978,13 +978,13 @@ function refreshCultureButtonVisual(button: CultureButtonView): void {
   }
 
   if (button.pressed) {
-    button.background.setFillStyle(0x1f4b62, 0.98);
-    button.iconFrame.setFillStyle(0x102c3a, 0.98);
+    button.background.setFillStyle(0x3b2b55, 0.98);
+    button.iconFrame.setFillStyle(0x291d3b, 0.98);
   } else if (button.hovered) {
-    button.background.setFillStyle(0x1d495e, 1);
-    button.iconFrame.setFillStyle(0x123343, 1);
+    button.background.setFillStyle(0x39284f, 1);
+    button.iconFrame.setFillStyle(0x2d2040, 1);
   } else {
-    button.background.setFillStyle(0x153343, 0.96);
+    button.background.setFillStyle(button.baseFillColor, button.baseFillAlpha);
     button.iconFrame.setFillStyle(0x0b1821, 0.95);
   }
 }

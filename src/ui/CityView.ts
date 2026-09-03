@@ -1,6 +1,6 @@
 import type { City } from '../entities/City';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
-import { getBuildingSpritePath, getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+import { getBuildingSpritePath, getCorporationSpritePath, getProjectSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 
 type CloseCallback = () => void;
 type PlacementRequestCallback = (buildingId: string) => void;
@@ -19,6 +19,8 @@ type ProductionAccordionId = 'units' | 'buildings' | 'wonders' | 'corporations' 
 export interface CityViewAnchor {
   screenX: number;
   screenY: number;
+  /** Screen-space right edge of the city's rightmost owned tile. */
+  rightEdgeScreenX?: number;
 }
 
 type CityViewAnchorProvider = () => CityViewAnchor;
@@ -510,8 +512,6 @@ export class CityView {
     requestAnimationFrame(() => {
       if (!this.open || this.userPositioned || this.anchorProvider === null) return;
 
-      const margin = 24;
-      const gap = 28;
       const cityRadius = 34;
       const viewportW = window.innerWidth;
       const viewportH = window.innerHeight;
@@ -519,42 +519,10 @@ export class CityView {
       const panelW = rect.width;
       const panelH = rect.height;
       const anchor = this.anchorProvider();
-      const anchorX = clamp(anchor.screenX, margin, viewportW - margin);
-      const anchorY = clamp(anchor.screenY, margin, viewportH - margin);
-      const rawY = anchorY - panelH / 2;
+      const position = resolveCityViewPosition(anchor, panelW, panelH, viewportW, viewportH, cityRadius);
 
-      const candidates = [
-        // Keep the panel horizontally beside the city and vertically centred
-        // on it. The right side is the preferred reading direction; overlap
-        // scoring naturally falls back to the left near the viewport edge.
-        { x: anchorX + gap + cityRadius, y: rawY, priority: 0 },
-        { x: anchorX - panelW - gap - cityRadius, y: rawY, priority: 1 },
-        { x: anchorX - panelW / 2, y: anchorY + gap + cityRadius, priority: 2 },
-        { x: anchorX - panelW / 2, y: anchorY - panelH - gap - cityRadius, priority: 3 },
-      ].map((candidate) => ({
-        ...candidate,
-        x: clamp(candidate.x, margin, Math.max(margin, viewportW - panelW - margin)),
-        y: clamp(candidate.y, margin, Math.max(margin, viewportH - panelH - margin)),
-      }));
-
-      const cityRect = {
-        left: anchorX - cityRadius,
-        top: anchorY - cityRadius,
-        right: anchorX + cityRadius,
-        bottom: anchorY + cityRadius,
-      };
-      const best = candidates
-        .map((candidate) => ({
-          ...candidate,
-          overlap: rectOverlapArea(
-            { left: candidate.x, top: candidate.y, right: candidate.x + panelW, bottom: candidate.y + panelH },
-            cityRect,
-          ),
-        }))
-        .sort((a, b) => a.overlap - b.overlap || a.priority - b.priority)[0] ?? candidates[0];
-
-      this.root.style.left = `${Math.round(best.x)}px`;
-      this.root.style.top = `${Math.round(best.y)}px`;
+      this.root.style.left = `${Math.round(position.left)}px`;
+      this.root.style.top = `${Math.round(position.top)}px`;
     });
   }
 
@@ -730,7 +698,7 @@ export class CityView {
 
     const projects = this.renderProductionAccordion('projects', 'Projects', projectOptions, (grid, option) => {
       const button = this.createProductionButton(
-        undefined,
+        getProjectSpritePath(option.id),
         `${option.name} — +${option.goldPerTurn} Gold / turn`,
       );
       if (option.active) button.classList.add('city-view-placement-button-active');
@@ -1132,11 +1100,19 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function rectOverlapArea(
-  a: { left: number; top: number; right: number; bottom: number },
-  b: { left: number; top: number; right: number; bottom: number },
-): number {
-  const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-  const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-  return width * height;
+export function resolveCityViewPosition(
+  anchor: CityViewAnchor,
+  panelWidth: number,
+  panelHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  cityRadius = 34,
+): { left: number; top: number } {
+  const rightmostTileEdge = anchor.rightEdgeScreenX ?? anchor.screenX + cityRadius;
+  return {
+    // Prefer a flush join with the rightmost owned tile. If the panel would
+    // leave the viewport, keep it as far right as the available space permits.
+    left: clamp(rightmostTileEdge, 0, Math.max(0, viewportWidth - panelWidth)),
+    top: clamp(anchor.screenY - panelHeight / 2, 0, Math.max(0, viewportHeight - panelHeight)),
+  };
 }

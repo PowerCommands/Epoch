@@ -44,6 +44,7 @@ interface VisionSource {
  */
 export class FogOfWarRenderer {
   private readonly gfx: Phaser.GameObjects.Graphics;
+  private visualRevealPredicate: (tileX: number, tileY: number) => boolean = () => false;
 
   constructor(
     scene: Phaser.Scene,
@@ -77,6 +78,7 @@ export class FogOfWarRenderer {
 
     for (let y = 0; y < this.mapData.height; y++) {
       for (let x = 0; x < this.mapData.width; x++) {
+        if (this.visualRevealPredicate(x, y)) continue;
         const state = this.visibilitySystem.getState(x, y);
         if (state === VisibilityState.Visible) continue;
 
@@ -112,6 +114,11 @@ export class FogOfWarRenderer {
 
   setVisible(visible: boolean): void {
     this.gfx.setVisible(visible);
+  }
+
+  /** Install a visual-only fog exception without mutating visibility state. */
+  setVisualRevealPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+    this.visualRevealPredicate = predicate;
   }
 
   destroy(): void {

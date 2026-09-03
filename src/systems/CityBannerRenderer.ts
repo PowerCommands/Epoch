@@ -3,7 +3,7 @@ import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
 import type { Producible } from '../types/producible';
 import type { Tooltip } from '../ui/hud/Tooltip';
-import { getBuildingSpritePath, getCorporationSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+import { getBuildingSpritePath, getCorporationSpritePath, getProjectSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
@@ -462,7 +462,12 @@ export class CityBannerRenderer {
     }
 
     if (production.kind === 'project') {
-      return { textureKey: undefined, fallbackLabel: getAbbreviation(production.projectType.name) };
+      const textureKey = this.ensureProductionTexture(
+        'project',
+        production.projectType.id,
+        getProjectSpritePath(production.projectType.id),
+      );
+      return { textureKey, fallbackLabel: getAbbreviation(production.projectType.name) };
     }
 
     if (production.kind === 'manufacturedResource') {

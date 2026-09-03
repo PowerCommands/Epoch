@@ -11,6 +11,7 @@ import {
   buildGamesOfNationsUiModel,
   GAMES_HUD_BUTTON_LAYOUT,
   GAMES_HUD_DARK_BLUE,
+  getEffectivePlannedGamesPoints,
 } from '../src/ui/hud/GamesOfNationsUiModel';
 
 const HUMAN = 'human';
@@ -230,6 +231,11 @@ test('active policy-card sport bonuses flow through to the investment model', ()
   assert.deepEqual(model().policySportBonuses, {});
 });
 
+test('effective recurring plan includes the planned allocation and policy bonus', () => {
+  assert.equal(getEffectivePlannedGamesPoints(60, 0, 100), 160);
+  assert.equal(getEffectivePlannedGamesPoints(60, 25, 100), 185);
+});
+
 test('phase presentation exposes waiting, active sport, and cooldown timing', () => {
   const waiting = model({ phase: 'waitingForFirstGames', turnsUntilNextPhase: 8, phaseProgressTurn: null, phaseTotalTurns: null });
   assert.equal(waiting.turnsUntilPreparation, 8);
@@ -284,10 +290,12 @@ test('dialog copy labels base Production accurately and explains bonus-amplified
   assert.match(source, /allocationButton\('\+50', 50\)/);
   assert.match(source, /allocationButton\('ALL', 'all'\)/);
   assert.match(source, /const selectedHostBonusSport = model\.hostBonusSport \?\? this\.hostBonusSportDraft/);
-  assert.match(source, /if \(display\.hostChip\) display\.hostChip\.hidden = hostBonus <= 0/);
-  assert.match(source, /if \(display\.policyChip\) display\.policyChip\.hidden = display\.policyBonus <= 0/);
-  assert.match(source, /display\.effective\.hidden = totalBonus <= 0/);
+  assert.match(source, /if \(display\?\.hostChip\) display\.hostChip\.hidden = hostBonus <= 0/);
+  assert.match(source, /if \(display\?\.policyChip\) display\.policyChip\.hidden = policyBonus <= 0/);
   assert.match(source, /Policy Bonus \+\$\{policyBonus\} GP/);
+  assert.match(source, /const plannedTotal = getEffectivePlannedGamesPoints\(strategy\[sport\], hostBonus, policyBonus\)/);
+  assert.match(source, /\$\{plannedTotal\} GP \/ turn planned/);
+  assert.doesNotMatch(source, /Effective plan/);
   assert.doesNotMatch(source, /% future/);
   assert.doesNotMatch(source, /gon-allocation-/);
   assert.match(source, /Competition results/);

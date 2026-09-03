@@ -107,7 +107,7 @@ export class CheatConsole {
     window.setTimeout(() => this.inputEl.focus(), 0);
   }
 
-  private close(): void {
+  close(): void {
     this.isOpen = false;
     this.closeCompletions();
     this.root.style.display = 'none';

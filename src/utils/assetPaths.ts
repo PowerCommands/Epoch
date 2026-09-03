@@ -67,6 +67,14 @@ export function getCorporationSpriteKey(corporationId: string): string {
   return `corporation_${corporationId}`;
 }
 
+export function getProjectSpritePath(projectId: string): string {
+  return `assets/sprites/projects/${projectId}.png`;
+}
+
+export function getProjectSpriteKey(projectId: string): string {
+  return `project_${projectId}`;
+}
+
 export function getNaturalResourceSpritePath(resourceId: string): string {
   return `assets/sprites/resources/${resourceId}.png`;
 }

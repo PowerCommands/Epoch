@@ -55,6 +55,9 @@ export class CityManager {
   private readonly listeners: CityChangedListener[] = [];
 
   addCity(city: City): void {
+    if (this.cities.has(city.id)) {
+      throw new Error(`Cannot add city with duplicate id: ${city.id}`);
+    }
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
     this.buildings.set(city.id, new CityBuildings(city.id));

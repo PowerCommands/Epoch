@@ -50,6 +50,8 @@ export interface GameContext {
   refreshTileVisuals: (tileX: number, tileY: number) => void;
   revealMapResourcesTemporarily: () => void;
   setFogEnabled: (enabled: boolean) => void;
+  /** Open the developer dialog for editing bilateral relationship memory. */
+  openRelationsDialog: () => void;
   /**
    * Force an alliance between the human player and `targetNationId`, running the
    * same alliance-formation code path (manager, relation updates, event log, UI
@@ -359,6 +361,16 @@ export class CheatSystem {
           { value: 'on', description: 'Enable fog of war.' },
           { value: 'off', description: 'Disable fog of war (reveal whole map).' },
         ]);
+      },
+    });
+
+    this.register({
+      name: 'relations',
+      description: 'Open the nation relationship memory editor.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: relations';
+        context.openRelationsDialog();
+        return 'Relations editor opened.';
       },
     });
 

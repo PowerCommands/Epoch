@@ -216,6 +216,7 @@ import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOver
 import { CultureLayerRenderer } from '../renderers/CultureLayerRenderer';
 import { FogOfWarRenderer } from '../renderers/FogOfWarRenderer';
 import { VisibilitySystem } from '../systems/VisibilitySystem';
+import { collectResourceLensRevealTiles, resourceLensCoordKey } from '../systems/ResourceMapLens';
 import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { WonderSystem } from '../systems/WonderSystem';
 import { WorldCouncilSystem } from '../systems/WorldCouncilSystem';
@@ -229,6 +230,7 @@ import { HexGridLayout } from '../systems/gridLayout/HexGridLayout';
 import { WorldInputGate } from '../systems/input/WorldInputGate';
 import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
+import { RelationsCheatDialog } from '../ui/RelationsCheatDialog';
 import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
@@ -272,7 +274,7 @@ import { SaveLoadService } from '../systems/SaveLoadService';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
-import { CULTURE_TREE } from '../data/cultureTree';
+import { CULTURE_TREE, ENLIGHTENMENT_CULTURE_NODE_ID } from '../data/cultureTree';
 import { getPoliciesByRequiredCultureNodeId } from '../data/policies';
 import { getImprovementById } from '../data/improvements';
 import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
@@ -287,6 +289,7 @@ import {
   getCultureSpritePath,
   getPolicySpriteKey,
   getPolicySpritePath,
+  getProjectSpritePath,
   getTechnologySpriteKey,
   getTechnologySpritePath,
   getUnitSpriteKey,
@@ -592,7 +595,12 @@ export class GameScene extends Phaser.Scene {
     const cultureLayerRenderer = new CultureLayerRenderer(this, tileMap, nationManager, mapData);
 
     // 5c. Fog of war — depth 7 (above borders/resources, below cities and units).
-    const visibilitySystem = new VisibilitySystem(mapData, gridSystem);
+    const visibilitySystem = new VisibilitySystem(
+      mapData,
+      gridSystem,
+      () => humanNationId !== undefined
+        && (nationManager.getNation(humanNationId)?.unlockedCultureNodeIds.includes(ENLIGHTENMENT_CULTURE_NODE_ID) ?? false),
+    );
     const fogOfWarRenderer = new FogOfWarRenderer(this, tileMap, mapData, visibilitySystem);
 
     // 6. Create cities from scenario (filtered)
@@ -623,13 +631,16 @@ export class GameScene extends Phaser.Scene {
     // updateFog() re-cull cities/units/borders/resources/improvements after a
     // visibility recompute. No-op until then so early calls stay safe.
     let applyFogToRenderers: () => void = () => {};
+    let refreshResourceLensRevealTiles: () => void = () => {};
     const updateFog = (): void => {
       if (!humanNationId) return;
+      fogOfWarRenderer.setVisible(visibilitySystem.isEnabled());
       const humanCities = cityManager.getCitiesByOwner(humanNationId);
       const humanUnits = unitManager.getUnitsByOwner(humanNationId);
       visibilitySystem.update(humanCities, humanUnits);
       // Any city now in vision becomes permanently known (city + surroundings).
       visibilitySystem.recordVisibleCities(cityManager.getAllCities());
+      refreshResourceLensRevealTiles();
       fogOfWarRenderer.refresh(humanCities, humanUnits);
       applyFogToRenderers();
     };
@@ -1145,6 +1156,7 @@ export class GameScene extends Phaser.Scene {
     const applyMapLensMode = (): void => {
       cultureLayerRenderer.setVisible(mapLensMode === 'culture');
       hudLayer?.setMapLensMode(mapLensMode);
+      updateFog();
     };
     refreshCultureOverlay = (): void => {
       cultureLayerRenderer.refresh();
@@ -1152,6 +1164,10 @@ export class GameScene extends Phaser.Scene {
     const toggleMapLens = (): void => {
       mapLensMode = mapLensMode === 'culture' ? 'normal' : 'culture';
       refreshCultureOverlay();
+      applyMapLensMode();
+    };
+    const toggleResourceMapLens = (): void => {
+      mapLensMode = mapLensMode === 'resources' ? 'normal' : 'resources';
       applyMapLensMode();
     };
     refreshCultureOverlay();
@@ -2303,6 +2319,7 @@ export class GameScene extends Phaser.Scene {
     };
     const buildCultureDiscoveryPopupData = (cultureNode: CultureNode): DiscoveryPopupData => ({
       title: cultureNode.name,
+      theme: 'culture',
       imageKey: getCultureSpriteKey(cultureNode.id),
       imagePath: getCultureSpritePath(cultureNode.id),
       description: cultureNode.description,
@@ -2400,12 +2417,19 @@ export class GameScene extends Phaser.Scene {
     };
     // Combined predicate the renderer actually uses: the resource must pass the
     // reveal-tech gate AND sit on a tile the human can currently see. Resources
-    // are hidden on explored-but-not-visible tiles (fog of war rule).
+    // are hidden on explored-but-not-visible tiles (fog of war rule). The
+    // resource lens additionally omits improved resources so it highlights only
+    // unexploited opportunities.
     const isResourceTileVisibleToHuman = (tileX: number, tileY: number): boolean => {
-      const resourceId = mapData.tiles[tileY]?.[tileX]?.resourceId;
+      const tile = mapData.tiles[tileY]?.[tileX];
+      const resourceId = tile?.resourceId;
       if (!resourceId) return false;
       if (!isNaturalResourceVisibleToHuman(resourceId)) return false;
       if (isMapRevealActive) return true;
+      if (mapLensMode === 'resources') {
+        if (tile.improvementId) return false;
+        return visibilitySystem.isTileExploredByHuman(tileX, tileY);
+      }
       return visibilitySystem.canRenderObjectAt(tileX, tileY);
     };
     const revealMapResourcesTemporarily = (): void => {
@@ -2420,6 +2444,20 @@ export class GameScene extends Phaser.Scene {
     const isNaturalResourceRevealTechnology = (technologyId: string): boolean => (
       NATURAL_RESOURCES.some((resource) => resource.revealTechId === technologyId)
     );
+    let resourceLensRevealTiles = new Set<string>();
+    refreshResourceLensRevealTiles = (): void => {
+      resourceLensRevealTiles = mapLensMode === 'resources'
+        ? collectResourceLensRevealTiles(
+          mapData,
+          gridSystem,
+          (x, y) => visibilitySystem.isTileExploredByHuman(x, y),
+          isNaturalResourceVisibleToHuman,
+        )
+        : new Set<string>();
+    };
+    fogOfWarRenderer.setVisualRevealPredicate((x, y) => (
+      mapLensMode === 'resources' && resourceLensRevealTiles.has(resourceLensCoordKey(x, y))
+    ));
     naturalResourceRenderer.setVisibilityPredicate(isResourceTileVisibleToHuman);
     naturalResourceRenderer.rebuildAll();
 
@@ -7130,6 +7168,7 @@ export class GameScene extends Phaser.Scene {
         return distributed;
       },
       onToggleMapLens: toggleMapLens,
+      onToggleResourceMapLens: toggleResourceMapLens,
       getWorldCouncilFoundationState: getWorldCouncilFoundationStateForHuman,
       getWorldCouncilOverviewState: getWorldCouncilOverviewStateForHuman,
       getWorldCouncilContributionState: getWorldCouncilContributionStateForHuman,
@@ -8952,7 +8991,7 @@ export class GameScene extends Phaser.Scene {
       );
       if (reachedEra) gamesOfNationsSystem.handleEraReached(reachedEra, turnManager.getCurrentRound());
       if (event.nationId === humanNationId && isNaturalResourceRevealTechnology(event.technologyId)) {
-        naturalResourceRenderer.rebuildAll();
+        updateFog();
       }
       for (const city of cityManager.getCitiesByOwner(event.nationId)) {
         cityRenderer.refreshCity(city);
@@ -8981,6 +9020,9 @@ export class GameScene extends Phaser.Scene {
         turnManager.getCurrentRound(),
       );
       cultureEffectSystem.handleCultureNodeCompleted(event.nationId, event.cultureNode);
+      if (event.nationId === humanNationId && event.cultureNode.id === ENLIGHTENMENT_CULTURE_NODE_ID) {
+        updateFog();
+      }
       resourceSystem.recalculateForNation(event.nationId);
       happinessSystem.recalculateNation(event.nationId);
       if (event.nationId === humanNationId && !autoplaySystem.isActive()) {
@@ -9325,7 +9367,17 @@ export class GameScene extends Phaser.Scene {
       return `Confirm to switch human player to ${targetName}.`;
     };
 
-    const cheatConsole = new CheatConsole(new CheatSystem({
+    const relationsCheatDialog = new RelationsCheatDialog({
+      nationManager,
+      diplomacyManager,
+      humanNationId,
+      onRelationChanged: () => {
+        hudLayer?.refresh();
+        rightPanel?.requestRefresh();
+      },
+    });
+    let cheatConsole: CheatConsole;
+    cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
       researchSystem,
       cultureSystem,
@@ -9351,8 +9403,11 @@ export class GameScene extends Phaser.Scene {
       revealMapResourcesTemporarily,
       setFogEnabled: (enabled: boolean): void => {
         visibilitySystem.setEnabled(enabled);
-        fogOfWarRenderer.setVisible(enabled);
         updateFog();
+      },
+      openRelationsDialog: (): void => {
+        cheatConsole.close();
+        relationsCheatDialog.show();
       },
       formHumanAlliance: formHumanAllianceForCheat,
       switchHumanPlayer: switchHumanPlayerForCheat,
@@ -9678,6 +9733,7 @@ export class GameScene extends Phaser.Scene {
       this.leaderGossipDialog?.destroy();
       this.leaderGossipDialog = null;
       leaderStrip?.shutdown();
+      relationsCheatDialog.shutdown();
       cheatConsole.shutdown();
     });
 
@@ -10215,22 +10271,23 @@ export class GameScene extends Phaser.Scene {
     const openCityView = (city: City): void => {
       unbindGameplayHotkeys();
       const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
+      const rightmostOwnedTileWorldX = [
+        { x: city.tileX, y: city.tileY },
+        ...city.ownedTileCoords,
+      ].reduce((rightmost, coord) => {
+        const tileRight = tileMap.getTileOutlinePoints(coord.x, coord.y)
+          .reduce((maxX, point) => Math.max(maxX, point.x), Number.NEGATIVE_INFINITY);
+        return Math.max(rightmost, tileRight);
+      }, x);
       const cityViewZoom = 2.0;
       const viewportWidth = window.innerWidth;
       const panelWidth = viewportWidth <= 900
         ? Math.max(0, viewportWidth - 24)
         : Math.min(760, viewportWidth * 0.64);
-      const panelMargin = 24;
-      const cityToPanelGap = 28 + 34;
-      const preferredCityScreenX = Math.max(
-        panelMargin + 34,
-        Math.min(
-          viewportWidth / 2,
-          viewportWidth - panelMargin - panelWidth - cityToPanelGap,
-        ),
-      );
-      const focusOffsetWorldX = (viewportWidth / 2 - preferredCityScreenX) / cityViewZoom;
-      this.cameraController.focusOn(x + focusOffsetWorldX, y, cityViewZoom);
+      const preferredPanelLeft = Math.max(0, viewportWidth - panelWidth);
+      const focusWorldX = rightmostOwnedTileWorldX
+        - (preferredPanelLeft - viewportWidth / 2) / cityViewZoom;
+      this.cameraController.focusOn(focusWorldX, y, cityViewZoom);
       cityView.show(
         city,
         getCityViewUnitOptions(city),
@@ -10244,7 +10301,10 @@ export class GameScene extends Phaser.Scene {
         // Resolve after Phaser has applied camera bounds for this frame. Near
         // map edges, calculating this eagerly points at the requested camera
         // centre rather than the city's final on-screen position.
-        () => worldToScreen(this.cameras.main, x, y),
+        () => ({
+          ...worldToScreen(this.cameras.main, x, y),
+          rightEdgeScreenX: worldToScreen(this.cameras.main, rightmostOwnedTileWorldX, y).screenX,
+        }),
       );
       cityViewRenderer.showWithState(
         city,
@@ -10585,6 +10645,10 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getCorporationSpritePath(item.corporationType.id);
     case 'manufacturedResource':
       return getCorporationSpritePath(AEROSPACE_PARTS_ID);
+    case 'project':
+      return getProjectSpritePath(item.projectType.id);
+    case 'tradeRoute':
+      return undefined;
   }
 }
 

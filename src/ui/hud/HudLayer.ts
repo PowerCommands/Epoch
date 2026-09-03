@@ -60,6 +60,7 @@ interface HudLayerConfig {
   onAllocateGamesPoints: (sport: GamesOfNationsSport, amount: number) => boolean;
   onDistributeRemainingGamesPoints: () => boolean;
   onToggleMapLens: () => void;
+  onToggleResourceMapLens: () => void;
   getWorldCouncilFoundationState?: () => WorldCouncilFoundationDialogState | null;
   getWorldCouncilOverviewState?: () => WorldCouncilOverviewState | null;
   getWorldCouncilContributionState?: () => WorldCouncilContributionDialogState | null;
@@ -225,6 +226,7 @@ export class HudLayer {
       this.config.worldInputGate,
     );
     this.mapLensToggle.setOnToggle(() => this.config.onToggleMapLens());
+    this.mapLensToggle.setOnResourceToggle(() => this.config.onToggleResourceMapLens());
 
     this.worldCouncilDialog = new WorldCouncilFoundationDialog(
       scene,

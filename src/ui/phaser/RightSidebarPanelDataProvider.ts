@@ -98,7 +98,7 @@ import type { Producible } from '../../types/producible';
 import type { LeaderDefinition } from '../../types/leader';
 import type { MapData, Tile } from '../../types/map';
 import { EMPTY_MODIFIERS } from '../../types/modifiers';
-import { getCitySpritePath, getCorporationSpritePath, getNaturalResourceSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
+import { getCitySpritePath, getCorporationSpritePath, getNaturalResourceSpritePath, getProjectSpritePath, getUnitSpritePath, getWonderSpritePath } from '../../utils/assetPaths';
 import {
   CULTURAL_VICTORY_REQUIRED_CULTURE,
   CULTURAL_VICTORY_REQUIRED_WONDERS,
@@ -3132,8 +3132,9 @@ function getProducibleSpritePath(item: Producible): string | undefined {
       return getCorporationSpritePath(item.corporationType.id);
     case 'manufacturedResource':
       return getCorporationSpritePath(AEROSPACE_PARTS_ID);
-    case 'building':
     case 'project':
+      return getProjectSpritePath(item.projectType.id);
+    case 'building':
     case 'tradeRoute':
       return undefined;
   }

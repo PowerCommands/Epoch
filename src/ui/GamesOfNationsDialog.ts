@@ -1,7 +1,10 @@
 import { ALL_GAMES_SPORTS, getGamesSportByName } from '../data/gamesOfNationsSports';
 import { GAMES_POINTS_PER_RESOURCE, reduceGamesStrategyToBudget } from '../systems/GamesOfNationsSystem';
 import type { GamesOfNationsSport, GamesOfNationsSportId, GamesOfNationsSportValues } from '../types/gamesOfNations';
-import type { GamesOfNationsUiModel } from './hud/GamesOfNationsUiModel';
+import {
+  getEffectivePlannedGamesPoints,
+  type GamesOfNationsUiModel,
+} from './hud/GamesOfNationsUiModel';
 
 const OVERLAY_ID = 'epoch-games-of-nations-dialog';
 
@@ -331,8 +334,6 @@ export class GamesOfNationsDialog {
     const bonusDisplays = new Map<GamesOfNationsSport, {
       hostChip?: HTMLElement;
       policyChip?: HTMLElement;
-      effective: HTMLElement;
-      committed: number;
       policyBonus: number;
     }>();
     const strategyButtons: HTMLButtonElement[] = [];
@@ -378,10 +379,8 @@ export class GamesOfNationsDialog {
         const entry: {
           hostChip?: HTMLElement;
           policyChip?: HTMLElement;
-          effective: HTMLElement;
-          committed: number;
           policyBonus: number;
-        } = { effective: text('', 'gon-sport-effective'), committed, policyBonus };
+        } = { policyBonus };
         if (hostPossible) {
           entry.hostChip = text(`Host Bonus +${model.hostBonusGamesPoints} GP`, 'gon-host-bonus-chip');
           entry.hostChip.hidden = true;
@@ -391,8 +390,6 @@ export class GamesOfNationsDialog {
           entry.policyChip = text(`Policy Bonus +${policyBonus} GP`, 'gon-host-bonus-chip');
           card.append(entry.policyChip);
         }
-        entry.effective.hidden = true;
-        card.append(entry.effective);
         bonusDisplays.set(sport, entry);
       }
       card.appendChild(controls);
@@ -435,15 +432,15 @@ export class GamesOfNationsDialog {
       poolValue.textContent = `${remaining} GP / turn`;
       poolHint.textContent = `Plan budget: ${budget} GP / turn. Actual resources are charged only when the turn is processed.`;
       unallocatedLabel.textContent = `Strategy unassigned: ${remaining} GP / turn${earnedPool > 0 ? ` · Previously earned unallocated: ${earnedPool} GP` : ''}`;
-      for (const sport of model.activeSports) plannedLabels.get(sport)!.textContent = `${strategy[sport]} GP / turn planned`;
       const selectedHostBonusSport = model.hostBonusSport ?? this.hostBonusSportDraft;
-      for (const [sport, display] of bonusDisplays) {
-        const hostBonus = display.hostChip && sport === selectedHostBonusSport ? model.hostBonusGamesPoints : 0;
-        if (display.hostChip) display.hostChip.hidden = hostBonus <= 0;
-        if (display.policyChip) display.policyChip.hidden = display.policyBonus <= 0;
-        const totalBonus = hostBonus + display.policyBonus;
-        display.effective.textContent = `Effective ${display.committed + totalBonus} GP`;
-        display.effective.hidden = totalBonus <= 0;
+      for (const sport of model.activeSports) {
+        const display = bonusDisplays.get(sport);
+        const hostBonus = display?.hostChip && sport === selectedHostBonusSport ? model.hostBonusGamesPoints : 0;
+        const policyBonus = display?.policyBonus ?? 0;
+        if (display?.hostChip) display.hostChip.hidden = hostBonus <= 0;
+        if (display?.policyChip) display.policyChip.hidden = policyBonus <= 0;
+        const plannedTotal = getEffectivePlannedGamesPoints(strategy[sport], hostBonus, policyBonus);
+        plannedLabels.get(sport)!.textContent = `${plannedTotal} GP / turn planned`;
       }
       for (const control of strategyButtons) control.disabled = !editable;
       distributeEvenly.disabled = !editable || remaining <= 0;

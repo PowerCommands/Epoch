@@ -7,6 +7,9 @@ function node(input: CultureNode): CultureNode {
 /** Canonical culture-node id for the existing Colonialism progression node. */
 export const COLONIALISM_CULTURE_NODE_ID = 'colonialism';
 
+/** Completing this node permanently reveals the world map to the human player. */
+export const ENLIGHTENMENT_CULTURE_NODE_ID = 'enlightenment';
+
 export const CULTURE_TREE: CultureNode[] = [
   node({ id: 'code_of_laws', name: 'Code of Laws', era: 'ancient', cost: 20, description: 'Formal rules turn custom into authority. Shared laws give the first cities a common structure for justice, duty, and rule.', unlocks: [{ type: 'government', value: 'chiefdom' }, { type: 'policySlot', value: 'economic' }] }),
   node({ id: 'craftsmanship', name: 'Craftsmanship', era: 'ancient', cost: 48, description: 'Skilled hands organize labor, tools, and local defense. Craft traditions help settlements turn raw materials into lasting civic strength.', prerequisites: ['code_of_laws'], unlocks: [{ type: 'policySlot', value: 'military' }] }),
@@ -32,7 +35,7 @@ export const CULTURE_TREE: CultureNode[] = [
   node({ id: 'reformed_church', name: 'Reformed Church', era: 'renaissance', cost: 400, description: 'Religious authority is challenged, refined, and reorganized. Belief becomes a force for reform as well as tradition.', prerequisites: ['theology_civics', 'humanism'], unlocks: [{ type: 'government', value: 'reformed_theocracy' }], effects: [{ type: 'happinessPerTurnFlat', value: 2 }] }),
   node({ id: 'mercantilism', name: 'Mercantilism', era: 'renaissance', cost: 430, description: 'The state treats commerce as national strategy. Ports, charters, and controlled markets turn trade into power.', prerequisites: ['exploration'], unlocks: [] }),
   node({ id: 'nationalism', name: 'Nationalism', era: 'renaissance', cost: 440, description: 'Shared language, memory, and symbols forge mass identity. Popular movements, independence struggles, and organized resistance take root.', prerequisites: ['humanism', 'mercantilism'], unlocks: [{ type: 'unit', value: 'corps' }, { type: 'unit', value: 'rebels' }] }),
-  node({ id: 'enlightenment', name: 'The Enlightenment', era: 'industrial', cost: 470, description: 'Reason, rights, and public inquiry challenge inherited authority. Knowledge becomes a civic engine for reform and progress.', prerequisites: ['humanism', 'diplomatic_service'], unlocks: [{ type: 'building', value: 'university' }], effects: [{ type: 'happinessPerTurnFlat', value: 2 }] }),
+  node({ id: ENLIGHTENMENT_CULTURE_NODE_ID, name: 'The Enlightenment', era: 'industrial', cost: 470, description: 'Reason, rights, and public inquiry challenge inherited authority. Knowledge becomes a civic engine for reform and progress. Permanently reveals the entire world map.', prerequisites: ['humanism', 'diplomatic_service'], unlocks: [{ type: 'building', value: 'university' }], effects: [{ type: 'happinessPerTurnFlat', value: 2 }] }),
   node({ id: 'natural_history', name: 'Natural History', era: 'industrial', cost: 500, description: 'Careful observation and classification turn the living world into a shared field of public knowledge.', prerequisites: ['enlightenment'], unlocks: [] }),
   node({ id: 'opera_ballet', name: 'Opera and Ballet', era: 'industrial', cost: 510, description: 'Grand music, theatre, and disciplined movement bring civic performance to an ambitious new scale.', prerequisites: ['enlightenment'], unlocks: [] }),
   node({ id: COLONIALISM_CULTURE_NODE_ID, name: 'Colonialism', era: 'industrial', cost: 600, description: 'Overseas ambition becomes administration, extraction, and settlement. Distant holdings reshape diplomacy and the home economy.', prerequisites: ['mercantilism'], unlocks: [{ type: 'diplomacy', value: 'colonial_charters' }] }),
