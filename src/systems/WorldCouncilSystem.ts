@@ -96,6 +96,23 @@ export class WorldCouncilSystem {
   private readonly resolutionExpiredListeners: WorldCouncilResolutionExpiredListener[] = [];
   private hasSkippedInitialTurnStart = false;
   private lastProcessedCouncilRound = 0;
+  /**
+   * When set, a freshly created meeting's proposals are held unresolved so an
+   * interactive human member can vote through the in-game Council Session UI.
+   * The meeting resolves via {@link resolvePendingHumanVoteMeeting}. This is a
+   * transient runtime flag, reconstructed from canonical state on {@link restore}.
+   */
+  private pendingHumanVoteMeetingId: number | null = null;
+  private humanVotingDeferralEnabled?: () => boolean;
+
+  /**
+   * Provide a predicate that decides whether meetings with a human member should
+   * defer proposal resolution for interactive voting (true for a normal
+   * human-played game; false for autorun / AI-only, which resolves synchronously).
+   */
+  setHumanVotingDeferralEnabled(predicate: () => boolean): void {
+    this.humanVotingDeferralEnabled = predicate;
+  }
 
   constructor(
     private readonly nationManager: NationManager,
@@ -363,7 +380,8 @@ export class WorldCouncilSystem {
       emergencyTrigger: trigger,
     });
     this.notifyChanged();
-    this.notifyMeeting(meeting);
+    // A deferred meeting notifies only once it resolves after human voting.
+    if (!this.isMeetingPendingHumanVote(meeting.id)) this.notifyMeeting(meeting);
     return { ...meeting, emergencyTrigger: meeting.emergencyTrigger ? { ...meeting.emergencyTrigger } : undefined };
   }
 
@@ -493,6 +511,18 @@ export class WorldCouncilSystem {
     this.hasSkippedInitialTurnStart = true;
     this.lastProcessedCouncilRound = this.state?.lastRegularMeetingTurn ?? 0;
     this.pruneEliminatedMembers();
+    // Reconstruct a pending human-vote session from canonical state: a saved
+    // meeting whose proposals are still unresolved means a human vote was pending
+    // (AI-only meetings always resolve synchronously). Re-open it for the human.
+    this.pendingHumanVoteMeetingId = null;
+    const hasHumanMember = this.state?.members.some((member) =>
+      this.nationManager.getNation(member.nationId)?.isHuman === true) ?? false;
+    if (hasHumanMember) {
+      const unresolved = this.state?.meetings.find((meeting) =>
+        (meeting.proposals?.length ?? 0) > 0
+        && meeting.proposals!.some((proposal) => proposal.resolved !== true));
+      if (unresolved) this.pendingHumanVoteMeetingId = unresolved.id;
+    }
     this.notifyChanged();
   }
 
@@ -647,7 +677,8 @@ export class WorldCouncilSystem {
 
     const meeting = this.maybeCreateRegularMeeting(round);
     if (meeting) {
-      this.notifyMeeting(meeting);
+      // A deferred meeting notifies only once it resolves after human voting.
+      if (!this.isMeetingPendingHumanVote(meeting.id)) this.notifyMeeting(meeting);
       return true;
     }
     return false;
@@ -737,9 +768,49 @@ export class WorldCouncilSystem {
       nextMeetingId: this.state.nextMeetingId + 1,
     };
     if (meeting.proposals && this.resolutionSystem) {
+      const humanMemberId = this.state.members.find((member) =>
+        this.nationManager.getNation(member.nationId)?.isHuman === true)?.nationId;
+      // Only defer when the human actually casts a YES/NO + Influence vote on this
+      // meeting. Donation-only / no-vote meetings (e.g. emergency Defense Support)
+      // keep resolving synchronously and are not routed through the vote session.
+      const hasHumanInfluenceVote = meeting.proposals.some((proposal) =>
+        proposal.repealTargetEnactedResolutionId !== undefined
+        || this.resolutionSystem!.getDefinition(proposal.resolutionId)?.votingType === 'influence');
+      if (humanMemberId !== undefined && hasHumanInfluenceVote && this.humanVotingDeferralEnabled?.() === true) {
+        // Hold resolution: an interactive human votes through the Council Session
+        // UI, then GameScene calls resolvePendingHumanVoteMeeting() to finish.
+        this.pendingHumanVoteMeetingId = meeting.id;
+        return meeting;
+      }
       return this.resolveMeetingProposals(meeting.id) ?? meeting;
     }
     return meeting;
+  }
+
+  /** True while a created meeting is waiting for interactive human voting. */
+  isMeetingPendingHumanVote(meetingId: number): boolean {
+    return this.pendingHumanVoteMeetingId === meetingId;
+  }
+
+  /** The meeting currently awaiting interactive human votes, if any. */
+  getPendingHumanVoteMeeting(): WorldCouncilMeeting | null {
+    if (this.pendingHumanVoteMeetingId === null) return null;
+    return this.getState()?.meetings.find((meeting) => meeting.id === this.pendingHumanVoteMeetingId) ?? null;
+  }
+
+  /**
+   * Resolve the pending human-vote meeting through the canonical resolution path
+   * (the human's collected votes are read back through the existing
+   * requestHumanInfluenceVote boundary). Returns the resolved meeting.
+   */
+  resolvePendingHumanVoteMeeting(): WorldCouncilMeeting | null {
+    const meetingId = this.pendingHumanVoteMeetingId;
+    if (meetingId === null) return null;
+    this.pendingHumanVoteMeetingId = null;
+    const resolved = this.resolveMeetingProposals(meetingId);
+    this.notifyChanged();
+    if (resolved) this.notifyMeeting(resolved);
+    return this.getState()?.meetings.find((meeting) => meeting.id === meetingId) ?? null;
   }
 
   private createEmergencyMeetingProposals(

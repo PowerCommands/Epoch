@@ -31,6 +31,8 @@ interface UnitDefinitionInput {
   canSabotageBuildings?: boolean;
   canAssassinateWorkers?: boolean;
   isInsurgentForce?: boolean;
+  covertDetectable?: boolean;
+  covertDetectionRange?: number;
   requiredResource?: {
     readonly resourceId: string;
     readonly amount: number;
@@ -88,6 +90,8 @@ function unit(input: UnitDefinitionInput): UnitType {
     canSabotageBuildings: input.canSabotageBuildings,
     canAssassinateWorkers: input.canAssassinateWorkers,
     isInsurgentForce: input.isInsurgentForce,
+    covertDetectable: input.covertDetectable,
+    covertDetectionRange: input.covertDetectionRange,
     requiredResource: input.requiredResource,
     serviceLifeRounds: input.serviceLifeRounds,
   };
@@ -199,24 +203,28 @@ export const SPY = unit({
   id: 'spy', name: 'Spy', era: 'medieval', cost: 90, combatStrength: 8, movement: 2,
   category: 'covert', allegianceType: 'hiddenNation', upgradeToUnitId: 'agent',
   canGatherIntel: true, canSabotageImprovements: true,
+  covertDetectable: true, covertDetectionRange: 3,
   description: 'A covert operative skilled in intelligence gathering and quiet sabotage.',
 });
 export const AGENT = unit({
   id: 'agent', name: 'Agent', era: 'industrial', cost: 250, combatStrength: 32, rangedStrength: 32, range: 5, movement: 2,
   category: 'covert', allegianceType: 'hiddenNation',
   canGatherIntel: true, canSabotageImprovements: true, canSabotageBuildings: true, canAssassinateWorkers: true,
+  covertDetectable: true, covertDetectionRange: 5,
   description: 'An advanced covert operative trained for high-level intelligence and covert operations.',
 });
 export const REBELS = unit({
   id: 'rebels', name: 'Rebels', era: 'renaissance', cost: 450, combatStrength: 32, movement: 2,
   category: 'covert', allegianceType: 'hiddenNation', upgradeToUnitId: 'partisans',
   isInsurgentForce: true,
+  covertDetectable: true, covertDetectionRange: 7,
   description: 'An insurgent proxy force used to wage deniable, irregular warfare.',
 }); // cost ≈ 3× Musketman (150)
 export const PARTISANS = unit({
   id: 'partisans', name: 'Partisans', era: 'modern', cost: 1125, combatStrength: 102, movement: 2,
   category: 'covert', allegianceType: 'hiddenNation',
   isInsurgentForce: true,
+  covertDetectable: true, covertDetectionRange: 9,
   description: 'A modern insurgent army that wages irregular warfare behind enemy lines.',
 }); // cost ≈ 3× Tank (375)
 

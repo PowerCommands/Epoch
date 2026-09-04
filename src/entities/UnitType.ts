@@ -76,6 +76,10 @@ export interface UnitType {
   readonly canAssassinateWorkers?: boolean;
   /** Marks an insurgent proxy force (Rebels, Partisans). Behavior added later. */
   readonly isInsurgentForce?: boolean;
+  /** Enemy units of this type require current human-player detection to render. */
+  readonly covertDetectable?: boolean;
+  /** Hex distance within which this unit detects any covert-detectable enemy. */
+  readonly covertDetectionRange?: number;
   readonly requiredResource?: {
     readonly resourceId: string;
     readonly amount: number;

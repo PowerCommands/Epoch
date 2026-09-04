@@ -83,6 +83,7 @@ import { HexEdgeOverlayRenderer } from '../systems/HexEdgeOverlayRenderer';
 import { COAST_EDGE_PASSES, BIOME_EDGE_PASSES } from '../data/terrainEdges';
 import { CityRenderer } from '../systems/CityRenderer';
 import { UnitRenderer } from '../systems/UnitRenderer';
+import { canRenderUnitToHuman } from '../systems/HumanUnitVisibility';
 import { MovementSystem } from '../systems/MovementSystem';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
 import { PathPreviewRenderer } from '../systems/PathPreviewRenderer';
@@ -176,6 +177,13 @@ import { getGamesSportByName } from '../data/gamesOfNationsSports';
 import { buildGamesOfNationsEdition } from '../systems/GamesOfNationsChronicle';
 import type { GamesOfNationsSportValues, GamesOfNationsSummary } from '../types/gamesOfNations';
 import { buildGamesOfNationsUiModel } from '../ui/hud/GamesOfNationsUiModel';
+import { buildWorldCouncilButtonModel } from '../ui/hud/WorldCouncilButtonModel';
+import type {
+  WorldCouncilSessionState,
+  WorldCouncilSessionResult,
+  WorldCouncilSessionOutcome,
+  WorldCouncilSessionVote,
+} from '../ui/hud/WorldCouncilSessionDialog';
 import {
   buildDominationRanking,
   resolveDominationLandPercent,
@@ -252,7 +260,7 @@ import type { CityViewTilePurchaseState } from '../ui/CityView';
 import type { AIDiplomacyAction } from '../types/aiDiplomacy';
 import { ALL_WONDERS, getWonderById } from '../data/wonders';
 import type { WonderState, WonderType } from '../entities/Wonder';
-import type { WorldCouncilOrganizationKind } from '../types/worldCouncil';
+import type { WorldCouncilOrganizationKind, WorldCouncilResolutionId } from '../types/worldCouncil';
 import { CORPORATIONS, getCorporationById } from '../data/corporations';
 import { getResourceDefinitionById, getResourceDisplayName } from '../data/resources';
 import type { Producible } from '../types/producible';
@@ -295,6 +303,7 @@ import {
   getCorporationSpritePath,
   getCultureSpriteKey,
   getCultureSpritePath,
+  getLeaderRoomImagePath,
   getPolicySpriteKey,
   getPolicySpritePath,
   getProjectSpritePath,
@@ -1802,6 +1811,15 @@ export class GameScene extends Phaser.Scene {
     resourceSystem.setWorldCouncilVoteActiveProvider(() => (
       worldCouncilSystem.isVoteActive(turnManager.getCurrentRound())
     ));
+    // Interactive human games defer meeting resolution so the human can vote via
+    // the in-game Council Session UI; autorun / AI-only resolves synchronously.
+    worldCouncilSystem.setHumanVotingDeferralEnabled(() =>
+      humanNationId !== undefined && typeof window !== 'undefined' && !isAutoplayActive());
+    // Votes collected by the Council Session UI, read back through the existing
+    // requestHumanInfluenceVote boundary during canonical resolution.
+    const humanCouncilVoteStore = new Map<string, { support: boolean; influence: number }>();
+    const worldCouncilProposalVoteKey = (proposal: { slot: string; resolutionId: string }): string =>
+      `${proposal.slot}:${proposal.resolutionId}`;
     aiMilitaryEvaluationSystem.setPeacekeepingDefensivePowerProvider((attackerNationId, defenderNationId, getMilitaryStrength) =>
       worldCouncilSystem.getPeacekeepingDefensivePowerAgainst(
         attackerNationId,
@@ -2418,8 +2436,7 @@ export class GameScene extends Phaser.Scene {
       policySystem,
       diplomacyManager,
     );
-    // `diagnostic`/cheat map reveal forces every resource icon visible,
-    // bypassing both the reveal-tech gate and fog of war.
+    // `map reveal` temporarily exposes hidden resources and covert units.
     let isMapRevealActive = false;
     // Tech-gate only: whether the human nation has researched the reveal tech
     // for a given resource. Fog of war is applied separately below.
@@ -2449,14 +2466,18 @@ export class GameScene extends Phaser.Scene {
       }
       return visibilitySystem.canRenderObjectAt(tileX, tileY);
     };
-    const revealMapResourcesTemporarily = (): void => {
+    const revealMapTemporarily = (): void => {
       isMapRevealActive = true;
       naturalResourceRenderer.rebuildAll();
+      unitRenderer.refreshAllVisibility();
+      selectionManager.refreshVisibility();
     };
     const clearTemporaryMapReveal = (): void => {
       if (!isMapRevealActive) return;
       isMapRevealActive = false;
       naturalResourceRenderer.rebuildAll();
+      unitRenderer.refreshAllVisibility();
+      selectionManager.refreshVisibility();
     };
     const isNaturalResourceRevealTechnology = (technologyId: string): boolean => (
       NATURAL_RESOURCES.some((resource) => resource.revealTechId === technologyId)
@@ -2484,6 +2505,16 @@ export class GameScene extends Phaser.Scene {
     // generate vision, so they remain visible after each recompute.
     const canSeeTile = (tileX: number, tileY: number): boolean =>
       visibilitySystem.canRenderObjectAt(tileX, tileY);
+    const canShowUnit = (unit: Unit): boolean => humanNationId === undefined
+      ? canSeeTile(unit.tileX, unit.tileY)
+      : canRenderUnitToHuman(
+        unit,
+        canSeeTile(unit.tileX, unit.tileY),
+        humanNationId,
+        unitManager.getUnitsByOwner(humanNationId),
+        gridSystem,
+        isMapRevealActive,
+      );
     // Cities are permanent intelligence: a discovered city stays on the map even
     // when it leaves vision. Other objects (units, borders, resources,
     // improvements) still require current vision.
@@ -2494,7 +2525,7 @@ export class GameScene extends Phaser.Scene {
     };
     cityRenderer.setVisibilityPredicate(canShowCity);
     cityBannerRenderer.setVisibilityPredicate(canShowCity);
-    unitRenderer.setVisibilityPredicate(canSeeTile);
+    unitRenderer.setVisibilityPredicate(canShowUnit);
     territoryRenderer.setVisibilityPredicate(canSeeTile);
     tileBuildingRenderer.setVisibilityPredicate(canSeeTile);
     // Broken buildings/wonders render faded + with a ⚠️ marker. Improvements,
@@ -2519,6 +2550,7 @@ export class GameScene extends Phaser.Scene {
     selectionManager.setVisibilityPredicates(
       (x, y) => visibilitySystem.isTileVisibleToHuman(x, y),
       (x, y) => visibilitySystem.isTileExploredByHuman(x, y),
+      canShowUnit,
     );
 
     // Re-cull all fog-dependent renderers after a visibility recompute.
@@ -2526,6 +2558,7 @@ export class GameScene extends Phaser.Scene {
       cityRenderer.refreshAllVisibility();
       cityBannerRenderer.refreshAllVisibility();
       unitRenderer.refreshAllVisibility();
+      selectionManager.refreshVisibility();
       territoryRenderer.invalidate();
       naturalResourceRenderer.rebuildAll();
       tileBuildingRenderer.rebuildAll();
@@ -2534,6 +2567,22 @@ export class GameScene extends Phaser.Scene {
     };
     // Apply fog now that all renderers and predicates are wired.
     updateFog();
+
+    // Detection is positional and has no remembered state. Re-evaluate every
+    // human-facing unit visual after roster/position changes, without filtering
+    // the UnitManager data consumed by AI and simulation systems.
+    unitManager.onUnitChanged((event) => {
+      if (
+        event.reason === 'moved'
+        || event.reason === 'created'
+        || event.reason === 'removed'
+        || event.reason === 'upgraded'
+        || event.reason === 'actionChanged'
+      ) {
+        unitRenderer.refreshAllVisibility();
+        selectionManager.refreshVisibility();
+      }
+    });
 
     resourceAccessSystem.setResourceUsabilityPredicate((nationId, resourceId) => {
       const resource = getNaturalResourceById(resourceId);
@@ -2718,32 +2767,12 @@ export class GameScene extends Phaser.Scene {
       isHumanNation: (nationId) => nationManager.getNation(nationId)?.isHuman === true,
       requestHumanInfluenceVote: (input) => {
         if (isAutoplayActive() || nationManager.getNation(input.nationId)?.isHuman !== true) return null;
-        if (typeof window === 'undefined') return null;
-        const definition = worldCouncilResolutionSystem.getDefinition(input.proposal.resolutionId);
-        const title = definition?.title ?? input.proposal.resolutionId;
-        const targetName = input.targetNationId
-          ? nationManager.getNation(input.targetNationId)?.name ?? input.targetNationId
-          : undefined;
-        const secondaryTargetName = input.secondaryTargetNationId
-          ? nationManager.getNation(input.secondaryTargetNationId)?.name ?? input.secondaryTargetNationId
-          : undefined;
-        const targetText = targetName && secondaryTargetName
-          ? ` targeting ${targetName} - ${secondaryTargetName}`
-          : targetName
-            ? ` targeting ${targetName}`
-            : '';
-        const support = window.confirm(
-          `${title}${targetText}\n\nChoose OK to vote YES, or Cancel to vote NO.`,
-        );
-        const rawAmount = window.prompt(
-          `Spend Influence on this vote (available: ${Math.floor(input.maxInfluence)}).`,
-          String(Math.min(Math.floor(input.maxInfluence), input.suggestedInfluence)),
-        );
-        if (rawAmount === null) {
-          return { support, influence: input.suggestedInfluence };
-        }
-        const influence = Math.max(0, Math.min(Math.floor(input.maxInfluence), Number.parseInt(rawAmount, 10) || 0));
-        return { support, influence };
+        // The human's YES/NO + Influence is collected up front by the in-game
+        // Council Session UI (WorldCouncilSessionDialog) and stored here; this
+        // boundary just replays it into canonical resolution (no browser dialogs).
+        const stored = humanCouncilVoteStore.get(worldCouncilProposalVoteKey(input.proposal));
+        if (!stored) return null;
+        return { support: stored.support, influence: stored.influence };
       },
       shareMaps: (memberNationIds) => {
         const humanMember = memberNationIds.includes(humanNationIdForDiplomacy);
@@ -3030,13 +3059,16 @@ export class GameScene extends Phaser.Scene {
       return true;
     };
     const tryActionAttack = (unit: Unit, targetTile: { x: number; y: number }): boolean => {
-      const targetUnit = unitManager.getUnitAt(targetTile.x, targetTile.y);
+      const targetUnitAtTile = unitManager.getUnitAt(targetTile.x, targetTile.y);
+      const targetUnit = targetUnitAtTile !== null && canShowUnit(targetUnitAtTile)
+        ? targetUnitAtTile
+        : null;
       const targetCity = cityManager.getCityAt(targetTile.x, targetTile.y);
       // Covert operatives (Spy/Agent) engage only hostile covert operatives, which
       // getUnitAt excludes — so detect them explicitly.
       const hasCovertTarget = isCovertOperative(unit.unitType)
         && unitManager.getCovertOperativesAt(targetTile.x, targetTile.y)
-          .some((other) => other.ownerId !== unit.ownerId);
+          .some((other) => other.ownerId !== unit.ownerId && canShowUnit(other));
       const hasEnemyTarget =
         hasCovertTarget ||
         (targetUnit !== null && targetUnit.ownerId !== unit.ownerId) ||
@@ -3158,7 +3190,7 @@ export class GameScene extends Phaser.Scene {
         // initiate is against a hostile covert operative occupying the target.
         if (isCovertOperative(unit.unitType)) {
           const hasCovertDefender = unitManager.getCovertOperativesAt(tile.x, tile.y)
-            .some((other) => other.ownerId !== unit.ownerId);
+            .some((other) => other.ownerId !== unit.ownerId && canShowUnit(other));
           return hasCovertDefender ? tryActionAttack(unit, tile) : false;
         }
         if (unit.unitType.baseStrength <= 0) return false;
@@ -3917,15 +3949,21 @@ export class GameScene extends Phaser.Scene {
         constructionTurnsRemaining: state.constructionTurnsRemaining,
         diplomacyScoreThreshold: worldCouncilSystem.getDiplomacyScoreThreshold(),
         nextRegularMeetingTurn: state.nextRegularMeetingTurn,
+        currentTurn: turnManager.getCurrentRound(),
         canHumanLeave: false,
-        members: state.members.map((member) => ({
-          nationName: nationManager.getNation(member.nationId)?.name ?? member.nationId,
-          diplomacyScore: member.diplomacyScore,
-          diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting,
-          goldContributed: member.goldContributed,
-          scienceContributionPercent: member.scienceContributionPercent,
-          cultureContributionPercent: member.cultureContributionPercent,
-        })),
+        members: state.members.map((member) => {
+          const memberNation = nationManager.getNation(member.nationId);
+          return {
+            nationName: memberNation?.name ?? member.nationId,
+            nationColor: colorToCssHex(memberNation?.color ?? 0x888888),
+            isHuman: member.nationId === humanNationId,
+            diplomacyScore: member.diplomacyScore,
+            diplomacyScoreSinceLastRegularMeeting: member.diplomacyScoreSinceLastRegularMeeting,
+            goldContributed: member.goldContributed,
+            scienceContributionPercent: member.scienceContributionPercent,
+            cultureContributionPercent: member.cultureContributionPercent,
+          };
+        }),
         enactedResolutions: state.enactedResolutions.map((resolution) => {
           const definition = worldCouncilResolutionSystem.getDefinition(resolution.resolutionId);
           const remainingTurns = resolution.active !== false
@@ -4006,6 +4044,15 @@ export class GameScene extends Phaser.Scene {
               voteSummary: proposal.votes
                 ? formatWorldCouncilVoteSummary(proposal.votes)
                 : undefined,
+              outcome: proposal.passed === true
+                ? 'passed' as const
+                : proposal.resolved === true
+                  ? (((proposal.votes?.length ?? 0) > 0 || proposal.voteSummary !== undefined)
+                    ? 'rejected' as const
+                    : 'unresolved' as const)
+                  : undefined,
+              influenceFor: proposal.voteSummary?.supportInfluence,
+              influenceAgainst: proposal.voteSummary?.opposeInfluence,
               outcomeText: proposal.outcomeText,
               gamesNumber: proposal.gamesNumber,
               gamesHostingJustification: proposal.gamesHostingJustification,
@@ -4016,6 +4063,110 @@ export class GameScene extends Phaser.Scene {
             };
           }) ?? [],
         })),
+      };
+    };
+    const getWorldCouncilButtonModelForHuman = () => {
+      const foundationOffer = getWorldCouncilFoundationStateForHuman();
+      const state = worldCouncilSystem.getState();
+      if (!foundationOffer && !state) return null;
+      const organizationName = state
+        ? getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil')
+        : foundationOffer?.organizationName ?? getOrganizationDisplayName('worldCouncil');
+      return buildWorldCouncilButtonModel({
+        organizationName,
+        foundationOffer: foundationOffer !== null,
+        council: state
+          ? {
+            status: state.status,
+            constructionTurnsRemaining: state.constructionTurnsRemaining,
+            lastRegularMeetingTurn: state.lastRegularMeetingTurn,
+            nextRegularMeetingTurn: state.nextRegularMeetingTurn,
+          }
+          : null,
+        currentTurn: turnManager.getCurrentRound(),
+      });
+    };
+    const worldCouncilProposalTitle = (proposal: { resolutionId: WorldCouncilResolutionId; repealTargetEnactedResolutionId?: string }): string => {
+      const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
+      const baseTitle = definition?.title ?? proposal.resolutionId;
+      return proposal.repealTargetEnactedResolutionId !== undefined ? `Repeal ${baseTitle}` : baseTitle;
+    };
+    const getWorldCouncilSessionStateForHuman = (): WorldCouncilSessionState | null => {
+      if (!humanNationId || isAutoplayActive()) return null;
+      const meeting = worldCouncilSystem.getPendingHumanVoteMeeting();
+      const state = worldCouncilSystem.getState();
+      if (!meeting || !state) return null;
+      const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
+      const city = cityManager.getCity(meeting.cityId);
+      const cityNationName = city
+        ? nationManager.getNation(city.ownerId)?.name
+          ?? nationManager.getNation(state.foundingNationId)?.name
+        : nationManager.getNation(state.foundingNationId)?.name;
+      const hostNationName = meeting.hostNationId
+        ? nationManager.getNation(meeting.hostNationId)?.name ?? meeting.hostNationId
+        : undefined;
+      const backgroundNationId = meeting.hostNationId ?? state.foundingNationId;
+      const backgroundLeaderImage = getLeaderByNationId(backgroundNationId)?.image;
+      const nationName = (nationId: string | undefined): string | undefined =>
+        nationId ? nationManager.getNation(nationId)?.name ?? nationId : undefined;
+      return {
+        organizationName,
+        meetingKindLabel: meeting.kind === 'regular' ? 'Regular Session' : 'Emergency Session',
+        cityName: city?.name ?? 'Unknown City',
+        cityNationName,
+        hostNationName,
+        round: meeting.turn,
+        availableInfluence: Math.max(0, Math.floor(nationManager.getResources(humanNationId).influence)),
+        backgroundImageUrl: backgroundLeaderImage ? getLeaderRoomImagePath(backgroundLeaderImage) : undefined,
+        proposals: (meeting.proposals ?? []).map((proposal) => {
+          const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
+          const isRepeal = proposal.repealTargetEnactedResolutionId !== undefined;
+          const votingType = isRepeal ? 'influence' : definition?.votingType ?? 'influence';
+          return {
+            key: worldCouncilProposalVoteKey(proposal),
+            icon: isRepeal ? '↩' : definition?.icon ?? '📜',
+            title: worldCouncilProposalTitle(proposal),
+            description: isRepeal
+              ? `If passed, removes the active effect of ${definition?.title ?? proposal.resolutionId}.`
+              : definition?.description ?? '',
+            proposerNationName: nationName(proposal.proposerNationId),
+            targetNationName: nationName(proposal.targetNationId),
+            secondaryTargetNationName: nationName(proposal.secondaryTargetNationId),
+            resolutionId: proposal.resolutionId,
+            requiresVote: votingType === 'influence',
+            suggestedSupport: true,
+            suggestedInfluence: 0,
+          };
+        }),
+      };
+    };
+    const submitWorldCouncilVotes = (votes: WorldCouncilSessionVote[]): WorldCouncilSessionResult => {
+      humanCouncilVoteStore.clear();
+      for (const vote of votes) {
+        humanCouncilVoteStore.set(vote.key, {
+          support: vote.support,
+          influence: Math.max(0, Math.floor(vote.influence)),
+        });
+      }
+      const resolved = worldCouncilSystem.resolvePendingHumanVoteMeeting();
+      humanCouncilVoteStore.clear();
+      if (!resolved) return { proposals: [] };
+      return {
+        proposals: (resolved.proposals ?? []).map((proposal) => {
+          const hasVote = (proposal.votes?.length ?? 0) > 0 || proposal.voteSummary !== undefined;
+          const outcome: WorldCouncilSessionOutcome = proposal.passed === true
+            ? 'passed'
+            : proposal.resolved === true
+              ? (hasVote ? 'rejected' : 'no_target')
+              : 'unresolved';
+          return {
+            title: worldCouncilProposalTitle(proposal),
+            outcome,
+            influenceFor: proposal.voteSummary?.supportInfluence,
+            influenceAgainst: proposal.voteSummary?.opposeInfluence,
+            outcomeText: proposal.outcomeText,
+          };
+        }),
       };
     };
     const getWorldCouncilContributionStateForHuman = () => {
@@ -7267,6 +7418,10 @@ export class GameScene extends Phaser.Scene {
       onToggleResourceMapLens: toggleResourceMapLens,
       getWorldCouncilFoundationState: getWorldCouncilFoundationStateForHuman,
       getWorldCouncilOverviewState: getWorldCouncilOverviewStateForHuman,
+      getWorldCouncilButtonModel: getWorldCouncilButtonModelForHuman,
+      getWorldCouncilSessionState: getWorldCouncilSessionStateForHuman,
+      onSubmitWorldCouncilVotes: submitWorldCouncilVotes,
+      onWorldCouncilSessionClosed: () => hudLayer?.refresh(),
       getWorldCouncilContributionState: getWorldCouncilContributionStateForHuman,
       onFoundWorldCouncil: (offer) => {
         if (!humanNationId) return false;
@@ -8781,7 +8936,10 @@ export class GameScene extends Phaser.Scene {
       );
       const keys = new Set<string>();
       for (const tile of tiles) {
-        const targetUnit = unitManager.getUnitAt(tile.x, tile.y);
+        const targetUnitAtTile = unitManager.getUnitAt(tile.x, tile.y);
+        const targetUnit = targetUnitAtTile !== null && canShowUnit(targetUnitAtTile)
+          ? targetUnitAtTile
+          : null;
         const targetCity = cityManager.getCityAt(tile.x, tile.y);
         const hasEnemyUnit = targetUnit !== null && targetUnit.ownerId !== unit.ownerId;
         const hasEnemyCity = targetCity !== undefined && targetCity.ownerId !== unit.ownerId;
@@ -9552,7 +9710,7 @@ export class GameScene extends Phaser.Scene {
         hudLayer?.refresh();
         rightPanel?.requestRefresh();
       },
-      revealMapResourcesTemporarily,
+      revealMapTemporarily,
       setFogEnabled: (enabled: boolean): void => {
         visibilitySystem.setEnabled(enabled);
         updateFog();
@@ -11073,4 +11231,8 @@ function formatWorldCouncilVoteSummary(
     .filter((vote) => !vote.support)
     .reduce((sum, vote) => sum + vote.influence, 0);
   return `Influence vote: ${support} for, ${oppose} against.`;
+}
+
+function colorToCssHex(color: number): string {
+  return `#${(color & 0xffffff).toString(16).padStart(6, '0')}`;
 }

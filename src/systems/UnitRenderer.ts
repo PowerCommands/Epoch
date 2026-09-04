@@ -50,7 +50,7 @@ export class UnitRenderer {
   private readonly nationManager: NationManager;
   private readonly visuals = new Map<string, UnitVisual>();
   private readonly hpBars = new Map<string, Phaser.GameObjects.Graphics>();
-  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
+  private visibilityPredicate: (unit: Unit) => boolean = () => true;
 
   constructor(
     scene: Phaser.Scene,
@@ -94,7 +94,7 @@ export class UnitRenderer {
     });
   }
 
-  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+  setVisibilityPredicate(predicate: (unit: Unit) => boolean): void {
     this.visibilityPredicate = predicate;
   }
 
@@ -103,7 +103,7 @@ export class UnitRenderer {
     for (const [unitId, visual] of this.visuals) {
       const unit = this.unitManager.getUnit(unitId);
       if (unit) {
-        const vis = this.visibilityPredicate(unit.tileX, unit.tileY);
+        const vis = this.visibilityPredicate(unit);
         visual.container.setVisible(vis);
         this.hpBars.get(unitId)?.setVisible(vis);
       }
@@ -161,7 +161,7 @@ export class UnitRenderer {
     // Re-evaluate fog visibility at the new tile so e.g. an enemy unit moving
     // into the player's fog is hidden even though the player's own vision
     // (and thus updateFog) did not change this turn.
-    const vis = this.visibilityPredicate(unit.tileX, unit.tileY);
+    const vis = this.visibilityPredicate(unit);
     visual.container.setVisible(vis);
 
     const hpBar = this.hpBars.get(unitId);
@@ -265,7 +265,7 @@ export class UnitRenderer {
     const visual: UnitVisual = { container, sprite, maskGraphics, nationRing };
     this.visuals.set(unit.id, visual);
 
-    container.setVisible(this.visibilityPredicate(unit.tileX, unit.tileY));
+    container.setVisible(this.visibilityPredicate(unit));
     this.refreshUnitVisual(unit.id);
   }
 
@@ -382,6 +382,7 @@ export class UnitRenderer {
 
     gfx.fillStyle(color, 1);
     gfx.fillRect(barX, barY, HP_BAR_WIDTH * hpRatio, HP_BAR_HEIGHT);
+    gfx.setVisible(this.visibilityPredicate(unit));
   }
 
   private getUnitWorldPosition(unitId: string): { x: number; y: number } {

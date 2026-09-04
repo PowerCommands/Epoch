@@ -62,6 +62,7 @@ export class SelectionManager {
   // Fog of war gates. Default to always-on so non-fog contexts are unaffected.
   private isTileVisible: (tileX: number, tileY: number) => boolean = () => true;
   private isTileExplored: (tileX: number, tileY: number) => boolean = () => true;
+  private isUnitVisible: (unit: Unit) => boolean = () => true;
 
   private readonly hoverGfx: Phaser.GameObjects.Graphics;
   private readonly selectionGfx: Phaser.GameObjects.Graphics;
@@ -105,9 +106,11 @@ export class SelectionManager {
   setVisibilityPredicates(
     isTileVisible: (tileX: number, tileY: number) => boolean,
     isTileExplored: (tileX: number, tileY: number) => boolean,
+    isUnitVisible: (unit: Unit) => boolean = () => true,
   ): void {
     this.isTileVisible = isTileVisible;
     this.isTileExplored = isTileExplored;
+    this.isUnitVisible = isUnitVisible;
   }
 
   onSelectionChanged(callback: SelectionCallback): void {
@@ -142,7 +145,18 @@ export class SelectionManager {
   }
 
   selectUnit(unit: Unit): void {
+    if (!this.isUnitVisible(unit)) return;
     this.setSelection({ kind: 'unit', unit });
+  }
+
+  /** Remove hover/selection state that became hidden after units moved. */
+  refreshVisibility(): void {
+    if (this.hovered?.kind === 'unit' && !this.isUnitVisible(this.hovered.unit)) {
+      this.setHover(null, this.hoveredTile);
+    }
+    if (this.selected?.kind === 'unit' && !this.isUnitVisible(this.selected.unit)) {
+      this.setSelection(null);
+    }
   }
 
   clearSelection(): void {
@@ -185,7 +199,7 @@ export class SelectionManager {
         cargo.push(...this.unitManager.getCargoUnitsForTransport(transport));
       }
     }
-    const units = [...nonCargo, ...cargo];
+    const units = [...nonCargo, ...cargo].filter((unit) => this.isUnitVisible(unit));
     if (units.length > 0) {
       if (this.selected?.kind === 'unit') {
         const selectedUnitId = this.selected.unit.id;

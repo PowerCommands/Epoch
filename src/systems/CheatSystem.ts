@@ -49,7 +49,7 @@ export interface GameContext {
    * GameScene so the CheatSystem stays renderer-agnostic.
    */
   refreshTileVisuals: (tileX: number, tileY: number) => void;
-  revealMapResourcesTemporarily: () => void;
+  revealMapTemporarily: () => void;
   setFogEnabled: (enabled: boolean) => void;
   /** Open the developer dialog for editing bilateral relationship memory. */
   openRelationsDialog: () => void;
@@ -523,11 +523,11 @@ export class CheatSystem {
 
     this.register({
       name: 'map reveal',
-      description: 'Temporarily reveal all natural resource icons until the next turn transition.',
+      description: 'Temporarily reveal all natural resources and covert units until the next turn transition.',
       execute: (args, context) => {
         if (args.length !== 0) return 'Usage: map reveal';
-        context.revealMapResourcesTemporarily();
-        return 'Map resources revealed until the next turn transition.';
+        context.revealMapTemporarily();
+        return 'Map resources and covert units revealed until the next turn transition.';
       },
     });
 
