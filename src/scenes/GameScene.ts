@@ -225,6 +225,7 @@ import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { WonderSystem } from '../systems/WonderSystem';
 import { WorldCouncilSystem } from '../systems/WorldCouncilSystem';
 import { WorldCouncilResolutionSystem } from '../systems/WorldCouncilResolutionSystem';
+import { getWorldCouncilCultureProgressionCandidate } from '../systems/WorldCouncilCultureProgression';
 import { CorporationSystem } from '../systems/CorporationSystem';
 import { AerospacePartSystem } from '../systems/AerospacePartSystem';
 import { TerritoryExpansionBonusSystem } from '../systems/TerritoryExpansionBonusSystem';
@@ -3803,7 +3804,7 @@ export class GameScene extends Phaser.Scene {
     turnManager.on('turnStart', (e) => {
       if (!e.nation.isHuman) {
         const foundingCandidate = getWorldCouncilFoundingCandidate();
-        if (foundingCandidate?.wonder.ownerId === e.nation.id) {
+        if (foundingCandidate?.nationId === e.nation.id) {
           foundWorldCouncil(e.nation.id, {
             gold: Math.floor(nationManager.getResources(e.nation.id).gold * 0.15),
             sciencePercent: 10,
@@ -3871,23 +3872,24 @@ export class GameScene extends Phaser.Scene {
     };
     const getOrganizationDisplayName = (organizationKind: WorldCouncilOrganizationKind): string =>
       organizationKind === 'un' ? 'United Nations' : 'World Council';
-    const getWorldCouncilFoundingCandidate = (): {
-      wonder: WonderState;
-      organizationKind: WorldCouncilOrganizationKind;
-    } | undefined => {
-      const statueOfLiberty = wonderSystem.getCompletedWonder('statue_of_liberty');
-      if (statueOfLiberty && worldCouncilSystem.getOrganizationKind() !== 'un') {
-        return { wonder: statueOfLiberty, organizationKind: 'un' };
-      }
-      const forbiddenCity = wonderSystem.getCompletedWonder('forbidden-city');
-      if (!forbiddenCity || worldCouncilSystem.hasCouncil()) return undefined;
-      return { wonder: forbiddenCity, organizationKind: 'worldCouncil' };
-    };
+    const getWorldCouncilFoundingCandidate = () => getWorldCouncilCultureProgressionCandidate({
+      nations: nationManager.getAllNations(),
+      hasCouncil: worldCouncilSystem.hasCouncil(),
+      organizationKind: worldCouncilSystem.getOrganizationKind(),
+      getFoundingCityId: (nationId) => {
+        const ownedCities = cityManager.getCitiesByOwner(nationId);
+        return (
+          cityManager.getResidenceCapital(nationId)
+          ?? ownedCities.find((city) => city.isCapital)
+          ?? ownedCities[0]
+        )?.id;
+      },
+    });
     const getWorldCouncilFoundationStateForHuman = () => {
       if (!humanNationId || turnManager.getCurrentNation().id !== humanNationId) return null;
       const foundingCandidate = getWorldCouncilFoundingCandidate();
-      if (!foundingCandidate || foundingCandidate.wonder.ownerId !== humanNationId) return null;
-      const city = cityManager.getCity(foundingCandidate.wonder.cityId);
+      if (!foundingCandidate || foundingCandidate.nationId !== humanNationId) return null;
+      const city = cityManager.getCity(foundingCandidate.foundingCityId);
       const nation = nationManager.getNation(humanNationId);
       if (!city || !nation) return null;
       const resources = nationManager.getResources(humanNationId);
@@ -4045,23 +4047,23 @@ export class GameScene extends Phaser.Scene {
       offer: { gold: number; sciencePercent: number; culturePercent: number },
     ): boolean => {
       const foundingCandidate = getWorldCouncilFoundingCandidate();
-      if (!foundingCandidate || foundingCandidate.wonder.ownerId !== nationId) return false;
+      if (!foundingCandidate || foundingCandidate.nationId !== nationId) return false;
       const founded = worldCouncilSystem.found({
-        foundingCityId: foundingCandidate.wonder.cityId,
+        foundingCityId: foundingCandidate.foundingCityId,
         foundingNationId: nationId,
         foundingTurn: turnManager.getCurrentRound(),
         founderOffer: offer,
         organizationKind: foundingCandidate.organizationKind,
       });
       if (!founded) return false;
-      const cityName = cityManager.getCity(foundingCandidate.wonder.cityId)?.name ?? 'Unknown City';
+      const cityName = cityManager.getCity(foundingCandidate.foundingCityId)?.name ?? 'Unknown City';
       const organizationName = getOrganizationDisplayName(foundingCandidate.organizationKind);
       historicalTimeline.record({
         type: 'worldCouncilFounded',
         icon: '📜',
         text: `${timelineNationName(nationId)} founded the ${organizationName} in ${cityName}`,
         eventNationIds: worldCouncilSystem.getState()?.memberNationIds ?? [nationId],
-        metadata: { cityId: foundingCandidate.wonder.cityId, cityName },
+        metadata: { cityId: foundingCandidate.foundingCityId, cityName },
       });
       logManager.info({
         nationId,

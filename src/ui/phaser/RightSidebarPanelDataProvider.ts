@@ -3030,12 +3030,17 @@ export class RightSidebarPanelDataProvider {
     );
     const rows: RightSidebarRow[] = entries.length === 0
       ? [textRow('No leaderboard data available.', true)]
-      : entries.map((entry, index) => textRow(
-        `${index + 1}. ${entry.name}: ${entry.detail}`,
-        false,
-        false,
-        entry.color,
-      ));
+      : entries.map((entry, index) => {
+        const hostId = this.diplomacyManager?.getVassalHost(entry.nationId);
+        if (hostId) {
+          // Vassal states are subordinate, not victory contenders: show them as a
+          // struck-through, light-gray row instead of the normal statistics.
+          const hostName = this.nationManager.getNation(hostId)?.name;
+          const label = hostName ? `Vassal state to ${hostName}` : 'Vassal state';
+          return textRow(`${index + 1}. ${entry.name}: ${label}`, true, false, undefined, undefined, true);
+        }
+        return textRow(`${index + 1}. ${entry.name}: ${entry.detail}`, false, false, entry.color);
+      });
     return {
       title: '⚔️ Domination',
       rows: [headerRow, ...rows, { kind: 'pieChart', slices: this.getLandControlSlices() }],
@@ -3157,8 +3162,8 @@ export class RightSidebarPanelDataProvider {
   }
 }
 
-function textRow(text: string, muted = false, large = false, color?: number, spritePath?: string): RightSidebarRow {
-  return { kind: 'text', text, muted, large, color, spritePath };
+function textRow(text: string, muted = false, large = false, color?: number, spritePath?: string, strikethrough = false): RightSidebarRow {
+  return { kind: 'text', text, muted, large, color, spritePath, strikethrough };
 }
 
 function formatAdditiveDiagnosticValues(

@@ -42,6 +42,8 @@ export interface RightSidebarTextRow {
   large?: boolean;
   color?: number;
   spritePath?: string;
+  /** When true, draws a line through the row's text (e.g. a subordinate vassal state). */
+  strikethrough?: boolean;
 }
 
 export interface RightSidebarButtonRow {

@@ -1547,6 +1547,16 @@ export class RightSidebarPanel {
     text.setWordWrapWidth(wrapWidth, true);
     text.setPosition(textX, y);
     text.setData('baseY', y);
+    if (row.strikethrough && text.width > 0) {
+      const strikeY = y + text.height / 2;
+      const strike = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, textX, strikeY, text.width, 1.5, 0xc1cbd8, 0.85))
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0);
+      strike.setData('baseY', strikeY);
+      this.panelContainer.add(strike);
+      this.contentObjects.push(strike);
+      strike.setMask(this.contentMask);
+    }
     return y + Math.max(text.height, icon ? CONTENT_ICON_SIZE : 0) + ROW_GAP;
   }
 

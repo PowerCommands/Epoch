@@ -402,7 +402,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     id: 'world-council',
     title: 'The World Council',
     blocks: [
-      { kind: 'paragraph', text: 'The World Council is a global forum where nations meet to pass resolutions. Once founded it convenes regularly, and it can later evolve into the United Nations. It is the arena in which Diplomatic Victory is contested.' },
+      { kind: 'paragraph', text: 'The World Council is a global forum where nations meet to pass resolutions. The first nation to complete The Enlightenment can begin its founding workflow; after a Council exists, the first nation to complete Liberalism can begin its transition into the United Nations. It is the arena in which Diplomatic Victory is contested.' },
       { kind: 'heading', text: 'Influence' },
       { kind: 'paragraph', text: 'Influence is a resource shown in the top resource bar. Your cities generate it each turn — larger populations produce more — and certain policies increase it further. You spend Influence at the council to support the resolutions you favour.' },
       { kind: 'heading', text: 'Resolutions' },

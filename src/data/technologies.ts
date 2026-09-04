@@ -799,7 +799,6 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     prerequisites: ['telecommunications'],
     leadsTo: ['particle_physics'],
     unlocks: [{ kind: 'wonder', id: 'panama-canal' }],
-    // TODO: unlocks United Nations.
   },
   {
     id: 'robotics',
