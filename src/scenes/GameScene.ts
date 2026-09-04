@@ -235,10 +235,12 @@ import { WorldInputGate } from '../systems/input/WorldInputGate';
 import { CombatLog } from '../ui/CombatLog';
 import { CheatConsole } from '../ui/CheatConsole';
 import { RelationsCheatDialog } from '../ui/RelationsCheatDialog';
+import { ScenarioCheatDialog } from '../ui/ScenarioCheatDialog';
 import { DiagnosticDialog } from '../ui/DiagnosticDialog';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
+import { TutorialView } from '../ui/TutorialView';
 import { SaveGameDialog } from '../ui/SaveGameDialog';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { SettingsDialog } from '../ui/SettingsDialog';
@@ -301,7 +303,12 @@ import {
   getWonderSpriteKey,
   getWonderSpritePath,
 } from '../utils/assetPaths';
-import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../systems/ProductionRules';
+import {
+  canCityProduceUnit,
+  getCityUnitProductionBlockReason,
+  isMilitaryProductionUnit,
+  isUnitObsoleteForNationEra,
+} from '../systems/ProductionRules';
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
 import { BuildingResourceRequirementSystem } from '../systems/BuildingResourceRequirementSystem';
 import { StrategicResourceDemandSystem } from '../systems/StrategicResourceDemandSystem';
@@ -1181,7 +1188,9 @@ export class GameScene extends Phaser.Scene {
     // 13b. Diplomacy system
     const diplomacyManager = new DiplomacyManager(
       turnManager,
-      resolvePeaceTreatyCooldownTurns(scenarioJson.meta?.peaceTreatyCooldownTurns),
+      resolvePeaceTreatyCooldownTurns(
+        data.savedState?.peaceTreatyCooldownTurns ?? scenarioJson.meta?.peaceTreatyCooldownTurns,
+      ),
       (nationId, cultureNodeId) => cultureSystem.isUnlocked(nationId, cultureNodeId),
     );
     // Resolve nation ids to display names for `[DIPLOMACY]` economic-pressure logs.
@@ -1590,6 +1599,8 @@ export class GameScene extends Phaser.Scene {
       militaryEvaluationSystem: aiMilitaryEvaluationSystem,
       getCurrentTurn: () => turnManager.getCurrentRound(),
       getDemilitarizationTurns: () => diplomacyManager.getPeaceTreatyCooldownTurns(),
+      acceptanceThreshold: data.savedState?.capitulationAcceptanceThreshold
+        ?? scenarioJson.meta?.capitulationAcceptanceThreshold,
       log: (message) => console.log(message),
       onCapitulation: (event) => recordCapitulationHistory(event),
       militaryVassalizationSystem,
@@ -2882,7 +2893,9 @@ export class GameScene extends Phaser.Scene {
     // Scenario-authored collapse threshold (Editor → Scenario Details). Absent/invalid
     // falls back to DEFAULT_ORIGINAL_CAPITAL_COLLAPSE_PERCENT; 0 disables the rule.
     combatSystem.setOriginalCapitalCollapsePercent(
-      resolveOriginalCapitalCollapsePercent(scenarioJson.meta?.originalCapitalCollapsePercent),
+      resolveOriginalCapitalCollapsePercent(
+        data.savedState?.originalCapitalCollapsePercent ?? scenarioJson.meta?.originalCapitalCollapsePercent,
+      ),
     );
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
@@ -6341,8 +6354,28 @@ export class GameScene extends Phaser.Scene {
 
     const showDemandCapitulationDialog = (targetNationId: string): void => {
       const targetNation = nationManager.getNation(targetNationId);
-      if (!targetNation) return;
-      if (!capitulationSystem.canDemandCapitulation(humanNationIdForDiplomacy, targetNationId)) return;
+      if (!targetNation) {
+        console.warn(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+          + 'evaluated=REJECT apply=not-run failure=target nation not found');
+        return;
+      }
+      const currentEvaluation = capitulationSystem.evaluateCapitulationDemand(
+        humanNationIdForDiplomacy,
+        targetNationId,
+      );
+      console.log(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+        + `pressure=${currentEvaluation.pressure.toFixed(4)} threshold=${capitulationSystem.getAcceptanceThreshold().toFixed(4)} `
+        + `evaluated=${currentEvaluation.accepted ? 'ACCEPT' : 'REJECT'} apply=pending`);
+      if (!currentEvaluation.accepted) {
+        const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetNation.name;
+        console.warn(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+          + `pressure=${currentEvaluation.pressure.toFixed(4)} threshold=${capitulationSystem.getAcceptanceThreshold().toFixed(4)} `
+          + 'evaluated=REJECT apply=not-run failure=demand no longer accepted');
+        showLeaderResponsePopup(targetNationId, `${aiLeaderName} refuses`, [
+          `${aiLeaderName} refuses to capitulate. The war continues.`,
+        ]);
+        return;
+      }
 
       document.getElementById('demand-capitulation-modal')?.remove();
       const accent = `#${targetNation.color.toString(16).padStart(6, '0')}`;
@@ -6457,13 +6490,19 @@ export class GameScene extends Phaser.Scene {
       demandExploitationRights: boolean,
     ): void => {
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
+      const demandingName = nationManager.getNation(humanNationIdForDiplomacy)?.name
+        ?? humanNationIdForDiplomacy;
       const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
       const evaluation = capitulationSystem.evaluateCapitulationDemand(humanNationIdForDiplomacy, targetNationId);
-      console.log(`[Capitulation] ${targetName} evaluates surrender demand: ${evaluation.summary} | factors ${JSON.stringify(
+      console.log(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+        + `pressure=${evaluation.pressure.toFixed(4)} threshold=${capitulationSystem.getAcceptanceThreshold().toFixed(4)} `
+        + `evaluated=${evaluation.accepted ? 'ACCEPT' : 'REJECT'} apply=not-run | factors ${JSON.stringify(
         Object.fromEntries(Object.entries(evaluation.factors).map(([k, v]) => [k, Number(v.toFixed(2))])),
       )}`);
 
       if (!evaluation.accepted) {
+        console.warn(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+          + 'apply=not-run failure=demand rejected during confirmation');
         showLeaderResponsePopup(targetNationId, `${aiLeaderName} refuses`, [
           `${aiLeaderName} refuses to capitulate. The war continues.`,
         ]);
@@ -6476,13 +6515,20 @@ export class GameScene extends Phaser.Scene {
         demandExploitationRights,
       );
       if (!result.accepted) {
+        console.warn(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+          + `pressure=${evaluation.pressure.toFixed(4)} threshold=${capitulationSystem.getAcceptanceThreshold().toFixed(4)} `
+          + `evaluated=ACCEPT apply=REJECT failure=${result.failureReason ?? 'unknown validation failure'}`);
         showLeaderResponsePopup(targetNationId, `${aiLeaderName} refuses`, [
-          `${aiLeaderName} refuses to capitulate. The war continues.`,
+          `${aiLeaderName} cannot capitulate under the current conditions. The war continues.`,
         ]);
         return;
       }
+      console.log(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
+        + `pressure=${evaluation.pressure.toFixed(4)} threshold=${capitulationSystem.getAcceptanceThreshold().toFixed(4)} `
+        + 'evaluated=ACCEPT apply=ACCEPT');
       const lines = [
         `${aiLeaderName} accepts unconditional surrender.`,
+        `${targetName} is now a vassal state of ${demandingName}.`,
         `Military disbanded. ${result.reparationsPaid} gold paid in reparations.`,
         `${result.restoredCityIds.length} cit${result.restoredCityIds.length === 1 ? 'y' : 'ies'} restored; ${result.formerEnemyIds.length} war(s) ended.`,
       ];
@@ -6593,10 +6639,9 @@ export class GameScene extends Phaser.Scene {
         // Negotiated peace: gold and/or optional non-capital city concessions.
         showProposePeaceDialog(targetNationId);
       } else if (action === 'demandCapitulation') {
-        // Unconditional surrender under imposed terms — only offered when eligible.
-        if (capitulationSystem.canDemandCapitulation(humanNationIdForDiplomacy, targetNationId)) {
-          showDemandCapitulationDialog(targetNationId);
-        }
+        // Revalidate against the same runtime acceptance rule used for visibility.
+        // The dialog provides refusal feedback if state changed since rendering.
+        showDemandCapitulationDialog(targetNationId);
       } else if (action === 'capitulate') {
         const evaluation = capitulationSystem.evaluateCapitulationDemand(
           targetNationId,
@@ -7339,6 +7384,7 @@ export class GameScene extends Phaser.Scene {
     this.rightSidebarPanel.setOnExpandedChanged((expanded) => timelinePanel.setHidden(expanded));
     this.diagnosticSystem.subscribeVisibility((open) => {
       this.rightSidebarPanel?.setDiagnosticsEnabled(open);
+      rightPanel?.requestRefresh();
     });
     rightPanel.setDiplomacyManager(diplomacyManager);
     rightPanel.setAllianceManager(allianceManager);
@@ -7853,6 +7899,10 @@ export class GameScene extends Phaser.Scene {
     const getCityViewUnitOptions = (city: City): CityViewUnitOption[] => (
       ALL_UNIT_TYPES
         .filter((unitType) => researchSystem.isUnitUnlocked(city.ownerId, unitType.id))
+        .filter((unitType) => !(
+          isMilitaryProductionUnit(unitType)
+          && isUnitObsoleteForNationEra(unitType.era, eraSystem.getNationEra(city.ownerId))
+        ))
         .flatMap((unitType) => {
           const item: Producible = { kind: 'unit', unitType };
           const productionBlockReason = productionSystem.getItemProductionBlockReason(city.id, item);
@@ -8620,6 +8670,10 @@ export class GameScene extends Phaser.Scene {
       },
       getStatusRows: (nationId) => rightPanel?.getAudienceStatusRows(nationId) ?? [],
       getDiplomacyActionRows: (nationId) => rightPanel?.getAudienceDiplomacyActionRows(nationId) ?? [],
+      getWarDiagnosticRows: (nationId) => rightPanel?.getAudienceWarDiagnosticRows(
+        nationId,
+        this.diagnosticSystem.isOpen(),
+      ) ?? [],
       onChanged: (listener) => rightPanel?.onChanged(listener),
     }, {
       onOpened: (nationId) => onAudienceOpened(nationId),
@@ -9304,6 +9358,7 @@ export class GameScene extends Phaser.Scene {
           victorySystem,
           worldCouncilSystem,
           capitulationSystem,
+          combatSystem,
           consolidationSystem,
           guideProgress: guideProgression.getState(),
         }),
@@ -9427,6 +9482,34 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.requestRefresh();
       },
     });
+    const scenarioCheatDialog = new ScenarioCheatDialog({
+      getSettings: () => ({
+        peaceTreatyCooldownTurns: diplomacyManager.getPeaceTreatyCooldownTurns(),
+        capitulationAcceptanceThreshold: capitulationSystem.getAcceptanceThreshold(),
+        tradeRouteEstablishmentTurns: tradeConnectionSystem.getEstablishmentTurns(),
+        shortTradeDealDuration: humanTradeDealDurations.short,
+        longTradeDealDuration: humanTradeDealDurations.long,
+        originalCapitalCollapsePercent: combatSystem.getOriginalCapitalCollapsePercent(),
+        dominationLandPercent: victorySystem.getDominationVictorySettings().requiredLandPercent,
+        dominationRequiredVassals: victorySystem.getDominationVictorySettings().requiredVassals,
+      }),
+      applySettings: (settings) => {
+        diplomacyManager.setPeaceTreatyCooldownTurns(settings.peaceTreatyCooldownTurns);
+        capitulationSystem.setAcceptanceThreshold(settings.capitulationAcceptanceThreshold);
+        tradeConnectionSystem.setEstablishmentTurns(settings.tradeRouteEstablishmentTurns);
+        humanTradeDealDurations.short = settings.shortTradeDealDuration;
+        humanTradeDealDurations.long = settings.longTradeDealDuration;
+        rightPanel?.setHumanTradeDealDurations(settings.shortTradeDealDuration, settings.longTradeDealDuration);
+        aiSystem.setTradeDealTurns(settings.shortTradeDealDuration);
+        combatSystem.setOriginalCapitalCollapsePercent(settings.originalCapitalCollapsePercent);
+        victorySystem.setDominationVictorySettings({
+          requiredLandPercent: settings.dominationLandPercent,
+          requiredVassals: settings.dominationRequiredVassals,
+        });
+        hudLayer?.refresh();
+        rightPanel?.requestRefresh();
+      },
+    });
     let cheatConsole: CheatConsole;
     cheatConsole = new CheatConsole(new CheatSystem({
       humanNationId,
@@ -9459,6 +9542,10 @@ export class GameScene extends Phaser.Scene {
       openRelationsDialog: (): void => {
         cheatConsole.close();
         relationsCheatDialog.show();
+      },
+      openScenarioDialog: (): void => {
+        cheatConsole.close();
+        scenarioCheatDialog.show();
       },
       formHumanAlliance: formHumanAllianceForCheat,
       switchHumanPlayer: switchHumanPlayerForCheat,
@@ -9790,6 +9877,7 @@ export class GameScene extends Phaser.Scene {
       this.leaderGossipDialog = null;
       leaderStrip?.shutdown();
       relationsCheatDialog.shutdown();
+      scenarioCheatDialog.shutdown();
       cheatConsole.shutdown();
     });
 
@@ -9937,6 +10025,7 @@ export class GameScene extends Phaser.Scene {
         covertSuspicionSystem,
         worldCouncilSystem,
         capitulationSystem,
+        combatSystem,
         consolidationSystem,
       });
       resourceAccessSystem.invalidateResourceIndex();
@@ -10047,6 +10136,7 @@ export class GameScene extends Phaser.Scene {
           victorySystem,
           worldCouncilSystem,
           capitulationSystem,
+          combatSystem,
           consolidationSystem,
           guideProgress: guideProgression.getState(),
         });
@@ -10120,6 +10210,7 @@ export class GameScene extends Phaser.Scene {
         victorySystem,
         worldCouncilSystem,
         capitulationSystem,
+        combatSystem,
         consolidationSystem,
         guideProgress: guideProgression.getState(),
       });
@@ -10132,6 +10223,11 @@ export class GameScene extends Phaser.Scene {
       if (saveGameDialog.isOpen()) return;
       saveGameDialog.show(buildDefaultSaveFilename(data.mapKey));
     };
+    // Lazily-created standalone tutorial overlay, reachable from the pause
+    // menu. It renders above the pause menu (higher z-index) and swallows its
+    // own input, so opening it never resumes the game; closing it simply hides
+    // the overlay and reveals the still-open pause menu underneath.
+    let tutorialView: TutorialView | null = null;
     const escapeMenu = new EscapeMenu(
       {
         onSave: () => {
@@ -10166,6 +10262,12 @@ export class GameScene extends Phaser.Scene {
         onTutorial: () => {
           escapeMenu.close();
           this.tutorialWizard?.openManual();
+        },
+        onShowTutorial: () => {
+          // Keep the pause menu open underneath so the game stays paused and
+          // closing the tutorial returns to it.
+          if (!tutorialView) tutorialView = new TutorialView();
+          tutorialView.show();
         },
         onSettings: () => {
           // Open Settings over the pause menu; closing it returns to the menu.
@@ -10224,6 +10326,7 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-Q', onKeyCtrlQ);
       this.input.keyboard?.off('keydown-S', onKeyCtrlS);
       escapeMenu.shutdown();
+      tutorialView?.shutdown();
       saveGameDialog.shutdown();
       settingsDialog.shutdown();
     });

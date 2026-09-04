@@ -36,10 +36,15 @@ export class TradeConnectionSystem {
     this.establishmentTurns = resolveTradeRouteEstablishmentTurns(establishmentTurns);
   }
 
-  private readonly establishmentTurns: number;
+  private establishmentTurns: number;
 
   getEstablishmentTurns(): number {
     return this.establishmentTurns;
+  }
+
+  /** Changes the captured duration for newly created routes only. */
+  setEstablishmentTurns(turns: number): void {
+    this.establishmentTurns = resolveTradeRouteEstablishmentTurns(turns);
   }
 
   setRestrictionProvider(fn: (nationAId: string, nationBId: string) => string | undefined): void {

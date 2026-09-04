@@ -412,6 +412,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .sd-header-actions .sd-primary:hover { border-color: #4f9863; background: #2a5a3a; }
 .sd-body { padding: 16px; display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow-y: auto; }
 .sd-year-row { display: flex; gap: 12px; align-items: flex-end; }
+.sd-slider-row { display: flex; gap: 10px; align-items: center; }
+.sd-slider-row input[type="range"] { flex: 1; }
+.sd-slider-value { width: 38px; color: #ddd; font-variant-numeric: tabular-nums; text-align: right; }
 .sd-checkbox {
   display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ddd;
   padding-bottom: 11px; white-space: nowrap;
@@ -721,6 +724,13 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Peace Treaty cooldown (turns)
         <input id="sd-peace-treaty-cooldown" type="number" min="0" step="1">
       </label>
+      <label class="field" title="Capitulation Pressure required before a nation will accept capitulation.">Capitulation Acceptance Threshold
+        <span class="sd-slider-row">
+          <input id="sd-capitulation-acceptance-threshold" type="range" min="0.01" max="1.00" step="0.01">
+          <output id="sd-capitulation-acceptance-threshold-value" class="sd-slider-value">0.70</output>
+        </span>
+        <span class="hint">Capitulation Pressure required before a nation will accept capitulation.</span>
+      </label>
       <label class="field" title="0 establishes new trade routes immediately.">Trade Route Establishment Time (turns)
         <input id="sd-trade-route-establishment-turns" type="number" min="0" step="1">
         <span class="hint">0 = trade routes are established immediately.</span>
@@ -967,6 +977,8 @@ const DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS = 10;
 // Mirrors the backward-compatible defaults in src/types/tradeDeal.ts.
 const DEFAULT_SHORT_TRADE_DEAL_DURATION = 25;
 const DEFAULT_LONG_TRADE_DEAL_DURATION = 50;
+// Mirrors DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD in CapitulationSystem.
+const DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD = 0.70;
 // Mirrors DEFAULT_DOMINATION_* in src/systems/DominationRanking.ts.
 const DEFAULT_DOMINATION_LAND_PERCENT = 20;
 const DEFAULT_DOMINATION_REQUIRED_VASSALS = 3;
@@ -1033,6 +1045,12 @@ function normalizeScenarioMeta() {
     meta.peaceTreatyCooldownTurns = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
   } else {
     meta.peaceTreatyCooldownTurns = Math.floor(meta.peaceTreatyCooldownTurns);
+  }
+  if (typeof meta.capitulationAcceptanceThreshold !== 'number'
+    || !Number.isFinite(meta.capitulationAcceptanceThreshold)
+    || meta.capitulationAcceptanceThreshold < 0.01
+    || meta.capitulationAcceptanceThreshold > 1) {
+    meta.capitulationAcceptanceThreshold = DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD;
   }
   if (typeof meta.tradeRouteEstablishmentTurns !== 'number'
     || !Number.isFinite(meta.tradeRouteEstablishmentTurns)
@@ -1691,7 +1709,11 @@ function buildBlankScenario(name, nationIds, width, height, tileSizeValue, templ
     };
   });
 
-  const meta = { name, version: 1 };
+  const meta = {
+    name,
+    version: 1,
+    capitulationAcceptanceThreshold: DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD,
+  };
   // Editor-only background tracing aid; omitted entirely when "None" is chosen.
   if (template) meta.template = template;
 
@@ -5657,6 +5679,11 @@ function updateScenarioDetailsStaticVisibility() {
   document.getElementById('sd-static-step-field').style.display = mode === 'staticYear' ? '' : 'none';
 }
 
+function updateCapitulationAcceptanceThresholdValue() {
+  const input = document.getElementById('sd-capitulation-acceptance-threshold');
+  document.getElementById('sd-capitulation-acceptance-threshold-value').value = Number(input.value).toFixed(2);
+}
+
 function isHistoricalEventDialogOpen() {
   return document.getElementById('historical-event-overlay').classList.contains('open');
 }
@@ -5886,6 +5913,8 @@ function openScenarioDetails() {
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
   document.getElementById('sd-peace-treaty-cooldown').value = String(meta.peaceTreatyCooldownTurns);
+  document.getElementById('sd-capitulation-acceptance-threshold').value = Number(meta.capitulationAcceptanceThreshold).toFixed(2);
+  updateCapitulationAcceptanceThresholdValue();
   document.getElementById('sd-trade-route-establishment-turns').value = String(meta.tradeRouteEstablishmentTurns);
   document.getElementById('sd-short-trade-deal-duration').value = String(meta.shortTradeDealDuration);
   document.getElementById('sd-long-trade-deal-duration').value = String(meta.longTradeDealDuration);
@@ -5947,6 +5976,13 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const capitulationAcceptanceThreshold = Number(document.getElementById('sd-capitulation-acceptance-threshold').value);
+  if (!Number.isFinite(capitulationAcceptanceThreshold)
+    || capitulationAcceptanceThreshold < 0.01 || capitulationAcceptanceThreshold > 1) {
+    errorEl.textContent = 'Capitulation Acceptance Threshold must be between 0.01 and 1.00.';
+    return false;
+  }
+
   const tradeRouteEstablishmentTurns = Number(document.getElementById('sd-trade-route-establishment-turns').value);
   if (!Number.isInteger(tradeRouteEstablishmentTurns) || tradeRouteEstablishmentTurns < 0) {
     errorEl.textContent = 'Trade Route Establishment Time must be a non-negative integer (turns).';
@@ -5999,6 +6035,7 @@ function saveScenarioDetails() {
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
   scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
+  scenario.meta.capitulationAcceptanceThreshold = capitulationAcceptanceThreshold;
   scenario.meta.tradeRouteEstablishmentTurns = tradeRouteEstablishmentTurns;
   scenario.meta.shortTradeDealDuration = shortTradeDealDuration;
   scenario.meta.longTradeDealDuration = longTradeDealDuration;
@@ -6018,6 +6055,7 @@ document.getElementById('open-scenario-details-btn').addEventListener('click', o
 document.getElementById('scenario-details-cancel-btn').addEventListener('click', closeScenarioDetails);
 document.getElementById('scenario-details-save-btn').addEventListener('click', saveScenarioDetails);
 document.getElementById('sd-time-mode').addEventListener('change', updateScenarioDetailsStaticVisibility);
+document.getElementById('sd-capitulation-acceptance-threshold').addEventListener('input', updateCapitulationAcceptanceThresholdValue);
 document.getElementById('sd-add-event-btn').addEventListener('click', () => openHistoricalEventDialog(null));
 document.getElementById('he-add-conflict-btn').addEventListener('click', addHistoricalEventConflict);
 document.getElementById('he-cancel-btn').addEventListener('click', closeHistoricalEventDialog);

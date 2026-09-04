@@ -333,6 +333,12 @@ export interface SavedGameState {
   gameSpeedId?: GameSpeedId;
   /** Active scenario rule. Optional so older saves fall back through scenario metadata. */
   tradeRouteEstablishmentTurns?: number;
+  /** Active scenario capitulation rule. Optional for backward-compatible saves. */
+  capitulationAcceptanceThreshold?: number;
+  /** Future peace treaties use this duration; existing explicit expiries are unchanged. */
+  peaceTreatyCooldownTurns?: number;
+  /** Active original-capital combat threshold. Optional for older saves. */
+  originalCapitalCollapsePercent?: number;
   /** Active scenario choices for newly created human deals. Optional for older saves. */
   shortTradeDealDuration?: number;
   longTradeDealDuration?: number;

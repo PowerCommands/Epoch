@@ -120,6 +120,7 @@ function generateAttempt(
       timeProgression: { mode: 'auto' },
       barbarianSpawnInterval: 10,
       peaceTreatyCooldownTurns: 10,
+      capitulationAcceptanceThreshold: 0.7,
       tradeRouteEstablishmentTurns: DEFAULT_TRADE_ROUTE_ESTABLISHMENT_TURNS,
       shortTradeDealDuration: DEFAULT_SHORT_TRADE_DEAL_DURATION,
       longTradeDealDuration: DEFAULT_LONG_TRADE_DEAL_DURATION,

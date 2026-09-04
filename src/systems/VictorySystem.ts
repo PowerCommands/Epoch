@@ -273,6 +273,16 @@ export class VictorySystem {
     };
   }
 
+  /** Updates thresholds consumed by subsequent normal Domination checks. */
+  setDominationVictorySettings(settings: Partial<DominationVictoryConfig>): void {
+    if (settings.requiredVassals !== undefined) {
+      this.domination.requiredVassals = resolveDominationRequiredVassals(settings.requiredVassals);
+    }
+    if (settings.requiredLandPercent !== undefined) {
+      this.domination.requiredLandPercent = resolveDominationLandPercent(settings.requiredLandPercent);
+    }
+  }
+
   /** Structured outcome once a nation has won, else null. */
   getVictoryState(): VictoryState | null {
     return this.victoryState ? { ...this.victoryState } : null;

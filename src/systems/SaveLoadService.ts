@@ -74,6 +74,7 @@ import type { CulturalJealousySystem } from './diplomacy/CulturalJealousySystem'
 import type { UnluckyWinnerTurningPointSystem } from './diplomacy/UnluckyWinnerTurningPointSystem';
 import type { HumanTradeDealWorkflow } from './HumanTradeDealWorkflow';
 import type { HumanTradeDealDurations } from '../types/tradeDeal';
+import type { CombatSystem } from './CombatSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -121,6 +122,7 @@ export interface SaveLoadContext {
   victorySystem?: VictorySystem;
   worldCouncilSystem?: WorldCouncilSystem;
   capitulationSystem?: CapitulationSystem;
+  combatSystem?: CombatSystem;
   consolidationSystem?: ConsolidationSystem;
   /** Snapshot supplied by the progressive guide; presentation state is excluded. */
   guideProgress?: SavedGuideProgress;
@@ -344,6 +346,9 @@ export class SaveLoadService {
       })(),
       gameSpeedId,
       tradeRouteEstablishmentTurns: tradeConnectionSystem?.getEstablishmentTurns(),
+      capitulationAcceptanceThreshold: context.capitulationSystem?.getAcceptanceThreshold(),
+      peaceTreatyCooldownTurns: diplomacyManager.getPeaceTreatyCooldownTurns(),
+      originalCapitalCollapsePercent: context.combatSystem?.getOriginalCapitalCollapsePercent(),
       shortTradeDealDuration: context.humanTradeDealDurations?.short,
       longTradeDealDuration: context.humanTradeDealDurations?.long,
       victoryConditions: context.victorySystem

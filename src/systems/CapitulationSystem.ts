@@ -17,8 +17,17 @@ import type { MilitaryVassalizationSystem } from './diplomacy/MilitaryVassalizat
 
 /** War pressure at/above which demanding capitulation is at least plausible (button shows). */
 export const CAPITULATION_ELIGIBILITY_THRESHOLD = 0.42;
-/** Capitulation pressure at/above which the target accepts unconditional surrender. */
-export const CAPITULATION_ACCEPTANCE_THRESHOLD = 0.7;
+/** Legacy/default pressure at which the target accepts unconditional surrender. */
+export const DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD = 0.7;
+/** @deprecated Use a CapitulationSystem instance's configured threshold. */
+export const CAPITULATION_ACCEPTANCE_THRESHOLD = DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD;
+
+/** Resolve scenario/save input while preserving the supported 0.01–1.00 range. */
+export function resolveCapitulationAcceptanceThreshold(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0.01 && value <= 1
+    ? value
+    : DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD;
+}
 
 export const DEMILITARIZATION_PRODUCTION_BLOCK_REASON = 'Demilitarized after capitulation';
 
@@ -35,6 +44,8 @@ export interface CapitulationEvaluation {
 
 export interface CapitulationResult {
   accepted: boolean;
+  /** Diagnostic reason when application rejects before making changes. */
+  failureReason?: string;
   reparationsPaid: number;
   reparationShares: Array<{ nationId: string; amount: number }>;
   formerEnemyIds: string[];
@@ -63,6 +74,8 @@ export interface CapitulationSystemDependencies {
   getCurrentTurn: () => number;
   /** Demilitarization duration; V1 reuses the scenario Peace Treaty cooldown. */
   getDemilitarizationTurns: () => number;
+  /** Scenario-configured pressure required for acceptance; legacy default is 0.70. */
+  acceptanceThreshold?: number;
   log?: (message: string) => void;
   onCapitulation?: (event: CapitulationAppliedEvent) => void;
   /** Production common path shared with capital capture; optional for focused legacy callers. */
@@ -94,8 +107,11 @@ function clamp01(value: number): number {
 export class CapitulationSystem {
   /** nationId → world turn until which the nation cannot produce military units. */
   private readonly demilitarizedUntilTurn = new Map<string, number>();
+  private acceptanceThreshold: number;
 
-  constructor(private readonly deps: CapitulationSystemDependencies) {}
+  constructor(private readonly deps: CapitulationSystemDependencies) {
+    this.acceptanceThreshold = resolveCapitulationAcceptanceThreshold(deps.acceptanceThreshold);
+  }
 
   // --- Demilitarization state (save/loaded) ---------------------------------
 
@@ -108,6 +124,14 @@ export class CapitulationSystem {
     const until = this.demilitarizedUntilTurn.get(nationId);
     if (until === undefined) return 0;
     return Math.max(0, until - this.deps.getCurrentTurn());
+  }
+
+  getAcceptanceThreshold(): number {
+    return this.acceptanceThreshold;
+  }
+
+  setAcceptanceThreshold(value: number): void {
+    this.acceptanceThreshold = resolveCapitulationAcceptanceThreshold(value);
   }
 
   /** Authoritative military-production block consulted by UI, AI, and ProductionSystem. */
@@ -170,7 +194,7 @@ export class CapitulationSystem {
     const atWar = this.deps.diplomacyManager.getState(demandingNationId, targetNationId) === 'WAR';
     const canBecomeVassal = this.canCreateVassalOutcome(demandingNationId, targetNationId);
     const eligible = atWar && canBecomeVassal && pressure >= CAPITULATION_ELIGIBILITY_THRESHOLD;
-    const accepted = atWar && canBecomeVassal && pressure >= CAPITULATION_ACCEPTANCE_THRESHOLD;
+    const accepted = atWar && canBecomeVassal && pressure >= this.getAcceptanceThreshold();
     return {
       eligible,
       accepted,
@@ -221,16 +245,22 @@ export class CapitulationSystem {
     demandExploitationRights = false,
     force = false,
   ): CapitulationResult {
-    const rejected: CapitulationResult = {
-      accepted: false, reparationsPaid: 0, reparationShares: [], formerEnemyIds: [],
+    const rejected = (failureReason: string): CapitulationResult => ({
+      accepted: false, failureReason, reparationsPaid: 0, reparationShares: [], formerEnemyIds: [],
       removedUnitCount: 0, restoredCityIds: [], demilitarizedUntilTurn: 0,
       exploitationRightsGranted: false, exploitationHoldingsRemoved: 0,
-    };
+    });
 
     // 1. Revalidate that capitulation can still be applied.
-    if (this.deps.diplomacyManager.getState(demandingNationId, targetNationId) !== 'WAR') return rejected;
-    if (!this.canCreateVassalOutcome(demandingNationId, targetNationId)) return rejected;
-    if (!force && !this.evaluateCapitulationDemand(demandingNationId, targetNationId).accepted) return rejected;
+    if (this.deps.diplomacyManager.getState(demandingNationId, targetNationId) !== 'WAR') {
+      return rejected('The nations are no longer at war.');
+    }
+    if (!this.canCreateVassalOutcome(demandingNationId, targetNationId)) {
+      return rejected('The demanded vassal relationship cannot be created.');
+    }
+    if (!force && !this.evaluateCapitulationDemand(demandingNationId, targetNationId).accepted) {
+      return rejected(`Pressure is below the current acceptance threshold (${this.getAcceptanceThreshold().toFixed(2)}).`);
+    }
 
     // 2. Capture the complete enemy list before any war ends (needed for reparations + treaties).
     const formerEnemyIds = [...this.deps.diplomacyManager.getWarringNationIds(targetNationId)].sort();

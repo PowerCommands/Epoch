@@ -44,6 +44,7 @@ function harness(config: {
   activeNations?: string[];
   currentTurn?: number;
   cooldownTurns?: number;
+  acceptanceThreshold?: number;
 } = {}) {
   const cities = new Map((config.cities ?? []).map((c) => [c.id, c]));
   const units = new Map<string, UnitStub[]>();
@@ -114,6 +115,7 @@ function harness(config: {
     peaceTreatySystem, militaryEvaluationSystem: mil,
     getCurrentTurn: () => currentTurn,
     getDemilitarizationTurns: () => config.cooldownTurns ?? 10,
+    acceptanceThreshold: config.acceptanceThreshold,
     log: (message) => logs.push(message),
   });
   return {
@@ -148,6 +150,52 @@ test('severe military and territorial collapse makes capitulation acceptable', (
   assert.equal(h.system.canDemandCapitulation('atk', 'target'), true);
   assert.equal(evaluation.accepted, true);
   assert.ok(evaluation.pressure >= 0.7);
+});
+
+test('acceptance uses the configured scenario threshold without changing pressure', () => {
+  const permissive = harness({
+    ...collapse,
+    cities: [city('t1', 'target')],
+    acceptanceThreshold: 0.01,
+  }).system.evaluateCapitulationDemand('atk', 'target');
+  const resistant = harness({
+    ...collapse,
+    cities: [city('t1', 'target')],
+    acceptanceThreshold: 1,
+  }).system.evaluateCapitulationDemand('atk', 'target');
+
+  assert.equal(permissive.pressure, resistant.pressure);
+  assert.equal(permissive.accepted, true);
+  assert.equal(resistant.accepted, resistant.pressure >= 1);
+});
+
+test('runtime acceptance-threshold changes affect subsequent evaluations immediately', () => {
+  const h = harness({ ...collapse, cities: [city('t1', 'target')], acceptanceThreshold: 1 });
+  const before = h.system.evaluateCapitulationDemand('atk', 'target');
+  h.system.setAcceptanceThreshold(0.01);
+  const after = h.system.evaluateCapitulationDemand('atk', 'target');
+  assert.equal(before.pressure, after.pressure);
+  assert.equal(before.accepted, before.pressure >= 1);
+  assert.equal(after.accepted, true);
+});
+
+test('runtime 0.20 accepts pressure 0.32 and the normal apply path creates the human vassal', () => {
+  const h = harness({
+    cities: [city('t1', 'target')],
+    warring: { target: ['human'], human: ['target'] },
+    activeNations: ['target', 'human'],
+    acceptanceThreshold: 0.2,
+  });
+  h.system.computeCapitulationPressure = () => ({
+    pressure: 0.32,
+    factors: { warPressure: 0.12, militaryCollapse: 0.08, attrition: 0.05, territorialCollapse: 0.07 },
+  });
+
+  assert.equal(h.system.evaluateCapitulationDemand('human', 'target').accepted, true);
+  const result = h.system.applyCapitulation('human', 'target', 0);
+  assert.equal(result.accepted, true);
+  assert.equal(h.vassalHosts.get('target'), 'human');
+  assert.deepEqual(h.respondCalls, [['target', 'human', true]]);
 });
 
 test('fear alone does not cause capitulation without military evidence', () => {
@@ -297,6 +345,7 @@ test('a refused capitulation demand changes no game state', () => {
   });
   const result = h.system.applyCapitulation('atk', 'target', 300);
   assert.equal(result.accepted, false);
+  assert.match(result.failureReason ?? '', /below the current acceptance threshold/);
   assert.equal(h.units.get('target')!.length, 1); // no units removed
   assert.equal(h.gold.get('target'), 500); // no money moved
   assert.equal(h.gold.get('atk') ?? 0, 0);

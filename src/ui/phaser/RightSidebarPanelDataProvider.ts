@@ -52,7 +52,12 @@ import type { AIMilitaryEvaluationSystem, MilitaryComparison } from '../../syste
 import type { AIMilitaryThreatEvaluationSystem, ThreatLevel } from '../../systems/ai/AIMilitaryThreatEvaluationSystem';
 import type { DiplomaticEvaluationSystem } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
 import type { DiplomaticAttitude } from '../../systems/diplomacy/DiplomaticEvaluationSystem';
-import { canCityProduceUnit, getCityUnitProductionBlockReason } from '../../systems/ProductionRules';
+import {
+  canCityProduceUnit,
+  getCityUnitProductionBlockReason,
+  isMilitaryProductionUnit,
+  isUnitObsoleteForNationEra,
+} from '../../systems/ProductionRules';
 import type { ProductionSystem, QueueEntryView } from '../../systems/ProductionSystem';
 import type { ProductionPurchaseQuote } from '../../systems/ProductionPurchaseSystem';
 import type { ResearchSystem } from '../../systems/ResearchSystem';
@@ -1571,6 +1576,8 @@ export class RightSidebarPanelDataProvider {
     );
     for (const unitType of ALL_UNIT_TYPES) {
       if (this.researchSystem && !this.researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) continue;
+      const nationEra = this.eraSystem?.getNationEra(city.ownerId) ?? 'ancient';
+      if (isMilitaryProductionUnit(unitType) && isUnitObsoleteForNationEra(unitType.era, nationEra)) continue;
       const item: Producible = { kind: 'unit', unitType };
       const productionBlockReason = this.productionSystem.getItemProductionBlockReason(city.id, item);
       const disabledReason = productionBlockReason
@@ -2109,17 +2116,17 @@ export class RightSidebarPanelDataProvider {
       if (exchangeMapsReason) rows.push(textRow(exchangeMapsReason, true));
       rows.push(...this.buildExploitationRightsTradeRows(nationId, nation?.color));
     }
-    rows.push(disabledReasonButtonRow(
-      'Give Gift',
-      undefined,
-      () => {
-        document.dispatchEvent(new CustomEvent('diplomacyAction', {
-          detail: { action: 'giveGift', targetNationId: nationId },
-        }));
-      },
-      nation?.color,
-    ));
     if (!isAtWar) {
+      rows.push(disabledReasonButtonRow(
+        'Give Gift',
+        undefined,
+        () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', {
+            detail: { action: 'giveGift', targetNationId: nationId },
+          }));
+        },
+        nation?.color,
+      ));
       rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
       rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
     }
@@ -2186,9 +2193,9 @@ export class RightSidebarPanelDataProvider {
       ));
       if (!eligibility.ok && eligibility.reason) rows.push(textRow(eligibility.reason, true));
     }
-    // Demand Capitulation: a separate, more severe wartime action, shown only when
-    // the target's position is dire enough that surrender is plausible.
-    if (isAtWar && this.capitulationSystem?.canDemandCapitulation(humanId, nationId)) {
+    // Human-facing demands appear only when the target will accept. The lower
+    // eligibility threshold remains available to internal/system consumers.
+    if (isAtWar && this.capitulationSystem?.evaluateCapitulationDemand(humanId, nationId).accepted) {
       rows.push(disabledReasonButtonRow(
         'Demand Capitulation',
         undefined,
@@ -2215,6 +2222,66 @@ export class RightSidebarPanelDataProvider {
         0x9c3b3b,
       ));
     }
+    return rows;
+  }
+
+  /**
+   * Read-only bilateral capitulation diagnostics for an Audience nation.
+   * Opponents and weighted contributions come from the authoritative diplomacy
+   * and capitulation systems; this method only formats them for presentation.
+   */
+  getAudienceWarDiagnosticRows(nationId: string, diagnosticsEnabled: boolean): RightSidebarRow[] {
+    if (!diagnosticsEnabled || !this.diplomacyManager || !this.capitulationSystem) return [];
+
+    const opponents = this.diplomacyManager.getWarringNationIds(nationId)
+      .sort((a, b) => this.getNationDisplayName(a).localeCompare(this.getNationDisplayName(b)));
+    if (opponents.length === 0) return [];
+
+    const rows: RightSidebarRow[] = [textRow('DIAGNOSTIC — CAPITULATION', false, true, 0xf4d06f)];
+    opponents.forEach((opponentId, index) => {
+      if (index > 0) rows.push({ kind: 'separator' });
+      const result = this.capitulationSystem!.computeCapitulationPressure(nationId, opponentId);
+      const displayedPercent = normalizeCapitulationPressurePercent(
+        result.pressure,
+        this.capitulationSystem!.getAcceptanceThreshold(),
+      );
+      const rawFactorValues = [
+        result.factors.warPressure ?? 0,
+        result.factors.militaryCollapse ?? 0,
+        result.factors.attrition ?? 0,
+        result.factors.territorialCollapse ?? 0,
+      ];
+      const formatted = formatAdditiveDiagnosticValues(rawFactorValues, result.pressure);
+      rows.push(textRow(`vs ${this.getNationDisplayName(opponentId)}`, false, true));
+      rows.push({
+        kind: 'progress',
+        label: 'CAPITULATION PRESSURE',
+        current: displayedPercent,
+        max: 100,
+        valueText: `${displayedPercent}%`,
+      });
+      rows.push(textRow(
+        displayedPercent >= 100
+          ? 'READY TO CAPITULATE'
+          : `${100 - displayedPercent}% remaining until capitulation`,
+        displayedPercent < 100,
+      ));
+      rows.push(textRow('Pressure breakdown', true));
+      rows.push({
+        kind: 'compactTable',
+        columns: [
+          { label: 'Factor', weight: 4 },
+          { label: 'Value', weight: 1, align: 'right' },
+        ],
+        rows: [
+          ['War Pressure', formatted.factors[0]],
+          ['Military Collapse', formatted.factors[1]],
+          ['Attrition', formatted.factors[2]],
+          ['Territorial Collapse', formatted.factors[3]],
+          ['Internal Total', formatted.total],
+        ],
+      });
+    });
     return rows;
   }
 
@@ -3069,6 +3136,10 @@ export class RightSidebarPanelDataProvider {
     return this.isNationKnown(nationId);
   }
 
+  private getNationDisplayName(nationId: string): string {
+    return this.nationManager.getNation(nationId)?.name ?? nationId;
+  }
+
   private notifyChanged(): void {
     for (const listener of this.listeners) listener();
   }
@@ -3088,6 +3159,31 @@ export class RightSidebarPanelDataProvider {
 
 function textRow(text: string, muted = false, large = false, color?: number, spritePath?: string): RightSidebarRow {
   return { kind: 'text', text, muted, large, color, spritePath };
+}
+
+function formatAdditiveDiagnosticValues(
+  factors: readonly number[],
+  total: number,
+): { factors: string[]; total: string } {
+  // Prefer the compact two-decimal presentation. If independent rounding would
+  // obscure the additive relationship, add only as much precision as needed
+  // for the displayed contributions to sum exactly to the displayed result.
+  let decimals = 2;
+  for (; decimals < 8; decimals += 1) {
+    const scale = 10 ** decimals;
+    const factorUnits = factors.reduce((sum, value) => sum + Math.round(value * scale), 0);
+    if (factorUnits === Math.round(total * scale)) break;
+  }
+  return {
+    factors: factors.map((value) => value.toFixed(decimals)),
+    total: total.toFixed(decimals),
+  };
+}
+
+/** Presentation-only normalization: the acceptance threshold maps to 100%. */
+export function normalizeCapitulationPressurePercent(pressure: number, acceptanceThreshold: number): number {
+  if (acceptanceThreshold <= 0) return pressure > 0 ? 100 : 0;
+  return Math.round(Math.max(0, Math.min(1, pressure / acceptanceThreshold)) * 100);
 }
 
 function formatRelationCell(value: number | null): string {

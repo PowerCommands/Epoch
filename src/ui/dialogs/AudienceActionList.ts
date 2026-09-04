@@ -1,7 +1,12 @@
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
-import type { RightSidebarButtonGroupRow, RightSidebarButtonRow, RightSidebarRow } from '../phaser/RightSidebarPanelTypes';
+import type {
+  RightSidebarButtonGroupRow,
+  RightSidebarButtonRow,
+  RightSidebarCompactTableRow,
+  RightSidebarRow,
+} from '../phaser/RightSidebarPanelTypes';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 type RemoveOwned = (object: Phaser.GameObjects.GameObject) => void;
@@ -146,7 +151,9 @@ export class AudienceActionList {
         return y + SEPARATOR_HEIGHT;
       }
       case 'progress':
-        return this.renderProgress(row.label, row.current, row.max, x, y, width);
+        return this.renderProgress(row.label, row.current, row.max, row.valueText, x, y, width);
+      case 'compactTable':
+        return this.renderCompactTable(row, x, y, width);
       default:
         return y;
     }
@@ -230,14 +237,67 @@ export class AudienceActionList {
     return maxNextY;
   }
 
-  private renderProgress(label: string, current: number, max: number, x: number, y: number, width: number): number {
+  private renderProgress(
+    label: string,
+    current: number,
+    max: number,
+    valueText: string | undefined,
+    x: number,
+    y: number,
+    width: number,
+  ): number {
     const w = width - LEFT_PAD * 2;
     const ratio = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
     this.track(new Phaser.GameObjects.Rectangle(this.scene, x + LEFT_PAD, y, w, PROGRESS_HEIGHT, 0x10202c, 0.9).setOrigin(0, 0));
     this.track(new Phaser.GameObjects.Rectangle(this.scene, x + LEFT_PAD, y, w * ratio, PROGRESS_HEIGHT, 0x3a7b9c, 0.95).setOrigin(0, 0));
-    const text = this.track(this.makeText(`${label}: ${Math.round(current)}/${Math.round(max)}`, 13, '#edf4ff', 'normal'));
+    const text = this.track(this.makeText(
+      `${label}: ${valueText ?? `${Math.round(current)}/${Math.round(max)}`}`,
+      13,
+      '#edf4ff',
+      'bold',
+    ));
     text.setPosition(x + LEFT_PAD + 8, y + (PROGRESS_HEIGHT - text.height) / 2);
     return y + PROGRESS_HEIGHT + ROW_GAP;
+  }
+
+  private renderCompactTable(row: RightSidebarCompactTableRow, x: number, y: number, width: number): number {
+    if (row.columns.length === 0) return y;
+    const innerX = x + LEFT_PAD;
+    const innerWidth = width - LEFT_PAD * 2;
+    const totalWeight = row.columns.reduce((sum, column) => sum + Math.max(0.01, column.weight), 0);
+    const widths = row.columns.map((column) => innerWidth * Math.max(0.01, column.weight) / totalWeight);
+    const headerHeight = 24;
+    const bodyHeight = 23;
+    const padding = 7;
+
+    const renderCell = (value: string, columnIndex: number, cellY: number, bold: boolean): void => {
+      const left = innerX + widths.slice(0, columnIndex).reduce((sum, columnWidth) => sum + columnWidth, 0);
+      const columnWidth = widths[columnIndex];
+      const align = row.columns[columnIndex].align ?? 'left';
+      const label = this.track(this.makeText(value, 13, bold ? '#c8d7e6' : '#edf4ff', bold ? 'bold' : 'normal'));
+      label.setOrigin(align === 'right' ? 1 : align === 'center' ? 0.5 : 0, 0);
+      label.setPosition(
+        align === 'right' ? left + columnWidth - padding : align === 'center' ? left + columnWidth / 2 : left + padding,
+        cellY + 4,
+      );
+    };
+
+    this.track(new Phaser.GameObjects.Rectangle(
+      this.scene, innerX, y, innerWidth, headerHeight, 0x17364a, 0.95,
+    ).setOrigin(0, 0));
+    row.columns.forEach((column, index) => renderCell(column.label, index, y, true));
+
+    let cursorY = y + headerHeight;
+    row.rows.forEach((cells, rowIndex) => {
+      if (rowIndex % 2 === 1) {
+        this.track(new Phaser.GameObjects.Rectangle(
+          this.scene, innerX, cursorY, innerWidth, bodyHeight, 0x102838, 0.55,
+        ).setOrigin(0, 0));
+      }
+      row.columns.forEach((_column, index) => renderCell(cells[index] ?? '', index, cursorY, false));
+      cursorY += bodyHeight;
+    });
+    return cursorY + ROW_GAP;
   }
 
   private installButtonInput(button: ListButton): void {

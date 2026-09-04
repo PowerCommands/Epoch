@@ -3,6 +3,7 @@ export interface EscapeMenuCallbacks {
   onLoad: (file: File) => void;
   onQuit: () => void;
   onTutorial: () => void;
+  onShowTutorial: () => void;
   onSettings: () => void;
 }
 
@@ -117,6 +118,13 @@ export class EscapeMenu {
       this.clearError();
       this.callbacks.onTutorial();
     });
+    const showTutorialBtn = makeButton('Show Tutorial', '#4a90d9', () => {
+      this.clearError();
+      // Opens the tutorial overlay on top of this menu without resuming the
+      // game; the menu stays open underneath so closing the tutorial returns
+      // here (see GameScene wiring).
+      this.callbacks.onShowTutorial();
+    });
     const settingsBtn = makeButton('Settings', '#4a90d9', () => {
       this.clearError();
       this.callbacks.onSettings();
@@ -131,6 +139,7 @@ export class EscapeMenu {
     buttonRow.appendChild(loadBtn);
     buttonRow.appendChild(settingsBtn);
     buttonRow.appendChild(tutorialBtn);
+    buttonRow.appendChild(showTutorialBtn);
     buttonRow.appendChild(quitBtn);
     buttonRow.appendChild(resumeBtn);
     box.appendChild(buttonRow);

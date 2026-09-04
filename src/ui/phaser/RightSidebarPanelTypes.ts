@@ -77,6 +77,8 @@ export interface RightSidebarProgressRow {
   label: string;
   current: number;
   max: number;
+  /** Optional presentation text when the raw current/max pair is not meaningful to players. */
+  valueText?: string;
 }
 
 export interface RightSidebarSeparatorRow {

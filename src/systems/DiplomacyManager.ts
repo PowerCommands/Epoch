@@ -447,13 +447,18 @@ export class DiplomacyManager {
   // is scenario-configured; it defaults to DEFAULT_PEACE_TREATY_COOLDOWN_TURNS.
   constructor(
     private readonly turnManager?: TurnManager,
-    private readonly peaceTreatyCooldownTurns: number = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS,
+    private peaceTreatyCooldownTurns: number = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS,
     private readonly hasCultureUnlock: (nationId: string, cultureNodeId: string) => boolean = () => false,
   ) {}
 
   /** The bilateral Peace Treaty cooldown length applied when a war ends in peace. */
   getPeaceTreatyCooldownTurns(): number {
     return this.peaceTreatyCooldownTurns;
+  }
+
+  /** Changes only the duration stamped onto future peace treaties. */
+  setPeaceTreatyCooldownTurns(turns: number): void {
+    if (Number.isInteger(turns) && turns >= 0) this.peaceTreatyCooldownTurns = turns;
   }
 
   /**

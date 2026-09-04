@@ -215,6 +215,10 @@ export class CombatSystem {
       CITY_BASE_HEALTH * resolveOriginalCapitalCollapsePercent(percent) / 100;
   }
 
+  getOriginalCapitalCollapsePercent(): number {
+    return this.originalCapitalCollapseHealth / CITY_BASE_HEALTH * 100;
+  }
+
   on(callback: CombatListener): void {
     this.listeners.push(callback);
   }

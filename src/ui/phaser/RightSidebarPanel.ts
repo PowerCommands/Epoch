@@ -1441,7 +1441,7 @@ export class RightSidebarPanel {
       case 'buttonGroup':
         return this.addButtonGroupRow(row, y);
       case 'progress':
-        return this.addProgressRow(row.label, row.current, row.max, y);
+        return this.addProgressRow(row.label, row.current, row.max, y, row.valueText);
       case 'separator': {
         const line = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, PANEL_PADDING, y + 6, this.getContentWidth(), 1, 0x7f8b99, 0.28))
           .setOrigin(0, 0)
@@ -1941,9 +1941,9 @@ export class RightSidebarPanel {
     return `ui:${spritePath}`;
   }
 
-  private addProgressRow(label: string, current: number, max: number, y: number): number {
+  private addProgressRow(label: string, current: number, max: number, y: number, valueText?: string): number {
     const percent = max > 0 ? Phaser.Math.Clamp(current / max, 0, 1) : 0;
-    const text = this.addContentText(`${label}: ${current} / ${max}`, 15, '#cfd9e6');
+    const text = this.addContentText(`${label}: ${valueText ?? `${current} / ${max}`}`, 15, '#cfd9e6');
     text.setPosition(PANEL_PADDING, y);
     text.setData('baseY', y);
     const progressWidth = this.getContentWidth();

@@ -51,6 +51,11 @@ export interface ScenarioMeta {
    */
   peaceTreatyCooldownTurns?: number;
   /**
+   * Internal Capitulation Pressure required before surrender is accepted.
+   * Valid range is 0.01–1.00; absent/invalid values retain the legacy 0.70.
+   */
+  capitulationAcceptanceThreshold?: number;
+  /**
    * Turns a newly accepted trade route remains under establishment before it
    * becomes active. 0 activates the route as part of its creation operation.
    * Absent/invalid values fall back to the legacy establishment duration.

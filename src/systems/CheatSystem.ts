@@ -52,6 +52,8 @@ export interface GameContext {
   setFogEnabled: (enabled: boolean) => void;
   /** Open the developer dialog for editing bilateral relationship memory. */
   openRelationsDialog: () => void;
+  /** Open the developer dialog for current-game scenario settings. */
+  openScenarioDialog: () => void;
   /**
    * Force an alliance between the human player and `targetNationId`, running the
    * same alliance-formation code path (manager, relation updates, event log, UI
@@ -371,6 +373,16 @@ export class CheatSystem {
         if (args.length !== 0) return 'Usage: relations';
         context.openRelationsDialog();
         return 'Relations editor opened.';
+      },
+    });
+
+    this.register({
+      name: 'scenario',
+      description: 'Open the current-game scenario settings editor.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: scenario';
+        context.openScenarioDialog();
+        return 'Runtime Scenario editor opened.';
       },
     });
 

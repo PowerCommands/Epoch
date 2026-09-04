@@ -23,6 +23,8 @@ export interface LeaderAudienceContext {
   getStatusRows(nationId: string): RightSidebarRow[];
   /** Interactive diplomacy controls (Embassy, Open Borders, War/Peace, …). */
   getDiplomacyActionRows(nationId: string): RightSidebarRow[];
+  /** Diagnostic-only bilateral war-pressure rows, empty when hidden/inapplicable. */
+  getWarDiagnosticRows(nationId: string): RightSidebarRow[];
   /** Subscribe to data changes so the open chamber can refresh in place. */
   onChanged(listener: () => void): void;
 }
@@ -308,6 +310,11 @@ export class LeaderAudienceDialog {
     }
     rows.push({ kind: 'text', text: 'Diplomatic Actions', large: true });
     rows.push(...this.context.getDiplomacyActionRows(nationId));
+    const diagnostics = this.context.getWarDiagnosticRows(nationId);
+    if (diagnostics.length > 0) {
+      rows.push({ kind: 'separator' });
+      rows.push(...diagnostics);
+    }
     return rows;
   }
 
