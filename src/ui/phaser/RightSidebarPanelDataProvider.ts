@@ -2483,7 +2483,12 @@ export class RightSidebarPanelDataProvider {
         },
         accentColor,
       ),
-      disabledReasonButtonRow(
+    ];
+    // A host receives this entitlement inherently from vassalage, so presenting
+    // a request to its own vassal would advertise a negotiation that cannot add
+    // anything. Other already-held rights remain visible with their usual reason.
+    if (dm.getVassalHost(nationId) !== humanId) {
+      rows.push(disabledReasonButtonRow(
         'Request Resource Exploitation Rights',
         requestReason,
         () => {
@@ -2492,8 +2497,8 @@ export class RightSidebarPanelDataProvider {
           }));
         },
         accentColor,
-      ),
-    ];
+      ));
+    }
     if (grantReason && grantReason === colonialismReason) rows.push(textRow(colonialismReason!, true));
     return rows;
   }

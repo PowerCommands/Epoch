@@ -188,6 +188,7 @@ import { EraSystem, getEraRank, getHighestEra } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
 import { getLeaderByNationId, getLeaderExploitationInterestByNationId, getLeaderPersonalityByNationId, setActiveLeaderSelections, setScenarioLeaderOverrides } from '../data/leaders';
+import { formatAudienceRelationshipSummary } from '../ui/dialogs/AudienceRelationshipSummary';
 import { GOSSIP_DEFINITIONS } from '../data/gossip';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
 import { FoundCitySystem } from '../systems/FoundCitySystem';
@@ -4806,6 +4807,13 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.requestRefresh();
       }
     });
+    cityManager.onCityChanged((event) => {
+      if (event.reason !== 'healthChanged' || !event.city) return;
+      cityRenderer.refreshCity(event.city);
+      cityBannerRenderer.refreshCity(event.city);
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    });
 
     // ─── Diplomacy ────────────────────────────────────────────────────────────
 
@@ -8663,12 +8671,20 @@ export class GameScene extends Phaser.Scene {
         if (!humanNationId || nationId === humanNationId) return 'Your nation';
         if (diplomacyManager.getState(humanNationId, nationId) === 'WAR') return 'At War';
         const attitude = diplomaticEvaluationSystem.evaluateAttitude(nationId, humanNationId);
+        let attitudeLabel: string;
         switch (attitude) {
-          case 'friendly': return 'Friendly';
-          case 'hostile': return 'Hostile';
-          case 'afraid': return 'Suspicious';
-          case 'neutral': return 'Neutral';
+          case 'friendly': attitudeLabel = 'Friendly'; break;
+          case 'hostile': attitudeLabel = 'Hostile'; break;
+          case 'afraid': attitudeLabel = 'Suspicious'; break;
+          case 'neutral': attitudeLabel = 'Neutral'; break;
         }
+        return formatAudienceRelationshipSummary(
+          attitudeLabel,
+          nationId,
+          humanNationId,
+          diplomacyManager,
+          (id) => nationManager.getNation(id)?.name,
+        );
       },
       getStatusRows: (nationId) => rightPanel?.getAudienceStatusRows(nationId) ?? [],
       getDiplomacyActionRows: (nationId) => rightPanel?.getAudienceDiplomacyActionRows(nationId) ?? [],

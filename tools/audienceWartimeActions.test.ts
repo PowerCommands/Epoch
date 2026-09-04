@@ -6,6 +6,7 @@ import {
 } from '../src/ui/phaser/RightSidebarPanelDataProvider.ts';
 import { DiplomacyManager } from '../src/systems/DiplomacyManager.ts';
 import type { NationManager } from '../src/systems/NationManager.ts';
+import { formatAudienceRelationshipSummary } from '../src/ui/dialogs/AudienceRelationshipSummary.ts';
 import type { TurnManager } from '../src/systems/TurnManager.ts';
 import { VassalIndependenceSystem } from '../src/systems/diplomacy/VassalIndependenceSystem.ts';
 import {
@@ -242,7 +243,31 @@ test('a vassal sees an authoritative war block while its human host sees Release
   host.diplomacy.establishVassal(OTHER, HUMAN);
   const hostRows = host.provider.getAudienceDiplomacyActionRows(OTHER) as Array<{ kind: string; text?: string }>;
   assert.ok(buttonTexts(hostRows).includes('Release Vassal'));
+  assert.ok(!buttonTexts(hostRows).includes('Request Resource Exploitation Rights'));
+  assert.equal(host.diplomacy.hasExploitationRights(HUMAN, OTHER), true);
   assert.match(allText(hostRows), /host cannot declare war on its own vassal/i);
+});
+
+test('Audience relationship summary names a vassal host and calls the human host you', () => {
+  const { diplomacy } = buildProvider();
+  diplomacy.establishVassal(OTHER, HUMAN);
+  assert.equal(
+    formatAudienceRelationshipSummary('Friendly', OTHER, HUMAN, diplomacy, () => undefined),
+    'Friendly (Vassal to you)',
+  );
+
+  const foreignHost = new DiplomacyManager();
+  foreignHost.establishVassal(OTHER, THIRD);
+  assert.equal(
+    formatAudienceRelationshipSummary(
+      'Neutral',
+      OTHER,
+      HUMAN,
+      foreignHost,
+      (id) => id === THIRD ? 'China' : undefined,
+    ),
+    'Neutral (Vassal to China)',
+  );
 });
 
 test('human vassal Audience identifies its Host State and exposes priced independence purchase', () => {

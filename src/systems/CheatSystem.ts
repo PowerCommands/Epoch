@@ -12,6 +12,7 @@ import type { NationManager } from './NationManager';
 import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
 import { ALL_LEADERS } from '../data/leaders';
+import { CITY_BASE_HEALTH } from '../data/cities';
 import {
   CORPORATIONS,
   getCorporationById,
@@ -243,6 +244,34 @@ export class CheatSystem {
         const label = unit.name;
         context.unitManager.removeUnit(unit.id);
         return `Killed ${label}`;
+      },
+    });
+
+    this.register({
+      name: 'heal',
+      description: 'Restore the currently selected unit or city to full health.',
+      execute: (args, context) => {
+        if (args.length !== 0) return 'Usage: heal';
+
+        const selection = context.selectionManager.getSelected();
+        if (!selection || selection.kind === 'tile') return 'No unit or city selected';
+
+        if (selection.kind === 'city') {
+          const { city } = selection;
+          if (city.health >= CITY_BASE_HEALTH) return `${city.name} is already at full health`;
+
+          city.health = CITY_BASE_HEALTH;
+          context.cityManager.notifyHealthChanged(city);
+          return `Repaired ${city.name} to full health`;
+        }
+
+        const { unit } = selection;
+        const maxHealth = unit.unitType.baseHealth;
+        if (unit.health >= maxHealth) return `${unit.name} is already at full health`;
+
+        unit.health = maxHealth;
+        context.unitManager.notifyDamaged(unit);
+        return `Healed ${unit.name} to full health`;
       },
     });
 

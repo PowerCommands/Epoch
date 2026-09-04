@@ -7,7 +7,7 @@ import { MapData, TileType } from '../types/map';
 import type { ScenarioCity } from '../types/scenario';
 
 export interface CityChangedEvent {
-  readonly reason: 'added' | 'restored' | 'ownershipTransferred' | 'cleared';
+  readonly reason: 'added' | 'restored' | 'ownershipTransferred' | 'healthChanged' | 'cleared';
   readonly city?: City;
   readonly previousOwnerId?: string;
 }
@@ -117,6 +117,11 @@ export class CityManager {
 
     city.rename(normalizedName);
     return city;
+  }
+
+  notifyHealthChanged(city: City): void {
+    if (this.cities.get(city.id) !== city) return;
+    this.notify({ reason: 'healthChanged', city });
   }
 
   /**

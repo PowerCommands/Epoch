@@ -145,6 +145,7 @@ export class CityView {
     corporations: false,
     projects: false,
   };
+  private lastExpandedAccordion: ProductionAccordionId = 'units';
   private open = false;
   private dragging = false;
   private dragOffsetX = 0;
@@ -834,7 +835,9 @@ export class CityView {
       grid.style.display = this.accordionExpanded[id] ? '' : 'none';
     };
     header.addEventListener('click', () => {
-      this.accordionExpanded[id] = !this.accordionExpanded[id];
+      const expanded = !this.accordionExpanded[id];
+      this.accordionExpanded[id] = expanded;
+      if (expanded) this.lastExpandedAccordion = id;
       syncExpanded();
     });
     syncExpanded();
@@ -945,10 +948,9 @@ export class CityView {
 
   private resetViewState(): void {
     this.mode = 'production';
-    this.accordionExpanded.units = true;
-    this.accordionExpanded.buildings = false;
-    this.accordionExpanded.wonders = false;
-    this.accordionExpanded.corporations = false;
+    for (const id of Object.keys(this.accordionExpanded) as ProductionAccordionId[]) {
+      this.accordionExpanded[id] = id === this.lastExpandedAccordion;
+    }
   }
 
   private renderLastState(): void {

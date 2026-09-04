@@ -723,7 +723,7 @@ export class DiplomacyManager {
     const key = this.pairKey(grantorNationId, beneficiaryNationId);
     const current = this.relations.get(key) ?? createDefaultRelation();
     if (current.state === 'WAR'
-      || this.readExploitationRightsGrant(grantorNationId, beneficiaryNationId, current)) return false;
+      || this.hasExploitationRights(beneficiaryNationId, grantorNationId)) return false;
     const next = { ...current };
     this.writeExploitationRightsGrant(grantorNationId, beneficiaryNationId, next, true);
     this.relations.set(key, next);
@@ -747,24 +747,39 @@ export class DiplomacyManager {
     return true;
   }
 
-  /** Does beneficiary have exploitation rights inside grantor's territory? */
+  /**
+   * Does beneficiary have exploitation rights inside grantor's territory?
+   * A host inherently controls resource exploitation in its vassal's territory;
+   * keeping that entitlement derived from vassalage makes it end immediately on
+   * release or purchased independence without creating a stale saved grant.
+   */
   hasExploitationRights(beneficiaryNationId: string, grantorNationId: string): boolean {
     if (beneficiaryNationId === grantorNationId) return false;
     const relation = this.relations.get(this.pairKey(grantorNationId, beneficiaryNationId))
       ?? createDefaultRelation();
     return relation.state !== 'WAR'
-      && this.readExploitationRightsGrant(grantorNationId, beneficiaryNationId, relation);
+      && (this.readExploitationRightsGrant(grantorNationId, beneficiaryNationId, relation)
+        || this.vassalHosts.get(grantorNationId) === beneficiaryNationId);
   }
 
-  /** Enumerate active directional grants in stable pair/direction order. */
+  /** Enumerate active directional rights, including rights inherent in vassalage. */
   getAllExploitationRights(): Array<{ grantorNationId: string; beneficiaryNationId: string }> {
-    const rights: Array<{ grantorNationId: string; beneficiaryNationId: string }> = [];
+    const rights = new Map<string, { grantorNationId: string; beneficiaryNationId: string }>();
+    const addRight = (grantorNationId: string, beneficiaryNationId: string): void => {
+      rights.set(`${grantorNationId}\0${beneficiaryNationId}`, { grantorNationId, beneficiaryNationId });
+    };
     for (const { keys: [a, b], relation } of this.getAllStates()) {
       if (relation.state === 'WAR') continue;
-      if (relation.exploitationRightsFromAToB) rights.push({ grantorNationId: a, beneficiaryNationId: b });
-      if (relation.exploitationRightsFromBToA) rights.push({ grantorNationId: b, beneficiaryNationId: a });
+      if (relation.exploitationRightsFromAToB) addRight(a, b);
+      if (relation.exploitationRightsFromBToA) addRight(b, a);
     }
-    return rights;
+    for (const [vassalNationId, hostNationId] of this.vassalHosts) {
+      if (this.getState(vassalNationId, hostNationId) !== 'WAR') addRight(vassalNationId, hostNationId);
+    }
+    return [...rights.values()].sort((a, b) => (
+      a.grantorNationId.localeCompare(b.grantorNationId)
+      || a.beneficiaryNationId.localeCompare(b.beneficiaryNationId)
+    ));
   }
 
   // ─── Economic Pressure ─────────────────────────────────────────────────────
