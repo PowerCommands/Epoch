@@ -5,7 +5,7 @@ export function getCitySpriteKey(era: Era): string {
 }
 
 export function getCitySpritePath(era: Era): string {
-  return `assets/sprites/city_${era}.png`;
+  return `assets/sprites/cities/city_${era}.png`;
 }
 
 export function getUnitSpritePath(unitId: string): string {

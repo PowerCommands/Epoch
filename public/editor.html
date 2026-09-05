@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Map Editor</title>
+<link rel="stylesheet" href="./editor/asset-viewer.css">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-family: monospace; overflow: hidden; }
@@ -851,6 +852,36 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   </div>
 </div>
 
+<div id="asset-viewer" aria-hidden="true">
+  <aside class="asset-sidebar" aria-label="Sprite categories">
+    <div class="asset-sidebar-header">
+      <h1>Asset Viewer</h1>
+      <button id="asset-viewer-back" class="asset-back-btn" type="button">&larr; Map Editor Menu</button>
+    </div>
+    <nav id="asset-categories" class="asset-categories" aria-label="Asset folders"></nav>
+  </aside>
+  <main class="asset-viewer-main">
+    <header class="asset-info-bar">
+      <div class="asset-category-info">
+        <h2 id="asset-category-title">Assets</h2>
+        <span id="asset-category-stats" class="asset-category-stats"></span>
+      </div>
+      <div class="asset-view-controls" role="group" aria-label="Asset view size">
+        <button class="asset-view-btn" type="button" data-asset-view="list" title="List view" aria-label="List view" aria-pressed="false">
+          <span class="asset-view-icon list"><span></span></span>
+        </button>
+        <button class="asset-view-btn active" type="button" data-asset-view="medium" title="Medium icons" aria-label="Medium icons" aria-pressed="true">
+          <span class="asset-view-icon medium"><span></span><span></span><span></span><span></span></span>
+        </button>
+        <button class="asset-view-btn" type="button" data-asset-view="large" title="Large icons" aria-label="Large icons" aria-pressed="false">
+          <span class="asset-view-icon large"><span></span><span></span><span></span><span></span></span>
+        </button>
+      </div>
+    </header>
+    <section id="asset-content" class="asset-content" aria-live="polite"></section>
+  </main>
+</div>
+
 <div id="editor-landing">
   <div class="landing-card">
     <h1>Map Editor</h1>
@@ -871,6 +902,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <button id="landing-create-btn" class="landing-option" type="button">
         <span class="landing-option-title">Create New</span>
         <span class="landing-option-sub">Start a blank scenario from scratch</span>
+      </button>
+      <button id="landing-assets-btn" class="landing-option" type="button">
+        <span class="landing-option-title">View Assets</span>
+        <span class="landing-option-sub">Browse and inspect the sprite library</span>
       </button>
       <button id="landing-exit-btn" class="landing-option" type="button">
         <span class="landing-option-title">Exit</span>
@@ -950,6 +985,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 
 <!-- Shared natural-resource generator, bundled from src/editor for reuse in the editor. -->
 <script src="./editor/epoch-editor-resources.js"></script>
+<script src="./editor/asset-viewer.js"></script>
 <script>
 const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert','beach','meadow'];
 const TILE_COLORS = {
@@ -1439,6 +1475,7 @@ function refreshLandingEditButton() {
 function setupLanding() {
   refreshLandingEditButton();
   refreshLandingContinueButton();
+  window.EpochAssetViewer.init({ onBack: showLanding });
 
   document.getElementById('landing-continue-btn').addEventListener('click', continueEditorAutosave);
   document.getElementById('landing-edit-btn').addEventListener('click', () => { if (currentMap) openMap(currentMap); });
@@ -1450,6 +1487,10 @@ function setupLanding() {
     buildCreateNationList();
     buildCreateTemplateSelect();
     showLandingView('landing-create');
+  });
+  document.getElementById('landing-assets-btn').addEventListener('click', () => {
+    hideLanding();
+    window.EpochAssetViewer.open();
   });
   document.getElementById('landing-exit-btn').addEventListener('click', () => {
     window.location.href = '/';
@@ -6085,6 +6126,14 @@ function isTypingTarget(target) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (window.EpochAssetViewer.isOpen()) {
+    if (e.key === 'Escape') {
+      window.EpochAssetViewer.close();
+      e.preventDefault();
+    }
+    return;
+  }
+
   // The nested Historical Event dialog owns keyboard input while it is open.
   if (isHistoricalEventDialogOpen()) {
     if (e.key === 'Escape') { closeHistoricalEventDialog(); e.preventDefault(); }

@@ -131,7 +131,7 @@ function generateCity() {
   roundedRect(ctx, 21, 28, 7, 8, 2);
   ctx.fill();
 
-  save('city_default.png', c);
+  save('cities/city_default.png', c);
 }
 
 function generateWarrior() {

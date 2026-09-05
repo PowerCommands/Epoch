@@ -67,6 +67,13 @@ export interface WorldCouncilResolutionRuntime {
   readonly getAllNationIds?: () => readonly string[];
   readonly isNationActive?: (nationId: string) => boolean;
   readonly getAggressorNationId?: (nationAId: string, nationBId: string) => string | undefined;
+  /**
+   * Authoritative aggressor to condemn, derived from the Council's own
+   * aggressive-war history. Returns undefined when there is no legitimate
+   * Council member to condemn, in which case no Condemn Aggressive War proposal
+   * is generated.
+   */
+  readonly getAggressiveWarCondemnationTarget?: (proposerNationId: string | undefined) => string | undefined;
   readonly hasActivePeacekeepingMissionForHost?: (hostNationId: string) => boolean;
   readonly getTreasury?: (nationId: string) => number;
   readonly getGoldPerTurn?: (nationId: string) => number;
@@ -391,6 +398,11 @@ export class WorldCouncilResolutionSystem {
       const context = this.runtime.getGamesOfNationsParticipationContext?.();
       return !!context && context.eligibleNationIds.some((nationId) => nationId !== proposerNationId);
     }
+    if (id === 'condemn_aggressive_war') {
+      // Only generate a condemnation when the aggressive-war history names a
+      // legitimate Council member to condemn; never produce a targetless proposal.
+      return this.runtime.getAggressiveWarCondemnationTarget?.(proposerNationId) !== undefined;
+    }
     return true;
   }
 
@@ -440,6 +452,15 @@ export class WorldCouncilResolutionSystem {
         gamesParticipationJustification: GAMES_OF_NATIONS_PARTICIPATION_JUSTIFICATIONS[reasonIndex],
       };
     }
+    if (proposal.resolutionId === 'condemn_aggressive_war') {
+      // Bake the condemned nation into the proposal so the human votes on, AI
+      // evaluates, and the resolution effect + meeting history all reference the
+      // same authoritative target that cannot change or be lost across save/load.
+      if (proposal.targetNationId) return proposal;
+      const targetNationId = this.runtime.getAggressiveWarCondemnationTarget?.(proposal.proposerNationId);
+      if (!targetNationId) return proposal;
+      return { ...proposal, targetNationId };
+    }
     return proposal;
   }
 
@@ -448,7 +469,8 @@ export class WorldCouncilResolutionSystem {
     organizationKind: WorldCouncilOrganizationKind = 'worldCouncil',
   ): WorldCouncilResolutionProposal {
     const definitions = this.getDefinitions(organizationKind)
-      .filter((definition) => definition.votingType !== 'special');
+      .filter((definition) => definition.votingType !== 'special')
+      .filter((definition) => this.isProposalEligible(definition.id, hostNationId));
     const index = hostNationId
       ? stableHash(hostNationId) % definitions.length
       : 0;
@@ -466,7 +488,8 @@ export class WorldCouncilResolutionSystem {
   ): WorldCouncilResolutionProposal {
     const definitions = this.getDefinitions(organizationKind)
       .filter((definition) => definition.votingType !== 'special')
-      .filter((definition) => definition.id !== 'un_peacekeeping_mission');
+      .filter((definition) => definition.id !== 'un_peacekeeping_mission')
+      .filter((definition) => this.isProposalEligible(definition.id, undefined));
     const candidates = excludedResolutionId
       ? definitions.filter((definition) => definition.id !== excludedResolutionId)
       : definitions;
@@ -1404,12 +1427,11 @@ export class WorldCouncilResolutionSystem {
     context: WorldCouncilResolutionResolveContext,
     proposerNationId: string | undefined,
   ): string | undefined {
-    const memberIds = new Set(context.members.map((member) => member.nationId));
-    for (const meeting of [...context.previousEmergencyMeetings].reverse()) {
-      const aggressorId = meeting.emergencyTrigger?.aggressorNationId;
-      if (aggressorId && memberIds.has(aggressorId) && aggressorId !== proposerNationId) return aggressorId;
-    }
-    return undefined;
+    return selectAggressiveWarCondemnationTarget(
+      context.previousEmergencyMeetings,
+      context.members.map((member) => member.nationId),
+      proposerNationId,
+    );
   }
 
   private createEnactedResolution(
@@ -1672,6 +1694,27 @@ export class WorldCouncilResolutionSystem {
       + (proposerRelation?.suspicion ?? 0) * 5
       - (proposerRelation?.trust ?? 0) * 4;
   }
+}
+
+/**
+ * The single authoritative rule for who a Condemn Aggressive War resolution
+ * targets: the most recent aggressor from the Council's emergency-meeting
+ * history that is still a Council member and is not the proposing nation.
+ * Shared between proposal generation (so the target is baked into the proposal
+ * the human votes on) and resolution (as a fallback for legacy/invalidated
+ * proposals). Returns undefined when there is no legitimate nation to condemn.
+ */
+export function selectAggressiveWarCondemnationTarget(
+  previousEmergencyMeetings: readonly WorldCouncilMeeting[],
+  memberNationIds: readonly string[],
+  proposerNationId: string | undefined,
+): string | undefined {
+  const memberIds = new Set(memberNationIds);
+  for (const meeting of [...previousEmergencyMeetings].reverse()) {
+    const aggressorId = meeting.emergencyTrigger?.aggressorNationId;
+    if (aggressorId && memberIds.has(aggressorId) && aggressorId !== proposerNationId) return aggressorId;
+  }
+  return undefined;
 }
 
 function requiresTarget(resolutionId: WorldCouncilResolutionId): boolean {

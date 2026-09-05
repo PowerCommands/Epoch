@@ -2760,6 +2760,8 @@ export class GameScene extends Phaser.Scene {
         return input.eligibleTargetNationIds[index] ?? null;
       },
       getAggressorNationId: (a, b) => diplomacyManager.getAggressorNationId(a, b),
+      getAggressiveWarCondemnationTarget: (proposerNationId) =>
+        worldCouncilSystem.getAggressiveWarCondemnationTarget(proposerNationId),
       hasActivePeacekeepingMissionForHost: (hostNationId) =>
         worldCouncilSystem.hasActivePeacekeepingMissionForHost(hostNationId),
       getAvailableInfluence: (nationId) => nationManager.getResources(nationId).influence,

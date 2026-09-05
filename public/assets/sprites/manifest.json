@@ -1,0 +1,2920 @@
+{
+  "categories": [
+    {
+      "path": ".",
+      "label": "Root",
+      "assets": [
+        {
+          "name": "end_turn.png",
+          "path": "/assets/sprites/end_turn.png",
+          "type": "PNG",
+          "size": 45018
+        }
+      ]
+    },
+    {
+      "path": "actions",
+      "label": "Actions",
+      "assets": [
+        {
+          "name": "attack.png",
+          "path": "/assets/sprites/actions/attack.png",
+          "type": "PNG",
+          "size": 9914
+        },
+        {
+          "name": "debark.png",
+          "path": "/assets/sprites/actions/debark.png",
+          "type": "PNG",
+          "size": 8031
+        },
+        {
+          "name": "demolish-improvement.png",
+          "path": "/assets/sprites/actions/demolish-improvement.png",
+          "type": "PNG",
+          "size": 9716
+        },
+        {
+          "name": "demolish.png",
+          "path": "/assets/sprites/actions/demolish.png",
+          "type": "PNG",
+          "size": 9829
+        },
+        {
+          "name": "dismiss.png",
+          "path": "/assets/sprites/actions/dismiss.png",
+          "type": "PNG",
+          "size": 9354
+        },
+        {
+          "name": "end_turn.png",
+          "path": "/assets/sprites/actions/end_turn.png",
+          "type": "PNG",
+          "size": 9164
+        },
+        {
+          "name": "found-city.png",
+          "path": "/assets/sprites/actions/found-city.png",
+          "type": "PNG",
+          "size": 9655
+        },
+        {
+          "name": "improve.png",
+          "path": "/assets/sprites/actions/improve.png",
+          "type": "PNG",
+          "size": 7546
+        },
+        {
+          "name": "intel.png",
+          "path": "/assets/sprites/actions/intel.png",
+          "type": "PNG",
+          "size": 10225
+        },
+        {
+          "name": "move.png",
+          "path": "/assets/sprites/actions/move.png",
+          "type": "PNG",
+          "size": 6677
+        },
+        {
+          "name": "ranged-attack.png",
+          "path": "/assets/sprites/actions/ranged-attack.png",
+          "type": "PNG",
+          "size": 9807
+        },
+        {
+          "name": "sleep.png",
+          "path": "/assets/sprites/actions/sleep.png",
+          "type": "PNG",
+          "size": 8643
+        },
+        {
+          "name": "upgrade.png",
+          "path": "/assets/sprites/actions/upgrade.png",
+          "type": "PNG",
+          "size": 6735
+        }
+      ]
+    },
+    {
+      "path": "buildings",
+      "label": "Buildings",
+      "assets": [
+        {
+          "name": "aqueduct.png",
+          "path": "/assets/sprites/buildings/aqueduct.png",
+          "type": "PNG",
+          "size": 72672
+        },
+        {
+          "name": "armory.png",
+          "path": "/assets/sprites/buildings/armory.png",
+          "type": "PNG",
+          "size": 35884
+        },
+        {
+          "name": "arsenal.png",
+          "path": "/assets/sprites/buildings/arsenal.png",
+          "type": "PNG",
+          "size": 30405
+        },
+        {
+          "name": "bank.png",
+          "path": "/assets/sprites/buildings/bank.png",
+          "type": "PNG",
+          "size": 51136
+        },
+        {
+          "name": "barbarian-camp.png",
+          "path": "/assets/sprites/buildings/barbarian-camp.png",
+          "type": "PNG",
+          "size": 2088610
+        },
+        {
+          "name": "barracks.png",
+          "path": "/assets/sprites/buildings/barracks.png",
+          "type": "PNG",
+          "size": 75927
+        },
+        {
+          "name": "bomb_shelter.png",
+          "path": "/assets/sprites/buildings/bomb_shelter.png",
+          "type": "PNG",
+          "size": 33761
+        },
+        {
+          "name": "broadcast_tower.png",
+          "path": "/assets/sprites/buildings/broadcast_tower.png",
+          "type": "PNG",
+          "size": 25745
+        },
+        {
+          "name": "castle.png",
+          "path": "/assets/sprites/buildings/castle.png",
+          "type": "PNG",
+          "size": 75916
+        },
+        {
+          "name": "circus.png",
+          "path": "/assets/sprites/buildings/circus.png",
+          "type": "PNG",
+          "size": 69982
+        },
+        {
+          "name": "coal_power_plant.png",
+          "path": "/assets/sprites/buildings/coal_power_plant.png",
+          "type": "PNG",
+          "size": 44171
+        },
+        {
+          "name": "colosseum.png",
+          "path": "/assets/sprites/buildings/colosseum.png",
+          "type": "PNG",
+          "size": 60391
+        },
+        {
+          "name": "courthouse.png",
+          "path": "/assets/sprites/buildings/courthouse.png",
+          "type": "PNG",
+          "size": 73297
+        },
+        {
+          "name": "factory.png",
+          "path": "/assets/sprites/buildings/factory.png",
+          "type": "PNG",
+          "size": 41680
+        },
+        {
+          "name": "forge.png",
+          "path": "/assets/sprites/buildings/forge.png",
+          "type": "PNG",
+          "size": 42402
+        },
+        {
+          "name": "garden.png",
+          "path": "/assets/sprites/buildings/garden.png",
+          "type": "PNG",
+          "size": 46040
+        },
+        {
+          "name": "gas_power_plant.png",
+          "path": "/assets/sprites/buildings/gas_power_plant.png",
+          "type": "PNG",
+          "size": 52776
+        },
+        {
+          "name": "granary.png",
+          "path": "/assets/sprites/buildings/granary.png",
+          "type": "PNG",
+          "size": 75938
+        },
+        {
+          "name": "grand_stadium.png",
+          "path": "/assets/sprites/buildings/grand_stadium.png",
+          "type": "PNG",
+          "size": 105297
+        },
+        {
+          "name": "harbor.png",
+          "path": "/assets/sprites/buildings/harbor.png",
+          "type": "PNG",
+          "size": 51526
+        },
+        {
+          "name": "hospital.png",
+          "path": "/assets/sprites/buildings/hospital.png",
+          "type": "PNG",
+          "size": 58857
+        },
+        {
+          "name": "hotel.png",
+          "path": "/assets/sprites/buildings/hotel.png",
+          "type": "PNG",
+          "size": 47245
+        },
+        {
+          "name": "hydro_plant.png",
+          "path": "/assets/sprites/buildings/hydro_plant.png",
+          "type": "PNG",
+          "size": 37203
+        },
+        {
+          "name": "library.png",
+          "path": "/assets/sprites/buildings/library.png",
+          "type": "PNG",
+          "size": 26381
+        },
+        {
+          "name": "lighthouse.png",
+          "path": "/assets/sprites/buildings/lighthouse.png",
+          "type": "PNG",
+          "size": 29602
+        },
+        {
+          "name": "market.png",
+          "path": "/assets/sprites/buildings/market.png",
+          "type": "PNG",
+          "size": 56490
+        },
+        {
+          "name": "medical_lab.png",
+          "path": "/assets/sprites/buildings/medical_lab.png",
+          "type": "PNG",
+          "size": 37244
+        },
+        {
+          "name": "military_academy.png",
+          "path": "/assets/sprites/buildings/military_academy.png",
+          "type": "PNG",
+          "size": 61189
+        },
+        {
+          "name": "military_base.png",
+          "path": "/assets/sprites/buildings/military_base.png",
+          "type": "PNG",
+          "size": 31515
+        },
+        {
+          "name": "mint.png",
+          "path": "/assets/sprites/buildings/mint.png",
+          "type": "PNG",
+          "size": 25369
+        },
+        {
+          "name": "monument.png",
+          "path": "/assets/sprites/buildings/monument.png",
+          "type": "PNG",
+          "size": 1723468
+        },
+        {
+          "name": "museum.png",
+          "path": "/assets/sprites/buildings/museum.png",
+          "type": "PNG",
+          "size": 55669
+        },
+        {
+          "name": "nuclear_plant.png",
+          "path": "/assets/sprites/buildings/nuclear_plant.png",
+          "type": "PNG",
+          "size": 42013
+        },
+        {
+          "name": "observatory.png",
+          "path": "/assets/sprites/buildings/observatory.png",
+          "type": "PNG",
+          "size": 62685
+        },
+        {
+          "name": "oil_power_plant.png",
+          "path": "/assets/sprites/buildings/oil_power_plant.png",
+          "type": "PNG",
+          "size": 50333
+        },
+        {
+          "name": "opera_house.png",
+          "path": "/assets/sprites/buildings/opera_house.png",
+          "type": "PNG",
+          "size": 75247
+        },
+        {
+          "name": "police_station.png",
+          "path": "/assets/sprites/buildings/police_station.png",
+          "type": "PNG",
+          "size": 49864
+        },
+        {
+          "name": "public_school.png",
+          "path": "/assets/sprites/buildings/public_school.png",
+          "type": "PNG",
+          "size": 78877
+        },
+        {
+          "name": "recycling_center.png",
+          "path": "/assets/sprites/buildings/recycling_center.png",
+          "type": "PNG",
+          "size": 71404
+        },
+        {
+          "name": "research_lab.png",
+          "path": "/assets/sprites/buildings/research_lab.png",
+          "type": "PNG",
+          "size": 52382
+        },
+        {
+          "name": "seaport.png",
+          "path": "/assets/sprites/buildings/seaport.png",
+          "type": "PNG",
+          "size": 67087
+        },
+        {
+          "name": "sewers.png",
+          "path": "/assets/sprites/buildings/sewers.png",
+          "type": "PNG",
+          "size": 87191
+        },
+        {
+          "name": "shrine.png",
+          "path": "/assets/sprites/buildings/shrine.png",
+          "type": "PNG",
+          "size": 35264
+        },
+        {
+          "name": "solar_plant.png",
+          "path": "/assets/sprites/buildings/solar_plant.png",
+          "type": "PNG",
+          "size": 63295
+        },
+        {
+          "name": "spaceship_factory.png",
+          "path": "/assets/sprites/buildings/spaceship_factory.png",
+          "type": "PNG",
+          "size": 63624
+        },
+        {
+          "name": "stable.png",
+          "path": "/assets/sprites/buildings/stable.png",
+          "type": "PNG",
+          "size": 32633
+        },
+        {
+          "name": "stadium.png",
+          "path": "/assets/sprites/buildings/stadium.png",
+          "type": "PNG",
+          "size": 73601
+        },
+        {
+          "name": "stock_exchange.png",
+          "path": "/assets/sprites/buildings/stock_exchange.png",
+          "type": "PNG",
+          "size": 62491
+        },
+        {
+          "name": "stone_works.png",
+          "path": "/assets/sprites/buildings/stone_works.png",
+          "type": "PNG",
+          "size": 100762
+        },
+        {
+          "name": "temple.png",
+          "path": "/assets/sprites/buildings/temple.png",
+          "type": "PNG",
+          "size": 110694
+        },
+        {
+          "name": "university.png",
+          "path": "/assets/sprites/buildings/university.png",
+          "type": "PNG",
+          "size": 38751
+        },
+        {
+          "name": "walls.png",
+          "path": "/assets/sprites/buildings/walls.png",
+          "type": "PNG",
+          "size": 29528
+        },
+        {
+          "name": "water_mill.png",
+          "path": "/assets/sprites/buildings/water_mill.png",
+          "type": "PNG",
+          "size": 60805
+        },
+        {
+          "name": "windmill.png",
+          "path": "/assets/sprites/buildings/windmill.png",
+          "type": "PNG",
+          "size": 32866
+        },
+        {
+          "name": "workshop.png",
+          "path": "/assets/sprites/buildings/workshop.png",
+          "type": "PNG",
+          "size": 42718
+        },
+        {
+          "name": "zoo.png",
+          "path": "/assets/sprites/buildings/zoo.png",
+          "type": "PNG",
+          "size": 81168
+        }
+      ]
+    },
+    {
+      "path": "cities",
+      "label": "Cities",
+      "assets": [
+        {
+          "name": "city_ancient.png",
+          "path": "/assets/sprites/cities/city_ancient.png",
+          "type": "PNG",
+          "size": 44840
+        },
+        {
+          "name": "city_atomic.png",
+          "path": "/assets/sprites/cities/city_atomic.png",
+          "type": "PNG",
+          "size": 63924
+        },
+        {
+          "name": "city_classical.png",
+          "path": "/assets/sprites/cities/city_classical.png",
+          "type": "PNG",
+          "size": 28862
+        },
+        {
+          "name": "city_default.png",
+          "path": "/assets/sprites/cities/city_default.png",
+          "type": "PNG",
+          "size": 44840
+        },
+        {
+          "name": "city_future.png",
+          "path": "/assets/sprites/cities/city_future.png",
+          "type": "PNG",
+          "size": 53056
+        },
+        {
+          "name": "city_industrial.png",
+          "path": "/assets/sprites/cities/city_industrial.png",
+          "type": "PNG",
+          "size": 40196
+        },
+        {
+          "name": "city_information.png",
+          "path": "/assets/sprites/cities/city_information.png",
+          "type": "PNG",
+          "size": 61744
+        },
+        {
+          "name": "city_medieval.png",
+          "path": "/assets/sprites/cities/city_medieval.png",
+          "type": "PNG",
+          "size": 52357
+        },
+        {
+          "name": "city_modern.png",
+          "path": "/assets/sprites/cities/city_modern.png",
+          "type": "PNG",
+          "size": 42813
+        },
+        {
+          "name": "city_renaissance.png",
+          "path": "/assets/sprites/cities/city_renaissance.png",
+          "type": "PNG",
+          "size": 50526
+        }
+      ]
+    },
+    {
+      "path": "corporations",
+      "label": "Corporations",
+      "assets": [
+        {
+          "name": "aerospace_industries.png",
+          "path": "/assets/sprites/corporations/aerospace_industries.png",
+          "type": "PNG",
+          "size": 3178
+        },
+        {
+          "name": "aerospace_parts.png",
+          "path": "/assets/sprites/corporations/aerospace_parts.png",
+          "type": "PNG",
+          "size": 10576
+        },
+        {
+          "name": "chip_maker.png",
+          "path": "/assets/sprites/corporations/chip_maker.png",
+          "type": "PNG",
+          "size": 3264
+        },
+        {
+          "name": "dutch_east_india_company.png",
+          "path": "/assets/sprites/corporations/dutch_east_india_company.png",
+          "type": "PNG",
+          "size": 3256
+        },
+        {
+          "name": "ford_motor_company.png",
+          "path": "/assets/sprites/corporations/ford_motor_company.png",
+          "type": "PNG",
+          "size": 4174
+        },
+        {
+          "name": "global_media_network.png",
+          "path": "/assets/sprites/corporations/global_media_network.png",
+          "type": "PNG",
+          "size": 3622
+        },
+        {
+          "name": "hanseatic_league.png",
+          "path": "/assets/sprites/corporations/hanseatic_league.png",
+          "type": "PNG",
+          "size": 2833
+        },
+        {
+          "name": "krupp_industries.png",
+          "path": "/assets/sprites/corporations/krupp_industries.png",
+          "type": "PNG",
+          "size": 2724
+        },
+        {
+          "name": "medici_banking_house.png",
+          "path": "/assets/sprites/corporations/medici_banking_house.png",
+          "type": "PNG",
+          "size": 3819
+        },
+        {
+          "name": "phoenician_trade_league.png",
+          "path": "/assets/sprites/corporations/phoenician_trade_league.png",
+          "type": "PNG",
+          "size": 3086
+        },
+        {
+          "name": "roman_engineering_guild.png",
+          "path": "/assets/sprites/corporations/roman_engineering_guild.png",
+          "type": "PNG",
+          "size": 4146
+        },
+        {
+          "name": "silk_road_consortium.png",
+          "path": "/assets/sprites/corporations/silk_road_consortium.png",
+          "type": "PNG",
+          "size": 3460
+        },
+        {
+          "name": "standard_oil.png",
+          "path": "/assets/sprites/corporations/standard_oil.png",
+          "type": "PNG",
+          "size": 3863
+        }
+      ]
+    },
+    {
+      "path": "cultures",
+      "label": "Cultures",
+      "assets": [
+        {
+          "name": "civil_engineering.png",
+          "path": "/assets/sprites/cultures/civil_engineering.png",
+          "type": "PNG",
+          "size": 195188
+        },
+        {
+          "name": "civil_service_civics.png",
+          "path": "/assets/sprites/cultures/civil_service_civics.png",
+          "type": "PNG",
+          "size": 194673
+        },
+        {
+          "name": "class_struggle.png",
+          "path": "/assets/sprites/cultures/class_struggle.png",
+          "type": "PNG",
+          "size": 199367
+        },
+        {
+          "name": "code_of_laws.png",
+          "path": "/assets/sprites/cultures/code_of_laws.png",
+          "type": "PNG",
+          "size": 205811
+        },
+        {
+          "name": "cold_war.png",
+          "path": "/assets/sprites/cultures/cold_war.png",
+          "type": "PNG",
+          "size": 193756
+        },
+        {
+          "name": "colonialism.png",
+          "path": "/assets/sprites/cultures/colonialism.png",
+          "type": "PNG",
+          "size": 195097
+        },
+        {
+          "name": "craftsmanship.png",
+          "path": "/assets/sprites/cultures/craftsmanship.png",
+          "type": "PNG",
+          "size": 198951
+        },
+        {
+          "name": "defensive_tactics.png",
+          "path": "/assets/sprites/cultures/defensive_tactics.png",
+          "type": "PNG",
+          "size": 196247
+        },
+        {
+          "name": "democracy.png",
+          "path": "/assets/sprites/cultures/democracy.png",
+          "type": "PNG",
+          "size": 148204
+        },
+        {
+          "name": "diplomatic_service.png",
+          "path": "/assets/sprites/cultures/diplomatic_service.png",
+          "type": "PNG",
+          "size": 201841
+        },
+        {
+          "name": "drama_civics.png",
+          "path": "/assets/sprites/cultures/drama_civics.png",
+          "type": "PNG",
+          "size": 195323
+        },
+        {
+          "name": "early_empire.png",
+          "path": "/assets/sprites/cultures/early_empire.png",
+          "type": "PNG",
+          "size": 197609
+        },
+        {
+          "name": "enlightenment.png",
+          "path": "/assets/sprites/cultures/enlightenment.png",
+          "type": "PNG",
+          "size": 190498
+        },
+        {
+          "name": "exploration.png",
+          "path": "/assets/sprites/cultures/exploration.png",
+          "type": "PNG",
+          "size": 194456
+        },
+        {
+          "name": "feudalism.png",
+          "path": "/assets/sprites/cultures/feudalism.png",
+          "type": "PNG",
+          "size": 197151
+        },
+        {
+          "name": "foreign_trade.png",
+          "path": "/assets/sprites/cultures/foreign_trade.png",
+          "type": "PNG",
+          "size": 206673
+        },
+        {
+          "name": "games_recreation.png",
+          "path": "/assets/sprites/cultures/games_recreation.png",
+          "type": "PNG",
+          "size": 193056
+        },
+        {
+          "name": "globalization.png",
+          "path": "/assets/sprites/cultures/globalization.png",
+          "type": "PNG",
+          "size": 187007
+        },
+        {
+          "name": "guilds.png",
+          "path": "/assets/sprites/cultures/guilds.png",
+          "type": "PNG",
+          "size": 192089
+        },
+        {
+          "name": "humanism.png",
+          "path": "/assets/sprites/cultures/humanism.png",
+          "type": "PNG",
+          "size": 196021
+        },
+        {
+          "name": "ideology.png",
+          "path": "/assets/sprites/cultures/ideology.png",
+          "type": "PNG",
+          "size": 201086
+        },
+        {
+          "name": "liberalism.png",
+          "path": "/assets/sprites/cultures/liberalism.png",
+          "type": "PNG",
+          "size": 144787
+        },
+        {
+          "name": "medieval_faires.png",
+          "path": "/assets/sprites/cultures/medieval_faires.png",
+          "type": "PNG",
+          "size": 194288
+        },
+        {
+          "name": "mercantilism.png",
+          "path": "/assets/sprites/cultures/mercantilism.png",
+          "type": "PNG",
+          "size": 201582
+        },
+        {
+          "name": "mercenaries.png",
+          "path": "/assets/sprites/cultures/mercenaries.png",
+          "type": "PNG",
+          "size": 187629
+        },
+        {
+          "name": "military_tradition.png",
+          "path": "/assets/sprites/cultures/military_tradition.png",
+          "type": "PNG",
+          "size": 191274
+        },
+        {
+          "name": "mobilization.png",
+          "path": "/assets/sprites/cultures/mobilization.png",
+          "type": "PNG",
+          "size": 184477
+        },
+        {
+          "name": "mysticism.png",
+          "path": "/assets/sprites/cultures/mysticism.png",
+          "type": "PNG",
+          "size": 171751
+        },
+        {
+          "name": "nationalism.png",
+          "path": "/assets/sprites/cultures/nationalism.png",
+          "type": "PNG",
+          "size": 198397
+        },
+        {
+          "name": "natural_history.png",
+          "path": "/assets/sprites/cultures/natural_history.png",
+          "type": "PNG",
+          "size": 190498
+        },
+        {
+          "name": "near_future_governance.png",
+          "path": "/assets/sprites/cultures/near_future_governance.png",
+          "type": "PNG",
+          "size": 185772
+        },
+        {
+          "name": "opera_ballet.png",
+          "path": "/assets/sprites/cultures/opera_ballet.png",
+          "type": "PNG",
+          "size": 195323
+        },
+        {
+          "name": "political_philosophy.png",
+          "path": "/assets/sprites/cultures/political_philosophy.png",
+          "type": "PNG",
+          "size": 195268
+        },
+        {
+          "name": "professional_sports.png",
+          "path": "/assets/sprites/cultures/professional_sports.png",
+          "type": "PNG",
+          "size": 191721
+        },
+        {
+          "name": "recorded_history.png",
+          "path": "/assets/sprites/cultures/recorded_history.png",
+          "type": "PNG",
+          "size": 186695
+        },
+        {
+          "name": "reformed_church.png",
+          "path": "/assets/sprites/cultures/reformed_church.png",
+          "type": "PNG",
+          "size": 195546
+        },
+        {
+          "name": "social_media.png",
+          "path": "/assets/sprites/cultures/social_media.png",
+          "type": "PNG",
+          "size": 201445
+        },
+        {
+          "name": "state_workforce.png",
+          "path": "/assets/sprites/cultures/state_workforce.png",
+          "type": "PNG",
+          "size": 195920
+        },
+        {
+          "name": "suffrage.png",
+          "path": "/assets/sprites/cultures/suffrage.png",
+          "type": "PNG",
+          "size": 201719
+        },
+        {
+          "name": "theology_civics.png",
+          "path": "/assets/sprites/cultures/theology_civics.png",
+          "type": "PNG",
+          "size": 176074
+        },
+        {
+          "name": "totalitarianism.png",
+          "path": "/assets/sprites/cultures/totalitarianism.png",
+          "type": "PNG",
+          "size": 183137
+        },
+        {
+          "name": "urbanization.png",
+          "path": "/assets/sprites/cultures/urbanization.png",
+          "type": "PNG",
+          "size": 208105
+        }
+      ]
+    },
+    {
+      "path": "leaders",
+      "label": "Leaders",
+      "assets": [
+        {
+          "name": "abu-al-hasan-room.webp",
+          "path": "/assets/sprites/leaders/abu-al-hasan-room.webp",
+          "type": "WEBP",
+          "size": 164970
+        },
+        {
+          "name": "abu-al-hasan.png",
+          "path": "/assets/sprites/leaders/abu-al-hasan.png",
+          "type": "PNG",
+          "size": 364524
+        },
+        {
+          "name": "adolf-hitler-room.webp",
+          "path": "/assets/sprites/leaders/adolf-hitler-room.webp",
+          "type": "WEBP",
+          "size": 195144
+        },
+        {
+          "name": "adolf-hitler.png",
+          "path": "/assets/sprites/leaders/adolf-hitler.png",
+          "type": "PNG",
+          "size": 240072
+        },
+        {
+          "name": "benito-mussolini-room.webp",
+          "path": "/assets/sprites/leaders/benito-mussolini-room.webp",
+          "type": "WEBP",
+          "size": 221732
+        },
+        {
+          "name": "benito-mussolini.png",
+          "path": "/assets/sprites/leaders/benito-mussolini.png",
+          "type": "PNG",
+          "size": 238136
+        },
+        {
+          "name": "charles-de-gaulle-room.webp",
+          "path": "/assets/sprites/leaders/charles-de-gaulle-room.webp",
+          "type": "WEBP",
+          "size": 185648
+        },
+        {
+          "name": "charles-de-gaulle.png",
+          "path": "/assets/sprites/leaders/charles-de-gaulle.png",
+          "type": "PNG",
+          "size": 231572
+        },
+        {
+          "name": "charles-vi-room.webp",
+          "path": "/assets/sprites/leaders/charles-vi-room.webp",
+          "type": "WEBP",
+          "size": 143286
+        },
+        {
+          "name": "charles-vi.png",
+          "path": "/assets/sprites/leaders/charles-vi.png",
+          "type": "PNG",
+          "size": 305675
+        },
+        {
+          "name": "christian-iv-room.webp",
+          "path": "/assets/sprites/leaders/christian-iv-room.webp",
+          "type": "WEBP",
+          "size": 144328
+        },
+        {
+          "name": "christian-iv.png",
+          "path": "/assets/sprites/leaders/christian-iv.png",
+          "type": "PNG",
+          "size": 388838
+        },
+        {
+          "name": "dom-pedro-ii-room.webp",
+          "path": "/assets/sprites/leaders/dom-pedro-ii-room.webp",
+          "type": "WEBP",
+          "size": 146294
+        },
+        {
+          "name": "dom-pedro-ii.png",
+          "path": "/assets/sprites/leaders/dom-pedro-ii.png",
+          "type": "PNG",
+          "size": 206181
+        },
+        {
+          "name": "genghis-khan-room.webp",
+          "path": "/assets/sprites/leaders/genghis-khan-room.webp",
+          "type": "WEBP",
+          "size": 171156
+        },
+        {
+          "name": "genghis-khan.png",
+          "path": "/assets/sprites/leaders/genghis-khan.png",
+          "type": "PNG",
+          "size": 369603
+        },
+        {
+          "name": "george-washington-room.webp",
+          "path": "/assets/sprites/leaders/george-washington-room.webp",
+          "type": "WEBP",
+          "size": 132372
+        },
+        {
+          "name": "george-washington.png",
+          "path": "/assets/sprites/leaders/george-washington.png",
+          "type": "PNG",
+          "size": 266443
+        },
+        {
+          "name": "gustaf-vasa-room.webp",
+          "path": "/assets/sprites/leaders/gustaf-vasa-room.webp",
+          "type": "WEBP",
+          "size": 147346
+        },
+        {
+          "name": "gustaf-vasa.png",
+          "path": "/assets/sprites/leaders/gustaf-vasa.png",
+          "type": "PNG",
+          "size": 297838
+        },
+        {
+          "name": "henry-v-room.webp",
+          "path": "/assets/sprites/leaders/henry-v-room.webp",
+          "type": "WEBP",
+          "size": 169952
+        },
+        {
+          "name": "henry-v.png",
+          "path": "/assets/sprites/leaders/henry-v.png",
+          "type": "PNG",
+          "size": 293618
+        },
+        {
+          "name": "hermann-the-cheruscan-room.webp",
+          "path": "/assets/sprites/leaders/hermann-the-cheruscan-room.webp",
+          "type": "WEBP",
+          "size": 271672
+        },
+        {
+          "name": "hermann-the-cheruscan.png",
+          "path": "/assets/sprites/leaders/hermann-the-cheruscan.png",
+          "type": "PNG",
+          "size": 395936
+        },
+        {
+          "name": "isabella-room.webp",
+          "path": "/assets/sprites/leaders/isabella-room.webp",
+          "type": "WEBP",
+          "size": 188706
+        },
+        {
+          "name": "isabella.png",
+          "path": "/assets/sprites/leaders/isabella.png",
+          "type": "PNG",
+          "size": 283735
+        },
+        {
+          "name": "ivan-iv-room.webp",
+          "path": "/assets/sprites/leaders/ivan-iv-room.webp",
+          "type": "WEBP",
+          "size": 341354
+        },
+        {
+          "name": "ivan-iv.png",
+          "path": "/assets/sprites/leaders/ivan-iv.png",
+          "type": "PNG",
+          "size": 431935
+        },
+        {
+          "name": "joseph-stalin-room.webp",
+          "path": "/assets/sprites/leaders/joseph-stalin-room.webp",
+          "type": "WEBP",
+          "size": 201276
+        },
+        {
+          "name": "joseph-stalin.png",
+          "path": "/assets/sprites/leaders/joseph-stalin.png",
+          "type": "PNG",
+          "size": 249590
+        },
+        {
+          "name": "koxinga-room.webp",
+          "path": "/assets/sprites/leaders/koxinga-room.webp",
+          "type": "WEBP",
+          "size": 162624
+        },
+        {
+          "name": "koxinga.png",
+          "path": "/assets/sprites/leaders/koxinga.png",
+          "type": "PNG",
+          "size": 178207
+        },
+        {
+          "name": "mahatma-gandhi-room.webp",
+          "path": "/assets/sprites/leaders/mahatma-gandhi-room.webp",
+          "type": "WEBP",
+          "size": 212834
+        },
+        {
+          "name": "mahatma-gandhi.png",
+          "path": "/assets/sprites/leaders/mahatma-gandhi.png",
+          "type": "PNG",
+          "size": 244959
+        },
+        {
+          "name": "mansa-musa-room.webp",
+          "path": "/assets/sprites/leaders/mansa-musa-room.webp",
+          "type": "WEBP",
+          "size": 194654
+        },
+        {
+          "name": "mansa-musa.png",
+          "path": "/assets/sprites/leaders/mansa-musa.png",
+          "type": "PNG",
+          "size": 374405
+        },
+        {
+          "name": "marfa-boretskaya-room.webp",
+          "path": "/assets/sprites/leaders/marfa-boretskaya-room.webp",
+          "type": "WEBP",
+          "size": 198456
+        },
+        {
+          "name": "marfa-boretskaya.png",
+          "path": "/assets/sprites/leaders/marfa-boretskaya.png",
+          "type": "PNG",
+          "size": 296299
+        },
+        {
+          "name": "mehmed-i-room.webp",
+          "path": "/assets/sprites/leaders/mehmed-i-room.webp",
+          "type": "WEBP",
+          "size": 140654
+        },
+        {
+          "name": "mehmed-i.png",
+          "path": "/assets/sprites/leaders/mehmed-i.png",
+          "type": "PNG",
+          "size": 350267
+        },
+        {
+          "name": "oda-nobunaga-room.webp",
+          "path": "/assets/sprites/leaders/oda-nobunaga-room.webp",
+          "type": "WEBP",
+          "size": 154420
+        },
+        {
+          "name": "oda-nobunaga.png",
+          "path": "/assets/sprites/leaders/oda-nobunaga.png",
+          "type": "PNG",
+          "size": 398796
+        },
+        {
+          "name": "pirate-room.webp",
+          "path": "/assets/sprites/leaders/pirate-room.webp",
+          "type": "WEBP",
+          "size": 276368
+        },
+        {
+          "name": "pirate.png",
+          "path": "/assets/sprites/leaders/pirate.png",
+          "type": "PNG",
+          "size": 255395
+        },
+        {
+          "name": "qin-shi-huang-room.webp",
+          "path": "/assets/sprites/leaders/qin-shi-huang-room.webp",
+          "type": "WEBP",
+          "size": 151614
+        },
+        {
+          "name": "qin-shi-huang.png",
+          "path": "/assets/sprites/leaders/qin-shi-huang.png",
+          "type": "PNG",
+          "size": 301497
+        },
+        {
+          "name": "sigismund-room.webp",
+          "path": "/assets/sprites/leaders/sigismund-room.webp",
+          "type": "WEBP",
+          "size": 143988
+        },
+        {
+          "name": "sigismund.png",
+          "path": "/assets/sprites/leaders/sigismund.png",
+          "type": "PNG",
+          "size": 264960
+        },
+        {
+          "name": "vytautas-the-great-room.webp",
+          "path": "/assets/sprites/leaders/vytautas-the-great-room.webp",
+          "type": "WEBP",
+          "size": 146918
+        },
+        {
+          "name": "vytautas-the-great.png",
+          "path": "/assets/sprites/leaders/vytautas-the-great.png",
+          "type": "PNG",
+          "size": 250171
+        },
+        {
+          "name": "winston-churchill-room.webp",
+          "path": "/assets/sprites/leaders/winston-churchill-room.webp",
+          "type": "WEBP",
+          "size": 189832
+        },
+        {
+          "name": "winston-churchill.png",
+          "path": "/assets/sprites/leaders/winston-churchill.png",
+          "type": "PNG",
+          "size": 226794
+        },
+        {
+          "name": "wladyslaw-sikorski-room.webp",
+          "path": "/assets/sprites/leaders/wladyslaw-sikorski-room.webp",
+          "type": "WEBP",
+          "size": 172624
+        },
+        {
+          "name": "wladyslaw-sikorski.png",
+          "path": "/assets/sprites/leaders/wladyslaw-sikorski.png",
+          "type": "PNG",
+          "size": 274562
+        }
+      ]
+    },
+    {
+      "path": "news",
+      "label": "News",
+      "assets": [
+        {
+          "name": "alliance-formed.png",
+          "path": "/assets/sprites/news/alliance-formed.png",
+          "type": "PNG",
+          "size": 132256
+        },
+        {
+          "name": "capital-lost.png",
+          "path": "/assets/sprites/news/capital-lost.png",
+          "type": "PNG",
+          "size": 145929
+        },
+        {
+          "name": "city-captured.png",
+          "path": "/assets/sprites/news/city-captured.png",
+          "type": "PNG",
+          "size": 138206
+        },
+        {
+          "name": "city-founded.png",
+          "path": "/assets/sprites/news/city-founded.png",
+          "type": "PNG",
+          "size": 143563
+        },
+        {
+          "name": "corporation-founded.png",
+          "path": "/assets/sprites/news/corporation-founded.png",
+          "type": "PNG",
+          "size": 133524
+        },
+        {
+          "name": "discovery.png",
+          "path": "/assets/sprites/news/discovery.png",
+          "type": "PNG",
+          "size": 132180
+        },
+        {
+          "name": "embassy-established.png",
+          "path": "/assets/sprites/news/embassy-established.png",
+          "type": "PNG",
+          "size": 149042
+        },
+        {
+          "name": "first-contact.png",
+          "path": "/assets/sprites/news/first-contact.png",
+          "type": "PNG",
+          "size": 136351
+        },
+        {
+          "name": "government-changed.png",
+          "path": "/assets/sprites/news/government-changed.png",
+          "type": "PNG",
+          "size": 138249
+        },
+        {
+          "name": "major-resolution.png",
+          "path": "/assets/sprites/news/major-resolution.png",
+          "type": "PNG",
+          "size": 126655
+        },
+        {
+          "name": "nation-defeated.png",
+          "path": "/assets/sprites/news/nation-defeated.png",
+          "type": "PNG",
+          "size": 136437
+        },
+        {
+          "name": "new-era.png",
+          "path": "/assets/sprites/news/new-era.png",
+          "type": "PNG",
+          "size": 132055
+        },
+        {
+          "name": "news-chart.png",
+          "path": "/assets/sprites/news/news-chart.png",
+          "type": "PNG",
+          "size": 3157053
+        },
+        {
+          "name": "peace-signed.png",
+          "path": "/assets/sprites/news/peace-signed.png",
+          "type": "PNG",
+          "size": 137677
+        },
+        {
+          "name": "trade-relations.png",
+          "path": "/assets/sprites/news/trade-relations.png",
+          "type": "PNG",
+          "size": 154067
+        },
+        {
+          "name": "trade-route.png",
+          "path": "/assets/sprites/news/trade-route.png",
+          "type": "PNG",
+          "size": 148324
+        },
+        {
+          "name": "victory.png",
+          "path": "/assets/sprites/news/victory.png",
+          "type": "PNG",
+          "size": 132604
+        },
+        {
+          "name": "war-declared.png",
+          "path": "/assets/sprites/news/war-declared.png",
+          "type": "PNG",
+          "size": 150843
+        },
+        {
+          "name": "war-joined.png",
+          "path": "/assets/sprites/news/war-joined.png",
+          "type": "PNG",
+          "size": 145456
+        },
+        {
+          "name": "war-start-ancient.png",
+          "path": "/assets/sprites/news/war-start-ancient.png",
+          "type": "PNG",
+          "size": 114865
+        },
+        {
+          "name": "war-start-atomic.png",
+          "path": "/assets/sprites/news/war-start-atomic.png",
+          "type": "PNG",
+          "size": 117632
+        },
+        {
+          "name": "war-start-classical.png",
+          "path": "/assets/sprites/news/war-start-classical.png",
+          "type": "PNG",
+          "size": 120983
+        },
+        {
+          "name": "war-start-future.png",
+          "path": "/assets/sprites/news/war-start-future.png",
+          "type": "PNG",
+          "size": 107885
+        },
+        {
+          "name": "war-start-industrial.png",
+          "path": "/assets/sprites/news/war-start-industrial.png",
+          "type": "PNG",
+          "size": 112400
+        },
+        {
+          "name": "war-start-information.png",
+          "path": "/assets/sprites/news/war-start-information.png",
+          "type": "PNG",
+          "size": 117169
+        },
+        {
+          "name": "war-start-medieval.png",
+          "path": "/assets/sprites/news/war-start-medieval.png",
+          "type": "PNG",
+          "size": 113027
+        },
+        {
+          "name": "war-start-modern.png",
+          "path": "/assets/sprites/news/war-start-modern.png",
+          "type": "PNG",
+          "size": 112297
+        },
+        {
+          "name": "war-start-renaissance.png",
+          "path": "/assets/sprites/news/war-start-renaissance.png",
+          "type": "PNG",
+          "size": 128782
+        },
+        {
+          "name": "wonder-built.png",
+          "path": "/assets/sprites/news/wonder-built.png",
+          "type": "PNG",
+          "size": 143144
+        },
+        {
+          "name": "world-council-founded.png",
+          "path": "/assets/sprites/news/world-council-founded.png",
+          "type": "PNG",
+          "size": 136402
+        }
+      ]
+    },
+    {
+      "path": "news/games-of-nations",
+      "label": "News / Games Of Nations",
+      "assets": [
+        {
+          "name": "boxing.jpg",
+          "path": "/assets/sprites/news/games-of-nations/boxing.jpg",
+          "type": "JPEG",
+          "size": 343567
+        },
+        {
+          "name": "fencing.jpg",
+          "path": "/assets/sprites/news/games-of-nations/fencing.jpg",
+          "type": "JPEG",
+          "size": 378788
+        },
+        {
+          "name": "horse-racing.jpg",
+          "path": "/assets/sprites/news/games-of-nations/horse-racing.jpg",
+          "type": "JPEG",
+          "size": 402284
+        },
+        {
+          "name": "hundred-metres.jpg",
+          "path": "/assets/sprites/news/games-of-nations/hundred-metres.jpg",
+          "type": "JPEG",
+          "size": 363272
+        },
+        {
+          "name": "javelin.jpg",
+          "path": "/assets/sprites/news/games-of-nations/javelin.jpg",
+          "type": "JPEG",
+          "size": 314076
+        },
+        {
+          "name": "long-jump.jpg",
+          "path": "/assets/sprites/news/games-of-nations/long-jump.jpg",
+          "type": "JPEG",
+          "size": 355490
+        },
+        {
+          "name": "marathon.jpg",
+          "path": "/assets/sprites/news/games-of-nations/marathon.jpg",
+          "type": "JPEG",
+          "size": 380654
+        },
+        {
+          "name": "pole-vault.jpg",
+          "path": "/assets/sprites/news/games-of-nations/pole-vault.jpg",
+          "type": "JPEG",
+          "size": 366878
+        },
+        {
+          "name": "swimming.jpg",
+          "path": "/assets/sprites/news/games-of-nations/swimming.jpg",
+          "type": "JPEG",
+          "size": 357545
+        },
+        {
+          "name": "wrestling.jpg",
+          "path": "/assets/sprites/news/games-of-nations/wrestling.jpg",
+          "type": "JPEG",
+          "size": 369083
+        }
+      ]
+    },
+    {
+      "path": "policies",
+      "label": "Policies",
+      "assets": [
+        {
+          "name": "aleksandr_barelin.png",
+          "path": "/assets/sprites/policies/aleksandr_barelin.png",
+          "type": "PNG",
+          "size": 137465
+        },
+        {
+          "name": "backroom_diplomacy.png",
+          "path": "/assets/sprites/policies/backroom_diplomacy.png",
+          "type": "PNG",
+          "size": 121741
+        },
+        {
+          "name": "border_defense.png",
+          "path": "/assets/sprites/policies/border_defense.png",
+          "type": "PNG",
+          "size": 186766
+        },
+        {
+          "name": "carl_leaps.png",
+          "path": "/assets/sprites/policies/carl_leaps.png",
+          "type": "PNG",
+          "size": 129703
+        },
+        {
+          "name": "centralized_power.png",
+          "path": "/assets/sprites/policies/centralized_power.png",
+          "type": "PNG",
+          "size": 201719
+        },
+        {
+          "name": "civic_order.png",
+          "path": "/assets/sprites/policies/civic_order.png",
+          "type": "PNG",
+          "size": 196021
+        },
+        {
+          "name": "diplomatic_corps.png",
+          "path": "/assets/sprites/policies/diplomatic_corps.png",
+          "type": "PNG",
+          "size": 205811
+        },
+        {
+          "name": "discipline.png",
+          "path": "/assets/sprites/policies/discipline.png",
+          "type": "PNG",
+          "size": 194673
+        },
+        {
+          "name": "economic_imperialism.png",
+          "path": "/assets/sprites/policies/economic_imperialism.png",
+          "type": "PNG",
+          "size": 142826
+        },
+        {
+          "name": "eddy_mercxwell.png",
+          "path": "/assets/sprites/policies/eddy_mercxwell.png",
+          "type": "PNG",
+          "size": 142678
+        },
+        {
+          "name": "edoardo_blademari.png",
+          "path": "/assets/sprites/policies/edoardo_blademari.png",
+          "type": "PNG",
+          "size": 140677
+        },
+        {
+          "name": "eliud_kiprun.png",
+          "path": "/assets/sprites/policies/eliud_kiprun.png",
+          "type": "PNG",
+          "size": 151925
+        },
+        {
+          "name": "foreign_aid.png",
+          "path": "/assets/sprites/policies/foreign_aid.png",
+          "type": "PNG",
+          "size": 190756
+        },
+        {
+          "name": "foreign_intelligence.png",
+          "path": "/assets/sprites/policies/foreign_intelligence.png",
+          "type": "PNG",
+          "size": 126675
+        },
+        {
+          "name": "garrison_rule.png",
+          "path": "/assets/sprites/policies/garrison_rule.png",
+          "type": "PNG",
+          "size": 186695
+        },
+        {
+          "name": "industrial_planning.png",
+          "path": "/assets/sprites/policies/industrial_planning.png",
+          "type": "PNG",
+          "size": 195920
+        },
+        {
+          "name": "international_lobbying.png",
+          "path": "/assets/sprites/policies/international_lobbying.png",
+          "type": "PNG",
+          "size": 123095
+        },
+        {
+          "name": "isabella_worth.png",
+          "path": "/assets/sprites/policies/isabella_worth.png",
+          "type": "PNG",
+          "size": 137182
+        },
+        {
+          "name": "jan_zeleznyx.png",
+          "path": "/assets/sprites/policies/jan_zeleznyx.png",
+          "type": "PNG",
+          "size": 133629
+        },
+        {
+          "name": "kim_true_shot.png",
+          "path": "/assets/sprites/policies/kim_true_shot.png",
+          "type": "PNG",
+          "size": 132626
+        },
+        {
+          "name": "luxury_trade.png",
+          "path": "/assets/sprites/policies/luxury_trade.png",
+          "type": "PNG",
+          "size": 188746
+        },
+        {
+          "name": "market_economy.png",
+          "path": "/assets/sprites/policies/market_economy.png",
+          "type": "PNG",
+          "size": 187989
+        },
+        {
+          "name": "michael_pelps.png",
+          "path": "/assets/sprites/policies/michael_pelps.png",
+          "type": "PNG",
+          "size": 143781
+        },
+        {
+          "name": "military_organization.png",
+          "path": "/assets/sprites/policies/military_organization.png",
+          "type": "PNG",
+          "size": 196247
+        },
+        {
+          "name": "modern_bureaucracy.png",
+          "path": "/assets/sprites/policies/modern_bureaucracy.png",
+          "type": "PNG",
+          "size": 195301
+        },
+        {
+          "name": "mystic_authority.png",
+          "path": "/assets/sprites/policies/mystic_authority.png",
+          "type": "PNG",
+          "size": 171751
+        },
+        {
+          "name": "national_identity.png",
+          "path": "/assets/sprites/policies/national_identity.png",
+          "type": "PNG",
+          "size": 198397
+        },
+        {
+          "name": "open_channels.png",
+          "path": "/assets/sprites/policies/open_channels.png",
+          "type": "PNG",
+          "size": 208105
+        },
+        {
+          "name": "oral_tradition.png",
+          "path": "/assets/sprites/policies/oral_tradition.png",
+          "type": "PNG",
+          "size": 194288
+        },
+        {
+          "name": "proxy_warfare.png",
+          "path": "/assets/sprites/policies/proxy_warfare.png",
+          "type": "PNG",
+          "size": 133065
+        },
+        {
+          "name": "public_works.png",
+          "path": "/assets/sprites/policies/public_works.png",
+          "type": "PNG",
+          "size": 201719
+        },
+        {
+          "name": "republic.png",
+          "path": "/assets/sprites/policies/republic.png",
+          "type": "PNG",
+          "size": 175706
+        },
+        {
+          "name": "simone_flies.png",
+          "path": "/assets/sprites/policies/simone_flies.png",
+          "type": "PNG",
+          "size": 126414
+        },
+        {
+          "name": "soft_power.png",
+          "path": "/assets/sprites/policies/soft_power.png",
+          "type": "PNG",
+          "size": 201445
+        },
+        {
+          "name": "trade_agreements.png",
+          "path": "/assets/sprites/policies/trade_agreements.png",
+          "type": "PNG",
+          "size": 195323
+        },
+        {
+          "name": "war_economy.png",
+          "path": "/assets/sprites/policies/war_economy.png",
+          "type": "PNG",
+          "size": 200086
+        }
+      ]
+    },
+    {
+      "path": "projects",
+      "label": "Projects",
+      "assets": [
+        {
+          "name": "economic_development.png",
+          "path": "/assets/sprites/projects/economic_development.png",
+          "type": "PNG",
+          "size": 111611
+        }
+      ]
+    },
+    {
+      "path": "resources",
+      "label": "Resources",
+      "assets": [
+        {
+          "name": "aluminum.png",
+          "path": "/assets/sprites/resources/aluminum.png",
+          "type": "PNG",
+          "size": 63112
+        },
+        {
+          "name": "bananas.png",
+          "path": "/assets/sprites/resources/bananas.png",
+          "type": "PNG",
+          "size": 48423
+        },
+        {
+          "name": "cattle.png",
+          "path": "/assets/sprites/resources/cattle.png",
+          "type": "PNG",
+          "size": 48538
+        },
+        {
+          "name": "coal.png",
+          "path": "/assets/sprites/resources/coal.png",
+          "type": "PNG",
+          "size": 86691
+        },
+        {
+          "name": "copper.png",
+          "path": "/assets/sprites/resources/copper.png",
+          "type": "PNG",
+          "size": 59725
+        },
+        {
+          "name": "crabs.png",
+          "path": "/assets/sprites/resources/crabs.png",
+          "type": "PNG",
+          "size": 53904
+        },
+        {
+          "name": "deer.png",
+          "path": "/assets/sprites/resources/deer.png",
+          "type": "PNG",
+          "size": 37029
+        },
+        {
+          "name": "fish.png",
+          "path": "/assets/sprites/resources/fish.png",
+          "type": "PNG",
+          "size": 31920
+        },
+        {
+          "name": "gems.png",
+          "path": "/assets/sprites/resources/gems.png",
+          "type": "PNG",
+          "size": 37441
+        },
+        {
+          "name": "horses.png",
+          "path": "/assets/sprites/resources/horses.png",
+          "type": "PNG",
+          "size": 44382
+        },
+        {
+          "name": "iron.png",
+          "path": "/assets/sprites/resources/iron.png",
+          "type": "PNG",
+          "size": 74105
+        },
+        {
+          "name": "ivory.png",
+          "path": "/assets/sprites/resources/ivory.png",
+          "type": "PNG",
+          "size": 73428
+        },
+        {
+          "name": "natural_gas.png",
+          "path": "/assets/sprites/resources/natural_gas.png",
+          "type": "PNG",
+          "size": 46690
+        },
+        {
+          "name": "niter.png",
+          "path": "/assets/sprites/resources/niter.png",
+          "type": "PNG",
+          "size": 58562
+        },
+        {
+          "name": "oil.png",
+          "path": "/assets/sprites/resources/oil.png",
+          "type": "PNG",
+          "size": 51511
+        },
+        {
+          "name": "pearls.png",
+          "path": "/assets/sprites/resources/pearls.png",
+          "type": "PNG",
+          "size": 71177
+        },
+        {
+          "name": "rice.png",
+          "path": "/assets/sprites/resources/rice.png",
+          "type": "PNG",
+          "size": 96366
+        },
+        {
+          "name": "sheep.png",
+          "path": "/assets/sprites/resources/sheep.png",
+          "type": "PNG",
+          "size": 84126
+        },
+        {
+          "name": "silk.png",
+          "path": "/assets/sprites/resources/silk.png",
+          "type": "PNG",
+          "size": 42361
+        },
+        {
+          "name": "silver.png",
+          "path": "/assets/sprites/resources/silver.png",
+          "type": "PNG",
+          "size": 119040
+        },
+        {
+          "name": "spices.png",
+          "path": "/assets/sprites/resources/spices.png",
+          "type": "PNG",
+          "size": 51236
+        },
+        {
+          "name": "stone.png",
+          "path": "/assets/sprites/resources/stone.png",
+          "type": "PNG",
+          "size": 82484
+        },
+        {
+          "name": "uranium.png",
+          "path": "/assets/sprites/resources/uranium.png",
+          "type": "PNG",
+          "size": 33506
+        },
+        {
+          "name": "whales.png",
+          "path": "/assets/sprites/resources/whales.png",
+          "type": "PNG",
+          "size": 45864
+        },
+        {
+          "name": "wheat.png",
+          "path": "/assets/sprites/resources/wheat.png",
+          "type": "PNG",
+          "size": 103787
+        },
+        {
+          "name": "wine.png",
+          "path": "/assets/sprites/resources/wine.png",
+          "type": "PNG",
+          "size": 85476
+        }
+      ]
+    },
+    {
+      "path": "techs",
+      "label": "Techs",
+      "assets": [
+        {
+          "name": "acoustics.png",
+          "path": "/assets/sprites/techs/acoustics.png",
+          "type": "PNG",
+          "size": 29389
+        },
+        {
+          "name": "advanced_ballistics.png",
+          "path": "/assets/sprites/techs/advanced_ballistics.png",
+          "type": "PNG",
+          "size": 61035
+        },
+        {
+          "name": "agriculture.png",
+          "path": "/assets/sprites/techs/agriculture.png",
+          "type": "PNG",
+          "size": 85390
+        },
+        {
+          "name": "animal_husbandry.png",
+          "path": "/assets/sprites/techs/animal_husbandry.png",
+          "type": "PNG",
+          "size": 56404
+        },
+        {
+          "name": "archaeology.png",
+          "path": "/assets/sprites/techs/archaeology.png",
+          "type": "PNG",
+          "size": 46404
+        },
+        {
+          "name": "archery.png",
+          "path": "/assets/sprites/techs/archery.png",
+          "type": "PNG",
+          "size": 55264
+        },
+        {
+          "name": "architecture.png",
+          "path": "/assets/sprites/techs/architecture.png",
+          "type": "PNG",
+          "size": 46104
+        },
+        {
+          "name": "astronomy.png",
+          "path": "/assets/sprites/techs/astronomy.png",
+          "type": "PNG",
+          "size": 60529
+        },
+        {
+          "name": "atomic_theory.png",
+          "path": "/assets/sprites/techs/atomic_theory.png",
+          "type": "PNG",
+          "size": 21742
+        },
+        {
+          "name": "ballistics.png",
+          "path": "/assets/sprites/techs/ballistics.png",
+          "type": "PNG",
+          "size": 13367
+        },
+        {
+          "name": "banking.png",
+          "path": "/assets/sprites/techs/banking.png",
+          "type": "PNG",
+          "size": 99113
+        },
+        {
+          "name": "biology.png",
+          "path": "/assets/sprites/techs/biology.png",
+          "type": "PNG",
+          "size": 21025
+        },
+        {
+          "name": "bronze_working.png",
+          "path": "/assets/sprites/techs/bronze_working.png",
+          "type": "PNG",
+          "size": 63357
+        },
+        {
+          "name": "calendar.png",
+          "path": "/assets/sprites/techs/calendar.png",
+          "type": "PNG",
+          "size": 30454
+        },
+        {
+          "name": "chemistry.png",
+          "path": "/assets/sprites/techs/chemistry.png",
+          "type": "PNG",
+          "size": 30328
+        },
+        {
+          "name": "chivalry.png",
+          "path": "/assets/sprites/techs/chivalry.png",
+          "type": "PNG",
+          "size": 81382
+        },
+        {
+          "name": "civil_service.png",
+          "path": "/assets/sprites/techs/civil_service.png",
+          "type": "PNG",
+          "size": 24615
+        },
+        {
+          "name": "combined_arms.png",
+          "path": "/assets/sprites/techs/combined_arms.png",
+          "type": "PNG",
+          "size": 106716
+        },
+        {
+          "name": "combustion.png",
+          "path": "/assets/sprites/techs/combustion.png",
+          "type": "PNG",
+          "size": 56172
+        },
+        {
+          "name": "compass.png",
+          "path": "/assets/sprites/techs/compass.png",
+          "type": "PNG",
+          "size": 65689
+        },
+        {
+          "name": "computers.png",
+          "path": "/assets/sprites/techs/computers.png",
+          "type": "PNG",
+          "size": 29145
+        },
+        {
+          "name": "construction.png",
+          "path": "/assets/sprites/techs/construction.png",
+          "type": "PNG",
+          "size": 74619
+        },
+        {
+          "name": "currency.png",
+          "path": "/assets/sprites/techs/currency.png",
+          "type": "PNG",
+          "size": 19975
+        },
+        {
+          "name": "drama_and_poetry.png",
+          "path": "/assets/sprites/techs/drama_and_poetry.png",
+          "type": "PNG",
+          "size": 29985
+        },
+        {
+          "name": "dynamite.png",
+          "path": "/assets/sprites/techs/dynamite.png",
+          "type": "PNG",
+          "size": 38272
+        },
+        {
+          "name": "ecology.png",
+          "path": "/assets/sprites/techs/ecology.png",
+          "type": "PNG",
+          "size": 76432
+        },
+        {
+          "name": "economics.png",
+          "path": "/assets/sprites/techs/economics.png",
+          "type": "PNG",
+          "size": 79932
+        },
+        {
+          "name": "education.png",
+          "path": "/assets/sprites/techs/education.png",
+          "type": "PNG",
+          "size": 20695
+        },
+        {
+          "name": "electricity.png",
+          "path": "/assets/sprites/techs/electricity.png",
+          "type": "PNG",
+          "size": 22692
+        },
+        {
+          "name": "electronics.png",
+          "path": "/assets/sprites/techs/electronics.png",
+          "type": "PNG",
+          "size": 32526
+        },
+        {
+          "name": "engineering.png",
+          "path": "/assets/sprites/techs/engineering.png",
+          "type": "PNG",
+          "size": 63371
+        },
+        {
+          "name": "fertilizer.png",
+          "path": "/assets/sprites/techs/fertilizer.png",
+          "type": "PNG",
+          "size": 27992
+        },
+        {
+          "name": "flight.png",
+          "path": "/assets/sprites/techs/flight.png",
+          "type": "PNG",
+          "size": 38887
+        },
+        {
+          "name": "future_tech.png",
+          "path": "/assets/sprites/techs/future_tech.png",
+          "type": "PNG",
+          "size": 29502
+        },
+        {
+          "name": "globalization.png",
+          "path": "/assets/sprites/techs/globalization.png",
+          "type": "PNG",
+          "size": 10708
+        },
+        {
+          "name": "guilds.png",
+          "path": "/assets/sprites/techs/guilds.png",
+          "type": "PNG",
+          "size": 72511
+        },
+        {
+          "name": "gunpowder.png",
+          "path": "/assets/sprites/techs/gunpowder.png",
+          "type": "PNG",
+          "size": 79614
+        },
+        {
+          "name": "horseback_riding.png",
+          "path": "/assets/sprites/techs/horseback_riding.png",
+          "type": "PNG",
+          "size": 42617
+        },
+        {
+          "name": "industrialization.png",
+          "path": "/assets/sprites/techs/industrialization.png",
+          "type": "PNG",
+          "size": 99029
+        },
+        {
+          "name": "iron_working.png",
+          "path": "/assets/sprites/techs/iron_working.png",
+          "type": "PNG",
+          "size": 32891
+        },
+        {
+          "name": "lasers.png",
+          "path": "/assets/sprites/techs/lasers.png",
+          "type": "PNG",
+          "size": 17453
+        },
+        {
+          "name": "machinery.png",
+          "path": "/assets/sprites/techs/machinery.png",
+          "type": "PNG",
+          "size": 62826
+        },
+        {
+          "name": "masonry.png",
+          "path": "/assets/sprites/techs/masonry.png",
+          "type": "PNG",
+          "size": 9232
+        },
+        {
+          "name": "mathematics.png",
+          "path": "/assets/sprites/techs/mathematics.png",
+          "type": "PNG",
+          "size": 27438
+        },
+        {
+          "name": "metal_casting.png",
+          "path": "/assets/sprites/techs/metal_casting.png",
+          "type": "PNG",
+          "size": 32251
+        },
+        {
+          "name": "metallurgy.png",
+          "path": "/assets/sprites/techs/metallurgy.png",
+          "type": "PNG",
+          "size": 36937
+        },
+        {
+          "name": "military_science.png",
+          "path": "/assets/sprites/techs/military_science.png",
+          "type": "PNG",
+          "size": 67677
+        },
+        {
+          "name": "mining.png",
+          "path": "/assets/sprites/techs/mining.png",
+          "type": "PNG",
+          "size": 54410
+        },
+        {
+          "name": "mobile_tactics.png",
+          "path": "/assets/sprites/techs/mobile_tactics.png",
+          "type": "PNG",
+          "size": 61913
+        },
+        {
+          "name": "nanotechnology.png",
+          "path": "/assets/sprites/techs/nanotechnology.png",
+          "type": "PNG",
+          "size": 80162
+        },
+        {
+          "name": "navigation.png",
+          "path": "/assets/sprites/techs/navigation.png",
+          "type": "PNG",
+          "size": 55744
+        },
+        {
+          "name": "nuclear_fission.png",
+          "path": "/assets/sprites/techs/nuclear_fission.png",
+          "type": "PNG",
+          "size": 64197
+        },
+        {
+          "name": "nuclear_fusion.png",
+          "path": "/assets/sprites/techs/nuclear_fusion.png",
+          "type": "PNG",
+          "size": 97664
+        },
+        {
+          "name": "optics.png",
+          "path": "/assets/sprites/techs/optics.png",
+          "type": "PNG",
+          "size": 43599
+        },
+        {
+          "name": "particle_physics.png",
+          "path": "/assets/sprites/techs/particle_physics.png",
+          "type": "PNG",
+          "size": 96809
+        },
+        {
+          "name": "penicillin.png",
+          "path": "/assets/sprites/techs/penicillin.png",
+          "type": "PNG",
+          "size": 47649
+        },
+        {
+          "name": "philosophy.png",
+          "path": "/assets/sprites/techs/philosophy.png",
+          "type": "PNG",
+          "size": 18291
+        },
+        {
+          "name": "physics.png",
+          "path": "/assets/sprites/techs/physics.png",
+          "type": "PNG",
+          "size": 10434
+        },
+        {
+          "name": "plastics.png",
+          "path": "/assets/sprites/techs/plastics.png",
+          "type": "PNG",
+          "size": 35126
+        },
+        {
+          "name": "pottery.png",
+          "path": "/assets/sprites/techs/pottery.png",
+          "type": "PNG",
+          "size": 55387
+        },
+        {
+          "name": "printing_press.png",
+          "path": "/assets/sprites/techs/printing_press.png",
+          "type": "PNG",
+          "size": 73934
+        },
+        {
+          "name": "radar.png",
+          "path": "/assets/sprites/techs/radar.png",
+          "type": "PNG",
+          "size": 59060
+        },
+        {
+          "name": "radio.png",
+          "path": "/assets/sprites/techs/radio.png",
+          "type": "PNG",
+          "size": 46330
+        },
+        {
+          "name": "railroad.png",
+          "path": "/assets/sprites/techs/railroad.png",
+          "type": "PNG",
+          "size": 130277
+        },
+        {
+          "name": "refrigeration.png",
+          "path": "/assets/sprites/techs/refrigeration.png",
+          "type": "PNG",
+          "size": 36891
+        },
+        {
+          "name": "replaceable_parts.png",
+          "path": "/assets/sprites/techs/replaceable_parts.png",
+          "type": "PNG",
+          "size": 65647
+        },
+        {
+          "name": "rifling.png",
+          "path": "/assets/sprites/techs/rifling.png",
+          "type": "PNG",
+          "size": 4901
+        },
+        {
+          "name": "robotics.png",
+          "path": "/assets/sprites/techs/robotics.png",
+          "type": "PNG",
+          "size": 40735
+        },
+        {
+          "name": "rocketry.png",
+          "path": "/assets/sprites/techs/rocketry.png",
+          "type": "PNG",
+          "size": 17312
+        },
+        {
+          "name": "sailing.png",
+          "path": "/assets/sprites/techs/sailing.png",
+          "type": "PNG",
+          "size": 82275
+        },
+        {
+          "name": "satellites.png",
+          "path": "/assets/sprites/techs/satellites.png",
+          "type": "PNG",
+          "size": 38145
+        },
+        {
+          "name": "scientific_theory.png",
+          "path": "/assets/sprites/techs/scientific_theory.png",
+          "type": "PNG",
+          "size": 80300
+        },
+        {
+          "name": "stealth.png",
+          "path": "/assets/sprites/techs/stealth.png",
+          "type": "PNG",
+          "size": 32154
+        },
+        {
+          "name": "steam_power.png",
+          "path": "/assets/sprites/techs/steam_power.png",
+          "type": "PNG",
+          "size": 67923
+        },
+        {
+          "name": "steel.png",
+          "path": "/assets/sprites/techs/steel.png",
+          "type": "PNG",
+          "size": 34420
+        },
+        {
+          "name": "telecommunications.png",
+          "path": "/assets/sprites/techs/telecommunications.png",
+          "type": "PNG",
+          "size": 108320
+        },
+        {
+          "name": "the_internet.png",
+          "path": "/assets/sprites/techs/the_internet.png",
+          "type": "PNG",
+          "size": 24514
+        },
+        {
+          "name": "the_wheel.png",
+          "path": "/assets/sprites/techs/the_wheel.png",
+          "type": "PNG",
+          "size": 88657
+        },
+        {
+          "name": "theology.png",
+          "path": "/assets/sprites/techs/theology.png",
+          "type": "PNG",
+          "size": 88779
+        },
+        {
+          "name": "trade_networks.png",
+          "path": "/assets/sprites/techs/trade_networks.png",
+          "type": "PNG",
+          "size": 55779
+        },
+        {
+          "name": "trapping.png",
+          "path": "/assets/sprites/techs/trapping.png",
+          "type": "PNG",
+          "size": 47934
+        },
+        {
+          "name": "writing.png",
+          "path": "/assets/sprites/techs/writing.png",
+          "type": "PNG",
+          "size": 53992
+        }
+      ]
+    },
+    {
+      "path": "units",
+      "label": "Units",
+      "assets": [
+        {
+          "name": "agent.png",
+          "path": "/assets/sprites/units/agent.png",
+          "type": "PNG",
+          "size": 89621
+        },
+        {
+          "name": "anti_aircraft_gun.png",
+          "path": "/assets/sprites/units/anti_aircraft_gun.png",
+          "type": "PNG",
+          "size": 57536
+        },
+        {
+          "name": "anti_tank_gun.png",
+          "path": "/assets/sprites/units/anti_tank_gun.png",
+          "type": "PNG",
+          "size": 43445
+        },
+        {
+          "name": "archaeologist.png",
+          "path": "/assets/sprites/units/archaeologist.png",
+          "type": "PNG",
+          "size": 62644
+        },
+        {
+          "name": "archer_galley.png",
+          "path": "/assets/sprites/units/archer_galley.png",
+          "type": "PNG",
+          "size": 72929
+        },
+        {
+          "name": "archer.png",
+          "path": "/assets/sprites/units/archer.png",
+          "type": "PNG",
+          "size": 25914
+        },
+        {
+          "name": "artillery.png",
+          "path": "/assets/sprites/units/artillery.png",
+          "type": "PNG",
+          "size": 38529
+        },
+        {
+          "name": "atomic_bomb.png",
+          "path": "/assets/sprites/units/atomic_bomb.png",
+          "type": "PNG",
+          "size": 38465
+        },
+        {
+          "name": "battleship.png",
+          "path": "/assets/sprites/units/battleship.png",
+          "type": "PNG",
+          "size": 47059
+        },
+        {
+          "name": "bazooka.png",
+          "path": "/assets/sprites/units/bazooka.png",
+          "type": "PNG",
+          "size": 43445
+        },
+        {
+          "name": "bomber.png",
+          "path": "/assets/sprites/units/bomber.png",
+          "type": "PNG",
+          "size": 72145
+        },
+        {
+          "name": "cannon.png",
+          "path": "/assets/sprites/units/cannon.png",
+          "type": "PNG",
+          "size": 64420
+        },
+        {
+          "name": "caravan.png",
+          "path": "/assets/sprites/units/caravan.png",
+          "type": "PNG",
+          "size": 48219
+        },
+        {
+          "name": "caravel.png",
+          "path": "/assets/sprites/units/caravel.png",
+          "type": "PNG",
+          "size": 95696
+        },
+        {
+          "name": "cargo_ship.png",
+          "path": "/assets/sprites/units/cargo_ship.png",
+          "type": "PNG",
+          "size": 40992
+        },
+        {
+          "name": "carrier.png",
+          "path": "/assets/sprites/units/carrier.png",
+          "type": "PNG",
+          "size": 57173
+        },
+        {
+          "name": "catapult.png",
+          "path": "/assets/sprites/units/catapult.png",
+          "type": "PNG",
+          "size": 72037
+        },
+        {
+          "name": "cavalry.png",
+          "path": "/assets/sprites/units/cavalry.png",
+          "type": "PNG",
+          "size": 47880
+        },
+        {
+          "name": "chariot_archer.png",
+          "path": "/assets/sprites/units/chariot_archer.png",
+          "type": "PNG",
+          "size": 35390
+        },
+        {
+          "name": "composite_bowman.png",
+          "path": "/assets/sprites/units/composite_bowman.png",
+          "type": "PNG",
+          "size": 32995
+        },
+        {
+          "name": "crossbowman.png",
+          "path": "/assets/sprites/units/crossbowman.png",
+          "type": "PNG",
+          "size": 32995
+        },
+        {
+          "name": "destroyer.png",
+          "path": "/assets/sprites/units/destroyer.png",
+          "type": "PNG",
+          "size": 53325
+        },
+        {
+          "name": "fighter.png",
+          "path": "/assets/sprites/units/fighter.png",
+          "type": "PNG",
+          "size": 51371
+        },
+        {
+          "name": "frigate.png",
+          "path": "/assets/sprites/units/frigate.png",
+          "type": "PNG",
+          "size": 69457
+        },
+        {
+          "name": "galleass.png",
+          "path": "/assets/sprites/units/galleass.png",
+          "type": "PNG",
+          "size": 50704
+        },
+        {
+          "name": "gatling_gun.png",
+          "path": "/assets/sprites/units/gatling_gun.png",
+          "type": "PNG",
+          "size": 70202
+        },
+        {
+          "name": "giant_death_robot.png",
+          "path": "/assets/sprites/units/giant_death_robot.png",
+          "type": "PNG",
+          "size": 54382
+        },
+        {
+          "name": "great_war_bomber.png",
+          "path": "/assets/sprites/units/great_war_bomber.png",
+          "type": "PNG",
+          "size": 72413
+        },
+        {
+          "name": "great_war_infantry.png",
+          "path": "/assets/sprites/units/great_war_infantry.png",
+          "type": "PNG",
+          "size": 101001
+        },
+        {
+          "name": "guided_missile.png",
+          "path": "/assets/sprites/units/guided_missile.png",
+          "type": "PNG",
+          "size": 38465
+        },
+        {
+          "name": "helicopter_gunship.png",
+          "path": "/assets/sprites/units/helicopter_gunship.png",
+          "type": "PNG",
+          "size": 56707
+        },
+        {
+          "name": "horseman.png",
+          "path": "/assets/sprites/units/horseman.png",
+          "type": "PNG",
+          "size": 30437
+        },
+        {
+          "name": "infantry.png",
+          "path": "/assets/sprites/units/infantry.png",
+          "type": "PNG",
+          "size": 105612
+        },
+        {
+          "name": "ironclad.png",
+          "path": "/assets/sprites/units/ironclad.png",
+          "type": "PNG",
+          "size": 55096
+        },
+        {
+          "name": "jet_fighter.png",
+          "path": "/assets/sprites/units/jet_fighter.png",
+          "type": "PNG",
+          "size": 44151
+        },
+        {
+          "name": "knight.png",
+          "path": "/assets/sprites/units/knight.png",
+          "type": "PNG",
+          "size": 30437
+        },
+        {
+          "name": "lancer.png",
+          "path": "/assets/sprites/units/lancer.png",
+          "type": "PNG",
+          "size": 38299
+        },
+        {
+          "name": "landship.png",
+          "path": "/assets/sprites/units/landship.png",
+          "type": "PNG",
+          "size": 56625
+        },
+        {
+          "name": "leaders.png",
+          "path": "/assets/sprites/units/leaders.png",
+          "type": "PNG",
+          "size": 2344
+        },
+        {
+          "name": "longswordsman.png",
+          "path": "/assets/sprites/units/longswordsman.png",
+          "type": "PNG",
+          "size": 23573
+        },
+        {
+          "name": "machine_gun.png",
+          "path": "/assets/sprites/units/machine_gun.png",
+          "type": "PNG",
+          "size": 57272
+        },
+        {
+          "name": "mechanized_infantry.png",
+          "path": "/assets/sprites/units/mechanized_infantry.png",
+          "type": "PNG",
+          "size": 51735
+        },
+        {
+          "name": "missile_cruiser.png",
+          "path": "/assets/sprites/units/missile_cruiser.png",
+          "type": "PNG",
+          "size": 44133
+        },
+        {
+          "name": "mobile_sam.png",
+          "path": "/assets/sprites/units/mobile_sam.png",
+          "type": "PNG",
+          "size": 51912
+        },
+        {
+          "name": "modern_armor.png",
+          "path": "/assets/sprites/units/modern_armor.png",
+          "type": "PNG",
+          "size": 54811
+        },
+        {
+          "name": "musketman.png",
+          "path": "/assets/sprites/units/musketman.png",
+          "type": "PNG",
+          "size": 101001
+        },
+        {
+          "name": "nuclear_missile.png",
+          "path": "/assets/sprites/units/nuclear_missile.png",
+          "type": "PNG",
+          "size": 34477
+        },
+        {
+          "name": "nuclear_submarine.png",
+          "path": "/assets/sprites/units/nuclear_submarine.png",
+          "type": "PNG",
+          "size": 41509
+        },
+        {
+          "name": "paratrooper.png",
+          "path": "/assets/sprites/units/paratrooper.png",
+          "type": "PNG",
+          "size": 40457
+        },
+        {
+          "name": "partisans.png",
+          "path": "/assets/sprites/units/partisans.png",
+          "type": "PNG",
+          "size": 116327
+        },
+        {
+          "name": "pikeman.png",
+          "path": "/assets/sprites/units/pikeman.png",
+          "type": "PNG",
+          "size": 23563
+        },
+        {
+          "name": "privateer.png",
+          "path": "/assets/sprites/units/privateer.png",
+          "type": "PNG",
+          "size": 68945
+        },
+        {
+          "name": "rebels.png",
+          "path": "/assets/sprites/units/rebels.png",
+          "type": "PNG",
+          "size": 129220
+        },
+        {
+          "name": "rifleman.png",
+          "path": "/assets/sprites/units/rifleman.png",
+          "type": "PNG",
+          "size": 29085
+        },
+        {
+          "name": "rocket_artillery.png",
+          "path": "/assets/sprites/units/rocket_artillery.png",
+          "type": "PNG",
+          "size": 42824
+        },
+        {
+          "name": "scout_boat.png",
+          "path": "/assets/sprites/units/scout_boat.png",
+          "type": "PNG",
+          "size": 53677
+        },
+        {
+          "name": "scout.png",
+          "path": "/assets/sprites/units/scout.png",
+          "type": "PNG",
+          "size": 23359
+        },
+        {
+          "name": "settler.png",
+          "path": "/assets/sprites/units/settler.png",
+          "type": "PNG",
+          "size": 23682
+        },
+        {
+          "name": "spearman.png",
+          "path": "/assets/sprites/units/spearman.png",
+          "type": "PNG",
+          "size": 50568
+        },
+        {
+          "name": "spy.png",
+          "path": "/assets/sprites/units/spy.png",
+          "type": "PNG",
+          "size": 68981
+        },
+        {
+          "name": "stealth_bomber.png",
+          "path": "/assets/sprites/units/stealth_bomber.png",
+          "type": "PNG",
+          "size": 49382
+        },
+        {
+          "name": "submarine.png",
+          "path": "/assets/sprites/units/submarine.png",
+          "type": "PNG",
+          "size": 60927
+        },
+        {
+          "name": "swordsman.png",
+          "path": "/assets/sprites/units/swordsman.png",
+          "type": "PNG",
+          "size": 23573
+        },
+        {
+          "name": "tank.png",
+          "path": "/assets/sprites/units/tank.png",
+          "type": "PNG",
+          "size": 97321
+        },
+        {
+          "name": "transport_ship.png",
+          "path": "/assets/sprites/units/transport_ship.png",
+          "type": "PNG",
+          "size": 2162
+        },
+        {
+          "name": "trebuchet.png",
+          "path": "/assets/sprites/units/trebuchet.png",
+          "type": "PNG",
+          "size": 38529
+        },
+        {
+          "name": "triplane.png",
+          "path": "/assets/sprites/units/triplane.png",
+          "type": "PNG",
+          "size": 44823
+        },
+        {
+          "name": "trireme.png",
+          "path": "/assets/sprites/units/trireme.png",
+          "type": "PNG",
+          "size": 65648
+        },
+        {
+          "name": "warrior.png",
+          "path": "/assets/sprites/units/warrior.png",
+          "type": "PNG",
+          "size": 23395
+        },
+        {
+          "name": "work_boat_action_improvement.png",
+          "path": "/assets/sprites/units/work_boat_action_improvement.png",
+          "type": "PNG",
+          "size": 9087
+        },
+        {
+          "name": "work_boat.png",
+          "path": "/assets/sprites/units/work_boat.png",
+          "type": "PNG",
+          "size": 47311
+        },
+        {
+          "name": "workboat_action.png",
+          "path": "/assets/sprites/units/workboat_action.png",
+          "type": "PNG",
+          "size": 9087
+        },
+        {
+          "name": "workboat.png",
+          "path": "/assets/sprites/units/workboat.png",
+          "type": "PNG",
+          "size": 47311
+        },
+        {
+          "name": "worker_action_improvement.png",
+          "path": "/assets/sprites/units/worker_action_improvement.png",
+          "type": "PNG",
+          "size": 22151
+        },
+        {
+          "name": "worker_action.png",
+          "path": "/assets/sprites/units/worker_action.png",
+          "type": "PNG",
+          "size": 22151
+        },
+        {
+          "name": "worker.png",
+          "path": "/assets/sprites/units/worker.png",
+          "type": "PNG",
+          "size": 40773
+        },
+        {
+          "name": "xcom_squad.png",
+          "path": "/assets/sprites/units/xcom_squad.png",
+          "type": "PNG",
+          "size": 44331
+        }
+      ]
+    },
+    {
+      "path": "wonders",
+      "label": "Wonders",
+      "assets": [
+        {
+          "name": "angkor-wat.png",
+          "path": "/assets/sprites/wonders/angkor-wat.png",
+          "type": "PNG",
+          "size": 120473
+        },
+        {
+          "name": "big-ben.png",
+          "path": "/assets/sprites/wonders/big-ben.png",
+          "type": "PNG",
+          "size": 45482
+        },
+        {
+          "name": "brandenburg-gate.png",
+          "path": "/assets/sprites/wonders/brandenburg-gate.png",
+          "type": "PNG",
+          "size": 74394
+        },
+        {
+          "name": "colossus.png",
+          "path": "/assets/sprites/wonders/colossus.png",
+          "type": "PNG",
+          "size": 41139
+        },
+        {
+          "name": "eiffel_tower.png",
+          "path": "/assets/sprites/wonders/eiffel_tower.png",
+          "type": "PNG",
+          "size": 32338
+        },
+        {
+          "name": "empire-state-building.png",
+          "path": "/assets/sprites/wonders/empire-state-building.png",
+          "type": "PNG",
+          "size": 45024
+        },
+        {
+          "name": "forbidden-city.png",
+          "path": "/assets/sprites/wonders/forbidden-city.png",
+          "type": "PNG",
+          "size": 114240
+        },
+        {
+          "name": "great_lighthouse.png",
+          "path": "/assets/sprites/wonders/great_lighthouse.png",
+          "type": "PNG",
+          "size": 39187
+        },
+        {
+          "name": "great_wall.png",
+          "path": "/assets/sprites/wonders/great_wall.png",
+          "type": "PNG",
+          "size": 29528
+        },
+        {
+          "name": "hagia-sophia.png",
+          "path": "/assets/sprites/wonders/hagia-sophia.png",
+          "type": "PNG",
+          "size": 109974
+        },
+        {
+          "name": "hanging_gardens.png",
+          "path": "/assets/sprites/wonders/hanging_gardens.png",
+          "type": "PNG",
+          "size": 81142
+        },
+        {
+          "name": "hoover-dam.png",
+          "path": "/assets/sprites/wonders/hoover-dam.png",
+          "type": "PNG",
+          "size": 130658
+        },
+        {
+          "name": "machu-picchu.png",
+          "path": "/assets/sprites/wonders/machu-picchu.png",
+          "type": "PNG",
+          "size": 126720
+        },
+        {
+          "name": "oracle.png",
+          "path": "/assets/sprites/wonders/oracle.png",
+          "type": "PNG",
+          "size": 64136
+        },
+        {
+          "name": "panama-canal.png",
+          "path": "/assets/sprites/wonders/panama-canal.png",
+          "type": "PNG",
+          "size": 116697
+        },
+        {
+          "name": "pyramids.png",
+          "path": "/assets/sprites/wonders/pyramids.png",
+          "type": "PNG",
+          "size": 54379
+        },
+        {
+          "name": "statue_of_liberty.png",
+          "path": "/assets/sprites/wonders/statue_of_liberty.png",
+          "type": "PNG",
+          "size": 63309
+        },
+        {
+          "name": "stonehenge.png",
+          "path": "/assets/sprites/wonders/stonehenge.png",
+          "type": "PNG",
+          "size": 79419
+        },
+        {
+          "name": "sydney-opera-house.png",
+          "path": "/assets/sprites/wonders/sydney-opera-house.png",
+          "type": "PNG",
+          "size": 54638
+        },
+        {
+          "name": "taj-mahal.png",
+          "path": "/assets/sprites/wonders/taj-mahal.png",
+          "type": "PNG",
+          "size": 99571
+        }
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import type { CityManager } from './CityManager';
 import type { ResourceSystem } from './ResourceSystem';
 import type { DiscoverySystem } from './DiscoverySystem';
 import type { WorldCouncilResolutionSystem } from './WorldCouncilResolutionSystem';
+import { selectAggressiveWarCondemnationTarget } from './WorldCouncilResolutionSystem';
 import type { TurnStartEvent } from '../types/events';
 import { isBarbarianNation } from '../data/barbarians';
 import type {
@@ -181,6 +182,23 @@ export class WorldCouncilSystem {
     return this.state?.status === 'active'
       && this.isMember(nationId)
       && this.resolutionSystem?.isProposalEligible(resolutionId, nationId) === true;
+  }
+
+  /**
+   * The Council member a Condemn Aggressive War proposal would target, derived
+   * from the Council's own emergency-meeting (war-declared) history. Returns
+   * undefined when there is no legitimate nation to condemn. This is the single
+   * authoritative source used both to gate proposal generation and to bake the
+   * target into the proposal the human votes on.
+   */
+  getAggressiveWarCondemnationTarget(proposerNationId: string | undefined): string | undefined {
+    if (!this.state) return undefined;
+    const emergencyMeetings = this.state.meetings.filter((meeting) => meeting.kind === 'emergency');
+    return selectAggressiveWarCondemnationTarget(
+      emergencyMeetings,
+      this.state.members.map((member) => member.nationId),
+      proposerNationId,
+    );
   }
 
   getTradeAgreementCapacityBetweenNations(nationAId: string, nationBId: string): number {
