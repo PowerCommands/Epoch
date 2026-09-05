@@ -278,6 +278,12 @@ export const MAX_SUSPICION = 100;
 export const SUSPICION_DECAY_PER_ROUND = 1;
 /** Negative-memory cooling applied once for each configured Peace Treaty turn. */
 export const PEACE_TREATY_COOLING_PER_ROUND = 2;
+/**
+ * Default minimum turns a war must last before peace can first be proposed.
+ * Overridable per scenario via ScenarioMeta.minPeaceNegotiationTurns. Duplicated
+ * as a literal in the standalone editor (public/editor.html), which cannot import
+ * this module.
+ */
 export const MIN_WAR_TURNS_FOR_PEACE = 15;
 /**
  * Default turns two nations cannot re-declare war after making peace. Overridable
@@ -293,6 +299,15 @@ export const DEFAULT_PEACE_TREATY_COOLDOWN_TURNS = 10;
 export function resolvePeaceTreatyCooldownTurns(value: number | undefined): number {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.floor(value);
   return DEFAULT_PEACE_TREATY_COOLDOWN_TURNS;
+}
+
+/**
+ * Resolve the scenario-authored minimum war duration before peace negotiation,
+ * falling back to {@link MIN_WAR_TURNS_FOR_PEACE} when absent or invalid.
+ */
+export function resolveMinPeaceNegotiationTurns(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.floor(value);
+  return MIN_WAR_TURNS_FOR_PEACE;
 }
 
 /** Clamp a suspicion value to its valid 0–100 range. */
@@ -439,6 +454,13 @@ export class DiplomacyManager {
   private readonly vassalReleasedListeners: VassalReleasedListener[] = [];
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
+  /**
+   * Optional predicate that suppresses combat between two nations while they are
+   * still formally at WAR (e.g. an active peace-summit ceasefire). Registered by
+   * {@link setCombatSuppressor}; when it returns true, {@link canAttack} refuses
+   * the attack even though the pair remains at war. Diplomacy state is untouched.
+   */
+  private combatSuppressor: ((a: string, b: string) => boolean) | null = null;
   /** Resolves nation ids to display names for autorun/debug logging. Identity by default. */
   private resolveNationName: (nationId: string) => string = (nationId) => nationId;
 
@@ -449,6 +471,7 @@ export class DiplomacyManager {
     private readonly turnManager?: TurnManager,
     private peaceTreatyCooldownTurns: number = DEFAULT_PEACE_TREATY_COOLDOWN_TURNS,
     private readonly hasCultureUnlock: (nationId: string, cultureNodeId: string) => boolean = () => false,
+    private minPeaceNegotiationTurns: number = MIN_WAR_TURNS_FOR_PEACE,
   ) {}
 
   /** The bilateral Peace Treaty cooldown length applied when a war ends in peace. */
@@ -459,6 +482,16 @@ export class DiplomacyManager {
   /** Changes only the duration stamped onto future peace treaties. */
   setPeaceTreatyCooldownTurns(turns: number): void {
     if (Number.isInteger(turns) && turns >= 0) this.peaceTreatyCooldownTurns = turns;
+  }
+
+  /** Minimum turns a war must last before peace can first be proposed. */
+  getMinPeaceNegotiationTurns(): number {
+    return this.minPeaceNegotiationTurns;
+  }
+
+  /** Changes only the earliest turn at which peace may be proposed in a war. */
+  setMinPeaceNegotiationTurns(turns: number): void {
+    if (Number.isInteger(turns) && turns >= 0) this.minPeaceNegotiationTurns = turns;
   }
 
   /**
@@ -679,7 +712,21 @@ export class DiplomacyManager {
     // Barbarians have no diplomacy: they are permanently hostile to everyone and
     // everyone may attack them without a declaration of war.
     if (isBarbarianNation(a) || isBarbarianNation(b)) return true;
-    return this.getState(a, b) === 'WAR';
+    if (this.getState(a, b) !== 'WAR') return false;
+    // A peace-summit ceasefire keeps the nations formally at war but forbids
+    // direct attacks and city captures until the summit resolves.
+    if (this.combatSuppressor?.(a, b)) return false;
+    return true;
+  }
+
+  /**
+   * Register a predicate that blocks combat between two nations that remain at
+   * WAR (a peace-summit ceasefire). Centralizes the block so every attack path —
+   * human and AI — is covered through the single {@link canAttack} gate. Returns
+   * true to suppress combat.
+   */
+  setCombatSuppressor(suppressor: (a: string, b: string) => boolean): void {
+    this.combatSuppressor = suppressor;
   }
 
   /**
@@ -1296,7 +1343,7 @@ export class DiplomacyManager {
 
   canProposePeace(a: string, b: string, currentTurn: number): boolean {
     if (this.getState(a, b) !== 'WAR') return false;
-    return this.getWarDuration(a, b, currentTurn) >= MIN_WAR_TURNS_FOR_PEACE;
+    return this.getWarDuration(a, b, currentTurn) >= this.minPeaceNegotiationTurns;
   }
 
   recordWarUnitLoss(nationId: string, opposingNationId: string): void {

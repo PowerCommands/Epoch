@@ -10,6 +10,14 @@ export type NewspaperEventType = Exclude<HistoricalEventType,
   // Outcome refinements of `cityCaptured`, which already has a newspaper article.
   | 'cityLiberated'
   | 'cityRazed'
+  // Peace-summit lifecycle: recorded in the historical timeline now, ready for a
+  // future newspaper pass. The war-ending `peace` article already exists.
+  | 'peaceSummitProposed'
+  | 'peaceSummitRejected'
+  | 'peaceSummitCounterproposed'
+  | 'peaceSummitAgreed'
+  | 'ceasefireStarted'
+  | 'peaceNegotiationsFailed'
 >;
 
 export interface NewspaperArticleContext {

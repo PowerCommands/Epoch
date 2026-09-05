@@ -239,7 +239,11 @@ export class CityBannerRenderer {
         if (queue.length === 0) return;
         const entry = queue[0];
         if (!entry) return;
-        tooltip.show(`${getItemName(entry.item)} (${getKindLabel(entry.item.kind)})`, pointer);
+        // Lead with the city name — the banner sits away from its city center,
+        // so the production readout is otherwise hard to attribute.
+        const cityName = this.cityManager.getCity(cityId)?.name;
+        const header = cityName ? `${cityName}\n` : '';
+        tooltip.show(`${header}${getItemName(entry.item)} (${getKindLabel(entry.item.kind)})`, pointer);
       });
       productionZone.on('pointerout', () => {
         tooltip.hide();

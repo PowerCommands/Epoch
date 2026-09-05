@@ -60,6 +60,7 @@ import { ImperialOverstretchSystem } from '../systems/ImperialOverstretchSystem'
 import { ConqueredCityUnhappinessSystem } from '../systems/ConqueredCityUnhappinessSystem';
 import { WarWearinessSystem } from '../systems/WarWearinessSystem';
 import { AIWarTimeoutSystem } from '../systems/diplomacy/AIWarTimeoutSystem';
+import { PeaceSummitSystem, type PeaceSummitEvent, type PeaceSummitRecord } from '../systems/diplomacy/PeaceSummitSystem';
 import { CultureSystem } from '../systems/culture/CultureSystem';
 import { CultureEffectSystem } from '../systems/culture/CultureEffectSystem';
 import { PolicySystem } from '../systems/PolicySystem';
@@ -109,7 +110,7 @@ import {
 import { CityViewInteractionController } from '../systems/CityViewInteractionController';
 import { getCityViewTileBreakdown } from '../systems/CityViewData';
 import { CityViewRenderer, type CityViewPlacementRenderState } from '../systems/CityViewRenderer';
-import { DiplomacyManager, MIN_WAR_TURNS_FOR_PEACE, resolvePeaceTreatyCooldownTurns, type ExploitationGrantContext, type PeaceProposal } from '../systems/DiplomacyManager';
+import { DiplomacyManager, resolveMinPeaceNegotiationTurns, resolvePeaceTreatyCooldownTurns, type ExploitationGrantContext, type PeaceProposal } from '../systems/DiplomacyManager';
 import { GossipSystem } from '../systems/GossipSystem';
 import { GossipFlavorEventSystem } from '../systems/GossipFlavorEventSystem';
 import { recordGossipInsultInHistory } from '../systems/GossipHistoryRecorder';
@@ -254,6 +255,8 @@ import { CheatConsole } from '../ui/CheatConsole';
 import { RelationsCheatDialog } from '../ui/RelationsCheatDialog';
 import { ScenarioCheatDialog } from '../ui/ScenarioCheatDialog';
 import { DiagnosticDialog } from '../ui/DiagnosticDialog';
+import { TileInspectorDialog } from '../ui/TileInspectorDialog';
+import { buildTileInspection } from '../systems/TileInspectionData';
 import { LeaderPortraitStrip } from '../ui/LeaderPortraitStrip';
 import { UnitActionToolbox } from '../ui/UnitActionToolbox';
 import { EscapeMenu } from '../ui/EscapeMenu';
@@ -1210,6 +1213,9 @@ export class GameScene extends Phaser.Scene {
         data.savedState?.peaceTreatyCooldownTurns ?? scenarioJson.meta?.peaceTreatyCooldownTurns,
       ),
       (nationId, cultureNodeId) => cultureSystem.isUnlocked(nationId, cultureNodeId),
+      resolveMinPeaceNegotiationTurns(
+        data.savedState?.minPeaceNegotiationTurns ?? scenarioJson.meta?.minPeaceNegotiationTurns,
+      ),
     );
     // Resolve nation ids to display names for `[DIPLOMACY]` economic-pressure logs.
     diplomacyManager.setNationNameResolver((id) => nationManager.getNation(id)?.name ?? id);
@@ -1490,6 +1496,24 @@ export class GameScene extends Phaser.Scene {
       aiMilitaryThreatEvaluationSystem,
       diplomaticEvaluationSystem,
     );
+    // Peace Summit process — the ceremonial flow around the existing peace
+    // negotiation (proposal → ceasefire → summit → peace/failure). It suppresses
+    // combat during a ceasefire while the nations remain formally at war, and
+    // observes the existing peace accepted/declined events to detect the outcome.
+    const peaceSummitSystem = new PeaceSummitSystem({
+      diplomacyManager,
+      nationManager,
+      cityManager,
+      peaceTreatySystem,
+      getCurrentTurn: () => turnManager.getCurrentRound(),
+      // During autoplay the human nation is machine-driven, so summit decisions
+      // must resolve through the AI path rather than waiting on a player modal.
+      isHuman: (nationId) => !isAutoplayActive() && nationManager.getNation(nationId)?.isHuman === true,
+    });
+    diplomacyManager.setCombatSuppressor(peaceSummitSystem.isCombatSuppressed);
+    turnManager.on('roundStart', (event) => peaceSummitSystem.handleRoundStart(event.round));
+    diplomacyManager.onPeaceAccepted((a, b) => peaceSummitSystem.handlePeaceAccepted(a, b));
+    diplomacyManager.onPeaceDeclined((a, b) => peaceSummitSystem.handlePeaceDeclined(a, b));
     const militaryVassalizationSystem = new MilitaryVassalizationSystem(
       diplomacyManager,
       {
@@ -1762,6 +1786,10 @@ export class GameScene extends Phaser.Scene {
       },
     );
     aiDiplomacySystem.setHumanNationPredicate((nationId) => nationId === humanNationId);
+    // A willing AI now calls for a peace summit instead of making an immediate
+    // peace offer; the offer itself is made when the summit takes place.
+    aiDiplomacySystem.setPeaceSummitInitiator((fromId, toId) =>
+      peaceSummitSystem.initiateSummit(fromId, toId) !== null);
     aiDiplomacySystem.setEconomicPressureApplier((sourceNationId, targetNationId, type) =>
       economicPressureActionService.impose(
         sourceNationId,
@@ -6408,7 +6436,10 @@ export class GameScene extends Phaser.Scene {
       });
     };
 
-    const showProposePeaceDialog = (targetNationId: string): void => {
+    const showProposePeaceDialog = (
+      targetNationId: string,
+      options: { onCancel?: () => void } = {},
+    ): void => {
       const targetNation = nationManager.getNation(targetNationId);
       const humanNation = nationManager.getNation(humanNationIdForDiplomacy);
       if (!targetNation || !humanNation) return;
@@ -6594,7 +6625,10 @@ export class GameScene extends Phaser.Scene {
         btn.addEventListener('click', handler);
         return btn;
       };
-      buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
+      buttons.appendChild(makeButton('Cancel', false, () => {
+        overlay.remove();
+        options.onCancel?.();
+      }));
       buttons.appendChild(makeButton('Propose', true, () => {
         overlay.remove();
         resolveHumanPeaceProposal(targetNationId, readGold(), readCities(), readExploit(), {
@@ -6669,6 +6703,45 @@ export class GameScene extends Phaser.Scene {
         ]);
       }
       rightPanel?.refreshCurrent();
+    };
+
+    // Human calls for a peace summit. The player's own capital hosts by default
+    // (the AI may later counter with a neutral venue). The actual peace terms are
+    // offered later, when the summit takes place.
+    const proposeHumanPeaceSummit = (targetNationId: string): void => {
+      const currentTurn = turnManager.getCurrentRound();
+      const targetNation = nationManager.getNation(targetNationId);
+      if (!targetNation) return;
+      if (!peaceSummitSystem.canInitiateSummit(humanNationIdForDiplomacy, targetNationId, currentTurn)) {
+        const cooldown = peaceSummitSystem.getSummitCooldownRemaining(
+          humanNationIdForDiplomacy, targetNationId, currentTurn,
+        );
+        const existing = peaceSummitSystem.getSummit(humanNationIdForDiplomacy, targetNationId);
+        showLeaderResponsePopup(targetNationId, 'Summit unavailable', [
+          existing
+            ? 'A peace summit process is already under way with this nation.'
+            : cooldown > 0
+              ? `Peace talks recently collapsed. A new summit cannot be called for ${cooldown} more turn${cooldown === 1 ? '' : 's'}.`
+              : 'A peace summit cannot be called yet — the war has not lasted long enough.',
+        ]);
+        return;
+      }
+      const capital = cityManager.getResidenceCapital(humanNationIdForDiplomacy)
+        ?? cityManager.getCitiesByOwner(humanNationIdForDiplomacy)[0];
+      const color = `#${targetNation.color.toString(16).padStart(6, '0')}`;
+      showDiplomacyModal({
+        title: `Call for a Peace Summit`,
+        message: `Propose peace negotiations with ${targetNation.name}`
+          + `${capital ? ` in ${capital.name}` : ''}? A ceasefire will begin once they agree.`,
+        accentColor: color,
+        confirmLabel: 'Propose Summit',
+        cancelLabel: 'Cancel',
+        onConfirm: () => {
+          peaceSummitSystem.initiateSummit(humanNationIdForDiplomacy, targetNationId);
+          rightPanel?.refreshCurrent();
+        },
+        onCancel: () => {},
+      });
     };
 
     const showDemandCapitulationDialog = (targetNationId: string): void => {
@@ -6955,8 +7028,9 @@ export class GameScene extends Phaser.Scene {
           onCancel: () => {},
         });
       } else if (action === 'proposePeace') {
-        // Negotiated peace: gold and/or optional non-capital city concessions.
-        showProposePeaceDialog(targetNationId);
+        // Peace now begins with a summit: propose a meeting, then negotiate terms
+        // once the summit takes place (see proposeHumanPeaceSummit).
+        proposeHumanPeaceSummit(targetNationId);
       } else if (action === 'demandCapitulation') {
         // Revalidate against the same runtime acceptance rule used for visibility.
         // The dialog provides refusal feedback if state changed since rendering.
@@ -7355,6 +7429,57 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-ENTER', onEnterEndTurn);
       this.input.keyboard?.off('keydown-NUMPAD_ENTER', onEnterEndTurn);
     });
+
+    // Read-only tile inspector: I opens a details panel for the tile under the
+    // current selection (tile/city/unit all resolve to their tile). Toggles
+    // closed if already open. Presentation lives in TileInspectorDialog; the
+    // data snapshot is built by buildTileInspection (no gameplay logic here).
+    const tileInspectorDialog = new TileInspectorDialog();
+    let inspectedCoord: { x: number; y: number } | null = null;
+    const selectedTileCoord = (): { x: number; y: number } | null => {
+      const selection = selectionManager.getSelected();
+      if (selection === null) return null;
+      if (selection.kind === 'tile') return { x: selection.tile.x, y: selection.tile.y };
+      if (selection.kind === 'city') return { x: selection.city.tileX, y: selection.city.tileY };
+      return { x: selection.unit.tileX, y: selection.unit.tileY };
+    };
+    const onKeyInspectTile = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (shouldIgnoreGlobalTurnHotkey()) return;
+      const coord = selectedTileCoord();
+      // Toggle closed when re-pressed on the same tile that is already shown.
+      if (
+        tileInspectorDialog.isOpen() &&
+        coord !== null &&
+        inspectedCoord?.x === coord.x &&
+        inspectedCoord?.y === coord.y
+      ) {
+        tileInspectorDialog.close();
+        inspectedCoord = null;
+        return;
+      }
+      if (coord === null) {
+        tileInspectorDialog.close();
+        inspectedCoord = null;
+        return;
+      }
+      const info = buildTileInspection(coord, {
+        mapData,
+        cityManager,
+        unitManager,
+        nationManager,
+        gridSystem,
+      });
+      if (info !== null) {
+        tileInspectorDialog.open(info);
+        inspectedCoord = coord;
+      }
+    };
+    this.input.keyboard?.on('keydown-I', onKeyInspectTile);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-I', onKeyInspectTile);
+      tileInspectorDialog.shutdown();
+    });
     const hudDataProvider = new NationHudDataProvider(
       nationManager,
       cityManager,
@@ -7714,6 +7839,7 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
     rightPanel.setDiplomacyManager(diplomacyManager);
+    rightPanel.setPeaceSummitSystem(peaceSummitSystem);
     rightPanel.setAllianceManager(allianceManager);
     rightPanel.setJointWarSystem(jointWarSystem);
     rightPanel.setCurrentTurnGetter(() => turnManager.getCurrentRound());
@@ -7802,6 +7928,176 @@ export class GameScene extends Phaser.Scene {
         eventNationIds: [a, b],
         metadata: { aggressorNationId: a, targetNationId: b },
       });
+    });
+    // Peace Summit lifecycle → timeline entries (for the newspaper) plus the
+    // player-facing modals when the human is a party to the decision.
+    const summitCityName = (cityId: string): string => cityManager.getCity(cityId)?.name ?? cityId;
+    const summitCityIsNeutral = (record: PeaceSummitRecord): boolean =>
+      record.cityOwnerNationId !== record.proposerNationId
+      && record.cityOwnerNationId !== record.recipientNationId;
+    const summitMetadata = (record: PeaceSummitRecord) => ({
+      summitProposerNationId: record.proposerNationId,
+      summitRecipientNationId: record.recipientNationId,
+      summitCityId: record.cityId,
+      summitCityName: summitCityName(record.cityId),
+      summitCityOwnerNationId: record.cityOwnerNationId,
+      summitCityIsNeutral: summitCityIsNeutral(record),
+      summitTurn: record.summitTurn,
+      summitTurnsUntil: Math.max(0, record.summitTurn - turnManager.getCurrentRound()),
+    });
+    const showSummitResponseModal = (record: PeaceSummitRecord, isCounter: boolean): void => {
+      const otherId = record.proposerNationId; // the offer's owner; the human is the recipient
+      const nation = nationManager.getNation(otherId);
+      const leaderName = getLeaderByNationId(otherId)?.name ?? nation?.name ?? otherId;
+      const color = `#${(nation?.color ?? 0xffffff).toString(16).padStart(6, '0')}`;
+      const turnsUntil = Math.max(0, record.summitTurn - turnManager.getCurrentRound());
+      const where = `${summitCityIsNeutral(record) ? 'neutral ' : ''}${summitCityName(record.cityId)}`;
+      const message = isCounter
+        ? `${leaderName} agrees to peace negotiations but proposes ${where} in ${turnsUntil} turn${turnsUntil === 1 ? '' : 's'}.`
+        : `${leaderName} proposes peace negotiations in ${where} in ${turnsUntil} turn${turnsUntil === 1 ? '' : 's'}.`;
+      showDiplomacyModal({
+        title: isCounter ? `${leaderName} counterproposes a summit` : `${leaderName} proposes a peace summit`,
+        message,
+        accentColor: color,
+        confirmLabel: 'Accept',
+        cancelLabel: 'Reject',
+        onConfirm: () => {
+          peaceSummitSystem.respondAsHuman(humanNationIdForDiplomacy, otherId, true);
+          rightPanel?.refreshCurrent();
+        },
+        onCancel: () => {
+          peaceSummitSystem.respondAsHuman(humanNationIdForDiplomacy, otherId, false);
+          rightPanel?.refreshCurrent();
+        },
+      });
+    };
+    const humanInvolvedInSummit = (record: PeaceSummitRecord): boolean =>
+      record.proposerNationId === humanNationIdForDiplomacy
+      || record.recipientNationId === humanNationIdForDiplomacy;
+    peaceSummitSystem.onSummitEvent((event: PeaceSummitEvent) => {
+      switch (event.kind) {
+        case 'proposed': {
+          const r = event.record;
+          const turnsUntil = Math.max(0, r.summitTurn - turnManager.getCurrentRound());
+          historicalTimeline.record({
+            type: 'peaceSummitProposed',
+            icon: '🏛',
+            text: `${timelineNationName(r.proposerNationId)} proposed a peace summit with `
+              + `${timelineNationName(r.recipientNationId)} in ${summitCityName(r.cityId)} in `
+              + `${turnsUntil} turn${turnsUntil === 1 ? '' : 's'}`,
+            eventNationIds: [r.proposerNationId, r.recipientNationId],
+            metadata: summitMetadata(r),
+          });
+          if (event.needsHumanResponse) showSummitResponseModal(r, false);
+          break;
+        }
+        case 'counterproposed': {
+          const r = event.record;
+          const turnsUntil = Math.max(0, r.summitTurn - turnManager.getCurrentRound());
+          historicalTimeline.record({
+            type: 'peaceSummitCounterproposed',
+            icon: '🏛',
+            text: `${timelineNationName(r.proposerNationId)} counterproposed `
+              + `${summitCityIsNeutral(r) ? 'neutral ' : ''}${summitCityName(r.cityId)} for the peace summit `
+              + `with ${timelineNationName(r.recipientNationId)} in ${turnsUntil} turn${turnsUntil === 1 ? '' : 's'}`,
+            eventNationIds: [r.proposerNationId, r.recipientNationId],
+            metadata: summitMetadata(r),
+          });
+          if (event.needsHumanResponse) showSummitResponseModal(r, true);
+          break;
+        }
+        case 'rejected': {
+          historicalTimeline.record({
+            type: 'peaceSummitRejected',
+            icon: '🚫',
+            text: `${timelineNationName(event.recipientNationId)} rejected `
+              + `${timelineNationName(event.proposerNationId)}'s call for a peace summit`,
+            eventNationIds: [event.proposerNationId, event.recipientNationId],
+            metadata: { summitProposerNationId: event.proposerNationId, summitRecipientNationId: event.recipientNationId },
+          });
+          if (event.proposerNationId === humanNationIdForDiplomacy && !isAutoplayActive()) {
+            showLeaderResponsePopup(event.recipientNationId, 'Summit rejected', [
+              `${nationManager.getNation(event.recipientNationId)?.name ?? event.recipientNationId} `
+                + 'rejected your call for a peace summit. The war continues.',
+            ]);
+          }
+          break;
+        }
+        case 'agreed': {
+          const r = event.record;
+          historicalTimeline.record({
+            type: 'peaceSummitAgreed',
+            icon: '🤝',
+            text: `${timelineNationName(r.proposerNationId)} and ${timelineNationName(r.recipientNationId)} `
+              + `agreed to a peace summit in ${summitCityIsNeutral(r) ? 'neutral ' : ''}${summitCityName(r.cityId)}`,
+            eventNationIds: [r.proposerNationId, r.recipientNationId],
+            metadata: summitMetadata(r),
+          });
+          historicalTimeline.record({
+            type: 'ceasefireStarted',
+            icon: '✋',
+            text: `A ceasefire took effect between ${timelineNationName(r.proposerNationId)} and `
+              + `${timelineNationName(r.recipientNationId)} ahead of the summit`,
+            eventNationIds: [r.proposerNationId, r.recipientNationId],
+            metadata: summitMetadata(r),
+          });
+          if (humanInvolvedInSummit(r) && !isAutoplayActive()) {
+            const otherId = r.proposerNationId === humanNationIdForDiplomacy
+              ? r.recipientNationId : r.proposerNationId;
+            const turnsUntil = Math.max(0, r.summitTurn - turnManager.getCurrentRound());
+            showLeaderResponsePopup(otherId, 'Ceasefire in effect', [
+              `A ceasefire is in effect. Peace negotiations will take place in `
+                + `${summitCityIsNeutral(r) ? 'neutral ' : ''}${summitCityName(r.cityId)} in `
+                + `${turnsUntil} turn${turnsUntil === 1 ? '' : 's'}.`,
+            ]);
+          }
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+          break;
+        }
+        case 'summitReached': {
+          if (event.humanMustOffer) {
+            const otherId = event.record.recipientNationId === humanNationIdForDiplomacy
+              ? event.record.proposerNationId
+              : event.record.recipientNationId;
+            showProposePeaceDialog(otherId, {
+              onCancel: () => peaceSummitSystem.abandonNegotiation(humanNationIdForDiplomacy, otherId),
+            });
+          }
+          break;
+        }
+        case 'negotiationsFailed': {
+          historicalTimeline.record({
+            type: 'peaceNegotiationsFailed',
+            icon: '💥',
+            text: `Peace negotiations between ${timelineNationName(event.nationA)} and `
+              + `${timelineNationName(event.nationB)} collapsed — the war resumes`,
+            eventNationIds: [event.nationA, event.nationB],
+            metadata: { summitProposerNationId: event.nationA, summitRecipientNationId: event.nationB },
+          });
+          if (!isAutoplayActive()
+            && (event.nationA === humanNationIdForDiplomacy || event.nationB === humanNationIdForDiplomacy)) {
+            const otherId = event.nationA === humanNationIdForDiplomacy ? event.nationB : event.nationA;
+            showLeaderResponsePopup(otherId, 'Peace talks collapsed', [
+              'The peace summit ended without agreement. Hostilities resume.',
+            ]);
+          }
+          hudLayer?.refresh();
+          rightPanel?.requestRefresh();
+          break;
+        }
+        case 'peaceReached': {
+          // The war-ending peace is already recorded via onPeaceAccepted ('peace').
+          if (humanInvolvedInSummit({
+            proposerNationId: event.nationA,
+            recipientNationId: event.nationB,
+          } as PeaceSummitRecord)) {
+            hudLayer?.refresh();
+            rightPanel?.requestRefresh();
+          }
+          break;
+        }
+      }
     });
     diplomacyManager.onEmbassyEstablished((from, to) => {
       historicalTimeline.record({
@@ -9698,6 +9994,7 @@ export class GameScene extends Phaser.Scene {
           capitulationSystem,
           combatSystem,
           consolidationSystem,
+          peaceSummitSystem,
           guideProgress: guideProgression.getState(),
         }),
         focusFirstCity: (zoom = 2) => {
@@ -10365,6 +10662,7 @@ export class GameScene extends Phaser.Scene {
         capitulationSystem,
         combatSystem,
         consolidationSystem,
+        peaceSummitSystem,
       });
       resourceAccessSystem.invalidateResourceIndex();
       powerPlantSystem.refreshAllocation(false);
@@ -10476,6 +10774,7 @@ export class GameScene extends Phaser.Scene {
           capitulationSystem,
           combatSystem,
           consolidationSystem,
+          peaceSummitSystem,
           guideProgress: guideProgression.getState(),
         });
         window.localStorage.setItem(LATEST_AUTOSAVE_KEY, JSON.stringify(state));
@@ -10550,6 +10849,7 @@ export class GameScene extends Phaser.Scene {
         capitulationSystem,
         combatSystem,
         consolidationSystem,
+        peaceSummitSystem,
         guideProgress: guideProgression.getState(),
       });
     const saveGameDialog = new SaveGameDialog({

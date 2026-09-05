@@ -725,6 +725,9 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Peace Treaty cooldown (turns)
         <input id="sd-peace-treaty-cooldown" type="number" min="0" step="1">
       </label>
+      <label class="field">Minimum turns before peace negotiation
+        <input id="sd-min-peace-negotiation-turns" type="number" min="0" step="1">
+      </label>
       <label class="field" title="Capitulation Pressure required before a nation will accept capitulation.">Capitulation Acceptance Threshold
         <span class="sd-slider-row">
           <input id="sd-capitulation-acceptance-threshold" type="range" min="0.01" max="1.00" step="0.01">
@@ -1082,6 +1085,11 @@ function normalizeScenarioMeta() {
   } else {
     meta.peaceTreatyCooldownTurns = Math.floor(meta.peaceTreatyCooldownTurns);
   }
+  if (typeof meta.minPeaceNegotiationTurns !== 'number' || !(meta.minPeaceNegotiationTurns >= 0)) {
+    meta.minPeaceNegotiationTurns = DEFAULT_MIN_PEACE_NEGOTIATION_TURNS;
+  } else {
+    meta.minPeaceNegotiationTurns = Math.floor(meta.minPeaceNegotiationTurns);
+  }
   if (typeof meta.capitulationAcceptanceThreshold !== 'number'
     || !Number.isFinite(meta.capitulationAcceptanceThreshold)
     || meta.capitulationAcceptanceThreshold < 0.01
@@ -1176,6 +1184,9 @@ let tileBuildings = null; // 2D array [r][q] of building ids or undefined
 // Default turns two nations cannot re-declare war after peace (mirrors the runtime
 // DEFAULT_PEACE_TREATY_COOLDOWN_TURNS in src/systems/DiplomacyManager.ts).
 const DEFAULT_PEACE_TREATY_COOLDOWN_TURNS = 10;
+// Default minimum war duration before peace can first be proposed (mirrors the
+// runtime MIN_WAR_TURNS_FOR_PEACE in src/systems/DiplomacyManager.ts).
+const DEFAULT_MIN_PEACE_NEGOTIATION_TURNS = 15;
 const BARBARIAN_CAMP_BUILDING_ID = 'barbarian-camp';
 // Default rounds between barbarian spawns from a camp (mirrors the runtime
 // DEFAULT_BARBARIAN_SPAWN_INTERVAL in src/data/barbarians.ts).
@@ -5954,6 +5965,7 @@ function openScenarioDetails() {
   document.getElementById('sd-static-step').value = String(meta.timeProgression.staticYearStep ?? 1);
   document.getElementById('sd-barbarian-interval').value = String(meta.barbarianSpawnInterval);
   document.getElementById('sd-peace-treaty-cooldown').value = String(meta.peaceTreatyCooldownTurns);
+  document.getElementById('sd-min-peace-negotiation-turns').value = String(meta.minPeaceNegotiationTurns);
   document.getElementById('sd-capitulation-acceptance-threshold').value = Number(meta.capitulationAcceptanceThreshold).toFixed(2);
   updateCapitulationAcceptanceThresholdValue();
   document.getElementById('sd-trade-route-establishment-turns').value = String(meta.tradeRouteEstablishmentTurns);
@@ -6017,6 +6029,12 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const minPeaceNegotiationTurns = parseInt(document.getElementById('sd-min-peace-negotiation-turns').value, 10);
+  if (!Number.isInteger(minPeaceNegotiationTurns) || minPeaceNegotiationTurns < 0) {
+    errorEl.textContent = 'Minimum turns before peace negotiation must be a non-negative integer (turns).';
+    return false;
+  }
+
   const capitulationAcceptanceThreshold = Number(document.getElementById('sd-capitulation-acceptance-threshold').value);
   if (!Number.isFinite(capitulationAcceptanceThreshold)
     || capitulationAcceptanceThreshold < 0.01 || capitulationAcceptanceThreshold > 1) {
@@ -6076,6 +6094,7 @@ function saveScenarioDetails() {
   scenario.meta.timeProgression = timeProgression;
   scenario.meta.barbarianSpawnInterval = barbarianSpawnInterval;
   scenario.meta.peaceTreatyCooldownTurns = peaceTreatyCooldownTurns;
+  scenario.meta.minPeaceNegotiationTurns = minPeaceNegotiationTurns;
   scenario.meta.capitulationAcceptanceThreshold = capitulationAcceptanceThreshold;
   scenario.meta.tradeRouteEstablishmentTurns = tradeRouteEstablishmentTurns;
   scenario.meta.shortTradeDealDuration = shortTradeDealDuration;

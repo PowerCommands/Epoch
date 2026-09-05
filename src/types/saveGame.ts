@@ -25,6 +25,7 @@ import type { SavedLuckyLoserTurningPointState } from '../systems/diplomacy/Luck
 import type { SavedCulturalJealousyTurningPointState } from '../systems/diplomacy/CulturalJealousySystem';
 import type { SavedUnluckyWinnerTurningPointState } from '../systems/diplomacy/UnluckyWinnerTurningPointSystem';
 import type { PeaceProposal, VassalRelationship } from '../systems/DiplomacyManager';
+import type { SavedPeaceSummitState } from '../systems/diplomacy/PeaceSummitSystem';
 import type { SavedJointWarEscalation } from './jointWar';
 import type { AIVictoryFocusState } from './aiVictoryFocus';
 
@@ -337,6 +338,8 @@ export interface SavedGameState {
   capitulationAcceptanceThreshold?: number;
   /** Future peace treaties use this duration; existing explicit expiries are unchanged. */
   peaceTreatyCooldownTurns?: number;
+  /** Minimum war duration before peace can be proposed. Optional for older saves. */
+  minPeaceNegotiationTurns?: number;
   /** Active original-capital combat threshold. Optional for older saves. */
   originalCapitalCollapsePercent?: number;
   /** Active scenario choices for newly created human deals. Optional for older saves. */
@@ -367,6 +370,8 @@ export interface SavedGameState {
   vassalStates?: VassalRelationship[];
   /** Pending negotiated-peace offers, including AI offers awaiting a Human answer. */
   pendingPeaceProposals?: PeaceProposal[];
+  /** Active peace-summit negotiations, ceasefires, and failed-negotiation cooldowns. */
+  peaceSummits?: SavedPeaceSummitState;
   /** Situation-scoped rejected AI Join War attempts; absent in older saves. */
   jointWarEscalations?: SavedJointWarEscalation[];
   discovery: SavedDiscoveryEntry[];

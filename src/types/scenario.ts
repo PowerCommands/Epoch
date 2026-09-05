@@ -51,6 +51,12 @@ export interface ScenarioMeta {
    */
   peaceTreatyCooldownTurns?: number;
   /**
+   * Minimum turns a war must last before peace can first be proposed. Authored in
+   * the Editor's Scenario Details. Absent/invalid falls back to
+   * MIN_WAR_TURNS_FOR_PEACE (15).
+   */
+  minPeaceNegotiationTurns?: number;
+  /**
    * Internal Capitulation Pressure required before surrender is accepted.
    * Valid range is 0.01–1.00; absent/invalid values retain the legacy 0.70.
    */

@@ -75,6 +75,7 @@ import type { UnluckyWinnerTurningPointSystem } from './diplomacy/UnluckyWinnerT
 import type { HumanTradeDealWorkflow } from './HumanTradeDealWorkflow';
 import type { HumanTradeDealDurations } from '../types/tradeDeal';
 import type { CombatSystem } from './CombatSystem';
+import type { PeaceSummitSystem } from './diplomacy/PeaceSummitSystem';
 
 export interface SaveLoadContext {
   mapKey: string;
@@ -124,6 +125,7 @@ export interface SaveLoadContext {
   capitulationSystem?: CapitulationSystem;
   combatSystem?: CombatSystem;
   consolidationSystem?: ConsolidationSystem;
+  peaceSummitSystem?: PeaceSummitSystem;
   /** Snapshot supplied by the progressive guide; presentation state is excluded. */
   guideProgress?: SavedGuideProgress;
 }
@@ -348,6 +350,7 @@ export class SaveLoadService {
       tradeRouteEstablishmentTurns: tradeConnectionSystem?.getEstablishmentTurns(),
       capitulationAcceptanceThreshold: context.capitulationSystem?.getAcceptanceThreshold(),
       peaceTreatyCooldownTurns: diplomacyManager.getPeaceTreatyCooldownTurns(),
+      minPeaceNegotiationTurns: diplomacyManager.getMinPeaceNegotiationTurns(),
       originalCapitalCollapsePercent: context.combatSystem?.getOriginalCapitalCollapsePercent(),
       shortTradeDealDuration: context.humanTradeDealDurations?.short,
       longTradeDealDuration: context.humanTradeDealDurations?.long,
@@ -373,6 +376,7 @@ export class SaveLoadService {
       diplomacy,
       vassalStates: diplomacyManager.getAllVassalRelationships(),
       pendingPeaceProposals: diplomacyManager.getPendingPeaceProposals(),
+      peaceSummits: context.peaceSummitSystem?.serialize(),
       jointWarEscalations: jointWarSystem?.serialize(),
       discovery,
       symbolicGifts: symbolicGiftRegistry?.serialize(),
@@ -646,6 +650,9 @@ export class SaveLoadService {
     // Re-emit only after the restored round is authoritative. Existing listeners
     // then resume a Human offer UI or synchronously resolve an AI recipient.
     context.diplomacyManager.restorePendingPeaceProposals(state.pendingPeaceProposals);
+    // Restore active summits/ceasefires after the round cursor so their countdown
+    // resumes correctly and the ceasefire combat-block is live immediately.
+    context.peaceSummitSystem?.restore(state.peaceSummits);
     // Restore lifecycle and its calendar anchor only after the round cursor is
     // in place, but before GameScene resumes with TurnManager.start().
     context.scenarioHistoricalEventSystem?.restore(state.scenarioHistoricalEvents);

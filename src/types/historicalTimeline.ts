@@ -6,6 +6,12 @@ export type HistoricalEventType =
   | 'embassyEstablished'
   | 'tradeRelations'
   | 'warDeclared'
+  | 'peaceSummitProposed'
+  | 'peaceSummitRejected'
+  | 'peaceSummitCounterproposed'
+  | 'peaceSummitAgreed'
+  | 'ceasefireStarted'
+  | 'peaceNegotiationsFailed'
   | 'capitulation'
   | 'worldWarStarted'
   | 'worldWarEnded'
@@ -62,6 +68,19 @@ export interface HistoricalEventMetadata {
   /** Number of holdings dismantled, and the settlement that dismantled them. */
   exploitationHoldingsCount?: number;
   exploitationHoldingsRemovalContext?: 'peace' | 'capitulation';
+  /** Peace-summit facts (proposed / counterproposed / agreed / ceasefire / failed). */
+  summitProposerNationId?: string;
+  summitRecipientNationId?: string;
+  summitCityId?: string;
+  summitCityName?: string;
+  /** Owner of the summit city; may be a neutral third nation. */
+  summitCityOwnerNationId?: string;
+  /** Whether the summit city belongs to neither belligerent. */
+  summitCityIsNeutral?: boolean;
+  /** Absolute turn the summit is scheduled to take place. */
+  summitTurn?: number;
+  /** Turns remaining until the summit at the moment the event was recorded. */
+  summitTurnsUntil?: number;
   wonderId?: string;
   wonderName?: string;
   eraName?: string;

@@ -34,8 +34,8 @@ import type { CityManager } from '../../systems/CityManager';
 import type { CityDefenseSystem } from '../../systems/CityDefenseSystem';
 import type { CityTerritorySystem } from '../../systems/CityTerritorySystem';
 import type { DiplomacyManager } from '../../systems/DiplomacyManager';
+import type { PeaceSummitSystem } from '../../systems/diplomacy/PeaceSummitSystem';
 import { isEconomicPressureNegotiable } from '../../systems/diplomacy/EconomicPressureNegotiationService';
-import { MIN_WAR_TURNS_FOR_PEACE } from '../../systems/DiplomacyManager';
 import type { AllianceManager } from '../../systems/diplomacy/AllianceManager';
 import type { AllianceProposalContext } from '../../types/alliance';
 import type { JointWarSystem } from '../../systems/diplomacy/JointWarSystem';
@@ -208,6 +208,7 @@ export class RightSidebarPanelDataProvider {
   private readonly scheduler = new RafScheduler();
   private readonly listeners: ChangedListener[] = [];
   private diplomacyManager: DiplomacyManager | null = null;
+  private peaceSummitSystem: PeaceSummitSystem | null = null;
   private allianceManager: AllianceManager | null = null;
   private jointWarSystem: JointWarSystem | null = null;
   private jointWarProposal: {
@@ -304,6 +305,10 @@ export class RightSidebarPanelDataProvider {
 
   setDiplomacyManager(dm: DiplomacyManager): void {
     this.diplomacyManager = dm;
+  }
+
+  setPeaceSummitSystem(system: PeaceSummitSystem): void {
+    this.peaceSummitSystem = system;
   }
 
   setCurrentTurnGetter(fn: () => number): void {
@@ -1968,7 +1973,26 @@ export class RightSidebarPanelDataProvider {
     const dm = this.diplomacyManager;
     const humanId = this.humanNationId;
     const relation = dm.getRelation(humanId, nationId);
-    const rows: RightSidebarRow[] = [textRow(relation.state === 'WAR' ? 'At War' : 'At Peace')];
+    const ceasefireActive = relation.state === 'WAR'
+      && (this.peaceSummitSystem?.isCeasefireActive(humanId, nationId) ?? false);
+    const warStatusLabel = relation.state !== 'WAR'
+      ? 'At Peace'
+      : ceasefireActive
+        ? 'At War — Ceasefire'
+        : 'At War';
+    const rows: RightSidebarRow[] = [textRow(warStatusLabel)];
+    if (ceasefireActive && this.peaceSummitSystem) {
+      const summit = this.peaceSummitSystem.getSummit(humanId, nationId);
+      const countdown = this.peaceSummitSystem.getSummitCountdown(humanId, nationId);
+      if (summit) {
+        const summitCityName = this.cityManager.getCity(summit.cityId)?.name ?? 'the agreed venue';
+        rows.push(textRow(
+          summit.phase === 'negotiating'
+            ? `Ceasefire — Peace Summit under way in ${summitCityName}`
+            : `Ceasefire — Peace Summit in ${countdown} turn${countdown === 1 ? '' : 's'} (${summitCityName})`,
+        ));
+      }
+    }
     const humanHostId = dm.getVassalHost(humanId);
     const targetHostId = dm.getVassalHost(nationId);
     if (targetHostId === humanId) rows.push(textRow('Your Vassal State'));
@@ -2136,8 +2160,9 @@ export class RightSidebarPanelDataProvider {
       ? `Peace treaty active for ${peaceTreatyRemaining} more turn${peaceTreatyRemaining === 1 ? '' : 's'}.`
       : undefined;
     const warDuration = isAtWar ? dm.getWarDuration(humanId, nationId, currentTurn) : 0;
+    const minPeaceNegotiationTurns = dm.getMinPeaceNegotiationTurns();
     const peaceUnavailableReason = isAtWar && !dm.canProposePeace(humanId, nationId, currentTurn)
-      ? `Peace cannot be proposed until ${MIN_WAR_TURNS_FOR_PEACE} turns of war have passed (${warDuration}/${MIN_WAR_TURNS_FOR_PEACE}).`
+      ? `Peace cannot be proposed until ${minPeaceNegotiationTurns} turns of war have passed (${warDuration}/${minPeaceNegotiationTurns}).`
       : undefined;
     // Alliance partners cannot declare war on each other.
     const alliancePartnerReason = this.allianceManager?.areAllied(humanId, nationId)

@@ -22,7 +22,6 @@ import type { AILogFormatter } from './AILogFormatter';
 import { NO_RECLAIM_WAR_MODIFIER, type ReclaimWarModifier } from './reclaimCapital';
 import type { PeaceTreatySystem } from '../PeaceTreatySystem';
 import { AI_PEACE_MODERATE_PRESSURE } from '../PeaceTreatySystem';
-import { MIN_WAR_TURNS_FOR_PEACE } from '../DiplomacyManager';
 import {
   getSuspicionOpenBordersPenalty,
   suspicionBlocksOpenBorders,
@@ -206,6 +205,17 @@ export class AIDiplomacySystem {
   }
 
   /**
+   * Route AI peace initiation through the Peace Summit process. When set, a
+   * willing AI proposes a summit (returns true if one was started) instead of
+   * making an immediate peace offer. Unset, the AI falls back to the legacy
+   * direct proposal (kept for tests without the summit system).
+   */
+  setPeaceSummitInitiator(initiator: (fromId: string, toId: string) => boolean): void {
+    this.peaceSummitInitiator = initiator;
+  }
+  private peaceSummitInitiator: ((fromId: string, toId: string) => boolean) | null = null;
+
+  /**
    * Wire the existing capitulation system so a winning AI can demand
    * unconditional surrender once a beaten opponent has collapsed far enough to
    * accept it. Optional: without it, the AI simply never initiates capitulation.
@@ -314,6 +324,30 @@ export class AIDiplomacySystem {
           || (adjustedPeacePreference >= 70 && attitude !== 'hostile'))
         && this.shouldNationConsiderPeace(selfId, otherId, personality)
       );
+      // Preferred path: route peace initiation through the Peace Summit process.
+      // The initiator validates summit eligibility (war duration, no active summit,
+      // failed-negotiation cooldown) and starts the ceremonial flow; the actual
+      // peace offer is made later, when the summit takes place.
+      if (
+        wantsPeace &&
+        this.peaceSummitInitiator &&
+        this.noPendingProposal(selfId, otherId)
+      ) {
+        if (this.peaceSummitInitiator(selfId, otherId)) {
+          const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
+          console.log(this.formatLog(
+            selfId,
+            `calls for a peace summit with ${otherName}; warDuration=${warDuration}, `
+              + `factors=${JSON.stringify(seeking ? this.roundFactors(seeking.factors) : {})}.`,
+          ));
+          this.emitDecision(this.createDecisionReason(
+            'proposePeace', selfId, otherId, relation, attitude, comparison, threat,
+            personality, evaluation, ideologyPeaceModifier,
+          ));
+        }
+        return; // never touch borders while at war
+      }
+
       if (
         wantsPeace &&
         this.diplomacyManager.canProposePeace(selfId, otherId, currentTurn) &&
@@ -368,7 +402,7 @@ export class AIDiplomacySystem {
       } else if (wantsPeace && !this.diplomacyManager.canProposePeace(selfId, otherId, currentTurn)) {
         const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
         console.log(
-          this.formatLog(selfId, `cannot propose peace to ${otherName} yet (${warDuration}/${MIN_WAR_TURNS_FOR_PEACE} turns elapsed).`),
+          this.formatLog(selfId, `cannot propose peace to ${otherName} yet (${warDuration}/${this.diplomacyManager.getMinPeaceNegotiationTurns()} turns elapsed).`),
         );
       } else if (wantsPeace && this.turnsSince(relation.lastPeaceProposalTurn, currentTurn) < PEACE_COOLDOWN) {
         const otherName = this.nationManager.getNation(otherId)?.name ?? otherId;
