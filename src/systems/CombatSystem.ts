@@ -70,6 +70,13 @@ export interface CityCombatEvent {
   previousOwnerId?: string;
   /** Capital capture was converted into vassalization and ownership restoration. */
   capitalVassalizationResolved?: boolean;
+  /**
+   * A human player captured this city and must decide its fate (Keep / Liberate
+   * / Raze). When true, collapse of a previous owner left with no cities was
+   * deferred so the decision flow can resolve it against a consistent world
+   * state; the decision handler is responsible for completing that collapse.
+   */
+  pendingHumanCaptureDecision?: boolean;
 }
 
 export interface CombatRejectedEvent {
@@ -107,6 +114,12 @@ type WarRequiredListener = (e: WarRequiredEvent) => void;
 type UnitCombatBlocker = (unit: Unit) => boolean;
 type PeacekeepingCombatAuthorizer = (attacker: Unit, target: Unit, tileOwnerId?: string) => boolean;
 type CapitalCaptureResolver = (city: City, previousOwnerId: string, captorNationId: string) => boolean;
+/**
+ * Returns true when a capture must be routed to the human city-fate decision
+ * dialog. When it does, the combat system defers the "previous owner has no
+ * cities" collapse to the decision flow (see {@link CityCombatEvent.pendingHumanCaptureDecision}).
+ */
+type HumanCaptureDecisionPredicate = (city: City, previousOwnerId: string, captorNationId: string) => boolean;
 
 const EMBARKED_DEFENSE_MULTIPLIER = 0.5;
 const FOREIGN_INSURGENT_UNIT_IDS: ReadonlySet<string> = new Set(['partisans', 'rebels']);
@@ -148,6 +161,7 @@ export class CombatSystem {
   private capitalCaptureResolver: CapitalCaptureResolver | null = null;
   private subjugationResolver: CapitalCaptureResolver | null = null;
   private originalCapitalCollapseResolver: CapitalCaptureResolver | null = null;
+  private humanCaptureDecisionPredicate: HumanCaptureDecisionPredicate | null = null;
   /** Original-capital collapse threshold in city HP; scenario-configurable. */
   private originalCapitalCollapseHealth = ORIGINAL_CAPITAL_COLLAPSE_HEALTH;
 
@@ -183,6 +197,16 @@ export class CombatSystem {
 
   setCapitalCaptureResolver(resolver: CapitalCaptureResolver): void {
     this.capitalCaptureResolver = resolver;
+  }
+
+  /**
+   * Route captures by the human player to the city-fate decision dialog. When the
+   * predicate returns true for a capture, the "previous owner has no cities"
+   * collapse is deferred and the event carries {@link CityCombatEvent.pendingHumanCaptureDecision}
+   * so the scene can present Keep / Liberate / Raze before resolving that collapse.
+   */
+  setHumanCaptureDecisionPredicate(predicate: HumanCaptureDecisionPredicate): void {
+    this.humanCaptureDecisionPredicate = predicate;
   }
 
   /**
@@ -473,6 +497,7 @@ export class CombatSystem {
     let captured = false;
     let previousOwnerId: string | undefined;
     let capitalVassalizationResolved = false;
+    let pendingHumanCaptureDecision = false;
     // A resolved capitulation ends the war and vassalizes the defender, so this same
     // attack must not go on to capture the city or collapse the nation.
     if (!isRanged && result.cityFell && !result.attackerDied && !capitulationResolved) {
@@ -500,7 +525,14 @@ export class CombatSystem {
         && this.cityManager.getCitiesByOwner(previousOwnerId).length === 0) {
         capitalVassalizationResolved = this.subjugationResolver(city, previousOwnerId, attacker.ownerId);
       }
-      if (!capitalVassalizationResolved) {
+      // A human capture that was not already resolved by the capital/last-city
+      // vassalization path is handed to the decision dialog. Defer the previous
+      // owner's collapse to that flow so Keep / Liberate / Raze all resolve against
+      // the same world state; AI captures keep collapsing synchronously here.
+      if (!capitalVassalizationResolved
+        && this.humanCaptureDecisionPredicate?.(city, previousOwnerId, attacker.ownerId)) {
+        pendingHumanCaptureDecision = true;
+      } else if (!capitalVassalizationResolved) {
         this.collapsePreviousOwnerWithoutCities(previousOwnerId, attacker.ownerId, city);
       }
       this.emitConquestDiagnostic(attacker, city, result, preAttack);
@@ -509,7 +541,7 @@ export class CombatSystem {
     this.reportCovertCityCombat(attacker, city);
 
     for (const cb of this.cityCombatListeners) {
-      cb({ attacker, city, result, captured, previousOwnerId, capitalVassalizationResolved });
+      cb({ attacker, city, result, captured, previousOwnerId, capitalVassalizationResolved, pendingHumanCaptureDecision });
     }
 
     return true;

@@ -249,9 +249,31 @@ export class CheatSystem {
 
     this.register({
       name: 'heal',
-      description: 'Restore the currently selected unit or city to full health.',
+      description: 'Restore the selected unit or city to full health, or every unit of a nation with "heal all [nation]" (nation defaults to the player).',
       execute: (args, context) => {
-        if (args.length !== 0) return 'Usage: heal';
+        if (args.length > 0 && args[0] === 'all') {
+          if (args.length > 2) return 'Usage: heal all [nation]';
+
+          const target = resolveNationId(args[1], context);
+          if (!target.ok) return target.message;
+
+          const units = context.unitManager.getUnitsByOwner(target.nationId);
+          if (units.length === 0) return `${target.label} has no units`;
+
+          let healed = 0;
+          for (const unit of units) {
+            const maxHealth = unit.unitType.baseHealth;
+            if (unit.health >= maxHealth) continue;
+            unit.health = maxHealth;
+            context.unitManager.notifyDamaged(unit);
+            healed += 1;
+          }
+
+          if (healed === 0) return `All ${target.label} units are already at full health`;
+          return `Healed ${healed} ${target.label} unit(s) to full health`;
+        }
+
+        if (args.length !== 0) return 'Usage: heal [all [nation]]';
 
         const selection = context.selectionManager.getSelected();
         if (!selection || selection.kind === 'tile') return 'No unit or city selected';
@@ -272,6 +294,15 @@ export class CheatSystem {
         unit.health = maxHealth;
         context.unitManager.notifyDamaged(unit);
         return `Healed ${unit.name} to full health`;
+      },
+      complete: (args, context) => {
+        if (args.length === 1) {
+          return matchLiteralSuggestions(args[0], [
+            { value: 'all', description: 'Heal every unit of a nation (defaults to the player).' },
+          ]);
+        }
+        if (args[0] === 'all' && args.length === 2) return completeNation(args[1], context);
+        return [];
       },
     });
 

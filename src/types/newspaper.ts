@@ -7,6 +7,9 @@ export type NewspaperEventType = Exclude<HistoricalEventType,
   | 'unluckyWinner'
   | 'worldCouncilActive'
   | 'worldCouncilMeeting'
+  // Outcome refinements of `cityCaptured`, which already has a newspaper article.
+  | 'cityLiberated'
+  | 'cityRazed'
 >;
 
 export interface NewspaperArticleContext {

@@ -91,6 +91,16 @@ export class CityRenderer {
   }
 
   /**
+   * Destroy the rendered symbol for a city that no longer exists (e.g. razed).
+   */
+  removeCity(cityId: string): void {
+    const container = this.containers.get(cityId);
+    if (!container) return;
+    container.destroy();
+    this.containers.delete(cityId);
+  }
+
+  /**
    * Re-render city symbol (e.g. after ownership change).
    */
   refreshCity(city: City): void {

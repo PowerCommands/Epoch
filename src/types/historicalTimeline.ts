@@ -15,6 +15,8 @@ export type HistoricalEventType =
   | 'exploitationRightsEnded'
   | 'exploitationHoldingsRemoved'
   | 'cityCaptured'
+  | 'cityLiberated'
+  | 'cityRazed'
   | 'tradeRouteCompleted'
   | 'wonderBuilt'
   | 'worldCouncilFounded'
@@ -48,6 +50,10 @@ export interface HistoricalEventMetadata {
   aggressorNationId?: string;
   targetNationId?: string;
   previousOwnerNationId?: string;
+  /** How a human captor resolved a captured city ('keep' events use `cityCaptured`). */
+  captureOutcome?: 'liberate' | 'raze';
+  /** Original founder nation a liberated city was returned to. */
+  liberatedToNationId?: string;
   /** Directional Foreign Resource Exploitation Rights facts (grant/end events). */
   exploitationGrantorNationId?: string;
   exploitationBeneficiaryNationId?: string;

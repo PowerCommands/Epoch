@@ -214,6 +214,13 @@ import { resolveBarbarianSpawnInterval, isBarbarianNation } from '../data/barbar
 import { CovertSuspicionSystem } from '../systems/diplomacy/CovertSuspicionSystem';
 import { AICovertOperationsSystem } from '../systems/ai/AICovertOperationsSystem';
 import { IntelReportDialog } from '../ui/IntelReportDialog';
+import { CityCaptureDecisionDialog } from '../ui/CityCaptureDecisionDialog';
+import {
+  getAvailableCaptureOutcomes,
+  liberateCapturedCity,
+  razeCapturedCity,
+  type CityCaptureOutcome,
+} from '../systems/CityCaptureDecision';
 import { isCovertOperative } from '../utils/unitRoleUtils';
 import { CheatSystem } from '../systems/CheatSystem';
 import { AutoplaySystem } from '../systems/AutoplaySystem';
@@ -2930,6 +2937,12 @@ export class GameScene extends Phaser.Scene {
         data.savedState?.originalCapitalCollapsePercent ?? scenarioJson.meta?.originalCapitalCollapsePercent,
       ),
     );
+    // A city captured by the human player (that was not already resolved through
+    // capital/last-city vassalization) is routed to the Keep / Liberate / Raze
+    // decision dialog. AI conquest is unaffected and keeps resolving synchronously.
+    combatSystem.setHumanCaptureDecisionPredicate(
+      (_city, _previousOwnerId, captorNationId) => captorNationId === humanNationId,
+    );
     const politicalCapitalSystem = new PoliticalCapitalSystem(
       cityManager,
       nationManager,
@@ -4330,6 +4343,7 @@ export class GameScene extends Phaser.Scene {
     // Space skips the active unit.
     const onSpaceSkip = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
+      if (isCityCaptureDecisionPending()) return;
       turnOrderSystem.skipActive();
     };
 
@@ -4347,6 +4361,7 @@ export class GameScene extends Phaser.Scene {
     // Unit/action gameplay hotkeys for the selected human unit.
     const activateActionIfHumanTurn = (mode: 'move' | 'attack' | 'ranged' | 'sleep') => {
       if (!turnManager.getCurrentNation().isHuman) return;
+      if (isCityCaptureDecisionPending()) return;
       const selection = selectionManager.getSelected();
       if (selection?.kind !== 'unit' || selection.unit.ownerId !== humanNationId) return;
       // Sleep is the cancel-build affordance for a busy worker; the
@@ -4795,6 +4810,125 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.requestRefresh();
     });
 
+    // Modal shown after a human city capture so the player chooses the city's
+    // fate (Keep / Liberate / Raze) before play continues. Kept as transient UI
+    // state — the decision is always resolved immediately, so no unresolved
+    // capture is ever serialized.
+    const cityCaptureDecisionDialog = new CityCaptureDecisionDialog();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => cityCaptureDecisionDialog.shutdown());
+    const isCityCaptureDecisionPending = (): boolean => cityCaptureDecisionDialog.isOpen();
+
+    // Shared post-capture presentation sync, reused by every decision outcome so
+    // renderers, minimap, overlays, resources and HUD stay consistent.
+    const refreshAfterCaptureResolution = (params: {
+      city?: City;
+      affectedNationIds: string[];
+    }): void => {
+      if (params.city && cityManager.getCity(params.city.id)) {
+        cityRenderer.refreshCity(params.city);
+        cityBannerRenderer.refreshCity(params.city);
+      }
+      territoryRenderer.invalidate();
+      rebuildMinimapForGameplay();
+      refreshCultureOverlay();
+      hudLayer?.refresh();
+      for (const nationId of new Set(params.affectedNationIds)) {
+        resourceSystem.recalculateForNation(nationId);
+      }
+      discoverySystem.scan();
+      updateFog();
+      rightPanel?.requestRefresh();
+    };
+
+    // Collapse a previous owner left with no cities. This mirrors the synchronous
+    // collapse the combat system runs for AI captures, but is deferred to here for
+    // human captures so Keep / Liberate / Raze all resolve against the same state.
+    const resolveDeferredPreviousOwnerCollapse = (previousOwnerId: string, conquerorNationId: string, triggerCity?: City): void => {
+      if (cityManager.getCitiesByOwner(previousOwnerId).length > 0) return;
+      nationCollapseSystem.collapse({
+        nationId: previousOwnerId,
+        conquerorNationId,
+        triggerCity,
+        reason: 'no_valid_survival_state',
+      });
+    };
+
+    const resolveHumanCapture = (
+      e: { city: City; attacker: { ownerId: string }; previousOwnerId?: string },
+      outcome: CityCaptureOutcome,
+    ): void => {
+      const captorNationId = e.attacker.ownerId;
+      const previousOwnerId = e.previousOwnerId;
+      const originNationId = e.city.originNationId;
+
+      if (outcome === 'liberate') {
+        liberateCapturedCity(e.city, {
+          cityManager,
+          cityTerritorySystem,
+          culturalSphereSystem,
+          cityIntegrationSystem,
+          productionSystem,
+          mapData,
+          gridSystem,
+        });
+        historicalTimeline.record({
+          type: 'cityLiberated',
+          icon: '🕊️',
+          text: `${timelineNationName(captorNationId)} liberated ${e.city.name}, returning it to ${timelineNationName(originNationId)}`,
+          eventNationIds: [captorNationId, originNationId, ...(previousOwnerId ? [previousOwnerId] : [])],
+          metadata: {
+            cityId: e.city.id,
+            cityName: e.city.name,
+            aggressorNationId: captorNationId,
+            previousOwnerNationId: previousOwnerId,
+            captureOutcome: 'liberate',
+            liberatedToNationId: originNationId,
+          },
+        });
+        // The previous owner never regains the city (it goes to its founder), so a
+        // last-city previous owner still collapses. No trigger city — it is home now.
+        if (previousOwnerId) resolveDeferredPreviousOwnerCollapse(previousOwnerId, captorNationId, undefined);
+        refreshAfterCaptureResolution({
+          city: e.city,
+          affectedNationIds: [captorNationId, originNationId, ...(previousOwnerId ? [previousOwnerId] : [])],
+        });
+        return;
+      }
+
+      if (outcome === 'raze') {
+        razeCapturedCity(e.city, { cityManager, productionSystem, wonderSystem, mapData });
+        cityRenderer.removeCity(e.city.id);
+        cityBannerRenderer.removeBanner(e.city.id);
+        historicalTimeline.record({
+          type: 'cityRazed',
+          icon: '🔥',
+          text: `${timelineNationName(captorNationId)} captured and razed ${e.city.name}`,
+          eventNationIds: [captorNationId, ...(previousOwnerId ? [previousOwnerId] : [])],
+          metadata: {
+            cityId: e.city.id,
+            cityName: e.city.name,
+            aggressorNationId: captorNationId,
+            previousOwnerNationId: previousOwnerId,
+            captureOutcome: 'raze',
+          },
+        });
+        if (previousOwnerId) resolveDeferredPreviousOwnerCollapse(previousOwnerId, captorNationId, undefined);
+        refreshAfterCaptureResolution({
+          affectedNationIds: [captorNationId, ...(previousOwnerId ? [previousOwnerId] : [])],
+        });
+        return;
+      }
+
+      // Keep: the normal conquest result stands. Only the deferred previous-owner
+      // collapse remains (the captured city is the trigger city, as it would be for
+      // an AI capture).
+      if (previousOwnerId) resolveDeferredPreviousOwnerCollapse(previousOwnerId, captorNationId, e.city);
+      refreshAfterCaptureResolution({
+        city: e.city,
+        affectedNationIds: [captorNationId, ...(previousOwnerId ? [previousOwnerId] : [])],
+      });
+    };
+
     combatSystem.onCityCombat(async (e) => {
       aiMilitaryEvaluationSystem.invalidate(e.attacker.ownerId);
       if (e.previousOwnerId) aiMilitaryEvaluationSystem.invalidate(e.previousOwnerId);
@@ -4890,6 +5024,28 @@ export class GameScene extends Phaser.Scene {
       }
 
       rightPanel?.requestRefresh();
+
+      // Present the human capture decision last, once the base capture has been
+      // fully applied and the board refreshed. Keep / Liberate / Raze then run
+      // against a consistent, already-rendered world state.
+      if (e.pendingHumanCaptureDecision && e.captured && e.previousOwnerId) {
+        const originNation = nationManager.getNation(e.city.originNationId);
+        const outcomes = getAvailableCaptureOutcomes({
+          originNationId: e.city.originNationId,
+          previousOwnerId: e.previousOwnerId,
+          captorNationId: e.attacker.ownerId,
+        })
+          // Never offer Liberate to a founder nation that no longer exists (it was
+          // eliminated earlier), which would transfer the city to a dead nation.
+          .filter((outcome) => outcome !== 'liberate' || originNation !== undefined);
+        const capturedEvent = { city: e.city, attacker: e.attacker, previousOwnerId: e.previousOwnerId };
+        cityCaptureDecisionDialog.show({
+          cityName: e.city.name,
+          outcomes,
+          originNationName: originNation?.name,
+          onResolve: (outcome) => resolveHumanCapture(capturedEvent, outcome),
+        });
+      }
     });
 
     politicalCapitalSystem.onResidenceRelocated((event) => {
@@ -7137,6 +7293,8 @@ export class GameScene extends Phaser.Scene {
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       if (hudLayer?.hasBlockingModal()) return;
+      // An unresolved city-capture decision blocks the turn from advancing.
+      if (isCityCaptureDecisionPending()) return;
       turnManager.endCurrentTurn();
     };
     // Auto End Turn: when enabled and no human unit still needs orders, advance
@@ -7151,6 +7309,7 @@ export class GameScene extends Phaser.Scene {
       if (!turnManager.getCurrentNation().isHuman) return;
       if (isAutoplayActive()) return;
       if (hudLayer?.hasBlockingModal()) return;
+      if (isCityCaptureDecisionPending()) return;
       if (turnOrderSystem.getActive()) return;
       // Defer so it doesn't re-enter the turn/active-unit listeners and so the
       // player can glance at the board; re-check every guard when it fires.
@@ -7161,6 +7320,7 @@ export class GameScene extends Phaser.Scene {
         if (!turnManager.getCurrentNation().isHuman) return;
         if (isAutoplayActive()) return;
         if (hudLayer?.hasBlockingModal()) return;
+        if (isCityCaptureDecisionPending()) return;
         if (turnOrderSystem.getActive()) return;
         endHumanTurn();
       });
@@ -7172,7 +7332,7 @@ export class GameScene extends Phaser.Scene {
       return Boolean(active.closest('input, textarea, select, [contenteditable="true"]'));
     };
     const isVisibleModalOverlayActive = (): boolean => {
-      const modalIds = ['diplomacy-modal', 'building-placement-modal', 'escape-menu'];
+      const modalIds = ['diplomacy-modal', 'building-placement-modal', 'escape-menu', 'city-capture-decision-dialog'];
       return modalIds.some((id) => {
         const element = document.getElementById(id);
         if (!(element instanceof HTMLElement)) return false;
@@ -10399,6 +10559,9 @@ export class GameScene extends Phaser.Scene {
     });
     const openSaveGameDialog = (): void => {
       if (saveGameDialog.isOpen()) return;
+      // Block saving outright while a capture decision is unresolved so no save
+      // can ever serialize a pending, undecided capture.
+      if (isCityCaptureDecisionPending()) return;
       saveGameDialog.show(buildDefaultSaveFilename(data.mapKey));
     };
     // Lazily-created standalone tutorial overlay, reachable from the pause
@@ -10455,6 +10618,8 @@ export class GameScene extends Phaser.Scene {
     );
 
     const onKeyEscape = () => {
+      // The capture decision is modal: Escape must not open the menu or resolve it.
+      if (isCityCaptureDecisionPending()) return;
       if (this.tutorialWizard?.isActive()) {
         this.tutorialWizard.close();
         return;
@@ -10486,6 +10651,7 @@ export class GameScene extends Phaser.Scene {
     const onKeyCtrlQ = (event: KeyboardEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
+      if (isCityCaptureDecisionPending()) return;
       if (closeOpenCityView()) return;
       escapeMenu.toggle();
     };
@@ -10494,6 +10660,8 @@ export class GameScene extends Phaser.Scene {
     const onKeyCtrlS = (event: KeyboardEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
+      // Never let a save begin while a capture decision is unresolved.
+      if (isCityCaptureDecisionPending()) return;
       openSaveGameDialog();
     };
     this.input.keyboard?.on('keydown-ESC', onKeyEscape);

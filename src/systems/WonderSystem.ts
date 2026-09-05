@@ -48,6 +48,22 @@ export class WonderSystem {
     return [...this.completed.values()].filter((state) => state.cityId === cityId);
   }
 
+  /**
+   * Remove every completed wonder that belonged to a city (used when the city
+   * is razed). Returns the removed wonder ids so callers can refresh dependent
+   * UI. The wonders become globally available again, which is the intended
+   * consequence of the host city being destroyed.
+   */
+  removeWondersForCity(cityId: string): string[] {
+    const removed: string[] = [];
+    for (const [wonderId, state] of [...this.completed.entries()]) {
+      if (state.cityId !== cityId) continue;
+      this.completed.delete(wonderId);
+      removed.push(wonderId);
+    }
+    return removed;
+  }
+
   isWonderBroken(wonderId: string): boolean {
     return this.completed.get(wonderId)?.broken === true;
   }

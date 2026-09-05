@@ -7,7 +7,7 @@ import { MapData, TileType } from '../types/map';
 import type { ScenarioCity } from '../types/scenario';
 
 export interface CityChangedEvent {
-  readonly reason: 'added' | 'restored' | 'ownershipTransferred' | 'healthChanged' | 'cleared';
+  readonly reason: 'added' | 'restored' | 'ownershipTransferred' | 'healthChanged' | 'cleared' | 'removed';
   readonly city?: City;
   readonly previousOwnerId?: string;
 }
@@ -145,6 +145,21 @@ export class CityManager {
       productionSystem.clearProduction(cityId);
     }
     this.notify({ reason: 'ownershipTransferred', city, previousOwnerId });
+  }
+
+  /**
+   * Permanently remove a city and all of its per-city state (resources,
+   * buildings). Used when a city is razed. Caller is responsible for cleaning
+   * up tile-level state, wonders and renderers; this only drops the city record.
+   */
+  removeCity(cityId: string): void {
+    const city = this.cities.get(cityId);
+    if (!city) return;
+    const previousOwnerId = city.ownerId;
+    this.cities.delete(cityId);
+    this.resources.delete(cityId);
+    this.buildings.delete(cityId);
+    this.notify({ reason: 'removed', city, previousOwnerId });
   }
 
   /**
