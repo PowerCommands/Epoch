@@ -7479,6 +7479,20 @@ export class GameScene extends Phaser.Scene {
       if (selection.kind === 'city') return { x: selection.city.tileX, y: selection.city.tileY };
       return { x: selection.unit.tileX, y: selection.unit.tileY };
     };
+    const showTileInspection = (coord: { x: number; y: number }): void => {
+      const info = buildTileInspection(coord, {
+        mapData,
+        cityManager,
+        unitManager,
+        nationManager,
+        gridSystem,
+        isResourceVisible: isNaturalResourceVisibleToHuman,
+      });
+      if (info !== null) {
+        tileInspectorDialog.open(info);
+        inspectedCoord = coord;
+      }
+    };
     const onKeyInspectTile = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (shouldIgnoreGlobalTurnHotkey()) return;
@@ -7499,20 +7513,22 @@ export class GameScene extends Phaser.Scene {
         inspectedCoord = null;
         return;
       }
-      const info = buildTileInspection(coord, {
-        mapData,
-        cityManager,
-        unitManager,
-        nationManager,
-        gridSystem,
-        isResourceVisible: isNaturalResourceVisibleToHuman,
-      });
-      if (info !== null) {
-        tileInspectorDialog.open(info);
-        inspectedCoord = coord;
-      }
+      showTileInspection(coord);
     };
     this.input.keyboard?.on('keydown-I', onKeyInspectTile);
+    // While the inspector is open, follow the selection: picking another tile
+    // (or unit/city) rebuilds the snapshot for that tile automatically.
+    selectionManager.onSelectionChanged(() => {
+      if (!tileInspectorDialog.isOpen()) return;
+      const coord = selectedTileCoord();
+      if (coord === null) {
+        tileInspectorDialog.close();
+        inspectedCoord = null;
+        return;
+      }
+      if (inspectedCoord?.x === coord.x && inspectedCoord?.y === coord.y) return;
+      showTileInspection(coord);
+    });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-I', onKeyInspectTile);
       tileInspectorDialog.shutdown();

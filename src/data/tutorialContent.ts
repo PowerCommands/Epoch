@@ -46,6 +46,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
           'A — Put the selected unit into Attack mode',
           'R — Put the selected unit into Ranged Attack mode',
           'S — Put the selected unit to Sleep; on a working unit it cancels the current build instead',
+          'I — Open the tile information window for the current selection; while it is open it follows your selection and updates as you pick another tile. Press I again on the same tile to close it',
           'Tab — While a city is open, jump to your next city (Shift + Tab for the previous one)',
           'Esc — Release a focused unit into inspect mode, close an open panel, or open the game menu',
           'Ctrl + Q — Open or close the game menu',
