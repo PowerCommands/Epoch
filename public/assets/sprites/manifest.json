@@ -2060,7 +2060,7 @@
           "name": "electricity.png",
           "path": "/assets/sprites/techs/electricity.png",
           "type": "PNG",
-          "size": 22692
+          "size": 75756
         },
         {
           "name": "electronics.png",
@@ -2096,7 +2096,7 @@
           "name": "globalization.png",
           "path": "/assets/sprites/techs/globalization.png",
           "type": "PNG",
-          "size": 10708
+          "size": 110636
         },
         {
           "name": "guilds.png",
@@ -2132,7 +2132,7 @@
           "name": "lasers.png",
           "path": "/assets/sprites/techs/lasers.png",
           "type": "PNG",
-          "size": 17453
+          "size": 68193
         },
         {
           "name": "machinery.png",
@@ -2216,7 +2216,7 @@
           "name": "particle_physics.png",
           "path": "/assets/sprites/techs/particle_physics.png",
           "type": "PNG",
-          "size": 96809
+          "size": 110601
         },
         {
           "name": "penicillin.png",
@@ -2234,7 +2234,7 @@
           "name": "physics.png",
           "path": "/assets/sprites/techs/physics.png",
           "type": "PNG",
-          "size": 10434
+          "size": 78505
         },
         {
           "name": "plastics.png",
@@ -2288,7 +2288,7 @@
           "name": "rifling.png",
           "path": "/assets/sprites/techs/rifling.png",
           "type": "PNG",
-          "size": 4901
+          "size": 73038
         },
         {
           "name": "robotics.png",
@@ -2348,7 +2348,7 @@
           "name": "the_internet.png",
           "path": "/assets/sprites/techs/the_internet.png",
           "type": "PNG",
-          "size": 24514
+          "size": 89905
         },
         {
           "name": "the_wheel.png",
@@ -2774,7 +2774,7 @@
           "name": "transport_ship.png",
           "path": "/assets/sprites/units/transport_ship.png",
           "type": "PNG",
-          "size": 2162
+          "size": 77364
         },
         {
           "name": "trebuchet.png",
