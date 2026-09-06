@@ -652,6 +652,14 @@ export class DependencyTreeDialog {
     this.closeButton.setVisible(visible);
     this.closeText.setVisible(visible);
     this.lineGraphics.setVisible(visible);
+    // Scrollbars are shown per-axis by layoutScrollbars() while open; hide all four
+    // parts on close so no thumb/track lingers over the map after the dialog closes.
+    if (!visible) {
+      this.hTrack.setVisible(false);
+      this.hThumb.setVisible(false);
+      this.vTrack.setVisible(false);
+      this.vThumb.setVisible(false);
+    }
     for (const card of this.cards) {
       card.background.setVisible(visible);
       card.imageFrame.setVisible(visible);

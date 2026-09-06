@@ -158,7 +158,7 @@
           "name": "circus.png",
           "path": "/assets/sprites/buildings/circus.png",
           "type": "PNG",
-          "size": 69982
+          "size": 55502
         },
         {
           "name": "coal_power_plant.png",
@@ -176,7 +176,7 @@
           "name": "courthouse.png",
           "path": "/assets/sprites/buildings/courthouse.png",
           "type": "PNG",
-          "size": 73297
+          "size": 59781
         },
         {
           "name": "factory.png",
@@ -392,13 +392,13 @@
           "name": "stone_works.png",
           "path": "/assets/sprites/buildings/stone_works.png",
           "type": "PNG",
-          "size": 100762
+          "size": 86970
         },
         {
           "name": "temple.png",
           "path": "/assets/sprites/buildings/temple.png",
           "type": "PNG",
-          "size": 110694
+          "size": 90969
         },
         {
           "name": "university.png",

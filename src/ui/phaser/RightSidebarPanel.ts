@@ -717,6 +717,12 @@ export class RightSidebarPanel {
 
   private renderActiveContent(): void {
     if (!this.activeMode) return;
+    // Never rebuild content while collapsed: collapse() has already destroyed the
+    // content objects, and the diplomacy graph draws its nodes/edges directly on the
+    // scene root (not inside panelContainer), so a rebuild here — e.g. from onResize,
+    // which fires with activeMode still set to the last-open mode — would leave those
+    // lines floating over the map with no panel behind them.
+    if (this.collapsed) return;
 
     if (this.activeMode === 'diplomacy-graph') {
       this.titleText.setText('Diplomacy Graph');
