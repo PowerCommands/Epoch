@@ -31,6 +31,11 @@ import {
   getNationOccupationGoldCost,
 } from './CityIntegrationSystem';
 import type { PowerPlantSystem } from './PowerPlantSystem';
+import {
+  ArchaeologicalCultureSystem,
+  applyBuildingCulturePercentages,
+  type ArchaeologicalCultureSummary,
+} from './ArchaeologicalCultureSystem';
 
 const ENERGY_SHORTAGE_GRACE_TURNS = 5;
 const ENERGY_SHORTAGE_DECLINE_INTERVAL = 5;
@@ -55,6 +60,7 @@ export class ResourceSystem {
   private readonly listeners: ResourceListener[] = [];
   private hasSkippedInitialTurnStart = false;
   private readonly cityTerritorySystem: CityTerritorySystem;
+  private readonly archaeologicalCultureSystem: ArchaeologicalCultureSystem;
   private cityEnergyProvider?: CityEnergyProvider;
   private cityEnergyLog: CityEnergyLog = () => {};
   /**
@@ -99,6 +105,11 @@ export class ResourceSystem {
     this.mapData = mapData;
     this.happinessSystem = happinessSystem;
     this.cityTerritorySystem = new CityTerritorySystem(gameSpeed, gridSystem);
+    this.archaeologicalCultureSystem = new ArchaeologicalCultureSystem(
+      mapData,
+      cityManager,
+      () => turnManager.getCurrentRound(),
+    );
 
     turnManager.on('turnStart', (e) => this.handleTurnStart(e));
 
@@ -149,6 +160,17 @@ export class ResourceSystem {
   setWorldCouncilVoteActiveProvider(provider: () => boolean): void {
     this.isWorldCouncilVoteActive = provider;
     this.recalculatePerTurnForAll();
+  }
+
+  /** Live, non-persisted archaeological contribution used by economy and UI. */
+  getArchaeologicalCultureBreakdown(nationId: string): ArchaeologicalCultureSummary & {
+    readonly culturePerTurn: number;
+  } {
+    const summary = this.archaeologicalCultureSystem.calculateForNation(nationId);
+    return {
+      ...summary,
+      culturePerTurn: this.applyArchaeologicalCultureModifiers(nationId, summary.baseCulturePerTurn),
+    };
   }
 
   addGold(nationId: string, amount: number): number | null {
@@ -237,6 +259,7 @@ export class ResourceSystem {
       nationRes.happinessPerTurn += cityRes.happinessPerTurn;
       cityRes.food = city.foodStorage;
     }
+    nationRes.culturePerTurn += this.getArchaeologicalCultureBreakdown(nationId).culturePerTurn;
 
     this.happinessSystem.recalculateNation(nationId);
     this.notify({ nationId });
@@ -378,6 +401,7 @@ export class ResourceSystem {
       nationRes.happinessPerTurn += displayEconomy.happiness;
       cityRes.food = city.foodStorage;
     }
+    nationRes.culturePerTurn += this.getArchaeologicalCultureBreakdown(nation.id).culturePerTurn;
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.culture += Math.floor(nationRes.culturePerTurn * cultureModifier);
     this.cultureEffectSystem?.applyTurnStartEffects(nation.id);
@@ -431,6 +455,7 @@ export class ResourceSystem {
         nationRes.happinessPerTurn += cityRes.happinessPerTurn;
         cityRes.food = city.foodStorage;
       }
+      nationRes.culturePerTurn += this.getArchaeologicalCultureBreakdown(nation.id).culturePerTurn;
 
       this.happinessSystem.recalculateNation(nation.id);
     }
@@ -457,6 +482,24 @@ export class ResourceSystem {
       ? this.getPolicyPercent(nationId, 'activeWorldCouncilVoteInfluencePercent')
       : 0;
     return applyPercent(withFlat, this.getPolicyPercent(nationId, 'influencePercent') + councilVotePercent);
+  }
+
+  /**
+   * Archaeology is national, so it cannot enter a particular city economy.
+   * Apply the same active-building -> nation/wonder -> policy percentage stages
+   * exactly once, then add the result to the authoritative national total.
+   */
+  private applyArchaeologicalCultureModifiers(nationId: string, baseCulture: number): number {
+    if (baseCulture <= 0) return 0;
+    let culture = applyBuildingCulturePercentages(
+      baseCulture,
+      nationId,
+      this.cityManager,
+      this.turnManager.getCurrentRound(),
+    );
+    const nationPercent = this.getNationModifiers(nationId).culturePercent;
+    if (nationPercent !== undefined) culture = Math.floor(culture * (1 + nationPercent / 100));
+    return applyPercent(culture, this.getPolicyPercent(nationId, 'culturePercent'));
   }
 
   private calculateNationGoldPerTurn(

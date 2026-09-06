@@ -1,6 +1,80 @@
 {
   "resources": [
     {
+      "id": "ancient_pottery",
+      "name": "Ancient Pottery",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "meadow",
+        "desert",
+        "forest",
+        "beach"
+      ],
+      "iconPath": "/assets/sprites/resources/ancient_pottery.png"
+    },
+    {
+      "id": "ancient_coins",
+      "name": "Ancient Coins",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "meadow",
+        "desert",
+        "forest",
+        "beach"
+      ],
+      "iconPath": "/assets/sprites/resources/ancient_coins.png"
+    },
+    {
+      "id": "ancient_weapons",
+      "name": "Ancient Weapons",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "meadow",
+        "desert",
+        "forest",
+        "beach"
+      ],
+      "iconPath": "/assets/sprites/resources/ancient_weapons.png"
+    },
+    {
+      "id": "royal_relics",
+      "name": "Royal Relics",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "meadow",
+        "desert",
+        "forest"
+      ],
+      "iconPath": "/assets/sprites/resources/royal_relics.png"
+    },
+    {
+      "id": "ancient_treasure",
+      "name": "Ancient Treasure",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "plains",
+        "meadow",
+        "desert",
+        "forest",
+        "mountain"
+      ],
+      "iconPath": "/assets/sprites/resources/ancient_treasure.png"
+    },
+    {
+      "id": "shipwreck",
+      "name": "Shipwreck",
+      "category": "bonus",
+      "allowedTileTypes": [
+        "coast",
+        "ocean"
+      ],
+      "iconPath": "/assets/sprites/resources/shipwreck.png"
+    },
+    {
       "id": "wheat",
       "name": "Wheat",
       "category": "bonus",

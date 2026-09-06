@@ -201,7 +201,7 @@ test('Victory Focus survives save/load and remains optional for old saves', () =
     unitManager: { getAllUnits: () => [] },
     productionSystem: { getQueue: () => [] },
     policySystem: { getActivePolicyAssignments: () => [] },
-    diplomacyManager: { getAllStates: () => [], getPendingPeaceProposals: () => [] },
+    diplomacyManager: { getAllStates: () => [], getAllVassalRelationships: () => [], getPendingPeaceProposals: () => [], getPeaceTreatyCooldownTurns: () => 0, getMinPeaceNegotiationTurns: () => 0 },
     discoverySystem: { getAllMetPairs: () => [] }, turnManager: turns,
     gridSystem: new HexGridSystem(), wonderSystem: { getCompletedWonders: () => [] },
   } as unknown as SaveLoadContext);

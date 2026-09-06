@@ -220,7 +220,7 @@
     {
       "id": "archaeologist",
       "name": "Archaeologist",
-      "era": "industrial",
+      "era": "renaissance",
       "category": "civilian",
       "isNaval": false
     },

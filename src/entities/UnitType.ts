@@ -54,6 +54,8 @@ export interface UnitType {
   readonly rangedStrength?: number;
   readonly canFound?: boolean;
   readonly canBuildImprovements?: boolean;
+  /** Specialized improvement capabilities (for example Archaeologist → Dig). */
+  readonly improvementCapabilities?: readonly string[];
   /** May raze an enemy tile improvement it stands on. Defaults to false. */
   readonly canDestroyImprovement?: boolean;
   /** May raze an enemy building on the tile it stands on. Defaults to false. */

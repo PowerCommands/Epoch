@@ -31,6 +31,7 @@ export class ResourceCitySearchSystem {
     private readonly mapData: MapData,
     private readonly cityManager: CityManager,
     private readonly nationManager: NationManager,
+    private readonly isResourceVisible: (resourceId: string) => boolean = () => true,
   ) {}
 
   search(query: string, limit = DEFAULT_RESULT_LIMIT): ResourceCitySearchResult[] {
@@ -55,6 +56,7 @@ export class ResourceCitySearchSystem {
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
         if (!tile.resourceId) continue;
+        if (!this.isResourceVisible(tile.resourceId)) continue;
         const resource = getNaturalResourceById(tile.resourceId);
         if (!resource) continue;
         const ownerNationId = getImprovementOwnerId(tile) ?? tile.ownerId;

@@ -213,6 +213,7 @@ export interface SavedTile {
     improvementId: string;
     cityId?: string;
     unitId: string;
+    transportUnitId?: string;
     ownerId: string;
     resourceOwnerNationId?: string;
     remainingTurns: number;

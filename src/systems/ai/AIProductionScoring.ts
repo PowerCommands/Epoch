@@ -21,6 +21,7 @@ export type AIProductionCategory =
   | 'aerospacePart'
   | 'worker'
   | 'workBoat'
+  | 'archaeologist'
   | 'project';
 
 export interface AIProductionCandidate {
@@ -66,6 +67,7 @@ function getProductionWeight(
     case 'aerospacePart':
     case 'worker':
     case 'workBoat':
+    case 'archaeologist':
     case 'project':
       return 1;
     case 'military':
@@ -120,6 +122,8 @@ function getEraProductionMultiplier(
       return weights.worker ?? 1;
     case 'workBoat':
       return weights.workBoat ?? 1;
+    case 'archaeologist':
+      return 1;
     case 'project':
       return 1;
     case 'military': {

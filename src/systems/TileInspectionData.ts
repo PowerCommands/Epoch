@@ -38,6 +38,7 @@ export interface TileInspectionDeps {
   unitManager: UnitManager;
   nationManager: NationManager;
   gridSystem: IGridSystem;
+  isResourceVisible?: (resourceId: string) => boolean;
 }
 
 function terrainLabel(type: string): string {
@@ -80,7 +81,10 @@ export function buildTileInspection(
 
   // ── Tile ──────────────────────────────────────────────────────────────────
   const tileRows: TileInspectionRow[] = [{ label: 'Terrain', value: terrainLabel(tile.type) }];
-  if (tile.resourceId !== undefined) {
+  if (
+    tile.resourceId !== undefined
+    && (deps.isResourceVisible?.(tile.resourceId) ?? true)
+  ) {
     tileRows.push({ label: 'Resource', value: getResourceDisplayName(tile.resourceId) });
   }
   sections.push({ heading: 'Tile', rows: tileRows });

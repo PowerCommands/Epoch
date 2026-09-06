@@ -7,6 +7,7 @@ import { ALL_POLICIES } from '../data/policies';
 import { ALL_TECHNOLOGIES } from '../data/technologies';
 import { ALL_UNIT_TYPES } from '../data/units';
 import { CORPORATIONS } from '../data/corporations';
+import { ALL_IMPROVEMENTS } from '../data/improvements';
 import {
   getCorporationSpriteKey,
   getCorporationSpritePath,
@@ -75,6 +76,7 @@ export class BootScene extends Phaser.Scene {
     this.load.image('action_upgrade', 'assets/sprites/actions/upgrade.png');
     this.load.image('action_sleep', 'assets/sprites/actions/sleep.png');
     this.load.image('action_improve', 'assets/sprites/actions/improve.png');
+    this.load.image('action_dig', 'assets/sprites/actions/dig.png');
     this.load.image('action_found_city', 'assets/sprites/actions/found-city.png');
     this.load.image('action_dismiss', 'assets/sprites/actions/dismiss.png');
     this.load.image('action_demolish_improvement', 'assets/sprites/actions/demolish-improvement.png');
@@ -100,6 +102,11 @@ export class BootScene extends Phaser.Scene {
 
     for (const resource of NATURAL_RESOURCES) {
       this.load.image(resource.iconKey, `assets/sprites/resources/${resource.id}.png`);
+    }
+
+    for (const improvement of ALL_IMPROVEMENTS) {
+      if (!improvement.spriteKey) continue;
+      this.load.image(improvement.spriteKey, `assets/sprites/improvements/${improvement.id}.png`);
     }
 
     for (const technology of ALL_TECHNOLOGIES) {

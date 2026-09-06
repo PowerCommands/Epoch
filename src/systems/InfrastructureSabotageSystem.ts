@@ -52,6 +52,7 @@ export class InfrastructureSabotageSystem {
   // Optional: covert (hidden-nation) sabotage feeds the Suspicion system.
   // Injected after construction to avoid a constructor cycle.
   private covertSuspicionSystem: CovertSuspicionSystem | null = null;
+  private onInfrastructureChanged: (nationIds: readonly string[]) => void = () => {};
 
   constructor(
     private readonly mapData: MapData,
@@ -63,6 +64,10 @@ export class InfrastructureSabotageSystem {
 
   setCovertSuspicionSystem(system: CovertSuspicionSystem): void {
     this.covertSuspicionSystem = system;
+  }
+
+  setInfrastructureChangedHandler(handler: (nationIds: readonly string[]) => void): void {
+    this.onInfrastructureChanged = handler;
   }
 
   /**
@@ -160,6 +165,7 @@ export class InfrastructureSabotageSystem {
       message: `${unit.unitType.name} razed enemy improvement (${improvementId}) at (${tile.x}, ${tile.y}) for ${IMPROVEMENT_DESTRUCTION_LOOT_GOLD} gold${this.deniableSuffix(unit)}.`,
     });
     this.reportCovertSabotage(unit, victimNationId, false);
+    if (victimNationId) this.onInfrastructureChanged([victimNationId]);
     return true;
   }
 
@@ -210,6 +216,10 @@ export class InfrastructureSabotageSystem {
     if (target.kind !== 'camp') {
       this.reportCovertSabotage(unit, owningCity?.ownerId ?? tile.ownerId, true);
     }
+    const affectedNationId = target.kind === 'wonder'
+      ? this.wonderSystem.getCompletedWonder(target.id)?.ownerId
+      : owningCity?.ownerId;
+    if (affectedNationId) this.onInfrastructureChanged([affectedNationId]);
     return true;
   }
 

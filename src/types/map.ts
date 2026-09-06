@@ -27,6 +27,8 @@ export interface TileImprovementConstruction {
   improvementId: string;
   cityId?: string;
   unitId: string;
+  /** Carrier required to keep a cargo builder at this construction site. */
+  transportUnitId?: string;
   ownerId: string;
   resourceOwnerNationId?: string;
   remainingTurns: number;

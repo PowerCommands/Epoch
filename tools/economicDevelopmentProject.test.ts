@@ -171,6 +171,8 @@ test('a city running Economic Development survives save/load', () => {
       getAllStates: () => [],
       getAllVassalRelationships: () => [],
       getPendingPeaceProposals: () => [],
+      getPeaceTreatyCooldownTurns: () => 0,
+      getMinPeaceNegotiationTurns: () => 0,
     },
     discoverySystem: { getAllMetPairs: () => [] }, turnManager: h.turns,
     gridSystem, wonderSystem: { getCompletedWonders: () => [] },

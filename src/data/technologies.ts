@@ -503,8 +503,13 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Studies ancient remains to recover culture and history. Unlocks Archaeologists and Museums.',
     prerequisites: ['navigation', 'architecture'],
     leadsTo: ['biology'],
-    unlocks: [{ kind: 'unit', id: 'archaeologist' }, { kind: 'building', id: 'museum' }],
-    // TODO: unlocks Louvre and archaeological dig system.
+    unlocks: [
+      { kind: 'unit', id: 'archaeologist' },
+      { kind: 'building', id: 'museum' },
+      { kind: 'improvement', id: 'archaeological_dig' },
+      { kind: 'improvement', id: 'underwater_archaeological_site' },
+    ],
+    // TODO: unlocks Louvre.
   },
   {
     id: 'scientific_theory',

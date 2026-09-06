@@ -41,6 +41,12 @@
           "size": 9829
         },
         {
+          "name": "dig.png",
+          "path": "/assets/sprites/actions/dig.png",
+          "type": "PNG",
+          "size": 7374
+        },
+        {
           "name": "dismiss.png",
           "path": "/assets/sprites/actions/dismiss.png",
           "type": "PNG",
@@ -446,61 +452,61 @@
           "name": "city_ancient.png",
           "path": "/assets/sprites/cities/city_ancient.png",
           "type": "PNG",
-          "size": 44840
+          "size": 27985
         },
         {
           "name": "city_atomic.png",
           "path": "/assets/sprites/cities/city_atomic.png",
           "type": "PNG",
-          "size": 63924
+          "size": 31349
         },
         {
           "name": "city_classical.png",
           "path": "/assets/sprites/cities/city_classical.png",
           "type": "PNG",
-          "size": 28862
+          "size": 29707
         },
         {
           "name": "city_default.png",
           "path": "/assets/sprites/cities/city_default.png",
           "type": "PNG",
-          "size": 44840
+          "size": 27985
         },
         {
           "name": "city_future.png",
           "path": "/assets/sprites/cities/city_future.png",
           "type": "PNG",
-          "size": 53056
+          "size": 38252
         },
         {
           "name": "city_industrial.png",
           "path": "/assets/sprites/cities/city_industrial.png",
           "type": "PNG",
-          "size": 40196
+          "size": 27529
         },
         {
           "name": "city_information.png",
           "path": "/assets/sprites/cities/city_information.png",
           "type": "PNG",
-          "size": 61744
+          "size": 32345
         },
         {
           "name": "city_medieval.png",
           "path": "/assets/sprites/cities/city_medieval.png",
           "type": "PNG",
-          "size": 52357
+          "size": 30161
         },
         {
           "name": "city_modern.png",
           "path": "/assets/sprites/cities/city_modern.png",
           "type": "PNG",
-          "size": 42813
+          "size": 30184
         },
         {
           "name": "city_renaissance.png",
           "path": "/assets/sprites/cities/city_renaissance.png",
           "type": "PNG",
-          "size": 50526
+          "size": 30971
         }
       ]
     },
@@ -843,6 +849,24 @@
           "path": "/assets/sprites/cultures/urbanization.png",
           "type": "PNG",
           "size": 208105
+        }
+      ]
+    },
+    {
+      "path": "improvements",
+      "label": "Improvements",
+      "assets": [
+        {
+          "name": "archaeological_dig.png",
+          "path": "/assets/sprites/improvements/archaeological_dig.png",
+          "type": "PNG",
+          "size": 112372
+        },
+        {
+          "name": "underwater_archaeological_site.png",
+          "path": "/assets/sprites/improvements/underwater_archaeological_site.png",
+          "type": "PNG",
+          "size": 92767
         }
       ]
     },
@@ -1673,6 +1697,30 @@
           "size": 63112
         },
         {
+          "name": "ancient_coins.png",
+          "path": "/assets/sprites/resources/ancient_coins.png",
+          "type": "PNG",
+          "size": 120166
+        },
+        {
+          "name": "ancient_pottery.png",
+          "path": "/assets/sprites/resources/ancient_pottery.png",
+          "type": "PNG",
+          "size": 98577
+        },
+        {
+          "name": "ancient_treasure.png",
+          "path": "/assets/sprites/resources/ancient_treasure.png",
+          "type": "PNG",
+          "size": 123465
+        },
+        {
+          "name": "ancient_weapons.png",
+          "path": "/assets/sprites/resources/ancient_weapons.png",
+          "type": "PNG",
+          "size": 97961
+        },
+        {
           "name": "bananas.png",
           "path": "/assets/sprites/resources/bananas.png",
           "type": "PNG",
@@ -1769,10 +1817,22 @@
           "size": 96366
         },
         {
+          "name": "royal_relics.png",
+          "path": "/assets/sprites/resources/royal_relics.png",
+          "type": "PNG",
+          "size": 120463
+        },
+        {
           "name": "sheep.png",
           "path": "/assets/sprites/resources/sheep.png",
           "type": "PNG",
           "size": 84126
+        },
+        {
+          "name": "shipwreck.png",
+          "path": "/assets/sprites/resources/shipwreck.png",
+          "type": "PNG",
+          "size": 117051
         },
         {
           "name": "silk.png",

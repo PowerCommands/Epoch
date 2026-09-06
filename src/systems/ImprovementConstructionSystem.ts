@@ -6,6 +6,7 @@ import { TileType, type MapData, type Tile, type TileImprovementConstruction } f
 import type { TurnStartEvent } from '../types/events';
 import {
   BUILD_REQUIRED_PROGRESS,
+  canUnitConstructImprovement,
   computeUnitBuildProgress,
 } from './BuilderSystem';
 import type { CityManager } from './CityManager';
@@ -67,8 +68,11 @@ export class ImprovementConstructionSystem {
 
       this.advanceConstruction(construction);
       const unit = this.unitManager.getUnit(construction.unitId);
+      const movementUnit = construction.transportUnitId !== undefined
+        ? this.unitManager.getUnit(construction.transportUnitId)
+        : unit;
       if (unit !== undefined) {
-        this.unitManager.consumeAllMovement(unit.id);
+        if (movementUnit !== undefined) this.unitManager.consumeAllMovement(movementUnit.id);
         this.syncUnitProgress(unit, construction);
       }
 
@@ -76,6 +80,9 @@ export class ImprovementConstructionSystem {
         this.complete(tile, construction);
       } else if (unit !== undefined) {
         this.unitManager.notifyActionChanged(unit.id);
+        if (movementUnit !== undefined && movementUnit.id !== unit.id) {
+          this.unitManager.notifyActionChanged(movementUnit.id);
+        }
       }
     }
   }
@@ -88,7 +95,7 @@ export class ImprovementConstructionSystem {
     const tile = this.constructionTileByUnitId.get(unitId);
     if (tile === undefined) return null;
     const construction = tile.improvementConstruction;
-    if (construction?.unitId === unitId) return { tile, construction };
+    if (construction?.unitId === unitId || construction?.transportUnitId === unitId) return { tile, construction };
     this.constructionTileByUnitId.delete(unitId);
     return null;
   }
@@ -119,6 +126,14 @@ export class ImprovementConstructionSystem {
       if (active !== null) this.cancel(active.tile, active.construction, 'unitRemoved');
       return;
     }
+    const active = this.getConstructionForUnit(event.unit.id);
+    if (active !== null) {
+      if (event.reason === 'moved' || event.reason === 'upgraded') {
+        const invalidReason = this.getInvalidReason(active.tile, active.construction);
+        if (invalidReason !== null) this.cancel(active.tile, active.construction, invalidReason);
+      }
+      return;
+    }
     if (event.unit.buildAction === undefined) {
       this.constructionTileByUnitId.delete(event.unit.id);
       return;
@@ -126,6 +141,9 @@ export class ImprovementConstructionSystem {
     const tile = this.mapData.tiles[event.unit.buildAction.tileY]?.[event.unit.buildAction.tileX];
     if (tile?.improvementConstruction?.unitId === event.unit.id) {
       this.constructionTileByUnitId.set(event.unit.id, tile);
+      if (tile.improvementConstruction.transportUnitId !== undefined) {
+        this.constructionTileByUnitId.set(tile.improvementConstruction.transportUnitId, tile);
+      }
     }
   }
 
@@ -149,9 +167,28 @@ export class ImprovementConstructionSystem {
     if (unit === undefined) return 'invalidUnit';
     if (unit.tileX !== tile.x || unit.tileY !== tile.y || unit.ownerId !== construction.ownerId) return 'invalidUnit';
     if (tile.improvementId !== undefined) return 'invalidTile';
-    if (getImprovementById(construction.improvementId) === undefined) return 'missingImprovement';
+    const improvement = getImprovementById(construction.improvementId);
+    if (improvement === undefined) return 'missingImprovement';
+    if (!canUnitConstructImprovement(unit.unitType, improvement)) return 'invalidUnit';
+    const requiredTransportTypeId = improvement.requiredCargoTransportUnitTypeId;
+    let transport: Unit | undefined;
+    if (requiredTransportTypeId !== undefined) {
+      if (construction.transportUnitId === undefined) return 'invalidUnit';
+      transport = this.unitManager.getUnit(construction.transportUnitId);
+      if (transport === undefined
+        || transport.unitType.id !== requiredTransportTypeId
+        || transport.ownerId !== construction.ownerId
+        || transport.tileX !== tile.x
+        || transport.tileY !== tile.y
+        || unit.carriedByUnitId !== transport.id
+        || !transport.cargoUnitIds.includes(unit.id)) return 'invalidUnit';
+    } else if (construction.transportUnitId !== undefined) {
+      return 'invalidUnit';
+    }
+    if (requiredTransportTypeId !== undefined
+      && !this.isCanonicalResourceImprovement(tile, construction.improvementId)) return 'invalidTile';
     if (construction.resourceOwnerNationId !== undefined) {
-      if (!this.isValidSeaResourceClaim(tile, construction, unit)) return 'invalidTile';
+      if (!this.isValidSeaResourceClaim(tile, construction, unit, transport)) return 'invalidTile';
       return null;
     }
     if (tile.ownerId !== construction.ownerId) {
@@ -171,12 +208,15 @@ export class ImprovementConstructionSystem {
     construction: TileImprovementConstruction,
     reason: ImprovementConstructionCancelReason,
   ): void {
-    this.constructionTileByUnitId.delete(construction.unitId);
+    this.clearConstructionIndex(construction);
     tile.improvementConstruction = undefined;
     const unit = this.unitManager.getUnit(construction.unitId);
     if (unit !== undefined) {
       unit.clearBuildAction();
       this.unitManager.notifyActionChanged(unit.id);
+    }
+    if (construction.transportUnitId !== undefined) {
+      this.unitManager.notifyActionChanged(construction.transportUnitId);
     }
     for (const listener of this.cancelledListeners) {
       listener({ tile, construction, reason });
@@ -214,10 +254,13 @@ export class ImprovementConstructionSystem {
     if (construction.resourceOwnerNationId !== undefined) {
       tile.resourceOwnerNationId = construction.resourceOwnerNationId;
     }
-    this.constructionTileByUnitId.delete(construction.unitId);
+    this.clearConstructionIndex(construction);
     tile.improvementConstruction = undefined;
     unit.clearBuildAction();
     this.unitManager.notifyActionChanged(unit.id);
+    if (construction.transportUnitId !== undefined) {
+      this.unitManager.notifyActionChanged(construction.transportUnitId);
+    }
     for (const listener of this.completedListeners) {
       listener({ tile, construction, improvement, city, unit });
     }
@@ -227,9 +270,12 @@ export class ImprovementConstructionSystem {
     tile: Tile,
     construction: TileImprovementConstruction,
     unit: Unit,
+    transport?: Unit,
   ): boolean {
     if (construction.resourceOwnerNationId !== construction.ownerId) return false;
-    if (unit.unitType.isNaval !== true || unit.unitType.canBuildImprovements !== true) return false;
+    const movementUnit = transport ?? unit;
+    if (movementUnit.unitType.isNaval !== true) return false;
+    if (transport === undefined && unit.unitType.canBuildImprovements !== true) return false;
     if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
     if (tile.resourceId === undefined) return false;
 
@@ -298,10 +344,20 @@ export class ImprovementConstructionSystem {
         const construction = tile.improvementConstruction;
         if (construction === undefined) continue;
         this.constructionTileByUnitId.set(construction.unitId, tile);
+        if (construction.transportUnitId !== undefined) {
+          this.constructionTileByUnitId.set(construction.transportUnitId, tile);
+        }
         const unit = this.unitManager.getUnit(construction.unitId);
         if (unit === undefined) continue;
         this.syncUnitProgress(unit, construction);
       }
+    }
+  }
+
+  private clearConstructionIndex(construction: TileImprovementConstruction): void {
+    this.constructionTileByUnitId.delete(construction.unitId);
+    if (construction.transportUnitId !== undefined) {
+      this.constructionTileByUnitId.delete(construction.transportUnitId);
     }
   }
 }

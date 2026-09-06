@@ -88,7 +88,15 @@ export const OBSERVATORY = building({ id: 'observatory', name: 'Observatory', er
 
 export const OPERA_HOUSE = building({ id: 'opera_house', name: 'Opera House', era: 'renaissance', cost: 200, maintenance: 2, modifiers: { culturePerTurn: 4, happinessPerTurn: 2 } });
 export const BANK = building({ id: 'bank', name: 'Bank', era: 'renaissance', cost: 200, maintenance: 0, modifiers: { goldPercent: 25, happinessPerTurn: 1 } });
-export const MUSEUM = building({ id: 'museum', name: 'Museum', era: 'renaissance', cost: 300, maintenance: 3, modifiers: { culturePerTurn: 5, happinessPerTurn: 2 } });
+export const MUSEUM = building({
+  id: 'museum',
+  name: 'Museum',
+  era: 'renaissance',
+  cost: 300,
+  maintenance: 3,
+  modifiers: { culturePerTurn: 5, happinessPerTurn: 2 },
+  description: '+5 culture, +2 happiness. A functioning Museum enables national Culture from exploited archaeological resources.',
+});
 export const PUBLIC_SCHOOL = building({ id: 'public_school', name: 'Public School', era: 'renaissance', cost: 300, maintenance: 3, modifiers: { sciencePerTurn: 3, sciencePercent: 50, happinessPerTurn: 2 }, description: 'Per-citizen science approximated with +50% science and +3 flat science' });
 export const SEAPORT = building({ id: 'seaport', name: 'Seaport', era: 'renaissance', placement: 'water', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 1, goldPerTurn: 1, productionPercent: 5, happinessPerTurn: 1, tradeCapacity: 3 }, description: 'Sea-resource and naval production effects approximated' });
 export const WINDMILL = building({ id: 'windmill', name: 'Windmill', era: 'renaissance', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 2, productionPercent: 10, happinessPerTurn: 1 }, description: 'Flatland requirement omitted' });

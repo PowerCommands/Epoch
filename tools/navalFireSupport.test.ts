@@ -58,7 +58,7 @@ const neverInRange = () => false;
 // ─── eligibility ─────────────────────────────────────────────────────────────
 
 test('ranged warships qualify as naval fire support regardless of doctrine or name', () => {
-  for (const rangedWarship of [ARCHER_GALLEY, GALLEASS, SUBMARINE, BATTLESHIP]) {
+  for (const rangedWarship of [ARCHER_GALLEY, GALLEASS, SUBMARINE, BATTLESHIP, FRIGATE]) {
     assert.equal(isSuitableNavalFireSupportUnitType(rangedWarship), true, rangedWarship.name);
   }
 });
@@ -70,8 +70,11 @@ test('melee ships, civilian sea units, recon boats and land units are not fire s
 });
 
 test('ships without a real ranged attack (range<2 or no ranged strength) are excluded', () => {
-  // Frigate has range but no ranged strength; Destroyer has ranged strength but range<2.
-  assert.equal(isSuitableNavalFireSupportUnitType(FRIGATE), false);
+  // Both exclusion branches, tested independently of any single unit's current
+  // stats: a ship with range but no ranged strength, and Destroyer which has
+  // ranged strength but range<2.
+  const rangeButNoRangedStrength: UnitType = { ...BATTLESHIP, id: 'test_range_no_strength', name: 'Range No Strength', rangedStrength: 0 };
+  assert.equal(isSuitableNavalFireSupportUnitType(rangeButNoRangedStrength), false);
   assert.equal(isSuitableNavalFireSupportUnitType(DESTROYER), false);
 });
 

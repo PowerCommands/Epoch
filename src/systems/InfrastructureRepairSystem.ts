@@ -34,6 +34,8 @@ export const REPAIR_COST_FRACTION = 0.5;
  * and consuming the unit's movement. No new multi-turn construction system.
  */
 export class InfrastructureRepairSystem {
+  private onInfrastructureChanged: (nationIds: readonly string[]) => void = () => {};
+
   constructor(
     private readonly mapData: MapData,
     private readonly cityManager: CityManager,
@@ -41,6 +43,10 @@ export class InfrastructureRepairSystem {
     private readonly nationManager: NationManager,
     private readonly log: RepairLogger,
   ) {}
+
+  setInfrastructureChangedHandler(handler: (nationIds: readonly string[]) => void): void {
+    this.onInfrastructureChanged = handler;
+  }
 
   /**
    * True when `unit` may repair a broken own building/wonder on its current tile.
@@ -85,6 +91,7 @@ export class InfrastructureRepairSystem {
       nationId: unit.ownerId,
       message: `${unit.unitType.name} repaired ${target.name}${location} for ${target.repairCost} gold.`,
     });
+    this.onInfrastructureChanged([unit.ownerId]);
     return true;
   }
 

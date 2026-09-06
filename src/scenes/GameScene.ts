@@ -77,6 +77,10 @@ import {
   buildWorkerImprovementDiagnostics,
   type NationWorkerImprovementDiagnostic,
 } from '../systems/WorkerImprovementDiagnostics';
+import {
+  buildArchaeologyDiagnostics,
+  type ArchaeologyDiagnostics,
+} from '../systems/ArchaeologyDiagnostics';
 import { ProductionPurchaseSystem } from '../systems/ProductionPurchaseSystem';
 import { HealingSystem } from '../systems/HealingSystem';
 import { TerritoryRenderer } from '../systems/TerritoryRenderer';
@@ -153,7 +157,11 @@ import { TradeDiplomacySystem } from '../systems/diplomacy/TradeDiplomacySystem'
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
 import { IdeologicalDriftSystem, type IdeologicalDriftEvent } from '../systems/diplomacy/IdeologicalDriftSystem';
-import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
+import {
+  NATURAL_RESOURCES,
+  getNaturalResourceById,
+  isNaturalResourceRevealed,
+} from '../data/naturalResources';
 import { AIDiplomacySystem } from '../systems/ai/AIDiplomacySystem';
 import { ReclaimCapitalSystem } from '../systems/ai/ReclaimCapitalSystem';
 import { AIExplorationSystem } from '../systems/ai/AIExplorationSystem';
@@ -458,6 +466,7 @@ interface EpochStateSummary {
   nations: EpochNationStateSummary[];
   cityEnergyDiagnostics: NationCityEnergyDiagnostic[];
   workerImprovementDiagnostics: NationWorkerImprovementDiagnostic[];
+  archaeologyDiagnostics?: ArchaeologyDiagnostics;
   eraMilestones: EpochEraMilestone[];
 }
 
@@ -665,6 +674,7 @@ export class GameScene extends Phaser.Scene {
     // visibility recompute. No-op until then so early calls stay safe.
     let applyFogToRenderers: () => void = () => {};
     let refreshResourceLensRevealTiles: () => void = () => {};
+    let isMapRevealActive = false;
     const updateFog = (): void => {
       if (!humanNationId) return;
       fogOfWarRenderer.setVisible(visibilitySystem.isEnabled());
@@ -1812,7 +1822,19 @@ export class GameScene extends Phaser.Scene {
         ? policySystem.getPercentModifierTotal(beneficiaryNationId, 'foreignExploitationYieldPercent')
         : 0
     ));
-    const resourceCitySearchSystem = new ResourceCitySearchSystem(mapData, cityManager, nationManager);
+    const isNaturalResourceVisibleToNation = (nationId: string, resourceId: string): boolean => {
+      return isNaturalResourceRevealed(resourceId, {
+        isTechnologyResearched: (technologyId) => researchSystem.isResearched(nationId, technologyId),
+        isCultureNodeUnlocked: (cultureNodeId) => cultureSystem.isUnlocked(nationId, cultureNodeId),
+      });
+    };
+    const resourceCitySearchSystem = new ResourceCitySearchSystem(
+      mapData,
+      cityManager,
+      nationManager,
+      (resourceId) => isMapRevealActive
+        || (!!humanNationId && isNaturalResourceVisibleToNation(humanNationId, resourceId)),
+    );
     getAvailableLuxuryResourceQuantities = (nationId) =>
       resourceAccessSystem.getAvailableLuxuryResourceQuantities(nationId);
     getManufacturedResourceHappiness = (nationId) =>
@@ -2472,21 +2494,15 @@ export class GameScene extends Phaser.Scene {
       policySystem,
       diplomacyManager,
     );
-    // `map reveal` temporarily exposes hidden resources and covert units.
-    let isMapRevealActive = false;
-    // Tech-gate only: whether the human nation has researched the reveal tech
-    // for a given resource. Fog of war is applied separately below.
+    // Progress gate only: whether the human nation has completed the technology
+    // and/or culture requirement for a resource. Fog is applied separately.
     const isNaturalResourceVisibleToHuman = (resourceId: string): boolean => {
       if (isMapRevealActive) return true;
-
-      const resource = getNaturalResourceById(resourceId);
-      if (!resource) return false;
-      if (!resource.revealTechId) return true;
       if (!humanNationId) return false;
-      return researchSystem.isResearched(humanNationId, resource.revealTechId);
+      return isNaturalResourceVisibleToNation(humanNationId, resourceId);
     };
     // Combined predicate the renderer actually uses: the resource must pass the
-    // reveal-tech gate AND sit on a tile the human can currently see. Resources
+    // progress reveal gate AND sit on a tile the human can currently see. Resources
     // are hidden on explored-but-not-visible tiles (fog of war rule). The
     // resource lens additionally omits improved resources so it highlights only
     // unexploited opportunities.
@@ -2517,6 +2533,9 @@ export class GameScene extends Phaser.Scene {
     };
     const isNaturalResourceRevealTechnology = (technologyId: string): boolean => (
       NATURAL_RESOURCES.some((resource) => resource.revealTechId === technologyId)
+    );
+    const isNaturalResourceRevealCultureNode = (cultureNodeId: string): boolean => (
+      NATURAL_RESOURCES.some((resource) => resource.revealCultureNodeId === cultureNodeId)
     );
     let resourceLensRevealTiles = new Set<string>();
     refreshResourceLensRevealTiles = (): void => {
@@ -3004,6 +3023,7 @@ export class GameScene extends Phaser.Scene {
       researchSystem,
       eraSystem,
       diplomacyManager,
+      isNaturalResourceVisibleToNation,
     );
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     unitActionToolbox.setDismissAvailabilityProvider(unitManager);
@@ -3046,6 +3066,11 @@ export class GameScene extends Phaser.Scene {
       nationManager,
       ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
     );
+    const recalculateChangedInfrastructure = (nationIds: readonly string[]): void => {
+      for (const nationId of new Set(nationIds)) resourceSystem.recalculateForNation(nationId);
+    };
+    infrastructureSabotageSystem.setInfrastructureChangedHandler(recalculateChangedInfrastructure);
+    infrastructureRepairSystem.setInfrastructureChangedHandler(recalculateChangedInfrastructure);
     unitActionToolbox.setRepairAvailabilityProvider(infrastructureRepairSystem);
     // Intel (Spy/Agent) is available only while standing on a foreign city center.
     const intelReportDialog = new IntelReportDialog();
@@ -3265,7 +3290,7 @@ export class GameScene extends Phaser.Scene {
           return true;
         }
 
-        if (mode === 'build') {
+        if (mode === 'build' || mode === 'dig') {
           performBuildImprovementAction(unit);
           return true;
         }
@@ -3645,10 +3670,7 @@ export class GameScene extends Phaser.Scene {
       eventLog,
       formatLog,
       (nationId, resourceId) => {
-        const resource = getNaturalResourceById(resourceId);
-        if (!resource) return false;
-        if (!resource.revealTechId) return true;
-        return researchSystem.isResearched(nationId, resource.revealTechId);
+        return isNaturalResourceVisibleToNation(nationId, resourceId);
       },
       undefined,
       undefined,
@@ -7483,6 +7505,7 @@ export class GameScene extends Phaser.Scene {
         unitManager,
         nationManager,
         gridSystem,
+        isResourceVisible: isNaturalResourceVisibleToHuman,
       });
       if (info !== null) {
         tileInspectorDialog.open(info);
@@ -7504,6 +7527,7 @@ export class GameScene extends Phaser.Scene {
       resourceAccessSystem,
       unitUpkeepSystem,
       this.diagnosticSystem,
+      (nationId) => resourceSystem.getArchaeologicalCultureBreakdown(nationId),
     );
     const getGamesOfNationsUiModel = () => {
       const summary = gamesOfNationsSystem.getSummary();
@@ -7840,6 +7864,8 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setVictorySystem(victorySystem);
     rightPanel.setCityDefenseSystem(cityDefenseSystem);
     rightPanel.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
+    rightPanel.setArchaeologicalCultureProvider((nationId) =>
+      resourceSystem.getArchaeologicalCultureBreakdown(nationId));
     this.rightSidebarPanel = new RightSidebarPanel(this, worldInputGate, rightPanel);
     // Tile/city/unit inspection ("Details") is opened as a centered dialog from
     // the leftmost button in the map-lens control row, reusing the panel's
@@ -7880,6 +7906,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setTradeDiplomacySystem(tradeDiplomacySystem);
     rightPanel.setResourceAccessSystem(resourceAccessSystem);
     rightPanel.setResourceCitySearchSystem(resourceCitySearchSystem);
+    rightPanel.setResourceVisibilityProvider(isNaturalResourceVisibleToHuman);
     rightPanel.setEraSystem(eraSystem);
     rightPanel.setDiscoverySystem(discoverySystem);
     // ─── Historical timeline: subscribe to existing game events ──────────────
@@ -9464,7 +9491,7 @@ export class GameScene extends Phaser.Scene {
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
 
-      if (mode === 'found' || mode === 'build') {
+      if (mode === 'found' || mode === 'build' || mode === 'dig') {
         try {
           const selection = selectionManager.getSelected();
           if (selection?.kind !== 'unit') return;
@@ -9773,7 +9800,13 @@ export class GameScene extends Phaser.Scene {
         turnManager.getCurrentRound(),
       );
       cultureEffectSystem.handleCultureNodeCompleted(event.nationId, event.cultureNode);
-      if (event.nationId === humanNationId && event.cultureNode.id === ENLIGHTENMENT_CULTURE_NODE_ID) {
+      if (
+        event.nationId === humanNationId
+        && (
+          event.cultureNode.id === ENLIGHTENMENT_CULTURE_NODE_ID
+          || isNaturalResourceRevealCultureNode(event.cultureNode.id)
+        )
+      ) {
         updateFog();
       }
       resourceSystem.recalculateForNation(event.nationId);
@@ -9956,6 +9989,13 @@ export class GameScene extends Phaser.Scene {
               allNations,
               (nationId) => unitManager.getUnitsByOwner(nationId),
               mapData,
+            ),
+            archaeologyDiagnostics: buildArchaeologyDiagnostics(
+              allNations,
+              (nationId) => unitManager.getUnitsByOwner(nationId),
+              cityManager,
+              mapData,
+              () => turnManager.getCurrentRound(),
             ),
             eraMilestones: [...eraMilestones],
           };

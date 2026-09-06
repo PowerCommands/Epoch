@@ -14,6 +14,7 @@ import type { ResearchSystem } from './ResearchSystem';
 import type { EraSystem } from './EraSystem';
 import type { Era } from '../data/technologies';
 import type { DiplomacyManager } from './DiplomacyManager';
+import type { UnitType } from '../entities/UnitType';
 
 export interface BuildImprovementResult {
   unit: Unit;
@@ -27,6 +28,10 @@ export interface BuildImprovementPreview {
   canBuild: boolean;
   improvement?: TileImprovementDefinition;
   improvementId?: string;
+  /** The capable unit that performs the work (may be cargo). */
+  builderUnitId?: string;
+  /** Carrier that must remain over the site while its cargo unit builds. */
+  transportUnitId?: string;
   claimsSeaResource?: boolean;
   reason?: string;
   remainingTurns?: number;
@@ -35,6 +40,11 @@ export interface BuildImprovementPreview {
 interface BuildImprovementOptions {
   consumeMovement?: boolean;
   requireMovement?: boolean;
+}
+
+interface CargoBuildContext {
+  builder: Unit;
+  transport: Unit;
 }
 
 export class BuilderSystem {
@@ -49,6 +59,7 @@ export class BuilderSystem {
     private readonly researchSystem?: ResearchSystem,
     private readonly eraSystem?: EraSystem,
     private readonly diplomacyManager?: DiplomacyManager,
+    private readonly isResourceVisibleToNation: (nationId: string, resourceId: string) => boolean = () => true,
   ) {
     this.unitManager.onUnitChanged((event) => this.handleUnitChanged(event));
     this.rebuildConstructionIndex();
@@ -86,6 +97,8 @@ export class BuilderSystem {
 
     const improvement = isForeign ? this.getResourceImprovement(tile) : this.resolveImprovementForTile(tile);
     if (improvement === undefined) return false;
+    if (improvement.requiredBuilderCapability !== undefined) return false;
+    if (tile.resourceId !== undefined && !this.isResourceVisibleToNation(nationId, tile.resourceId)) return false;
 
     const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
     if (
@@ -111,26 +124,42 @@ export class BuilderSystem {
     const preview = this.evaluateBuild(unit, tile, options);
     if (!preview.canBuild || preview.improvement === undefined) return null;
 
-    const isForeign = tile.ownerId !== undefined && tile.ownerId !== unit.ownerId;
-    const city = preview.claimsSeaResource === true || isForeign
-      ? undefined
-      : this.getFriendlyCityForOwnedTile(tile.x, tile.y, unit.ownerId);
-    if (preview.claimsSeaResource !== true && !isForeign && city === null) return null;
+    const builderUnit = preview.builderUnitId !== undefined
+      ? this.unitManager.getUnit(preview.builderUnitId)
+      : unit;
+    const movementUnit = preview.transportUnitId !== undefined
+      ? this.unitManager.getUnit(preview.transportUnitId)
+      : unit;
+    if (builderUnit === undefined || movementUnit === undefined) return null;
 
-    const requiredTurns = getImprovementBuildTurnsForEra(
-      this.eraSystem?.getNationEra(unit.ownerId) ?? 'ancient',
+    const isForeign = tile.ownerId !== undefined && tile.ownerId !== builderUnit.ownerId;
+    const usesTerritorialOwnership = preview.transportUnitId !== undefined
+      && tile.ownerId === builderUnit.ownerId;
+    const createsStandaloneSeaClaim = preview.claimsSeaResource === true && !usesTerritorialOwnership;
+    const city = createsStandaloneSeaClaim || isForeign
+      ? undefined
+      : this.getFriendlyCityForOwnedTile(tile.x, tile.y, builderUnit.ownerId);
+    if (!createsStandaloneSeaClaim && !isForeign && city === null) return null;
+
+    const requiredTurns = preview.improvement.buildTurns ?? getImprovementBuildTurnsForEra(
+      this.eraSystem?.getNationEra(builderUnit.ownerId) ?? 'ancient',
     );
+    // Cargo archaeology inside domestic waters follows territorial ownership,
+    // so later conquest transfers its Culture naturally. Existing Work Boat
+    // sea-claim semantics remain untouched.
+    const createsSeaResourceClaim = createsStandaloneSeaClaim;
     tile.improvementConstruction = {
       improvementId: preview.improvement.id,
       cityId: city?.id,
-      unitId: unit.id,
-      ownerId: unit.ownerId,
-      resourceOwnerNationId: preview.claimsSeaResource === true ? unit.ownerId : undefined,
+      unitId: builderUnit.id,
+      transportUnitId: preview.transportUnitId,
+      ownerId: builderUnit.ownerId,
+      resourceOwnerNationId: createsSeaResourceClaim ? builderUnit.ownerId : undefined,
       remainingTurns: requiredTurns,
       totalTurns: requiredTurns,
     };
-    this.constructionTileByUnitId.set(unit.id, tile);
-    unit.setBuildingImprovement({
+    this.indexConstructionUnits(tile);
+    builderUnit.setBuildingImprovement({
       improvementId: preview.improvement.id,
       tileX: tile.x,
       tileY: tile.y,
@@ -138,11 +167,12 @@ export class BuilderSystem {
       requiredProgress: BUILD_REQUIRED_PROGRESS,
     });
     if (options.consumeMovement ?? true) {
-      this.unitManager.consumeAllMovement(unit.id);
+      this.unitManager.consumeAllMovement(movementUnit.id);
     }
-    this.unitManager.notifyActionChanged(unit.id);
+    this.unitManager.notifyActionChanged(builderUnit.id);
+    if (movementUnit.id !== builderUnit.id) this.unitManager.notifyActionChanged(movementUnit.id);
 
-    return { unit, tile, improvement: preview.improvement, city: city ?? undefined, requiredTurns };
+    return { unit: builderUnit, tile, improvement: preview.improvement, city: city ?? undefined, requiredTurns };
   }
 
   private evaluateBuild(
@@ -150,12 +180,19 @@ export class BuilderSystem {
     tile: Tile,
     options: BuildImprovementOptions = {},
   ): BuildImprovementPreview {
-    if (!unit.unitType.canBuildImprovements) return { canBuild: false, reason: 'Unit cannot improve tiles' };
-    if (unit.improvementCharges !== undefined && unit.improvementCharges <= 0) {
+    const resourceImprovement = this.getResourceImprovement(tile);
+    const cargoContext = resourceImprovement?.requiredCargoTransportUnitTypeId !== undefined
+      ? this.getCargoBuildContext(unit, resourceImprovement)
+      : undefined;
+    const builderUnit = cargoContext?.builder ?? unit;
+    const movementUnit = cargoContext?.transport ?? unit;
+    if (!isImprovementBuilderUnitType(builderUnit.unitType)) return { canBuild: false, reason: 'Unit cannot improve tiles' };
+    if (builderUnit.improvementCharges !== undefined && builderUnit.improvementCharges <= 0) {
       return { canBuild: false, reason: 'No improvement charges remaining' };
     }
-    if (this.turnManager.getCurrentNation().id !== unit.ownerId) return { canBuild: false, reason: 'Not this unit\'s turn' };
-    const activeConstruction = this.getConstructionForUnit(unit.id);
+    if (this.turnManager.getCurrentNation().id !== builderUnit.ownerId) return { canBuild: false, reason: 'Not this unit\'s turn' };
+    const activeConstruction = this.getConstructionForUnit(builderUnit.id)
+      ?? this.getConstructionForUnit(movementUnit.id);
     if (activeConstruction !== undefined) {
       return {
         canBuild: false,
@@ -163,21 +200,30 @@ export class BuilderSystem {
         remainingTurns: activeConstruction.remainingTurns,
       };
     }
-    if (!this.isCurrentTile(unit, tile)) return { canBuild: false, reason: 'Worker must stand on this tile' };
+    if (!this.isCurrentTile(builderUnit, tile) || !this.isCurrentTile(movementUnit, tile)) {
+      return { canBuild: false, reason: 'Builder must be on this tile' };
+    }
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
     if (isBarbarianCamp(tile.buildingId)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };
-    if ((options.requireMovement ?? true) && unit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
+    if ((options.requireMovement ?? true) && movementUnit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
-    if (!canUnitEnterTile(unit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
-
-    if (unit.unitType.isNaval === true) {
-      return this.evaluateNavalResourceBuild(unit, tile);
+    if (!canUnitEnterTile(movementUnit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
+    if (tile.resourceId !== undefined && !this.isResourceVisibleToNation(builderUnit.ownerId, tile.resourceId)) {
+      return { canBuild: false, reason: 'Resource is not known to this nation' };
     }
 
-    if (tile.ownerId !== unit.ownerId) {
+    if (resourceImprovement?.requiredCargoTransportUnitTypeId !== undefined && cargoContext === undefined) {
+      return { canBuild: false, reason: 'Archaeologist must be cargo aboard a Transport Ship' };
+    }
+
+    if (movementUnit.unitType.isNaval === true) {
+      return this.evaluateNavalResourceBuild(builderUnit, movementUnit, tile, cargoContext);
+    }
+
+    if (tile.ownerId !== builderUnit.ownerId) {
       if (tile.ownerId === undefined) return { canBuild: false, reason: 'Must be inside your territory' };
-      if (!this.diplomacyManager?.hasExploitationRights(unit.ownerId, tile.ownerId)) {
+      if (!this.diplomacyManager?.hasExploitationRights(builderUnit.ownerId, tile.ownerId)) {
         return { canBuild: false, reason: 'Requires exploitation rights' };
       }
       if (tile.resourceId === undefined) {
@@ -187,9 +233,12 @@ export class BuilderSystem {
       if (foreignImprovement === undefined) {
         return { canBuild: false, reason: 'No valid improvement for this natural resource' };
       }
+      if (!canUnitConstructImprovement(builderUnit.unitType, foreignImprovement)) {
+        return { canBuild: false, reason: 'Unit lacks the required improvement capability' };
+      }
       const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(foreignImprovement.id);
       if (requiredTechnology !== undefined
-        && !this.researchSystem?.isImprovementUnlocked(unit.ownerId, foreignImprovement.id)) {
+        && !this.researchSystem?.isImprovementUnlocked(builderUnit.ownerId, foreignImprovement.id)) {
         return {
           canBuild: false,
           improvement: foreignImprovement,
@@ -197,18 +246,21 @@ export class BuilderSystem {
           reason: `Requires ${requiredTechnology.name}`,
         };
       }
-      return { canBuild: true, improvement: foreignImprovement, improvementId: foreignImprovement.id };
+      return this.buildablePreview(foreignImprovement, builderUnit, cargoContext);
     }
-    if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, unit.ownerId) === null) {
+    if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, builderUnit.ownerId) === null) {
       return { canBuild: false, reason: 'Tile must be owned by your territory' };
     }
 
     const improvement = this.resolveImprovementForTile(tile);
     if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this terrain' };
+    if (!canUnitConstructImprovement(builderUnit.unitType, improvement)) {
+      return { canBuild: false, reason: 'Unit lacks the required improvement capability' };
+    }
     const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
     if (
       requiredTechnology !== undefined &&
-      !this.researchSystem?.isImprovementUnlocked(unit.ownerId, improvement.id)
+      !this.researchSystem?.isImprovementUnlocked(builderUnit.ownerId, improvement.id)
     ) {
       return {
         canBuild: false,
@@ -218,27 +270,35 @@ export class BuilderSystem {
       };
     }
 
-    return { canBuild: true, improvement, improvementId: improvement.id };
+    return this.buildablePreview(improvement, builderUnit, cargoContext);
   }
 
-  private evaluateNavalResourceBuild(unit: Unit, tile: Tile): BuildImprovementPreview {
+  private evaluateNavalResourceBuild(
+    builderUnit: Unit,
+    movementUnit: Unit,
+    tile: Tile,
+    cargoContext?: CargoBuildContext,
+  ): BuildImprovementPreview {
     if (!this.isSeaTile(tile)) return { canBuild: false, reason: 'Naval builders can only improve sea resources' };
     if (tile.resourceId === undefined) return { canBuild: false, reason: 'Sea resource required' };
-    if (tile.ownerId !== undefined && tile.ownerId !== unit.ownerId
-      && !this.diplomacyManager?.hasExploitationRights(unit.ownerId, tile.ownerId)) {
+    if (tile.ownerId !== undefined && tile.ownerId !== builderUnit.ownerId
+      && !this.diplomacyManager?.hasExploitationRights(builderUnit.ownerId, tile.ownerId)) {
       return { canBuild: false, reason: 'Requires exploitation rights' };
     }
-    if (tile.resourceOwnerNationId !== undefined && tile.resourceOwnerNationId !== unit.ownerId) {
+    if (tile.resourceOwnerNationId !== undefined && tile.resourceOwnerNationId !== builderUnit.ownerId) {
       return { canBuild: false, reason: 'Resource is controlled by another nation' };
     }
 
     const improvement = this.getResourceImprovement(tile);
     if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this sea resource' };
+    if (!canUnitConstructImprovement(builderUnit.unitType, improvement)) {
+      return { canBuild: false, reason: 'Unit lacks the required improvement capability' };
+    }
 
     const requiredTechnology = this.researchSystem?.getRequiredTechnologyForImprovement(improvement.id);
     if (
       requiredTechnology !== undefined &&
-      !this.researchSystem?.isImprovementUnlocked(unit.ownerId, improvement.id)
+      !this.researchSystem?.isImprovementUnlocked(builderUnit.ownerId, improvement.id)
     ) {
       return {
         canBuild: false,
@@ -250,10 +310,43 @@ export class BuilderSystem {
     }
 
     return {
+      ...this.buildablePreview(improvement, builderUnit, cargoContext),
+      claimsSeaResource: true,
+    };
+  }
+
+  private getCargoBuildContext(unit: Unit, improvement: TileImprovementDefinition): CargoBuildContext | undefined {
+    const requiredTransportId = improvement.requiredCargoTransportUnitTypeId;
+    if (requiredTransportId === undefined) return undefined;
+
+    const transport = unit.unitType.id === requiredTransportId
+      ? unit
+      : this.unitManager.getTransportForUnit(unit);
+    if (transport?.unitType.id !== requiredTransportId || transport.ownerId !== unit.ownerId) return undefined;
+
+    const cargo = this.unitManager.getCargoUnitsForTransport(transport)
+      .filter((candidate) => (
+        candidate.ownerId === transport.ownerId
+        && canUnitConstructImprovement(candidate.unitType, improvement)
+      ))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const builder = cargo[0];
+    if (builder === undefined) return undefined;
+    if (unit.id !== transport.id && unit.id !== builder.id) return undefined;
+    return { builder, transport };
+  }
+
+  private buildablePreview(
+    improvement: TileImprovementDefinition,
+    builderUnit: Unit,
+    cargoContext?: CargoBuildContext,
+  ): BuildImprovementPreview {
+    return {
       canBuild: true,
       improvement,
       improvementId: improvement.id,
-      claimsSeaResource: true,
+      builderUnitId: builderUnit.id,
+      transportUnitId: cargoContext?.transport.id,
     };
   }
 
@@ -303,14 +396,19 @@ export class BuilderSystem {
     this.constructionTileByUnitId.clear();
     for (const row of this.mapData.tiles) {
       for (const tile of row) {
-        const unitId = tile.improvementConstruction?.unitId;
-        if (unitId !== undefined) this.constructionTileByUnitId.set(unitId, tile);
+        this.indexConstructionUnits(tile);
       }
     }
   }
 
   private handleUnitChanged(event: UnitChangedEvent): void {
-    if (event.reason === 'removed' || event.unit.buildAction === undefined) {
+    if (event.reason === 'removed') {
+      this.constructionTileByUnitId.delete(event.unit.id);
+      return;
+    }
+    const active = this.getConstructionForUnit(event.unit.id);
+    if (active !== undefined) return;
+    if (event.unit.buildAction === undefined) {
       this.constructionTileByUnitId.delete(event.unit.id);
       return;
     }
@@ -326,10 +424,34 @@ export class BuilderSystem {
     const tile = this.constructionTileByUnitId.get(unitId);
     if (tile === undefined) return undefined;
     const construction = tile.improvementConstruction;
-    if (construction?.unitId === unitId) return construction;
+    if (construction?.unitId === unitId || construction?.transportUnitId === unitId) return construction;
     this.constructionTileByUnitId.delete(unitId);
     return undefined;
   }
+
+  private indexConstructionUnits(tile: Tile): void {
+    const construction = tile.improvementConstruction;
+    if (construction === undefined) return;
+    this.constructionTileByUnitId.set(construction.unitId, tile);
+    if (construction.transportUnitId !== undefined) {
+      this.constructionTileByUnitId.set(construction.transportUnitId, tile);
+    }
+  }
+}
+
+export function isImprovementBuilderUnitType(unitType: UnitType): boolean {
+  return unitType.canBuildImprovements === true
+    || (unitType.improvementCapabilities?.length ?? 0) > 0;
+}
+
+export function canUnitConstructImprovement(
+  unitType: UnitType,
+  improvement: TileImprovementDefinition,
+): boolean {
+  if (improvement.requiredBuilderCapability !== undefined) {
+    return unitType.improvementCapabilities?.includes(improvement.requiredBuilderCapability) === true;
+  }
+  return unitType.canBuildImprovements === true;
 }
 
 /**

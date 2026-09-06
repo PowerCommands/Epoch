@@ -36,20 +36,18 @@ export type ImportBlockedPredicate = (
 ) => boolean;
 
 /**
- * Resources that can be owned/produced but must never be offered on the
- * international market. Aerospace Parts are a national Science Victory
- * component (see AerospacePartSystem / ManufacturedResourceEffects) rather than
- * an ordinary tradable commodity, so they are excluded from export eligibility
- * here — the single place both the human trade UI and the AI trade candidate
- * generation consult. This keeps the victory semantics intact without a
- * resource-specific branch scattered across the trade paths.
+ * Resources that can exist or be produced but must never be offered on the
+ * international market. The id set covers special manufactured resources;
+ * natural resources opt out through definition metadata. This is the single
+ * place both the human trade UI and AI trade candidate generation consult.
  */
 const NON_EXPORTABLE_RESOURCE_IDS: ReadonlySet<string> = new Set<string>([
   AEROSPACE_PARTS_ID,
 ]);
 
 export function isResourceExportEligible(resourceId: string): boolean {
-  return !NON_EXPORTABLE_RESOURCE_IDS.has(resourceId);
+  return !NON_EXPORTABLE_RESOURCE_IDS.has(resourceId)
+    && getNaturalResourceById(resourceId)?.archaeological !== true;
 }
 
 /**

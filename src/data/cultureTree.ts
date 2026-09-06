@@ -10,6 +10,9 @@ export const COLONIALISM_CULTURE_NODE_ID = 'colonialism';
 /** Completing this node permanently reveals the world map to the human player. */
 export const ENLIGHTENMENT_CULTURE_NODE_ID = 'enlightenment';
 
+/** Completing this node reveals archaeological resources to a nation. */
+export const HUMANISM_CULTURE_NODE_ID = 'humanism';
+
 /** Completing this node makes the United Nations transition available. */
 export const LIBERALISM_CULTURE_NODE_ID = 'liberalism';
 
@@ -34,7 +37,7 @@ export const CULTURE_TREE: CultureNode[] = [
   node({ id: 'guilds', name: 'Guilds', era: 'medieval', cost: 230, description: 'Craft masters organize skill, price, and apprenticeship. Guild life gives cities economic identity and durable urban influence.', prerequisites: ['civil_service_civics'], unlocks: [{ type: 'policySlot', value: 'economic' }] }),
   node({ id: 'diplomatic_service', name: 'Diplomatic Service', era: 'renaissance', cost: 280, description: 'Envoys become professionals who speak for the state. Protocol, letters, and permanent missions make diplomacy a civic craft.', prerequisites: ['guilds'], unlocks: [{ type: 'diplomacy', value: 'embassies' }, { type: 'policySlot', value: 'diplomatic' }] }),
   node({ id: 'exploration', name: 'Exploration', era: 'renaissance', cost: 285, description: 'Curiosity and ambition push officials beyond known maps. Exploration turns discovery into policy, profit, and new claims.', prerequisites: ['medieval_faires'], unlocks: [{ type: 'government', value: 'merchant_republic' }] }),
-  node({ id: 'humanism', name: 'Humanism', era: 'renaissance', cost: 290, description: 'Art, history, and human dignity move toward the center of public life. Cities preserve achievement as a source of identity.', prerequisites: ['guilds'], unlocks: [{ type: 'building', value: 'museum' }, { type: 'policySlot', value: 'culture' }] }),
+  node({ id: HUMANISM_CULTURE_NODE_ID, name: 'Humanism', era: 'renaissance', cost: 290, description: 'Art, history, and human dignity move toward the center of public life. Cities preserve achievement as a source of identity and learn to recognize archaeological sites.', prerequisites: ['guilds'], unlocks: [{ type: 'building', value: 'museum' }, { type: 'policySlot', value: 'culture' }] }),
   node({ id: 'reformed_church', name: 'Reformed Church', era: 'renaissance', cost: 400, description: 'Religious authority is challenged, refined, and reorganized. Belief becomes a force for reform as well as tradition.', prerequisites: ['theology_civics', 'humanism'], unlocks: [{ type: 'government', value: 'reformed_theocracy' }], effects: [{ type: 'happinessPerTurnFlat', value: 2 }] }),
   node({ id: 'mercantilism', name: 'Mercantilism', era: 'renaissance', cost: 430, description: 'The state treats commerce as national strategy. Ports, charters, and controlled markets turn trade into power.', prerequisites: ['exploration'], unlocks: [] }),
   node({ id: 'nationalism', name: 'Nationalism', era: 'renaissance', cost: 440, description: 'Shared language, memory, and symbols forge mass identity. Popular movements, independence struggles, and organized resistance take root.', prerequisites: ['humanism', 'mercantilism'], unlocks: [{ type: 'unit', value: 'corps' }, { type: 'unit', value: 'rebels' }] }),

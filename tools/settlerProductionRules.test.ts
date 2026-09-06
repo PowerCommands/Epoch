@@ -148,7 +148,7 @@ test('completed Settler history persists per nation and old saves default to zer
     mapData, nationManager: h.nations, cityManager: h.cities,
     unitManager: { getAllUnits: () => [] }, productionSystem: h.production,
     policySystem: { getActivePolicyAssignments: () => [] },
-    diplomacyManager: { getAllStates: () => [], getPendingPeaceProposals: () => [] },
+    diplomacyManager: { getAllStates: () => [], getAllVassalRelationships: () => [], getPendingPeaceProposals: () => [], getPeaceTreatyCooldownTurns: () => 0, getMinPeaceNegotiationTurns: () => 0 },
     discoverySystem: { getAllMetPairs: () => [] }, turnManager: h.turns,
     gridSystem: new HexGridSystem(), wonderSystem: { getCompletedWonders: () => [] },
   } as unknown as SaveLoadContext);

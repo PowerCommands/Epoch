@@ -4,6 +4,7 @@ import type { MapData, Tile } from '../types/map';
 import type { WorldPoint } from '../systems/gridLayout/IGridLayout';
 import type { NationManager } from '../systems/NationManager';
 import { getImprovementOwnerId } from '../systems/ImprovementOwnership';
+import { getImprovementById } from '../data/improvements';
 
 const OVERLAY_DEPTH = 13;
 const COMPLETED_COLOR = 0xf5e6a3;
@@ -13,9 +14,12 @@ const CONSTRUCTION_ALPHA = 0.6;
 const LINE_WIDTH = 2;
 const EDGE_INSET = 0.14;
 const SEGMENT_LENGTH = 0.24;
+const IMPROVEMENT_SPRITE_DEPTH = 5.75;
+const IMPROVEMENT_SPRITE_SCALE = 0.82;
 
 interface TileImprovementOverlay {
   graphics: Phaser.GameObjects.Graphics;
+  sprite?: Phaser.GameObjects.Image;
 }
 
 export class TileImprovementOverlayRenderer {
@@ -92,7 +96,19 @@ export class TileImprovementOverlayRenderer {
 
     this.drawDashedHex(graphics, this.tileMap.getTileOutlinePoints(tile.x, tile.y));
 
-    this.overlays.set(key, { graphics });
+    const improvementId = tile.improvementId ?? tile.improvementConstruction?.improvementId;
+    const improvement = improvementId ? getImprovementById(improvementId) : undefined;
+    let sprite: Phaser.GameObjects.Image | undefined;
+    if (improvement?.spriteKey && this.scene.textures.exists(improvement.spriteKey)) {
+      const center = this.tileMap.tileToWorld(tile.x, tile.y);
+      const rect = this.tileMap.getTileRect(tile.x, tile.y);
+      sprite = this.scene.add.image(center.x, center.y, improvement.spriteKey);
+      sprite.setDepth(IMPROVEMENT_SPRITE_DEPTH);
+      sprite.setDisplaySize(rect.width * IMPROVEMENT_SPRITE_SCALE, rect.height * IMPROVEMENT_SPRITE_SCALE);
+      sprite.setAlpha(constructing ? 0.55 : 0.92);
+    }
+
+    this.overlays.set(key, { graphics, sprite });
   }
 
   private drawDashedHex(graphics: Phaser.GameObjects.Graphics, points: WorldPoint[]): void {
@@ -130,6 +146,7 @@ export class TileImprovementOverlayRenderer {
     if (overlay === undefined) return;
 
     overlay.graphics.destroy();
+    overlay.sprite?.destroy();
     this.overlays.delete(key);
   }
 

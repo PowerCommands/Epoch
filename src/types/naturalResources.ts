@@ -24,8 +24,17 @@ export interface NaturalResourceDefinition {
   notes?: string;
   readonly isNaturalWonder?: boolean;
 
+  /** Marks cultural-heritage resources handled by the archaeology systems. */
+  readonly archaeological?: boolean;
+
+  /** Culture granted by a future excavation/museum flow; never a tile yield. */
+  readonly archaeologicalCultureValue?: number;
+
   /** Hide the resource on the map until this technology is researched. */
   readonly revealTechId?: string;
+
+  /** Hide the resource on the map until this cultural node is completed. */
+  readonly revealCultureNodeId?: string;
 
   /**
    * Resource is not usable for economy, trade, or strategic-resource

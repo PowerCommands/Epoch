@@ -6,7 +6,7 @@ import type { MapData, Tile } from '../types/map';
 import type { GridCoord } from '../types/grid';
 import type { Producible } from '../types/producible';
 import { TileType } from '../types/map';
-import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, PRIVATEER, getUnitTypeById, canCarryUnitType, hasCargoCapacity } from '../data/units';
+import { ALL_UNIT_TYPES, WARRIOR, ARCHER, SETTLER, SCOUT, SCOUT_BOAT, WORKER, WORK_BOAT, ARCHAEOLOGIST, TRANSPORT_SHIP, PRIVATEER, getUnitTypeById, canCarryUnitType, hasCargoCapacity } from '../data/units';
 import type { CovertPersonality } from '../types/covertPersonality';
 import {
   COVERT_CANDIDATE_UNIT_IDS,
@@ -17,10 +17,25 @@ import {
   isManagedCovertUnit,
   pickPreferredCovertUnit,
 } from './ai/covertForceEvaluation';
-import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
+import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, MUSEUM, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
-import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
+import { getNaturalResourceById, getNaturalResourceImprovementIdForTile, isNaturalResourceRevealed } from '../data/naturalResources';
+import { getImprovementById } from '../data/improvements';
+import { ArchaeologicalCultureSystem } from './ArchaeologicalCultureSystem';
+import { canUnitEnterTile, isWaterTile } from './UnitMovementRules';
+import {
+  desiredArchaeologistCount,
+  getArchaeologicalCultureValue,
+  isArchaeologicalResource,
+  isUnexcavatedArchaeologicalTile,
+  scoreLandArchaeologyTarget,
+  scoreShipwreckTarget,
+  MAX_ARCHAEOLOGY_TARGET_DISTANCE,
+  MAX_SHIPWRECK_TARGET_DISTANCE,
+  MAX_ARCHAEOLOGY_REACHABILITY_CHECKS,
+  MAX_ARCHAEOLOGISTS_PER_NATION,
+} from './ai/archaeologyTargeting';
 import { getManufacturedResourceById } from '../data/manufacturedResources';
 import type { BuildingType } from '../entities/Building';
 import type { WonderType } from '../entities/Wonder';
@@ -41,7 +56,7 @@ import {
 } from './ProductionRules';
 import { FoundCitySystem } from './FoundCitySystem';
 import { PathfindingSystem } from './PathfindingSystem';
-import type { BuilderSystem } from './BuilderSystem';
+import { canUnitConstructImprovement, type BuilderSystem } from './BuilderSystem';
 import type { BuildingPlacementSystem } from './BuildingPlacementSystem';
 import type { WonderSystem } from './WonderSystem';
 import type { WonderPlacementSystem } from './WonderPlacementSystem';
@@ -408,12 +423,47 @@ const FOREIGN_EXPLOITATION_TARGET_PENALTY = 1000;
 // demanded Iron/Coal tile is improved ahead of ordinary resource tiles, without
 // overriding the reachability/assignment safeguards around it.
 const WORKER_DEMANDED_RESOURCE_BONUS = 3000;
+// Archaeologist: modest so it competes during stable periods without overriding
+// settlers/military/critical infrastructure. Museum boost sits above ordinary
+// culture buildings but below Settlers/acute defenders, so archaeological Culture
+// gets unblocked without derailing existential needs. Transport for a Shipwreck is
+// an opportunity, never an emergency.
+const SCORE_ARCHAEOLOGIST = 45;
+const SCORE_ARCHAEOLOGY_MUSEUM = 79;
+const SCORE_ARCHAEOLOGY_TRANSPORT = 45;
 const LOW_GOLD_PER_TURN = 0;
 const POST_TARGET_SETTLER_DEFAULT_INTERVAL = 8;
 const POST_TARGET_SETTLER_MIN_GOLD = 25;
 const POST_TARGET_SETTLER_MIN_GOLD_PER_TURN = -1;
 const TILE_PURCHASE_DEFAULT_RESERVE = 100;
 const TILE_PURCHASE_DEFAULT_MIN_SCORE = 45;
+
+/**
+ * Transient coordination record for one nation's Shipwreck excavation. Never
+ * persisted: after load it is rebuilt from live cargo/construction state, and the
+ * actual gameplay (real cargo, real movement, the shared underwater Dig) is what
+ * makes progress — this only remembers which units are working which wreck.
+ */
+interface ShipwreckExpedition {
+  /** tileKey of the reserved Shipwreck. */
+  targetKey: string;
+  archaeologistId?: string;
+  transportId?: string;
+  /** Coastal land tile where the Archaeologist meets its Transport Ship. */
+  rendezvousX?: number;
+  rendezvousY?: number;
+  movementLogKey?: string;
+}
+
+/** Nation-level archaeology production demand, consumed across a nation's cities. */
+interface ArchaeologyProductionPlan {
+  /** How many more Archaeologists the nation still wants this turn. */
+  archaeologistDeficit: number;
+  /** A Shipwreck expedition needs a Transport Ship and none is available/queued. */
+  wantsShipwreckTransport: boolean;
+  /** Museum production should be boosted to unblock archaeological Culture. */
+  museumPriority: boolean;
+}
 
 export interface EconomicRecoveryInvestment {
   readonly city: City;
@@ -606,6 +656,22 @@ export class AISystem {
   private readonly workerTargetsByUnit = new Map<string, string>();
   private readonly workerMovementLogKeyByUnit = new Map<string, string>();
   private readonly workerNoTargetLoggedUnits = new Set<string>();
+  // ── AI archaeology (transient; rebuilt from world state after load) ──────────
+  // Land Archaeologist target reservations (unitId → "x,y"), so two Archaeologists
+  // from the same nation don't converge on one unexcavated site.
+  private readonly archaeologistTargetsByUnit = new Map<string, string>();
+  private readonly archaeologistMovementLogKeyByUnit = new Map<string, string>();
+  private readonly archaeologistNoTargetLoggedUnits = new Set<string>();
+  // One in-flight Shipwreck expedition per nation. Transient: on load it is
+  // rebuilt from live cargo/construction state, so no stale reservation survives.
+  private readonly shipwreckExpeditionByNation = new Map<string, ShipwreckExpedition>();
+  // Shipwreck tiles this nation has proven unreachable this session, so a boxed-in
+  // expedition doesn't retry the same site forever.
+  private readonly failedShipwreckKeysByNation = new Map<string, Set<string>>();
+  // Lazily built once: derives Museum/Culture state directly from live map+cities.
+  private archaeologicalCultureSystemInstance?: ArchaeologicalCultureSystem;
+  // Static coordinate index of archaeological-resource tiles (built once on demand).
+  private archaeologicalTileCoords?: Array<{ x: number; y: number }>;
   private readonly coastalSpacingLoggedBySettler = new Set<string>();
   // Nations for which the maritime-minimum war-deferral has already been logged
   // this war, so the deferral note is emitted once rather than every turn.
@@ -911,6 +977,7 @@ export class AISystem {
     this.overseasExpansionSystem?.runStaging(nationId);
     this.runEmergencyDefenseRedeployment(nationId);
     this.runCombat(nationId);
+    this.updateShipwreckExpeditions(nationId);
     this.runMovement(nationId);
     this.runTilePurchases(nationId);
     this.runProduction(nationId);
@@ -2915,6 +2982,17 @@ export class AISystem {
         continue;
       }
 
+      if (unit.unitType.id === ARCHAEOLOGIST.id) {
+        this.runArchaeologist(unit, nationId);
+        continue;
+      }
+
+      const shipwreckExpedition = this.getShipwreckExpeditionForTransport(unit.id, nationId);
+      if (shipwreckExpedition) {
+        this.runShipwreckTransport(unit, nationId, shipwreckExpedition);
+        continue;
+      }
+
       if (unit.unitType.isNaval) {
         this.moveNavalUnitForPatrol(unit, nationId, strategy, navalContext);
         continue;
@@ -4248,6 +4326,11 @@ export class AISystem {
     if (resource === undefined) return false;
     const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
     if (improvementId === undefined) return false;
+    const improvement = getImprovementById(improvementId);
+    if (improvement === undefined) return false;
+    // Keep Work Boat targeting capability-driven. In particular, maritime
+    // archaeology is reserved for a future expedition AI step.
+    if (!canUnitConstructImprovement(unit?.unitType ?? WORK_BOAT, improvement)) return false;
     if (!this.researchSystem?.isImprovementUnlocked(nationId, improvementId)) return false;
 
     if (requireReachable && unit !== undefined) {
@@ -4552,6 +4635,659 @@ export class AISystem {
       if (distance < nearest) nearest = distance;
     }
     return Number.isFinite(nearest) ? nearest : 0;
+  }
+
+  // ─── AI archaeology ───────────────────────────────────────────────────────────
+  // Archaeologists are the land counterpart to Workers, but with their own targets
+  // (rare archaeological resources) and role (excavate for Culture). They reuse the
+  // shared BuilderSystem Dig, movement, cargo and Museum/Culture rules — the AI adds
+  // no parallel simulation. Shipwrecks are a secondary maritime behaviour driven by
+  // a single per-nation Transport Ship expedition.
+
+  private getArchaeologicalCultureSystem(): ArchaeologicalCultureSystem {
+    if (this.archaeologicalCultureSystemInstance === undefined) {
+      this.archaeologicalCultureSystemInstance = new ArchaeologicalCultureSystem(
+        this.mapData,
+        this.cityManager,
+        () => this.turnManager.getCurrentRound(),
+      );
+    }
+    return this.archaeologicalCultureSystemInstance;
+  }
+
+  /** Reveal check mirrors the human's: no hidden map knowledge for the AI. */
+  private isArchaeologicalResourceKnownToNation(nationId: string, resourceId: string): boolean {
+    return isNaturalResourceRevealed(resourceId, {
+      isTechnologyResearched: (techId) => this.researchSystem?.isResearched(nationId, techId) ?? false,
+      isCultureNodeUnlocked: (nodeId) => this.cultureSystem?.isUnlocked(nationId, nodeId) ?? false,
+    });
+  }
+
+  /** Static index of every tile carrying an archaeological resource (they never move). */
+  private getArchaeologicalTileCoords(): Array<{ x: number; y: number }> {
+    if (this.archaeologicalTileCoords === undefined) {
+      const coords: Array<{ x: number; y: number }> = [];
+      for (const row of this.mapData.tiles) {
+        for (const tile of row) {
+          if (tile.resourceId === undefined) continue;
+          if (isArchaeologicalResource(getNaturalResourceById(tile.resourceId))) {
+            coords.push({ x: tile.x, y: tile.y });
+          }
+        }
+      }
+      this.archaeologicalTileCoords = coords;
+    }
+    return this.archaeologicalTileCoords;
+  }
+
+  /** A land dig target: revealed, unexcavated, unlocked, in our territory (or foreign w/ rights). */
+  private isValidLandArchaeologyTarget(nationId: string, tile: Tile): boolean {
+    if (tile.resourceId === undefined || !isUnexcavatedArchaeologicalTile(tile)) return false;
+    const resource = getNaturalResourceById(tile.resourceId);
+    if (resource === undefined) return false;
+    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    if (improvementId === undefined) return false;
+    const improvement = getImprovementById(improvementId);
+    // Land archaeology is the Dig that does NOT require a Transport Ship cargo.
+    if (improvement === undefined || improvement.requiredBuilderCapability !== 'dig') return false;
+    if (improvement.requiredCargoTransportUnitTypeId !== undefined) return false;
+    if (!this.isArchaeologicalResourceKnownToNation(nationId, tile.resourceId)) return false;
+    if (!this.researchSystem?.isImprovementUnlocked(nationId, improvementId)) return false;
+    if (tile.ownerId === nationId) return true;
+    if (tile.ownerId === undefined) return false;
+    return this.diplomacyManager?.hasExploitationRights(nationId, tile.ownerId) === true;
+  }
+
+  /**
+   * Deterministically ranked land archaeology targets for a nation. With `unit`
+   * given, restricts to nearby tiles, skips sites reserved by another of the
+   * nation's Archaeologists, and scores by distance from the unit; without it the
+   * call is a cheap validity/count scan used by production planning.
+   */
+  private getKnownLandArchaeologyTargets(
+    nationId: string,
+    unit: Unit | undefined,
+  ): Array<{ x: number; y: number; resourceId: string }> {
+    const from = unit ? { x: unit.tileX, y: unit.tileY } : undefined;
+    const assignedKeys = new Set(this.archaeologistTargetsByUnit.values());
+    const selfKey = unit ? this.archaeologistTargetsByUnit.get(unit.id) : undefined;
+    const seen = new Set<string>();
+    const candidates: Array<{ x: number; y: number; resourceId: string; cultureValue: number; distance: number; score: number }> = [];
+
+    const consider = (tile: Tile, owned: boolean): void => {
+      const key = tileKey(tile.x, tile.y);
+      if (seen.has(key)) return;
+      seen.add(key);
+      if (unit && assignedKeys.has(key) && key !== selfKey) return;
+      if (from && this.gridSystem.getDistance(from, { x: tile.x, y: tile.y }) > MAX_ARCHAEOLOGY_TARGET_DISTANCE) return;
+      if (!this.isValidLandArchaeologyTarget(nationId, tile)) return;
+      const cultureValue = getArchaeologicalCultureValue(tile.resourceId);
+      const distance = from ? this.gridSystem.getDistance(from, { x: tile.x, y: tile.y }) : 0;
+      candidates.push({
+        x: tile.x,
+        y: tile.y,
+        resourceId: tile.resourceId!,
+        cultureValue,
+        distance,
+        score: scoreLandArchaeologyTarget({ cultureValue, distance, owned }),
+      });
+    };
+
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      for (const coord of city.ownedTileCoords) {
+        const tile = this.mapData.tiles[coord.y]?.[coord.x];
+        if (tile) consider(tile, true);
+      }
+    }
+    // Foreign exploitation-rights sites (heavily penalised — conservative use).
+    if (this.diplomacyManager) {
+      const grantorIds = this.diplomacyManager.getAllExploitationRights()
+        .filter((grant) => grant.beneficiaryNationId === nationId)
+        .map((grant) => grant.grantorNationId);
+      for (const grantorId of grantorIds) {
+        for (const city of this.cityManager.getCitiesByOwner(grantorId)) {
+          for (const coord of city.ownedTileCoords) {
+            const tile = this.mapData.tiles[coord.y]?.[coord.x];
+            if (tile) consider(tile, false);
+          }
+        }
+      }
+    }
+
+    candidates.sort((a, b) => (
+      b.score - a.score
+      || b.cultureValue - a.cultureValue
+      || a.distance - b.distance
+      || a.y - b.y
+      || a.x - b.x
+    ));
+    return candidates.map(({ x, y, resourceId }) => ({ x, y, resourceId }));
+  }
+
+  private runArchaeologist(unit: Unit, nationId: string): void {
+    if (!this.builderSystem) return;
+    if (unit.isBuildingImprovement()) return; // multi-turn Dig already in progress
+    if (this.isCargoUnit(unit)) return; // aboard a Transport Ship — driven by the ship
+
+    const expedition = this.shipwreckExpeditionByNation.get(nationId);
+    if (expedition?.archaeologistId === unit.id) {
+      this.runShipwreckArchaeologist(unit, nationId, expedition);
+      return;
+    }
+
+    let target = this.getAssignedArchaeologistTarget(unit, nationId);
+    if (target === null) {
+      target = this.pickReachableArchaeologistTarget(nationId, unit);
+      if (target === null) {
+        if (this.relocateArchaeologistTowardCity(unit, nationId)) {
+          this.archaeologistNoTargetLoggedUnits.delete(unit.id);
+          return;
+        }
+        if (!this.archaeologistNoTargetLoggedUnits.has(unit.id)) {
+          this.archaeologistNoTargetLoggedUnits.add(unit.id);
+          console.debug(
+            this.formatLog(nationId, `Archaeologist at (${unit.tileX},${unit.tileY}) found no valid archaeological target`),
+          );
+        }
+        return;
+      }
+      this.archaeologistTargetsByUnit.set(unit.id, tileKey(target.x, target.y));
+      this.archaeologistNoTargetLoggedUnits.delete(unit.id);
+      const resourceName = getNaturalResourceById(target.resourceId)?.name ?? target.resourceId;
+      console.log(
+        this.formatLog(nationId, `Archaeologist assigned to ${resourceName} at (${target.x},${target.y})`),
+      );
+    }
+
+    const tile = this.mapData.tiles[target.y]?.[target.x];
+    if (!tile) {
+      this.clearArchaeologistAssignment(unit.id);
+      return;
+    }
+
+    if (unit.tileX === target.x && unit.tileY === target.y) {
+      this.tryDigArchaeologistTarget(unit, nationId, tile);
+      return;
+    }
+
+    const path = this.pathfindingSystem.findPath(unit, target.x, target.y, { respectMovementPoints: false });
+    if (path === null) {
+      this.clearArchaeologistAssignment(unit.id);
+      return;
+    }
+
+    const fromX = unit.tileX;
+    const fromY = unit.tileY;
+    this.movementSystem.moveAlongPath(unit, path);
+    if (unit.tileX === fromX && unit.tileY === fromY) return;
+
+    if (unit.tileX === target.x && unit.tileY === target.y && unit.movementPoints > 0) {
+      this.tryDigArchaeologistTarget(unit, nationId, tile);
+      return;
+    }
+
+    const logKey = `${target.x},${target.y}:${unit.tileX},${unit.tileY}`;
+    if (this.archaeologistMovementLogKeyByUnit.get(unit.id) !== logKey) {
+      this.archaeologistMovementLogKeyByUnit.set(unit.id, logKey);
+      console.log(
+        this.formatLog(nationId, `Archaeologist moved toward (${target.x},${target.y}) to excavate`),
+      );
+    }
+  }
+
+  private tryDigArchaeologistTarget(unit: Unit, nationId: string, tile: Tile): void {
+    const result = this.builderSystem?.build(unit, tile, { consumeMovement: true, requireMovement: true });
+    if (result == null) return;
+    this.clearArchaeologistAssignment(unit.id);
+    const resourceName = tile.resourceId ? getNaturalResourceById(tile.resourceId)?.name ?? tile.resourceId : 'site';
+    console.log(
+      this.formatLog(nationId, `Archaeologist started Dig on ${resourceName} at (${tile.x},${tile.y})`),
+    );
+  }
+
+  private clearArchaeologistAssignment(unitId: string): void {
+    this.archaeologistTargetsByUnit.delete(unitId);
+    this.archaeologistMovementLogKeyByUnit.delete(unitId);
+  }
+
+  private getAssignedArchaeologistTarget(unit: Unit, nationId: string): { x: number; y: number; resourceId: string } | null {
+    const key = this.archaeologistTargetsByUnit.get(unit.id);
+    if (key === undefined) return null;
+    const [xRaw, yRaw] = key.split(',');
+    const x = Number(xRaw);
+    const y = Number(yRaw);
+    const tile = Number.isFinite(x) && Number.isFinite(y) ? this.mapData.tiles[y]?.[x] : undefined;
+    if (!tile || !this.isValidLandArchaeologyTarget(nationId, tile)) {
+      this.clearArchaeologistAssignment(unit.id);
+      return null;
+    }
+    return { x, y, resourceId: tile.resourceId! };
+  }
+
+  private pickReachableArchaeologistTarget(nationId: string, unit: Unit): { x: number; y: number; resourceId: string } | null {
+    const ranked = this.getKnownLandArchaeologyTargets(nationId, unit);
+    const limit = Math.min(ranked.length, MAX_ARCHAEOLOGY_REACHABILITY_CHECKS);
+    for (let index = 0; index < limit; index += 1) {
+      const candidate = ranked[index];
+      if (this.pathfindingSystem.findPath(unit, candidate.x, candidate.y, { respectMovementPoints: false }) !== null) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /** Conservative relocation toward another owned city when no local site exists. */
+  private relocateArchaeologistTowardCity(unit: Unit, nationId: string): boolean {
+    const from = { x: unit.tileX, y: unit.tileY };
+    const destinations = this.cityManager.getCitiesByOwner(nationId)
+      .map((city) => ({ city, distance: this.gridSystem.getDistance(from, { x: city.tileX, y: city.tileY }) }))
+      .filter((entry) => entry.distance > MAX_ARCHAEOLOGY_TARGET_DISTANCE)
+      .sort((a, b) => a.distance - b.distance || a.city.tileY - b.city.tileY || a.city.tileX - b.city.tileX)
+      .slice(0, 3);
+    for (const { city } of destinations) {
+      const path = this.pathfindingSystem.findPath(unit, city.tileX, city.tileY, { respectMovementPoints: false });
+      if (path === null) continue;
+      this.movementSystem.moveAlongPath(unit, path);
+      if (unit.tileX === from.x && unit.tileY === from.y) return false;
+      return true;
+    }
+    return false;
+  }
+
+  // ─── Shipwreck expeditions ────────────────────────────────────────────────────
+
+  private isValidShipwreckTarget(nationId: string, tile: Tile): boolean {
+    if (tile.resourceId === undefined || !isUnexcavatedArchaeologicalTile(tile)) return false;
+    if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
+    const resource = getNaturalResourceById(tile.resourceId);
+    if (resource === undefined) return false;
+    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    if (improvementId === undefined) return false;
+    const improvement = getImprovementById(improvementId);
+    // Shipwreck is the underwater Dig that requires an Archaeologist cargo aboard a
+    // Transport Ship — the same mandatory rule the human player is held to.
+    if (improvement === undefined || improvement.requiredCargoTransportUnitTypeId === undefined) return false;
+    if (!this.isArchaeologicalResourceKnownToNation(nationId, tile.resourceId)) return false;
+    if (!this.researchSystem?.isImprovementUnlocked(nationId, improvementId)) return false;
+    const ownerNationId = tile.resourceOwnerNationId ?? tile.ownerId;
+    if (ownerNationId !== undefined && ownerNationId !== nationId) {
+      const canExploitForeign = tile.resourceOwnerNationId === undefined
+        && tile.ownerId !== undefined
+        && this.diplomacyManager?.hasExploitationRights(nationId, tile.ownerId) === true;
+      if (!canExploitForeign) return false;
+    }
+    return true;
+  }
+
+  private getKnownShipwreckTargets(nationId: string): Array<{ x: number; y: number; resourceId: string; score: number }> {
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    if (ownCities.length === 0) return [];
+    const failed = this.failedShipwreckKeysByNation.get(nationId);
+    const candidates: Array<{ x: number; y: number; resourceId: string; cultureValue: number; distance: number; score: number }> = [];
+    for (const { x, y } of this.getArchaeologicalTileCoords()) {
+      const tile = this.mapData.tiles[y]?.[x];
+      if (!tile) continue;
+      if (failed?.has(tileKey(x, y))) continue;
+      if (!this.isValidShipwreckTarget(nationId, tile)) continue;
+      const distance = this.distanceToNearestCity(tile, ownCities);
+      if (distance > MAX_SHIPWRECK_TARGET_DISTANCE) continue;
+      const cultureValue = getArchaeologicalCultureValue(tile.resourceId);
+      candidates.push({ x, y, resourceId: tile.resourceId!, cultureValue, distance, score: scoreShipwreckTarget(cultureValue, distance) });
+    }
+    candidates.sort((a, b) => (
+      b.score - a.score
+      || b.cultureValue - a.cultureValue
+      || a.distance - b.distance
+      || a.y - b.y
+      || a.x - b.x
+    ));
+    return candidates.map(({ x, y, resourceId, score }) => ({ x, y, resourceId, score }));
+  }
+
+  /**
+   * Maintain the one-per-nation Shipwreck expedition: drop it when invalid, create
+   * it when a reachable wreck is known and the nation is not under war pressure, and
+   * bind a free Archaeologist / Transport Ship. Movement/loading/digging happen in
+   * the unit dispatch below using the shared cargo and Dig systems.
+   */
+  private updateShipwreckExpeditions(nationId: string): void {
+    if (!this.canBuildUnit(nationId, ARCHAEOLOGIST.id)) {
+      this.releaseShipwreckExpedition(nationId);
+      return;
+    }
+    let expedition = this.shipwreckExpeditionByNation.get(nationId);
+    if (expedition) {
+      const [x, y] = expedition.targetKey.split(',').map(Number);
+      const tile = Number.isFinite(x) && Number.isFinite(y) ? this.mapData.tiles[y]?.[x] : undefined;
+      if (!tile || !this.isValidShipwreckTarget(nationId, tile)) {
+        // The wreck was excavated (by us or another nation) or otherwise invalidated.
+        // Reuse the assigned Archaeologist/Transport Ship on the next known wreck if
+        // one exists, so a loaded Archaeologist isn't stranded; otherwise release.
+        const next = this.getKnownShipwreckTargets(nationId)[0];
+        if (next) {
+          expedition.targetKey = tileKey(next.x, next.y);
+          expedition.rendezvousX = undefined;
+          expedition.rendezvousY = undefined;
+          expedition.movementLogKey = undefined;
+          console.log(this.formatLog(nationId, `Shipwreck expedition retargeted to (${next.x},${next.y})`));
+        } else {
+          this.releaseShipwreckExpedition(nationId, 'Shipwreck target no longer valid');
+          expedition = undefined;
+        }
+      } else {
+        if (expedition.archaeologistId && this.unitManager.getUnit(expedition.archaeologistId) === undefined) {
+          expedition.archaeologistId = undefined;
+        }
+        if (expedition.transportId && this.unitManager.getUnit(expedition.transportId) === undefined) {
+          expedition.transportId = undefined;
+        }
+      }
+    }
+
+    if (!expedition) {
+      // Save/load resume (and stranded-cargo recovery): a Transport Ship already
+      // carrying an Archaeologist is an in-flight expedition whose transient plan
+      // was lost. Re-adopt it toward the best known wreck instead of forgetting it
+      // or spawning duplicates — no new units, cargo stays cargo.
+      const inFlight = this.findLoadedShipwreckPair(nationId);
+      const best = this.getKnownShipwreckTargets(nationId)[0];
+      if (!best) return;
+      if (inFlight) {
+        expedition = { targetKey: tileKey(best.x, best.y), archaeologistId: inFlight.archaeologist.id, transportId: inFlight.transport.id };
+        this.shipwreckExpeditionByNation.set(nationId, expedition);
+        console.log(this.formatLog(nationId, `Shipwreck expedition resumed with loaded Transport Ship toward (${best.x},${best.y})`));
+      } else {
+        if (this.isAtWarWithAnyone(nationId)) return; // opportunity, not an emergency
+        expedition = { targetKey: tileKey(best.x, best.y) };
+        this.shipwreckExpeditionByNation.set(nationId, expedition);
+        console.log(this.formatLog(nationId, `Shipwreck expedition assigned to (${best.x},${best.y})`));
+      }
+    }
+
+    if (!expedition.archaeologistId) {
+      const archaeologist = this.pickFreeArchaeologistForShipwreck(nationId);
+      if (archaeologist) {
+        this.clearArchaeologistAssignment(archaeologist.id);
+        expedition.archaeologistId = archaeologist.id;
+        console.log(this.formatLog(nationId, `Archaeologist ${archaeologist.id} assigned to Shipwreck expedition`));
+      }
+    }
+    if (!expedition.transportId) {
+      const transport = this.pickFreeTransportForShipwreck(nationId);
+      if (transport) {
+        expedition.transportId = transport.id;
+        console.log(this.formatLog(nationId, `Transport Ship ${transport.id} assigned to Shipwreck expedition`));
+      }
+    }
+  }
+
+  /** A Transport Ship owned by the nation that is carrying an Archaeologist. */
+  private findLoadedShipwreckPair(nationId: string): { transport: Unit; archaeologist: Unit } | undefined {
+    for (const transport of this.unitManager.getUnitsByOwner(nationId)) {
+      if (transport.unitType.id !== TRANSPORT_SHIP.id || this.isCargoUnit(transport)) continue;
+      if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(transport.id) === true) continue;
+      const archaeologist = this.unitManager.getCargoUnitsForTransport(transport)
+        .find((cargo) => cargo.unitType.id === ARCHAEOLOGIST.id);
+      if (archaeologist) return { transport, archaeologist };
+    }
+    return undefined;
+  }
+
+  private releaseShipwreckExpedition(nationId: string, reason?: string): void {
+    const expedition = this.shipwreckExpeditionByNation.get(nationId);
+    if (!expedition) return;
+    this.shipwreckExpeditionByNation.delete(nationId);
+    if (reason) console.log(this.formatLog(nationId, `Shipwreck expedition released: ${reason}`));
+  }
+
+  private markShipwreckFailed(nationId: string, targetKey: string): void {
+    let failed = this.failedShipwreckKeysByNation.get(nationId);
+    if (!failed) {
+      failed = new Set<string>();
+      this.failedShipwreckKeysByNation.set(nationId, failed);
+    }
+    failed.add(targetKey);
+  }
+
+  private pickFreeArchaeologistForShipwreck(nationId: string): Unit | undefined {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => (
+        unit.unitType.id === ARCHAEOLOGIST.id
+        && !this.isCargoUnit(unit)
+        && !unit.isBuildingImprovement()
+      ))
+      // Prefer an idle one (no active land reservation), then a stable id order.
+      .sort((a, b) => {
+        const aReserved = this.archaeologistTargetsByUnit.has(a.id) ? 1 : 0;
+        const bReserved = this.archaeologistTargetsByUnit.has(b.id) ? 1 : 0;
+        return aReserved - bReserved || a.id.localeCompare(b.id);
+      })[0];
+  }
+
+  private pickFreeTransportForShipwreck(nationId: string): Unit | undefined {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => (
+        unit.unitType.id === TRANSPORT_SHIP.id
+        && !this.isCargoUnit(unit)
+        && this.unitManager.getCargoUnitsForTransport(unit).length === 0
+        && this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) !== true
+      ))
+      .sort((a, b) => a.id.localeCompare(b.id))[0];
+  }
+
+  private getShipwreckExpeditionForTransport(transportId: string, nationId: string): ShipwreckExpedition | undefined {
+    const expedition = this.shipwreckExpeditionByNation.get(nationId);
+    return expedition?.transportId === transportId ? expedition : undefined;
+  }
+
+  /** Nearest owned coastal city tile the Archaeologist can reach — the loading point. */
+  private computeShipwreckRendezvous(nationId: string, reference: Unit): { x: number; y: number } | null {
+    const from = { x: reference.tileX, y: reference.tileY };
+    const coastalCities = this.cityManager.getCitiesByOwner(nationId)
+      .filter((city) => cityHasWaterTile(city, this.mapData))
+      .sort((a, b) => (
+        this.gridSystem.getDistance(from, { x: a.tileX, y: a.tileY })
+        - this.gridSystem.getDistance(from, { x: b.tileX, y: b.tileY })
+        || a.tileY - b.tileY
+        || a.tileX - b.tileX
+      ));
+    for (const city of coastalCities) {
+      if (reference.tileX === city.tileX && reference.tileY === city.tileY) return { x: city.tileX, y: city.tileY };
+      if (this.pathfindingSystem.findPath(reference, city.tileX, city.tileY, { respectMovementPoints: false }) !== null) {
+        return { x: city.tileX, y: city.tileY };
+      }
+    }
+    return null;
+  }
+
+  private runShipwreckArchaeologist(unit: Unit, nationId: string, expedition: ShipwreckExpedition): void {
+    if (this.isCargoUnit(unit)) return; // already loaded — the Transport Ship drives it
+    if (expedition.rendezvousX === undefined || expedition.rendezvousY === undefined) {
+      const rendezvous = this.computeShipwreckRendezvous(nationId, unit);
+      if (!rendezvous) {
+        this.markShipwreckFailed(nationId, expedition.targetKey);
+        this.releaseShipwreckExpedition(nationId, 'no reachable loading point for Archaeologist');
+        return;
+      }
+      expedition.rendezvousX = rendezvous.x;
+      expedition.rendezvousY = rendezvous.y;
+    }
+    if (unit.tileX === expedition.rendezvousX && unit.tileY === expedition.rendezvousY) return; // wait for the ship
+    const path = this.pathfindingSystem.findPath(unit, expedition.rendezvousX, expedition.rendezvousY, { respectMovementPoints: false });
+    if (path === null) {
+      this.markShipwreckFailed(nationId, expedition.targetKey);
+      this.releaseShipwreckExpedition(nationId, 'Archaeologist cannot reach the loading point');
+      return;
+    }
+    this.movementSystem.moveAlongPath(unit, path);
+  }
+
+  private runShipwreckTransport(unit: Unit, nationId: string, expedition: ShipwreckExpedition): void {
+    if (!this.builderSystem) return;
+    const archaeologist = expedition.archaeologistId ? this.unitManager.getUnit(expedition.archaeologistId) : undefined;
+    if (!archaeologist) return; // updateShipwreckExpeditions will (re)assign one
+    const [sx, sy] = expedition.targetKey.split(',').map(Number);
+    const shipwreckTile = Number.isFinite(sx) && Number.isFinite(sy) ? this.mapData.tiles[sy]?.[sx] : undefined;
+    if (!shipwreckTile) {
+      this.releaseShipwreckExpedition(nationId, 'Shipwreck tile missing');
+      return;
+    }
+
+    const carryingArchaeologist = archaeologist.carriedByUnitId === unit.id;
+    if (carryingArchaeologist) {
+      if (unit.tileX === sx && unit.tileY === sy) {
+        this.tryDigShipwreck(unit, nationId, shipwreckTile);
+        return;
+      }
+      const path = this.pathfindingSystem.findPath(unit, sx, sy, { respectMovementPoints: false });
+      if (path === null) {
+        this.markShipwreckFailed(nationId, expedition.targetKey);
+        this.releaseShipwreckExpedition(nationId, 'Transport Ship cannot reach the Shipwreck');
+        return;
+      }
+      const fromX = unit.tileX;
+      const fromY = unit.tileY;
+      this.movementSystem.moveAlongPath(unit, path);
+      if (unit.tileX === sx && unit.tileY === sy && unit.movementPoints > 0) {
+        this.tryDigShipwreck(unit, nationId, shipwreckTile);
+        return;
+      }
+      const logKey = `wreck:${sx},${sy}:${unit.tileX},${unit.tileY}`;
+      if (expedition.movementLogKey !== logKey && (unit.tileX !== fromX || unit.tileY !== fromY)) {
+        expedition.movementLogKey = logKey;
+        console.log(this.formatLog(nationId, `Transport Ship sailing to Shipwreck at (${sx},${sy})`));
+      }
+      return;
+    }
+
+    // Rendezvous with the Archaeologist and load it as real cargo.
+    if (this.tryLoadArchaeologistOntoTransport(archaeologist, unit, nationId)) return;
+    if (expedition.rendezvousX === undefined || expedition.rendezvousY === undefined) {
+      const rendezvous = this.computeShipwreckRendezvous(nationId, archaeologist);
+      if (!rendezvous) {
+        this.markShipwreckFailed(nationId, expedition.targetKey);
+        this.releaseShipwreckExpedition(nationId, 'no reachable loading point for Archaeologist');
+        return;
+      }
+      expedition.rendezvousX = rendezvous.x;
+      expedition.rendezvousY = rendezvous.y;
+    }
+    const waterTile = this.findLoadingWaterTileForTransport(unit, expedition.rendezvousX, expedition.rendezvousY);
+    if (!waterTile) {
+      this.markShipwreckFailed(nationId, expedition.targetKey);
+      this.releaseShipwreckExpedition(nationId, 'no water tile beside the loading point');
+      return;
+    }
+    if (unit.tileX !== waterTile.x || unit.tileY !== waterTile.y) {
+      const path = this.pathfindingSystem.findPath(unit, waterTile.x, waterTile.y, { respectMovementPoints: false });
+      if (path === null) {
+        this.markShipwreckFailed(nationId, expedition.targetKey);
+        this.releaseShipwreckExpedition(nationId, 'Transport Ship cannot reach the loading point');
+        return;
+      }
+      this.movementSystem.moveAlongPath(unit, path);
+    }
+    // Board immediately if the move (or a waiting Archaeologist) put them in contact.
+    this.tryLoadArchaeologistOntoTransport(archaeologist, unit, nationId);
+  }
+
+  /** Board only through a genuine adjacency rendezvous — never a teleport/fake cargo. */
+  private tryLoadArchaeologistOntoTransport(archaeologist: Unit, transport: Unit, nationId: string): boolean {
+    if (!this.unitManager.canBoardUnit(archaeologist, transport)) return false;
+    const transportTile = this.mapData.tiles[transport.tileY]?.[transport.tileX];
+    const passengerTile = this.mapData.tiles[archaeologist.tileY]?.[archaeologist.tileX];
+    if (!transportTile || !passengerTile) return false;
+    if (!isWaterTile(transportTile) || isWaterTile(passengerTile)) return false;
+    if (!this.gridSystem.isAdjacent(
+      { x: archaeologist.tileX, y: archaeologist.tileY },
+      { x: transport.tileX, y: transport.tileY },
+    )) return false;
+    if (!this.unitManager.boardUnit(archaeologist.id, transport.id)) return false;
+    console.log(this.formatLog(nationId, `Archaeologist loaded for Shipwreck expedition`));
+    return true;
+  }
+
+  private findLoadingWaterTileForTransport(transport: Unit, x: number, y: number): Tile | null {
+    const neighbors = this.gridSystem.getNeighbors({ x, y }, this.mapData)
+      .filter((tile) => isWaterTile(tile) && canUnitEnterTile(transport, tile))
+      .sort((a, b) => (
+        this.gridSystem.getDistance({ x: transport.tileX, y: transport.tileY }, { x: a.x, y: a.y })
+        - this.gridSystem.getDistance({ x: transport.tileX, y: transport.tileY }, { x: b.x, y: b.y })
+        || a.y - b.y
+        || a.x - b.x
+      ));
+    for (const tile of neighbors) {
+      if ((transport.tileX === tile.x && transport.tileY === tile.y)
+        || this.pathfindingSystem.findPath(transport, tile.x, tile.y, { respectMovementPoints: false }) !== null) {
+        return tile;
+      }
+    }
+    return null;
+  }
+
+  private tryDigShipwreck(transport: Unit, nationId: string, tile: Tile): void {
+    const result = this.builderSystem?.build(transport, tile, { consumeMovement: true, requireMovement: true });
+    if (result == null) return;
+    console.log(this.formatLog(nationId, `Shipwreck excavation started at (${tile.x},${tile.y})`));
+  }
+
+  // ─── Archaeology production planning ──────────────────────────────────────────
+
+  private countArchaeologists(nationId: string): number {
+    return this.unitManager.getUnitsByOwner(nationId)
+      .filter((unit) => unit.unitType.id === ARCHAEOLOGIST.id)
+      .length;
+  }
+
+  private countQueuedArchaeologists(nationId: string): number {
+    let count = 0;
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const current = this.productionSystem.getProduction(city.id);
+      if (current?.item.kind === 'unit' && current.item.unitType.id === ARCHAEOLOGIST.id) count++;
+      for (const entry of this.productionSystem.getQueue(city.id)) {
+        if (entry.item.kind === 'unit' && entry.item.unitType.id === ARCHAEOLOGIST.id) count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Museum priority is archaeology-specific: it fires only while excavated Culture
+   * is blocked for lack of a functioning Museum and the nation is (or is about to
+   * be) exploiting sites. It never asks for a second Museum, because additional
+   * Museums do not amplify archaeological Culture. Uses live world state, so losing
+   * the last Museum restores the need automatically.
+   */
+  private getArchaeologyMuseumPriority(nationId: string): boolean {
+    if (!this.canBuildBuilding(nationId, MUSEUM.id)) return false;
+    const summary = this.getArchaeologicalCultureSystem().calculateForNation(nationId);
+    if (summary.hasFunctioningMuseum) return false;
+    if (summary.exploitedSiteCount > 0) return true;
+    // Actively pursuing: an owned Archaeologist (roaming, digging, or on expedition).
+    return this.unitManager.getUnitsByOwner(nationId).some((unit) => unit.unitType.id === ARCHAEOLOGIST.id);
+  }
+
+  private buildArchaeologyProductionPlan(nationId: string): ArchaeologyProductionPlan {
+    const museumPriority = this.getArchaeologyMuseumPriority(nationId);
+    if (!this.canBuildUnit(nationId, ARCHAEOLOGIST.id)) {
+      return { archaeologistDeficit: 0, wantsShipwreckTransport: false, museumPriority };
+    }
+    const landTargets = this.getKnownLandArchaeologyTargets(nationId, undefined).length;
+    const shipwreckTargets = this.getKnownShipwreckTargets(nationId).length;
+    const existing = this.countArchaeologists(nationId) + this.countQueuedArchaeologists(nationId);
+    const desired = Math.min(
+      MAX_ARCHAEOLOGISTS_PER_NATION,
+      desiredArchaeologistCount(landTargets + shipwreckTargets),
+    );
+    const archaeologistDeficit = Math.max(0, desired - existing);
+
+    const expedition = this.shipwreckExpeditionByNation.get(nationId);
+    const wantsShipwreckTransport = expedition !== undefined
+      && expedition.transportId === undefined
+      && this.pickFreeTransportForShipwreck(nationId) === undefined
+      && this.canBuildUnit(nationId, TRANSPORT_SHIP.id);
+
+    return { archaeologistDeficit, wantsShipwreckTransport, museumPriority };
   }
 
   // Strategy-based movement scoring shapes where AI units want to go,
@@ -5050,6 +5786,9 @@ export class AISystem {
     let plannedWorkerCount = this.countWorkers(nationId) + this.countQueuedWorkers(nationId);
     let plannedWorkBoatCount = this.countWorkBoats(nationId) + this.countQueuedWorkBoats(nationId);
     const coastalCityCount = this.countCoastalCities(nationId);
+    // Nation-level archaeology demand, consumed as cities pick it up this turn so
+    // multiple cities don't overbuild Archaeologists/Transport Ships or Museums.
+    const archaeologyPlan = this.buildArchaeologyProductionPlan(nationId);
 
     const doctrine = this.doctrineEvaluator.getDoctrine(nationId);
     const effectiveMaxUnits = getEffectiveMilitaryUnitCap(nationId, strategy.id);
@@ -5075,6 +5814,7 @@ export class AISystem {
         strategy,
         eraStrategy,
         effectiveMaxUnits,
+        archaeologyPlan,
       );
 
       let usedFallback = false;
@@ -5154,6 +5894,16 @@ export class AISystem {
           plannedNavalCount++;
         }
         if (choice.unitType.id === WORK_BOAT.id) plannedWorkBoatCount++;
+        // Consume nation-level archaeology demand so other cities don't overbuild.
+        if (choice.unitType.id === ARCHAEOLOGIST.id) {
+          archaeologyPlan.archaeologistDeficit = Math.max(0, archaeologyPlan.archaeologistDeficit - 1);
+        }
+        if (choice.unitType.id === TRANSPORT_SHIP.id) {
+          archaeologyPlan.wantsShipwreckTransport = false;
+        }
+      } else if (choice.kind === 'building' && choice.buildingType.id === MUSEUM.id) {
+        // Only one nation-wide Museum boost; extra Museums aren't archaeology-driven.
+        archaeologyPlan.museumPriority = false;
       }
     }
   }
@@ -6189,6 +6939,7 @@ export class AISystem {
     strategy: AIStrategy,
     eraStrategy: AILeaderEraStrategy,
     effectiveMaxUnits: number = strategy.military.maxUnits,
+    archaeologyPlan?: ArchaeologyProductionPlan,
   ): Producible | undefined {
     const buildings = this.cityManager.getBuildings(city.id);
     const economy = calculateCityEconomy(
@@ -6448,6 +7199,46 @@ export class AISystem {
         baseScore: (SCORE_WORK_BOAT + workBoatTarget.scoreBase) * priority,
         category: 'workBoat',
       });
+    }
+
+    // Archaeology production: only when there is a real, known reason. Modest score
+    // so it competes during stable periods without overriding urgent needs.
+    if (archaeologyPlan) {
+      if (
+        archaeologyPlan.museumPriority
+        && !buildings.has(MUSEUM.id)
+        && this.canBuildBuilding(nationId, MUSEUM.id)
+        && this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'building', buildingType: MUSEUM }) === undefined
+      ) {
+        candidates.push({
+          item: { kind: 'building', buildingType: MUSEUM },
+          baseScore: SCORE_ARCHAEOLOGY_MUSEUM + buildingBoost,
+          category: 'cultureBuilding',
+        });
+      }
+      if (
+        archaeologyPlan.archaeologistDeficit > 0
+        && this.canBuildUnit(nationId, ARCHAEOLOGIST.id)
+        && canCityProduceUnit(city, ARCHAEOLOGIST, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      ) {
+        candidates.push({
+          item: { kind: 'unit', unitType: ARCHAEOLOGIST },
+          baseScore: SCORE_ARCHAEOLOGIST,
+          category: 'archaeologist',
+        });
+      }
+      if (
+        archaeologyPlan.wantsShipwreckTransport
+        && cityHasWaterTile(city, this.mapData)
+        && this.canBuildUnit(nationId, TRANSPORT_SHIP.id)
+        && canCityProduceUnit(city, TRANSPORT_SHIP, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())
+      ) {
+        candidates.push({
+          item: { kind: 'unit', unitType: TRANSPORT_SHIP },
+          baseScore: SCORE_ARCHAEOLOGY_TRANSPORT,
+          category: 'workBoat',
+        });
+      }
     }
 
     if (

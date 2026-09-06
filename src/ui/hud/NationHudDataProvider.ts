@@ -106,6 +106,13 @@ export interface HudCultureState {
   eras: HudCultureEraState[];
 }
 
+export interface HudArchaeologicalCultureBreakdown {
+  readonly hasFunctioningMuseum: boolean;
+  readonly exploitedSiteCount: number;
+  readonly potentialCulturePerTurn: number;
+  readonly culturePerTurn: number;
+}
+
 export type HudTreeNodeStatus = 'completed' | 'available' | 'active' | 'locked';
 
 export interface HudDependencyTreeNode {
@@ -140,6 +147,7 @@ export class NationHudDataProvider {
     private readonly resourceAccessSystem?: ResourceAccessSystem,
     private readonly unitUpkeepSystem?: UnitUpkeepSystem,
     private readonly diagnosticSystem?: DiagnosticSystem,
+    private readonly getArchaeologicalCulture?: (nationId: string) => HudArchaeologicalCultureBreakdown,
   ) {}
 
   getResourceEntries(nationId: string): HudResourceEntry[] {
@@ -160,7 +168,12 @@ export class NationHudDataProvider {
     const currentCulture = this.cultureSystem.getCurrentCultureNode(nationId);
     const cultureProgress = this.cultureSystem.getCultureProgress(nationId);
     const currentCultureCost = currentCulture ? this.cultureSystem.getEffectiveCost(currentCulture.id) : 0;
-    const cultureTooltip = getCultureTooltip(currentCulture?.name, cultureProgress, currentCultureCost);
+    const cultureTooltip = getCultureTooltip(
+      currentCulture?.name,
+      cultureProgress,
+      currentCultureCost,
+      this.getArchaeologicalCulture?.(nationId),
+    );
     const happiness = this.happinessSystem.getNationState(nationId);
     const unitUpkeep = this.unitUpkeepSystem?.calculateUpkeep(nationId) ?? 0;
 
@@ -348,7 +361,12 @@ export class NationHudDataProvider {
         ? Math.max(0, Math.min(100, Math.round((this.cultureSystem.getCultureProgress(nationId) / this.cultureSystem.getEffectiveCost(current.id)) * 100)))
         : 0,
       culturePerTurn: this.cultureSystem.getCulturePerTurn(nationId),
-      tooltip: getCultureTooltip(current?.name, this.cultureSystem.getCultureProgress(nationId), current ? this.cultureSystem.getEffectiveCost(current.id) : 0),
+      tooltip: getCultureTooltip(
+        current?.name,
+        this.cultureSystem.getCultureProgress(nationId),
+        current ? this.cultureSystem.getEffectiveCost(current.id) : 0,
+        this.getArchaeologicalCulture?.(nationId),
+      ),
       eras: Array.from(eras.values()),
     };
   }
@@ -420,6 +438,19 @@ function formatTimelinePenalty(timeline?: AheadOfTimeResearchCostDetails): strin
     : '';
 }
 
-function getCultureTooltip(name: string | undefined, progress: number, cost: number): string {
-  return name ? `Culture: ${name} (${progress}/${cost})` : 'Culture: None selected';
+function getCultureTooltip(
+  name: string | undefined,
+  progress: number,
+  cost: number,
+  archaeology?: HudArchaeologicalCultureBreakdown,
+): string {
+  const progressLine = name ? `Culture: ${name} (${progress}/${cost})` : 'Culture: None selected';
+  return archaeology ? `${progressLine}\n${formatArchaeologicalCultureLine(archaeology)}` : progressLine;
+}
+
+export function formatArchaeologicalCultureLine(archaeology: HudArchaeologicalCultureBreakdown): string {
+  if (archaeology.exploitedSiteCount > 0 && !archaeology.hasFunctioningMuseum) {
+    return 'Archaeological discoveries: +0 (Museum required)';
+  }
+  return `Archaeological discoveries: +${archaeology.culturePerTurn}`;
 }

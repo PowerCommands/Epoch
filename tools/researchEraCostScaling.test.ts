@@ -92,8 +92,9 @@ test('all technology eras use the centralized configured multipliers', () => {
 
 test('effective cost applies game speed, then era scaling, with nearest-integer rounding', () => {
   const standard = getGameSpeedById('standard');
-  // 101 × 0.50 rounds to 51 under the existing speed rule; 51 × 1.10 = 56.1 → 56.
-  assert.equal(getEffectiveTechnologyCost(makeTechnology('medieval'), standard), 56);
+  // Standard speed costMultiplier 1.00 leaves 101; × 1.10 (medieval) = 111.1 → 111;
+  // ÷ 1.5 research pacing = 74.0 → 74.
+  assert.equal(getEffectiveTechnologyCost(makeTechnology('medieval'), standard), 74);
 });
 
 test('timeline multiplier is 1 after and exactly at the canonical era start', () => {
@@ -197,7 +198,8 @@ test('progressive era scaling and timeline scaling both apply exactly once', () 
     Number.POSITIVE_INFINITY,
   );
   const timelineMultiplier = getAheadOfTimeResearchCostMultiplier('modern', 1800);
-  assert.equal(progressiveCost, 900);
+  // 1000 × 1.80 (modern) = 1800; ÷ 1.5 research pacing = 1200 (no timeline penalty).
+  assert.equal(progressiveCost, 1200);
   assert.equal(
     getEffectiveTechnologyCost(technology, standard, 1800),
     Math.round(progressiveCost * timelineMultiplier),
@@ -210,7 +212,8 @@ test('technology definitions retain their existing base costs', () => {
   const effectiveCost = getEffectiveTechnologyCost(technology, getGameSpeedById('standard'));
   assert.equal(technology.cost, originalBaseCost);
   assert.equal(originalBaseCost, 6100);
-  assert.equal(effectiveCost, 6710);
+  // 6100 × 2.2 (atomic) = 13420; ÷ 1.5 research pacing = 8946.67 → 8947.
+  assert.equal(effectiveCost, 8947);
 });
 
 test('human research cannot finish at base cost and completes at effective cost', () => {

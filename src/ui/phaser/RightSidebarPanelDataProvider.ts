@@ -78,6 +78,7 @@ import {
 import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../../types/worldCouncil';
 import type { CorporationSystem } from '../../systems/CorporationSystem';
 import type { AerospacePartSystem } from '../../systems/AerospacePartSystem';
+import type { ArchaeologicalCultureSummary } from '../../systems/ArchaeologicalCultureSystem';
 import type { TradeDealSystem } from '../../systems/TradeDealSystem';
 import type { TradeConnectionSystem } from '../../systems/TradeConnectionSystem';
 import type { HumanTradeDealWorkflow } from '../../systems/HumanTradeDealWorkflow';
@@ -240,12 +241,14 @@ export class RightSidebarPanelDataProvider {
   private tradeDiplomacySystem: TradeDiplomacySystem | null = null;
   private resourceAccessSystem: ResourceAccessSystem | null = null;
   private resourceCitySearchSystem: ResourceCitySearchSystem | null = null;
+  private resourceVisibilityProvider: ((resourceId: string) => boolean) | null = null;
   private detailsSearchQuery = '';
   private eraSystem: EraSystem | null = null;
   private gamesOfNationsSystem: GamesOfNationsSystem | null = null;
   private victorySystem: VictorySystem | null = null;
   private cityDefenseSystem: CityDefenseSystem | null = null;
   private populationCapacityProvider: ((cityId: string) => number) | null = null;
+  private archaeologicalCultureProvider: ((nationId: string) => ArchaeologicalCultureSummary & { readonly culturePerTurn: number }) | null = null;
   private readonly tradingExportDestinations = new Map<string, string>();
   private readonly tradingExportDurations = new Map<string, number>();
   private readonly tradingImportDurations = new Map<string, number>();
@@ -405,6 +408,10 @@ export class RightSidebarPanelDataProvider {
     this.resourceCitySearchSystem = resourceCitySearchSystem;
   }
 
+  setResourceVisibilityProvider(provider: (resourceId: string) => boolean): void {
+    this.resourceVisibilityProvider = provider;
+  }
+
   setEraSystem(eraSystem: EraSystem): void {
     this.eraSystem = eraSystem;
   }
@@ -423,6 +430,12 @@ export class RightSidebarPanelDataProvider {
 
   setPopulationCapacityProvider(provider: (cityId: string) => number): void {
     this.populationCapacityProvider = provider;
+  }
+
+  setArchaeologicalCultureProvider(
+    provider: (nationId: string) => ArchaeologicalCultureSummary & { readonly culturePerTurn: number },
+  ): void {
+    this.archaeologicalCultureProvider = provider;
   }
 
   setDiscoverySystem(ds: DiscoverySystem): void {
@@ -913,7 +926,10 @@ export class RightSidebarPanelDataProvider {
     const constructingImprovement = improvementConstruction
       ? getImprovementById(improvementConstruction.improvementId)
       : undefined;
-    const resource = tile.resourceId ? getNaturalResourceById(tile.resourceId) : undefined;
+    const resource = tile.resourceId
+      && (this.resourceVisibilityProvider?.(tile.resourceId) ?? true)
+      ? getNaturalResourceById(tile.resourceId)
+      : undefined;
     const builderHint = this.builderHintProvider?.(tile) ?? null;
     const rows: RightSidebarRow[] = [
       textRow(tile.type, false, true),
@@ -938,13 +954,19 @@ export class RightSidebarPanelDataProvider {
         true,
       ));
     }
-    if (resource) rows.push(textRow(`Resource bonus: ${formatYieldBonus(resource.yieldBonus)}`));
+    if (resource) {
+      rows.push(textRow(`Resource bonus: ${formatYieldBonus(resource.yieldBonus)}`));
+      if (resource.archaeological === true) {
+        rows.push(textRow(`Archaeological Culture: +${resource.archaeologicalCultureValue ?? 0}`));
+        rows.push(textRow('Requires the completed associated excavation and a functioning Museum.', true));
+      }
+    }
     if (improvement) rows.push(textRow(`Bonus: ${formatYieldBonus(improvement.yieldBonus)}`));
     if (builderHint) {
       rows.push(textRow(
         builderHint.canBuild && builderHint.improvement
-          ? `Worker can construct ${builderHint.improvement.name} here`
-          : `Worker cannot improve this tile${builderHint.reason ? `: ${builderHint.reason}` : ''}`,
+          ? `Can construct ${builderHint.improvement.name} here`
+          : `Cannot improve this tile${builderHint.reason ? `: ${builderHint.reason}` : ''}`,
         true,
       ));
     }
@@ -1150,6 +1172,7 @@ export class RightSidebarPanelDataProvider {
     const cities = this.cityManager.getCitiesByOwner(nationId);
     const units = this.unitManager.getUnitsByOwner(nationId);
     const happiness = this.happinessSystem.getNationState(nationId);
+    const archaeologicalCulture = this.archaeologicalCultureProvider?.(nationId);
     const era = this.eraSystem?.getNationEra(nationId);
     const unitCounts = new Map<string, number>();
     for (const unit of units) unitCounts.set(unit.unitType.name, (unitCounts.get(unit.unitType.name) ?? 0) + 1);
@@ -1167,6 +1190,11 @@ export class RightSidebarPanelDataProvider {
         rows: [
           textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
           textRow(`Culture: ${resources.culture} (+${resources.culturePerTurn}/turn)`),
+          ...(archaeologicalCulture
+            ? [textRow(archaeologicalCulture.exploitedSiteCount > 0 && !archaeologicalCulture.hasFunctioningMuseum
+              ? 'Archaeological discoveries: +0 (Museum required)'
+              : `Archaeological discoveries: +${archaeologicalCulture.culturePerTurn}/turn`)]
+            : []),
           textRow(`Influence: ${resources.influence} (+${resources.influencePerTurn}/turn)`),
           textRow(`Happiness: ${formatSigned(happiness.netHappiness)}`),
         ],

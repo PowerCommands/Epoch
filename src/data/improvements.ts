@@ -6,6 +6,17 @@ export interface TileImprovementDefinition {
   name: string;
   allowedTileTypes: TileType[];
   yieldBonus: TileYield;
+  /** Fixed build duration; omitted improvements retain the normal era scale. */
+  buildTurns?: number;
+  /** Capability required instead of the ordinary Worker build capability. */
+  requiredBuilderCapability?: string;
+  /**
+   * When set, the capable builder must be cargo aboard this unit type. The
+   * carrier is the unit that supplies movement and remains on the target tile.
+   */
+  requiredCargoTransportUnitTypeId?: string;
+  /** Optional map sprite loaded from assets/sprites/improvements/{id}.png. */
+  spriteKey?: string;
 }
 
 export const FARM: TileImprovementDefinition = {
@@ -64,6 +75,34 @@ export const OFFSHORE_PLATFORM: TileImprovementDefinition = {
   yieldBonus: { food: 0, production: 4, gold: 0 },
 };
 
+export const ARCHAEOLOGICAL_DIG: TileImprovementDefinition = {
+  id: 'archaeological_dig',
+  name: 'Archaeological Dig',
+  allowedTileTypes: [
+    TileType.Plains,
+    TileType.Meadow,
+    TileType.Desert,
+    TileType.Forest,
+    TileType.Beach,
+    TileType.Mountain,
+  ],
+  yieldBonus: { food: 0, production: 0, gold: 0 },
+  buildTurns: 3,
+  requiredBuilderCapability: 'dig',
+  spriteKey: 'improvement_archaeological_dig',
+};
+
+export const UNDERWATER_ARCHAEOLOGICAL_SITE: TileImprovementDefinition = {
+  id: 'underwater_archaeological_site',
+  name: 'Underwater Archaeological Site',
+  allowedTileTypes: [TileType.Coast, TileType.Ocean],
+  yieldBonus: { food: 0, production: 0, gold: 0 },
+  buildTurns: 4,
+  requiredBuilderCapability: 'dig',
+  requiredCargoTransportUnitTypeId: 'transport_ship',
+  spriteKey: 'improvement_underwater_archaeological_site',
+};
+
 export const ALL_IMPROVEMENTS: TileImprovementDefinition[] = [
   FARM,
   LUMBER_MILL,
@@ -73,6 +112,8 @@ export const ALL_IMPROVEMENTS: TileImprovementDefinition[] = [
   OIL_WELL,
   FISHING_BOATS,
   OFFSHORE_PLATFORM,
+  ARCHAEOLOGICAL_DIG,
+  UNDERWATER_ARCHAEOLOGICAL_SITE,
 ];
 
 export function getImprovementById(id: string): TileImprovementDefinition | undefined {

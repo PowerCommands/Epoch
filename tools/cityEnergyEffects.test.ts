@@ -320,7 +320,7 @@ test('energy shortage countdown survives the real city save/load path', () => {
     unitManager: { getAllUnits: () => [] },
     productionSystem,
     policySystem: { getActivePolicyAssignments: () => [] },
-    diplomacyManager: { getAllStates: () => [], getPendingPeaceProposals: () => [] },
+    diplomacyManager: { getAllStates: () => [], getAllVassalRelationships: () => [], getPendingPeaceProposals: () => [], getPeaceTreatyCooldownTurns: () => 0, getMinPeaceNegotiationTurns: () => 0 },
     discoverySystem: { getAllMetPairs: () => [] },
     turnManager: original.turnManager,
     gridSystem: original.gridSystem,

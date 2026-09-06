@@ -1,5 +1,6 @@
 import { TileType } from '../types/map';
 import type { NaturalResourceDefinition, NaturalResourceYield } from '../types/naturalResources';
+import { HUMANISM_CULTURE_NODE_ID } from './cultureTree';
 
 const ZERO_RESOURCE_YIELD: NaturalResourceYield = {
   food: 0,
@@ -19,6 +20,84 @@ function iconKey(id: string): string {
 }
 
 export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
+  {
+    id: 'ancient_pottery',
+    name: 'Ancient Pottery',
+    category: 'bonus',
+    allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Desert, TileType.Forest, TileType.Beach],
+    yieldBonus: yieldBonus({}),
+    iconKey: iconKey('ancient_pottery'),
+    weight: 0.8,
+    archaeological: true,
+    archaeologicalCultureValue: 3,
+    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    improvementId: 'archaeological_dig',
+  },
+  {
+    id: 'ancient_coins',
+    name: 'Ancient Coins',
+    category: 'bonus',
+    allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Desert, TileType.Forest, TileType.Beach],
+    yieldBonus: yieldBonus({}),
+    iconKey: iconKey('ancient_coins'),
+    weight: 0.6,
+    archaeological: true,
+    archaeologicalCultureValue: 5,
+    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    improvementId: 'archaeological_dig',
+  },
+  {
+    id: 'ancient_weapons',
+    name: 'Ancient Weapons',
+    category: 'bonus',
+    allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Desert, TileType.Forest, TileType.Beach],
+    yieldBonus: yieldBonus({}),
+    iconKey: iconKey('ancient_weapons'),
+    weight: 0.4,
+    archaeological: true,
+    archaeologicalCultureValue: 7,
+    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    improvementId: 'archaeological_dig',
+  },
+  {
+    id: 'royal_relics',
+    name: 'Royal Relics',
+    category: 'bonus',
+    allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Desert, TileType.Forest],
+    yieldBonus: yieldBonus({}),
+    iconKey: iconKey('royal_relics'),
+    weight: 0.2,
+    archaeological: true,
+    archaeologicalCultureValue: 10,
+    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    improvementId: 'archaeological_dig',
+  },
+  {
+    id: 'ancient_treasure',
+    name: 'Ancient Treasure',
+    category: 'bonus',
+    allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Desert, TileType.Forest, TileType.Mountain],
+    yieldBonus: yieldBonus({}),
+    iconKey: iconKey('ancient_treasure'),
+    weight: 0.1,
+    archaeological: true,
+    archaeologicalCultureValue: 15,
+    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    improvementId: 'archaeological_dig',
+  },
+  {
+    id: 'shipwreck',
+    name: 'Shipwreck',
+    category: 'bonus',
+    allowedTileTypes: [TileType.Coast, TileType.Ocean],
+    yieldBonus: yieldBonus({}),
+    iconKey: iconKey('shipwreck'),
+    weight: 0.05,
+    archaeological: true,
+    archaeologicalCultureValue: 25,
+    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    improvementId: 'underwater_archaeological_site',
+  },
   {
     id: 'wheat',
     name: 'Wheat',
@@ -309,6 +388,29 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
 
 export function getNaturalResourceById(id: string): NaturalResourceDefinition | undefined {
   return NATURAL_RESOURCES.find((resource) => resource.id === id);
+}
+
+export interface NaturalResourceRevealKnowledge {
+  isTechnologyResearched(technologyId: string): boolean;
+  isCultureNodeUnlocked(cultureNodeId: string): boolean;
+}
+
+/** Resolve all per-nation discovery requirements without changing the tile. */
+export function isNaturalResourceRevealed(
+  resourceId: string,
+  knowledge: NaturalResourceRevealKnowledge,
+): boolean {
+  const resource = getNaturalResourceById(resourceId);
+  if (!resource) return false;
+  if (
+    resource.revealTechId
+    && !knowledge.isTechnologyResearched(resource.revealTechId)
+  ) return false;
+  if (
+    resource.revealCultureNodeId
+    && !knowledge.isCultureNodeUnlocked(resource.revealCultureNodeId)
+  ) return false;
+  return true;
 }
 
 export function getNaturalResourceImprovementIdForTile(
