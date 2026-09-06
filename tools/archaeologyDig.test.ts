@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { ARCHAEOLOGICAL_DIG, FARM } from '../src/data/improvements.ts';
-import { ARCHAEOLOGIST, WORKER } from '../src/data/units.ts';
+import { ARCHAEOLOGICAL_DIG, FARM, UNDERWATER_ARCHAEOLOGICAL_SITE } from '../src/data/improvements.ts';
+import { ARCHAEOLOGIST, TRANSPORT_SHIP, WORKER } from '../src/data/units.ts';
 import { City } from '../src/entities/City.ts';
 import { Nation } from '../src/entities/Nation.ts';
 import { Unit } from '../src/entities/Unit.ts';
@@ -177,6 +177,85 @@ test('Dig construction and completion use existing tile save/load state', () => 
   SaveLoadService.restoreTiles(completedSave, completed.mapData);
   assert.equal(completed.tile.resourceId, 'ancient_coins');
   assert.equal(completed.tile.improvementId, ARCHAEOLOGICAL_DIG.id);
+});
+
+function createShipwreckHarness(options: { tileOwned?: boolean; tileInCity?: boolean } = {}) {
+  const mapData: MapData = {
+    width: 3,
+    height: 2,
+    tileSize: 48,
+    tiles: Array.from({ length: 2 }, (_, y) => (
+      Array.from({ length: 3 }, (_, x): Tile => ({ x, y, type: TileType.Coast }))
+    )),
+  };
+  const wreck = mapData.tiles[0][1];
+  wreck.resourceId = 'shipwreck';
+  wreck.type = TileType.Coast;
+  if (options.tileOwned) wreck.ownerId = OWNER_ID;
+
+  const nation = new Nation({ id: OWNER_ID, name: 'Excavators', color: 0x876543, researchedTechIds: ['archaeology'] });
+  const nations = new NationManager();
+  nations.addNation(nation);
+  const turns = new TurnManager(nations);
+  const cities = new CityManager();
+  const city = new City({ id: 'city', name: 'Port', ownerId: OWNER_ID, tileX: 0, tileY: 1 });
+  city.ownedTileCoords = options.tileInCity
+    ? [{ x: 0, y: 1 }, { x: wreck.x, y: wreck.y }]
+    : [{ x: 0, y: 1 }];
+  cities.addCity(city);
+  const units = new UnitManager(mapData.width, mapData.height);
+  const transport = new Unit({
+    id: 'transport', name: TRANSPORT_SHIP.name, ownerId: OWNER_ID, tileX: wreck.x, tileY: wreck.y, unitType: TRANSPORT_SHIP,
+  });
+  const archaeologist = new Unit({
+    id: 'archaeologist', name: ARCHAEOLOGIST.name, ownerId: OWNER_ID, tileX: wreck.x, tileY: wreck.y, unitType: ARCHAEOLOGIST,
+  });
+  units.addUnit(transport);
+  units.addUnit(archaeologist);
+  units.boardUnit(archaeologist.id, transport.id, 0);
+  const research = new ResearchSystem(nations, cities, () => turns.getCurrentRound());
+  const builder = new BuilderSystem(
+    units, cities, turns, mapData, new HexGridSystem(), research, undefined, undefined, () => true,
+  );
+  return { mapData, wreck, builder, transport, archaeologist, units };
+}
+
+test('Shipwreck Dig starts with an Archaeologist aboard a Transport Ship over the wreck', () => {
+  const h = createShipwreckHarness();
+  // The preview is offered from either the selected carrier or its cargo.
+  const transportPreview = h.builder.getCurrentTileBuildPreview(h.transport);
+  const cargoPreview = h.builder.getCurrentTileBuildPreview(h.archaeologist);
+  assert.equal(transportPreview.canBuild, true);
+  assert.equal(transportPreview.improvementId, UNDERWATER_ARCHAEOLOGICAL_SITE.id);
+  assert.equal(transportPreview.builderUnitId, h.archaeologist.id);
+  assert.equal(transportPreview.transportUnitId, h.transport.id);
+  assert.equal(cargoPreview.canBuild, true);
+
+  const result = h.builder.build(h.transport, h.wreck);
+  assert.ok(result);
+  assert.equal(result.requiredTurns, UNDERWATER_ARCHAEOLOGICAL_SITE.buildTurns);
+  assert.equal(h.wreck.improvementConstruction?.improvementId, UNDERWATER_ARCHAEOLOGICAL_SITE.id);
+  assert.equal(h.wreck.improvementConstruction?.unitId, h.archaeologist.id);
+  assert.equal(h.wreck.improvementConstruction?.transportUnitId, h.transport.id);
+  // Both the Archaeologist and the Transport go inactive while excavating.
+  assert.equal(h.archaeologist.actionStatus, 'building');
+  assert.equal(h.transport.movementPoints, 0);
+});
+
+test('Shipwreck Dig preview never promises more than build delivers, regardless of tile ownership', () => {
+  // Regression: an owned wreck tile that belongs to no city\'s owned-tile list
+  // used to pass the naval preview yet be refused by build() (Dig did nothing).
+  for (const options of [
+    { tileOwned: false, tileInCity: false },
+    { tileOwned: true, tileInCity: true },
+    { tileOwned: true, tileInCity: false },
+  ]) {
+    const h = createShipwreckHarness(options);
+    const preview = h.builder.getCurrentTileBuildPreview(h.transport);
+    const result = h.builder.build(h.transport, h.wreck);
+    assert.equal(preview.canBuild, result !== null, JSON.stringify(options));
+    assert.ok(result, `build should start for ${JSON.stringify(options)}`);
+  }
 });
 
 test('Dig action and graphical assets use existing UI/asset infrastructure', () => {

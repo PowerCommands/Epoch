@@ -7,6 +7,7 @@ const PADDING_X = 10;
 const PADDING_Y = 7;
 const OFFSET_X = 12;
 const OFFSET_Y = 14;
+const DEFAULT_TEXT_COLOR = '#edf5ff';
 
 export class Tooltip {
   private readonly background: Phaser.GameObjects.Rectangle;
@@ -27,7 +28,7 @@ export class Tooltip {
     this.text = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
       fontFamily: 'Arial, sans-serif',
       fontSize: '13px',
-      color: '#edf5ff',
+      color: DEFAULT_TEXT_COLOR,
       wordWrap: { width: 240 },
     }))
       .setOrigin(0, 0)
@@ -38,8 +39,9 @@ export class Tooltip {
     this.scene.input.on(Phaser.Input.Events.POINTER_MOVE, this.handlePointerMove);
   }
 
-  show(text: string, pointer: Phaser.Input.Pointer): void {
+  show(text: string, pointer: Phaser.Input.Pointer, color: string = DEFAULT_TEXT_COLOR): void {
     this.pointer = pointer;
+    this.text.setColor(color);
     this.text.setText(text);
     this.background
       .setSize(this.text.width + PADDING_X * 2, this.text.height + PADDING_Y * 2)

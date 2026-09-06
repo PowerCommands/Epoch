@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AQUEDUCT, SEWERS, getBuildingById } from '../src/data/buildings.ts';
+import {
+  AQUEDUCT,
+  HOSPITAL,
+  HYDRO_PLANT,
+  MEDICAL_LAB,
+  SEWERS,
+  getBuildingById,
+} from '../src/data/buildings.ts';
 import { POWER_PLANTS } from '../src/data/powerPlants.ts';
 import { City } from '../src/entities/City.ts';
 import { Nation } from '../src/entities/Nation.ts';
@@ -147,7 +154,7 @@ test('no plant, every active plant, and an inactive plant provide canonical capa
     active.constructPlant(metadata.buildingId);
     assert.equal(
       active.powerPlantSystem.getCityPopulationCapacity(active.city.id),
-      metadata.futurePopulationCap,
+      6 + metadata.populationCapacityBonus,
       metadata.buildingId,
     );
   }
@@ -159,7 +166,7 @@ test('no plant, every active plant, and an inactive plant provide canonical capa
   assert.equal(inactive.powerPlantSystem.getCityPopulationCapacity(inactive.city.id), 6);
 });
 
-test('capacity infrastructure follows the complete non-stacking hierarchy', () => {
+test('capacity infrastructure is additive while normal plant bonuses preserve progression', () => {
   const h = makeHarness();
   assert.equal(h.powerPlantSystem.getCityPopulationCapacity(h.city.id), 6);
   h.cityManager.getBuildings(h.city.id).add(SEWERS);
@@ -180,20 +187,62 @@ test('capacity infrastructure follows the complete non-stacking hierarchy', () =
     withPlant.constructPlant(buildingId);
     assert.equal(withPlant.powerPlantSystem.getCityPopulationCapacity(withPlant.city.id), capacity);
   }
+
+  const coalOnly = makeHarness();
+  coalOnly.constructPlant('coal_power_plant');
+  assert.equal(coalOnly.powerPlantSystem.getCityPopulationCapacity(coalOnly.city.id), 12);
+
+  const hospitalOnly = makeHarness();
+  hospitalOnly.cityManager.getBuildings(hospitalOnly.city.id).add(HOSPITAL);
+  assert.equal(hospitalOnly.powerPlantSystem.getCityPopulationCapacity(hospitalOnly.city.id), 10);
+
+  const urban = makeHarness();
+  for (const building of [SEWERS, AQUEDUCT, HOSPITAL, HYDRO_PLANT, MEDICAL_LAB]) {
+    urban.cityManager.getBuildings(urban.city.id).add(building);
+  }
+  assert.equal(urban.powerPlantSystem.getCityPopulationCapacity(urban.city.id), 20);
+  urban.constructPlant('gas_power_plant');
+  assert.equal(urban.powerPlantSystem.getCityPopulationCapacity(urban.city.id), 34);
 });
 
-test('every capacity building describes its canonical population support', () => {
+test('every capacity building describes its additive population support', () => {
   const expected = new Map([
-    ['sewers', 8],
-    ['aqueduct', 10],
-    ['coal_power_plant', 16],
-    ['oil_power_plant', 20],
-    ['gas_power_plant', 24],
-    ['nuclear_plant', 48],
+    ['sewers', 2],
+    ['aqueduct', 2],
+    ['hospital', 4],
+    ['hydro_plant', 4],
+    ['medical_lab', 2],
+    ['coal_power_plant', 6],
+    ['oil_power_plant', 10],
+    ['gas_power_plant', 14],
+    ['nuclear_plant', 38],
   ]);
   for (const [buildingId, capacity] of expected) {
-    assert.match(getBuildingById(buildingId)!.description, new RegExp(`Population Capacity: ${capacity}\\b`));
+    assert.match(getBuildingById(buildingId)!.description, new RegExp(`Population Capacity: \\+${capacity}\\b`));
   }
+});
+
+test('normal plants never stack and Hydro Plant remains independent', () => {
+  const h = makeHarness();
+  h.cityManager.getBuildings(h.city.id).add(HYDRO_PLANT);
+  h.cityManager.getBuildings(h.city.id).add(getBuildingById('coal_power_plant')!);
+  h.cityManager.getBuildings(h.city.id).add(getBuildingById('gas_power_plant')!);
+  h.mapData.tiles[8][7].resourceId = 'coal';
+  h.mapData.tiles[8][8].resourceId = 'natural_gas';
+  h.resourceAccessSystem.invalidateResourceIndex();
+
+  const normalized = new PowerPlantSystem(h.cityManager, h.resourceAccessSystem, h.mapData, 1);
+  assert.equal(normalized.getCityPowerPlant(h.city.id)?.buildingId, 'gas_power_plant');
+  assert.equal(normalized.getCityPopulationCapacity(h.city.id), 24, 'base 6 + Hydro 4 + best plant 14');
+  assert.equal(h.cityManager.getBuildings(h.city.id).has('coal_power_plant'), false);
+});
+
+test('broken additive infrastructure does not contribute', () => {
+  const h = makeHarness();
+  h.cityManager.getBuildings(h.city.id).add(HOSPITAL);
+  assert.equal(h.powerPlantSystem.getCityPopulationCapacity(h.city.id), 10);
+  h.cityManager.getBuildings(h.city.id).setBroken(HOSPITAL.id, true);
+  assert.equal(h.powerPlantSystem.getCityPopulationCapacity(h.city.id), 6);
 });
 
 test('energy shortage has five grace turns and then declines every five turns', () => {
@@ -217,7 +266,7 @@ test('sufficient capacity resolves shortage immediately', () => {
   const h = makeHarness(15);
   h.advanceOwnerTurns(4);
   assert.equal(h.city.energyShortageTurns, 4);
-  h.constructPlant('coal_power_plant');
+  h.constructPlant('gas_power_plant');
   h.advanceOwnerTurns(1);
   assert.equal(h.city.energyShortageTurns, undefined);
   assert.equal(h.city.population, 15);
@@ -377,4 +426,60 @@ test('energy shortage countdown survives the real city save/load path', () => {
   assert.equal(restoredCity.population, 14);
   assert.equal(restoredCity.energyShortageTurns, 10);
   assert.equal(restoredHappiness.getNationState(NATION_ID).unhappinessFromEnergyShortages, 1);
+});
+
+test('existing saved building ids derive additive capacity without migration', () => {
+  const original = makeHarness();
+  original.cityManager.getBuildings(original.city.id).add(SEWERS);
+  original.cityManager.getBuildings(original.city.id).add(AQUEDUCT);
+  original.constructPlant('nuclear_plant');
+  const productionSystem = new ProductionSystem(
+    original.cityManager,
+    original.turnManager,
+    original.happinessSystem,
+  );
+  const saved = SaveLoadService.serialize({
+    mapKey: 'capacity-compatibility-test',
+    humanNationId: NATION_ID,
+    activeNationIds: [NATION_ID],
+    gameSpeedId: 'standard',
+    mapData: original.mapData,
+    nationManager: original.nationManager,
+    cityManager: original.cityManager,
+    unitManager: { getAllUnits: () => [] },
+    productionSystem,
+    powerPlantSystem: original.powerPlantSystem,
+    policySystem: { getActivePolicyAssignments: () => [] },
+    diplomacyManager: { getAllStates: () => [], getAllVassalRelationships: () => [], getPendingPeaceProposals: () => [], getPeaceTreatyCooldownTurns: () => 0, getMinPeaceNegotiationTurns: () => 0 },
+    discoverySystem: { getAllMetPairs: () => [] },
+    turnManager: original.turnManager,
+    gridSystem: original.gridSystem,
+    wonderSystem: { getCompletedWonders: () => [] },
+  } as unknown as SaveLoadContext);
+
+  const restored = makeHarness();
+  const applyCitiesAndProduction = (SaveLoadService as unknown as {
+    applyCitiesAndProduction: (
+      cities: SavedCity[], cityManager: CityManager, productionSystem: ProductionSystem,
+      mapData: MapData, gridSystem: HexGridSystem, gameSpeedId: 'standard',
+    ) => void;
+  }).applyCitiesAndProduction;
+  const restoredProduction = new ProductionSystem(
+    restored.cityManager,
+    restored.turnManager,
+    restored.happinessSystem,
+  );
+  applyCitiesAndProduction(
+    saved.cities,
+    restored.cityManager,
+    restoredProduction,
+    restored.mapData,
+    restored.gridSystem,
+    'standard',
+  );
+  SaveLoadService.restoreTiles(saved.tiles, restored.mapData);
+  restored.resourceAccessSystem.invalidateResourceIndex();
+  restored.powerPlantSystem.restore(saved.cities, saved.turn.currentRound);
+  restored.powerPlantSystem.refreshAllocation(false);
+  assert.equal(restored.powerPlantSystem.getCityPopulationCapacity(original.city.id), 48);
 });

@@ -132,3 +132,58 @@ test('restoring a save with an unresolved meeting re-opens the human session', (
   restored.restore(saved!);
   assert.ok(restored.getPendingHumanVoteMeeting(), 'the pending vote session is reconstructed on load');
 });
+
+// --- lazily-resolved target preview for the voting UI --------------------
+
+test('previewProposalTargets names the two warring nations for a ceasefire proposal', () => {
+  const resolutionSystem = new WorldCouncilResolutionSystem();
+  const wars = new Set(['alpha|beta']);
+  resolutionSystem.setRuntime({
+    getDiplomacyState: (a: string, b: string) =>
+      wars.has([a, b].sort().join('|')) ? 'WAR' : 'PEACE',
+    getRelationMemory: () => ({ trust: 0, hostility: 0 }),
+  } as never);
+
+  const members = ['alpha', 'beta', 'gamma'].map((nationId) => ({ nationId })) as never;
+  const context = {
+    meeting: { id: 1, kind: 'regular', turn: 51, cityId: 'geneva' },
+    turn: 51,
+    members,
+    previousEmergencyMeetings: [],
+    nextRegularMeetingTurn: 101,
+  } as never;
+
+  const targets = resolutionSystem.previewProposalTargets(
+    { slot: 'random', resolutionId: 'ceasefire_resolution' },
+    context,
+  );
+  assert.deepEqual(
+    [targets.targetNationId, targets.secondaryTargetNationId].sort(),
+    ['alpha', 'beta'],
+    'the ceasefire preview surfaces exactly the two nations that are at war',
+  );
+});
+
+test('previewProposalTargets returns no target when no members are at war', () => {
+  const resolutionSystem = new WorldCouncilResolutionSystem();
+  resolutionSystem.setRuntime({
+    getDiplomacyState: () => 'PEACE',
+    getRelationMemory: () => ({ trust: 0, hostility: 0 }),
+  } as never);
+
+  const members = ['alpha', 'beta'].map((nationId) => ({ nationId })) as never;
+  const context = {
+    meeting: { id: 1, kind: 'regular', turn: 51, cityId: 'geneva' },
+    turn: 51,
+    members,
+    previousEmergencyMeetings: [],
+    nextRegularMeetingTurn: 101,
+  } as never;
+
+  const targets = resolutionSystem.previewProposalTargets(
+    { slot: 'random', resolutionId: 'ceasefire_resolution' },
+    context,
+  );
+  assert.equal(targets.targetNationId, undefined, 'no ceasefire target without an active war');
+  assert.equal(targets.secondaryTargetNationId, undefined, 'no secondary target without an active war');
+});

@@ -238,13 +238,13 @@ export class PowerPlantSystem {
 
   getCityPopulationCapacity(cityId: string): number {
     const plant = this.getCityPowerPlant(cityId);
-    const plantCapacity = plant?.active
-      ? getPowerPlantMetadata(plant.buildingId)?.futurePopulationCap ?? BASE_CITY_POPULATION_CAPACITY
-      : BASE_CITY_POPULATION_CAPACITY;
-    const infrastructureCapacity = this.cityManager.getBuildings(cityId).getAll().reduce((highest, buildingId) => (
-      Math.max(highest, getBuildingById(buildingId)?.modifiers.populationCapacity ?? BASE_CITY_POPULATION_CAPACITY)
-    ), BASE_CITY_POPULATION_CAPACITY);
-    return Math.max(BASE_CITY_POPULATION_CAPACITY, infrastructureCapacity, plantCapacity);
+    const plantBonus = plant?.active
+      ? getPowerPlantMetadata(plant.buildingId)?.populationCapacityBonus ?? 0
+      : 0;
+    const infrastructureBonus = this.cityManager.getBuildings(cityId).getAll().reduce((total, buildingId) => (
+      total + (getBuildingById(buildingId)?.modifiers.populationCapacity ?? 0)
+    ), 0);
+    return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus;
   }
 
   getCityProductionMultiplier(cityId: string): number {
@@ -331,11 +331,15 @@ export class PowerPlantSystem {
     const current = this.states.get(cityId);
     const kept = current && plantEntries.some((entry) => entry.buildingId === current.buildingId)
       ? current.buildingId
-      : plantEntries[0].buildingId;
+      : plantEntries.slice().sort((a, b) => (
+        (getPowerPlantMetadata(b.buildingId)?.populationCapacityBonus ?? 0)
+        - (getPowerPlantMetadata(a.buildingId)?.populationCapacityBonus ?? 0)
+        || a.buildingId.localeCompare(b.buildingId)
+      ))[0].buildingId;
     if (!current || current.buildingId !== kept) this.states.set(cityId, { buildingId: kept, age: 0 });
 
-    // Old/editor-authored data may contain several plants. Keep the stable first
-    // entry and normalize the city immediately to the one-plant invariant.
+    // Old/editor-authored data may contain several plants. Keep the strongest
+    // one and normalize the city immediately to the one-plant invariant.
     for (const entry of plantEntries) {
       if (entry.buildingId === kept) continue;
       this.removePhysicalPlant(cityId, entry.buildingId);

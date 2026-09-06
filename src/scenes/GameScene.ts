@@ -2664,6 +2664,7 @@ export class GameScene extends Phaser.Scene {
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
     );
     cityView.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
+    cityBannerRenderer.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     resourceSystem.setCityEnergyProvider(
       powerPlantSystem,
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
@@ -4188,6 +4189,16 @@ export class GameScene extends Phaser.Scene {
           const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
           const isRepeal = proposal.repealTargetEnactedResolutionId !== undefined;
           const votingType = isRepeal ? 'influence' : definition?.votingType ?? 'influence';
+          // Some resolutions (ceasefire, peacekeeping, sanctions, embargo) resolve
+          // their target lazily, so the proposal the human votes on has no target
+          // baked in yet. Preview the same target the resolution would pick so the
+          // voting card names the specific nation(s) the resolution concerns.
+          const previewTargets = proposal.targetNationId === undefined
+            ? worldCouncilSystem.previewPendingProposalTargets(proposal)
+            : {};
+          const targetNationId = proposal.targetNationId ?? previewTargets.targetNationId;
+          const secondaryTargetNationId = proposal.secondaryTargetNationId
+            ?? previewTargets.secondaryTargetNationId;
           return {
             key: worldCouncilProposalVoteKey(proposal),
             icon: isRepeal ? '↩' : definition?.icon ?? '📜',
@@ -4196,8 +4207,8 @@ export class GameScene extends Phaser.Scene {
               ? `If passed, removes the active effect of ${definition?.title ?? proposal.resolutionId}.`
               : definition?.description ?? '',
             proposerNationName: nationName(proposal.proposerNationId),
-            targetNationName: nationName(proposal.targetNationId),
-            secondaryTargetNationName: nationName(proposal.secondaryTargetNationId),
+            targetNationName: nationName(targetNationId),
+            secondaryTargetNationName: nationName(secondaryTargetNationId),
             resolutionId: proposal.resolutionId,
             requiresVote: votingType === 'influence',
             suggestedSupport: true,

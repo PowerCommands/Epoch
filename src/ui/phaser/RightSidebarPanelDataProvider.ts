@@ -159,6 +159,8 @@ type BuyProductionRequestHandler = (city: City, index: number) => void;
 const TIMELINE_RENDER_LIMIT = 200;
 /** Buy/Sell goods spread across this many columns (33/34/33) to use the width. */
 const TRADING_GOODS_COLUMNS = 3;
+/** Highlight colour for a city that has hit its population capacity and cannot grow. */
+const POPULATION_BLOCKED_COLOR = 0xff6b6b;
 
 export function buildLeaderDialogSection(
   leader: LeaderDefinition,
@@ -1072,7 +1074,16 @@ export class RightSidebarPanelDataProvider {
             ? [textRow(`Occupation cost: ${CITY_OCCUPATION_GOLD_COST_PER_TURN} gold/turn`, true)]
             : []),
           textRow(`Capital: ${city.isCapital ? 'Yes' : 'No'}`),
-          textRow(`Population: ${city.population} / ${this.populationCapacityProvider?.(city.id) ?? '?'}`),
+          ((): RightSidebarRow => {
+            const capacity = this.populationCapacityProvider?.(city.id);
+            const blocked = capacity !== undefined && city.population >= capacity;
+            return textRow(
+              `Population: ${city.population} / ${capacity ?? '?'}`,
+              false,
+              false,
+              blocked ? POPULATION_BLOCKED_COLOR : undefined,
+            );
+          })(),
           textRow(`Health: ${city.health}/${CITY_BASE_HEALTH}`),
           progressRow('Health', city.health, CITY_BASE_HEALTH),
           textRow(`Tile position: ${city.tileX}, ${city.tileY}`),

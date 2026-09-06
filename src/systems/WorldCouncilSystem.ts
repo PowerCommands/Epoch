@@ -817,6 +817,33 @@ export class WorldCouncilSystem {
   }
 
   /**
+   * Preview which nation(s) a proposal in the pending human-vote meeting would
+   * target, so the voting UI can show the human the specific countries a
+   * resolution concerns (e.g. the two nations a Ceasefire Resolution would
+   * separate). Read-only: it builds the same context the resolution uses but
+   * never mutates state. Returns empty when nothing is pending or the proposal
+   * has no meaningful target.
+   */
+  previewPendingProposalTargets(
+    proposal: WorldCouncilResolutionProposal,
+  ): { targetNationId?: string; secondaryTargetNationId?: string } {
+    if (!this.state || !this.resolutionSystem) return {};
+    const meeting = this.getPendingHumanVoteMeeting();
+    if (!meeting) return {};
+    const previousEmergencyMeetings = this.state.meetings.filter((item) =>
+      item.id !== meeting.id && item.kind === 'emergency');
+    return this.resolutionSystem.previewProposalTargets(proposal, {
+      meeting,
+      turn: meeting.turn,
+      members: this.state.members,
+      previousEmergencyMeetings,
+      nextRegularMeetingTurn: meeting.kind === 'regular'
+        ? meeting.turn + WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS
+        : this.state.nextRegularMeetingTurn,
+    });
+  }
+
+  /**
    * Resolve the pending human-vote meeting through the canonical resolution path
    * (the human's collected votes are read back through the existing
    * requestHumanInfluenceVote boundary). Returns the resolved meeting.

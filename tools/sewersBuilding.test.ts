@@ -68,7 +68,7 @@ test('Sewers is a single Ancient normal building establishing capacity 8', () =>
     era: 'ancient',
     productionCost: 80,
     maintenance: 1,
-    modifiers: { populationCapacity: 8 },
+    modifiers: { populationCapacity: 2 },
   });
   assert.match(SEWERS.description, /organized drainage and waste removal/i);
 });
@@ -92,7 +92,7 @@ test('State Workforce gates Sewers for Human and AI through the shared building 
   }
 });
 
-test('Sewers establishes capacity 8 without stacking with stronger infrastructure', () => {
+test('Sewers adds 2 capacity and stacks with active power infrastructure', () => {
   const unpowered = makeHarness();
   assert.equal(unpowered.power.getCityPopulationCapacity(unpowered.city.id), UNPOWERED_POPULATION_CAPACITY);
   unpowered.cityManager.getBuildings(unpowered.city.id).add(SEWERS);
@@ -105,9 +105,9 @@ test('Sewers establishes capacity 8 without stacking with stronger infrastructur
     h.cityManager.getBuildings(h.city.id).add(ALL_BUILDINGS.find((b) => b.id === metadata.buildingId)!);
     h.power.restore([{ id: h.city.id, powerPlantAge: 0 }], 1);
     h.power.refreshAllocation(false);
-    assert.equal(h.power.getCityPopulationCapacity(h.city.id), metadata.futurePopulationCap, metadata.buildingId);
+    assert.equal(h.power.getCityPopulationCapacity(h.city.id), 6 + metadata.populationCapacityBonus, metadata.buildingId);
     h.cityManager.getBuildings(h.city.id).add(SEWERS);
-    assert.equal(h.power.getCityPopulationCapacity(h.city.id), metadata.futurePopulationCap, metadata.buildingId);
+    assert.equal(h.power.getCityPopulationCapacity(h.city.id), 8 + metadata.populationCapacityBonus, metadata.buildingId);
   }
 });
 

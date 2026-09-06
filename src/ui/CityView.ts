@@ -580,16 +580,25 @@ export class CityView {
     }
     this.syncTitleEditingState(isEditingCurrentCity);
 
-    const statRows = [
-      `Population: ${city.population} / ${this.populationCapacityProvider?.(city.id) ?? '?'}`,
-      `Culture: ${city.culture}`,
-      `Owned tiles: ${city.ownedTileCoords.length}`,
-      `Worked tiles: ${city.workedTileCoords.length}`,
+    const populationCapacity = this.populationCapacityProvider?.(city.id);
+    // A city that has reached (or exceeded) its capacity cannot grow — flag it
+    // so the player notices the population is stalled or shrinking.
+    const populationBlocked = populationCapacity !== undefined
+      && city.population >= populationCapacity;
+
+    const statRows: { text: string; blocked?: boolean }[] = [
+      {
+        text: `Population: ${city.population} / ${populationCapacity ?? '?'}`,
+        blocked: populationBlocked,
+      },
+      { text: `Culture: ${city.culture}` },
+      { text: `Owned tiles: ${city.ownedTileCoords.length}` },
+      { text: `Worked tiles: ${city.workedTileCoords.length}` },
     ];
 
-    this.statsEl.replaceChildren(...statRows.map((text) => {
+    this.statsEl.replaceChildren(...statRows.map(({ text, blocked }) => {
       const row = document.createElement('div');
-      row.className = 'city-view-stat';
+      row.className = blocked ? 'city-view-stat city-view-stat-blocked' : 'city-view-stat';
       row.textContent = text;
       return row;
     }));

@@ -88,13 +88,13 @@ export function planAIPowerPlants(
   for (const city of orderedCities) {
     const currentCapacity = city.currentCapacity ?? getSupportedPopulationCapacity(city.currentPlant);
     const buildingOptions = ALL_BUILDINGS
-      .filter((building) => (building.modifiers.populationCapacity ?? 0) > currentCapacity)
+      .filter((building) => (building.modifiers.populationCapacity ?? 0) > 0)
       .filter((building) => context.canConstruct(city.id, building.id))
       .map((building) => evaluateCapacityBuilding(city, currentCapacity, building.id, building.modifiers.populationCapacity!))
       .filter((decision): decision is AIPowerPlantDecision => decision !== undefined);
     const plantOptions = POWER_PLANTS
       .slice()
-      .sort((a, b) => b.futurePopulationCap - a.futurePopulationCap)
+      .sort((a, b) => b.populationCapacityBonus - a.populationCapacityBonus)
       .filter((plant) => context.canConstruct(city.id, plant.buildingId))
       .filter((plant) => hasReservableCapacity(context, commitments, city.id, plant))
       .map((plant) => evaluateOption(context, city, currentCapacity, plant))
@@ -112,8 +112,8 @@ export function planAIPowerPlants(
 
 export function getSupportedPopulationCapacity(currentPlant?: CityPowerPlantState): number {
   if (!currentPlant?.active) return UNPOWERED_CITY_POPULATION_CAPACITY;
-  return getPowerPlantMetadata(currentPlant.buildingId)?.futurePopulationCap
-    ?? UNPOWERED_CITY_POPULATION_CAPACITY;
+  return UNPOWERED_CITY_POPULATION_CAPACITY
+    + (getPowerPlantMetadata(currentPlant.buildingId)?.populationCapacityBonus ?? 0);
 }
 
 function compareEnergyPriority(
@@ -156,12 +156,16 @@ function evaluateOption(
   const aging = current !== undefined
     && current.remainingLifespan <= Math.max(AI_POWER_PLANT_REPLACEMENT_WINDOW, turns);
   const inactive = current !== undefined && !current.active;
-  const candidateIsUpgrade = candidate.futurePopulationCap > currentCapacity;
-  const candidateSupportsCity = candidate.futurePopulationCap >= population;
+  const currentPlantBonus = current?.active
+    ? getPowerPlantMetadata(current.buildingId)?.populationCapacityBonus ?? 0
+    : 0;
+  const targetCapacity = currentCapacity - currentPlantBonus + candidate.populationCapacityBonus;
+  const candidateIsUpgrade = targetCapacity > currentCapacity;
+  const candidateSupportsCity = targetCapacity >= population;
 
   if (!current) {
     if (!approaching) return undefined;
-    return decision(city, candidate, currentCapacity, shortage ? 170 : atCapacity ? 150 : 82,
+    return decision(city, candidate, currentCapacity, targetCapacity, shortage ? 170 : atCapacity ? 150 : 82,
       shortage ? 'energy_shortage' : atCapacity ? 'capacity_progression_at_cap' : 'first_plant_approaching_capacity');
   }
 
@@ -176,7 +180,7 @@ function evaluateOption(
   // relied on and the replacement can actually support the present city.
   const currentMetadata = getPowerPlantMetadata(current.buildingId);
   const isDowngrade = currentMetadata !== undefined
-    && candidate.futurePopulationCap < currentMetadata.futurePopulationCap;
+    && candidate.populationCapacityBonus < currentMetadata.populationCapacityBonus;
   if (isDowngrade && (!candidateSupportsCity || (!inactive && !aging))) return undefined;
 
   let reason: AIPowerPlantDecisionReason;
@@ -200,13 +204,14 @@ function evaluateOption(
     score = atCapacity ? 150 : 84;
   }
 
-  return decision(city, candidate, currentCapacity, score, reason, current.remainingLifespan);
+  return decision(city, candidate, currentCapacity, targetCapacity, score, reason, current.remainingLifespan);
 }
 
 function decision(
   city: AIPowerPlantCityPlanningInput,
   plant: PowerPlantMetadata,
   currentCapacity: number,
+  targetCapacity: number,
   score: number,
   reason: AIPowerPlantDecisionReason,
   remainingLifespan?: number,
@@ -218,7 +223,7 @@ function decision(
     buildingId: plant.buildingId,
     requiredResourceId: plant.requiredResourceId,
     currentCapacity,
-    targetCapacity: plant.futurePopulationCap,
+    targetCapacity,
     score,
     reason,
     remainingLifespan,
@@ -229,12 +234,13 @@ function evaluateCapacityBuilding(
   city: AIPowerPlantCityPlanningInput,
   currentCapacity: number,
   buildingId: string,
-  targetCapacity: number,
+  capacityBonus: number,
 ): AIPowerPlantDecision | undefined {
   const shortage = city.population > currentCapacity;
   const atCapacity = city.population >= currentCapacity;
   const approaching = city.population >= currentCapacity - AI_POWER_PLANT_APPROACHING_MARGIN;
-  if (!approaching || targetCapacity <= currentCapacity) return undefined;
+  if (!approaching || capacityBonus <= 0) return undefined;
+  const targetCapacity = currentCapacity + capacityBonus;
   return {
     cityId: city.id,
     buildingId,

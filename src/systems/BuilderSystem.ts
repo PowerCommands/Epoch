@@ -133,12 +133,21 @@ export class BuilderSystem {
     if (builderUnit === undefined || movementUnit === undefined) return null;
 
     const isForeign = tile.ownerId !== undefined && tile.ownerId !== builderUnit.ownerId;
-    const usesTerritorialOwnership = preview.transportUnitId !== undefined
-      && tile.ownerId === builderUnit.ownerId;
-    const createsStandaloneSeaClaim = preview.claimsSeaResource === true && !usesTerritorialOwnership;
-    const city = createsStandaloneSeaClaim || isForeign
-      ? undefined
+    const friendlyCity = isForeign
+      ? null
       : this.getFriendlyCityForOwnedTile(tile.x, tile.y, builderUnit.ownerId);
+    // Cargo archaeology inside domestic waters attaches to the city that owns the
+    // tile so later conquest transfers its Culture naturally. A wreck can sit on a
+    // tile that carries our nation's ownerId yet belongs to no city's owned-tile
+    // list (e.g. a coast tile claimed on city founding but outside the workable
+    // ring, or ownership from capture / save-load); in that case fall back to a
+    // standalone sea claim instead of refusing the Dig — the naval preview already
+    // reported it as buildable.
+    const usesTerritorialOwnership = preview.transportUnitId !== undefined
+      && tile.ownerId === builderUnit.ownerId
+      && friendlyCity !== null;
+    const createsStandaloneSeaClaim = preview.claimsSeaResource === true && !usesTerritorialOwnership;
+    const city = createsStandaloneSeaClaim || isForeign ? undefined : friendlyCity;
     if (!createsStandaloneSeaClaim && !isForeign && city === null) return null;
 
     const requiredTurns = preview.improvement.buildTurns ?? getImprovementBuildTurnsForEra(

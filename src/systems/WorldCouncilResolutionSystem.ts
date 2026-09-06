@@ -500,6 +500,21 @@ export class WorldCouncilResolutionSystem {
     };
   }
 
+  /**
+   * Read-only preview of the nation(s) a proposal would target, used to show the
+   * human which countries a resolution concerns while they vote. It reuses the
+   * exact same {@link chooseProposalTargets} logic the resolution runs later, so
+   * the displayed target matches the effect; it never mutates state and may
+   * differ from the final target if diplomacy changes before resolution.
+   */
+  previewProposalTargets(
+    proposal: WorldCouncilResolutionProposal,
+    context: WorldCouncilResolutionResolveContext,
+  ): { targetNationId?: string; secondaryTargetNationId?: string } {
+    if (proposal.repealTargetEnactedResolutionId) return {};
+    return this.chooseProposalTargets(proposal, context);
+  }
+
   resolve(
     proposal: WorldCouncilResolutionProposal,
     context: WorldCouncilResolutionResolveContext,

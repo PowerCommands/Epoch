@@ -1,12 +1,12 @@
-import { CITY_POPULATION_CAPACITY_LEVELS } from './populationCapacity';
+import { CITY_POPULATION_CAPACITY_BONUSES } from './populationCapacity';
 
 export interface PowerPlantMetadata {
   readonly buildingId: string;
   readonly requiredResourceId: 'coal' | 'oil' | 'natural_gas' | 'uranium';
   readonly plantsPerResourceSource: 1;
   readonly lifespanTurns: number;
-  /** Maximum population supported while this plant is active. */
-  readonly futurePopulationCap: number;
+  /** Additive Population Capacity supplied while this plant is active. */
+  readonly populationCapacityBonus: number;
   /** City production multiplier provided while this plant is active. */
   readonly futureProductionMultiplier: number;
 }
@@ -17,7 +17,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'coal',
     plantsPerResourceSource: 1,
     lifespanTurns: 20,
-    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.coalPowerPlant,
+    populationCapacityBonus: CITY_POPULATION_CAPACITY_BONUSES.coalPowerPlant,
     futureProductionMultiplier: 2,
   },
   {
@@ -25,7 +25,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'oil',
     plantsPerResourceSource: 1,
     lifespanTurns: 40,
-    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.oilPowerPlant,
+    populationCapacityBonus: CITY_POPULATION_CAPACITY_BONUSES.oilPowerPlant,
     futureProductionMultiplier: 3,
   },
   {
@@ -33,7 +33,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'natural_gas',
     plantsPerResourceSource: 1,
     lifespanTurns: 50,
-    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.gasPowerPlant,
+    populationCapacityBonus: CITY_POPULATION_CAPACITY_BONUSES.gasPowerPlant,
     futureProductionMultiplier: 4,
   },
   {
@@ -41,7 +41,7 @@ export const POWER_PLANTS: readonly PowerPlantMetadata[] = [
     requiredResourceId: 'uranium',
     plantsPerResourceSource: 1,
     lifespanTurns: 100,
-    futurePopulationCap: CITY_POPULATION_CAPACITY_LEVELS.nuclearPowerPlant,
+    populationCapacityBonus: CITY_POPULATION_CAPACITY_BONUSES.nuclearPowerPlant,
     futureProductionMultiplier: 6,
   },
 ];

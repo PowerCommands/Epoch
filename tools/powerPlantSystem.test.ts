@@ -69,10 +69,10 @@ function construct(
 
 test('canonical power plant metadata contains the four exact runtime definitions', () => {
   assert.deepEqual(POWER_PLANTS, [
-    { buildingId: 'coal_power_plant', requiredResourceId: 'coal', plantsPerResourceSource: 1, lifespanTurns: 20, futurePopulationCap: 16, futureProductionMultiplier: 2 },
-    { buildingId: 'oil_power_plant', requiredResourceId: 'oil', plantsPerResourceSource: 1, lifespanTurns: 40, futurePopulationCap: 20, futureProductionMultiplier: 3 },
-    { buildingId: 'gas_power_plant', requiredResourceId: 'natural_gas', plantsPerResourceSource: 1, lifespanTurns: 50, futurePopulationCap: 24, futureProductionMultiplier: 4 },
-    { buildingId: 'nuclear_plant', requiredResourceId: 'uranium', plantsPerResourceSource: 1, lifespanTurns: 100, futurePopulationCap: 48, futureProductionMultiplier: 6 },
+    { buildingId: 'coal_power_plant', requiredResourceId: 'coal', plantsPerResourceSource: 1, lifespanTurns: 20, populationCapacityBonus: 6, futureProductionMultiplier: 2 },
+    { buildingId: 'oil_power_plant', requiredResourceId: 'oil', plantsPerResourceSource: 1, lifespanTurns: 40, populationCapacityBonus: 10, futureProductionMultiplier: 3 },
+    { buildingId: 'gas_power_plant', requiredResourceId: 'natural_gas', plantsPerResourceSource: 1, lifespanTurns: 50, populationCapacityBonus: 14, futureProductionMultiplier: 4 },
+    { buildingId: 'nuclear_plant', requiredResourceId: 'uranium', plantsPerResourceSource: 1, lifespanTurns: 100, populationCapacityBonus: 38, futureProductionMultiplier: 6 },
   ]);
 });
 

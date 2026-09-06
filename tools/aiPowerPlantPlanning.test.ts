@@ -94,7 +94,7 @@ test('selection respects technology and resource capacity and prefers the strong
 });
 
 test('healthy plants are neither pointlessly upgraded nor downgraded', () => {
-  assert.equal(plan({ cities: [city('coal', 10, plant('coal_power_plant'))] }).size, 0);
+  assert.equal(plan({ cities: [city('coal', 8, plant('coal_power_plant'))] }).size, 0);
   assert.equal(plan({
     cities: [city('nuclear', 98, plant('nuclear_plant'))],
     resources: { coal: 1, oil: 1, natural_gas: 1, uranium: 1 },
@@ -102,14 +102,14 @@ test('healthy plants are neither pointlessly upgraded nor downgraded', () => {
 });
 
 test('aging replacement starts within five turns or earlier for construction time', () => {
-  assert.equal(plan({ cities: [city('a', 10, plant('coal_power_plant', { remaining: 6 }))], turns: 4 }).size, 0);
-  assert.equal(plan({ cities: [city('a', 10, plant('coal_power_plant', { remaining: 5 }))], turns: 4 }).get('a')?.reason, 'aging_replacement');
-  assert.equal(plan({ cities: [city('a', 10, plant('coal_power_plant', { remaining: 8 }))], turns: 10 }).get('a')?.reason, 'aging_replacement');
+  assert.equal(plan({ cities: [city('a', 8, plant('coal_power_plant', { remaining: 6 }))], turns: 4 }).size, 0);
+  assert.equal(plan({ cities: [city('a', 8, plant('coal_power_plant', { remaining: 5 }))], turns: 4 }).get('a')?.reason, 'aging_replacement');
+  assert.equal(plan({ cities: [city('a', 8, plant('coal_power_plant', { remaining: 8 }))], turns: 10 }).get('a')?.reason, 'aging_replacement');
 });
 
 test('an inactive endangered city may make a useful emergency downgrade', () => {
   const result = plan({
-    cities: [city('a', 13, plant('gas_power_plant', { active: false, remaining: 30 }))],
+    cities: [city('a', 11, plant('gas_power_plant', { active: false, remaining: 30 }))],
     unlocked: ['coal_power_plant', 'gas_power_plant'],
     resources: { coal: 1, natural_gas: 0 },
   });

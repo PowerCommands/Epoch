@@ -42,6 +42,7 @@ const RING_LINE_WIDTH = 3;
 const RING_MUTED_COLOR = 0x4a4a5a;
 const RING_MUTED_ALPHA = 0.4;
 const RING_START_ANGLE = -Math.PI / 2;
+const POPULATION_BLOCKED_COLOR = '#ff6b6b';
 
 interface CityBannerView {
   container: Phaser.GameObjects.Container;
@@ -60,9 +61,22 @@ export class CityBannerRenderer {
   private readonly loadingTextures = new Set<string>();
   private readonly missingTextures = new Set<string>();
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
+  private populationCapacityProvider: ((cityId: string) => number) | null = null;
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
     this.visibilityPredicate = predicate;
+  }
+
+  /** Supplies the current population capacity so the banner can flag stalled cities. */
+  setPopulationCapacityProvider(provider: (cityId: string) => number): void {
+    this.populationCapacityProvider = provider;
+  }
+
+  /** A city is stalled when it has reached (or exceeded) its population capacity. */
+  private isPopulationBlocked(city: City): boolean {
+    const capacity = this.populationCapacityProvider?.(city.id);
+    if (capacity === undefined) return false;
+    return city.population >= capacity;
   }
 
   /** Update banner visibility without rebuilding the graphic objects. */
@@ -240,10 +254,23 @@ export class CityBannerRenderer {
         const entry = queue[0];
         if (!entry) return;
         // Lead with the city name — the banner sits away from its city center,
-        // so the production readout is otherwise hard to attribute.
-        const cityName = this.cityManager.getCity(cityId)?.name;
-        const header = cityName ? `${cityName}\n` : '';
-        tooltip.show(`${header}${getItemName(entry.item)} (${getKindLabel(entry.item.kind)})`, pointer);
+        // so the production readout is otherwise hard to attribute. Append the
+        // population readout so a stalled city (at capacity) is obvious on hover.
+        const city = this.cityManager.getCity(cityId);
+        const blocked = city ? this.isPopulationBlocked(city) : false;
+        let header = '';
+        if (city) {
+          const capacity = this.populationCapacityProvider?.(city.id);
+          const populationLabel = capacity === undefined
+            ? ''
+            : ` (${city.population}/${capacity})`;
+          header = `${city.name}${populationLabel}\n`;
+        }
+        tooltip.show(
+          `${header}${getItemName(entry.item)} (${getKindLabel(entry.item.kind)})`,
+          pointer,
+          blocked ? POPULATION_BLOCKED_COLOR : undefined,
+        );
       });
       productionZone.on('pointerout', () => {
         tooltip.hide();

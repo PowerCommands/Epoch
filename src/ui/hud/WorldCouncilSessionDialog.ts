@@ -388,15 +388,40 @@ export class WorldCouncilSessionDialog {
   };
 }
 
+/**
+ * Human-readable line naming the specific nation(s) a resolution concerns, worded
+ * per resolution so the voter sees exactly who it applies to (e.g. the two warring
+ * nations a ceasefire would separate, or the nation a sanction targets). Returns
+ * null for resolutions with no meaningful national target.
+ */
 function formatTarget(proposal: WorldCouncilSessionProposal): string | null {
-  if (!proposal.targetNationName) return null;
-  if (proposal.secondaryTargetNationName) {
-    if (proposal.resolutionId === 'un_peacekeeping_mission') {
-      return `Host: ${proposal.targetNationName}  ·  Threat: ${proposal.secondaryTargetNationName}`;
+  const primary = proposal.targetNationName;
+  const secondary = proposal.secondaryTargetNationName;
+  if (!primary) return null;
+  if (secondary) {
+    switch (proposal.resolutionId) {
+      case 'ceasefire_resolution':
+        return `Nations at war: ${primary} and ${secondary}`;
+      case 'un_peacekeeping_mission':
+        return `Host: ${primary}  ·  Threat: ${secondary}`;
+      default:
+        return `Concerns: ${primary} and ${secondary}`;
     }
-    return `Target: ${proposal.targetNationName} — ${proposal.secondaryTargetNationName}`;
   }
-  return `Target: ${proposal.targetNationName}`;
+  switch (proposal.resolutionId) {
+    case 'condemn_aggressive_war':
+      return `Condemned nation: ${primary}`;
+    case 'international_sanctions':
+      return `Sanctions against: ${primary}`;
+    case 'international_embargo':
+      return `Embargo against: ${primary}`;
+    case 'games_of_nations_hosting':
+      return `Current host: ${primary}`;
+    case 'exclude_games_of_nations_participant':
+      return `Excluded participant: ${primary}`;
+    default:
+      return `Target: ${primary}`;
+  }
 }
 
 function outcomeBadgeClass(outcome: WorldCouncilSessionOutcome): string {
