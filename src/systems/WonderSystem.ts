@@ -48,6 +48,11 @@ export class WonderSystem {
     return [...this.completed.values()].filter((state) => state.cityId === cityId);
   }
 
+  /** Remove one completed wonder and make it globally available again. */
+  removeCompletedWonder(wonderId: string): boolean {
+    return this.completed.delete(wonderId);
+  }
+
   /**
    * Remove every completed wonder that belonged to a city (used when the city
    * is razed). Returns the removed wonder ids so callers can refresh dependent

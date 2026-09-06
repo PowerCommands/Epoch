@@ -42,18 +42,22 @@ export class HexEdgeOverlayRenderer {
   private readonly passes: ReadonlyArray<TerrainEdgePass>;
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
     private readonly mapData: MapData,
-    options: { depth: number; passes: ReadonlyArray<TerrainEdgePass> },
+    private readonly options: { depth: number; passes: ReadonlyArray<TerrainEdgePass> },
   ) {
     this.passes = options.passes;
+    this.bakedTextures = this.bake();
+  }
+
+  private bake(): Phaser.GameObjects.RenderTexture[] {
     const { width: worldWidth, height: worldHeight } = this.tileMap.getWorldBounds();
-    this.bakedTextures = TerrainBaker.bake(
-      scene,
+    return TerrainBaker.bake(
+      this.scene,
       worldWidth,
       worldHeight,
-      options.depth,
+      this.options.depth,
       (g) => this.drawIntoGraphics(g),
     );
   }
@@ -61,6 +65,12 @@ export class HexEdgeOverlayRenderer {
   shutdown(): void {
     for (const rt of this.bakedTextures) rt.destroy();
     this.bakedTextures = [];
+  }
+
+  /** Re-bake coast/biome seams after a tile terrain edit. */
+  rebuild(): void {
+    this.shutdown();
+    this.bakedTextures = this.bake();
   }
 
   private drawIntoGraphics(g: Phaser.GameObjects.Graphics): void {

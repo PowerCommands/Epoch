@@ -148,6 +148,7 @@ import {
 import type { JointWarKind, JointWarProposal } from '../types/jointWar';
 import { AllianceCouncilManager } from '../systems/diplomacy/AllianceCouncilManager';
 import { AllianceCouncilDialog } from '../ui/AllianceCouncilDialog';
+import { AllianceNameDialog } from '../ui/AllianceNameDialog';
 import { TradeDiplomacySystem } from '../systems/diplomacy/TradeDiplomacySystem';
 import { DiplomaticEvaluationSystem } from '../systems/diplomacy/DiplomaticEvaluationSystem';
 import { DiplomaticProposalSystem } from '../systems/diplomacy/DiplomaticProposalSystem';
@@ -5453,6 +5454,7 @@ export class GameScene extends Phaser.Scene {
 
     // ─── Alliance Council (Phases 1–3) ───────────────────────────────────────
     const allianceCouncilDialog = new AllianceCouncilDialog();
+    const allianceNameDialog = new AllianceNameDialog();
     const allianceCouncilManager = new AllianceCouncilManager(
       allianceManager,
       nationManager,
@@ -5497,6 +5499,7 @@ export class GameScene extends Phaser.Scene {
     // cooling for pairs completing an enforced post-war Peace Treaty turn.
     turnManager.on('roundStart', ({ round }) => { diplomacyManager.processDiplomaticUpkeep(round); });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => allianceCouncilDialog.hide());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => allianceNameDialog.hide());
 
     foreignTroopViolationSystem.onWarning((event) => {
       logManager.info({
@@ -7275,20 +7278,31 @@ export class GameScene extends Phaser.Scene {
         );
 
         if (accepted) {
-          const alliance = allianceManager.createAlliance(
-            humanNationIdForDiplomacy,
-            targetNationId,
-            `${proposerLeaderName} Alliance`,
-            turnManager.getCurrentRound(),
-          );
-          if (alliance) {
-            diplomacyManager.recordAllianceFormed(humanNationIdForDiplomacy, targetNationId);
-            logManager.info({
-              nationIds: [humanNationIdForDiplomacy, targetNationId],
-              category: 'diplomacy',
-              message: `${humanName} and ${targetNation.name} formed ${alliance.name}.`,
-            });
-          }
+          // The AI has agreed — let the human name the alliance before it forms.
+          // The chosen name is what appears everywhere afterwards (council
+          // headers, logs, invitations); the leader-based name is the default.
+          allianceNameDialog.show({
+            defaultName: `${proposerLeaderName} Alliance`,
+            partnerName: targetNation.name,
+            onConfirm: (allianceName) => {
+              const alliance = allianceManager.createAlliance(
+                humanNationIdForDiplomacy,
+                targetNationId,
+                allianceName,
+                turnManager.getCurrentRound(),
+              );
+              if (alliance) {
+                diplomacyManager.recordAllianceFormed(humanNationIdForDiplomacy, targetNationId);
+                logManager.info({
+                  nationIds: [humanNationIdForDiplomacy, targetNationId],
+                  category: 'diplomacy',
+                  message: `${humanName} and ${targetNation.name} formed ${alliance.name}.`,
+                });
+              }
+              hudLayer?.refresh();
+              rightPanel?.refreshCurrent();
+            },
+          });
         } else {
           logManager.info({
             nationIds: [humanNationIdForDiplomacy, targetNationId],
@@ -10160,11 +10174,21 @@ export class GameScene extends Phaser.Scene {
       cityManager,
       selectionManager,
       unitManager,
+      wonderSystem,
       autoplaySystem,
       mapData,
-      refreshTileVisuals: (tileX: number, tileY: number): void => {
+      refreshTileVisuals: (tileX: number, tileY: number, terrainChanged = false): void => {
+        if (terrainChanged) {
+          tileMap.rebuildTerrain();
+          coastEdgeRenderer.rebuild();
+          biomeEdgeRenderer.rebuild();
+        }
         naturalResourceRenderer.refreshTile(tileX, tileY);
+        tileBuildingRenderer.refreshTile(tileX, tileY);
+        tileImprovementOverlayRenderer.rebuildAll();
         territoryRenderer.invalidate();
+        refreshCultureOverlay();
+        refreshSelectedCityOverlays();
         rebuildMinimapForGameplay();
         hudLayer?.refresh();
         rightPanel?.requestRefresh();

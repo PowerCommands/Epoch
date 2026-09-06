@@ -21,15 +21,21 @@ export class TileMap {
   private readonly layout: IGridLayout;
   private bakedTextures: Phaser.GameObjects.RenderTexture[] = [];
 
-  constructor(scene: Phaser.Scene, data: MapData, layout: IGridLayout) {
+  constructor(private readonly scene: Phaser.Scene, data: MapData, layout: IGridLayout) {
     this.data = data;
     this.layout = layout;
-    this.render(scene);
+    this.render();
   }
 
   shutdown(): void {
     for (const rt of this.bakedTextures) rt.destroy();
     this.bakedTextures = [];
+  }
+
+  /** Re-bake the terrain after a developer tool mutates tile types. */
+  rebuildTerrain(): void {
+    this.shutdown();
+    this.render();
   }
 
   /** Kartans totala pixelstorlek i världskoordinater. */
@@ -126,10 +132,10 @@ export class TileMap {
    * Renders terrain as true layout-provided hex polygons, baked to static
    * RenderTexture chunks to avoid per-frame GPU draw-call overhead.
    */
-  private render(scene: Phaser.Scene): void {
+  private render(): void {
     const { width: worldWidth, height: worldHeight } = this.getWorldBounds();
     this.bakedTextures = TerrainBaker.bake(
-      scene,
+      this.scene,
       worldWidth,
       worldHeight,
       TERRAIN_DEPTH,

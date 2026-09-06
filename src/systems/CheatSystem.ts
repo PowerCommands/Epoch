@@ -11,6 +11,7 @@ import type { DiscoverySystem } from './DiscoverySystem';
 import type { NationManager } from './NationManager';
 import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
+import type { WonderSystem } from './WonderSystem';
 import { ALL_LEADERS } from '../data/leaders';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import {
@@ -24,7 +25,7 @@ import { ALL_UNIT_TYPES } from '../data/units';
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import type { NaturalResourceDefinition } from '../types/naturalResources';
 import type { UnitType } from '../entities/UnitType';
-import type { MapData } from '../types/map';
+import { TileType, type MapData } from '../types/map';
 import type { Producible } from '../types/producible';
 
 export interface GameContext {
@@ -41,14 +42,15 @@ export interface GameContext {
   cityManager: CityManager;
   selectionManager: SelectionManager;
   unitManager: UnitManager;
+  wonderSystem: WonderSystem;
   autoplaySystem: AutoplaySystem;
   mapData: MapData;
   /**
-   * Redraw a single tile after its resource or ownership changed: refreshes the
-   * natural-resource icon and territory borders (and dependent HUD). Wired in
-   * GameScene so the CheatSystem stays renderer-agnostic.
+   * Redraw map state after a tile changed. Terrain is baked, so a terrain edit
+   * also rebuilds the terrain and edge layers. Wired in GameScene so the
+   * CheatSystem stays renderer-agnostic.
    */
-  refreshTileVisuals: (tileX: number, tileY: number) => void;
+  refreshTileVisuals: (tileX: number, tileY: number, terrainChanged?: boolean) => void;
   revealMapTemporarily: () => void;
   setFogEnabled: (enabled: boolean) => void;
   /** Open the developer dialog for editing bilateral relationship memory. */
@@ -379,6 +381,101 @@ export class CheatSystem {
         if (args.length === 1) return completeResource(args[0]);
         if (args.length === 2) return completeNation(args[1], context);
         return [];
+      },
+    });
+
+    this.register({
+      name: 'tile',
+      description: 'Clear the selected non-city tile with "tile clear", or change only its terrain with "tile <terrain>".',
+      execute: (args, context) => {
+        if (args.length !== 1) return 'Usage: tile <clear|terrain>';
+
+        const selection = context.selectionManager.getSelected();
+        const position = selection ? selectionTilePosition(selection) : null;
+        if (!position) return 'No tile selected';
+        const tile = context.mapData.tiles[position.y]?.[position.x];
+        if (!tile) return 'No tile selected';
+
+        if (args[0] === 'clear') {
+          const cityCenter = context.cityManager.getCityAt(position.x, position.y);
+          if (cityCenter) {
+            return `Cannot clear a city center (${cityCenter.name}); raze or remove the city first`;
+          }
+
+          const affectedNationIds = new Set<string>();
+          if (tile.ownerId) affectedNationIds.add(tile.ownerId);
+          if (tile.resourceOwnerNationId) affectedNationIds.add(tile.resourceOwnerNationId);
+          if (tile.improvementOwnerId) affectedNationIds.add(tile.improvementOwnerId);
+          if (tile.improvementConstruction?.ownerId) affectedNationIds.add(tile.improvementConstruction.ownerId);
+
+          for (const city of context.cityManager.getAllCities()) {
+            const ownedBefore = city.ownedTileCoords.length;
+            city.ownedTileCoords = city.ownedTileCoords.filter(
+              (coord) => coord.x !== position.x || coord.y !== position.y,
+            );
+            city.workedTileCoords = city.workedTileCoords.filter(
+              (coord) => coord.x !== position.x || coord.y !== position.y,
+            );
+            if (city.ownedTileCoords.length !== ownedBefore) {
+              affectedNationIds.add(city.ownerId);
+              if (tile.buildingId) context.cityManager.getBuildings(city.id).remove(tile.buildingId);
+            }
+          }
+
+          // A reserved production entry would otherwise recreate its structure
+          // when it completes. Remove only entries placed on this exact tile.
+          for (const city of context.cityManager.getAllCities()) {
+            const queue = context.productionSystem.getQueue(city.id);
+            for (let index = queue.length - 1; index >= 0; index--) {
+              const placement = queue[index]?.placement;
+              if (placement?.tileX === position.x && placement.tileY === position.y) {
+                context.productionSystem.removeFromQueue(city.id, index);
+              }
+            }
+          }
+
+          if (tile.wonderId) {
+            const wonder = context.wonderSystem.getCompletedWonder(tile.wonderId);
+            if (wonder) affectedNationIds.add(wonder.ownerId);
+            context.wonderSystem.removeCompletedWonder(tile.wonderId);
+          }
+
+          tile.ownerId = undefined;
+          tile.resourceOwnerNationId = undefined;
+          tile.resourceId = undefined;
+          tile.improvementId = undefined;
+          tile.improvementOwnerId = undefined;
+          tile.improvementConstruction = undefined;
+          tile.buildingId = undefined;
+          tile.buildingBroken = undefined;
+          tile.buildingConstruction = undefined;
+          tile.wonderId = undefined;
+          tile.wonderConstruction = undefined;
+          tile.cultureOwnerId = undefined;
+          tile.cultureSourceCityId = undefined;
+
+          context.resourceAccessSystem.invalidateResourceIndex();
+          for (const nationId of affectedNationIds) context.resourceSystem.recalculateForNation(nationId);
+          context.refreshTileVisuals(position.x, position.y);
+          return `Cleared tile (${position.x}, ${position.y}); units were left untouched`;
+        }
+
+        const terrain = resolveTerrainType(args[0]);
+        if (!terrain) return `Unknown terrain: ${args[0]}`;
+        const previous = tile.type;
+        tile.type = terrain.type;
+        context.refreshTileVisuals(position.x, position.y, true);
+
+        const dominationNote = isDominationLand(previous) === isDominationLand(terrain.type)
+          ? ''
+          : isDominationLand(terrain.type)
+            ? ' This adds one tile to the Domination land total and, if owned, to its owner\'s controlled-land count.'
+            : ' This removes one tile from the Domination land total and, if owned, from its owner\'s controlled-land count.';
+        return `Changed tile (${position.x}, ${position.y}) from ${previous} to ${terrain.type}.${dominationNote}`;
+      },
+      complete: (args) => {
+        if (args.length !== 1) return [];
+        return completeTerrain(args[0]);
       },
     });
 
@@ -954,6 +1051,34 @@ function completeResource(input: string): CheatCompletionSuggestion[] {
     description: resource.category,
     matchText: [resource.id, resource.name],
   })));
+}
+
+const TERRAIN_ALIASES: Readonly<Record<string, TileType>> = {
+  grassland: TileType.Plains,
+};
+
+function resolveTerrainType(input: string): { type: TileType } | null {
+  const normalized = normalizeCompletionMatchText(input);
+  const canonical = Object.values(TileType).find(
+    (type) => normalizeCompletionMatchText(type) === normalized,
+  );
+  const type = canonical ?? TERRAIN_ALIASES[normalized];
+  return type ? { type } : null;
+}
+
+function completeTerrain(input: string): CheatCompletionSuggestion[] {
+  return matchLiteralSuggestions(input, [
+    { value: 'clear', description: 'Remove all tile contents and ownership; keep units and terrain.' },
+    ...Object.values(TileType).map((type) => ({
+      value: type,
+      description: isDominationLand(type) ? 'Land terrain.' : 'Excluded from Domination land total.',
+    })),
+    { value: 'grassland', label: 'plains', description: 'Alias for plains.' },
+  ]);
+}
+
+function isDominationLand(type: TileType): boolean {
+  return type !== TileType.Ocean && type !== TileType.Coast && type !== TileType.Ice;
 }
 
 function completeCorporation(input: string): CheatCompletionSuggestion[] {
