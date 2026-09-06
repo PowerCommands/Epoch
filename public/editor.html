@@ -758,6 +758,18 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <input id="sd-domination-required-vassals" type="number" min="1" step="1">
         <span class="hint">Win Domination by holding this many direct vassal states.</span>
       </label>
+      <label class="field" title="Cultural Victory normal route: accumulated Culture required alongside the wonders, currency, and GoN Champion conditions.">Cultural Victory Culture (normal route)
+        <input id="sd-cultural-required-culture" type="number" min="1" step="1">
+        <span class="hint">Accumulated Culture for the normal Cultural Victory route.</span>
+      </label>
+      <label class="field" title="Cultural Victory overwhelming route: absolute accumulated Culture that wins on its own.">Overwhelming Culture score
+        <input id="sd-overwhelming-culture-threshold" type="number" min="1" step="1">
+        <span class="hint">Culture alone wins at this overwhelming-dominance threshold.</span>
+      </label>
+      <label class="field" title="Diplomatic Victory: Diplomatic Score a nation must reach to win.">Diplomatic Victory score
+        <input id="sd-diplomatic-score-threshold" type="number" min="1" step="1">
+        <span class="hint">Reach this Diplomatic Score to win the Diplomatic Victory.</span>
+      </label>
       <section class="sd-events-section">
         <div class="sd-events-heading">
           <h3>Historical Events</h3>
@@ -1021,6 +1033,12 @@ const DEFAULT_CAPITULATION_ACCEPTANCE_THRESHOLD = 0.70;
 // Mirrors DEFAULT_DOMINATION_* in src/systems/DominationRanking.ts.
 const DEFAULT_DOMINATION_LAND_PERCENT = 20;
 const DEFAULT_DOMINATION_REQUIRED_VASSALS = 3;
+// Mirrors CULTURAL_VICTORY_REQUIRED_CULTURE / OVERWHELMING_CULTURE_VICTORY_THRESHOLD
+// in src/systems/CulturalVictory.ts.
+const DEFAULT_CULTURAL_VICTORY_REQUIRED_CULTURE = 100000;
+const DEFAULT_OVERWHELMING_CULTURE_VICTORY_THRESHOLD = 250000;
+// Mirrors WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD in src/types/worldCouncil.ts.
+const DEFAULT_DIPLOMATIC_VICTORY_SCORE_THRESHOLD = 5000;
 const SCENARIO_TIME_PROGRESSION_MODES = ['auto', 'staticYear', 'monthly'];
 const HISTORICAL_EVENT_MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -1126,6 +1144,24 @@ function normalizeScenarioMeta() {
   if (typeof meta.dominationRequiredVassals !== 'number'
     || !Number.isInteger(meta.dominationRequiredVassals) || meta.dominationRequiredVassals < 1) {
     meta.dominationRequiredVassals = DEFAULT_DOMINATION_REQUIRED_VASSALS;
+  }
+  if (typeof meta.culturalVictoryRequiredCulture !== 'number'
+    || !(meta.culturalVictoryRequiredCulture > 0)) {
+    meta.culturalVictoryRequiredCulture = DEFAULT_CULTURAL_VICTORY_REQUIRED_CULTURE;
+  } else {
+    meta.culturalVictoryRequiredCulture = Math.floor(meta.culturalVictoryRequiredCulture);
+  }
+  if (typeof meta.overwhelmingCultureVictoryThreshold !== 'number'
+    || !(meta.overwhelmingCultureVictoryThreshold > 0)) {
+    meta.overwhelmingCultureVictoryThreshold = DEFAULT_OVERWHELMING_CULTURE_VICTORY_THRESHOLD;
+  } else {
+    meta.overwhelmingCultureVictoryThreshold = Math.floor(meta.overwhelmingCultureVictoryThreshold);
+  }
+  if (typeof meta.diplomaticVictoryScoreThreshold !== 'number'
+    || !(meta.diplomaticVictoryScoreThreshold > 0)) {
+    meta.diplomaticVictoryScoreThreshold = DEFAULT_DIPLOMATIC_VICTORY_SCORE_THRESHOLD;
+  } else {
+    meta.diplomaticVictoryScoreThreshold = Math.floor(meta.diplomaticVictoryScoreThreshold);
   }
 
   const progression = meta.timeProgression && typeof meta.timeProgression === 'object' ? meta.timeProgression : {};
@@ -5974,6 +6010,9 @@ function openScenarioDetails() {
   document.getElementById('sd-capital-collapse-threshold').value = String(meta.originalCapitalCollapsePercent);
   document.getElementById('sd-domination-land-percent').value = String(meta.dominationLandPercent);
   document.getElementById('sd-domination-required-vassals').value = String(meta.dominationRequiredVassals);
+  document.getElementById('sd-cultural-required-culture').value = String(meta.culturalVictoryRequiredCulture);
+  document.getElementById('sd-overwhelming-culture-threshold').value = String(meta.overwhelmingCultureVictoryThreshold);
+  document.getElementById('sd-diplomatic-score-threshold').value = String(meta.diplomaticVictoryScoreThreshold);
   scenarioDetailsHistoricalEventsDraft = structuredCloneCompat(scenario.historicalEvents || []);
   document.getElementById('sd-error').textContent = '';
   updateScenarioDetailsStaticVisibility();
@@ -6083,6 +6122,24 @@ function saveScenarioDetails() {
     return false;
   }
 
+  const culturalVictoryRequiredCulture = parseInt(document.getElementById('sd-cultural-required-culture').value, 10);
+  if (!Number.isInteger(culturalVictoryRequiredCulture) || culturalVictoryRequiredCulture < 1) {
+    errorEl.textContent = 'Cultural Victory Culture (normal route) must be an integer of at least 1.';
+    return false;
+  }
+
+  const overwhelmingCultureVictoryThreshold = parseInt(document.getElementById('sd-overwhelming-culture-threshold').value, 10);
+  if (!Number.isInteger(overwhelmingCultureVictoryThreshold) || overwhelmingCultureVictoryThreshold < 1) {
+    errorEl.textContent = 'Overwhelming Culture score must be an integer of at least 1.';
+    return false;
+  }
+
+  const diplomaticVictoryScoreThreshold = parseInt(document.getElementById('sd-diplomatic-score-threshold').value, 10);
+  if (!Number.isInteger(diplomaticVictoryScoreThreshold) || diplomaticVictoryScoreThreshold < 1) {
+    errorEl.textContent = 'Diplomatic Victory score must be an integer of at least 1.';
+    return false;
+  }
+
   if (!scenario.meta || typeof scenario.meta !== 'object') scenario.meta = {};
   scenario.meta.name = name;
   scenario.meta.description = document.getElementById('sd-description').value.trim();
@@ -6102,6 +6159,9 @@ function saveScenarioDetails() {
   scenario.meta.originalCapitalCollapsePercent = originalCapitalCollapsePercent;
   scenario.meta.dominationLandPercent = dominationLandPercent;
   scenario.meta.dominationRequiredVassals = dominationRequiredVassals;
+  scenario.meta.culturalVictoryRequiredCulture = culturalVictoryRequiredCulture;
+  scenario.meta.overwhelmingCultureVictoryThreshold = overwhelmingCultureVictoryThreshold;
+  scenario.meta.diplomaticVictoryScoreThreshold = diplomaticVictoryScoreThreshold;
   scenario.historicalEvents = structuredCloneCompat(scenarioDetailsHistoricalEventsDraft);
   scenario.turningPointEventsConfigured = true;
 

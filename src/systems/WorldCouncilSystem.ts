@@ -105,6 +105,12 @@ export class WorldCouncilSystem {
    */
   private pendingHumanVoteMeetingId: number | null = null;
   private humanVotingDeferralEnabled?: () => boolean;
+  /**
+   * Diplomatic Score needed to win the Diplomatic Victory. Scenario-authored via
+   * the Editor's Scenario Details; defaults to the built-in threshold and is set
+   * from the resolved scenario/save value at game start.
+   */
+  private diplomacyScoreThreshold = WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
 
   /**
    * Provide a predicate that decides whether meetings with a human member should
@@ -294,7 +300,17 @@ export class WorldCouncilSystem {
   }
 
   getDiplomacyScoreThreshold(): number {
-    return WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
+    return this.diplomacyScoreThreshold;
+  }
+
+  /**
+   * Set the scenario-authored Diplomatic Victory score threshold. Invalid values
+   * (non-finite or ≤ 0) are ignored so the built-in default is retained.
+   */
+  setDiplomacyScoreThreshold(value: number): void {
+    if (Number.isFinite(value) && value > 0) {
+      this.diplomacyScoreThreshold = Math.floor(value);
+    }
   }
 
   /**
@@ -671,7 +687,7 @@ export class WorldCouncilSystem {
     this.log(
       nationId,
       `${name} gained ${Math.round(gained).toLocaleString()} Diplomatic Score: ${reason}. `
-      + `Total: ${Math.round(totalAfter).toLocaleString()} / ${WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD.toLocaleString()}.`,
+      + `Total: ${Math.round(totalAfter).toLocaleString()} / ${this.diplomacyScoreThreshold.toLocaleString()}.`,
     );
   }
 

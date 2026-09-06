@@ -199,6 +199,11 @@ import {
   resolveDominationLandPercent,
   resolveDominationRequiredVassals,
 } from '../systems/DominationRanking';
+import {
+  resolveCulturalVictoryRequiredCulture,
+  resolveOverwhelmingCultureVictoryThreshold,
+} from '../systems/CulturalVictory';
+import { resolveDiplomaticVictoryScoreThreshold } from '../types/worldCouncil';
 import { TimelinePanel } from '../ui/TimelinePanel';
 import { NewspaperDialog } from '../ui/NewspaperDialog';
 import { WorldWarAnnouncementDialog } from '../ui/WorldWarAnnouncementDialog';
@@ -3570,6 +3575,21 @@ export class GameScene extends Phaser.Scene {
         ?? data.victoryConditions?.domination?.requiredLandPercent
         ?? scenarioJson?.meta?.dominationLandPercent,
     );
+    // Cultural and Diplomatic thresholds are scenario-authored; a loaded save
+    // carries its own resolved values, older saves/scenarios fall back to the
+    // built-in defaults via the resolvers.
+    const culturalRequiredCulture = resolveCulturalVictoryRequiredCulture(
+      savedVictoryConditions?.culturalRequiredCulture
+        ?? scenarioJson?.meta?.culturalVictoryRequiredCulture,
+    );
+    const overwhelmingCultureThreshold = resolveOverwhelmingCultureVictoryThreshold(
+      savedVictoryConditions?.overwhelmingCultureThreshold
+        ?? scenarioJson?.meta?.overwhelmingCultureVictoryThreshold,
+    );
+    const diplomaticScoreThreshold = resolveDiplomaticVictoryScoreThreshold(
+      savedVictoryConditions?.diplomaticScoreThreshold
+        ?? scenarioJson?.meta?.diplomaticVictoryScoreThreshold,
+    );
     const effectiveVictoryConditions = savedVictoryConditions
       ? {
         domination: {
@@ -3583,8 +3603,15 @@ export class GameScene extends Phaser.Scene {
           requiredAerospaceParts: savedVictoryConditions.scienceRequiredAerospaceParts
             ?? data.victoryConditions?.science?.requiredAerospaceParts,
         },
-        cultural: { enabled: savedVictoryConditions.cultural },
-        diplomatic: { enabled: savedVictoryConditions.diplomatic ?? true },
+        cultural: {
+          enabled: savedVictoryConditions.cultural,
+          requiredCulture: culturalRequiredCulture,
+          overwhelmingCultureThreshold,
+        },
+        diplomatic: {
+          enabled: savedVictoryConditions.diplomatic ?? true,
+          requiredDiplomacyScore: diplomaticScoreThreshold,
+        },
       }
       : {
         ...(data.victoryConditions ?? {}),
@@ -3592,6 +3619,15 @@ export class GameScene extends Phaser.Scene {
           enabled: data.victoryConditions?.domination?.enabled ?? true,
           requiredVassals: dominationRequiredVassals,
           requiredLandPercent: dominationLandPercent,
+        },
+        cultural: {
+          enabled: data.victoryConditions?.cultural?.enabled ?? true,
+          requiredCulture: culturalRequiredCulture,
+          overwhelmingCultureThreshold,
+        },
+        diplomatic: {
+          enabled: data.victoryConditions?.diplomatic?.enabled ?? true,
+          requiredDiplomacyScore: diplomaticScoreThreshold,
         },
       };
     victorySystem = new VictorySystem(
@@ -3610,6 +3646,9 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       mapData,
     );
+    // Keep the World Council's diplomacy-score threshold (used for its logs and
+    // the Diplomatic Victory UI) aligned with the resolved victory threshold.
+    worldCouncilSystem.setDiplomacyScoreThreshold(diplomaticScoreThreshold);
     militaryVassalizationSystem.onCompleted(() => {
       victorySystem.resolveDominationVictoryNow();
       rightPanel?.requestRefresh();

@@ -6,6 +6,28 @@ export const CULTURAL_VICTORY_REQUIRED_WONDERS = 8;
 /** Extreme fallback: Culture alone is sufficient at this absolute threshold. */
 export const OVERWHELMING_CULTURE_VICTORY_THRESHOLD = 250_000;
 
+/**
+ * Resolve a scenario-authored normal-route Culture requirement (finite, > 0),
+ * falling back to {@link CULTURAL_VICTORY_REQUIRED_CULTURE} when absent/invalid.
+ */
+export function resolveCulturalVictoryRequiredCulture(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  return CULTURAL_VICTORY_REQUIRED_CULTURE;
+}
+
+/**
+ * Resolve a scenario-authored overwhelming-route Culture threshold (finite, > 0),
+ * falling back to {@link OVERWHELMING_CULTURE_VICTORY_THRESHOLD} when absent/invalid.
+ */
+export function resolveOverwhelmingCultureVictoryThreshold(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  return OVERWHELMING_CULTURE_VICTORY_THRESHOLD;
+}
+
 /** Minimal city-ownership lookup, satisfied by CityManager. */
 interface CityOwnerLookup {
   getCity(cityId: string): { ownerId: string } | undefined;

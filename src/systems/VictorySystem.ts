@@ -9,12 +9,15 @@ import type { TurnManager } from './TurnManager';
 import type { WonderSystem } from './WonderSystem';
 import type { CompletedGamesOfNationsRecord } from '../types/gamesOfNations';
 import type { DiplomaticScoreBreakdown, WorldCouncilSystem } from './WorldCouncilSystem';
-import { WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD } from '../types/worldCouncil';
 import {
-  CULTURAL_VICTORY_REQUIRED_CULTURE,
+  WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD,
+  resolveDiplomaticVictoryScoreThreshold,
+} from '../types/worldCouncil';
+import {
   CULTURAL_VICTORY_REQUIRED_WONDERS,
-  OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
   getOwnedWonderCount,
+  resolveCulturalVictoryRequiredCulture,
+  resolveOverwhelmingCultureVictoryThreshold,
 } from './CulturalVictory';
 import {
   AEROSPACE_INDUSTRIES_ID,
@@ -48,11 +51,25 @@ interface ToggleableVictorySettings {
   enabled?: boolean;
 }
 
+interface CulturalVictorySettings {
+  enabled: boolean;
+  /** Accumulated Culture required by the normal multi-part route. */
+  requiredCulture: number;
+  /** Absolute accumulated Culture that wins on its own (overwhelming route). */
+  overwhelmingCultureThreshold: number;
+}
+
+interface DiplomaticVictorySettings {
+  enabled: boolean;
+  /** Diplomatic Score a nation must reach to win. */
+  requiredDiplomacyScore: number;
+}
+
 interface VictoryConditionsConfig {
   domination?: Partial<DominationVictoryConfig> & ToggleableVictorySettings;
   science?: Partial<ScienceVictorySettings>;
-  cultural?: ToggleableVictorySettings;
-  diplomatic?: ToggleableVictorySettings;
+  cultural?: Partial<Omit<CulturalVictorySettings, 'enabled'>> & ToggleableVictorySettings;
+  diplomatic?: Partial<Omit<DiplomaticVictorySettings, 'enabled'>> & ToggleableVictorySettings;
 }
 
 export interface GamesOfNationsChampionSource {
@@ -133,8 +150,8 @@ export class VictorySystem {
   private victoryState: VictoryState | null = null;
   private readonly science: ScienceVictorySettings;
   private readonly domination: { enabled: boolean } & DominationVictoryConfig;
-  private readonly culturalEnabled: boolean;
-  private readonly diplomaticEnabled: boolean;
+  private readonly cultural: CulturalVictorySettings;
+  private readonly diplomatic: DiplomaticVictorySettings;
   private lastProgressRound = -SCIENCE_PROGRESS_INTERVAL;
   private lastCulturalProgressRound = -CULTURAL_PROGRESS_INTERVAL;
   private lastDiplomaticProgressRound = -DIPLOMATIC_PROGRESS_INTERVAL;
@@ -165,8 +182,17 @@ export class VictorySystem {
       requiredVassals: resolveDominationRequiredVassals(conditions.domination?.requiredVassals),
       requiredLandPercent: resolveDominationLandPercent(conditions.domination?.requiredLandPercent),
     };
-    this.culturalEnabled = conditions.cultural?.enabled ?? true;
-    this.diplomaticEnabled = conditions.diplomatic?.enabled ?? true;
+    this.cultural = {
+      enabled: conditions.cultural?.enabled ?? true,
+      requiredCulture: resolveCulturalVictoryRequiredCulture(conditions.cultural?.requiredCulture),
+      overwhelmingCultureThreshold: resolveOverwhelmingCultureVictoryThreshold(
+        conditions.cultural?.overwhelmingCultureThreshold,
+      ),
+    };
+    this.diplomatic = {
+      enabled: conditions.diplomatic?.enabled ?? true,
+      requiredDiplomacyScore: resolveDiplomaticVictoryScoreThreshold(conditions.diplomatic?.requiredDiplomacyScore),
+    };
 
     turnManager.on('turnEnd', (e) => {
       if (this.won) return;
@@ -180,7 +206,7 @@ export class VictorySystem {
         return;
       }
 
-      const culturalWinner = this.culturalEnabled ? this.checkCulturalVictory() : null;
+      const culturalWinner = this.cultural.enabled ? this.checkCulturalVictory() : null;
       if (culturalWinner) {
         this.recordVictory(culturalWinner, 'cultural', e.round);
         this.logCulturalVictory(culturalWinner, e.round);
@@ -189,7 +215,7 @@ export class VictorySystem {
         return;
       }
 
-      const diplomaticWinner = this.diplomaticEnabled ? this.checkDiplomaticVictory() : null;
+      const diplomaticWinner = this.diplomatic.enabled ? this.checkDiplomaticVictory() : null;
       if (diplomaticWinner) {
         this.recordVictory(diplomaticWinner, 'diplomatic', e.round);
         this.logDiplomaticVictory(diplomaticWinner, e.round);
@@ -209,14 +235,14 @@ export class VictorySystem {
     });
 
     turnManager.on('roundEnd', (e) => {
-      if (this.won || !this.culturalEnabled || !this.wonderSystem) return;
+      if (this.won || !this.cultural.enabled || !this.wonderSystem) return;
       if (e.round - this.lastCulturalProgressRound < CULTURAL_PROGRESS_INTERVAL) return;
       this.lastCulturalProgressRound = e.round;
       this.logCulturalProgress(e.round);
     });
 
     turnManager.on('roundEnd', (e) => {
-      if (this.won || !this.diplomaticEnabled || !this.worldCouncilSystem) return;
+      if (this.won || !this.diplomatic.enabled || !this.worldCouncilSystem) return;
       if (e.round - this.lastDiplomaticProgressRound < DIPLOMATIC_PROGRESS_INTERVAL) return;
       this.lastDiplomaticProgressRound = e.round;
       this.logDiplomaticProgress(e.round);
@@ -256,8 +282,8 @@ export class VictorySystem {
     return {
       domination: this.domination.enabled,
       science: this.science.enabled,
-      cultural: this.culturalEnabled,
-      diplomatic: this.diplomaticEnabled,
+      cultural: this.cultural.enabled,
+      diplomatic: this.diplomatic.enabled,
     };
   }
 
@@ -281,6 +307,16 @@ export class VictorySystem {
     if (settings.requiredLandPercent !== undefined) {
       this.domination.requiredLandPercent = resolveDominationLandPercent(settings.requiredLandPercent);
     }
+  }
+
+  /** Scenario-configured Cultural thresholds. Persisted so saves restore them. */
+  getCulturalVictorySettings(): Readonly<CulturalVictorySettings> {
+    return { ...this.cultural };
+  }
+
+  /** Scenario-configured Diplomatic threshold. Persisted so saves restore it. */
+  getDiplomaticVictorySettings(): Readonly<DiplomaticVictorySettings> {
+    return { ...this.diplomatic };
   }
 
   /** Structured outcome once a nation has won, else null. */
@@ -372,7 +408,7 @@ export class VictorySystem {
       ? getOwnedWonderCount(nationId, this.wonderSystem, this.cityManager)
       : 0;
     const currencyStatus = this.currencySystem?.getCurrencyState(nationId)?.strength ?? null;
-    const normalRequirementsMet = accumulatedCulture >= CULTURAL_VICTORY_REQUIRED_CULTURE
+    const normalRequirementsMet = accumulatedCulture >= this.cultural.requiredCulture
       && ownedWonders >= CULTURAL_VICTORY_REQUIRED_WONDERS
       && currencyStatus === 'Dominant';
     const latestGames = this.gamesOfNationsSystem?.getLatestCompletedGames();
@@ -380,7 +416,7 @@ export class VictorySystem {
     const isReigningGamesChampion = reigningGamesChampionNationId === nationId;
     const normalVictoryEligible = normalRequirementsMet && isReigningGamesChampion;
     const overwhelmingCultureThresholdMet = accumulatedCulture
-      >= OVERWHELMING_CULTURE_VICTORY_THRESHOLD;
+      >= this.cultural.overwhelmingCultureThreshold;
     const victoryRoute = normalVictoryEligible
       ? 'normal' as const
       : overwhelmingCultureThresholdMet
@@ -389,12 +425,12 @@ export class VictorySystem {
     return {
       nationId,
       accumulatedCulture,
-      requiredCulture: CULTURAL_VICTORY_REQUIRED_CULTURE,
+      requiredCulture: this.cultural.requiredCulture,
       ownedWonders,
       requiredWonders: CULTURAL_VICTORY_REQUIRED_WONDERS,
       currencyStatus,
       normalRequirementsMet,
-      overwhelmingCultureThreshold: OVERWHELMING_CULTURE_VICTORY_THRESHOLD,
+      overwhelmingCultureThreshold: this.cultural.overwhelmingCultureThreshold,
       overwhelmingCultureThresholdMet,
       latestCompletedGamesNumber: latestGames?.gamesNumber ?? null,
       reigningGamesChampionNationId,
@@ -419,7 +455,7 @@ export class VictorySystem {
     return {
       nationId,
       diplomacyScore: scoreBreakdown.total,
-      requiredDiplomacyScore: DIPLOMATIC_VICTORY_SCORE_THRESHOLD,
+      requiredDiplomacyScore: this.diplomatic.requiredDiplomacyScore,
       scoreBreakdown,
     };
   }
@@ -501,7 +537,7 @@ export class VictorySystem {
 
   private checkDiplomaticVictory(): string | null {
     for (const nation of this.nationManager.getAllNations()) {
-      if (this.getDiplomacyScore(nation.id) >= DIPLOMATIC_VICTORY_SCORE_THRESHOLD) {
+      if (this.getDiplomacyScore(nation.id) >= this.diplomatic.requiredDiplomacyScore) {
         return nation.id;
       }
     }

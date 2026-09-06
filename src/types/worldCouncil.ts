@@ -3,6 +3,17 @@ export const WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD = 5000;
 export const WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS = 50;
 
 /**
+ * Resolve a scenario-authored Diplomatic Victory score threshold (finite, > 0),
+ * falling back to {@link WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD} when absent/invalid.
+ */
+export function resolveDiplomaticVictoryScoreThreshold(value: number | undefined): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  return WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD;
+}
+
+/**
  * Diplomatic Score is earned from political outcomes at World Council / UN
  * meetings, not from passive per-turn contribution percentages. These are the
  * centralised, tunable award constants; the next full autorun calibrates them.

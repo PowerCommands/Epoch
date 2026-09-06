@@ -360,6 +360,9 @@ export class SaveLoadService {
             scienceRequiredAerospaceParts: context.victorySystem.getScienceVictorySettings().requiredAerospaceParts,
             dominationRequiredVassals: context.victorySystem.getDominationVictorySettings().requiredVassals,
             dominationLandPercent: context.victorySystem.getDominationVictorySettings().requiredLandPercent,
+            culturalRequiredCulture: context.victorySystem.getCulturalVictorySettings().requiredCulture,
+            overwhelmingCultureThreshold: context.victorySystem.getCulturalVictorySettings().overwhelmingCultureThreshold,
+            diplomaticScoreThreshold: context.victorySystem.getDiplomaticVictorySettings().requiredDiplomacyScore,
           }
         : undefined,
       turn: {

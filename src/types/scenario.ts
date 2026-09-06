@@ -90,6 +90,25 @@ export interface ScenarioMeta {
    * Absent/invalid falls back to DEFAULT_DOMINATION_REQUIRED_VASSALS (3).
    */
   dominationRequiredVassals?: number;
+  /**
+   * Cultural Victory normal route: accumulated Culture (> 0) required alongside
+   * the World Wonder, currency, and GoN Champion conditions. Authored in the
+   * Editor's Scenario Details. Absent/invalid falls back to
+   * CULTURAL_VICTORY_REQUIRED_CULTURE (100000).
+   */
+  culturalVictoryRequiredCulture?: number;
+  /**
+   * Cultural Victory overwhelming route: absolute accumulated Culture (> 0) that
+   * wins on its own. Authored in the Editor's Scenario Details. Absent/invalid
+   * falls back to OVERWHELMING_CULTURE_VICTORY_THRESHOLD (250000).
+   */
+  overwhelmingCultureVictoryThreshold?: number;
+  /**
+   * Diplomatic Victory: Diplomatic Score (> 0) a nation must reach to win.
+   * Authored in the Editor's Scenario Details. Absent/invalid falls back to
+   * WORLD_COUNCIL_DIPLOMACY_SCORE_THRESHOLD (5000).
+   */
+  diplomaticVictoryScoreThreshold?: number;
 }
 
 export interface ScenarioMap {

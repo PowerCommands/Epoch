@@ -2974,8 +2974,11 @@ export class RightSidebarPanelDataProvider {
 
   private getCulturalVictorySection(): RightSidebarSection {
     const entries = this.getCulturalVictoryLeaderboard();
+    const cultural = this.victorySystem?.getCulturalVictorySettings();
+    const requiredCulture = cultural?.requiredCulture ?? CULTURAL_VICTORY_REQUIRED_CULTURE;
+    const overwhelmingCulture = cultural?.overwhelmingCultureThreshold ?? OVERWHELMING_CULTURE_VICTORY_THRESHOLD;
     const headerRow = textRow(
-      `Cultural Victory — normal route: ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, a Dominant currency, and Reigning GoN Champion; OR ${OVERWHELMING_CULTURE_VICTORY_THRESHOLD.toLocaleString()} Culture through overwhelming cultural dominance.`,
+      `Cultural Victory — normal route: ${requiredCulture.toLocaleString()} Culture, ${CULTURAL_VICTORY_REQUIRED_WONDERS} World Wonders, a Dominant currency, and Reigning GoN Champion; OR ${overwhelmingCulture.toLocaleString()} Culture through overwhelming cultural dominance.`,
       true,
     );
     const rows: RightSidebarRow[] = entries.length === 0
@@ -2991,6 +2994,10 @@ export class RightSidebarPanelDataProvider {
 
   private getCulturalVictoryLeaderboard(): LeaderboardEntry[] {
     if (!this.wonderSystem) return [];
+    const culturalSettings = this.victorySystem?.getCulturalVictorySettings();
+    const requiredCulture = culturalSettings?.requiredCulture ?? CULTURAL_VICTORY_REQUIRED_CULTURE;
+    const overwhelmingCulture = culturalSettings?.overwhelmingCultureThreshold
+      ?? OVERWHELMING_CULTURE_VICTORY_THRESHOLD;
     return this.sortLeaderboard(this.nationManager.getAllNations().map((nation) => {
       const owned = getOwnedWonderCount(nation.id, this.wonderSystem!, this.cityManager);
       const culture = this.nationManager.getResources(nation.id).culture;
@@ -2998,8 +3005,8 @@ export class RightSidebarPanelDataProvider {
       const champion = this.victorySystem
         ?.getCulturalVictoryProgress(nation.id).isReigningGamesChampion === true;
       const details = [
-        `Culture ${culture.toLocaleString()} / ${CULTURAL_VICTORY_REQUIRED_CULTURE.toLocaleString()}`,
-        `Overwhelming ${culture.toLocaleString()} / ${OVERWHELMING_CULTURE_VICTORY_THRESHOLD.toLocaleString()}`,
+        `Culture ${culture.toLocaleString()} / ${requiredCulture.toLocaleString()}`,
+        `Overwhelming ${culture.toLocaleString()} / ${overwhelmingCulture.toLocaleString()}`,
         `Wonders ${owned} / ${CULTURAL_VICTORY_REQUIRED_WONDERS}`,
         currency === 'Dominant' ? 'Currency Dominant' : undefined,
         champion ? 'Reigning GoN Champion' : undefined,

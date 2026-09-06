@@ -430,7 +430,13 @@ export interface SavedVictoryConditions {
   science: boolean;
   scienceRequiredAerospaceParts?: number;
   cultural: boolean;
+  /** Culture required for the normal Cultural Victory route. Older saves fall back to the default (100000). */
+  culturalRequiredCulture?: number;
+  /** Absolute Culture for the overwhelming Cultural Victory route. Older saves fall back to the default (250000). */
+  overwhelmingCultureThreshold?: number;
   diplomatic?: boolean;
+  /** Diplomatic Score required for Diplomatic Victory. Older saves fall back to the default (5000). */
+  diplomaticScoreThreshold?: number;
 }
 
 /** One attacker→victim covert offense tally for repeated-offender escalation. */
