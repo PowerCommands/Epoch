@@ -22,6 +22,11 @@ export const BUILDING_RESOURCE_REQUIREMENTS: Readonly<Record<string, string>> = 
   workshop: 'iron',
   // Coal unlocks the industrial Production step.
   factory: 'coal',
+  // Horses gate the Stable: it can only be built with genuine Horse access, and
+  // then amplifies that supply (see the Stable resource-capacity bonus). Losing
+  // Horse access never removes an already-built Stable — only its bonus goes
+  // dormant — matching the access-not-consumption rule above.
+  stable: 'horses',
 };
 
 export function getBuildingRequiredResourceId(buildingId: string): string | undefined {

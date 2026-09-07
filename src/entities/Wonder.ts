@@ -27,6 +27,10 @@ export interface WonderType {
    * AI via WonderSystem). Absent => no population requirement.
    */
   readonly minimumPopulation?: number;
+  /** Radius of ongoing map visibility projected from the wonder's physical tile. */
+  readonly visibilityRadius?: number;
+  /** Radius in which this wonder detects units using the canonical covert flag. */
+  readonly covertDetectionRadius?: number;
 }
 
 export interface WonderState {

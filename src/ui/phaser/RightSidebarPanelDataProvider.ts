@@ -22,6 +22,7 @@ import {
 } from '../../data/economicPressure';
 import { getResourceDisplayName } from '../../data/resources';
 import { getBuildingTerrainRequirement } from '../../utils/buildingRequirements';
+import { isBuildingObsoleteInCity } from '../../systems/buildingUpgrades';
 import {
   AEROSPACE_PART_PRODUCTION,
   AEROSPACE_PARTS_ID,
@@ -1681,8 +1682,10 @@ export class RightSidebarPanelDataProvider {
     const availableBuildings = this.gamesOfNationsSystem?.canCityConstructGrandStadium(city.id, city.ownerId)
       ? [...ALL_BUILDINGS, GRAND_STADIUM]
       : ALL_BUILDINGS;
+    const cityBuildings = this.cityManager.getBuildings(city.id);
     for (const buildingType of availableBuildings) {
-      if (this.cityManager.getBuildings(city.id).has(buildingType.id)) continue;
+      if (cityBuildings.has(buildingType.id)) continue;
+      if (isBuildingObsoleteInCity(cityBuildings, buildingType)) continue;
       if (reservedBuildingIds.has(buildingType.id)) continue;
       if (queuedBuildingIds.has(buildingType.id)) continue;
       if (this.researchSystem && !this.researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;

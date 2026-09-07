@@ -39,6 +39,7 @@ import { TurnManager } from '../src/systems/TurnManager.ts';
 import {
   completeBuildingUpgrade,
   getBuildingUpgradeBlockReason,
+  isBuildingObsoleteInCity,
 } from '../src/systems/buildingUpgrades.ts';
 import { HexGridSystem } from '../src/systems/grid/HexGridSystem.ts';
 import type { SavedCity } from '../src/types/saveGame.ts';
@@ -426,6 +427,18 @@ test('production rejects unavailable upgrades and a rebuilt predecessor', () => 
   h.cityManager.getBuildings(CITY_ID).add(ARMORY);
   h.production.enqueue(CITY_ID, { kind: 'building', buildingType: BARRACKS });
   assert.equal(h.production.getQueue(CITY_ID).length, 0);
+});
+
+test('completed upgrades mark every predecessor as obsolete for human building lists', () => {
+  const h = makeHarness();
+  const buildings = h.cityManager.getBuildings(CITY_ID);
+  buildings.add(MILITARY_ACADEMY);
+
+  assert.equal(isBuildingObsoleteInCity(buildings, BARRACKS), true);
+  assert.equal(isBuildingObsoleteInCity(buildings, ARMORY), true);
+  assert.equal(isBuildingObsoleteInCity(buildings, MILITARY_ACADEMY), false);
+  assert.equal(isBuildingObsoleteInCity(buildings, MILITARY_BASE), false);
+  assert.equal(isBuildingObsoleteInCity(buildings, HARBOR), false);
 });
 
 function savedCity(buildings: SavedCity['buildings']): SavedCity {

@@ -19,6 +19,14 @@ export interface ImportedDealsProvider {
 
 export type ResourceUsabilityPredicate = (nationId: string, resourceId: string) => boolean;
 export type ManufacturedResourceProvider = (nationId: string) => ReadonlyMap<string, number>;
+/**
+ * Additive strategic-resource supply granted by a nation's active buildings
+ * (e.g. Stables → Horses). Consulted on top of the base (map + import +
+ * manufactured) source count. The provider is responsible for its own access
+ * gating — it must derive that gate from {@link ResourceAccessSystem#getBaseResourceSourceCount}
+ * (never from the bonus-inclusive total) so the calculation stays acyclic.
+ */
+export type BuildingResourceCapacityBonusProvider = (nationId: string, resourceId: string) => number;
 export type ForeignExploitationYieldPercentProvider = (
   beneficiaryNationId: string,
   territorialOwnerNationId: string,
@@ -61,6 +69,7 @@ export class ResourceAccessSystem {
   private getManufacturedResourceQuantities: ManufacturedResourceProvider = () => new Map();
   private isImportBlocked: ImportBlockedPredicate = () => false;
   private getForeignExploitationYieldPercent: ForeignExploitationYieldPercentProvider = () => 0;
+  private getBuildingResourceCapacityBonusFor: BuildingResourceCapacityBonusProvider = () => 0;
   private resourceTileIndex: Map<string, Tile[]> | null = null;
 
   constructor(
@@ -78,6 +87,16 @@ export class ResourceAccessSystem {
 
   setForeignExploitationYieldPercentProvider(provider: ForeignExploitationYieldPercentProvider): void {
     this.getForeignExploitationYieldPercent = provider;
+  }
+
+  /**
+   * Inject the building-derived resource supply bonus (e.g. Stables → Horses).
+   * The provider adds to a nation's usable quantity of a resource on top of its
+   * base sources; it must gate itself on {@link getBaseResourceSourceCount} so no
+   * building bonus can satisfy its own underlying access requirement.
+   */
+  setBuildingResourceCapacityBonusProvider(provider: BuildingResourceCapacityBonusProvider): void {
+    this.getBuildingResourceCapacityBonusFor = provider;
   }
 
   /**
@@ -152,7 +171,23 @@ export class ResourceAccessSystem {
     return count;
   }
 
+  /**
+   * Total usable quantity of a resource: its base sources (owned tiles, imports
+   * and manufacturing) plus any building-derived supply bonus. This is the
+   * canonical figure the UI, strategic capacity, power plants and AI all read.
+   */
   getResourceSourceCount(nationId: string, resourceId: string): number {
+    return this.getBaseResourceSourceCount(nationId, resourceId)
+      + this.getBuildingResourceCapacityBonusFor(nationId, resourceId);
+  }
+
+  /**
+   * Base usable quantity WITHOUT any building-derived supply bonus — owned
+   * tiles, imports and manufacturing only. This is the authoritative definition
+   * of genuine (non-amplified) resource access; building bonuses gate themselves
+   * on it so their contribution can never satisfy its own requirement.
+   */
+  getBaseResourceSourceCount(nationId: string, resourceId: string): number {
     const manufacturedProduced = this.getManufacturedResourceSourceCount(nationId, resourceId);
     if (manufacturedProduced > 0 || getManufacturedResourceById(resourceId)) {
       // Export does not reduce the seller's own access; just add imports on top.

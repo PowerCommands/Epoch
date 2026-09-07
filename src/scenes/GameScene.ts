@@ -254,6 +254,7 @@ import { TileImprovementOverlayRenderer } from '../renderers/TileImprovementOver
 import { CultureLayerRenderer } from '../renderers/CultureLayerRenderer';
 import { FogOfWarRenderer } from '../renderers/FogOfWarRenderer';
 import { VisibilitySystem } from '../systems/VisibilitySystem';
+import { StructureObservationSystem, type StructureObservationSource } from '../systems/StructureObservationSystem';
 import { collectResourceLensRevealTiles, resourceLensCoordKey } from '../systems/ResourceMapLens';
 import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { WonderSystem } from '../systems/WonderSystem';
@@ -318,7 +319,7 @@ import { getBuildingTerrainRequirement } from '../utils/buildingRequirements';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
-import { completeBuildingUpgrade, getBuildingUpgradeBlockReason } from '../systems/buildingUpgrades';
+import { completeBuildingUpgrade, getBuildingUpgradeBlockReason, isBuildingObsoleteInCity } from '../systems/buildingUpgrades';
 import { CULTURE_TREE, ENLIGHTENMENT_CULTURE_NODE_ID } from '../data/cultureTree';
 import { getPoliciesByRequiredCultureNodeId } from '../data/policies';
 import { getImprovementById } from '../data/improvements';
@@ -351,6 +352,7 @@ import {
 } from '../systems/ProductionRules';
 import { StrategicResourceCapacitySystem } from '../systems/StrategicResourceCapacitySystem';
 import { BuildingResourceRequirementSystem } from '../systems/BuildingResourceRequirementSystem';
+import { BuildingResourceCapacitySystem } from '../systems/BuildingResourceCapacitySystem';
 import { StrategicResourceDemandSystem } from '../systems/StrategicResourceDemandSystem';
 import { formatBuildingCompletionMessage } from '../systems/productionLogging';
 import { TileType, type Tile, type MapData } from '../types/map';
@@ -694,13 +696,16 @@ export class GameScene extends Phaser.Scene {
     // visibility recompute. No-op until then so early calls stay safe.
     let applyFogToRenderers: () => void = () => {};
     let refreshResourceLensRevealTiles: () => void = () => {};
+    let collectStructureObservationSources: () => StructureObservationSource[] = () => [];
+    let structureObservationSources: StructureObservationSource[] = [];
     let isMapRevealActive = false;
     const updateFog = (): void => {
       if (!humanNationId) return;
       fogOfWarRenderer.setVisible(visibilitySystem.isEnabled());
       const humanCities = cityManager.getCitiesByOwner(humanNationId);
       const humanUnits = unitManager.getUnitsByOwner(humanNationId);
-      visibilitySystem.update(humanCities, humanUnits);
+      structureObservationSources = collectStructureObservationSources();
+      visibilitySystem.update(humanCities, humanUnits, structureObservationSources);
       // Any city now in vision becomes permanently known (city + surroundings).
       visibilitySystem.recordVisibleCities(cityManager.getAllCities());
       refreshResourceLensRevealTiles();
@@ -796,6 +801,18 @@ export class GameScene extends Phaser.Scene {
     const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
     const policySystem = new PolicySystem(nationManager);
     const wonderSystem = new WonderSystem();
+    const structureObservationSystem = new StructureObservationSystem(mapData, cityManager, wonderSystem);
+    collectStructureObservationSources = () => humanNationId
+      ? structureObservationSystem.getSourcesForNation(humanNationId)
+      : [];
+    cityManager.onCityChanged((event) => {
+      if (event.reason === 'ownershipTransferred' && event.city) {
+        wonderSystem.transferWondersForCity(event.city.id, event.city.ownerId);
+      }
+      if (event.reason === 'ownershipTransferred' || event.reason === 'removed' || event.reason === 'cleared') {
+        updateFog();
+      }
+    });
     let corporationSystem: CorporationSystem | undefined;
     let aerospacePartSystem: AerospacePartSystem;
     const territoryExpansionBonusSystem = new TerritoryExpansionBonusSystem(gridSystem, cityTerritorySystem);
@@ -1852,6 +1869,16 @@ export class GameScene extends Phaser.Scene {
         ? policySystem.getPercentModifierTotal(beneficiaryNationId, 'foreignExploitationYieldPercent')
         : 0
     ));
+    // Data-driven building resource supply (Stables → Horses). The bonus gates
+    // itself on the *base* (non-amplified) source count, so it can never satisfy
+    // its own underlying access requirement and the calculation stays acyclic.
+    const buildingResourceCapacitySystem = new BuildingResourceCapacitySystem(
+      cityManager,
+      (nationId, resourceId) => resourceAccessSystem.getBaseResourceSourceCount(nationId, resourceId) >= 1,
+    );
+    resourceAccessSystem.setBuildingResourceCapacityBonusProvider((nationId, resourceId) =>
+      buildingResourceCapacitySystem.getResourceCapacityBonus(nationId, resourceId),
+    );
     const isNaturalResourceVisibleToNation = (nationId: string, resourceId: string): boolean => {
       return isNaturalResourceRevealed(resourceId, {
         isTechnologyResearched: (technologyId) => researchSystem.isResearched(nationId, technologyId),
@@ -2600,6 +2627,7 @@ export class GameScene extends Phaser.Scene {
         unitManager.getUnitsByOwner(humanNationId),
         gridSystem,
         isMapRevealActive,
+        structureObservationSources,
       );
     // Cities are permanent intelligence: a discovered city stays on the map even
     // when it leaves vision. Other objects (units, borders, resources,
@@ -3095,6 +3123,7 @@ export class GameScene extends Phaser.Scene {
     );
     const recalculateChangedInfrastructure = (nationIds: readonly string[]): void => {
       for (const nationId of new Set(nationIds)) resourceSystem.recalculateForNation(nationId);
+      if (humanNationId && nationIds.includes(humanNationId)) updateFog();
     };
     infrastructureSabotageSystem.setInfrastructureChangedHandler(recalculateChangedInfrastructure);
     infrastructureRepairSystem.setInfrastructureChangedHandler(recalculateChangedInfrastructure);
@@ -4720,6 +4749,7 @@ export class GameScene extends Phaser.Scene {
         }
         resourceSystem.recalculateForNation(city.ownerId);
         if (completedTile) tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
+        if (city.ownerId === humanNationId) updateFog();
 
         const hasFlatCulture = (item.buildingType.modifiers.culturePerTurn ?? 0) > 0;
         const hasPercentCulture = (item.buildingType.modifiers.culturePercent ?? 0) > 0;
@@ -4805,6 +4835,7 @@ export class GameScene extends Phaser.Scene {
         refreshOpenCityView();
         rightPanel?.requestRefresh();
         hudLayer?.refresh();
+        if (city.ownerId === humanNationId) updateFog();
         updateCityProductionRhythm(city, item);
         return true;
       }
@@ -8617,11 +8648,13 @@ export class GameScene extends Phaser.Scene {
       .some((entry) => entry.item.kind === 'building' && entry.item.buildingType.id === buildingId);
     const getCityViewBuildingOptions = (city: City): CityViewBuildingOption[] => {
       const occupiedBuildingIds = getOccupiedBuildingIds(city);
+      const cityBuildings = cityManager.getBuildings(city.id);
       const buildings = gamesOfNationsSystem.canCityConstructGrandStadium(city.id, city.ownerId)
         ? [...ALL_BUILDINGS, GRAND_STADIUM]
         : ALL_BUILDINGS;
       return buildings
-        .filter((building) => !cityManager.getBuildings(city.id).has(building.id))
+        .filter((building) => !cityBuildings.has(building.id))
+        .filter((building) => !isBuildingObsoleteInCity(cityBuildings, building))
         .filter((building) => !occupiedBuildingIds.has(building.id))
         .filter((building) => !isBuildingQueued(city.id, building.id))
         .filter((building) => researchSystem ? researchSystem.isBuildingUnlocked(city.ownerId, building.id) : true)

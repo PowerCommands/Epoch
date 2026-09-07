@@ -69,6 +69,17 @@ export class WonderSystem {
     return removed;
   }
 
+  /** Transfer every wonder hosted by a city to that city's current owner. */
+  transferWondersForCity(cityId: string, ownerId: string): string[] {
+    const transferred: string[] = [];
+    for (const [wonderId, state] of this.completed.entries()) {
+      if (state.cityId !== cityId || state.ownerId === ownerId) continue;
+      this.completed.set(wonderId, { ...state, ownerId });
+      transferred.push(wonderId);
+    }
+    return transferred;
+  }
+
   isWonderBroken(wonderId: string): boolean {
     return this.completed.get(wonderId)?.broken === true;
   }

@@ -18,6 +18,16 @@ function isUpgradeDescendant(candidate: BuildingType, buildingId: string): boole
   return getUpgradeAncestors(candidate).includes(buildingId);
 }
 
+/** True when this building has already been superseded in the given city. */
+export function isBuildingObsoleteInCity(
+  buildings: Pick<CityBuildings, 'has'>,
+  building: BuildingType,
+): boolean {
+  return ALL_BUILDINGS.some((candidate) => (
+    isUpgradeDescendant(candidate, building.id) && buildings.has(candidate.id)
+  ));
+}
+
 /** Shared city-local construction rule used by Human, AI and completion paths. */
 export function getBuildingUpgradeBlockReason(
   buildings: Pick<CityBuildings, 'has'>,
@@ -28,7 +38,7 @@ export function getBuildingUpgradeBlockReason(
   if (belongsToUpgradeChain && buildings.has(building.id)) {
     return `${building.name} already exists in this city.`;
   }
-  if (descendants.some((candidate) => buildings.has(candidate.id))) {
+  if (isBuildingObsoleteInCity(buildings, building)) {
     return `${building.name} has already been replaced by a later upgrade in this city.`;
   }
   if (building.upgradesFrom && !buildings.has(building.upgradesFrom)) {

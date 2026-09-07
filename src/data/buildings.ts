@@ -1,4 +1,4 @@
-import type { BuildingModifiers, BuildingPlacement, BuildingType } from '../entities/Building';
+import type { BuildingModifiers, BuildingPlacement, BuildingResourceCapacityBonus, BuildingType } from '../entities/Building';
 import type { Era } from './technologies';
 import { CITY_POPULATION_CAPACITY_BONUSES } from './populationCapacity';
 import { TileType } from '../types/map';
@@ -15,6 +15,9 @@ interface BuildingInput {
   upgradesFrom?: string;
   allowedTerrains?: readonly TileType[];
   populationOnCompletion?: number;
+  resourceCapacityBonus?: BuildingResourceCapacityBonus;
+  visibilityRadius?: number;
+  covertDetectionRadius?: number;
 }
 
 function building(input: BuildingInput): BuildingType {
@@ -30,6 +33,9 @@ function building(input: BuildingInput): BuildingType {
     upgradesFrom: input.upgradesFrom,
     allowedTerrains: input.allowedTerrains,
     populationOnCompletion: input.populationOnCompletion,
+    resourceCapacityBonus: input.resourceCapacityBonus,
+    visibilityRadius: input.visibilityRadius,
+    covertDetectionRadius: input.covertDetectionRadius,
   };
 }
 
@@ -78,17 +84,31 @@ export const SEWERS = building({
 export const LIBRARY = building({ id: 'library', name: 'Library', era: 'classical', cost: 75, maintenance: 1, modifiers: { sciencePerTurn: 2, happinessPerTurn: 2 }, description: 'Civ V is +1 science per 2 citizens; approximated as +2 science' });
 export const CIRCUS = building({ id: 'circus', name: 'Circus', era: 'classical', cost: 75, maintenance: 0, modifiers: { happinessPerTurn: 5 }, description: 'Resource requirement omitted' });
 export const COLOSSEUM = building({ id: 'colosseum', name: 'Colosseum', era: 'classical', cost: 100, maintenance: 1, modifiers: { happinessPerTurn: 5 } });
-export const COURTHOUSE = building({ id: 'courthouse', name: 'Courthouse', era: 'classical', cost: 100, maintenance: 4, description: 'Occupied-city unhappiness omitted', modifiers: { happinessPerTurn: 1} });
+export const COURTHOUSE = building({ id: 'courthouse', name: 'Courthouse', era: 'classical', cost: 100, maintenance: 4, description: 'Occupied-city unhappiness omitted', modifiers: { happinessPerTurn: 2} });
 export const TEMPLE = building({ id: 'temple', name: 'Temple', era: 'classical', cost: 100, maintenance: 2, modifiers: { culturePerTurn: 5 }, description: '+5 Culture per turn', upgradesFrom: SHRINE.id });
-export const LIGHTHOUSE = building({ id: 'lighthouse', name: 'Lighthouse', era: 'classical', placement: 'water', cost: 75, maintenance: 1, modifiers: { foodPerTurn: 1, happinessPerTurn: 1 }, description: 'Sea-tile food approximated as +1 food' });
-export const STABLE = building({ id: 'stable', name: 'Stable', era: 'classical', cost: 100, maintenance: 1, modifiers: { productionPercent: 5, happinessPerTurn: 1 }, description: 'Mounted-unit and pasture bonuses approximated as +5% production' });
+export const LIGHTHOUSE = building({
+  id: 'lighthouse', name: 'Lighthouse', era: 'classical', placement: 'water', cost: 75, maintenance: 1,
+  modifiers: {}, visibilityRadius: 10, covertDetectionRadius: 10,
+  description: 'Visibility Radius: 10. Covert Detection Radius: 10.',
+});
+/** Horse supply each active Stable adds while the nation keeps genuine Horse access. */
+export const STABLE_HORSE_CAPACITY_BONUS = 2;
+export const STABLE = building({
+  id: 'stable',
+  name: 'Stable',
+  era: 'classical',
+  cost: 100,
+  maintenance: 1,
+  resourceCapacityBonus: { resourceId: 'horses', amount: STABLE_HORSE_CAPACITY_BONUS, requiresResourceAccessTo: 'horses' },
+  description: `Requires access to Horses. Each Stable increases your usable Horse supply by +${STABLE_HORSE_CAPACITY_BONUS} while Horse access is maintained.`,
+});
 
 export const CASTLE = building({ id: 'castle', name: 'Castle', era: 'medieval', placement: 'city', cost: 210, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const ARMORY = building({ id: 'armory', name: 'Armory', era: 'medieval', cost: 160, maintenance: 1, modifiers: { militaryProductionPercent: 20 }, upgradesFrom: BARRACKS.id });
 export const FORGE = building({ id: 'forge', name: 'Forge', era: 'medieval', cost: 120, maintenance: 1, modifiers: { productionPercent: 5, happinessPerTurn: 1 }, description: 'Land-unit and iron bonuses approximated as +5% production' });
-export const MARKET = building({ id: 'market', name: 'Market', era: 'medieval', cost: 120, maintenance: 0, modifiers: { goldPerTurn: 2, goldPercent: 25, happinessPerTurn: 2, tradeCapacity: 1 } });
+export const MARKET = building({ id: 'market', name: 'Market', era: 'medieval', cost: 200, maintenance: 0, modifiers: { goldPerTurn: 2, goldPercent: 25, happinessPerTurn: 2, tradeCapacity: 1 } });
 export const MINT = building({ id: 'mint', name: 'Mint', era: 'medieval', cost: 120, maintenance: 0, modifiers: { goldPerTurn: 2, happinessPerTurn: 1 }, description: 'Gold/silver resource bonus approximated as +2 gold' });
-export const GARDEN = building({ id: 'garden', name: 'Garden', era: 'medieval', cost: 120, maintenance: 1, description: 'Great People modifier omitted' , modifiers: { foodPerTurn: 2 , happinessPerTurn: 1}});
+export const GARDEN = building({ id: 'garden', name: 'Garden', era: 'medieval', cost: 120, maintenance: 1, description: 'Brings joy and food to the people' , modifiers: { foodPerTurn: 2 , happinessPerTurn: 1}});
 export const UNIVERSITY = building({ id: 'university', name: 'University', era: 'medieval', cost: 160, maintenance: 2, modifiers: { sciencePercent: 33, happinessPerTurn: 2 }, description: 'Jungle science omitted; keeps +33% science' });
 export const WORKSHOP = building({ id: 'workshop', name: 'Workshop', era: 'medieval', cost: 120, maintenance: 2, modifiers: { productionPerTurn: 2, productionPercent: 10, happinessPerTurn: 1 } });
 export const AQUEDUCT = building({ id: 'aqueduct', name: 'Aqueduct', era: 'medieval', cost: 100, maintenance: 1, description: `Carries reliable fresh water into the city. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.aqueduct}. Existing bonuses: +2 food, +1 happiness.`, modifiers: { foodPerTurn: 2, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.aqueduct } });
@@ -108,7 +128,7 @@ export const MUSEUM = building({
 });
 export const PUBLIC_SCHOOL = building({ id: 'public_school', name: 'Public School', era: 'renaissance', cost: 300, maintenance: 3, modifiers: { sciencePerTurn: 3, sciencePercent: 50, happinessPerTurn: 2 }, description: 'Per-citizen science approximated with +50% science and +3 flat science', upgradesFrom: UNIVERSITY.id });
 export const SEAPORT = building({ id: 'seaport', name: 'Seaport', era: 'renaissance', placement: 'water', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 1, goldPerTurn: 1, productionPercent: 5, happinessPerTurn: 1, tradeCapacity: 3 }, description: 'Sea-resource and naval production effects approximated', upgradesFrom: HARBOR.id });
-export const WINDMILL = building({ id: 'windmill', name: 'Windmill', era: 'renaissance', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 2, productionPercent: 10, happinessPerTurn: 1 }, description: 'Flatland requirement omitted' });
+export const WINDMILL = building({ id: 'windmill', name: 'Windmill', era: 'renaissance', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 2 }, description: 'Flatland requirement omitted' });
 export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 200, maintenance: 2, modifiers: { happinessPerTurn: 5 } });
 
 export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, modifiers: { militaryProductionPercent: 30 }, upgradesFrom: ARMORY.id });
@@ -119,7 +139,7 @@ export const OIL_POWER_PLANT = building({ id: 'oil_power_plant', name: 'Oil Powe
 export const GAS_POWER_PLANT = building({ id: 'gas_power_plant', name: 'Gas Power Plant', era: 'industrial', cost: 360, maintenance: 0, description: `Requires Natural Gas to construct and operate. Lifespan: 50 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.gasPowerPlant}. Active production multiplier: x4.` });
 export const STOCK_EXCHANGE = building({ id: 'stock_exchange', name: 'Stock Exchange', era: 'industrial', cost: 500, maintenance: 0, modifiers: { goldPercent: 33, happinessPerTurn: 1, tradeCapacity: 2 } });
 export const HOSPITAL = building({ id: 'hospital', name: 'Hospital', era: 'industrial', cost: 360, maintenance: 2, modifiers: { foodPerTurn: 5, happinessPerTurn: 2, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.hospital }, description: `+5 food, +2 happiness. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.hospital}.` });
-export const HOTEL = building({ id: 'hotel', name: 'Hotel', era: 'industrial', cost: 300, maintenance: 0, modifiers: { goldPerTurn: 5 }, allowedTerrains: [TileType.Beach], populationOnCompletion: 1, description: '+5 Gold per turn. Attracts +1 Population when completed.' });
+export const HOTEL = building({ id: 'hotel', name: 'Hotel', era: 'industrial', cost: 300, maintenance: 0, modifiers: { goldPerTurn: 5, goldPercent: 25 }, allowedTerrains: [TileType.Beach], populationOnCompletion: 1, description: '+5 Gold per turn and 25% increase. Attracts +1 Population when completed.' });
 
 export const BROADCAST_TOWER = building({ id: 'broadcast_tower', name: 'Broadcast Tower', era: 'modern', cost: 500, maintenance: 3, modifiers: { culturePerTurn: 3, culturePercent: 33, happinessPerTurn: 1 } });
 /** Canonical happiness yield shared by the normal Stadium and Grand Stadium. */
@@ -146,7 +166,7 @@ export const NUCLEAR_PLANT = NUCLEAR_POWER_PLANT;
 export const HYDRO_PLANT = building({ id: 'hydro_plant', name: 'Hydro Plant', era: 'modern', cost: 500, maintenance: 3, modifiers: { productionPerTurn: 3, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.hydroPlant }, description: `River-tile production approximated as +3 production, +1 happiness. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.hydroPlant}.` });
 export const RECYCLING_CENTER = building({ id: 'recycling_center', name: 'Recycling Center', era: 'information', cost: 300, maintenance: 2, modifiers: { productionPerTurn: 2, happinessPerTurn: 1 }, description: 'Aluminum source effect approximated as +2 production' });
 export const BOMB_SHELTER = building({ id: 'bomb_shelter', name: 'Bomb Shelter', era: 'atomic', cost: 300, maintenance: 0, description: 'Nuke damage reduction omitted', modifiers: {} });
-export const POLICE_STATION = building({ id: 'police_station', name: 'Police Station', era: 'modern', cost: 300, maintenance: 2, description: 'Espionage defense omitted' , modifiers: {}});
+export const POLICE_STATION = building({ id: 'police_station', name: 'Police Station', era: 'modern', cost: 300, maintenance: 2, description: 'Order brings peace and happiness to the people' , modifiers: { happinessPerTurn: 5 }});
 export const SPACESHIP_FACTORY = building({ id: 'spaceship_factory', name: 'Spaceship Factory', era: 'information', cost: 360, maintenance: 3, modifiers: { productionPercent: 10, happinessPerTurn: 5 }, description: 'Spaceship-part production approximated as +10% production' });
 
 export const ALL_BUILDINGS: BuildingType[] = [

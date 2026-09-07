@@ -7993,7 +7993,14 @@ export class AISystem {
       // Capacity urgency is handled by the shared capacity planner; this small
       // baseline keeps infrastructure available without making cities rush it.
       + (building.modifiers.populationCapacity ?? 0)
-      + (building.modifiers.cityDefensePercent ?? 0) * 2;
+      + (building.modifiers.cityDefensePercent ?? 0) * 2
+      + (building.visibilityRadius ?? 0) * 0.5
+      + (building.covertDetectionRadius ?? 0) * 0.5
+      // Strategic-resource supply buildings (e.g. Stable → Horses) carry no
+      // ordinary yield modifiers, so value their resource contribution directly
+      // to keep them worth building where the AI already has the gating resource
+      // (construction eligibility is gated separately by resource access).
+      + (building.resourceCapacityBonus?.amount ?? 0) * 6;
   }
 
   private describeRhythmItem(item: Producible): string {

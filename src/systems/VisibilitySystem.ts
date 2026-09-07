@@ -21,6 +21,10 @@ export interface VisibilitySource {
   tileY: number;
 }
 
+export interface RangedVisibilitySource extends VisibilitySource {
+  visibilityRadius: number;
+}
+
 export interface KnownCityCandidate {
   id: string;
   tileX: number;
@@ -104,7 +108,11 @@ export class VisibilitySystem {
    * Step 1: Reset all Visible → Explored (retain memory).
    * Step 2: Mark Visible from city and unit positions.
    */
-  update(cities: VisibilitySource[], units: VisibilitySource[]): void {
+  update(
+    cities: VisibilitySource[],
+    units: VisibilitySource[],
+    rangedSources: readonly RangedVisibilitySource[] = [],
+  ): void {
     for (let y = 0; y < this.height; y++) {
       const row = this.states[y]!;
       for (let x = 0; x < this.width; x++) {
@@ -119,6 +127,9 @@ export class VisibilitySystem {
     }
     for (const unit of units) {
       this.markVisible({ x: unit.tileX, y: unit.tileY }, UNIT_VISION_RADIUS);
+    }
+    for (const source of rangedSources) {
+      this.markVisible({ x: source.tileX, y: source.tileY }, source.visibilityRadius);
     }
   }
 
