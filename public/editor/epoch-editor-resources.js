@@ -73,11 +73,11 @@
     return result;
   }
   var RIVER_STROKES = [
-    { color: 4353634, width: 0.22, alpha: 0.7, bank: true },
-    { color: 2385283, width: 0.14, alpha: 1, bank: false },
-    { color: 8436422, width: 0.045, alpha: 0.7, bank: false }
+    { color: 4353634, width: 0.44, alpha: 0.55, bank: true },
+    { color: 2385283, width: 0.36, alpha: 1, bank: false },
+    { color: 8436422, width: 0.24, alpha: 0.22, bank: false }
   ];
-  function riverPaths(mask, center, radius) {
+  function riverPaths(mask, center, radius, water = false) {
     const ends = RIVER_DIRECTIONS.flatMap((_, edge) => {
       if (!(riverMask(mask) & 1 << edge)) return [];
       const angle = edge * Math.PI / 3;
@@ -86,6 +86,10 @@
         y: center.y + Math.sin(angle) * radius * Math.sqrt(3) / 2
       }];
     });
+    if (water) return ends.map((end) => [{
+      x: end.x + (center.x - end.x) * 0.1,
+      y: end.y + (center.y - end.y) * 0.1
+    }, end]);
     if (ends.length === 2) {
       return [Array.from({ length: 13 }, (_, i) => {
         const t = i / 12, u = 1 - t;

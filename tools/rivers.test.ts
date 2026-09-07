@@ -96,3 +96,15 @@ test('scenario and running-game JSON round trips preserve geography and legacy m
   assert.deepEqual(restored.tiles.map(row => row.map(tile => tile.riverConnections)), map.tiles.map(row => row.map(tile => tile.riverConnections)));
   assert.equal(restored.tiles[0][0].type, 'forest');
 });
+
+test('sea outlets stop just inside each shoreline while retaining exact shared endpoints', () => {
+  const center = { x: 200, y: 200 }, radius = 24;
+  const mouths = riverPaths(63, center, radius, true);
+  assert.equal(mouths.length, 6);
+  mouths.forEach((mouth, edge) => {
+    const inlandEdge = riverPaths(1 << edge, center, radius)[0][1];
+    assert.deepEqual(mouth[1], inlandEdge);
+    const length = Math.hypot(mouth[0].x - mouth[1].x, mouth[0].y - mouth[1].y);
+    assert.ok(length > 0 && length < radius * 0.1);
+  });
+});

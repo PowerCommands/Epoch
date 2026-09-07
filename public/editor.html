@@ -4287,14 +4287,14 @@ function drawRivers() {
       const center = tileToWorld(q, r);
       if (center.x < camX - tileSize || center.x > camX + canvas.width / zoom + tileSize
         || center.y < camY - tileSize || center.y > camY + canvas.height / zoom + tileSize) continue;
-      for (const path of EpochRivers.riverPaths(tileRivers[r][q], center, hexSize)) {
+      for (const path of EpochRivers.riverPaths(tileRivers[r][q], center, hexSize, !isLandTerrain(tiles[r][q]))) {
         ctx.beginPath();
         path.forEach((point, i) => {
           const x = (point.x - camX) * zoom, y = (point.y - camY) * zoom;
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
         ctx.stroke();
-        if (path.length === 2) {
+        if (path.length === 2 && isLandTerrain(tiles[r][q])) {
           ctx.beginPath();
           ctx.arc((path[0].x - camX) * zoom, (path[0].y - camY) * zoom, ctx.lineWidth / 2, 0, Math.PI * 2);
           ctx.fill();

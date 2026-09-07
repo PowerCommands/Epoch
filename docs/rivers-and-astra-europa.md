@@ -35,8 +35,10 @@ river names, catchments or discharge. A single source click is an authoring
 anchor; a saved river requires at least one connected pair of tiles.
 
 Two connections produce a sampled quadratic curve between exact shared edge
-midpoints. Ends and junction branches meet at tile centers. A narrow water
-stroke, muted bank and fine highlight are shared by Canvas and Phaser. Banks
+midpoints. Ends and junction branches meet at tile centers. A broad water
+stroke, muted bank and soft highlight are shared by Canvas and Phaser. Water
+is 2.6 times wider than the initial implementation; sea mouths stop just inside
+the shared shoreline, at one tenth of the edge-to-center distance. Banks
 are omitted over water. Units, cities, resources, borders and fog draw above
 rivers. Existing terrain art is retained.
 

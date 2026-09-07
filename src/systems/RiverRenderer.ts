@@ -29,8 +29,9 @@ export class RiverRenderer {
       g.translateCanvas(-left, -top);
       for (const stroke of RIVER_STROKES) {
         for (const tile of tiles) {
-          if (!tile.riverConnections || (stroke.bank && (tile.type === 'coast' || tile.type === 'ocean'))) continue;
-          const paths = riverPaths(tile.riverConnections, this.tileMap.tileToWorld(tile.x, tile.y), radius);
+          const water = tile.type === 'coast' || tile.type === 'ocean';
+          if (!tile.riverConnections || (stroke.bank && water)) continue;
+          const paths = riverPaths(tile.riverConnections, this.tileMap.tileToWorld(tile.x, tile.y), radius, water);
           const width = radius * stroke.width;
           g.lineStyle(width, stroke.color, stroke.alpha);
           g.fillStyle(stroke.color, stroke.alpha);
@@ -41,7 +42,7 @@ export class RiverRenderer {
             g.strokePath();
             // Shared edges join without overlapping translucent round caps.
             // Only inland sources and junction hubs need an explicit cap.
-            if (path.length === 2) g.fillCircle(path[0].x, path[0].y, width / 2);
+            if (path.length === 2 && !water) g.fillCircle(path[0].x, path[0].y, width / 2);
           }
         }
       }

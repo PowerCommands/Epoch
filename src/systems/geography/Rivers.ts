@@ -70,21 +70,27 @@ export function riverLine(a: RiverCoord, b: RiverCoord): RiverCoord[] {
 
 export interface RiverPoint { x: number; y: number }
 export const RIVER_STROKES = [
-  { color: 0x426e62, width: 0.22, alpha: 0.7, bank: true },
-  { color: 0x246583, width: 0.14, alpha: 1, bank: false },
-  { color: 0x80bac6, width: 0.045, alpha: 0.7, bank: false },
+  { color: 0x426e62, width: 0.44, alpha: 0.55, bank: true },
+  { color: 0x246583, width: 0.36, alpha: 1, bank: false },
+  { color: 0x80bac6, width: 0.24, alpha: 0.22, bank: false },
 ] as const;
 
 /** Shared sampled curves for Phaser and Canvas. Edge tangents match exactly
  * between tiles, including bends. Junction branches meet at one round hub.
  */
-export function riverPaths(mask: number, center: RiverPoint, radius: number): RiverPoint[][] {
+export function riverPaths(mask: number, center: RiverPoint, radius: number, water = false): RiverPoint[][] {
   const ends = RIVER_DIRECTIONS.flatMap((_, edge) => {
     if (!(riverMask(mask) & (1 << edge))) return [];
     const angle = edge * Math.PI / 3;
     return [{ x: center.x + Math.cos(angle) * radius * Math.sqrt(3) / 2,
       y: center.y + Math.sin(angle) * radius * Math.sqrt(3) / 2 }];
   });
+  // Water is an outlet, not another inland reach: stop just past the shared
+  // shoreline. Each incoming edge keeps its own mouth, even on a shared sea tile.
+  if (water) return ends.map(end => [{
+    x: end.x + (center.x - end.x) * 0.1,
+    y: end.y + (center.y - end.y) * 0.1,
+  }, end]);
   if (ends.length === 2) {
     return [Array.from({ length: 13 }, (_, i) => {
       const t = i / 12, u = 1 - t;
