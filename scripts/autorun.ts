@@ -106,6 +106,11 @@ interface NationStateSummary {
     isReigningGamesChampion: boolean;
     victoryEligible: boolean;
   };
+  foodGrowth?: {
+    civilianSurplus: number;
+    militaryUpkeep: number;
+    growthFood: number;
+  };
 }
 
 interface EraMilestone {
@@ -348,6 +353,14 @@ async function main(): Promise<void> {
       + `militaryOverCap=-${nation.happiness.militaryOverCap} `
       + `occupation=-${nation.happiness.occupation} `
       + `energyShortage=-${nation.happiness.energyShortage}`,
+    );
+  }
+  for (const nation of stateSummary?.nations ?? []) {
+    if (!nation.foodGrowth) continue;
+    console.log(
+      `[FoodUpkeepDiag] ${nation.name} civilianSurplus=${nation.foodGrowth.civilianSurplus} `
+      + `militaryUpkeep=${nation.foodGrowth.militaryUpkeep} `
+      + `growthFood=${nation.foodGrowth.growthFood}`,
     );
   }
 

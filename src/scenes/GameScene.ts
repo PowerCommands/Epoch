@@ -21,6 +21,7 @@ import {
   type CurrencyStrength,
 } from '../systems/CurrencySystem';
 import { UnitUpkeepSystem } from '../systems/UnitUpkeepSystem';
+import { MilitaryFoodUpkeepSystem } from '../systems/MilitaryFoodUpkeepSystem';
 import { ConsolidationSystem } from '../systems/ConsolidationSystem';
 import { ALL_PROJECTS, calculateProjectGoldPerTurn, getProjectById } from '../data/projects';
 import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
@@ -422,6 +423,16 @@ interface EpochNationStateSummary {
   };
   /** Compact strategic-resource demand, e.g. `Iron=94, Coal=48`; empty when none. */
   resourceDemand: string;
+  /**
+   * Military food-upkeep effect on population growth from the nation's most
+   * recent processed turn. `growthFood = max(0, civilianSurplus - militaryUpkeep)`.
+   * Undefined until the nation has had a turn processed.
+   */
+  foodGrowth?: {
+    civilianSurplus: number;
+    militaryUpkeep: number;
+    growthFood: number;
+  };
 }
 
 /** First observed actual era transition during a diagnostics/autorun session. */
@@ -1084,6 +1095,12 @@ export class GameScene extends Phaser.Scene {
       culturalSphereSystem,
       wonderSystem,
       () => refreshCultureOverlay(),
+    );
+    // Military food upkeep: a larger military draws down the national
+    // population-growth food pool identically for humans and AI.
+    const militaryFoodUpkeepSystem = new MilitaryFoodUpkeepSystem(unitManager);
+    resourceSystem.setMilitaryFoodUpkeepProvider(
+      (nationId) => militaryFoodUpkeepSystem.getMilitaryFoodUpkeep(nationId),
     );
     turnManager.on('turnStart', (event) => {
       gamesOfNationsSystem.processNationPreparationTurn(event.nation.id, event.round);
@@ -10006,6 +10023,7 @@ export class GameScene extends Phaser.Scene {
                 victoryEligible: culturalVictory.victoryEligible,
               },
               resourceDemand: strategicResourceDemandSystem.getDemandSummaryText(nation.id),
+              foodGrowth: resourceSystem.getFoodGrowthBreakdown(nation.id),
             };
           });
           const victoryState = victorySystem.getVictoryState();

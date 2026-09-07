@@ -1,4 +1,4 @@
-import type { AllegianceType, UnitCategory, UnitType } from '../entities/UnitType';
+import type { AllegianceType, FoodUpkeep, UnitCategory, UnitType } from '../entities/UnitType';
 import type { Era } from './technologies';
 import { getEraIndex } from './eraTimeline';
 
@@ -9,6 +9,11 @@ interface UnitDefinitionInput {
   cost: number;
   description?: string;
   upkeepGold?: number;
+  /**
+   * Optional explicit food upkeep. When omitted it is derived by
+   * {@link getDefaultFoodUpkeep} from the unit's category and combat role.
+   */
+  foodUpkeep?: FoodUpkeep;
   upgradeToUnitId?: string;
   cargoCapacity?: number;
   allowedCargoCategories?: readonly UnitCategory[];
@@ -70,6 +75,7 @@ function unit(input: UnitDefinitionInput): UnitType {
     canDestroyBuilding: military && getEraIndex(input.era) >= RENAISSANCE_ERA_INDEX ? true : undefined,
     productionCost: input.cost,
     upkeepGold: input.upkeepGold ?? getDefaultUpkeepGold(input.category, input.era),
+    foodUpkeep: input.foodUpkeep ?? getDefaultFoodUpkeep(input),
     upgradeToUnitId: input.upgradeToUnitId,
     cargoCapacity: input.cargoCapacity,
     allowedCargoCategories: input.allowedCargoCategories,
@@ -97,6 +103,29 @@ function unit(input: UnitDefinitionInput): UnitType {
     requiredResource: input.requiredResource,
     serviceLifeRounds: input.serviceLifeRounds,
   };
+}
+
+/**
+ * Classifies a unit's food upkeep from its role when a definition does not set
+ * {@link UnitDefinitionInput.foodUpkeep} explicitly. Deliberately NOT keyed to
+ * era/technology — advanced equipment already costs production, gold and
+ * strategic resources, so modern units are not automatically hungrier.
+ *
+ * - Civilians → 0.
+ * - Recon / naval recon / covert operatives → 1 (small manpower footprint).
+ * - Stored ordnance (bombs/missiles with no combat or ranged strength) → 0.
+ * - Every other combat unit → 2 (the normal standing-military cost).
+ *
+ * Unusually large military units (major warships) override this to 3 in their
+ * definitions; the handful of one-shot munitions that still register combat
+ * stats override to 0.
+ */
+function getDefaultFoodUpkeep(input: UnitDefinitionInput): FoodUpkeep {
+  if (input.category === 'civilian') return 0;
+  if (input.category === 'recon' || input.category === 'naval_recon' || input.category === 'covert') return 1;
+  const isCombatant = input.combatStrength > 0 || (input.rangedStrength ?? 0) > 0;
+  if (!isCombatant) return 0;
+  return 2;
 }
 
 function getDefaultUpkeepGold(category: UnitCategory, era: Era): number {
@@ -166,8 +195,8 @@ export const TRIPLANE = unit({ id: 'triplane', name: 'Triplane', era: 'modern', 
 export const GREAT_WAR_BOMBER = unit({ id: 'great_war_bomber', name: 'Great War Bomber', era: 'modern', cost: 325, combatStrength: 0, rangedStrength: 50, range: 6, movement: 2, category: 'air', upkeepGold: 15, upgradeToUnitId: 'bomber' });
 export const DESTROYER = unit({ id: 'destroyer', name: 'Destroyer', era: 'modern', cost: 375, combatStrength: 75, rangedStrength: 50, movement: 7, category: 'naval_melee', isNaval: true, upkeepGold: 8 });
 export const SUBMARINE = unit({ id: 'submarine', name: 'Submarine', era: 'modern', cost: 325, combatStrength: 35, rangedStrength: 60, range: 7, movement: 6, category: 'naval_ranged', isNaval: true, upkeepGold: 7, upgradeToUnitId: 'nuclear_submarine' });
-export const BATTLESHIP = unit({ id: 'battleship', name: 'Battleship', era: 'modern', cost: 375, combatStrength: 65, rangedStrength: 65, range: 10, movement: 6, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 10, upgradeToUnitId: 'missile_cruiser' });
-export const CARRIER = unit({ id: 'carrier', name: 'Carrier', era: 'modern', cost: 375, combatStrength: 50, movement: 5, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 15, cargoCapacity: 3, allowedCargoCategories: ['air'] });
+export const BATTLESHIP = unit({ id: 'battleship', name: 'Battleship', era: 'modern', cost: 375, combatStrength: 65, rangedStrength: 65, range: 10, movement: 6, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 10, foodUpkeep: 3, upgradeToUnitId: 'missile_cruiser' }); // High food upkeep: major capital ship
+export const CARRIER = unit({ id: 'carrier', name: 'Carrier', era: 'modern', cost: 375, combatStrength: 50, movement: 5, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 15, foodUpkeep: 3, cargoCapacity: 3, allowedCargoCategories: ['air'] }); // High food upkeep: major capital ship
 
 export const INFANTRY = unit({ id: 'infantry', name: 'Infantry', era: 'atomic', cost: 375, combatStrength: 108, movement: 2, category: 'melee', upkeepGold: 9, upgradeToUnitId: 'mechanized_infantry' });
 export const ANTI_AIRCRAFT_GUN = unit({ id: 'anti_aircraft_gun', name: 'Anti-Aircraft Gun', era: 'atomic', cost: 375, combatStrength: 50, range: 2, movement: 2, category: 'ranged', upkeepGold: 6, upgradeToUnitId: 'mobile_sam' }); // raised: atomic-era specialist was underpriced, 3→6
@@ -187,11 +216,11 @@ export const MECHANIZED_INFANTRY = unit({ id: 'mechanized_infantry', name: 'Mech
 export const MODERN_ARMOR = unit({ id: 'modern_armor', name: 'Modern Armor', era: 'information', cost: 425, combatStrength: 200, movement: 5, category: 'mounted', upkeepGold: 15});
 export const JET_FIGHTER = unit({ id: 'jet_fighter', name: 'Jet Fighter', era: 'information', cost: 425, combatStrength: 0, rangedStrength: 75, range: 10, movement: 2, category: 'air', requiredResource: { resourceId: 'aluminum', amount: 1 }, upkeepGold: 15 });
 export const STEALTH_BOMBER = unit({ id: 'stealth_bomber', name: 'Stealth Bomber', era: 'information', cost: 425, combatStrength: 0, rangedStrength: 85, range: 20, movement: 2, category: 'air', requiredResource: { resourceId: 'aluminum', amount: 1 }, upkeepGold: 15 });
-export const GUIDED_MISSILE = unit({ id: 'guided_missile', name: 'Guided Missile', era: 'information', cost: 150, combatStrength: 0, rangedStrength: 60, range: 8, movement: 2, category: 'air', upkeepGold: 30 });
+export const GUIDED_MISSILE = unit({ id: 'guided_missile', name: 'Guided Missile', era: 'information', cost: 150, combatStrength: 0, rangedStrength: 60, range: 8, movement: 2, category: 'air', upkeepGold: 30, foodUpkeep: 0 }); // Stored one-shot ordnance, not standing forces
 export const NUCLEAR_MISSILE = unit({ id: 'nuclear_missile', name: 'Nuclear Missile', era: 'information', cost: 1000, combatStrength: 0, range: 12, movement: 2, category: 'air', requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 30 });
 export const XCOM_SQUAD = unit({ id: 'xcom_squad', name: 'XCOM Squad', era: 'information', cost: 400, combatStrength: 100, movement: 2, category: 'melee', upkeepGold: 9 });
 export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant Death Robot', era: 'information', cost: 425, combatStrength: 150, movement: 5, category: 'mounted', upkeepGold: 30 });
-export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 83, rangedStrength: 100, range: 13, movement: 7, category: 'naval_ranged', isNaval: true, upkeepGold: 15 }); // raised: top-tier naval ranged should match battleship/carrier tier, 9→15
+export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 83, rangedStrength: 100, range: 13, movement: 7, category: 'naval_ranged', isNaval: true, upkeepGold: 15, foodUpkeep: 3 }); // raised: top-tier naval ranged should match battleship/carrier tier, 9→15. High food upkeep: major capital ship
 
 export const WORKER = unit({ id: 'worker', name: 'Worker', era: 'ancient', cost: 45, combatStrength: 0, movement: 2, category: 'civilian', canBuildImprovements: true, maxImprovementCharges: 2, serviceLifeRounds: 50 }); // renaissance capacity (2); charges are capped to 1 at build time until the owner reaches the renaissance era. Expires for AI nations after 50 rounds so stranded workers (small lakes/islands) don't loiter forever
 export const SETTLER = unit({ id: 'settler', name: 'Settler', era: 'ancient', cost: 106, combatStrength: 0, movement: 2, category: 'civilian', canFound: true });

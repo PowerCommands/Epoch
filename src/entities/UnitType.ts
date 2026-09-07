@@ -30,6 +30,18 @@ export type AllegianceType = 'nation' | 'hiddenNation' | 'independent';
 /** Allegiance assumed for any unit/unit type that does not specify one. */
 export const DEFAULT_ALLEGIANCE_TYPE: AllegianceType = 'nation';
 
+/**
+ * National food burden of maintaining a unit, on a small integer scale:
+ * - `0` — civilian / non-military units (no burden)
+ * - `1` — Low (recon, light special forces)
+ * - `2` — Medium (the normal standing military unit)
+ * - `3` — High (unusually large military units, chiefly major warships)
+ *
+ * Unlike gold upkeep this value carries no positional or army-size modifiers;
+ * it is summed as-is to slow a militarized nation's population growth.
+ */
+export type FoodUpkeep = 0 | 1 | 2 | 3;
+
 export interface UnitType {
   readonly id: string;
   readonly name: string;
@@ -45,6 +57,12 @@ export interface UnitType {
   readonly allegianceType?: AllegianceType;
   readonly productionCost: number;
   readonly upkeepGold?: number;
+  /**
+   * National food upkeep on the {@link FoodUpkeep} 0–3 scale. Always resolved to
+   * a concrete value by the unit factory (defaulting from category / combat role
+   * when a definition does not set it), so consumers can read it directly.
+   */
+  readonly foodUpkeep: FoodUpkeep;
   readonly upgradeToUnitId?: string;
   readonly cargoCapacity?: number;
   readonly allowedCargoCategories?: readonly UnitCategory[];

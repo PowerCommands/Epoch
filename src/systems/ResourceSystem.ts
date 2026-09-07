@@ -11,6 +11,7 @@ import {
   getPositiveFoodSurplus,
   type CityEconomySummary,
 } from './CityEconomy';
+import { distributeGrowthFood, type CityFoodSurplus } from './MilitaryFoodUpkeep';
 import type { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { CityTerritorySystem } from './CityTerritorySystem';
@@ -48,6 +49,39 @@ type CityEnergyProvider = Pick<
 type CityEnergyLog = (nationId: string, message: string) => void;
 
 /**
+ * Per-nation summary of how military food upkeep affected population growth on
+ * the nation's most recent turn. Purely diagnostic; not persisted.
+ */
+export interface NationFoodGrowthBreakdown {
+  /** Combined positive city food surplus before military upkeep. */
+  readonly civilianSurplus: number;
+  /** National military food upkeep subtracted this turn. */
+  readonly militaryUpkeep: number;
+  /** Growth food remaining after upkeep = max(0, civilianSurplus - upkeep). */
+  readonly growthFood: number;
+}
+
+/**
+ * Per-city working state carried between the two growth passes in
+ * {@link ResourceSystem.onTurnStart}: the first pass computes each city's
+ * pre-military growth-food contribution, the second applies the nationally
+ * pooled-and-reduced growth food back to food storage / population.
+ */
+interface CityGrowthContext {
+  readonly city: City;
+  readonly buildings: CityBuildings;
+  readonly maritimeBonus: number;
+  readonly productionBonus: number;
+  readonly populationCapacity: number;
+  /** Maritime-adjusted economy used for netFood / foodToGrow. */
+  readonly economy: CityEconomySummary;
+  /** Economy used for the per-turn display values (recomputed if pop grows). */
+  displayEconomy: CityEconomySummary;
+  /** Growth food this city would gain before military upkeep (post growth modifier). */
+  readonly growthCandidate: number;
+}
+
+/**
  * ResourceSystem lyssnar på turnStart och genererar resurser för den
  * aktiva nationen och dess städer.
  */
@@ -79,6 +113,17 @@ export class ResourceSystem {
     () => EMPTY_YIELD_DISTRIBUTION;
   /** National Gold/turn granted by available Banking Services. */
   private getManufacturedGoldPerTurn: (nationId: string) => number = () => 0;
+  /**
+   * National military food upkeep, subtracted from the combined positive city
+   * food surplus before population-growth food is distributed. Defaults to a
+   * no-op so the system works before the provider is wired.
+   */
+  private getMilitaryFoodUpkeep: (nationId: string) => number = () => 0;
+  /**
+   * Last-computed food-growth breakdown per nation (populated each turnStart).
+   * Live diagnostic state only — never persisted.
+   */
+  private readonly foodGrowthBreakdown = new Map<string, NationFoodGrowthBreakdown>();
   /** Uses the World Council's existing scheduled/current meeting state; no separate timer is kept here. */
   private isWorldCouncilVoteActive: () => boolean = () => false;
 
@@ -160,6 +205,23 @@ export class ResourceSystem {
   setWorldCouncilVoteActiveProvider(provider: () => boolean): void {
     this.isWorldCouncilVoteActive = provider;
     this.recalculatePerTurnForAll();
+  }
+
+  /**
+   * Inject the national military food-upkeep provider. Must be deterministic and
+   * derived from the nation's current units; folded into the growth-food pool so
+   * a larger military naturally slows population growth for humans and AI alike.
+   */
+  setMilitaryFoodUpkeepProvider(provider: (nationId: string) => number): void {
+    this.getMilitaryFoodUpkeep = provider;
+  }
+
+  /**
+   * Latest military food-upkeep / growth breakdown for a nation, or undefined if
+   * the nation has not yet had a processed turn. Diagnostic use only.
+   */
+  getFoodGrowthBreakdown(nationId: string): NationFoodGrowthBreakdown | undefined {
+    return this.foodGrowthBreakdown.get(nationId);
   }
 
   /** Live, non-persisted archaeological contribution used by economy and UI. */
@@ -333,7 +395,11 @@ export class ResourceSystem {
 
     const maritimeFood = this.getMaritimeFoodDistribution(nation.id);
     const manufacturedProduction = this.getManufacturedProductionDistribution(nation.id);
+    const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
+    // Pass 1 — compute each city's economy and its pre-military growth-food
+    // contribution, and apply the food-independent production increment now.
+    const contexts: CityGrowthContext[] = [];
     for (const city of cities) {
       const populationCapacity = this.getCityPopulationCapacity(city.id);
       this.updateEnergyShortage(city, populationCapacity);
@@ -355,17 +421,54 @@ export class ResourceSystem {
         ),
         productionBonus,
       );
-      const growthModifier = this.happinessSystem.getGrowthModifier(nation.id);
 
-      let displayEconomy = policyEconomy;
       cityRes.production += policyEconomy.production;
 
-      if (economy.netFood > 0 && growthModifier > 0) {
-        const adjustedGrowth = Math.floor(economy.netFood * growthModifier);
-        city.foodStorage += adjustedGrowth;
-        if (city.foodStorage >= economy.foodToGrow) {
+      const growthCandidate = economy.netFood > 0 && growthModifier > 0
+        ? Math.floor(economy.netFood * growthModifier)
+        : 0;
+
+      contexts.push({
+        city,
+        buildings,
+        maritimeBonus,
+        productionBonus,
+        populationCapacity,
+        economy,
+        displayEconomy: policyEconomy,
+        growthCandidate,
+      });
+    }
+
+    // Pool the positive city surplus, subtract national military food upkeep,
+    // and distribute the remaining growth food back proportionally. Military
+    // upkeep therefore only suppresses growth — it never touches the population
+    // × 2 consumption already accounted for in each city's netFood.
+    const citySurpluses: CityFoodSurplus[] = contexts.map((ctx) => ({
+      cityId: ctx.city.id,
+      surplus: ctx.growthCandidate,
+    }));
+    const militaryUpkeep = this.getMilitaryFoodUpkeep(nation.id);
+    const growth = distributeGrowthFood(citySurpluses, militaryUpkeep);
+    this.foodGrowthBreakdown.set(nation.id, {
+      civilianSurplus: growth.civilianSurplus,
+      militaryUpkeep: growth.militaryUpkeep,
+      growthFood: growth.growthFood,
+    });
+
+    // Pass 2 — apply the allocated growth food to food storage / population and
+    // finalize per-turn display, culture and territory for each city.
+    for (const ctx of contexts) {
+      const { city } = ctx;
+      const cityRes = this.cityManager.getResources(city.id);
+      const allocatedGrowth = growth.allocations.get(city.id) ?? 0;
+      let displayEconomy = ctx.displayEconomy;
+
+      if (allocatedGrowth > 0) {
+        city.foodStorage += allocatedGrowth;
+        if (city.foodStorage >= ctx.economy.foodToGrow) {
           city.foodStorage = 0;
-          if (city.population < populationCapacity) {
+          if (city.population < ctx.populationCapacity) {
             city.population += 1;
             this.refreshCityPopulationEffects(city);
             displayEconomy = this.applyFlatProduction(
@@ -376,13 +479,13 @@ export class ResourceSystem {
                   this.applyPolicyEconomyModifiers(
                     city.ownerId,
                     this.applyMaritimeFood(
-                      calculateCityEconomy(city, this.mapData, buildings, this.gridSystem, nationModifiers),
-                      maritimeBonus,
+                      calculateCityEconomy(city, this.mapData, ctx.buildings, this.gridSystem, nationModifiers),
+                      ctx.maritimeBonus,
                     ),
                   ),
                 ),
               ),
-              productionBonus,
+              ctx.productionBonus,
             );
           }
         }
