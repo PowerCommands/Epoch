@@ -8055,6 +8055,17 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setCurrencySystem(currencySystem);
     rightPanel.setCultureSystem(cultureSystem);
     rightPanel.setWonderSystem(wonderSystem);
+    rightPanel.setWorldOverviewNavigation(
+      id => { const city = cityManager.getCity(id); return !!city && canShowCity(city.tileX, city.tileY); },
+      canSeeTile,
+      cityId => {
+        const city = cityManager.getCity(cityId);
+        if (!city || !canShowCity(city.tileX, city.tileY)) return;
+        this.rightSidebarPanel?.collapse();
+        window.dispatchEvent(new CustomEvent('focusCity', { detail: { cityId } }));
+      },
+      id => worldCouncilResolutionSystem.getDefinition(id)?.title ?? id,
+    );
     rightPanel.setWorldCouncilSystem(worldCouncilSystem);
     rightPanel.setCapitulationSystem(capitulationSystem);
     rightPanel.setVassalIndependenceSystem(vassalIndependenceSystem);

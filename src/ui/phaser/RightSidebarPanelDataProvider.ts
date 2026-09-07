@@ -1,3 +1,5 @@
+import type { WorldCouncilResolutionId } from '../../types/worldCouncil';
+import { buildWorldOverviewContent, type WorldOverviewCategory } from './WorldOverviewContent';
 import { ALL_BUILDINGS, GRAND_STADIUM, getBuildingById } from '../../data/buildings';
 import { getImprovementById } from '../../data/improvements';
 import { getImprovementOwnerId } from '../../systems/ImprovementOwnership';
@@ -637,6 +639,30 @@ export class RightSidebarPanelDataProvider {
       return { title: 'Leader', sections: [{ title: 'Leader', rows: [textRow('No leader selected.', true)] }] };
     }
     return this.getLeaderContent(this.currentLeaderId, leaderTab);
+  }
+
+  private overviewResolutionTitle: (id: WorldCouncilResolutionId) => string = id => id;
+  private overviewKnowsCity: (id: string) => boolean = () => false;
+  private overviewSeesTile: (x: number, y: number) => boolean = () => false;
+  private overviewFocusCity: (id: string) => void = () => {};
+
+  setWorldOverviewNavigation(knowsCity: (id: string) => boolean, seesTile: (x: number, y: number) => boolean, focusCity: (id: string) => void, resolutionTitle: (id: WorldCouncilResolutionId) => string): void {
+    this.overviewResolutionTitle = resolutionTitle;
+    this.overviewKnowsCity = knowsCity;
+    this.overviewSeesTile = seesTile;
+    this.overviewFocusCity = focusCity;
+  }
+
+  getWorldOverviewContent(category: WorldOverviewCategory): RightSidebarContent {
+    return buildWorldOverviewContent(category, {
+      wonders: this.wonderSystem, corporations: this.corporationSystem,
+      games: this.gamesOfNationsSystem, council: this.worldCouncilSystem,
+      city: id => this.cityManager.getCity(id),
+      nationName: id => this.getNationDisplayName(id),
+      knowsNation: id => id === this.humanNationId || this.isNationKnown(id),
+      knowsCity: this.overviewKnowsCity, seesTile: this.overviewSeesTile,
+      focusCity: this.overviewFocusCity, resolutionTitle: this.overviewResolutionTitle,
+    });
   }
 
   getLeaderboardContent(category: RightSidebarLeaderboardCategory): RightSidebarContent {

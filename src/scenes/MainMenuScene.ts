@@ -1,3 +1,4 @@
+import { orderScenarios } from '../../public/shared/scenario-order.js';
 import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
 import type { MapDefinition } from '../data/maps';
@@ -354,26 +355,14 @@ export class MainMenuScene extends Phaser.Scene {
     const generatedOption = this.generatedRandomScenario
       ? `<option value="${escapeHtmlAttribute(this.generatedRandomScenario.mapKey)}">Randomized — ${RANDOM_MAP_PROFILE_DEFINITIONS[this.generatedRandomScenario.metadata.mapType].name}</option>`
       : '';
-    const officialOptions = this.maps
-      .map((map, index) => `<option value="${escapeHtmlAttribute(map.key)}"${index === 0 ? ' selected' : ''}>${escapeHtmlText(map.label)}</option>`)
-      .join('');
-    const customOptions = this.customScenarios
-      .map((entry) => {
-        const edited = new Date(entry.metadata.updatedAt).toLocaleDateString();
-        return `<option class="custom-scenario-option" value="${escapeHtmlAttribute(entry.metadata.id)}">${escapeHtmlText(entry.metadata.name)} (edited ${escapeHtmlText(edited)})</option>`;
-      })
-      .join('');
-
-    const loadOption = `<option value="${LOAD_SCENARIO_OPTION_VALUE}">Load scenario…</option>`;
-    if (!customOptions) {
-      return `<optgroup label="Random Scenarios">${generatedOption}${randomOptions}</optgroup><optgroup label="Official Scenarios">${officialOptions}</optgroup>${loadOption}`;
-    }
-    return `
-      <optgroup label="Random Scenarios">${generatedOption}${randomOptions}</optgroup>
-      <optgroup label="Official Scenarios">${officialOptions}</optgroup>
-      <optgroup label="My Scenarios">${customOptions}</optgroup>
-      ${loadOption}
-    `;
+    const scenarios = orderScenarios([
+      ...this.maps,
+      ...this.customScenarios.map(entry => ({ key: entry.metadata.id, label: `${entry.metadata.name} (My Scenario)`, file: '' })),
+    ]);
+    const scenarioOptions = scenarios.map((map, index) =>
+      `<option value="${escapeHtmlAttribute(map.key)}"${index === 0 ? ' selected' : ''}>${escapeHtmlText(map.label)}</option>`,
+    ).join('');
+    return `<optgroup label="Random Scenarios">${generatedOption}${randomOptions}</optgroup><optgroup label="Scenarios">${scenarioOptions}</optgroup><option value="${LOAD_SCENARIO_OPTION_VALUE}">Load scenario…</option>`;
   }
 
   private getCustomScenario(mapKey: string): CustomScenarioEntry | undefined {

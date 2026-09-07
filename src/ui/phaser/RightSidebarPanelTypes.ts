@@ -5,7 +5,7 @@ import type { Tile } from '../../types/map';
 // 'details' is the map-selection view (tile/city/unit), shown only in the
 // centered minimap popup. 'leader-details' is an explicit global sidebar mode
 // opened by clicking a leader portrait — independent of the map selection.
-export type RightSidebarPanelMode = 'details' | 'leader-details' | 'leaderboard' | 'trading' | 'timeline' | 'diplomacy-graph';
+export type RightSidebarPanelMode = 'details' | 'leader-details' | 'world-overview' | 'leaderboard' | 'trading' | 'timeline' | 'diplomacy-graph';
 // The map-selection view drives only the Details popup; the selected leader is
 // tracked separately (see the provider's leader state), so 'leader' is not part
 // of this union.

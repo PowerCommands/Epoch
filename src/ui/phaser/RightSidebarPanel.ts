@@ -1,3 +1,4 @@
+import { WORLD_OVERVIEW_CATEGORIES, type WorldOverviewCategory } from './WorldOverviewContent';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
@@ -119,6 +120,7 @@ const LOG_COPY_BUTTON_HEIGHT = 40;
 // 'leader-details' mode is opened by clicking a leader portrait (see
 // showLeaderDetails). Both are intentionally absent from this strip.
 const MODES: ModeDefinition[] = [
+  { mode: 'world-overview', icon: '🌐', label: 'World Overview', accentColor: 0x8dc9da },
   { mode: 'leaderboard', icon: '🏆', label: 'Leaderboard', accentColor: 0xf4d06f },
   { mode: 'trading', icon: '⚖️', label: 'Trading', accentColor: 0x7fc8a9 },
   { mode: 'diplomacy-graph', icon: '🕸️', label: 'Diplomacy', accentColor: 0xa78bfa },
@@ -234,6 +236,7 @@ export class RightSidebarPanel {
   private maxScroll = 0;
   private contentHeight = 0;
   private scrollableContentTop = CONTENT_TOP;
+  private worldOverviewCategory: WorldOverviewCategory = 'wonders';
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
   private tradingTabId = 'overview';
   private cityDetailsTab: RightSidebarCityDetailsTab = 'city';
@@ -566,8 +569,9 @@ export class RightSidebarPanel {
     const icon = this.addText(definition.icon, 30, '#ffffff', 'normal')
       .setOrigin(0.5)
       .setDepth(DEPTH + 12);
-    const label = this.addText(definition.label, 13, '#dce7f4', 'bold')
+    const label = this.addText(definition.mode === 'world-overview' ? 'World\nOverview' : definition.label, 13, '#dce7f4', 'bold')
       .setOrigin(0.5)
+      .setAlign('center')
       .setDepth(DEPTH + 12);
     const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, 0, 0, BUTTON_HIT_SIZE, BUTTON_HIT_SIZE + 20))
       .setOrigin(0.5)
@@ -762,6 +766,8 @@ export class RightSidebarPanel {
         return this.dataProvider.getDetailsContent(this.cityDetailsTab);
       case 'leader-details':
         return this.dataProvider.getSelectedLeaderContent(this.leaderDetailsTab);
+      case 'world-overview':
+        return this.dataProvider.getWorldOverviewContent(this.worldOverviewCategory);
       case 'leaderboard':
         return this.dataProvider.getLeaderboardContent(this.leaderboardCategory);
       case 'trading':
@@ -810,6 +816,9 @@ export class RightSidebarPanel {
       y = this.addLeaderDetailsTabs(y);
       this.scrollableContentTop = y;
       scrollContentStartY = y;
+    }
+    if (this.activeMode === 'world-overview') {
+      y = this.addWorldOverviewTabs(y);
     }
     if (this.activeMode === 'leaderboard') {
       y = this.addLeaderboardTabs(y);
@@ -1189,6 +1198,21 @@ export class RightSidebarPanel {
       });
       this.contentObjects.push(hit);
     }
+  }
+
+  private addWorldOverviewTabs(y: number): number {
+    return this.addButtonGroupRow({
+      kind: 'buttonGroup',
+      buttons: WORLD_OVERVIEW_CATEGORIES.map(category => ({
+        text: category.label,
+        selected: category.id === this.worldOverviewCategory,
+        onClick: () => {
+          this.worldOverviewCategory = category.id;
+          this.scrollOffset = 0;
+          this.renderActiveContent();
+        },
+      })),
+    }, y) + SECTION_GAP;
   }
 
   private addLeaderboardTabs(y: number): number {
@@ -1904,7 +1928,7 @@ export class RightSidebarPanel {
     let x = PANEL_PADDING;
     for (const btn of buttons) {
       const nextY = this.addContentButton(
-        { kind: 'button', text: btn.text, disabled: btn.disabled, accentColor: btn.accentColor, onClick: btn.onClick },
+        { ...btn, kind: 'button' },
         y,
         x,
         colWidth,
@@ -2368,7 +2392,7 @@ export class RightSidebarPanel {
   }
 
   private getPanelWidth(): number {
-    if (this.activeMode === 'leaderboard') return LEADERBOARD_PANEL_WIDTH;
+    if (this.activeMode === 'leaderboard' || this.activeMode === 'world-overview') return LEADERBOARD_PANEL_WIDTH;
     if (this.activeMode === 'trading') {
       // Up to half the viewport, but never narrower than the standard panel.
       return Math.max(PANEL_WIDTH, Math.round(this.scene.scale.width * TRADING_PANEL_WIDTH_FRACTION));

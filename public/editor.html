@@ -10,6 +10,15 @@
 html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-family: monospace; overflow: hidden; }
 
 #app { display: flex; height: 100vh; }
+#scenario-library { width: 240px; max-width: 26vw; flex-shrink: 0; background: #1a1a1a; border-left: 1px solid #333; padding: 28px 12px 32px; display: flex; flex-direction: column; gap: 10px; }
+#scenario-library h2 { font-size: 14px; color: #ddd; }
+#scenario-library p { font-size: 11px; line-height: 1.5; color: #999; }
+.scenario-library-list { overflow-y: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.scenario-library-entry { flex-shrink: 0; border: 1px solid #444; border-radius: 4px; padding: 10px 8px; background: #242424; color: #ddd; font: inherit; font-size: 12px; text-align: left; cursor: grab; overflow-wrap: anywhere; }
+.scenario-library-entry:hover, .scenario-library-entry:focus-visible { background: #30343b; outline: 1px solid #7bbcff; }
+.scenario-library-entry[aria-current="true"] { background: #263748; border-color: #7bbcff; }
+.scenario-library-entry.drop-target { border-top: 3px solid #7bbcff; }
+
 
 #version-label {
   position: fixed; top: 8px; right: 10px; z-index: 120;
@@ -667,6 +676,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
   <div id="viewport">
     <canvas id="canvas"></canvas>
   </div>
+  <aside id="scenario-library" aria-label="Scenario Library"></aside>
 </div>
 <div id="status">
   <span id="status-pos">—</span>
@@ -1300,6 +1310,9 @@ let editorAutosaveQuotaWarned = false;
 
 // ─── Load scenario ──────────────────────────────────────────────────────────
 
+let scenarioLibrary = null;
+let scenarioLibraryBaseline = null;
+
 async function init() {
   [mapManifest, nationRegistry, naturalResourceManifest, unitManifest, buildingManifest, technologyManifest, cultureTreeManifest, cityNamesManifest, templateManifest] = await Promise.all([
     loadMapManifest(),
@@ -1318,6 +1331,17 @@ async function init() {
   // "Edit current scenario" target. The actual editor only starts once the user
   // chooses an option on the landing page.
   currentMap = resolveRequestedMap(mapManifest);
+  const { createScenarioLibrary } = await import('./editor/scenario-library.js');
+  scenarioLibrary = createScenarioLibrary(document.getElementById('scenario-library'), {
+    getEntries: () => [...mapManifest.maps, ...loadCustomScenarioEntries().map(customMapDescriptor)],
+    getCurrentKey: () => currentMap?.key,
+    open: async (map) => {
+      if (map.key === currentMap?.key && scenario) return;
+      if (scenario && scenarioLibraryBaseline !== JSON.stringify(buildScenarioOutput())
+        && !window.confirm('Open another scenario? Unsaved changes will be discarded. Save My Scenario or download first to keep them.')) return;
+      await openMap(map, true);
+    },
+  });
   setupLanding();
 }
 
@@ -1355,6 +1379,7 @@ function startEditor(map, scenarioData, customEntry) {
   document.title = `Map Editor — ${currentMap.label}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
   updateScenarioScope();
+  scenarioLibrary?.refresh();
 
   hideLanding();
 
@@ -1428,6 +1453,7 @@ function startEditor(map, scenarioData, customEntry) {
   // Snapshot the freshly opened session immediately so "Continue" works even if
   // the user closes the tab right away (force a write past the no-op guard).
   lastEditorAutosaveJson = null;
+  scenarioLibraryBaseline = JSON.stringify(buildScenarioOutput());
   writeEditorAutosave();
   document.getElementById('status-info').textContent = `${currentMap.label}: ${mapW}x${mapH} q/r hexes loaded`;
 }
@@ -1595,15 +1621,16 @@ function showLanding() {
 }
 
 /** Resolve a scenario's ScenarioData, then offer a background template before opening. */
-async function openMap(map) {
+async function openMap(map, directly = false) {
+  const loaded = (data, custom) => directly ? startEditor(map, data, custom) : showTemplatePrompt(map, data, custom);
   if (map.isCustom) {
-    showTemplatePrompt(map, structuredCloneCompat(map.customEntry.scenario), map.customEntry);
+    loaded(structuredCloneCompat(map.customEntry.scenario), map.customEntry);
     return;
   }
   try {
     const res = await fetch(`/${map.file}`);
     if (!res.ok) throw new Error(`scenario fetch failed: ${res.status}`);
-    showTemplatePrompt(map, await res.json(), null);
+    loaded(await res.json(), null);
   } catch (err) {
     console.warn('Failed to load scenario.', err);
     window.alert(`Could not load scenario "${map.label}".`);
@@ -5844,6 +5871,8 @@ document.getElementById('save-custom-btn').addEventListener('click', () => {
   document.title = `Map Editor — ${entry.metadata.name}`;
   document.getElementById('save-btn').textContent = `Download ${getMapFilename(currentMap)}`;
   updateScenarioScope();
+  scenarioLibrary?.refresh();
+  scenarioLibraryBaseline = JSON.stringify(buildScenarioOutput());
   document.getElementById('status-info').textContent = `Saved My Scenario: ${entry.metadata.name}`;
 });
 
