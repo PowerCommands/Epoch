@@ -1,4 +1,5 @@
 import type { City } from '../entities/City';
+import { getFoodToGrow } from '../systems/CityEconomy';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
 import { getBuildingSpritePath, getCorporationSpritePath, getProjectSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
 
@@ -588,7 +589,7 @@ export class CityView {
 
     const statRows: { text: string; blocked?: boolean }[] = [
       {
-        text: `Population: ${city.population} / ${populationCapacity ?? '?'}`,
+        text: `Population: ${city.population} / ${populationCapacity ?? '?'}   🍏 ${city.foodStorage} / ${getFoodToGrow(city.population)}`,
         blocked: populationBlocked,
       },
       { text: `Culture: ${city.culture}` },

@@ -4,6 +4,7 @@ import type { City } from '../entities/City';
 import type { Producible } from '../types/producible';
 import type { Tooltip } from '../ui/hud/Tooltip';
 import { getBuildingSpritePath, getCorporationSpritePath, getProjectSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+import { getFoodToGrow } from './CityEconomy';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import type { ProductionSystem } from './ProductionSystem';
@@ -43,16 +44,25 @@ const RING_MUTED_COLOR = 0x4a4a5a;
 const RING_MUTED_ALPHA = 0.4;
 const RING_START_ANGLE = -Math.PI / 2;
 const POPULATION_BLOCKED_COLOR = '#ff6b6b';
+// City banners are world-space and the camera scales them up (zoom commonly
+// exceeds 1.0), so their text is rasterized at this higher internal resolution
+// to stay crisp when magnified. Deliberately independent of the HUD text
+// resolution helper, which only accounts for device pixel ratio on non-scaled
+// screen-space UI; 4 covers the supported world zoom range up to ~2.0 with
+// headroom for high-DPR displays.
+const CITY_BANNER_TEXT_RESOLUTION = 4;
 
 interface CityBannerView {
   container: Phaser.GameObjects.Container;
   chrome: Phaser.GameObjects.Graphics;
   nameText: Phaser.GameObjects.Text;
   populationText: Phaser.GameObjects.Text;
+  populationGrowthRing: Phaser.GameObjects.Graphics;
   productionImage: Phaser.GameObjects.Image;
   productionMask: Phaser.GameObjects.Graphics;
   productionFallbackText: Phaser.GameObjects.Text;
   productionRing: Phaser.GameObjects.Graphics;
+  populationZone: Phaser.GameObjects.Zone;
   productionZone: Phaser.GameObjects.Zone;
 }
 
@@ -62,6 +72,7 @@ export class CityBannerRenderer {
   private readonly missingTextures = new Set<string>();
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
   private populationCapacityProvider: ((cityId: string) => number) | null = null;
+  private dimmed = false;
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
     this.visibilityPredicate = predicate;
@@ -70,6 +81,15 @@ export class CityBannerRenderer {
   /** Supplies the current population capacity so the banner can flag stalled cities. */
   setPopulationCapacityProvider(provider: (cityId: string) => number): void {
     this.populationCapacityProvider = provider;
+    this.rebuildAll();
+  }
+
+  /** Dims visible banner children while preserving the production geometry mask. */
+  setDimmed(dimmed: boolean): void {
+    this.dimmed = dimmed;
+    for (const view of this.banners.values()) {
+      this.applyBannerAlpha(view);
+    }
   }
 
   /** A city is stalled when it has reached (or exceeded) its population capacity. */
@@ -118,7 +138,7 @@ export class CityBannerRenderer {
     view.container.setPosition(world.x, world.y + CITY_BANNER_OFFSET_Y);
     fitTextToWidth(view.nameText, name, NAME_MAX_WIDTH, NAME_FONT_SIZE, NAME_MIN_FONT_SIZE);
     view.nameText.setColor(textColor);
-    view.nameText.setStroke(textStrokeColor, 3);
+    view.nameText.setStroke(textStrokeColor, 2);
     view.populationText.setText(`${city.population}`);
     view.populationText.setColor(textColor);
     view.populationText.setStroke(textStrokeColor, 3);
@@ -162,9 +182,11 @@ export class CityBannerRenderer {
 
     view.nameText.setPosition(contentLeft, nameBaselineY);
     view.populationText.setPosition(populationCenterX, 0);
+    this.refreshPopulationGrowthRing(view, city, populationCenterX);
     this.refreshProductionMask(view, world.x + slotCenterX, world.y + CITY_BANNER_OFFSET_Y);
     this.refreshProductionSlot(view, production, slotCenterX);
     this.refreshProductionRing(view, city.id, slotCenterX);
+    view.populationZone.setPosition(populationCenterX, 0);
     view.productionZone.setPosition(slotCenterX, 0);
     view.container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
   }
@@ -212,8 +234,8 @@ export class CityBannerRenderer {
       fontStyle: 'bold',
       color: '#ffffff',
       stroke: '#160d20',
-      strokeThickness: 3,
-    }).setOrigin(0, 0.5);
+      strokeThickness: 2,
+    }).setOrigin(0, 0.5).setResolution(CITY_BANNER_TEXT_RESOLUTION);
 
     const populationText = this.scene.add.text(0, 0, '1', {
       fontFamily: 'Arial, sans-serif',
@@ -223,7 +245,9 @@ export class CityBannerRenderer {
       stroke: '#1b1026',
       strokeThickness: 3,
       align: 'center',
-    }).setOrigin(0.5, 0.5);
+    }).setOrigin(0.5, 0.5).setResolution(CITY_BANNER_TEXT_RESOLUTION);
+
+    const populationGrowthRing = this.scene.add.graphics();
 
     const productionImage = this.scene.add.image(0, 0, 'unit_warrior')
       .setVisible(false);
@@ -239,15 +263,34 @@ export class CityBannerRenderer {
       stroke: '#121212',
       strokeThickness: 3,
       align: 'center',
-    }).setOrigin(0.5, 0.5);
+    }).setOrigin(0.5, 0.5).setResolution(CITY_BANNER_TEXT_RESOLUTION);
 
     const productionRing = this.scene.add.graphics();
 
+    const populationZone = this.scene.add.zone(0, 0, LEFT_SECTION_WIDTH, PANEL_HEIGHT)
+      .setInteractive();
     const productionZone = this.scene.add.zone(0, 0, RIGHT_SLOT_SIZE, RIGHT_SLOT_SIZE)
       .setInteractive();
 
     if (this.tooltip) {
       const tooltip = this.tooltip;
+      populationZone.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+        const city = this.cityManager.getCity(cityId);
+        if (!city) return;
+        const capacity = this.populationCapacityProvider?.(city.id);
+        const populationLabel = capacity === undefined
+          ? `${city.population}`
+          : `${city.population}/${capacity}`;
+        const foodToGrow = getFoodToGrow(city.population);
+        tooltip.show(
+          `${city.name} (${populationLabel})\n🍏 Food storage: ${city.foodStorage}/${foodToGrow}`,
+          pointer,
+          this.isPopulationBlocked(city) ? POPULATION_BLOCKED_COLOR : undefined,
+        );
+      });
+      populationZone.on('pointerout', () => {
+        tooltip.hide();
+      });
       productionZone.on('pointerover', (pointer: Phaser.Input.Pointer) => {
         const queue = this.productionSystem.getQueue(cityId);
         if (queue.length === 0) return;
@@ -279,37 +322,47 @@ export class CityBannerRenderer {
 
     container.add([
       chrome,
+      populationGrowthRing,
       nameText,
       populationText,
       productionRing,
       productionImage,
       productionFallbackText,
+      populationZone,
       productionZone,
     ]);
-
-    // Make the whole badge semi-transparent by setting alpha on each visible
-    // child, NOT on the container: container-level alpha forces a render-target
-    // flush that conflicts with the production icon's geometry mask and makes
-    // the entire banner vanish. Per-object alpha renders correctly. The
-    // production mask stays fully opaque (it only defines the clip shape), and
-    // the interactive zone is invisible so it is left untouched.
-    for (const child of [chrome, nameText, populationText, productionRing, productionImage, productionFallbackText]) {
-      child.setAlpha(CITY_BANNER_ALPHA);
-    }
 
     const view: CityBannerView = {
       container,
       chrome,
       nameText,
       populationText,
+      populationGrowthRing,
       productionImage,
       productionMask,
       productionFallbackText,
       productionRing,
+      populationZone,
       productionZone,
     };
     this.banners.set(cityId, view);
+    this.applyBannerAlpha(view);
     return view;
+  }
+
+  private refreshPopulationGrowthRing(
+    view: CityBannerView,
+    city: City,
+    populationCenterX: number,
+  ): void {
+    view.populationGrowthRing.clear();
+    view.populationGrowthRing.setPosition(populationCenterX, 0);
+
+    const foodToGrow = getFoodToGrow(city.population);
+    const fraction = foodToGrow > 0
+      ? Phaser.Math.Clamp(city.foodStorage / foodToGrow, 0, 1)
+      : 0;
+    drawProgressRing(view.populationGrowthRing, fraction, !this.isPopulationBlocked(city));
   }
 
   private refreshProductionRing(view: CityBannerView, cityId: string, slotCenterX: number): void {
@@ -321,19 +374,27 @@ export class CityBannerRenderer {
     if (!entry || entry.cost <= 0) return;
 
     const fraction = Phaser.Math.Clamp(entry.progress / entry.cost, 0, 1);
-    const ringRadius = RIGHT_SLOT_RADIUS + RING_RADIUS_OFFSET;
+    drawProgressRing(view.productionRing, fraction);
+  }
 
-    view.productionRing.lineStyle(RING_LINE_WIDTH, RING_MUTED_COLOR, RING_MUTED_ALPHA);
-    view.productionRing.beginPath();
-    view.productionRing.arc(0, 0, ringRadius, RING_START_ANGLE, RING_START_ANGLE + Math.PI * 2, false);
-    view.productionRing.strokePath();
+  private applyBannerAlpha(view: CityBannerView): void {
+    const alpha = this.dimmed ? CITY_BANNER_ALPHA : 1;
 
-    if (fraction <= 0) return;
-
-    view.productionRing.lineStyle(RING_LINE_WIDTH, getProgressRingColor(fraction), 0.95);
-    view.productionRing.beginPath();
-    view.productionRing.arc(0, 0, ringRadius, RING_START_ANGLE, RING_START_ANGLE + Math.PI * 2 * fraction, false);
-    view.productionRing.strokePath();
+    // Set alpha on each visible child, NOT on the container: container-level
+    // alpha forces a render-target flush that conflicts with the production
+    // icon's geometry mask and makes the entire banner vanish. The production
+    // mask stays fully opaque because it only defines the clip shape.
+    for (const child of [
+      view.chrome,
+      view.nameText,
+      view.populationText,
+      view.populationGrowthRing,
+      view.productionRing,
+      view.productionImage,
+      view.productionFallbackText,
+    ]) {
+      child.setAlpha(alpha);
+    }
   }
 
   private drawChrome(
@@ -604,6 +665,26 @@ function getProgressRingColor(fraction: number): number {
   if (fraction <= 0.5) return 0xe87020;
   if (fraction <= 0.75) return 0xecd020;
   return 0x5cae0d;
+}
+
+function drawProgressRing(
+  graphics: Phaser.GameObjects.Graphics,
+  fraction: number,
+  showProgress = true,
+): void {
+  const ringRadius = RIGHT_SLOT_RADIUS + RING_RADIUS_OFFSET;
+
+  graphics.lineStyle(RING_LINE_WIDTH, RING_MUTED_COLOR, RING_MUTED_ALPHA);
+  graphics.beginPath();
+  graphics.arc(0, 0, ringRadius, RING_START_ANGLE, RING_START_ANGLE + Math.PI * 2, false);
+  graphics.strokePath();
+
+  if (!showProgress || fraction <= 0) return;
+
+  graphics.lineStyle(RING_LINE_WIDTH, getProgressRingColor(fraction), 0.95);
+  graphics.beginPath();
+  graphics.arc(0, 0, ringRadius, RING_START_ANGLE, RING_START_ANGLE + Math.PI * 2 * fraction, false);
+  graphics.strokePath();
 }
 
 function getKindLabel(kind: Producible['kind']): string {

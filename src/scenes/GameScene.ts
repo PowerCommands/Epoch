@@ -8982,6 +8982,7 @@ export class GameScene extends Phaser.Scene {
     const closeCityViewAndRestoreDefaultZoom = (): void => {
       const wasOpen = cityView.getOpenCityId() !== null;
       cityView.close();
+      cityBannerRenderer.setDimmed(false);
       if (wasOpen) this.cameraController.setZoom(getDefaultCameraZoom());
     };
     const closeOpenCityView = (): boolean => {
@@ -11206,6 +11207,7 @@ export class GameScene extends Phaser.Scene {
 
     const openCityView = (city: City): void => {
       unbindGameplayHotkeys();
+      cityBannerRenderer.setDimmed(true);
       const { x, y } = tileMap.tileToWorld(city.tileX, city.tileY);
       const rightmostOwnedTileWorldX = [
         { x: city.tileX, y: city.tileY },
