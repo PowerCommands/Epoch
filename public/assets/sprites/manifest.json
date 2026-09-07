@@ -845,6 +845,12 @@
           "size": 183137
         },
         {
+          "name": "tourism.png",
+          "path": "/assets/sprites/cultures/tourism.png",
+          "type": "PNG",
+          "size": 152847
+        },
+        {
           "name": "urbanization.png",
           "path": "/assets/sprites/cultures/urbanization.png",
           "type": "PNG",

@@ -17,6 +17,7 @@ import {
 import { DEFAULT_AI_EARLY_GAME_TURN_LIMIT } from '../data/aiBaselinePriorities';
 import { getHighestEra } from './EraSystem';
 import type { City } from '../entities/City';
+import { isCultureRequiredWithTechnologyForBuilding } from '../data/cultureTree';
 
 export type Technology = TechnologyDefinition;
 type ChangedListener = () => void;
@@ -271,7 +272,8 @@ export class ResearchSystem {
 
   isBuildingUnlocked(nationId: string, buildingId: string): boolean {
     const requiredTechnology = this.getRequiredTechnologyForBuilding(buildingId);
-    if (requiredTechnology) return this.isResearched(nationId, requiredTechnology.id);
+    if (requiredTechnology && !this.isResearched(nationId, requiredTechnology.id)) return false;
+    if (requiredTechnology && !isCultureRequiredWithTechnologyForBuilding(buildingId)) return true;
     return this.cultureBuildingUnlockResolver?.(nationId, buildingId) ?? true;
   }
 

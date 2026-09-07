@@ -8,6 +8,8 @@ import { getGameSpeedById, scaleGameSpeedCost, type GameSpeedDefinition } from '
 import type { PolicySystem } from './PolicySystem';
 import { getCityIntegrationProgress } from './CityIntegrationSystem';
 import type { NationManager } from './NationManager';
+import { getBuildingById } from '../data/buildings';
+import { isMilitaryProductionUnit } from './ProductionRules';
 
 export const SETTLER_PRODUCTION_SLOT_BLOCK_REASON = 'Another Settler is already being produced.';
 export const SETTLER_PRODUCTION_COST_INCREASE = 0.25;
@@ -772,7 +774,19 @@ export class ProductionSystem {
     );
     if (!item) return baseProduction;
 
-    return applyPercent(baseProduction, this.getPolicyProductionPercent(city.ownerId, item));
+    return applyPercent(
+      baseProduction,
+      this.getPolicyProductionPercent(city.ownerId, item)
+        + this.getCityBuildingItemProductionPercent(cityId, item),
+    );
+  }
+
+  private getCityBuildingItemProductionPercent(cityId: string, item: Producible): number {
+    if (item.kind !== 'unit' || !isMilitaryProductionUnit(item.unitType)) return 0;
+    return this.cityManager.getBuildings(cityId).getAll().reduce(
+      (total, buildingId) => total + (getBuildingById(buildingId)?.modifiers.militaryProductionPercent ?? 0),
+      0,
+    );
   }
 
   private getPolicyProductionPercent(nationId: string, item: Producible): number {

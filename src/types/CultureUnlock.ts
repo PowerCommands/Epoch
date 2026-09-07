@@ -4,4 +4,9 @@ export type CultureUnlockType = 'government' | 'policySlot' | 'policy' | 'buildi
 
 export type CultureUnlock =
   | { type: 'policySlot'; value: PolicySlotCategory }
-  | { type: Exclude<CultureUnlockType, 'policySlot'>; value: string };
+  | {
+      type: Exclude<CultureUnlockType, 'policySlot'>;
+      value: string;
+      /** When true, this culture unlock is required in addition to an unlocking technology. */
+      requiredWithTechnology?: boolean;
+    };

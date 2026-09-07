@@ -5878,6 +5878,7 @@ export class AISystem {
       if (
         choice.kind === 'building'
         && choice.buildingType.placement !== 'city'
+        && !choice.buildingType.upgradesFrom
         && this.buildingPlacementSystem
         && !placement
       ) {
@@ -6120,6 +6121,7 @@ export class AISystem {
       const placement = this.reserveAIBuildingPlacement(selected.city, selected.building);
       if (
         selected.building.placement !== 'city'
+        && !selected.building.upgradesFrom
         && this.buildingPlacementSystem
         && !placement
       ) return;
@@ -6983,7 +6985,7 @@ export class AISystem {
     );
     const happiness = this.happinessSystem?.getNationState(nationId);
     const happinessBuilding = (happiness && happiness.netHappiness <= happinessBuildingThreshold)
-      ? this.findBuildableHappinessBuilding(nationId, buildings)
+      ? this.findBuildableHappinessBuilding(city, nationId, buildings)
       : null;
 
     if (
@@ -7297,7 +7299,7 @@ export class AISystem {
       });
     }
 
-    const scienceBuilding = this.findMissingScienceBuilding(nationId, buildings);
+    const scienceBuilding = this.findMissingScienceBuilding(city, nationId, buildings);
     if (scienceBuilding) {
       candidates.push({
         item: { kind: 'building', buildingType: scienceBuilding },
@@ -7306,7 +7308,7 @@ export class AISystem {
       });
     }
 
-    const cultureBuilding = this.findMissingCultureBuilding(nationId, buildings);
+    const cultureBuilding = this.findMissingCultureBuilding(city, nationId, buildings);
     if (cultureBuilding) {
       candidates.push({
         item: { kind: 'building', buildingType: cultureBuilding },
@@ -7403,7 +7405,7 @@ export class AISystem {
       });
     }
 
-    const economicScienceBuilding = this.findMissingEconomicScienceBuilding(nationId, buildings);
+    const economicScienceBuilding = this.findMissingEconomicScienceBuilding(city, nationId, buildings);
     if (economicScienceBuilding) {
       candidates.push({
         item: { kind: 'building', buildingType: economicScienceBuilding },
@@ -7450,7 +7452,7 @@ export class AISystem {
     // it as a fallback ranked above fallback military. Keeps cities improving
     // their base instead of churning warriors when no urgent need fired.
     if (inFoundation) {
-      const missingBuilding = this.findMissingBuildableBuilding(nationId, buildings);
+      const missingBuilding = this.findMissingBuildableBuilding(city, nationId, buildings);
       if (missingBuilding) {
         candidates.push({
           item: { kind: 'building', buildingType: missingBuilding },
@@ -7981,6 +7983,7 @@ export class AISystem {
       + (building.modifiers.foodPerTurn ?? 0) * 5
       + (building.modifiers.productionPerTurn ?? 0) * 7
       + (building.modifiers.productionPercent ?? 0)
+      + (building.modifiers.militaryProductionPercent ?? 0)
       + (building.modifiers.happinessPerTurn ?? 0) * 6
       + (building.modifiers.sciencePerTurn ?? 0) * 5
       + (building.modifiers.sciencePercent ?? 0) * 1.5
@@ -8773,12 +8776,17 @@ export class AISystem {
 
   private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
     if (!this.canBuildBuilding(nationId, building.id)) return false;
+    if (this.productionSystem.getItemProductionBlockReason(city.id, {
+      kind: 'building',
+      buildingType: building,
+    }) !== undefined) return false;
     if (building.placement === 'city') return true;
     if (!this.buildingPlacementSystem) return true;
     return this.buildingPlacementSystem.getValidPlacementCoords(city, building, this.mapData).length > 0;
   }
 
   private findBuildableHappinessBuilding(
+    city: City,
     nationId: string,
     buildings: CityBuildings,
   ): BuildingType | null {
@@ -8786,7 +8794,7 @@ export class AISystem {
     for (const candidate of ALL_BUILDINGS) {
       if ((candidate.modifiers.happinessPerTurn ?? 0) <= 0) continue;
       if (buildings.has(candidate.id)) continue;
-      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, candidate)) continue;
       if (!cheapest || candidate.productionCost < cheapest.productionCost) {
         cheapest = candidate;
       }
@@ -8815,13 +8823,14 @@ export class AISystem {
   // this as a fallback so cities default to infrastructure rather than
   // fallback military when no urgent need fired.
   private findMissingBuildableBuilding(
+    city: City,
     nationId: string,
     buildings: CityBuildings,
   ): BuildingType | null {
     let cheapest: BuildingType | null = null;
     for (const candidate of ALL_BUILDINGS) {
       if (buildings.has(candidate.id)) continue;
-      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, candidate)) continue;
       if (!cheapest || candidate.productionCost < cheapest.productionCost) {
         cheapest = candidate;
       }
@@ -8830,13 +8839,14 @@ export class AISystem {
   }
 
   private findMissingEconomicScienceBuilding(
+    city: City,
     nationId: string,
     buildings: CityBuildings,
   ): BuildingType | null {
     let cheapest: BuildingType | null = null;
     for (const candidate of ALL_BUILDINGS) {
       if (buildings.has(candidate.id)) continue;
-      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, candidate)) continue;
       if (!this.isEconomicScienceBuilding(candidate)) continue;
       if (this.isScienceBuilding(candidate)) continue;
       if (!cheapest || candidate.productionCost < cheapest.productionCost) {
@@ -8847,6 +8857,7 @@ export class AISystem {
   }
 
   private findMissingScienceBuilding(
+    city: City,
     nationId: string,
     buildings: CityBuildings,
   ): BuildingType | null {
@@ -8854,7 +8865,7 @@ export class AISystem {
     let bestScore = Number.NEGATIVE_INFINITY;
     for (const candidate of ALL_BUILDINGS) {
       if (buildings.has(candidate.id)) continue;
-      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, candidate)) continue;
       if (!this.isScienceBuilding(candidate)) continue;
 
       const score = this.getScienceBuildingProductionScore(candidate) - candidate.productionCost / 20;
@@ -8867,6 +8878,7 @@ export class AISystem {
   }
 
   private findMissingCultureBuilding(
+    city: City,
     nationId: string,
     buildings: CityBuildings,
   ): BuildingType | null {
@@ -8874,7 +8886,7 @@ export class AISystem {
     let bestScore = Number.NEGATIVE_INFINITY;
     for (const candidate of ALL_BUILDINGS) {
       if (buildings.has(candidate.id)) continue;
-      if (!this.canBuildBuilding(nationId, candidate.id)) continue;
+      if (!this.canCityBuildBuilding(city, nationId, candidate)) continue;
       if (!this.isCultureBuilding(candidate)) continue;
 
       const score = this.getCultureBuildingProductionScore(candidate) - candidate.productionCost / 20;
@@ -8981,6 +8993,7 @@ export class AISystem {
 
   private getInfrastructureProductionCategory(buildingType: BuildingType): AIProductionCandidate['category'] {
     const modifiers = buildingType.modifiers;
+    if ((modifiers.militaryProductionPercent ?? 0) > 0) return 'military';
     if ((modifiers.culturePerTurn ?? 0) > 0 || (modifiers.culturePercent ?? 0) > 0) {
       return 'cultureBuilding';
     }

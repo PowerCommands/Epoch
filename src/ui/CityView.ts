@@ -31,6 +31,7 @@ export interface CityViewBuildingOption {
   name: string;
   cost: number;
   description?: string;
+  terrainRequirement?: string;
   placement: 'land' | 'water' | 'city';
   disabled?: boolean;
   reason?: string;
@@ -644,7 +645,7 @@ export class CityView {
         getBuildingSpritePath(option.id),
         option.reason
           ? `${option.name} (${option.cost}) - ${option.reason}`
-          : `${option.name} (${option.cost}) - ${option.placement}`,
+          : `${option.name} (${option.cost}) - ${option.placement}${option.terrainRequirement ? ` - ${option.terrainRequirement}` : ''}`,
       );
       if (placementState.active && placementState.buildingId === option.id) {
         button.classList.add('city-view-placement-button-active');
@@ -654,6 +655,7 @@ export class CityView {
         option.name,
         option.description,
         `Cost: ${option.cost}`,
+        option.terrainRequirement,
         option.reason ? `Requirements: ${option.reason}` : undefined,
       ]);
       button.addEventListener('click', () => {

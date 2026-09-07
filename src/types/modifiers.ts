@@ -7,6 +7,8 @@ export interface ModifierSet {
   happinessPerTurn?: number;
   foodPercent?: number;
   productionPercent?: number;
+  /** Item-specific production bonus applied only to classified military units. */
+  militaryProductionPercent?: number;
   goldPercent?: number;
   sciencePercent?: number;
   culturePercent?: number;
@@ -30,6 +32,7 @@ export function addModifiers(...modifiers: Readonly<ModifierSet>[]): ModifierSet
     total.happinessPerTurn = (total.happinessPerTurn ?? 0) + (modifier.happinessPerTurn ?? 0);
     total.foodPercent = (total.foodPercent ?? 0) + (modifier.foodPercent ?? 0);
     total.productionPercent = (total.productionPercent ?? 0) + (modifier.productionPercent ?? 0);
+    total.militaryProductionPercent = (total.militaryProductionPercent ?? 0) + (modifier.militaryProductionPercent ?? 0);
     total.goldPercent = (total.goldPercent ?? 0) + (modifier.goldPercent ?? 0);
     total.sciencePercent = (total.sciencePercent ?? 0) + (modifier.sciencePercent ?? 0);
     total.culturePercent = (total.culturePercent ?? 0) + (modifier.culturePercent ?? 0);

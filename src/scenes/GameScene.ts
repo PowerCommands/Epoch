@@ -101,6 +101,7 @@ import { CombatSystem, resolveOriginalCapitalCollapsePercent } from '../systems/
 import { CityWorkTileRenderer } from '../systems/CityWorkTileRenderer';
 import { CultureClaimTileRenderer } from '../systems/CultureClaimTileRenderer';
 import { BuildingPlacementSystem } from '../systems/BuildingPlacementSystem';
+import { applyBuildingCompletionEffects } from '../systems/BuildingCompletionEffects';
 import { WonderPlacementSystem } from '../systems/WonderPlacementSystem';
 import { CityTerritorySystem } from '../systems/CityTerritorySystem';
 import {
@@ -313,9 +314,11 @@ import { ECONOMIC_PRESSURE_DURATION_TURNS, ECONOMIC_PRESSURE_LABEL } from '../da
 import { LeaderGossipDialog } from '../ui/dialogs/LeaderGossipDialog';
 import { filterGossipTargets } from '../ui/dialogs/GossipDialogModel';
 import { SaveLoadService } from '../systems/SaveLoadService';
+import { getBuildingTerrainRequirement } from '../utils/buildingRequirements';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
+import { completeBuildingUpgrade, getBuildingUpgradeBlockReason } from '../systems/buildingUpgrades';
 import { CULTURE_TREE, ENLIGHTENMENT_CULTURE_NODE_ID } from '../data/cultureTree';
 import { getPoliciesByRequiredCultureNodeId } from '../data/policies';
 import { getImprovementById } from '../data/improvements';
@@ -2732,7 +2735,8 @@ export class GameScene extends Phaser.Scene {
       // buildings (Workshop → Iron, Factory → Coal) go through the shared
       // canonical resource-access check. Both surface a "Requires <Resource>"
       // reason that the existing production UI already renders.
-      return powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)
+      return getBuildingUpgradeBlockReason(cityManager.getBuildings(cityId), item.buildingType)
+        ?? powerPlantSystem.getConstructionBlockReason(cityId, item.buildingType.id)
         ?? buildingResourceRequirementSystem.getConstructionBlockReason(cityId, item.buildingType.id);
     });
     const strategicResourceDemandSystem = new StrategicResourceDemandSystem(
@@ -4678,9 +4682,9 @@ export class GameScene extends Phaser.Scene {
         }
         const completedTile = item.buildingType.placement === 'city'
           ? null
-          : buildingPlacementSystem.finalizeReservedBuilding(cityId, item.buildingType.id, mapData);
+          : buildingPlacementSystem.completePhysicalBuilding(city, item.buildingType, mapData);
         if (item.buildingType.placement !== 'city' && !completedTile) {
-          console.warn(`[BuildingPlacement] Completed ${item.buildingType.id} for ${cityId} without a reserved tile.`);
+          console.warn(`[BuildingPlacement] Completed ${item.buildingType.id} for ${cityId} without a physical destination.`);
           return false;
         }
 
@@ -4695,8 +4699,9 @@ export class GameScene extends Phaser.Scene {
             return false;
           }
         } else {
-          cityManager.getBuildings(cityId).add(item.buildingType);
+          completeBuildingUpgrade(cityManager.getBuildings(cityId), item.buildingType);
         }
+        applyBuildingCompletionEffects(city, item.buildingType);
         const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
         logManager.info({
           nationIds: [city.ownerId],
@@ -8633,6 +8638,7 @@ export class GameScene extends Phaser.Scene {
             name: building.name,
             cost: productionSystem.getCost({ kind: 'building', buildingType: building }),
             description: building.description,
+            terrainRequirement: getBuildingTerrainRequirement(building),
             placement: building.placement,
             disabled: Boolean(productionBlockReason) || validCoords.length === 0,
             reason: productionBlockReason
@@ -8913,7 +8919,7 @@ export class GameScene extends Phaser.Scene {
         return { ok: false, message: 'Grand Stadium is available only in the confirmed Games host city before Competition.' };
       }
 
-      if (building.placement === 'city') {
+      if (building.placement === 'city' || building.upgradesFrom) {
         productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
         buildingPlacementSystem.cancelPlacement();
         wonderPlacementSystem.cancelPlacement();
@@ -9079,7 +9085,7 @@ export class GameScene extends Phaser.Scene {
         refreshOpenCityView();
         return;
       }
-      if (building.placement === 'city') {
+      if (building.placement === 'city' || building.upgradesFrom) {
         if (!cityManager.getBuildings(city.id).has(buildingId) && !isBuildingQueued(city.id, buildingId)) {
           productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
         }

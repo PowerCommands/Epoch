@@ -17,6 +17,7 @@ import type {
 import { SAVED_GAME_VERSION } from '../types/saveGame';
 import type { ScenarioInitialDiplomacyEntry } from '../types/scenario';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
+import { getBuildingUpgradeBlockReason, normalizeBuildingUpgrades } from './buildingUpgrades';
 import { getUnitTypeById } from '../data/units';
 import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
@@ -925,6 +926,15 @@ export class SaveLoadService {
         const def = getBuildingById(id) ?? ALL_BUILDINGS.find((b) => b.id === id);
         if (def) buildings.addEntry(def.id, broken);
       }
+      const removedUpgradeIds = new Set(normalizeBuildingUpgrades(buildings));
+      if (removedUpgradeIds.size > 0) {
+        for (const coord of city.ownedTileCoords) {
+          const tile = mapData.tiles[coord.y]?.[coord.x];
+          if (!tile?.buildingId || !removedUpgradeIds.has(tile.buildingId)) continue;
+          tile.buildingId = undefined;
+          tile.buildingBroken = undefined;
+        }
+      }
 
       const queueEntries: QueueEntry[] = [];
       for (const entry of saved.productionQueue) {
@@ -933,6 +943,19 @@ export class SaveLoadService {
           tradeRouteEstablishmentTurns,
         );
         if (!producible) continue;
+        if (
+          producible.kind === 'building'
+          && getBuildingUpgradeBlockReason(buildings, producible.buildingType) !== undefined
+        ) {
+          for (const coord of city.ownedTileCoords) {
+            const tile = mapData.tiles[coord.y]?.[coord.x];
+            if (
+              tile?.buildingConstruction?.cityId === saved.id
+              && tile.buildingConstruction.buildingId === producible.buildingType.id
+            ) tile.buildingConstruction = undefined;
+          }
+          continue;
+        }
         queueEntries.push({
           item: producible,
           accumulated: entry.accumulated,

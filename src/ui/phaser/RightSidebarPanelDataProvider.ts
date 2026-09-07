@@ -21,6 +21,7 @@ import {
   type EconomicPressureType,
 } from '../../data/economicPressure';
 import { getResourceDisplayName } from '../../data/resources';
+import { getBuildingTerrainRequirement } from '../../utils/buildingRequirements';
 import {
   AEROSPACE_PART_PRODUCTION,
   AEROSPACE_PARTS_ID,
@@ -1686,7 +1687,8 @@ export class RightSidebarPanelDataProvider {
       if (queuedBuildingIds.has(buildingType.id)) continue;
       if (this.researchSystem && !this.researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;
       const item: Producible = { kind: 'building', buildingType };
-      rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})`, () => {
+      const terrainRequirement = getBuildingTerrainRequirement(buildingType);
+      rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})${terrainRequirement ? ` — ${terrainRequirement}` : ''}`, () => {
         if (this.buildingPlacementRequestHandler) {
           const result = this.buildingPlacementRequestHandler(city, buildingType.id);
           if (!result.ok && result.message) window.alert(result.message);

@@ -19,7 +19,9 @@ export class BuildingPlacementSystem {
 
   startPlacement(city: City, buildingId: string, mapData: MapData): boolean {
     const building = getBuildingById(buildingId);
-    if (!building || building.placement === 'city') return false;
+    // An upgrade's predecessor already determines its physical destination.
+    // It must never expose the ordinary placement cursor.
+    if (!building || building.placement === 'city' || building.upgradesFrom) return false;
 
     const validCoords = this.getValidPlacementCoords(city, building, mapData);
     if (validCoords.length === 0) return false;
@@ -66,6 +68,11 @@ export class BuildingPlacementSystem {
     const def = typeof building === 'string' ? getBuildingById(building) : building;
     if (!def || def.placement === 'city') return [];
 
+    if (def.upgradesFrom) {
+      const predecessorTile = this.findUpgradePredecessorTile(city, def, mapData);
+      return predecessorTile ? [{ x: predecessorTile.x, y: predecessorTile.y }] : [];
+    }
+
     return city.ownedTileCoords
       .map((coord) => mapData.tiles[coord.y]?.[coord.x])
       .filter((tile): tile is Tile => tile !== undefined)
@@ -75,6 +82,51 @@ export class BuildingPlacementSystem {
         if (a.y !== b.y) return a.y - b.y;
         return a.x - b.x;
       });
+  }
+
+  /** Return the city-local predecessor tile that fixes a physical upgrade's destination. */
+  findUpgradePredecessorTile(
+    city: City,
+    building: BuildingType,
+    mapData: MapData,
+  ): Tile | null {
+    if (building.placement === 'city' || !building.upgradesFrom) return null;
+    for (const coord of city.ownedTileCoords) {
+      const tile = mapData.tiles[coord.y]?.[coord.x];
+      if (tile?.buildingId === building.upgradesFrom) return tile;
+    }
+    return null;
+  }
+
+  /**
+   * Complete a physical building without exposing upgrade replacement details
+   * to human or AI callers. Ordinary buildings still require a reservation;
+   * upgrades atomically replace their predecessor on its existing tile.
+   */
+  completePhysicalBuilding(
+    city: City,
+    building: BuildingType,
+    mapData: MapData,
+  ): Tile | null {
+    if (building.placement === 'city') return null;
+    if (!building.upgradesFrom) {
+      return this.finalizeReservedBuilding(city.id, building.id, mapData);
+    }
+
+    const tile = this.findUpgradePredecessorTile(city, building, mapData);
+    if (!tile) return null;
+    if (!this.isTerrainCompatible(tile, building)) {
+      console.warn(
+        `[BuildingPlacement] Upgrade configuration mismatch: ${building.id} inherits `
+        + `${building.upgradesFrom}'s incompatible tile at ${tile.x},${tile.y}.`,
+      );
+    }
+
+    // Keep ownership and coordinates untouched and never expose an unoccupied
+    // intermediate state to renderers or other gameplay systems.
+    tile.buildingId = building.id;
+    tile.buildingBroken = undefined;
+    return tile;
   }
 
   selectTile(
@@ -120,6 +172,7 @@ export class BuildingPlacementSystem {
 
     tile.buildingConstruction = undefined;
     tile.buildingId = buildingId;
+    tile.buildingBroken = undefined;
     return tile;
   }
 
@@ -128,7 +181,7 @@ export class BuildingPlacementSystem {
     building: BuildingType,
     mapData: MapData,
   ): { tileX: number; tileY: number } | undefined {
-    if (building.placement === 'city') return undefined;
+    if (building.placement === 'city' || building.upgradesFrom) return undefined;
     const [coord] = this.getValidPlacementCoords(city, building, mapData);
     if (!coord) return undefined;
 
@@ -172,13 +225,21 @@ export class BuildingPlacementSystem {
     if (tile.wonderId !== undefined) return false;
     if (tile.wonderConstruction !== undefined) return false;
 
+    return this.isTerrainCompatible(tile, building);
+  }
+
+  private isTerrainCompatible(tile: Tile, building: BuildingType): boolean {
+    if (building.allowedTerrains && !building.allowedTerrains.includes(tile.type)) return false;
+
     if (building.placement === 'water') {
       return tile.type === TileType.Ocean || tile.type === TileType.Coast;
     }
 
-    return tile.type !== TileType.Ocean
-      && tile.type !== TileType.Coast
-      && tile.type !== TileType.Mountain;
+    if (tile.type === TileType.Ocean || tile.type === TileType.Coast) return false;
+    // Mountains remain unavailable to unrestricted land buildings. An explicit
+    // terrain whitelist opts a building into occupying them.
+    return tile.type !== TileType.Mountain
+      || building.allowedTerrains?.includes(TileType.Mountain) === true;
   }
 
   private getCoordKey(x: number, y: number): string {
