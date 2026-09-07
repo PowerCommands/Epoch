@@ -355,6 +355,23 @@ export class WorldCouncilResolutionSystem {
     this.runtime = runtime;
   }
 
+  /**
+   * Read-only preview used to prepare the human Defense Support dialog before
+   * canonical meeting resolution. It deliberately skips the human-input callback.
+   */
+  previewDefenseSupportDonation(
+    donorNationId: string,
+    recipientNationId: string,
+    aggressorNationId: string,
+  ): WorldCouncilDefenseSupportDonationDiagnostics {
+    return this.chooseDefenseSupportDonation(
+      donorNationId,
+      recipientNationId,
+      aggressorNationId,
+      false,
+    );
+  }
+
   getDefinitions(organizationKind?: WorldCouncilOrganizationKind): WorldCouncilResolutionDefinition[] {
     return RESOLUTIONS
       .filter((definition) =>
@@ -1247,6 +1264,7 @@ export class WorldCouncilResolutionSystem {
     donorNationId: string,
     recipientNationId: string,
     aggressorNationId: string,
+    requestHumanInput = true,
   ): WorldCouncilDefenseSupportDonationDiagnostics {
     const treasury = Math.max(0, Math.floor(this.runtime.getTreasury?.(donorNationId) ?? 0));
     const goldPerTurn = this.runtime.getGoldPerTurn?.(donorNationId) ?? 0;
@@ -1356,7 +1374,7 @@ export class WorldCouncilResolutionSystem {
     const incomeBoost = Math.max(0, goldPerTurn) * (score >= 65 ? 2 : 1);
     const suggestedGold = ratio > 0 ? Math.max(1, Math.floor(treasury * ratio + incomeBoost)) : 0;
     let actualDonation = normalizeDefenseSupportDonation(suggestedGold, maximumDonation);
-    if (this.runtime.isHumanNation?.(donorNationId) === true) {
+    if (requestHumanInput && this.runtime.isHumanNation?.(donorNationId) === true) {
       const humanGold = this.runtime.requestHumanGoldDonation?.({
         nationId: donorNationId,
         recipientNationId,

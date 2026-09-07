@@ -195,6 +195,7 @@ import type {
   WorldCouncilSessionOutcome,
   WorldCouncilSessionVote,
 } from '../ui/hud/WorldCouncilSessionDialog';
+import type { DefenseSupportDonationDialogState } from '../ui/hud/DefenseSupportDonationDialog';
 import {
   buildDominationRanking,
   resolveDominationLandPercent,
@@ -1269,6 +1270,10 @@ export class GameScene extends Phaser.Scene {
     diplomacyManager.onWarEnded((a, b) => {
       consolidationSystem?.enterPostWar(a);
       consolidationSystem?.enterPostWar(b);
+      leaderStrip?.refreshWarMarkers();
+    });
+    diplomacyManager.onWarDeclared(() => {
+      leaderStrip?.refreshWarMarkers();
     });
     // Cultural Jealousy: from its scenario year the two culturally weakest AI nations
     // resent the cultural leader, warming toward each other and souring toward
@@ -1895,9 +1900,10 @@ export class GameScene extends Phaser.Scene {
     // the in-game Council Session UI; autorun / AI-only resolves synchronously.
     worldCouncilSystem.setHumanVotingDeferralEnabled(() =>
       humanNationId !== undefined && typeof window !== 'undefined' && !isAutoplayActive());
-    // Votes collected by the Council Session UI, read back through the existing
-    // requestHumanInfluenceVote boundary during canonical resolution.
+    // Human choices collected by Council UI are read back through the existing
+    // runtime boundaries during canonical resolution.
     const humanCouncilVoteStore = new Map<string, { support: boolean; influence: number }>();
+    let humanDefenseSupportDonation: number | null = null;
     const worldCouncilProposalVoteKey = (proposal: { slot: string; resolutionId: string }): string =>
       `${proposal.slot}:${proposal.resolutionId}`;
     aiMilitaryEvaluationSystem.setPeacekeepingDefensivePowerProvider((attackerNationId, defenderNationId, getMilitaryStrength) =>
@@ -2928,15 +2934,9 @@ export class GameScene extends Phaser.Scene {
       },
       requestHumanGoldDonation: (input) => {
         if (isAutoplayActive() || nationManager.getNation(input.nationId)?.isHuman !== true) return null;
-        if (typeof window === 'undefined') return null;
-        const recipientName = nationManager.getNation(input.recipientNationId)?.name ?? input.recipientNationId;
-        const aggressorName = nationManager.getNation(input.aggressorNationId)?.name ?? input.aggressorNationId;
-        const rawAmount = window.prompt(
-          `${recipientName} requested Defense Support after being attacked by ${aggressorName}.\n\nDonate Gold (available: ${Math.floor(input.maxGold)}).`,
-          String(Math.min(Math.floor(input.maxGold), input.suggestedGold)),
-        );
-        if (rawAmount === null) return 0;
-        return Math.max(0, Math.min(Math.floor(input.maxGold), Number.parseInt(rawAmount, 10) || 0));
+        // Interactive games collect this asynchronously before canonical meeting
+        // resolution; this boundary only replays the stored, validated amount.
+        return humanDefenseSupportDonation;
       },
     });
 
@@ -4214,11 +4214,47 @@ export class GameScene extends Phaser.Scene {
       const baseTitle = definition?.title ?? proposal.resolutionId;
       return proposal.repealTargetEnactedResolutionId !== undefined ? `Repeal ${baseTitle}` : baseTitle;
     };
+    const getDefenseSupportDonationStateForHuman = (): DefenseSupportDonationDialogState | null => {
+      if (!humanNationId || isAutoplayActive()) return null;
+      const meeting = worldCouncilSystem.getPendingHumanVoteMeeting();
+      const councilState = worldCouncilSystem.getState();
+      const proposal = meeting?.proposals?.find((item) => item.resolutionId === 'defense_support');
+      if (!meeting || !proposal || !councilState) return null;
+      const recipientNationId = proposal.targetNationId ?? meeting.emergencyTrigger?.targetNationId;
+      const aggressorNationId = proposal.secondaryTargetNationId ?? meeting.emergencyTrigger?.aggressorNationId;
+      if (!recipientNationId || !aggressorNationId) return null;
+      const preview = worldCouncilResolutionSystem.previewDefenseSupportDonation(
+        humanNationId,
+        recipientNationId,
+        aggressorNationId,
+      );
+      return {
+        organizationName: getOrganizationDisplayName(councilState.organizationKind ?? 'worldCouncil'),
+        recipientNationName: nationManager.getNation(recipientNationId)?.name ?? recipientNationId,
+        aggressorNationName: nationManager.getNation(aggressorNationId)?.name ?? aggressorNationId,
+        availableGold: preview.maximumDonation,
+        suggestedGold: Math.min(preview.maximumDonation, preview.desiredDonation),
+      };
+    };
+    const resolveDefenseSupportDonation = (gold: number): boolean => {
+      const state = getDefenseSupportDonationStateForHuman();
+      if (!state || !Number.isFinite(gold)) return false;
+      humanDefenseSupportDonation = Math.max(0, Math.min(state.availableGold, Math.floor(gold)));
+      try {
+        return worldCouncilSystem.resolvePendingHumanVoteMeeting() !== null;
+      } finally {
+        humanDefenseSupportDonation = null;
+      }
+    };
     const getWorldCouncilSessionStateForHuman = (): WorldCouncilSessionState | null => {
       if (!humanNationId || isAutoplayActive()) return null;
       const meeting = worldCouncilSystem.getPendingHumanVoteMeeting();
       const state = worldCouncilSystem.getState();
       if (!meeting || !state) return null;
+      const hasInfluenceVote = meeting.proposals?.some((proposal) =>
+        proposal.repealTargetEnactedResolutionId !== undefined
+        || worldCouncilResolutionSystem.getDefinition(proposal.resolutionId)?.votingType === 'influence') ?? false;
+      if (!hasInfluenceVote) return null;
       const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
       const city = cityManager.getCity(meeting.cityId);
       const cityNationName = city
@@ -7830,6 +7866,8 @@ export class GameScene extends Phaser.Scene {
       getWorldCouncilSessionState: getWorldCouncilSessionStateForHuman,
       onSubmitWorldCouncilVotes: submitWorldCouncilVotes,
       onWorldCouncilSessionClosed: () => hudLayer?.refresh(),
+      getDefenseSupportDonationState: getDefenseSupportDonationStateForHuman,
+      onResolveDefenseSupportDonation: resolveDefenseSupportDonation,
       getWorldCouncilContributionState: getWorldCouncilContributionStateForHuman,
       onFoundWorldCouncil: (offer) => {
         if (!humanNationId) return false;
@@ -8830,7 +8868,7 @@ export class GameScene extends Phaser.Scene {
         };
       }
 
-      const cost = cityTerritorySystem.getClaimCost(city, mapData);
+      const cost = cityTerritorySystem.getGoldTilePurchaseCost(city);
       const availableGold = nationManager.getResources(city.ownerId).gold;
       const missingGold = Math.max(0, cost - availableGold);
       const alreadyPurchasedThisTurn = city.lastTilePurchaseTurn === turnManager.getCurrentRound();
@@ -9087,7 +9125,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      const cost = cityTerritorySystem.getClaimCost(city, mapData);
+      const cost = cityTerritorySystem.getGoldTilePurchaseCost(city);
       const nationResources = nationManager.getResources(city.ownerId);
       if (nationResources.gold < cost) {
         refreshOpenCityView();
@@ -9392,7 +9430,7 @@ export class GameScene extends Phaser.Scene {
     this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, onCityViewPointerUp);
 
     // Phaser-side leader portrait strip (replaces the old left-panel leader list)
-    leaderStrip = new LeaderPortraitStrip(this, nationManager, discoverySystem, humanNationId);
+    leaderStrip = new LeaderPortraitStrip(this, nationManager, discoverySystem, humanNationId, diplomacyManager);
     if (this.rightSidebarPanel) {
       const panel = this.rightSidebarPanel;
       leaderStrip.setRightBoundaryProvider(() => panel.getButtonRowLeftX());

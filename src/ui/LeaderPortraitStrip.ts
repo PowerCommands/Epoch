@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { getLeaderByNationId } from '../data/leaders';
 import type { Nation } from '../entities/Nation';
 import type { DiscoverySystem } from '../systems/DiscoverySystem';
+import type { DiplomacyManager } from '../systems/DiplomacyManager';
 import type { NationManager } from '../systems/NationManager';
 import type { LeaderDefinition } from '../types/leader';
 import { consumePointerEvent } from '../utils/phaserScreenSpaceUi';
@@ -18,6 +19,8 @@ const PORTRAIT_RIGHT_MARGIN = 16;
 const PORTRAIT_BUTTON_GAP = 12;
 const BG_COLOR = 0x151515;
 const FRAME_COLOR = 0x4a3a2a;
+const WAR_MARKER = '⚔️';
+const WAR_MARKER_FONT_SIZE = Math.round(34 * PORTRAIT_SCALE);
 
 interface PortraitEntry {
   nationId: string;
@@ -27,6 +30,7 @@ interface PortraitEntry {
   mask: Phaser.GameObjects.Graphics | null;
   imageBaseScale: number;
   border: Phaser.GameObjects.Ellipse;
+  warMarker: Phaser.GameObjects.Text;
 }
 
 /**
@@ -40,6 +44,7 @@ export class LeaderPortraitStrip {
   private readonly scene: Phaser.Scene;
   private readonly nationManager: NationManager;
   private readonly discoverySystem: DiscoverySystem | null;
+  private readonly diplomacyManager: DiplomacyManager | null;
   private readonly humanNationId: string | undefined;
 
   private readonly uiCamera: Phaser.Cameras.Scene2D.Camera;
@@ -59,10 +64,12 @@ export class LeaderPortraitStrip {
     nationManager: NationManager,
     discoverySystem: DiscoverySystem | null,
     humanNationId: string | undefined,
+    diplomacyManager: DiplomacyManager | null = null,
   ) {
     this.scene = scene;
     this.nationManager = nationManager;
     this.discoverySystem = discoverySystem;
+    this.diplomacyManager = diplomacyManager;
     this.humanNationId = humanNationId;
 
     // Dedicated UI camera — fixed viewport, no scroll, no zoom.
@@ -158,11 +165,13 @@ export class LeaderPortraitStrip {
       this.owned.delete(entry.hit);
       this.owned.delete(entry.bg);
       this.owned.delete(entry.border);
+      this.owned.delete(entry.warMarker);
       if (entry.image) this.owned.delete(entry.image);
       if (entry.mask) this.owned.delete(entry.mask);
       entry.hit.destroy();
       entry.bg.destroy();
       entry.border.destroy();
+      entry.warMarker.destroy();
       if (entry.image) {
         entry.image.clearMask(true);
         entry.image.destroy();
@@ -287,7 +296,40 @@ export class LeaderPortraitStrip {
       }));
     });
 
-    return { nationId: nation.id, hit, bg, image, mask, imageBaseScale, border };
+    // Crossed-swords marker shown when the human nation is at WAR with this
+    // nation. Sits above the portrait so it reads at a glance. Non-interactive:
+    // pointer input is handled entirely by `hit`.
+    const warMarker = this.addOwned(
+      new Phaser.GameObjects.Text(this.scene, 0, 0, WAR_MARKER, {
+        fontFamily: 'sans-serif',
+        fontSize: `${WAR_MARKER_FONT_SIZE}px`,
+      }),
+    )
+      .setOrigin(0.5)
+      .setDepth(STRIP_DEPTH + 4)
+      .setScrollFactor(0)
+      .setShadow(0, 0, '#000000', 6, true, true)
+      .setVisible(this.isAtWarWithHuman(nation.id));
+
+    return { nationId: nation.id, hit, bg, image, mask, imageBaseScale, border, warMarker };
+  }
+
+  /** True when the human nation is currently at WAR with `nationId`. */
+  private isAtWarWithHuman(nationId: string): boolean {
+    if (!this.diplomacyManager || !this.humanNationId || nationId === this.humanNationId) {
+      return false;
+    }
+    return this.diplomacyManager.getState(this.humanNationId, nationId) === 'WAR';
+  }
+
+  /**
+   * Refresh the crossed-swords war markers without rebuilding the strip.
+   * GameScene calls this on war-declared / war-ended events.
+   */
+  refreshWarMarkers(): void {
+    for (const entry of this.entries) {
+      entry.warMarker.setVisible(this.isAtWarWithHuman(entry.nationId));
+    }
   }
 
   private layout(): void {
@@ -308,6 +350,7 @@ export class LeaderPortraitStrip {
       entry.hit.setPosition(x, y);
       entry.bg.setPosition(x, y);
       entry.border.setPosition(x, y);
+      entry.warMarker.setPosition(x, y);
       if (entry.image) entry.image.setPosition(x, y);
       if (entry.mask) entry.mask.setPosition(x, y);
     }
@@ -323,6 +366,7 @@ export class LeaderPortraitStrip {
       entry.hit.setScale(selectionScale);
       entry.bg.setScale(selectionScale);
       entry.border.setScale(selectionScale);
+      entry.warMarker.setScale(selectionScale);
       if (entry.image) entry.image.setScale(entry.imageBaseScale * selectionScale);
       if (entry.mask) entry.mask.setScale(selectionScale);
     }

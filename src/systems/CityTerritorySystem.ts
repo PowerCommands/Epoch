@@ -13,6 +13,13 @@ export const CITY_CLAIM_RANGE = 5;
 const CLAIM_BASE_COST = 5;
 const CLAIM_COST_PER_OWNED_TILE = 2;
 
+// Manual gold tile purchases use a separate, progressive cost so that buying
+// territory becomes increasingly expensive as a city grows. This is distinct
+// from the culture-based expansion cost in getClaimCost() and must never be
+// used for cultural expansion.
+const GOLD_TILE_PURCHASE_BASE_COST = 50;
+const GOLD_TILE_PURCHASE_QUADRATIC_FACTOR = 2;
+
 export class CityTerritorySystem {
   constructor(
     private readonly gameSpeed: GameSpeedDefinition = getGameSpeedById(undefined),
@@ -67,6 +74,18 @@ export class CityTerritorySystem {
     }
 
     return scaleGameSpeedCost(CLAIM_BASE_COST + ownedNearbyCount * CLAIM_COST_PER_OWNED_TILE, this.gameSpeed);
+  }
+
+  // Progressive gold cost for the manual "Buy Tile" action. Cost grows
+  // quadratically with the city's current territorial size, based purely on
+  // city.ownedTileCoords.length (no purchase history is tracked). This is a
+  // separate calculation from the cultural expansion cost getClaimCost() and is
+  // used only by the gold-purchase flow (human UI + AI affordability checks).
+  getGoldTilePurchaseCost(city: City): number {
+    const ownedTileCount = city.ownedTileCoords.length;
+    const baseCost =
+      GOLD_TILE_PURCHASE_BASE_COST + GOLD_TILE_PURCHASE_QUADRATIC_FACTOR * ownedTileCount * ownedTileCount;
+    return scaleGameSpeedCost(baseCost, this.gameSpeed);
   }
 
   getClaimableTiles(city: City, mapData: MapData): CityTileCoord[] {

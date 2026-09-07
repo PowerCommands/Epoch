@@ -10,6 +10,10 @@ import { RafScheduler } from '../../utils/RafScheduler';
 import type { UnitActionToolbox } from '../UnitActionToolbox';
 import { CultureHudPanel } from './CultureHudPanel';
 import { DependencyTreeDialog } from './DependencyTreeDialog';
+import {
+  DefenseSupportDonationDialog,
+  type DefenseSupportDonationDialogState,
+} from './DefenseSupportDonationDialog';
 import { DiscoveryPopup, type DiscoveryPopupData } from './DiscoveryPopup';
 import { EndTurnHudButton } from './EndTurnHudButton';
 import { GamesOfNationsHud } from './GamesOfNationsHud';
@@ -80,6 +84,8 @@ interface HudLayerConfig {
   getWorldCouncilSessionState?: () => WorldCouncilSessionState | null;
   onSubmitWorldCouncilVotes?: (votes: WorldCouncilSessionVote[]) => WorldCouncilSessionResult;
   onWorldCouncilSessionClosed?: () => void;
+  getDefenseSupportDonationState?: () => DefenseSupportDonationDialogState | null;
+  onResolveDefenseSupportDonation?: (gold: number) => boolean;
   onFoundWorldCouncil?: (offer: WorldCouncilFoundationOffer) => boolean;
   onSubmitWorldCouncilContribution?: (offer: WorldCouncilFoundationOffer) => boolean;
   onLeaveWorldCouncil?: () => boolean;
@@ -108,6 +114,7 @@ export class HudLayer {
   private readonly worldCouncilContributionDialog: WorldCouncilContributionDialog;
   private readonly worldCouncilOverviewDialog: WorldCouncilOverviewDialog;
   private readonly worldCouncilSessionDialog: WorldCouncilSessionDialog;
+  private readonly defenseSupportDonationDialog: DefenseSupportDonationDialog;
   private readonly worldCouncilButton: CircularHudProgressButton;
   private mapLensBottomReserved = 0;
   private readonly proposalQueue: DiplomaticProposal[] = [];
@@ -304,6 +311,19 @@ export class HudLayer {
         this.refresh();
       },
     });
+    this.defenseSupportDonationDialog = new DefenseSupportDonationDialog({
+      getState: () => this.config.getDefenseSupportDonationState?.() ?? null,
+      onResolve: (gold) => {
+        const resolved = this.config.onResolveDefenseSupportDonation?.(gold) ?? false;
+        if (resolved) {
+          queueMicrotask(() => {
+            this.showNextQueuedModal();
+            this.refresh();
+          });
+        }
+        return resolved;
+      },
+    });
 
     this.worldCouncilButton = new CircularHudProgressButton(scene, (object) => this.addOwned(object), this.config.worldInputGate, {
       depth: 139,
@@ -451,7 +471,8 @@ export class HudLayer {
       || this.worldCouncilDialog.isShowing()
       || this.worldCouncilContributionDialog.isShowing()
       || this.worldCouncilOverviewDialog.isShowing()
-      || this.worldCouncilSessionDialog.isShowing();
+      || this.worldCouncilSessionDialog.isShowing()
+      || this.defenseSupportDonationDialog.isShowing();
   }
 
   hasOpenSelectionPanel(): boolean {
@@ -521,6 +542,7 @@ export class HudLayer {
     this.worldCouncilContributionDialog.destroy();
     this.worldCouncilOverviewDialog.destroy();
     this.worldCouncilSessionDialog.destroy();
+    this.defenseSupportDonationDialog.destroy();
     this.worldCouncilButton.destroy();
     this.proposalQueue.length = 0;
     this.discoveryQueue.length = 0;
@@ -543,6 +565,7 @@ export class HudLayer {
     this.policyDialog.refresh();
     this.unitActionHudToolbox.refresh();
     this.refreshWorldCouncilButton();
+    this.showPendingDefenseSupportDonation();
     this.showPendingWorldCouncilSession();
     this.showPendingWorldCouncilContribution();
     this.endTurnButton.setEnabled(this.endTurnEnabled);
@@ -569,6 +592,7 @@ export class HudLayer {
     this.worldCouncilContributionDialog.layout();
     this.worldCouncilOverviewDialog.layout();
     this.worldCouncilSessionDialog.layout();
+    this.defenseSupportDonationDialog.layout();
   }
 
   private showNextQueuedModal(): void {
@@ -610,6 +634,14 @@ export class HudLayer {
     if (this.hasBlockingModal()) return;
     if ((this.config.getWorldCouncilSessionState?.() ?? null) === null) return;
     this.worldCouncilSessionDialog.show();
+  }
+
+  /** Open the emergency aid request before canonical Council resolution. */
+  private showPendingDefenseSupportDonation(): void {
+    if (this.defenseSupportDonationDialog.isShowing()) return;
+    if (this.hasBlockingModal()) return;
+    if ((this.config.getDefenseSupportDonationState?.() ?? null) === null) return;
+    this.defenseSupportDonationDialog.show();
   }
 
   private layoutWorldCouncilButton(): void {

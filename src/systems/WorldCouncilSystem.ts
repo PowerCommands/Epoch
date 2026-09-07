@@ -99,7 +99,7 @@ export class WorldCouncilSystem {
   private lastProcessedCouncilRound = 0;
   /**
    * When set, a freshly created meeting's proposals are held unresolved so an
-   * interactive human member can vote through the in-game Council Session UI.
+   * interactive human member can respond through the in-game Council UI.
    * The meeting resolves via {@link resolvePendingHumanVoteMeeting}. This is a
    * transient runtime flag, reconstructed from canonical state on {@link restore}.
    */
@@ -114,7 +114,7 @@ export class WorldCouncilSystem {
 
   /**
    * Provide a predicate that decides whether meetings with a human member should
-   * defer proposal resolution for interactive voting (true for a normal
+   * defer proposal resolution for interactive input (true for a normal
    * human-played game; false for autorun / AI-only, which resolves synchronously).
    */
   setHumanVotingDeferralEnabled(predicate: () => boolean): void {
@@ -414,7 +414,7 @@ export class WorldCouncilSystem {
       emergencyTrigger: trigger,
     });
     this.notifyChanged();
-    // A deferred meeting notifies only once it resolves after human voting.
+    // A deferred meeting notifies only once it resolves after human input.
     if (!this.isMeetingPendingHumanVote(meeting.id)) this.notifyMeeting(meeting);
     return { ...meeting, emergencyTrigger: meeting.emergencyTrigger ? { ...meeting.emergencyTrigger } : undefined };
   }
@@ -804,15 +804,25 @@ export class WorldCouncilSystem {
     if (meeting.proposals && this.resolutionSystem) {
       const humanMemberId = this.state.members.find((member) =>
         this.nationManager.getNation(member.nationId)?.isHuman === true)?.nationId;
-      // Only defer when the human actually casts a YES/NO + Influence vote on this
-      // meeting. Donation-only / no-vote meetings (e.g. emergency Defense Support)
-      // keep resolving synchronously and are not routed through the vote session.
+      // Defer only meetings that need human input. The UI collects that input and
+      // canonical resolution reads it back through the existing runtime boundary.
       const hasHumanInfluenceVote = meeting.proposals.some((proposal) =>
         proposal.repealTargetEnactedResolutionId !== undefined
         || this.resolutionSystem!.getDefinition(proposal.resolutionId)?.votingType === 'influence');
-      if (humanMemberId !== undefined && hasHumanInfluenceVote && this.humanVotingDeferralEnabled?.() === true) {
-        // Hold resolution: an interactive human votes through the Council Session
-        // UI, then GameScene calls resolvePendingHumanVoteMeeting() to finish.
+      const hasHumanDefenseSupportDonation = meeting.proposals.some((proposal) => {
+        if (proposal.resolutionId !== 'defense_support' || humanMemberId === undefined) return false;
+        const recipientNationId = proposal.targetNationId ?? meeting.emergencyTrigger?.targetNationId;
+        const aggressorNationId = proposal.secondaryTargetNationId ?? meeting.emergencyTrigger?.aggressorNationId;
+        return humanMemberId !== recipientNationId
+          && humanMemberId !== aggressorNationId
+          && this.nationManager.getResources(humanMemberId).gold > 0;
+      });
+      if (
+        humanMemberId !== undefined
+        && (hasHumanInfluenceVote || hasHumanDefenseSupportDonation)
+        && this.humanVotingDeferralEnabled?.() === true
+      ) {
+        // Hold resolution until the appropriate Council dialog submits input.
         this.pendingHumanVoteMeetingId = meeting.id;
         return meeting;
       }
@@ -860,9 +870,8 @@ export class WorldCouncilSystem {
   }
 
   /**
-   * Resolve the pending human-vote meeting through the canonical resolution path
-   * (the human's collected votes are read back through the existing
-   * requestHumanInfluenceVote boundary). Returns the resolved meeting.
+   * Resolve the pending human-input meeting through the canonical resolution path.
+   * Collected votes/donations are read back through their existing runtime boundaries.
    */
   resolvePendingHumanVoteMeeting(): WorldCouncilMeeting | null {
     const meetingId = this.pendingHumanVoteMeetingId;

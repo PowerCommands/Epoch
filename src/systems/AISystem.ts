@@ -218,6 +218,10 @@ import {
 import type { ResourceExpeditionCandidate } from './AIOverseasExpansionSystem';
 import type { KnownResourceOpportunity } from './ai/AIExplorationSystem';
 import { evaluateExploitationRequestDesirability } from './ai/exploitationRightsDemand';
+import {
+  EXPLOITATION_RIGHTS_REJECTION_COOLDOWN,
+  ExploitationRightsRejectionCooldown,
+} from './ai/ExploitationRightsRejectionCooldown';
 import { ECONOMIC_DEVELOPMENT, calculateProjectGoldPerTurn } from '../data/projects';
 import type { VictorySystem } from './VictorySystem';
 import {
@@ -716,6 +720,7 @@ export class AISystem {
   private readonly navalSaturationLoggedRound = new Map<string, number>();
   private readonly completedProductionCyclesSinceLastSettler = new Map<string, number>();
   private readonly lastTradeProposalTurnByNation = new Map<string, number>();
+  private readonly exploitationRightsRejectionCooldown?: ExploitationRightsRejectionCooldown;
   /** Per-AI cooldown so a rejected/expired Trade Relations offer to the human is not re-sent every turn. */
   private readonly lastTradeRelationsProposalTurnByNation = new Map<string, number>();
   /** Per-AI cooldown so a rejected/expired Embassy offer to the human is not re-sent every turn. */
@@ -835,6 +840,13 @@ export class AISystem {
     this.settlementMemorySystem = settlementMemorySystem ?? getSharedAISettlementMemorySystem(mapData);
     this.seaResourceMemorySystem = seaResourceMemorySystem ?? getSharedAISeaResourceMemorySystem(mapData);
     this.mapData = mapData;
+    if (this.diplomaticProposalSystem) {
+      this.exploitationRightsRejectionCooldown = new ExploitationRightsRejectionCooldown(
+        this.diplomaticProposalSystem,
+        () => this.turnManager.getCurrentRound(),
+        (nationId) => this.nationManager.getNation(nationId)?.isHuman === true,
+      );
+    }
     this.doctrineEvaluator = new AIMilitaryDoctrineEvaluator(unitManager);
     this.cityFocusSystem = new CityFocusSystem(
       this.cityManager,
@@ -1308,7 +1320,7 @@ export class AISystem {
     for (const city of this.cityManager.getCitiesByOwner(nationId)) {
       if (city.lastTilePurchaseTurn === currentTurn) continue;
 
-      const cost = this.cityTerritorySystem.getClaimCost(city, this.mapData);
+      const cost = this.cityTerritorySystem.getGoldTilePurchaseCost(city);
       if (resources.gold < Math.max(cost + minReserve, cost + 75)) continue;
 
       const target = this.pickBestTilePurchaseTarget(city, minScore);
@@ -1597,10 +1609,18 @@ export class AISystem {
           // proposal on its own terms — demand influences the requester only.
           const matched = this.getMatchedExploitationDemand(nationId, humanId);
           const desirability = evaluateExploitationRequestDesirability(exploitationInterest, matched?.demandScore ?? 0);
-          const hasPendingExploitation = this.diplomaticProposalSystem
-            .getPendingProposalsForNation(humanId)
-            .some((p) => p.fromNationId === nationId && p.payload.kind === 'exploitation_rights');
-          if (!hasPendingExploitation) {
+          const exploitationSuppression = this.exploitationRightsRejectionCooldown?.getSuppression(
+            nationId,
+            humanId,
+            currentRound,
+            this.diplomaticProposalSystem,
+          );
+          if (exploitationSuppression?.kind === 'rejection_cooldown') {
+            console.debug(this.formatLog(
+              nationId,
+              `AI Trade: exploitation-rights request suppressed — rejection cooldown ${exploitationSuppression.elapsedTurns}/${EXPLOITATION_RIGHTS_REJECTION_COOLDOWN}.`,
+            ));
+          } else if (!exploitationSuppression) {
             this.diplomaticProposalSystem.createProposal({
               fromNationId: nationId,
               toNationId: humanId,
