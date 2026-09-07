@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TileMap } from '../systems/TileMap';
+import { WorldAmbientRenderer } from '../systems/WorldAmbientRenderer';
 import { ScenarioLoader } from '../systems/ScenarioLoader';
 import { CameraController } from '../systems/CameraController';
 import { SelectionManager } from '../systems/SelectionManager';
@@ -2666,6 +2667,9 @@ export class GameScene extends Phaser.Scene {
       (x, y) => visibilitySystem.isTileExploredByHuman(x, y),
       canShowUnit,
     );
+
+    new WorldAmbientRenderer(this, tileMap, mapData, cityManager,
+      (x, y) => isMapRevealActive || !humanNationId || visibilitySystem.isVisible(x, y));
 
     // Re-cull all fog-dependent renderers after a visibility recompute.
     applyFogToRenderers = (): void => {

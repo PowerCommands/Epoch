@@ -210,10 +210,10 @@ export class TileMap {
 
     switch (tile.type) {
       case TileType.Ocean:
-        this.drawWaveMarks(graphics, x, y, center, radius);
+        // Water detail is drawn by WorldAmbientRenderer.
         break;
       case TileType.Coast:
-        this.drawSandMarks(graphics, x, y, center, radius);
+        // Shallows share the same water surface as the open sea.
         break;
       case TileType.Plains:
       case TileType.Meadow:
@@ -240,21 +240,6 @@ export class TileMap {
     }
   }
 
-  private drawWaveMarks(graphics: Phaser.GameObjects.Graphics, x: number, y: number, center: WorldPoint, radius: number): void {
-    if (this.hash(x, y, 5) !== 0) return;
-    const offsets = [-0.2, 0.18];
-    for (const offset of offsets) {
-      const cy = center.y + offset * radius;
-      graphics.beginPath();
-      graphics.moveTo(center.x - radius * 0.28, cy);
-      graphics.lineTo(center.x - radius * 0.08, cy - radius * 0.08);
-      graphics.lineTo(center.x + radius * 0.12, cy);
-      graphics.lineTo(center.x + radius * 0.28, cy + radius * 0.06);
-      graphics.lineTo(center.x + radius * 0.4, cy - radius * 0.03);
-      graphics.strokePath();
-    }
-  }
-
   private drawSandMarks(graphics: Phaser.GameObjects.Graphics, x: number, y: number, center: WorldPoint, radius: number): void {
     const dy = (this.hash(x, y, 5) - 2) * radius * 0.035;
     graphics.lineBetween(center.x - radius * 0.34, center.y + dy, center.x + radius * 0.34, center.y + dy - radius * 0.08);
@@ -276,12 +261,18 @@ export class TileMap {
     radius: number,
     count: number,
   ): void {
-    const seed = this.hash(x, y, 6);
-    for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * (i + seed / 6)) / count;
-      const px = center.x + Math.cos(angle) * radius * 0.22;
-      const py = center.y + Math.sin(angle) * radius * 0.18;
-      graphics.strokeCircle(px, py, radius * 0.08);
+    // Small shaded stands, baked with the terrain; no per-tree game objects.
+    const seed = this.hash(x, y, 17);
+    for (let i = 0; i < count + 2; i++) {
+      const px = center.x + (this.hash(x + i * 17, y + seed, 101) / 100 - 0.5) * radius * 0.85;
+      const py = center.y + (this.hash(x + seed, y + i * 23, 101) / 100 - 0.5) * radius * 0.65;
+      const size = radius * (0.12 + this.hash(x + i, y - i, 5) * 0.012);
+      graphics.fillStyle(0x143d2b, 0.26);
+      graphics.fillEllipse(px + size * 0.3, py + size * 0.55, size * 2.3, size * 1.2);
+      graphics.fillStyle(count === 4 ? 0x245e43 : 0x2a6037, 0.7);
+      graphics.fillCircle(px, py, size);
+      graphics.fillStyle(count === 4 ? 0x5a9970 : 0x74a35b, 0.34);
+      graphics.fillEllipse(px - size * 0.24, py - size * 0.3, size * 1.35, size * 0.95);
     }
   }
 
