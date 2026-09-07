@@ -9,6 +9,7 @@
  * adapts the editor's flat tile arrays to {@link MapData} and back so there is
  * no duplicated algorithm.
  */
+import * as Rivers from '../systems/geography/Rivers';
 import type { MapData, TileType } from '../types/map';
 import type { ProceduralResourceDensity } from '../systems/NaturalResourceSystem';
 import {
@@ -120,6 +121,7 @@ export function generateEditorResources(
 
 declare global {
   interface Window {
+    EpochRivers?: typeof Rivers;
     EpochEditorResources?: {
       generateEditorResources: typeof generateEditorResources;
       clearEditorResources: typeof clearEditorResources;
@@ -129,6 +131,7 @@ declare global {
 }
 
 if (typeof window !== 'undefined') {
+  window.EpochRivers = Rivers;
   window.EpochEditorResources = {
     generateEditorResources,
     clearEditorResources,

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { RiverRenderer } from '../systems/RiverRenderer';
 import { TileMap } from '../systems/TileMap';
 import { WorldAmbientRenderer } from '../systems/WorldAmbientRenderer';
 import { ScenarioLoader } from '../systems/ScenarioLoader';
@@ -648,6 +649,8 @@ export class GameScene extends Phaser.Scene {
     // 4c. Render biome edge overlays (depth 3) — forest tree-line against
     // plains and mountain ridge against surrounding non-mountain land.
     const biomeEdgeRenderer = new HexEdgeOverlayRenderer(this, tileMap, mapData, { depth: 3, passes: BIOME_EDGE_PASSES });
+
+    const riverRenderer = new RiverRenderer(this, tileMap, mapData);
 
     // 4d. Render natural resources above terrain and below borders/units.
     const naturalResourceRenderer = new NaturalResourceRenderer(this, tileMap, mapData);
@@ -10386,6 +10389,7 @@ export class GameScene extends Phaser.Scene {
       refreshTileVisuals: (tileX: number, tileY: number, terrainChanged = false): void => {
         if (terrainChanged) {
           tileMap.rebuildTerrain();
+          riverRenderer.rebuild();
           coastEdgeRenderer.rebuild();
           biomeEdgeRenderer.rebuild();
         }
@@ -10719,6 +10723,7 @@ export class GameScene extends Phaser.Scene {
       tileMap.shutdown();
       coastEdgeRenderer.shutdown();
       biomeEdgeRenderer.shutdown();
+      riverRenderer.shutdown();
       territoryRenderer.shutdown();
       hudLayer?.shutdown();
       rightPanel?.shutdown();
@@ -10922,6 +10927,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       // Rebuild renderers that depend on replaced entities.
+      riverRenderer.rebuild();
       cityRenderer.rebuildAll();
       cityBannerRenderer.rebuildAll();
       naturalResourceRenderer.rebuildAll();

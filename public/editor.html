@@ -474,6 +474,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <div class="section-title">Tool</div>
       <div class="tool-btns" id="tool-btns">
         <button class="tool-btn active" data-tool="paint">Paint Terrain</button>
+        <button class="tool-btn" data-tool="river">Draw River</button>
         <button class="tool-btn" data-tool="move">Move City / Unit</button>
         <button class="tool-btn" data-tool="editCity">Edit City</button>
         <button class="tool-btn" data-tool="setStart">Set Start Position</button>
@@ -482,6 +483,18 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         <button class="tool-btn" data-tool="marker">World Marker</button>
         <button class="tool-btn" data-tool="barbarianCamp">Barbarian Camp</button>
       </div>
+    </div>
+
+    <div class="section" id="river-tool-section" style="display:none">
+      <div class="section-title">River route</div>
+      <div class="hint">Click successive points or drag to draw. Bends and junctions connect automatically. Finish at the sea, or press Esc to start a separate river. Right-drag to pan.</div>
+      <div style="display:flex;gap:6px;margin:8px 0">
+        <button class="small-btn" id="river-undo-btn" type="button">Undo</button>
+        <button class="small-btn" id="river-redo-btn" type="button">Redo</button>
+      </div>
+      <button class="small-btn" id="river-new-btn" type="button">Finish / New river</button>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px"><input id="river-erase" type="checkbox" style="width:auto"> Erase river sections</label>
+      <div class="hint">Erase a section to disconnect it cleanly. Undo / Redo also restores its neighbors.</div>
     </div>
 
     <div class="section" id="nation-section">
@@ -1216,6 +1229,10 @@ let templateScale = 1;
 const MIN_TEMPLATE_SCALE = 0.1, MAX_TEMPLATE_SCALE = 12;
 let tiles = null; // 2D array [r][q] of type strings
 let tileResources = null; // 2D array [r][q] of resource ids or undefined
+let tileRivers = null; // reciprocal edge masks [r][q]; terrain remains independent
+let riverAnchor = null;
+let riverEraseAnchor = null;
+let riverReachedWater = false;
 let tileBuildings = null; // 2D array [r][q] of building ids or undefined
 // Default turns two nations cannot re-declare war after peace (mirrors the runtime
 // DEFAULT_PEACE_TREATY_COOLDOWN_TURNS in src/systems/DiplomacyManager.ts).
@@ -1351,6 +1368,9 @@ function startEditor(map, scenarioData, customEntry) {
   // default ocean fill is "unpainted" until the user (or scenario data) sets it.
   tiles = [];
   tileResources = [];
+  tileRivers = Array.from({ length: mapH }, () => Array(mapW).fill(undefined));
+  riverAnchor = null;
+  riverEraseAnchor = null;
   tileBuildings = [];
   paintedTiles = [];
   for (let r = 0; r < mapH; r++) {
@@ -1370,6 +1390,7 @@ function startEditor(map, scenarioData, customEntry) {
   for (const t of scenario.map.tiles) {
     if (tiles[t.r]) {
       tiles[t.r][t.q] = t.type;
+      tileRivers[t.r][t.q] = EpochRivers.riverMask(t.riverConnections) || undefined;
       // Any tile authored in the scenario with a valid terrain type counts as painted.
       if (TILE_TYPES.includes(t.type)) paintedTiles[t.r][t.q] = true;
       if (typeof t.resourceId === 'string' && t.resourceId.length > 0) {
@@ -1381,6 +1402,7 @@ function startEditor(map, scenarioData, customEntry) {
     }
   }
 
+  EpochRivers.normalizeRivers(editorRiverGrid());
   normalizeAuthoredCities();
 
   // Center camera
@@ -3656,6 +3678,8 @@ document.getElementById('tool-btns').addEventListener('click', (e) => {
 });
 
 function updateToolPanels() {
+  riverAnchor = null;
+  document.getElementById('river-tool-section').style.display = currentTool === 'river' ? '' : 'none';
   document.getElementById('palette-section').style.display = currentTool === 'paint' ? '' : 'none';
   document.getElementById('entities-section').style.display = currentTool === 'move' ? '' : 'none';
   document.getElementById('city-tool-section').style.display = currentTool === 'editCity' ? '' : 'none';
@@ -3792,6 +3816,7 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
   closeMagicWand(); // preview grid is sized to the old map
 
   // Rebuild the grids, copying anything that still fits.
+  const nextRivers = Array.from({ length: newHeight }, (_, r) => Array.from({ length: newWidth }, (_, q) => tileRivers[r]?.[q]));
   const nextTiles = [];
   const nextResources = [];
   const nextBuildings = [];
@@ -3811,6 +3836,8 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
     nextPainted.push(paintedRow);
   }
   tiles = nextTiles;
+  tileRivers = nextRivers;
+  riverAnchor = null;
   tileResources = nextResources;
   tileBuildings = nextBuildings;
   paintedTiles = nextPainted;
@@ -3848,6 +3875,7 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
   scenario.map.width = mapW;
   scenario.map.height = mapH;
   scenario.map.tileSize = tileSize;
+  EpochRivers.normalizeRivers(editorRiverGrid());
 
   // Re-center the camera on the resized world, like opening a scenario does.
   worldBounds = getWorldBounds();
@@ -4019,18 +4047,19 @@ function recordTileBefore(q, r) {
   if (!currentStrokeChanges) return;
   const key = `${q},${r}`;
   if (currentStrokeChanges.has(key)) return;
-  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q], prevPainted: paintedTiles[r][q] });
+  currentStrokeChanges.set(key, { q, r, prevType: tiles[r][q], prevResource: tileResources[r][q], prevPainted: paintedTiles[r][q], prevRiver: tileRivers[r][q] });
 }
 
 function commitBrushStroke() {
   if (!currentStrokeChanges) return;
   const changes = [];
   for (const before of currentStrokeChanges.values()) {
+    const nextRiver = tileRivers[before.r][before.q];
     const nextType = tiles[before.r][before.q];
     const nextResource = tileResources[before.r][before.q];
     const nextPainted = paintedTiles[before.r][before.q];
-    if (before.prevType === nextType && before.prevResource === nextResource && before.prevPainted === nextPainted) continue; // no-op tile
-    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource, prevPainted: before.prevPainted, nextPainted });
+    if (before.prevType === nextType && before.prevResource === nextResource && before.prevPainted === nextPainted && before.prevRiver === nextRiver) continue; // no-op tile
+    changes.push({ q: before.q, r: before.r, prevType: before.prevType, nextType, prevResource: before.prevResource, nextResource, prevPainted: before.prevPainted, nextPainted, prevRiver: before.prevRiver, nextRiver });
   }
   currentStrokeChanges = null;
   if (changes.length === 0) return; // empty / no-op stroke: nothing to undo
@@ -4048,6 +4077,8 @@ function applyTileChanges(changes, useNext) {
   for (const change of changes) {
     tiles[change.r][change.q] = useNext ? change.nextType : change.prevType;
     tileResources[change.r][change.q] = useNext ? change.nextResource : change.prevResource;
+    // Resource-only actions predate rivers and must leave geography untouched.
+    if ('prevRiver' in change) tileRivers[change.r][change.q] = useNext ? change.nextRiver : change.prevRiver;
     paintedTiles[change.r][change.q] = useNext ? change.nextPainted : change.prevPainted;
   }
 }
@@ -4127,6 +4158,7 @@ function deleteSelectedEntity() {
 }
 
 function undo() {
+  riverAnchor = null;
   const action = undoStack.pop();
   if (!action) return;
   if (action.type === 'addUnit') {
@@ -4148,6 +4180,7 @@ function undo() {
 }
 
 function redo() {
+  riverAnchor = null;
   const action = redoStack.pop();
   if (!action) return;
   if (action.type === 'addUnit') {
@@ -4180,8 +4213,12 @@ function updateUndoRedoButtons() {
   const redoBtn = document.getElementById('redo-btn');
   if (undoBtn) undoBtn.disabled = undoStack.length === 0;
   if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+  document.getElementById('river-undo-btn').disabled = undoStack.length === 0;
+  document.getElementById('river-redo-btn').disabled = redoStack.length === 0;
 }
 
+document.getElementById('river-undo-btn').addEventListener('click', undo);
+document.getElementById('river-redo-btn').addEventListener('click', redo);
 document.getElementById('undo-btn').addEventListener('click', undo);
 document.getElementById('redo-btn').addEventListener('click', redo);
 
@@ -4192,6 +4229,89 @@ function clearInvalidResourceForTerrain(q, r) {
     return resourceId;
   }
   return null;
+}
+
+// River editing shares the same tile snapshots and undo transaction as terrain.
+function editorRiverGrid() {
+  return { width: mapW, height: mapH,
+    get: (q, r) => tileRivers[r]?.[q],
+    set: (q, r, mask) => {
+      const value = mask || undefined;
+      if (tileRivers[r][q] === value) return;
+      recordTileBefore(q, r);
+      tileRivers[r][q] = value;
+    },
+  };
+}
+function paintRiverAt(q, r) {
+  if (riverReachedWater && isPainting) return;
+  const point = { q, r };
+  const grid = editorRiverGrid();
+  if (document.getElementById('river-erase').checked) {
+    for (const pos of EpochRivers.riverLine(riverEraseAnchor || point, point)) EpochRivers.eraseRiver(grid, pos.q, pos.r);
+    riverEraseAnchor = point;
+    riverAnchor = null;
+  } else if (!riverAnchor) {
+    if (!isLandTerrain(tiles[r][q])) { setStatusInfo('Begin on land, then draw toward the sea.'); return; }
+    riverAnchor = point;
+    setStatusInfo('River source set. Click or drag the route; Esc finishes it.');
+  } else {
+    const route = EpochRivers.riverLine(riverAnchor, point);
+    for (let i = 1; i < route.length; i++) {
+      EpochRivers.connectRiver(grid, route[i - 1], route[i]);
+      riverAnchor = route[i];
+      if (!isLandTerrain(tiles[route[i].r][route[i].q])) {
+        riverAnchor = null;
+        riverReachedWater = true;
+        setStatusInfo('River reached the sea. Click on land to begin another river.');
+        break;
+      }
+    }
+  }
+  render();
+}
+document.getElementById('river-new-btn').addEventListener('click', () => { riverAnchor = null; render(); });
+document.getElementById('river-erase').addEventListener('change', () => { riverAnchor = null; render(); });
+
+function drawRivers() {
+  ctx.save();
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'round';
+  for (const stroke of EpochRivers.RIVER_STROKES) {
+    ctx.strokeStyle = '#' + stroke.color.toString(16).padStart(6, '0');
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.globalAlpha = stroke.alpha;
+    ctx.lineWidth = hexSize * stroke.width * zoom;
+    for (let r = 0; r < mapH; r++) for (let q = 0; q < mapW; q++) {
+      if (!tileRivers[r][q] || (stroke.bank && !isLandTerrain(tiles[r][q]))) continue;
+      const center = tileToWorld(q, r);
+      if (center.x < camX - tileSize || center.x > camX + canvas.width / zoom + tileSize
+        || center.y < camY - tileSize || center.y > camY + canvas.height / zoom + tileSize) continue;
+      for (const path of EpochRivers.riverPaths(tileRivers[r][q], center, hexSize)) {
+        ctx.beginPath();
+        path.forEach((point, i) => {
+          const x = (point.x - camX) * zoom, y = (point.y - camY) * zoom;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        if (path.length === 2) {
+          ctx.beginPath();
+          ctx.arc((path[0].x - camX) * zoom, (path[0].y - camY) * zoom, ctx.lineWidth / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+  if (currentTool === 'river' && riverAnchor) {
+    const point = tileToWorld(riverAnchor.q, riverAnchor.r);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#daf5ee';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc((point.x - camX) * zoom, (point.y - camY) * zoom, Math.max(4, hexSize * zoom * 0.2), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function paintAt(q, r) {
@@ -4221,6 +4341,7 @@ function paintAt(q, r) {
       recordTileBefore(pq, pr); // captures terrain + resource + painted flag
       if (willChangeTerrain) {
         tiles[pr][pq] = currentTerrain;
+        if (currentTerrain === 'ocean' || currentTerrain === 'coast') EpochRivers.eraseRiver(editorRiverGrid(), pq, pr);
         if (clearInvalidResourceForTerrain(pq, pr)) cleared += 1;
       }
       paintedTiles[pr][pq] = true; // any terrain paint marks the tile as deliberately painted
@@ -4457,6 +4578,20 @@ viewport.addEventListener('mousedown', (e) => {
     return;
   }
 
+  if (currentTool === 'river') {
+    document.activeElement?.blur();
+    const pos = screenToTile(e.clientX, e.clientY);
+    if (pos) {
+      isPainting = true;
+      riverEraseAnchor = null;
+      riverReachedWater = false;
+      beginBrushStroke();
+      paintRiverAt(pos.q, pos.r);
+    }
+    e.preventDefault();
+    return;
+  }
+
   if (currentTool === 'paint' && interactionMode === 'paint') {
     const pos = screenToTile(e.clientX, e.clientY);
     if (pos) {
@@ -4628,6 +4763,11 @@ viewport.addEventListener('mousemove', (e) => {
 
   if (isMovingBackground) {
     moveBackgroundToPointer(e.clientX, e.clientY);
+    return;
+  }
+
+  if (isPainting && currentTool === 'river' && pos) {
+    paintRiverAt(pos.q, pos.r);
     return;
   }
 
@@ -5146,6 +5286,8 @@ function render() {
       }
     }
   }
+
+  drawRivers();
 
   // Authored city territory: all cities are subtle; the selected city is
   // stronger and uses both nation colors so reassignments are easy to inspect.
@@ -5710,6 +5852,7 @@ function buildScenarioOutput() {
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
       const tile = { q, r, type: tiles[r][q] };
+      if (tileRivers[r][q]) tile.riverConnections = tileRivers[r][q];
       if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
       if (tileBuildings[r][q] !== undefined) tile.buildingId = tileBuildings[r][q];
       flatTiles.push(tile);
@@ -6274,6 +6417,7 @@ window.addEventListener('keydown', (e) => {
   // Escape returns to the editor landing menu (same as the "Back to Menu" button).
   if (e.key === 'Escape') {
     e.preventDefault();
+    if (currentTool === 'river' && riverAnchor) { riverAnchor = null; render(); return; }
     showLanding();
     return;
   }

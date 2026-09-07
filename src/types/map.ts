@@ -41,6 +41,8 @@ export interface Tile {
   type: TileType;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
   resourceOwnerNationId?: string; // resource-only claim; does not make the tile city territory
+  /** Reciprocal river edge links: E, SE, SW, W, NW, NE (bits 0–5). Geography only. */
+  riverConnections?: number;
   resourceId?: string; // optional natural resource; undefined = none
   improvementId?: string; // optional tile improvement; undefined = none
   /** Economic owner of the completed improvement; independent of territorial ownerId. */

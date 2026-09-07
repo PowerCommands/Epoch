@@ -1,3 +1,4 @@
+import { normalizeRivers, riverMask } from './geography/Rivers';
 import { MapData, Tile, TileType } from '../types/map';
 import type {
   ScenarioData,
@@ -57,11 +58,17 @@ export class ScenarioLoader {
       const tile = tiles[entry.r]?.[entry.q];
       if (tile) {
         tile.type = TYPE_MAP[entry.type.toLowerCase()] ?? TileType.Ocean;
+        tile.riverConnections = riverMask(entry.riverConnections) || undefined;
         tile.resourceId = entry.resourceId;
         tile.improvementId = entry.improvementId;
         tile.buildingId = entry.buildingId;
       }
     }
+
+    normalizeRivers({ width, height,
+      get: (q, r) => tiles[r]?.[q]?.riverConnections,
+      set: (q, r, mask) => { tiles[r][q].riverConnections = mask || undefined; },
+    });
 
     // Merge the editor's Nation Details setup onto each nation. Nation-specific
     // tech/culture now lives in `nationDetails` (keyed by id); when present it

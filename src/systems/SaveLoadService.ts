@@ -1,3 +1,4 @@
+import { normalizeRivers, riverMask } from './geography/Rivers';
 import type { MapData } from '../types/map';
 import type {
   SavedCity,
@@ -467,6 +468,7 @@ export class SaveLoadService {
         if (
           tile.ownerId === undefined
           && tile.resourceOwnerNationId === undefined
+          && tile.riverConnections === undefined
           && tile.resourceId === undefined
           && tile.improvementId === undefined
           && tile.improvementOwnerId === undefined
@@ -484,6 +486,7 @@ export class SaveLoadService {
           r: tile.y,
           ownerId: tile.ownerId,
           resourceOwnerNationId: tile.improvementId !== undefined ? tile.resourceOwnerNationId : undefined,
+          riverConnections: tile.riverConnections,
           resourceId: tile.resourceId,
           improvementId: tile.improvementId,
           // Never persist ownership metadata without its completed improvement.
@@ -719,6 +722,7 @@ export class SaveLoadService {
       const tile = mapData.tiles[saved.r]?.[saved.q];
       if (!tile) continue;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
+      if (saved.riverConnections !== undefined) tile.riverConnections = riverMask(saved.riverConnections) || undefined;
       if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;
       if (saved.improvementId !== undefined) tile.improvementId = saved.improvementId;
       if (saved.improvementId !== undefined && saved.resourceOwnerNationId !== undefined) {
@@ -748,6 +752,10 @@ export class SaveLoadService {
         tile.cultureSourceCityId = saved.cultureSourceCityId;
       }
     }
+    normalizeRivers({ width: mapData.width, height: mapData.height,
+      get: (q, r) => mapData.tiles[r]?.[q]?.riverConnections,
+      set: (q, r, mask) => { mapData.tiles[r][q].riverConnections = mask || undefined; },
+    });
   }
 
   /**

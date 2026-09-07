@@ -201,6 +201,7 @@ export interface SavedUnit {
 }
 
 export interface SavedTile {
+  riverConnections?: number;
   q: number;
   r: number;
   ownerId?: string;

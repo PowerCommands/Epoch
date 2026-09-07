@@ -115,7 +115,7 @@ export interface ScenarioMap {
   width: number;
   height: number;
   tileSize: number;
-  tiles: { q: number; r: number; type: string; resourceId?: string; improvementId?: string; buildingId?: string }[];
+  tiles: { q: number; r: number; type: string; riverConnections?: number; resourceId?: string; improvementId?: string; buildingId?: string }[];
 }
 
 export interface ScenarioNation {

@@ -4,7 +4,7 @@
       "key": "map_asia",
       "label": "Asia",
       "file": "assets/maps/asia.json"
-    },    
+    },
     {
       "key": "map_caribian",
       "label": "Caribian",
@@ -59,6 +59,11 @@
       "key": "map_world_war_ii_europe",
       "label": "World War II - Europe",
       "file": "assets/maps/world-war-ii-europe.json"
+    },
+    {
+      "key": "map_astra_europa",
+      "label": "Astra-Europa",
+      "file": "assets/maps/astra-europa.json"
     }
   ]
 }
