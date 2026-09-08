@@ -55,6 +55,7 @@ export function effectiveLeader(config: LeaderConfiguration, id: string) {
   const patch = config.leaders?.[id];
   const leader = { ...base, ...patch };
   return { ...leader,
+    opportunism: leader.opportunism ?? false,
     maxPreferredCities: leader.maxPreferredCities ?? undefined,
     diplomacyFlavor: patch?.diplomacyFlavor ? { ...base.diplomacyFlavor, ...patch.diplomacyFlavor } : base.diplomacyFlavor,
     aiPersonality: { ...DEFAULT_AI_LEADER_PERSONALITY, ...base.aiPersonality, ...patch?.aiPersonality },
@@ -171,6 +172,7 @@ export function validateConfiguration(config: LeaderConfiguration, nations: read
   }
   for (const [id, patch] of Object.entries(config.leaders ?? {})) {
     knownLeader(id);
+    if (patch.opportunism !== undefined && typeof patch.opportunism !== 'boolean') errors.push(`${id}: opportunism must be true or false`);
     if (patch.name !== undefined && !patch.name.trim()) errors.push(`${id}: leader name is required`);
     if (patch.gamesOfNationsPreferences && (!patch.gamesOfNationsPreferences.traditionalFavourite || !patch.gamesOfNationsPreferences.additionalFavourite)) errors.push(`${id}: both favorite sport categories are required`);
     for (const [kind, field] of Object.entries(profileLeaderFields)) if (patch[field as keyof typeof patch] !== undefined) ref(kind as ProfileKind, patch[field as keyof typeof patch], id);

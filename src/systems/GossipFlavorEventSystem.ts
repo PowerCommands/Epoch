@@ -18,6 +18,10 @@ export const GOSSIP_FLAVOR_TRIGGER_PROBABILITIES: Readonly<Record<GossipFlavorCo
   city_capture: 0.3,
   ongoing_war: 0.08,
   hostile_peacetime: 0.04,
+  opportunity_mockery: 0.65,
+  opportunity_intimidation: 0.75,
+  opportunity_territorial: 0.85,
+  opportunity_military: 0.95,
 };
 
 const MAX_WEIGHT_BY_CONTEXT: Readonly<Record<GossipFlavorContext, number>> = {
@@ -25,6 +29,10 @@ const MAX_WEIGHT_BY_CONTEXT: Readonly<Record<GossipFlavorContext, number>> = {
   city_capture: 1.4,
   ongoing_war: 2,
   hostile_peacetime: 1.6,
+  opportunity_mockery: 2,
+  opportunity_intimidation: 2,
+  opportunity_territorial: 2,
+  opportunity_military: 2,
 };
 
 export interface GossipFlavorEventContext {
@@ -41,6 +49,7 @@ export interface GossipFlavorEventContext {
    * agenda into this existing insult path. Defaults to never.
    */
   readonly isCulturalJealousyAggressor?: (speakerId: string, recipientId: string) => boolean;
+  readonly opportunismPressure?: (speakerId: string, recipientId: string) => number;
   readonly randomSeed: string;
   /** Injectable deterministic roll for focused tests. */
   readonly roll?: (key: string) => number;
@@ -211,6 +220,11 @@ export class GossipFlavorEventSystem {
     const atWar = this.context.diplomacyManager.getState(speakerNationId, recipientNationId) === 'WAR';
     if (trigger === 'war_declaration' || trigger === 'city_capture' || trigger === 'ongoing_war') return atWar;
     if (atWar) return false;
+    if (trigger.startsWith('opportunity_')) {
+      const pressure = this.context.opportunismPressure?.(speakerNationId, recipientNationId) ?? 0;
+      const minimum = trigger === 'opportunity_military' ? 45 : trigger === 'opportunity_territorial' ? 30 : trigger === 'opportunity_intimidation' ? 15 : 1;
+      return getLeaderByNationId(speakerNationId)?.opportunism === true && pressure >= minimum;
+    }
     return isSeverelyHostileRelation(this.context.diplomacyManager.getRelation(speakerNationId, recipientNationId))
       || (this.context.isCulturalJealousyAggressor?.(speakerNationId, recipientNationId) ?? false);
   }

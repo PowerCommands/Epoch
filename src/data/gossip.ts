@@ -1,6 +1,8 @@
+import { OPPORTUNISTIC_GOSSIP } from './opportunisticGossip';
 import type { GossipDefinition } from '../types/gossip';
 
 export const GOSSIP_DEFINITIONS = [
+  ...OPPORTUNISTIC_GOSSIP,
   {
     id: 'ask_opinion',
     type: 'information',

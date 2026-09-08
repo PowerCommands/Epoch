@@ -36,6 +36,7 @@
     "generate-nation-manifest": "tsx scripts/generateNationManifest.ts",
     "generate-natural-resource-manifest": "tsx scripts/generateNaturalResourceManifest.ts",
     "preview": "vite preview",
+    "test:opportunism": "node --import tsx --test tools/opportunism.test.ts tools/aiWarDeclarationDialogue.test.ts tools/gossipFlavorEvents.test.ts tools/gossipInsultExpansion.test.ts tools/leaderConfiguration.test.ts",
     "test:leader-editor": "node --import tsx --test tools/leaderConfiguration.test.ts tools/multipleLeaders.test.ts tools/charlesDeGaulleLeader.test.ts tools/adolfHitlerLeader.test.ts"
   },
   "dependencies": {

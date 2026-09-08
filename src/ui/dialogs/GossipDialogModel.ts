@@ -79,7 +79,8 @@ export class GossipDialogModel {
   getRecipientNationId(): string | null { return this.recipientNationId; }
   getItems(): readonly GossipDefinition[] {
     return this.context.getAvailableItems().filter((item) => (
-      this.context.getItemAvailability(this.sourceNationId, item.id, this.recipientNationId ?? undefined).visible !== false
+      !item.automaticOnly
+      && this.context.getItemAvailability(this.sourceNationId, item.id, this.recipientNationId ?? undefined).visible !== false
     ));
   }
   getSelectedItem(): GossipDefinition | undefined { return this.getItems().find((item) => item.id === this.selectedItemId); }

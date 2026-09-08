@@ -35,6 +35,7 @@ export function classifyWarDeclarationReason(context: WarDeclarationReasonContex
       Math.max(0, -context.ideologyCompatibility) * 2
       + (context.ideologyCompatibility <= -30 ? 20 : 0),
     conquest:
+      (context.opportunisticOpportunity ? 100 : 0) +
       (context.militaryComparison === 'stronger' ? 65 : context.militaryComparison === 'equal' ? 20 : 0)
       + Math.max(0, personality.expansionBias) * 2
       + personality.warTolerance * 0.15

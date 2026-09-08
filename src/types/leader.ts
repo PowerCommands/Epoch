@@ -15,6 +15,8 @@ export interface LeaderDefinition {
   description?: string;
   readonly ideologyId?: IdeologyId;
   aiPersonality?: AILeaderPersonality;
+  /** Exploits sustained military weakness in known rivals. Absent means false. */
+  opportunism?: boolean;
   aiNationalAgendaId?: AINationalAgendaId;
   aiMilitaryDoctrineId?: string;
   /** How this leader pursues goals via covert warfare. Absent → derived default. */

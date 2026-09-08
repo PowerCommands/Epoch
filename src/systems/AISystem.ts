@@ -127,6 +127,7 @@ import {
 } from './ai/TacticalAwareness';
 import {
   OffensiveOperationSystem,
+  OFFENSIVE_MAX_TARGET_DISTANCE,
   scoreOffensivePosition,
   OFFENSIVE_STAGING_RADIUS,
   type OffensiveOperation,
@@ -6501,6 +6502,24 @@ export class AISystem {
       })
       .map((other) => other.id)
       .sort((a, b) => a.localeCompare(b));
+  }
+
+  /** Conservative peacetime reach check; reuse land connectivity and naval pathfinding. */
+  canProjectForceAgainst(nationId: string, targetId: string): boolean {
+    const cities = this.cityManager.getCitiesByOwner(targetId);
+    const ownCities = this.cityManager.getCitiesByOwner(nationId);
+    const units = this.unitManager.getUnitsByOwner(nationId).filter(u => u.health > 0 && u.unitType.baseStrength > 0);
+    if (units.some(u => !u.unitType.isNaval && !u.carriedByUnitId) && cities.some(city =>
+      ownCities.some(home => this.gridSystem.getDistance({ x: home.tileX, y: home.tileY }, { x: city.tileX, y: city.tileY }) <= OFFENSIVE_MAX_TARGET_DISTANCE)
+      && this.isLandReachable(nationId, city.tileX, city.tileY))) return true;
+    if (!isMaritimeDoctrine(getLeaderMilitaryDoctrineByNationId(nationId))) return false;
+    // A real combat fleet must be able to reach a coastal approach. Producible
+    // ships or a distant disconnected lake do not establish naval reach.
+    const approaches = cities.flatMap(city => this.gridSystem.getAdjacentCoords({ x: city.tileX, y: city.tileY }))
+      .filter(c => { const tile = this.mapData.tiles[c.y]?.[c.x]; return tile?.type === TileType.Coast || tile?.type === TileType.Ocean; });
+    return units.filter(u => u.unitType.isNaval && (u.unitType.rangedStrength ?? 0) > 0)
+      .sort((a, b) => a.id.localeCompare(b.id)).slice(0, 3)
+      .some(unit => this.pathfindingSystem.findBestPathToAnyTarget(unit, approaches, { respectMovementPoints: false }) !== null);
   }
 
   private isLandReachable(nationId: string, x: number, y: number): boolean {

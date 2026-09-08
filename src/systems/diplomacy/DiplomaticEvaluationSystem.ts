@@ -38,6 +38,12 @@ export interface DiplomaticEvaluationResult {
 }
 
 export class DiplomaticEvaluationSystem {
+  private temporaryInfluence = (_a: string, _b: string, relation: DiplomacyRelation) => relation;
+  /** Directional, reversible interpretation shared by AI and passive Audience views. */
+  setTemporaryRelationInfluence(provider: (a: string, b: string, relation: DiplomacyRelation) => DiplomacyRelation): void {
+    this.temporaryInfluence = provider;
+  }
+
   constructor(
     private readonly diplomacyManager: DiplomacyManager,
     /** Viewer's covert personality scales how strongly suspicion colours attitude. */
@@ -54,8 +60,10 @@ export class DiplomaticEvaluationSystem {
     viewerNationId: string,
     targetNationId: string,
     relationOverride?: DiplomacyRelation,
+    includeTemporaryInfluence = true,
   ): DiplomaticEvaluationResult {
-    const relation = relationOverride ?? this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    const baseRelation = relationOverride ?? this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    const relation = includeTemporaryInfluence ? this.temporaryInfluence(viewerNationId, targetNationId, baseRelation) : baseRelation;
     const pressure = this.diplomacyManager.getEconomicPressureDiplomaticModifier(viewerNationId, targetNationId);
     const sourceIdeology = getLeaderIdeologyByNationId(viewerNationId);
     const targetIdeology = getLeaderIdeologyByNationId(targetNationId);
@@ -101,7 +109,7 @@ export class DiplomaticEvaluationSystem {
   ): DiplomaticAttitude {
     if (viewerNationId === targetNationId) return 'neutral';
 
-    const relation = relationOverride ?? this.diplomacyManager.getRelation(viewerNationId, targetNationId);
+    const relation = relationOverride ?? this.temporaryInfluence(viewerNationId, targetNationId, this.diplomacyManager.getRelation(viewerNationId, targetNationId));
     const pressure = this.diplomacyManager.getEconomicPressureDiplomaticModifier(viewerNationId, targetNationId);
     const hostility = Math.min(100, relation.hostility + pressure.hostility);
     const affinity = Math.max(-100, relation.affinity + pressure.affinity);

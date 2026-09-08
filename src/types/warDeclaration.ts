@@ -9,6 +9,7 @@ export type WarDeclarationPhrases = Readonly<Record<WarDeclarationReason, readon
 
 /** Snapshot of information already present when the AI commits to war. */
 export interface WarDeclarationReasonContext {
+  readonly opportunisticOpportunity?: boolean;
   readonly militaryComparison: MilitaryComparison;
   readonly threatLevel: ThreatLevel;
   readonly trust: number;

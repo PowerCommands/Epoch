@@ -1,3 +1,4 @@
+import { OpportunismSystem } from '../systems/ai/OpportunismSystem';
 import { setLeaderConfiguration } from '../data/leaderConfiguration';
 import Phaser from 'phaser';
 import { RiverRenderer } from '../systems/RiverRenderer';
@@ -1462,6 +1463,7 @@ export class GameScene extends Phaser.Scene {
     );
     const aiMilitaryEvaluationSystem = new AIMilitaryEvaluationSystem(unitManager, cityManager, allianceManager, diplomacyManager);
     getGossipMilitaryPower = (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength;
+    let opportunismSystem: OpportunismSystem | undefined;
     const gossipFlavorEventSystem = new GossipFlavorEventSystem({
       nationManager,
       diplomacyManager,
@@ -1469,6 +1471,7 @@ export class GameScene extends Phaser.Scene {
       getRound: () => turnManager.getCurrentRound(),
       getMilitaryPower: (nationId) => aiMilitaryEvaluationSystem.getMilitaryStrength(nationId).totalStrength,
       isNationActive: (nationId) => cityManager.getCitiesByOwner(nationId).length > 0,
+      opportunismPressure: (speakerId, recipientId) => opportunismSystem?.getPressure(speakerId, recipientId) ?? 0,
       isCulturalJealousyAggressor: (speakerId, recipientId) =>
         culturalJealousySystem.isJealousyTargeting(speakerId, recipientId),
       // Save files do not currently persist worldSeed. Use stable session
@@ -3817,6 +3820,20 @@ export class GameScene extends Phaser.Scene {
       powerPlantSystem,
       victorySystem,
     );
+    opportunismSystem = new OpportunismSystem({
+      military: aiMilitaryEvaluationSystem,
+      diplomacy: diplomacyManager,
+      haveMet: (a, b) => discoverySystem.hasMet(a, b),
+      canProjectForce: (a, b) => aiSystem.canProjectForceAgainst(a, b),
+      threat: (a, b) => aiMilitaryThreatEvaluationSystem.getThreatLevel(a, b),
+      minimumReadiness: id => resolveLeaderEraStrategy(getLeaderByNationId(id)?.id, eraSystem.getNationEra(id)).militaryBehavior.minimumMilitaryReadiness,
+      remark: (speakerNationId, recipientNationId, trigger) => !!gossipFlavorEventSystem.tryGenerate({ speakerNationId, recipientNationId, trigger }),
+      log: (actorId, targetId, message) => {
+        console.log(formatLog(actorId, `${message} target=${targetId}`));
+        logManager.info({ nationIds: [actorId, targetId], category: 'diplomacy', message: `${message} target=${targetId}` });
+      },
+    });
+    aiDiplomacySystem.setOpportunismSystem(opportunismSystem);
     aiSystem.setCultureSystem(cultureSystem);
     if (consolidationSystem) aiSystem.setConsolidationSystem(consolidationSystem);
     aiSystem.setStrategicResourceDemandSystem(strategicResourceDemandSystem);
@@ -10201,6 +10218,7 @@ export class GameScene extends Phaser.Scene {
           symbolicGiftRegistry,
           gossipSystem,
           gossipFlavorEventSystem,
+          opportunismSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -10883,6 +10901,7 @@ export class GameScene extends Phaser.Scene {
         symbolicGiftRegistry,
         gossipSystem,
         gossipFlavorEventSystem,
+        opportunismSystem,
         turnManager,
         gridSystem,
         wonderSystem,
@@ -10994,6 +11013,7 @@ export class GameScene extends Phaser.Scene {
           symbolicGiftRegistry,
           gossipSystem,
           gossipFlavorEventSystem,
+          opportunismSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -11069,6 +11089,7 @@ export class GameScene extends Phaser.Scene {
         symbolicGiftRegistry,
         gossipSystem,
         gossipFlavorEventSystem,
+        opportunismSystem,
         turnManager,
         gridSystem,
         wonderSystem,

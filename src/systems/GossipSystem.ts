@@ -152,6 +152,7 @@ export class GossipSystem {
   getItemAvailability(sourceNationId: string, itemId: string, recipientNationId?: string): GossipItemAvailability {
     const definition = getGossipDefinition(itemId);
     if (!definition) return { available: false, failureReason: 'unknown_item' };
+    if (definition.automaticOnly) return { available: false, visible: false, failureReason: 'invalid_combination' };
     const source = this.nationManager.getNation(sourceNationId);
     if (!source?.isHuman) return { available: false, failureReason: 'invalid_source' };
     if (definition.requiresGamesOfNationsFounded) {

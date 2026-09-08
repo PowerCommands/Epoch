@@ -58,7 +58,7 @@ export interface OperationParams {
 /** Radius around the target within which own units count as staged. */
 export const OFFENSIVE_STAGING_RADIUS = 5;
 
-const MAX_TARGET_DISTANCE = 18; // rough land-reachability proxy
+export const OFFENSIVE_MAX_TARGET_DISTANCE = 18; // rough land-reachability proxy
 
 const TARGET_DIST_PENALTY = 3;
 const TARGET_HEALTH_BONUS = 30;  // prefer weakly-defended cities
@@ -90,7 +90,7 @@ function scoreCityAsTarget(
   // The lost capital is exempt from the reachability cut-off: recovering it is
   // the strategic objective even when it is far away.
   const isReclaimTarget = city.id === reclaimTargetCityId;
-  if (dist > MAX_TARGET_DISTANCE && !isReclaimTarget) return -Infinity;
+  if (dist > OFFENSIVE_MAX_TARGET_DISTANCE && !isReclaimTarget) return -Infinity;
   const healthRatio = city.health / CITY_BASE_HEALTH;
   let score = 100;
   score -= dist * TARGET_DIST_PENALTY;

@@ -16,6 +16,8 @@ try {
   const dialog = page.locator('dialog.le-dialog');
   await dialog.locator('.le-side input').fill('gandhi');
   await dialog.getByRole('button', { name: 'Gandhi', exact: true }).click();
+  assert.equal(await dialog.getByLabel('Opportunism', { exact: true }).isChecked(), false);
+  await dialog.getByLabel('Opportunism', { exact: true }).check();
   await dialog.getByLabel('Aggression', { exact: true }).fill('20');
   await dialog.getByLabel('Aggression', { exact: true }).press('Tab');
   assert.match(await dialog.locator('.le-summary').first().innerText(), /Aggressive/);
@@ -40,6 +42,7 @@ try {
   const saved = await page.evaluate(() => ({ applied: !document.querySelector('dialog.le-dialog[open]'), config: buildScenarioOutput().leaderConfiguration }));
   assert.equal(saved.applied, true);
   assert.equal(saved.config.leaders['leader_mahatma-gandhi'].aiPersonality.aggressionBias, 20);
+  assert.equal(saved.config.leaders['leader_mahatma-gandhi'].opportunism, true);
   assert.equal(saved.config.profiles.doctrines[0].navalExpeditions, true);
   assert.deepEqual(Object.keys(saved.config.eraAssignments['leader_mahatma-gandhi']), ['ancient', 'modern']);
   await page.evaluate(() => window.EpochLeaderEditor.open(window.editorTestScenario, () => {}));

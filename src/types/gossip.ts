@@ -9,7 +9,8 @@ export interface GossipRelationEffectConfig {
 }
 
 export type GossipInsultSubtype = 'provocation' | 'threat';
-export type GossipFlavorContext = 'war_declaration' | 'city_capture' | 'ongoing_war' | 'hostile_peacetime';
+export type GossipFlavorContext = 'war_declaration' | 'city_capture' | 'ongoing_war' | 'hostile_peacetime'
+  | 'opportunity_mockery' | 'opportunity_intimidation' | 'opportunity_territorial' | 'opportunity_military';
 
 export interface GossipInsultEffectConfig {
   readonly trust: number;
@@ -22,6 +23,8 @@ export interface GossipInsultEffectConfig {
 export interface GossipDefinition {
   readonly id: string;
   readonly type: GossipCategory;
+  /** Contextual AI flavor, excluded from player-executable Gossip choices. */
+  readonly automaticOnly?: boolean;
   readonly textTemplate: string;
   readonly requiresTarget: boolean;
   readonly requiredCultureNodeId?: string;
@@ -137,7 +140,7 @@ export interface GossipItemAvailability {
   readonly visible?: boolean;
   readonly requiredCultureNodeId?: string;
   readonly requiredCultureNodeName?: string;
-  readonly failureReason?: Extract<GossipFailureReason, 'unknown_item' | 'invalid_source' | 'invalid_recipient' | 'culture_locked' | 'games_not_founded' | 'already_discovered'>;
+  readonly failureReason?: Extract<GossipFailureReason, 'unknown_item' | 'invalid_source' | 'invalid_recipient' | 'culture_locked' | 'games_not_founded' | 'already_discovered' | 'invalid_combination'>;
 }
 
 export interface SavedGossipManipulationCooldown {

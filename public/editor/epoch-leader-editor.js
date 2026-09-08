@@ -883,6 +883,7 @@
     {
       id: "leader_henry_v",
       name: "Henry V",
+      opportunism: true,
       nationId: "nation_england",
       title: "King of England",
       image: `${LEADER_IMAGE_BASE}/henry-v.png`,
@@ -1017,6 +1018,7 @@
     {
       id: "leader_mehmed_ii",
       name: "Mehmed II",
+      opportunism: true,
       nationId: "nation_ottoman",
       title: "Sultan of the Ottoman Empire",
       image: `${LEADER_IMAGE_BASE}/mehmed-i.png`,
@@ -1128,6 +1130,7 @@
     {
       id: "leader_qin-shi-huang",
       name: "Qin Shi Huang",
+      opportunism: true,
       nationId: "nation_china",
       title: "Emperor Qin Shi Huang",
       image: `${LEADER_IMAGE_BASE}/qin-shi-huang.png`,
@@ -1218,6 +1221,7 @@
     {
       id: "leader_genghis-khan",
       name: "Genghis Khan",
+      opportunism: true,
       nationId: "nation_mongolia",
       title: "Great Khan of the Mongols",
       image: `${LEADER_IMAGE_BASE}/genghis-khan.png`,
@@ -1241,6 +1245,7 @@
     {
       id: "leader_oda-nobunaga",
       name: "Oda Nobunaga",
+      opportunism: true,
       nationId: "nation_japan",
       title: "Daimyo of Owari",
       image: `${LEADER_IMAGE_BASE}/oda-nobunaga.png`,
@@ -1292,6 +1297,7 @@
       // from the Pirate Code doctrine + Sea Wolf era strategy + Freebooters ideology.
       id: "leader_mad_jack",
       name: "Mad Jack",
+      opportunism: true,
       nationId: "nation_pirate",
       title: "Pirate Lord of the Free Seas",
       image: `${LEADER_IMAGE_BASE}/pirate.png`,
@@ -1369,6 +1375,7 @@
       // leaders/ivan-iv and nation_russia.
       id: "ivan-iv",
       name: "Ivan IV",
+      opportunism: true,
       nationId: "nation_russia",
       title: "Ivan the Terrible",
       image: `${LEADER_IMAGE_BASE}/ivan-iv.png`,
@@ -1407,6 +1414,7 @@
     {
       id: "leader_joseph_stalin",
       name: "Joseph Stalin",
+      opportunism: true,
       nationId: "nation_soviet_union",
       title: "General Secretary",
       image: `${LEADER_IMAGE_BASE}/joseph-stalin.png`,
@@ -1444,6 +1452,7 @@
       // comparisons than the most committed conquest personalities.
       id: "leader_benito_mussolini",
       name: "Benito Mussolini",
+      opportunism: true,
       nationId: "nation_italy",
       title: "Il Duce",
       image: `${LEADER_IMAGE_BASE}/benito-mussolini.png`,
@@ -1552,6 +1561,7 @@
     id: "leader_winston_churchill",
     isDefault: false,
     name: "Winston Churchill",
+    opportunism: false,
     title: "Prime Minister",
     image: `${LEADER_IMAGE_BASE}/winston-churchill.png`,
     description: "Britain\u2019s wartime Prime Minister, renowned for determined leadership and defiant resistance during World War II.",
@@ -1600,6 +1610,7 @@
     id: "leader_adolf_hitler",
     isDefault: false,
     name: "Adolf Hitler",
+    opportunism: true,
     nationId: "nation_germany",
     title: "F\xFChrer",
     image: `${LEADER_IMAGE_BASE}/adolf-hitler.png`,
@@ -3143,6 +3154,7 @@
     const leader = { ...base, ...patch };
     return {
       ...leader,
+      opportunism: leader.opportunism ?? false,
       maxPreferredCities: leader.maxPreferredCities ?? void 0,
       diplomacyFlavor: patch?.diplomacyFlavor ? { ...base.diplomacyFlavor, ...patch.diplomacyFlavor } : base.diplomacyFlavor,
       aiPersonality: { ...DEFAULT_AI_LEADER_PERSONALITY, ...base.aiPersonality, ...patch?.aiPersonality },
@@ -3265,6 +3277,7 @@
     }
     for (const [id, patch] of Object.entries(config.leaders ?? {})) {
       knownLeader(id);
+      if (patch.opportunism !== void 0 && typeof patch.opportunism !== "boolean") errors.push(`${id}: opportunism must be true or false`);
       if (patch.name !== void 0 && !patch.name.trim()) errors.push(`${id}: leader name is required`);
       if (patch.gamesOfNationsPreferences && (!patch.gamesOfNationsPreferences.traditionalFavourite || !patch.gamesOfNationsPreferences.additionalFavourite)) errors.push(`${id}: both favorite sport categories are required`);
       for (const [kind, field] of Object.entries(profileLeaderFields)) if (patch[field] !== void 0) ref(kind, patch[field], id);
@@ -3586,7 +3599,7 @@
       }));
       const source = (key) => patch?.[key] !== void 0 ? "Scenario Override" : base[key] !== void 0 ? "Explicit \xB7 Built-in Default" : "Inherited \xB7 Runtime Default";
       const p = leader.aiPersonality;
-      const traits = [p.aggressionBias > 0 ? "Aggressive" : p.aggressionBias < 0 ? "Defensive" : "Neutral aggression", p.expansionBias > 0 ? "Expansionist" : "", p.cultureBias > 0 ? "Culture-minded" : "", p.economyBias > 0 ? "Economy-minded" : ""].filter(Boolean);
+      const traits = [leader.opportunism ? "Opportunistic" : "", p.aggressionBias > 0 ? "Aggressive" : p.aggressionBias < 0 ? "Defensive" : "Neutral aggression", p.expansionBias > 0 ? "Expansionist" : "", p.cultureBias > 0 ? "Culture-minded" : "", p.economyBias > 0 ? "Economy-minded" : ""].filter(Boolean);
       const eraInfo = effectiveEra(config, selected, era);
       const profileName = (k, id) => profiles(config, k).find((p2) => p2.id === id)?.name ?? `Unknown: ${id}`;
       const activeNation = nations.find((n) => n.id === leader.nationId && (n.leaderId ?? catalog.leaders.find((l) => l.nationId === n.id && l.isDefault)?.id) === selected);
@@ -3604,6 +3617,11 @@
       const identity = section("Identity", "Names and descriptions in the older Nation Details panel take precedence for the selected scenario nation. Nation membership and built-in default status remain canonical.");
       for (const key of ["name", "title", "description", "image"]) field(identity, key === "image" ? "Portrait URL" : label(key), textInput(leader[key] ?? "", (v) => patchLeader([key], v), key === "description"), "", source(key), () => patchLeader([key], void 0, true));
       const personality = section("Personality", "Biases are additive scores, not percentages. Neutral bias is 0. Editor bias bounds are \u2212100 to 100; gameplay previously imposed no bounds on these scores.");
+      const opportunism = node2("input");
+      opportunism.type = "checkbox";
+      opportunism.checked = leader.opportunism;
+      opportunism.onchange = () => patchLeader(["opportunism"], opportunism.checked);
+      field(personality, "Opportunism", opportunism, "Exploits militarily weak rivals. Makes this leader more likely to intimidate, create tension with, and potentially attack substantially weaker known nations. Military recovery and alliances can deter escalation.", source("opportunism"), () => patchLeader(["opportunism"], void 0, true));
       for (const [key, spec] of Object.entries(personalityFields)) {
         const [min, max, step, title, help2] = spec;
         const value = p[key] ?? 1;

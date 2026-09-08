@@ -100,6 +100,7 @@ export interface SaveLoadContext {
   symbolicGiftRegistry?: SymbolicGiftRegistry;
   gossipSystem?: GossipSystem;
   gossipFlavorEventSystem?: GossipFlavorEventSystem;
+  opportunismSystem?: import('./ai/OpportunismSystem').OpportunismSystem;
   turnManager: TurnManager;
   gridSystem: IGridSystem;
   wonderSystem: WonderSystem;
@@ -389,6 +390,7 @@ export class SaveLoadService {
       symbolicGifts: symbolicGiftRegistry?.serialize(),
       gossip: gossipSystem?.serialize(),
       gossipFlavor: gossipFlavorEventSystem?.serialize(),
+      opportunism: context.opportunismSystem?.serialize(),
       wonders,
       worldCouncil: context.worldCouncilSystem?.getState() ?? undefined,
       capitulation: context.capitulationSystem?.serialize(),
@@ -651,6 +653,7 @@ export class SaveLoadService {
     context.symbolicGiftRegistry?.restore(state.symbolicGifts);
     context.gossipSystem?.restore(state.gossip);
     context.gossipFlavorEventSystem?.restore(state.gossipFlavor);
+    context.opportunismSystem?.restore(state.opportunism);
     context.covertSuspicionSystem?.restoreOffenseRecords(state.covertIncidents);
     context.turnManager.restoreTurnState(
       state.turn.currentRound,

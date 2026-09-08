@@ -36,6 +36,7 @@ export interface AIDiplomacyDecisionReason {
 
   /** Presentation-only narrative classification for an approved AI declaration. */
   readonly warDeclarationReason?: WarDeclarationReason;
+  readonly opportunisticOpportunity?: boolean;
 
   readonly reasonText: string;
 }

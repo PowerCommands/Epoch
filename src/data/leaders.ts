@@ -20,6 +20,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
   {
     id: 'leader_henry_v',
     name: 'Henry V',
+    opportunism: true,
     nationId: 'nation_england',
     title: 'King of England',
     image: `${LEADER_IMAGE_BASE}/henry-v.png`,
@@ -154,6 +155,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
   {
     id: 'leader_mehmed_ii',
     name: 'Mehmed II',
+    opportunism: true,
     nationId: 'nation_ottoman',
     title: 'Sultan of the Ottoman Empire',
     image: `${LEADER_IMAGE_BASE}/mehmed-i.png`,
@@ -265,6 +267,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
   {
     id: 'leader_qin-shi-huang',
     name: 'Qin Shi Huang',
+    opportunism: true,
     nationId: 'nation_china',
     title: 'Emperor Qin Shi Huang',
     image: `${LEADER_IMAGE_BASE}/qin-shi-huang.png`,
@@ -355,6 +358,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
   {
     id: 'leader_genghis-khan',
     name: 'Genghis Khan',
+    opportunism: true,
     nationId: 'nation_mongolia',
     title: 'Great Khan of the Mongols',
     image: `${LEADER_IMAGE_BASE}/genghis-khan.png`,
@@ -378,6 +382,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
   {
     id: 'leader_oda-nobunaga',
     name: 'Oda Nobunaga',
+    opportunism: true,
     nationId: 'nation_japan',
     title: 'Daimyo of Owari',
     image: `${LEADER_IMAGE_BASE}/oda-nobunaga.png`,
@@ -429,6 +434,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     // from the Pirate Code doctrine + Sea Wolf era strategy + Freebooters ideology.
     id: 'leader_mad_jack',
     name: 'Mad Jack',
+    opportunism: true,
     nationId: 'nation_pirate',
     title: 'Pirate Lord of the Free Seas',
     image: `${LEADER_IMAGE_BASE}/pirate.png`,
@@ -506,6 +512,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     // leaders/ivan-iv and nation_russia.
     id: 'ivan-iv',
     name: 'Ivan IV',
+    opportunism: true,
     nationId: 'nation_russia',
     title: 'Ivan the Terrible',
     image: `${LEADER_IMAGE_BASE}/ivan-iv.png`,
@@ -544,6 +551,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
   {
     id: 'leader_joseph_stalin',
     name: 'Joseph Stalin',
+    opportunism: true,
     nationId: 'nation_soviet_union',
     title: 'General Secretary',
     image: `${LEADER_IMAGE_BASE}/joseph-stalin.png`,
@@ -581,6 +589,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     // comparisons than the most committed conquest personalities.
     id: 'leader_benito_mussolini',
     name: 'Benito Mussolini',
+    opportunism: true,
     nationId: 'nation_italy',
     title: 'Il Duce',
     image: `${LEADER_IMAGE_BASE}/benito-mussolini.png`,
@@ -688,12 +697,13 @@ export const JOSEPH_STALIN = DEFAULT_LEADERS.find((leader) => leader.id === 'lea
 export const BENITO_MUSSOLINI = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_benito_mussolini')!;
 export const WLADYSLAW_SIKORSKI = DEFAULT_LEADERS.find((leader) => leader.id === 'leader_wladyslaw_sikorski')!;
 
-/** England's first alternative leader; gameplay configuration intentionally mirrors Henry V. */
+/** Shares Henry V's core tuning, but keeps opportunistic wars of choice disabled. */
 export const WINSTON_CHURCHILL: LeaderDefinition = {
   ...HENRY_V,
   id: 'leader_winston_churchill',
   isDefault: false,
   name: 'Winston Churchill',
+  opportunism: false,
   title: 'Prime Minister',
   image: `${LEADER_IMAGE_BASE}/winston-churchill.png`,
   description: 'Britain’s wartime Prime Minister, renowned for determined leadership and defiant resistance during World War II.',
@@ -746,6 +756,7 @@ export const ADOLF_HITLER: LeaderDefinition = {
   id: 'leader_adolf_hitler',
   isDefault: false,
   name: 'Adolf Hitler',
+  opportunism: true,
   nationId: 'nation_germany',
   title: 'Führer',
   image: `${LEADER_IMAGE_BASE}/adolf-hitler.png`,

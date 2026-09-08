@@ -1,3 +1,4 @@
+import type { OpportunismSystem } from './OpportunismSystem';
 import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
 import type {
   DiplomaticEvaluationResult,
@@ -125,6 +126,12 @@ export interface AIIndependenceController {
 }
 
 export class AIDiplomacySystem {
+  private opportunism?: OpportunismSystem;
+  setOpportunismSystem(system: OpportunismSystem): void {
+    this.opportunism = system;
+    this.evaluationSystem.setTemporaryRelationInfluence((a, b, relation) => system.influence(a, b, relation));
+  }
+
   // AI diplomacy reason logging explains decisions without changing them.
   private readonly decisionListeners: Array<(reason: AIDiplomacyDecisionReason) => void> = [];
   private readonly expiredPressureTurnByPair = new Map<string, number>();
@@ -277,10 +284,16 @@ export class AIDiplomacySystem {
   private decideAgainst(selfId: string, otherId: string, currentTurn: number, intent: MilitaryIntent): void {
     if (!this.haveMet(selfId, otherId)) return;
 
+    this.opportunism?.evaluate(selfId, otherId, currentTurn);
     const storedRelation = this.diplomacyManager.getRelation(selfId, otherId);
-    const relation = this.modifyRelationForDecision(selfId, otherId, storedRelation);
+    let relation = this.modifyRelationForDecision(selfId, otherId, storedRelation);
     const evaluation = this.evaluationSystem.evaluateRelation(selfId, otherId, relation);
+    relation = this.opportunism?.influence(selfId, otherId, relation) ?? relation;
     const attitude = evaluation.attitude;
+    const pressureChangedAttitude = (this.opportunism?.getPressure(selfId, otherId) ?? 0) > 0
+      && attitude === 'hostile'
+      && this.evaluationSystem.evaluateRelation(selfId, otherId,
+        this.modifyRelationForDecision(selfId, otherId, storedRelation), false).attitude !== 'hostile';
     const comparison = this.militaryEvaluationSystem.compareMilitaryStrength(selfId, otherId);
     const threat = this.threatEvaluationSystem.getThreatLevel(selfId, otherId);
     const personality = getLeaderPersonalityByNationId(selfId);
@@ -421,7 +434,9 @@ export class AIDiplomacySystem {
     // war evaluation even if ordinary relations have cooled during a long
     // peace; the reclaim modifier still supplies no aggression while weak.
     const reclaimMod = this.getReclaimWarModifier(selfId, otherId);
-    if (attitude === 'hostile' || (!reclaimMod.suppressUnrelated && reclaimMod.warScoreDelta > 0)) {
+    const opportunityBonus = (this.opportunism?.warBonus(selfId, otherId) ?? 0)
+      * Math.max(0.1, Math.min(1.5, 0.25 + personality.warTolerance / 100 + personality.aggressionBias / 100));
+    if (attitude === 'hostile' || opportunityBonus > 0 || (!reclaimMod.suppressUnrelated && reclaimMod.warScoreDelta > 0)) {
       if (this.diplomacyManager.isPeaceTreatyActive(selfId, otherId, currentTurn)) return;
       if (this.diplomacyManager.isCeasefireActive(selfId, otherId, currentTurn)) return;
       // Alliance-aware: attacking an allied target means facing the defender
@@ -481,6 +496,8 @@ export class AIDiplomacySystem {
       const selfPersonality = this.nationManager.getCovertPersonality(selfId);
       const suspicionWarBonus = getSuspicionWarScoreBonus(relation.suspicion) * selfPersonality.suspicionToWar;
       warScore += suspicionWarBonus;
+      // Opportunity is shaped by the existing personality and era multipliers.
+      warScore += opportunityBonus;
       const personalityFactor = getNationPersonalityFactor(selfId);
       warScore *= 0.8 + personalityFactor * 0.4;
       // Era-strategy multiplier dampens or amplifies war propensity per
@@ -532,6 +549,7 @@ export class AIDiplomacySystem {
         // actually began. A blocked or already-existing war must not masquerade
         // as a fresh direct AI declaration.
         if (this.diplomacyManager.declareWar(selfId, otherId)) {
+          if (opportunityBonus > 0 || pressureChangedAttitude) console.log(this.formatLog(selfId, `[Opportunism] contributed to war against ${otherId}: bonus=${opportunityBonus.toFixed(2)}, attitudeEscalated=${pressureChangedAttitude}, score=${warScore.toFixed(2)}; normal war eligibility passed.`));
           this.emitDecision(this.createDecisionReason(
             'declareWar',
             selfId,
@@ -543,6 +561,7 @@ export class AIDiplomacySystem {
             personality,
             evaluation,
             ideologyWarModifier,
+            opportunityBonus > 0 || pressureChangedAttitude,
           ));
           return;
         }
@@ -875,6 +894,7 @@ export class AIDiplomacySystem {
     personality: AILeaderPersonality,
     evaluation: DiplomaticEvaluationResult,
     ideologyModifier: number,
+    opportunityMotive = false,
   ): AIDiplomacyDecisionReason {
     const leader = getLeaderByNationId(actorNationId);
     const warDeclarationReason = action === 'declareWar'
@@ -889,6 +909,7 @@ export class AIDiplomacySystem {
         ideologyCompatibility: evaluation.ideologyCompatibility,
         personality,
         nationalAgendaId: leader?.aiNationalAgendaId,
+        opportunisticOpportunity: opportunityMotive,
       })
       : undefined;
     return {
@@ -909,7 +930,8 @@ export class AIDiplomacySystem {
       sourceIdeologyName: evaluation.sourceIdeologyName,
       targetIdeologyName: evaluation.targetIdeologyName,
       warDeclarationReason,
-      reasonText: this.createReasonText(
+      opportunisticOpportunity: opportunityMotive || undefined,
+      reasonText: (opportunityMotive ? 'Perceived military weakness created an opportunistic opening. ' : '') + this.createReasonText(
         action,
         attitude,
         militaryComparison,
