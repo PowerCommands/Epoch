@@ -29,7 +29,7 @@ const CHARLES_VII_ID = 'leader_charles_vii';
 const DE_GAULLE_ID = 'leader_charles_de_gaulle';
 
 test('France keeps Charles VII as default and exposes de Gaulle as a non-default alternative', () => {
-  assert.deepEqual(getLeadersByNationId(FRANCE_ID).map((leader) => leader.id), [CHARLES_VII_ID, DE_GAULLE_ID]);
+  assert.deepEqual(getLeadersByNationId(FRANCE_ID).map((leader) => leader.id), [CHARLES_VII_ID, DE_GAULLE_ID, 'leader_emmanuel_macron']);
   assert.equal(getDefaultLeaderByNationId(FRANCE_ID)?.id, CHARLES_VII_ID);
   assert.equal(CHARLES_DE_GAULLE.isDefault, false);
   assert.equal(CHARLES_DE_GAULLE.nationId, FRANCE_ID);
@@ -139,13 +139,13 @@ test('de Gaulle selection survives scenario parsing and save validation while ab
   assert.equal(getLeaderByNationId(FRANCE_ID)?.id, CHARLES_VII_ID);
 });
 
-test('generated manifest exposes both French leaders and keeps Charles VII as default', () => {
+test('generated manifest exposes the expanded French roster and keeps Charles VII as default', () => {
   const manifest = JSON.parse(fs.readFileSync('public/assets/data/nations-manifest.json', 'utf8')) as {
     nations: Array<{ nationId: string; leaderId: string; leaders: Array<Record<string, unknown>> }>;
   };
   const france = manifest.nations.find((nation) => nation.nationId === FRANCE_ID)!;
   assert.equal(france.leaderId, CHARLES_VII_ID);
-  assert.deepEqual(france.leaders.map((leader) => leader.leaderId), [CHARLES_VII_ID, DE_GAULLE_ID]);
+  assert.deepEqual(france.leaders.map((leader) => leader.leaderId), [CHARLES_VII_ID, DE_GAULLE_ID, 'leader_emmanuel_macron']);
   assert.deepEqual(france.leaders[1], {
     leaderId: DE_GAULLE_ID,
     leaderName: 'Charles de Gaulle',

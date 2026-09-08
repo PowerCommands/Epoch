@@ -770,6 +770,13 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  // Modern alternatives reuse canonical postures across all starting eras.
+  { leaderId: 'leader_donald_tusk', strategiesByEra: { ancient: 'defensiveBuilder' } },
+  { leaderId: 'leader_mette_frederiksen', strategiesByEra: { ancient: 'defensiveBuilder' } },
+  { leaderId: 'leader_vladimir_putin', strategiesByEra: { ancient: 'militaryPreparation' } },
+  { leaderId: 'leader_mao_zedong', strategiesByEra: { ancient: 'militaryPreparation' } },
+  { leaderId: 'leader_olof_palme', strategiesByEra: { ancient: 'culturalDominance' } },
+
   {
     leaderId: 'leader_charles_vii',
     strategiesByEra: {

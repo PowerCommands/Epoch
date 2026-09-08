@@ -18,6 +18,13 @@
           "leaderTitle": "Emperor Dom Pedro II",
           "leaderImage": "/assets/sprites/leaders/dom-pedro-ii.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_jair_bolsonaro",
+          "leaderName": "Jair Bolsonaro",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/jair-bolsonaro.png",
+          "isDefault": false
         }
       ]
     },
@@ -39,6 +46,13 @@
           "leaderTitle": "Emperor Qin Shi Huang",
           "leaderImage": "/assets/sprites/leaders/qin-shi-huang.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mao_zedong",
+          "leaderName": "Mao Zedong",
+          "leaderTitle": "Chairman",
+          "leaderImage": "/assets/sprites/leaders/mao-zedong.png",
+          "isDefault": false
         }
       ]
     },
@@ -60,6 +74,13 @@
           "leaderTitle": "King of Denmark and Norway",
           "leaderImage": "/assets/sprites/leaders/christian-iv.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mette_frederiksen",
+          "leaderName": "Mette Frederiksen",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/mette-frederiksen.png",
+          "isDefault": false
         }
       ]
     },
@@ -87,6 +108,13 @@
           "leaderName": "Winston Churchill",
           "leaderTitle": "Prime Minister",
           "leaderImage": "/assets/sprites/leaders/winston-churchill.png",
+          "isDefault": false
+        },
+        {
+          "leaderId": "leader_tony_blair",
+          "leaderName": "Tony Blair",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/tony-blair.png",
           "isDefault": false
         }
       ]
@@ -116,6 +144,13 @@
           "leaderTitle": "General",
           "leaderImage": "/assets/sprites/leaders/charles-de-gaulle.png",
           "isDefault": false
+        },
+        {
+          "leaderId": "leader_emmanuel_macron",
+          "leaderName": "Emmanuel Macron",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/emmanuel-macron.png",
+          "isDefault": false
         }
       ]
     },
@@ -143,6 +178,13 @@
           "leaderName": "Adolf Hitler",
           "leaderTitle": "Führer",
           "leaderImage": "/assets/sprites/leaders/adolf-hitler.png",
+          "isDefault": false
+        },
+        {
+          "leaderId": "leader_angela_merkel",
+          "leaderName": "Angela Merkel",
+          "leaderTitle": "Chancellor",
+          "leaderImage": "/assets/sprites/leaders/angela-merkel.png",
           "isDefault": false
         }
       ]
@@ -186,6 +228,13 @@
           "leaderTitle": "Mahatma Gandhi",
           "leaderImage": "/assets/sprites/leaders/mahatma-gandhi.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_narendra_modi",
+          "leaderName": "Narendra Modi",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/narendra-modi.png",
+          "isDefault": false
         }
       ]
     },
@@ -207,6 +256,13 @@
           "leaderTitle": "Il Duce",
           "leaderImage": "/assets/sprites/leaders/benito-mussolini.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_giorgia_meloni",
+          "leaderName": "Giorgia Meloni",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/giorgia-meloni.png",
+          "isDefault": false
         }
       ]
     },
@@ -396,6 +452,13 @@
           "leaderTitle": "General",
           "leaderImage": "/assets/sprites/leaders/wladyslaw-sikorski.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_donald_tusk",
+          "leaderName": "Donald Tusk",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/donald-tusk.png",
+          "isDefault": false
         }
       ]
     },
@@ -417,6 +480,13 @@
           "leaderTitle": "Ivan the Terrible",
           "leaderImage": "/assets/sprites/leaders/ivan-iv.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_vladimir_putin",
+          "leaderName": "Vladimir Putin",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/vladimir-putin.png",
+          "isDefault": false
         }
       ]
     },
@@ -459,6 +529,13 @@
           "leaderTitle": "Queen of Castile",
           "leaderImage": "/assets/sprites/leaders/isabella.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_pedro_sanchez",
+          "leaderName": "Pedro Sánchez",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/pedro-sanchez.png",
+          "isDefault": false
         }
       ]
     },
@@ -480,6 +557,13 @@
           "leaderTitle": "King of Sweden",
           "leaderImage": "/assets/sprites/leaders/gustaf-vasa.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_olof_palme",
+          "leaderName": "Olof Palme",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/olof-palme.png",
+          "isDefault": false
         }
       ]
     },
@@ -522,6 +606,20 @@
           "leaderTitle": "President George Washington",
           "leaderImage": "/assets/sprites/leaders/george-washington.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_franklin_d_roosevelt",
+          "leaderName": "Franklin D. Roosevelt",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/franklin-d-roosevelt.png",
+          "isDefault": false
+        },
+        {
+          "leaderId": "leader_donald_j_trump",
+          "leaderName": "Donald J. Trump",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/donald-j-trump.png",
+          "isDefault": false
         }
       ]
     }

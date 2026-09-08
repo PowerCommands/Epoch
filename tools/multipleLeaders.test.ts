@@ -29,7 +29,7 @@ test('every current nation has exactly one explicit default leader', () => {
 
 test('England exposes Henry V as default and Winston Churchill as a real alternative', () => {
   const leaders = getLeadersByNationId('nation_england');
-  assert.deepEqual(leaders.map((leader) => leader.id), ['leader_henry_v', 'leader_winston_churchill']);
+  assert.deepEqual(leaders.map((leader) => leader.id), ['leader_henry_v', 'leader_winston_churchill', 'leader_tony_blair']);
   assert.equal(getDefaultLeaderByNationId('nation_england')?.id, 'leader_henry_v');
   assert.equal(WINSTON_CHURCHILL.isDefault, false);
   assert.equal(WINSTON_CHURCHILL.title, 'Prime Minister');
@@ -60,7 +60,7 @@ test('an explicit active leader drives centralized lookup and leader personality
   };
   ALL_LEADERS.push(alternative);
   try {
-    const expectedIds = ['leader_henry_v', 'leader_winston_churchill', alternative.id];
+    const expectedIds = ['leader_henry_v', 'leader_winston_churchill', 'leader_tony_blair', alternative.id];
     setActiveLeaderSelections({ [nationId]: alternative.id });
     assert.deepEqual(getLeadersByNationId(nationId).map((leader) => leader.id), expectedIds);
     assert.equal(getLeaderByNationId(nationId)?.id, alternative.id);

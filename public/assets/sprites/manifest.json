@@ -905,6 +905,18 @@
           "size": 240072
         },
         {
+          "name": "angela-merkel-room.webp",
+          "path": "/assets/sprites/leaders/angela-merkel-room.webp",
+          "type": "WEBP",
+          "size": 77794
+        },
+        {
+          "name": "angela-merkel.png",
+          "path": "/assets/sprites/leaders/angela-merkel.png",
+          "type": "PNG",
+          "size": 350613
+        },
+        {
           "name": "benito-mussolini-room.webp",
           "path": "/assets/sprites/leaders/benito-mussolini-room.webp",
           "type": "WEBP",
@@ -965,6 +977,54 @@
           "size": 206181
         },
         {
+          "name": "donald-j-trump-room.webp",
+          "path": "/assets/sprites/leaders/donald-j-trump-room.webp",
+          "type": "WEBP",
+          "size": 86770
+        },
+        {
+          "name": "donald-j-trump.png",
+          "path": "/assets/sprites/leaders/donald-j-trump.png",
+          "type": "PNG",
+          "size": 352931
+        },
+        {
+          "name": "donald-tusk-room.webp",
+          "path": "/assets/sprites/leaders/donald-tusk-room.webp",
+          "type": "WEBP",
+          "size": 93654
+        },
+        {
+          "name": "donald-tusk.png",
+          "path": "/assets/sprites/leaders/donald-tusk.png",
+          "type": "PNG",
+          "size": 349364
+        },
+        {
+          "name": "emmanuel-macron-room.webp",
+          "path": "/assets/sprites/leaders/emmanuel-macron-room.webp",
+          "type": "WEBP",
+          "size": 90504
+        },
+        {
+          "name": "emmanuel-macron.png",
+          "path": "/assets/sprites/leaders/emmanuel-macron.png",
+          "type": "PNG",
+          "size": 358264
+        },
+        {
+          "name": "franklin-d-roosevelt-room.webp",
+          "path": "/assets/sprites/leaders/franklin-d-roosevelt-room.webp",
+          "type": "WEBP",
+          "size": 69056
+        },
+        {
+          "name": "franklin-d-roosevelt.png",
+          "path": "/assets/sprites/leaders/franklin-d-roosevelt.png",
+          "type": "PNG",
+          "size": 345863
+        },
+        {
           "name": "genghis-khan-room.webp",
           "path": "/assets/sprites/leaders/genghis-khan-room.webp",
           "type": "WEBP",
@@ -987,6 +1047,18 @@
           "path": "/assets/sprites/leaders/george-washington.png",
           "type": "PNG",
           "size": 266443
+        },
+        {
+          "name": "giorgia-meloni-room.webp",
+          "path": "/assets/sprites/leaders/giorgia-meloni-room.webp",
+          "type": "WEBP",
+          "size": 85792
+        },
+        {
+          "name": "giorgia-meloni.png",
+          "path": "/assets/sprites/leaders/giorgia-meloni.png",
+          "type": "PNG",
+          "size": 355217
         },
         {
           "name": "gustaf-vasa-room.webp",
@@ -1049,6 +1121,18 @@
           "size": 431935
         },
         {
+          "name": "jair-bolsonaro-room.webp",
+          "path": "/assets/sprites/leaders/jair-bolsonaro-room.webp",
+          "type": "WEBP",
+          "size": 113092
+        },
+        {
+          "name": "jair-bolsonaro.png",
+          "path": "/assets/sprites/leaders/jair-bolsonaro.png",
+          "type": "PNG",
+          "size": 344851
+        },
+        {
           "name": "joseph-stalin-room.webp",
           "path": "/assets/sprites/leaders/joseph-stalin-room.webp",
           "type": "WEBP",
@@ -1097,6 +1181,18 @@
           "size": 374405
         },
         {
+          "name": "mao-zedong-room.webp",
+          "path": "/assets/sprites/leaders/mao-zedong-room.webp",
+          "type": "WEBP",
+          "size": 78348
+        },
+        {
+          "name": "mao-zedong.png",
+          "path": "/assets/sprites/leaders/mao-zedong.png",
+          "type": "PNG",
+          "size": 342499
+        },
+        {
           "name": "marfa-boretskaya-room.webp",
           "path": "/assets/sprites/leaders/marfa-boretskaya-room.webp",
           "type": "WEBP",
@@ -1121,6 +1217,30 @@
           "size": 350267
         },
         {
+          "name": "mette-frederiksen-room.webp",
+          "path": "/assets/sprites/leaders/mette-frederiksen-room.webp",
+          "type": "WEBP",
+          "size": 98164
+        },
+        {
+          "name": "mette-frederiksen.png",
+          "path": "/assets/sprites/leaders/mette-frederiksen.png",
+          "type": "PNG",
+          "size": 347473
+        },
+        {
+          "name": "narendra-modi-room.webp",
+          "path": "/assets/sprites/leaders/narendra-modi-room.webp",
+          "type": "WEBP",
+          "size": 113430
+        },
+        {
+          "name": "narendra-modi.png",
+          "path": "/assets/sprites/leaders/narendra-modi.png",
+          "type": "PNG",
+          "size": 380804
+        },
+        {
           "name": "oda-nobunaga-room.webp",
           "path": "/assets/sprites/leaders/oda-nobunaga-room.webp",
           "type": "WEBP",
@@ -1131,6 +1251,30 @@
           "path": "/assets/sprites/leaders/oda-nobunaga.png",
           "type": "PNG",
           "size": 398796
+        },
+        {
+          "name": "olof-palme-room.webp",
+          "path": "/assets/sprites/leaders/olof-palme-room.webp",
+          "type": "WEBP",
+          "size": 75730
+        },
+        {
+          "name": "olof-palme.png",
+          "path": "/assets/sprites/leaders/olof-palme.png",
+          "type": "PNG",
+          "size": 351826
+        },
+        {
+          "name": "pedro-sanchez-room.webp",
+          "path": "/assets/sprites/leaders/pedro-sanchez-room.webp",
+          "type": "WEBP",
+          "size": 96606
+        },
+        {
+          "name": "pedro-sanchez.png",
+          "path": "/assets/sprites/leaders/pedro-sanchez.png",
+          "type": "PNG",
+          "size": 352410
         },
         {
           "name": "pirate-room.webp",
@@ -1167,6 +1311,30 @@
           "path": "/assets/sprites/leaders/sigismund.png",
           "type": "PNG",
           "size": 264960
+        },
+        {
+          "name": "tony-blair-room.webp",
+          "path": "/assets/sprites/leaders/tony-blair-room.webp",
+          "type": "WEBP",
+          "size": 80830
+        },
+        {
+          "name": "tony-blair.png",
+          "path": "/assets/sprites/leaders/tony-blair.png",
+          "type": "PNG",
+          "size": 352882
+        },
+        {
+          "name": "vladimir-putin-room.webp",
+          "path": "/assets/sprites/leaders/vladimir-putin-room.webp",
+          "type": "WEBP",
+          "size": 107114
+        },
+        {
+          "name": "vladimir-putin.png",
+          "path": "/assets/sprites/leaders/vladimir-putin.png",
+          "type": "PNG",
+          "size": 349848
         },
         {
           "name": "vytautas-the-great-room.webp",

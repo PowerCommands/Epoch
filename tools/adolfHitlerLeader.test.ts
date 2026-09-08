@@ -29,7 +29,7 @@ const GENGHIS_ID = 'leader_genghis-khan';
 
 test('Germany keeps Hermann as default and exposes Hitler as a non-default alternative', () => {
   const leaders = getLeadersByNationId(GERMANY_ID);
-  assert.deepEqual(leaders.map((leader) => leader.id), [HERMANN_ID, HITLER_ID]);
+  assert.deepEqual(leaders.map((leader) => leader.id), [HERMANN_ID, HITLER_ID, 'leader_angela_merkel']);
   assert.equal(getDefaultLeaderByNationId(GERMANY_ID)?.id, HERMANN_ID);
   assert.equal(ADOLF_HITLER.isDefault, false);
   assert.equal(ADOLF_HITLER.title, 'Führer');
@@ -126,7 +126,7 @@ test('portrait, audience room, generated nation manifest, and shared German audi
     nations: Array<{ nationId: string; leaders: Array<{ leaderId: string; leaderImage: string; isDefault: boolean }> }>;
   };
   const germany = manifest.nations.find((nation) => nation.nationId === GERMANY_ID)!;
-  assert.deepEqual(germany.leaders.map((leader) => leader.leaderId), [HERMANN_ID, HITLER_ID]);
+  assert.deepEqual(germany.leaders.map((leader) => leader.leaderId), [HERMANN_ID, HITLER_ID, 'leader_angela_merkel']);
   assert.deepEqual(germany.leaders.find((leader) => leader.leaderId === HITLER_ID), {
     leaderId: HITLER_ID,
     leaderName: 'Adolf Hitler',

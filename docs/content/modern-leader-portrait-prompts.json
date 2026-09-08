@@ -1,0 +1,105 @@
+{
+  "workflow": "Built-in image_gen; original synthetic illustrations, no third-party photographs redistributed. Local resize and PNG/WebP encoding after generation.",
+  "portraitTemplate": "Use case: historical-scene. Create one square Epoch strategy game leader portrait of the actual {person}. Authentic recognizable likeness, respectful realistic oil-painted portrait, detailed facial anatomy, head and shoulders to mid chest, face large and clearly readable at 64px, slight three-quarter pose looking toward viewer, entire hair visible with small headroom. Muted warm brown/olive softly textured studio background, subdued warm side lighting, realistic colors, fine painterly texture matching classical historical strategy game portraits. No frame, no text, no flags, no watermark, no caricature, no other people. Output one square portrait.",
+  "roomTemplate": "Use case: historical-scene. Epoch strategy game Audience background. Wide cinematic 21:9 realistic oil-painted scene in {room}. Depict the actual recognizable {person} at the right quarter of the image, full body or seated appropriately, facing the viewer naturally with calm expression, authentic period clothing. One person only. Warm subdued lighting, dark wood and softly lit furnishings. Left 55 percent is quiet darker room space for game UI overlay. Entire person comfortably within frame. Detailed recognizable actual face, never generic substitute. Restrained classical painterly realism, not cartoon. No text, no logos, no watermark, no captions.",
+  "assets": [
+    {
+      "portrait": "public/assets/sprites/leaders/franklin-d-roosevelt.png",
+      "portraitSubject": "Franklin Delano Roosevelt, US President in the 1940s, recognizable broad face, swept back thinning dark gray hair, dark suit and tie",
+      "room": "public/assets/sprites/leaders/franklin-d-roosevelt-room.webp",
+      "roomSubject": "Franklin D. Roosevelt in 1944",
+      "roomSetting": "the White House study, seated at a desk"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/donald-j-trump.png",
+      "portraitSubject": "Donald J. Trump, US president, recognizable blond swept-over hair, navy suit white shirt red tie",
+      "room": "public/assets/sprites/leaders/donald-j-trump-room.webp",
+      "roomSubject": "Donald J. Trump",
+      "roomSetting": "the Oval Office"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/mao-zedong.png",
+      "portraitSubject": "Mao Zedong, Chinese leader in the 1950s, distinctive round face and receding black hair, gray Zhongshan suit",
+      "room": "public/assets/sprites/leaders/mao-zedong-room.webp",
+      "roomSubject": "Mao Zedong in 1955",
+      "roomSetting": "a mid-century Chinese state reception room, gray Zhongshan suit"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/emmanuel-macron.png",
+      "portraitSubject": "Emmanuel Macron, French president, short brown hair, blue eyes, navy suit and tie",
+      "room": "public/assets/sprites/leaders/emmanuel-macron-room.webp",
+      "roomSubject": "Emmanuel Macron",
+      "roomSetting": "a French presidential salon"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/angela-merkel.png",
+      "portraitSubject": "Angela Merkel, German chancellor around 2015, distinctive short light brown bob, blue blazer",
+      "room": "public/assets/sprites/leaders/angela-merkel-room.webp",
+      "roomSubject": "Angela Merkel in 2015",
+      "roomSetting": "a restrained German chancellery reception room"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/narendra-modi.png",
+      "portraitSubject": "Narendra Modi, Indian prime minister, white beard and white hair, rimless glasses, cream kurta and waistcoat",
+      "room": "public/assets/sprites/leaders/narendra-modi-room.webp",
+      "roomSubject": "Narendra Modi",
+      "roomSetting": "an Indian government reception room, cream kurta and waistcoat"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/vladimir-putin.png",
+      "portraitSubject": "Vladimir Putin, Russian president around 2015, short thinning light hair, clean shaven, dark suit and tie",
+      "room": "public/assets/sprites/leaders/vladimir-putin-room.webp",
+      "roomSubject": "Vladimir Putin in 2015",
+      "roomSetting": "a Russian presidential reception room"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/tony-blair.png",
+      "portraitSubject": "Tony Blair, British prime minister around 2003, recognizable face, short brown hair, dark suit and blue tie",
+      "room": "public/assets/sprites/leaders/tony-blair-room.webp",
+      "roomSubject": "Tony Blair in 2003",
+      "roomSetting": "a Downing Street study"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/giorgia-meloni.png",
+      "portraitSubject": "Giorgia Meloni, Italian prime minister, recognizable blue eyes and straight shoulder length blonde hair, dark blazer",
+      "room": "public/assets/sprites/leaders/giorgia-meloni-room.webp",
+      "roomSubject": "Giorgia Meloni",
+      "roomSetting": "an Italian government salon"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/jair-bolsonaro.png",
+      "portraitSubject": "Jair Bolsonaro, Brazilian president around 2019, distinctive dark gray side parted hair and face, dark suit and tie",
+      "room": "public/assets/sprites/leaders/jair-bolsonaro-room.webp",
+      "roomSubject": "Jair Bolsonaro in 2019",
+      "roomSetting": "a Brazilian presidential reception room"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/pedro-sanchez.png",
+      "portraitSubject": "Pedro Sánchez, Spanish prime minister, distinctive long face, short dark hair, dark suit and tie",
+      "room": "public/assets/sprites/leaders/pedro-sanchez-room.webp",
+      "roomSubject": "Pedro Sánchez",
+      "roomSetting": "a Spanish government reception room"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/donald-tusk.png",
+      "portraitSubject": "Donald Tusk, Polish prime minister, recognizable narrow face, short reddish gray hair, dark suit and tie",
+      "room": "public/assets/sprites/leaders/donald-tusk-room.webp",
+      "roomSubject": "Donald Tusk",
+      "roomSetting": "a Polish government reception room"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/mette-frederiksen.png",
+      "portraitSubject": "Mette Frederiksen, Danish prime minister, distinctive face and straight shoulder length brown hair, dark blue blazer",
+      "room": "public/assets/sprites/leaders/mette-frederiksen-room.webp",
+      "roomSubject": "Mette Frederiksen",
+      "roomSetting": "a Danish government reception room"
+    },
+    {
+      "portrait": "public/assets/sprites/leaders/olof-palme.png",
+      "portraitSubject": "Olof Palme, Swedish prime minister around 1982, recognizable long face, high forehead and swept brown graying hair, dark suit and tie",
+      "room": "public/assets/sprites/leaders/olof-palme-room.webp",
+      "roomSubject": "Olof Palme in 1982",
+      "roomSetting": "a modest Swedish government study"
+    }
+  ]
+}

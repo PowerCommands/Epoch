@@ -1,3 +1,4 @@
+import { MODERN_ALTERNATIVE_LEADERS } from './modernAlternativeLeaders';
 import { applyBehaviorOverride } from './leaderConfiguration';
 import type { LeaderDefinition } from '../types/leader';
 import {
@@ -799,6 +800,7 @@ export const ALL_LEADERS: LeaderDefinition[] = [
   WINSTON_CHURCHILL,
   CHARLES_DE_GAULLE,
   ADOLF_HITLER,
+  ...MODERN_ALTERNATIVE_LEADERS,
 ];
 
 /**
