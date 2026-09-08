@@ -101,7 +101,7 @@ function open(scenario: ScenarioData, onApply: () => void) {
     main.append(button('Reset all leader overrides', () => { delete config.leaders?.[selected]; delete config.eraAssignments?.[selected]; delete config.warDeclarations?.[selected]; render(); }));
     const source = (key: keyof LeaderOverride) => patch?.[key] !== undefined ? 'Scenario Override' : base[key] !== undefined ? 'Explicit · Built-in Default' : 'Inherited · Runtime Default';
     const p = leader.aiPersonality;
-    const traits = [leader.opportunism ? 'Opportunistic' : '', p.aggressionBias > 0 ? 'Aggressive' : p.aggressionBias < 0 ? 'Defensive' : 'Neutral aggression', p.expansionBias > 0 ? 'Expansionist' : '', p.cultureBias > 0 ? 'Culture-minded' : '', p.economyBias > 0 ? 'Economy-minded' : ''].filter(Boolean);
+    const traits = [leader.impulsiveBully ? 'Impulsive Bully' : '', leader.opportunism ? 'Opportunistic' : '', p.aggressionBias > 0 ? 'Aggressive' : p.aggressionBias < 0 ? 'Defensive' : 'Neutral aggression', p.expansionBias > 0 ? 'Expansionist' : '', p.cultureBias > 0 ? 'Culture-minded' : '', p.economyBias > 0 ? 'Economy-minded' : ''].filter(Boolean);
     const eraInfo = model.effectiveEra(config, selected, era);
     const profileName = (k: Kind, id: string) => model.profiles(config, k).find(p => p.id === id)?.name ?? `Unknown: ${id}`;
     const activeNation = nations.find(n => n.id === leader.nationId && (n.leaderId ?? model.catalog.leaders.find(l => l.nationId === n.id && l.isDefault)?.id) === selected);
@@ -115,6 +115,9 @@ function open(scenario: ScenarioData, onApply: () => void) {
     const identity = section('Identity', 'Names and descriptions in the older Nation Details panel take precedence for the selected scenario nation. Nation membership and built-in default status remain canonical.');
     for (const key of ['name', 'title', 'description', 'image'] as const) field(identity, key === 'image' ? 'Portrait URL' : label(key), textInput(leader[key] ?? '', v => patchLeader([key], v), key === 'description'), '', source(key), () => patchLeader([key], undefined, true));
     const personality = section('Personality', 'Biases are additive scores, not percentages. Neutral bias is 0. Editor bias bounds are −100 to 100; gameplay previously imposed no bounds on these scores.');
+    const bully = node('input'); bully.type = 'checkbox'; bully.checked = leader.impulsiveBully;
+    bully.onchange = () => patchLeader(['impulsiveBully'], bully.checked);
+    field(personality, 'Impulsive Bully', bully, 'Thin-skinned, grandiose and volatile. Personal grievances can provoke insults, economic pressure and normal war evaluation. Expression grows through the Modern era.', source('impulsiveBully'), () => patchLeader(['impulsiveBully'], undefined, true));
     const opportunism = node('input'); opportunism.type = 'checkbox'; opportunism.checked = leader.opportunism;
     opportunism.onchange = () => patchLeader(['opportunism'], opportunism.checked);
     field(personality, 'Opportunism', opportunism, 'Exploits militarily weak rivals. Makes this leader more likely to intimidate, create tension with, and potentially attack substantially weaker known nations. Military recovery and alliances can deter escalation.', source('opportunism'), () => patchLeader(['opportunism'], undefined, true));

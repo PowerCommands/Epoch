@@ -17,6 +17,8 @@ export interface LeaderDefinition {
   aiPersonality?: AILeaderPersonality;
   /** Exploits sustained military weakness in known rivals. Absent means false. */
   opportunism?: boolean;
+  /** Volatile public rhetoric and short-lived personal grievances. Independent of covert personality. */
+  impulsiveBully?: boolean;
   aiNationalAgendaId?: AINationalAgendaId;
   aiMilitaryDoctrineId?: string;
   /** How this leader pursues goals via covert warfare. Absent → derived default. */

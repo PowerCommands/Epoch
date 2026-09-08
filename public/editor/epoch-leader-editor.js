@@ -1297,6 +1297,7 @@
       // from the Pirate Code doctrine + Sea Wolf era strategy + Freebooters ideology.
       id: "leader_mad_jack",
       name: "Mad Jack",
+      impulsiveBully: true,
       opportunism: true,
       nationId: "nation_pirate",
       title: "Pirate Lord of the Free Seas",
@@ -1375,6 +1376,7 @@
       // leaders/ivan-iv and nation_russia.
       id: "ivan-iv",
       name: "Ivan IV",
+      impulsiveBully: true,
       opportunism: true,
       nationId: "nation_russia",
       title: "Ivan the Terrible",
@@ -1452,6 +1454,7 @@
       // comparisons than the most committed conquest personalities.
       id: "leader_benito_mussolini",
       name: "Benito Mussolini",
+      impulsiveBully: true,
       opportunism: true,
       nationId: "nation_italy",
       title: "Il Duce",
@@ -1610,6 +1613,7 @@
     id: "leader_adolf_hitler",
     isDefault: false,
     name: "Adolf Hitler",
+    impulsiveBully: true,
     opportunism: true,
     nationId: "nation_germany",
     title: "F\xFChrer",
@@ -3155,6 +3159,7 @@
     return {
       ...leader,
       opportunism: leader.opportunism ?? false,
+      impulsiveBully: leader.impulsiveBully ?? false,
       maxPreferredCities: leader.maxPreferredCities ?? void 0,
       diplomacyFlavor: patch?.diplomacyFlavor ? { ...base.diplomacyFlavor, ...patch.diplomacyFlavor } : base.diplomacyFlavor,
       aiPersonality: { ...DEFAULT_AI_LEADER_PERSONALITY, ...base.aiPersonality, ...patch?.aiPersonality },
@@ -3277,6 +3282,7 @@
     }
     for (const [id, patch] of Object.entries(config.leaders ?? {})) {
       knownLeader(id);
+      if (patch.impulsiveBully !== void 0 && typeof patch.impulsiveBully !== "boolean") errors.push(`${id}: impulsiveBully must be true or false`);
       if (patch.opportunism !== void 0 && typeof patch.opportunism !== "boolean") errors.push(`${id}: opportunism must be true or false`);
       if (patch.name !== void 0 && !patch.name.trim()) errors.push(`${id}: leader name is required`);
       if (patch.gamesOfNationsPreferences && (!patch.gamesOfNationsPreferences.traditionalFavourite || !patch.gamesOfNationsPreferences.additionalFavourite)) errors.push(`${id}: both favorite sport categories are required`);
@@ -3599,7 +3605,7 @@
       }));
       const source = (key) => patch?.[key] !== void 0 ? "Scenario Override" : base[key] !== void 0 ? "Explicit \xB7 Built-in Default" : "Inherited \xB7 Runtime Default";
       const p = leader.aiPersonality;
-      const traits = [leader.opportunism ? "Opportunistic" : "", p.aggressionBias > 0 ? "Aggressive" : p.aggressionBias < 0 ? "Defensive" : "Neutral aggression", p.expansionBias > 0 ? "Expansionist" : "", p.cultureBias > 0 ? "Culture-minded" : "", p.economyBias > 0 ? "Economy-minded" : ""].filter(Boolean);
+      const traits = [leader.impulsiveBully ? "Impulsive Bully" : "", leader.opportunism ? "Opportunistic" : "", p.aggressionBias > 0 ? "Aggressive" : p.aggressionBias < 0 ? "Defensive" : "Neutral aggression", p.expansionBias > 0 ? "Expansionist" : "", p.cultureBias > 0 ? "Culture-minded" : "", p.economyBias > 0 ? "Economy-minded" : ""].filter(Boolean);
       const eraInfo = effectiveEra(config, selected, era);
       const profileName = (k, id) => profiles(config, k).find((p2) => p2.id === id)?.name ?? `Unknown: ${id}`;
       const activeNation = nations.find((n) => n.id === leader.nationId && (n.leaderId ?? catalog.leaders.find((l) => l.nationId === n.id && l.isDefault)?.id) === selected);
@@ -3617,6 +3623,11 @@
       const identity = section("Identity", "Names and descriptions in the older Nation Details panel take precedence for the selected scenario nation. Nation membership and built-in default status remain canonical.");
       for (const key of ["name", "title", "description", "image"]) field(identity, key === "image" ? "Portrait URL" : label(key), textInput(leader[key] ?? "", (v) => patchLeader([key], v), key === "description"), "", source(key), () => patchLeader([key], void 0, true));
       const personality = section("Personality", "Biases are additive scores, not percentages. Neutral bias is 0. Editor bias bounds are \u2212100 to 100; gameplay previously imposed no bounds on these scores.");
+      const bully = node2("input");
+      bully.type = "checkbox";
+      bully.checked = leader.impulsiveBully;
+      bully.onchange = () => patchLeader(["impulsiveBully"], bully.checked);
+      field(personality, "Impulsive Bully", bully, "Thin-skinned, grandiose and volatile. Personal grievances can provoke insults, economic pressure and normal war evaluation. Expression grows through the Modern era.", source("impulsiveBully"), () => patchLeader(["impulsiveBully"], void 0, true));
       const opportunism = node2("input");
       opportunism.type = "checkbox";
       opportunism.checked = leader.opportunism;

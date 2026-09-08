@@ -14,6 +14,8 @@ export const GOSSIP_FLAVOR_EVENT_ICON = '💬';
 export const GOSSIP_FLAVOR_EVENT_TYPE = 'leaderInsult' as const;
 
 export const GOSSIP_FLAVOR_TRIGGER_PROBABILITIES: Readonly<Record<GossipFlavorContext, number>> = {
+  bully_insult: 1,
+  bully_threat: 1,
   war_declaration: 0.45,
   city_capture: 0.3,
   ongoing_war: 0.08,
@@ -25,6 +27,8 @@ export const GOSSIP_FLAVOR_TRIGGER_PROBABILITIES: Readonly<Record<GossipFlavorCo
 };
 
 const MAX_WEIGHT_BY_CONTEXT: Readonly<Record<GossipFlavorContext, number>> = {
+  bully_insult: 2,
+  bully_threat: 2,
   war_declaration: 2,
   city_capture: 1.4,
   ongoing_war: 2,
@@ -66,6 +70,7 @@ export interface GossipFlavorTriggerInput {
 
 /** A deliberately presentation-only layer. It never calls Gossip execution or diplomacy mutations. */
 export class GossipFlavorEventSystem {
+  private readonly recentBullyLines = new Map<string, string[]>();
   private readonly pairCooldowns = new Map<string, number>();
 
   constructor(private readonly context: GossipFlavorEventContext) {}
@@ -129,10 +134,12 @@ export class GossipFlavorEventSystem {
 
     const baseKey = `${this.context.randomSeed}|${round}|${input.trigger}|${key}|${input.cityName ?? ''}`;
     if (this.roll(`${baseKey}|chance`) >= GOSSIP_FLAVOR_TRIGGER_PROBABILITIES[input.trigger]) return undefined;
-    const eligible = this.getEligibleDefinitions(input.trigger, speaker.id, recipient.id);
+    const eligible = this.getEligibleDefinitions(input.trigger, speaker.id, recipient.id)
+      .filter(d => !input.trigger.startsWith('bully_') || !(this.recentBullyLines.get(speaker.id) ?? []).includes(d.id));
     if (eligible.length === 0) return undefined;
     const selectedIndex = Math.min(eligible.length - 1, Math.floor(this.roll(`${baseKey}|selection`) * eligible.length));
     const definition = eligible[selectedIndex]!;
+    if (input.trigger.startsWith('bully_')) this.recentBullyLines.set(speaker.id, [...(this.recentBullyLines.get(speaker.id) ?? []), definition.id].slice(-3));
     const sourceLeader = getLeaderByNationId(speaker.id);
     const recipientLeader = getLeaderByNationId(recipient.id);
     const sourceLeaderName = sourceLeader?.name ?? speaker.name;
@@ -192,12 +199,13 @@ export class GossipFlavorEventSystem {
       definition.type === 'insult'
       && (definition.flavorContexts as readonly GossipFlavorContext[] | undefined)?.includes(trigger)
       && (definition.insultWeight ?? Number.POSITIVE_INFINITY) <= MAX_WEIGHT_BY_CONTEXT[trigger]
-      && (definition.insultSubtype !== 'threat' || fearMultiplier > 0)
+      && (trigger === 'bully_threat' || definition.insultSubtype !== 'threat' || fearMultiplier > 0)
     ));
   }
 
   serialize(): SavedGossipFlavorState {
     return {
+      recentBullyLines: [...this.recentBullyLines].map(([id, recent]) => ({ id, recent: [...recent] })),
       pairCooldowns: Array.from(this.pairCooldowns, ([key, availableAtRound]) => {
         const [nationAId, nationBId] = key.split('|');
         return { nationAId: nationAId!, nationBId: nationBId!, availableAtRound };
@@ -207,6 +215,8 @@ export class GossipFlavorEventSystem {
 
   restore(state: SavedGossipFlavorState | undefined): void {
     this.pairCooldowns.clear();
+    this.recentBullyLines.clear();
+    for (const s of state?.recentBullyLines ?? []) this.recentBullyLines.set(s.id, s.recent.slice(-3));
     for (const entry of state?.pairCooldowns ?? []) {
       if (!Number.isFinite(entry.availableAtRound)) continue;
       this.pairCooldowns.set(
@@ -219,6 +229,7 @@ export class GossipFlavorEventSystem {
   private isCurrentContextValid(trigger: GossipFlavorContext, speakerNationId: string, recipientNationId: string): boolean {
     const atWar = this.context.diplomacyManager.getState(speakerNationId, recipientNationId) === 'WAR';
     if (trigger === 'war_declaration' || trigger === 'city_capture' || trigger === 'ongoing_war') return atWar;
+    if (trigger.startsWith('bully_')) return getLeaderByNationId(speakerNationId)?.impulsiveBully === true;
     if (atWar) return false;
     if (trigger.startsWith('opportunity_')) {
       const pressure = this.context.opportunismPressure?.(speakerNationId, recipientNationId) ?? 0;

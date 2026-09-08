@@ -434,6 +434,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     // from the Pirate Code doctrine + Sea Wolf era strategy + Freebooters ideology.
     id: 'leader_mad_jack',
     name: 'Mad Jack',
+    impulsiveBully: true,
     opportunism: true,
     nationId: 'nation_pirate',
     title: 'Pirate Lord of the Free Seas',
@@ -512,6 +513,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     // leaders/ivan-iv and nation_russia.
     id: 'ivan-iv',
     name: 'Ivan IV',
+    impulsiveBully: true,
     opportunism: true,
     nationId: 'nation_russia',
     title: 'Ivan the Terrible',
@@ -589,6 +591,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     // comparisons than the most committed conquest personalities.
     id: 'leader_benito_mussolini',
     name: 'Benito Mussolini',
+    impulsiveBully: true,
     opportunism: true,
     nationId: 'nation_italy',
     title: 'Il Duce',
@@ -756,6 +759,7 @@ export const ADOLF_HITLER: LeaderDefinition = {
   id: 'leader_adolf_hitler',
   isDefault: false,
   name: 'Adolf Hitler',
+    impulsiveBully: true,
   opportunism: true,
   nationId: 'nation_germany',
   title: 'Führer',

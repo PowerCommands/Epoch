@@ -7,6 +7,7 @@ export interface SavedGossipFlavorCooldown {
 }
 
 export interface SavedGossipFlavorState {
+  readonly recentBullyLines?: Array<{ id: string; recent: string[] }>;
   readonly pairCooldowns: SavedGossipFlavorCooldown[];
 }
 

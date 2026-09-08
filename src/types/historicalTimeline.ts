@@ -44,7 +44,8 @@ export type HistoricalEventType =
   | 'reconciliation'
   | 'luckyLoser'
   | 'unluckyWinner'
-  | 'leaderInsult';
+  | 'leaderInsult'
+  | 'leaderStatement';
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */
 export interface HistoricalEventMetadata {
@@ -92,6 +93,11 @@ export interface HistoricalEventMetadata {
   discoveryName?: string;
   leaderInsultSubtype?: 'insult' | 'threat';
   leaderInsultText?: string;
+  statementId?: string;
+  statementTone?: import('./leaderStatement').StatementTone;
+  statementText?: string;
+  statementResponseTo?: string;
+  statementSubjectNationId?: string;
   luckyLoserGold?: number;
   gamesNumber?: number;
   gamesSport?: string;

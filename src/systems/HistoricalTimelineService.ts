@@ -35,6 +35,8 @@ export class HistoricalTimelineService {
   private readonly events: HistoricalEvent[] = [];
   private readonly listeners: ChangedListener[] = [];
   private nextId = 1;
+  private readonly recordedListeners: Array<(event: HistoricalEvent) => void> = [];
+  onRecorded(listener: (event: HistoricalEvent) => void): void { this.recordedListeners.push(listener); }
 
   constructor(
     private readonly getRound: () => number,
@@ -63,7 +65,9 @@ export class HistoricalTimelineService {
         ...input.metadata,
       },
     });
+    const recorded = this.events[this.events.length - 1]!;
     this.notifyChanged();
+    for (const listener of this.recordedListeners) listener(recorded);
   }
 
   /** All entries in chronological (oldest-first) order. */

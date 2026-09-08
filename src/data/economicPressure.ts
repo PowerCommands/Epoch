@@ -11,6 +11,8 @@
  * relevant economic calculations (trade and resource access).
  */
 
+export const ECONOMIC_PRESSURE_ESCALATION_COOLDOWN = 8;
+
 export type EconomicPressureType = 'tariffs' | 'boycott' | 'embargo';
 
 export const ECONOMIC_PRESSURE_TYPES: readonly EconomicPressureType[] = ['tariffs', 'boycott', 'embargo'];

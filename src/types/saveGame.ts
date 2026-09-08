@@ -385,6 +385,8 @@ export interface SavedGameState {
   /** Symmetric History-flavor noise cooldowns; mechanically independent from Gossip. */
   gossipFlavor?: SavedGossipFlavorState;
   opportunism?: import('../systems/ai/OpportunismSystem').SavedOpportunismState;
+  impulsiveBully?: import('../systems/ai/ImpulsiveBullySystem').SavedImpulsiveBullyState;
+  leaderStatements?: import('./leaderStatement').SavedLeaderStatements;
   wonders: SavedWonder[];
   /** Global World Council institution. Optional so older saves load with none. */
   worldCouncil?: WorldCouncilState;

@@ -1,3 +1,4 @@
+import { BULLY_GOSSIP } from '../src/data/impulsiveBullyGossip';
 import { OPPORTUNISTIC_GOSSIP } from '../src/data/opportunisticGossip';
 /** Focused deterministic tests for the Insult Gossip expansion. */
 
@@ -81,8 +82,8 @@ function insult(gossip: GossipSystem, itemId: typeof INSULTS[number], recipientN
 
 test('catalog defines all seven weighted Insults, subtypes, and existing Culture ids', () => {
   const allInsults = GOSSIP_DEFINITIONS.filter((item) => item.type === 'insult');
-  assert.equal(allInsults.length, INSULTS.length + OPPORTUNISTIC_GOSSIP.length);
-  const definitions = allInsults.filter(item => !OPPORTUNISTIC_GOSSIP.some(extra => extra.id === item.id));
+  assert.equal(allInsults.length, INSULTS.length + OPPORTUNISTIC_GOSSIP.length + BULLY_GOSSIP.length);
+  const definitions = allInsults.filter(item => !item.automaticOnly);
   assert.deepEqual(definitions.map((item) => item.id), INSULTS);
   assert.deepEqual(Object.fromEntries(definitions.map((item) => [item.id, item.insultWeight])), {
     insult_judgment: 1,
@@ -287,9 +288,9 @@ test('arbitrary source and recipient placeholders resolve in statements and resp
   assert.match(result.responseText!, /Gustav Vasa|Sweden|words|wit|contempt/i);
 });
 
-test('contextual Opportunism remarks cannot bypass the player Gossip culture progression', () => {
+test('contextual Opportunism and Bully remarks cannot bypass the player Gossip culture progression', () => {
   const { gossip } = makeHarness();
-  for (const item of OPPORTUNISTIC_GOSSIP) {
+  for (const item of [...OPPORTUNISTIC_GOSSIP, ...BULLY_GOSSIP]) {
     const availability = gossip.getItemAvailability(SOURCE, item.id, undefined);
     assert.equal(availability.available, false);
     assert.equal(availability.visible, false);

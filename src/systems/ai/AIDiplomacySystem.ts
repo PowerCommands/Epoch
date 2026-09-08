@@ -1,3 +1,4 @@
+import type { ImpulsiveBullySystem } from './ImpulsiveBullySystem';
 import type { OpportunismSystem } from './OpportunismSystem';
 import type { DiplomacyManager, DiplomacyRelation } from '../DiplomacyManager';
 import type {
@@ -30,6 +31,7 @@ import {
 } from '../diplomacy/suspicionEffects';
 import {
   ECONOMIC_PRESSURE_AI_AI_DURATION_TURNS,
+  ECONOMIC_PRESSURE_ESCALATION_COOLDOWN,
   ECONOMIC_PRESSURE_LABEL,
   ECONOMIC_PRESSURE_LEVEL,
   type EconomicPressureType,
@@ -46,7 +48,6 @@ const PEACE_COOLDOWN = 5;
 const OPEN_BORDERS_COOLDOWN = 5;
 const NO_IMMEDIATE_PEACE_AFTER_WAR = 3;
 const NO_IMMEDIATE_WAR_AFTER_PEACE = 5;
-const ECONOMIC_PRESSURE_ESCALATION_COOLDOWN = 8;
 /** Tariff willingness bump toward a Cultural Jealousy target (threshold is 0.48). */
 const CULTURAL_JEALOUSY_TARIFF_BIAS = 0.35;
 const fallbackFormatLog: AILogFormatter = (nationId, message) => `[r?] [?] ${nationId} (era: ancient, gold: 0, happiness: 0) ${message}`;
@@ -126,10 +127,21 @@ export interface AIIndependenceController {
 }
 
 export class AIDiplomacySystem {
+  private bully?: ImpulsiveBullySystem;
+  setImpulsiveBullySystem(system: ImpulsiveBullySystem): void {
+    this.bully = system;
+    this.refreshPersonalityInfluence();
+  }
+  private refreshPersonalityInfluence(): void {
+    this.evaluationSystem.setTemporaryRelationInfluence((a, b, relation) => {
+      const opportunity = this.opportunism?.influence(a, b, relation) ?? relation;
+      return this.bully?.influence(a, b, opportunity) ?? opportunity;
+    });
+  }
   private opportunism?: OpportunismSystem;
   setOpportunismSystem(system: OpportunismSystem): void {
     this.opportunism = system;
-    this.evaluationSystem.setTemporaryRelationInfluence((a, b, relation) => system.influence(a, b, relation));
+    this.refreshPersonalityInfluence();
   }
 
   // AI diplomacy reason logging explains decisions without changing them.
@@ -269,6 +281,7 @@ export class AIDiplomacySystem {
 
     const currentTurn = this.turnManager.getCurrentRound();
     this.expireAIToAISanctions(nationId, currentTurn);
+    this.bully?.runTurn(nationId);
     for (const other of this.nationManager.getAllNations()) {
       if (other.id === nationId) continue;
       if (!this.haveMet(nationId, other.id)) continue;
@@ -436,7 +449,8 @@ export class AIDiplomacySystem {
     const reclaimMod = this.getReclaimWarModifier(selfId, otherId);
     const opportunityBonus = (this.opportunism?.warBonus(selfId, otherId) ?? 0)
       * Math.max(0.1, Math.min(1.5, 0.25 + personality.warTolerance / 100 + personality.aggressionBias / 100));
-    if (attitude === 'hostile' || opportunityBonus > 0 || (!reclaimMod.suppressUnrelated && reclaimMod.warScoreDelta > 0)) {
+    const bullyBonus = reclaimMod.suppressUnrelated ? 0 : (this.bully?.warBonus(selfId, otherId) ?? 0);
+    if (attitude === 'hostile' || opportunityBonus > 0 || bullyBonus > 0 || (!reclaimMod.suppressUnrelated && reclaimMod.warScoreDelta > 0)) {
       if (this.diplomacyManager.isPeaceTreatyActive(selfId, otherId, currentTurn)) return;
       if (this.diplomacyManager.isCeasefireActive(selfId, otherId, currentTurn)) return;
       // Alliance-aware: attacking an allied target means facing the defender
@@ -497,7 +511,8 @@ export class AIDiplomacySystem {
       const suspicionWarBonus = getSuspicionWarScoreBonus(relation.suspicion) * selfPersonality.suspicionToWar;
       warScore += suspicionWarBonus;
       // Opportunity is shaped by the existing personality and era multipliers.
-      warScore += opportunityBonus;
+      warScore += opportunityBonus + bullyBonus;
+      if (bullyBonus > 0) this.bully?.recordWarContribution(selfId, otherId, bullyBonus);
       const personalityFactor = getNationPersonalityFactor(selfId);
       warScore *= 0.8 + personalityFactor * 0.4;
       // Era-strategy multiplier dampens or amplifies war propensity per
@@ -549,6 +564,7 @@ export class AIDiplomacySystem {
         // actually began. A blocked or already-existing war must not masquerade
         // as a fresh direct AI declaration.
         if (this.diplomacyManager.declareWar(selfId, otherId)) {
+          if (bullyBonus > 0) this.bully?.recordWarContribution(selfId, otherId, bullyBonus, true);
           if (opportunityBonus > 0 || pressureChangedAttitude) console.log(this.formatLog(selfId, `[Opportunism] contributed to war against ${otherId}: bonus=${opportunityBonus.toFixed(2)}, attitudeEscalated=${pressureChangedAttitude}, score=${warScore.toFixed(2)}; normal war eligibility passed.`));
           this.emitDecision(this.createDecisionReason(
             'declareWar',
@@ -712,6 +728,7 @@ export class AIDiplomacySystem {
     warTooRisky: boolean,
   ): boolean {
     if (this.expiredPressureTurnByPair.get(`${selfId}>${otherId}`) === currentTurn) return false;
+    if (this.bully?.considerRetaliation(selfId, otherId)) return true;
     const current = this.diplomacyManager.getEconomicPressureRecord(selfId, otherId);
     if (current?.type === 'boycott' || current?.type === 'embargo') return false;
     if (current && currentTurn - current.imposedTurn < ECONOMIC_PRESSURE_ESCALATION_COOLDOWN) return false;

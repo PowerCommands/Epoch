@@ -452,6 +452,8 @@ export class DiplomacyManager {
   private readonly changedListeners: DiplomacyChangedListener[] = [];
   private readonly warEndedListeners: WarEndedListener[] = [];
   private readonly vassalReleasedListeners: VassalReleasedListener[] = [];
+  private readonly slightListeners: Array<(actorId: string, targetId: string, reason: string) => void> = [];
+  onPerceivedSlight(listener: (actorId: string, targetId: string, reason: string) => void): void { this.slightListeners.push(listener); }
   private memoryHook: DiplomaticMemoryHook | null = null;
   private allianceGuard: ((aggressorId: string, targetId: string) => boolean) | null = null;
   /**
@@ -1852,12 +1854,14 @@ export class DiplomacyManager {
   /** Small friction when a member vetoes another's council proposal. */
   recordProposalRejected(a: string, b: string): void {
     this.memoryHook?.onProposalRejected(a, b);
+    for (const listener of this.slightListeners) listener(a, b, 'a rejected proposal');
     this.notifyChanged(a, b);
   }
 
   /** Diplomatic penalty applied by a passed condemnation resolution. */
   recordWorldCouncilCondemnation(memberNationId: string, condemnedNationId: string): void {
     if (memberNationId === condemnedNationId) return;
+    for (const listener of this.slightListeners) listener(condemnedNationId, memberNationId, 'World Council condemnation');
     const relation = this.getRelation(memberNationId, condemnedNationId);
     this.setMemoryValues(memberNationId, condemnedNationId, {
       trust: clampDiplomacyValue(relation.trust - 15),

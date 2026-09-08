@@ -10,6 +10,7 @@ export interface GossipRelationEffectConfig {
 
 export type GossipInsultSubtype = 'provocation' | 'threat';
 export type GossipFlavorContext = 'war_declaration' | 'city_capture' | 'ongoing_war' | 'hostile_peacetime'
+  | 'bully_insult' | 'bully_threat'
   | 'opportunity_mockery' | 'opportunity_intimidation' | 'opportunity_territorial' | 'opportunity_military';
 
 export interface GossipInsultEffectConfig {

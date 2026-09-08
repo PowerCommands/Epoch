@@ -86,3 +86,5 @@ Personality biases previously had no enforced runtime range. The editor uses an 
 - `tools/leaderEditor.browser.mjs` exercises the actual Scenario Editor toolbar, personality edit, era inheritance, variant creation/assignment, cross-links, scenario output persistence, reopen, validation blocking, and discard. Run against a local Vite server with `EPOCH_EDITOR_URL`; `CHROME_PATH` can specify a Chrome executable.
 - Existing Gandhi/Genghis/Mad Jack/de Gaulle/Stalin/Mussolini configurations are covered through all-leader comparisons, with existing alternative leader/de Gaulle/Hitler regressions and gossip information tests run as well.
 - TypeScript typecheck and Vite production build pass. Vite retains the existing large-chunk advisory.
+
+The Personality section also exposes **Impulsive Bully**, an explicit optional trait independent of covert personality. Its checkbox round-trips through scenario overrides, and the derived character summary displays it when enabled. See [Impulsive Bully and Leader Statements](../ai/impulsive-bully.md) for gameplay and persistence details.

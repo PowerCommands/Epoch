@@ -1,3 +1,5 @@
+import { ImpulsiveBullySystem } from '../systems/ai/ImpulsiveBullySystem';
+import { LeaderStatementSystem } from '../systems/LeaderStatementSystem';
 import { OpportunismSystem } from '../systems/ai/OpportunismSystem';
 import { setLeaderConfiguration } from '../data/leaderConfiguration';
 import Phaser from 'phaser';
@@ -3834,6 +3836,46 @@ export class GameScene extends Phaser.Scene {
       },
     });
     aiDiplomacySystem.setOpportunismSystem(opportunismSystem);
+    const leaderStatementSystem = new LeaderStatementSystem({
+      diplomacy: diplomacyManager, history: historicalTimeline,
+      round: () => turnManager.getCurrentRound(),
+      nationIds: () => nationManager.getAllNations().map(n => n.id),
+      active: id => aiMilitaryEvaluationSystem.isNationActive(id),
+      haveMet: (a, b) => discoverySystem.hasMet(a, b),
+      leaderName: id => getLeaderByNationId(id)?.name ?? timelineNationName(id),
+      militaryPower: id => aiMilitaryEvaluationSystem.getMilitaryStrength(id).totalStrength,
+      isBully: id => getLeaderByNationId(id)?.impulsiveBully === true,
+      seed: `${data.mapKey}|${[...data.activeNationIds].sort().join(',')}|leader-statements-v1`,
+      log: (nationIds, message) => {
+        console.log(formatLog(nationIds[0]!, `${message} nations=${nationIds.join(',')}`));
+        logManager.info({ nationIds, category: 'diplomacy', message });
+      },
+    });
+    const impulsiveBullySystem = new ImpulsiveBullySystem({
+      statements: leaderStatementSystem, diplomacy: diplomacyManager,
+      era: id => eraSystem.getNationEra(id),
+      isAI: id => nationManager.getNation(id)?.isHuman === false,
+      outburst: (speakerNationId, recipientNationId, threatening) => !!gossipFlavorEventSystem.tryGenerate({
+        speakerNationId, recipientNationId, trigger: threatening ? 'bully_threat' : 'bully_insult',
+      }),
+      applyPressure: (a, b, type) => economicPressureActionService.impose(a, b, type, timelineNationName(b)).ok,
+      economicDistress: id => nationManager.getResources(id).gold < 20
+        && nationManager.getResources(id).goldPerTurn - unitUpkeepSystem.calculateUpkeep(id) < 0,
+      endangered: (a, b) => aiMilitaryThreatEvaluationSystem.getThreatLevel(a, b) === 'high'
+        || aiMilitaryEvaluationSystem.compareMilitaryStrengthForWar(a, b) === 'weaker',
+    });
+    aiDiplomacySystem.setImpulsiveBullySystem(impulsiveBullySystem);
+    diplomacyManager.onEconomicPressureChanged(event => impulsiveBullySystem.handlePressure(event));
+    diplomacyManager.onPerceivedSlight((a, b, reason) => impulsiveBullySystem.perceive(a, b, reason));
+    diplomacyManager.onWarEnded((a, b) => { impulsiveBullySystem.retreat(a, b); impulsiveBullySystem.retreat(b, a); });
+    historicalTimeline.onRecorded(event => impulsiveBullySystem.handleHistory(event));
+    combatSystem.on(event => {
+      if (event.attacker.unitType.isInsurgentForce || event.defender.unitType.isInsurgentForce
+        || diplomacyManager.getState(event.attacker.ownerId, event.defender.ownerId) !== 'WAR') return;
+      if (event.result.attackerDied) impulsiveBullySystem.reportDefeat(event.attacker.ownerId, event.defender.ownerId);
+      if (event.result.defenderDied) impulsiveBullySystem.reportDefeat(event.defender.ownerId, event.attacker.ownerId);
+    });
+    diplomaticProposalSystem.onRejected(p => impulsiveBullySystem.perceive(p.fromNationId, p.toNationId, `a rejected ${p.payload.kind} proposal`));
     aiSystem.setCultureSystem(cultureSystem);
     if (consolidationSystem) aiSystem.setConsolidationSystem(consolidationSystem);
     aiSystem.setStrategicResourceDemandSystem(strategicResourceDemandSystem);
@@ -5541,6 +5583,7 @@ export class GameScene extends Phaser.Scene {
         }
       } else {
         if (aiProposal) jointWarSystem.recordRejectedProposal(aiProposal);
+        impulsiveBullySystem.perceive(proposerId, receiverId, 'refusal to join our war');
         logManager.info({
           nationIds: [proposerId, receiverId, targetId],
           category: 'diplomacy',
@@ -8576,6 +8619,9 @@ export class GameScene extends Phaser.Scene {
           });
         }
         if (proposal.votes && proposal.votes.length > 0) {
+          if (proposal.resolved && proposal.proposerNationId) for (const vote of proposal.votes) {
+            if (!vote.support && vote.influence > 0) impulsiveBullySystem.perceive(proposal.proposerNationId, vote.nationId, 'a World Council vote against our proposal');
+          }
           const voteLines = proposal.votes.map((vote) => {
             const nationName = timelineNationName(vote.nationId);
             const voteText = vote.influence <= 0 ? 'ABSTAIN' : vote.support ? 'FOR' : 'AGAINST';
@@ -10219,6 +10265,8 @@ export class GameScene extends Phaser.Scene {
           gossipSystem,
           gossipFlavorEventSystem,
           opportunismSystem,
+          impulsiveBullySystem,
+          leaderStatementSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -10902,6 +10950,8 @@ export class GameScene extends Phaser.Scene {
         gossipSystem,
         gossipFlavorEventSystem,
         opportunismSystem,
+        impulsiveBullySystem,
+        leaderStatementSystem,
         turnManager,
         gridSystem,
         wonderSystem,
@@ -11014,6 +11064,8 @@ export class GameScene extends Phaser.Scene {
           gossipSystem,
           gossipFlavorEventSystem,
           opportunismSystem,
+          impulsiveBullySystem,
+          leaderStatementSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -11090,6 +11142,8 @@ export class GameScene extends Phaser.Scene {
         gossipSystem,
         gossipFlavorEventSystem,
         opportunismSystem,
+        impulsiveBullySystem,
+        leaderStatementSystem,
         turnManager,
         gridSystem,
         wonderSystem,
