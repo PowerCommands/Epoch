@@ -284,6 +284,7 @@ export class WorldCouncilSessionDialog {
     voteRow.append(yesButton, noButton);
     controls.appendChild(voteRow);
 
+    if (proposal.resolutionId === 'collective_nuclear_response') { draft.influence = 0; return controls; }
     const influenceLabel = element('div', 'wcs-influence-label');
     influenceLabel.textContent = 'Influence Commitment';
     controls.appendChild(influenceLabel);

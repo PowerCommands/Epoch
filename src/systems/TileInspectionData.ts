@@ -42,7 +42,7 @@ export interface TileInspectionDeps {
 }
 
 function terrainLabel(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1);
+  return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 
 function nationName(nationManager: NationManager, nationId: string | undefined): string | undefined {
@@ -81,6 +81,7 @@ export function buildTileInspection(
 
   // ── Tile ──────────────────────────────────────────────────────────────────
   const tileRows: TileInspectionRow[] = [{ label: 'Terrain', value: terrainLabel(tile.type) }];
+  if (tile.originalTerrain) tileRows.push({ label: 'Cleanup restores', value: terrainLabel(tile.originalTerrain) });
   if (
     tile.resourceId !== undefined
     && (deps.isResourceVisible?.(tile.resourceId) ?? true)

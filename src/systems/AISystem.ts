@@ -1,3 +1,5 @@
+import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
+import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import type { UnitType } from '../entities/UnitType';
@@ -644,6 +646,11 @@ export function getGrandStadiumPriorityQueueAction(
  * 3. Produktion — respektera 2-warrior cap, settler-villkor
  */
 export class AISystem {
+  private nuclearInterventionRisk: (aggressor: string, victim: string) => number = () => 0;
+  setNuclearInterventionRiskProvider(provider: (aggressor: string, victim: string) => number): void {
+    this.nuclearInterventionRisk = provider;
+  }
+
   private readonly unitManager: UnitManager;
   private readonly cityManager: CityManager;
   private readonly nationManager: NationManager;
@@ -989,6 +996,17 @@ export class AISystem {
     this.runSettlers(nationId);
     this.overseasExpansionSystem?.runStaging(nationId);
     this.runEmergencyDefenseRedeployment(nationId);
+    runStrategicWeaponsAI({ nationId, units: this.unitManager, cities: this.cityManager, map: this.mapData, grid: this.gridSystem,
+      weapons: this.combatSystem.strategicWeapons,
+      atWar: other => other !== nationId && this.diplomacyManager?.getState(nationId, other) === 'WAR',
+      known: (x, y) => this.explorationMemorySystem?.hasSeenTile(nationId, x, y) ?? true,
+      aggression: Math.max(0, Math.min(1, (getLeaderPersonalityByNationId(nationId).aggressionBias + 20) / 40)),
+      warTolerance: getLeaderPersonalityByNationId(nationId).warTolerance / 100,
+      relation: other => this.diplomacyManager?.getRelation(nationId, other) ?? { hostility: 0, trust: 0, fear: 0 },
+      interventionRisk: victim => this.nuclearInterventionRisk(nationId, victim),
+      move: (unit, x, y) => { const path = this.pathfindingSystem.findPath(unit, x, y, { respectMovementPoints: false }); if (path) this.movementSystem.moveAlongPath(unit, path); },
+      log: message => this.logStrategicEvent?.(nationId, message), round: this.turnManager.getCurrentRound(),
+    });
     this.runCombat(nationId);
     this.updateShipwreckExpeditions(nationId);
     this.runMovement(nationId);
@@ -1229,7 +1247,7 @@ export class AISystem {
   }
 
   private runEmergencyDefenseRedeployment(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     for (const assignment of this.buildEmergencyDefenseAssignments(nationId, units)) {
       executeEmergencyDefenseAssignment({
         assignment,
@@ -2631,13 +2649,13 @@ export class AISystem {
   // ─── Combat ──────────────────────────────────────────────────────────────────
 
   private runCombat(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     const strategy = this.getStrategy(nationId);
     const navalContext = this.buildNavalPatrolContext(nationId);
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
-      if (unit.unitType.baseStrength <= 0) continue; // settlers can't attack
+      if (unit.unitType.baseStrength <= 0 && (unit.unitType.rangedStrength ?? 0) <= 0) continue; // civilians cannot attack
       if (this.emergencyAssignmentCityByUnit.has(unit.id)) continue;
       if (this.isEmergencyCityGarrison(unit, nationId)) continue;
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
@@ -2960,7 +2978,7 @@ export class AISystem {
   // ─── Movement ────────────────────────────────────────────────────────────────
 
   private runMovement(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit));
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     const strategy = this.getStrategy(nationId);
 
     const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
@@ -4385,6 +4403,17 @@ export class AISystem {
     if (unit.unitType.canBuildImprovements !== true || unit.unitType.isNaval === true) return;
     if (unit.isBuildingImprovement()) return; // multi-turn build already in progress
 
+    const waste = this.mapData.tiles.flat().filter(tile => tile.type === TileType.NuclearWaste && tile.ownerId === nationId && !tile.improvementConstruction && this.builderSystem!.canNationImproveLandTile(nationId, tile))
+      .sort((a, b) => (Number(!!b.resourceId) - Number(!!a.resourceId)) * 10 + this.gridSystem.getDistance(a, { x: unit.tileX, y: unit.tileY }) - this.gridSystem.getDistance(b, { x: unit.tileX, y: unit.tileY }));
+    for (const tile of waste) {
+      if (unit.tileX !== tile.x || unit.tileY !== tile.y) {
+        const path = this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false });
+        if (!path) continue;
+        this.movementSystem.moveAlongPath(unit, path);
+      }
+      if (unit.tileX === tile.x && unit.tileY === tile.y && this.builderSystem.build(unit, tile)) this.logStrategicEvent?.(nationId, `[Strategic] Worker cleaning Nuclear Waste at ${tile.x},${tile.y}`);
+      return;
+    }
     let target = this.getAssignedWorkerTarget(unit, nationId);
     if (target === null) {
       // An idle Worker keeps searching for a target every turn until it finds a
@@ -7056,6 +7085,35 @@ export class AISystem {
 
     // Build candidates from preferred to fallback so ties resolve sensibly.
     const candidates: AIProductionCandidate[] = [];
+    const strategicStock = this.unitManager.getUnitsByOwner(nationId);
+    const strategicQueued = this.cityManager.getCitiesByOwner(nationId).flatMap(c => this.productionSystem.getQueue(c.id));
+    const countStrategic = (id: string) => strategicStock.filter(u => u.unitType.id === id).length + strategicQueued.filter(e => e.item.kind === 'unit' && e.item.unitType.id === id).length;
+    const hasNuclearEnemy = this.nationManager.getAllNations().some(n => n.id !== nationId && (this.discoverySystem?.hasMet(nationId, n.id) ?? true) && getNuclearCapability(n.id, this.unitManager, this.cityManager).stockpile > 0);
+    const addStrategicUnit = (id: string, desired: number, score: number) => {
+      const type = getUnitTypeById(id);
+      if (!type || countStrategic(id) >= desired || !this.canBuildUnit(nationId, id) || !canCityProduceUnit(city, type, this.mapData, this.gridSystem, this.getUnitProductionRuleContext())) return;
+      if (this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType: type })) return;
+      candidates.push({ item: { kind: 'unit', unitType: type }, baseScore: score, category: 'military' });
+    };
+    const addStrategicBuilding = (id: string, score: number) => {
+      const type = getBuildingById(id);
+      if (type && !buildings.has(id) && this.canBuildBuilding(nationId, id) && !this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'building', buildingType: type }))
+        candidates.push({ item: { kind: 'building', buildingType: type }, baseScore: score, category: 'productionBuilding' });
+    };
+    if (goldPerTurn >= 0) {
+      if (hasNuclearEnemy) addStrategicBuilding('bomb_shelter', 95);
+      if (!this.cityManager.getCitiesByOwner(nationId).some(c => this.cityManager.getBuildings(c.id).hasActive('nuclear_silo'))) addStrategicBuilding('nuclear_silo', 75);
+      if (this.canBuildUnit(nationId, 'atomic_bomb')) {
+        if (!strategicStock.some(u => ['bomber', 'stealth_bomber'].includes(u.unitType.id))) addStrategicUnit(this.canBuildUnit(nationId, 'stealth_bomber') ? 'stealth_bomber' : 'bomber', 1, 85);
+        else addStrategicUnit('atomic_bomb', 1, hasNuclearEnemy ? 110 : 80);
+      }
+      if (this.canBuildUnit(nationId, 'nuclear_missile')) {
+        addStrategicUnit('nuclear_submarine', 1, 90);
+        if (buildings.hasActive('nuclear_silo') || strategicStock.some(u => u.unitType.id === 'nuclear_submarine')) addStrategicUnit('nuclear_missile', 2, hasNuclearEnemy ? 115 : 85);
+      }
+      if (this.diplomacyManager?.isAtWarWithAnyNation(nationId)) addStrategicUnit('guided_missile', 3, 95);
+    }
+
     const powerPlantPlan = this.powerPlantPlans.get(city.id);
     if (powerPlantPlan) {
       const buildingType = getBuildingById(powerPlantPlan.buildingId);

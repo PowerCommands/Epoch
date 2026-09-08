@@ -65,6 +65,7 @@ export interface UnitType {
   readonly foodUpkeep: FoodUpkeep;
   readonly upgradeToUnitId?: string;
   readonly cargoCapacity?: number;
+  readonly allowedCargoUnitIds?: readonly string[];
   readonly allowedCargoCategories?: readonly UnitCategory[];
   readonly movementPoints: number;
   readonly baseHealth: number;

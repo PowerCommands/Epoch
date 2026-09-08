@@ -365,6 +365,13 @@
       "iconPath": "assets/sprites/buildings/bomb_shelter.png"
     },
     {
+      "id": "nuclear_silo",
+      "name": "Nuclear Silo",
+      "era": "information",
+      "placement": "city",
+      "iconPath": "assets/sprites/buildings/nuclear_silo.svg"
+    },
+    {
       "id": "police_station",
       "name": "Police Station",
       "era": "modern",

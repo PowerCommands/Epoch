@@ -475,23 +475,9 @@ export class SaveLoadService {
     const tiles: SavedTile[] = [];
     for (const row of mapData.tiles) {
       for (const tile of row) {
-        if (
-          tile.ownerId === undefined
-          && tile.resourceOwnerNationId === undefined
-          && tile.riverConnections === undefined
-          && tile.resourceId === undefined
-          && tile.improvementId === undefined
-          && tile.improvementOwnerId === undefined
-          && tile.improvementConstruction === undefined
-          && tile.buildingId === undefined
-          && tile.buildingBroken === undefined
-          && tile.buildingConstruction === undefined
-          && tile.wonderId === undefined
-          && tile.wonderConstruction === undefined
-          && tile.cultureOwnerId === undefined
-          && tile.cultureSourceCityId === undefined
-        ) continue;
         tiles.push({
+          terrainType: tile.type,
+          originalTerrain: tile.originalTerrain,
           q: tile.x,
           r: tile.y,
           ownerId: tile.ownerId,
@@ -716,6 +702,10 @@ export class SaveLoadService {
   static restoreTiles(tiles: readonly SavedTile[], mapData: MapData): void {
     for (const row of mapData.tiles) {
       for (const tile of row) {
+        // Old saves carry no terrain override. Discard live contamination before
+        // restoring their authored terrain; newer saves overwrite this below.
+        if (tile.originalTerrain !== undefined) tile.type = tile.originalTerrain;
+        tile.originalTerrain = undefined;
         tile.ownerId = undefined;
         tile.resourceOwnerNationId = undefined;
         tile.resourceId = undefined;
@@ -734,6 +724,8 @@ export class SaveLoadService {
     for (const saved of tiles) {
       const tile = mapData.tiles[saved.r]?.[saved.q];
       if (!tile) continue;
+      if (saved.terrainType !== undefined) tile.type = saved.terrainType;
+      tile.originalTerrain = saved.originalTerrain;
       if (saved.ownerId !== undefined) tile.ownerId = saved.ownerId;
       if (saved.riverConnections !== undefined) tile.riverConnections = riverMask(saved.riverConnections) || undefined;
       if (saved.resourceId !== undefined) tile.resourceId = saved.resourceId;

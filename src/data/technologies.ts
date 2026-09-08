@@ -855,7 +855,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Perfects missile guidance, payloads, and strategic delivery. Unlocks Guided Missiles and Nuclear Missiles.',
     prerequisites: ['nuclear_fission'],
     leadsTo: ['nuclear_fusion'],
-    unlocks: [{ kind: 'unit', id: 'guided_missile' }, { kind: 'unit', id: 'nuclear_missile' }],
+    unlocks: [{ kind: 'unit', id: 'guided_missile' }, { kind: 'unit', id: 'nuclear_missile' }, { kind: 'building', id: 'nuclear_silo' }],
   },
   {
     id: 'telecommunications',

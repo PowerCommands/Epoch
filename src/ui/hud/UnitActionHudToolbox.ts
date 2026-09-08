@@ -16,6 +16,7 @@ const ACTION_SPACING = 10;
 const CLUSTER_GAP = 12;
 
 const ACTION_ICON_KEYS: Record<UnitActionMode, string> = {
+  loadWeapon: 'action_debark', payload: 'action_ranged_attack', nuclearPayload: 'action_ranged_attack',
   move: 'action_move',
   explore: 'action_explore',
   attack: 'action_attack',
@@ -175,8 +176,9 @@ export class UnitActionHudToolbox {
 
       if (state) {
         button.state = state;
-        if (button.icon.texture.key !== ACTION_ICON_KEYS[state.mode]) {
-          button.icon.setTexture(ACTION_ICON_KEYS[state.mode]);
+        const iconKey = state.label.includes('Clean Nuclear Waste') ? 'action_clean_nuclear_waste' : ACTION_ICON_KEYS[state.mode];
+        if (button.icon.texture.key !== iconKey) {
+          button.icon.setTexture(iconKey);
         }
       }
       button.background.setVisible(isVisible);

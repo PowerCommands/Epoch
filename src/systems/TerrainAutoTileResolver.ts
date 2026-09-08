@@ -11,6 +11,7 @@ export interface TerrainRenderStyle {
 }
 
 const DEFAULT_TERRAIN_STYLES: Record<TileType, TerrainRenderStyle> = {
+  [TileType.NuclearWaste]: { fillColor: 0x4b4935, borderColor: 0x20271a, borderAlpha: 0.7, innerColor: 0x9aaf31, innerAlpha: 0.4, textureColor: 0xc7d54a, textureAlpha: 0.55 },
   [TileType.Ocean]: {
     fillColor: 0x1a557d,
     borderColor: 0x123f61,

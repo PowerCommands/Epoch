@@ -8,6 +8,7 @@
     "dev": "vite",
     "predev": "npm run generate-manifests",
     "typecheck": "tsc --noEmit",
+    "test:strategic": "node --import tsx --test tools/strategicWeapons.test.ts tools/nuclearDiplomacy.test.ts",
     "test:gossip": "tsx --test tools/gossipSystem.test.ts tools/gossipGuiCoordination.test.ts tools/gossipInformationExpansion.test.ts tools/gossipSportsPreferences.test.ts tools/gossipManipulationExpansion.test.ts tools/gossipInsultExpansion.test.ts tools/gossipFlavorEvents.test.ts",
     "test:tutorial": "tsx --test tools/tutorialGossipContent.test.ts tools/tutorialGamesOfNationsContent.test.ts tools/progressiveGuideContent.test.ts tools/guideProgression.test.ts",
     "test:tourism": "tsx --test tools/tourismCultureNode.test.ts",

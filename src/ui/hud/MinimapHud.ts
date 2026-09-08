@@ -22,6 +22,7 @@ const TOGGLE_BUTTON_LABEL_NORMAL = '↗️';
 const TOGGLE_BUTTON_LABEL_ENLARGED = '↙️';
 
 const TERRAIN_COLORS: Record<TileType, number> = {
+  [TileType.NuclearWaste]: 0x8a942e,
   [TileType.Ocean]: 0x1a557d,
   [TileType.Coast]: 0x4f8da7,
   [TileType.Plains]: 0x83b865,

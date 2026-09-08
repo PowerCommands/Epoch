@@ -53,7 +53,7 @@ export interface WorldCouncilMember {
 }
 
 export type WorldCouncilMeetingKind = 'regular' | 'emergency';
-export type WorldCouncilEmergencyEventType = 'warDeclared' | 'famine';
+export type WorldCouncilEmergencyEventType = 'warDeclared' | 'famine' | 'nuclearAttack';
 
 export interface WorldCouncilEmergencyTrigger {
   readonly eventType: WorldCouncilEmergencyEventType;
@@ -69,6 +69,7 @@ export interface WorldCouncilContributionChoice {
 }
 
 export type WorldCouncilResolutionId =
+  | 'collective_nuclear_response'
   | 'defense_support'
   | 'global_free_trade_agreement'
   | 'shared_cartography'

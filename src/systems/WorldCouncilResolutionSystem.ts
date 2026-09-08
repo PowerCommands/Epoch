@@ -26,6 +26,8 @@ export interface WorldCouncilResolutionContext {
 }
 
 export interface WorldCouncilResolutionRuntime {
+  readonly canJoinNuclearResponse?: (nationId: string, aggressorId: string) => boolean;
+  readonly joinNuclearResponse?: (nationId: string, aggressorId: string, victimId: string) => boolean;
   readonly getDiplomacyState?: (nationAId: string, nationBId: string) => 'WAR' | 'PEACE';
   readonly getRelationMemory?: (nationAId: string, nationBId: string) => {
     readonly trust: number;
@@ -169,6 +171,18 @@ export const GAMES_OF_NATIONS_PARTICIPATION_JUSTIFICATIONS = [
 ] as const;
 
 const RESOLUTIONS: readonly ResolutionDefinitionConfig[] = [
+  {
+    id: 'collective_nuclear_response', title: 'Collective Military Response to Nuclear Attack',
+    description: 'One nation, one decision. A majority authorizes intervention; only supporters join the victim’s war. The aggressor cannot vote. No Influence is spent.',
+    icon: '☢', votingType: 'influence', organizationKind: 'both',
+    execute: (context) => {
+      if (!context.targetNationId || !context.secondaryTargetNationId) return;
+      for (const id of context.participantNationIds ?? []) {
+        if (id !== context.targetNationId && id !== context.secondaryTargetNationId)
+          context.runtime?.joinNuclearResponse?.(id, context.targetNationId, context.secondaryTargetNationId);
+      }
+    },
+  },
   {
     id: 'defense_support',
     title: 'Defense Support Resolution',
@@ -403,6 +417,7 @@ export class WorldCouncilResolutionSystem {
   }
 
   isProposalEligible(id: WorldCouncilResolutionId, proposerNationId?: string): boolean {
+    if (id === 'collective_nuclear_response') return false; // Emergency-only, authored by the victim.
     if (id === 'games_of_nations_hosting') {
       if (!proposerNationId || this.runtime.isNationActive?.(proposerNationId) === false) return false;
       const context = this.runtime.getGamesOfNationsHostingContext?.();
@@ -595,6 +610,8 @@ export class WorldCouncilResolutionSystem {
       return this.resolveRepealProposal(proposal, context, definition);
     }
 
+    if (proposal.resolutionId === 'collective_nuclear_response') return this.resolveNuclearResponse(proposal, context);
+
     if (proposal.resolutionId === 'defense_support') {
       return this.resolveDefenseSupport(proposal, context);
     }
@@ -690,6 +707,51 @@ export class WorldCouncilResolutionSystem {
       gamesParticipationJustification: proposal.gamesParticipationJustification,
       runtime: this.runtime,
     });
+  }
+
+  private getNuclearResponseSupportScore(nationId: string, aggressor: string, victim: string): number {
+    const relation = this.runtime.getRelationMemory?.(nationId, aggressor);
+    const personality = this.runtime.getLeaderPersonality?.(nationId);
+    const ownPower = this.runtime.getMilitaryStrength?.(nationId) ?? 1;
+    const enemyPower = this.runtime.getMilitaryStrength?.(aggressor) ?? 1;
+    return 20 + (relation?.hostility ?? 0) * 0.3 - (relation?.trust ?? 0) * 0.2
+      - (relation?.fear ?? 0) * 0.25 + (personality?.warTolerance ?? 50) * 0.2
+      + (this.runtime.areAllied?.(nationId, victim) ? 45 : 0)
+      - (this.runtime.areAllied?.(nationId, aggressor) ? 90 : 0)
+      + Math.min(30, 20 * ownPower / Math.max(1, enemyPower))
+      - (enemyPower > ownPower * 3 ? 45 : 0);
+  }
+
+  /** Coalition risk uses the very same leader, alliance, relation and power inputs as the eventual vote. */
+  estimateNuclearInterventionRisk(aggressor: string, victim: string, members: readonly string[]): number {
+    const coalitionPower = members.filter(id => id !== aggressor && id !== victim
+      && this.runtime.isNationActive?.(id) !== false
+      && this.runtime.canJoinNuclearResponse?.(id, aggressor) !== false
+      && this.getNuclearResponseSupportScore(id, aggressor, victim) >= 40)
+      .reduce((sum, id) => sum + (this.runtime.getMilitaryStrength?.(id) ?? 1), 0);
+    return Math.min(400, coalitionPower / Math.max(1, this.runtime.getMilitaryStrength?.(aggressor) ?? 1) * 100);
+  }
+
+  private resolveNuclearResponse(proposal: WorldCouncilResolutionProposal, context: WorldCouncilResolutionResolveContext): WorldCouncilResolutionResolveResult {
+    const aggressor = proposal.targetNationId;
+    const victim = proposal.secondaryTargetNationId;
+    if (!aggressor || !victim || aggressor === victim) return { proposal: { ...proposal, resolved: true, passed: false, votes: [] } };
+    const eligible = [...new Set([...context.members.map(m => m.nationId), victim])]
+      .filter(id => id !== aggressor && this.runtime.isNationActive?.(id) !== false && (id === victim || this.runtime.canJoinNuclearResponse?.(id, aggressor) !== false));
+    const votes = eligible.map(nationId => {
+      const score = this.getNuclearResponseSupportScore(nationId, aggressor, victim);
+      let support = nationId === victim || score >= 40;
+      if (nationId !== victim && this.runtime.isHumanNation?.(nationId)) {
+        // Missing interactive input never consents to a declaration of war.
+        support = this.runtime.requestHumanInfluenceVote?.({ nationId, proposal, targetNationId: aggressor,
+          secondaryTargetNationId: victim, suggestedSupport: false, suggestedInfluence: 0, maxInfluence: 0 })?.support ?? false;
+      }
+      return { nationId, support, influence: 1, supportScore: score };
+    });
+    const passed = votes.filter(v => v.support).length > eligible.length / 2;
+    return { proposal: { ...proposal, votes, voteSummary: summarizeInfluenceVotes(votes), passed, resolved: true,
+      participantNationIds: passed ? votes.filter(v => v.support).map(v => v.nationId) : [],
+      outcomeText: passed ? 'Collective response approved. Only supporting nations join the victim’s war.' : 'Collective military intervention rejected.' } };
   }
 
   private resolveFreeTradeAgreement(

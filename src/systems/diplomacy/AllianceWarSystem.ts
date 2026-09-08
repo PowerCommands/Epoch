@@ -38,7 +38,9 @@ export class AllianceWarSystem {
     private readonly diplomacyManager: DiplomacyManager,
     private readonly allianceManager: AllianceManager,
   ) {
-    this.diplomacyManager.onWarDeclared((attacker, defender) => this.handleWarDeclared(attacker, defender));
+    this.diplomacyManager.onWarDeclared((attacker, defender, metadata) => {
+      if (metadata.source !== 'nuclearResponse') this.handleWarDeclared(attacker, defender);
+    });
   }
 
   /**

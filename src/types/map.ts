@@ -1,4 +1,5 @@
 export enum TileType {
+  NuclearWaste = 'nuclear_waste',
   Ocean = 'ocean',
   Plains = 'plains',
   Forest = 'forest',
@@ -39,6 +40,7 @@ export interface Tile {
   x: number; // grid-koordinat (kolumn)
   y: number; // grid-koordinat (rad)
   type: TileType;
+  originalTerrain?: TileType;
   ownerId?: string; // referens till Nation.id; undefined = oclaimat
   resourceOwnerNationId?: string; // resource-only claim; does not make the tile city territory
   /** Reciprocal river edge links: E, SE, SW, W, NW, NE (bits 0–5). Geography only. */

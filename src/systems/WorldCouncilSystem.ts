@@ -130,6 +130,11 @@ export class WorldCouncilSystem {
     private readonly log?: WorldCouncilLogger,
   ) {}
 
+  estimateNuclearInterventionRisk(aggressor: string, victim: string): number {
+    if (!this.isActive() || !this.state) return 0;
+    return this.resolutionSystem?.estimateNuclearInterventionRisk(aggressor, victim, this.state.memberNationIds) ?? 0;
+  }
+
   hasCouncil(): boolean {
     return this.state !== null;
   }
@@ -822,8 +827,9 @@ export class WorldCouncilSystem {
       // Defer only meetings that need human input. The UI collects that input and
       // canonical resolution reads it back through the existing runtime boundary.
       const hasHumanInfluenceVote = meeting.proposals.some((proposal) =>
-        proposal.repealTargetEnactedResolutionId !== undefined
-        || this.resolutionSystem!.getDefinition(proposal.resolutionId)?.votingType === 'influence');
+        proposal.resolutionId === 'collective_nuclear_response'
+          ? humanMemberId !== proposal.targetNationId && humanMemberId !== proposal.secondaryTargetNationId
+          : proposal.repealTargetEnactedResolutionId !== undefined || this.resolutionSystem!.getDefinition(proposal.resolutionId)?.votingType === 'influence');
       const hasHumanDefenseSupportDonation = meeting.proposals.some((proposal) => {
         if (proposal.resolutionId !== 'defense_support' || humanMemberId === undefined) return false;
         const recipientNationId = proposal.targetNationId ?? meeting.emergencyTrigger?.targetNationId;
@@ -838,7 +844,7 @@ export class WorldCouncilSystem {
         && this.humanVotingDeferralEnabled?.() === true
       ) {
         // Hold resolution until the appropriate Council dialog submits input.
-        this.pendingHumanVoteMeetingId = meeting.id;
+        this.pendingHumanVoteMeetingId ??= meeting.id;
         return meeting;
       }
       return this.resolveMeetingProposals(meeting.id) ?? meeting;
@@ -848,7 +854,7 @@ export class WorldCouncilSystem {
 
   /** True while a created meeting is waiting for interactive human voting. */
   isMeetingPendingHumanVote(meetingId: number): boolean {
-    return this.pendingHumanVoteMeetingId === meetingId;
+    return this.state?.meetings.some(m => m.id === meetingId && m.proposals?.some(p => p.resolved !== true)) ?? false;
   }
 
   /** The meeting currently awaiting interactive human votes, if any. */
@@ -893,6 +899,7 @@ export class WorldCouncilSystem {
     if (meetingId === null) return null;
     this.pendingHumanVoteMeetingId = null;
     const resolved = this.resolveMeetingProposals(meetingId);
+    this.pendingHumanVoteMeetingId = this.state?.meetings.find(m => m.id !== meetingId && m.proposals?.some(p => p.resolved !== true))?.id ?? null;
     this.notifyChanged();
     if (resolved) this.notifyMeeting(resolved);
     return this.getState()?.meetings.find((meeting) => meeting.id === meetingId) ?? null;
@@ -901,6 +908,7 @@ export class WorldCouncilSystem {
   private createEmergencyMeetingProposals(
     emergencyTrigger: WorldCouncilEmergencyTrigger | undefined,
   ): WorldCouncilResolutionProposal[] | undefined {
+    if (emergencyTrigger?.eventType === 'nuclearAttack' && emergencyTrigger.aggressorNationId && emergencyTrigger.targetNationId) return [{ slot: 'host', resolutionId: 'collective_nuclear_response', proposerNationId: emergencyTrigger.targetNationId, targetNationId: emergencyTrigger.aggressorNationId, secondaryTargetNationId: emergencyTrigger.targetNationId }];
     if (!emergencyTrigger || emergencyTrigger.eventType !== 'warDeclared') return undefined;
     const aggressorNationId = emergencyTrigger.aggressorNationId;
     const targetNationId = emergencyTrigger.targetNationId;
@@ -939,6 +947,7 @@ export class WorldCouncilSystem {
 
     const repealTargets = this.getRepealableResolutions();
     const normalProposals = this.resolutionSystem.getEligibleDefinitions(this.getOrganizationKind(), proposerNationId)
+      .filter((definition) => definition.id !== 'collective_nuclear_response')
       .filter((definition) => definition.votingType !== 'special')
       .filter((definition) => definition.id !== excludedResolutionId)
       .filter((definition) => slot === 'host' || definition.id !== 'un_peacekeeping_mission')
@@ -1157,6 +1166,7 @@ export class WorldCouncilSystem {
       enactedResolutions: [...enactedResolutions, ...enacted],
     };
     for (const proposal of proposals) {
+      if (proposal.resolutionId === 'collective_nuclear_response') this.log?.(proposal.targetNationId ?? '', `[Strategic] ${this.getOrganizationName()} nuclear emergency: ${proposal.passed ? 'approved' : 'rejected'}; supporters=${proposal.participantNationIds?.join(',') ?? ''}`);
       if (proposal.resolutionId === 'games_of_nations_hosting') {
         const currentHostName = proposal.targetNationId
           ? this.nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId

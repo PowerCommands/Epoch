@@ -7,6 +7,7 @@ export interface TileYield {
 }
 
 export const TERRAIN_YIELDS: Record<TileType, TileYield> = {
+  [TileType.NuclearWaste]: { food: 0, production: 0, gold: 0 },
   [TileType.Plains]: { food: 2, production: 1, gold: 0 },
   [TileType.Forest]: { food: 1, production: 2, gold: 0 },
   [TileType.Mountain]: { food: 0, production: 1, gold: 0 },

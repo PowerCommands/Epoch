@@ -356,7 +356,7 @@ function getDefinition(event: HistoricalEvent): NewspaperEventDefinitionValue {
 type NewspaperEventDefinitionValue = (typeof NEWSPAPER_EVENT_DEFINITIONS)[NewspaperEventType];
 
 function resolveArticleImagePath(event: HistoricalEvent, fallbackPath: string, worldEra: Era): string {
-  if (event.type === 'warDeclared' || event.type === 'joinedWar' || event.type === 'worldWarStarted') {
+  if (event.type === 'nuclearAttack' || event.type === 'warDeclared' || event.type === 'joinedWar' || event.type === 'worldWarStarted') {
     return WAR_START_IMAGE_PATHS_BY_ERA[worldEra];
   }
   if (event.type !== 'wonderBuilt') return fallbackPath;

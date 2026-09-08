@@ -1,4 +1,4 @@
-import type { Tile } from '../../types/map';
+import { TileType, type Tile } from '../../types/map';
 import type { NaturalResourceDefinition } from '../../types/naturalResources';
 import { getNaturalResourceImprovementIdForTile } from '../../data/naturalResources';
 
@@ -17,7 +17,7 @@ export function getTileResourceQuantity(
   tile: Tile,
   lookup: NaturalResourceLookup,
 ): number {
-  if (!tile.resourceId) return 0;
+  if (tile.type === TileType.NuclearWaste || !tile.resourceId) return 0;
 
   const resource = lookup(tile.resourceId);
   if (!resource) return 0;

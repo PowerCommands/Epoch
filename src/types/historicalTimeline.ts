@@ -5,6 +5,7 @@ export type HistoricalEventType =
   | 'allianceFormed'
   | 'embassyEstablished'
   | 'tradeRelations'
+  | 'nuclearAttack'
   | 'warDeclared'
   | 'peaceSummitProposed'
   | 'peaceSummitRejected'

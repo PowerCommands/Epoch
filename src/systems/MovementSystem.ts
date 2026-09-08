@@ -110,6 +110,7 @@ export class MovementSystem {
 
   private canMoveUnitToInternal(unit: Unit, tileX: number, tileY: number, respectDiplomacy: boolean): boolean {
     if (unit.ownerId !== this.activeNationId) return false;
+    if (unit.unitType.id === 'atomic_bomb') return false;
     if (unit.carriedByUnitId !== undefined) return false;
     if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;
@@ -216,6 +217,7 @@ export class MovementSystem {
   ): boolean {
     if (!allowTransitOnly) return this.canMoveUnitToInternal(unit, tileX, tileY, respectDiplomacy);
     if (unit.ownerId !== this.activeNationId) return false;
+    if (unit.unitType.id === 'atomic_bomb') return false;
     if (unit.carriedByUnitId !== undefined) return false;
     if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;

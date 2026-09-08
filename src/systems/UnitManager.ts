@@ -1,3 +1,4 @@
+import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
 import { WARRIOR, canCarryUnitType, getUnitTypeById } from '../data/units';
@@ -206,7 +207,7 @@ export class UnitManager {
 
   canBoardUnit(unit: Unit, transport: Unit): boolean {
     if (unit.ownerId !== transport.ownerId) return false;
-    if (unit.unitType.isNaval || !transport.unitType.isNaval) return false;
+    if (unit.unitType.isNaval || (!transport.unitType.isNaval && transport.unitType.allowedCargoUnitIds === undefined)) return false;
     if (unit.carriedByUnitId !== undefined) return false;
     if (transport.carriedByUnitId !== undefined) return false;
     if (!canCarryUnitType(transport.unitType, unit.unitType)) return false;
@@ -285,7 +286,9 @@ export class UnitManager {
   resetMovementForOwner(ownerId: string): void {
     for (const unit of this.units.values()) {
       if (unit.ownerId !== ownerId) continue;
-      if (unit.carriedByUnitId !== undefined) continue;
+      // Launchable cargo needs its own action refreshed; normal transported units
+      // still receive movement through the existing disembark rules.
+      if (unit.carriedByUnitId !== undefined && !STRATEGIC_WEAPONS[unit.unitType.id]) continue;
       unit.movementPoints = this.getEffectiveMovementPoints(unit.unitType);
       this.notify({ unit, reason: 'movementReset' });
     }

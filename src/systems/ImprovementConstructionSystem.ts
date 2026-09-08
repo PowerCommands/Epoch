@@ -1,3 +1,4 @@
+import { cleanNuclearWaste } from './StrategicWeaponsSystem';
 import { getImprovementById, type TileImprovementDefinition } from '../data/improvements';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
 import type { City } from '../entities/City';
@@ -167,6 +168,7 @@ export class ImprovementConstructionSystem {
     if (unit === undefined) return 'invalidUnit';
     if (unit.tileX !== tile.x || unit.tileY !== tile.y || unit.ownerId !== construction.ownerId) return 'invalidUnit';
     if (tile.improvementId !== undefined) return 'invalidTile';
+    if (construction.improvementId === 'clean_nuclear_waste' && (tile.type !== TileType.NuclearWaste || tile.originalTerrain === undefined)) return 'invalidTile';
     const improvement = getImprovementById(construction.improvementId);
     if (improvement === undefined) return 'missingImprovement';
     if (!canUnitConstructImprovement(unit.unitType, improvement)) return 'invalidUnit';
@@ -244,7 +246,8 @@ export class ImprovementConstructionSystem {
       return;
     }
 
-    tile.improvementId = construction.improvementId;
+    if (construction.improvementId === 'clean_nuclear_waste') cleanNuclearWaste(tile);
+    else tile.improvementId = construction.improvementId;
     // Domestic improvements keep the legacy implicit ownership semantics, so
     // ordinary conquest/territory transfer behavior remains unchanged. Only a
     // genuinely separate economic owner needs persistent metadata.

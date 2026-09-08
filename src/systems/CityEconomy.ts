@@ -8,7 +8,7 @@ import { getImprovementById } from '../data/improvements';
 import { getNaturalResourceById } from '../data/naturalResources';
 import { getTerrainYield, type TileYield } from '../data/terrainYields';
 import { EMPTY_MODIFIERS, type ModifierSet } from '../types/modifiers';
-import type { MapData, Tile } from '../types/map';
+import { TileType, type MapData, type Tile } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 import { getTileResourceQuantity } from './resource/ResourceQuantity';
 
@@ -217,6 +217,7 @@ export function getWorkedTileYieldBreakdown(
 }
 
 export function getTileYield(tile: Tile): Omit<WorkedTileYield, 'tile'> {
+  if (tile.type === TileType.NuclearWaste) return { food: 0, production: 0, gold: 0, science: 0, culture: 0, happiness: 0 };
   const terrainYield = getTerrainYield(tile.type);
   const improvementYield = getTileImprovementYield(tile);
   const resourceYield = getTileNaturalResourceYield(tile);

@@ -206,6 +206,8 @@ export interface SavedUnit {
 }
 
 export interface SavedTile {
+  terrainType?: import('./map').TileType;
+  originalTerrain?: import('./map').TileType;
   riverConnections?: number;
   q: number;
   r: number;

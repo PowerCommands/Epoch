@@ -113,6 +113,7 @@ function definition(
 }
 
 export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, NewspaperEventDefinition>> = {
+  nuclearAttack: definition(120, NEWSPAPER_IMAGE_PATHS.worldWarStarted, 'the nuclear attack', () => 'NUCLEAR WEAPON DETONATED — WORLD FACES ESCALATION', c => c.event.text),
   stockMarketCrash: definition(100, NEWSPAPER_IMAGE_PATHS.stockMarketCrash, 'the market crash', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.stockMarketCrash.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),
   famine: definition(100, NEWSPAPER_IMAGE_PATHS.famine, 'the famine', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.famine.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),
   pandemic: definition(100, NEWSPAPER_IMAGE_PATHS.pandemic, 'the pandemic', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.pandemic.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),

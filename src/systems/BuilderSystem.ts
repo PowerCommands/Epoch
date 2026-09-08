@@ -84,7 +84,8 @@ export class BuilderSystem {
   canNationImproveLandTile(nationId: string, tile: Tile): boolean {
     if (this.isSeaTile(tile)) return false;
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
-    if (isBarbarianCamp(tile.buildingId)) return false; // camp locks its tile
+    if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return false; // active camp locks its tile
+    if (tile.type === TileType.NuclearWaste) return tile.ownerId === nationId && tile.originalTerrain !== undefined;
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return false;
     const isForeign = tile.ownerId !== undefined && tile.ownerId !== nationId;
     if (isForeign) {
@@ -214,8 +215,12 @@ export class BuilderSystem {
     }
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
-    if (isBarbarianCamp(tile.buildingId)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };
+    if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };
     if ((options.requireMovement ?? true) && movementUnit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
+    if (tile.type === TileType.NuclearWaste) {
+      if (tile.ownerId !== builderUnit.ownerId || !tile.originalTerrain || builderUnit.unitType.id !== 'worker') return { canBuild: false, reason: 'Worker must clean owned contaminated land' };
+      return this.buildablePreview(getImprovementById('clean_nuclear_waste')!, builderUnit);
+    }
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
     if (!canUnitEnterTile(movementUnit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
     if (tile.resourceId !== undefined && !this.isResourceVisibleToNation(builderUnit.ownerId, tile.resourceId)) {
@@ -364,6 +369,7 @@ export class BuilderSystem {
   }
 
   private resolveImprovementForTile(tile: Tile): TileImprovementDefinition | undefined {
+    if (tile.type === TileType.NuclearWaste) return getImprovementById('clean_nuclear_waste');
     const resourceImprovement = this.getResourceImprovement(tile);
     return resourceImprovement ?? getImprovementForTileType(tile.type);
   }

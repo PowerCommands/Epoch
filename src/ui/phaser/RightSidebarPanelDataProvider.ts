@@ -1,3 +1,4 @@
+import { getNuclearCapability } from '../../systems/ai/AIStrategicWeapons';
 import type { WorldCouncilResolutionId } from '../../types/worldCouncil';
 import { buildWorldOverviewContent, type WorldOverviewCategory } from './WorldOverviewContent';
 import { ALL_BUILDINGS, GRAND_STADIUM, getBuildingById } from '../../data/buildings';
@@ -1178,9 +1179,11 @@ export class RightSidebarPanelDataProvider {
       textRow(`HP: ${unit.health}/${unit.unitType.baseHealth}`),
       progressRow('Health', unit.health, unit.unitType.baseHealth),
       textRow(`Strength: ${unit.unitType.baseStrength}`),
-      textRow(`Range: ${unit.unitType.range ?? 1}`),
+      textRow(`Range: ${unit.unitType.id === 'atomic_bomb' ? this.unitManager.getTransportForUnit(unit)?.unitType.range ?? 0 : unit.unitType.range ?? 1}`),
       textRow(`Movement: ${unit.movementPoints}/${unit.maxMovementPoints}`),
     ];
+    if (unit.unitType.description) rows.push(textRow(unit.unitType.description, true));
+    if (unit.unitType.cargoCapacity) rows.push(textRow(`Cargo: ${unit.cargoUnitIds.length}/${unit.unitType.cargoCapacity}. Carries: ${(unit.unitType.allowedCargoUnitIds ?? unit.unitType.allowedCargoCategories ?? []).join(', ')}`));
     if (unit.improvementCharges !== undefined) {
       rows.push(textRow(`Improvements left: ${unit.improvementCharges}`));
     }
@@ -1221,6 +1224,7 @@ export class RightSidebarPanelDataProvider {
         title: 'Nation',
         rows: [
           textRow(`${nation.name}${isHuman ? ' (You)' : ''}`, false, true, nation.color),
+          ...(isHuman ? [textRow(`Nuclear arsenal: ${getNuclearCapability(nationId, this.unitManager, this.cityManager).stockpile} weapons; ${getNuclearCapability(nationId, this.unitManager, this.cityManager).ready} based for launch`)] : []),
           ...(era ? [textRow(`Era: ${formatEraLabel(era)}`)] : []),
         ],
       },
@@ -2666,6 +2670,7 @@ export class RightSidebarPanelDataProvider {
       textRow(`Border pressure: ${formatBorderPressureLevel(borderPressureLevel)}`),
       textRow(`Military balance: ${formatMilitaryComparison(militaryComparison)}`),
       textRow(`Threat level: ${formatThreatLevel(threatLevel)}`),
+      ...(this.worldCouncilSystem?.getState()?.meetings.some(meeting => meeting.emergencyTrigger?.eventType === 'nuclearAttack' && meeting.emergencyTrigger.aggressorNationId === targetNationId) ? [textRow('Nuclear use recorded by the global council', true)] : []),
       textRow(`Final attitude: ${formatAttitude(evaluation?.attitude ?? 'neutral')}`),
     ];
   }

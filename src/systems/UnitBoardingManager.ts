@@ -100,6 +100,9 @@ export class UnitBoardingManager {
     const passengerTile = this.getTile(passenger.tileX, passenger.tileY);
     const transportTile = this.getTile(transport.tileX, transport.tileY);
     if (!passengerTile || !transportTile) return false;
+    if (transport.unitType.allowedCargoUnitIds !== undefined) {
+      return this.gridSystem.getDistance({ x: passenger.tileX, y: passenger.tileY }, { x: transport.tileX, y: transport.tileY }) <= 1;
+    }
     if (!isWaterTile(transportTile)) return false;
 
     if (passenger.tileX === transport.tileX && passenger.tileY === transport.tileY) {

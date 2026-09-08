@@ -1,3 +1,4 @@
+import { getNuclearCapability } from './AIStrategicWeapons';
 import type { UnitManager } from '../UnitManager';
 import type { CityManager } from '../CityManager';
 import type { DiplomacyManager } from '../DiplomacyManager';
@@ -156,7 +157,9 @@ export class AIMilitaryEvaluationSystem {
 
   /** Detailed breakdown of {@link getDefensiveWarPowerAgainst}, for logging. */
   getDefensiveWarPowerBreakdown(attackerNationId: string, defenderNationId: string): DefensiveWarPowerBreakdown {
-    const defenderPower = this.getMilitaryStrength(defenderNationId).totalStrength;
+    const deterrent = getNuclearCapability(defenderNationId, this.unitManager, this.cityManager).deterrence;
+    const mutualNuclearRisk = getNuclearCapability(attackerNationId, this.unitManager, this.cityManager).ready > 0 ? 1.5 : 1;
+    const defenderPower = this.getMilitaryStrength(defenderNationId).totalStrength + deterrent * mutualNuclearRisk;
     const allyNationId = this.allianceManager?.getAllyNationId(defenderNationId) ?? null;
     const peacekeepingPower = Math.max(0, this.peacekeepingDefensivePowerProvider(
       attackerNationId,

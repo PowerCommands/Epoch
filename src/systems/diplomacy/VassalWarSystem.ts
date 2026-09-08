@@ -80,6 +80,7 @@ export class VassalWarSystem {
     defenderNationId: string,
     _metadata: WarDeclarationMetadata,
   ): void {
+    if (_metadata.source === 'nuclearResponse') return; // Participation is individual in this emergency.
     // A host controls offensive policy: all direct vassals follow its declaration.
     this.joinDirectVassals(attackerNationId, defenderNationId, 'hostDeclaredWar');
     // An attack on the host automatically activates all direct vassals defensively.

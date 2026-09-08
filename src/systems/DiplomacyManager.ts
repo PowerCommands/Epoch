@@ -179,7 +179,7 @@ export interface ActiveWarSummary {
 type PeaceProposedListener = (proposal: PeaceProposal) => void;
 type PeaceAcceptedListener = (nationA: string, nationB: string) => void;
 type PeaceDeclinedListener = (nationA: string, nationB: string) => void;
-export type WarDeclarationSource = 'standard' | 'scenarioHistoricalEvent' | 'vassalObligation';
+export type WarDeclarationSource = 'standard' | 'scenarioHistoricalEvent' | 'vassalObligation' | 'nuclearResponse';
 export interface WarDeclarationMetadata {
   source: WarDeclarationSource;
 }
@@ -1179,6 +1179,12 @@ export class DiplomacyManager {
     for (const listener of this.economicPressureChangedListeners) listener(event);
   }
 
+  joinCollectiveNuclearResponse(nationId: string, aggressorId: string, victimId: string): boolean {
+    if (nationId === victimId || nationId === aggressorId || this.getState(victimId, aggressorId) !== 'WAR') return false;
+    if (this.getState(nationId, aggressorId) === 'WAR') return true;
+    return this.transitionToWar(nationId, aggressorId, false, { source: 'nuclearResponse' });
+  }
+
   declareWar(aggressorId: string, targetId: string): boolean {
     return this.transitionToWar(aggressorId, targetId, false, { source: 'standard' });
   }
@@ -1277,7 +1283,7 @@ export class DiplomacyManager {
       // for WAR so peace-duration logic still advances instead of freezing.
       lastWarDeclarationTurn:
         this.turnManager?.getCurrentRound() ?? previous?.lastWarDeclarationTurn ?? null,
-      aggressorNationId: aggressorId,
+      aggressorNationId: metadata.source === 'nuclearResponse' ? targetId : aggressorId,
       // A forced declaration supersedes blockers which would contradict WAR.
       peaceTreatyUntilTurn: bypassRestrictions ? null : previous?.peaceTreatyUntilTurn,
       ceasefireUntilTurn: bypassRestrictions ? null : previous?.ceasefireUntilTurn,
@@ -1859,9 +1865,9 @@ export class DiplomacyManager {
   }
 
   /** Diplomatic penalty applied by a passed condemnation resolution. */
-  recordWorldCouncilCondemnation(memberNationId: string, condemnedNationId: string): void {
+  recordWorldCouncilCondemnation(memberNationId: string, condemnedNationId: string, reason = 'World Council condemnation'): void {
     if (memberNationId === condemnedNationId) return;
-    for (const listener of this.slightListeners) listener(condemnedNationId, memberNationId, 'World Council condemnation');
+    for (const listener of this.slightListeners) listener(condemnedNationId, memberNationId, reason);
     const relation = this.getRelation(memberNationId, condemnedNationId);
     this.setMemoryValues(memberNationId, condemnedNationId, {
       trust: clampDiplomacyValue(relation.trust - 15),

@@ -1,3 +1,5 @@
+import { StrategicWeaponsSystem } from './StrategicWeaponsSystem';
+import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import { getAllegianceType } from '../entities/UnitType';
@@ -142,6 +144,7 @@ export function getForeignInsurgentStrengthMultiplier(
  * system bara validerar och applicerar stridsregler.
  */
 export class CombatSystem {
+  readonly strategicWeapons: StrategicWeaponsSystem;
   private readonly unitManager: UnitManager;
   private readonly turnManager: TurnManager;
   private readonly cityManager: CityManager;
@@ -183,6 +186,7 @@ export class CombatSystem {
     // instrumentation: it never influences combat resolution or gameplay.
     private readonly conquestDiagnosticLog?: (nationId: string, message: string) => void,
   ) {
+    this.strategicWeapons = new StrategicWeaponsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound());
     this.unitManager = unitManager;
     this.turnManager = turnManager;
     this.cityManager = cityManager;
@@ -271,6 +275,7 @@ export class CombatSystem {
       return false;
     }
     if (this.isUnitCombatBlocked(attacker)) return false;
+    if (STRATEGIC_WEAPONS[attacker.unitType.id]) return this.strategicWeapons.launch(attacker, tileX, tileY);
     if (isEmbarked(attacker, this.mapData)) return false;
 
     // 2. Must have movement points

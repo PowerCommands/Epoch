@@ -1,3 +1,4 @@
+import { describeStrategicWeapon, STRATEGIC_WEAPONS } from './strategicWeapons';
 import type { AllegianceType, FoodUpkeep, UnitCategory, UnitType } from '../entities/UnitType';
 import type { Era } from './technologies';
 import { getEraIndex } from './eraTimeline';
@@ -16,6 +17,7 @@ interface UnitDefinitionInput {
   foodUpkeep?: FoodUpkeep;
   upgradeToUnitId?: string;
   cargoCapacity?: number;
+  allowedCargoUnitIds?: readonly string[];
   allowedCargoCategories?: readonly UnitCategory[];
   combatStrength: number;
   rangedStrength?: number;
@@ -71,13 +73,14 @@ function unit(input: UnitDefinitionInput): UnitType {
     allegianceType: input.allegianceType,
     // All military units can raze improvements; Renaissance-era and later
     // military units can also raze buildings. Non-military units get neither.
-    canDestroyImprovement: military ? true : undefined,
-    canDestroyBuilding: military && getEraIndex(input.era) >= RENAISSANCE_ERA_INDEX ? true : undefined,
+    canDestroyImprovement: military && !STRATEGIC_WEAPONS[input.id] ? true : undefined,
+    canDestroyBuilding: military && !STRATEGIC_WEAPONS[input.id] && getEraIndex(input.era) >= RENAISSANCE_ERA_INDEX ? true : undefined,
     productionCost: input.cost,
     upkeepGold: input.upkeepGold ?? getDefaultUpkeepGold(input.category, input.era),
     foodUpkeep: input.foodUpkeep ?? getDefaultFoodUpkeep(input),
     upgradeToUnitId: input.upgradeToUnitId,
     cargoCapacity: input.cargoCapacity,
+    allowedCargoUnitIds: input.allowedCargoUnitIds,
     allowedCargoCategories: input.allowedCargoCategories,
     movementPoints: input.movement,
     baseHealth: input.combatStrength > 0 ? 100 : 50,
@@ -203,21 +206,21 @@ export const ANTI_AIRCRAFT_GUN = unit({ id: 'anti_aircraft_gun', name: 'Anti-Air
 export const PARATROOPER = unit({ id: 'paratrooper', name: 'Paratrooper', era: 'atomic', cost: 375, combatStrength: 65, movement: 2, category: 'melee', upkeepGold: 9, upgradeToUnitId: 'xcom_squad' });
 export const TANK = unit({ id: 'tank', name: 'Tank', era: 'atomic', cost: 375, combatStrength: 102, movement: 5, category: 'mounted', requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 9, upgradeToUnitId: 'modern_armor' });
 export const FIGHTER = unit({ id: 'fighter', name: 'Fighter', era: 'atomic', cost: 375, combatStrength: 0, rangedStrength: 45, range: 8, movement: 2, category: 'air', requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 15, upgradeToUnitId: 'jet_fighter' });
-export const BOMBER = unit({ id: 'bomber', name: 'Bomber', era: 'atomic', cost: 375, combatStrength: 0, rangedStrength: 65, range: 10, movement: 2, category: 'air', requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 9, upgradeToUnitId: 'stealth_bomber' });
+export const BOMBER = unit({ id: 'bomber', cargoCapacity: 1, allowedCargoUnitIds: ['atomic_bomb'], description: `Carries one Atomic Bomb. Select Nuclear Payload to drop a radius ${STRATEGIC_WEAPONS.atomic_bomb.radius} nuclear blast.`, canTraverseWater: true, ignoresUnitCollision: true, name: 'Bomber', era: 'atomic', cost: 375, combatStrength: 0, rangedStrength: 65, range: 10, movement: 2, category: 'air', requiredResource: { resourceId: 'oil', amount: 1 }, upkeepGold: 9, upgradeToUnitId: 'stealth_bomber' });
 export const ANTI_TANK_GUN = unit({ id: 'anti_tank_gun', name: 'Anti-Tank Gun', era: 'atomic', cost: 300, combatStrength: 50, movement: 2, category: 'ranged', upkeepGold: 6, upgradeToUnitId: 'bazooka' }); // raised: atomic-era specialist was underpriced, 3→6
 export const ROCKET_ARTILLERY = unit({ id: 'rocket_artillery', name: 'Rocket Artillery', era: 'atomic', cost: 425, combatStrength: 45, rangedStrength: 60, range: 3, movement: 2, category: 'siege', upkeepGold: 9 });
 export const MOBILE_SAM = unit({ id: 'mobile_sam', name: 'Mobile SAM', era: 'atomic', cost: 425, combatStrength: 75, range: 2, movement: 3, category: 'ranged', upkeepGold: 9 });
-export const NUCLEAR_SUBMARINE = unit({ id: 'nuclear_submarine', name: 'Nuclear Submarine', era: 'atomic', cost: 425, combatStrength: 53, rangedStrength: 85, range: 12, movement: 6, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 15 });
-export const ATOMIC_BOMB = unit({ id: 'atomic_bomb', name: 'Atomic Bomb', era: 'atomic', cost: 600, combatStrength: 0, range: 10, movement: 2, category: 'air', requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 30 });
+export const NUCLEAR_SUBMARINE = unit({ id: 'nuclear_submarine', cargoCapacity: 3, allowedCargoUnitIds: ['guided_missile', 'nuclear_missile'], description: 'Carries 3 Guided or Nuclear Missiles. Select cargo to launch. Mobile nuclear deterrent.',  name: 'Nuclear Submarine', era: 'atomic', cost: 425, combatStrength: 53, rangedStrength: 85, range: 12, movement: 6, category: 'naval_ranged', isNaval: true, requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 15 });
+export const ATOMIC_BOMB = unit({ id: 'atomic_bomb', ignoresUnitCollision: true, description: describeStrategicWeapon('atomic_bomb'), name: 'Atomic Bomb', era: 'atomic', cost: 600, combatStrength: 0, range: 10, movement: 2, category: 'air', requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 30 });
 export const HELICOPTER_GUNSHIP = unit({ id: 'helicopter_gunship', name: 'Helicopter Gunship', era: 'atomic', cost: 425, combatStrength: 60, movement: 6, category: 'mounted', upkeepGold: 9, upgradeToUnitId: 'giant_death_robot' });
 export const BAZOOKA = unit({ id: 'bazooka', name: 'Bazooka', era: 'atomic', cost: 375, combatStrength: 90, rangedStrength: 85, range: 1, movement: 2, category: 'ranged', upkeepGold: 6 }); // raised: atomic-era specialist was underpriced, 3→6
 
 export const MECHANIZED_INFANTRY = unit({ id: 'mechanized_infantry', name: 'Mechanized Infantry', era: 'information', cost: 375, combatStrength: 162, movement: 3, category: 'melee', upkeepGold: 9 });
 export const MODERN_ARMOR = unit({ id: 'modern_armor', name: 'Modern Armor', era: 'information', cost: 425, combatStrength: 200, movement: 5, category: 'mounted', upkeepGold: 15});
 export const JET_FIGHTER = unit({ id: 'jet_fighter', name: 'Jet Fighter', era: 'information', cost: 425, combatStrength: 0, rangedStrength: 75, range: 10, movement: 2, category: 'air', requiredResource: { resourceId: 'aluminum', amount: 1 }, upkeepGold: 15 });
-export const STEALTH_BOMBER = unit({ id: 'stealth_bomber', name: 'Stealth Bomber', era: 'information', cost: 425, combatStrength: 0, rangedStrength: 85, range: 20, movement: 2, category: 'air', requiredResource: { resourceId: 'aluminum', amount: 1 }, upkeepGold: 15 });
-export const GUIDED_MISSILE = unit({ id: 'guided_missile', name: 'Guided Missile', era: 'information', cost: 150, combatStrength: 0, rangedStrength: 60, range: 8, movement: 2, category: 'air', upkeepGold: 30, foodUpkeep: 0 }); // Stored one-shot ordnance, not standing forces
-export const NUCLEAR_MISSILE = unit({ id: 'nuclear_missile', name: 'Nuclear Missile', era: 'information', cost: 1000, combatStrength: 0, range: 12, movement: 2, category: 'air', requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 30 });
+export const STEALTH_BOMBER = unit({ id: 'stealth_bomber', cargoCapacity: 1, allowedCargoUnitIds: ['atomic_bomb'], description: `Carries one Atomic Bomb. Select Nuclear Payload to drop a radius ${STRATEGIC_WEAPONS.atomic_bomb.radius} nuclear blast.`, canTraverseWater: true, ignoresUnitCollision: true, name: 'Stealth Bomber', era: 'information', cost: 425, combatStrength: 0, rangedStrength: 85, range: 20, movement: 2, category: 'air', requiredResource: { resourceId: 'aluminum', amount: 1 }, upkeepGold: 15 });
+export const GUIDED_MISSILE = unit({ id: 'guided_missile', ignoresUnitCollision: true, description: describeStrategicWeapon('guided_missile'), name: 'Guided Missile', era: 'information', cost: 150, combatStrength: 0, rangedStrength: 60, range: 8, movement: 2, category: 'air', upkeepGold: 30, foodUpkeep: 0 }); // Stored one-shot ordnance, not standing forces
+export const NUCLEAR_MISSILE = unit({ id: 'nuclear_missile', ignoresUnitCollision: true, description: describeStrategicWeapon('nuclear_missile'), name: 'Nuclear Missile', era: 'information', cost: 1000, combatStrength: 0, range: 12, movement: 2, category: 'air', requiredResource: { resourceId: 'uranium', amount: 1 }, upkeepGold: 30 });
 export const XCOM_SQUAD = unit({ id: 'xcom_squad', name: 'XCOM Squad', era: 'information', cost: 400, combatStrength: 100, movement: 2, category: 'melee', upkeepGold: 9 });
 export const GIANT_DEATH_ROBOT = unit({ id: 'giant_death_robot', name: 'Giant Death Robot', era: 'information', cost: 425, combatStrength: 150, movement: 5, category: 'mounted', upkeepGold: 30 });
 export const MISSILE_CRUISER = unit({ id: 'missile_cruiser', name: 'Missile Cruiser', era: 'information', cost: 425, combatStrength: 83, rangedStrength: 100, range: 13, movement: 7, category: 'naval_ranged', isNaval: true, upkeepGold: 15, foodUpkeep: 3 }); // raised: top-tier naval ranged should match battleship/carrier tier, 9→15. High food upkeep: major capital ship
@@ -284,5 +287,7 @@ export function hasCargoCapacity(unitType: UnitType): boolean {
 
 export function canCarryUnitType(transportType: UnitType, passengerType: UnitType): boolean {
   return hasCargoCapacity(transportType)
-    && (transportType.allowedCargoCategories ?? []).includes(passengerType.category);
+    && (transportType.allowedCargoUnitIds !== undefined
+      ? transportType.allowedCargoUnitIds.includes(passengerType.id)
+      : (transportType.allowedCargoCategories ?? []).includes(passengerType.category));
 }

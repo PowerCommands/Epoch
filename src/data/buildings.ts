@@ -165,9 +165,11 @@ export const NUCLEAR_POWER_PLANT = building({ id: 'nuclear_plant', name: 'Nuclea
 export const NUCLEAR_PLANT = NUCLEAR_POWER_PLANT;
 export const HYDRO_PLANT = building({ id: 'hydro_plant', name: 'Hydro Plant', era: 'modern', cost: 500, maintenance: 3, modifiers: { productionPerTurn: 3, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.hydroPlant }, description: `River-tile production approximated as +3 production, +1 happiness. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.hydroPlant}.` });
 export const RECYCLING_CENTER = building({ id: 'recycling_center', name: 'Recycling Center', era: 'information', cost: 300, maintenance: 2, modifiers: { productionPerTurn: 2, happinessPerTurn: 1 }, description: 'Aluminum source effect approximated as +2 production' });
-export const BOMB_SHELTER = building({ id: 'bomb_shelter', name: 'Bomb Shelter', era: 'atomic', cost: 300, maintenance: 0, description: 'Nuke damage reduction omitted', modifiers: {} });
+export const BOMB_SHELTER = building({ id: 'bomb_shelter', name: 'Bomb Shelter', era: 'atomic', cost: 300, maintenance: 0, description: 'Reduces nuclear damage to city health, population, buildings and units on the city tile by 50%. Does not protect terrain or stop Guided Missiles.', modifiers: {} });
 export const POLICE_STATION = building({ id: 'police_station', name: 'Police Station', era: 'modern', cost: 300, maintenance: 2, description: 'Order brings peace and happiness to the people' , modifiers: { happinessPerTurn: 5 }});
 export const SPACESHIP_FACTORY = building({ id: 'spaceship_factory', name: 'Spaceship Factory', era: 'information', cost: 360, maintenance: 3, modifiers: { productionPercent: 10, happinessPerTurn: 5 }, description: 'Spaceship-part production approximated as +10% production' });
+
+export const NUCLEAR_SILO = building({ id: 'nuclear_silo', placement: 'city', name: 'Nuclear Silo', era: 'information', cost: 450, maintenance: 8, description: 'Land launch base for Nuclear Missiles stationed on this city tile. Must be working to launch. Missiles consume Uranium and obey the Non-Proliferation Treaty.', modifiers: {} });
 
 export const ALL_BUILDINGS: BuildingType[] = [
   MONUMENT, GRANARY, SHRINE, BARRACKS, WALLS, WATER_MILL, STONE_WORKS, SEWERS,
@@ -176,7 +178,7 @@ export const ALL_BUILDINGS: BuildingType[] = [
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
   MILITARY_ACADEMY, ARSENAL, FACTORY, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
   BROADCAST_TOWER, STADIUM, MILITARY_BASE, MEDICAL_LAB,
-  RESEARCH_LAB, SOLAR_PLANT, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, POLICE_STATION, SPACESHIP_FACTORY,
+  RESEARCH_LAB, SOLAR_PLANT, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, NUCLEAR_SILO, POLICE_STATION, SPACESHIP_FACTORY,
 ];
 
 /**

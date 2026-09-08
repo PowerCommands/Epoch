@@ -69,6 +69,16 @@ export class RangedPreviewRenderer {
     this.fillPolygon(this.curveGfx, arrow);
   }
 
+  showArea(tiles: readonly { x: number; y: number }[]): void {
+    this.curveGfx.fillStyle(TARGET_COLOR, 0.28);
+    this.curveGfx.lineStyle(2, TARGET_COLOR, 0.8);
+    for (const tile of tiles) {
+      const outline = this.insetOutline(tile.x, tile.y, 2);
+      this.fillPolygon(this.curveGfx, outline);
+      this.strokePolygon(this.curveGfx, outline);
+    }
+  }
+
   clearCurve(): void {
     this.curveGfx.clear();
   }
