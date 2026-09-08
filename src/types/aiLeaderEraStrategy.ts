@@ -15,7 +15,8 @@ export type AILeaderEraStrategyId =
   | 'civicDevelopment'
   | 'culturalDominance'
   | 'tallGrowth'
-  | 'seaWolf';
+  | 'seaWolf'
+  | (string & {}); // Scenario-authored reusable variants.
 
 export interface AILeaderEraProductionWeights {
   settler: number;

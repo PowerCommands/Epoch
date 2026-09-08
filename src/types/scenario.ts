@@ -268,6 +268,7 @@ export type ScenarioHistoricalEvent =
   | ScenarioTurningPointHistoricalEvent;
 
 export interface ScenarioData {
+  leaderConfiguration?: import('../data/leaderConfiguration').LeaderConfiguration;
   meta: ScenarioMeta;
   map: ScenarioMap;
   nations: ScenarioNation[];

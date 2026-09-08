@@ -1,3 +1,4 @@
+import { getLeaderConfiguration } from '../data/leaderConfiguration';
 import { normalizeRivers, riverMask } from './geography/Rivers';
 import type { MapData } from '../types/map';
 import type {
@@ -344,6 +345,7 @@ export class SaveLoadService {
       generatedScenario,
       humanNationId,
       activeNationIds: nationManager.getAllNations().map((nation) => nation.id),
+      leaderConfiguration: JSON.parse(JSON.stringify(getLeaderConfiguration())),
       leaderSelections: (() => {
         const selections = getActiveLeaderSelections();
         return Object.keys(selections).length > 0 ? selections : undefined;

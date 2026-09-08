@@ -1,3 +1,4 @@
+import { profileOverride } from './leaderConfiguration';
 import type {
   AIMilitaryDoctrine,
   AIMilitaryDoctrineMillitaryBudget,
@@ -81,6 +82,8 @@ export const STEPPE_HORDE_DOCTRINE: AIMilitaryDoctrine = {
 
 export const NAVAL_POWER_DOCTRINE: AIMilitaryDoctrine = {
   id: 'navalPower',
+  navalExpeditions: true,
+  navalSaturationControl: true,
   name: 'Naval Power',
   description: 'Strong navy with meaningful modernization and a balanced land component.',
   modernizationBias: 1.2,
@@ -500,5 +503,5 @@ export const AI_MILITARY_DOCTRINES: readonly AIMilitaryDoctrine[] = [
 ];
 
 export function getAIMilitaryDoctrineById(id: string | undefined): AIMilitaryDoctrine {
-  return AI_MILITARY_DOCTRINES.find((doctrine) => doctrine.id === id) ?? BALANCED_DOCTRINE;
+  return profileOverride('doctrines', id ?? DEFAULT_AI_MILITARY_DOCTRINE_ID) ?? AI_MILITARY_DOCTRINES.find((doctrine) => doctrine.id === id) ?? BALANCED_DOCTRINE;
 }

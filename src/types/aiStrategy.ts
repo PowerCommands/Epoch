@@ -7,6 +7,8 @@
 export interface AIStrategy {
   readonly id: string;
   readonly name: string;
+  /** Optional designer-facing explanation; does not affect strategy selection. */
+  readonly description?: string;
 
   readonly military: {
     readonly maxUnits: number;

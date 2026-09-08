@@ -80,4 +80,5 @@ export function describeGossipAgenda(strategyId: string | undefined, agendaId: s
     case 'poland_shall_endure': return 'We prepare to defend our sovereignty and place great value on allies who keep their commitments.';
     case 'balanced': return 'We are keeping our options open and strengthening the nation where needed.';
   }
+  return getAINationalAgendaById(agendaId).description;
 }

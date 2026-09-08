@@ -1,3 +1,4 @@
+import { getLeaderConfiguration } from './leaderConfiguration';
 import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDeclaration';
 
 /**
@@ -227,7 +228,7 @@ export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhra
   },
 };
 
-const FALLBACK_WAR_DECLARATIONS: WarDeclarationPhrases = {
+export const FALLBACK_WAR_DECLARATIONS: WarDeclarationPhrases = {
   conquest: ['Your weakness offers an opportunity we will not ignore.', 'Our forces will take the ground that victory places within reach.'],
   hostility: ['Our grievances can no longer be settled peacefully. We are at war.', 'You have exhausted every peaceful alternative. We now answer with force.'],
   threat: ['Your preparations leave us no safe choice but to strike first.', 'We will act now rather than wait for your threat to grow.'],
@@ -236,7 +237,7 @@ const FALLBACK_WAR_DECLARATIONS: WarDeclarationPhrases = {
 };
 
 export function getLeaderWarDeclarationPhrases(leaderId: string): WarDeclarationPhrases {
-  return LEADER_WAR_DECLARATIONS[leaderId] ?? FALLBACK_WAR_DECLARATIONS;
+  return getLeaderConfiguration().warDeclarations?.[leaderId] ?? LEADER_WAR_DECLARATIONS[leaderId] ?? FALLBACK_WAR_DECLARATIONS;
 }
 
 /** Stable selection: identical game facts reproduce the same line after load/autorun. */

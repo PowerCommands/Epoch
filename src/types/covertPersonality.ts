@@ -16,7 +16,8 @@ export type CovertPersonalityId =
   | 'paranoid'
   | 'fanatic'
   | 'merchant'
-  | 'pirate';
+  | 'pirate'
+  | (string & {}); // Scenario-authored reusable variants.
 
 export interface CovertPersonality {
   readonly id: CovertPersonalityId;

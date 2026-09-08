@@ -47,6 +47,10 @@ export interface DoctrineProductionScoreBreakdown {
 }
 
 export interface AIMilitaryDoctrine {
+  /** Enables naval expedition targeting, formerly tied to the navalPower ID. */
+  readonly navalExpeditions?: boolean;
+  /** Reduces fleet production urgency when coastal/war needs are saturated. */
+  readonly navalSaturationControl?: boolean;
   readonly id: string;
   readonly name: string;
   readonly description: string;

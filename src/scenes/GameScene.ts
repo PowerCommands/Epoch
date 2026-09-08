@@ -1,3 +1,4 @@
+import { setLeaderConfiguration } from '../data/leaderConfiguration';
 import Phaser from 'phaser';
 import { RiverRenderer } from '../systems/RiverRenderer';
 import { TileMap } from '../systems/TileMap';
@@ -532,6 +533,7 @@ export class GameScene extends Phaser.Scene {
     const scenarioJson = (embeddedGeneratedScenario?.scenario ?? this.cache.json.get(data.mapKey)) as ScenarioData | undefined;
     if (!scenarioJson) throw new Error(`Scenario could not be loaded: ${data.mapKey}`);
     if (embeddedGeneratedScenario !== data.generatedScenario) data = { ...data, generatedScenario: embeddedGeneratedScenario };
+    setLeaderConfiguration(data.savedState?.leaderConfiguration ?? scenarioJson.leaderConfiguration);
     const replacementResult = data.savedState
       ? { scenario: scenarioJson, idMap: {} }
       : materializeScenarioNationReplacements(scenarioJson, data.scenarioNationReplacements);

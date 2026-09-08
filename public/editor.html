@@ -665,6 +665,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     </div>
 
     <div class="toolbar-actions">
+      <button id="leaders-btn" type="button">Leaders &amp; AI</button>
       <button id="magic-wand-btn" type="button" title="Auto-paint terrain from the background image">&#10024; Magic Wand (Auto Paint)</button>
       <button id="save-btn">Download scenario JSON</button>
       <button id="save-custom-btn">Save As My Own Scenario</button>
@@ -1024,6 +1025,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 
 <!-- Shared natural-resource generator, bundled from src/editor for reuse in the editor. -->
 <script src="./editor/epoch-editor-resources.js"></script>
+<script src="./editor/epoch-leader-editor.js"></script>
 <script src="./editor/asset-viewer.js"></script>
 <script>
 const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert','beach','meadow'];
@@ -5720,7 +5722,7 @@ function validateScenarioHistoricalEvents(activeIds) {
 }
 
 function validateScenario() {
-  const warnings = [];
+  const warnings = [...window.EpochLeaderEditor.validate(scenario)];
   const registryIds = new Set(nationRegistry.nations.map(nation => nation.nationId));
   const activeIds = new Set(scenario.nations.map(nation => nation.id));
   const knownTechnologyIds = technologyManifest.technologies.length > 0
@@ -5805,6 +5807,15 @@ function showValidationWarnings(warnings) {
   box.style.display = '';
   box.textContent = `Soft validation warnings:\n- ${warnings.join('\n- ')}\n\nExport is still allowed.`;
 }
+
+document.getElementById('leaders-btn').addEventListener('click', () => {
+  if (!scenario) return;
+  window.EpochLeaderEditor.open(scenario, () => {
+    buildNationList();
+    writeEditorAutosave();
+    showValidationWarnings(validateScenario());
+  });
+});
 
 document.getElementById('save-btn').addEventListener('click', () => {
   showValidationWarnings(validateScenario());

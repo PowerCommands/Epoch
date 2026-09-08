@@ -10,7 +10,8 @@ export type AINationalAgendaId =
   | 'homeland_defense'
   | 'france_libre'
   | 'new_roman_empire'
-  | 'poland_shall_endure';
+  | 'poland_shall_endure'
+  | (string & {}); // Scenario-authored reusable variants.
 
 export interface AINationalAgenda {
   readonly id: AINationalAgendaId;

@@ -3252,7 +3252,7 @@ export class AISystem {
 
   private getNavalExpeditionTarget(nationId: string, homeUnderThreat: boolean): NavalExpeditionTarget | null {
     const doctrine = getLeaderMilitaryDoctrineByNationId(nationId);
-    if (doctrine.id !== 'navalPower') return null;
+    if (!doctrine.navalExpeditions) return null;
     if (!this.diplomacyManager) return null;
 
     const warEnemyIds = this.nationManager.getAllNations()
@@ -7712,7 +7712,7 @@ export class AISystem {
     plannedNavalCombatUnits: number,
     coastalCityCount: number,
   ): number {
-    if (doctrine.id !== 'navalPower') return 1.0;
+    if (!doctrine.navalSaturationControl) return 1.0;
     if (!this.isNavalCombatUnitType(unitType)) return 1.0;
 
     const activeWars = this.countActiveWars(nationId);

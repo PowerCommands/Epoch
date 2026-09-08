@@ -323,6 +323,7 @@ export interface SavedGuideProgress {
 }
 
 export interface SavedGameState {
+  leaderConfiguration?: import('../data/leaderConfiguration').LeaderConfiguration;
   version: typeof SAVED_GAME_VERSION;
   savedAt: string;
   worldYear?: number;

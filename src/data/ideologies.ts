@@ -1,3 +1,4 @@
+import { profileOverride } from './leaderConfiguration';
 import type { IdeologyDefinition, IdeologyId } from '../types/ideology';
 
 export const DEFAULT_IDEOLOGY_ID: IdeologyId = 'traditionalism';
@@ -98,9 +99,9 @@ export const IDEOLOGIES: readonly IdeologyDefinition[] = [
 ];
 
 export function getIdeologyById(id: string | undefined): IdeologyDefinition {
-  return IDEOLOGIES.find((ideology) => ideology.id === id) ?? getIdeologyByIdStrict(DEFAULT_IDEOLOGY_ID);
+  return profileOverride('ideologies', id ?? DEFAULT_IDEOLOGY_ID) ?? IDEOLOGIES.find((ideology) => ideology.id === id) ?? getIdeologyByIdStrict(DEFAULT_IDEOLOGY_ID);
 }
 
 export function getIdeologyByIdStrict(id: IdeologyId): IdeologyDefinition {
-  return IDEOLOGIES.find((ideology) => ideology.id === id) ?? IDEOLOGIES[0];
+  return profileOverride('ideologies', id) ?? IDEOLOGIES.find((ideology) => ideology.id === id) ?? IDEOLOGIES[0];
 }

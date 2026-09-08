@@ -1,3 +1,4 @@
+import { profileOverride } from './leaderConfiguration';
 import type { AIStrategy } from '../types/aiStrategy';
 
 export const BASELINE_AI_STRATEGY_ID = 'baseline';
@@ -254,5 +255,5 @@ export const AI_STRATEGIES: readonly AIStrategy[] = [
 ];
 
 export function getAIStrategyById(id: string | undefined): AIStrategy {
-  return AI_STRATEGIES.find((strategy) => strategy.id === id) ?? BASELINE_AI_STRATEGY;
+  return profileOverride('strategies', id ?? BASELINE_AI_STRATEGY_ID) ?? AI_STRATEGIES.find((strategy) => strategy.id === id) ?? BASELINE_AI_STRATEGY;
 }

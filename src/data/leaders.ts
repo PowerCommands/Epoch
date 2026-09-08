@@ -1,3 +1,4 @@
+import { applyBehaviorOverride } from './leaderConfiguration';
 import type { LeaderDefinition } from '../types/leader';
 import {
   DEFAULT_AI_LEADER_PERSONALITY,
@@ -826,6 +827,7 @@ export function setScenarioLeaderOverrides(nations: readonly ScenarioLeaderSourc
 /** Apply any installed override to a leader, returning an overridden copy. */
 function applyLeaderOverride(leader: LeaderDefinition | undefined, overrideNationId = leader?.nationId): LeaderDefinition | undefined {
   if (!leader) return leader;
+  leader = applyBehaviorOverride(leader);
   const override = overrideNationId ? scenarioLeaderOverrides.get(overrideNationId) : undefined;
   if (!override) return leader;
   return {
@@ -911,7 +913,7 @@ export function getLeaderMilitaryDoctrineById(leaderId: string): AIMilitaryDoctr
  * specify one. Kept as a map so we get variety without editing every leader
  * entry; deliberately spread across personalities rather than perfectly tuned.
  */
-const LEADER_COVERT_PERSONALITY_DEFAULTS: Record<string, CovertPersonalityId> = {
+export const LEADER_COVERT_PERSONALITY_DEFAULTS: Record<string, CovertPersonalityId> = {
   leader_henry_v: 'opportunist',
   leader_winston_churchill: 'opportunist',
   leader_charles_vii: 'honorable',

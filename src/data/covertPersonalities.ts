@@ -1,3 +1,4 @@
+import { profileOverride } from './leaderConfiguration';
 import type { CovertPersonality, CovertPersonalityId } from '../types/covertPersonality';
 
 export const DEFAULT_COVERT_PERSONALITY_ID: CovertPersonalityId = 'pragmatist';
@@ -110,10 +111,10 @@ const BY_ID = new Map<string, CovertPersonality>(COVERT_PERSONALITIES.map((p) =>
 
 /** Resolve a covert personality by id, falling back to the neutral default. */
 export function getCovertPersonalityById(id: string | undefined): CovertPersonality {
-  return (id !== undefined && BY_ID.get(id)) || BY_ID.get(DEFAULT_COVERT_PERSONALITY_ID)!;
+  return profileOverride('covert', id ?? DEFAULT_COVERT_PERSONALITY_ID) ?? ((id !== undefined && BY_ID.get(id)) || BY_ID.get(DEFAULT_COVERT_PERSONALITY_ID)!);
 }
 
 /** True when `id` is a known covert personality id. */
 export function isCovertPersonalityId(id: string | undefined): id is CovertPersonalityId {
-  return id !== undefined && BY_ID.has(id);
+  return id !== undefined && (!!profileOverride('covert', id) || BY_ID.has(id));
 }

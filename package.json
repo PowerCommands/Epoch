@@ -35,7 +35,8 @@
     "generate-map-manifest": "tsx scripts/generateMapManifest.ts",
     "generate-nation-manifest": "tsx scripts/generateNationManifest.ts",
     "generate-natural-resource-manifest": "tsx scripts/generateNaturalResourceManifest.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:leader-editor": "node --import tsx --test tools/leaderConfiguration.test.ts tools/multipleLeaders.test.ts tools/charlesDeGaulleLeader.test.ts tools/adolfHitlerLeader.test.ts"
   },
   "dependencies": {
     "canvas": "^3.2.3",

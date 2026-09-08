@@ -1,3 +1,4 @@
+import { setLeaderConfiguration } from '../data/leaderConfiguration';
 import { orderScenarios } from '../../public/shared/scenario-order.js';
 import Phaser from 'phaser';
 import { MAP_MANIFEST_CACHE_KEY, parseMapManifest } from '../data/maps';
@@ -662,6 +663,7 @@ export class MainMenuScene extends Phaser.Scene {
 
     const customScenario = this.getCustomScenario(mapKey);
     const json = customScenario?.scenario ?? this.cache.json.get(mapKey) as ScenarioData | undefined;
+    setLeaderConfiguration(json?.leaderConfiguration);
     if (!json) {
       setScenarioLeaderOverrides([]);
       this.nations = [];

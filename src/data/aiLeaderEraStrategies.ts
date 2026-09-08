@@ -1,3 +1,5 @@
+import { resolveEraAssignment } from './leaderEraResolution';
+import { getLeaderConfiguration, profileOverride } from './leaderConfiguration';
 import type { Era } from './technologies';
 import type {
   AILeaderEraStrategy,
@@ -844,26 +846,16 @@ export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] =
   },
 ];
 
-const ERA_ORDER: readonly Era[] = [
-  'ancient',
-  'classical',
-  'medieval',
-  'renaissance',
-  'industrial',
-  'modern',
-  'atomic',
-  'information',
-  'future',
-];
-
 export function getAILeaderEraStrategyById(id: AILeaderEraStrategyId): AILeaderEraStrategy {
-  return STRATEGY_BY_ID[id] ?? BALANCED_GROWTH_STRATEGY;
+  return profileOverride('eraStrategies', id) ?? STRATEGY_BY_ID[id] ?? BALANCED_GROWTH_STRATEGY;
 }
 
 export function getLeaderEraStrategyProfile(
   leaderId: string | undefined,
 ): LeaderEraStrategyProfile | undefined {
   if (!leaderId) return undefined;
+  const strategiesByEra = getLeaderConfiguration().eraAssignments?.[leaderId];
+  if (strategiesByEra) return { leaderId, strategiesByEra };
   return LEADER_ERA_STRATEGY_PROFILES.find((profile) => profile.leaderId === leaderId);
 }
 
@@ -877,19 +869,5 @@ export function resolveLeaderEraStrategy(
   era: Era,
 ): AILeaderEraStrategy {
   const profile = getLeaderEraStrategyProfile(leaderId);
-  if (!profile) return BALANCED_GROWTH_STRATEGY;
-
-  const direct = profile.strategiesByEra[era];
-  if (direct) return getAILeaderEraStrategyById(direct);
-
-  const currentRank = ERA_ORDER.indexOf(era);
-  if (currentRank > 0) {
-    for (let rank = currentRank - 1; rank >= 0; rank -= 1) {
-      const earlier = ERA_ORDER[rank];
-      const earlierStrategy = profile.strategiesByEra[earlier];
-      if (earlierStrategy) return getAILeaderEraStrategyById(earlierStrategy);
-    }
-  }
-
-  return BALANCED_GROWTH_STRATEGY;
+  return getAILeaderEraStrategyById(resolveEraAssignment(profile?.strategiesByEra ?? {}, era).id);
 }

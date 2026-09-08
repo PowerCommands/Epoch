@@ -1,3 +1,4 @@
+import { profileOverride } from './leaderConfiguration';
 import type { AINationalAgenda, AINationalAgendaId } from '../types/aiNationalAgenda';
 import {
   AGGRESSIVE_AI_STRATEGY_ID,
@@ -163,5 +164,5 @@ export const AI_NATIONAL_AGENDAS: readonly AINationalAgenda[] = [
 ];
 
 export function getAINationalAgendaById(id: string | undefined): AINationalAgenda {
-  return AI_NATIONAL_AGENDAS.find((agenda) => agenda.id === id) ?? BALANCED_AGENDA;
+  return profileOverride('agendas', id ?? BALANCED_AGENDA_ID) ?? AI_NATIONAL_AGENDAS.find((agenda) => agenda.id === id) ?? BALANCED_AGENDA;
 }
