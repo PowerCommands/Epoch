@@ -1,6 +1,27 @@
 {
   "nations": [
     {
+      "nationId": "nation_argentina",
+      "nationName": "Argentina",
+      "color": "#74acdf",
+      "secondaryColor": "#ffffff",
+      "currencyName": "Argentine Peso",
+      "currencySymbol": "$",
+      "leaderId": "leader_javier_milei",
+      "leaderName": "Javier Milei",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/javier-milei.png",
+      "leaders": [
+        {
+          "leaderId": "leader_javier_milei",
+          "leaderName": "Javier Milei",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/javier-milei.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_brazil",
       "nationName": "Brazil",
       "color": "#009739",
@@ -25,6 +46,27 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/jair-bolsonaro.png",
           "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_canada",
+      "nationName": "Canada",
+      "color": "#d52b1e",
+      "secondaryColor": "#ffffff",
+      "currencyName": "Canadian Dollar",
+      "currencySymbol": "$",
+      "leaderId": "leader_justin_trudeau",
+      "leaderName": "Justin Trudeau",
+      "leaderTitle": "Prime Minister",
+      "leaderImage": "/assets/sprites/leaders/justin-trudeau.png",
+      "leaders": [
+        {
+          "leaderId": "leader_justin_trudeau",
+          "leaderName": "Justin Trudeau",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/justin-trudeau.png",
+          "isDefault": true
         }
       ]
     },
@@ -330,6 +372,27 @@
       ]
     },
     {
+      "nationId": "nation_mexico",
+      "nationName": "Mexico",
+      "color": "#006847",
+      "secondaryColor": "#ce1126",
+      "currencyName": "Mexican Peso",
+      "currencySymbol": "$",
+      "leaderId": "leader_claudia_sheinbaum_pardo",
+      "leaderName": "Claudia Sheinbaum Pardo",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
+      "leaders": [
+        {
+          "leaderId": "leader_claudia_sheinbaum_pardo",
+          "leaderName": "Claudia Sheinbaum Pardo",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_mongolia",
       "nationName": "Mongolia",
       "color": "#c49a2c",
@@ -584,6 +647,27 @@
           "leaderName": "Koxinga",
           "leaderTitle": "Zheng Chenggong",
           "leaderImage": "/assets/sprites/leaders/koxinga.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_ukraine",
+      "nationName": "Ukraine",
+      "color": "#0057b7",
+      "secondaryColor": "#ffd700",
+      "currencyName": "Hryvnia",
+      "currencySymbol": "₴",
+      "leaderId": "leader_volodymyr_zelenskyy",
+      "leaderName": "Volodymyr Zelenskyy",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
+      "leaders": [
+        {
+          "leaderId": "leader_volodymyr_zelenskyy",
+          "leaderName": "Volodymyr Zelenskyy",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
           "isDefault": true
         }
       ]

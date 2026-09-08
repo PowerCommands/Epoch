@@ -53,7 +53,7 @@ export interface WorldCouncilMember {
 }
 
 export type WorldCouncilMeetingKind = 'regular' | 'emergency';
-export type WorldCouncilEmergencyEventType = 'warDeclared';
+export type WorldCouncilEmergencyEventType = 'warDeclared' | 'famine';
 
 export interface WorldCouncilEmergencyTrigger {
   readonly eventType: WorldCouncilEmergencyEventType;

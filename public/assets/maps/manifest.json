@@ -64,6 +64,11 @@
       "key": "map_astra_europa",
       "label": "Astra-Europa",
       "file": "assets/maps/astra-europa.json"
+    },
+    {
+      "key": "map_america",
+      "label": "America",
+      "file": "assets/maps/america.json"
     }
   ]
 }

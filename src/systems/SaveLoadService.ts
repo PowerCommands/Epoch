@@ -21,6 +21,7 @@ import type { ScenarioInitialDiplomacyEntry } from '../types/scenario';
 import { ALL_BUILDINGS, getBuildingById } from '../data/buildings';
 import { getBuildingUpgradeBlockReason, normalizeBuildingUpgrades } from './buildingUpgrades';
 import { getUnitTypeById } from '../data/units';
+import { clampMilitaryQualityLevel } from '../data/unitQuality';
 import { getWonderById } from '../data/wonders';
 import { getCorporationById } from '../data/corporations';
 import { getProjectById } from '../data/projects';
@@ -309,6 +310,7 @@ export class SaveLoadService {
       actionStatus: unit.actionStatus,
       buildAction: unit.buildAction ? { ...unit.buildAction } : undefined,
       automation: unit.automation,
+      qualityLevel: unit.qualityLevel,
     }));
 
     const tiles = SaveLoadService.serializeTiles(mapData);
@@ -1024,6 +1026,7 @@ export class SaveLoadService {
         actionStatus: saved.actionStatus,
         buildAction: saved.buildAction ? { ...saved.buildAction } : undefined,
         automation: saved.automation,
+        qualityLevel: clampMilitaryQualityLevel(saved.qualityLevel),
       });
     }
     unitManager.normalizeCargoLinks();

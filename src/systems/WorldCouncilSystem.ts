@@ -313,6 +313,21 @@ export class WorldCouncilSystem {
     }
   }
 
+  /** Credit already-accounted Food shipments through the canonical member score. */
+  awardHumanitarianDiplomacyScore(nationId: string, amount: number): boolean {
+    if (!this.state || !Number.isFinite(amount) || amount <= 0) return false;
+    const member = this.state.members.find(m => m.nationId === nationId);
+    if (!member) return false;
+    this.state = { ...this.state, members: this.state.members.map(m => m.nationId !== nationId ? m : {
+      ...m, diplomacyScore: m.diplomacyScore + amount,
+      diplomacyScoreSinceLastRegularMeeting: m.diplomacyScoreSinceLastRegularMeeting + amount,
+      diplomacyScoreFromOther: m.diplomacyScoreFromOther + amount,
+    }) };
+    this.logScoreAward(nationId, amount, member.diplomacyScore + amount, 'Food dispatched to a famine humanitarian emergency');
+    this.notifyChanged();
+    return true;
+  }
+
   /**
    * Small, bounded participation reward for genuinely donating gold to an
    * emergency Defense Support resolution. This is a one-time award per donation

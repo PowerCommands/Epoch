@@ -67,7 +67,7 @@ function describeModifiers(modifiers: BuildingModifiers): string {
 export const MONUMENT = building({ id: 'monument', name: 'Monument', era: 'ancient', cost: 40, maintenance: 1, modifiers: { culturePerTurn: 2, happinessPerTurn: 1 } });
 export const GRANARY = building({ id: 'granary', name: 'Granary', era: 'ancient', cost: 60, maintenance: 1, modifiers: { foodPerTurn: 2 , happinessPerTurn: 1} });
 export const SHRINE = building({ id: 'shrine', name: 'Shrine', era: 'ancient', cost: 40, maintenance: 1, description: '+2 Culture per turn', modifiers: { culturePerTurn: 2 } });
-export const BARRACKS = building({ id: 'barracks', name: 'Barracks', era: 'ancient', cost: 75, maintenance: 1, modifiers: { militaryProductionPercent: 10 } });
+export const BARRACKS = building({ id: 'barracks', name: 'Barracks', era: 'ancient', cost: 75, maintenance: 1, modifiers: { militaryProductionPercent: 10 }, description: 'Military units produced in this city begin at Quality Level 2 – Trained (+20% combat power). +10% Military Unit Production.' });
 export const WALLS = building({ id: 'walls', name: 'Walls', era: 'ancient', placement: 'city', cost: 100, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense' });
 export const WATER_MILL = building({ id: 'water_mill', name: 'Water Mill', era: 'ancient', cost: 75, maintenance: 2, modifiers: { foodPerTurn: 2, productionPerTurn: 1, happinessPerTurn: 1 } });
 export const STONE_WORKS = building({ id: 'stone_works', name: 'Stone Works', era: 'ancient', cost: 75, maintenance: 1, modifiers: { productionPerTurn: 1, happinessPerTurn: 1 }, allowedTerrains: [TileType.Mountain], description: '+1 Production, +1 Happiness' });
@@ -104,7 +104,7 @@ export const STABLE = building({
 });
 
 export const CASTLE = building({ id: 'castle', name: 'Castle', era: 'medieval', placement: 'city', cost: 210, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
-export const ARMORY = building({ id: 'armory', name: 'Armory', era: 'medieval', cost: 160, maintenance: 1, modifiers: { militaryProductionPercent: 20 }, upgradesFrom: BARRACKS.id });
+export const ARMORY = building({ id: 'armory', name: 'Armory', era: 'medieval', cost: 160, maintenance: 1, modifiers: { militaryProductionPercent: 20 }, upgradesFrom: BARRACKS.id, description: 'Military units produced in this city begin at Quality Level 3 – Professional (+40% combat power). +20% Military Unit Production.' });
 export const FORGE = building({ id: 'forge', name: 'Forge', era: 'medieval', cost: 120, maintenance: 1, modifiers: { productionPercent: 5, happinessPerTurn: 1 }, description: 'Land-unit and iron bonuses approximated as +5% production' });
 export const MARKET = building({ id: 'market', name: 'Market', era: 'medieval', cost: 200, maintenance: 0, modifiers: { goldPerTurn: 2, goldPercent: 25, happinessPerTurn: 2, tradeCapacity: 1 } });
 export const MINT = building({ id: 'mint', name: 'Mint', era: 'medieval', cost: 120, maintenance: 0, modifiers: { goldPerTurn: 2, happinessPerTurn: 1 }, description: 'Gold/silver resource bonus approximated as +2 gold' });
@@ -131,7 +131,7 @@ export const SEAPORT = building({ id: 'seaport', name: 'Seaport', era: 'renaissa
 export const WINDMILL = building({ id: 'windmill', name: 'Windmill', era: 'renaissance', cost: 250, maintenance: 2, modifiers: { productionPerTurn: 2 }, description: 'Flatland requirement omitted' });
 export const ZOO = building({ id: 'zoo', name: 'Zoo', era: 'renaissance', cost: 200, maintenance: 2, modifiers: { happinessPerTurn: 5 } });
 
-export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, modifiers: { militaryProductionPercent: 30 }, upgradesFrom: ARMORY.id });
+export const MILITARY_ACADEMY = building({ id: 'military_academy', name: 'Military Academy', era: 'industrial', cost: 300, maintenance: 1, modifiers: { militaryProductionPercent: 30 }, upgradesFrom: ARMORY.id, description: 'Military units produced in this city begin at Quality Level 4 – Elite (+60% combat power). +30% Military Unit Production.' });
 export const ARSENAL = building({ id: 'arsenal', name: 'Arsenal', era: 'industrial', placement: 'city', cost: 400, maintenance: 0, modifiers: { cityDefensePercent: 25 }, description: '+25% City Defense, +2 food' });
 export const FACTORY = building({ id: 'factory', name: 'Factory', era: 'industrial', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 4, productionPercent: 10, happinessPerTurn: 1 }, description: 'Civ V BNW factory is +10% and +4 production. Requires Coal access to construct.', upgradesFrom: WORKSHOP.id });
 export const COAL_POWER_PLANT = building({ id: 'coal_power_plant', name: 'Coal Power Plant', era: 'industrial', cost: 300, maintenance: 0, description: `Requires Coal to construct and operate. Lifespan: 20 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.coalPowerPlant}. Active production multiplier: x2.` });
@@ -155,7 +155,7 @@ export const GRAND_STADIUM = building({
   modifiers: { happinessPerTurn: STADIUM_HAPPINESS_PER_TURN },
   description: `A monumental arena required in the confirmed host city before Games of Nations can begin. +${STADIUM_HAPPINESS_PER_TURN} happiness.`,
 });
-export const MILITARY_BASE = building({ id: 'military_base', name: 'Military Base', era: 'modern', cost: 500, maintenance: 0, modifiers: { militaryProductionPercent: 40, cityDefensePercent: 25 }, upgradesFrom: MILITARY_ACADEMY.id });
+export const MILITARY_BASE = building({ id: 'military_base', name: 'Military Base', era: 'modern', cost: 500, maintenance: 0, modifiers: { militaryProductionPercent: 40, cityDefensePercent: 25 }, upgradesFrom: MILITARY_ACADEMY.id, description: 'Military units produced in this city begin at Quality Level 5 – Special Forces (+100% combat power). +40% Military Unit Production, +25% City Defense.' });
 export const MEDICAL_LAB = building({ id: 'medical_lab', name: 'Medical Lab', era: 'modern', cost: 500, maintenance: 3, description: `Food carryover omitted until growth modifiers exist. Existing bonuses: +2 food, +1 happiness. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.medicalLab}.`, modifiers: { foodPerTurn: 2, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.medicalLab } });
 
 export const RESEARCH_LAB = building({ id: 'research_lab', name: 'Research Lab', era: 'atomic', cost: 500, maintenance: 3, modifiers: { sciencePerTurn: 4, sciencePercent: 50, happinessPerTurn: 1 } });

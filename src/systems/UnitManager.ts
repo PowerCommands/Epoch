@@ -7,6 +7,7 @@ import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
 import { getGameSpeedById, type GameSpeedDefinition } from '../data/gameSpeeds';
 import { isCovertOperative } from '../utils/unitRoleUtils';
+import type { MilitaryQualityLevel } from '../data/unitQuality';
 
 export type UnitChangedReason =
   | 'created'
@@ -82,6 +83,12 @@ export class UnitManager {
     tileY: number;
     movementPoints?: number;
     improvementCharges?: number;
+    /**
+     * Permanent Military Unit Quality level for the produced unit. Callers that
+     * have a producing city (normal production) pass the resolved level; spawns
+     * without a production context omit it and get the safe Level 1 default.
+     */
+    qualityLevel?: MilitaryQualityLevel;
   }): Unit {
     const createdRound = this.currentRoundProvider();
     const unit = new Unit({
@@ -94,6 +101,7 @@ export class UnitManager {
       maxMovementPoints: this.getEffectiveMovementPoints(config.type),
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
+      qualityLevel: config.qualityLevel,
       createdRound,
       expiresAtRound: this.getExpiresAtRound(config.type, createdRound),
     });
@@ -442,6 +450,7 @@ export class UnitManager {
     createdRound?: number;
     expiresAtRound?: number;
     queuedDestination?: { x: number; y: number };
+    qualityLevel?: MilitaryQualityLevel;
   }): Unit {
     const unit = new Unit({
       id: config.id,
@@ -455,6 +464,7 @@ export class UnitManager {
       improvementCharges: config.improvementCharges,
       carriedByUnitId: config.carriedByUnitId,
       cargoUnitIds: config.cargoUnitIds,
+      qualityLevel: config.qualityLevel,
       createdRound: config.createdRound,
       expiresAtRound: config.expiresAtRound,
     });

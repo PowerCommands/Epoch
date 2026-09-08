@@ -965,6 +965,18 @@
           "size": 388838
         },
         {
+          "name": "claudia-sheinbaum-pardo-room.webp",
+          "path": "/assets/sprites/leaders/claudia-sheinbaum-pardo-room.webp",
+          "type": "WEBP",
+          "size": 193184
+        },
+        {
+          "name": "claudia-sheinbaum-pardo.png",
+          "path": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
+          "type": "PNG",
+          "size": 293615
+        },
+        {
           "name": "dom-pedro-ii-room.webp",
           "path": "/assets/sprites/leaders/dom-pedro-ii-room.webp",
           "type": "WEBP",
@@ -1133,6 +1145,18 @@
           "size": 344851
         },
         {
+          "name": "javier-milei-room.webp",
+          "path": "/assets/sprites/leaders/javier-milei-room.webp",
+          "type": "WEBP",
+          "size": 200704
+        },
+        {
+          "name": "javier-milei.png",
+          "path": "/assets/sprites/leaders/javier-milei.png",
+          "type": "PNG",
+          "size": 274237
+        },
+        {
           "name": "joseph-stalin-room.webp",
           "path": "/assets/sprites/leaders/joseph-stalin-room.webp",
           "type": "WEBP",
@@ -1143,6 +1167,18 @@
           "path": "/assets/sprites/leaders/joseph-stalin.png",
           "type": "PNG",
           "size": 249590
+        },
+        {
+          "name": "justin-trudeau-room.webp",
+          "path": "/assets/sprites/leaders/justin-trudeau-room.webp",
+          "type": "WEBP",
+          "size": 178096
+        },
+        {
+          "name": "justin-trudeau.png",
+          "path": "/assets/sprites/leaders/justin-trudeau.png",
+          "type": "PNG",
+          "size": 263141
         },
         {
           "name": "koxinga-room.webp",
@@ -1337,6 +1373,18 @@
           "size": 349848
         },
         {
+          "name": "volodymyr-zelenskyy-room.webp",
+          "path": "/assets/sprites/leaders/volodymyr-zelenskyy-room.webp",
+          "type": "WEBP",
+          "size": 177418
+        },
+        {
+          "name": "volodymyr-zelenskyy.png",
+          "path": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
+          "type": "PNG",
+          "size": 268689
+        },
+        {
           "name": "vytautas-the-great-room.webp",
           "path": "/assets/sprites/leaders/vytautas-the-great-room.webp",
           "type": "WEBP",
@@ -1421,6 +1469,18 @@
           "size": 149042
         },
         {
+          "name": "energy-crisis.png",
+          "path": "/assets/sprites/news/energy-crisis.png",
+          "type": "PNG",
+          "size": 4712706
+        },
+        {
+          "name": "famine.png",
+          "path": "/assets/sprites/news/famine.png",
+          "type": "PNG",
+          "size": 4741900
+        },
+        {
           "name": "first-contact.png",
           "path": "/assets/sprites/news/first-contact.png",
           "type": "PNG",
@@ -1457,10 +1517,22 @@
           "size": 3157053
         },
         {
+          "name": "pandemic.png",
+          "path": "/assets/sprites/news/pandemic.png",
+          "type": "PNG",
+          "size": 4491834
+        },
+        {
           "name": "peace-signed.png",
           "path": "/assets/sprites/news/peace-signed.png",
           "type": "PNG",
           "size": 137677
+        },
+        {
+          "name": "stock-market-crash.png",
+          "path": "/assets/sprites/news/stock-market-crash.png",
+          "type": "PNG",
+          "size": 4299412
         },
         {
           "name": "trade-relations.png",

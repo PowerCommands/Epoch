@@ -1,3 +1,5 @@
+import { historicalPopulation, cancelHistoricalTrade, cancelHistoricalBorders } from '../systems/HistoricalWorldEventAdapters';
+import { WORLD_EVENT_DEFINITIONS } from '../systems/HistoricalWorldEvents';
 import { ImpulsiveBullySystem } from '../systems/ai/ImpulsiveBullySystem';
 import { LeaderStatementSystem } from '../systems/LeaderStatementSystem';
 import { OpportunismSystem } from '../systems/ai/OpportunismSystem';
@@ -363,6 +365,7 @@ import { StrategicResourceDemandSystem } from '../systems/StrategicResourceDeman
 import { formatBuildingCompletionMessage } from '../systems/productionLogging';
 import { TileType, type Tile, type MapData } from '../types/map';
 import { isMilitaryUnitType } from '../utils/unitRoleUtils';
+import { resolveMilitaryQualityLevel, getMilitaryQualityMultiplier } from '../data/unitQuality';
 import type { ScenarioData, ScenarioNation } from '../types/scenario';
 import type { City } from '../entities/City';
 import type { Nation } from '../entities/Nation';
@@ -482,7 +485,7 @@ interface EpochStateSummary {
   gamesOfNations: GamesOfNationsSummary;
   historicalEvents: Array<{
     id: string;
-    type: 'worldWar';
+    type: string;
     status: 'pending' | 'active' | 'completed';
     triggeredRound?: number;
     triggeredDate?: { year: number; month: number; isBC: boolean };
@@ -4175,6 +4178,21 @@ export class GameScene extends Phaser.Scene {
         nextRegularMeetingTurn: state.nextRegularMeetingTurn,
         currentTurn: turnManager.getCurrentRound(),
         canHumanLeave: false,
+        humanitarianEmergencies: scenarioHistoricalEventSystem.worldEvents?.getStates()
+          .filter(e => e.status === 'active' && e.emergency && !e.targets.includes(data.humanNationId))
+          .map(e => ({
+            name: nationManager.getNation(e.targets[0])?.name ?? e.targets[0],
+            remainingTurns: Math.max(0, e.endRound-turnManager.getCurrentRound()+1),
+            percent: e.emergency!.commitments[data.humanNationId] ?? 0,
+            production: resourceSystem.getNationalFoodProduction(data.humanNationId) * (scenarioHistoricalEventSystem.worldEvents?.foodMultiplier(data.humanNationId) ?? 1),
+            contributed: e.emergency!.contributed[data.humanNationId] ?? 0,
+            score: e.emergency!.rewarded[data.humanNationId] ?? 0,
+            otherPercent: (scenarioHistoricalEventSystem.worldEvents?.getStates() ?? []).reduce((sum, other) => sum + (other.eventId !== e.eventId && other.status === 'active' ? other.emergency?.commitments[data.humanNationId] ?? 0 : 0), 0),
+            setPercent: (percent: number) => {
+              scenarioHistoricalEventSystem.worldEvents?.setDonation(e.eventId, data.humanNationId, percent);
+              return scenarioHistoricalEventSystem.worldEvents?.getStates().find(state => state.eventId === e.eventId)?.emergency?.commitments[data.humanNationId] ?? 0;
+            },
+          })),
         members: state.members.map((member) => {
           const memberNation = nationManager.getNation(member.nationId);
           return {
@@ -4230,7 +4248,9 @@ export class GameScene extends Phaser.Scene {
             : undefined,
           triggerText: meeting.emergencyTrigger?.eventType === 'warDeclared'
             ? `war declared: ${nationManager.getNation(meeting.emergencyTrigger.aggressorNationId ?? '')?.name ?? meeting.emergencyTrigger.aggressorNationId ?? 'Unknown'} vs ${nationManager.getNation(meeting.emergencyTrigger.targetNationId ?? '')?.name ?? meeting.emergencyTrigger.targetNationId ?? 'Unknown'}`
-            : undefined,
+            : meeting.emergencyTrigger?.eventType === 'famine'
+              ? `Humanitarian famine emergency: ${nationManager.getNation(meeting.emergencyTrigger.targetNationId ?? '')?.name ?? 'Unknown'}`
+              : undefined,
           proposals: meeting.proposals?.map((proposal) => {
             const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
             const isRepeal = proposal.repealTargetEnactedResolutionId !== undefined;
@@ -4997,6 +5017,14 @@ export class GameScene extends Phaser.Scene {
       const improvementCharges = item.unitType.canBuildImprovements && !reachedRenaissance
         ? 1
         : undefined;
+
+      // Military Unit Quality: bake the highest qualifying, functioning military
+      // building in the producing city into the new unit as a permanent level.
+      // Civilian units keep the default Level 1.
+      const qualityLevel = isMilitaryUnitType(item.unitType)
+        ? resolveMilitaryQualityLevel((buildingId) => cityManager.getBuildings(city.id).hasActive(buildingId))
+        : undefined;
+
       unitManager.createUnit({
         type: item.unitType,
         ownerId: city.ownerId,
@@ -5004,7 +5032,16 @@ export class GameScene extends Phaser.Scene {
         tileY: placement.y,
         movementPoints: 0,
         improvementCharges,
+        qualityLevel,
       });
+
+      if (qualityLevel !== undefined) {
+        logManager.info({
+          nationId: city.ownerId,
+          category: 'production',
+          message: `[MilitaryQuality] ${city.name} produced ${item.unitType.name} quality=${qualityLevel} multiplier=${getMilitaryQualityMultiplier(qualityLevel).toFixed(2)}`,
+        });
+      }
 
       updateCityProductionRhythm(city, item);
       return true;
@@ -6133,12 +6170,61 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       allianceManager,
       {
+        world: {
+          seed: data.mapKey,
+          humanNationId: data.humanNationId,
+          nations: () => nationManager.getAllNations().map(n => n.id),
+          strongestCurrencies: () => currencySystem.getActiveCurrencies().map(c => c.nationId),
+          population: id => historicalPopulation(cityManager, id),
+          foodSituation: id => ({
+            production: resourceSystem.getNationalFoodProduction(id),
+            consumption: cityManager.getCitiesByOwner(id).reduce((sum,c) => sum + c.population*2, 0) + militaryFoodUpkeepSystem.getMilitaryFoodUpkeep(id),
+          }),
+          embassy: (a,b) => diplomacyManager.hasEmbassy(a,b),
+          cancelTrade: (targets, resources) => cancelHistoricalTrade(tradeDealSystem, targets, resources),
+          cancelBorders: targets => cancelHistoricalBorders(diplomacyManager, nationManager.getAllNations().map(n => n.id), targets),
+          councilExists: () => worldCouncilSystem.getState()?.status === 'active',
+          createEmergency: target => { worldCouncilSystem.triggerEmergencyMeeting(turnManager.getCurrentRound(), { eventType: 'famine', targetNationId: target }); },
+          awardScore: (id, amount) => worldCouncilSystem.awardHumanitarianDiplomacyScore(id, amount),
+          chooseAid: (id, target, affordable) => {
+            if (diplomacyManager.getState(id,target) === 'WAR') return 0;
+            const relation = diplomacyManager.getRelation(id,target);
+            const disposition = 5 + (relation.affinity-relation.hostility)/10 + getLeaderPersonalityByNationId(id).diplomacyBias/3;
+            return Math.max(0, Math.min(25, affordable * 0.75, disposition));
+          },
+          article: (event, phase) => {
+            const definition = WORLD_EVENT_DEFINITIONS[event.type];
+            const names = event.targets.map(id => nationManager.getNation(id)?.name ?? id).join(', ');
+            const origin = event.origin ? nationManager.getNation(event.origin)?.name ?? event.origin : '';
+            const body = phase === 'aid'
+              ? `The international council has declared a humanitarian emergency for ${names}. Nations may commit Food in the Council overview; every shipment is drawn from their own production.`
+              : phase === 'ended'
+                ? event.type === 'energyCrisis'
+                  ? `International energy markets emerge from prolonged disruption. Coal, Natural Gas, Oil and Uranium trade prices have risen permanently by ${event.parameters.energyPriceIncreasePercent}%. New supply agreements must be negotiated.`
+                  : `${definition.name} has ended in ${names}. Temporary restrictions on production and national morale have lifted. ${event.type === 'pandemic' ? 'Severed trade and Open Borders agreements must be negotiated anew.' : 'Recovery begins as normal economic conditions return.'}`
+                : event.type === 'pandemic'
+                  ? `An outbreak originating in ${origin} has spread through established embassy connections to ${names}. International trade contracts and Open Borders agreements have been terminated; embassies remain open.`
+                  : event.type === 'energyCrisis'
+                    ? 'An abrupt disruption has broken international Coal, Natural Gas, Oil and Uranium supply contracts. Domestic supplies remain available, but nations reliant on imports face shortages.'
+                    : `${definition.name} has struck ${names}. ${event.type === 'famine' ? `Food production has fallen by ${event.parameters.foodReductionPercent}%, threatening harvests and growth.` : `Positive Gold income has fallen by ${event.parameters.goldReductionPercent}%, while expenses continue and public confidence falters.`}`;
+            historicalTimeline.record({ type: event.type, icon: '⚠', text: `${definition.name} ${phase === 'aid' ? 'humanitarian response' : phase === 'ended' ? 'ends' : 'begins'}`,
+              eventNationIds: event.targets, newsImportance: 0,
+              metadata: { scenarioHistoricalEventId: event.eventId, scenarioHistoricalEventName: definition.name, scenarioHistoricalEventDescription: body,
+                worldEventPhase: phase } });
+          },
+          changed: () => { for (const nation of nationManager.getAllNations()) resourceSystem.recalculateForNation(nation.id); },
+          log: message => console.log(message),
+        },
         isNationActive: (nationId) => nationManager.getNation(nationId) !== undefined,
         isNationEliminated: (nationId) => nationManager.getNation(nationId) === undefined,
         getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
         log: (message) => console.log(`[HistoricalEvents] ${message}`),
       },
     );
+    const worldEvents = scenarioHistoricalEventSystem.worldEvents!;
+    resourceSystem.setHistoricalProviders((id, value) => worldEvents.gold(id, value), (id, economies, round, commit) => worldEvents.processFood(id, economies, round, commit));
+    happinessSystem.setHistoricalHappinessProvider(id => worldEvents.happiness(id));
+    tradeDealSystem.setHistoricalProviders(id => worldEvents.priceMultiplier(id), (id, value) => worldEvents.gold(id, value));
     const historicalEventNationNames = new Map(
       nationManager.getAllNations().map((nation) => [nation.id, nation.name]),
     );
@@ -8550,7 +8636,9 @@ export class GameScene extends Phaser.Scene {
         : undefined;
       const emergencyText = meeting.emergencyTrigger?.eventType === 'warDeclared'
         ? ` after ${timelineNationName(meeting.emergencyTrigger.aggressorNationId ?? '')} declared war on ${timelineNationName(meeting.emergencyTrigger.targetNationId ?? '')}`
-        : '';
+        : meeting.emergencyTrigger?.eventType === 'famine'
+          ? ` to coordinate famine relief for ${timelineNationName(meeting.emergencyTrigger.targetNationId ?? '')}`
+          : '';
       const organizationName = getOrganizationDisplayName(state.organizationKind ?? 'worldCouncil');
       const meetingText = meeting.kind === 'regular'
         ? `${organizationName} held a regular meeting in ${cityName}${hostName ? `, hosted by ${hostName}` : ''}`
@@ -10210,7 +10298,7 @@ export class GameScene extends Phaser.Scene {
             historicalEvents: scenarioHistoricalEventSystem.getRuntimeStates().map((state) => {
               return {
                 id: state.eventId,
-                type: 'worldWar' as const,
+                type: 'type' in state ? String(state.type) : 'worldWar',
                 status: state.status,
                 triggeredRound: state.triggeredRound,
                 triggeredDate: state.triggeredDate

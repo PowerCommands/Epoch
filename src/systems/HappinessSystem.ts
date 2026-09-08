@@ -133,6 +133,9 @@ export function resolveHappinessTier(
 }
 
 export class HappinessSystem {
+  private historicalHappiness: (nation: string) => number = () => 0;
+  setHistoricalHappinessProvider(provider: (nation: string) => number): void { this.historicalHappiness = provider; }
+
   private readonly states = new Map<string, NationHappiness>();
   private readonly listeners: HappinessChangedListener[] = [];
 
@@ -198,7 +201,7 @@ export class HappinessSystem {
     const happinessFromCorporations = this.getCorporationHappinessBonus(nationId);
     const happinessFromManufacturedResources = this.getManufacturedResourceHappinessBonus(nationId);
 
-    const totalHappiness = happinessFromBase
+    const totalHappiness = this.historicalHappiness(nationId) + happinessFromBase
       + happinessFromBuildings
       + happinessFromWonders
       + happinessFromLuxuryResources

@@ -2975,7 +2975,8 @@ export class RightSidebarPanelDataProvider {
 
   private getHumanTradeGoldPerTurn(resourceId: string, duration: number): number {
     const base = this.getResourceTradeGoldPerTurn(resourceId);
-    return duration === this.humanTradeDealDurations.long ? Math.max(1, base - 1) : base;
+    const quoted = duration === this.humanTradeDealDurations.long ? Math.max(1, base - 1) : base;
+    return Math.ceil(this.tradeDealSystem?.effectivePrice(resourceId, quoted) ?? quoted);
   }
 
   private formatDealRow(deal: TradeDeal): string {

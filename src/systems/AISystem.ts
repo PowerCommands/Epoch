@@ -1667,7 +1667,7 @@ export class AISystem {
           // Don't propose buying what the human cannot export: owned quantity
           // caps simultaneous exports (mirrors canExportResource).
           if (!this.resourceAccessSystem.canExportResource(humanId, resourceId)) continue;
-          const gpt = getProposalGoldPerTurn(resourceId, luxuryValueMultiplier);
+          const gpt = Math.ceil(this.tradeDealSystem.effectivePrice(resourceId, getProposalGoldPerTurn(resourceId, luxuryValueMultiplier)));
           if (this.nationManager.getResources(nationId).gold < gpt) continue;
           this.diplomaticProposalSystem.createProposal({
             fromNationId: nationId,
@@ -1696,7 +1696,7 @@ export class AISystem {
           // Only offer to sell what this nation can still export: owned quantity
           // caps simultaneous exports (mirrors canExportResource).
           if (!this.resourceAccessSystem.canExportResource(nationId, resourceId)) continue;
-          const gpt = getProposalGoldPerTurn(resourceId, luxuryValueMultiplier);
+          const gpt = Math.ceil(this.tradeDealSystem.effectivePrice(resourceId, getProposalGoldPerTurn(resourceId, luxuryValueMultiplier)));
           this.diplomaticProposalSystem.createProposal({
             fromNationId: nationId,
             toNationId: humanId,
@@ -1729,11 +1729,12 @@ export class AISystem {
         // existing base/luxury pricing so natural-resource trades are unchanged.
         const manufactured = getManufacturedResourceById(resourceId);
         const isLuxury = getNaturalResourceById(resourceId)?.category === 'luxury';
-        const offerGoldPerTurn = manufactured
+        const baseOfferGoldPerTurn = manufactured
           ? manufactured.tradeGoldPerTurn ?? baseGoldPerTurn
           : isLuxury
             ? Math.round(baseGoldPerTurn * luxuryValueMultiplier)
             : baseGoldPerTurn;
+        const offerGoldPerTurn = Math.ceil(this.tradeDealSystem.effectivePrice(resourceId, baseOfferGoldPerTurn));
         if (this.nationManager.getResources(nationId).gold < offerGoldPerTurn * (dealsCreated + 1)) break outer;
 
         const result = this.tradeDealSystem.createDeal({

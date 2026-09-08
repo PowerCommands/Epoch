@@ -26,7 +26,11 @@
     { id: "nation_pirate", name: "Pirates", color: "#1a1a1a", secondaryColor: "#c0392b", currencyName: "Pieces of Eight", currencySymbol: "\u2620" },
     { id: "nation_germany", name: "Germany", color: "#2b2b2b", secondaryColor: "#d4af37", currencyName: "Mark", currencySymbol: "\u2133" },
     { id: "nation_italy", name: "Italy", color: "#0b6b3a", secondaryColor: "#ce2b37", currencyName: "Lira", currencySymbol: "\u20A4" },
-    { id: "nation_poland", name: "Poland", color: "#d4213d", secondaryColor: "#f5f5f5", currencyName: "Polish Z\u0142oty", currencySymbol: "z\u0142" }
+    { id: "nation_poland", name: "Poland", color: "#d4213d", secondaryColor: "#f5f5f5", currencyName: "Polish Z\u0142oty", currencySymbol: "z\u0142" },
+    { "id": "nation_canada", "name": "Canada", "color": "#d52b1e", "secondaryColor": "#ffffff", "currencyName": "Canadian Dollar", "currencySymbol": "$" },
+    { "id": "nation_mexico", "name": "Mexico", "color": "#006847", "secondaryColor": "#ce1126", "currencyName": "Mexican Peso", "currencySymbol": "$" },
+    { "id": "nation_argentina", "name": "Argentina", "color": "#74acdf", "secondaryColor": "#ffffff", "currencyName": "Argentine Peso", "currencySymbol": "$" },
+    { "id": "nation_ukraine", "name": "Ukraine", "color": "#0057b7", "secondaryColor": "#ffd700", "currencyName": "Hryvnia", "currencySymbol": "\u20B4" }
   ];
 
   // src/types/aiLeaderPersonality.ts
@@ -2077,9 +2081,182 @@
         victory: "Poland stands sovereign because its people and its partners did not yield when tested.",
         defeat: "An army may be defeated, but a nation\u2019s determination to endure cannot be erased by force."
       }
+    },
+    {
+      "id": "leader_justin_trudeau",
+      "name": "Justin Trudeau",
+      "nationId": "nation_canada",
+      "title": "Prime Minister",
+      "image": "/assets/sprites/leaders/justin-trudeau.png",
+      "description": "A cooperative Canadian leader who pursues prosperity through trade, diplomacy, and dependable partnerships backed by modern defenses.",
+      "ideologyId": "globalism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "defensiveModern",
+      "covertPersonalityId": "merchant",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "state_workforce",
+        "political_philosophy",
+        "civil_service_civics",
+        "diplomatic_service"
+      ],
+      "aiPersonality": {
+        "aggressionBias": -14,
+        "expansionBias": -8,
+        "economyBias": 22,
+        "cultureBias": 9,
+        "diplomacyBias": 24,
+        "warTolerance": 48,
+        "peacePreference": 76,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.35,
+        "resourceExploitationInterest": 2
+      },
+      "diplomacyFlavor": {
+        "greeting": "Canada welcomes practical ideas for a more secure and prosperous world. Let us find common ground.",
+        "friendly": "Our partnership shows what dependable friends can accomplish. Canada is ready to build on it.",
+        "neutral": "Trade and dialogue can turn shared interests into lasting cooperation. What can we achieve together?",
+        "hostile": "Your pressure is damaging the trust on which peace depends. Canada expects you to change course.",
+        "warDeclaration": "Our people and our partners face a danger that diplomacy has not resolved. Canada will meet its commitments.",
+        "victory": "Let this victory secure a peace in which our people and our partners can prosper.",
+        "defeat": "We must rebuild, protect our people, and preserve the friendships that will carry us forward."
+      }
+    },
+    {
+      "id": "leader_claudia_sheinbaum_pardo",
+      "name": "Claudia Sheinbaum Pardo",
+      "nationId": "nation_mexico",
+      "title": "President",
+      "image": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
+      "description": "A Mexican leader focused on domestic development, shared prosperity, cultural life, and sovereign decision-making.",
+      "ideologyId": "progressivism",
+      "aiNationalAgendaId": "growth",
+      "aiMilitaryDoctrineId": "defensiveModern",
+      "covertPersonalityId": "pragmatist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "state_workforce",
+        "early_empire",
+        "games_recreation",
+        "civil_service_civics",
+        "diplomatic_service"
+      ],
+      "aiPersonality": {
+        "aggressionBias": -12,
+        "expansionBias": -6,
+        "economyBias": 18,
+        "cultureBias": 14,
+        "diplomacyBias": 14,
+        "warTolerance": 52,
+        "peacePreference": 70,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.4,
+        "resourceExploitationInterest": 1
+      },
+      "diplomacyFlavor": {
+        "greeting": "Mexico seeks development with dignity and relations based on mutual respect. Let us speak as equals.",
+        "friendly": "Our cooperation is delivering for our people. Mexico values a partner who respects our independence.",
+        "neutral": "We will judge this proposal by its contribution to development and respect for our sovereignty.",
+        "hostile": "Mexico\u2019s future is for its people to decide. Pressure from abroad will not change that.",
+        "warDeclaration": "Our sovereignty and the safety of our people require action. Mexico will defend them with determination.",
+        "victory": "Peace must now make room for schools, work, and a better life in every region of Mexico.",
+        "defeat": "Our people deserve recovery and dignity. We will continue the work of national development."
+      }
+    },
+    {
+      "id": "leader_javier_milei",
+      "name": "Javier Milei",
+      "nationId": "nation_argentina",
+      "title": "President",
+      "image": "/assets/sprites/leaders/javier-milei.png",
+      "description": "An outspoken Argentine economic reformer who values enterprise, challenges established arrangements, and takes calculated risks without seeking territorial empire.",
+      "ideologyId": "liberalism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "defensiveModern",
+      "covertPersonalityId": "opportunist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "state_workforce",
+        "guilds",
+        "civil_service_civics"
+      ],
+      "aiPersonality": {
+        "aggressionBias": -3,
+        "expansionBias": -7,
+        "economyBias": 30,
+        "cultureBias": -8,
+        "diplomacyBias": -6,
+        "warTolerance": 48,
+        "peacePreference": 58,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.35,
+        "resourceExploitationInterest": 4
+      },
+      "diplomacyFlavor": {
+        "greeting": "Argentina is ready to do business. Bring a proposal that creates value, not another arrangement that rewards failure.",
+        "friendly": "You have kept your word and made cooperation worthwhile. Let us give enterprise more room to succeed.",
+        "neutral": "I will examine the terms. Agreement is useful only when the benefits survive an honest accounting.",
+        "hostile": "You expect Argentina to accept your terms because they are customary. That is no argument, and we reject them.",
+        "warDeclaration": "Your coercion has made peaceful enterprise impossible. Argentina will use force to end it.",
+        "victory": "We have secured our freedom of action. Now let production and commerce justify the cost.",
+        "defeat": "This defeat demands an honest reckoning. Argentina must rebuild its strength and restore opportunity."
+      }
+    },
+    {
+      "id": "leader_volodymyr_zelenskyy",
+      "name": "Volodymyr Zelenskyy",
+      "nationId": "nation_ukraine",
+      "title": "President",
+      "image": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
+      "description": "A Ukrainian leader committed to national survival, military readiness, dependable partnerships, and determined resistance to aggression.",
+      "ideologyId": "progressivism",
+      "aiNationalAgendaId": "homeland_defense",
+      "aiMilitaryDoctrineId": "disciplinedInfantry",
+      "covertPersonalityId": "pragmatist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "state_workforce",
+        "military_tradition",
+        "defensive_tactics",
+        "civil_service_civics",
+        "diplomatic_service",
+        "nationalism",
+        "mobilization"
+      ],
+      "aiPersonality": {
+        "aggressionBias": -10,
+        "expansionBias": -12,
+        "economyBias": 8,
+        "cultureBias": 6,
+        "diplomacyBias": 23,
+        "warTolerance": 88,
+        "peacePreference": 48,
+        "minimumUnitsLostBeforePeace": 8,
+        "casualtyToleranceRatio": 0.72,
+        "resourceExploitationInterest": 0
+      },
+      "diplomacyFlavor": {
+        "greeting": "Ukraine seeks a peace that protects sovereignty. We welcome partners prepared to stand by their word.",
+        "friendly": "You stood with us when commitments mattered. Ukraine will remember, and we will stand with you.",
+        "neutral": "We are ready to cooperate. Lasting security requires clear commitments and the means to uphold them.",
+        "hostile": "Our future is not yours to dictate. Every threat strengthens our determination to defend it.",
+        "warDeclaration": "Our sovereignty is at stake. Ukraine will fight, with its partners, until our people can live in security.",
+        "victory": "Our people have defended their future. We must secure the peace and bring life back to our cities.",
+        "defeat": "Our cities may have fallen, but our right to exist has not. Ukraine will endure and rebuild."
+      }
     }
   ];
   var GAMES_PREFERENCES_BY_LEADER = {
+    leader_justin_trudeau: { "traditionalFavourite": "swimming", "additionalFavourite": "hundred_metres" },
+    leader_claudia_sheinbaum_pardo: { "traditionalFavourite": "marathon", "additionalFavourite": "boxing" },
+    leader_javier_milei: { "traditionalFavourite": "wrestling", "additionalFavourite": "horse_racing" },
+    leader_volodymyr_zelenskyy: { "traditionalFavourite": "wrestling", "additionalFavourite": "boxing" },
     leader_henry_v: { traditionalFavourite: "wrestling", additionalFavourite: "boxing" },
     leader_charles_vii: { traditionalFavourite: "long_jump", additionalFavourite: "fencing" },
     leader_sigismund: { traditionalFavourite: "javelin", additionalFavourite: "pole_vault" },
@@ -3341,6 +3518,9 @@
     SEA_WOLF_STRATEGY
   ];
   var LEADER_ERA_STRATEGY_PROFILES = [
+    // Prepared defense carries forward to every starting era. Other new leaders
+    // retain neutral era weights so their economic/growth agendas set priorities.
+    { leaderId: "leader_volodymyr_zelenskyy", strategiesByEra: { ancient: "defensiveBuilder" } },
     // Modern alternatives reuse canonical postures across all starting eras.
     { leaderId: "leader_donald_tusk", strategiesByEra: { ancient: "defensiveBuilder" } },
     { leaderId: "leader_mette_frederiksen", strategiesByEra: { ancient: "defensiveBuilder" } },
@@ -3447,6 +3627,94 @@
 
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
+    leader_justin_trudeau: {
+      "conquest": [
+        "Canada will secure the ground needed to protect our people and partners. Our objective must remain a lasting peace.",
+        "This operation carries a serious responsibility. Canada will use its advantage to establish security and seek a settlement."
+      ],
+      "hostility": [
+        "Repeated attacks on trust have left our people exposed. Canada will now answer with the strength of its commitments.",
+        "We pursued cooperation, but you have made confrontation your policy. Canada and its partners will respond."
+      ],
+      "threat": [
+        "Your military preparations threaten our security. Canada will act before that danger becomes an attack on our people.",
+        "Our allies cannot face your threats alone. Canada will stand beside them and meet this danger together."
+      ],
+      "ideological": [
+        "An order built on coercion cannot protect the freedoms our people share. Canada will oppose it with resolve.",
+        "Sovereignty and cooperation require nations willing to defend them. Canada accepts that responsibility today."
+      ],
+      "ambition": [
+        "Canada must be able to uphold the commitments it makes. We are taking military action to secure that ability.",
+        "This is a grave use of Canadian power. We will pursue a limited objective and a durable peace."
+      ]
+    },
+    leader_claudia_sheinbaum_pardo: {
+      "conquest": [
+        "Mexico will secure this position to protect its people. Military success must serve security and national development.",
+        "We are committing forces to secure our frontier. Our purpose is a settlement that respects Mexico\u2019s independence."
+      ],
+      "hostility": [
+        "You have repeatedly undermined our security and rejected a respectful settlement. Mexico will now defend its interests by force.",
+        "Our willingness to negotiate was real. Your continued coercion has made a military response necessary."
+      ],
+      "threat": [
+        "Your forces threaten the communities we are responsible for protecting. Mexico will act to remove that danger.",
+        "We will not leave our national development at the mercy of your military pressure. Mexico is prepared to resist."
+      ],
+      "ideological": [
+        "No foreign power may decide how our people govern themselves. Mexico will defend that principle with force.",
+        "Your demands deny the equality and independence of our nation. Mexico cannot accept them and will resist."
+      ],
+      "ambition": [
+        "Mexico must have the strength to protect its own decisions. Our forces will act to secure that independence.",
+        "Our future requires secure communities and freedom from coercion. We are committing our strength to that purpose."
+      ]
+    },
+    leader_javier_milei: {
+      "conquest": [
+        "The balance gives Argentina a decisive advantage. We will secure this position and insist on terms that justify the cost.",
+        "You have left a strategic opening. Argentina will take it, with clear objectives and no appetite for an endless campaign."
+      ],
+      "hostility": [
+        "Your obstruction now carries a price that negotiation has failed to remove. Argentina will answer with force.",
+        "You have treated every agreement as an invitation to demand more. That calculation ends here. We are at war."
+      ],
+      "threat": [
+        "Your military pressure threatens our freedom to trade and govern. We will remove that threat before the cost grows.",
+        "Argentina will not finance its own submission through delay. Your preparations demand decisive action now."
+      ],
+      "ideological": [
+        "Your demand for obedience is incompatible with our freedom of action. Argentina will resist it by force.",
+        "We reject a political order that lets you dictate our choices. Our independence will be defended."
+      ],
+      "ambition": [
+        "A favorable moment means little without the will to act. Argentina will commit its strength and demand a concrete result.",
+        "I have weighed the risks. Argentina will act now to secure its freedom of action and bargaining position."
+      ]
+    },
+    leader_volodymyr_zelenskyy: {
+      "conquest": [
+        "Ukraine will secure the positions from which our people can be threatened. Our objective is a homeland that can live in peace.",
+        "We are advancing to remove the danger to our cities. Every military objective must serve our people\u2019s security."
+      ],
+      "hostility": [
+        "You have answered our efforts for peace with continued coercion. Ukraine will fight to end it.",
+        "We have endured your hostility and sought dependable guarantees. Now our armed forces must secure what your words would not."
+      ],
+      "threat": [
+        "Your forces threaten our national survival. Ukraine will meet that danger with every prepared unit and every dependable partner.",
+        "We will not wait for your threats to become the destruction of our cities. Ukraine is ready, and Ukraine will resist."
+      ],
+      "ideological": [
+        "Our people have the right to choose their own future. We will fight any power that tries to take that right away.",
+        "An order that denies our sovereignty offers no peace we can accept. Ukraine will oppose it with force."
+      ],
+      "ambition": [
+        "Ukraine must be strong enough to secure its own future. We are acting so that no aggressor can decide it for us.",
+        "Our determination is matched by preparation and partnerships. We will use that strength to secure a peace that can last."
+      ]
+    },
     leader_henry_v: {
       conquest: ["Your defenses invite a campaign, and I intend to finish it decisively.", "The field is prepared and your realm lies before us. England marches."],
       hostility: ["Your offenses have exhausted the patience of my crown. We shall answer them in battle.", "You have chosen defiance at every turn. Let arms now settle what words could not."],

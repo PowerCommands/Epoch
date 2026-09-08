@@ -78,7 +78,7 @@ interface CityGrowthContext {
   /** Economy used for the per-turn display values (recomputed if pop grows). */
   displayEconomy: CityEconomySummary;
   /** Growth food this city would gain before military upkeep (post growth modifier). */
-  readonly growthCandidate: number;
+  growthCandidate: number;
 }
 
 /**
@@ -86,6 +86,12 @@ interface CityGrowthContext {
  * aktiva nationen och dess städer.
  */
 export class ResourceSystem {
+  private historicalGold: (nation: string, value: number) => number = (_n, value) => value;
+  private historicalFood: (nation: string, economies: CityEconomySummary[], round: number, commit: boolean) => void = () => {};
+  setHistoricalProviders(gold: typeof this.historicalGold, food: typeof this.historicalFood): void {
+    this.historicalGold = gold; this.historicalFood = food;
+  }
+
   private readonly nationManager: NationManager;
   private readonly cityManager: CityManager;
   private readonly generator: IResourceGenerator;
@@ -270,6 +276,14 @@ export class ResourceSystem {
     return nationRes.gold;
   }
 
+  /** Gross Food before historical disruption, aid and domestic consumption. */
+  getNationalFoodProduction(nationId: string): number {
+    const maritime = this.getMaritimeFoodDistribution(nationId);
+    const modifiers = this.getNationModifiers(nationId);
+    return this.cityManager.getCitiesByOwner(nationId).reduce((sum, city) => sum
+      + this.calculateEconomyForCity(city, modifiers).food + (maritime.get(city.id) ?? 0), 0);
+  }
+
   getFoodSurplus(city: City): number {
     const cityRes = this.cityManager.getResources(city.id);
     return getPositiveFoodSurplus(
@@ -294,7 +308,7 @@ export class ResourceSystem {
 
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nationId, cities);
     nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId)
-      + this.getManufacturedGoldPerTurn(nationId)
+      + this.historicalGold(nationId, this.getManufacturedGoldPerTurn(nationId))
       - getNationOccupationGoldCost(nationId, this.cityManager, this.turnManager.getCurrentRound());
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
@@ -323,6 +337,12 @@ export class ResourceSystem {
     }
     nationRes.culturePerTurn += this.getArchaeologicalCultureBreakdown(nationId).culturePerTurn;
 
+    const previews = cities.map(city => {
+      const res = this.cityManager.getResources(city.id);
+      return { food: res.foodPerTurn, foodConsumption: getFoodConsumption(city.population), netFood: 0 } as CityEconomySummary;
+    });
+    this.historicalFood(nationId, previews, this.turnManager.getCurrentRound(), false);
+    cities.forEach((city, i) => { this.cityManager.getResources(city.id).foodPerTurn = previews[i].food; });
     this.happinessSystem.recalculateNation(nationId);
     this.notify({ nationId });
   }
@@ -440,6 +460,14 @@ export class ResourceSystem {
       });
     }
 
+    const grossFood = contexts.map(ctx => ctx.economy.food);
+    this.historicalFood(nation.id, contexts.map(ctx => ctx.economy), this.turnManager.getCurrentRound(), true);
+    const historicallyAdjustedFood = new Set(contexts.filter((ctx, index) => ctx.economy.food !== grossFood[index]).map(ctx => ctx.city.id));
+    for (const ctx of contexts) {
+      ctx.growthCandidate = ctx.economy.netFood > 0 && growthModifier > 0 ? Math.floor(ctx.economy.netFood * growthModifier) : 0;
+      ctx.displayEconomy = { ...ctx.displayEconomy, food: ctx.economy.food, netFood: ctx.economy.netFood };
+    }
+
     // Pool the positive city surplus, subtract national military food upkeep,
     // and distribute the remaining growth food back proportionally. Military
     // upkeep therefore only suppresses growth — it never touches the population
@@ -491,9 +519,12 @@ export class ResourceSystem {
         }
       }
 
+      // This turn's settled Food includes historical losses and conserved aid.
+      // A population refresh must not overwrite that settlement with gross yields.
+      if (historicallyAdjustedFood.has(city.id)) displayEconomy = { ...displayEconomy, food: ctx.economy.food, netFood: ctx.economy.netFood };
       cityRes.foodPerTurn = displayEconomy.food;
       cityRes.productionPerTurn = displayEconomy.production;
-      cityRes.goldPerTurn = displayEconomy.gold;
+      cityRes.goldPerTurn = this.historicalGold(nation.id, displayEconomy.gold);
       cityRes.sciencePerTurn = displayEconomy.science;
       cityRes.culturePerTurn = displayEconomy.culture;
       cityRes.happinessPerTurn = displayEconomy.happiness;
@@ -618,7 +649,7 @@ export class ResourceSystem {
 
     return baseGoldPerTurn
       + this.getTradeGoldPerTurnDelta(nation.id)
-      + this.getManufacturedGoldPerTurn(nation.id);
+      + this.historicalGold(nation.id, this.getManufacturedGoldPerTurn(nation.id));
   }
 
   private calculateEconomyForCity(
@@ -642,7 +673,7 @@ export class ResourceSystem {
     manufacturedProductionBonus = 0,
     buildings: CityBuildings = this.cityManager.getBuildings(city.id),
   ): CityEconomySummary {
-    return this.applyFlatProduction(
+    const economy = this.applyFlatProduction(
       this.applyCityEnergyProductionMultiplier(
         city,
         this.applyCityIntegrationMultiplier(
@@ -655,6 +686,7 @@ export class ResourceSystem {
       ),
       manufacturedProductionBonus,
     );
+    return { ...economy, gold: this.historicalGold(city.ownerId, economy.gold) };
   }
 
   /**

@@ -3,6 +3,7 @@ import type { CityManager } from '../CityManager';
 import type { DiplomacyManager } from '../DiplomacyManager';
 import type { AllianceManager } from '../diplomacy/AllianceManager';
 import { CITY_BASE_HEALTH, CITY_BASE_DEFENSE } from '../../data/cities';
+import { getMilitaryQualityMultiplier } from '../../data/unitQuality';
 
 // Military evaluation gives diplomacy a basic sense of relative power.
 // It does not change combat rules; it only informs AI decisions.
@@ -109,8 +110,12 @@ export class AIMilitaryEvaluationSystem {
 
     let unitStrength = 0;
     for (const unit of this.unitManager.getUnitsByOwner(nationId)) {
-      const meleeStrength = unit.unitType.baseStrength;
-      const rangedStrength = unit.unitType.rangedStrength ?? 0;
+      // Quality-adjusted so a Level 5 professional army is evaluated as stronger
+      // than the same collection of Level 1 units. Multiplier is >= 1, so units
+      // with no strength (settlers / workers) still contribute nothing.
+      const qualityMultiplier = getMilitaryQualityMultiplier(unit.qualityLevel);
+      const meleeStrength = unit.unitType.baseStrength * qualityMultiplier;
+      const rangedStrength = (unit.unitType.rangedStrength ?? 0) * qualityMultiplier;
       const effectiveStrength = Math.max(meleeStrength, rangedStrength);
       if (effectiveStrength <= 0) continue; // settlers / workers contribute nothing
       const healthRatio = unit.health / unit.unitType.baseHealth;

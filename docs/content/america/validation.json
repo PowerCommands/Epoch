@@ -1,0 +1,51 @@
+{
+  "map": "America",
+  "size": [
+    75,
+    150
+  ],
+  "leaders": [
+    "leader_justin_trudeau",
+    "leader_donald_j_trump",
+    "leader_claudia_sheinbaum_pardo",
+    "leader_jair_bolsonaro",
+    "leader_javier_milei"
+  ],
+  "initialSettlers": 5,
+  "resources": 190,
+  "riverTiles": 238,
+  "completedRounds": 2,
+  "cities": [
+    {
+      "name": "Ottawa",
+      "nation": "nation_canada",
+      "q": 49,
+      "r": 34
+    },
+    {
+      "name": "Washington",
+      "nation": "nation_usa",
+      "q": 46,
+      "r": 43
+    },
+    {
+      "name": "Mexico City",
+      "nation": "nation_mexico",
+      "q": 20,
+      "r": 61
+    },
+    {
+      "name": "Rio de Janeiro",
+      "nation": "nation_brazil",
+      "q": 51,
+      "r": 104
+    },
+    {
+      "name": "Buenos Aires",
+      "nation": "nation_argentina",
+      "q": 33,
+      "r": 124
+    }
+  ],
+  "errors": []
+}

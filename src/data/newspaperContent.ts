@@ -1,3 +1,4 @@
+import { WORLD_EVENT_DEFINITIONS } from '../systems/HistoricalWorldEvents';
 import type { NewspaperArticleContext, NewspaperEventDefinition, NewspaperEventType } from '../types/newspaper';
 import type { Era } from './technologies';
 
@@ -9,6 +10,10 @@ export const NEWSPAPER_IMAGE_PATHS = {
   capitalCaptured: `${NEWS_PATH}capital-lost.png`,
   capitulation: `${NEWS_PATH}nation-defeated.png`,
   warDeclared: `${NEWS_PATH}war-declared.png`,
+  stockMarketCrash: `${NEWS_PATH}stock-market-crash.png`,
+  famine: `${NEWS_PATH}famine.png`,
+  pandemic: `${NEWS_PATH}pandemic.png`,
+  energyCrisis: `${NEWS_PATH}energy-crisis.png`,
   worldWarStarted: `${NEWS_PATH}war-declared.png`,
   worldWarEnded: `${NEWS_PATH}war-declared.png`,
   allianceFormed: `${NEWS_PATH}alliance-formed.png`,
@@ -108,6 +113,10 @@ function definition(
 }
 
 export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, NewspaperEventDefinition>> = {
+  stockMarketCrash: definition(100, NEWSPAPER_IMAGE_PATHS.stockMarketCrash, 'the market crash', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.stockMarketCrash.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),
+  famine: definition(100, NEWSPAPER_IMAGE_PATHS.famine, 'the famine', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.famine.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),
+  pandemic: definition(100, NEWSPAPER_IMAGE_PATHS.pandemic, 'the pandemic', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.pandemic.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),
+  energyCrisis: definition(100, NEWSPAPER_IMAGE_PATHS.energyCrisis, 'the energy crisis', c => `${upper(c.event.metadata?.scenarioHistoricalEventName ?? WORLD_EVENT_DEFINITIONS.energyCrisis.name)} ${c.event.metadata?.worldEventPhase === 'ended' ? 'ENDS' : c.event.metadata?.worldEventPhase === 'aid' ? 'HUMANITARIAN RESPONSE' : 'BEGINS'}`, c => c.event.metadata?.scenarioHistoricalEventDescription ?? c.event.text),
   worldWarStarted: definition(100, NEWSPAPER_IMAGE_PATHS.worldWarStarted, 'the World War', (c) =>
     `${upper(c.event.metadata?.scenarioHistoricalEventName ?? 'WORLD WAR')} BEGINS`, (c) => {
       const description = c.event.metadata?.scenarioHistoricalEventDescription ?? '';

@@ -25,6 +25,12 @@ export type TradeDealRestrictionProvider = (input: CreateTradeDealInput) => stri
 type TradeDealListener = (event: TradeDealEvent) => void;
 
 export class TradeDealSystem {
+  private historicalPrice: (resource: string) => number = () => 1;
+  private historicalGold: (nation: string, income: number) => number = (_n, income) => income;
+  setHistoricalProviders(price: typeof this.historicalPrice, gold: typeof this.historicalGold): void {
+    this.historicalPrice = price; this.historicalGold = gold;
+  }
+  effectivePrice(resource: string, base: number): number { return base * this.historicalPrice(resource); }
   private readonly deals = new Map<string, TradeDeal>();
   private nextDealNumber = 1;
   private canExportResource: TradeDealCanExportResource = () => false;
@@ -102,7 +108,7 @@ export class TradeDealSystem {
       }
 
       this.goldAccess.addGold(deal.buyerNationId, -deal.goldPerTurn);
-      this.goldAccess.addGold(deal.sellerNationId, deal.goldPerTurn);
+      this.goldAccess.addGold(deal.sellerNationId, this.historicalGold(deal.sellerNationId, deal.goldPerTurn));
       deal.remainingTurns -= 1;
 
       if (deal.remainingTurns <= 0) {
@@ -164,7 +170,7 @@ export class TradeDealSystem {
 
   getGoldPerTurnDeltaForNation(nationId: string): number {
     return Array.from(this.deals.values()).reduce((sum, deal) => {
-      if (deal.sellerNationId === nationId) return sum + deal.goldPerTurn;
+      if (deal.sellerNationId === nationId) return sum + this.historicalGold(nationId, deal.goldPerTurn);
       if (deal.buyerNationId === nationId) return sum - deal.goldPerTurn;
       return sum;
     }, 0);

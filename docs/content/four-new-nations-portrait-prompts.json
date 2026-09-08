@@ -1,0 +1,37 @@
+{
+  "tool": "built-in imagegen",
+  "assets": [
+    {
+      "path": "/assets/sprites/leaders/justin-trudeau.png",
+      "prompt": "Create a single square painted leader portrait for Epoch strategy game. Subject: Justin Trudeau, clean shaven, navy suit and red tie. Recognizable respectful likeness, head and shoulders centered, realistic traditional oil painting with fine visible brushwork, muted warm brown textured background, soft directional light, serious composed expression. Modern clothing rendered in historical painted leader presentation. No text, no border, no watermark. Output image asset."
+    },
+    {
+      "path": "/assets/sprites/leaders/justin-trudeau-room.webp",
+      "prompt": "Create one wide landscape diplomatic audience scene for Epoch strategy game, aspect 2048:872. Justin Trudeau, clean shaven, navy suit and red tie, seated at right third, full figure visible in Canadian parliamentary office with maple leaf flag. Warm traditional oil painting, realistic recognizable likeness, restrained formal atmosphere, detailed wood furniture, soft window light. Left half is dim uncluttered interior space for game dialogue overlay. Match historical painted strategy-game leader presentation while keeping modern clothing and room. No text, no watermark, no border."
+    },
+    {
+      "path": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
+      "prompt": "Create a single square painted leader portrait for Epoch strategy game. Subject: Claudia Sheinbaum Pardo, dark hair tied back, ivory jacket with subtle Mexican embroidery. Recognizable respectful likeness, head and shoulders centered, realistic traditional oil painting with fine visible brushwork, muted warm brown textured background, soft directional light, serious composed expression. Modern clothing rendered in historical painted leader presentation. No text, no border, no watermark. Output image asset."
+    },
+    {
+      "path": "/assets/sprites/leaders/claudia-sheinbaum-pardo-room.webp",
+      "prompt": "Create one wide landscape diplomatic audience scene for Epoch strategy game, aspect 2048:872. Claudia Sheinbaum Pardo, dark hair tied back, ivory jacket with subtle Mexican embroidery, seated at right third, full figure visible in Mexican presidential office with Mexican flag. Warm traditional oil painting, realistic recognizable likeness, restrained formal atmosphere, detailed wood furniture, soft window light. Left half is dim uncluttered interior space for game dialogue overlay. Match historical painted strategy-game leader presentation while keeping modern clothing and room. No text, no watermark, no border."
+    },
+    {
+      "path": "/assets/sprites/leaders/javier-milei.png",
+      "prompt": "Create a single square painted leader portrait for Epoch strategy game. Subject: Javier Milei, recognizable shaggy dark hair and sideburns, dark suit and blue tie. Recognizable respectful likeness, head and shoulders centered, realistic traditional oil painting with fine visible brushwork, muted warm brown textured background, soft directional light, serious composed expression. Modern clothing rendered in historical painted leader presentation. No text, no border, no watermark. Output image asset."
+    },
+    {
+      "path": "/assets/sprites/leaders/javier-milei-room.webp",
+      "prompt": "Create one wide landscape diplomatic audience scene for Epoch strategy game, aspect 2048:872. Javier Milei, recognizable shaggy dark hair and sideburns, dark suit and blue tie, seated at right third, full figure visible in Argentine presidential office with Argentine flag. Warm traditional oil painting, realistic recognizable likeness, restrained formal atmosphere, detailed wood furniture, soft window light. Left half is dim uncluttered interior space for game dialogue overlay. Match historical painted strategy-game leader presentation while keeping modern clothing and room. No text, no watermark, no border."
+    },
+    {
+      "path": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
+      "prompt": "Create a single square painted leader portrait for Epoch strategy game. Subject: Volodymyr Zelenskyy, short dark hair and trimmed beard, olive green crewneck shirt. Recognizable respectful likeness, head and shoulders centered, realistic traditional oil painting with fine visible brushwork, muted warm brown textured background, soft directional light, serious composed expression. Modern clothing rendered in historical painted leader presentation. No text, no border, no watermark. Output image asset."
+    },
+    {
+      "path": "/assets/sprites/leaders/volodymyr-zelenskyy-room.webp",
+      "prompt": "Create one wide landscape diplomatic audience scene for Epoch strategy game, aspect 2048:872. Volodymyr Zelenskyy, short dark hair and trimmed beard, olive green crewneck shirt, seated at right third, full figure visible in Ukrainian presidential office with blue and yellow Ukrainian flag. Warm traditional oil painting, realistic recognizable likeness, restrained formal atmosphere, detailed wood furniture, soft window light. Left half is dim uncluttered interior space for game dialogue overlay. Match historical painted strategy-game leader presentation while keeping modern clothing and room. No text, no watermark, no border."
+    }
+  ]
+}

@@ -198,6 +198,11 @@ export interface SavedUnit {
   };
   /** Player-enabled automation (e.g. auto-explore). Absent in older saves. */
   automation?: 'explore';
+  /**
+   * Permanent Military Unit Quality level (1–5). Absent in older saves and on
+   * civilian units; restored as Level 1 when missing.
+   */
+  qualityLevel?: 1 | 2 | 3 | 4 | 5;
 }
 
 export interface SavedTile {

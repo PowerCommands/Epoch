@@ -1,8 +1,16 @@
 {
   "playlists": {
+    "nation_argentina": [
+      "/assets/sounds/nation_argentina/nation_argentina_theme-01.mp3",
+      "/assets/sounds/nation_argentina/nation_argentina_theme-02.mp3"
+    ],
     "nation_brazil": [
       "/assets/sounds/nation_brazil/nation_brazil-theme-01.mp3",
       "/assets/sounds/nation_brazil/nation_brazil-theme-02.mp3"
+    ],
+    "nation_canada": [
+      "/assets/sounds/nation_canada/nation_canada_theme-01.mp3",
+      "/assets/sounds/nation_canada/nation_canada_theme-02.mp3"
     ],
     "nation_china": [
       "/assets/sounds/nation_china/nation_china-theme-01.mp3",
@@ -48,6 +56,10 @@
       "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-01.mp3",
       "/assets/sounds/nation_mali-empire/nation_mali-empire-theme-02.mp3"
     ],
+    "nation_mexico": [
+      "/assets/sounds/nation_mexico/nation_mexico_theme-01.mp3",
+      "/assets/sounds/nation_mexico/nation_mexico_theme-02.mp3"
+    ],
     "nation_mongolia": [
       "/assets/sounds/nation_mongolia/nation_mongolia-theme-01.mp3",
       "/assets/sounds/nation_mongolia/nation_mongolia-theme-02.mp3"
@@ -87,6 +99,10 @@
     "nation_taiwan": [
       "/assets/sounds/nation_taiwan/nation_taiwan-theme-01.mp3",
       "/assets/sounds/nation_taiwan/nation_taiwan-theme-02.mp3"
+    ],
+    "nation_ukraine": [
+      "/assets/sounds/nation_ukraine/nation_ukraine_theme-01.mp3",
+      "/assets/sounds/nation_ukraine/nation_ukraine_theme-02.mp3"
     ],
     "nation_usa": [
       "/assets/sounds/nation_usa/nation_usa-theme-01.mp3",

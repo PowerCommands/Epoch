@@ -67,6 +67,8 @@ export interface WorldCouncilOverviewEnactedResolution {
 }
 
 export interface WorldCouncilOverviewState {
+  readonly humanitarianEmergencies?: Array<{ name: string; remainingTurns: number; percent: number; production: number; contributed: number; score: number; otherPercent: number; setPercent(percent: number): number }>;
+
   readonly organizationName: string;
   readonly status: string;
   readonly foundingCityName: string;
@@ -280,6 +282,29 @@ export class WorldCouncilOverviewDialog {
     grid.appendChild(metric('Members', `${state.members.length} ${state.members.length === 1 ? 'nation' : 'nations'}`));
     root.appendChild(grid);
 
+    for (const aid of state.humanitarianEmergencies ?? []) {
+      root.appendChild(heading(`Famine emergency: ${aid.name}`, 'h2'));
+      root.appendChild(text(`${aid.remainingTurns} turns remaining. Food sent: ${aid.contributed.toFixed(1)}. Diplomatic Score earned: ${aid.score}.`, 'wc-muted'));
+      const label = document.createElement('label');
+      label.textContent = 'Donate national Food production: ';
+      const select = document.createElement('select');
+      for (const percent of [...new Set([0, 5, 10, 15, 20, 25, 50, aid.percent])].sort((a,b) => a-b)) {
+        const option = document.createElement('option'); option.value = String(percent);
+        option.textContent = percent === 0 ? 'Decline (0%)' : `${percent}%`; option.selected = percent === aid.percent; select.appendChild(option);
+      }
+      const consequence = text('', 'wc-muted');
+      const production = aid.production;
+      const update = () => { const amount = production*Number(select.value)/100;
+        consequence.textContent = `Diverts approximately ${amount.toFixed(1)} Food per turn before domestic consumption; ${Math.max(0, production-amount-production*aid.otherPercent/100).toFixed(1)} retained after all relief commitments. Commitments last until the emergency ends and can be changed here. Score scales with actual Food supplied relative to the recipient's lost harvests.`; };
+      select.onchange = () => {
+        const actual = aid.setPercent(Number(select.value));
+        if (![...select.options].some(option => Number(option.value) === actual)) {
+          const option = document.createElement('option'); option.value = String(actual); option.textContent = `${actual}%`; select.appendChild(option);
+        }
+        select.value = String(actual); update();
+      };
+      update(); label.appendChild(select); root.append(label, consequence);
+    }
     root.appendChild(heading('Active Resolutions', 'h2'));
     const { active } = partitionResolutions(state.enactedResolutions);
     if (active.length === 0) {

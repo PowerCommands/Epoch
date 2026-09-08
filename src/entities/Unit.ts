@@ -1,4 +1,5 @@
 import type { UnitType } from './UnitType';
+import { MIN_MILITARY_QUALITY_LEVEL, type MilitaryQualityLevel } from '../data/unitQuality';
 
 export type UnitActionStatus = 'active' | 'sleep' | 'building';
 
@@ -27,6 +28,7 @@ export interface UnitConfig {
   expiresAtRound?: number;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];
+  qualityLevel?: MilitaryQualityLevel;
 }
 
 /**
@@ -56,6 +58,13 @@ export class Unit {
   buildAction?: UnitBuildAction;
   /** When set, the unit is under player-enabled automation (e.g. auto-explore). */
   automation?: UnitAutomation;
+  /**
+   * Permanent Military Unit Quality level (1–5) baked in at production time.
+   * Never recalculated afterwards — it survives building loss, relocation,
+   * upgrades and save/load. Non-military/civilian units keep the default
+   * Level 1. See {@link ../data/unitQuality}.
+   */
+  qualityLevel: MilitaryQualityLevel;
 
   constructor(config: UnitConfig) {
     this.id = config.id;
@@ -74,6 +83,7 @@ export class Unit {
     this.createdRound = config.createdRound ?? 1;
     this.expiresAtRound = config.expiresAtRound;
     this.actionStatus = 'active';
+    this.qualityLevel = config.qualityLevel ?? MIN_MILITARY_QUALITY_LEVEL;
   }
 
   resetMovement(): void {

@@ -49,7 +49,7 @@ test('Władysław Sikorski is Poland’s default leader with conventional media 
   assert.equal(WLADYSLAW_SIKORSKI.nationId, POLAND_ID);
   assert.equal(WLADYSLAW_SIKORSKI.title, 'General');
   assert.equal(WLADYSLAW_SIKORSKI.isDefault, true);
-  assert.deepEqual(getLeadersByNationId(POLAND_ID).map((leader) => leader.id), [SIKORSKI_ID]);
+  assert.deepEqual(getLeadersByNationId(POLAND_ID).map((leader) => leader.id), [SIKORSKI_ID, 'leader_donald_tusk']);
   assert.equal(getDefaultLeaderByNationId(POLAND_ID)?.id, SIKORSKI_ID);
   assert.equal(getLeaderByNationId(POLAND_ID)?.id, SIKORSKI_ID);
   assert.equal(WLADYSLAW_SIKORSKI.image, '/assets/sprites/leaders/wladyslaw-sikorski.png');
@@ -92,7 +92,7 @@ test('Poland is exported to editor manifests with city names and its two-track p
   assert.equal(poland.currencyName, 'Polish Złoty');
   assert.equal(poland.currencySymbol, 'zł');
   assert.equal(poland.leaderId, SIKORSKI_ID);
-  assert.deepEqual(poland.leaders, [{
+  assert.deepEqual(poland.leaders.filter((leader) => leader.isDefault), [{
     leaderId: SIKORSKI_ID,
     leaderName: 'Władysław Sikorski',
     leaderTitle: 'General',

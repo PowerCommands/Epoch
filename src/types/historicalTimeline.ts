@@ -13,6 +13,7 @@ export type HistoricalEventType =
   | 'ceasefireStarted'
   | 'peaceNegotiationsFailed'
   | 'capitulation'
+  | 'stockMarketCrash' | 'famine' | 'pandemic' | 'energyCrisis'
   | 'worldWarStarted'
   | 'worldWarEnded'
   | 'joinedWar'
@@ -49,6 +50,7 @@ export type HistoricalEventType =
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */
 export interface HistoricalEventMetadata {
+  worldEventPhase?: 'started' | 'ended' | 'aid';
   /** Frozen display names aligned with eventNationIds for removed-nation safety. */
   nationNames?: string[];
   leaderNames?: string[];

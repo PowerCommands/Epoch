@@ -661,9 +661,182 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
       defeat: 'An army may be defeated, but a nation’s determination to endure cannot be erased by force.',
     },
   },
+  {
+    "id": "leader_justin_trudeau",
+    "name": "Justin Trudeau",
+    "nationId": "nation_canada",
+    "title": "Prime Minister",
+    "image": "/assets/sprites/leaders/justin-trudeau.png",
+    "description": "A cooperative Canadian leader who pursues prosperity through trade, diplomacy, and dependable partnerships backed by modern defenses.",
+    "ideologyId": "globalism",
+    "aiNationalAgendaId": "economic",
+    "aiMilitaryDoctrineId": "defensiveModern",
+    "covertPersonalityId": "merchant",
+    "opportunism": false,
+    "impulsiveBully": false,
+    "culturePriorities": [
+      "foreign_trade",
+      "state_workforce",
+      "political_philosophy",
+      "civil_service_civics",
+      "diplomatic_service"
+    ],
+    "aiPersonality": {
+      "aggressionBias": -14,
+      "expansionBias": -8,
+      "economyBias": 22,
+      "cultureBias": 9,
+      "diplomacyBias": 24,
+      "warTolerance": 48,
+      "peacePreference": 76,
+      "minimumUnitsLostBeforePeace": 3,
+      "casualtyToleranceRatio": 0.35,
+      "resourceExploitationInterest": 2
+    },
+    "diplomacyFlavor": {
+      "greeting": "Canada welcomes practical ideas for a more secure and prosperous world. Let us find common ground.",
+      "friendly": "Our partnership shows what dependable friends can accomplish. Canada is ready to build on it.",
+      "neutral": "Trade and dialogue can turn shared interests into lasting cooperation. What can we achieve together?",
+      "hostile": "Your pressure is damaging the trust on which peace depends. Canada expects you to change course.",
+      "warDeclaration": "Our people and our partners face a danger that diplomacy has not resolved. Canada will meet its commitments.",
+      "victory": "Let this victory secure a peace in which our people and our partners can prosper.",
+      "defeat": "We must rebuild, protect our people, and preserve the friendships that will carry us forward."
+    }
+  },
+  {
+    "id": "leader_claudia_sheinbaum_pardo",
+    "name": "Claudia Sheinbaum Pardo",
+    "nationId": "nation_mexico",
+    "title": "President",
+    "image": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
+    "description": "A Mexican leader focused on domestic development, shared prosperity, cultural life, and sovereign decision-making.",
+    "ideologyId": "progressivism",
+    "aiNationalAgendaId": "growth",
+    "aiMilitaryDoctrineId": "defensiveModern",
+    "covertPersonalityId": "pragmatist",
+    "opportunism": false,
+    "impulsiveBully": false,
+    "culturePriorities": [
+      "state_workforce",
+      "early_empire",
+      "games_recreation",
+      "civil_service_civics",
+      "diplomatic_service"
+    ],
+    "aiPersonality": {
+      "aggressionBias": -12,
+      "expansionBias": -6,
+      "economyBias": 18,
+      "cultureBias": 14,
+      "diplomacyBias": 14,
+      "warTolerance": 52,
+      "peacePreference": 70,
+      "minimumUnitsLostBeforePeace": 3,
+      "casualtyToleranceRatio": 0.4,
+      "resourceExploitationInterest": 1
+    },
+    "diplomacyFlavor": {
+      "greeting": "Mexico seeks development with dignity and relations based on mutual respect. Let us speak as equals.",
+      "friendly": "Our cooperation is delivering for our people. Mexico values a partner who respects our independence.",
+      "neutral": "We will judge this proposal by its contribution to development and respect for our sovereignty.",
+      "hostile": "Mexico’s future is for its people to decide. Pressure from abroad will not change that.",
+      "warDeclaration": "Our sovereignty and the safety of our people require action. Mexico will defend them with determination.",
+      "victory": "Peace must now make room for schools, work, and a better life in every region of Mexico.",
+      "defeat": "Our people deserve recovery and dignity. We will continue the work of national development."
+    }
+  },
+  {
+    "id": "leader_javier_milei",
+    "name": "Javier Milei",
+    "nationId": "nation_argentina",
+    "title": "President",
+    "image": "/assets/sprites/leaders/javier-milei.png",
+    "description": "An outspoken Argentine economic reformer who values enterprise, challenges established arrangements, and takes calculated risks without seeking territorial empire.",
+    "ideologyId": "liberalism",
+    "aiNationalAgendaId": "economic",
+    "aiMilitaryDoctrineId": "defensiveModern",
+    "covertPersonalityId": "opportunist",
+    "opportunism": false,
+    "impulsiveBully": false,
+    "culturePriorities": [
+      "foreign_trade",
+      "state_workforce",
+      "guilds",
+      "civil_service_civics"
+    ],
+    "aiPersonality": {
+      "aggressionBias": -3,
+      "expansionBias": -7,
+      "economyBias": 30,
+      "cultureBias": -8,
+      "diplomacyBias": -6,
+      "warTolerance": 48,
+      "peacePreference": 58,
+      "minimumUnitsLostBeforePeace": 3,
+      "casualtyToleranceRatio": 0.35,
+      "resourceExploitationInterest": 4
+    },
+    "diplomacyFlavor": {
+      "greeting": "Argentina is ready to do business. Bring a proposal that creates value, not another arrangement that rewards failure.",
+      "friendly": "You have kept your word and made cooperation worthwhile. Let us give enterprise more room to succeed.",
+      "neutral": "I will examine the terms. Agreement is useful only when the benefits survive an honest accounting.",
+      "hostile": "You expect Argentina to accept your terms because they are customary. That is no argument, and we reject them.",
+      "warDeclaration": "Your coercion has made peaceful enterprise impossible. Argentina will use force to end it.",
+      "victory": "We have secured our freedom of action. Now let production and commerce justify the cost.",
+      "defeat": "This defeat demands an honest reckoning. Argentina must rebuild its strength and restore opportunity."
+    }
+  },
+  {
+    "id": "leader_volodymyr_zelenskyy",
+    "name": "Volodymyr Zelenskyy",
+    "nationId": "nation_ukraine",
+    "title": "President",
+    "image": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
+    "description": "A Ukrainian leader committed to national survival, military readiness, dependable partnerships, and determined resistance to aggression.",
+    "ideologyId": "progressivism",
+    "aiNationalAgendaId": "homeland_defense",
+    "aiMilitaryDoctrineId": "disciplinedInfantry",
+    "covertPersonalityId": "pragmatist",
+    "opportunism": false,
+    "impulsiveBully": false,
+    "culturePriorities": [
+      "state_workforce",
+      "military_tradition",
+      "defensive_tactics",
+      "civil_service_civics",
+      "diplomatic_service",
+      "nationalism",
+      "mobilization"
+    ],
+    "aiPersonality": {
+      "aggressionBias": -10,
+      "expansionBias": -12,
+      "economyBias": 8,
+      "cultureBias": 6,
+      "diplomacyBias": 23,
+      "warTolerance": 88,
+      "peacePreference": 48,
+      "minimumUnitsLostBeforePeace": 8,
+      "casualtyToleranceRatio": 0.72,
+      "resourceExploitationInterest": 0
+    },
+    "diplomacyFlavor": {
+      "greeting": "Ukraine seeks a peace that protects sovereignty. We welcome partners prepared to stand by their word.",
+      "friendly": "You stood with us when commitments mattered. Ukraine will remember, and we will stand with you.",
+      "neutral": "We are ready to cooperate. Lasting security requires clear commitments and the means to uphold them.",
+      "hostile": "Our future is not yours to dictate. Every threat strengthens our determination to defend it.",
+      "warDeclaration": "Our sovereignty is at stake. Ukraine will fight, with its partners, until our people can live in security.",
+      "victory": "Our people have defended their future. We must secure the peace and bring life back to our cities.",
+      "defeat": "Our cities may have fallen, but our right to exist has not. Ukraine will endure and rebuild."
+    }
+  },
 ];
 
 const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderPreferences>> = {
+  leader_justin_trudeau: {"traditionalFavourite": "swimming", "additionalFavourite": "hundred_metres"},
+  leader_claudia_sheinbaum_pardo: {"traditionalFavourite": "marathon", "additionalFavourite": "boxing"},
+  leader_javier_milei: {"traditionalFavourite": "wrestling", "additionalFavourite": "horse_racing"},
+  leader_volodymyr_zelenskyy: {"traditionalFavourite": "wrestling", "additionalFavourite": "boxing"},
   leader_henry_v: { traditionalFavourite: 'wrestling', additionalFavourite: 'boxing' },
   leader_charles_vii: { traditionalFavourite: 'long_jump', additionalFavourite: 'fencing' },
   leader_sigismund: { traditionalFavourite: 'javelin', additionalFavourite: 'pole_vault' },

@@ -7,6 +7,94 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  * leader checks in diplomacy code.
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
+  leader_justin_trudeau: {
+    "conquest": [
+      "Canada will secure the ground needed to protect our people and partners. Our objective must remain a lasting peace.",
+      "This operation carries a serious responsibility. Canada will use its advantage to establish security and seek a settlement."
+    ],
+    "hostility": [
+      "Repeated attacks on trust have left our people exposed. Canada will now answer with the strength of its commitments.",
+      "We pursued cooperation, but you have made confrontation your policy. Canada and its partners will respond."
+    ],
+    "threat": [
+      "Your military preparations threaten our security. Canada will act before that danger becomes an attack on our people.",
+      "Our allies cannot face your threats alone. Canada will stand beside them and meet this danger together."
+    ],
+    "ideological": [
+      "An order built on coercion cannot protect the freedoms our people share. Canada will oppose it with resolve.",
+      "Sovereignty and cooperation require nations willing to defend them. Canada accepts that responsibility today."
+    ],
+    "ambition": [
+      "Canada must be able to uphold the commitments it makes. We are taking military action to secure that ability.",
+      "This is a grave use of Canadian power. We will pursue a limited objective and a durable peace."
+    ]
+  },
+  leader_claudia_sheinbaum_pardo: {
+    "conquest": [
+      "Mexico will secure this position to protect its people. Military success must serve security and national development.",
+      "We are committing forces to secure our frontier. Our purpose is a settlement that respects Mexico’s independence."
+    ],
+    "hostility": [
+      "You have repeatedly undermined our security and rejected a respectful settlement. Mexico will now defend its interests by force.",
+      "Our willingness to negotiate was real. Your continued coercion has made a military response necessary."
+    ],
+    "threat": [
+      "Your forces threaten the communities we are responsible for protecting. Mexico will act to remove that danger.",
+      "We will not leave our national development at the mercy of your military pressure. Mexico is prepared to resist."
+    ],
+    "ideological": [
+      "No foreign power may decide how our people govern themselves. Mexico will defend that principle with force.",
+      "Your demands deny the equality and independence of our nation. Mexico cannot accept them and will resist."
+    ],
+    "ambition": [
+      "Mexico must have the strength to protect its own decisions. Our forces will act to secure that independence.",
+      "Our future requires secure communities and freedom from coercion. We are committing our strength to that purpose."
+    ]
+  },
+  leader_javier_milei: {
+    "conquest": [
+      "The balance gives Argentina a decisive advantage. We will secure this position and insist on terms that justify the cost.",
+      "You have left a strategic opening. Argentina will take it, with clear objectives and no appetite for an endless campaign."
+    ],
+    "hostility": [
+      "Your obstruction now carries a price that negotiation has failed to remove. Argentina will answer with force.",
+      "You have treated every agreement as an invitation to demand more. That calculation ends here. We are at war."
+    ],
+    "threat": [
+      "Your military pressure threatens our freedom to trade and govern. We will remove that threat before the cost grows.",
+      "Argentina will not finance its own submission through delay. Your preparations demand decisive action now."
+    ],
+    "ideological": [
+      "Your demand for obedience is incompatible with our freedom of action. Argentina will resist it by force.",
+      "We reject a political order that lets you dictate our choices. Our independence will be defended."
+    ],
+    "ambition": [
+      "A favorable moment means little without the will to act. Argentina will commit its strength and demand a concrete result.",
+      "I have weighed the risks. Argentina will act now to secure its freedom of action and bargaining position."
+    ]
+  },
+  leader_volodymyr_zelenskyy: {
+    "conquest": [
+      "Ukraine will secure the positions from which our people can be threatened. Our objective is a homeland that can live in peace.",
+      "We are advancing to remove the danger to our cities. Every military objective must serve our people’s security."
+    ],
+    "hostility": [
+      "You have answered our efforts for peace with continued coercion. Ukraine will fight to end it.",
+      "We have endured your hostility and sought dependable guarantees. Now our armed forces must secure what your words would not."
+    ],
+    "threat": [
+      "Your forces threaten our national survival. Ukraine will meet that danger with every prepared unit and every dependable partner.",
+      "We will not wait for your threats to become the destruction of our cities. Ukraine is ready, and Ukraine will resist."
+    ],
+    "ideological": [
+      "Our people have the right to choose their own future. We will fight any power that tries to take that right away.",
+      "An order that denies our sovereignty offers no peace we can accept. Ukraine will oppose it with force."
+    ],
+    "ambition": [
+      "Ukraine must be strong enough to secure its own future. We are acting so that no aggressor can decide it for us.",
+      "Our determination is matched by preparation and partnerships. We will use that strength to secure a peace that can last."
+    ]
+  },
   leader_henry_v: {
     conquest: ['Your defenses invite a campaign, and I intend to finish it decisively.', 'The field is prepared and your realm lies before us. England marches.'],
     hostility: ['Your offenses have exhausted the patience of my crown. We shall answer them in battle.', 'You have chosen defiance at every turn. Let arms now settle what words could not.'],

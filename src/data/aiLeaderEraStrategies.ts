@@ -770,6 +770,9 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  // Prepared defense carries forward to every starting era. Other new leaders
+  // retain neutral era weights so their economic/growth agendas set priorities.
+  { leaderId: 'leader_volodymyr_zelenskyy', strategiesByEra: { ancient: 'defensiveBuilder' } },
   // Modern alternatives reuse canonical postures across all starting eras.
   { leaderId: 'leader_donald_tusk', strategiesByEra: { ancient: 'defensiveBuilder' } },
   { leaderId: 'leader_mette_frederiksen', strategiesByEra: { ancient: 'defensiveBuilder' } },

@@ -2439,8 +2439,9 @@ export class MainMenuScene extends Phaser.Scene {
         display: grid;
         place-items: center;
         padding: 24px;
-        background: rgba(0, 0, 0, 0.68);
-        font-family: "Courier New", monospace;
+        background: rgba(0, 5, 10, 0.82);
+        backdrop-filter: blur(5px);
+        font-family: Georgia, 'Times New Roman', serif;
       }
 
       .mm-nation-details-dialog {
@@ -2449,11 +2450,11 @@ export class MainMenuScene extends Phaser.Scene {
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        color: #ddd;
-        background: #181818;
-        border: 1px solid #393939;
-        border-radius: 8px;
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+        color: #f2eadb;
+        background: #08131d;
+        border: 1px solid rgba(190, 145, 70, 0.35);
+        border-radius: 2px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.58);
       }
 
       .mm-nd-header {
@@ -2462,15 +2463,17 @@ export class MainMenuScene extends Phaser.Scene {
         justify-content: space-between;
         gap: 12px;
         padding: 12px 16px;
-        background: #202020;
-        border-bottom: 1px solid #333;
+        background: #0b1823;
+        border-bottom: 1px solid rgba(190, 145, 70, 0.17);
       }
 
       .mm-nd-header h2 {
         margin: 0;
-        color: #ddd;
-        font-size: 15px;
-        letter-spacing: 0.5px;
+        color: #efcd83;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-weight: 400;
+        font-size: 16px;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
@@ -2478,17 +2481,27 @@ export class MainMenuScene extends Phaser.Scene {
       .mm-nd-header button,
       .mm-nd-toolbar button {
         padding: 6px 12px;
-        color: #ddd;
-        background: #2a2a2a;
-        border: 1px solid #555;
-        border-radius: 4px;
-        font: inherit;
+        color: #efcd83;
+        background: #0b1823;
+        border: 1px solid rgba(190, 145, 70, 0.17);
+        border-radius: 1px;
+        font-family: Georgia, 'Times New Roman', serif;
         font-size: 12px;
+        letter-spacing: 0.04em;
         cursor: pointer;
       }
       .mm-nd-header button:hover,
-      .mm-nd-toolbar button:hover { border-color: #888; background: #333; }
-      .mm-nd-header button.primary { border-color: #3a6b48; background: #234a30; color: #cde6d4; }
+      .mm-nd-toolbar button:hover { border-color: #b88a43; background: #142432; }
+      .mm-nd-header button.primary {
+        color: #fff2cf;
+        background: linear-gradient(180deg, #9f7132, #5e3b16);
+        border-color: rgba(236, 190, 105, 0.62);
+        font-weight: 700;
+      }
+      .mm-nd-header button.primary:hover {
+        background: linear-gradient(180deg, #b9853d, #704719);
+        border-color: rgba(236, 190, 105, 0.62);
+      }
 
       .mm-nd-content {
         min-height: 0;
@@ -2499,18 +2512,20 @@ export class MainMenuScene extends Phaser.Scene {
         overflow-y: auto;
       }
 
-      .mm-nd-section { border: 1px solid #2c2c2c; border-radius: 6px; background: #1d1d1d; }
+      .mm-nd-section { border: 1px solid rgba(190, 145, 70, 0.17); border-radius: 2px; background: #0b1823; }
       .mm-nd-section h3 {
         margin: 0;
         padding: 9px 12px;
-        color: #aaa;
-        border-bottom: 1px solid #2c2c2c;
+        color: #b88a43;
+        border-bottom: 1px solid rgba(190, 145, 70, 0.17);
+        font-family: Georgia, 'Times New Roman', serif;
+        font-weight: 400;
         font-size: 12px;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
       }
       .mm-nd-section-body { padding: 10px 12px; }
-      .mm-nd-field { display: grid; gap: 5px; margin-bottom: 9px; color: #bbb; font-size: 12px; }
+      .mm-nd-field { display: grid; gap: 5px; margin-bottom: 9px; color: #9ba9b5; font-size: 12px; }
       .mm-nd-field:last-child { margin-bottom: 0; }
       .mm-nd-field input,
       .mm-nd-field textarea,
@@ -2518,12 +2533,15 @@ export class MainMenuScene extends Phaser.Scene {
         box-sizing: border-box;
         width: 100%;
         padding: 7px 8px;
-        color: #ddd;
-        background: #151515;
-        border: 1px solid #444;
-        border-radius: 3px;
+        color: #f2eadb;
+        background: #050d16;
+        border: 1px solid rgba(190, 145, 70, 0.17);
+        border-radius: 1px;
         font: inherit;
       }
+      .mm-nd-field input:focus,
+      .mm-nd-field textarea:focus,
+      .mm-nd-field select:focus { outline: none; border-color: #b88a43; }
       .mm-nd-field textarea { min-height: 82px; resize: vertical; }
       .mm-nd-leader-preview {
         display: flex;
@@ -2531,9 +2549,9 @@ export class MainMenuScene extends Phaser.Scene {
         gap: 12px;
         margin: 2px 0 10px;
         padding: 8px;
-        background: #151515;
-        border: 1px solid #333;
-        border-radius: 4px;
+        background: #050d16;
+        border: 1px solid rgba(190, 145, 70, 0.17);
+        border-radius: 1px;
       }
       .mm-nd-leader-portrait {
         width: 58px;
@@ -2541,19 +2559,20 @@ export class MainMenuScene extends Phaser.Scene {
         flex: 0 0 auto;
         object-fit: cover;
         object-position: top center;
-        border: 1px solid #444;
-        border-radius: 3px;
+        border: 1px solid rgba(190, 145, 70, 0.17);
+        border-radius: 1px;
       }
       .mm-nd-leader-preview-copy { display: grid; gap: 4px; min-width: 0; }
-      .mm-nd-leader-preview-copy strong { color: #eee; font-size: 13px; }
-      .mm-nd-leader-preview-copy span { color: #999; font-size: 11px; }
+      .mm-nd-leader-preview-copy strong { color: #efcd83; font-size: 13px; }
+      .mm-nd-leader-preview-copy span { color: #9ba9b5; font-size: 11px; }
       .mm-nd-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
       .mm-nd-toolbar button { padding: 4px 8px; font-size: 11px; }
-      .mm-nd-count { margin-left: auto; align-self: center; color: #888; font-size: 11px; }
-      .mm-nd-era { padding: 4px 0; border-top: 1px solid #292929; }
-      .mm-nd-era-title { padding: 4px 0; color: #aaa; cursor: pointer; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+      .mm-nd-count { margin-left: auto; align-self: center; color: #9ba9b5; font-size: 11px; }
+      .mm-nd-era { padding: 4px 0; border-top: 1px solid rgba(190, 145, 70, 0.12); }
+      .mm-nd-era-title { padding: 4px 0; color: #b88a43; cursor: pointer; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
       .mm-nd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; padding: 2px 0 6px; }
-      .mm-nd-check { display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 11px; line-height: 1.3; }
+      .mm-nd-check { display: flex; align-items: center; gap: 6px; color: #f2eadb; font-size: 11px; line-height: 1.3; }
+      .mm-nd-check input[type="checkbox"] { accent-color: #b88a43; }
 
       @media (max-width: 640px) {
         .mm-nd-grid { grid-template-columns: 1fr; }
@@ -3457,35 +3476,38 @@ export class MainMenuScene extends Phaser.Scene {
       }
 
       .mm-replacement-dialog {
-        color: var(--epoch-text);
+        color: #efcd83;
         background: #08131d;
-        border-color: var(--epoch-border);
+        border-color: rgba(190, 145, 70, 0.35);
         border-radius: 2px;
         box-shadow: var(--epoch-shadow);
+        font-family: Georgia, 'Times New Roman', serif;
       }
 
       .mm-replacement-dialog h2 {
-        color: var(--epoch-text);
+        color: #efcd83;
         font-family: Georgia, 'Times New Roman', serif;
         font-weight: 400;
       }
 
       .mm-replacement-close,
       .mm-replacement-option {
-        color: var(--epoch-text-muted);
+        color: #efcd83;
         background: #0b1823;
-        border-color: var(--epoch-border-soft);
+        border-color: rgba(190, 145, 70, 0.17);
         border-radius: 1px;
+        font-family: Georgia, 'Times New Roman', serif;
       }
 
       .mm-replacement-option:hover,
       .mm-replacement-option.active {
-        color: var(--epoch-text);
-        border-color: var(--epoch-gold);
+        color: #efcd83;
+        border-color: #b88a43;
         background: #142432;
       }
 
-      .mm-replacement-option-copy span { color: var(--epoch-text-muted); }
+      .mm-replacement-option-copy strong,
+      .mm-replacement-option-copy span { color: #efcd83; }
 
       button:focus-visible,
       select:focus-visible {

@@ -1,3 +1,4 @@
+import { HistoricalWorldEvents, isWorldEvent, type HistoricalWorldEventContext, type SavedWorldEvents } from './HistoricalWorldEvents';
 import type { ScenarioHistoricalEvent, ScenarioWorldWarHistoricalEvent } from '../types/scenario';
 import type { DiplomacyManager } from './DiplomacyManager';
 import type { AllianceManager } from './diplomacy/AllianceManager';
@@ -44,11 +45,13 @@ export interface WorldWarCompletedEvent {
 /** Plain JSON-compatible save payload. Authored event definitions stay in the scenario. */
 export interface SavedScenarioHistoricalEventsState {
   events: ScenarioHistoricalEventRuntimeState[];
+  worldEvents?: SavedWorldEvents;
   preWorldWarProgression?: DateProgressionContinuation;
   timelineProgression?: RuntimeDateProgression;
 }
 
 export interface ScenarioHistoricalEventSystemOptions {
+  world?: HistoricalWorldEventContext;
   isNationActive?: (nationId: string) => boolean;
   /** Must use Epoch's canonical elimination state (NationManager membership). */
   isNationEliminated?: (nationId: string) => boolean;
@@ -64,6 +67,8 @@ interface PendingEvent {
 
 /** Deterministic runtime lifecycle coordinator for editor-authored historical events. */
 export class ScenarioHistoricalEventSystem {
+  readonly worldEvents?: HistoricalWorldEvents;
+  private readonly timedDefinitions: import('../types/scenario').ScenarioTimedHistoricalEvent[];
   private readonly states = new Map<string, ScenarioHistoricalEventRuntimeState>();
   private readonly events: PendingEvent[];
   private preWorldWarProgression: DateProgressionContinuation | null = null;
@@ -81,6 +86,8 @@ export class ScenarioHistoricalEventSystem {
     private readonly allianceManager: AllianceManager,
     options: ScenarioHistoricalEventSystemOptions = {},
   ) {
+    this.timedDefinitions = (events ?? []).filter((event): event is import('../types/scenario').ScenarioTimedHistoricalEvent => isWorldEvent(event.type));
+    this.worldEvents = options.world ? new HistoricalWorldEvents(options.world) : undefined;
     this.events = (events ?? []).filter(
       (event): event is ScenarioWorldWarHistoricalEvent => event.type === 'worldWar',
     ).map((event, scenarioIndex) => ({
@@ -96,22 +103,29 @@ export class ScenarioHistoricalEventSystem {
     this.getNationName = options.getNationName ?? ((id) => id);
     this.log = options.log ?? ((message) => console.log(message));
 
-    if (this.events.length > 0) {
+    if (this.events.length > 0 || this.worldEvents) {
       this.turnManager.on('beforeRoundStart', ({ round, previousRound }) => {
         this.evaluatePendingEvents(round, previousRound);
+        const date = this.turnManager.getGameDateForRound(round);
+        for (const event of this.timedDefinitions) {
+          if (compareGameDates(createGameDate(event.startYear, event.startYearIsBC ?? false, event.startMonth - 1), date) <= 0) {
+            this.worldEvents?.start(event, round, date);
+          }
+        }
       });
-      this.turnManager.on('roundEnd', ({ round }) => this.evaluateActiveEvents(round));
+      this.turnManager.on('roundEnd', ({ round }) => {
+        this.evaluateActiveEvents(round);
+        this.worldEvents?.endRound(round, this.turnManager.getGameDateForRound(round));
+      });
     }
   }
 
   hasTriggered(eventId: string): boolean {
-    return this.states.has(eventId) && this.states.get(eventId)?.status !== 'pending';
+    return this.worldEvents?.hasTriggered(eventId) || this.states.has(eventId) && this.states.get(eventId)?.status !== 'pending';
   }
 
   getTriggeredEventIds(): string[] {
-    return this.events
-      .map(({ event }) => event.id)
-      .filter((eventId) => this.states.get(eventId)?.status !== 'pending');
+    return this.getRuntimeStates().filter(s => s.status !== 'pending').map(s => s.eventId);
   }
 
   hasActiveWorldWar(): boolean {
@@ -125,7 +139,9 @@ export class ScenarioHistoricalEventSystem {
   }
 
   getRuntimeStates(): ScenarioHistoricalEventRuntimeState[] {
-    return this.events.map(({ event }) => this.cloneState(this.states.get(event.id)!));
+    const timedStates = new Map(this.worldEvents?.getStates().map(state => [state.eventId, state]));
+    return [...this.events.map(({ event }) => this.cloneState(this.states.get(event.id)!)),
+      ...this.timedDefinitions.map(event => timedStates.get(event.id) ?? { eventId: event.id, type: event.type, status: 'pending' as const })];
   }
 
   onWorldWarStarted(listener: (event: WorldWarStartedEvent) => void): void {
@@ -138,7 +154,8 @@ export class ScenarioHistoricalEventSystem {
 
   serialize(): SavedScenarioHistoricalEventsState {
     return {
-      events: this.getRuntimeStates(),
+      events: this.events.map(({ event }) => this.cloneState(this.states.get(event.id)!)),
+      worldEvents: this.worldEvents?.serialize(),
       preWorldWarProgression: this.preWorldWarProgression
         ? { ...this.preWorldWarProgression }
         : undefined,
@@ -153,6 +170,7 @@ export class ScenarioHistoricalEventSystem {
     }
     this.preWorldWarProgression = null;
     this.turnManager.clearRuntimeDateProgression();
+    this.worldEvents?.restore(saved?.worldEvents);
     if (!saved) return; // older save: pending events follow Prompt 2's reached-date rule
 
     const authoredIds = new Set(this.events.map(({ event }) => event.id));

@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import type { Unit } from '../../entities/Unit';
 import { getImprovementById } from '../../data/improvements';
+import { getMilitaryQualityName, getMilitaryQualityMultiplier } from '../../data/unitQuality';
+import { isMilitaryUnitType } from '../../utils/unitRoleUtils';
+import { getEffectiveMeleeStrength, getEffectiveRangedStrength } from '../../utils/unitCombatStrength';
 import type { NationManager } from '../../systems/NationManager';
 import type { SelectionManager } from '../../systems/SelectionManager';
 import type { UnitManager } from '../../systems/UnitManager';
@@ -134,9 +137,27 @@ export class UnitHoverDiagnosticHud {
     const lines: string[] = [];
     lines.push(`Owner: ${ownerName}`);
     lines.push(`HP: ${unit.health} / ${unit.unitType.baseHealth}`);
-    lines.push(`Strength: ${unit.unitType.baseStrength}`);
-    if ((unit.unitType.rangedStrength ?? 0) > 0) {
-      lines.push(`Ranged: ${unit.unitType.rangedStrength}`);
+
+    // Military units show quality-adjusted combat strength; other units show the
+    // plain base strength so the quality system never clutters civilian info.
+    const isMilitary = isMilitaryUnitType(unit.unitType);
+    if (isMilitary) {
+      const bonusPercent = Math.round((getMilitaryQualityMultiplier(unit.qualityLevel) - 1) * 100);
+      lines.push(`Quality: Level ${unit.qualityLevel} – ${getMilitaryQualityName(unit.qualityLevel)}`);
+      if (unit.unitType.baseStrength > 0) {
+        lines.push(`Combat Strength: ${Math.round(getEffectiveMeleeStrength(unit))}`);
+        lines.push(`Base Strength: ${unit.unitType.baseStrength}`);
+      }
+      if ((unit.unitType.rangedStrength ?? 0) > 0) {
+        lines.push(`Ranged Strength: ${Math.round(getEffectiveRangedStrength(unit))}`);
+        lines.push(`Base Ranged: ${unit.unitType.rangedStrength}`);
+      }
+      lines.push(`Quality Bonus: +${bonusPercent}%`);
+    } else {
+      lines.push(`Strength: ${unit.unitType.baseStrength}`);
+      if ((unit.unitType.rangedStrength ?? 0) > 0) {
+        lines.push(`Ranged: ${unit.unitType.rangedStrength}`);
+      }
     }
     lines.push(`Status: ${unit.actionStatus}`);
     if (unit.unitType.maxImprovementCharges !== undefined) {

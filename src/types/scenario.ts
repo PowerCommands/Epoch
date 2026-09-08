@@ -262,9 +262,21 @@ export interface ScenarioWorldWarHistoricalEvent extends ScenarioHistoricalEvent
   endConditionNationId: string;
 }
 
+export type ScenarioWorldEventType = 'stockMarketCrash' | 'famine' | 'pandemic' | 'energyCrisis';
+export interface ScenarioTimedHistoricalEvent extends ScenarioHistoricalEventBase {
+  type: ScenarioWorldEventType;
+  duration?: number;
+  goldReductionPercent?: number;
+  foodReductionPercent?: number;
+  happinessPenalty?: number;
+  diplomaticScoreReward?: number;
+  energyPriceIncreasePercent?: number;
+}
+
 /** Extensible union of scenario-authored historical event definitions. */
 export type ScenarioHistoricalEvent =
   | ScenarioWorldWarHistoricalEvent
+  | ScenarioTimedHistoricalEvent
   | ScenarioTurningPointHistoricalEvent;
 
 export interface ScenarioData {

@@ -816,6 +816,10 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
       <label class="field">Event Type
         <select id="he-type">
           <option value="worldWar">World War</option>
+          <option value="stockMarketCrash">Stock Market Crash</option>
+          <option value="famine">Famine</option>
+          <option value="pandemic">Pandemic</option>
+          <option value="energyCrisis">Global Energy Crisis</option>
           <option value="culturalJealousy">Cultural Jealousy</option>
           <option value="reconciliation">Reconciliation</option>
           <option value="luckyLoser">Lucky Loser</option>
@@ -836,6 +840,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
           <select id="he-start-era"><option value="AD">AD</option><option value="BC">BC</option></select>
         </label>
       </div>
+      <div id="he-world-parameters"></div>
       <section id="he-conflicts-section" class="he-section">
         <h3>Conflicts</h3>
         <div class="he-conflict-add-row">
@@ -5680,7 +5685,7 @@ function validateScenarioHistoricalEvents(activeIds) {
       }
       return;
     }
-    if (event.type !== 'worldWar') {
+    if (event.type !== 'worldWar' && !HISTORICAL_WORLD_EVENT_FIELDS[event.type]) {
       warnings.push(`${label} has unsupported historical event type ${event.type || '(missing)'}`);
       return;
     }
@@ -5691,6 +5696,13 @@ function validateScenarioHistoricalEvents(activeIds) {
       warnings.push(`${label} starts before the scenario start date`);
     }
 
+    if (HISTORICAL_WORLD_EVENT_FIELDS[event.type]) {
+      if (event.duration !== undefined && (!Number.isInteger(event.duration) || event.duration < 1)) warnings.push(`${label} has an invalid duration`);
+      for (const [key, title, fallback, min, max] of HISTORICAL_WORLD_EVENT_FIELDS[event.type]) {
+        if (event[key] !== undefined && (!Number.isFinite(event[key]) || event[key] < min || event[key] > max)) warnings.push(`${label}: invalid ${title}`);
+      }
+      return;
+    }
     const conflicts = Array.isArray(event.conflicts) ? event.conflicts : [];
     if (conflicts.length === 0) warnings.push(`${label} has no conflicts`);
     const conflictKeys = new Set();
@@ -6045,11 +6057,31 @@ function renderHistoricalEventConflicts() {
   });
 }
 
+const HISTORICAL_WORLD_EVENT_FIELDS = {
+  stockMarketCrash: [['goldReductionPercent', 'Gold income reduction %', 50, 0, 100], ['happinessPenalty', 'Happiness penalty', -20, -10000, 0]],
+  famine: [['foodReductionPercent', 'Food production reduction %', 50, 0, 100], ['diplomaticScoreReward', 'Diplomatic Score humanitarian reward', 100, 0, 100000]],
+  pandemic: [['happinessPenalty', 'Happiness penalty', -20, -10000, 0]],
+  energyCrisis: [['energyPriceIncreasePercent', 'Post-crisis energy price increase %', 25, 0, 10000]],
+};
+
 function updateHistoricalEventTypeFields() {
   if (!historicalEventDialogDraft) return;
   const type = document.getElementById('he-type').value;
   const definition = TURNING_POINT_EVENT_DEFINITIONS[type];
   const builtIn = !!definition;
+  const worldFields = HISTORICAL_WORLD_EVENT_FIELDS[type];
+  const parameters = document.getElementById('he-world-parameters');
+  parameters.replaceChildren();
+  if (worldFields) {
+    for (const [key, title, fallback, min, max] of [...worldFields, ['duration', 'Duration (turns)', 25, 1, 100000]]) {
+      const label = document.createElement('label'); label.className = 'field'; label.textContent = title;
+      const input = document.createElement('input'); input.type = 'number'; input.id = `he-param-${key}`;
+      input.min = min; input.max = max; input.step = key === 'duration' ? '1' : 'any';
+      input.value = historicalEventDialogDraft.type === type ? historicalEventDialogDraft[key] ?? fallback : fallback;
+      label.appendChild(input); parameters.appendChild(label);
+    }
+    if (!document.getElementById('he-name').value.trim()) document.getElementById('he-name').value = document.getElementById('he-type').selectedOptions[0].textContent;
+  }
   document.getElementById('he-built-in-hint').style.display = builtIn ? '' : 'none';
   document.getElementById('he-built-in-hint').textContent = builtIn
     ? `${definition.name} is a built-in Turning Point event. Only its trigger year is configured by the scenario. Eligible nations and event effects are determined dynamically during gameplay.`
@@ -6059,8 +6091,8 @@ function updateHistoricalEventTypeFields() {
   document.getElementById('he-start-month-field').style.display = builtIn ? 'none' : '';
   document.getElementById('he-start-era-field').style.display = builtIn ? 'none' : '';
   document.getElementById('he-start-year-label').textContent = builtIn ? 'Trigger Year' : 'Start Year';
-  document.getElementById('he-conflicts-section').style.display = builtIn ? 'none' : '';
-  document.getElementById('he-end-condition-section').style.display = builtIn ? 'none' : '';
+  document.getElementById('he-conflicts-section').style.display = type === 'worldWar' ? '' : 'none';
+  document.getElementById('he-end-condition-section').style.display = type === 'worldWar' ? '' : 'none';
   if (builtIn) {
     historicalEventDialogDraft.type = type;
     historicalEventDialogDraft.name = definition.name;
@@ -6163,6 +6195,22 @@ function saveHistoricalEventDialog() {
     historicalEventDialogDraft.startMonth = Number.isInteger(startMonth) ? startMonth : 0;
     historicalEventDialogDraft.startYearIsBC = document.getElementById('he-start-era').value === 'BC';
     historicalEventDialogDraft.endConditionNationId = document.getElementById('he-end-condition-nation').value;
+  }
+
+  const worldFields = HISTORICAL_WORLD_EVENT_FIELDS[historicalEventDialogDraft.type];
+  if (worldFields) {
+    for (const [key, title, fallback, min, max] of [...worldFields, ['duration', 'Duration', 25, 1, 100000]]) {
+      const value = Number(document.getElementById(`he-param-${key}`).value);
+      if (!Number.isFinite(value) || value < min || value > max || (key === 'duration' && !Number.isInteger(value))) {
+        document.getElementById('he-error').textContent = `${title} must be between ${min} and ${max}.`; return;
+      }
+      historicalEventDialogDraft[key] = value;
+    }
+    if (!Number.isInteger(startYear) || startYear <= 0) { document.getElementById('he-error').textContent = 'Start year must be positive.'; return; }
+    delete historicalEventDialogDraft.conflicts; delete historicalEventDialogDraft.endConditionNationId;
+    for (const key of ['goldReductionPercent', 'foodReductionPercent', 'happinessPenalty', 'diplomaticScoreReward', 'energyPriceIncreasePercent']) {
+      if (!worldFields.some(field => field[0] === key)) delete historicalEventDialogDraft[key];
+    }
   }
 
   if (historicalEventEditingIndex === null) scenarioDetailsHistoricalEventsDraft.push(structuredCloneCompat(historicalEventDialogDraft));
