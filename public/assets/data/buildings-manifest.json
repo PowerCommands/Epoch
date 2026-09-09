@@ -6,7 +6,7 @@
       "era": "industrial",
       "placement": "city",
       "aircraftCapacity": 2,
-      "iconPath": "assets/sprites/buildings/airfield.svg"
+      "iconPath": "assets/sprites/buildings/airfield.png"
     },
     {
       "id": "air_base",
@@ -14,7 +14,7 @@
       "era": "modern",
       "placement": "city",
       "aircraftCapacity": 4,
-      "iconPath": "assets/sprites/buildings/air_base.svg"
+      "iconPath": "assets/sprites/buildings/air_base.png"
     },
     {
       "id": "monument",

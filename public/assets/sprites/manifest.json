@@ -107,6 +107,18 @@
       "label": "Buildings",
       "assets": [
         {
+          "name": "air_base.png",
+          "path": "/assets/sprites/buildings/air_base.png",
+          "type": "PNG",
+          "size": 42236
+        },
+        {
+          "name": "airfield.png",
+          "path": "/assets/sprites/buildings/airfield.png",
+          "type": "PNG",
+          "size": 32140
+        },
+        {
           "name": "aqueduct.png",
           "path": "/assets/sprites/buildings/aqueduct.png",
           "type": "PNG",
