@@ -20,7 +20,7 @@ export class CityBuildings {
   // Insertion order is preserved by Map, which keeps serialization stable.
   private readonly buildings = new Map<string, CityBuildingEntry>();
 
-  constructor(cityId: string) {
+  constructor(cityId: string, private readonly onChanged: () => void = () => {}) {
     this.cityId = cityId;
   }
 
@@ -36,7 +36,9 @@ export class CityBuildings {
 
   /** Remove a building entirely. Returns true if it was present. */
   remove(buildingId: string): boolean {
-    return this.buildings.delete(buildingId);
+    const removed = this.buildings.delete(buildingId);
+    if (removed) this.onChanged();
+    return removed;
   }
 
   /** True if the building physically exists, working OR broken. */
@@ -62,6 +64,7 @@ export class CityBuildings {
     const entry = this.buildings.get(buildingId);
     if (entry === undefined || entry.broken === broken) return false;
     entry.broken = broken;
+    this.onChanged();
     return true;
   }
 

@@ -14,6 +14,7 @@ const manifest = {
     name: building.name,
     era: building.era,
     placement: building.placement,
+    aircraftCapacity: building.aircraftCapacity,
     iconPath: getBuildingSpritePath(building.id),
   })),
 };

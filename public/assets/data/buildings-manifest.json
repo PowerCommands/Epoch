@@ -1,6 +1,22 @@
 {
   "buildings": [
     {
+      "id": "airfield",
+      "name": "Airfield",
+      "era": "industrial",
+      "placement": "city",
+      "aircraftCapacity": 2,
+      "iconPath": "assets/sprites/buildings/airfield.svg"
+    },
+    {
+      "id": "air_base",
+      "name": "Air Base",
+      "era": "modern",
+      "placement": "city",
+      "aircraftCapacity": 4,
+      "iconPath": "assets/sprites/buildings/air_base.svg"
+    },
+    {
       "id": "monument",
       "name": "Monument",
       "era": "ancient",

@@ -111,7 +111,7 @@ export class MovementSystem {
   private canMoveUnitToInternal(unit: Unit, tileX: number, tileY: number, respectDiplomacy: boolean): boolean {
     if (unit.ownerId !== this.activeNationId) return false;
     if (unit.unitType.id === 'atomic_bomb') return false;
-    if (unit.carriedByUnitId !== undefined) return false;
+    if (unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined) return false;
     if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;
     if (!this.gridSystem.isAdjacent(
@@ -220,7 +220,7 @@ export class MovementSystem {
     if (!allowTransitOnly) return this.canMoveUnitToInternal(unit, tileX, tileY, respectDiplomacy);
     if (unit.ownerId !== this.activeNationId) return false;
     if (unit.unitType.id === 'atomic_bomb') return false;
-    if (unit.carriedByUnitId !== undefined) return false;
+    if (unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined) return false;
     if (this.isUnitMovementBlocked(unit)) return false;
     if (unit.movementPoints <= 0) return false;
     if (!this.gridSystem.isAdjacent({ x: unit.tileX, y: unit.tileY }, { x: tileX, y: tileY })) return false;

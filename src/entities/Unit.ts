@@ -14,6 +14,8 @@ export interface UnitBuildAction {
   requiredProgress: number;
 }
 
+export type AircraftBase = { kind: 'city' | 'carrier'; id: string };
+
 export interface UnitConfig {
   id: string;
   name: string;
@@ -26,6 +28,7 @@ export interface UnitConfig {
   improvementCharges?: number;
   createdRound?: number;
   expiresAtRound?: number;
+  airBase?: AircraftBase;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];
   qualityLevel?: MilitaryQualityLevel;
@@ -47,6 +50,7 @@ export class Unit {
   maxMovementPoints: number;
   movementPoints: number;
   health: number;
+  airBase?: AircraftBase;
   carriedByUnitId?: string;
   cargoUnitIds: string[];
   isSleeping: boolean;
@@ -76,6 +80,7 @@ export class Unit {
     this.maxMovementPoints = config.maxMovementPoints ?? config.unitType.movementPoints;
     this.movementPoints = config.movementPoints ?? this.maxMovementPoints;
     this.health = config.unitType.baseHealth;
+    this.airBase = config.airBase;
     this.carriedByUnitId = config.carriedByUnitId;
     this.cargoUnitIds = [...(config.cargoUnitIds ?? [])];
     this.isSleeping = false;

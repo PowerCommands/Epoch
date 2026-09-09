@@ -1,3 +1,4 @@
+import { AirOperationsSystem } from './AirOperationsSystem';
 import { StrategicWeaponsSystem } from './StrategicWeaponsSystem';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
@@ -144,6 +145,7 @@ export function getForeignInsurgentStrengthMultiplier(
  * system bara validerar och applicerar stridsregler.
  */
 export class CombatSystem {
+  readonly airOperations: AirOperationsSystem;
   readonly strategicWeapons: StrategicWeaponsSystem;
   private readonly unitManager: UnitManager;
   private readonly turnManager: TurnManager;
@@ -186,6 +188,11 @@ export class CombatSystem {
     // instrumentation: it never influences combat resolution or gameplay.
     private readonly conquestDiagnosticLog?: (nationId: string, message: string) => void,
   ) {
+    this.airOperations = new AirOperationsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound(), () => turnManager.getCurrentNation().id, (unit,x,y) => this.resolveAirStrike(unit,x,y), (unit,x,y) => !this.isUnitCombatBlocked(unit) && this.missionAttackPermission(unit,x,y));
+    productionSystem.setAircraftProductionReason?.((cityId,item) => {
+      const city = cityManager.getCity(cityId);
+      return city && item.kind === 'unit' && item.unitType.aircraftRole ? this.airOperations.productionBlockReason(city) : undefined;
+    });
     this.strategicWeapons = new StrategicWeaponsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound());
     this.unitManager = unitManager;
     this.turnManager = turnManager;
@@ -280,6 +287,7 @@ export class CombatSystem {
     }
     if (this.isUnitCombatBlocked(attacker)) return false;
     if (STRATEGIC_WEAPONS[attacker.unitType.id]) return this.strategicWeapons.launch(attacker, tileX, tileY);
+    if (attacker.unitType.aircraftRole) return this.airOperations.mission(attacker, tileX, tileY);
     if (isEmbarked(attacker, this.mapData)) return false;
 
     // 2. Must have movement points
@@ -360,6 +368,13 @@ export class CombatSystem {
     return false;
   }
 
+  private resolveAirStrike(attacker: Unit, x: number, y: number): boolean {
+    const defender = this.unitManager.getUnitAt(x,y);
+    if (defender) return defender.ownerId !== attacker.ownerId && this.executeUnitCombat(attacker,defender,true);
+    const city = this.cityManager.getCityAt(x,y);
+    return !!city && city.ownerId !== attacker.ownerId && this.executeCityCombat(attacker,city,true);
+  }
+
   private executeUnitCombat(attacker: Unit, target: Unit, isRanged = false): boolean {
     if (!isRanged && !attacker.unitType.isNaval && target.unitType.isNaval) {
       this.notifyRejected(attacker, target, 'Land units cannot melee attack naval units');
@@ -368,7 +383,7 @@ export class CombatSystem {
 
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
-      attackerStrengthMultiplier: this.getForeignInsurgentStrengthMultiplier(attacker, target.tileX, target.tileY),
+      attackerStrengthMultiplier: this.getForeignInsurgentStrengthMultiplier(attacker, target.tileX, target.tileY) * (attacker.unitType.groundAttackMultiplier ?? 1),
       defenderStrengthBonus: this.getOwnedTerritoryCombatBonus(target),
       defenderStrengthMultiplier: isEmbarked(target, this.mapData) ? EMBARKED_DEFENSE_MULTIPLIER : 1,
     };
@@ -440,7 +455,7 @@ export class CombatSystem {
     const cityDefenseMultiplier = this.cityDefenseSystem?.getDefenseMultiplier(city) ?? 1;
     const modifiers = {
       attackerStrengthBonus: this.getOwnedTerritoryCombatBonus(attacker),
-      attackerStrengthMultiplier: this.getForeignInsurgentStrengthMultiplier(attacker, city.tileX, city.tileY),
+      attackerStrengthMultiplier: this.getForeignInsurgentStrengthMultiplier(attacker, city.tileX, city.tileY) * (attacker.unitType.groundAttackMultiplier ?? 1),
       cityDefenseBonus: this.policySystem?.getFlatModifierTotal(city.ownerId, 'cityDefenseFlat') ?? 0,
       cityDefenseMultiplier,
       cityDamageTakenMultiplier: this.cityDefenseSystem?.getDamageTakenMultiplier(city) ?? 1,

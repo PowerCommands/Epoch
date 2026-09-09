@@ -181,6 +181,7 @@ export interface SavedUnit {
   expiresAtRound?: number;
   queuedDestination?: { x: number; y: number };
   improvementCharges?: number;
+  airBase?: import('../entities/Unit').AircraftBase;
   carriedByUnitId?: string;
   cargoUnitIds?: string[];
   /** Legacy save-load migration field. Runtime Unit state uses carriedByUnitId. */

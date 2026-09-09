@@ -1,3 +1,4 @@
+import { planAirProduction } from './ai/AIAirProduction';
 import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
@@ -1247,7 +1248,7 @@ export class AISystem {
   }
 
   private runEmergencyDefenseRedeployment(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !unit.unitType.aircraftRole && !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     for (const assignment of this.buildEmergencyDefenseAssignments(nationId, units)) {
       executeEmergencyDefenseAssignment({
         assignment,
@@ -2676,7 +2677,8 @@ export class AISystem {
   }
 
   private runCombat(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
+    this.combatSystem.airOperations.runAI(nationId, (x,y) => this.explorationMemorySystem?.hasSeenTile(nationId,x,y) ?? true);
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !unit.unitType.aircraftRole && !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     const strategy = this.getStrategy(nationId);
     const navalContext = this.buildNavalPatrolContext(nationId);
 
@@ -3006,7 +3008,7 @@ export class AISystem {
   // ─── Movement ────────────────────────────────────────────────────────────────
 
   private runMovement(nationId: string): void {
-    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
+    const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !unit.unitType.aircraftRole && !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     const strategy = this.getStrategy(nationId);
 
     const weights = getBehaviorWeights(this.nationManager.getNation(nationId)?.aiStrategyId);
@@ -3030,7 +3032,16 @@ export class AISystem {
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
+      if (unit.unitType.aircraftRole) continue;
       if (this.runPeacekeeper(unit)) continue;
+      if (unit.unitType.airDefense) {
+        const post = this.combatSystem.airOperations.defensePost(unit, (x,y) => this.explorationMemorySystem?.hasSeenTile(nationId,x,y) ?? true);
+        if (post) {
+          const path = this.pathfindingSystem.findPath(unit,post.x,post.y,{respectMovementPoints:false});
+          if (path) this.movementSystem.moveAlongPath(unit,path);
+          continue;
+        }
+      }
       if (this.emergencyAssignmentCityByUnit.has(unit.id)) continue;
       if (this.isEmergencyCityGarrison(unit, nationId)) continue;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) continue;
@@ -7129,6 +7140,20 @@ export class AISystem {
       if (type && !buildings.has(id) && this.canBuildBuilding(nationId, id) && !this.productionSystem.getItemProductionBlockReason(city.id, { kind: 'building', buildingType: type }))
         candidates.push({ item: { kind: 'building', buildingType: type }, baseScore: score, category: 'productionBuilding' });
     };
+    if (goldPerTurn >= 0 && canBuildGeneralMilitary && !consolidationSuppression) {
+      const air = this.combatSystem.airOperations;
+      for (const priority of planAirProduction({
+        capacity: air.cityCapacity(city),
+        used: air.usage({ kind: 'city', id: city.id }),
+        cityCount,
+        enemyAir: this.unitManager.getAllUnits().some(u => u.ownerId !== nationId && u.unitType.aircraftRole
+          && (this.discoverySystem?.hasMet(nationId,u.ownerId) ?? true)),
+        unitUnlocked: id => this.canBuildUnit(nationId,id),
+      })) {
+        if (priority.kind === 'building') addStrategicBuilding(priority.id,priority.score);
+        else addStrategicUnit(priority.id,priority.desired,priority.score);
+      }
+    }
     if (goldPerTurn >= 0) {
       if (hasNuclearEnemy) addStrategicBuilding('bomb_shelter', 95);
       if (!this.cityManager.getCitiesByOwner(nationId).some(c => this.cityManager.getBuildings(c.id).hasActive('nuclear_silo'))) addStrategicBuilding('nuclear_silo', 75);
@@ -8712,6 +8737,7 @@ export class AISystem {
 
   private getUnitProductionRuleContext(): UnitProductionRuleContext {
     return {
+      aircraftProductionReason: (city: City) => this.combatSystem.airOperations.productionBlockReason(city),
       strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
       unitUpkeepAffordability: this.unitUpkeepSystem,
       upkeepAffordabilityTurns: 10,
@@ -9249,6 +9275,6 @@ export class AISystem {
   }
 
   private isCargoUnit(unit: Unit): boolean {
-    return unit.carriedByUnitId !== undefined;
+    return unit.carriedByUnitId !== undefined && !unit.unitType.aircraftRole;
   }
 }

@@ -492,8 +492,11 @@ export class ProductionSystem {
     if (options.settlerProductionSlotException !== 'expeditionFollowUp' && this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
       return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
     }
-    return this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
+    return this.aircraftProductionReason(cityId, item) ?? this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
   }
+
+  private aircraftProductionReason: ItemProductionBlockReasonProvider = () => undefined;
+  setAircraftProductionReason(provider: ItemProductionBlockReasonProvider): void { this.aircraftProductionReason = provider; }
 
   private productionProhibition: ItemProductionBlockReasonProvider = () => undefined;
   private onProhibitedProductionCancelled: (cityId: string, item: Producible, reason: string) => void = () => {};
@@ -532,6 +535,12 @@ export class ProductionSystem {
       if (!queue || queue.length === 0) continue;
 
       const entry = queue[0];
+      const aircraftBlockReason = this.aircraftProductionReason(city.id, entry.item);
+      if (aircraftBlockReason) {
+        entry.blockedReason = aircraftBlockReason;
+        this.notifyChanged(city.id);
+        continue;
+      }
 
       // Repeatable projects never accumulate toward completion; they apply a
       // per-turn effect and stay active until replaced through normal selection.
@@ -575,7 +584,7 @@ export class ProductionSystem {
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
     // The queued Settler itself owns the nation slot, so completion only checks
     // external blockers here; the slot guard applies when committing new work.
-    const externalBlockReason = this.productionProhibition(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
+    const externalBlockReason = this.aircraftProductionReason(cityId, entry.item) ?? this.productionProhibition(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
     if (externalBlockReason !== undefined) {
       entry.blockedReason = externalBlockReason;
       return false;

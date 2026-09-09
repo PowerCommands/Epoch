@@ -7,7 +7,7 @@ import { MapData, TileType } from '../types/map';
 import type { ScenarioCity } from '../types/scenario';
 
 export interface CityChangedEvent {
-  readonly reason: 'added' | 'restored' | 'ownershipTransferred' | 'healthChanged' | 'cleared' | 'removed';
+  readonly reason: 'buildingsChanged' | 'added' | 'restored' | 'ownershipTransferred' | 'healthChanged' | 'cleared' | 'removed';
   readonly city?: City;
   readonly previousOwnerId?: string;
 }
@@ -60,7 +60,7 @@ export class CityManager {
     }
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
-    this.buildings.set(city.id, new CityBuildings(city.id));
+    this.buildings.set(city.id, new CityBuildings(city.id, () => this.notify({ reason: 'buildingsChanged', city })));
     this.notify({ reason: 'added', city });
   }
 
@@ -226,7 +226,7 @@ export class CityManager {
 
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));
-    this.buildings.set(city.id, new CityBuildings(city.id));
+    this.buildings.set(city.id, new CityBuildings(city.id, () => this.notify({ reason: 'buildingsChanged', city })));
     this.notify({ reason: 'restored', city });
     return city;
   }

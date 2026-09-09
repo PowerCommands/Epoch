@@ -25,7 +25,7 @@ export function getUnitActionSpriteKey(unitId: string, actionId: string): string
 }
 
 export function getBuildingSpritePath(buildingId: string): string {
-  return `assets/sprites/buildings/${buildingId}.${buildingId === 'nuclear_silo' ? 'svg' : 'png'}`;
+  return `assets/sprites/buildings/${buildingId}.${['nuclear_silo', 'airfield', 'air_base'].includes(buildingId) ? 'svg' : 'png'}`;
 }
 
 export function getBuildingSpriteKey(buildingId: string): string {

@@ -50,8 +50,8 @@ export function getBuildingUpgradeBlockReason(
 
 /** Add the completed level and remove every earlier level in its upgrade chain. */
 export function completeBuildingUpgrade(buildings: CityBuildings, building: BuildingType): string[] {
-  const removed = getUpgradeAncestors(building).filter((buildingId) => buildings.remove(buildingId));
   buildings.add(building);
+  const removed = getUpgradeAncestors(building).filter((buildingId) => buildings.remove(buildingId));
   return removed;
 }
 

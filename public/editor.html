@@ -5785,7 +5785,7 @@ function validateScenario() {
       const isNaval = navalUnitTypeIds.has(unit.unitTypeId);
       if (isNaval && !WATER_TILES.has(tileType)) {
         warnings.push(`Naval unit "${unit.unitTypeId}" at (${unit.q},${unit.r}) is on land tile "${tileType}" — it will be skipped at game start`);
-      } else if (!isNaval && WATER_TILES.has(tileType)) {
+      } else if (!isNaval && !unitManifest.units.find(u => u.id === unit.unitTypeId)?.aircraftRole && WATER_TILES.has(tileType)) {
         warnings.push(`Land unit "${unit.unitTypeId}" at (${unit.q},${unit.r}) is on water tile "${tileType}" — it will be skipped at game start`);
       }
     }

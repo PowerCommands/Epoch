@@ -167,6 +167,7 @@ export function applySavedResearchState(
 export class SaveLoadService {
   /** Build a {@link SavedGameState} snapshot from live managers. */
   static serialize(context: SaveLoadContext): SavedGameState {
+    context.unitManager.airOperations?.reconcile();
     const {
       mapKey,
       generatedScenario,
@@ -304,6 +305,7 @@ export class SaveLoadService {
       expiresAtRound: unit.expiresAtRound,
       queuedDestination: unit.queuedDestination ? { ...unit.queuedDestination } : undefined,
       improvementCharges: unit.improvementCharges,
+      airBase: unit.airBase ? { ...unit.airBase } : undefined,
       carriedByUnitId: unit.carriedByUnitId,
       cargoUnitIds: [...unit.cargoUnitIds],
       isSleeping: unit.isSleeping,
@@ -1012,6 +1014,7 @@ export class SaveLoadService {
         expiresAtRound: saved.expiresAtRound,
         queuedDestination: saved.queuedDestination,
         improvementCharges: saved.improvementCharges,
+        airBase: saved.airBase,
         carriedByUnitId: saved.carriedByUnitId ?? saved.transportId,
         cargoUnitIds: saved.cargoUnitIds,
         isSleeping: saved.isSleeping,
@@ -1022,6 +1025,7 @@ export class SaveLoadService {
       });
     }
     unitManager.normalizeCargoLinks();
+    unitManager.airOperations?.reconcile();
   }
 
   /**

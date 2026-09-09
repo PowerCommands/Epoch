@@ -66,6 +66,7 @@ export class UnitBoardingManager {
   }
 
   getBoardingFailureReason(passenger: Unit, transport: Unit): string | undefined {
+    if (passenger.unitType.aircraftRole) return 'Use Rebase for aircraft';
     if (passenger.ownerId !== transport.ownerId) return 'different owner';
     if (!hasCargoCapacity(transport.unitType)) return 'transport has no cargo capacity';
     if (!canCarryUnitType(transport.unitType, passenger.unitType)) return 'cargo category is not allowed';
@@ -78,6 +79,7 @@ export class UnitBoardingManager {
   }
 
   getUnboardingFailureReason(passenger: Unit, targetX: number, targetY: number): string | undefined {
+    if (passenger.unitType.aircraftRole) return 'Use Rebase for aircraft';
     if (!this.isCargo(passenger)) return 'passenger is not cargo';
     const transport = this.getTransport(passenger);
     if (!transport) return 'transport is missing';

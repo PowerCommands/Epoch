@@ -28,6 +28,7 @@ export interface BuildingType {
   readonly era: Era;
   readonly description: string;
   readonly placement: BuildingPlacement;
+  readonly aircraftCapacity?: number;
   readonly maintenance: number;
   readonly productionCost: number;
   readonly modifiers: BuildingModifiers;

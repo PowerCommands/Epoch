@@ -7,6 +7,7 @@ import type { StrategicResourceCapacitySystem } from './StrategicResourceCapacit
 import { getEraRank } from './EraSystem';
 
 export interface UnitProductionRuleContext {
+  aircraftProductionReason?: (city: City) => string | undefined;
   strategicResourceCapacitySystem?: StrategicResourceCapacitySystem;
   unitUpkeepAffordability?: {
     getUnitUpkeepAffordabilityReason(nationId: string, unitType: UnitType, turns: number): string | undefined;
@@ -67,6 +68,10 @@ export function getCityUnitProductionBlockReason(
   gridSystem: IGridSystem,
   context: UnitProductionRuleContext = {},
 ): string | undefined {
+  if (unitType.aircraftRole) {
+    const reason = context.aircraftProductionReason?.(city) ?? (context.aircraftProductionReason ? undefined : 'Requires aircraft basing capacity');
+    if (reason) return reason;
+  }
   if (unitType.uniquePerNation === true && context.hasActiveUnitOfType?.(city.ownerId, unitType.id)) {
     return `Only one ${unitType.name} may be active`;
   }

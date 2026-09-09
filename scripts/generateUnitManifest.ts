@@ -19,6 +19,7 @@ interface UnitManifestEntry {
   era: string;
   category: string;
   isNaval: boolean;
+  aircraftRole?: 'fighter' | 'bomber';
 }
 
 interface UnitManifest {
@@ -32,6 +33,7 @@ const manifest: UnitManifest = {
     era: u.era,
     category: u.category,
     isNaval: u.isNaval ?? false,
+    aircraftRole: u.aircraftRole,
   })),
 };
 

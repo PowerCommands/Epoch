@@ -658,7 +658,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Takes warfare and exploration into the air. Unlocks Triplanes and Great War Bombers.',
     prerequisites: ['steam_power'],
     leadsTo: ['electronics', 'ballistics'],
-    unlocks: [{ kind: 'unit', id: 'triplane' }, { kind: 'unit', id: 'great_war_bomber' }],
+    unlocks: [{ kind: 'building', id: 'airfield' }, { kind: 'unit', id: 'triplane' }, { kind: 'unit', id: 'great_war_bomber' }],
   },
   {
     id: 'combustion',
@@ -719,7 +719,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Detects aircraft and threats before they arrive. Unlocks Fighters, Bombers, and Paratroopers.',
     prerequisites: ['ballistics', 'electronics'],
     leadsTo: ['rocketry', 'nuclear_fission', 'computers'],
-    unlocks: [{ kind: 'unit', id: 'fighter' }, { kind: 'unit', id: 'bomber' }, { kind: 'unit', id: 'paratrooper' }, { kind: 'unit', id: 'partisans' }],
+    unlocks: [{ kind: 'building', id: 'air_base' }, { kind: 'unit', id: 'fighter' }, { kind: 'unit', id: 'bomber' }, { kind: 'unit', id: 'paratrooper' }, { kind: 'unit', id: 'partisans' }],
     // TODO: unlocks Pentagon wonder.
   },
   {

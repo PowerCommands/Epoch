@@ -1,3 +1,5 @@
+import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
+import { interceptionProfile } from '../data/airOperations';
 import { getNuclearCapability } from '../systems/ai/AIStrategicWeapons';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import { historicalPopulation, cancelHistoricalTrade, cancelHistoricalBorders } from '../systems/HistoricalWorldEventAdapters';
@@ -392,6 +394,7 @@ interface EpochGameDiagnostics {
   getStateSummary: () => EpochStateSummary;
   getSaveState: () => SavedGameState;
   /** Dev-only: select actual launch controls and focus a coordinate for browser regression tests. */
+  prepareAirAction: (unitId: string, x: number, y: number, mode?: 'ranged' | 'rebase') => { reason?: string; actions?: unknown };
   prepareStrategicStrike: (unitId: string, x: number, y: number) => { reason?: string; visible?: boolean; actions?: unknown };
   /** Dev-only: centre the camera on the first founded city so visual tests can screenshot a city banner. */
   focusFirstCity: (zoom?: number) => { ok: boolean };
@@ -1924,6 +1927,7 @@ export class GameScene extends Phaser.Scene {
     happinessSystem.recalculateAll();
     const strategicResourceCapacitySystem = new StrategicResourceCapacitySystem(resourceAccessSystem, unitManager);
     const unitProductionRuleContext = {
+      aircraftProductionReason: (city: City) => unitManager.airOperations?.productionBlockReason(city),
       strategicResourceCapacitySystem,
       unitUpkeepAffordability: unitUpkeepSystem,
       upkeepAffordabilityTurns: 10,
@@ -2754,6 +2758,11 @@ export class GameScene extends Phaser.Scene {
       turnManager.getCurrentRound(),
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
     );
+    cityView.setAircraftCapacityProvider(cityId => {
+      const city = cityManager.getCity(cityId);
+      const air = unitManager.airOperations;
+      return `Aircraft Capacity: ${air?.usage({ kind: 'city', id: cityId }) ?? 0} / ${city && air ? air.cityCapacity(city) : 0}`;
+    });
     cityView.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     cityBannerRenderer.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     resourceSystem.setCityEnergyProvider(
@@ -3071,6 +3080,7 @@ export class GameScene extends Phaser.Scene {
       cityIntegrationSystem,
       (nationId, message) => logManager.info({ nationId, category: 'city', message }),
     );
+    combatSystem.airOperations.setLogger((nationId,message) => logManager.info({ nationId, category: 'combat', message }));
     combatSystem.setCapitalCaptureResolver((city, defeatedNationId, victorNationId) =>
       militaryVassalizationSystem.vassalize({
         victorNationId,
@@ -3380,6 +3390,12 @@ export class GameScene extends Phaser.Scene {
 
       const mode = unitActionToolbox.getMode();
       if (unit.isSleeping) unit.isSleeping = false;
+      if (mode === 'rebase') {
+        const site = combatSystem.airOperations.rebaseDestinations(unit).find(site => site.x === tile.x && site.y === tile.y);
+        if (site) combatSystem.airOperations.rebase(unit,site.base);
+        unitActionToolbox.resetMode();
+        return true;
+      }
       if (mode === 'move') {
         // Insurgents are relocation-only for the player: never initiate combat
         // manually. Returning false routes to the default movement (relocation),
@@ -3409,6 +3425,7 @@ export class GameScene extends Phaser.Scene {
         }
 
         if (mode === 'ranged') {
+          if (unit.unitType.aircraftRole) { tryActionAttack(unit,tile); return true; }
           if (STRATEGIC_WEAPONS[unit.unitType.id]) { tryActionAttack(unit, tile); return true; }
           const range = unit.unitType.range ?? 1;
           if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return true;
@@ -5083,7 +5100,7 @@ export class GameScene extends Phaser.Scene {
       // them; guard anyway to narrow the union to units below.
       if (item.kind === 'project') return;
 
-      const placement = STRATEGIC_WEAPONS[item.unitType.id] ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
+      const placement = (item.unitType.aircraftRole || STRATEGIC_WEAPONS[item.unitType.id]) ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
       if (placement === null) return false;
       const unitBlockReason = getCityUnitProductionBlockReason(
         city,
@@ -5117,6 +5134,7 @@ export class GameScene extends Phaser.Scene {
       if (STRATEGIC_WEAPONS[item.unitType.id]) logManager.info({ nationId: city.ownerId, category: 'combat', message: `[Strategic] produced ${item.unitType.id} at ${city.name}` });
       unitManager.createUnit({
         type: item.unitType,
+        airBase: item.unitType.aircraftRole ? { kind: 'city', id: city.id } : undefined,
         ownerId: city.ownerId,
         tileX: placement.x,
         tileY: placement.y,
@@ -6159,6 +6177,7 @@ export class GameScene extends Phaser.Scene {
     // whether the current declaration is a defensive ally join (logged
     // separately with alliance context, so the generic line is skipped).
     let allianceWarSystem: AllianceWarSystem | null = null;
+    new AirMissionRenderer(this, tileMap, combatSystem.airOperations, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
     combatSystem.strategicWeapons.onDetonation(event => {
       logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
       for (const nation of nationManager.getAllNations()) resourceSystem.recalculateForNation(nation.id);
@@ -9892,6 +9911,7 @@ export class GameScene extends Phaser.Scene {
       this.leaderGossipDialog?.open(leaderId);
     });
     const computeRangedTargets = (unit: Unit): Set<string> => {
+      if (unit.unitType.aircraftRole) return new Set(gridSystem.getTilesInRange({ x: unit.tileX, y: unit.tileY },unit.unitType.range ?? 0,mapData).map(tile => `${tile.x},${tile.y}`));
       if (STRATEGIC_WEAPONS[unit.unitType.id]) {
         const carrier = unitManager.getTransportForUnit(unit);
         const range = unit.unitType.id === 'atomic_bomb' ? carrier?.unitType.range ?? 0 : unit.unitType.range ?? 0;
@@ -9992,6 +10012,14 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
+      if (mode === 'rebase') {
+        const selection = selectionManager.getSelected();
+        if (selection?.kind !== 'unit') return;
+        const unit = selection.unit;
+        rangedTargets = new Set(combatSystem.airOperations.rebaseDestinations(unit).map(site => `${site.x},${site.y}`));
+        rangedPreviewRenderer.showTargets(rangedTargets);
+        return;
+      }
       if (mode === 'ranged') {
         const selection = selectionManager.getSelected();
         if (selection?.kind !== 'unit') return;
@@ -10539,6 +10567,15 @@ export class GameScene extends Phaser.Scene {
           peaceSummitSystem,
           guideProgress: guideProgression.getState(),
         }),
+        prepareAirAction: (unitId, x, y, mode = 'ranged') => {
+          const unit = unitManager.getUnit(unitId);
+          if (!unit || unit.ownerId !== humanNationId || !unit.unitType.aircraftRole) return { reason: 'No owned aircraft' };
+          selectionManager.selectUnit(unit);
+          unitActionToolbox.setMode(mode);
+          const world = tileMap.tileToWorld(x,y);
+          this.cameraController.focusOn(world.x,world.y,1);
+          return { actions: unitActionToolbox.getHudActions() };
+        },
         prepareStrategicStrike: (unitId, x, y) => {
           const unit = unitManager.getUnit(unitId);
           if (!unit || unit.ownerId !== humanNationId || !STRATEGIC_WEAPONS[unit.unitType.id]) return { reason: 'No owned strategic weapon' };
@@ -11555,6 +11592,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Starta turordningen — sist, efter att alla lyssnare kopplats
+    combatSystem.airOperations.reconcile();
     turnManager.start();
 
     function refreshMovePreview(): void {
@@ -11573,6 +11611,13 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
+      if (unit.unitType.aircraftRole || unit.unitType.airDefense) {
+        const fighter = unit.unitType.aircraftRole === 'fighter';
+        const radius = fighter || unit.unitType.airDefense ? interceptionProfile(unit.qualityLevel,fighter).radius : unit.unitType.range ?? 0;
+        reachableTiles = new Set(gridSystem.getTilesInRange({ x: unit.tileX, y: unit.tileY },radius,mapData).map(tile => `${tile.x},${tile.y}`));
+        pathPreviewRenderer.showReachableTiles(reachableTiles);
+        return;
+      }
       if (unit.carriedByUnitId !== undefined) {
         const transport = unitManager.getUnit(unit.carriedByUnitId);
         const disembarkSet = new Set<string>();

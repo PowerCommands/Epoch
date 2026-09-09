@@ -6,6 +6,7 @@ import { TileType, type MapData, type Tile } from '../types/map';
 import type { DiplomacyManager } from './DiplomacyManager';
 
 export function canEmbark(unit: Unit, nation: Nation | undefined): boolean {
+  if (unit.unitType.aircraftRole) return false;
   if (unit.unitType.isNaval === true || nation === undefined) return false;
   return canNationEmbarkLandUnits(nation);
 }

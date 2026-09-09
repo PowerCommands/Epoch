@@ -394,7 +394,7 @@ export class UnitRenderer {
   }
 
   private isCargo(unit: Unit): boolean {
-    return unit.carriedByUnitId !== undefined;
+    return !!unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined;
   }
 }
 

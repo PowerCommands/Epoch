@@ -250,14 +250,16 @@
       "name": "Triplane",
       "era": "modern",
       "category": "air",
-      "isNaval": false
+      "isNaval": false,
+      "aircraftRole": "fighter"
     },
     {
       "id": "great_war_bomber",
       "name": "Great War Bomber",
       "era": "modern",
       "category": "air",
-      "isNaval": false
+      "isNaval": false,
+      "aircraftRole": "bomber"
     },
     {
       "id": "destroyer",
@@ -320,14 +322,16 @@
       "name": "Fighter",
       "era": "atomic",
       "category": "air",
-      "isNaval": false
+      "isNaval": false,
+      "aircraftRole": "fighter"
     },
     {
       "id": "bomber",
       "name": "Bomber",
       "era": "atomic",
       "category": "air",
-      "isNaval": false
+      "isNaval": false,
+      "aircraftRole": "bomber"
     },
     {
       "id": "anti_tank_gun",
@@ -397,14 +401,16 @@
       "name": "Jet Fighter",
       "era": "information",
       "category": "air",
-      "isNaval": false
+      "isNaval": false,
+      "aircraftRole": "fighter"
     },
     {
       "id": "stealth_bomber",
       "name": "Stealth Bomber",
       "era": "information",
       "category": "air",
-      "isNaval": false
+      "isNaval": false,
+      "aircraftRole": "bomber"
     },
     {
       "id": "guided_missile",

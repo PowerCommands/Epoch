@@ -1,3 +1,4 @@
+import type { AirOperationsSystem } from './AirOperationsSystem';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import { Unit } from '../entities/Unit';
 import type { UnitType } from '../entities/UnitType';
@@ -45,6 +46,7 @@ const UNIT_NAMES_BY_NATION_ID: Record<string, string> = {
  * Ingen Phaser-koppling; validering av regler ligger i MovementSystem.
  */
 export class UnitManager {
+  airOperations?: AirOperationsSystem;
   private readonly units = new Map<string, Unit>();
   private readonly unitsByOwner = new Map<string, Set<Unit>>();
   private readonly unitGrid: (Unit | null)[];
@@ -82,6 +84,7 @@ export class UnitManager {
     ownerId: string;
     tileX: number;
     tileY: number;
+    airBase?: import('../entities/Unit').AircraftBase;
     movementPoints?: number;
     improvementCharges?: number;
     /**
@@ -100,6 +103,7 @@ export class UnitManager {
       tileY: config.tileY,
       unitType: config.type,
       maxMovementPoints: this.getEffectiveMovementPoints(config.type),
+      airBase: config.airBase,
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
       qualityLevel: config.qualityLevel,
@@ -117,6 +121,7 @@ export class UnitManager {
   removeUnit(unitId: string): void {
     const unit = this.units.get(unitId);
     if (!unit) return;
+    this.airOperations?.evacuateCarrier(unit);
     const transport = this.getTransportForUnit(unit);
     if (transport) {
       transport.cargoUnitIds = transport.cargoUnitIds.filter((cargoUnitId) => cargoUnitId !== unit.id);
@@ -155,7 +160,7 @@ export class UnitManager {
     const offGridUnits = this.offGridUnitsByTile.get(key);
     if (offGridUnits === undefined) return null;
     for (const unit of offGridUnits) {
-      if (!isCovertOperative(unit.unitType)) return unit;
+      if (!isCovertOperative(unit.unitType) && !unit.unitType.aircraftRole) return unit;
     }
     return null;
   }
@@ -208,7 +213,7 @@ export class UnitManager {
   canBoardUnit(unit: Unit, transport: Unit): boolean {
     if (unit.ownerId !== transport.ownerId) return false;
     if (unit.unitType.isNaval || (!transport.unitType.isNaval && transport.unitType.allowedCargoUnitIds === undefined)) return false;
-    if (unit.carriedByUnitId !== undefined) return false;
+    if (unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined) return false;
     if (transport.carriedByUnitId !== undefined) return false;
     if (!canCarryUnitType(transport.unitType, unit.unitType)) return false;
     return this.getCargoUnitsForTransport(transport).length < (transport.unitType.cargoCapacity ?? 0);
@@ -234,7 +239,7 @@ export class UnitManager {
 
   unboardUnit(unitId: string, tileX: number, tileY: number, movementCost = 0): boolean {
     const unit = this.units.get(unitId);
-    if (unit === undefined) return false;
+    if (unit === undefined || unit.unitType.aircraftRole) return false;
     const transport = this.getTransportForUnit(unit);
     if (transport === undefined) return false;
 
@@ -253,7 +258,7 @@ export class UnitManager {
   moveUnit(unitId: string, tileX: number, tileY: number, movementCost = 0): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
-    if (unit.carriedByUnitId !== undefined) return false;
+    if (unit.unitType.aircraftRole || unit.carriedByUnitId !== undefined) return false;
 
     this.clearFromGrid(unit);
     unit.tileX = tileX;
@@ -288,7 +293,7 @@ export class UnitManager {
       if (unit.ownerId !== ownerId) continue;
       // Launchable cargo needs its own action refreshed; normal transported units
       // still receive movement through the existing disembark rules.
-      if (unit.carriedByUnitId !== undefined && !STRATEGIC_WEAPONS[unit.unitType.id]) continue;
+      if (unit.carriedByUnitId !== undefined && !unit.unitType.aircraftRole && !STRATEGIC_WEAPONS[unit.unitType.id]) continue;
       unit.movementPoints = this.getEffectiveMovementPoints(unit.unitType);
       this.notify({ unit, reason: 'movementReset' });
     }
@@ -311,6 +316,7 @@ export class UnitManager {
   transferOwnership(unitId: string, newOwnerId: string): boolean {
     const unit = this.units.get(unitId);
     if (unit === undefined || unit.ownerId === newOwnerId) return false;
+    this.airOperations?.evacuateCarrier(unit);
     this.removeFromOwnerIndex(unit);
     unit.ownerId = newOwnerId;
     this.addToOwnerIndex(unit);
@@ -396,7 +402,7 @@ export class UnitManager {
       if (!tile) continue;
       if (unitType.isNaval) {
         if (tile.type !== TileType.Ocean && tile.type !== TileType.Coast) continue;
-      } else if (unitType.canTraverseWater !== true && (tile.type === TileType.Ocean || tile.type === TileType.Coast)) {
+      } else if (!unitType.aircraftRole && unitType.canTraverseWater !== true && (tile.type === TileType.Ocean || tile.type === TileType.Coast)) {
         continue;
       }
 
@@ -444,6 +450,7 @@ export class UnitManager {
     health: number;
     movementPoints: number;
     improvementCharges?: number;
+    airBase?: import('../entities/Unit').AircraftBase;
     carriedByUnitId?: string;
     cargoUnitIds?: string[];
     isSleeping: boolean;
@@ -465,6 +472,7 @@ export class UnitManager {
       maxMovementPoints: this.getEffectiveMovementPoints(config.unitType),
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
+      airBase: config.airBase,
       carriedByUnitId: config.carriedByUnitId,
       cargoUnitIds: config.cargoUnitIds,
       qualityLevel: config.qualityLevel,
@@ -519,6 +527,12 @@ export class UnitManager {
       const passenger = this.units.get(passengerId);
       const transport = this.units.get(carrierUnitId);
       if (!passenger || !transport) continue;
+      if (passenger.id === transport.id || passenger.ownerId !== transport.ownerId
+        || !canCarryUnitType(transport.unitType, passenger.unitType)
+        || transport.cargoUnitIds.length >= (transport.unitType.cargoCapacity ?? 0)) {
+        passenger.carriedByUnitId = undefined;
+        continue;
+      }
       if (!transport.cargoUnitIds.includes(passenger.id)) transport.cargoUnitIds.push(passenger.id);
       passenger.tileX = transport.tileX;
       passenger.tileY = transport.tileY;
@@ -527,6 +541,18 @@ export class UnitManager {
     this.unitGrid.fill(null);
     this.offGridUnitsByTile.clear();
     for (const unit of this.units.values()) this.placeOnGrid(unit);
+  }
+
+  refreshAircraftPosition(unit: Unit, x: number, y: number): void {
+    this.clearFromGrid(unit);
+    unit.tileX = x; unit.tileY = y;
+    this.placeOnGrid(unit);
+    this.notify({ unit, reason: 'moved' });
+    for (const cargo of this.getCargoUnitsForTransport(unit)) {
+      this.clearFromGrid(cargo);
+      cargo.tileX = x; cargo.tileY = y;
+      this.placeOnGrid(cargo);
+    }
   }
 
   /** Emit a 'created' event for a unit already placed via restoreUnit. */
@@ -587,7 +613,7 @@ export class UnitManager {
     // Covert operatives never take the collision slot so they neither block nor
     // are blocked by other units (they stack freely; only hostile covert vs
     // covert is resolved through combat).
-    if (isCovertOperative(unit.unitType)) {
+    if (isCovertOperative(unit.unitType) || unit.unitType.aircraftRole) {
       this.addOffGridUnit(key, unit);
       return;
     }

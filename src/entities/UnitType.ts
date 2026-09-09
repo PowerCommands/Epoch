@@ -64,6 +64,10 @@ export interface UnitType {
    */
   readonly foodUpkeep: FoodUpkeep;
   readonly upgradeToUnitId?: string;
+  readonly aircraftRole?: 'fighter' | 'bomber';
+  readonly airDefense?: boolean;
+  readonly aircraftCapacity?: number;
+  readonly groundAttackMultiplier?: number;
   readonly cargoCapacity?: number;
   readonly allowedCargoUnitIds?: readonly string[];
   readonly allowedCargoCategories?: readonly UnitCategory[];

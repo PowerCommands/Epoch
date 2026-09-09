@@ -17,6 +17,7 @@ const CLUSTER_GAP = 12;
 
 const ACTION_ICON_KEYS: Record<UnitActionMode, string> = {
   loadWeapon: 'action_debark', payload: 'action_ranged_attack', nuclearPayload: 'action_ranged_attack',
+  rebase: 'action_move',
   move: 'action_move',
   explore: 'action_explore',
   attack: 'action_attack',

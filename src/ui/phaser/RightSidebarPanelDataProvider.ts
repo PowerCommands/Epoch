@@ -1,3 +1,4 @@
+import { interceptionProfile } from '../../data/airOperations';
 import { getNuclearCapability } from '../../systems/ai/AIStrategicWeapons';
 import type { WorldCouncilResolutionId } from '../../types/worldCouncil';
 import { buildWorldOverviewContent, type WorldOverviewCategory } from './WorldOverviewContent';
@@ -290,7 +291,7 @@ export class RightSidebarPanelDataProvider {
   constructor(
     private readonly productionSystem: ProductionSystem,
     private readonly cityManager: CityManager,
-    private readonly unitManager: { getUnit(id: string): Unit | undefined; getUnitAt(x: number, y: number): Unit | null; getUnitsByOwner(ownerId: string): Unit[]; getTransportForUnit(unit: Unit): Unit | undefined; getCargoForTransport(unit: Unit): Unit | undefined },
+    private readonly unitManager: { airOperations?: import('../../systems/AirOperationsSystem').AirOperationsSystem; getUnit(id: string): Unit | undefined; getUnitAt(x: number, y: number): Unit | null; getUnitsByOwner(ownerId: string): Unit[]; getTransportForUnit(unit: Unit): Unit | undefined; getCargoForTransport(unit: Unit): Unit | undefined },
     private readonly nationManager: NationManager,
     private readonly mapData: MapData,
     private readonly humanNationId: string | undefined,
@@ -1094,6 +1095,7 @@ export class RightSidebarPanelDataProvider {
         title: 'City',
         rows: [
           textRow(city.name, false, true, nation?.color),
+          textRow(`Aircraft Capacity: ${this.unitManager.airOperations?.usage({ kind: 'city', id: city.id }) ?? 0} / ${this.unitManager.airOperations?.cityCapacity(city) ?? 0}`),
           textRow(`Owner: ${nation?.name ?? 'Unknown'}`),
           textRow(`Status: ${integrationLabel}`),
           ...(integration.state !== 'integrated'
@@ -1188,6 +1190,13 @@ export class RightSidebarPanelDataProvider {
       const threat = this.nationManager.getNation(mission.secondaryTargetNationId!)?.name ?? mission.secondaryTargetNationId;
       rows.push(textRow(`UN Peacekeeper: protecting ${host} from ${threat}. Defensive mandate; no city captures or unrelated attacks.`, true));
     }
+    const air = this.unitManager.airOperations;
+    if (unit.unitType.aircraftRole) rows.push(textRow(`Base: ${air?.baseFor(unit)?.name ?? 'Unassigned'}`), textRow(`Air Mission / Rebase range: ${unit.unitType.range}`), textRow(`Quality: ${unit.qualityLevel}`));
+    if (unit.unitType.aircraftRole === 'fighter' || unit.unitType.airDefense) {
+      const profile = interceptionProfile(unit.qualityLevel,unit.unitType.aircraftRole === 'fighter');
+      rows.push(textRow(`Quality: ${unit.qualityLevel}. Interception: ${profile.radius} tiles, ${Math.round(profile.chance*100)}%`));
+    }
+    if (unit.unitType.aircraftCapacity) rows.push(textRow(`Aircraft: ${air?.usage({ kind: 'carrier', id: unit.id }) ?? 0} / ${unit.unitType.aircraftCapacity}`));
     if (unit.unitType.description) rows.push(textRow(unit.unitType.description, true));
     if (unit.unitType.cargoCapacity) rows.push(textRow(`Cargo: ${unit.cargoUnitIds.length}/${unit.unitType.cargoCapacity}. Carries: ${(unit.unitType.allowedCargoUnitIds ?? unit.unitType.allowedCargoCategories ?? []).join(', ')}`));
     if (unit.improvementCharges !== undefined) {
@@ -1670,6 +1679,7 @@ export class RightSidebarPanelDataProvider {
         this.mapData,
         this.gridSystem,
         {
+          aircraftProductionReason: city => this.unitManager.airOperations?.productionBlockReason(city),
           strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
           unitUpkeepAffordability: this.unitUpkeepSystem,
           upkeepAffordabilityTurns: 10,
@@ -1701,7 +1711,8 @@ export class RightSidebarPanelDataProvider {
             this.mapData,
             this.gridSystem,
             {
-              strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
+              aircraftProductionReason: city => this.unitManager.airOperations?.productionBlockReason(city),
+          strategicResourceCapacitySystem: this.strategicResourceCapacitySystem,
               unitUpkeepAffordability: this.unitUpkeepSystem,
               upkeepAffordabilityTurns: 10,
               getNationEra: (nationId) => this.eraSystem?.getNationEra(nationId) ?? 'ancient',
