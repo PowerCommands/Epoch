@@ -1,3 +1,4 @@
+import { NUCLEAR_PLANT_MELTDOWN_RADIUS } from '../data/nuclearPlants';
 import { STRATEGIC_WEAPONS, NUCLEAR_SHELTER_DAMAGE_MULTIPLIER, type AreaWeaponDefinition } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
 import { TileType, type MapData, type Tile } from '../types/map';
@@ -7,6 +8,8 @@ import type { IGridSystem } from './grid/IGridSystem';
 import type { DiplomacyManager } from './DiplomacyManager';
 
 export interface StrategicDetonation {
+  accident?: boolean;
+  radius?: number;
   nationId: string;
   weaponId: string;
   platform: string;
@@ -93,6 +96,18 @@ export class StrategicWeaponsSystem {
     return true;
   }
 
+  /** Reactor accidents share weapon damage and waste, without weapon-use diplomacy. */
+  meltdown(nationId: string, x: number, y: number): StrategicDetonation {
+    const config = { ...STRATEGIC_WEAPONS.atomic_bomb, radius: NUCLEAR_PLANT_MELTDOWN_RADIUS };
+    const tiles = this.getTiles(config, x, y);
+    const event: StrategicDetonation = { accident: true, radius: config.radius, nationId,
+      weaponId: 'nuclear_plant', platform: 'reactor', target: { x, y }, nuclear: true,
+      victimNationIds: this.getVictims(tiles, nationId), tiles: tiles.length, unitsDestroyed: 0, contaminatedTiles: 0 };
+    this.applyAreaEffects(tiles, config, event);
+    for (const listener of this.listeners) listener(event);
+    return event;
+  }
+
   private getTiles(config: AreaWeaponDefinition, x: number, y: number): Tile[] {
     return getBlastTiles(this.map, this.grid, x, y, config.radius);
   }
@@ -137,7 +152,7 @@ export class StrategicWeaponsSystem {
     }
     event.unitsDestroyed = casualties.size;
     for (const unit of unitsBeforeBlast) if (casualties.has(unit.id)) {
-      if (unit.ownerId !== event.nationId && (unit.unitType.baseStrength > 0 || (unit.unitType.rangedStrength ?? 0) > 0)) this.diplomacy?.recordWarUnitLoss(unit.ownerId, event.nationId);
+      if (!event.accident && unit.ownerId !== event.nationId && (unit.unitType.baseStrength > 0 || (unit.unitType.rangedStrength ?? 0) > 0)) this.diplomacy?.recordWarUnitLoss(unit.ownerId, event.nationId);
       this.units.removeUnit(unit.id);
     }
     for (const tile of tiles) {

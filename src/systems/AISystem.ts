@@ -1,3 +1,4 @@
+import { nuclearPlantMaintenancePriority } from '../data/nuclearPlants';
 import { planAirProduction } from './ai/AIAirProduction';
 import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
@@ -4442,6 +4443,25 @@ export class AISystem {
     if (!this.builderSystem) return;
     if (unit.unitType.canBuildImprovements !== true || unit.unitType.isNaval === true) return;
     if (unit.isBuildingImprovement()) return; // multi-turn build already in progress
+
+    const reactors = (this.powerPlantSystem ? this.cityManager.getCitiesByOwner(nationId) : []).flatMap(city => {
+      const plant = this.powerPlantSystem?.getCityPowerPlant(city.id);
+      const tile = this.powerPlantSystem?.getNuclearPlantTile(city.id);
+      if (!plant || !tile || tile.improvementConstruction) return [];
+      const priority = nuclearPlantMaintenancePriority(plant.age, plant.lifespan);
+      const distance = this.gridSystem.getDistance(tile, { x: unit.tileX, y: unit.tileY });
+      return priority > 0 ? [{ tile, score: priority - distance * 5 }] : [];
+    }).sort((a, b) => b.score - a.score || a.tile.y - b.tile.y || a.tile.x - b.tile.x);
+    for (const { tile } of reactors) {
+      if (unit.tileX !== tile.x || unit.tileY !== tile.y) {
+        const path = this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false });
+        if (!path) continue;
+        this.clearWorkerAssignment(unit.id);
+        this.movementSystem.moveAlongPath(unit, path);
+      }
+      if (unit.tileX === tile.x && unit.tileY === tile.y) this.builderSystem.build(unit, tile);
+      return;
+    }
 
     const waste = this.mapData.tiles.flat().filter(tile => tile.type === TileType.NuclearWaste && tile.ownerId === nationId && !tile.improvementConstruction && this.builderSystem!.canNationImproveLandTile(nationId, tile))
       .sort((a, b) => (Number(!!b.resourceId) - Number(!!a.resourceId)) * 10 + this.gridSystem.getDistance(a, { x: unit.tileX, y: unit.tileY }) - this.gridSystem.getDistance(b, { x: unit.tileX, y: unit.tileY }));

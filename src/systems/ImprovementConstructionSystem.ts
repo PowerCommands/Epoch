@@ -1,3 +1,5 @@
+import { MAINTAIN_NUCLEAR_PLANT } from '../data/nuclearPlants';
+import type { PowerPlantSystem } from './PowerPlantSystem';
 import { cleanNuclearWaste } from './StrategicWeaponsSystem';
 import { getImprovementById, type TileImprovementDefinition } from '../data/improvements';
 import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
@@ -44,6 +46,9 @@ export class ImprovementConstructionSystem {
   private readonly completedListeners: CompletedListener[] = [];
   private readonly cancelledListeners: CancelledListener[] = [];
   private readonly constructionTileByUnitId = new Map<string, Tile>();
+
+  private powerPlants?: PowerPlantSystem;
+  setPowerPlantSystem(system: PowerPlantSystem): void { this.powerPlants = system; }
 
   constructor(
     private readonly mapData: MapData,
@@ -167,6 +172,11 @@ export class ImprovementConstructionSystem {
     const unit = this.unitManager.getUnit(construction.unitId);
     if (unit === undefined) return 'invalidUnit';
     if (unit.tileX !== tile.x || unit.tileY !== tile.y || unit.ownerId !== construction.ownerId) return 'invalidUnit';
+    if (construction.improvementId === MAINTAIN_NUCLEAR_PLANT) {
+      return unit.unitType.id === 'worker' && !construction.transportUnitId
+        && this.powerPlants?.getNuclearPlantAt(tile, construction.ownerId)?.cityId === construction.cityId
+        && construction.cityId !== undefined ? null : 'invalidTile';
+    }
     if (tile.improvementId !== undefined) return 'invalidTile';
     if (construction.improvementId === 'clean_nuclear_waste' && (tile.type !== TileType.NuclearWaste || tile.originalTerrain === undefined)) return 'invalidTile';
     const improvement = getImprovementById(construction.improvementId);
@@ -246,12 +256,17 @@ export class ImprovementConstructionSystem {
       return;
     }
 
-    if (construction.improvementId === 'clean_nuclear_waste') cleanNuclearWaste(tile);
+    if (construction.improvementId === MAINTAIN_NUCLEAR_PLANT) {
+      if (!city || !this.powerPlants?.maintainNuclearPlant(city.id)) {
+        this.cancel(tile, construction, 'invalidTile');
+        return;
+      }
+    } else if (construction.improvementId === 'clean_nuclear_waste') cleanNuclearWaste(tile);
     else tile.improvementId = construction.improvementId;
     // Domestic improvements keep the legacy implicit ownership semantics, so
     // ordinary conquest/territory transfer behavior remains unchanged. Only a
     // genuinely separate economic owner needs persistent metadata.
-    tile.improvementOwnerId = tile.ownerId !== construction.ownerId
+    if (construction.improvementId !== MAINTAIN_NUCLEAR_PLANT) tile.improvementOwnerId = tile.ownerId !== construction.ownerId
       ? construction.ownerId
       : undefined;
     if (construction.resourceOwnerNationId !== undefined) {
@@ -325,6 +340,10 @@ export class ImprovementConstructionSystem {
       return;
     }
 
+    if (construction.improvementId === MAINTAIN_NUCLEAR_PLANT) {
+      construction.remainingTurns = Math.max(0, construction.remainingTurns - 1);
+      return;
+    }
     const percent = this.policySystem?.getPercentModifierTotal(
       construction.ownerId,
       'improvementBuildSpeedPercent',

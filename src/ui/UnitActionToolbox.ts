@@ -445,6 +445,7 @@ export class UnitActionToolbox {
     action: UnitActionDefinition,
     upgradePreview: UnitUpgradePreview | undefined,
   ): string {
+    if (action.mode === 'build' && this.selectedUnit && this.getBuildPreview(this.selectedUnit).improvementId === 'maintain_nuclear_plant') return 'Maintain Nuclear Power Plant';
     if (action.mode === 'ranged' && this.selectedUnit?.unitType.aircraftRole) return 'Air Mission';
     if (action.mode === 'build' && this.selectedUnit && this.getBuildPreview(this.selectedUnit).improvementId === 'clean_nuclear_waste') return '🖌 Clean Nuclear Waste';
     if (action.mode === 'ranged' && this.selectedUnit && STRATEGIC_WEAPONS[this.selectedUnit.unitType.id]) return 'Launch';

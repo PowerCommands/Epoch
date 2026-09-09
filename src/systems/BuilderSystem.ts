@@ -1,3 +1,5 @@
+import { MAINTAIN_NUCLEAR_PLANT } from '../data/nuclearPlants';
+import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import { getImprovementById, getImprovementForTileType, type TileImprovementDefinition } from '../data/improvements';
@@ -49,6 +51,9 @@ interface CargoBuildContext {
 
 export class BuilderSystem {
   private readonly constructionTileByUnitId = new Map<string, Tile>();
+
+  private powerPlants?: PowerPlantSystem;
+  setPowerPlantSystem(system: PowerPlantSystem): void { this.powerPlants = system; }
 
   constructor(
     private readonly unitManager: UnitManager,
@@ -168,6 +173,7 @@ export class BuilderSystem {
       remainingTurns: requiredTurns,
       totalTurns: requiredTurns,
     };
+    if (preview.improvement.id === MAINTAIN_NUCLEAR_PLANT && city) this.powerPlants?.logMaintenanceStarted(city.id);
     this.indexConstructionUnits(tile);
     builderUnit.setBuildingImprovement({
       improvementId: preview.improvement.id,
@@ -212,6 +218,12 @@ export class BuilderSystem {
     }
     if (!this.isCurrentTile(builderUnit, tile) || !this.isCurrentTile(movementUnit, tile)) {
       return { canBuild: false, reason: 'Builder must be on this tile' };
+    }
+    const reactor = this.powerPlants?.getNuclearPlantAt(tile, builderUnit.ownerId);
+    if (reactor && builderUnit.unitType.id === 'worker') {
+      if (tile.improvementConstruction) return { canBuild: false, reason: 'Maintenance already underway' };
+      if ((options.requireMovement ?? true) && movementUnit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
+      return this.buildablePreview(getImprovementById(MAINTAIN_NUCLEAR_PLANT)!, builderUnit);
     }
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };

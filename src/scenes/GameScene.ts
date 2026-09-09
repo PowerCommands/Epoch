@@ -1,3 +1,4 @@
+import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
 import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
 import { interceptionProfile } from '../data/airOperations';
 import { getNuclearCapability } from '../systems/ai/AIStrategicWeapons';
@@ -2759,6 +2760,17 @@ export class GameScene extends Phaser.Scene {
       turnManager.getCurrentRound(),
       (nationId, message) => logManager.info({ nationId, category: 'power-plant', message }),
     );
+    improvementConstructionSystem.setPowerPlantSystem(powerPlantSystem);
+    cityView.setNuclearPlantInfoProvider(cityId => {
+      const plant = powerPlantSystem.getCityPowerPlant(cityId);
+      if (plant?.buildingId !== 'nuclear_plant') return [];
+      const risk = nuclearPlantAtRisk(plant.age, plant.lifespan);
+      return [
+        { text: `Nuclear Power Plant — Age: ${plant.age} / ${plant.lifespan} turns` },
+        { text: `Status: ${risk ? 'MELTDOWN RISK' : 'Safe'} — risk begins after age ${Math.floor(plant.lifespan * NUCLEAR_PLANT_RISK_FRACTION)}`, blocked: risk },
+        ...(risk ? [{ text: `Meltdown risk: ${NUCLEAR_PLANT_MELTDOWN_CHANCE * 100}% per turn`, blocked: true }] : []),
+      ];
+    });
     cityView.setAircraftCapacityProvider(cityId => {
       const city = cityManager.getCity(cityId);
       const air = unitManager.airOperations;
@@ -3158,6 +3170,8 @@ export class GameScene extends Phaser.Scene {
       diplomacyManager,
       isNaturalResourceVisibleToNation,
     );
+    builderSystem.setPowerPlantSystem(powerPlantSystem);
+    powerPlantSystem.setMeltdownEffect((nationId, x, y) => combatSystem.strategicWeapons.meltdown(nationId, x, y));
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     unitActionToolbox.setDismissAvailabilityProvider(unitManager);
     unitActionToolbox.setUpgradeAvailabilityProvider(unitUpgradeSystem);
@@ -3683,7 +3697,7 @@ export class GameScene extends Phaser.Scene {
     improvementConstructionSystem.onCompleted((event) => {
       if (event.improvement.id === 'clean_nuclear_waste') tileMap.rebuildTerrain();
       resourceSystem.recalculateForNation(event.construction.ownerId);
-      if (event.unit.improvementCharges !== undefined) {
+      if (event.improvement.id !== 'maintain_nuclear_plant' && event.unit.improvementCharges !== undefined) {
         event.unit.improvementCharges = Math.max(0, event.unit.improvementCharges - 1);
       }
       const locationLabel = event.city ? `near ${event.city.name}` : 'on a sea resource';
@@ -6276,11 +6290,11 @@ export class GameScene extends Phaser.Scene {
       logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
       for (const nation of nationManager.getAllNations()) resourceSystem.recalculateForNation(nation.id);
       tileMap.rebuildTerrain();
-      for (const tile of gridSystem.getTilesInRange(event.target, STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
+      for (const tile of gridSystem.getTilesInRange(event.target, event.radius ?? STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
         tileImprovementOverlayRenderer.refreshTile(tile.x, tile.y);
         tileBuildingRenderer.refreshTile(tile.x, tile.y);
       }
-      if (event.nuclear) {
+      if (event.nuclear && !event.accident) {
         for (const nation of nationManager.getAllNations()) if (nation.id !== event.nationId) diplomacyManager.recordWorldCouncilCondemnation(nation.id, event.nationId, 'Nuclear weapon use');
         historicalTimeline.record({ type: 'nuclearAttack', icon: '☢',
           text: `${timelineNationName(event.nationId)} detonated ${getUnitTypeById(event.weaponId)?.name ?? event.weaponId} at (${event.target.x}, ${event.target.y}); ${event.contaminatedTiles} tiles contaminated`,
@@ -8483,11 +8497,11 @@ export class GameScene extends Phaser.Scene {
       logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
       for (const nation of nationManager.getAllNations()) resourceSystem.recalculateForNation(nation.id);
       tileMap.rebuildTerrain();
-      for (const tile of gridSystem.getTilesInRange(event.target, STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
+      for (const tile of gridSystem.getTilesInRange(event.target, event.radius ?? STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
         tileImprovementOverlayRenderer.refreshTile(tile.x, tile.y);
         tileBuildingRenderer.refreshTile(tile.x, tile.y);
       }
-      if (event.nuclear) {
+      if (event.nuclear && !event.accident) {
         for (const nation of nationManager.getAllNations()) if (nation.id !== event.nationId) diplomacyManager.recordWorldCouncilCondemnation(nation.id, event.nationId, 'Nuclear weapon use');
         historicalTimeline.record({ type: 'nuclearAttack', icon: '☢',
           text: `${timelineNationName(event.nationId)} detonated ${getUnitTypeById(event.weaponId)?.name ?? event.weaponId} at (${event.target.x}, ${event.target.y}); ${event.contaminatedTiles} tiles contaminated`,

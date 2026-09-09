@@ -154,6 +154,8 @@ export class CityView {
   private dragOffsetY = 0;
   private userPositioned = false;
   private anchorProvider: CityViewAnchorProvider | null = null;
+  private nuclearPlantInfoProvider?: (cityId: string) => { text: string; blocked?: boolean }[];
+  setNuclearPlantInfoProvider(provider: (cityId: string) => { text: string; blocked?: boolean }[]): void { this.nuclearPlantInfoProvider = provider; }
   private aircraftCapacityProvider?: (cityId: string) => string;
   setAircraftCapacityProvider(provider: (cityId: string) => string): void { this.aircraftCapacityProvider = provider; }
 
@@ -596,6 +598,7 @@ export class CityView {
         text: `Population: ${city.population} / ${populationCapacity ?? '?'}   🍏 ${city.foodStorage} / ${getFoodToGrow(city.population)}`,
         blocked: populationBlocked,
       },
+      ...(this.nuclearPlantInfoProvider?.(city.id) ?? []),
       { text: this.aircraftCapacityProvider?.(city.id) ?? 'Aircraft Capacity: 0 / 0' },
       { text: `Culture: ${city.culture}` },
       { text: `Owned tiles: ${city.ownedTileCoords.length}` },

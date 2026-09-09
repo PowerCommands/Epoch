@@ -1,3 +1,5 @@
+import { nuclearPlantAtRisk, nuclearPlantRoll, NUCLEAR_PLANT_MELTDOWN_CHANCE } from '../data/nuclearPlants';
+import type { Tile } from '../types/map';
 import { getBuildingById } from '../data/buildings';
 import { getNaturalResourceById } from '../data/naturalResources';
 import { BASE_CITY_POPULATION_CAPACITY } from '../data/populationCapacity';
@@ -27,6 +29,7 @@ export interface CityPowerPlantState {
 }
 
 export type PowerPlantEvent =
+  | { readonly kind: 'maintained'; readonly cityId: string; readonly nationId: string; readonly buildingId: string }
   | { readonly kind: 'constructed'; readonly cityId: string; readonly nationId: string; readonly buildingId: string }
   | { readonly kind: 'replaced'; readonly cityId: string; readonly nationId: string; readonly buildingId: string; readonly previousBuildingId: string; readonly removedTileCoords: ReadonlyArray<{ x: number; y: number }> }
   | { readonly kind: 'becameInactive'; readonly cityId: string; readonly nationId: string; readonly buildingId: string; readonly reason: PowerPlantInactiveReason }
@@ -61,6 +64,44 @@ export class PowerPlantSystem {
   private readonly lastAllocation = new Map<string, AllocationState>();
   private readonly listeners: PowerPlantListener[] = [];
   private lastAgedRound: number;
+  private meltdownEffect?: (nationId: string, x: number, y: number) => void;
+
+  setMeltdownEffect(effect: (nationId: string, x: number, y: number) => void): void {
+    this.meltdownEffect = effect;
+  }
+
+  getNuclearPlantTile(cityId: string): Tile | undefined {
+    const city = this.cityManager.getCity(cityId);
+    this.synchronizeCity(cityId);
+    if (!city || this.states.get(cityId)?.buildingId !== 'nuclear_plant') return undefined;
+    return city.ownedTileCoords.map(c => this.mapData.tiles[c.y]?.[c.x])
+      .find(tile => tile?.buildingId === 'nuclear_plant')
+      ?? this.mapData.tiles[city.tileY]?.[city.tileX];
+  }
+
+  getNuclearPlantAt(tile: Tile, nationId: string): CityPowerPlantState | undefined {
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const target = this.getNuclearPlantTile(city.id);
+      if (target?.x === tile.x && target.y === tile.y) return this.getCityPowerPlant(city.id);
+    }
+    return undefined;
+  }
+
+  logMaintenanceStarted(cityId: string): void {
+    const city = this.cityManager.getCity(cityId);
+    if (city) this.log(city.ownerId, `[NuclearPlant] Worker started maintenance at ${city.name}`);
+  }
+
+  maintainNuclearPlant(cityId: string): boolean {
+    this.synchronizeCity(cityId);
+    const state = this.states.get(cityId);
+    const city = this.cityManager.getCity(cityId);
+    if (!city || state?.buildingId !== 'nuclear_plant') return false;
+    state.age = 0;
+    this.emit({ kind: 'maintained', cityId, nationId: city.ownerId, buildingId: state.buildingId });
+    this.log(city.ownerId, `[NuclearPlant] Maintenance completed at ${city.name} — lifecycle reset to 0`);
+    return true;
+  }
 
   constructor(
     private readonly cityManager: CityManager,
@@ -145,10 +186,14 @@ export class PowerPlantSystem {
     }
 
     this.synchronizeAllCities();
-    const elapsed = round - this.lastAgedRound;
+    for (let nextRound = this.lastAgedRound + 1; nextRound <= round; nextRound++) {
+      for (const [cityId, state] of [...this.states].sort(([a], [b]) => a.localeCompare(b))) {
+        state.age++;
+        if (state.buildingId === 'nuclear_plant') this.checkNuclearPlant(cityId, nextRound);
+      }
+      this.removeExpiredPlants(true);
+    }
     this.lastAgedRound = round;
-    for (const state of this.states.values()) state.age += elapsed;
-    this.removeExpiredPlants(true);
     this.refreshAllocation(true);
   }
 
@@ -355,10 +400,36 @@ export class PowerPlantSystem {
     }
   }
 
+  private checkNuclearPlant(cityId: string, round: number): void {
+    const state = this.states.get(cityId);
+    const city = this.cityManager.getCity(cityId);
+    if (!state || !city) return;
+    const lifespan = getPowerPlantMetadata('nuclear_plant')!.lifespanTurns;
+    const prefix = `[NuclearPlant] ${city.name} age ${state.age}/${lifespan}`;
+    const maximum = state.age >= lifespan;
+    if (!maximum && !nuclearPlantAtRisk(state.age, lifespan)) {
+      if (nuclearPlantAtRisk(state.age + 1, lifespan)) this.log(city.ownerId, `${prefix} — entering meltdown risk next turn`);
+      return;
+    }
+    if (!maximum) {
+      const failed = nuclearPlantRoll(cityId, round) < NUCLEAR_PLANT_MELTDOWN_CHANCE;
+      this.log(city.ownerId, `${prefix} — meltdown roll ${NUCLEAR_PLANT_MELTDOWN_CHANCE * 100}%: ${failed ? 'failed' : 'survived'}`);
+      if (!failed) return;
+    }
+    const tile = this.getNuclearPlantTile(cityId);
+    const removedTileCoords = this.removePhysicalPlant(cityId, state.buildingId);
+    this.states.delete(cityId);
+    this.lastAllocation.delete(cityId);
+    this.log(city.ownerId, `[NuclearPlant] MELTDOWN at ${city.name} age ${state.age}/${lifespan} — ${maximum ? 'maximum lifespan reached' : 'random failure'}`);
+    // Removal precedes the blast, preventing a second accident or maintenance reset.
+    if (tile) this.meltdownEffect?.(city.ownerId, tile.x, tile.y);
+    this.emit({ kind: 'expired', cityId, nationId: city.ownerId, buildingId: state.buildingId, removedTileCoords });
+  }
+
   private removeExpiredPlants(emitEvents: boolean): void {
     for (const [cityId, state] of [...this.states.entries()]) {
       const metadata = getPowerPlantMetadata(state.buildingId);
-      if (!metadata || state.age < metadata.lifespanTurns) continue;
+      if (!metadata || state.buildingId === 'nuclear_plant' || state.age < metadata.lifespanTurns) continue;
       const city = this.cityManager.getCity(cityId);
       if (!city) {
         this.states.delete(cityId);

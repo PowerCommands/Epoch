@@ -1,3 +1,4 @@
+import { MAINTAIN_NUCLEAR_PLANT, NUCLEAR_PLANT_MAINTENANCE_TURNS } from './nuclearPlants';
 import { NUCLEAR_CLEANUP_TURNS } from './strategicWeapons';
 import { TileType } from '../types/map';
 import type { TileYield } from './terrainYields';
@@ -104,9 +105,16 @@ export const UNDERWATER_ARCHAEOLOGICAL_SITE: TileImprovementDefinition = {
   spriteKey: 'improvement_underwater_archaeological_site',
 };
 
+export const NUCLEAR_PLANT_MAINTENANCE: TileImprovementDefinition = {
+  id: MAINTAIN_NUCLEAR_PLANT, name: 'Maintain Nuclear Power Plant',
+  allowedTileTypes: [], yieldBonus: { food: 0, production: 0, gold: 0 },
+  buildTurns: NUCLEAR_PLANT_MAINTENANCE_TURNS,
+};
+
 export const CLEAN_NUCLEAR_WASTE: TileImprovementDefinition = { id: 'clean_nuclear_waste', name: '🖌 Clean Nuclear Waste', allowedTileTypes: [TileType.NuclearWaste], yieldBonus: { food: 0, production: 0, gold: 0 }, buildTurns: NUCLEAR_CLEANUP_TURNS };
 
 export const ALL_IMPROVEMENTS: TileImprovementDefinition[] = [
+  NUCLEAR_PLANT_MAINTENANCE,
   CLEAN_NUCLEAR_WASTE,
   FARM,
   LUMBER_MILL,
