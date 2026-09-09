@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { StructureDamageEffects } from '../renderers/StructureDamageEffects';
+import { CITY_BASE_HEALTH } from '../data/cities';
 import { TileMap } from './TileMap';
 import { CityManager } from './CityManager';
 import { NationManager } from './NationManager';
@@ -30,6 +32,7 @@ export class CityRenderer {
   private readonly cityManager: CityManager;
   private readonly nationManager: NationManager;
   private readonly getNationEra: (nationId: string) => Era;
+  private readonly damageEffects: StructureDamageEffects;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
@@ -47,6 +50,7 @@ export class CityRenderer {
     this.nationManager = nationManager;
     this.getNationEra = getNationEra;
     this.hexTileMaskHelper = new HexTileMaskHelper(scene, tileMap);
+    this.damageEffects = new StructureDamageEffects(scene, tileMap, CITY_DEPTH + 0.1, (x, y) => this.visibilityPredicate(x, y));
 
     for (const city of cityManager.getAllCities()) {
       this.renderCity(city);
@@ -59,12 +63,14 @@ export class CityRenderer {
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
     this.visibilityPredicate = predicate;
+    this.refreshAllVisibility();
   }
 
   /** Update visibility of all city containers without rebuilding them. */
   refreshAllVisibility(): void {
     for (const city of this.cityManager.getAllCities()) {
       this.containers.get(city.id)?.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
+      this.damageEffects.set(city.id, city.tileX, city.tileY, city.health <= CITY_BASE_HEALTH / 2);
     }
   }
 
@@ -74,6 +80,7 @@ export class CityRenderer {
    * has been replaced wholesale.
    */
   rebuildAll(): void {
+    this.damageEffects.clear();
     for (const container of this.containers.values()) container.destroy();
     this.containers.clear();
 
@@ -83,6 +90,7 @@ export class CityRenderer {
   }
 
   shutdown(): void {
+    this.damageEffects.shutdown();
     for (const container of this.containers.values()) {
       container.destroy();
     }
@@ -94,6 +102,7 @@ export class CityRenderer {
    * Destroy the rendered symbol for a city that no longer exists (e.g. razed).
    */
   removeCity(cityId: string): void {
+    this.damageEffects.remove(cityId);
     const container = this.containers.get(cityId);
     if (!container) return;
     container.destroy();
@@ -104,6 +113,7 @@ export class CityRenderer {
    * Re-render city symbol (e.g. after ownership change).
    */
   refreshCity(city: City): void {
+    this.damageEffects.remove(city.id);
     const oldContainer = this.containers.get(city.id);
     if (oldContainer) {
       oldContainer.destroy();
@@ -120,7 +130,7 @@ export class CityRenderer {
     const { x: worldX, y: worldY } = this.tileMap.tileToWorld(city.tileX, city.tileY);
     const rect = this.tileMap.getTileRect(city.tileX, city.tileY);
 
-    const sprite = this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId)));
+    const sprite = this.scene.add.image(0, 0, getCitySpriteKey(this.getNationEra(city.ownerId), city.health <= CITY_BASE_HEALTH / 2));
     const scaleMultiplier = city.isResidenceCapital ? CAPITAL_SCALE_MULTIPLIER : 1;
     sprite.setDisplaySize(
       rect.width * CITY_TILE_FILL_SCALE * scaleMultiplier,
@@ -152,6 +162,7 @@ export class CityRenderer {
 
     container.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
     this.containers.set(city.id, container);
+    this.damageEffects.set(city.id, city.tileX, city.tileY, city.health <= CITY_BASE_HEALTH / 2);
   }
 
   private createFortificationRing(

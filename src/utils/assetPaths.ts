@@ -1,11 +1,11 @@
 import type { Era } from '../data/technologies';
 
-export function getCitySpriteKey(era: Era): string {
-  return `city_${era}`;
+export function getCitySpriteKey(era: Era, damaged = false): string {
+  return `city_${era}${damaged ? '-broken' : ''}`;
 }
 
-export function getCitySpritePath(era: Era): string {
-  return `assets/sprites/cities/city_${era}.png`;
+export function getCitySpritePath(era: Era, damaged = false): string {
+  return `assets/sprites/cities/${getCitySpriteKey(era, damaged)}.png`;
 }
 
 export function getUnitSpritePath(unitId: string): string {
@@ -24,16 +24,16 @@ export function getUnitActionSpriteKey(unitId: string, actionId: string): string
   return `unit_${unitId}_action_${actionId}`;
 }
 
-export function getBuildingSpritePath(buildingId: string): string {
-  return `assets/sprites/buildings/${buildingId}.${buildingId === 'nuclear_silo' ? 'svg' : 'png'}`;
+export function getBuildingSpritePath(buildingId: string, broken = false): string {
+  return `assets/sprites/buildings/${buildingId}${broken ? '-broken' : ''}.${buildingId === 'nuclear_silo' ? 'svg' : 'png'}`;
 }
 
 export function getBuildingSpriteKey(buildingId: string): string {
   return `building_${buildingId}`;
 }
 
-export function getWonderSpritePath(wonderId: string): string {
-  return `assets/sprites/wonders/${wonderId}.png`;
+export function getWonderSpritePath(wonderId: string, broken = false): string {
+  return `assets/sprites/wonders/${wonderId}${broken ? '-broken' : ''}.png`;
 }
 
 export function getWonderSpriteKey(wonderId: string): string {

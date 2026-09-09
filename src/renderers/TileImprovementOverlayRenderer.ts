@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { drawDamageFeedback } from './StructureDamageEffects';
 import type { TileMap } from '../systems/TileMap';
 import { TileType, type MapData, type Tile } from '../types/map';
 import type { NationManager } from '../systems/NationManager';
@@ -158,16 +159,10 @@ export class TileImprovementOverlayRenderer {
       const gfx = this.effectGraphics!;
       gfx.fillStyle(0x282522, (1 - p) * 0.5).fillEllipse(x, y + size * 0.15, size * 0.4, size * 0.12);
       for (let i = 0; i < 4; i++) {
-        const rise = (p * 1.1 + i * 0.22) % 1;
-        gfx.fillStyle(0x555750, (1 - rise) * (1 - p) * 0.48);
-        gfx.fillCircle(x + Math.sin(i * 3 + rise * 2) * size * 0.055, y - rise * size * 0.43, size * (0.025 + rise * 0.07));
         gfx.fillStyle(0x504137, (1 - p) * 0.8).fillRect(x + (i - 2) * size * 0.07, y + size * (0.1 + (i % 2) * 0.06), size * 0.04, size * 0.025);
       }
-      if (effect.tile.type !== TileType.Ocean && effect.tile.type !== TileType.Coast && p < 0.65) {
-        const flicker = 0.7 + Math.sin(effect.age * 0.035) * 0.2;
-        gfx.fillStyle(0xdb7a28, (1 - p) * 0.85).fillEllipse(x + size * 0.09, y + size * 0.06, size * 0.045, size * 0.13 * flicker);
-        gfx.fillStyle(0xffd477, (1 - p) * 0.8).fillEllipse(x + size * 0.09, y + size * 0.08, size * 0.022, size * 0.055 * flicker);
-      }
+      drawDamageFeedback(gfx, x, y, size, p, effect.age, 1 - p,
+        effect.tile.type !== TileType.Ocean && effect.tile.type !== TileType.Coast && p < 0.65);
     }
     if (!this.effects.size) this.stopAnimation();
   }

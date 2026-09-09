@@ -27,6 +27,14 @@ export interface TechnologyDefinition {
   unlocks: TechnologyUnlock[];
 }
 
+/**
+ * Canonical technology whose completion permanently reveals the entire world
+ * map to the human player as geographic discovery (terrain only, not live
+ * vision). This is the single source of truth for that effect — see
+ * `VisibilitySystem.revealEntireMapAsExplored` and its wiring in GameScene.
+ */
+export const WORLD_MAP_REVEAL_TECHNOLOGY_ID = 'satellites';
+
 export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
   {
     id: 'agriculture',
@@ -831,11 +839,11 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Satellites',
     era: 'modern',
     cost: 7000,
-    description: 'Places observation and guidance systems above the world. Unlocks Guided Missiles and enables future space-age research.',
+    description: 'Places observation and guidance systems above the world. Unlocks Guided Missiles, permanently reveals the entire world map (geographic discovery only — ordinary fog of war still hides enemy units and current activity), and enables future space-age research.',
     prerequisites: ['rocketry'],
     leadsTo: ['particle_physics', 'nuclear_fusion'],
     unlocks: [{ kind: 'unit', id: 'guided_missile' }],
-    // TODO: unlocks SS Cockpit and map reveal.
+    // TODO: unlocks SS Cockpit.
   },
   {
     id: 'stealth',

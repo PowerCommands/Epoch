@@ -107,10 +107,22 @@
       "label": "Buildings",
       "assets": [
         {
+          "name": "air_base-broken.png",
+          "path": "/assets/sprites/buildings/air_base-broken.png",
+          "type": "PNG",
+          "size": 96681
+        },
+        {
           "name": "air_base.png",
           "path": "/assets/sprites/buildings/air_base.png",
           "type": "PNG",
           "size": 80236
+        },
+        {
+          "name": "airfield-broken.png",
+          "path": "/assets/sprites/buildings/airfield-broken.png",
+          "type": "PNG",
+          "size": 78907
         },
         {
           "name": "airfield.png",
@@ -119,10 +131,22 @@
           "size": 59680
         },
         {
+          "name": "aqueduct-broken.png",
+          "path": "/assets/sprites/buildings/aqueduct-broken.png",
+          "type": "PNG",
+          "size": 86406
+        },
+        {
           "name": "aqueduct.png",
           "path": "/assets/sprites/buildings/aqueduct.png",
           "type": "PNG",
           "size": 72672
+        },
+        {
+          "name": "armory-broken.png",
+          "path": "/assets/sprites/buildings/armory-broken.png",
+          "type": "PNG",
+          "size": 39926
         },
         {
           "name": "armory.png",
@@ -137,10 +161,22 @@
           "size": 30405
         },
         {
+          "name": "bank-broken.png",
+          "path": "/assets/sprites/buildings/bank-broken.png",
+          "type": "PNG",
+          "size": 63223
+        },
+        {
           "name": "bank.png",
           "path": "/assets/sprites/buildings/bank.png",
           "type": "PNG",
           "size": 51136
+        },
+        {
+          "name": "barbarian-camp-broken.png",
+          "path": "/assets/sprites/buildings/barbarian-camp-broken.png",
+          "type": "PNG",
+          "size": 375833
         },
         {
           "name": "barbarian-camp.png",
@@ -149,16 +185,34 @@
           "size": 2088610
         },
         {
+          "name": "barracks-broken.png",
+          "path": "/assets/sprites/buildings/barracks-broken.png",
+          "type": "PNG",
+          "size": 86602
+        },
+        {
           "name": "barracks.png",
           "path": "/assets/sprites/buildings/barracks.png",
           "type": "PNG",
           "size": 75927
         },
         {
+          "name": "bomb_shelter-broken.png",
+          "path": "/assets/sprites/buildings/bomb_shelter-broken.png",
+          "type": "PNG",
+          "size": 58910
+        },
+        {
           "name": "bomb_shelter.png",
           "path": "/assets/sprites/buildings/bomb_shelter.png",
           "type": "PNG",
           "size": 33761
+        },
+        {
+          "name": "broadcast_tower-broken.png",
+          "path": "/assets/sprites/buildings/broadcast_tower-broken.png",
+          "type": "PNG",
+          "size": 32921
         },
         {
           "name": "broadcast_tower.png",
@@ -173,10 +227,22 @@
           "size": 75916
         },
         {
+          "name": "circus-broken.png",
+          "path": "/assets/sprites/buildings/circus-broken.png",
+          "type": "PNG",
+          "size": 75367
+        },
+        {
           "name": "circus.png",
           "path": "/assets/sprites/buildings/circus.png",
           "type": "PNG",
           "size": 55502
+        },
+        {
+          "name": "coal_power_plant-broken.png",
+          "path": "/assets/sprites/buildings/coal_power_plant-broken.png",
+          "type": "PNG",
+          "size": 72168
         },
         {
           "name": "coal_power_plant.png",
@@ -185,10 +251,22 @@
           "size": 44171
         },
         {
+          "name": "colosseum-broken.png",
+          "path": "/assets/sprites/buildings/colosseum-broken.png",
+          "type": "PNG",
+          "size": 72502
+        },
+        {
           "name": "colosseum.png",
           "path": "/assets/sprites/buildings/colosseum.png",
           "type": "PNG",
           "size": 60391
+        },
+        {
+          "name": "courthouse-broken.png",
+          "path": "/assets/sprites/buildings/courthouse-broken.png",
+          "type": "PNG",
+          "size": 71510
         },
         {
           "name": "courthouse.png",
@@ -197,10 +275,22 @@
           "size": 59781
         },
         {
+          "name": "csp-broken.png",
+          "path": "/assets/sprites/buildings/csp-broken.png",
+          "type": "PNG",
+          "size": 305092
+        },
+        {
           "name": "csp.png",
           "path": "/assets/sprites/buildings/csp.png",
           "type": "PNG",
           "size": 1644165
+        },
+        {
+          "name": "factory-broken.png",
+          "path": "/assets/sprites/buildings/factory-broken.png",
+          "type": "PNG",
+          "size": 71560
         },
         {
           "name": "factory.png",
@@ -209,10 +299,22 @@
           "size": 41680
         },
         {
+          "name": "forge-broken.png",
+          "path": "/assets/sprites/buildings/forge-broken.png",
+          "type": "PNG",
+          "size": 69049
+        },
+        {
           "name": "forge.png",
           "path": "/assets/sprites/buildings/forge.png",
           "type": "PNG",
           "size": 42402
+        },
+        {
+          "name": "garden-broken.png",
+          "path": "/assets/sprites/buildings/garden-broken.png",
+          "type": "PNG",
+          "size": 76335
         },
         {
           "name": "garden.png",
@@ -221,10 +323,22 @@
           "size": 46040
         },
         {
+          "name": "gas_power_plant-broken.png",
+          "path": "/assets/sprites/buildings/gas_power_plant-broken.png",
+          "type": "PNG",
+          "size": 78804
+        },
+        {
           "name": "gas_power_plant.png",
           "path": "/assets/sprites/buildings/gas_power_plant.png",
           "type": "PNG",
           "size": 52776
+        },
+        {
+          "name": "granary-broken.png",
+          "path": "/assets/sprites/buildings/granary-broken.png",
+          "type": "PNG",
+          "size": 37731
         },
         {
           "name": "granary.png",
@@ -233,10 +347,22 @@
           "size": 75938
         },
         {
+          "name": "grand_stadium-broken.png",
+          "path": "/assets/sprites/buildings/grand_stadium-broken.png",
+          "type": "PNG",
+          "size": 118860
+        },
+        {
           "name": "grand_stadium.png",
           "path": "/assets/sprites/buildings/grand_stadium.png",
           "type": "PNG",
           "size": 105297
+        },
+        {
+          "name": "harbor-broken.png",
+          "path": "/assets/sprites/buildings/harbor-broken.png",
+          "type": "PNG",
+          "size": 72337
         },
         {
           "name": "harbor.png",
@@ -245,10 +371,22 @@
           "size": 51526
         },
         {
+          "name": "hospital-broken.png",
+          "path": "/assets/sprites/buildings/hospital-broken.png",
+          "type": "PNG",
+          "size": 70742
+        },
+        {
           "name": "hospital.png",
           "path": "/assets/sprites/buildings/hospital.png",
           "type": "PNG",
           "size": 58857
+        },
+        {
+          "name": "hotel-broken.png",
+          "path": "/assets/sprites/buildings/hotel-broken.png",
+          "type": "PNG",
+          "size": 53848
         },
         {
           "name": "hotel.png",
@@ -257,10 +395,22 @@
           "size": 47245
         },
         {
+          "name": "hydro_plant-broken.png",
+          "path": "/assets/sprites/buildings/hydro_plant-broken.png",
+          "type": "PNG",
+          "size": 62369
+        },
+        {
           "name": "hydro_plant.png",
           "path": "/assets/sprites/buildings/hydro_plant.png",
           "type": "PNG",
           "size": 37203
+        },
+        {
+          "name": "library-broken.png",
+          "path": "/assets/sprites/buildings/library-broken.png",
+          "type": "PNG",
+          "size": 37920
         },
         {
           "name": "library.png",
@@ -269,10 +419,22 @@
           "size": 26381
         },
         {
+          "name": "lighthouse-broken.png",
+          "path": "/assets/sprites/buildings/lighthouse-broken.png",
+          "type": "PNG",
+          "size": 23853
+        },
+        {
           "name": "lighthouse.png",
           "path": "/assets/sprites/buildings/lighthouse.png",
           "type": "PNG",
           "size": 29602
+        },
+        {
+          "name": "market-broken.png",
+          "path": "/assets/sprites/buildings/market-broken.png",
+          "type": "PNG",
+          "size": 71731
         },
         {
           "name": "market.png",
@@ -281,10 +443,22 @@
           "size": 56490
         },
         {
+          "name": "medical_lab-broken.png",
+          "path": "/assets/sprites/buildings/medical_lab-broken.png",
+          "type": "PNG",
+          "size": 52031
+        },
+        {
           "name": "medical_lab.png",
           "path": "/assets/sprites/buildings/medical_lab.png",
           "type": "PNG",
           "size": 37244
+        },
+        {
+          "name": "military_academy-broken.png",
+          "path": "/assets/sprites/buildings/military_academy-broken.png",
+          "type": "PNG",
+          "size": 75322
         },
         {
           "name": "military_academy.png",
@@ -293,10 +467,22 @@
           "size": 61189
         },
         {
+          "name": "military_base-broken.png",
+          "path": "/assets/sprites/buildings/military_base-broken.png",
+          "type": "PNG",
+          "size": 56692
+        },
+        {
           "name": "military_base.png",
           "path": "/assets/sprites/buildings/military_base.png",
           "type": "PNG",
           "size": 31515
+        },
+        {
+          "name": "mint-broken.png",
+          "path": "/assets/sprites/buildings/mint-broken.png",
+          "type": "PNG",
+          "size": 34948
         },
         {
           "name": "mint.png",
@@ -305,10 +491,22 @@
           "size": 25369
         },
         {
+          "name": "monument-broken.png",
+          "path": "/assets/sprites/buildings/monument-broken.png",
+          "type": "PNG",
+          "size": 147103
+        },
+        {
           "name": "monument.png",
           "path": "/assets/sprites/buildings/monument.png",
           "type": "PNG",
           "size": 1723468
+        },
+        {
+          "name": "museum-broken.png",
+          "path": "/assets/sprites/buildings/museum-broken.png",
+          "type": "PNG",
+          "size": 78986
         },
         {
           "name": "museum.png",
@@ -317,10 +515,22 @@
           "size": 55669
         },
         {
+          "name": "nuclear_plant-broken.png",
+          "path": "/assets/sprites/buildings/nuclear_plant-broken.png",
+          "type": "PNG",
+          "size": 67003
+        },
+        {
           "name": "nuclear_plant.png",
           "path": "/assets/sprites/buildings/nuclear_plant.png",
           "type": "PNG",
           "size": 42013
+        },
+        {
+          "name": "observatory-broken.png",
+          "path": "/assets/sprites/buildings/observatory-broken.png",
+          "type": "PNG",
+          "size": 74898
         },
         {
           "name": "observatory.png",
@@ -329,10 +539,22 @@
           "size": 62685
         },
         {
+          "name": "offshore_wind_farm-broken.png",
+          "path": "/assets/sprites/buildings/offshore_wind_farm-broken.png",
+          "type": "PNG",
+          "size": 216425
+        },
+        {
           "name": "offshore_wind_farm.png",
           "path": "/assets/sprites/buildings/offshore_wind_farm.png",
           "type": "PNG",
           "size": 998386
+        },
+        {
+          "name": "oil_power_plant-broken.png",
+          "path": "/assets/sprites/buildings/oil_power_plant-broken.png",
+          "type": "PNG",
+          "size": 78139
         },
         {
           "name": "oil_power_plant.png",
@@ -341,10 +563,22 @@
           "size": 50333
         },
         {
+          "name": "opera_house-broken.png",
+          "path": "/assets/sprites/buildings/opera_house-broken.png",
+          "type": "PNG",
+          "size": 99640
+        },
+        {
           "name": "opera_house.png",
           "path": "/assets/sprites/buildings/opera_house.png",
           "type": "PNG",
           "size": 75247
+        },
+        {
+          "name": "police_station-broken.png",
+          "path": "/assets/sprites/buildings/police_station-broken.png",
+          "type": "PNG",
+          "size": 58757
         },
         {
           "name": "police_station.png",
@@ -353,10 +587,22 @@
           "size": 49864
         },
         {
+          "name": "public_school-broken.png",
+          "path": "/assets/sprites/buildings/public_school-broken.png",
+          "type": "PNG",
+          "size": 105096
+        },
+        {
           "name": "public_school.png",
           "path": "/assets/sprites/buildings/public_school.png",
           "type": "PNG",
           "size": 78877
+        },
+        {
+          "name": "recycling_center-broken.png",
+          "path": "/assets/sprites/buildings/recycling_center-broken.png",
+          "type": "PNG",
+          "size": 85699
         },
         {
           "name": "recycling_center.png",
@@ -365,10 +611,22 @@
           "size": 71404
         },
         {
+          "name": "research_lab-broken.png",
+          "path": "/assets/sprites/buildings/research_lab-broken.png",
+          "type": "PNG",
+          "size": 65987
+        },
+        {
           "name": "research_lab.png",
           "path": "/assets/sprites/buildings/research_lab.png",
           "type": "PNG",
           "size": 52382
+        },
+        {
+          "name": "seaport-broken.png",
+          "path": "/assets/sprites/buildings/seaport-broken.png",
+          "type": "PNG",
+          "size": 79621
         },
         {
           "name": "seaport.png",
@@ -377,10 +635,22 @@
           "size": 67087
         },
         {
+          "name": "sewers-broken.png",
+          "path": "/assets/sprites/buildings/sewers-broken.png",
+          "type": "PNG",
+          "size": 97703
+        },
+        {
           "name": "sewers.png",
           "path": "/assets/sprites/buildings/sewers.png",
           "type": "PNG",
           "size": 87191
+        },
+        {
+          "name": "shrine-broken.png",
+          "path": "/assets/sprites/buildings/shrine-broken.png",
+          "type": "PNG",
+          "size": 58113
         },
         {
           "name": "shrine.png",
@@ -389,10 +659,22 @@
           "size": 35264
         },
         {
+          "name": "solar_panels-broken.png",
+          "path": "/assets/sprites/buildings/solar_panels-broken.png",
+          "type": "PNG",
+          "size": 192585
+        },
+        {
           "name": "solar_panels.png",
           "path": "/assets/sprites/buildings/solar_panels.png",
           "type": "PNG",
           "size": 1684833
+        },
+        {
+          "name": "solar_plant-broken.png",
+          "path": "/assets/sprites/buildings/solar_plant-broken.png",
+          "type": "PNG",
+          "size": 79139
         },
         {
           "name": "solar_plant.png",
@@ -401,10 +683,22 @@
           "size": 63295
         },
         {
+          "name": "spaceship_factory-broken.png",
+          "path": "/assets/sprites/buildings/spaceship_factory-broken.png",
+          "type": "PNG",
+          "size": 75768
+        },
+        {
           "name": "spaceship_factory.png",
           "path": "/assets/sprites/buildings/spaceship_factory.png",
           "type": "PNG",
           "size": 63624
+        },
+        {
+          "name": "stable-broken.png",
+          "path": "/assets/sprites/buildings/stable-broken.png",
+          "type": "PNG",
+          "size": 46566
         },
         {
           "name": "stable.png",
@@ -413,10 +707,22 @@
           "size": 32633
         },
         {
+          "name": "stadium-broken.png",
+          "path": "/assets/sprites/buildings/stadium-broken.png",
+          "type": "PNG",
+          "size": 90340
+        },
+        {
           "name": "stadium.png",
           "path": "/assets/sprites/buildings/stadium.png",
           "type": "PNG",
           "size": 73601
+        },
+        {
+          "name": "stock_exchange-broken.png",
+          "path": "/assets/sprites/buildings/stock_exchange-broken.png",
+          "type": "PNG",
+          "size": 75431
         },
         {
           "name": "stock_exchange.png",
@@ -425,16 +731,34 @@
           "size": 62491
         },
         {
+          "name": "stone_works-broken.png",
+          "path": "/assets/sprites/buildings/stone_works-broken.png",
+          "type": "PNG",
+          "size": 99219
+        },
+        {
           "name": "stone_works.png",
           "path": "/assets/sprites/buildings/stone_works.png",
           "type": "PNG",
           "size": 86970
         },
         {
+          "name": "temple-broken.png",
+          "path": "/assets/sprites/buildings/temple-broken.png",
+          "type": "PNG",
+          "size": 103953
+        },
+        {
           "name": "temple.png",
           "path": "/assets/sprites/buildings/temple.png",
           "type": "PNG",
           "size": 90969
+        },
+        {
+          "name": "university-broken.png",
+          "path": "/assets/sprites/buildings/university-broken.png",
+          "type": "PNG",
+          "size": 66604
         },
         {
           "name": "university.png",
@@ -449,10 +773,22 @@
           "size": 29528
         },
         {
+          "name": "water_mill-broken.png",
+          "path": "/assets/sprites/buildings/water_mill-broken.png",
+          "type": "PNG",
+          "size": 79189
+        },
+        {
           "name": "water_mill.png",
           "path": "/assets/sprites/buildings/water_mill.png",
           "type": "PNG",
           "size": 60805
+        },
+        {
+          "name": "wind_turbine-broken.png",
+          "path": "/assets/sprites/buildings/wind_turbine-broken.png",
+          "type": "PNG",
+          "size": 91071
         },
         {
           "name": "wind_turbine.png",
@@ -461,16 +797,34 @@
           "size": 333681
         },
         {
+          "name": "windmill-broken.png",
+          "path": "/assets/sprites/buildings/windmill-broken.png",
+          "type": "PNG",
+          "size": 46375
+        },
+        {
           "name": "windmill.png",
           "path": "/assets/sprites/buildings/windmill.png",
           "type": "PNG",
           "size": 32866
         },
         {
+          "name": "workshop-broken.png",
+          "path": "/assets/sprites/buildings/workshop-broken.png",
+          "type": "PNG",
+          "size": 63596
+        },
+        {
           "name": "workshop.png",
           "path": "/assets/sprites/buildings/workshop.png",
           "type": "PNG",
           "size": 42718
+        },
+        {
+          "name": "zoo-broken.png",
+          "path": "/assets/sprites/buildings/zoo-broken.png",
+          "type": "PNG",
+          "size": 88764
         },
         {
           "name": "zoo.png",
@@ -485,10 +839,22 @@
       "label": "Cities",
       "assets": [
         {
+          "name": "city_ancient-broken.png",
+          "path": "/assets/sprites/cities/city_ancient-broken.png",
+          "type": "PNG",
+          "size": 52111
+        },
+        {
           "name": "city_ancient.png",
           "path": "/assets/sprites/cities/city_ancient.png",
           "type": "PNG",
           "size": 27985
+        },
+        {
+          "name": "city_atomic-broken.png",
+          "path": "/assets/sprites/cities/city_atomic-broken.png",
+          "type": "PNG",
+          "size": 64553
         },
         {
           "name": "city_atomic.png",
@@ -497,10 +863,22 @@
           "size": 31349
         },
         {
+          "name": "city_classical-broken.png",
+          "path": "/assets/sprites/cities/city_classical-broken.png",
+          "type": "PNG",
+          "size": 56880
+        },
+        {
           "name": "city_classical.png",
           "path": "/assets/sprites/cities/city_classical.png",
           "type": "PNG",
           "size": 29707
+        },
+        {
+          "name": "city_default-broken.png",
+          "path": "/assets/sprites/cities/city_default-broken.png",
+          "type": "PNG",
+          "size": 53575
         },
         {
           "name": "city_default.png",
@@ -509,10 +887,22 @@
           "size": 27985
         },
         {
+          "name": "city_future-broken.png",
+          "path": "/assets/sprites/cities/city_future-broken.png",
+          "type": "PNG",
+          "size": 74468
+        },
+        {
           "name": "city_future.png",
           "path": "/assets/sprites/cities/city_future.png",
           "type": "PNG",
           "size": 38252
+        },
+        {
+          "name": "city_industrial-broken.png",
+          "path": "/assets/sprites/cities/city_industrial-broken.png",
+          "type": "PNG",
+          "size": 61086
         },
         {
           "name": "city_industrial.png",
@@ -521,10 +911,22 @@
           "size": 27529
         },
         {
+          "name": "city_information-broken.png",
+          "path": "/assets/sprites/cities/city_information-broken.png",
+          "type": "PNG",
+          "size": 69088
+        },
+        {
           "name": "city_information.png",
           "path": "/assets/sprites/cities/city_information.png",
           "type": "PNG",
           "size": 32345
+        },
+        {
+          "name": "city_medieval-broken.png",
+          "path": "/assets/sprites/cities/city_medieval-broken.png",
+          "type": "PNG",
+          "size": 57862
         },
         {
           "name": "city_medieval.png",
@@ -533,10 +935,22 @@
           "size": 30161
         },
         {
+          "name": "city_modern-broken.png",
+          "path": "/assets/sprites/cities/city_modern-broken.png",
+          "type": "PNG",
+          "size": 67052
+        },
+        {
           "name": "city_modern.png",
           "path": "/assets/sprites/cities/city_modern.png",
           "type": "PNG",
           "size": 30184
+        },
+        {
+          "name": "city_renaissance-broken.png",
+          "path": "/assets/sprites/cities/city_renaissance-broken.png",
+          "type": "PNG",
+          "size": 57427
         },
         {
           "name": "city_renaissance.png",
@@ -1935,6 +2349,18 @@
           "path": "/assets/sprites/news/games-of-nations/wrestling.jpg",
           "type": "JPEG",
           "size": 369083
+        }
+      ]
+    },
+    {
+      "path": "overlays",
+      "label": "Overlays",
+      "assets": [
+        {
+          "name": "under-construction.png",
+          "path": "/assets/sprites/overlays/under-construction.png",
+          "type": "PNG",
+          "size": 84920
         }
       ]
     },
@@ -3341,10 +3767,22 @@
       "label": "Wonders",
       "assets": [
         {
+          "name": "angkor-wat-broken.png",
+          "path": "/assets/sprites/wonders/angkor-wat-broken.png",
+          "type": "PNG",
+          "size": 103107
+        },
+        {
           "name": "angkor-wat.png",
           "path": "/assets/sprites/wonders/angkor-wat.png",
           "type": "PNG",
           "size": 120473
+        },
+        {
+          "name": "big-ben-broken.png",
+          "path": "/assets/sprites/wonders/big-ben-broken.png",
+          "type": "PNG",
+          "size": 48950
         },
         {
           "name": "big-ben.png",
@@ -3353,10 +3791,22 @@
           "size": 45482
         },
         {
+          "name": "brandenburg-gate-broken.png",
+          "path": "/assets/sprites/wonders/brandenburg-gate-broken.png",
+          "type": "PNG",
+          "size": 66233
+        },
+        {
           "name": "brandenburg-gate.png",
           "path": "/assets/sprites/wonders/brandenburg-gate.png",
           "type": "PNG",
           "size": 74394
+        },
+        {
+          "name": "colossus-broken.png",
+          "path": "/assets/sprites/wonders/colossus-broken.png",
+          "type": "PNG",
+          "size": 47207
         },
         {
           "name": "colossus.png",
@@ -3365,10 +3815,22 @@
           "size": 41139
         },
         {
+          "name": "eiffel_tower-broken.png",
+          "path": "/assets/sprites/wonders/eiffel_tower-broken.png",
+          "type": "PNG",
+          "size": 40201
+        },
+        {
           "name": "eiffel_tower.png",
           "path": "/assets/sprites/wonders/eiffel_tower.png",
           "type": "PNG",
           "size": 32338
+        },
+        {
+          "name": "empire-state-building-broken.png",
+          "path": "/assets/sprites/wonders/empire-state-building-broken.png",
+          "type": "PNG",
+          "size": 43382
         },
         {
           "name": "empire-state-building.png",
@@ -3377,10 +3839,22 @@
           "size": 45024
         },
         {
+          "name": "forbidden-city-broken.png",
+          "path": "/assets/sprites/wonders/forbidden-city-broken.png",
+          "type": "PNG",
+          "size": 100719
+        },
+        {
           "name": "forbidden-city.png",
           "path": "/assets/sprites/wonders/forbidden-city.png",
           "type": "PNG",
           "size": 114240
+        },
+        {
+          "name": "great_lighthouse-broken.png",
+          "path": "/assets/sprites/wonders/great_lighthouse-broken.png",
+          "type": "PNG",
+          "size": 42997
         },
         {
           "name": "great_lighthouse.png",
@@ -3389,10 +3863,22 @@
           "size": 39187
         },
         {
+          "name": "great_wall-broken.png",
+          "path": "/assets/sprites/wonders/great_wall-broken.png",
+          "type": "PNG",
+          "size": 56577
+        },
+        {
           "name": "great_wall.png",
           "path": "/assets/sprites/wonders/great_wall.png",
           "type": "PNG",
           "size": 29528
+        },
+        {
+          "name": "hagia-sophia-broken.png",
+          "path": "/assets/sprites/wonders/hagia-sophia-broken.png",
+          "type": "PNG",
+          "size": 103055
         },
         {
           "name": "hagia-sophia.png",
@@ -3401,10 +3887,22 @@
           "size": 109974
         },
         {
+          "name": "hanging_gardens-broken.png",
+          "path": "/assets/sprites/wonders/hanging_gardens-broken.png",
+          "type": "PNG",
+          "size": 94450
+        },
+        {
           "name": "hanging_gardens.png",
           "path": "/assets/sprites/wonders/hanging_gardens.png",
           "type": "PNG",
           "size": 81142
+        },
+        {
+          "name": "hoover-dam-broken.png",
+          "path": "/assets/sprites/wonders/hoover-dam-broken.png",
+          "type": "PNG",
+          "size": 81568
         },
         {
           "name": "hoover-dam.png",
@@ -3413,10 +3911,22 @@
           "size": 130658
         },
         {
+          "name": "machu-picchu-broken.png",
+          "path": "/assets/sprites/wonders/machu-picchu-broken.png",
+          "type": "PNG",
+          "size": 113474
+        },
+        {
           "name": "machu-picchu.png",
           "path": "/assets/sprites/wonders/machu-picchu.png",
           "type": "PNG",
           "size": 126720
+        },
+        {
+          "name": "oracle-broken.png",
+          "path": "/assets/sprites/wonders/oracle-broken.png",
+          "type": "PNG",
+          "size": 69339
         },
         {
           "name": "oracle.png",
@@ -3425,10 +3935,22 @@
           "size": 64136
         },
         {
+          "name": "panama-canal-broken.png",
+          "path": "/assets/sprites/wonders/panama-canal-broken.png",
+          "type": "PNG",
+          "size": 64015
+        },
+        {
           "name": "panama-canal.png",
           "path": "/assets/sprites/wonders/panama-canal.png",
           "type": "PNG",
           "size": 116697
+        },
+        {
+          "name": "pyramids-broken.png",
+          "path": "/assets/sprites/wonders/pyramids-broken.png",
+          "type": "PNG",
+          "size": 64426
         },
         {
           "name": "pyramids.png",
@@ -3437,10 +3959,22 @@
           "size": 54379
         },
         {
+          "name": "statue_of_liberty-broken.png",
+          "path": "/assets/sprites/wonders/statue_of_liberty-broken.png",
+          "type": "PNG",
+          "size": 60279
+        },
+        {
           "name": "statue_of_liberty.png",
           "path": "/assets/sprites/wonders/statue_of_liberty.png",
           "type": "PNG",
           "size": 63309
+        },
+        {
+          "name": "stonehenge-broken.png",
+          "path": "/assets/sprites/wonders/stonehenge-broken.png",
+          "type": "PNG",
+          "size": 76221
         },
         {
           "name": "stonehenge.png",
@@ -3449,10 +3983,22 @@
           "size": 79419
         },
         {
+          "name": "sydney-opera-house-broken.png",
+          "path": "/assets/sprites/wonders/sydney-opera-house-broken.png",
+          "type": "PNG",
+          "size": 50949
+        },
+        {
           "name": "sydney-opera-house.png",
           "path": "/assets/sprites/wonders/sydney-opera-house.png",
           "type": "PNG",
           "size": 54638
+        },
+        {
+          "name": "taj-mahal-broken.png",
+          "path": "/assets/sprites/wonders/taj-mahal-broken.png",
+          "type": "PNG",
+          "size": 103457
         },
         {
           "name": "taj-mahal.png",

@@ -336,10 +336,10 @@ import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { completeBuildingUpgrade, getBuildingUpgradeBlockReason, isBuildingObsoleteInCity } from '../systems/buildingUpgrades';
-import { CULTURE_TREE, ENLIGHTENMENT_CULTURE_NODE_ID } from '../data/cultureTree';
+import { CULTURE_TREE } from '../data/cultureTree';
 import { getPoliciesByRequiredCultureNodeId } from '../data/policies';
 import { getImprovementById } from '../data/improvements';
-import { getTechnologyById, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
+import { getTechnologyById, WORLD_MAP_REVEAL_TECHNOLOGY_ID, type TechnologyDefinition, type TechnologyUnlock } from '../data/technologies';
 import { ALL_UNIT_TYPES, WORK_BOAT, getUnitTypeById } from '../data/units';
 import type { CultureNode } from '../types/CultureNode';
 import type { CultureUnlock } from '../types/CultureUnlock';
@@ -683,12 +683,10 @@ export class GameScene extends Phaser.Scene {
     const cultureLayerRenderer = new CultureLayerRenderer(this, tileMap, nationManager, mapData);
 
     // 5c. Fog of war — depth 7 (above borders/resources, below cities and units).
-    const visibilitySystem = new VisibilitySystem(
-      mapData,
-      gridSystem,
-      () => humanNationId !== undefined
-        && (nationManager.getNation(humanNationId)?.unlockedCultureNodeIds.includes(ENLIGHTENMENT_CULTURE_NODE_ID) ?? false),
-    );
+    // The permanent full-map reveal is granted by the Satellites technology (see
+    // applySatellitesMapRevealIfEarned) as geographic discovery only, so it is
+    // applied to explored state rather than gated through this constructor.
+    const visibilitySystem = new VisibilitySystem(mapData, gridSystem);
     const fogOfWarRenderer = new FogOfWarRenderer(this, tileMap, mapData, visibilitySystem);
 
     // 6. Create cities from scenario (filtered)
@@ -739,6 +737,17 @@ export class GameScene extends Phaser.Scene {
       refreshResourceLensRevealTiles();
       fogOfWarRenderer.refresh(humanCities, humanUnits);
       applyFogToRenderers();
+    };
+
+    // Satellites permanently reveal the whole world map as geographic discovery
+    // (terrain only — ordinary fog still governs live vision). Idempotent, so it
+    // is safe to call on completion, on load, and at setup for restored saves in
+    // which the human already researched Satellites.
+    const applySatellitesMapRevealIfEarned = (): void => {
+      if (!humanNationId) return;
+      if (!researchSystem.isResearched(humanNationId, WORLD_MAP_REVEAL_TECHNOLOGY_ID)) return;
+      visibilitySystem.revealEntireMapAsExplored();
+      updateFog();
     };
 
     // 7. Kamerakontroll
@@ -2393,6 +2402,9 @@ export class GameScene extends Phaser.Scene {
       if (event.technologyId === 'currency') {
         currencySystem.activateCurrency(event.nationId, turnManager.getCurrentRound());
       }
+      if (event.technologyId === WORLD_MAP_REVEAL_TECHNOLOGY_ID && event.nationId === humanNationId) {
+        applySatellitesMapRevealIfEarned();
+      }
     });
     turnManager.on('roundStart', (event) => currencySystem.handleRoundStart(event.round));
     aerospacePartSystem = new AerospacePartSystem(
@@ -2684,8 +2696,8 @@ export class GameScene extends Phaser.Scene {
     unitRenderer.setVisibilityPredicate(canShowUnit);
     territoryRenderer.setVisibilityPredicate(canSeeTile);
     tileBuildingRenderer.setVisibilityPredicate(canSeeTile);
-    // Broken buildings/wonders render faded + with a ⚠️ marker. Improvements,
-    // units and cities are never treated as broken.
+    // Resolve structure damage from canonical gameplay state. City damage is
+    // derived separately from health by CityRenderer.
     tileBuildingRenderer.setBrokenPredicate((tileX, tileY) => {
       const tile = mapData.tiles[tileY]?.[tileX];
       if (!tile) return false;
@@ -3224,6 +3236,7 @@ export class GameScene extends Phaser.Scene {
       ({ nationId, message }) => logManager.info({ nationId, category: 'unit', message }),
     );
     const recalculateChangedInfrastructure = (nationIds: readonly string[]): void => {
+      tileBuildingRenderer.rebuildAll();
       for (const nationId of new Set(nationIds)) resourceSystem.recalculateForNation(nationId);
       if (humanNationId && nationIds.includes(humanNationId)) updateFog();
     };
@@ -10449,10 +10462,7 @@ export class GameScene extends Phaser.Scene {
       cultureEffectSystem.handleCultureNodeCompleted(event.nationId, event.cultureNode);
       if (
         event.nationId === humanNationId
-        && (
-          event.cultureNode.id === ENLIGHTENMENT_CULTURE_NODE_ID
-          || isNaturalResourceRevealCultureNode(event.cultureNode.id)
-        )
+        && isNaturalResourceRevealCultureNode(event.cultureNode.id)
       ) {
         updateFog();
       }
@@ -11419,6 +11429,10 @@ export class GameScene extends Phaser.Scene {
       resourceAccessSystem.invalidateResourceIndex();
       powerPlantSystem.refreshAllocation(false);
       updateFog();
+      // Reapply the Satellites geographic reveal for saves where the human has
+      // already researched it (including saves from before the reveal moved off
+      // The Enlightenment). Existing explored tiles are never un-revealed.
+      applySatellitesMapRevealIfEarned();
       // Older saves only persist tile.improvementConstruction; recompute
       // the unit-side mirror so the worker shows its build sprite + %.
       improvementConstructionSystem.syncUnitsFromTiles();

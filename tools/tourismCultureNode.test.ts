@@ -10,7 +10,6 @@ import {
   TOURISM_CULTURE_NODE_ID,
   getCultureNodeById,
   getRequiredCultureNodeForBuilding,
-  isCultureRequiredWithTechnologyForBuilding,
 } from '../src/data/cultureTree.ts';
 import { Nation } from '../src/entities/Nation.ts';
 import { CityManager } from '../src/systems/CityManager.ts';
@@ -102,20 +101,21 @@ test('culture-tree HUD exposes Tourism artwork and connector prerequisites in pr
   assert.deepEqual(professionalSports?.prerequisites, [TOURISM_CULTURE_NODE_ID]);
 });
 
-test('Tourism unlocks Hotel only alongside its existing Refrigeration requirement', () => {
+test('Tourism is the sole requirement for the Hotel — no technology gate', () => {
   const { nation, research } = makeProgressionHarness(true);
+  // The Tourism culture node is the only prerequisite; no technology unlocks the Hotel.
   assert.equal(getRequiredCultureNodeForBuilding(HOTEL.id)?.id, TOURISM_CULTURE_NODE_ID);
-  assert.equal(isCultureRequiredWithTechnologyForBuilding(HOTEL.id), true);
-  assert.equal(research.getRequiredTechnologyForBuilding(HOTEL.id)?.id, 'refrigeration');
+  assert.equal(research.getRequiredTechnologyForBuilding(HOTEL.id), undefined);
 
+  // Locked with neither Tourism nor any technology.
   assert.equal(research.isBuildingUnlocked(nation.id, HOTEL.id), false);
+  // A technology alone still does not unlock the Hotel.
   nation.researchedTechIds.push('refrigeration');
   assert.equal(research.isBuildingUnlocked(nation.id, HOTEL.id), false);
+  // Tourism alone unlocks it, with no technology required.
+  nation.researchedTechIds = [];
   nation.unlockedCultureNodeIds.push(TOURISM_CULTURE_NODE_ID);
   assert.equal(research.isBuildingUnlocked(nation.id, HOTEL.id), true);
-
-  nation.researchedTechIds = [];
-  assert.equal(research.isBuildingUnlocked(nation.id, HOTEL.id), false);
 });
 
 test('AI nations can progress normally from Urbanization through Tourism to Professional Sports', () => {

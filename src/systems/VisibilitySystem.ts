@@ -36,9 +36,11 @@ export class VisibilitySystem {
   private readonly width: number;
   private readonly height: number;
   /**
-   * When disabled (via the `fog off` cheat), or when a permanent gameplay
-   * reveal is active, every tile is reported as Visible so the whole map
-   * renders. The underlying explored/visible state is still tracked.
+   * When disabled (via the `fog off` cheat) every tile is reported as Visible so
+   * the whole map renders. The underlying explored/visible state is still
+   * tracked. Note this is distinct from the permanent geographic reveal granted
+   * by the Satellites technology (see {@link revealEntireMapAsExplored}), which
+   * raises terrain to Explored without granting live vision.
    */
   private enabled = true;
 
@@ -52,8 +54,6 @@ export class VisibilitySystem {
   constructor(
     private readonly mapData: MapData,
     private readonly gridSystem: IGridSystem,
-    /** A gameplay reveal overrides fog without changing the independent cheat toggle. */
-    private readonly isPermanentFullMapRevealActive: () => boolean = () => false,
   ) {
     this.width = mapData.width;
     this.height = mapData.height;
@@ -67,14 +67,14 @@ export class VisibilitySystem {
     return this.states[y]?.[x] ?? VisibilityState.Unseen;
   }
 
-  /** Enable or disable the fog cheat override. A permanent reveal still wins. */
+  /** Enable or disable the fog cheat override. */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
   }
 
-  /** Whether fog is effectively active after cheat and gameplay reveals. */
+  /** Whether fog is effectively active after the cheat toggle. */
   isEnabled(): boolean {
-    return this.enabled && !this.isPermanentFullMapRevealActive();
+    return this.enabled;
   }
 
   isVisible(x: number, y: number): boolean {
@@ -185,6 +185,31 @@ export class VisibilitySystem {
         row[tile.x] = VisibilityState.Explored;
       }
     }
+  }
+
+  /**
+   * Permanently reveal the whole map as *geographic* discovery, granted by the
+   * Satellites technology. Every Unseen tile is raised to Explored so the player
+   * learns the world's terrain; already-explored/visible tiles are untouched and
+   * update() never downgrades Explored, so the reveal is permanent and survives
+   * save/load via {@link getExploredTileCoords}. Crucially this does NOT grant
+   * live vision: ordinary fog still governs which tiles are currently Visible, so
+   * enemy units and other visibility-dependent information stay hidden until
+   * genuinely observed. Idempotent — safe to call again on load. Returns the
+   * number of tiles newly revealed.
+   */
+  revealEntireMapAsExplored(): number {
+    let revealed = 0;
+    for (let y = 0; y < this.height; y++) {
+      const row = this.states[y]!;
+      for (let x = 0; x < this.width; x++) {
+        if (row[x] === VisibilityState.Unseen) {
+          row[x] = VisibilityState.Explored;
+          revealed++;
+        }
+      }
+    }
+    return revealed;
   }
 
   /** Returns coordinates of all explored or visible tiles for save/load. */
