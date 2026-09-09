@@ -770,6 +770,14 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  { leaderId: 'leader_ruhollah_khomeini', strategiesByEra: { ancient: 'defensiveBuilder' } },
+  { leaderId: 'leader_saddam_hussein', strategiesByEra: { ancient: 'militaryPreparation' } },
+  { leaderId: 'leader_cleopatra_vii', strategiesByEra: { ancient: 'culturalDominance' } },
+  { leaderId: 'leader_abdel_fattah_el_sisi', strategiesByEra: { ancient: 'defensiveBuilder' } },
+  { leaderId: 'leader_benjamin_netanyahu', strategiesByEra: { ancient: 'defensiveBuilder' } },
+  { leaderId: 'leader_recep_tayyip_erdogan', strategiesByEra: { ancient: 'balancedGrowth' } },
+  { leaderId: 'leader_mohammed_bin_salman', strategiesByEra: { ancient: 'balancedGrowth' } },
+
   // Prepared defense carries forward to every starting era. Other new leaders
   // retain neutral era weights so their economic/growth agendas set priorities.
   { leaderId: 'leader_alexander_stubb', strategiesByEra: { ancient: 'defensiveBuilder' } },

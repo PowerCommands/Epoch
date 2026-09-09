@@ -127,6 +127,34 @@
       ]
     },
     {
+      "nationId": "nation_egypt",
+      "nationName": "Egypt",
+      "color": "#c19a45",
+      "secondaryColor": "#982e35",
+      "currencyName": "Egyptian Pound",
+      "currencySymbol": "E£",
+      "leaderId": "leader_cleopatra_vii",
+      "leaderName": "Cleopatra VII",
+      "leaderTitle": "Queen of Egypt",
+      "leaderImage": "/assets/sprites/leaders/cleopatra-vii.png",
+      "leaders": [
+        {
+          "leaderId": "leader_cleopatra_vii",
+          "leaderName": "Cleopatra VII",
+          "leaderTitle": "Queen of Egypt",
+          "leaderImage": "/assets/sprites/leaders/cleopatra-vii.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_abdel_fattah_el_sisi",
+          "leaderName": "Abdel Fattah el-Sisi",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/abdel-fattah-el-sisi.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
       "nationId": "nation_england",
       "nationName": "England",
       "color": "#dd203f",
@@ -298,6 +326,69 @@
           "leaderTitle": "Prime Minister",
           "leaderImage": "/assets/sprites/leaders/narendra-modi.png",
           "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_iran",
+      "nationName": "Iran",
+      "color": "#16846b",
+      "secondaryColor": "#c93442",
+      "currencyName": "Iranian Rial",
+      "currencySymbol": "﷼",
+      "leaderId": "leader_ruhollah_khomeini",
+      "leaderName": "Ruhollah Khomeini",
+      "leaderTitle": "Supreme Leader",
+      "leaderImage": "/assets/sprites/leaders/ruhollah-khomeini.png",
+      "leaders": [
+        {
+          "leaderId": "leader_ruhollah_khomeini",
+          "leaderName": "Ruhollah Khomeini",
+          "leaderTitle": "Supreme Leader",
+          "leaderImage": "/assets/sprites/leaders/ruhollah-khomeini.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_iraq",
+      "nationName": "Iraq",
+      "color": "#4b5346",
+      "secondaryColor": "#ce3038",
+      "currencyName": "Iraqi Dinar",
+      "currencySymbol": "د.ع",
+      "leaderId": "leader_saddam_hussein",
+      "leaderName": "Saddam Hussein",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/saddam-hussein.png",
+      "leaders": [
+        {
+          "leaderId": "leader_saddam_hussein",
+          "leaderName": "Saddam Hussein",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/saddam-hussein.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_israel",
+      "nationName": "Israel",
+      "color": "#478fce",
+      "secondaryColor": "#f7f4e9",
+      "currencyName": "Israeli New Shekel",
+      "currencySymbol": "₪",
+      "leaderId": "leader_benjamin_netanyahu",
+      "leaderName": "Benjamin Netanyahu",
+      "leaderTitle": "Prime Minister",
+      "leaderImage": "/assets/sprites/leaders/benjamin-netanyahu.png",
+      "leaders": [
+        {
+          "leaderId": "leader_benjamin_netanyahu",
+          "leaderName": "Benjamin Netanyahu",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/benjamin-netanyahu.png",
+          "isDefault": true
         }
       ]
     },
@@ -575,6 +666,27 @@
       ]
     },
     {
+      "nationId": "nation_saudi_arabia",
+      "nationName": "Saudi Arabia",
+      "color": "#14613f",
+      "secondaryColor": "#e3d8ac",
+      "currencyName": "Saudi Riyal",
+      "currencySymbol": "ر.س",
+      "leaderId": "leader_mohammed_bin_salman",
+      "leaderName": "Mohammed bin Salman",
+      "leaderTitle": "Crown Prince",
+      "leaderImage": "/assets/sprites/leaders/mohammed-bin-salman.png",
+      "leaders": [
+        {
+          "leaderId": "leader_mohammed_bin_salman",
+          "leaderName": "Mohammed bin Salman",
+          "leaderTitle": "Crown Prince",
+          "leaderImage": "/assets/sprites/leaders/mohammed-bin-salman.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_soviet_union",
       "nationName": "Soviet Union",
       "color": "#8b1a1a",
@@ -668,6 +780,27 @@
           "leaderName": "Koxinga",
           "leaderTitle": "Zheng Chenggong",
           "leaderImage": "/assets/sprites/leaders/koxinga.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_turkey",
+      "nationName": "Turkey",
+      "color": "#b93648",
+      "secondaryColor": "#ffffff",
+      "currencyName": "Turkish Lira",
+      "currencySymbol": "₺",
+      "leaderId": "leader_recep_tayyip_erdogan",
+      "leaderName": "Recep Tayyip Erdoğan",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/recep-tayyip-erdogan.png",
+      "leaders": [
+        {
+          "leaderId": "leader_recep_tayyip_erdogan",
+          "leaderName": "Recep Tayyip Erdoğan",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/recep-tayyip-erdogan.png",
           "isDefault": true
         }
       ]

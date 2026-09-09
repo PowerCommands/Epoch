@@ -7,6 +7,8 @@ export interface NationDefinition {
   currencySymbol: string;
   /** Optional data-driven reuse of another nation's audio/music playlist assets. */
   audioPlaylistNationId?: string;
+  /** Playlist key (including shared audio folders) in the sounds manifest. */
+  audioPlaylistId?: string;
 }
 
 export const NATION_DEFINITIONS: readonly NationDefinition[] = [
@@ -39,6 +41,12 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   {"id": "nation_mexico", "name": "Mexico", "color": "#006847", "secondaryColor": "#ce1126", "currencyName": "Mexican Peso", "currencySymbol": "$"},
   {"id": "nation_argentina", "name": "Argentina", "color": "#74acdf", "secondaryColor": "#ffffff", "currencyName": "Argentine Peso", "currencySymbol": "$"},
   {"id": "nation_ukraine", "name": "Ukraine", "color": "#0057b7", "secondaryColor": "#ffd700", "currencyName": "Hryvnia", "currencySymbol": "₴"},
+  {"id": "nation_iran", "name": "Iran", "color": "#16846b", "secondaryColor": "#c93442", "currencyName": "Iranian Rial", "currencySymbol": "﷼", "audioPlaylistId": "nations_middle_east"},
+  {"id": "nation_iraq", "name": "Iraq", "color": "#4b5346", "secondaryColor": "#ce3038", "currencyName": "Iraqi Dinar", "currencySymbol": "د.ع", "audioPlaylistId": "nations_middle_east"},
+  {"id": "nation_egypt", "name": "Egypt", "color": "#c19a45", "secondaryColor": "#982e35", "currencyName": "Egyptian Pound", "currencySymbol": "E£", "audioPlaylistId": "nations_middle_east"},
+  {"id": "nation_israel", "name": "Israel", "color": "#478fce", "secondaryColor": "#f7f4e9", "currencyName": "Israeli New Shekel", "currencySymbol": "₪", "audioPlaylistId": "nations_middle_east"},
+  {"id": "nation_turkey", "name": "Turkey", "color": "#b93648", "secondaryColor": "#ffffff", "currencyName": "Turkish Lira", "currencySymbol": "₺", "audioPlaylistId": "nations_middle_east"},
+  {"id": "nation_saudi_arabia", "name": "Saudi Arabia", "color": "#14613f", "secondaryColor": "#e3d8ac", "currencyName": "Saudi Riyal", "currencySymbol": "ر.س", "audioPlaylistId": "nations_middle_east"},
 ];
 
 export function getNationDefinitionById(nationId: string): NationDefinition | undefined {

@@ -11,6 +11,7 @@ import {
   setDefaultCameraZoom,
 } from '../systems/PlayerSettings';
 import { isTutorialDontShowAgain, setTutorialDontShowAgain } from '../systems/TutorialSettings';
+import { clearAllLocalGameData } from '../systems/LocalGameData';
 
 export interface SettingsDialogOptions {
   /** Music manager for the audio controls; audio section is hidden when absent. */
@@ -95,6 +96,16 @@ export class SettingsDialog {
 
     if (this.options.music) box.appendChild(this.buildAudioGroup());
     box.appendChild(this.buildPreferencesGroup());
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'settings-reset-btn';
+    resetBtn.type = 'button';
+    resetBtn.textContent = 'Reset settings';
+    resetBtn.title =
+      'Clear all Epoch data saved in this browser: preferences, audio settings, ' +
+      'scenario order, saved scenarios and autosaves. Reloads the page.';
+    resetBtn.addEventListener('click', () => this.resetLocalData());
+    box.appendChild(resetBtn);
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'settings-close-btn';
@@ -388,6 +399,30 @@ export class SettingsDialog {
 
       #settings-dialog .settings-close-btn:active { transform: translateY(1px); }
 
+      #settings-dialog .settings-reset-btn {
+        display: block;
+        width: 100%;
+        margin-top: 4px;
+        padding: 7px 12px;
+        color: var(--settings-muted);
+        background: transparent;
+        border: 1px solid var(--settings-border-soft);
+        border-radius: 1px;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+      }
+
+      #settings-dialog .settings-reset-btn:hover {
+        color: #e7b0a0;
+        border-color: rgba(179, 87, 66, 0.55);
+        background: rgba(120, 40, 30, 0.12);
+      }
+
       #settings-dialog input:focus-visible,
       #settings-dialog button:focus-visible {
         outline: 2px solid var(--settings-gold-bright);
@@ -559,6 +594,22 @@ export class SettingsDialog {
     const zoom = getDefaultCameraZoom();
     if (defaultZoom) defaultZoom.value = zoom.toFixed(2);
     if (defaultZoomValue) defaultZoomValue.textContent = zoom.toFixed(2);
+  }
+
+  /**
+   * Clear all Epoch data saved in this browser, then reload so every system
+   * re-initialises from defaults (the in-memory audio manager, scenario order,
+   * etc. read their persisted state only at startup).
+   */
+  private resetLocalData(): void {
+    const confirmed = window.confirm(
+      'Reset all Epoch settings saved in this browser?\n\n' +
+        'This clears player preferences, audio settings, scenario order, saved ' +
+        'scenarios and autosaves, then reloads the page. It cannot be undone.',
+    );
+    if (!confirmed) return;
+    clearAllLocalGameData();
+    window.location.reload();
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {

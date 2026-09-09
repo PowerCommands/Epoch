@@ -112,6 +112,10 @@
       "/assets/sounds/nation_usa/nation_usa-theme-01.mp3",
       "/assets/sounds/nation_usa/nation_usa-theme-02.mp3"
     ],
+    "nations_middle_east": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
     "start": [
       "/assets/sounds/start/theme-01.mp3",
       "/assets/sounds/start/theme-02.mp3"
@@ -119,6 +123,30 @@
     "nation_soviet_union": [
       "/assets/sounds/nation_russia/ivan-iv-theme-01.mp3",
       "/assets/sounds/nation_russia/ivan-iv-theme-02.mp3"
+    ],
+    "nation_iran": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
+    "nation_iraq": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
+    "nation_egypt": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
+    "nation_israel": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
+    "nation_turkey": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
+    "nation_saudi_arabia": [
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
+      "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
     ]
   }
 }

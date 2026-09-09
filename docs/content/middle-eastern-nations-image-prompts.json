@@ -1,0 +1,86 @@
+[
+  {
+    "slug": "ruhollah-khomeini",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Ayatollah Ruhollah Khomeini, elderly with white beard, thick eyebrows, black turban and dark clerical robe. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for ruhollah-khomeini.",
+    "destination": "public/assets/sprites/leaders/ruhollah-khomeini.png"
+  },
+  {
+    "slug": "ruhollah-khomeini",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Wide landscape 2048x872 diplomatic audience illustration for a grand strategy game. Ayatollah Ruhollah Khomeini, elderly with white beard, thick eyebrows, black turban and dark clerical robe seated on the RIGHT THIRD of a modest Iranian study with Persian carpet. Realistic classical oil painting with warm restrained colors and fine brush texture. Clear recognizable public likeness. Full seated figure, hands natural. Left half of room dimly lit with quiet negative space for game dialogue overlay. Period appropriate architecture and furniture. No other people, no text, no watermark. Cleopatra is an artistic historical reconstruction with Hellenistic dress and diadem based on ancient coin portraits.",
+    "destination": "public/assets/sprites/leaders/ruhollah-khomeini-room.webp"
+  },
+  {
+    "slug": "saddam-hussein",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Saddam Hussein, recognizable dark moustache and swept dark hair, olive military uniform. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for saddam-hussein.",
+    "destination": "public/assets/sprites/leaders/saddam-hussein.png"
+  },
+  {
+    "slug": "saddam-hussein",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Create ONE wide landscape diplomatic audience painting for the game Epoch. Subject: Saddam Hussein, recognizable dark moustache and swept dark hair, olive military uniform. Exactly ONE PERSON in the entire image, this named leader only. The leader sits alone on the RIGHT THIRD of an Iraqi presidential reception room, facing the viewer. Modern national architecture and appropriate furniture. LEFT HALF EMPTY OF PEOPLE, dark quiet room interior for dialogue overlay. Realistic classical oil painting, warm brown tones, fine brush texture, recognizable public likeness. Full seated figure visible. Landscape aspect ratio 2048:872. No text, no watermark, no other people.",
+    "destination": "public/assets/sprites/leaders/saddam-hussein-room.webp"
+  },
+  {
+    "slug": "cleopatra-vii",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Cleopatra VII, historically inspired Ptolemaic queen, prominent aquiline nose and chin, melon-coiffure hair in bun with Hellenistic royal diadem, linen dress and restrained gold jewelry, inspired by her surviving coin portraits, not a modern actress. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for cleopatra-vii.",
+    "destination": "public/assets/sprites/leaders/cleopatra-vii.png"
+  },
+  {
+    "slug": "cleopatra-vii",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Wide landscape 2048x872 diplomatic audience illustration for a grand strategy game. Cleopatra VII, historically inspired Ptolemaic queen, prominent aquiline nose and chin, melon-coiffure hair in bun with Hellenistic royal diadem, linen dress and restrained gold jewelry, inspired by her surviving coin portraits, not a modern actress seated on the RIGHT THIRD of a Ptolemaic Alexandrian palace with painted columns and Mediterranean view. Realistic classical oil painting with warm restrained colors and fine brush texture. Clear recognizable public likeness. Full seated figure, hands natural. Left half of room dimly lit with quiet negative space for game dialogue overlay. Period appropriate architecture and furniture. No other people, no text, no watermark. Cleopatra is an artistic historical reconstruction with Hellenistic dress and diadem based on ancient coin portraits.",
+    "destination": "public/assets/sprites/leaders/cleopatra-vii-room.webp"
+  },
+  {
+    "slug": "abdel-fattah-el-sisi",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Abdel Fattah el-Sisi, recognizable round face, short receding gray hair, dark business suit. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for abdel-fattah-el-sisi.",
+    "destination": "public/assets/sprites/leaders/abdel-fattah-el-sisi.png"
+  },
+  {
+    "slug": "abdel-fattah-el-sisi",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Create ONE wide landscape diplomatic audience painting for the game Epoch. Subject: Abdel Fattah el-Sisi, recognizable round face, short receding gray hair, dark business suit. Exactly ONE PERSON in the entire image, this named leader only. The leader sits alone on the RIGHT THIRD of an Egyptian presidential study, facing the viewer. Modern national architecture and appropriate furniture. LEFT HALF EMPTY OF PEOPLE, dark quiet room interior for dialogue overlay. Realistic classical oil painting, warm brown tones, fine brush texture, recognizable public likeness. Full seated figure visible. Landscape aspect ratio 2048:872. No text, no watermark, no other people.",
+    "destination": "public/assets/sprites/leaders/abdel-fattah-el-sisi-room.webp"
+  },
+  {
+    "slug": "benjamin-netanyahu",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Benjamin Netanyahu, recognizable broad face and silver hair, navy suit and blue tie. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for benjamin-netanyahu.",
+    "destination": "public/assets/sprites/leaders/benjamin-netanyahu.png"
+  },
+  {
+    "slug": "benjamin-netanyahu",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Create ONE wide landscape diplomatic audience painting for the game Epoch. Subject: Benjamin Netanyahu, recognizable broad face and silver hair, navy suit and blue tie. Exactly ONE PERSON in the entire image, this named leader only. The leader sits alone on the RIGHT THIRD of a Jerusalem government study, facing the viewer. Modern national architecture and appropriate furniture. LEFT HALF EMPTY OF PEOPLE, dark quiet room interior for dialogue overlay. Realistic classical oil painting, warm brown tones, fine brush texture, recognizable public likeness. Full seated figure visible. Landscape aspect ratio 2048:872. No text, no watermark, no other people.",
+    "destination": "public/assets/sprites/leaders/benjamin-netanyahu-room.webp"
+  },
+  {
+    "slug": "recep-tayyip-erdogan",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Recep Tayyip Erdoğan, recognizable short gray hair and narrow moustache, navy business suit. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for recep-tayyip-erdogan.",
+    "destination": "public/assets/sprites/leaders/recep-tayyip-erdogan.png"
+  },
+  {
+    "slug": "recep-tayyip-erdogan",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Create ONE wide landscape diplomatic audience painting for the game Epoch. Subject: Recep Tayyip Erdoğan, recognizable short gray hair and narrow moustache, navy business suit. Exactly ONE PERSON in the entire image, this named leader only. The leader sits alone on the RIGHT THIRD of a Turkish presidential study, facing the viewer. Modern national architecture and appropriate furniture. LEFT HALF EMPTY OF PEOPLE, dark quiet room interior for dialogue overlay. Realistic classical oil painting, warm brown tones, fine brush texture, recognizable public likeness. Full seated figure visible. Landscape aspect ratio 2048:872. No text, no watermark, no other people.",
+    "destination": "public/assets/sprites/leaders/recep-tayyip-erdogan-room.webp"
+  },
+  {
+    "slug": "mohammed-bin-salman",
+    "kind": "portrait",
+    "prompt": "Use case: historical-scene. Generate a square 1024x1024 grand strategy game leader portrait of Mohammed bin Salman, recognizable full dark beard and round face, red and white checked shemagh with black agal, white thobe and gold-trimmed bisht. Authentic recognizable public likeness; realistic classical oil painting, fine brush texture, restrained warm brown palette, soft directional light, head and shoulders centered, entire head visible, dark umber painted backdrop. Dignified neutral expression, no text, no border, no watermark. Cleopatra is explicitly an artistic historical reconstruction. Save asset for mohammed-bin-salman.",
+    "destination": "public/assets/sprites/leaders/mohammed-bin-salman.png"
+  },
+  {
+    "slug": "mohammed-bin-salman",
+    "kind": "room",
+    "prompt": "Use case: historical-scene. Create ONE wide landscape diplomatic audience painting for the game Epoch. Subject: Mohammed bin Salman, recognizable full dark beard and round face, red and white checked shemagh with black agal, white thobe and gold-trimmed bisht. Exactly ONE PERSON in the entire image, this named leader only. The leader sits alone on the RIGHT THIRD of a Saudi reception room with geometric woodwork, facing the viewer. Modern national architecture and appropriate furniture. LEFT HALF EMPTY OF PEOPLE, dark quiet room interior for dialogue overlay. Realistic classical oil painting, warm brown tones, fine brush texture, recognizable public likeness. Full seated figure visible. Landscape aspect ratio 2048:872. No text, no watermark, no other people.",
+    "destination": "public/assets/sprites/leaders/mohammed-bin-salman-room.webp"
+  }
+]

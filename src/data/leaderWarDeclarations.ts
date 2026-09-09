@@ -7,6 +7,161 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  * leader checks in diplomacy code.
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
+  leader_ruhollah_khomeini: {
+    "conquest": [
+        "Iran will secure the ground from which our independence has been challenged.",
+        "This advance will deny foreign powers another instrument of pressure against us."
+    ],
+    "hostility": [
+        "Your repeated coercion has made resistance our duty. We will endure what follows.",
+        "You sought obedience through humiliation. Iran will answer with sustained resistance."
+    ],
+    "threat": [
+        "Your forces threaten our country. We will resist before you can dictate our future.",
+        "We have watched your preparations. Our people will not wait helplessly for an attack."
+    ],
+    "ideological": [
+        "You would make our convictions subject to your approval. We reject that claim by force.",
+        "Our revolution will not survive by yielding whenever its principles are challenged."
+    ],
+    "ambition": [
+        "Iran must have the strength to resist interference throughout this region. We now act.",
+        "We will break the position from which you seek to confine our influence."
+    ]
+},
+  leader_saddam_hussein: {
+    "conquest": [
+        "Iraq has the strength to take these positions, and we will use it.",
+        "Your weakness has opened the frontier. Iraq’s army will seize the advantage."
+    ],
+    "hostility": [
+        "Your defiance has gone unanswered long enough. Iraq will settle this contest by force.",
+        "You have challenged our standing in the region. Our army will provide the answer."
+    ],
+    "threat": [
+        "We will strike your forces before they can turn their preparations against Iraq.",
+        "Your military buildup threatens our position. We will not grant you more time."
+    ],
+    "ideological": [
+        "Iraq will not accept an order designed to subordinate our nation. We will fight it.",
+        "You challenge the authority and national purpose of our state. We will break that challenge."
+    ],
+    "ambition": [
+        "Iraq’s place in this region will be established by strength. The campaign begins.",
+        "The resources and position before us will shape the region’s future. Iraq will command them."
+    ]
+},
+  leader_cleopatra_vii: {
+    "conquest": [
+        "Egypt’s rivals are divided, and the moment will not return. Our forces will advance.",
+        "I have secured the support this campaign requires. Egypt will now claim its advantage."
+    ],
+    "hostility": [
+        "You have mistaken patient negotiation for dependence. Egypt has prepared an answer.",
+        "Your insults have cost you partners. You will now discover the consequence."
+    ],
+    "threat": [
+        "I will not leave Egypt’s survival to the goodwill of an army at our frontier.",
+        "Your preparations threaten the kingdom. Our alliances and forces will now act together."
+    ],
+    "ideological": [
+        "You would reduce Egypt to a voice at another court. Our kingdom will defend its own authority.",
+        "Egypt’s traditions and learning will not flourish at your sufferance. We will resist your demands."
+    ],
+    "ambition": [
+        "Power has shifted, and Egypt must act while it can still shape the settlement.",
+        "The future of my kingdom cannot rest on promises from stronger courts. We will secure it ourselves."
+    ]
+},
+  leader_abdel_fattah_el_sisi: {
+    "conquest": [
+        "Egypt will secure the positions necessary to restore control along this frontier.",
+        "This operation has a defined objective: remove the ground from which our stability is threatened."
+    ],
+    "hostility": [
+        "Your repeated interference has undermined every attempt at a stable relationship. Egypt will respond.",
+        "We offered practical arrangements. Your continuing pressure now requires military action."
+    ],
+    "threat": [
+        "The threat to Egypt’s security has become immediate. Our armed forces will move.",
+        "We cannot permit instability at the frontier to become a danger within Egypt."
+    ],
+    "ideological": [
+        "You seek to undermine the authority that holds our state together. Egypt will resist.",
+        "Our national institutions will not be dismantled under foreign pressure. We are prepared to fight."
+    ],
+    "ambition": [
+        "Egypt must recover the initiative needed for a lasting regional settlement.",
+        "We will establish a position from which our security and development can proceed."
+    ]
+},
+  leader_benjamin_netanyahu: {
+    "conquest": [
+        "We will take the positions needed to deny your forces a continuing military advantage.",
+        "This operation will secure defensible ground. Its value is measured in security."
+    ],
+    "hostility": [
+        "Your repeated provocations have made the existing arrangement untenable. We will act.",
+        "You have used restraint as an opportunity to increase pressure. That calculation ends now."
+    ],
+    "threat": [
+        "Our assessment is clear: your preparations present a credible threat. We will act before it matures.",
+        "We will not wait for the first strike to confirm what your deployment already tells us."
+    ],
+    "ideological": [
+        "Israel’s right to make its own security decisions is not subject to your veto. We will defend it.",
+        "You demand submission where we require security. Our forces will resist that demand."
+    ],
+    "ambition": [
+        "We must change the strategic position that leaves our country exposed. The operation begins.",
+        "Israel will establish the deterrence that words alone have failed to secure."
+    ]
+},
+  leader_recep_tayyip_erdogan: {
+    "conquest": [
+        "The balance now favors Turkey. We will secure the positions our interests require.",
+        "Turkey will not leave this opportunity to powers that disregard our stake in the region."
+    ],
+    "hostility": [
+        "You cannot repeatedly challenge Turkey and expect our cooperation to continue unchanged.",
+        "We have made our objections clear. Your refusal to take them seriously now has consequences."
+    ],
+    "threat": [
+        "Your deployment threatens our frontier and our regional position. Turkey will respond.",
+        "We will act before this military pressure becomes a permanent constraint on Turkey."
+    ],
+    "ideological": [
+        "Turkey’s sovereign choices cannot be dictated from abroad. We will defend that independence.",
+        "You seek a regional order in which Turkey must obey. We will contest it by force."
+    ],
+    "ambition": [
+        "Turkey intends to shape this region’s future. Our forces will now support that purpose.",
+        "Diplomatic bargaining has reached its limit. We will change the balance on the ground."
+    ]
+},
+  leader_mohammed_bin_salman: {
+    "conquest": [
+        "We will secure the corridor on which our trade and investment depend.",
+        "Our forces will take the positions needed to protect the kingdom’s economic interests."
+    ],
+    "hostility": [
+        "You have repeatedly damaged the confidence on which cooperation rests. Economic measures have failed.",
+        "The costs of your interference can no longer be contained through commercial pressure alone."
+    ],
+    "threat": [
+        "Your forces threaten our infrastructure and security. We will remove that danger.",
+        "The kingdom cannot build its future under the threat you have created. We will act."
+    ],
+    "ideological": [
+        "Our development will not be subject to your political demands. We will defend our freedom to pursue it.",
+        "You seek to dictate the kingdom’s path. We will commit the means necessary to resist."
+    ],
+    "ambition": [
+        "We will use our strength to establish the security that our future investments require.",
+        "The kingdom needs a stable regional position. This operation will secure the terms for one."
+    ]
+},
+
   leader_alexander_stubb: {
     "conquest": [
       "Finland will secure the positions needed for a defensible settlement. Our objective is lasting security, and our advance must serve it.",

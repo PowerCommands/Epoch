@@ -881,6 +881,18 @@
       "label": "Leaders",
       "assets": [
         {
+          "name": "abdel-fattah-el-sisi-room.webp",
+          "path": "/assets/sprites/leaders/abdel-fattah-el-sisi-room.webp",
+          "type": "WEBP",
+          "size": 179498
+        },
+        {
+          "name": "abdel-fattah-el-sisi.png",
+          "path": "/assets/sprites/leaders/abdel-fattah-el-sisi.png",
+          "type": "PNG",
+          "size": 354989
+        },
+        {
           "name": "abu-al-hasan-room.webp",
           "path": "/assets/sprites/leaders/abu-al-hasan-room.webp",
           "type": "WEBP",
@@ -941,6 +953,18 @@
           "size": 238136
         },
         {
+          "name": "benjamin-netanyahu-room.webp",
+          "path": "/assets/sprites/leaders/benjamin-netanyahu-room.webp",
+          "type": "WEBP",
+          "size": 179170
+        },
+        {
+          "name": "benjamin-netanyahu.png",
+          "path": "/assets/sprites/leaders/benjamin-netanyahu.png",
+          "type": "PNG",
+          "size": 357058
+        },
+        {
           "name": "charles-de-gaulle-room.webp",
           "path": "/assets/sprites/leaders/charles-de-gaulle-room.webp",
           "type": "WEBP",
@@ -987,6 +1011,18 @@
           "path": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
           "type": "PNG",
           "size": 293615
+        },
+        {
+          "name": "cleopatra-vii-room.webp",
+          "path": "/assets/sprites/leaders/cleopatra-vii-room.webp",
+          "type": "WEBP",
+          "size": 225950
+        },
+        {
+          "name": "cleopatra-vii.png",
+          "path": "/assets/sprites/leaders/cleopatra-vii.png",
+          "type": "PNG",
+          "size": 360071
         },
         {
           "name": "dom-pedro-ii-room.webp",
@@ -1277,6 +1313,18 @@
           "size": 347473
         },
         {
+          "name": "mohammed-bin-salman-room.webp",
+          "path": "/assets/sprites/leaders/mohammed-bin-salman-room.webp",
+          "type": "WEBP",
+          "size": 196330
+        },
+        {
+          "name": "mohammed-bin-salman.png",
+          "path": "/assets/sprites/leaders/mohammed-bin-salman.png",
+          "type": "PNG",
+          "size": 387498
+        },
+        {
           "name": "narendra-modi-room.webp",
           "path": "/assets/sprites/leaders/narendra-modi-room.webp",
           "type": "WEBP",
@@ -1347,6 +1395,42 @@
           "path": "/assets/sprites/leaders/qin-shi-huang.png",
           "type": "PNG",
           "size": 301497
+        },
+        {
+          "name": "recep-tayyip-erdogan-room.webp",
+          "path": "/assets/sprites/leaders/recep-tayyip-erdogan-room.webp",
+          "type": "WEBP",
+          "size": 141564
+        },
+        {
+          "name": "recep-tayyip-erdogan.png",
+          "path": "/assets/sprites/leaders/recep-tayyip-erdogan.png",
+          "type": "PNG",
+          "size": 349331
+        },
+        {
+          "name": "ruhollah-khomeini-room.webp",
+          "path": "/assets/sprites/leaders/ruhollah-khomeini-room.webp",
+          "type": "WEBP",
+          "size": 162982
+        },
+        {
+          "name": "ruhollah-khomeini.png",
+          "path": "/assets/sprites/leaders/ruhollah-khomeini.png",
+          "type": "PNG",
+          "size": 343205
+        },
+        {
+          "name": "saddam-hussein-room.webp",
+          "path": "/assets/sprites/leaders/saddam-hussein-room.webp",
+          "type": "WEBP",
+          "size": 195338
+        },
+        {
+          "name": "saddam-hussein.png",
+          "path": "/assets/sprites/leaders/saddam-hussein.png",
+          "type": "PNG",
+          "size": 339039
         },
         {
           "name": "sigismund-room.webp",

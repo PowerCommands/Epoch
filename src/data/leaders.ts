@@ -1,3 +1,4 @@
+import { MIDDLE_EASTERN_LEADERS } from './middleEasternLeaders';
 import { MODERN_ALTERNATIVE_LEADERS } from './modernAlternativeLeaders';
 import { applyBehaviorOverride } from './leaderConfiguration';
 import type { LeaderDefinition } from '../types/leader';
@@ -1014,6 +1015,7 @@ export const ADOLF_HITLER: LeaderDefinition = {
 
 export const ALL_LEADERS: LeaderDefinition[] = [
   ...DEFAULT_LEADERS,
+  ...MIDDLE_EASTERN_LEADERS,
   WINSTON_CHURCHILL,
   CHARLES_DE_GAULLE,
   ADOLF_HITLER,

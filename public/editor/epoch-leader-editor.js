@@ -31,7 +31,13 @@
     { "id": "nation_canada", "name": "Canada", "color": "#d52b1e", "secondaryColor": "#ffffff", "currencyName": "Canadian Dollar", "currencySymbol": "$" },
     { "id": "nation_mexico", "name": "Mexico", "color": "#006847", "secondaryColor": "#ce1126", "currencyName": "Mexican Peso", "currencySymbol": "$" },
     { "id": "nation_argentina", "name": "Argentina", "color": "#74acdf", "secondaryColor": "#ffffff", "currencyName": "Argentine Peso", "currencySymbol": "$" },
-    { "id": "nation_ukraine", "name": "Ukraine", "color": "#0057b7", "secondaryColor": "#ffd700", "currencyName": "Hryvnia", "currencySymbol": "\u20B4" }
+    { "id": "nation_ukraine", "name": "Ukraine", "color": "#0057b7", "secondaryColor": "#ffd700", "currencyName": "Hryvnia", "currencySymbol": "\u20B4" },
+    { "id": "nation_iran", "name": "Iran", "color": "#16846b", "secondaryColor": "#c93442", "currencyName": "Iranian Rial", "currencySymbol": "\uFDFC", "audioPlaylistId": "nations_middle_east" },
+    { "id": "nation_iraq", "name": "Iraq", "color": "#4b5346", "secondaryColor": "#ce3038", "currencyName": "Iraqi Dinar", "currencySymbol": "\u062F.\u0639", "audioPlaylistId": "nations_middle_east" },
+    { "id": "nation_egypt", "name": "Egypt", "color": "#c19a45", "secondaryColor": "#982e35", "currencyName": "Egyptian Pound", "currencySymbol": "E\xA3", "audioPlaylistId": "nations_middle_east" },
+    { "id": "nation_israel", "name": "Israel", "color": "#478fce", "secondaryColor": "#f7f4e9", "currencyName": "Israeli New Shekel", "currencySymbol": "\u20AA", "audioPlaylistId": "nations_middle_east" },
+    { "id": "nation_turkey", "name": "Turkey", "color": "#b93648", "secondaryColor": "#ffffff", "currencyName": "Turkish Lira", "currencySymbol": "\u20BA", "audioPlaylistId": "nations_middle_east" },
+    { "id": "nation_saudi_arabia", "name": "Saudi Arabia", "color": "#14613f", "secondaryColor": "#e3d8ac", "currencyName": "Saudi Riyal", "currencySymbol": "\u0631.\u0633", "audioPlaylistId": "nations_middle_east" }
   ];
 
   // src/types/aiLeaderPersonality.ts
@@ -326,6 +332,327 @@
     }
     return { id: "balancedGrowth", from: void 0, source: "Default \xB7 Balanced Growth" };
   }
+
+  // src/data/middleEasternLeaders.ts
+  var MIDDLE_EASTERN_LEADERS = [
+    {
+      "id": "leader_ruhollah_khomeini",
+      "isDefault": true,
+      "name": "Ruhollah Khomeini",
+      "nationId": "nation_iran",
+      "title": "Supreme Leader",
+      "image": "/assets/sprites/leaders/ruhollah-khomeini.png",
+      "description": "Founder and first Supreme Leader of the Islamic Republic of Iran, Khomeini led the 1979 revolution and held supreme authority until 1989.",
+      "ideologyId": "traditionalism",
+      "aiNationalAgendaId": "homeland_defense",
+      "aiMilitaryDoctrineId": "religiousMilitia",
+      "covertPersonalityId": "fanatic",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "mysticism",
+        "theology_civics",
+        "nationalism"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "wrestling",
+        "additionalFavourite": "horse_racing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -12,
+        "expansionBias": -14,
+        "economyBias": 4,
+        "cultureBias": 16,
+        "diplomacyBias": -24,
+        "warTolerance": 92,
+        "peacePreference": 24,
+        "minimumUnitsLostBeforePeace": 9,
+        "casualtyToleranceRatio": 0.78,
+        "resourceExploitationInterest": 2
+      },
+      "diplomacyFlavor": {
+        "greeting": "Iran receives those who respect its independence. Our convictions are not a matter for foreign negotiation.",
+        "friendly": "Respect for our sovereignty has given this relationship a foundation. Let deeds preserve it.",
+        "neutral": "We will examine your proposal against our obligations and our independence.",
+        "hostile": "Pressure will not make our people abandon their convictions. Do not mistake endurance for weakness.",
+        "warDeclaration": "Your actions have made resistance necessary. Iran will sustain this struggle.",
+        "victory": "Our resistance has prevailed. The settlement must protect our independence.",
+        "defeat": "Our forces have suffered defeat, but our convictions cannot be surrendered."
+      }
+    },
+    {
+      "id": "leader_saddam_hussein",
+      "isDefault": true,
+      "name": "Saddam Hussein",
+      "nationId": "nation_iraq",
+      "title": "President",
+      "image": "/assets/sprites/leaders/saddam-hussein.png",
+      "description": "President of Iraq from 1979 to 2003, Saddam Hussein consolidated Baathist rule through repression and led Iraq into wars with Iran and Kuwait.",
+      "ideologyId": "militarism",
+      "aiNationalAgendaId": "military_power",
+      "aiMilitaryDoctrineId": "militaryMobilization",
+      "covertPersonalityId": "paranoid",
+      "opportunism": true,
+      "impulsiveBully": true,
+      "culturePriorities": [
+        "state_workforce",
+        "nationalism",
+        "mobilization"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "wrestling",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": 28,
+        "expansionBias": 20,
+        "economyBias": 14,
+        "cultureBias": -8,
+        "diplomacyBias": -28,
+        "warTolerance": 88,
+        "peacePreference": 18,
+        "minimumUnitsLostBeforePeace": 8,
+        "casualtyToleranceRatio": 0.7,
+        "resourceExploitationInterest": 4
+      },
+      "diplomacyFlavor": {
+        "greeting": "Iraq expects to be treated as a power whose interests cannot be ignored.",
+        "friendly": "An agreement that strengthens Iraq can earn our cooperation. Keep your commitments.",
+        "neutral": "State your terms clearly. Iraq will judge the advantage they offer.",
+        "hostile": "You challenge Iraq while disregarding the strength we have assembled.",
+        "warDeclaration": "Iraq will now impose by force what your defiance has denied us.",
+        "victory": "Our armed forces have established Iraq\u2019s position. You will recognize it in the settlement.",
+        "defeat": "Our position has failed. Present the terms that will end this campaign."
+      }
+    },
+    {
+      "id": "leader_cleopatra_vii",
+      "isDefault": true,
+      "name": "Cleopatra VII",
+      "nationId": "nation_egypt",
+      "title": "Queen of Egypt",
+      "image": "/assets/sprites/leaders/cleopatra-vii.png",
+      "description": "The last active ruler of Ptolemaic Egypt, Cleopatra VII ruled from 51 to 30 BCE and used diplomacy and alliances with Roman leaders to defend her dynasty.",
+      "ideologyId": "globalism",
+      "aiNationalAgendaId": "culture",
+      "aiMilitaryDoctrineId": "culturalDefense",
+      "covertPersonalityId": "schemer",
+      "opportunism": true,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "drama_civics",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "swimming",
+        "additionalFavourite": "fencing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -16,
+        "expansionBias": -8,
+        "economyBias": 22,
+        "cultureBias": 30,
+        "diplomacyBias": 30,
+        "warTolerance": 42,
+        "peacePreference": 76,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.3,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Welcome to Egypt. Let us discover what each of us can gain from the other\u2019s prosperity.",
+        "friendly": "Our friendship has brought opportunity to both courts. I intend to cultivate it.",
+        "neutral": "Every proposal reveals something of its author. Tell me what you truly seek.",
+        "hostile": "You have narrowed my choices, but you have not exhausted them.",
+        "warDeclaration": "You have left Egypt no profitable peace. I have arranged another course.",
+        "victory": "The balance has shifted in Egypt\u2019s favor. Let us put it to lasting use.",
+        "defeat": "Fortune has turned against my cause. Egypt\u2019s future still requires a settlement."
+      }
+    },
+    {
+      "id": "leader_abdel_fattah_el_sisi",
+      "isDefault": false,
+      "name": "Abdel Fattah el-Sisi",
+      "nationId": "nation_egypt",
+      "title": "President",
+      "image": "/assets/sprites/leaders/abdel-fattah-el-sisi.png",
+      "description": "An Egyptian military officer who became president in 2014, el-Sisi built his leadership around state authority, security and large infrastructure projects.",
+      "ideologyId": "conservatism",
+      "aiNationalAgendaId": "homeland_defense",
+      "aiMilitaryDoctrineId": "imperialCombinedArms",
+      "covertPersonalityId": "pragmatist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "state_workforce",
+        "civil_engineering",
+        "mobilization"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "javelin",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -10,
+        "expansionBias": -12,
+        "economyBias": 22,
+        "cultureBias": 2,
+        "diplomacyBias": 12,
+        "warTolerance": 70,
+        "peacePreference": 64,
+        "minimumUnitsLostBeforePeace": 5,
+        "casualtyToleranceRatio": 0.5,
+        "resourceExploitationInterest": 2
+      },
+      "diplomacyFlavor": {
+        "greeting": "Egypt seeks stability and development. Cooperation must strengthen both.",
+        "friendly": "Reliable partners help us build a secure and prosperous state. Your commitment is welcome.",
+        "neutral": "We will consider the practical consequences for Egypt\u2019s security and economy.",
+        "hostile": "Disorder at our borders will not be accepted as a normal condition.",
+        "warDeclaration": "Egypt\u2019s security requires action. Our armed forces will carry it out.",
+        "victory": "The immediate danger has been contained. We must now establish a stable settlement.",
+        "defeat": "The military situation demands a settlement that preserves the functioning of the state."
+      }
+    },
+    {
+      "id": "leader_benjamin_netanyahu",
+      "isDefault": true,
+      "name": "Benjamin Netanyahu",
+      "nationId": "nation_israel",
+      "title": "Prime Minister",
+      "image": "/assets/sprites/leaders/benjamin-netanyahu.png",
+      "description": "A long-serving Israeli prime minister and Likud leader whose political career emphasizes national security, diplomatic bargaining and market-oriented economic policy.",
+      "ideologyId": "conservatism",
+      "aiNationalAgendaId": "homeland_defense",
+      "aiMilitaryDoctrineId": "eliteArmy",
+      "covertPersonalityId": "schemer",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "code_of_laws",
+        "diplomatic_service",
+        "mobilization"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "swimming",
+        "additionalFavourite": "fencing"
+      },
+      "aiPersonality": {
+        "aggressionBias": 3,
+        "expansionBias": -24,
+        "economyBias": 25,
+        "cultureBias": 4,
+        "diplomacyBias": 6,
+        "warTolerance": 86,
+        "peacePreference": 42,
+        "minimumUnitsLostBeforePeace": 7,
+        "casualtyToleranceRatio": 0.65,
+        "resourceExploitationInterest": 2
+      },
+      "diplomacyFlavor": {
+        "greeting": "Israel is ready to discuss cooperation. Any agreement must address our security.",
+        "friendly": "Practical cooperation has made both our countries stronger. Let us extend it.",
+        "neutral": "We will assess your proposal by its consequences, including those beyond the first agreement.",
+        "hostile": "Your assurances mean little while your actions increase the danger we face.",
+        "warDeclaration": "We will act against this threat before it dictates our future.",
+        "victory": "Our objectives have been secured. The terms must prevent the danger from returning.",
+        "defeat": "We must now secure the strongest guarantees that the circumstances permit."
+      },
+      "maxPreferredCities": 4
+    },
+    {
+      "id": "leader_recep_tayyip_erdogan",
+      "isDefault": true,
+      "name": "Recep Tayyip Erdo\u011Fan",
+      "nationId": "nation_turkey",
+      "title": "President",
+      "image": "/assets/sprites/leaders/recep-tayyip-erdogan.png",
+      "description": "A Turkish politician who served as prime minister before becoming president in 2014, Erdo\u011Fan combines national ambition, economic development and assertive regional diplomacy.",
+      "ideologyId": "nationalism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "prestigeProjection",
+      "covertPersonalityId": "opportunist",
+      "opportunism": true,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "nationalism",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "wrestling",
+        "additionalFavourite": "horse_racing"
+      },
+      "aiPersonality": {
+        "aggressionBias": 6,
+        "expansionBias": 8,
+        "economyBias": 22,
+        "cultureBias": 8,
+        "diplomacyBias": 16,
+        "warTolerance": 64,
+        "peacePreference": 52,
+        "minimumUnitsLostBeforePeace": 4,
+        "casualtyToleranceRatio": 0.45,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Turkey has interests across this region. There is room for cooperation if those interests are respected.",
+        "friendly": "Our partnership is delivering results. We should build on the opportunities before us.",
+        "neutral": "Turkey will judge this proposal on its merits and on our national interest.",
+        "hostile": "You cannot expect Turkish cooperation while disregarding our position.",
+        "warDeclaration": "Turkey will use its strength to secure the interests you have chosen to challenge.",
+        "victory": "Turkey\u2019s influence must now be reflected in a practical agreement.",
+        "defeat": "We must reassess the balance and negotiate terms that preserve our room to act."
+      }
+    },
+    {
+      "id": "leader_mohammed_bin_salman",
+      "isDefault": true,
+      "name": "Mohammed bin Salman",
+      "nationId": "nation_saudi_arabia",
+      "title": "Crown Prince",
+      "image": "/assets/sprites/leaders/mohammed-bin-salman.png",
+      "description": "Saudi crown prince since 2017, Mohammed bin Salman has pursued economic diversification and state-led modernization alongside centralized political authority.",
+      "ideologyId": "conservatism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "prestigeProjection",
+      "covertPersonalityId": "merchant",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "civil_engineering",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "javelin",
+        "additionalFavourite": "horse_racing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -16,
+        "expansionBias": -18,
+        "economyBias": 34,
+        "cultureBias": 12,
+        "diplomacyBias": 20,
+        "warTolerance": 34,
+        "peacePreference": 80,
+        "minimumUnitsLostBeforePeace": 2,
+        "casualtyToleranceRatio": 0.24,
+        "resourceExploitationInterest": 4
+      },
+      "diplomacyFlavor": {
+        "greeting": "The kingdom is building for the future. Bring us a proposal that creates value.",
+        "friendly": "Investment and dependable trade have made this partnership worth developing.",
+        "neutral": "We will weigh the returns, the risks and the commitments behind your offer.",
+        "hostile": "Access to our markets and investment depends on conduct that sustains confidence.",
+        "warDeclaration": "You have put our security and economic future at risk. We will commit the force needed to protect them.",
+        "victory": "Our position is secure. A stable settlement will allow development to resume.",
+        "defeat": "This conflict is consuming resources needed elsewhere. We must negotiate an end."
+      },
+      "maxPreferredCities": 5
+    }
+  ];
 
   // src/data/modernAlternativeLeaders.ts
   var MODERN_ALTERNATIVE_LEADERS = [
@@ -2426,6 +2753,7 @@
   };
   var ALL_LEADERS = [
     ...DEFAULT_LEADERS,
+    ...MIDDLE_EASTERN_LEADERS,
     WINSTON_CHURCHILL,
     CHARLES_DE_GAULLE,
     ADOLF_HITLER,
@@ -3563,6 +3891,13 @@
     SEA_WOLF_STRATEGY
   ];
   var LEADER_ERA_STRATEGY_PROFILES = [
+    { leaderId: "leader_ruhollah_khomeini", strategiesByEra: { ancient: "defensiveBuilder" } },
+    { leaderId: "leader_saddam_hussein", strategiesByEra: { ancient: "militaryPreparation" } },
+    { leaderId: "leader_cleopatra_vii", strategiesByEra: { ancient: "culturalDominance" } },
+    { leaderId: "leader_abdel_fattah_el_sisi", strategiesByEra: { ancient: "defensiveBuilder" } },
+    { leaderId: "leader_benjamin_netanyahu", strategiesByEra: { ancient: "defensiveBuilder" } },
+    { leaderId: "leader_recep_tayyip_erdogan", strategiesByEra: { ancient: "balancedGrowth" } },
+    { leaderId: "leader_mohammed_bin_salman", strategiesByEra: { ancient: "balancedGrowth" } },
     // Prepared defense carries forward to every starting era. Other new leaders
     // retain neutral era weights so their economic/growth agendas set priorities.
     { leaderId: "leader_alexander_stubb", strategiesByEra: { ancient: "defensiveBuilder" } },
@@ -3673,6 +4008,160 @@
 
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
+    leader_ruhollah_khomeini: {
+      "conquest": [
+        "Iran will secure the ground from which our independence has been challenged.",
+        "This advance will deny foreign powers another instrument of pressure against us."
+      ],
+      "hostility": [
+        "Your repeated coercion has made resistance our duty. We will endure what follows.",
+        "You sought obedience through humiliation. Iran will answer with sustained resistance."
+      ],
+      "threat": [
+        "Your forces threaten our country. We will resist before you can dictate our future.",
+        "We have watched your preparations. Our people will not wait helplessly for an attack."
+      ],
+      "ideological": [
+        "You would make our convictions subject to your approval. We reject that claim by force.",
+        "Our revolution will not survive by yielding whenever its principles are challenged."
+      ],
+      "ambition": [
+        "Iran must have the strength to resist interference throughout this region. We now act.",
+        "We will break the position from which you seek to confine our influence."
+      ]
+    },
+    leader_saddam_hussein: {
+      "conquest": [
+        "Iraq has the strength to take these positions, and we will use it.",
+        "Your weakness has opened the frontier. Iraq\u2019s army will seize the advantage."
+      ],
+      "hostility": [
+        "Your defiance has gone unanswered long enough. Iraq will settle this contest by force.",
+        "You have challenged our standing in the region. Our army will provide the answer."
+      ],
+      "threat": [
+        "We will strike your forces before they can turn their preparations against Iraq.",
+        "Your military buildup threatens our position. We will not grant you more time."
+      ],
+      "ideological": [
+        "Iraq will not accept an order designed to subordinate our nation. We will fight it.",
+        "You challenge the authority and national purpose of our state. We will break that challenge."
+      ],
+      "ambition": [
+        "Iraq\u2019s place in this region will be established by strength. The campaign begins.",
+        "The resources and position before us will shape the region\u2019s future. Iraq will command them."
+      ]
+    },
+    leader_cleopatra_vii: {
+      "conquest": [
+        "Egypt\u2019s rivals are divided, and the moment will not return. Our forces will advance.",
+        "I have secured the support this campaign requires. Egypt will now claim its advantage."
+      ],
+      "hostility": [
+        "You have mistaken patient negotiation for dependence. Egypt has prepared an answer.",
+        "Your insults have cost you partners. You will now discover the consequence."
+      ],
+      "threat": [
+        "I will not leave Egypt\u2019s survival to the goodwill of an army at our frontier.",
+        "Your preparations threaten the kingdom. Our alliances and forces will now act together."
+      ],
+      "ideological": [
+        "You would reduce Egypt to a voice at another court. Our kingdom will defend its own authority.",
+        "Egypt\u2019s traditions and learning will not flourish at your sufferance. We will resist your demands."
+      ],
+      "ambition": [
+        "Power has shifted, and Egypt must act while it can still shape the settlement.",
+        "The future of my kingdom cannot rest on promises from stronger courts. We will secure it ourselves."
+      ]
+    },
+    leader_abdel_fattah_el_sisi: {
+      "conquest": [
+        "Egypt will secure the positions necessary to restore control along this frontier.",
+        "This operation has a defined objective: remove the ground from which our stability is threatened."
+      ],
+      "hostility": [
+        "Your repeated interference has undermined every attempt at a stable relationship. Egypt will respond.",
+        "We offered practical arrangements. Your continuing pressure now requires military action."
+      ],
+      "threat": [
+        "The threat to Egypt\u2019s security has become immediate. Our armed forces will move.",
+        "We cannot permit instability at the frontier to become a danger within Egypt."
+      ],
+      "ideological": [
+        "You seek to undermine the authority that holds our state together. Egypt will resist.",
+        "Our national institutions will not be dismantled under foreign pressure. We are prepared to fight."
+      ],
+      "ambition": [
+        "Egypt must recover the initiative needed for a lasting regional settlement.",
+        "We will establish a position from which our security and development can proceed."
+      ]
+    },
+    leader_benjamin_netanyahu: {
+      "conquest": [
+        "We will take the positions needed to deny your forces a continuing military advantage.",
+        "This operation will secure defensible ground. Its value is measured in security."
+      ],
+      "hostility": [
+        "Your repeated provocations have made the existing arrangement untenable. We will act.",
+        "You have used restraint as an opportunity to increase pressure. That calculation ends now."
+      ],
+      "threat": [
+        "Our assessment is clear: your preparations present a credible threat. We will act before it matures.",
+        "We will not wait for the first strike to confirm what your deployment already tells us."
+      ],
+      "ideological": [
+        "Israel\u2019s right to make its own security decisions is not subject to your veto. We will defend it.",
+        "You demand submission where we require security. Our forces will resist that demand."
+      ],
+      "ambition": [
+        "We must change the strategic position that leaves our country exposed. The operation begins.",
+        "Israel will establish the deterrence that words alone have failed to secure."
+      ]
+    },
+    leader_recep_tayyip_erdogan: {
+      "conquest": [
+        "The balance now favors Turkey. We will secure the positions our interests require.",
+        "Turkey will not leave this opportunity to powers that disregard our stake in the region."
+      ],
+      "hostility": [
+        "You cannot repeatedly challenge Turkey and expect our cooperation to continue unchanged.",
+        "We have made our objections clear. Your refusal to take them seriously now has consequences."
+      ],
+      "threat": [
+        "Your deployment threatens our frontier and our regional position. Turkey will respond.",
+        "We will act before this military pressure becomes a permanent constraint on Turkey."
+      ],
+      "ideological": [
+        "Turkey\u2019s sovereign choices cannot be dictated from abroad. We will defend that independence.",
+        "You seek a regional order in which Turkey must obey. We will contest it by force."
+      ],
+      "ambition": [
+        "Turkey intends to shape this region\u2019s future. Our forces will now support that purpose.",
+        "Diplomatic bargaining has reached its limit. We will change the balance on the ground."
+      ]
+    },
+    leader_mohammed_bin_salman: {
+      "conquest": [
+        "We will secure the corridor on which our trade and investment depend.",
+        "Our forces will take the positions needed to protect the kingdom\u2019s economic interests."
+      ],
+      "hostility": [
+        "You have repeatedly damaged the confidence on which cooperation rests. Economic measures have failed.",
+        "The costs of your interference can no longer be contained through commercial pressure alone."
+      ],
+      "threat": [
+        "Your forces threaten our infrastructure and security. We will remove that danger.",
+        "The kingdom cannot build its future under the threat you have created. We will act."
+      ],
+      "ideological": [
+        "Our development will not be subject to your political demands. We will defend our freedom to pursue it.",
+        "You seek to dictate the kingdom\u2019s path. We will commit the means necessary to resist."
+      ],
+      "ambition": [
+        "We will use our strength to establish the security that our future investments require.",
+        "The kingdom needs a stable regional position. This operation will secure the terms for one."
+      ]
+    },
     leader_alexander_stubb: {
       "conquest": [
         "Finland will secure the positions needed for a defensible settlement. Our objective is lasting security, and our advance must serve it.",

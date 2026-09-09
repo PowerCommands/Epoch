@@ -41,13 +41,15 @@ for (const entry of entries) {
   manifest.playlists[folder] = files.map(f => `/assets/sounds/${folder}/${f}`);
 }
 
-// Nations may reuse an existing nation's playlist without duplicating large
+// Nations may reuse any existing playlist (including shared folders) without duplicating large
 // media files. Runtime remains unaware of the alias: every nation still has a
 // normal playlist key in the generated manifest.
 for (const nation of NATION_DEFINITIONS) {
-  if (!nation.audioPlaylistNationId) continue;
-  const source = manifest.playlists[nation.audioPlaylistNationId];
-  if (source?.length) manifest.playlists[nation.id] = [...source];
+  const playlistId = nation.audioPlaylistId ?? nation.audioPlaylistNationId;
+  if (!playlistId) continue;
+  const source = manifest.playlists[playlistId];
+  if (!source?.length) throw new Error(`Missing audio playlist ${playlistId} for ${nation.id}`);
+  manifest.playlists[nation.id] = [...source];
 }
 
 fs.writeFileSync(outputPath, JSON.stringify(manifest, null, 2) + '\n');
