@@ -261,6 +261,15 @@ export class PowerPlantSystem {
     return Math.max(0, this.resourceAccessSystem.getResourceSourceCount(nationId, resourceId));
   }
 
+  /** One live allocation pass for national energy-policy evaluation. */
+  getNationActivePowerPlants(nationId: string): readonly string[] {
+    this.synchronizeAllCities();
+    const allocation = this.computeAllocation();
+    return this.cityManager.getCitiesByOwner(nationId)
+      .filter(city => allocation.get(city.id)?.active)
+      .map(city => this.states.get(city.id)!.buildingId);
+  }
+
   getNationActivePowerPlantCount(nationId: string, resourceId: string): number {
     const allocation = this.computeAllocation();
     let count = 0;

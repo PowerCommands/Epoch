@@ -176,6 +176,7 @@ export interface WorldCouncilDefenseSupportDonationDiagnostics {
 }
 
 export interface WorldCouncilEnactedResolution {
+  readonly peacekeepingContributions?: ReadonlyArray<{ readonly nationId: string; readonly unitIds: readonly string[] }>;
   readonly id: string;
   readonly resolutionId: WorldCouncilResolutionId;
   readonly meetingId: number;

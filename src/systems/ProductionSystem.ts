@@ -492,10 +492,35 @@ export class ProductionSystem {
     if (options.settlerProductionSlotException !== 'expeditionFollowUp' && this.isSettler(item) && this.hasQueuedSettlerForCityOwner(cityId)) {
       return SETTLER_PRODUCTION_SLOT_BLOCK_REASON;
     }
-    return this.itemProductionBlockReasonProvider(cityId, item);
+    return this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
+  }
+
+  private productionProhibition: ItemProductionBlockReasonProvider = () => undefined;
+  private onProhibitedProductionCancelled: (cityId: string, item: Producible, reason: string) => void = () => {};
+
+  /** Policy prohibitions apply to every entry, including inherited and restored queues. */
+  setProductionProhibitionProvider(provider: ItemProductionBlockReasonProvider,
+    onCancelled: typeof this.onProhibitedProductionCancelled = () => {}): void {
+    this.productionProhibition = provider;
+    this.onProhibitedProductionCancelled = onCancelled;
+  }
+
+  cancelProhibitedProduction(reasonFor: ItemProductionBlockReasonProvider = this.productionProhibition,
+    onCancelled: (cityId: string, item: Producible, reason: string) => void = this.onProhibitedProductionCancelled): void {
+    for (const [cityId, queue] of [...this.queues]) {
+      for (let i = queue.length - 1; i >= 0; i--) {
+        const entry = queue[i]!;
+        const reason = reasonFor(cityId, entry.item);
+        if (reason) {
+          this.removeFromQueue(cityId, i);
+          onCancelled(cityId, entry.item, reason);
+        }
+      }
+    }
   }
 
   private handleTurnStart(e: TurnStartEvent): void {
+    this.cancelProhibitedProduction();
     if (!this.hasSkippedInitialTurnStart) {
       this.hasSkippedInitialTurnStart = true;
       return;
@@ -550,7 +575,7 @@ export class ProductionSystem {
   private tryComplete(cityId: string, entry: QueueEntry): boolean {
     // The queued Settler itself owns the nation slot, so completion only checks
     // external blockers here; the slot guard applies when committing new work.
-    const externalBlockReason = this.itemProductionBlockReasonProvider(cityId, entry.item);
+    const externalBlockReason = this.productionProhibition(cityId, entry.item) ?? this.itemProductionBlockReasonProvider(cityId, entry.item);
     if (externalBlockReason !== undefined) {
       entry.blockedReason = externalBlockReason;
       return false;

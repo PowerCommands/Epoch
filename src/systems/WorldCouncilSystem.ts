@@ -244,6 +244,45 @@ export class WorldCouncilSystem {
     return treatyActive ? NUCLEAR_NON_PROLIFERATION_BLOCK_REASON : undefined;
   }
 
+  hasClimateAccord(nationId: string): boolean {
+    return this.isMember(nationId) && (this.state?.enactedResolutions.some(r =>
+      r.resolutionId === 'climate_accord' && isEnactedResolutionActive(r)) ?? false);
+  }
+
+  getBuildingProductionRestrictionReason(nationId: string, buildingId: string): string | undefined {
+    return this.hasClimateAccord(nationId) && ['coal_power_plant', 'oil_power_plant'].includes(buildingId)
+      ? 'Climate Accord prohibits construction of new Coal and Oil Power Plants.' : undefined;
+  }
+
+  getClimateComplianceHappiness(nationId: string, activeFossilPlants: number): number {
+    return this.hasClimateAccord(nationId) && activeFossilPlants === 0 ? 5 : 0;
+  }
+
+  getPeacekeepingAssignment(nationId: string, unitId: string): WorldCouncilEnactedResolution | undefined {
+    if (!this.isMember(nationId)) return undefined;
+    return this.state?.enactedResolutions.find(r => r.resolutionId === 'un_peacekeeping_mission'
+      && isEnactedResolutionActive(r) && r.participantNationIds?.includes(nationId)
+      && r.peacekeepingContributions?.some(c => c.nationId === nationId && c.unitIds.includes(unitId)));
+  }
+
+  contributePeacekeepingUnits(missionId: string, nationId: string, unitIds: readonly string[],
+    isEligible: (unitId: string) => boolean): boolean {
+    const mission = this.state?.enactedResolutions.find(r => r.id === missionId);
+    if (!this.state || !mission || mission.resolutionId !== 'un_peacekeeping_mission'
+      || !isEnactedResolutionActive(mission) || !this.isMember(nationId)
+      || nationId === mission.targetNationId || nationId === mission.secondaryTargetNationId) return false;
+    const selected = [...new Set(unitIds)].filter(id => isEligible(id) && !this.getPeacekeepingAssignment(nationId, id));
+    if (!selected.length) return false;
+    const updated = { ...mission,
+      participantNationIds: [...new Set([...(mission.participantNationIds ?? []), nationId])],
+      peacekeepingContributions: [...(mission.peacekeepingContributions ?? []), { nationId, unitIds: selected }],
+    };
+    this.state = { ...this.state, enactedResolutions: this.state.enactedResolutions.map(r => r.id === missionId ? updated : r) };
+    this.log?.(nationId, `[Peacekeeping] nation=${nationId} joined mission=${missionId} units=${selected.join(',')}`);
+    this.notifyChanged();
+    return true;
+  }
+
   getActivePeacekeepingMissionForHost(hostNationId: string): WorldCouncilEnactedResolution | undefined {
     if (!this.state || this.state.organizationKind !== 'un') return undefined;
     return this.state.enactedResolutions.find((resolution) =>
@@ -257,36 +296,40 @@ export class WorldCouncilSystem {
     return this.getActivePeacekeepingMissionForHost(hostNationId) !== undefined;
   }
 
-  canPeacekeeperEnterTerritory(unitOwnerNationId: string, territoryOwnerNationId: string, isMilitaryUnit: boolean): boolean {
+  canPeacekeeperEnterTerritory(unitOwnerNationId: string, territoryOwnerNationId: string, isMilitaryUnit: boolean, unitId?: string): boolean {
     if (!isMilitaryUnit) return false;
     const mission = this.getActivePeacekeepingMissionForHost(territoryOwnerNationId);
     if (!mission) return false;
-    return mission.participantNationIds?.includes(unitOwnerNationId) === true;
+    return unitId !== undefined && this.getPeacekeepingAssignment(unitOwnerNationId, unitId)?.id === mission.id;
   }
 
-  canResolvePeacekeepingCombat(attackerNationId: string, defenderNationId: string, tileOwnerNationId?: string): boolean {
+  canResolvePeacekeepingCombat(attackerNationId: string, defenderNationId: string, tileOwnerNationId?: string, attackerUnitId?: string, defenderUnitId?: string): boolean {
     if (!tileOwnerNationId) return false;
     const mission = this.getActivePeacekeepingMissionForHost(tileOwnerNationId);
     if (!mission?.secondaryTargetNationId) return false;
     const threatNationId = mission.secondaryTargetNationId;
+    if (!this.resolutionSystem?.canPeacekeepingEngage(tileOwnerNationId, threatNationId)) return false;
     const participants = mission.participantNationIds ?? [];
     return (
       participants.includes(attackerNationId) && defenderNationId === threatNationId
+      && !!attackerUnitId && this.getPeacekeepingAssignment(attackerNationId, attackerUnitId)?.id === mission.id
     ) || (
       attackerNationId === threatNationId && participants.includes(defenderNationId)
+      && !!defenderUnitId && this.getPeacekeepingAssignment(defenderNationId, defenderUnitId)?.id === mission.id
     );
   }
 
   getPeacekeepingDefensivePowerAgainst(
     attackerNationId: string,
     hostNationId: string,
-    getMilitaryStrength: (nationId: string) => number,
+    getMilitaryStrength: (nationId: string, unitIds: readonly string[]) => number,
   ): number {
     const mission = this.getActivePeacekeepingMissionForHost(hostNationId);
     if (!mission || mission.secondaryTargetNationId !== attackerNationId) return 0;
     return (mission.participantNationIds ?? [])
       .filter((participantNationId) => participantNationId !== attackerNationId && participantNationId !== hostNationId)
-      .reduce((sum, participantNationId) => sum + getMilitaryStrength(participantNationId) * 0.65, 0);
+      .reduce((sum, participantNationId) => sum + getMilitaryStrength(participantNationId,
+        (mission.peacekeepingContributions ?? []).filter(c => c.nationId === participantNationId).flatMap(c => [...c.unitIds])), 0);
   }
 
   getTradeRestrictionReason(
@@ -970,6 +1013,8 @@ export class WorldCouncilSystem {
         resolutionId: target.resolutionId,
         repealTargetEnactedResolutionId: target.id,
         repealTargetResolutionId: target.resolutionId,
+        targetNationId: target.targetNationId,
+        secondaryTargetNationId: target.secondaryTargetNationId,
       });
     }
     if (candidates.length === 0) {
@@ -1063,7 +1108,9 @@ export class WorldCouncilSystem {
     if (proposal.resolutionId === 'games_of_nations_hosting') score += 8;
     if (proposal.resolutionId === 'exclude_games_of_nations_participant') score += 6;
     if (proposal.resolutionId === 'international_development_fund') score += 6;
-    if (proposal.resolutionId === 'climate_accord') score += 4;
+    if (proposerNationId && ['climate_accord', 'nuclear_non_proliferation_treaty'].includes(proposal.resolutionId)) {
+      score += this.resolutionSystem?.scorePolicySupport(proposerNationId, proposal.resolutionId) ?? 0;
+    }
     return score;
   }
 
@@ -1165,6 +1212,13 @@ export class WorldCouncilSystem {
       meetings,
       enactedResolutions: [...enactedResolutions, ...enacted],
     };
+    for (const resolution of enacted) {
+      if (resolution.resolutionId === 'un_peacekeeping_mission') {
+        this.log?.(resolution.targetNationId ?? '', `[Peacekeeping] mission started protected=${resolution.targetNationId} threat=${resolution.secondaryTargetNationId} duration=30 participants=${resolution.participantNationIds?.join(',') ?? ''}`);
+      } else if (['climate_accord', 'nuclear_non_proliferation_treaty'].includes(resolution.resolutionId)) {
+        this.log?.(this.state.foundingNationId, `[WorldCouncil] ${this.resolutionSystem?.getDefinition(resolution.resolutionId)?.title} activated`);
+      }
+    }
     for (const proposal of proposals) {
       if (proposal.resolutionId === 'collective_nuclear_response') this.log?.(proposal.targetNationId ?? '', `[Strategic] ${this.getOrganizationName()} nuclear emergency: ${proposal.passed ? 'approved' : 'rejected'}; supporters=${proposal.participantNationIds?.join(',') ?? ''}`);
       if (proposal.resolutionId === 'games_of_nations_hosting') {
@@ -1210,6 +1264,7 @@ export class WorldCouncilSystem {
   }
 
   private hasActiveRepealableResolution(resolutionId: WorldCouncilResolutionId): boolean {
+    if (resolutionId === 'un_peacekeeping_mission') return false;
     if (!this.resolutionSystem?.supportsRepeal(resolutionId)) return false;
     return this.getRepealableResolutions().some((resolution) => resolution.resolutionId === resolutionId);
   }
@@ -1251,6 +1306,7 @@ export class WorldCouncilSystem {
         expired: true,
       };
       expired.push(updated);
+      if (resolution.resolutionId === 'un_peacekeeping_mission') this.log?.(resolution.targetNationId ?? '', '[Peacekeeping] mission ended reason=expired');
       return updated;
     });
     if (expired.length === 0) return [];
@@ -1503,6 +1559,7 @@ export class WorldCouncilSystem {
     if (!this.state) return;
     const resolutionCopy = {
       ...resolution,
+      peacekeepingContributions: resolution.peacekeepingContributions?.map(c => ({ ...c, unitIds: [...c.unitIds] })),
       participantNationIds: resolution.participantNationIds ? [...resolution.participantNationIds] : undefined,
     };
     const stateCopy = cloneState(this.state);
@@ -1649,6 +1706,7 @@ function cloneState(state: WorldCouncilState): WorldCouncilState {
     })),
     enactedResolutions: (state.enactedResolutions ?? []).map((resolution) => ({
       ...resolution,
+      peacekeepingContributions: resolution.peacekeepingContributions?.map(c => ({ ...c, unitIds: [...c.unitIds] })),
       participantNationIds: resolution.participantNationIds ? [...resolution.participantNationIds] : undefined,
     })),
     pendingContributionNegotiation: state.pendingContributionNegotiation

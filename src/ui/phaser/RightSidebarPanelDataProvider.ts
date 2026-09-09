@@ -1182,6 +1182,12 @@ export class RightSidebarPanelDataProvider {
       textRow(`Range: ${unit.unitType.id === 'atomic_bomb' ? this.unitManager.getTransportForUnit(unit)?.unitType.range ?? 0 : unit.unitType.range ?? 1}`),
       textRow(`Movement: ${unit.movementPoints}/${unit.maxMovementPoints}`),
     ];
+    const mission = this.worldCouncilSystem?.getPeacekeepingAssignment(unit.ownerId, unit.id);
+    if (mission) {
+      const host = this.nationManager.getNation(mission.targetNationId!)?.name ?? mission.targetNationId;
+      const threat = this.nationManager.getNation(mission.secondaryTargetNationId!)?.name ?? mission.secondaryTargetNationId;
+      rows.push(textRow(`UN Peacekeeper: protecting ${host} from ${threat}. Defensive mandate; no city captures or unrelated attacks.`, true));
+    }
     if (unit.unitType.description) rows.push(textRow(unit.unitType.description, true));
     if (unit.unitType.cargoCapacity) rows.push(textRow(`Cargo: ${unit.cargoUnitIds.length}/${unit.unitType.cargoCapacity}. Carries: ${(unit.unitType.allowedCargoUnitIds ?? unit.unitType.allowedCargoCategories ?? []).join(', ')}`));
     if (unit.improvementCharges !== undefined) {
@@ -1248,6 +1254,7 @@ export class RightSidebarPanelDataProvider {
           textRow(`Happiness: ${formatSigned(happiness.netHappiness)} — ${formatHappinessStateLabel(happiness.state)}`, false, true),
           textRow('Sources:', true),
           textRow(`Base: ${formatSigned(happiness.happinessFromBase)}`),
+          ...(happiness.happinessFromClimateAccord ? [textRow(`Climate Accord compliance: +5`)] : []),
           textRow(`Buildings: ${formatSigned(happiness.happinessFromBuildings)}`),
           textRow(`Wonders: ${formatSigned(happiness.happinessFromWonders)}`),
           textRow(`Corporations: ${formatSigned(happiness.happinessFromCorporations)}`),
@@ -1721,7 +1728,7 @@ export class RightSidebarPanelDataProvider {
       if (this.researchSystem && !this.researchSystem.isBuildingUnlocked(city.ownerId, buildingType.id)) continue;
       const item: Producible = { kind: 'building', buildingType };
       const terrainRequirement = getBuildingTerrainRequirement(buildingType);
-      rows.push(buttonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})${terrainRequirement ? ` — ${terrainRequirement}` : ''}`, () => {
+      rows.push(disabledReasonButtonRow(`${getProducibleName(item)} (${this.productionSystem.getCost(item)})${terrainRequirement ? ` — ${terrainRequirement}` : ''}`, this.productionSystem.getItemProductionBlockReason(city.id, item), () => {
         if (this.buildingPlacementRequestHandler) {
           const result = this.buildingPlacementRequestHandler(city, buildingType.id);
           if (!result.ok && result.message) window.alert(result.message);

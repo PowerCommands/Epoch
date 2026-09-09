@@ -634,10 +634,10 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     name: 'Refrigeration',
     era: 'industrial',
     cost: 4000,
-    description: 'Preserves food, medicine, and comfort across long distances. Unlocks Submarines, Stadiums, and Hotels.',
+    description: 'Preserves food, medicine, and comfort across long distances. Unlocks Submarines and Stadiums.',
     prerequisites: ['biology', 'electricity'],
     leadsTo: ['penicillin'],
-    unlocks: [{ kind: 'unit', id: 'submarine' }, { kind: 'building', id: 'stadium' }, { kind: 'building', id: 'hotel' }],
+    unlocks: [{ kind: 'unit', id: 'submarine' }, { kind: 'building', id: 'stadium' }],
     // TODO: unlocks Offshore Platform construction.
   },
   {

@@ -121,6 +121,7 @@ export class MovementSystem {
 
     const targetTile = this.tileMap.getTileAt(tileX, tileY);
     if (targetTile === null) return false;
+    if (!this.missionMovementPermission(unit, targetTile)) return false;
     if (respectDiplomacy && this.getClosedBorderOwner(unit, targetTile) !== null) return false;
 
     const boardingTransport = this.getBoardingTransport(unit, tileX, tileY);
@@ -153,8 +154,8 @@ export class MovementSystem {
 
     const targetTile = this.getTileForSelectable(target);
     if (targetTile === null) return false;
-
     const unit = currentSelection.unit;
+    if (!this.missionMovementPermission(unit, targetTile)) return false;
     if (!this.canMoveUnitToInternal(unit, targetTile.x, targetTile.y, false)) return false;
     const closedBorderOwner = this.getClosedBorderOwner(unit, targetTile);
     if (closedBorderOwner !== null) {
@@ -191,6 +192,7 @@ export class MovementSystem {
 
     for (const tile of path) {
       if (tile.x === unit.tileX && tile.y === unit.tileY) continue;
+      if (!this.missionMovementPermission(unit, tile)) break;
       const isDestination = tile === destination;
       if (!this.canMoveUnitStepToInternal(unit, tile.x, tile.y, false, !isDestination)) break;
       const closedBorderOwner = this.getClosedBorderOwner(unit, tile);
@@ -225,6 +227,7 @@ export class MovementSystem {
 
     const targetTile = this.tileMap.getTileAt(tileX, tileY);
     if (targetTile === null) return false;
+    if (!this.missionMovementPermission(unit, targetTile)) return false;
     if (respectDiplomacy && this.getClosedBorderOwner(unit, targetTile) !== null) return false;
     if (!canUnitEnterTile(unit, targetTile, this.nationManager.getNation(unit.ownerId))) return false;
 
@@ -267,7 +270,11 @@ export class MovementSystem {
       .some((other) => other.id !== unit.id && other.ownerId !== unit.ownerId);
   }
 
+  private missionMovementPermission: (unit: Unit, tile: Tile) => boolean = () => true;
+  setMissionMovementPermission(provider: typeof this.missionMovementPermission): void { this.missionMovementPermission = provider; }
+
   private getClosedBorderOwner(unit: Unit, tile: Tile): string | null {
+    if (!this.missionMovementPermission(unit, tile)) return tile.ownerId ?? 'mission';
     // Insurgent forces (Rebels, Partisans) infiltrate freely: they ignore closed
     // borders and never trigger the war-required flow when entering foreign land.
     if (unit.unitType.isInsurgentForce === true) return null;

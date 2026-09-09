@@ -6,7 +6,7 @@
  * screenshots it. Used to confirm the badge renders correctly (e.g. the 50%
  * transparency change did not make the whole banner disappear).
  *
- * Usage: tsx scripts/visualCityBanner.ts [--scenario map_europe] [--turns 8]
+ * Usage: tsx scripts/visualCityBanner.ts [--scenario map_astra_europa] [--turns 8]
  */
 import { chromium, type Browser, type Page } from 'playwright';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -49,7 +49,7 @@ async function findBrowser(): Promise<string | undefined> {
 }
 
 async function main(): Promise<void> {
-  const scenario = arg('scenario', 'map_europe');
+  const scenario = arg('scenario', 'map_astra_europa');
   const turns = Number(arg('turns', '8'));
   await fs.mkdir(OUT_DIR, { recursive: true });
 

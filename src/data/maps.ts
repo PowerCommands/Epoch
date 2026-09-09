@@ -2,6 +2,8 @@ export interface MapDefinition {
   key: string;
   label: string;
   file: string;
+  /** Base ("hard") menu order. Lower numbers appear first; edit in manifest.json. */
+  order?: number;
 }
 
 export interface MapManifest {

@@ -1,74 +1,52 @@
 {
   "maps": [
     {
-      "key": "map_asia",
-      "label": "Asia",
-      "file": "assets/maps/asia.json"
-    },
-    {
-      "key": "map_caribian",
-      "label": "Caribian",
-      "file": "assets/maps/caribian.json"
-    },
-    {
-      "key": "map_europe_wide",
-      "label": "Europe",
-      "file": "assets/maps/europe-wide.json"
-    },
-    {
-      "key": "map_europe",
-      "label": "Europe alternativ",
-      "file": "assets/maps/europeScenario.json"
-    },
-    {
-      "key": "map_maritime_expansion",
-      "label": "Maritime Expansion",
-      "file": "assets/maps/maritimeExpansion.json"
-    },
-    {
-      "key": "map_scandinavia",
-      "label": "Scandinavia",
-      "file": "assets/maps/scandinavia.json"
-    },
-    {
-      "key": "map_spy_agents_rebels_and_partisans",
-      "label": "Spy, agents, rebels and partisans",
-      "file": "assets/maps/spy-agents-rebels-and-partisans.json"
-    },
-    {
-      "key": "map_the_duel",
-      "label": "The Duel test map",
-      "file": "assets/maps/the-duel.json"
-    },
-    {
-      "key": "map_the_great_war",
-      "label": "The great war",
-      "file": "assets/maps/the-great-war.json"
-    },
-    {
-      "key": "map_two_continents_scenario_i",
-      "label": "Two Continents test scenario",
-      "file": "assets/maps/twoContinentsScenario.json"
-    },
-    {
-      "key": "map_world",
-      "label": "Word",
-      "file": "assets/maps/world.json"
-    },
-    {
-      "key": "map_world_war_ii_europe",
-      "label": "World War II - Europe",
-      "file": "assets/maps/world-war-ii-europe.json"
-    },
-    {
       "key": "map_astra_europa",
       "label": "Ancient Europa",
-      "file": "assets/maps/astra-europa.json"
+      "file": "assets/maps/astra-europa.json",
+      "order": 1
     },
     {
       "key": "map_america",
       "label": "America",
-      "file": "assets/maps/america.json"
+      "file": "assets/maps/america.json",
+      "order": 2
+    },
+    {
+      "key": "map_world",
+      "label": "Word",
+      "file": "assets/maps/world.json",
+      "order": 3
+    },
+    {
+      "key": "map_asia",
+      "label": "Asia",
+      "file": "assets/maps/asia.json",
+      "order": 4
+    },
+    {
+      "key": "map_world_war_ii_europe",
+      "label": "World War II - Europe",
+      "file": "assets/maps/world-war-ii-europe.json",
+      "order": 5
+    },
+    {
+      "key": "map_scandinavia",
+      "label": "Scandinavia",
+      "file": "assets/maps/scandinavia.json",
+      "order": 6
+    },
+    {
+      "key": "map_caribian",
+      "label": "Caribian",
+      "file": "assets/maps/caribian.json",
+      "order": 7
+    },
+    {
+      "key": "map_maritime_expansion",
+      "label": "Maritime Expansion",
+      "file": "assets/maps/maritimeExpansion.json",
+      "order": 8
     }
   ]
 }

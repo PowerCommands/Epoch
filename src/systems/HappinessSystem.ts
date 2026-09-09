@@ -133,6 +133,8 @@ export function resolveHappinessTier(
 }
 
 export class HappinessSystem {
+  private climateCompliance: (nationId: string) => number = () => 0;
+  setClimateComplianceProvider(provider: (nationId: string) => number): void { this.climateCompliance = provider; }
   private historicalHappiness: (nation: string) => number = () => 0;
   setHistoricalHappinessProvider(provider: (nation: string) => number): void { this.historicalHappiness = provider; }
 
@@ -201,6 +203,7 @@ export class HappinessSystem {
     const happinessFromCorporations = this.getCorporationHappinessBonus(nationId);
     const happinessFromManufacturedResources = this.getManufacturedResourceHappinessBonus(nationId);
 
+    const happinessFromClimateAccord = this.climateCompliance(nationId);
     const totalHappiness = this.historicalHappiness(nationId) + happinessFromBase
       + happinessFromBuildings
       + happinessFromWonders
@@ -208,7 +211,7 @@ export class HappinessSystem {
       + happinessFromPolicies
       + happinessFromCultureEffects
       + happinessFromCorporations
-      + happinessFromManufacturedResources;
+      + happinessFromManufacturedResources + happinessFromClimateAccord;
     const baseUnhappinessFromCities = cities.length * CITY_UNHAPPINESS;
     const policyCityUnhappinessPerCity = this.getPolicyFlat(nationId, 'unhappinessPerCityFlat');
     const adjustedUnhappinessPerCity = Math.max(0, CITY_UNHAPPINESS + policyCityUnhappinessPerCity);
@@ -261,6 +264,7 @@ export class HappinessSystem {
     state.happinessFromPolicies = happinessFromPolicies;
     state.happinessFromCultureEffects = happinessFromCultureEffects;
     state.happinessFromCorporations = happinessFromCorporations;
+    state.happinessFromClimateAccord = happinessFromClimateAccord;
     state.happinessFromManufacturedResources = happinessFromManufacturedResources;
     state.availableLuxuryResourceIds = availableLuxuryResourceIds;
     state.availableLuxuryResourceQuantities = luxuryEntries;
@@ -293,6 +297,7 @@ export class HappinessSystem {
   }
 
   getNationState(nationId: string): Readonly<NationHappiness> {
+    if (this.getOrCreateState(nationId).happinessFromClimateAccord !== this.climateCompliance(nationId)) this.recalculateNation(nationId);
     return this.getOrCreateState(nationId);
   }
 
@@ -364,6 +369,7 @@ function snapshotState(state: NationHappiness): {
   happinessFromPolicies: number;
   happinessFromCultureEffects: number;
   happinessFromCorporations: number;
+  happinessFromClimateAccord: number;
   happinessFromManufacturedResources: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];
@@ -395,6 +401,7 @@ function snapshotState(state: NationHappiness): {
     happinessFromPolicies: state.happinessFromPolicies,
     happinessFromCultureEffects: state.happinessFromCultureEffects,
     happinessFromCorporations: state.happinessFromCorporations,
+    happinessFromClimateAccord: state.happinessFromClimateAccord,
     happinessFromManufacturedResources: state.happinessFromManufacturedResources,
     availableLuxuryResourceIds: [...state.availableLuxuryResourceIds],
     availableLuxuryResourceQuantities: state.availableLuxuryResourceQuantities.map((entry) => ({ ...entry })),
@@ -436,6 +443,7 @@ function statesEqual(
     && previous.happinessFromPolicies === next.happinessFromPolicies
     && previous.happinessFromCultureEffects === next.happinessFromCultureEffects
     && previous.happinessFromCorporations === next.happinessFromCorporations
+    && previous.happinessFromClimateAccord === next.happinessFromClimateAccord
     && previous.happinessFromManufacturedResources === next.happinessFromManufacturedResources
     && previous.unhappinessFromCities === next.unhappinessFromCities
     && previous.unhappinessFromPopulation === next.unhappinessFromPopulation

@@ -1,3 +1,5 @@
+import { buildPeacekeepingContributionControls, type PeacekeepingContributionChoice } from './PeacekeepingContributionControls';
+
 export interface WorldCouncilSessionProposal {
   /** Stable key (slot:resolutionId) used to match the collected vote at resolution. */
   readonly key: string;
@@ -28,7 +30,7 @@ export interface WorldCouncilSessionState {
 
 export type WorldCouncilSessionOutcome = 'passed' | 'rejected' | 'no_target' | 'unresolved';
 
-export interface WorldCouncilSessionResultProposal {
+export interface WorldCouncilSessionResultProposal extends PeacekeepingContributionChoice {
   readonly title: string;
   readonly outcome: WorldCouncilSessionOutcome;
   readonly influenceFor?: number;
@@ -348,6 +350,7 @@ export class WorldCouncilSessionDialog {
         ));
       }
       if (proposal.outcomeText) row.appendChild(text(proposal.outcomeText, 'wcs-muted'));
+      if (proposal.contributionUnits) row.appendChild(buildPeacekeepingContributionControls(proposal));
       list.appendChild(row);
     }
     body.appendChild(list);

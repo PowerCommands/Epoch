@@ -16,7 +16,7 @@ export const HUMANISM_CULTURE_NODE_ID = 'humanism';
 /** Completing this node makes the United Nations transition available. */
 export const LIBERALISM_CULTURE_NODE_ID = 'liberalism';
 
-/** Completing this node unlocks Hotels for nations that also have Refrigeration. */
+/** Completing this node unlocks Hotels (built on Beach tiles). */
 export const TOURISM_CULTURE_NODE_ID = 'tourism';
 
 export const CULTURE_TREE: CultureNode[] = [
@@ -50,7 +50,7 @@ export const CULTURE_TREE: CultureNode[] = [
   node({ id: COLONIALISM_CULTURE_NODE_ID, name: 'Colonialism', era: 'industrial', cost: 600, description: 'Overseas ambition becomes administration, extraction, and settlement. Distant holdings reshape diplomacy and the home economy.', prerequisites: ['mercantilism'], unlocks: [{ type: 'diplomacy', value: 'colonial_charters' }] }),
   node({ id: 'civil_engineering', name: 'Civil Engineering', era: 'industrial', cost: 525, description: 'Public works become symbols of modern administration. Bridges, districts, and services let cities grow with intent.', prerequisites: ['enlightenment'], unlocks: [{ type: 'building', value: 'public_works' }] }),
   node({ id: 'urbanization', name: 'Urbanization', era: 'modern', cost: 600, description: 'City life becomes the dominant rhythm of society. Planning, housing, and services define the politics of modern growth.', prerequisites: ['civil_engineering'], unlocks: [{ type: 'building', value: 'neighborhood' }] }),
-  node({ id: TOURISM_CULTURE_NODE_ID, name: 'Tourism', era: 'modern', cost: 720, description: 'Railways, steamships, and growing prosperity turn travel into an industry. Hotels, resorts, and famous landmarks attract visitors from across the world.', prerequisites: ['urbanization'], unlocks: [{ type: 'building', value: 'hotel', requiredWithTechnology: true }] }),
+  node({ id: TOURISM_CULTURE_NODE_ID, name: 'Tourism', era: 'modern', cost: 720, description: 'Railways, steamships, and growing prosperity turn travel into an industry. Hotels, resorts, and famous landmarks attract visitors from across the world.', prerequisites: ['urbanization'], unlocks: [{ type: 'building', value: 'hotel' }] }),
   node({ id: 'ideology', name: 'Ideology', era: 'modern', cost: 650, description: 'Politics hardens into competing visions for society. Parties, states, and citizens organize around total answers to modern life.', prerequisites: ['urbanization', 'nationalism'], unlocks: [{ type: 'government', value: 'ideological_state' }] }),
   node({ id: 'democracy', name: 'Democracy', era: 'modern', cost: 700, description: 'Representative institutions turn public consent into durable government. Elections, legislatures, and civic participation make authority answerable to citizens.', prerequisites: ['ideology'], unlocks: [] }),
   node({ id: LIBERALISM_CULTURE_NODE_ID, name: 'Liberalism', era: 'modern', cost: 750, description: 'Individual liberty and equal rights become foundations of public life. Constitutional limits protect conscience, expression, and association from arbitrary power. Makes the United Nations transition available.', prerequisites: ['democracy'], unlocks: [{ type: 'diplomacy', value: 'united_nations' }] }),

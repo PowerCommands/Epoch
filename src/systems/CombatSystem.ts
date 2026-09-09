@@ -263,12 +263,16 @@ export class CombatSystem {
     this.warRequiredListeners.push(callback);
   }
 
+  private missionAttackPermission: (unit: Unit, x: number, y: number) => boolean = () => true;
+  setMissionAttackPermission(provider: typeof this.missionAttackPermission): void { this.missionAttackPermission = provider; }
+
   tryAttack(
     attacker: Unit,
     tileX: number,
     tileY: number,
     options: CombatActionOptions = {},
   ): boolean {
+    if (!this.missionAttackPermission(attacker, tileX, tileY)) return false;
     // 1. Must be attacker's nation's turn (barbarians act out of turn via their
     // own driver, which sets allowOutOfTurn).
     if (!options.allowOutOfTurn && this.turnManager.getCurrentNation().id !== attacker.ownerId) {

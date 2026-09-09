@@ -1,3 +1,5 @@
+import { buildPeacekeepingContributionControls, type PeacekeepingContributionChoice } from './PeacekeepingContributionControls';
+
 export interface WorldCouncilOverviewMember {
   readonly nationName: string;
   readonly nationColor: string;
@@ -53,7 +55,7 @@ export interface WorldCouncilOverviewDistribution {
   readonly gold: number;
 }
 
-export interface WorldCouncilOverviewEnactedResolution {
+export interface WorldCouncilOverviewEnactedResolution extends PeacekeepingContributionChoice {
   readonly resolutionId?: string;
   readonly title: string;
   readonly status: 'active' | 'repealed' | 'expired';
@@ -340,6 +342,7 @@ export class WorldCouncilOverviewDialog {
       meta.appendChild(text(`${label}: ${resolution.participantNationNames.join(', ')}`, 'wc-muted'));
     }
     card.appendChild(meta);
+    if (resolution.contributionUnits) card.appendChild(buildPeacekeepingContributionControls(resolution));
     return card;
   }
 

@@ -26,6 +26,10 @@ export interface WorldCouncilResolutionContext {
 }
 
 export interface WorldCouncilResolutionRuntime {
+  readonly canAttack?: (nationAId: string, nationBId: string) => boolean;
+  readonly getEnergyPosition?: (nationId: string) => { activeFossilPlants: number; activePlants: number };
+  readonly getNuclearPosition?: (nationId: string) => { weapons: number; pursuing: boolean };
+  readonly getPeacekeepingUnits?: (nationId: string, hostId: string, threatId: string) => readonly string[];
   readonly canJoinNuclearResponse?: (nationId: string, aggressorId: string) => boolean;
   readonly joinNuclearResponse?: (nationId: string, aggressorId: string, victimId: string) => boolean;
   readonly getDiplomacyState?: (nationAId: string, nationBId: string) => 'WAR' | 'PEACE';
@@ -335,12 +339,13 @@ const RESOLUTIONS: readonly ResolutionDefinitionConfig[] = [
     votingType: 'influence',
     organizationKind: 'un',
     durationTurns: UN_PEACEKEEPING_DURATION_TURNS,
+    supportsRepeal: true,
     execute: () => {},
   },
   {
     id: 'climate_accord',
     title: 'Climate Accord',
-    description: 'Coordinate international environmental and climate policies. (Not yet implemented.)',
+    description: 'Prohibit new Coal and Oil Power Plants. Existing plants remain operational. Members with no active Coal or Oil plants receive +5 national Happiness; Gas and clean energy remain legal.',
     icon: '🌱',
     votingType: 'influence',
     organizationKind: 'un',
@@ -417,6 +422,15 @@ export class WorldCouncilResolutionSystem {
   }
 
   isProposalEligible(id: WorldCouncilResolutionId, proposerNationId?: string): boolean {
+    if (id === 'un_peacekeeping_mission') {
+      if (!proposerNationId || this.runtime.isNationActive?.(proposerNationId) === false
+        || this.runtime.hasActivePeacekeepingMissionForHost?.(proposerNationId)) return false;
+      return (this.runtime.getAllNationIds?.() ?? []).some(threatId => threatId !== proposerNationId
+        && this.runtime.isNationActive?.(threatId) !== false
+        && !(this.runtime.getDiplomacyState?.(proposerNationId, threatId) === 'WAR'
+          && this.runtime.getAggressorNationId?.(proposerNationId, threatId) === proposerNationId)
+        && this.getPeacekeepingThreatPressure(proposerNationId, threatId) > 0);
+    }
     if (id === 'collective_nuclear_response') return false; // Emergency-only, authored by the victim.
     if (id === 'games_of_nations_hosting') {
       if (!proposerNationId || this.runtime.isNationActive?.(proposerNationId) === false) return false;
@@ -1043,6 +1057,26 @@ export class WorldCouncilResolutionSystem {
     };
   }
 
+  canPeacekeepingEngage(hostNationId: string, threatNationId: string): boolean {
+    return this.runtime.canAttack?.(hostNationId, threatNationId)
+      ?? this.runtime.getDiplomacyState?.(hostNationId, threatNationId) === 'WAR';
+  }
+
+  scorePolicySupport(nationId: string, resolutionId: WorldCouncilResolutionId): number {
+    const personality = this.runtime.getLeaderPersonality?.(nationId);
+    let score = 12 + (personality?.peacePreference ?? 50) * 0.2 - (personality?.aggressionBias ?? 50) * 0.2;
+    if (resolutionId === 'climate_accord') {
+      const energy = this.runtime.getEnergyPosition?.(nationId);
+      score += energy?.activeFossilPlants
+        ? -35 - 30 * energy.activeFossilPlants / Math.max(1, energy.activePlants) : 20;
+    }
+    if (resolutionId === 'nuclear_non_proliferation_treaty') {
+      const nuclear = this.runtime.getNuclearPosition?.(nationId);
+      score += nuclear?.weapons ? 28 : nuclear?.pursuing ? -45 : 10;
+    }
+    return score;
+  }
+
   private scoreProposalSupport(
     voterNationId: string,
     proposal: WorldCouncilResolutionProposal,
@@ -1059,14 +1093,17 @@ export class WorldCouncilResolutionSystem {
       return this.scoreCeasefireVote(voterNationId, targetNationId, secondaryTargetNationId);
     }
     if (proposal.resolutionId === 'un_peacekeeping_mission') {
-      return this.scorePeacekeepingVote(voterNationId, targetNationId, secondaryTargetNationId);
+      const support = this.scorePeacekeepingVote(voterNationId, targetNationId ?? proposal.targetNationId, secondaryTargetNationId ?? proposal.secondaryTargetNationId);
+      return proposal.repealTargetEnactedResolutionId ? -support : support;
     }
     if (isNegativeResolution(proposal.resolutionId)) {
       return this.scorePunitiveVote(voterNationId, proposal, targetNationId);
     }
     if (proposal.repealTargetEnactedResolutionId) {
+      if (['climate_accord', 'nuclear_non_proliferation_treaty'].includes(proposal.resolutionId)) return -this.scorePolicySupport(voterNationId, proposal.resolutionId);
       return this.scoreRepealVote(voterNationId, proposal);
     }
+    if (['climate_accord', 'nuclear_non_proliferation_treaty'].includes(proposal.resolutionId)) return this.scorePolicySupport(voterNationId, proposal.resolutionId);
     return 12;
   }
 
@@ -1540,6 +1577,9 @@ export class WorldCouncilResolutionSystem {
       meetingKind: context.meeting.kind,
       turn: context.turn,
       participantNationIds: proposal.participantNationIds ? [...proposal.participantNationIds] : undefined,
+      peacekeepingContributions: proposal.resolutionId === 'un_peacekeeping_mission'
+        ? (proposal.participantNationIds ?? []).map(nationId => ({ nationId,
+          unitIds: [...(this.runtime.getPeacekeepingUnits?.(nationId, proposal.targetNationId!, proposal.secondaryTargetNationId!) ?? [])] })) : undefined,
       targetNationId: proposal.targetNationId,
       secondaryTargetNationId: proposal.secondaryTargetNationId,
       expirationTurn: proposal.resolutionId === 'global_infrastructure_initiative'
@@ -1717,6 +1757,9 @@ export class WorldCouncilResolutionSystem {
       .map((member) => member.nationId)
       .filter((nationId) => nationId !== hostNationId && nationId !== threatNationId)
       .filter((nationId) => this.runtime.isNationActive?.(nationId) !== false)
+      .filter((nationId) => this.runtime.isHumanNation?.(nationId) !== true)
+      .filter((nationId) => this.runtime.getDiplomacyState?.(nationId, hostNationId) !== 'WAR')
+      .filter((nationId) => (this.runtime.getPeacekeepingUnits?.(nationId, hostNationId, threatNationId)?.length ?? 0) > 0)
       .filter((nationId) => this.scorePeacekeepingParticipation(nationId, hostNationId, threatNationId) >= 28)
       .sort((a, b) => a.localeCompare(b));
   }
@@ -1732,6 +1775,9 @@ export class WorldCouncilResolutionSystem {
     const ownStrength = this.runtime.getMilitaryStrength?.(nationId) ?? 0;
     const threatStrength = this.runtime.getMilitaryStrength?.(threatNationId) ?? 0;
     let score = 8;
+    const ideology = this.runtime.getIdeologyId?.(nationId);
+    if (ideology && ideology === this.runtime.getIdeologyId?.(hostNationId)) score += 8;
+    if (ideology && ideology === this.runtime.getIdeologyId?.(threatNationId)) score -= 8;
 
     if (this.runtime.areAllied?.(nationId, hostNationId)) score += 42;
     if (this.runtime.areAllied?.(nationId, threatNationId)) score -= 45;
@@ -1944,7 +1990,7 @@ function formatInfluenceOutcome(
     const participants = participantNationIds && participantNationIds.length > 0
       ? participantNationIds.map(nationName).join(', ')
       : 'no participating nations';
-    return `UN Peacekeeping Mission approved for ${nationName(targetNationId)} against ${nationName(secondaryTargetNationId)} for ${definition.durationTurns ?? 30} turns by Influence (${support}-${oppose}). Participants: ${participants}.`;
+    return `UN Peacekeeping Mission approved for ${nationName(targetNationId)} against ${nationName(secondaryTargetNationId)} for ${definition.durationTurns ?? 30} turns by Influence (${support}-${oppose}). Participants: ${participants}. Members may voluntarily designate units in World Council → Resolutions. Voting does not commit troops.`;
   }
   if (
     passed

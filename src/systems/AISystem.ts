@@ -1219,7 +1219,7 @@ export class AISystem {
       nationId,
       threats,
       friendlyUnits: units.filter(
-        (unit) => this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) !== true,
+        (unit) => !this.peacekeepingAssignment(unit) && this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) !== true,
       ),
       getDistance: (a, b) => this.gridSystem.getDistance(a, b),
       canReachCity: (unit, city) => this.pathfindingSystem.findPath(
@@ -2648,6 +2648,33 @@ export class AISystem {
 
   // ─── Combat ──────────────────────────────────────────────────────────────────
 
+  private peacekeepingAssignment: (unit: Unit) => import('../types/worldCouncil').WorldCouncilEnactedResolution | undefined = () => undefined;
+  setPeacekeepingAssignmentProvider(provider: typeof this.peacekeepingAssignment): void { this.peacekeepingAssignment = provider; }
+
+  private runPeacekeeper(unit: Unit): boolean {
+    const mission = this.peacekeepingAssignment(unit);
+    if (!mission) return false;
+    const enemies = this.unitManager.getAllUnits().filter(enemy => enemy.ownerId === mission.secondaryTargetNationId
+      && this.mapData.tiles[enemy.tileY]?.[enemy.tileX]?.ownerId === mission.targetNationId);
+    for (const enemy of enemies) {
+      if (this.combatSystem.tryAttack(unit, enemy.tileX, enemy.tileY)) return true;
+    }
+    const cities = this.cityManager.getCitiesByOwner(mission.targetNationId!);
+    if (!enemies.length && this.mapData.tiles[unit.tileY]?.[unit.tileX]?.ownerId === mission.targetNationId
+      && cities.some(c => this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, { x: c.tileX, y: c.tileY }) <= 2)) return true;
+    const goals = [...enemies.map(e => ({ x: e.tileX, y: e.tileY })), ...cities.map(c => ({ x: c.tileX, y: c.tileY }))];
+    for (const goal of goals) {
+      const tiles = this.gridSystem.getTilesInRange(goal, 2, this.mapData, { includeCenter: true })
+        .filter(t => t.ownerId === mission.targetNationId && !this.unitManager.getUnitAt(t.x, t.y));
+      tiles.sort((a, b) => this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, a) - this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, b));
+      for (const tile of tiles) {
+        const path = this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false });
+        if (path) { this.movementSystem.moveAlongPath(unit, path); return true; }
+      }
+    }
+    return true; // The mandate reserves this unit even when no legal route exists.
+  }
+
   private runCombat(nationId: string): void {
     const units = this.unitManager.getUnitsByOwner(nationId).filter((unit) => !this.isCargoUnit(unit) && !STRATEGIC_WEAPONS[unit.unitType.id] && !this.unitManager.getCargoUnitsForTransport(unit).some(cargo => !!STRATEGIC_WEAPONS[cargo.unitType.id]));
     const strategy = this.getStrategy(nationId);
@@ -2656,6 +2683,7 @@ export class AISystem {
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
       if (unit.unitType.baseStrength <= 0 && (unit.unitType.rangedStrength ?? 0) <= 0) continue; // civilians cannot attack
+      if (this.peacekeepingAssignment(unit)) continue;
       if (this.emergencyAssignmentCityByUnit.has(unit.id)) continue;
       if (this.isEmergencyCityGarrison(unit, nationId)) continue;
       if (!this.canTakeAggressiveAction(unit, strategy)) continue;
@@ -3002,6 +3030,7 @@ export class AISystem {
 
     for (const unit of units) {
       if (unit.movementPoints <= 0) continue;
+      if (this.runPeacekeeper(unit)) continue;
       if (this.emergencyAssignmentCityByUnit.has(unit.id)) continue;
       if (this.isEmergencyCityGarrison(unit, nationId)) continue;
       if (this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(unit.id) === true) continue;
@@ -8667,7 +8696,7 @@ export class AISystem {
   }
 
   private canBuildUnit(nationId: string, unitId: string): boolean {
-    return this.researchSystem?.isUnitUnlocked(nationId, unitId) ?? true;
+    return !this.unitProductionRestrictionReason?.(nationId, unitId) && (this.researchSystem?.isUnitUnlocked(nationId, unitId) ?? true);
   }
 
   private canAffordUnitProduction(nationId: string, unitType: UnitType): boolean {
