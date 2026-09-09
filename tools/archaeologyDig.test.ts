@@ -97,7 +97,9 @@ test('Archaeology unlocks a Renaissance civilian Archaeologist', () => {
   assert.equal(ARCHAEOLOGIST.category, 'civilian');
   assert.equal(ARCHAEOLOGIST.baseStrength, 0);
   assert.equal(ARCHAEOLOGIST.canBuildImprovements, undefined);
-  assert.equal(ARCHAEOLOGIST.maxImprovementCharges, undefined);
+  // Single-use unit: one Dig consumes its only improvement charge (GameScene
+  // decrements the charge and removes the unit when it hits 0).
+  assert.equal(ARCHAEOLOGIST.maxImprovementCharges, 1);
 });
 
 test('builder capabilities permit only Archaeologist Dig and preserve Worker builds', () => {
@@ -125,8 +127,10 @@ test('builder capabilities permit only Archaeologist Dig and preserve Worker bui
   assert.equal(hiddenSite.builder.getCurrentTileBuildPreview(hiddenSite.unit).canBuild, false);
 });
 
-test('Dig uses normal three-turn construction, retains resource, and keeps Archaeologist', () => {
+test('Dig uses normal three-turn construction, retains resource, and consumes the single-use Archaeologist', () => {
   const h = createHarness('ancient_treasure');
+  // The Archaeologist carries exactly one improvement charge.
+  assert.equal(h.unit.improvementCharges, 1);
   const result = h.builder.build(h.unit, h.tile);
   assert.ok(result);
   assert.equal(result.requiredTurns, 3);
@@ -141,19 +145,25 @@ test('Dig uses normal three-turn construction, retains resource, and keeps Archa
   assert.equal(h.tile.improvementConstruction, undefined);
   assert.equal(h.tile.improvementId, ARCHAEOLOGICAL_DIG.id);
   assert.equal(h.tile.resourceId, 'ancient_treasure');
+  // The construction system leaves the builder and its charge untouched; charge
+  // consumption and unit removal are GameScene's onCompleted responsibility.
   assert.equal(h.units.getUnit(h.unit.id), h.unit);
   assert.equal(h.unit.buildAction, undefined);
-  assert.equal(h.unit.improvementCharges, undefined);
+  assert.equal(h.unit.improvementCharges, 1);
 
   const resources = new ResourceAccessSystem(h.mapData, { getAllDeals: () => [] });
   assert.ok(resources.getOwnedResourceSourceCount(OWNER_ID, 'ancient_treasure') > 0);
 
+  // Once its charge is spent (as GameScene does after the Dig), the single-use
+  // Archaeologist can no longer start another Dig.
   const nextSite = h.mapData.tiles[0][2];
   Object.assign(nextSite, { ownerId: OWNER_ID, resourceId: 'ancient_pottery' });
   h.cities.getCity('city')!.ownedTileCoords.push({ x: nextSite.x, y: nextSite.y });
   h.unit.resetMovement();
   assert.equal(h.units.moveUnit(h.unit.id, nextSite.x, nextSite.y), true);
-  assert.ok(h.builder.build(h.unit, nextSite), 'surviving Archaeologist can begin another Dig');
+  h.unit.improvementCharges = 0;
+  assert.equal(h.builder.getCurrentTileBuildPreview(h.unit).canBuild, false);
+  assert.equal(h.builder.build(h.unit, nextSite), null, 'spent Archaeologist cannot begin another Dig');
 });
 
 test('Dig construction and completion use existing tile save/load state', () => {

@@ -156,7 +156,9 @@ test('ResourceSystem adds archaeology once, applies normal Culture percentages, 
   const rawCity = calculateCityEconomy(world.paris, world.mapData, buildings, grid);
   assert.equal(MUSEUM.modifiers.culturePerTurn, 5);
   assert.equal(MUSEUM.modifiers.happinessPerTurn, 2);
-  assert.equal(rawCity.happiness, 7, 'Museum, Hotel, and Broadcast Tower keep their ordinary happiness');
+  // Museum (+2) and Broadcast Tower (+1) keep their ordinary happiness; Hotel is
+  // now a coastal gold building and contributes no happiness.
+  assert.equal(rawCity.happiness, 3, 'archaeology does not cannibalise building happiness');
 
   const happiness = new HappinessSystem(world.nationManager, world.cityManager);
   const resources = new ResourceSystem(
@@ -170,11 +172,11 @@ test('ResourceSystem adds archaeology once, applies normal Culture percentages, 
   );
   resources.recalculateForNation(FRANCE);
   const archaeology = resources.getArchaeologicalCultureBreakdown(FRANCE);
-  // Existing percentage order: Hotel floor(15 * 1.10) = 16, then Broadcast
-  // Tower floor(16 * 1.33) = 21.
+  // Only Broadcast Tower now adds a Culture percentage (Hotel became a coastal
+  // gold building): floor(15 * 1.33) = 19.
   assert.equal(archaeology.baseCulturePerTurn, 15);
-  assert.equal(archaeology.culturePerTurn, 21);
-  assert.equal(world.nationManager.getResources(FRANCE).culturePerTurn, rawCity.culture + 21);
+  assert.equal(archaeology.culturePerTurn, 19);
+  assert.equal(world.nationManager.getResources(FRANCE).culturePerTurn, rawCity.culture + 19);
 });
 
 test('Culture UI explains both enabled discoveries and a missing Museum', () => {
