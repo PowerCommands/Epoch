@@ -108,8 +108,11 @@ export class NaturalResourceRenderer {
         this.sprites.set(key, sprite);
       }
       sprite.setTexture(resource.iconKey);
-      sprite.setPosition(x, y);
-      sprite.setDisplaySize(rect.width * RESOURCE_TILE_FILL_SCALE, rect.height * RESOURCE_TILE_FILL_SCALE);
+      const developed = !!(tile.improvementId || tile.improvementConstruction);
+      const scale = developed ? 0.34 : RESOURCE_TILE_FILL_SCALE;
+      sprite.setDepth(developed ? 5.9 : RESOURCE_DEPTH);
+      sprite.setPosition(x + (developed ? rect.width * 0.25 : 0), y + (developed ? rect.height * 0.24 : 0));
+      sprite.setDisplaySize(rect.width * scale, rect.height * scale);
       sprite.setAlpha(0.95);
       this.hexTileMaskHelper.applyHexMask(sprite, tile.x, tile.y);
       return;
@@ -136,7 +139,8 @@ export class NaturalResourceRenderer {
     }
 
     label.setText(this.getFallbackLabel(resource.name));
-    label.setPosition(x, y);
+    label.setDepth(tile.improvementId || tile.improvementConstruction ? 5.9 : RESOURCE_DEPTH);
+    label.setPosition(x, y + (tile.improvementId || tile.improvementConstruction ? rect.height * 0.3 : 0));
     label.setVisible(true);
   }
 

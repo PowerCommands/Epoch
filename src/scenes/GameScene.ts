@@ -3270,6 +3270,7 @@ export class GameScene extends Phaser.Scene {
       reachableTiles = new Set<string>();
       pathPreviewRenderer.clear();
       tileImprovementOverlayRenderer.refreshTile(result.tile.x, result.tile.y);
+      naturalResourceRenderer.refreshTile(result.tile.x, result.tile.y);
       rightPanel?.showTile(result.tile);
       rightPanel?.requestRefresh();
       hudLayer?.refresh();
@@ -3729,6 +3730,7 @@ export class GameScene extends Phaser.Scene {
         refreshOpenCityView();
         tileBuildingRenderer.rebuildAll();
         tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
+        naturalResourceRenderer.refreshTile(event.tile.x, event.tile.y);
         turnOrderSystem.refreshActive();
       }
     });
@@ -3738,6 +3740,7 @@ export class GameScene extends Phaser.Scene {
         hudLayer?.refresh();
         refreshOpenCityView();
         tileImprovementOverlayRenderer.refreshTile(event.tile.x, event.tile.y);
+        naturalResourceRenderer.refreshTile(event.tile.x, event.tile.y);
         turnOrderSystem.refreshActive();
       }
     });
@@ -6292,6 +6295,7 @@ export class GameScene extends Phaser.Scene {
       tileMap.rebuildTerrain();
       for (const tile of gridSystem.getTilesInRange(event.target, event.radius ?? STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
         tileImprovementOverlayRenderer.refreshTile(tile.x, tile.y);
+        naturalResourceRenderer.refreshTile(tile.x, tile.y);
         tileBuildingRenderer.refreshTile(tile.x, tile.y);
       }
       if (event.nuclear && !event.accident) {
@@ -8499,6 +8503,7 @@ export class GameScene extends Phaser.Scene {
       tileMap.rebuildTerrain();
       for (const tile of gridSystem.getTilesInRange(event.target, event.radius ?? STRATEGIC_WEAPONS[event.weaponId].radius, mapData, { includeCenter: true })) {
         tileImprovementOverlayRenderer.refreshTile(tile.x, tile.y);
+        naturalResourceRenderer.refreshTile(tile.x, tile.y);
         tileBuildingRenderer.refreshTile(tile.x, tile.y);
       }
       if (event.nuclear && !event.accident) {
@@ -10222,6 +10227,7 @@ export class GameScene extends Phaser.Scene {
           if (razed) {
             if (mode === 'destroyImprovement') {
               tileImprovementOverlayRenderer.refreshTile(tileX, tileY);
+              naturalResourceRenderer.refreshTile(tileX, tileY);
             } else {
               tileBuildingRenderer.refreshTile(tileX, tileY);
             }

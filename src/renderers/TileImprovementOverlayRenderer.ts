@@ -1,156 +1,194 @@
 import Phaser from 'phaser';
-import { TileMap } from '../systems/TileMap';
-import type { MapData, Tile } from '../types/map';
-import type { WorldPoint } from '../systems/gridLayout/IGridLayout';
+import type { TileMap } from '../systems/TileMap';
+import { TileType, type MapData, type Tile } from '../types/map';
 import type { NationManager } from '../systems/NationManager';
 import { getImprovementOwnerId } from '../systems/ImprovementOwnership';
 import { getImprovementById } from '../data/improvements';
 
-const OVERLAY_DEPTH = 13;
-const COMPLETED_COLOR = 0xf5e6a3;
-const COMPLETED_ALPHA = 0.55;
-const CONSTRUCTION_COLOR = 0x66ccff;
-const CONSTRUCTION_ALPHA = 0.6;
-const LINE_WIDTH = 2;
-const EDGE_INSET = 0.14;
-const SEGMENT_LENGTH = 0.24;
-const IMPROVEMENT_SPRITE_DEPTH = 5.75;
-const IMPROVEMENT_SPRITE_SCALE = 0.82;
-
-interface TileImprovementOverlay {
-  graphics: Phaser.GameObjects.Graphics;
+// Above terrain/rivers/culture, below resource badges, fog (7), buildings and units.
+const DEPTH = 5.75;
+const EFFECT_DURATION = 1800;
+const MAX_EFFECTS = 32;
+interface Overlay {
+  signature: string;
+  completed: boolean;
   sprite?: Phaser.GameObjects.Image;
+  marker?: Phaser.GameObjects.Graphics;
+}
+interface Destruction {
+  tile: Tile;
+  age: number;
+  sprite: Phaser.GameObjects.Image;
 }
 
+/** Static sprites are retained across visibility rebuilds. Destruction uses one
+ * shared drawing surface and a bounded, short-lived list, never per-tile timers.
+ * Improvements are removed outright by gameplay; this owns no persistent state.
+ */
 export class TileImprovementOverlayRenderer {
-  private readonly overlays = new Map<string, TileImprovementOverlay>();
-  private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
+  private readonly overlays = new Map<string, Overlay>();
+  private readonly effects = new Map<string, Destruction>();
+  private effectGraphics?: Phaser.GameObjects.Graphics;
+  private visibilityPredicate: (x: number, y: number) => boolean = () => true;
+  private disposed = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
     private readonly mapData: MapData,
     private readonly nationManager: NationManager,
-  ) {}
+  ) {
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+  }
 
-  setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
+  setVisibilityPredicate(predicate: (x: number, y: number) => boolean): void {
     this.visibilityPredicate = predicate;
+    this.rebuildAll();
   }
 
   rebuildAll(): void {
-    const seen = new Set<string>();
-
-    for (const row of this.mapData.tiles) {
-      for (const tile of row) {
-        if (!this.hasOverlay(tile)) continue;
-        if (!this.visibilityPredicate(tile.x, tile.y)) continue;
-        const key = this.coordKey(tile.x, tile.y);
-        seen.add(key);
-        this.renderTile(tile);
+    for (const row of this.mapData.tiles) for (const tile of row) {
+      if (tile.improvementId || tile.improvementConstruction || this.overlays.has(this.key(tile.x, tile.y))) {
+        this.refreshTile(tile.x, tile.y);
       }
     }
-
-    for (const key of Array.from(this.overlays.keys())) {
-      if (!seen.has(key)) this.clearTileByKey(key);
+    for (const [key, effect] of this.effects) {
+      if (!this.visibilityPredicate(effect.tile.x, effect.tile.y)) this.clearEffect(key);
     }
   }
 
-  refreshTile(tileX: number, tileY: number): void {
-    const tile = this.mapData.tiles[tileY]?.[tileX];
-    if (tile === undefined || !this.hasOverlay(tile) || !this.visibilityPredicate(tileX, tileY)) {
-      this.clearTile(tileX, tileY);
+  refreshTile(x: number, y: number): void {
+    if (this.disposed) return;
+    const key = this.key(x, y);
+    const tile = this.mapData.tiles[y]?.[x];
+    if (!tile || !this.visibilityPredicate(x, y)) {
+      this.clearTile(x, y);
       return;
     }
-
-    this.renderTile(tile);
+    const previous = this.overlays.get(key);
+    if (!tile.improvementId && !tile.improvementConstruction) {
+      if (previous?.completed && previous.sprite && tile.type !== TileType.NuclearWaste) {
+        this.startDestruction(key, tile, previous.sprite);
+        previous.sprite = undefined;
+      }
+      this.clearOverlay(key);
+      return;
+    }
+    this.clearEffect(key);
+    const constructing = !!tile.improvementConstruction;
+    const id = tile.improvementId ?? tile.improvementConstruction?.improvementId;
+    const definition = id ? getImprovementById(id) : undefined;
+    const owner = getImprovementOwnerId(tile);
+    const foreignColor = owner && owner !== tile.ownerId ? this.nationManager.getNation(owner)?.color : undefined;
+    const texture = definition?.spriteKey && this.scene.textures.exists(definition.spriteKey) ? definition.spriteKey : undefined;
+    const signature = JSON.stringify([id, constructing, tile.improvementConstruction?.remainingTurns, foreignColor, texture]);
+    if (previous?.signature === signature) return;
+    this.clearOverlay(key);
+    const center = this.tileMap.tileToWorld(x, y);
+    const rect = this.tileMap.getTileRect(x, y);
+    const overlay: Overlay = { signature, completed: !!tile.improvementId };
+    if (texture) {
+      const sprite = this.scene.add.image(center.x, center.y, texture).setDepth(DEPTH);
+      // Preserve the artwork's aspect ratio; fit inside the hex's central area.
+      sprite.setScale(Math.min(rect.width * 0.82 / sprite.width, rect.height * 0.82 / sprite.height));
+      sprite.setAlpha(constructing ? 0.5 : 1);
+      overlay.sprite = sprite;
+    }
+    // Construction is a progress indicator, foreign ownership a small pennant.
+    // Completed improvements have no placeholder perimeter underneath their art.
+    if (constructing || foreignColor !== undefined) {
+      const marker = this.scene.add.graphics().setDepth(DEPTH + 0.02);
+      if (constructing) {
+        const c = tile.improvementConstruction!;
+        const progress = Math.max(0, Math.min(1, 1 - c.remainingTurns / Math.max(1, c.totalTurns)));
+        marker.fillStyle(0x16232d, 0.85).fillRoundedRect(center.x - rect.width * 0.22, center.y + rect.height * 0.3, rect.width * 0.44, 3, 1);
+        marker.fillStyle(0x66ccff, 0.9).fillRect(center.x - rect.width * 0.22, center.y + rect.height * 0.3, rect.width * 0.44 * progress, 3);
+      }
+      if (foreignColor !== undefined) {
+        const px = center.x - rect.width * 0.29, py = center.y + rect.height * 0.12;
+        marker.lineStyle(1, 0x242323, 1).lineBetween(px, py, px, py + rect.height * 0.17);
+        marker.fillStyle(foreignColor, 1).fillTriangle(px, py, px + rect.width * 0.14, py + rect.height * 0.04, px, py + rect.height * 0.08);
+      }
+      overlay.marker = marker;
+    }
+    this.overlays.set(key, overlay);
   }
 
-  clearTile(tileX: number, tileY: number): void {
-    this.clearTileByKey(this.coordKey(tileX, tileY));
+  clearTile(x: number, y: number): void {
+    const key = this.key(x, y);
+    this.clearOverlay(key);
+    this.clearEffect(key);
   }
 
   shutdown(): void {
-    for (const key of Array.from(this.overlays.keys())) {
-      this.clearTileByKey(key);
+    if (this.disposed) return;
+    this.disposed = true;
+    this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    for (const key of this.overlays.keys()) this.clearOverlay(key);
+    for (const key of this.effects.keys()) this.clearEffect(key);
+    this.stopAnimation();
+  }
+
+  private startDestruction(key: string, tile: Tile, sprite: Phaser.GameObjects.Image): void {
+    this.clearEffect(key);
+    if (this.effects.size >= MAX_EFFECTS) this.clearEffect(this.effects.keys().next().value!);
+    sprite.setTint(0x66635c);
+    this.effects.set(key, { tile, sprite, age: 0 });
+    if (!this.effectGraphics) {
+      this.effectGraphics = this.scene.add.graphics().setDepth(DEPTH + 0.04);
+      this.scene.events.on(Phaser.Scenes.Events.UPDATE, this.updateEffects, this);
     }
   }
 
-  private renderTile(tile: Tile): void {
-    const key = this.coordKey(tile.x, tile.y);
-    this.clearTileByKey(key);
-
-    const constructing = tile.improvementConstruction !== undefined;
-    const graphics = this.scene.add.graphics();
-    graphics.setDepth(OVERLAY_DEPTH);
-    graphics.setAlpha(constructing ? CONSTRUCTION_ALPHA : COMPLETED_ALPHA);
-    const improvementOwnerId = getImprovementOwnerId(tile);
-    const isForeignOwned = improvementOwnerId !== undefined && improvementOwnerId !== tile.ownerId;
-    const completedColor = isForeignOwned
-      ? this.nationManager.getNation(improvementOwnerId)?.color ?? COMPLETED_COLOR
-      : COMPLETED_COLOR;
-    graphics.lineStyle(
-      LINE_WIDTH,
-      constructing ? CONSTRUCTION_COLOR : completedColor,
-      1,
-    );
-
-    this.drawDashedHex(graphics, this.tileMap.getTileOutlinePoints(tile.x, tile.y));
-
-    const improvementId = tile.improvementId ?? tile.improvementConstruction?.improvementId;
-    const improvement = improvementId ? getImprovementById(improvementId) : undefined;
-    let sprite: Phaser.GameObjects.Image | undefined;
-    if (improvement?.spriteKey && this.scene.textures.exists(improvement.spriteKey)) {
-      const center = this.tileMap.tileToWorld(tile.x, tile.y);
-      const rect = this.tileMap.getTileRect(tile.x, tile.y);
-      sprite = this.scene.add.image(center.x, center.y, improvement.spriteKey);
-      sprite.setDepth(IMPROVEMENT_SPRITE_DEPTH);
-      sprite.setDisplaySize(rect.width * IMPROVEMENT_SPRITE_SCALE, rect.height * IMPROVEMENT_SPRITE_SCALE);
-      sprite.setAlpha(constructing ? 0.55 : 0.92);
+  private updateEffects(_time: number, delta: number): void {
+    this.effectGraphics?.clear();
+    for (const [key, effect] of this.effects) {
+      effect.age += delta;
+      if (effect.age >= EFFECT_DURATION || !this.visibilityPredicate(effect.tile.x, effect.tile.y)
+        || effect.tile.improvementId || effect.tile.improvementConstruction) {
+        this.clearEffect(key);
+        continue;
+      }
+      const p = effect.age / EFFECT_DURATION;
+      effect.sprite.setAlpha((1 - p) * 0.75);
+      const { x, y } = this.tileMap.tileToWorld(effect.tile.x, effect.tile.y);
+      const size = this.tileMap.getTileRect(effect.tile.x, effect.tile.y).height;
+      const view = this.scene.cameras.main.worldView;
+      if (x < view.left - size || x > view.right + size || y < view.top - size || y > view.bottom + size) continue;
+      const gfx = this.effectGraphics!;
+      gfx.fillStyle(0x282522, (1 - p) * 0.5).fillEllipse(x, y + size * 0.15, size * 0.4, size * 0.12);
+      for (let i = 0; i < 4; i++) {
+        const rise = (p * 1.1 + i * 0.22) % 1;
+        gfx.fillStyle(0x555750, (1 - rise) * (1 - p) * 0.48);
+        gfx.fillCircle(x + Math.sin(i * 3 + rise * 2) * size * 0.055, y - rise * size * 0.43, size * (0.025 + rise * 0.07));
+        gfx.fillStyle(0x504137, (1 - p) * 0.8).fillRect(x + (i - 2) * size * 0.07, y + size * (0.1 + (i % 2) * 0.06), size * 0.04, size * 0.025);
+      }
+      if (effect.tile.type !== TileType.Ocean && effect.tile.type !== TileType.Coast && p < 0.65) {
+        const flicker = 0.7 + Math.sin(effect.age * 0.035) * 0.2;
+        gfx.fillStyle(0xdb7a28, (1 - p) * 0.85).fillEllipse(x + size * 0.09, y + size * 0.06, size * 0.045, size * 0.13 * flicker);
+        gfx.fillStyle(0xffd477, (1 - p) * 0.8).fillEllipse(x + size * 0.09, y + size * 0.08, size * 0.022, size * 0.055 * flicker);
+      }
     }
-
-    this.overlays.set(key, { graphics, sprite });
+    if (!this.effects.size) this.stopAnimation();
   }
 
-  private drawDashedHex(graphics: Phaser.GameObjects.Graphics, points: WorldPoint[]): void {
-    if (points.length < 3) return;
-
-    for (let i = 0; i < points.length; i += 1) {
-      const start = points[i];
-      const end = points[(i + 1) % points.length];
-      this.drawEdgeSegments(graphics, start, end);
-    }
-  }
-
-  private drawEdgeSegments(graphics: Phaser.GameObjects.Graphics, start: WorldPoint, end: WorldPoint): void {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const ranges: readonly [number, number][] = [
-      [EDGE_INSET, EDGE_INSET + SEGMENT_LENGTH],
-      [1 - EDGE_INSET - SEGMENT_LENGTH, 1 - EDGE_INSET],
-    ];
-
-    for (const [from, to] of ranges) {
-      graphics.beginPath();
-      graphics.moveTo(start.x + dx * from, start.y + dy * from);
-      graphics.lineTo(start.x + dx * to, start.y + dy * to);
-      graphics.strokePath();
-    }
-  }
-
-  private hasOverlay(tile: Tile): boolean {
-    return tile.improvementId !== undefined || tile.improvementConstruction !== undefined;
-  }
-
-  private clearTileByKey(key: string): void {
+  private clearOverlay(key: string): void {
     const overlay = this.overlays.get(key);
-    if (overlay === undefined) return;
-
-    overlay.graphics.destroy();
-    overlay.sprite?.destroy();
+    overlay?.sprite?.destroy();
+    overlay?.marker?.destroy();
     this.overlays.delete(key);
   }
-
-  private coordKey(x: number, y: number): string {
-    return `${x},${y}`;
+  private clearEffect(key: string): void {
+    this.effects.get(key)?.sprite.destroy();
+    this.effects.delete(key);
+    // Clear immediately on visibility changes, before the next animation frame.
+    this.effectGraphics?.clear();
+    if (!this.effects.size) this.stopAnimation();
   }
+  private stopAnimation(): void {
+    this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.updateEffects, this);
+    this.effectGraphics?.destroy();
+    this.effectGraphics = undefined;
+  }
+  private key(x: number, y: number): string { return `${x},${y}`; }
 }

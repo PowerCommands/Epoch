@@ -23,6 +23,7 @@ export interface TileImprovementDefinition {
 
 export const FARM: TileImprovementDefinition = {
   id: 'farm',
+  spriteKey: 'improvement_farm',
   name: 'Farm',
   allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow],
   yieldBonus: { food: 2, production: 0, gold: 0 },
@@ -30,6 +31,7 @@ export const FARM: TileImprovementDefinition = {
 
 export const LUMBER_MILL: TileImprovementDefinition = {
   id: 'lumber_mill',
+  spriteKey: 'improvement_lumber_mill',
   name: 'LumberMill',
   allowedTileTypes: [TileType.Forest],
   yieldBonus: { food: 0, production: 2, gold: 0 },
@@ -37,6 +39,7 @@ export const LUMBER_MILL: TileImprovementDefinition = {
 
 export const PLANTATION: TileImprovementDefinition = {
   id: 'plantation',
+  spriteKey: 'improvement_plantation',
   name: 'Plantation',
   allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Jungle],
   yieldBonus: { food: 2, production: 0, gold: 0 },
@@ -44,6 +47,7 @@ export const PLANTATION: TileImprovementDefinition = {
 
 export const MINE: TileImprovementDefinition = {
   id: 'mine',
+  spriteKey: 'improvement_mine',
   name: 'Mine',
   allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Mountain, TileType.Ice, TileType.Desert],
   yieldBonus: { food: 0, production: 2, gold: 0 },
@@ -51,6 +55,7 @@ export const MINE: TileImprovementDefinition = {
 
 export const PASTURE: TileImprovementDefinition = {
   id: 'pasture',
+  spriteKey: 'improvement_pasture',
   name: 'Pasture',
   allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Desert],
   yieldBonus: { food: 1, production: 1, gold: 0 },
@@ -58,6 +63,7 @@ export const PASTURE: TileImprovementDefinition = {
 
 export const OIL_WELL: TileImprovementDefinition = {
   id: 'oil_well',
+  spriteKey: 'improvement_oil_well',
   name: 'Oil Well',
   allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Desert, TileType.Ice],
   yieldBonus: { food: 0, production: 3, gold: 0 },
@@ -65,6 +71,7 @@ export const OIL_WELL: TileImprovementDefinition = {
 
 export const FISHING_BOATS: TileImprovementDefinition = {
   id: 'fishing_boats',
+  spriteKey: 'improvement_fishing_boats',
   name: 'Fishing Boats',
   allowedTileTypes: [TileType.Coast, TileType.Ocean],
   yieldBonus: { food: 2, production: 0, gold: 1 },
@@ -72,6 +79,7 @@ export const FISHING_BOATS: TileImprovementDefinition = {
 
 export const OFFSHORE_PLATFORM: TileImprovementDefinition = {
   id: 'offshore_platform',
+  spriteKey: 'improvement_offshore_platform',
   name: 'Offshore Platform',
   allowedTileTypes: [TileType.Coast, TileType.Ocean],
   yieldBonus: { food: 0, production: 4, gold: 0 },

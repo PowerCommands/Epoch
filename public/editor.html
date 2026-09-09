@@ -1251,6 +1251,8 @@ let tileRivers = null; // reciprocal edge masks [r][q]; terrain remains independ
 let riverAnchor = null;
 let riverEraseAnchor = null;
 let riverReachedWater = false;
+let tileImprovements = [];
+const improvementImages = new Map();
 let tileBuildings = null; // 2D array [r][q] of building ids or undefined
 // Default turns two nations cannot re-declare war after peace (mirrors the runtime
 // DEFAULT_PEACE_TREATY_COOLDOWN_TURNS in src/systems/DiplomacyManager.ts).
@@ -1404,6 +1406,7 @@ function startEditor(map, scenarioData, customEntry) {
   tileRivers = Array.from({ length: mapH }, () => Array(mapW).fill(undefined));
   riverAnchor = null;
   riverEraseAnchor = null;
+  tileImprovements = Array.from({ length: mapH }, () => Array(mapW).fill(undefined));
   tileBuildings = [];
   paintedTiles = [];
   for (let r = 0; r < mapH; r++) {
@@ -1423,6 +1426,10 @@ function startEditor(map, scenarioData, customEntry) {
   for (const t of scenario.map.tiles) {
     if (tiles[t.r]) {
       tiles[t.r][t.q] = t.type;
+      if (t.improvementId) tileImprovements[t.r][t.q] = {
+        improvementId: t.improvementId,
+        ...(t.improvementOwnerId ? { improvementOwnerId: t.improvementOwnerId } : {}),
+      };
       tileRivers[t.r][t.q] = EpochRivers.riverMask(t.riverConnections) || undefined;
       // Any tile authored in the scenario with a valid terrain type counts as painted.
       if (TILE_TYPES.includes(t.type)) paintedTiles[t.r][t.q] = true;
@@ -3851,6 +3858,7 @@ function resizeWorkspace(newWidth, newHeight, newTileSize) {
   closeMagicWand(); // preview grid is sized to the old map
 
   // Rebuild the grids, copying anything that still fits.
+  tileImprovements = Array.from({ length: newHeight }, (_, r) => Array.from({ length: newWidth }, (_, q) => tileImprovements[r]?.[q]));
   const nextRivers = Array.from({ length: newHeight }, (_, r) => Array.from({ length: newWidth }, (_, q) => tileRivers[r]?.[q]));
   const nextTiles = [];
   const nextResources = [];
@@ -5343,6 +5351,28 @@ function render() {
     }
   }
 
+  // Shared improvement artwork, below resource badges, buildings and units.
+  for (let r = 0; r < mapH; r++) for (let q = 0; q < mapW; q++) {
+    const id = tileImprovements[r]?.[q]?.improvementId;
+    if (!id) continue;
+    const definition = window.EpochEditorResources?.improvements.find(item => item.id === id);
+    if (!definition?.spriteKey) continue;
+    const rect = hexRect(q, r);
+    if (rect.x > viewRight || rect.x + rect.width < viewLeft || rect.y > viewBottom || rect.y + rect.height < viewTop) continue;
+    let image = improvementImages.get(id);
+    if (!image) {
+      image = new Image();
+      image.onload = () => render();
+      image.src = `/assets/sprites/improvements/${definition.id}.png`;
+      improvementImages.set(id, image);
+    }
+    if (!image.complete || !image.naturalWidth) continue;
+    const world = tileToWorld(q, r);
+    const scale = Math.min(rect.width * 0.82 / image.naturalWidth, rect.height * 0.82 / image.naturalHeight) * zoom;
+    ctx.drawImage(image, (world.x - camX) * zoom - image.naturalWidth * scale / 2,
+      (world.y - camY) * zoom - image.naturalHeight * scale / 2, image.naturalWidth * scale, image.naturalHeight * scale);
+  }
+
   // Draw resource icons on top of terrain
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
@@ -5541,9 +5571,9 @@ function strokeHex(q, r, strokeStyle, lineWidth) {
 function drawResource(q, r, resourceId) {
   const resource = getNaturalResource(resourceId);
   const world = tileToWorld(q, r);
-  const sx = (world.x - camX) * zoom;
-  const sy = (world.y - camY) * zoom;
-  const size = Math.max(8, tileSize * zoom * 0.58);
+  const sx = (world.x - camX + (tileImprovements[r]?.[q] ? hexRect(q, r).width * 0.25 : 0)) * zoom;
+  const sy = (world.y - camY + (tileImprovements[r]?.[q] ? hexRect(q, r).height * 0.24 : 0)) * zoom;
+  const size = (tileImprovements[r]?.[q] ? 0.38 : 1) * Math.max(8, tileSize * zoom * 0.58);
 
   if (!resource) {
     drawResourceFallback(resourceId, sx, sy, size);
@@ -5904,7 +5934,7 @@ function buildScenarioOutput() {
   const flatTiles = [];
   for (let r = 0; r < mapH; r++) {
     for (let q = 0; q < mapW; q++) {
-      const tile = { q, r, type: tiles[r][q] };
+      const tile = { q, r, type: tiles[r][q], ...tileImprovements[r]?.[q] };
       if (tileRivers[r][q]) tile.riverConnections = tileRivers[r][q];
       if (tileResources[r][q] !== undefined) tile.resourceId = tileResources[r][q];
       if (tileBuildings[r][q] !== undefined) tile.buildingId = tileBuildings[r][q];

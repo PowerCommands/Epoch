@@ -905,6 +905,54 @@
           "size": 112372
         },
         {
+          "name": "farm.png",
+          "path": "/assets/sprites/improvements/farm.png",
+          "type": "PNG",
+          "size": 61697
+        },
+        {
+          "name": "fishing_boats.png",
+          "path": "/assets/sprites/improvements/fishing_boats.png",
+          "type": "PNG",
+          "size": 75114
+        },
+        {
+          "name": "lumber_mill.png",
+          "path": "/assets/sprites/improvements/lumber_mill.png",
+          "type": "PNG",
+          "size": 81881
+        },
+        {
+          "name": "mine.png",
+          "path": "/assets/sprites/improvements/mine.png",
+          "type": "PNG",
+          "size": 99271
+        },
+        {
+          "name": "offshore_platform.png",
+          "path": "/assets/sprites/improvements/offshore_platform.png",
+          "type": "PNG",
+          "size": 70307
+        },
+        {
+          "name": "oil_well.png",
+          "path": "/assets/sprites/improvements/oil_well.png",
+          "type": "PNG",
+          "size": 67184
+        },
+        {
+          "name": "pasture.png",
+          "path": "/assets/sprites/improvements/pasture.png",
+          "type": "PNG",
+          "size": 77972
+        },
+        {
+          "name": "plantation.png",
+          "path": "/assets/sprites/improvements/plantation.png",
+          "type": "PNG",
+          "size": 88657
+        },
+        {
           "name": "underwater_archaeological_site.png",
           "path": "/assets/sprites/improvements/underwater_archaeological_site.png",
           "type": "PNG",

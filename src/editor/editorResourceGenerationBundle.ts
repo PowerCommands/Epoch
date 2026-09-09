@@ -9,6 +9,7 @@
  * adapts the editor's flat tile arrays to {@link MapData} and back so there is
  * no duplicated algorithm.
  */
+import { ALL_IMPROVEMENTS } from '../data/improvements';
 import * as Rivers from '../systems/geography/Rivers';
 import type { MapData, TileType } from '../types/map';
 import type { ProceduralResourceDensity } from '../systems/NaturalResourceSystem';
@@ -125,6 +126,7 @@ declare global {
     EpochEditorResources?: {
       generateEditorResources: typeof generateEditorResources;
       clearEditorResources: typeof clearEditorResources;
+      improvements: typeof ALL_IMPROVEMENTS;
       DENSITIES: readonly ProceduralResourceDensity[];
     };
   }
@@ -135,6 +137,7 @@ if (typeof window !== 'undefined') {
   window.EpochEditorResources = {
     generateEditorResources,
     clearEditorResources,
+    improvements: ALL_IMPROVEMENTS,
     DENSITIES: SCENARIO_EDITOR_RESOURCE_DENSITIES,
   };
 }

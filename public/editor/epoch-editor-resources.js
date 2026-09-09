@@ -7,6 +7,130 @@
       __defProp(target, name, { get: all[name], enumerable: true });
   };
 
+  // src/data/airOperations.ts
+  var FIGHTER_INTERCEPTION = [
+    { radius: 2, chance: 0.1 },
+    { radius: 3, chance: 0.2 },
+    { radius: 4, chance: 0.3 },
+    { radius: 4, chance: 0.4 },
+    { radius: 5, chance: 0.5 },
+    { radius: 6, chance: 0.6 }
+  ];
+  var GROUND_INTERCEPTION = FIGHTER_INTERCEPTION.map((tier) => ({ ...tier }));
+
+  // src/data/nuclearPlants.ts
+  var NUCLEAR_PLANT_MAINTENANCE_TURNS = 3;
+  var MAINTAIN_NUCLEAR_PLANT = "maintain_nuclear_plant";
+
+  // src/data/strategicWeapons.ts
+  var NUCLEAR_CLEANUP_TURNS = 5;
+
+  // src/data/improvements.ts
+  var FARM = {
+    id: "farm",
+    spriteKey: "improvement_farm",
+    name: "Farm",
+    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */],
+    yieldBonus: { food: 2, production: 0, gold: 0 }
+  };
+  var LUMBER_MILL = {
+    id: "lumber_mill",
+    spriteKey: "improvement_lumber_mill",
+    name: "LumberMill",
+    allowedTileTypes: ["forest" /* Forest */],
+    yieldBonus: { food: 0, production: 2, gold: 0 }
+  };
+  var PLANTATION = {
+    id: "plantation",
+    spriteKey: "improvement_plantation",
+    name: "Plantation",
+    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "forest" /* Forest */, "jungle" /* Jungle */],
+    yieldBonus: { food: 2, production: 0, gold: 0 }
+  };
+  var MINE = {
+    id: "mine",
+    spriteKey: "improvement_mine",
+    name: "Mine",
+    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "forest" /* Forest */, "mountain" /* Mountain */, "ice" /* Ice */, "desert" /* Desert */],
+    yieldBonus: { food: 0, production: 2, gold: 0 }
+  };
+  var PASTURE = {
+    id: "pasture",
+    spriteKey: "improvement_pasture",
+    name: "Pasture",
+    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "forest" /* Forest */, "desert" /* Desert */],
+    yieldBonus: { food: 1, production: 1, gold: 0 }
+  };
+  var OIL_WELL = {
+    id: "oil_well",
+    spriteKey: "improvement_oil_well",
+    name: "Oil Well",
+    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "desert" /* Desert */, "ice" /* Ice */],
+    yieldBonus: { food: 0, production: 3, gold: 0 }
+  };
+  var FISHING_BOATS = {
+    id: "fishing_boats",
+    spriteKey: "improvement_fishing_boats",
+    name: "Fishing Boats",
+    allowedTileTypes: ["coast" /* Coast */, "ocean" /* Ocean */],
+    yieldBonus: { food: 2, production: 0, gold: 1 }
+  };
+  var OFFSHORE_PLATFORM = {
+    id: "offshore_platform",
+    spriteKey: "improvement_offshore_platform",
+    name: "Offshore Platform",
+    allowedTileTypes: ["coast" /* Coast */, "ocean" /* Ocean */],
+    yieldBonus: { food: 0, production: 4, gold: 0 }
+  };
+  var ARCHAEOLOGICAL_DIG = {
+    id: "archaeological_dig",
+    name: "Archaeological Dig",
+    allowedTileTypes: [
+      "plains" /* Plains */,
+      "meadow" /* Meadow */,
+      "desert" /* Desert */,
+      "forest" /* Forest */,
+      "beach" /* Beach */,
+      "mountain" /* Mountain */
+    ],
+    yieldBonus: { food: 0, production: 0, gold: 0 },
+    buildTurns: 3,
+    requiredBuilderCapability: "dig",
+    spriteKey: "improvement_archaeological_dig"
+  };
+  var UNDERWATER_ARCHAEOLOGICAL_SITE = {
+    id: "underwater_archaeological_site",
+    name: "Underwater Archaeological Site",
+    allowedTileTypes: ["coast" /* Coast */, "ocean" /* Ocean */],
+    yieldBonus: { food: 0, production: 0, gold: 0 },
+    buildTurns: 4,
+    requiredBuilderCapability: "dig",
+    requiredCargoTransportUnitTypeId: "transport_ship",
+    spriteKey: "improvement_underwater_archaeological_site"
+  };
+  var NUCLEAR_PLANT_MAINTENANCE = {
+    id: MAINTAIN_NUCLEAR_PLANT,
+    name: "Maintain Nuclear Power Plant",
+    allowedTileTypes: [],
+    yieldBonus: { food: 0, production: 0, gold: 0 },
+    buildTurns: NUCLEAR_PLANT_MAINTENANCE_TURNS
+  };
+  var CLEAN_NUCLEAR_WASTE = { id: "clean_nuclear_waste", name: "\u{1F58C} Clean Nuclear Waste", allowedTileTypes: ["nuclear_waste" /* NuclearWaste */], yieldBonus: { food: 0, production: 0, gold: 0 }, buildTurns: NUCLEAR_CLEANUP_TURNS };
+  var ALL_IMPROVEMENTS = [
+    NUCLEAR_PLANT_MAINTENANCE,
+    CLEAN_NUCLEAR_WASTE,
+    FARM,
+    LUMBER_MILL,
+    PLANTATION,
+    MINE,
+    PASTURE,
+    OIL_WELL,
+    FISHING_BOATS,
+    OFFSHORE_PLATFORM,
+    ARCHAEOLOGICAL_DIG,
+    UNDERWATER_ARCHAEOLOGICAL_SITE
+  ];
+
   // src/systems/geography/Rivers.ts
   var Rivers_exports = {};
   __export(Rivers_exports, {
@@ -787,6 +911,7 @@
     window.EpochEditorResources = {
       generateEditorResources,
       clearEditorResources,
+      improvements: ALL_IMPROVEMENTS,
       DENSITIES: SCENARIO_EDITOR_RESOURCE_DENSITIES
     };
   }
