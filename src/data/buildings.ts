@@ -163,7 +163,7 @@ export const MILITARY_BASE = building({ id: 'military_base', name: 'Military Bas
 export const MEDICAL_LAB = building({ id: 'medical_lab', name: 'Medical Lab', era: 'modern', cost: 500, maintenance: 3, description: `Food carryover omitted until growth modifiers exist. Existing bonuses: +2 food, +1 happiness. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.medicalLab}.`, modifiers: { foodPerTurn: 2, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.medicalLab } });
 
 export const RESEARCH_LAB = building({ id: 'research_lab', name: 'Research Lab', era: 'atomic', cost: 500, maintenance: 3, modifiers: { sciencePerTurn: 4, sciencePercent: 50, happinessPerTurn: 1 } });
-export const SOLAR_PLANT = building({ id: 'solar_plant', name: 'Solar Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Desert and mutual-exclusion requirements omitted' });
+export const SOLAR_PLANT = building({ id: 'solar_plant', name: 'Solar Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Legacy Solar Plant retained for existing saves. New solar energy uses Solar Panels and CSP tile improvements.' });
 export const NUCLEAR_POWER_PLANT = building({ id: 'nuclear_plant', name: 'Nuclear Power Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: `Requires Uranium to construct and operate. Lifespan: 100 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.nuclearPowerPlant}. Active production multiplier: x6. Existing local bonuses are retained.` });
 /** Legacy export retained for code that already referred to the existing Nuclear Plant definition. */
 export const NUCLEAR_PLANT = NUCLEAR_POWER_PLANT;
@@ -186,7 +186,7 @@ export const ALL_BUILDINGS: BuildingType[] = [
   OPERA_HOUSE, BANK, MUSEUM, PUBLIC_SCHOOL, SEAPORT, WINDMILL, ZOO,
   MILITARY_ACADEMY, ARSENAL, FACTORY, COAL_POWER_PLANT, OIL_POWER_PLANT, GAS_POWER_PLANT, STOCK_EXCHANGE, HOSPITAL, HOTEL,
   BROADCAST_TOWER, STADIUM, MILITARY_BASE, MEDICAL_LAB,
-  RESEARCH_LAB, SOLAR_PLANT, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, NUCLEAR_SILO, POLICE_STATION, SPACESHIP_FACTORY,
+  RESEARCH_LAB, NUCLEAR_POWER_PLANT, HYDRO_PLANT, RECYCLING_CENTER, BOMB_SHELTER, NUCLEAR_SILO, POLICE_STATION, SPACESHIP_FACTORY,
 ];
 
 /**
@@ -211,7 +211,7 @@ export const BARBARIAN_CAMP: BuildingType = building({
 
 /** Map structures that are NOT player-constructable but must still resolve by id. */
 /** Special buildings resolved by id but exposed only by their owning gameplay system. */
-export const SPECIAL_BUILDINGS: readonly BuildingType[] = [BARBARIAN_CAMP, GRAND_STADIUM];
+export const SPECIAL_BUILDINGS: readonly BuildingType[] = [BARBARIAN_CAMP, GRAND_STADIUM, SOLAR_PLANT];
 
 export function getBuildingById(id: string): BuildingType | undefined {
   return ALL_BUILDINGS.find((b) => b.id === id)

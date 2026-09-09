@@ -346,13 +346,6 @@
       "iconPath": "assets/sprites/buildings/research_lab.png"
     },
     {
-      "id": "solar_plant",
-      "name": "Solar Plant",
-      "era": "atomic",
-      "placement": "land",
-      "iconPath": "assets/sprites/buildings/solar_plant.png"
-    },
-    {
       "id": "nuclear_plant",
       "name": "Nuclear Power Plant",
       "era": "atomic",

@@ -321,6 +321,9 @@ export class CityView {
     this.closeCallbacks.push(callback);
   }
 
+  private renewableCapacityProvider?: (cityId: string) => number;
+  setRenewableCapacityProvider(provider: (cityId: string) => number): void { this.renewableCapacityProvider = provider; }
+
   setPopulationCapacityProvider(provider: (cityId: string) => number): void {
     this.populationCapacityProvider = provider;
   }
@@ -598,6 +601,7 @@ export class CityView {
         text: `Population: ${city.population} / ${populationCapacity ?? '?'}   🍏 ${city.foodStorage} / ${getFoodToGrow(city.population)}`,
         blocked: populationBlocked,
       },
+      { text: `Renewable Energy: +${this.renewableCapacityProvider?.(city.id) ?? 0} Population Capacity` },
       ...(this.nuclearPlantInfoProvider?.(city.id) ?? []),
       { text: this.aircraftCapacityProvider?.(city.id) ?? 'Aircraft Capacity: 0 / 0' },
       { text: `Culture: ${city.culture}` },

@@ -82,6 +82,9 @@ export function buildHappinessTooltip(
   if (happiness.unhappinessFromConqueredCities > 0) {
     lines.push(`Conquered cities: -${happiness.unhappinessFromConqueredCities}`);
   }
+  for (const [source, value] of Object.entries(happiness.environment)) {
+    if (value < 0) lines.push(`${source === 'nuclearWaste' ? 'Nuclear Waste' : `Fossil pollution (${source})`}: ${value}`);
+  }
   if (happiness.unhappinessFromEnergyShortages > 0) {
     lines.push(`Energy Shortages: -${happiness.unhappinessFromEnergyShortages}`);
   }

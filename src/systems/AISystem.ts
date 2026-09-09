@@ -1,3 +1,5 @@
+import { RENEWABLE_IMPROVEMENTS } from '../data/improvements';
+import { scoreRenewableImprovement } from './ai/AIRenewablePlanning';
 import { nuclearPlantMaintenancePriority } from '../data/nuclearPlants';
 import { planAirProduction } from './ai/AIAirProduction';
 import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
@@ -3053,11 +3055,14 @@ export class AISystem {
       if (isCovertOperative(unit.unitType)) continue; // Spy/Agent use AICovertOperationsSystem
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
+      if (unit.unitType.id === 'transport_ship' && this.runRenewableBuilder(unit, nationId)) continue;
+
       if (unit.unitType.id === WORK_BOAT.id) {
         this.runWorkBoat(unit, nationId);
         continue;
       }
 
+      if (this.isCargoUnit(unit)) continue;
       if (unit.unitType.id === WORKER.id) {
         this.runWorker(unit, nationId);
         continue;
@@ -4439,6 +4444,60 @@ export class AISystem {
   // Land counterpart to runWorkBoat: AI Workers improve owned land tiles using
   // the shared BuilderSystem rules. Target selection is deterministic and Workers
   // never leave their own territory (every candidate is an owned land tile).
+  private runRenewableBuilder(unit: Unit, nationId: string): boolean {
+    if (!this.builderSystem || !this.powerPlantSystem) return false;
+    const offshore = unit.unitType.id === 'transport_ship';
+    let worker = offshore ? this.unitManager.getCargoUnitsForTransport(unit).find(c => c.unitType.id === 'worker') : unit;
+    if (worker?.isBuildingImprovement()) return true;
+    const resources = this.nationManager.getResources(nationId);
+    const cities = this.cityManager.getCitiesByOwner(nationId);
+    const pending = this.mapData.tiles.flat().filter(t => t.improvementConstruction?.ownerId === nationId);
+    const pendingMaintenance = pending.reduce((sum, t) => sum + (getImprovementById(t.improvementConstruction!.improvementId)?.maintenance ?? 0), 0);
+    const candidates = cities.flatMap(city => {
+      const capacity = this.powerPlantSystem!.getCityPopulationCapacity(city.id);
+      const pendingCapacity = pending.filter(t => t.improvementConstruction?.cityId === city.id)
+        .reduce((sum, t) => sum + (getImprovementById(t.improvementConstruction!.improvementId)?.populationCapacity ?? 0), 0);
+      return city.ownedTileCoords.flatMap(coord => {
+        const tile = this.mapData.tiles[coord.y]?.[coord.x];
+        if (!tile) return [];
+        const distance = this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, tile);
+        if (distance > MAX_WORKER_TARGET_DISTANCE) return [];
+        return RENEWABLE_IMPROVEMENTS.filter(i => !!i.requiredCargoTransportUnitTypeId === offshore
+          && this.builderSystem!.canNationBuildRenewable(nationId, tile, i)).map(improvement => ({
+          tile, improvement, score: scoreRenewableImprovement(improvement, {
+            population: city.population, capacity, pendingCapacity, pendingMaintenance,
+            gold: resources.gold, goldPerTurn: resources.goldPerTurn,
+            economicPriority: this.nationManager.getNation(nationId)?.aiStrategyId === 'economic', distance,
+          }),
+        }));
+      });
+    }).filter(c => c.score > 0).sort((a, b) => b.score - a.score || a.tile.y - b.tile.y || a.tile.x - b.tile.x);
+    if (!candidates.length) return false;
+    // Reuse an unassigned nearby Worker; never steal expedition cargo.
+    if (!worker && offshore && this.unitManager.getCargoUnitsForTransport(unit).length === 0) {
+      const reachable = candidates.some(({ tile }) => (unit.tileX === tile.x && unit.tileY === tile.y)
+        || this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false }) !== null);
+      if (!reachable) return false;
+      worker = this.unitManager.getUnitsByOwner(nationId).find(c => c.unitType.id === 'worker'
+        && !c.carriedByUnitId && !c.isBuildingImprovement() && c.movementPoints > 0
+        && !this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(c.id)
+        && this.gridSystem.getDistance({ x: c.tileX, y: c.tileY }, { x: unit.tileX, y: unit.tileY }) <= 1);
+      if (worker && !this.unitManager.boardUnit(worker.id, unit.id)) worker = undefined;
+    }
+    if (!worker) return false;
+    for (const candidate of candidates) {
+      const { tile, improvement } = candidate;
+      if (unit.tileX !== tile.x || unit.tileY !== tile.y) {
+        const path = this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false });
+        if (!path) continue;
+        this.movementSystem.moveAlongPath(unit, path);
+      }
+      if (unit.tileX === tile.x && unit.tileY === tile.y) this.builderSystem.build(unit, tile, { improvementId: improvement.id });
+      return true;
+    }
+    return false;
+  }
+
   private runWorker(unit: Unit, nationId: string): void {
     if (!this.builderSystem) return;
     if (unit.unitType.canBuildImprovements !== true || unit.unitType.isNaval === true) return;
@@ -4474,6 +4533,7 @@ export class AISystem {
       if (unit.tileX === tile.x && unit.tileY === tile.y && this.builderSystem.build(unit, tile)) this.logStrategicEvent?.(nationId, `[Strategic] Worker cleaning Nuclear Waste at ${tile.x},${tile.y}`);
       return;
     }
+    if (this.runRenewableBuilder(unit, nationId)) return;
     let target = this.getAssignedWorkerTarget(unit, nationId);
     if (target === null) {
       // An idle Worker keeps searching for a target every turn until it finds a
@@ -7746,6 +7806,7 @@ export class AISystem {
     return new Map(planAIPowerPlants({
       nationId,
       isHuman: this.isHuman(nationId),
+      netHappiness: this.happinessSystem?.getNetHappiness(nationId),
       cities: cities.map((city) => ({
         id: city.id,
         name: city.name,

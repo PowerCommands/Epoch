@@ -1,3 +1,4 @@
+import { getNationImprovementMaintenance } from './ImprovementEffects';
 import { NationManager } from './NationManager';
 import { CityManager } from './CityManager';
 import { TurnManager } from './TurnManager';
@@ -45,7 +46,7 @@ const EMPTY_YIELD_DISTRIBUTION: ReadonlyMap<string, number> = new Map();
 type CityEnergyProvider = Pick<
   PowerPlantSystem,
   'getCityPopulationCapacity' | 'getCityProductionMultiplier'
->;
+> & Partial<Pick<PowerPlantSystem, 'getEnvironmentalHappiness'>>;
 type CityEnergyLog = (nationId: string, message: string) => void;
 
 /**
@@ -178,6 +179,7 @@ export class ResourceSystem {
     log: CityEnergyLog = () => {},
   ): void {
     this.cityEnergyProvider = provider;
+    if (provider.getEnvironmentalHappiness) this.happinessSystem.setEnvironmentProvider(id => provider.getEnvironmentalHappiness!(id));
     this.cityEnergyLog = log;
   }
 
@@ -309,6 +311,7 @@ export class ResourceSystem {
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nationId, cities);
     nationRes.goldPerTurn = this.getTradeGoldPerTurnDelta(nationId)
       + this.historicalGold(nationId, this.getManufacturedGoldPerTurn(nationId))
+      - getNationImprovementMaintenance(this.mapData, nationId)
       - getNationOccupationGoldCost(nationId, this.cityManager, this.turnManager.getCurrentRound());
     nationRes.culturePerTurn = 0;
     nationRes.happinessPerTurn = 0;
@@ -406,8 +409,8 @@ export class ResourceSystem {
       lookup,
       nationModifiers,
     );
-    nationRes.goldPerTurn = baseGoldPerTurn - occupationGoldCost;
-    nationRes.gold += Math.floor(baseGoldPerTurn * goldModifier) - occupationGoldCost;
+    nationRes.goldPerTurn = baseGoldPerTurn - occupationGoldCost - getNationImprovementMaintenance(this.mapData, nation.id);
+    nationRes.gold += Math.floor(baseGoldPerTurn * goldModifier) - occupationGoldCost - getNationImprovementMaintenance(this.mapData, nation.id);
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.influence += nationRes.influencePerTurn;
     nationRes.culturePerTurn = 0;
@@ -558,7 +561,7 @@ export class ResourceSystem {
         cities,
         lookup,
         nationModifiers,
-      ) - getNationOccupationGoldCost(
+      ) - getNationImprovementMaintenance(this.mapData, nation.id) - getNationOccupationGoldCost(
         nation.id,
         this.cityManager,
         this.turnManager.getCurrentRound(),

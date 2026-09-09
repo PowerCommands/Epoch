@@ -27,6 +27,7 @@ export class NationHappiness {
   happinessFromCultureEffects: number;
   happinessFromCorporations: number;
   happinessFromClimateAccord = 0;
+  environment = { coal: 0, oil: 0, gas: 0, nuclearWaste: 0 };
   happinessFromManufacturedResources: number;
   availableLuxuryResourceIds: string[];
   availableLuxuryResourceQuantities: LuxuryResourceEntry[];

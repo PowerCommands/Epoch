@@ -6,6 +6,10 @@ import type { TileYield } from './terrainYields';
 export interface TileImprovementDefinition {
   id: string;
   name: string;
+  populationCapacity?: number;
+  maintenance?: number;
+  requiredTechnologyId?: string;
+  description?: string;
   allowedTileTypes: TileType[];
   yieldBonus: TileYield;
   /** Fixed build duration; omitted improvements retain the normal era scale. */
@@ -121,6 +125,36 @@ export const NUCLEAR_PLANT_MAINTENANCE: TileImprovementDefinition = {
 
 export const CLEAN_NUCLEAR_WASTE: TileImprovementDefinition = { id: 'clean_nuclear_waste', name: '🖌 Clean Nuclear Waste', allowedTileTypes: [TileType.NuclearWaste], yieldBonus: { food: 0, production: 0, gold: 0 }, buildTurns: NUCLEAR_CLEANUP_TURNS };
 
+/** Recurring costs and capacity are centralized here for balancing. */
+export const WIND_TURBINE: TileImprovementDefinition = {
+  id: 'wind_turbine', name: 'Wind Turbine', spriteKey: 'improvement_wind_turbine',
+  allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Beach],
+  yieldBonus: { food: 0, production: 0, gold: 0 },
+  requiredTechnologyId: 'electricity', populationCapacity: 1, maintenance: 1,
+};
+export const SOLAR_PANELS: TileImprovementDefinition = {
+  id: 'solar_panels', name: 'Solar Panels', spriteKey: 'improvement_solar_panels',
+  allowedTileTypes: [TileType.Plains, TileType.Meadow, TileType.Beach],
+  yieldBonus: { food: 0, production: 0, gold: 0 },
+  requiredTechnologyId: 'electronics', populationCapacity: 1, maintenance: 1,
+};
+export const OFFSHORE_WIND_FARM: TileImprovementDefinition = {
+  id: 'offshore_wind_farm', name: 'Offshore Wind Farm', spriteKey: 'improvement_offshore_wind_farm',
+  allowedTileTypes: [TileType.Coast, TileType.Ocean],
+  yieldBonus: { food: 0, production: 0, gold: 0 },
+  requiredTechnologyId: 'ecology', populationCapacity: 3, maintenance: WIND_TURBINE.maintenance! * 2,
+  requiredCargoTransportUnitTypeId: 'transport_ship',
+  description: 'Large-scale offshore wind generation. Requires a Worker aboard a Transport Ship.',
+};
+export const CSP: TileImprovementDefinition = {
+  id: 'csp', name: 'CSP – Concentrated Solar Power', spriteKey: 'improvement_csp',
+  allowedTileTypes: [TileType.Desert],
+  yieldBonus: { food: 0, production: 0, gold: 0 },
+  requiredTechnologyId: 'lasers', populationCapacity: 3, maintenance: 2,
+  description: 'CSP – Concentrated Solar Power. Large-scale solar thermal generation using concentrated sunlight and thermal energy storage.',
+};
+export const RENEWABLE_IMPROVEMENTS = [WIND_TURBINE, SOLAR_PANELS, OFFSHORE_WIND_FARM, CSP];
+
 export const ALL_IMPROVEMENTS: TileImprovementDefinition[] = [
   NUCLEAR_PLANT_MAINTENANCE,
   CLEAN_NUCLEAR_WASTE,
@@ -134,6 +168,7 @@ export const ALL_IMPROVEMENTS: TileImprovementDefinition[] = [
   OFFSHORE_PLATFORM,
   ARCHAEOLOGICAL_DIG,
   UNDERWATER_ARCHAEOLOGICAL_SITE,
+  ...RENEWABLE_IMPROVEMENTS,
 ];
 
 export function getImprovementById(id: string): TileImprovementDefinition | undefined {

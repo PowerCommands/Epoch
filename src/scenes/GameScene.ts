@@ -2498,6 +2498,8 @@ export class GameScene extends Phaser.Scene {
           const label = improvement?.name ?? unlock.id;
           return {
             label,
+            imageKey: improvement?.spriteKey,
+            imagePath: improvement?.spriteKey ? `assets/sprites/improvements/${improvement.id}.png` : undefined,
             fallbackLabel: getDiscoveryFallbackLabel(label),
           };
         }
@@ -2776,6 +2778,7 @@ export class GameScene extends Phaser.Scene {
       const air = unitManager.airOperations;
       return `Aircraft Capacity: ${air?.usage({ kind: 'city', id: cityId }) ?? 0} / ${city && air ? air.cityCapacity(city) : 0}`;
     });
+    cityView.setRenewableCapacityProvider(cityId => powerPlantSystem.getCityRenewableCapacity(cityId));
     cityView.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     cityBannerRenderer.setPopulationCapacityProvider((cityId) => powerPlantSystem.getCityPopulationCapacity(cityId));
     resourceSystem.setCityEnergyProvider(

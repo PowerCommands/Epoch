@@ -1,3 +1,4 @@
+import { getCityRenewableCapacity } from '../../systems/ImprovementEffects';
 import type { UnitType } from '../../entities/UnitType';
 import { interceptionProfile } from '../../data/airOperations';
 import { getNuclearCapability } from '../../systems/ai/AIStrategicWeapons';
@@ -998,6 +999,7 @@ export class RightSidebarPanelDataProvider {
         rows.push(textRow('Requires the completed associated excavation and a functioning Museum.', true));
       }
     }
+    if (improvement?.populationCapacity) rows.push(textRow(`Renewable Energy: +${improvement.populationCapacity} Population Capacity`), textRow(`Maintenance: ${improvement.maintenance} Gold/turn`));
     if (improvement) rows.push(textRow(`Bonus: ${formatYieldBonus(improvement.yieldBonus)}`));
     if (builderHint) {
       rows.push(textRow(
@@ -1120,6 +1122,7 @@ export class RightSidebarPanelDataProvider {
               blocked ? POPULATION_BLOCKED_COLOR : undefined,
             );
           })(),
+          textRow(`Renewable Energy: +${getCityRenewableCapacity(city, this.mapData)} Population Capacity`),
           textRow(`Health: ${city.health}/${CITY_BASE_HEALTH}`),
           progressRow('Health', city.health, CITY_BASE_HEALTH),
           textRow(`Tile position: ${city.tileX}, ${city.tileY}`),
@@ -1283,6 +1286,7 @@ export class RightSidebarPanelDataProvider {
             ? [textRow(`Military Over Capacity: -${happiness.unhappinessFromMilitaryOverCap}`)] : []),
           ...(happiness.unhappinessFromConqueredCities > 0
             ? [textRow(`Conquered cities: -${happiness.unhappinessFromConqueredCities}`)] : []),
+          ...Object.entries(happiness.environment).filter(([, value]) => value < 0).map(([source, value]) => textRow(`${source === 'nuclearWaste' ? 'Nuclear Waste' : `Fossil pollution (${source})`}: ${value}`)),
           ...(happiness.unhappinessFromEnergyShortages > 0
             ? [textRow(`Energy Shortages: -${happiness.unhappinessFromEnergyShortages}`)] : []),
           textRow('Effects:', true),

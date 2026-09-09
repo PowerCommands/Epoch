@@ -271,6 +271,7 @@ export class ResearchSystem {
   }
 
   isBuildingUnlocked(nationId: string, buildingId: string): boolean {
+    if (buildingId === 'solar_plant') return false;
     const requiredTechnology = this.getRequiredTechnologyForBuilding(buildingId);
     if (requiredTechnology && !this.isResearched(nationId, requiredTechnology.id)) return false;
     if (requiredTechnology && !isCultureRequiredWithTechnologyForBuilding(buildingId)) return true;

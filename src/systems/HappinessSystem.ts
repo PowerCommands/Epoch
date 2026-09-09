@@ -1,3 +1,4 @@
+import { EMPTY_ENVIRONMENT, type EnvironmentalHappiness } from '../data/environment';
 // TODO: Add negative happiness sources such as war weariness and overpopulation.
 
 import { getBuildingById } from '../data/buildings';
@@ -133,6 +134,11 @@ export function resolveHappinessTier(
 }
 
 export class HappinessSystem {
+  private environment: (nationId: string) => EnvironmentalHappiness = () => EMPTY_ENVIRONMENT;
+  setEnvironmentProvider(provider: (nationId: string) => EnvironmentalHappiness): void {
+    this.environment = provider;
+    this.recalculateAll();
+  }
   private climateCompliance: (nationId: string) => number = () => 0;
   setClimateComplianceProvider(provider: (nationId: string) => number): void { this.climateCompliance = provider; }
   private historicalHappiness: (nation: string) => number = () => 0;
@@ -241,7 +247,9 @@ export class HappinessSystem {
       )
       : 0;
     const unhappinessFromWarWeariness = this.getWarWeariness(nationId);
+    const environment = this.environment(nationId);
     const totalUnhappiness = adjustedUnhappinessFromCities
+      - environment.coal - environment.oil - environment.gas - environment.nuclearWaste
       + adjustedUnhappinessFromPopulation
       + unhappinessFromMilitary
       + unhappinessFromMilitaryOverCap
@@ -254,6 +262,7 @@ export class HappinessSystem {
 
     const tier = resolveHappinessTier(netHappiness, historicalYear);
 
+    state.environment = environment;
     state.totalHappiness = totalHappiness;
     state.totalUnhappiness = totalUnhappiness;
     state.netHappiness = netHappiness;
@@ -297,6 +306,7 @@ export class HappinessSystem {
   }
 
   getNationState(nationId: string): Readonly<NationHappiness> {
+    if (JSON.stringify(this.getOrCreateState(nationId).environment) !== JSON.stringify(this.environment(nationId))) this.recalculateNation(nationId);
     if (this.getOrCreateState(nationId).happinessFromClimateAccord !== this.climateCompliance(nationId)) this.recalculateNation(nationId);
     return this.getOrCreateState(nationId);
   }
@@ -360,6 +370,7 @@ export class HappinessSystem {
 
 function snapshotState(state: NationHappiness): {
   totalHappiness: number;
+  environment: EnvironmentalHappiness;
   totalUnhappiness: number;
   netHappiness: number;
   happinessFromBase: number;
@@ -392,6 +403,7 @@ function snapshotState(state: NationHappiness): {
 } {
   return {
     totalHappiness: state.totalHappiness,
+    environment: { ...state.environment },
     totalUnhappiness: state.totalUnhappiness,
     netHappiness: state.netHappiness,
     happinessFromBase: state.happinessFromBase,
@@ -428,7 +440,8 @@ function statesEqual(
   previous: ReturnType<typeof snapshotState>,
   next: NationHappiness,
 ): boolean {
-  return previous.totalHappiness === next.totalHappiness
+  return JSON.stringify(previous.environment) === JSON.stringify(next.environment)
+    && previous.totalHappiness === next.totalHappiness
     && previous.totalUnhappiness === next.totalUnhappiness
     && previous.netHappiness === next.netHappiness
     && previous.state === next.state

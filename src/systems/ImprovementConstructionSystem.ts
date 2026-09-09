@@ -182,6 +182,8 @@ export class ImprovementConstructionSystem {
     const improvement = getImprovementById(construction.improvementId);
     if (improvement === undefined) return 'missingImprovement';
     if (!canUnitConstructImprovement(unit.unitType, improvement)) return 'invalidUnit';
+    if (!improvement.allowedTileTypes.includes(tile.type)) return 'invalidTile';
+    if (improvement.populationCapacity && (tile.ownerId !== construction.ownerId || tile.resourceId || tile.buildingId)) return 'invalidTile';
     const requiredTransportTypeId = improvement.requiredCargoTransportUnitTypeId;
     let transport: Unit | undefined;
     if (requiredTransportTypeId !== undefined) {
@@ -197,7 +199,7 @@ export class ImprovementConstructionSystem {
     } else if (construction.transportUnitId !== undefined) {
       return 'invalidUnit';
     }
-    if (requiredTransportTypeId !== undefined
+    if (requiredTransportTypeId !== undefined && !improvement.populationCapacity
       && !this.isCanonicalResourceImprovement(tile, construction.improvementId)) return 'invalidTile';
     if (construction.resourceOwnerNationId !== undefined) {
       if (!this.isValidSeaResourceClaim(tile, construction, unit, transport)) return 'invalidTile';
@@ -212,6 +214,7 @@ export class ImprovementConstructionSystem {
     if (construction.cityId === undefined) return 'missingCity';
     const city = this.cityManager.getCity(construction.cityId);
     if (city === undefined || city.ownerId !== construction.ownerId) return 'missingCity';
+    if (improvement.populationCapacity && !city.ownedTileCoords.some(c => c.x === tile.x && c.y === tile.y)) return 'missingCity';
     return null;
   }
 
@@ -263,6 +266,7 @@ export class ImprovementConstructionSystem {
       }
     } else if (construction.improvementId === 'clean_nuclear_waste') cleanNuclearWaste(tile);
     else tile.improvementId = construction.improvementId;
+    if (improvement.populationCapacity) console.log(`[RenewableEnergy] ${city?.name ?? construction.ownerId} built ${improvement.name} capacity=+${improvement.populationCapacity} maintenance=${improvement.maintenance ?? 0}`);
     // Domestic improvements keep the legacy implicit ownership semantics, so
     // ordinary conquest/territory transfer behavior remains unchanged. Only a
     // genuinely separate economic owner needs persistent metadata.

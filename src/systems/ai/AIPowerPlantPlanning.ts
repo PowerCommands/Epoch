@@ -1,3 +1,4 @@
+import { FOSSIL_PLANT_HAPPINESS } from '../../data/environment';
 import { ALL_BUILDINGS, getBuildingById } from '../../data/buildings';
 import { BASE_CITY_POPULATION_CAPACITY } from '../../data/populationCapacity';
 import {
@@ -36,6 +37,7 @@ export interface AIPowerPlantCityPlanningInput {
 export interface AIPowerPlantPlanningContext {
   readonly nationId: string;
   readonly isHuman?: boolean;
+  readonly netHappiness?: number;
   readonly cities: readonly AIPowerPlantCityPlanningInput[];
   readonly getResourceCapacity: (resourceId: PowerPlantMetadata['requiredResourceId']) => number;
   readonly canConstruct: (cityId: string, buildingId: string) => boolean;
@@ -100,7 +102,9 @@ export function planAIPowerPlants(
       .map((plant) => evaluateOption(context, city, currentCapacity, plant))
       .filter((decision): decision is AIPowerPlantDecision => decision !== undefined);
 
+    const pollutionWeight = context.netHappiness === undefined ? 0 : context.netHappiness < 0 ? 4 : 1;
     const choice = [...buildingOptions, ...plantOptions]
+      .map(option => ({ ...option, score: option.score + (FOSSIL_PLANT_HAPPINESS[option.buildingId] ?? 0) * pollutionWeight }))
       .sort((a, b) => b.score - a.score || b.targetCapacity - a.targetCapacity || a.buildingId.localeCompare(b.buildingId))[0];
     if (!choice) continue;
     decisions.set(city.id, choice);

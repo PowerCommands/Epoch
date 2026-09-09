@@ -1,7 +1,9 @@
 import { nuclearPlantAtRisk, nuclearPlantRoll, NUCLEAR_PLANT_MELTDOWN_CHANCE } from '../data/nuclearPlants';
-import type { Tile } from '../types/map';
+import { TileType, type Tile } from '../types/map';
 import { getBuildingById } from '../data/buildings';
 import { getNaturalResourceById } from '../data/naturalResources';
+import { getCityRenewableCapacity } from './ImprovementEffects';
+import { EMPTY_ENVIRONMENT, FOSSIL_PLANT_HAPPINESS, NUCLEAR_WASTE_HAPPINESS_PENALTY, type EnvironmentalHappiness } from '../data/environment';
 import { BASE_CITY_POPULATION_CAPACITY } from '../data/populationCapacity';
 import {
   POWER_PLANTS,
@@ -289,7 +291,28 @@ export class PowerPlantSystem {
     const infrastructureBonus = this.cityManager.getBuildings(cityId).getAll().reduce((total, buildingId) => (
       total + (getBuildingById(buildingId)?.modifiers.populationCapacity ?? 0)
     ), 0);
-    return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus;
+    return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus + this.getCityRenewableCapacity(cityId);
+  }
+
+  getCityRenewableCapacity(cityId: string): number {
+    const city = this.cityManager.getCity(cityId);
+    return city ? getCityRenewableCapacity(city, this.mapData) : 0;
+  }
+
+  getEnvironmentalHappiness(nationId: string): EnvironmentalHappiness {
+    const result = { ...EMPTY_ENVIRONMENT };
+    for (const city of this.cityManager.getCitiesByOwner(nationId)) {
+      const plant = this.getCityPowerPlant(city.id);
+      if (!plant?.active) continue;
+      const penalty = FOSSIL_PLANT_HAPPINESS[plant.buildingId] ?? 0;
+      if (plant.buildingId === 'coal_power_plant') result.coal += penalty;
+      if (plant.buildingId === 'oil_power_plant') result.oil += penalty;
+      if (plant.buildingId === 'gas_power_plant') result.gas += penalty;
+    }
+    for (const row of this.mapData.tiles) for (const tile of row) {
+      if (tile.ownerId === nationId && tile.type === TileType.NuclearWaste) result.nuclearWaste += NUCLEAR_WASTE_HAPPINESS_PENALTY;
+    }
+    return result;
   }
 
   getCityProductionMultiplier(cityId: string): number {
