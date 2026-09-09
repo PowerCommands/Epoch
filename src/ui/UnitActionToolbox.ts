@@ -1,11 +1,10 @@
-import { getTechnologyById } from '../data/technologies';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
 import { hasCargoCapacity } from '../data/units';
 import type { BuilderSystem, BuildImprovementPreview } from '../systems/BuilderSystem';
 import type { UnitUpgradePreview, UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 
-export type UnitActionMode = 'rebase' | 'loadWeapon' | 'payload' | 'nuclearPayload' | 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'dig' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel' | 'debark' | 'cycleImprovement';
+export type UnitActionMode = 'rebase' | 'loadWeapon' | 'payload' | 'nuclearPayload' | 'move' | 'found' | 'attack' | 'ranged' | 'build' | 'dig' | 'upgrade' | 'sleep' | 'dismiss' | 'explore' | 'destroyImprovement' | 'destroyBuilding' | 'repair' | 'intel' | 'debark';
 
 /** Recon unit types eligible for Auto Explore (Scout, Scout Boat, and future recon). */
 function isReconUnit(unit: Unit): boolean {
@@ -59,10 +58,6 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
     mode: 'ranged',
     label: 'Ranged',
     isAvailable: (unit) => !!STRATEGIC_WEAPONS[unit.unitType.id] || ((unit.unitType.rangedStrength ?? 0) > 0 && (unit.unitType.range ?? 1) >= 2),
-  },
-  {
-    mode: 'cycleImprovement', label: 'Choose Improvement',
-    isAvailable: (unit) => unit.unitType.id === 'worker' || unit.unitType.id === 'transport_ship',
   },
   {
     mode: 'build',
@@ -130,7 +125,7 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
 
 type ModeChangedListener = (mode: UnitActionMode) => void;
 type ChangedListener = () => void;
-type BuildAvailabilityProvider = Pick<BuilderSystem, 'getCurrentTileBuildPreview'> & Partial<Pick<BuilderSystem, 'cycleImprovement' | 'getImprovementChoices'>>;
+type BuildAvailabilityProvider = Pick<BuilderSystem, 'getCurrentTileBuildPreview'>;
 type DismissAvailabilityProvider = {
   getCargoForTransport(unit: Unit): Unit | undefined;
 };
@@ -153,7 +148,7 @@ type DebarkAvailabilityProvider = {
   getDebarkPreview(unit: Unit): DebarkPreview;
 };
 
-export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['cycleImprovement', 'rebase', 'loadWeapon', 'payload', 'nuclearPayload', 'move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'dig', 'repair', 'intel', 'debark', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
+export const HUD_ACTION_ORDER: readonly UnitActionMode[] = ['rebase', 'loadWeapon', 'payload', 'nuclearPayload', 'move', 'explore', 'attack', 'ranged', 'upgrade', 'sleep', 'build', 'dig', 'repair', 'intel', 'debark', 'found', 'destroyImprovement', 'destroyBuilding', 'dismiss'];
 
 // LEGACY: this class still owns shared action state/mode rules, but its HTML
 // rendering path is no longer mounted in active gameplay. Phaser HUD is the
@@ -252,7 +247,6 @@ export class UnitActionToolbox {
   tryActivate(mode: UnitActionMode): void {
     const unit = this.selectedUnit;
     if (!unit) return;
-    if (mode === 'cycleImprovement') { this.buildAvailabilityProvider?.cycleImprovement?.(unit); this.refresh(); return; }
     const action = ACTIONS.find((a) => a.mode === mode);
     if (!action || !this.isActionAvailable(action, unit)) return;
     // Any explicit non-explore action cancels auto-exploration immediately;
@@ -281,8 +275,8 @@ export class UnitActionToolbox {
    * Returns the actions the HUD should render for the currently selected human
    * unit (empty when no unit is selected). Unavailable actions are hidden, with
    * one deliberate exception: the build/improve action stays visible but
-   * disabled for units that *can* build improvements yet not on the current tile
-   * (e.g. forest needing a tech). That way the player sees the button greyed out
+   * disabled when the resolved improvement is locked by technology. The player
+   * sees the button greyed out
    * with a tooltip explaining why, instead of it silently disappearing.
    */
   getHudActions(): UnitActionViewState[] {
@@ -305,10 +299,11 @@ export class UnitActionToolbox {
       const debarkPreview = action.mode === 'debark' ? this.getDebarkPreview(unit) : undefined;
       const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview, debarkPreview);
 
-      // Keep the build action on screen (greyed out) for capable builders so the
-      // tooltip can explain why it can't build here; hide every other unavailable action.
-      const keepDisabled = (action.mode === 'build' || action.mode === 'dig' || action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id]))
-        && (action.isAvailable(unit) || (action.mode === 'build' && !!preview?.improvement?.populationCapacity && preview.transportUnitId === unit.id));
+      // Keep a resolved, locked Build action visible so its tooltip explains the technology.
+      const keepDisabled = ((action.mode === 'build' || action.mode === 'dig')
+        ? preview?.improvement !== undefined && (action.isAvailable(unit) || preview.transportUnitId === unit.id)
+        : action.isAvailable(unit) && (action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id])))
+        && (action.mode !== 'build' || preview?.improvement?.requiredBuilderCapability !== 'dig');
       if (!isAvailable && !keepDisabled) continue;
 
       const isActive = this.mode === action.mode || action.isToggledOn?.(unit) === true;
@@ -358,8 +353,10 @@ export class UnitActionToolbox {
       const upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined;
       const debarkPreview = action.mode === 'debark' ? this.getDebarkPreview(unit) : undefined;
       const isAvailable = this.isActionAvailable(action, unit, preview, upgradePreview, debarkPreview);
-      const keepDisabled = (action.mode === 'build' || action.mode === 'dig' || action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id]))
-        && (action.isAvailable(unit) || (action.mode === 'build' && !!preview?.improvement?.populationCapacity && preview.transportUnitId === unit.id));
+      const keepDisabled = ((action.mode === 'build' || action.mode === 'dig')
+        ? preview?.improvement !== undefined && (action.isAvailable(unit) || preview.transportUnitId === unit.id)
+        : action.isAvailable(unit) && (action.mode === 'debark' || (action.mode === 'ranged' && !!STRATEGIC_WEAPONS[unit.unitType.id])))
+        && (action.mode !== 'build' || preview?.improvement?.requiredBuilderCapability !== 'dig');
       if (!isAvailable && !keepDisabled) continue;
 
       const button = document.createElement('button');
@@ -375,7 +372,6 @@ export class UnitActionToolbox {
       button.disabled = !isAvailable;
       button.style.opacity = isAvailable ? '1' : '0.4';
       button.addEventListener('click', () => {
-        if (action.mode === 'cycleImprovement') { this.tryActivate(action.mode); return; }
         if (!this.isActionAvailable(action, unit)) return;
         if (action.mode === 'sleep' || action.mode === 'dismiss' || action.mode === 'upgrade') {
           this.triggerMode(action.mode);
@@ -401,13 +397,11 @@ export class UnitActionToolbox {
     upgradePreview = action.mode === 'upgrade' ? this.getUpgradePreview(unit) : undefined,
     debarkPreview = action.mode === 'debark' ? this.getDebarkPreview(unit) : undefined,
   ): boolean {
-    if (action.mode === 'cycleImprovement') return (this.buildAvailabilityProvider?.getImprovementChoices?.(unit).length ?? 0) > 1;
-    const isCargoBuild = action.mode === 'build' && !!buildPreview?.improvement?.populationCapacity && buildPreview.transportUnitId === unit.id;
     const isCargoDig = action.mode === 'dig'
       && buildPreview?.canBuild === true
       && buildPreview.improvement?.requiredBuilderCapability === 'dig'
       && buildPreview.transportUnitId === unit.id;
-    if (!action.isAvailable(unit) && !isCargoDig && !isCargoBuild) return false;
+    if (!action.isAvailable(unit) && !isCargoDig) return false;
     if (action.mode === 'ranged' && (unit.unitType.aircraftRole || STRATEGIC_WEAPONS[unit.unitType.id])) return unit.movementPoints > 0;
     if (action.mode === 'dismiss' && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
       return false;
@@ -506,12 +500,10 @@ export class UnitActionToolbox {
         ? 'Unload cargo to an adjacent valid tile.'
         : debarkPreview?.reason ?? 'Cannot debark cargo here.';
     }
-    if (action.mode === 'cycleImprovement') return 'Cycle through suitable improvements, then use Build to construct the selected one.';
     if (action.mode !== 'build' && action.mode !== 'dig') return undefined;
     const improvement = buildPreview?.improvement;
-    if (improvement?.populationCapacity) return `${improvement.description ?? improvement.name}\n+${improvement.populationCapacity} Population Capacity\nMaintenance: ${improvement.maintenance} Gold/turn\nRequires ${getTechnologyById(improvement.requiredTechnologyId ?? '')?.name ?? improvement.requiredTechnologyId}\nTerrain: ${improvement.allowedTileTypes.join(', ')}${buildPreview?.reason ? `\n${buildPreview.reason}` : ''}`;
     if (buildPreview?.canBuild) {
-      return action.mode === 'dig' ? 'Excavate this archaeological site.' : 'Build improvement';
+      return action.mode === 'dig' ? 'Excavate this archaeological site.' : `Build ${improvement?.name ?? 'improvement'}`;
     }
     return buildPreview?.reason ?? 'Cannot build improvement';
   }

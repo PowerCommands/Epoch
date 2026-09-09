@@ -28,3 +28,5 @@ Use case: stylized-concept. Create a single transparent PNG map improvement spri
 - `oil_well.png`: recognizable steel oil pumpjack, small storage tanks and pipes on compact gravel working area
 - `fishing_boats.png`: two small wooden fishing vessels with nets, fishing floats and tiny translucent wakes, no solid ground
 - `offshore_platform.png`: compact steel offshore oil drilling platform on four legs, derrick, pipes and small deck crane, no ground or sea background
+
+Ordinary Improvements resolve from the resource's `improvementId` / `improvementIdByTileType`, then (only without a resource) the centralized terrain defaults. Workers and Work Boats display one named Build action. Archaeology and nuclear maintenance/cleanup retain their specialized mechanics. Renewable installation artwork belongs to the Building sprite pipeline.

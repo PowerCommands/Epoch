@@ -309,6 +309,46 @@ test('AI/default queue entry chooses and retains an available destination', () =
 });
 
 
+test('map display state: aircraftAt/usage/allSites back the ✈ current/max indicator authoritatively', () => {
+  const h = harness();
+  const home = h.city();                       // owner 'a', AIRFIELD capacity 2
+  const enemy = h.city(20, 10, 'b');           // owner 'b', AIRFIELD capacity 2
+  const homeBase = { kind: 'city' as const, id: home.id };
+
+  // Empty base: visible site with 0 occupancy but real capacity (→ "✈ 0 / 2").
+  h.air.reconcile();
+  const emptySite = h.air.allSites().find(site => site.base.kind === 'city' && site.base.id === home.id)!;
+  assert.equal(h.air.aircraftAt(homeBase).length, 0);
+  assert.equal(h.air.usage(homeBase), 0);
+  assert.equal(emptySite.capacity, 2);
+
+  // One aircraft (→ "✈ 1 / 2").
+  const first = h.spawn(GREAT_WAR_BOMBER); h.air.reconcile();
+  assert.deepEqual(h.air.aircraftAt(homeBase).map(u => u.id), [first.id]);
+  assert.equal(h.air.usage(homeBase), 1);
+
+  // Two aircraft (→ "✈ 2 / 2"); representative order is stable (sorted by id),
+  // independent of spawn order, so the visible plane never flickers.
+  const second = h.spawn(TRIPLANE); h.air.reconcile();
+  const stable = [first.id, second.id].sort((a, b) => a.localeCompare(b));
+  assert.deepEqual(h.air.aircraftAt(homeBase).map(u => u.id), stable);
+  assert.equal(h.air.usage(homeBase), 2);
+
+  // AI-owned bases surface through the exact same all-owner enumeration/rules.
+  const aiSite = h.air.allSites().find(site => site.ownerId === 'b');
+  assert.ok(aiSite && aiSite.base.id === enemy.id);
+
+  // Removing an aircraft immediately drops occupancy for the indicator.
+  h.units.removeUnit(second.id);
+  assert.equal(h.air.usage(homeBase), 1);
+  assert.deepEqual(h.air.aircraftAt(homeBase).map(u => u.id), [first.id]);
+
+  // Tooltip context reads the same base state (name + occupancy/capacity).
+  const site = h.air.baseFor(first)!;
+  assert.match(site.name, /Airfield/);
+  assert.equal(`${h.air.usage(site.base)} / ${site.capacity}`, '1 / 2');
+});
+
 test('legacy city-only air buildings and their queues gain physical destinations on load', () => {
   const h = harness();
   const saved: SavedCity = {

@@ -82,7 +82,10 @@ export class InfrastructureRepairSystem {
     if (target.kind === 'wonder') {
       this.wonderSystem.setWonderBroken(target.id, false);
     } else if (target.city) {
-      this.cityManager.getBuildings(target.city.id).setBroken(target.id, false);
+      if (getBuildingById(target.id)?.repeatable) {
+        const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
+        if (tile) tile.buildingBroken = undefined;
+      } else this.cityManager.getBuildings(target.city.id).setBroken(target.id, false);
     }
     this.consumeUnitTurn(unit);
 
@@ -122,7 +125,7 @@ export class InfrastructureRepairSystem {
       if (
         city
         && city.ownerId === unit.ownerId
-        && this.cityManager.getBuildings(city.id).isBroken(tile.buildingId)
+        && (getBuildingById(tile.buildingId)?.repeatable ? tile.buildingBroken : this.cityManager.getBuildings(city.id).isBroken(tile.buildingId))
       ) {
         const building = getBuildingById(tile.buildingId);
         return {

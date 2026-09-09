@@ -9,6 +9,8 @@ interface BuildingInput {
   era: Era;
   placement?: BuildingPlacement;
   cost: number;
+  repeatable?: boolean;
+  requiresEmptyTile?: boolean;
   aircraftCapacity?: number;
   maintenance: number;
   modifiers?: BuildingModifiers;
@@ -25,6 +27,8 @@ interface BuildingInput {
 function building(input: BuildingInput): BuildingType {
   return {
     id: input.id,
+    repeatable: input.repeatable,
+    requiresEmptyTile: input.requiresEmptyTile,
     name: input.name,
     era: input.era,
     description: input.description ?? describeModifiers(input.modifiers ?? {}),
@@ -163,7 +167,18 @@ export const MILITARY_BASE = building({ id: 'military_base', name: 'Military Bas
 export const MEDICAL_LAB = building({ id: 'medical_lab', name: 'Medical Lab', era: 'modern', cost: 500, maintenance: 3, description: `Food carryover omitted until growth modifiers exist. Existing bonuses: +2 food, +1 happiness. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.medicalLab}.`, modifiers: { foodPerTurn: 2, happinessPerTurn: 1, populationCapacity: CITY_POPULATION_CAPACITY_BONUSES.medicalLab } });
 
 export const RESEARCH_LAB = building({ id: 'research_lab', name: 'Research Lab', era: 'atomic', cost: 500, maintenance: 3, modifiers: { sciencePerTurn: 4, sciencePercent: 50, happinessPerTurn: 1 } });
-export const SOLAR_PLANT = building({ id: 'solar_plant', name: 'Solar Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Legacy Solar Plant retained for existing saves. New solar energy uses Solar Panels and CSP tile improvements.' });
+// Production replaces the former Worker investment (45 production); existing
+// capacity, upkeep, terrain and technology values are retained.
+export const WIND_TURBINE = building({ id: 'wind_turbine', name: 'Wind Turbine', era: 'modern', cost: 45, maintenance: 1, repeatable: true, requiresEmptyTile: true, allowedTerrains: [TileType.Plains, TileType.Meadow, TileType.Beach], modifiers: { populationCapacity: 1 } });
+export const SOLAR_PANELS = building({ id: 'solar_panels', name: 'Solar Panels', era: 'modern', cost: 45, maintenance: 1, repeatable: true, requiresEmptyTile: true, allowedTerrains: [TileType.Plains, TileType.Meadow, TileType.Beach], modifiers: { populationCapacity: 1 } });
+export const OFFSHORE_WIND_FARM = building({ id: 'offshore_wind_farm', name: 'Offshore Wind Farm', era: 'modern', cost: 45, maintenance: 2, repeatable: true, requiresEmptyTile: true, placement: 'water', allowedTerrains: [TileType.Coast, TileType.Ocean], modifiers: { populationCapacity: 3 } });
+export const CSP = building({ id: 'csp', name: 'CSP – Concentrated Solar Power', era: 'atomic', cost: 45, maintenance: 2, repeatable: true, requiresEmptyTile: true, allowedTerrains: [TileType.Desert], modifiers: { populationCapacity: 3 }, description: 'Large-scale solar thermal generation using concentrated sunlight and thermal energy storage. +3 Population Capacity.' });
+export const RENEWABLE_BUILDINGS = [WIND_TURBINE, SOLAR_PANELS, OFFSHORE_WIND_FARM, CSP];
+export function isRenewableBuilding(id: string): boolean {
+  return RENEWABLE_BUILDINGS.some(building => building.id === id);
+}
+
+export const SOLAR_PLANT = building({ id: 'solar_plant', name: 'Solar Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: 'Legacy Solar Plant retained for existing saves. New solar energy uses terrain-placed Solar Panels and CSP buildings.' });
 export const NUCLEAR_POWER_PLANT = building({ id: 'nuclear_plant', name: 'Nuclear Power Plant', era: 'atomic', cost: 360, maintenance: 3, modifiers: { productionPerTurn: 5, productionPercent: 15, happinessPerTurn: 1 }, description: `Requires Uranium to construct and operate. Lifespan: 100 turns. Population Capacity: +${CITY_POPULATION_CAPACITY_BONUSES.nuclearPowerPlant}. Active production multiplier: x6. Existing local bonuses are retained.` });
 /** Legacy export retained for code that already referred to the existing Nuclear Plant definition. */
 export const NUCLEAR_PLANT = NUCLEAR_POWER_PLANT;
@@ -179,6 +194,7 @@ export const AIRFIELD = building({ id: 'airfield', name: 'Airfield', era: 'indus
 export const AIR_BASE = building({ id: 'air_base', name: 'Air Base', era: 'modern', placement: 'land', cost: 400, maintenance: 5, aircraftCapacity: 4, upgradesFrom: AIRFIELD.id, canBuildWithoutPredecessor: true, description: 'Aircraft Capacity: 4 total. Replaces Airfield.' });
 
 export const ALL_BUILDINGS: BuildingType[] = [
+  ...RENEWABLE_BUILDINGS,
   AIRFIELD, AIR_BASE,
   MONUMENT, GRANARY, SHRINE, BARRACKS, WALLS, WATER_MILL, STONE_WORKS, SEWERS,
   LIBRARY, CIRCUS, COLOSSEUM, COURTHOUSE, TEMPLE, LIGHTHOUSE, STABLE,

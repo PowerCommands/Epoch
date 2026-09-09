@@ -7,6 +7,7 @@ import { getEffectiveMeleeStrength, getEffectiveRangedStrength } from '../../uti
 import type { NationManager } from '../../systems/NationManager';
 import type { SelectionManager } from '../../systems/SelectionManager';
 import type { UnitManager } from '../../systems/UnitManager';
+import type { AirOperationsSystem } from '../../systems/AirOperationsSystem';
 
 type AddOwned = <T extends Phaser.GameObjects.GameObject>(object: T) => T;
 
@@ -50,6 +51,7 @@ export class UnitHoverDiagnosticHud {
     private readonly selectionManager: SelectionManager,
     private readonly unitManager: UnitManager,
     private readonly nationManager: NationManager,
+    private readonly airOperations?: AirOperationsSystem,
   ) {
     this.background = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 200, 100, BG_COLOR, BG_ALPHA))
       .setOrigin(0, 0)
@@ -168,6 +170,18 @@ export class UnitHoverDiagnosticHud {
       const name = getImprovementById(unit.buildAction.improvementId)?.name ?? unit.buildAction.improvementId;
       const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
       lines.push(`Building: ${name} (${percent}%)`);
+    }
+
+    // Aircraft carry their basing context: which air-capable base they are
+    // stationed at and how full that base is (read from the authoritative
+    // AirOperationsSystem, not duplicated here).
+    if (unit.unitType.aircraftRole && this.airOperations) {
+      const site = this.airOperations.baseFor(unit);
+      if (site) {
+        lines.push('');
+        lines.push(site.name);
+        lines.push(`Air Capacity: ${this.airOperations.usage(site.base)} / ${site.capacity}`);
+      }
     }
 
     this.titleText.setText(unit.name);

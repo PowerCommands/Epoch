@@ -196,7 +196,8 @@ export class InfrastructureSabotageSystem {
       lootGold = BARBARIAN_CAMP_DESTRUCTION_LOOT_GOLD;
       this.nationManager.getResources(unit.ownerId).gold += lootGold;
     } else if (owningCity) {
-      this.cityManager.getBuildings(owningCity.id).setBroken(target.id, true);
+      if (getBuildingById(target.id)?.repeatable) tile.buildingBroken = true;
+      else this.cityManager.getBuildings(owningCity.id).setBroken(target.id, true);
     }
     this.consumeUnitTurn(unit);
 
@@ -251,7 +252,7 @@ export class InfrastructureSabotageSystem {
         return tile.buildingBroken ? null : { kind: 'camp', id: tile.buildingId };
       }
       const owningCity = this.findCityOwningTile(tile);
-      if (owningCity && !this.cityManager.getBuildings(owningCity.id).isBroken(tile.buildingId)) {
+      if (owningCity && (getBuildingById(tile.buildingId)?.repeatable ? !tile.buildingBroken : !this.cityManager.getBuildings(owningCity.id).isBroken(tile.buildingId))) {
         return { kind: 'building', id: tile.buildingId };
       }
     }

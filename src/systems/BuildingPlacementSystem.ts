@@ -81,6 +81,7 @@ export class BuildingPlacementSystem {
     return city.ownedTileCoords
       .map((coord) => mapData.tiles[coord.y]?.[coord.x])
       .filter((tile): tile is Tile => tile !== undefined)
+      .filter((tile) => !def.requiresEmptyTile || (tile.ownerId === city.ownerId && (tile.x !== city.tileX || tile.y !== city.tileY)))
       .filter((tile) => this.isTileValidForPlacement(tile, def))
       .map((tile) => ({ x: tile.x, y: tile.y }))
       .sort((a, b) => {
@@ -115,6 +116,11 @@ export class BuildingPlacementSystem {
   ): Tile | null {
     if (building.placement === 'city') return null;
     if (!this.isAutomaticUpgrade(city, building, mapData)) {
+      if (building.requiresEmptyTile) {
+        const tile = this.findReservedTile(city.id, building.id, mapData);
+        if (!tile || tile.ownerId !== city.ownerId
+          || !city.ownedTileCoords.some(coord => coord.x === tile.x && coord.y === tile.y)) return null;
+      }
       return this.finalizeReservedBuilding(city.id, building.id, mapData);
     }
 
@@ -175,6 +181,8 @@ export class BuildingPlacementSystem {
     const tile = this.findReservedTile(cityId, buildingId, mapData);
     if (!tile) return null;
 
+    const def = getBuildingById(buildingId);
+    if (def?.requiresEmptyTile && (!this.isTerrainCompatible(tile, def) || tile.resourceId || tile.improvementId || tile.improvementConstruction || tile.buildingId)) return null;
     tile.buildingConstruction = undefined;
     tile.buildingId = buildingId;
     tile.buildingBroken = undefined;
@@ -222,6 +230,7 @@ export class BuildingPlacementSystem {
 
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
     if (building.placement === 'city') return false;
+    if (building.requiresEmptyTile && (tile.resourceId || tile.improvementId || tile.improvementConstruction)) return false;
     const replacingPowerPlant = tile.buildingId !== undefined
       && isPowerPlantBuilding(building.id)
       && isPowerPlantBuilding(tile.buildingId);

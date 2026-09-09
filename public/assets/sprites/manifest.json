@@ -197,6 +197,12 @@
           "size": 59781
         },
         {
+          "name": "csp.png",
+          "path": "/assets/sprites/buildings/csp.png",
+          "type": "PNG",
+          "size": 1644165
+        },
+        {
           "name": "factory.png",
           "path": "/assets/sprites/buildings/factory.png",
           "type": "PNG",
@@ -323,6 +329,12 @@
           "size": 62685
         },
         {
+          "name": "offshore_wind_farm.png",
+          "path": "/assets/sprites/buildings/offshore_wind_farm.png",
+          "type": "PNG",
+          "size": 998386
+        },
+        {
           "name": "oil_power_plant.png",
           "path": "/assets/sprites/buildings/oil_power_plant.png",
           "type": "PNG",
@@ -375,6 +387,12 @@
           "path": "/assets/sprites/buildings/shrine.png",
           "type": "PNG",
           "size": 35264
+        },
+        {
+          "name": "solar_panels.png",
+          "path": "/assets/sprites/buildings/solar_panels.png",
+          "type": "PNG",
+          "size": 1684833
         },
         {
           "name": "solar_plant.png",
@@ -435,6 +453,12 @@
           "path": "/assets/sprites/buildings/water_mill.png",
           "type": "PNG",
           "size": 60805
+        },
+        {
+          "name": "wind_turbine.png",
+          "path": "/assets/sprites/buildings/wind_turbine.png",
+          "type": "PNG",
+          "size": 333681
         },
         {
           "name": "windmill.png",
@@ -905,12 +929,6 @@
           "size": 112372
         },
         {
-          "name": "csp.png",
-          "path": "/assets/sprites/improvements/csp.png",
-          "type": "PNG",
-          "size": 1644165
-        },
-        {
           "name": "farm.png",
           "path": "/assets/sprites/improvements/farm.png",
           "type": "PNG",
@@ -941,12 +959,6 @@
           "size": 70307
         },
         {
-          "name": "offshore_wind_farm.png",
-          "path": "/assets/sprites/improvements/offshore_wind_farm.png",
-          "type": "PNG",
-          "size": 998386
-        },
-        {
           "name": "oil_well.png",
           "path": "/assets/sprites/improvements/oil_well.png",
           "type": "PNG",
@@ -965,22 +977,10 @@
           "size": 88657
         },
         {
-          "name": "solar_panels.png",
-          "path": "/assets/sprites/improvements/solar_panels.png",
-          "type": "PNG",
-          "size": 1684833
-        },
-        {
           "name": "underwater_archaeological_site.png",
           "path": "/assets/sprites/improvements/underwater_archaeological_site.png",
           "type": "PNG",
           "size": 92767
-        },
-        {
-          "name": "wind_turbine.png",
-          "path": "/assets/sprites/improvements/wind_turbine.png",
-          "type": "PNG",
-          "size": 333681
         }
       ]
     },

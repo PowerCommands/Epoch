@@ -1,4 +1,4 @@
-import { getCityRenewableCapacity } from '../../systems/ImprovementEffects';
+import { getCityRenewableCapacity } from '../../systems/RenewableBuildingEffects';
 import type { UnitType } from '../../entities/UnitType';
 import { interceptionProfile } from '../../data/airOperations';
 import { getNuclearCapability } from '../../systems/ai/AIStrategicWeapons';
@@ -999,7 +999,6 @@ export class RightSidebarPanelDataProvider {
         rows.push(textRow('Requires the completed associated excavation and a functioning Museum.', true));
       }
     }
-    if (improvement?.populationCapacity) rows.push(textRow(`Renewable Energy: +${improvement.populationCapacity} Population Capacity`), textRow(`Maintenance: ${improvement.maintenance} Gold/turn`));
     if (improvement) rows.push(textRow(`Bonus: ${formatYieldBonus(improvement.yieldBonus)}`));
     if (builderHint) {
       rows.push(textRow(
@@ -1746,7 +1745,7 @@ export class RightSidebarPanelDataProvider {
       : ALL_BUILDINGS;
     const cityBuildings = this.cityManager.getBuildings(city.id);
     for (const buildingType of availableBuildings) {
-      if (cityBuildings.has(buildingType.id)) continue;
+      if (!buildingType.repeatable && cityBuildings.has(buildingType.id)) continue;
       if (isBuildingObsoleteInCity(cityBuildings, buildingType)) continue;
       if (reservedBuildingIds.has(buildingType.id)) continue;
       if (queuedBuildingIds.has(buildingType.id)) continue;

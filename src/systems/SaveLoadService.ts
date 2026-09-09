@@ -1,3 +1,4 @@
+import { migrateRenewableBuildings } from './RenewableBuildingMigration';
 import { BuildingPlacementSystem } from './BuildingPlacementSystem';
 import { getLeaderConfiguration } from '../data/leaderConfiguration';
 import { normalizeRivers, riverMask } from './geography/Rivers';
@@ -587,6 +588,7 @@ export class SaveLoadService {
    * Caller must refresh renderers and UI after this returns.
    */
   static apply(state: SavedGameState, context: SaveLoadContext): void {
+    state = migrateRenewableBuildings(state);
     SaveLoadService.restoreTiles(state.tiles, context.mapData);
     SaveLoadService.applyNations(state.nations, context.nationManager);
     context.consolidationSystem?.restore(state.nations);

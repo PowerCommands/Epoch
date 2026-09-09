@@ -605,7 +605,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Channels power through grids, industry, and city services. Unlocks Hydro Plants, Stock Exchanges, and Police Stations. Also unlocks Wind Turbines for clean population support.',
     prerequisites: ['scientific_theory'],
     leadsTo: ['refrigeration', 'radio', 'replaceable_parts'],
-    unlocks: [{ kind: 'improvement', id: 'wind_turbine' }, { kind: 'building', id: 'hydro_plant' }, { kind: 'building', id: 'stock_exchange' }, { kind: 'building', id: 'police_station' }],
+    unlocks: [{ kind: 'building', id: 'wind_turbine' }, { kind: 'building', id: 'hydro_plant' }, { kind: 'building', id: 'stock_exchange' }, { kind: 'building', id: 'police_station' }],
     // TODO: reveals Aluminum.
   },
   {
@@ -709,7 +709,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Builds advanced circuits, sensors, and naval command systems. Unlocks Carriers and Battleships. Also unlocks Solar Panels for clean population support.',
     prerequisites: ['replaceable_parts', 'flight'],
     leadsTo: ['atomic_theory', 'radar'],
-    unlocks: [{ kind: 'improvement', id: 'solar_panels' }, { kind: 'unit', id: 'carrier' }, { kind: 'unit', id: 'battleship' }],
+    unlocks: [{ kind: 'building', id: 'solar_panels' }, { kind: 'unit', id: 'carrier' }, { kind: 'unit', id: 'battleship' }],
   },
   {
     id: 'radar',
@@ -741,7 +741,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Studies environments, waste, and sustainable city systems. Unlocks Recycling Centers. Also unlocks Offshore Wind Farms for large-scale clean population support.',
     prerequisites: ['atomic_theory', 'penicillin'],
     leadsTo: ['mobile_tactics', 'telecommunications'],
-    unlocks: [{ kind: 'improvement', id: 'offshore_wind_farm' }, { kind: 'building', id: 'recycling_center' }],
+    unlocks: [{ kind: 'building', id: 'offshore_wind_farm' }, { kind: 'building', id: 'recycling_center' }],
   },
   {
     id: 'combined_arms',
@@ -783,7 +783,7 @@ export const ALL_TECHNOLOGIES: TechnologyDefinition[] = [
     description: 'Focuses light into precision tools and advanced weapons. Unlocks Jet Fighters and Modern Armor. Also unlocks CSP – Concentrated Solar Power for Desert energy installations.',
     prerequisites: ['computers'],
     leadsTo: ['stealth'],
-    unlocks: [{ kind: 'improvement', id: 'csp' }, { kind: 'unit', id: 'jet_fighter' }, { kind: 'unit', id: 'modern_armor' }],
+    unlocks: [{ kind: 'building', id: 'csp' }, { kind: 'unit', id: 'jet_fighter' }, { kind: 'unit', id: 'modern_armor' }],
   },
   {
     id: 'nuclear_fission',

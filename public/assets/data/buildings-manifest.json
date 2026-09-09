@@ -1,6 +1,59 @@
 {
   "buildings": [
     {
+      "id": "wind_turbine",
+      "name": "Wind Turbine",
+      "era": "modern",
+      "placement": "land",
+      "allowedTerrains": [
+        "plains",
+        "meadow",
+        "beach"
+      ],
+      "repeatable": true,
+      "requiresEmptyTile": true,
+      "iconPath": "assets/sprites/buildings/wind_turbine.png"
+    },
+    {
+      "id": "solar_panels",
+      "name": "Solar Panels",
+      "era": "modern",
+      "placement": "land",
+      "allowedTerrains": [
+        "plains",
+        "meadow",
+        "beach"
+      ],
+      "repeatable": true,
+      "requiresEmptyTile": true,
+      "iconPath": "assets/sprites/buildings/solar_panels.png"
+    },
+    {
+      "id": "offshore_wind_farm",
+      "name": "Offshore Wind Farm",
+      "era": "modern",
+      "placement": "water",
+      "allowedTerrains": [
+        "coast",
+        "ocean"
+      ],
+      "repeatable": true,
+      "requiresEmptyTile": true,
+      "iconPath": "assets/sprites/buildings/offshore_wind_farm.png"
+    },
+    {
+      "id": "csp",
+      "name": "CSP – Concentrated Solar Power",
+      "era": "atomic",
+      "placement": "land",
+      "allowedTerrains": [
+        "desert"
+      ],
+      "repeatable": true,
+      "requiresEmptyTile": true,
+      "iconPath": "assets/sprites/buildings/csp.png"
+    },
+    {
       "id": "airfield",
       "name": "Airfield",
       "era": "industrial",
@@ -63,6 +116,9 @@
       "name": "Stone Works",
       "era": "ancient",
       "placement": "land",
+      "allowedTerrains": [
+        "mountain"
+      ],
       "iconPath": "assets/sprites/buildings/stone_works.png"
     },
     {
@@ -196,6 +252,9 @@
       "name": "Observatory",
       "era": "medieval",
       "placement": "land",
+      "allowedTerrains": [
+        "mountain"
+      ],
       "iconPath": "assets/sprites/buildings/observatory.png"
     },
     {
@@ -308,6 +367,9 @@
       "name": "Hotel",
       "era": "industrial",
       "placement": "land",
+      "allowedTerrains": [
+        "beach"
+      ],
       "iconPath": "assets/sprites/buildings/hotel.png"
     },
     {

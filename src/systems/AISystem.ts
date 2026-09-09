@@ -1,5 +1,3 @@
-import { RENEWABLE_IMPROVEMENTS } from '../data/improvements';
-import { scoreRenewableImprovement } from './ai/AIRenewablePlanning';
 import { nuclearPlantMaintenancePriority } from '../data/nuclearPlants';
 import { planAirProduction } from './ai/AIAirProduction';
 import { runStrategicWeaponsAI, getNuclearCapability } from './ai/AIStrategicWeapons';
@@ -26,8 +24,8 @@ import {
 import { ALL_BUILDINGS, FACTORY, GRANARY, WORKSHOP, MARKET, MUSEUM, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp } from '../data/buildings';
 import { BARBARIAN_CAMP_CITY_SAFETY_DISTANCE } from '../data/barbarians';
 import { ALL_WONDERS } from '../data/wonders';
-import { getNaturalResourceById, getNaturalResourceImprovementIdForTile, isNaturalResourceRevealed } from '../data/naturalResources';
-import { getImprovementById } from '../data/improvements';
+import { getNaturalResourceById, isNaturalResourceRevealed } from '../data/naturalResources';
+import { getImprovementForTile } from './ImprovementResolution';
 import { ArchaeologicalCultureSystem } from './ArchaeologicalCultureSystem';
 import { canUnitEnterTile, isWaterTile } from './UnitMovementRules';
 import {
@@ -3055,7 +3053,6 @@ export class AISystem {
       if (isCovertOperative(unit.unitType)) continue; // Spy/Agent use AICovertOperationsSystem
       if (this.unitManager.getUnit(unit.id) === undefined) continue;
 
-      if (unit.unitType.id === 'transport_ship' && this.runRenewableBuilder(unit, nationId)) continue;
 
       if (unit.unitType.id === WORK_BOAT.id) {
         this.runWorkBoat(unit, nationId);
@@ -4410,9 +4407,9 @@ export class AISystem {
 
     const resource = getNaturalResourceById(tile.resourceId);
     if (resource === undefined) return false;
-    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    const improvement = getImprovementForTile(tile);
+    const improvementId = improvement?.id;
     if (improvementId === undefined) return false;
-    const improvement = getImprovementById(improvementId);
     if (improvement === undefined) return false;
     // Keep Work Boat targeting capability-driven. In particular, maritime
     // archaeology is reserved for a future expedition AI step.
@@ -4444,60 +4441,6 @@ export class AISystem {
   // Land counterpart to runWorkBoat: AI Workers improve owned land tiles using
   // the shared BuilderSystem rules. Target selection is deterministic and Workers
   // never leave their own territory (every candidate is an owned land tile).
-  private runRenewableBuilder(unit: Unit, nationId: string): boolean {
-    if (!this.builderSystem || !this.powerPlantSystem) return false;
-    const offshore = unit.unitType.id === 'transport_ship';
-    let worker = offshore ? this.unitManager.getCargoUnitsForTransport(unit).find(c => c.unitType.id === 'worker') : unit;
-    if (worker?.isBuildingImprovement()) return true;
-    const resources = this.nationManager.getResources(nationId);
-    const cities = this.cityManager.getCitiesByOwner(nationId);
-    const pending = this.mapData.tiles.flat().filter(t => t.improvementConstruction?.ownerId === nationId);
-    const pendingMaintenance = pending.reduce((sum, t) => sum + (getImprovementById(t.improvementConstruction!.improvementId)?.maintenance ?? 0), 0);
-    const candidates = cities.flatMap(city => {
-      const capacity = this.powerPlantSystem!.getCityPopulationCapacity(city.id);
-      const pendingCapacity = pending.filter(t => t.improvementConstruction?.cityId === city.id)
-        .reduce((sum, t) => sum + (getImprovementById(t.improvementConstruction!.improvementId)?.populationCapacity ?? 0), 0);
-      return city.ownedTileCoords.flatMap(coord => {
-        const tile = this.mapData.tiles[coord.y]?.[coord.x];
-        if (!tile) return [];
-        const distance = this.gridSystem.getDistance({ x: unit.tileX, y: unit.tileY }, tile);
-        if (distance > MAX_WORKER_TARGET_DISTANCE) return [];
-        return RENEWABLE_IMPROVEMENTS.filter(i => !!i.requiredCargoTransportUnitTypeId === offshore
-          && this.builderSystem!.canNationBuildRenewable(nationId, tile, i)).map(improvement => ({
-          tile, improvement, score: scoreRenewableImprovement(improvement, {
-            population: city.population, capacity, pendingCapacity, pendingMaintenance,
-            gold: resources.gold, goldPerTurn: resources.goldPerTurn,
-            economicPriority: this.nationManager.getNation(nationId)?.aiStrategyId === 'economic', distance,
-          }),
-        }));
-      });
-    }).filter(c => c.score > 0).sort((a, b) => b.score - a.score || a.tile.y - b.tile.y || a.tile.x - b.tile.x);
-    if (!candidates.length) return false;
-    // Reuse an unassigned nearby Worker; never steal expedition cargo.
-    if (!worker && offshore && this.unitManager.getCargoUnitsForTransport(unit).length === 0) {
-      const reachable = candidates.some(({ tile }) => (unit.tileX === tile.x && unit.tileY === tile.y)
-        || this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false }) !== null);
-      if (!reachable) return false;
-      worker = this.unitManager.getUnitsByOwner(nationId).find(c => c.unitType.id === 'worker'
-        && !c.carriedByUnitId && !c.isBuildingImprovement() && c.movementPoints > 0
-        && !this.overseasExpansionSystem?.isUnitAssignedToActiveExpedition(c.id)
-        && this.gridSystem.getDistance({ x: c.tileX, y: c.tileY }, { x: unit.tileX, y: unit.tileY }) <= 1);
-      if (worker && !this.unitManager.boardUnit(worker.id, unit.id)) worker = undefined;
-    }
-    if (!worker) return false;
-    for (const candidate of candidates) {
-      const { tile, improvement } = candidate;
-      if (unit.tileX !== tile.x || unit.tileY !== tile.y) {
-        const path = this.pathfindingSystem.findPath(unit, tile.x, tile.y, { respectMovementPoints: false });
-        if (!path) continue;
-        this.movementSystem.moveAlongPath(unit, path);
-      }
-      if (unit.tileX === tile.x && unit.tileY === tile.y) this.builderSystem.build(unit, tile, { improvementId: improvement.id });
-      return true;
-    }
-    return false;
-  }
-
   private runWorker(unit: Unit, nationId: string): void {
     if (!this.builderSystem) return;
     if (unit.unitType.canBuildImprovements !== true || unit.unitType.isNaval === true) return;
@@ -4533,7 +4476,6 @@ export class AISystem {
       if (unit.tileX === tile.x && unit.tileY === tile.y && this.builderSystem.build(unit, tile)) this.logStrategicEvent?.(nationId, `[Strategic] Worker cleaning Nuclear Waste at ${tile.x},${tile.y}`);
       return;
     }
-    if (this.runRenewableBuilder(unit, nationId)) return;
     let target = this.getAssignedWorkerTarget(unit, nationId);
     if (target === null) {
       // An idle Worker keeps searching for a target every turn until it finds a
@@ -4856,9 +4798,9 @@ export class AISystem {
     if (tile.resourceId === undefined || !isUnexcavatedArchaeologicalTile(tile)) return false;
     const resource = getNaturalResourceById(tile.resourceId);
     if (resource === undefined) return false;
-    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    const improvement = getImprovementForTile(tile);
+    const improvementId = improvement?.id;
     if (improvementId === undefined) return false;
-    const improvement = getImprovementById(improvementId);
     // Land archaeology is the Dig that does NOT require a Transport Ship cargo.
     if (improvement === undefined || improvement.requiredBuilderCapability !== 'dig') return false;
     if (improvement.requiredCargoTransportUnitTypeId !== undefined) return false;
@@ -5072,9 +5014,9 @@ export class AISystem {
     if (tile.type !== TileType.Coast && tile.type !== TileType.Ocean) return false;
     const resource = getNaturalResourceById(tile.resourceId);
     if (resource === undefined) return false;
-    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
+    const improvement = getImprovementForTile(tile);
+    const improvementId = improvement?.id;
     if (improvementId === undefined) return false;
-    const improvement = getImprovementById(improvementId);
     // Shipwreck is the underwater Dig that requires an Archaeologist cargo aboard a
     // Transport Ship — the same mandatory rule the human player is held to.
     if (improvement === undefined || improvement.requiredCargoTransportUnitTypeId === undefined) return false;
@@ -6231,7 +6173,7 @@ export class AISystem {
       const queue = this.productionSystem.getQueue(city.id);
 
       for (const building of ALL_BUILDINGS) {
-        if (buildings.has(building.id)) continue;
+        if (!building.repeatable && buildings.has(building.id)) continue;
         if (!this.canBuildBuilding(nationId, building.id)) continue;
 
         const item: Producible = { kind: 'building', buildingType: building };
@@ -8133,7 +8075,7 @@ export class AISystem {
     const candidates: AIProductionCandidate[] = [];
 
     for (const building of ALL_BUILDINGS) {
-      if (buildings.has(building.id)) continue;
+      if (!building.repeatable && buildings.has(building.id)) continue;
       if (!this.canCityBuildBuilding(city, nationId, building)) continue;
       candidates.push({
         item: { kind: 'building', buildingType: building },
@@ -8166,7 +8108,7 @@ export class AISystem {
     for (const buildingId of WARTIME_INFRASTRUCTURE_BUILDING_IDS) {
       const building = getBuildingById(buildingId);
       if (!building) continue;
-      if (buildings.has(building.id)) continue;
+      if (!building.repeatable && buildings.has(building.id)) continue;
       if (!this.canCityBuildBuilding(city, nationId, building)) continue;
       candidates.push({
         item: { kind: 'building', buildingType: building },
@@ -8997,6 +8939,10 @@ export class AISystem {
 
   private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
     if (!this.canBuildBuilding(nationId, building.id)) return false;
+    if (building.repeatable) {
+      const resources = this.nationManager.getResources(nationId);
+      if (resources.gold < building.maintenance * 10 || resources.goldPerTurn < building.maintenance + 1) return false;
+    }
     if (this.productionSystem.getItemProductionBlockReason(city.id, {
       kind: 'building',
       buildingType: building,

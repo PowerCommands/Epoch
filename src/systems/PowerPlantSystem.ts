@@ -2,7 +2,7 @@ import { nuclearPlantAtRisk, nuclearPlantRoll, NUCLEAR_PLANT_MELTDOWN_CHANCE } f
 import { TileType, type Tile } from '../types/map';
 import { getBuildingById } from '../data/buildings';
 import { getNaturalResourceById } from '../data/naturalResources';
-import { getCityRenewableCapacity } from './ImprovementEffects';
+import { getCityRenewableCapacity } from './RenewableBuildingEffects';
 import { EMPTY_ENVIRONMENT, FOSSIL_PLANT_HAPPINESS, NUCLEAR_WASTE_HAPPINESS_PENALTY, type EnvironmentalHappiness } from '../data/environment';
 import { BASE_CITY_POPULATION_CAPACITY } from '../data/populationCapacity';
 import {
@@ -288,9 +288,11 @@ export class PowerPlantSystem {
     const plantBonus = plant?.active
       ? getPowerPlantMetadata(plant.buildingId)?.populationCapacityBonus ?? 0
       : 0;
-    const infrastructureBonus = this.cityManager.getBuildings(cityId).getAll().reduce((total, buildingId) => (
-      total + (getBuildingById(buildingId)?.modifiers.populationCapacity ?? 0)
-    ), 0);
+    const infrastructureBonus = this.cityManager.getBuildings(cityId).getAll().reduce((total, buildingId) => {
+      const building = getBuildingById(buildingId);
+      // Repeated installations are counted from their physical tiles below.
+      return total + (building?.repeatable ? 0 : building?.modifiers.populationCapacity ?? 0);
+    }, 0);
     return BASE_CITY_POPULATION_CAPACITY + infrastructureBonus + plantBonus + this.getCityRenewableCapacity(cityId);
   }
 

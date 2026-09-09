@@ -56,7 +56,18 @@ export class AirOperationsSystem {
       ...this.units.getUnitsByOwner(ownerId).filter(unit => unit.isAlive() && unit.unitType.aircraftCapacity).map(unit => ({ ...position(unit), base: { kind: 'carrier' as const, id: unit.id }, ownerId, name: unit.name, capacity: unit.unitType.aircraftCapacity! })),
     ].filter(site => site.capacity > 0);
   }
-  usage(base: AircraftBase): number { return this.units.getAllUnits().filter(unit => unit.unitType.aircraftRole && sameBase(unit.airBase, base)).length; }
+  /** Aircraft currently stationed at a base, stable id order (authoritative occupancy). */
+  aircraftAt(base: AircraftBase): Unit[] {
+    return this.units.getAllUnits().filter(unit => unit.unitType.aircraftRole && sameBase(unit.airBase, base)).sort((a,b) => a.id.localeCompare(b.id));
+  }
+  usage(base: AircraftBase): number { return this.aircraftAt(base).length; }
+  /** Every air-capable base across all owners; presentation reads occupancy via usage/aircraftAt. */
+  allSites(): AirBaseSite[] {
+    const owners = new Set<string>();
+    for (const city of this.cities.getAllCities()) owners.add(city.ownerId);
+    for (const unit of this.units.getAllUnits()) if (unit.unitType.aircraftCapacity) owners.add(unit.ownerId);
+    return [...owners].flatMap(owner => this.sites(owner));
+  }
   productionDestinations(city: City): AirBaseSite[] {
     return this.sites(city.ownerId).filter(site => this.usage(site.base) < site.capacity)
       .sort((a,b) => this.grid.getDistance(position(city),a)-this.grid.getDistance(position(city),b) || a.base.id.localeCompare(b.base.id));

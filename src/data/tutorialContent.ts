@@ -720,7 +720,7 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
       { kind: 'heading', text: 'Luxury Resources' },
       { kind: 'paragraph', text: 'Luxury resources such as wine, silver and gems improve happiness and the prosperity of your civilization.' },
       { kind: 'heading', text: 'Bonus Resources' },
-      { kind: 'paragraph', text: 'Bonus resources such as wheat, cattle and fish simply boost the yields of the tiles they sit on. Building the matching tile improvement increases the benefit further.' },
+      { kind: 'paragraph', text: 'Bonus resources such as wheat, cattle and fish simply boost the yields of the tiles they sit on. Building the matching tile improvement increases the benefit further. A resource determines its required Improvement; otherwise terrain may have one default. The Worker action directly says what will be built, such as Build Farm. Terrain without a default or resource has no ordinary Build action.' },
       { kind: 'heading', text: 'Access' },
       { kind: 'paragraph', text: 'You gain access to a resource in one of two ways: by controlling the tile it sits on inside your borders, or by importing it through an active trade agreement. Imported resources count exactly like ones you own — for building units, running power plants, and every other effect — and that access disappears again if the trade ends or is cut off by a Boycott or Embargo.' },
       { kind: 'note', text: 'With Foreign Resource Exploitation Rights (unlocked by Colonialism), a nation can develop natural resources inside another nation’s territory; the resource then belongs to the exploiting nation, not the territorial owner. See the Foreign Resource Exploitation section.' },

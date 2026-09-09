@@ -2,9 +2,9 @@ import { MAINTAIN_NUCLEAR_PLANT } from '../data/nuclearPlants';
 import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
-import { getImprovementById, getImprovementForTileType, RENEWABLE_IMPROVEMENTS, type TileImprovementDefinition } from '../data/improvements';
-import { getNaturalResourceById, getNaturalResourceImprovementIdForTile } from '../data/naturalResources';
-import { isBarbarianCamp } from '../data/buildings';
+import { getImprovementById, type TileImprovementDefinition } from '../data/improvements';
+import { getImprovementForTile } from './ImprovementResolution';
+import { isBarbarianCamp, getBuildingById } from '../data/buildings';
 import { TileType, type MapData, type Tile } from '../types/map';
 import { canUnitEnterTile } from './UnitMovementRules';
 import type { CityManager } from './CityManager';
@@ -40,7 +40,6 @@ export interface BuildImprovementPreview {
 }
 
 interface BuildImprovementOptions {
-  improvementId?: string;
   consumeMovement?: boolean;
   requireMovement?: boolean;
 }
@@ -51,40 +50,6 @@ interface CargoBuildContext {
 }
 
 export class BuilderSystem {
-  private readonly selectedImprovements = new Map<string, { id: string; x: number; y: number }>();
-
-  selectImprovement(unitId: string, improvementId: string): void {
-    const unit = this.unitManager.getUnit(unitId);
-    if (unit) this.selectedImprovements.set(unitId, { id: improvementId, x: unit.tileX, y: unit.tileY });
-  }
-
-  getImprovementChoices(unit: Unit): TileImprovementDefinition[] {
-    const tile = this.mapData.tiles[unit.tileY]?.[unit.tileX];
-    if (!tile || tile.improvementId || tile.improvementConstruction) return [];
-    const normal = this.resolveImprovementForTile(tile);
-    return [normal, ...RENEWABLE_IMPROVEMENTS].filter((improvement): improvement is TileImprovementDefinition =>
-      !!improvement && improvement.allowedTileTypes.includes(tile.type)
-      && (improvement.requiredCargoTransportUnitTypeId
-        ? !!this.getCargoBuildContext(unit, improvement)
-        : canUnitConstructImprovement(unit.unitType, improvement)));
-  }
-
-  cycleImprovement(unit: Unit): void {
-    const choices = this.getImprovementChoices(unit);
-    if (!choices.length) return;
-    const current = this.getCurrentTileBuildPreview(unit).improvementId;
-    this.selectImprovement(unit.id, choices[(choices.findIndex(i => i.id === current) + 1) % choices.length].id);
-  }
-
-  canNationBuildRenewable(nationId: string, tile: Tile, improvement: TileImprovementDefinition): boolean {
-    return !!improvement.populationCapacity && tile.ownerId === nationId
-      && !tile.improvementId && !tile.improvementConstruction && !tile.resourceId && !tile.buildingId
-      && !this.cityManager.getCityAt(tile.x, tile.y)
-      && improvement.allowedTileTypes.includes(tile.type)
-      && !!this.getFriendlyCityForOwnedTile(tile.x, tile.y, nationId)
-      && this.researchSystem?.isImprovementUnlocked(nationId, improvement.id) === true;
-  }
-
   private readonly constructionTileByUnitId = new Map<string, Tile>();
 
   private powerPlants?: PowerPlantSystem;
@@ -123,6 +88,8 @@ export class BuilderSystem {
    */
   canNationImproveLandTile(nationId: string, tile: Tile): boolean {
     if (this.isSeaTile(tile)) return false;
+    if (tile.buildingId && getBuildingById(tile.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return false;
+    if (tile.buildingConstruction && getBuildingById(tile.buildingConstruction.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return false;
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
     if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return false; // active camp locks its tile
     if (tile.type === TileType.NuclearWaste) return tile.ownerId === nationId && tile.originalTerrain !== undefined;
@@ -136,7 +103,7 @@ export class BuilderSystem {
       if (this.getFriendlyCityForOwnedTile(tile.x, tile.y, nationId) === null) return false;
     }
 
-    const improvement = isForeign ? this.getResourceImprovement(tile) : this.resolveImprovementForTile(tile);
+    const improvement = getImprovementForTile(tile);
     if (improvement === undefined) return false;
     if (improvement.requiredBuilderCapability !== undefined) return false;
     if (tile.resourceId !== undefined && !this.isResourceVisibleToNation(nationId, tile.resourceId)) return false;
@@ -231,13 +198,7 @@ export class BuilderSystem {
     tile: Tile,
     options: BuildImprovementOptions = {},
   ): BuildImprovementPreview {
-    const selection = this.selectedImprovements.get(unit.id);
-    const requestedId = options.improvementId ?? (selection?.x === tile.x && selection.y === tile.y ? selection.id : undefined);
-    const requested = requestedId ? getImprovementById(requestedId) : undefined;
-    const defaultOffshore = unit.unitType.id === 'transport_ship' && !tile.resourceId && this.isSeaTile(tile)
-      ? RENEWABLE_IMPROVEMENTS.find(i => i.requiredCargoTransportUnitTypeId && this.getCargoBuildContext(unit, i)) : undefined;
-    const chosen = requested ?? defaultOffshore;
-    const resourceImprovement = chosen ?? this.getResourceImprovement(tile);
+    const resourceImprovement = getImprovementForTile(tile);
     const cargoContext = resourceImprovement?.requiredCargoTransportUnitTypeId !== undefined
       ? this.getCargoBuildContext(unit, resourceImprovement)
       : undefined;
@@ -266,6 +227,8 @@ export class BuilderSystem {
       if ((options.requireMovement ?? true) && movementUnit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
       return this.buildablePreview(getImprovementById(MAINTAIN_NUCLEAR_PLANT)!, builderUnit);
     }
+    if (tile.buildingId && getBuildingById(tile.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return { canBuild: false, reason: 'Building occupies this tile' };
+    if (tile.buildingConstruction && getBuildingById(tile.buildingConstruction.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return { canBuild: false, reason: 'Building occupies this tile' };
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
     if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };
@@ -275,16 +238,6 @@ export class BuilderSystem {
       return this.buildablePreview(getImprovementById('clean_nuclear_waste')!, builderUnit);
     }
     if (this.cityManager.getCityAt(tile.x, tile.y) !== undefined) return { canBuild: false, reason: 'City tile cannot be improved' };
-    if (chosen?.populationCapacity) {
-      const renewablePreview = this.buildablePreview(chosen, builderUnit, cargoContext);
-      if (tile.ownerId !== builderUnit.ownerId || !this.getFriendlyCityForOwnedTile(tile.x, tile.y, builderUnit.ownerId)) return { ...renewablePreview, canBuild: false, improvement: chosen, reason: 'Requires an owned city tile' };
-      if (!chosen.allowedTileTypes.includes(tile.type)) return { ...renewablePreview, canBuild: false, improvement: chosen, reason: 'Invalid terrain for this improvement' };
-      if (tile.resourceId || tile.buildingId) return { ...renewablePreview, canBuild: false, improvement: chosen, reason: 'Requires an open tile without a resource or building' };
-      if (!canUnitConstructImprovement(builderUnit.unitType, chosen) || (chosen.requiredCargoTransportUnitTypeId && !cargoContext)) return { ...renewablePreview, canBuild: false, improvement: chosen, reason: 'Requires a Worker aboard a Transport Ship' };
-      const technology = this.researchSystem?.getRequiredTechnologyForImprovement(chosen.id);
-      if (!this.researchSystem?.isImprovementUnlocked(builderUnit.ownerId, chosen.id)) return { ...renewablePreview, canBuild: false, improvement: chosen, improvementId: chosen.id, reason: `Requires ${technology?.name ?? chosen.requiredTechnologyId}` };
-      return this.buildablePreview(chosen, builderUnit, cargoContext);
-    }
     if (!canUnitEnterTile(movementUnit, tile)) return { canBuild: false, reason: 'Invalid terrain for this unit' };
     if (tile.resourceId !== undefined && !this.isResourceVisibleToNation(builderUnit.ownerId, tile.resourceId)) {
       return { canBuild: false, reason: 'Resource is not known to this nation' };
@@ -306,7 +259,7 @@ export class BuilderSystem {
       if (tile.resourceId === undefined) {
         return { canBuild: false, reason: 'Foreign exploitation is limited to natural resources' };
       }
-      const foreignImprovement = this.getResourceImprovement(tile);
+      const foreignImprovement = getImprovementForTile(tile);
       if (foreignImprovement === undefined) {
         return { canBuild: false, reason: 'No valid improvement for this natural resource' };
       }
@@ -329,7 +282,7 @@ export class BuilderSystem {
       return { canBuild: false, reason: 'Tile must be owned by your territory' };
     }
 
-    const improvement = this.resolveImprovementForTile(tile);
+    const improvement = getImprovementForTile(tile);
     if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this terrain' };
     if (!canUnitConstructImprovement(builderUnit.unitType, improvement)) {
       return { canBuild: false, reason: 'Unit lacks the required improvement capability' };
@@ -366,7 +319,7 @@ export class BuilderSystem {
       return { canBuild: false, reason: 'Resource is controlled by another nation' };
     }
 
-    const improvement = this.getResourceImprovement(tile);
+    const improvement = getImprovementForTile(tile);
     if (improvement === undefined) return { canBuild: false, reason: 'No valid improvement for this sea resource' };
     if (!canUnitConstructImprovement(builderUnit.unitType, improvement)) {
       return { canBuild: false, reason: 'Unit lacks the required improvement capability' };
@@ -429,28 +382,6 @@ export class BuilderSystem {
 
   private isCurrentTile(unit: Unit, tile: Tile): boolean {
     return unit.tileX === tile.x && unit.tileY === tile.y;
-  }
-
-  private resolveImprovementForTile(tile: Tile): TileImprovementDefinition | undefined {
-    if (tile.type === TileType.NuclearWaste) return getImprovementById('clean_nuclear_waste');
-    const resourceImprovement = this.getResourceImprovement(tile);
-    return resourceImprovement ?? getImprovementForTileType(tile.type);
-  }
-
-  private getResourceImprovement(tile: Tile): TileImprovementDefinition | undefined {
-    if (tile.resourceId === undefined) return undefined;
-
-    const resource = getNaturalResourceById(tile.resourceId);
-    if (resource === undefined) return undefined;
-
-    const improvementId = getNaturalResourceImprovementIdForTile(resource, tile.type);
-    if (improvementId === undefined) return undefined;
-
-    const improvement = getImprovementById(improvementId);
-    if (improvement === undefined) return undefined;
-    if (!improvement.allowedTileTypes.includes(tile.type)) return undefined;
-
-    return improvement;
   }
 
   private isSeaTile(tile: Tile): boolean {
@@ -526,7 +457,6 @@ export function canUnitConstructImprovement(
   unitType: UnitType,
   improvement: TileImprovementDefinition,
 ): boolean {
-  if (improvement.populationCapacity) return unitType.id === 'worker';
   if (improvement.requiredBuilderCapability !== undefined) {
     return unitType.improvementCapabilities?.includes(improvement.requiredBuilderCapability) === true;
   }

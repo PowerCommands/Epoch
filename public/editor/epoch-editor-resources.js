@@ -36,7 +36,7 @@
   var LUMBER_MILL = {
     id: "lumber_mill",
     spriteKey: "improvement_lumber_mill",
-    name: "LumberMill",
+    name: "Lumber Mill",
     allowedTileTypes: ["forest" /* Forest */],
     yieldBonus: { food: 0, production: 2, gold: 0 }
   };
@@ -116,50 +116,6 @@
     buildTurns: NUCLEAR_PLANT_MAINTENANCE_TURNS
   };
   var CLEAN_NUCLEAR_WASTE = { id: "clean_nuclear_waste", name: "\u{1F58C} Clean Nuclear Waste", allowedTileTypes: ["nuclear_waste" /* NuclearWaste */], yieldBonus: { food: 0, production: 0, gold: 0 }, buildTurns: NUCLEAR_CLEANUP_TURNS };
-  var WIND_TURBINE = {
-    id: "wind_turbine",
-    name: "Wind Turbine",
-    spriteKey: "improvement_wind_turbine",
-    allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */],
-    yieldBonus: { food: 0, production: 0, gold: 0 },
-    requiredTechnologyId: "electricity",
-    populationCapacity: 1,
-    maintenance: 1
-  };
-  var SOLAR_PANELS = {
-    id: "solar_panels",
-    name: "Solar Panels",
-    spriteKey: "improvement_solar_panels",
-    allowedTileTypes: ["plains" /* Plains */, "meadow" /* Meadow */, "beach" /* Beach */],
-    yieldBonus: { food: 0, production: 0, gold: 0 },
-    requiredTechnologyId: "electronics",
-    populationCapacity: 1,
-    maintenance: 1
-  };
-  var OFFSHORE_WIND_FARM = {
-    id: "offshore_wind_farm",
-    name: "Offshore Wind Farm",
-    spriteKey: "improvement_offshore_wind_farm",
-    allowedTileTypes: ["coast" /* Coast */, "ocean" /* Ocean */],
-    yieldBonus: { food: 0, production: 0, gold: 0 },
-    requiredTechnologyId: "ecology",
-    populationCapacity: 3,
-    maintenance: WIND_TURBINE.maintenance * 2,
-    requiredCargoTransportUnitTypeId: "transport_ship",
-    description: "Large-scale offshore wind generation. Requires a Worker aboard a Transport Ship."
-  };
-  var CSP = {
-    id: "csp",
-    name: "CSP \u2013 Concentrated Solar Power",
-    spriteKey: "improvement_csp",
-    allowedTileTypes: ["desert" /* Desert */],
-    yieldBonus: { food: 0, production: 0, gold: 0 },
-    requiredTechnologyId: "lasers",
-    populationCapacity: 3,
-    maintenance: 2,
-    description: "CSP \u2013 Concentrated Solar Power. Large-scale solar thermal generation using concentrated sunlight and thermal energy storage."
-  };
-  var RENEWABLE_IMPROVEMENTS = [WIND_TURBINE, SOLAR_PANELS, OFFSHORE_WIND_FARM, CSP];
   var ALL_IMPROVEMENTS = [
     NUCLEAR_PLANT_MAINTENANCE,
     CLEAN_NUCLEAR_WASTE,
@@ -172,9 +128,15 @@
     FISHING_BOATS,
     OFFSHORE_PLATFORM,
     ARCHAEOLOGICAL_DIG,
-    UNDERWATER_ARCHAEOLOGICAL_SITE,
-    ...RENEWABLE_IMPROVEMENTS
+    UNDERWATER_ARCHAEOLOGICAL_SITE
   ];
+  var TERRAIN_DEFAULT_IMPROVEMENTS = {
+    ["plains" /* Plains */]: FARM.id,
+    ["meadow" /* Meadow */]: FARM.id,
+    ["beach" /* Beach */]: FARM.id,
+    ["forest" /* Forest */]: LUMBER_MILL.id,
+    ["mountain" /* Mountain */]: MINE.id
+  };
 
   // src/systems/geography/Rivers.ts
   var Rivers_exports = {};

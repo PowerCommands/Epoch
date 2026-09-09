@@ -1,3 +1,4 @@
+import { getBuildingById } from '../data/buildings';
 import { NUCLEAR_PLANT_MELTDOWN_RADIUS } from '../data/nuclearPlants';
 import { STRATEGIC_WEAPONS, NUCLEAR_SHELTER_DAMAGE_MULTIPLIER, type AreaWeaponDefinition } from '../data/strategicWeapons';
 import type { Unit } from '../entities/Unit';
@@ -132,7 +133,7 @@ export class StrategicWeaponsSystem {
       city.lastTurnAttacked = this.getRound();
       city.health = Math.max(1, city.health - Math.round(config.cityDamage * modifier));
       city.population = Math.max(1, city.population - Math.floor(city.population * config.populationLoss * modifier));
-      const candidates = buildings.getAll().filter(id => id !== 'bomb_shelter').sort();
+      const candidates = buildings.getAll().filter(id => id !== 'bomb_shelter' && !getBuildingById(id)?.repeatable).sort();
       for (const id of candidates.slice(0, Math.floor(candidates.length * config.buildingDamageFraction * modifier))) buildings.setBroken(id, true);
       this.cities.notifyHealthChanged(city);
     }
@@ -166,7 +167,7 @@ export class StrategicWeaponsSystem {
       }
       if (tile.buildingId) {
         const owningCity = this.cities.getAllCities().find(city => city.ownedTileCoords.some(coord => coord.x === tile.x && coord.y === tile.y));
-        if (owningCity && this.cities.getBuildings(owningCity.id).has(tile.buildingId)) {
+        if (owningCity && !getBuildingById(tile.buildingId)?.repeatable && this.cities.getBuildings(owningCity.id).has(tile.buildingId)) {
           const buildings = this.cities.getBuildings(owningCity.id);
           if (!keys.has(`${owningCity.tileX},${owningCity.tileY}`)) buildings.setBroken(tile.buildingId, true);
           tile.buildingBroken = buildings.isBroken(tile.buildingId);

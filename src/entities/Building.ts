@@ -29,6 +29,10 @@ export interface BuildingType {
   readonly description: string;
   readonly placement: BuildingPlacement;
   readonly aircraftCapacity?: number;
+  /** Multiple physical installations may be built in one city. */
+  readonly repeatable?: boolean;
+  /** Placement requires no resource or tile improvement and excludes the city center. */
+  readonly requiresEmptyTile?: boolean;
   readonly maintenance: number;
   readonly productionCost: number;
   readonly modifiers: BuildingModifiers;

@@ -1,5 +1,6 @@
 import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
 import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
+import { AirBaseRenderer } from '../renderers/AirBaseRenderer';
 import { interceptionProfile } from '../data/airOperations';
 import { getNuclearCapability } from '../systems/ai/AIStrategicWeapons';
 import { STRATEGIC_WEAPONS } from '../data/strategicWeapons';
@@ -719,6 +720,10 @@ export class GameScene extends Phaser.Scene {
     // visibility recompute. No-op until then so early calls stay safe.
     let applyFogToRenderers: () => void = () => {};
     let refreshResourceLensRevealTiles: () => void = () => {};
+    // Draws stationed aircraft + capacity badges on air-capable buildings.
+    // Assigned once AirOperationsSystem (via CombatSystem) exists; refreshed
+    // from fog updates and save/load like the other map renderers.
+    let airBaseRenderer: AirBaseRenderer | undefined;
     let collectStructureObservationSources: () => StructureObservationSource[] = () => [];
     let structureObservationSources: StructureObservationSource[] = [];
     let isMapRevealActive = false;
@@ -2693,6 +2698,7 @@ export class GameScene extends Phaser.Scene {
           candidate.ownedTileCoords.some((coord) => coord.x === tileX && coord.y === tileY),
         );
         return owningCity !== undefined
+          && !getBuildingById(tile.buildingId)?.repeatable
           && cityManager.getBuildings(owningCity.id).isBroken(tile.buildingId);
       }
       return false;
@@ -2717,6 +2723,7 @@ export class GameScene extends Phaser.Scene {
       naturalResourceRenderer.rebuildAll();
       tileBuildingRenderer.rebuildAll();
       tileImprovementOverlayRenderer.rebuildAll();
+      airBaseRenderer?.refreshAll();
       this.minimapHud?.rebuild();
     };
     // Apply fog now that all renderers and predicates are wired.
@@ -6292,6 +6299,7 @@ export class GameScene extends Phaser.Scene {
     // separately with alliance context, so the generic line is skipped).
     let allianceWarSystem: AllianceWarSystem | null = null;
     new AirMissionRenderer(this, tileMap, combatSystem.airOperations, () => !isAutoplayActive() && humanNationId !== undefined, canSeeTile);
+    airBaseRenderer = new AirBaseRenderer(this, tileMap, combatSystem.airOperations, unitManager, cityManager, selectionManager, canSeeTile);
     combatSystem.strategicWeapons.onDetonation(event => {
       logManager.info({ nationId: event.nationId, category: 'combat', message: `[Strategic] ${JSON.stringify(event)}` });
       for (const nation of nationManager.getAllNations()) resourceSystem.recalculateForNation(nation.id);
@@ -8337,6 +8345,7 @@ export class GameScene extends Phaser.Scene {
       selectionManager,
       unitManager,
       nationManager,
+      combatSystem.airOperations,
     );
     researchSystem.onChanged(() => {
       if (autoplaySystem.isActive()) return;
@@ -9091,9 +9100,9 @@ export class GameScene extends Phaser.Scene {
         ? [...ALL_BUILDINGS, GRAND_STADIUM]
         : ALL_BUILDINGS;
       return buildings
-        .filter((building) => !cityBuildings.has(building.id))
+        .filter((building) => (building.repeatable || !cityBuildings.has(building.id)))
         .filter((building) => !isBuildingObsoleteInCity(cityBuildings, building))
-        .filter((building) => !occupiedBuildingIds.has(building.id))
+        .filter((building) => (building.repeatable || !occupiedBuildingIds.has(building.id)))
         .filter((building) => !isBuildingQueued(city.id, building.id))
         .filter((building) => researchSystem ? researchSystem.isBuildingUnlocked(city.ownerId, building.id) : true)
         .map((building) => {
@@ -9373,7 +9382,7 @@ export class GameScene extends Phaser.Scene {
         return { ok: false, message: 'Select the city before starting building placement.' };
       }
 
-      if (cityManager.getBuildings(city.id).has(buildingId) || getOccupiedBuildingIds(city).has(buildingId) || isBuildingQueued(city.id, buildingId)) {
+      if ((!getBuildingById(buildingId)?.repeatable && (cityManager.getBuildings(city.id).has(buildingId) || getOccupiedBuildingIds(city).has(buildingId))) || isBuildingQueued(city.id, buildingId)) {
         return { ok: false, message: 'That building is already built or under construction in this city.' };
       }
 
@@ -11444,6 +11453,7 @@ export class GameScene extends Phaser.Scene {
       tileBuildingRenderer.rebuildAll();
       tileImprovementOverlayRenderer.rebuildAll();
       unitRenderer.rebuildAll();
+      airBaseRenderer?.refreshAll();
       territoryRenderer.invalidate();
       refreshCultureOverlay();
       worldMarkerRenderer.refresh();
