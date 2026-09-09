@@ -14,6 +14,7 @@ interface BuildingInput {
   modifiers?: BuildingModifiers;
   description?: string;
   upgradesFrom?: string;
+  canBuildWithoutPredecessor?: boolean;
   allowedTerrains?: readonly TileType[];
   populationOnCompletion?: number;
   resourceCapacityBonus?: BuildingResourceCapacityBonus;
@@ -33,6 +34,7 @@ function building(input: BuildingInput): BuildingType {
     productionCost: input.cost,
     modifiers: input.modifiers ?? {},
     upgradesFrom: input.upgradesFrom,
+    canBuildWithoutPredecessor: input.canBuildWithoutPredecessor,
     allowedTerrains: input.allowedTerrains,
     populationOnCompletion: input.populationOnCompletion,
     resourceCapacityBonus: input.resourceCapacityBonus,
@@ -173,8 +175,8 @@ export const SPACESHIP_FACTORY = building({ id: 'spaceship_factory', name: 'Spac
 
 export const NUCLEAR_SILO = building({ id: 'nuclear_silo', placement: 'city', name: 'Nuclear Silo', era: 'information', cost: 450, maintenance: 8, description: 'Land launch base for Nuclear Missiles stationed on this city tile. Must be working to launch. Missiles consume Uranium and obey the Non-Proliferation Treaty.', modifiers: {} });
 
-export const AIRFIELD = building({ id: 'airfield', name: 'Airfield', era: 'industrial', placement: 'city', cost: 250, maintenance: 3, aircraftCapacity: 2, description: 'Aircraft Capacity: 2. Bases aircraft for missions and interception.' });
-export const AIR_BASE = building({ id: 'air_base', name: 'Air Base', era: 'modern', placement: 'city', cost: 400, maintenance: 5, aircraftCapacity: 4, upgradesFrom: AIRFIELD.id, description: 'Aircraft Capacity: 4 total. Replaces Airfield.' });
+export const AIRFIELD = building({ id: 'airfield', name: 'Airfield', era: 'industrial', placement: 'land', cost: 250, maintenance: 3, aircraftCapacity: 2, description: 'Aircraft Capacity: 2. Bases aircraft for missions and interception.' });
+export const AIR_BASE = building({ id: 'air_base', name: 'Air Base', era: 'modern', placement: 'land', cost: 400, maintenance: 5, aircraftCapacity: 4, upgradesFrom: AIRFIELD.id, canBuildWithoutPredecessor: true, description: 'Aircraft Capacity: 4 total. Replaces Airfield.' });
 
 export const ALL_BUILDINGS: BuildingType[] = [
   AIRFIELD, AIR_BASE,

@@ -41,7 +41,7 @@ export function getBuildingUpgradeBlockReason(
   if (isBuildingObsoleteInCity(buildings, building)) {
     return `${building.name} has already been replaced by a later upgrade in this city.`;
   }
-  if (building.upgradesFrom && !buildings.has(building.upgradesFrom)) {
+  if (building.upgradesFrom && !building.canBuildWithoutPredecessor && !buildings.has(building.upgradesFrom)) {
     const predecessor = ALL_BUILDINGS.find((candidate) => candidate.id === building.upgradesFrom);
     return `Requires ${predecessor?.name ?? building.upgradesFrom} in this city.`;
   }

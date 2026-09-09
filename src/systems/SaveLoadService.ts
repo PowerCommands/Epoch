@@ -1,3 +1,4 @@
+import { BuildingPlacementSystem } from './BuildingPlacementSystem';
 import { getLeaderConfiguration } from '../data/leaderConfiguration';
 import { normalizeRivers, riverMask } from './geography/Rivers';
 import type { MapData } from '../types/map';
@@ -951,6 +952,19 @@ export class SaveLoadService {
         }
       }
 
+      // Saves from the city-only airfield version already own the building.
+      // Materialize that existing investment on a free city tile, without adding capacity.
+      const airPlacement = new BuildingPlacementSystem();
+      for (const { buildingId: id } of buildings.getAllEntries()) {
+        const def = getBuildingById(id);
+        if (!def?.aircraftCapacity || city.ownedTileCoords.some(coord => mapData.tiles[coord.y]?.[coord.x]?.buildingId === id)) continue;
+        const coord = airPlacement.reserveFirstValidPlacement(city, def, mapData);
+        if (coord) {
+          const tile = airPlacement.finalizeReservedBuilding(city.id, id, mapData)!;
+          tile.buildingBroken = !buildings.hasActive(id) || undefined;
+        }
+      }
+
       const queueEntries: QueueEntry[] = [];
       for (const entry of saved.productionQueue) {
         const producible = fromSavedProducible(
@@ -971,12 +985,15 @@ export class SaveLoadService {
           }
           continue;
         }
+        const airPlacementCoord = producible.kind === 'building' && producible.buildingType.aircraftCapacity
+          && !airPlacement.findReservedTile(city.id, producible.buildingType.id, mapData)
+          ? airPlacement.reserveFirstValidPlacement(city, producible.buildingType, mapData) : undefined;
         queueEntries.push({
           item: producible,
           accumulated: entry.accumulated,
           lockedProductionCost: entry.lockedProductionCost,
           blockedReason: entry.blockedReason,
-          placement: entry.placement ? { ...entry.placement } : undefined,
+          placement: entry.placement ? { ...entry.placement } : airPlacementCoord,
         });
         if (producible.kind === 'wonder' && entry.placement) {
           const tile = mapData.tiles[entry.placement.tileY]?.[entry.placement.tileX];
@@ -1170,7 +1187,7 @@ export class SaveLoadService {
 function toSavedProducible(item: Producible): SavedProducible {
   switch (item.kind) {
     case 'unit':
-      return { kind: 'unit', id: item.unitType.id };
+      return { kind: 'unit', id: item.unitType.id, aircraftBase: item.aircraftBase };
     case 'building':
       return { kind: 'building', id: item.buildingType.id };
     case 'wonder':
@@ -1213,7 +1230,7 @@ function fromSavedProducible(
   }
   if (item.kind === 'unit') {
     const type = getUnitTypeById(item.id);
-    return type ? { kind: 'unit', unitType: type } : null;
+    return type ? { kind: 'unit', unitType: type, aircraftBase: item.aircraftBase } : null;
   }
   if (item.kind === 'wonder') {
     const def = getWonderById(item.id);

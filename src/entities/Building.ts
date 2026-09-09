@@ -38,6 +38,8 @@ export interface BuildingType {
   readonly populationOnCompletion?: number;
   /** Earlier city building replaced by this one when construction completes. */
   readonly upgradesFrom?: string;
+  /** May also be constructed independently when the predecessor is absent. */
+  readonly canBuildWithoutPredecessor?: boolean;
   /** Optional strategic-resource supply bonus granted while active (e.g. Stable → Horses). */
   readonly resourceCapacityBonus?: BuildingResourceCapacityBonus;
   /** Radius of ongoing map visibility projected from this building's physical tile. */

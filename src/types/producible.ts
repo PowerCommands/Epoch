@@ -1,3 +1,4 @@
+import type { AircraftBase } from '../entities/Unit';
 import type { BuildingType } from '../entities/Building';
 import type { UnitType } from '../entities/UnitType';
 import type { WonderType } from '../entities/Wonder';
@@ -10,7 +11,7 @@ import type { ProjectDefinition } from '../data/projects';
  * Samma mönster som Selectable.
  */
 export type Producible =
-  | { kind: 'unit'; unitType: UnitType }
+  | { kind: 'unit'; unitType: UnitType; aircraftBase?: AircraftBase }
   | { kind: 'building'; buildingType: BuildingType }
   | { kind: 'wonder'; wonderType: WonderType }
   | { kind: 'corporation'; corporationType: CorporationDefinition }

@@ -52,7 +52,7 @@ try {
   const scenario = {
     meta:{name:'Air warfare regression',version:1,startYear:1930,startYearIsBC:false,originalCapitalCollapsePercent:0},
     map:{width:40,height:26,tileSize:48,tiles:Array.from({length:26},(_,r)=>Array.from({length:40},(_,q)=>({q,r,type:'plains'}))).flat()},
-    nations:[{id:'nation_england',name:'England',color:'#dd203f',gold:100000,startTerritoryCenter:{q:10,r:10}},{id:'nation_germany',name:'Germany',color:'#444466',gold:100000,startTerritoryCenter:{q:20,r:10}}],
+    nations:[{id:'nation_england',name:'England',color:'#dd203f',gold:100000,researchedTechIds:['flight'],startTerritoryCenter:{q:10,r:10}},{id:'nation_germany',name:'Germany',color:'#444466',gold:100000,startTerritoryCenter:{q:20,r:10}}],
     cities:[
       {id:'air_home',name:'Air Home',nationId:'nation_england',q:10,r:10,isCapital:true,buildings:[{buildingId:'airfield',q:10,r:10}]},
       {id:'air_forward',name:'Air Forward',nationId:'nation_england',q:10,r:15,buildings:[{buildingId:'airfield',q:10,r:15}]},
@@ -96,6 +96,21 @@ try {
   await page.screenshot({path:'/tmp/epoch-air-game-ui.png'});
   await page.mouse.click(640,360);
   await page.waitForFunction(id=>window.__epochDiagnostics.getSaveState().units.find(u=>u.id===id)?.airBase?.id==='air_forward',bomber.id);
+  // Queue an aircraft using the production destination map cursor, then round-trip its target.
+  await page.evaluate(()=>window.__epochDiagnostics.prepareAircraftProduction('air_home','triplane',10,15));
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await page.screenshot({path:'/tmp/epoch-air-production-destinations.png'});
+  await page.mouse.click(640,360);
+  await page.waitForFunction(()=>window.__epochDiagnostics.getSaveState().cities.find(c=>c.id==='air_home').productionQueue.some(e=>e.item.aircraftBase?.id==='air_forward'));
+  save=await page.evaluate(()=>window.__epochDiagnostics.getSaveState());
+  const queued=save.cities.find(c=>c.id==='air_home').productionQueue.find(e=>e.item.id==='triplane');
+  assert.deepEqual(queued.item.aircraftBase,{kind:'city',id:'air_forward'});
+  await page.goto(`${url}/?epochDiagnostics=1`);
+  await page.waitForFunction(()=>window.__epochDiagnostics?.startSavedGame,undefined,{timeout:30000});
+  assert.equal((await page.evaluate(s=>window.__epochDiagnostics.startSavedGame(s),save)).ok,true);
+  await page.waitForFunction(()=>window.__epochDiagnostics?.prepareAircraftProduction,undefined,{timeout:30000});
+  assert.deepEqual(await page.evaluate(()=>window.__epochDiagnostics.getSaveState().cities.find(c=>c.id==='air_home').productionQueue.find(e=>e.item.id==='triplane').item.aircraftBase),{kind:'city',id:'air_forward'});
+  console.log('PASS: aircraft production destination map click and saved queue destination round-trip.');
   const autoplay=await page.evaluate(()=>window.__epochDiagnostics.startAutoplay(3));
   assert.ok(autoplay.completedRounds>=3);
   assert.deepEqual(errors,[]);

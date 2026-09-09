@@ -411,6 +411,7 @@ export class ProductionSystem {
           lockedProductionCost: entry.lockedProductionCost,
           placement: entry.placement ? { ...entry.placement } : undefined,
         };
+      created.item = entry.item; // Preserve legacy destinations until the whole saved world is restored.
       created.accumulated = entry.accumulated;
       created.blockedReason = entry.blockedReason;
       restored.push(created);
@@ -494,6 +495,9 @@ export class ProductionSystem {
     }
     return this.aircraftProductionReason(cityId, item) ?? this.productionProhibition(cityId, item) ?? this.itemProductionBlockReasonProvider(cityId, item);
   }
+
+  private aircraftDestination: (cityId: string) => import('../entities/Unit').AircraftBase | undefined = () => undefined;
+  setAircraftProductionDestination(provider: typeof this.aircraftDestination): void { this.aircraftDestination = provider; }
 
   private aircraftProductionReason: ItemProductionBlockReasonProvider = () => undefined;
   setAircraftProductionReason(provider: ItemProductionBlockReasonProvider): void { this.aircraftProductionReason = provider; }
@@ -632,6 +636,9 @@ export class ProductionSystem {
     item: Producible,
     options: { placement?: ProductionPlacement },
   ): QueueEntry {
+    if (item.kind === 'unit' && item.unitType.aircraftRole && !item.aircraftBase) {
+      item = { ...item, aircraftBase: this.aircraftDestination(cityId) };
+    }
     const baseCost = this.getBaseCost(item);
     const providedCost = this.getItemProductionCost(cityId, item, baseCost);
     return {

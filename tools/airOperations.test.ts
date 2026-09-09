@@ -17,11 +17,12 @@ import { ProductionSystem } from '../src/systems/ProductionSystem';
 import { CombatSystem } from '../src/systems/CombatSystem';
 import { DiplomacyManager } from '../src/systems/DiplomacyManager';
 import { HexGridSystem } from '../src/systems/grid/HexGridSystem';
-import { completeBuildingUpgrade } from '../src/systems/buildingUpgrades';
+import { BuildingPlacementSystem } from '../src/systems/BuildingPlacementSystem';
+import { completeBuildingUpgrade, getBuildingUpgradeBlockReason } from '../src/systems/buildingUpgrades';
 import { getCityUnitProductionBlockReason } from '../src/systems/ProductionRules';
 import { SaveLoadService } from '../src/systems/SaveLoadService';
 import { TileType, type MapData } from '../src/types/map';
-import type { SavedUnit } from '../src/types/saveGame';
+import type { SavedCity, SavedUnit } from '../src/types/saveGame';
 import type { AirFlightEvent } from '../src/systems/AirOperationsSystem';
 import { getTechnologyById } from '../src/data/technologies';
 
@@ -35,6 +36,8 @@ function harness() {
   let serial = 0;
   const city = (x=2,y=10,ownerId='a',capacity=true) => {
     const c = new City({ id: `c${serial++}`, name: `Base ${serial}`, ownerId,tileX:x,tileY:y });
+    c.ownedTileCoords = [{x,y}, {x:x+1,y}];
+    if (capacity) map.tiles[y][x].buildingId = AIRFIELD.id;
     cities.addCity(c); if (capacity) cities.getBuildings(c.id).add(AIRFIELD); return c;
   };
   const spawn = (type: UnitType=GREAT_WAR_BOMBER,x=2,y=10,ownerId='a',id=`u${serial++}`) => {
@@ -44,7 +47,11 @@ function harness() {
   production.onCompleted((id,item) => {
     const c = cities.getCity(id)!;
     if (item.kind === 'building') { completeBuildingUpgrade(cities.getBuildings(id),item.buildingType); return true; }
-    if (item.kind === 'unit') units.createUnit({ type:item.unitType,ownerId:c.ownerId,tileX:c.tileX,tileY:c.tileY,airBase: item.unitType.aircraftRole ? { kind:'city',id:c.id } : undefined,movementPoints:0 });
+    if (item.kind === 'unit') {
+      const site = item.unitType.aircraftRole ? combat.airOperations.productionDestination(c,item.aircraftBase) : undefined;
+      if (item.unitType.aircraftRole && !site) return false;
+      units.createUnit({ type:item.unitType,ownerId:c.ownerId,tileX:site?.x ?? c.tileX,tileY:site?.y ?? c.tileY,airBase:site?.base,movementPoints:0 });
+    }
     return true;
   });
   return { map,grid,units,cities,nations,turns,diplomacy,production,combat,air:combat.airOperations,city,spawn,events };
@@ -58,6 +65,7 @@ test('Flight and Radar unlock the data-driven 2/4 capacity upgrade chain', () =>
   assert.ok(getTechnologyById('radar')?.unlocks.some(u=>u.kind==='building' && u.id==='air_base'));
   assert.equal(AIRFIELD.aircraftCapacity,2); assert.equal(AIR_BASE.aircraftCapacity,4); assert.equal(AIR_BASE.upgradesFrom,AIRFIELD.id);
   const h=harness(); const c=h.city(); const a=h.spawn(); const b=h.spawn(); h.air.reconcile();
+  new BuildingPlacementSystem().completePhysicalBuilding(c,AIR_BASE,h.map);
   completeBuildingUpgrade(h.cities.getBuildings(c.id),AIR_BASE);
   assert.equal(h.air.cityCapacity(c),4); assert.equal(h.cities.getBuildings(c.id).has(AIRFIELD.id),false);
   assert.ok(h.units.getUnit(a.id)); assert.ok(h.units.getUnit(b.id));
@@ -66,6 +74,7 @@ test('Flight and Radar unlock the data-driven 2/4 capacity upgrade chain', () =>
 test('production rejects missing/full capacity on enqueue, purchase/completion, and assigns producing base', () => {
   const h=harness(), c=h.city(2,10,'a',false), item={kind:'unit' as const,unitType:GREAT_WAR_BOMBER};
   h.production.enqueue(c.id,item); assert.equal(h.production.getQueue(c.id).length,0);
+  h.map.tiles[c.tileY][c.tileX].buildingId = AIRFIELD.id;
   h.cities.getBuildings(c.id).add(AIRFIELD);
   for(let i=0;i<2;i++) { h.production.enqueue(c.id,item); assert.equal(h.production.completeCurrentProduction(c.id).kind,'completed'); }
   assert.equal(h.air.usage({kind:'city',id:c.id}),2);
@@ -219,4 +228,106 @@ test('captured Carrier evacuates aircraft under their original owner', () => {
   const h=harness(); const home=h.city(), carrier=h.spawn(CARRIER,5,10), a=h.spawn(); h.air.reconcile();
   h.air.rebase(a,{kind:'carrier',id:carrier.id}); h.units.transferOwnership(carrier.id,'b');
   assert.equal(a.ownerId,'a'); assert.equal(a.airBase?.id,home.id); assert.deepEqual(carrier.cargoUnitIds,[]);
+});
+
+test('Airfield and standalone Air Base use normal land placement; upgrade reuses the exact tile', () => {
+  const h = harness(), c = h.city(2,10,'a',false), placement = new BuildingPlacementSystem();
+  assert.equal(AIRFIELD.placement,'land'); assert.equal(AIR_BASE.placement,'land');
+  assert.equal(getBuildingUpgradeBlockReason(h.cities.getBuildings(c.id),AIR_BASE),undefined);
+  assert.equal(placement.startPlacement(c,AIR_BASE.id,h.map),true);
+  assert.equal(placement.selectTile(c,{x:3,y:10},h.map).status,'reserved');
+  assert.equal(placement.completePhysicalBuilding(c,AIR_BASE,h.map)?.x,3);
+  completeBuildingUpgrade(h.cities.getBuildings(c.id),AIR_BASE);
+  assert.equal(getBuildingUpgradeBlockReason(h.cities.getBuildings(c.id),AIRFIELD)?.includes('replaced'),true);
+
+  const other = h.city(10,10,'a',false);
+  assert.equal(placement.startPlacement(other,AIRFIELD.id,h.map),true);
+  placement.selectTile(other,{x:11,y:10},h.map);
+  placement.completePhysicalBuilding(other,AIRFIELD,h.map);
+  h.cities.getBuildings(other.id).add(AIRFIELD);
+  const plane = h.spawn(TRIPLANE,11,10);
+  assert.equal(placement.startPlacement(other,AIR_BASE.id,h.map),false);
+  assert.deepEqual(placement.getValidPlacementCoords(other,AIR_BASE,h.map),[{x:11,y:10}]);
+  placement.completePhysicalBuilding(other,AIR_BASE,h.map);
+  completeBuildingUpgrade(h.cities.getBuildings(other.id),AIR_BASE);
+  assert.equal(h.map.tiles[10][11].buildingId,AIR_BASE.id);
+  assert.equal(h.cities.getBuildings(other.id).has(AIRFIELD.id),false);
+  assert.equal(plane.airBase?.id,other.id); assert.equal(h.air.baseFor(plane)?.x,11);
+});
+
+test('missions and fighter coverage originate at the placed building, away from city center', () => {
+  const h = harness(), c = h.city();
+  h.map.tiles[10][2].buildingId = undefined;
+  h.map.tiles[10][3].buildingId = AIRFIELD.id;
+  const plane = h.spawn(); h.air.reconcile();
+  assert.equal(plane.tileX,3); assert.equal(h.air.baseFor(plane)?.x,3);
+  h.spawn(WARRIOR,9,10,'b');
+  assert.equal(h.air.mission(plane,9,10),true);
+  assert.equal(h.events[0].origin.x,3);
+  assert.equal(h.air.cityCapacity(c),2);
+});
+
+test('production delivers to the explicitly chosen remote airfield, without a local airfield', () => {
+  const h = harness(), c = h.city(2,10,'a',false), target = h.city(20,10);
+  const base = {kind:'city' as const,id:target.id};
+  h.production.enqueue(c.id,{kind:'unit',unitType:TRIPLANE,aircraftBase:base});
+  assert.equal(h.production.completeCurrentProduction(c.id).kind,'completed');
+  const plane = h.units.getAllUnits()[0];
+  assert.deepEqual(plane.airBase,base); assert.equal(plane.tileX,20);
+});
+
+test('a queued Carrier destination follows its movement and restores cargo links on delivery', () => {
+  const h = harness(), c = h.city(2,10,'a',false), carrier = h.spawn(CARRIER,5,10);
+  const base = {kind:'carrier' as const,id:carrier.id};
+  h.production.enqueue(c.id,{kind:'unit',unitType:TRIPLANE,aircraftBase:base});
+  h.units.moveUnit(carrier.id,7,10);
+  assert.equal(h.production.completeCurrentProduction(c.id).kind,'completed');
+  const plane = h.units.getAllUnits().find(u=>u.unitType.aircraftRole)!;
+  assert.deepEqual(plane.airBase,base); assert.equal(plane.tileX,7);
+  assert.equal(plane.carriedByUnitId,carrier.id); assert.ok(carrier.cargoUnitIds.includes(plane.id));
+});
+
+test('destroyed, foreign and full selected bases block delivery without silently changing destination', () => {
+  const h = harness(), c = h.city(), other = h.city(20,10), enemy = h.city(15,10,'b');
+  h.production.enqueue(c.id,{kind:'unit',unitType:TRIPLANE,aircraftBase:{kind:'city',id:enemy.id}});
+  assert.equal(h.production.getQueue(c.id).length,0);
+  const base = {kind:'city' as const,id:other.id};
+  h.production.enqueue(c.id,{kind:'unit',unitType:TRIPLANE,aircraftBase:base});
+  h.spawn(TRIPLANE,20,10); h.spawn(TRIPLANE,20,10); h.air.reconcile();
+  assert.notEqual(h.production.completeCurrentProduction(c.id).kind,'completed');
+  h.cities.getBuildings(other.id).remove(AIRFIELD.id);
+  assert.notEqual(h.production.completeCurrentProduction(c.id).kind,'completed');
+  const item = h.production.getQueue(c.id)[0].item;
+  assert.deepEqual(item.kind === 'unit' && item.aircraftBase,base);
+});
+
+test('AI/default queue entry chooses and retains an available destination', () => {
+  const h = harness(), c = h.city(2,10,'a',false), carrier = h.spawn(CARRIER,5,10);
+  h.production.enqueue(c.id,{kind:'unit',unitType:TRIPLANE});
+  const item = h.production.getQueue(c.id)[0].item;
+  assert.deepEqual(item.kind === 'unit' && item.aircraftBase,{kind:'carrier',id:carrier.id});
+});
+
+
+test('legacy city-only air buildings and their queues gain physical destinations on load', () => {
+  const h = harness();
+  const saved: SavedCity = {
+    id:'legacy',name:'Legacy',ownerId:'a',tileX:2,tileY:10,isCapital:true,
+    originNationId:'a',isOriginalCapital:true,isResidenceCapital:true,
+    health:100,population:3,foodStorage:0,culture:0,lastTurnAttacked:null,
+    ownedTileCoords:[{x:2,y:10},{x:3,y:10}],workedTileCoords:[],
+    buildings:[AIRFIELD.id],productionQueue:[{item:{kind:'building',id:AIR_BASE.id},accumulated:100}],
+  };
+  const apply = (SaveLoadService as unknown as {
+    applyCitiesAndProduction(cities:SavedCity[],manager:CityManager,production:ProductionSystem,map:MapData,grid:HexGridSystem,speed:'standard'):void;
+  }).applyCitiesAndProduction;
+  apply([saved],h.cities,h.production,h.map,h.grid,'standard');
+  assert.equal(h.map.tiles[10][2].buildingId,AIRFIELD.id);
+  assert.equal(h.air.sites('a')[0].x,2);
+  assert.equal(h.production.getQueue('legacy').length,1);
+  assert.equal(new BuildingPlacementSystem().isAutomaticUpgrade(h.cities.getCity('legacy')!,AIR_BASE,h.map),true);
+  const empty = {...saved,id:'standalone',tileX:10,ownedTileCoords:[{x:10,y:10}],buildings:[]};
+  apply([empty],h.cities,h.production,h.map,h.grid,'standard');
+  assert.equal(h.map.tiles[10][10].buildingConstruction?.buildingId,AIR_BASE.id);
+  assert.deepEqual(h.production.getQueue('standalone')[0].placement,{tileX:10,tileY:10});
 });

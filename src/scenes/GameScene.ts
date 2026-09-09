@@ -394,6 +394,7 @@ interface EpochGameDiagnostics {
   getStateSummary: () => EpochStateSummary;
   getSaveState: () => SavedGameState;
   /** Dev-only: select actual launch controls and focus a coordinate for browser regression tests. */
+  prepareAircraftProduction: (cityId: string, unitTypeId: string, x: number, y: number) => void;
   prepareAirAction: (unitId: string, x: number, y: number, mode?: 'ranged' | 'rebase') => { reason?: string; actions?: unknown };
   prepareStrategicStrike: (unitId: string, x: number, y: number) => { reason?: string; visible?: boolean; actions?: unknown };
   /** Dev-only: centre the camera on the first founded city so visual tests can screenshot a city banner. */
@@ -3321,8 +3322,61 @@ export class GameScene extends Phaser.Scene {
       if (freeSelectionMode === active) return;
       freeSelectionMode = active;
       selectionManager.setFreeSelectionMode(active);
+      refreshBoardingDestinations();
       this.input.setDefaultCursor(active ? 'help' : 'default');
     };
+
+    let aircraftProductionSelection: { cityId: string; unitType: UnitType } | null = null;
+    const aircraftProductionPreview = new RangedPreviewRenderer(this, tileMap);
+    const aircraftProductionHint = this.add.text(0, 0, '', {
+      fontSize: '16px', color: '#ffffff', backgroundColor: '#182b40', padding: { x: 12, y: 8 },
+    }).setScrollFactor(0).setDepth(10000).setOrigin(0.5, 0).setVisible(false);
+    const cancelAircraftProductionSelection = (): void => {
+      aircraftProductionSelection = null;
+      aircraftProductionPreview.clear();
+      aircraftProductionHint.setVisible(false);
+      this.input.setDefaultCursor('default');
+      refreshBoardingDestinations();
+    };
+    const startAircraftProductionSelection = (city: City, unitType: UnitType): void => {
+      if (city.ownerId !== humanNationId || turnManager.getCurrentNation().id !== humanNationId) return;
+      const destinations = combatSystem.airOperations.productionDestinations(city);
+      if (!destinations.length) return;
+      closeOpenCityView();
+      buildingPlacementSystem.cancelPlacement();
+      wonderPlacementSystem.cancelPlacement();
+      unitActionToolbox.resetMode();
+      aircraftProductionSelection = { cityId: city.id, unitType };
+      refreshBoardingDestinations();
+      aircraftProductionPreview.showPlacementTargets(new Set(destinations.map(site => `${site.x},${site.y}`)));
+      aircraftProductionHint.setText(`Choose Airfield, Air Base or Carrier for ${unitType.name} · Esc to cancel`)
+        .setPosition(this.scale.width / 2, 50).setVisible(true);
+      this.input.setDefaultCursor('crosshair');
+    };
+    selectionManager.onSelectionTarget((_target, _selection, coord) => {
+      if (!aircraftProductionSelection) return false;
+      const { cityId, unitType } = aircraftProductionSelection;
+      const city = cityManager.getCity(cityId);
+      if (!city || city.ownerId !== humanNationId || turnManager.getCurrentNation().id !== humanNationId) {
+        cancelAircraftProductionSelection();
+        return true;
+      }
+      const site = combatSystem.airOperations.productionDestinations(city).find(site => site.x === coord?.x && site.y === coord?.y);
+      if (!site) return true;
+      const item = { kind: 'unit' as const, unitType, aircraftBase: { ...site.base } };
+      const blockReason = productionSystem.getItemProductionBlockReason(city.id, item)
+        ?? getCityUnitProductionBlockReason(city, unitType, mapData, gridSystem, unitProductionRuleContext)
+        ?? (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id) ? 'Required technology is not unlocked' : undefined);
+      if (blockReason) {
+        aircraftProductionHint.setText(`${blockReason} · Esc to cancel`);
+        return true;
+      }
+      productionSystem.enqueue(city.id, item);
+      cancelAircraftProductionSelection();
+      rightPanel?.requestRefresh();
+      logManager.info({ nationId: city.ownerId, category: 'production', message: `${city.name}: ${unitType.name} queued for ${site.name}.` });
+      return true;
+    });
 
     selectionManager.onSelectionTarget((target, currentSelection) => {
       if (!freeSelectionMode) {
@@ -3461,6 +3515,44 @@ export class GameScene extends Phaser.Scene {
         message,
       }),
     );
+    const boardingDestinationPreview = new RangedPreviewRenderer(this, tileMap);
+    let boardingDestinationKeys = '';
+    function refreshBoardingDestinations(): void {
+      const selected = selectionManager.getSelected();
+      const targets = new Set<string>();
+      const mode = unitActionToolbox.getMode();
+      if (!aircraftProductionSelection && !freeSelectionMode && selected?.kind === 'unit'
+        && selected.unit.ownerId === humanNationId
+        && turnManager.getCurrentNation().id === humanNationId
+        && (mode === 'move' || mode === 'loadWeapon')) {
+        const unit = selected.unit;
+        const weapon = STRATEGIC_WEAPONS[unit.unitType.id];
+        if (!unit.carriedByUnitId && !unit.unitType.aircraftRole && !unit.unitType.isNaval
+          && unit.isAlive() && unit.movementPoints > 0 && !improvementConstructionSystem.isUnitBusy(unit.id)) {
+          for (const transport of unitManager.getUnitsByOwner(unit.ownerId)) {
+            if (!transport.isAlive() || !unitBoardingManager.canBoard(unit, transport)) continue;
+            // Strategic payloads also support stationary and same-tile loading.
+            if (!weapon && !movementSystem.canMoveUnitTo(unit, transport.tileX, transport.tileY)) continue;
+            targets.add(`${transport.tileX},${transport.tileY}`);
+          }
+          if (weapon && weapon.landLaunch !== 'none') {
+            for (const city of cityManager.getCitiesByOwner(unit.ownerId)) {
+              if (!cityManager.getBuildings(city.id).hasActive('nuclear_silo')) continue;
+              const atSilo = unit.tileX === city.tileX && unit.tileY === city.tileY;
+              if (atSilo || pathfindingSystem.findPath(unit, city.tileX, city.tileY) !== null) {
+                targets.add(`${city.tileX},${city.tileY}`);
+              }
+            }
+          }
+        }
+      }
+      const keys = [...targets].sort().join(';');
+      if (keys === boardingDestinationKeys) return;
+      boardingDestinationKeys = keys;
+      if (targets.size) boardingDestinationPreview.showPlacementTargets(targets);
+      else boardingDestinationPreview.clear();
+    }
+    cityManager.onCityChanged(() => refreshBoardingDestinations());
     const getDebarkOption = (transport: Unit): {
       cargo?: Unit;
       target?: { x: number; y: number };
@@ -5100,7 +5192,9 @@ export class GameScene extends Phaser.Scene {
       // them; guard anyway to narrow the union to units below.
       if (item.kind === 'project') return;
 
-      const placement = (item.unitType.aircraftRole || STRATEGIC_WEAPONS[item.unitType.id]) ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem);
+      const aircraftDestination = item.unitType.aircraftRole ? combatSystem.airOperations.productionDestination(city, item.aircraftBase) : undefined;
+      if (item.unitType.aircraftRole && !aircraftDestination) return false;
+      const placement = aircraftDestination ?? (STRATEGIC_WEAPONS[item.unitType.id] ? { x: city.tileX, y: city.tileY } : this.findUnitPlacementTile(tileMap, unitManager, city, item.unitType, gridSystem));
       if (placement === null) return false;
       const unitBlockReason = getCityUnitProductionBlockReason(
         city,
@@ -5134,7 +5228,7 @@ export class GameScene extends Phaser.Scene {
       if (STRATEGIC_WEAPONS[item.unitType.id]) logManager.info({ nationId: city.ownerId, category: 'combat', message: `[Strategic] produced ${item.unitType.id} at ${city.name}` });
       unitManager.createUnit({
         type: item.unitType,
-        airBase: item.unitType.aircraftRole ? { kind: 'city', id: city.id } : undefined,
+        airBase: aircraftDestination?.base,
         ownerId: city.ownerId,
         tileX: placement.x,
         tileY: placement.y,
@@ -9021,7 +9115,8 @@ export class GameScene extends Phaser.Scene {
           const isProject = entry.item.kind === 'project';
           return {
             index,
-            name: getProducibleName(entry.item),
+            name: getProducibleName(entry.item) + (entry.item.kind === 'unit' && entry.item.unitType.aircraftRole
+              ? ` → ${combatSystem.airOperations.productionDestinationLabel(city.ownerId, entry.item.aircraftBase)}` : ''),
             spritePath: getProducibleSpritePath(entry.item),
             progress: entry.progress,
             cost: entry.cost,
@@ -9244,7 +9339,9 @@ export class GameScene extends Phaser.Scene {
           : `Need ${missingGold} more gold to buy the planned tile.`,
       };
     };
+    rightPanel.setAircraftProductionRequestHandler(startAircraftProductionSelection);
     rightPanel.setBuildingPlacementRequestHandler((city, buildingId) => {
+      if (aircraftProductionSelection) cancelAircraftProductionSelection();
       if (city.ownerId !== humanNationId) {
         return { ok: false, message: 'Only a human-owned selected city can place buildings.' };
       }
@@ -9274,7 +9371,7 @@ export class GameScene extends Phaser.Scene {
         return { ok: false, message: 'Grand Stadium is available only in the confirmed Games host city before Competition.' };
       }
 
-      if (building.placement === 'city' || building.upgradesFrom) {
+      if (building.placement === 'city' || buildingPlacementSystem.isAutomaticUpgrade(city, building, mapData)) {
         productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
         buildingPlacementSystem.cancelPlacement();
         wonderPlacementSystem.cancelPlacement();
@@ -9303,6 +9400,7 @@ export class GameScene extends Phaser.Scene {
       wonderPlacementSystem.getValidPlacementCoords(city, wonderId, mapData).length > 0
     ));
     rightPanel.setWonderPlacementRequestHandler((city, wonderId) => {
+      if (aircraftProductionSelection) cancelAircraftProductionSelection();
       if (city.ownerId !== humanNationId) {
         return { ok: false, message: 'Only a human-owned selected city can place wonders.' };
       }
@@ -9440,7 +9538,7 @@ export class GameScene extends Phaser.Scene {
         refreshOpenCityView();
         return;
       }
-      if (building.placement === 'city' || building.upgradesFrom) {
+      if (building.placement === 'city' || buildingPlacementSystem.isAutomaticUpgrade(city, building, mapData)) {
         if (!cityManager.getBuildings(city.id).has(buildingId) && !isBuildingQueued(city.id, buildingId)) {
           productionSystem.enqueue(city.id, { kind: 'building', buildingType: building });
         }
@@ -9525,6 +9623,10 @@ export class GameScene extends Phaser.Scene {
       if (productionSystem.getItemProductionBlockReason(city.id, { kind: 'unit', unitType })) return;
       if (!canCityProduceUnit(city, unitType, mapData, gridSystem, unitProductionRuleContext)) return;
       if (!researchSystem.isUnitUnlocked(city.ownerId, unitType.id)) return;
+      if (unitType.aircraftRole) {
+        startAircraftProductionSelection(city, unitType);
+        return;
+      }
       productionSystem.enqueue(city.id, { kind: 'unit', unitType });
       rightPanel?.requestRefresh();
       if (cityView.isAutoCloseEnabled()) {
@@ -9976,6 +10078,7 @@ export class GameScene extends Phaser.Scene {
     };
 
     unitActionToolbox.onModeChanged((mode) => {
+      refreshBoardingDestinations();
       hudLayer?.refresh();
       rangedTargets = new Set();
       rangedPreviewRenderer.clear();
@@ -10567,6 +10670,14 @@ export class GameScene extends Phaser.Scene {
           peaceSummitSystem,
           guideProgress: guideProgression.getState(),
         }),
+        prepareAircraftProduction: (cityId, unitTypeId, x, y) => {
+          const city = cityManager.getCity(cityId);
+          const type = ALL_UNIT_TYPES.find(type => type.id === unitTypeId);
+          if (!city || !type?.aircraftRole) return;
+          startAircraftProductionSelection(city, type);
+          const world = tileMap.tileToWorld(x,y);
+          this.cameraController.focusOn(world.x,world.y,1);
+        },
         prepareAirAction: (unitId, x, y, mode = 'ranged') => {
           const unit = unitManager.getUnit(unitId);
           if (!unit || unit.ownerId !== humanNationId || !unit.unitType.aircraftRole) return { reason: 'No owned aircraft' };
@@ -10786,7 +10897,9 @@ export class GameScene extends Phaser.Scene {
     }));
 
     turnManager.on('turnStart', () => {
+      if (aircraftProductionSelection) cancelAircraftProductionSelection();
       clearTemporaryMapReveal();
+      refreshBoardingDestinations();
       if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       const activeNation = turnManager.getCurrentNation();
@@ -10824,6 +10937,7 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     });
     unitManager.onUnitChanged((event) => {
+      refreshBoardingDestinations();
       if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       if (
@@ -10835,6 +10949,7 @@ export class GameScene extends Phaser.Scene {
       refreshMovePreview();
     });
     productionSystem.onChanged(() => {
+      refreshBoardingDestinations();
       if (autoplaySystem.isActive()) return;
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -11532,6 +11647,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     const onKeyEscape = () => {
+      if (aircraftProductionSelection) { cancelAircraftProductionSelection(); return; }
       // The capture decision is modal: Escape must not open the menu or resolve it.
       if (isCityCaptureDecisionPending()) return;
       if (this.tutorialWizard?.isActive()) {
@@ -11596,6 +11712,7 @@ export class GameScene extends Phaser.Scene {
     turnManager.start();
 
     function refreshMovePreview(): void {
+      refreshBoardingDestinations();
       const selected = selectionManager.getSelected();
       if (selected?.kind !== 'unit') {
         reachableTiles = new Set<string>();

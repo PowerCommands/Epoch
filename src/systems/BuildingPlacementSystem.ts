@@ -21,7 +21,7 @@ export class BuildingPlacementSystem {
     const building = getBuildingById(buildingId);
     // An upgrade's predecessor already determines its physical destination.
     // It must never expose the ordinary placement cursor.
-    if (!building || building.placement === 'city' || building.upgradesFrom) return false;
+    if (!building || building.placement === 'city' || this.isAutomaticUpgrade(city, building, mapData)) return false;
 
     const validCoords = this.getValidPlacementCoords(city, building, mapData);
     if (validCoords.length === 0) return false;
@@ -32,6 +32,10 @@ export class BuildingPlacementSystem {
       validCoords,
     };
     return true;
+  }
+
+  isAutomaticUpgrade(city: City, building: BuildingType, map: MapData): boolean {
+    return !!building.upgradesFrom && (!building.canBuildWithoutPredecessor || !!this.findUpgradePredecessorTile(city, building, map));
   }
 
   cancelPlacement(): void {
@@ -70,7 +74,8 @@ export class BuildingPlacementSystem {
 
     if (def.upgradesFrom) {
       const predecessorTile = this.findUpgradePredecessorTile(city, def, mapData);
-      return predecessorTile ? [{ x: predecessorTile.x, y: predecessorTile.y }] : [];
+      if (predecessorTile) return [{ x: predecessorTile.x, y: predecessorTile.y }];
+      if (!def.canBuildWithoutPredecessor) return [];
     }
 
     return city.ownedTileCoords
@@ -109,7 +114,7 @@ export class BuildingPlacementSystem {
     mapData: MapData,
   ): Tile | null {
     if (building.placement === 'city') return null;
-    if (!building.upgradesFrom) {
+    if (!this.isAutomaticUpgrade(city, building, mapData)) {
       return this.finalizeReservedBuilding(city.id, building.id, mapData);
     }
 
@@ -181,7 +186,7 @@ export class BuildingPlacementSystem {
     building: BuildingType,
     mapData: MapData,
   ): { tileX: number; tileY: number } | undefined {
-    if (building.placement === 'city' || building.upgradesFrom) return undefined;
+    if (building.placement === 'city' || this.isAutomaticUpgrade(city, building, mapData)) return undefined;
     const [coord] = this.getValidPlacementCoords(city, building, mapData);
     if (!coord) return undefined;
 

@@ -46,13 +46,31 @@ export class AirOperationsSystem {
   }
   sites(ownerId: string): AirBaseSite[] {
     return [
-      ...this.cities.getCitiesByOwner(ownerId).map(city => ({ ...position(city), base: { kind: 'city' as const, id: city.id }, ownerId, name: city.name, capacity: this.cityCapacity(city) })),
+      ...this.cities.getCitiesByOwner(ownerId).flatMap(city => {
+        const tile = city.ownedTileCoords.map(coord => this.map.tiles[coord.y]?.[coord.x])
+          .find(tile => tile?.buildingId && !tile.buildingBroken && getBuildingById(tile.buildingId)?.aircraftCapacity
+            && this.cities.getBuildings(city.id).hasActive(tile.buildingId));
+        return tile ? [{ x: tile.x, y: tile.y, base: { kind: 'city' as const, id: city.id }, ownerId,
+          name: `${getBuildingById(tile.buildingId!)!.name} — ${city.name}`, capacity: this.cityCapacity(city) }] : [];
+      }),
       ...this.units.getUnitsByOwner(ownerId).filter(unit => unit.isAlive() && unit.unitType.aircraftCapacity).map(unit => ({ ...position(unit), base: { kind: 'carrier' as const, id: unit.id }, ownerId, name: unit.name, capacity: unit.unitType.aircraftCapacity! })),
     ].filter(site => site.capacity > 0);
   }
   usage(base: AircraftBase): number { return this.units.getAllUnits().filter(unit => unit.unitType.aircraftRole && sameBase(unit.airBase, base)).length; }
-  productionBlockReason(city: City): string | undefined {
-    return this.usage({ kind: 'city', id: city.id }) < this.cityCapacity(city) ? undefined : 'Requires an available Airfield / Air Base aircraft slot';
+  productionDestinations(city: City): AirBaseSite[] {
+    return this.sites(city.ownerId).filter(site => this.usage(site.base) < site.capacity)
+      .sort((a,b) => this.grid.getDistance(position(city),a)-this.grid.getDistance(position(city),b) || a.base.id.localeCompare(b.base.id));
+  }
+  productionDestinationLabel(ownerId: string, base?: AircraftBase): string {
+    return base ? this.sites(ownerId).find(site => sameBase(base,site.base))?.name ?? 'Unavailable base' : 'Automatic base';
+  }
+  productionDestination(city: City, base?: AircraftBase): AirBaseSite | undefined {
+    return this.productionDestinations(city).find(site => !base || sameBase(base,site.base));
+  }
+  productionBlockReason(city: City, base?: AircraftBase): string | undefined {
+    return this.productionDestination(city, base) ? undefined : base
+      ? 'Selected aircraft base is unavailable or has no free slot'
+      : 'Requires an available Airfield / Air Base / Carrier aircraft slot';
   }
   baseFor(unit: Unit): AirBaseSite | undefined { return this.sites(unit.ownerId).find(site => sameBase(unit.airBase, site.base)); }
   private assign(unit: Unit, site: AirBaseSite): void {

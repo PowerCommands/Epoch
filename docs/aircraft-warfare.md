@@ -5,7 +5,9 @@ The six existing fixed-wing aircraft now use bases and atomic air missions. Heli
 ## Playing
 
 - Flight unlocks **Airfield**: 2 aircraft, 250 production, 3 maintenance.
-- Radar unlocks **Air Base**: replaces Airfield, 4 total aircraft, 400 production, 5 maintenance.
+- Radar unlocks **Air Base**: 4 total aircraft, 400 production, 5 maintenance. It replaces an existing Airfield on its exact tile automatically. Without an Airfield it uses normal land placement.
+- Both air buildings are placed on city-owned land. Missions and fighter coverage start at the building tile.
+- Ordering an aircraft opens a map destination cursor: click a highlighted friendly Airfield, Air Base or Carrier; Escape cancels. Any owned base with capacity is eligible, including bases outside the producing city. The queue shows and saves the selected destination. A moving Carrier receives the aircraft at its current position.
 - Carrier provides **3 aircraft slots**. Its cargo eligibility accepts aircraft capabilities, not the entire `air` category. Existing bomber atomic payloads remain supported.
 - Click a base tile repeatedly to cycle through its aircraft, or use the normal unit turn queue. Shift-click a city to open its city view directly.
 - **Air Mission** highlights operational range. Click an enemy unit or city target within that range. The aircraft flies out, strikes, and returns. Garrison priority and existing ranged city combat apply; aircraft cannot capture cities.
@@ -34,11 +36,11 @@ The roll is seeded by round, attacker ID and defender ID. It is independent of r
 
 ## Capacity and loss rules
 
-Capacity is derived from active buildings and live aircraft assignments, never from a separately persisted counter. Broken buildings provide no capacity; upgrade capacity does not stack. Production is blocked when capacity is unavailable, including enqueue, completion/purchase and per-turn progress. Queued aircraft do not reserve future slots; a queue pauses if its slot becomes unavailable.
+Capacity is derived from active buildings and live aircraft assignments, never from a separately persisted counter. Broken buildings provide no capacity; upgrade capacity does not stack. Production is blocked when capacity is unavailable, including enqueue, completion/purchase and per-turn progress. Queued aircraft do not reserve future slots; a queue pauses if its selected destination becomes full, destroyed, captured or broken. It never silently switches a selected destination.
 
 When a building is broken/removed, a city is captured/removed, or a Carrier is destroyed/captured, displaced aircraft divert to the nearest friendly base with a free slot within their normal range. Stable IDs break ties. Aircraft with no valid destination are explicitly removed and reported through `[Air]` messages. Existing payload loss/removal rules follow their aircraft. Emergency diversion preserves the aircraft's current action availability.
 
-Legacy saves and scenario aircraft without metadata use the same nearest-base rule from their stored position. No free air infrastructure is created. Scenario authors should provide enough Airfields/Air Bases or nearby Carriers: aircraft that cannot find a valid base are lost during initialization. Scenario aircraft may start on water for assignment to a nearby Carrier.
+Legacy saves and scenario aircraft without metadata use the same nearest-base rule from their stored position. Existing city-only air buildings from older saves are placed on an available owned tile during load; no additional buildings or capacity are granted. Scenario authors should provide enough Airfields/Air Bases or nearby Carriers: aircraft that cannot find a valid base are lost during initialization. Scenario aircraft may start on water for assignment to a nearby Carrier.
 
 ## Architecture and persistence
 
@@ -51,7 +53,7 @@ Legacy saves and scenario aircraft without metadata use the same nearest-base ru
 
 ## Validation
 
-- `npm run test:air`: 28 focused tests for capacity/production, upgrades, collision-free basing, range, garrisons, fighter strike strength, fighter/AA/SAM interception, abort/destruction, overlapping coverage, Carrier movement/coverage, transfer, capture/destruction, save migration and AI.
+- `npm run test:air`: 35 focused tests for capacity/production, upgrades, collision-free basing, range, garrisons, fighter strike strength, fighter/AA/SAM interception, abort/destruction, overlapping coverage, Carrier movement/coverage, transfer, capture/destruction, save migration and AI.
 - `node tools/airOperations.browser.mjs <vite-url>`: real Phaser outbound/return flights, fighter interception, stationary SAM projectiles, aircraft destruction, transfer and skipped visuals; then actual GameScene scenario initialization, HUD/map-click strike, save/load during visual flight, HUD/map-click Rebase and three autorun rounds. Chrome path can be supplied through `EPOCH_BROWSER_PATH`.
 - Relevant regression files: strategic weapons, nuclear diplomacy, building upgrades, military quality, unit upgrade resources, game-speed production costs, settler production, ceasefires, combat animation policy, strategic-resource demand and resource-access indexing.
 - TypeScript checking, generated building/unit manifests, production build and whitespace checks.

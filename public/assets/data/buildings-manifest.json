@@ -4,7 +4,7 @@
       "id": "airfield",
       "name": "Airfield",
       "era": "industrial",
-      "placement": "city",
+      "placement": "land",
       "aircraftCapacity": 2,
       "iconPath": "assets/sprites/buildings/airfield.png"
     },
@@ -12,7 +12,7 @@
       "id": "air_base",
       "name": "Air Base",
       "era": "modern",
-      "placement": "city",
+      "placement": "land",
       "aircraftCapacity": 4,
       "iconPath": "assets/sprites/buildings/air_base.png"
     },

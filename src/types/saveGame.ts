@@ -40,6 +40,7 @@ import type { AIVictoryFocusState } from './aiVictoryFocus';
 export const SAVED_GAME_VERSION = 4 as const;
 
 export interface SavedProducible {
+  aircraftBase?: import('../entities/Unit').AircraftBase;
   kind: 'unit' | 'building' | 'wonder' | 'corporation' | 'manufacturedResource' | 'project' | 'tradeRoute';
   id: string;
   /** Extra fields for tradeRoute queue entries. Optional for backward compat. */

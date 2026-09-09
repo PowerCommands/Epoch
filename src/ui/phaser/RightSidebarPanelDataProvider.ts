@@ -1,3 +1,4 @@
+import type { UnitType } from '../../entities/UnitType';
 import { interceptionProfile } from '../../data/airOperations';
 import { getNuclearCapability } from '../../systems/ai/AIStrategicWeapons';
 import type { WorldCouncilResolutionId } from '../../types/worldCouncil';
@@ -268,6 +269,10 @@ export class RightSidebarPanelDataProvider {
   private canFoundCity: ((unit: Unit) => boolean) | null = null;
   private foundCity: ((unit: Unit) => void) | null = null;
   private builderHintProvider: BuilderHintProvider | null = null;
+  private aircraftProductionRequestHandler?: (city: City, unitType: UnitType) => void;
+  setAircraftProductionRequestHandler(handler: (city: City, unitType: UnitType) => void): void {
+    this.aircraftProductionRequestHandler = handler;
+  }
   private buildingPlacementRequestHandler: BuildingPlacementRequestHandler | null = null;
   private wonderPlacementRequestHandler: WonderPlacementRequestHandler | null = null;
   private wonderPlacementAvailabilityProvider: WonderPlacementAvailabilityProvider | null = null;
@@ -1594,7 +1599,8 @@ export class RightSidebarPanelDataProvider {
     const rows: RightSidebarRow[] = [];
     const availableGold = isHuman ? this.nationManager.getResources(city.ownerId).gold : 0;
     queue.forEach(({ entry, index }, visibleIndex) => {
-      const name = getProducibleName(entry.item);
+      const name = getProducibleName(entry.item) + (entry.item.kind === 'unit' && entry.item.unitType.aircraftRole
+        ? ` → ${this.unitManager.airOperations?.productionDestinationLabel(city.ownerId, entry.item.aircraftBase) ?? 'Aircraft base'}` : '');
       const spritePath = getProducibleSpritePath(entry.item);
       // Repeatable projects never complete — show the continuous gold result
       // instead of turns/progress.
@@ -1721,6 +1727,10 @@ export class RightSidebarPanelDataProvider {
                 ?? this.capitulationSystem?.getMilitaryProductionBlockReason(nationId, unitTypeId),
             },
           )) return;
+        if (unitType.aircraftRole && this.aircraftProductionRequestHandler) {
+          this.aircraftProductionRequestHandler(city, unitType);
+          return;
+        }
         this.productionSystem.enqueue(city.id, item);
         this.requestRefresh();
         },

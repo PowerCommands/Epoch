@@ -5949,7 +5949,7 @@ export class AISystem {
       if (
         choice.kind === 'building'
         && choice.buildingType.placement !== 'city'
-        && !choice.buildingType.upgradesFrom
+        && !this.buildingPlacementSystem?.isAutomaticUpgrade(city, choice.buildingType, this.mapData)
         && this.buildingPlacementSystem
         && !placement
       ) {
@@ -6192,7 +6192,7 @@ export class AISystem {
       const placement = this.reserveAIBuildingPlacement(selected.city, selected.building);
       if (
         selected.building.placement !== 'city'
-        && !selected.building.upgradesFrom
+        && !this.buildingPlacementSystem?.isAutomaticUpgrade(selected.city, selected.building, this.mapData)
         && this.buildingPlacementSystem
         && !placement
       ) return;

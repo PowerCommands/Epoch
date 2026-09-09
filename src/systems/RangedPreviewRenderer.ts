@@ -8,9 +8,11 @@ const CURVE_COLOR = 0xff5a5a;
 export class RangedPreviewRenderer {
   private readonly targetsGfx: Phaser.GameObjects.Graphics;
   private readonly curveGfx: Phaser.GameObjects.Graphics;
+  private placementGlow?: Phaser.GameObjects.Graphics;
+  private placementPulse?: Phaser.Tweens.Tween;
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly tileMap: TileMap,
   ) {
     this.targetsGfx = scene.add.graphics().setDepth(PREVIEW_DEPTH);
@@ -18,6 +20,8 @@ export class RangedPreviewRenderer {
   }
 
   showTargets(tiles: Set<string>): void {
+    this.clearPlacementGlow();
+    this.targetsGfx.setDepth(PREVIEW_DEPTH);
     this.targetsGfx.clear();
     const inset = 4;
 
@@ -30,6 +34,41 @@ export class RangedPreviewRenderer {
       this.fillPolygon(this.targetsGfx, outline);
       this.strokePolygon(this.targetsGfx, outline);
     }
+  }
+
+  /** High-contrast destination cursor, visible above buildings and selection outlines. */
+  showPlacementTargets(tiles: Set<string>): void {
+    this.clear();
+    if (tiles.size === 0) return;
+    const color = 0xff28df;
+    this.placementGlow ??= this.scene.add.graphics().setDepth(22);
+    this.placementGlow.setAlpha(1);
+    this.targetsGfx.setDepth(23);
+    for (const key of tiles) {
+      const [x, y] = key.split(',').map(Number);
+      const outline = this.insetOutline(x, y, 3);
+      for (const [width, alpha] of [[22, 0.08], [16, 0.14], [11, 0.25]]) {
+        this.placementGlow.lineStyle(width, color, alpha);
+        this.strokePolygon(this.placementGlow, outline);
+      }
+      this.targetsGfx.fillStyle(color, 0.13);
+      this.fillPolygon(this.targetsGfx, outline);
+      this.targetsGfx.lineStyle(7, color, 1);
+      this.strokePolygon(this.targetsGfx, outline);
+      this.targetsGfx.lineStyle(2, 0xffeaff, 1);
+      this.strokePolygon(this.targetsGfx, outline);
+    }
+    // Only the halo pulses; the solid frame remains fully visible throughout.
+    this.placementPulse = this.scene.tweens.add({
+      targets: this.placementGlow, alpha: 0.3, duration: 750,
+      ease: 'Sine.easeInOut', yoyo: true, repeat: -1,
+    });
+  }
+
+  private clearPlacementGlow(): void {
+    this.placementPulse?.remove();
+    this.placementPulse = undefined;
+    this.placementGlow?.clear();
   }
 
   showCurve(from: { x: number; y: number }, to: { x: number; y: number }): void {
@@ -84,6 +123,7 @@ export class RangedPreviewRenderer {
   }
 
   clear(): void {
+    this.clearPlacementGlow();
     this.targetsGfx.clear();
     this.curveGfx.clear();
   }

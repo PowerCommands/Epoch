@@ -191,7 +191,11 @@ export class CombatSystem {
     this.airOperations = new AirOperationsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound(), () => turnManager.getCurrentNation().id, (unit,x,y) => this.resolveAirStrike(unit,x,y), (unit,x,y) => !this.isUnitCombatBlocked(unit) && this.missionAttackPermission(unit,x,y));
     productionSystem.setAircraftProductionReason?.((cityId,item) => {
       const city = cityManager.getCity(cityId);
-      return city && item.kind === 'unit' && item.unitType.aircraftRole ? this.airOperations.productionBlockReason(city) : undefined;
+      return city && item.kind === 'unit' && item.unitType.aircraftRole ? this.airOperations.productionBlockReason(city, item.aircraftBase) : undefined;
+    });
+    productionSystem.setAircraftProductionDestination?.(cityId => {
+      const city = cityManager.getCity(cityId);
+      return city ? this.airOperations.productionDestination(city)?.base : undefined;
     });
     this.strategicWeapons = new StrategicWeaponsSystem(unitManager, cityManager, mapData, gridSystem, diplomacyManager, () => turnManager.getCurrentRound());
     this.unitManager = unitManager;
