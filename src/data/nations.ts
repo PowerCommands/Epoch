@@ -34,6 +34,7 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   { id: 'nation_germany', name: 'Germany', color: '#2b2b2b', secondaryColor: '#d4af37', currencyName: 'Mark', currencySymbol: 'ℳ' },
   { id: 'nation_italy', name: 'Italy', color: '#0b6b3a', secondaryColor: '#ce2b37', currencyName: 'Lira', currencySymbol: '₤' },
   { id: 'nation_poland', name: 'Poland', color: '#d4213d', secondaryColor: '#f5f5f5', currencyName: 'Polish Złoty', currencySymbol: 'zł' },
+  {"id": "nation_finland", "name": "Finland", "color": "#003580", "secondaryColor": "#ffffff", "currencyName": "Euro", "currencySymbol": "€"},
   {"id": "nation_canada", "name": "Canada", "color": "#d52b1e", "secondaryColor": "#ffffff", "currencyName": "Canadian Dollar", "currencySymbol": "$"},
   {"id": "nation_mexico", "name": "Mexico", "color": "#006847", "secondaryColor": "#ce1126", "currencyName": "Mexican Peso", "currencySymbol": "$"},
   {"id": "nation_argentina", "name": "Argentina", "color": "#74acdf", "secondaryColor": "#ffffff", "currencyName": "Argentine Peso", "currencySymbol": "$"},

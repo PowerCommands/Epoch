@@ -600,6 +600,32 @@
       "Ivano-Frankivsk",
       "Chernivtsi",
       "Uzhhorod"
+    ],
+    "nation_finland": [
+      "Helsinki",
+      "Espoo",
+      "Tampere",
+      "Vantaa",
+      "Oulu",
+      "Turku",
+      "Jyväskylä",
+      "Kuopio",
+      "Lahti",
+      "Pori",
+      "Joensuu",
+      "Lappeenranta",
+      "Vaasa",
+      "Rovaniemi",
+      "Hämeenlinna",
+      "Seinäjoki",
+      "Mikkeli",
+      "Kotka",
+      "Kajaani",
+      "Kokkola",
+      "Rauma",
+      "Savonlinna",
+      "Tornio",
+      "Maarianhamina"
     ]
   }
 }

@@ -905,6 +905,18 @@
           "size": 240072
         },
         {
+          "name": "alexander-stubb-room.webp",
+          "path": "/assets/sprites/leaders/alexander-stubb-room.webp",
+          "type": "WEBP",
+          "size": 133056
+        },
+        {
+          "name": "alexander-stubb.png",
+          "path": "/assets/sprites/leaders/alexander-stubb.png",
+          "type": "PNG",
+          "size": 293832
+        },
+        {
           "name": "angela-merkel-room.webp",
           "path": "/assets/sprites/leaders/angela-merkel-room.webp",
           "type": "WEBP",

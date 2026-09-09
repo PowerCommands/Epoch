@@ -662,6 +662,49 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
     },
   },
   {
+    "id": "leader_alexander_stubb",
+    "name": "Alexander Stubb",
+    "nationId": "nation_finland",
+    "title": "President",
+    "image": "/assets/sprites/leaders/alexander-stubb.png",
+    "description": "A diplomatic hawk who builds dependable alliances and shared prosperity, backed by a modern professional military and firm resistance to coercion.",
+    "ideologyId": "globalism",
+    "aiNationalAgendaId": "homeland_defense",
+    "aiMilitaryDoctrineId": "disciplinedInfantry",
+    "covertPersonalityId": "pragmatist",
+    "opportunism": false,
+    "impulsiveBully": false,
+    "culturePriorities": [
+      "foreign_trade",
+      "state_workforce",
+      "military_tradition",
+      "defensive_tactics",
+      "civil_service_civics",
+      "diplomatic_service"
+    ],
+    "aiPersonality": {
+      "aggressionBias": -8,
+      "expansionBias": -10,
+      "economyBias": 16,
+      "cultureBias": 8,
+      "diplomacyBias": 28,
+      "warTolerance": 72,
+      "peacePreference": 68,
+      "minimumUnitsLostBeforePeace": 5,
+      "casualtyToleranceRatio": 0.5,
+      "resourceExploitationInterest": 1
+    },
+    "diplomacyFlavor": {
+      "greeting": "Finland believes security and cooperation reinforce one another. Let us see where our interests meet.",
+      "friendly": "Reliable partners make both our nations stronger. Finland values your commitments and stands ready to uphold its own.",
+      "neutral": "We can make progress through practical agreements on trade and security. Let us be clear about what each of us can deliver.",
+      "hostile": "We prefer dialogue, but Finland will not negotiate its security under pressure. Do not mistake our openness for a lack of resolve.",
+      "warDeclaration": "We sought cooperation. You chose coercion. Finland is prepared to defend its sovereignty and stand by its partners.",
+      "victory": "Our resolve has secured the chance for peace. Let us build arrangements that protect our people and make renewed aggression harder.",
+      "defeat": "We must protect our people and rebuild our defenses. This defeat does not erase Finland’s sovereignty or our commitments to our partners."
+    }
+  },
+  {
     "id": "leader_justin_trudeau",
     "name": "Justin Trudeau",
     "nationId": "nation_canada",
@@ -833,6 +876,7 @@ const DEFAULT_LEADERS_WITHOUT_GAMES_PREFERENCES: Array<Omit<LeaderDefinition, 'g
 ];
 
 const GAMES_PREFERENCES_BY_LEADER: Readonly<Record<string, GamesOfNationsLeaderPreferences>> = {
+  leader_alexander_stubb: { traditionalFavourite: 'javelin', additionalFavourite: 'pole_vault' },
   leader_justin_trudeau: {"traditionalFavourite": "swimming", "additionalFavourite": "hundred_metres"},
   leader_claudia_sheinbaum_pardo: {"traditionalFavourite": "marathon", "additionalFavourite": "boxing"},
   leader_javier_milei: {"traditionalFavourite": "wrestling", "additionalFavourite": "horse_racing"},

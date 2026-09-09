@@ -24,6 +24,10 @@
       "/assets/sounds/nation_england/nation-england-theme-01.mp3",
       "/assets/sounds/nation_england/nation-england-theme-02.mp3"
     ],
+    "nation_finland": [
+      "/assets/sounds/nation_finland/nation_finland_theme-01.mp3",
+      "/assets/sounds/nation_finland/nation_finland_theme-02.mp3"
+    ],
     "nation_france": [
       "/assets/sounds/nation_france/nation_france-theme-01.mp3",
       "/assets/sounds/nation_france/nation_france-theme-02.mp3"

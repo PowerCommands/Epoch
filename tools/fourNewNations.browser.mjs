@@ -2,9 +2,9 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { getDefaultLeaderByNationId } from '../src/data/leaders.ts';
 
-const ids = ['nation_canada', 'nation_mexico', 'nation_argentina', 'nation_ukraine'];
+const ids = ['nation_canada', 'nation_mexico', 'nation_argentina', 'nation_ukraine', 'nation_finland'];
 const leaders = ids.map(getDefaultLeaderByNationId);
-const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome', args: ['--no-sandbox'] });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome', args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
@@ -66,6 +66,37 @@ try {
     }, leader.nationId);
     assert.deepEqual(audio, [200, 200]);
   }
+  await page.evaluate(async () => {
+    const { SetupMusicManager } = await import('/src/systems/SetupMusicManager.ts');
+    const music = new SetupMusicManager();
+    music.setEnabled(true);
+    music.playPlaylist('nation_finland');
+    window.finlandMusic = music;
+  });
+  await page.waitForFunction(() => {
+    const music = window.finlandMusic;
+    return music.getCurrentPlaylistKey() === 'nation_finland' && music.audio?.currentTime > 0 && !music.audio.paused;
+  });
+  for (const track of ['01', '02']) {
+    await page.waitForFunction(track => window.finlandMusic.audio?.src.endsWith(`nation_finland_theme-${track}.mp3`) && window.finlandMusic.audio.currentTime > 0, track);
+    await page.evaluate(() => window.finlandMusic.audio.dispatchEvent(new Event('ended')));
+  }
+  await page.waitForFunction(() => window.finlandMusic.audio?.src.endsWith('nation_finland_theme-01.mp3') && window.finlandMusic.audio.currentTime > 0);
+  await page.evaluate(() => window.finlandMusic.setEnabled(false));
+  await page.goto(`${process.env.EPOCH_EDITOR_URL ?? 'http://127.0.0.1:5174'}/`);
+  await page.locator('#mm-new-game-btn').click({ timeout: 120000 });
+  const randomOption = await page.locator('#mm-map-select optgroup[label="Random Scenarios"] option').first().getAttribute('value');
+  await page.locator('#mm-map-select').selectOption(randomOption);
+  await page.getByRole('button', { name: 'Clear all', exact: true }).click();
+  await page.locator('#random-scenario-nations input[value="nation_finland"]').check();
+  await page.locator('#random-scenario-nations input[value="nation_sweden"]').check();
+  await page.locator('#random-scenario-size').selectOption('small');
+  await page.locator('#random-scenario-seed').fill('2026');
+  await page.locator('#random-scenario-generate').click();
+  const finlandCard = page.locator('.mm-nation-card[data-nation-id="nation_finland"]');
+  assert.equal(await finlandCard.locator('.mm-card-leader').textContent(), 'Alexander Stubb');
+  await finlandCard.click();
+  assert.ok((await finlandCard.getAttribute('class')).includes('selected-player'));
   assert.deepEqual(errors, []);
-  console.log('Four nations passed Editor export/import, default leader assignment, Game Setup details, eight image decodes and eight audio fetches.');
+  console.log('Five nations passed Editor export/import, default leader assignment, Game Setup details, image decodes and audio fetches; Finland playlist playback and loop passed.');
 } finally { await browser.close(); }

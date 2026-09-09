@@ -22,6 +22,7 @@ export const NEW_NATIONS = [
   ['mexico', 'claudia_sheinbaum_pardo', 'Mexican Peso', '$', 'Mexico City'],
   ['argentina', 'javier_milei', 'Argentine Peso', '$', 'Buenos Aires'],
   ['ukraine', 'volodymyr_zelenskyy', 'Hryvnia', '₴', 'Kyiv'],
+  ['finland', 'alexander_stubb', 'Euro', '€', 'Helsinki'],
 ] as const;
 
 for (const [slug, leaderSlug, currency, symbol, capital] of NEW_NATIONS) {
@@ -119,4 +120,36 @@ test('roster remains unique and four personalities differ with resilient Ukraini
   assert.equal(era.militaryBehavior.targetWeakNeighbor, false);
   assert.ok(era.militaryBehavior.minimumMilitaryReadiness > 1);
   assert.ok(!/Kiev|Kharkov|Odessa|Lvov|Dnepr|Zaporozhye|Lugansk/.test(cityNames.nation_ukraine.join(' ')));
+});
+
+
+test('Finland combines diplomatic openness with prepared professional defense in every era', () => {
+  const leader = getDefaultLeaderByNationId('nation_finland')!;
+  assert.equal(leader.title, 'President');
+  assert.equal(leader.ideologyId, 'globalism');
+  assert.equal(leader.aiNationalAgendaId, 'homeland_defense');
+  assert.equal(leader.covertPersonalityId, 'pragmatist');
+  assert.equal(leader.opportunism, false);
+  assert.equal(leader.impulsiveBully, false);
+  assert.ok(leader.aiPersonality!.diplomacyBias >= 25);
+  assert.ok(leader.aiPersonality!.aggressionBias < 0);
+  assert.ok(leader.aiPersonality!.expansionBias < 0);
+  assert.ok(leader.aiPersonality!.warTolerance >= 65);
+  assert.ok(leader.aiPersonality!.peacePreference >= 65);
+  for (const era of ['ancient', 'classical', 'medieval', 'renaissance', 'industrial', 'modern'] as const) {
+    const strategy = resolveLeaderEraStrategy(leader.id, era);
+    assert.equal(strategy.id, 'defensiveBuilder');
+    assert.equal(strategy.militaryBehavior.targetWeakNeighbor, false);
+    assert.ok(strategy.militaryBehavior.minimumMilitaryReadiness > 1);
+    assert.ok(strategy.diplomacyWeights.embassy > 1);
+  }
+  const doctrine = getAIMilitaryDoctrineById(leader.aiMilitaryDoctrineId);
+  assert.ok(doctrine.qualityBias > doctrine.quantityBias);
+  assert.ok(doctrine.modernizationBias > 1);
+  assert.equal(doctrine.militaryBudget.allowOverbuildingWhenThreatened, true);
+  assert.equal(leader.gamesOfNationsPreferences.traditionalFavourite, 'javelin');
+  assert.equal(leader.gamesOfNationsPreferences.additionalFavourite, 'pole_vault');
+  for (const name of ['Jyväskylä', 'Hämeenlinna', 'Seinäjoki', 'Maarianhamina']) {
+    assert.ok(cityNames.nation_finland.includes(name));
+  }
 });

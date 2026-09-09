@@ -7,6 +7,28 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  * leader checks in diplomacy code.
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
+  leader_alexander_stubb: {
+    "conquest": [
+      "Finland will secure the positions needed for a defensible settlement. Our objective is lasting security, and our advance must serve it.",
+      "Negotiations have failed to secure this frontier. We are committing forces to a limited objective and remain ready for a durable settlement."
+    ],
+    "hostility": [
+      "You have repeatedly used pressure where we offered cooperation. Finland will now meet your coercion with force and sustained resolve.",
+      "You treated our willingness to talk as permission to threaten us. That calculation has failed. Finland and its partners will resist."
+    ],
+    "threat": [
+      "Your military pressure has become a direct danger to our security. Finland is prepared, our commitments stand, and we will act.",
+      "Our partners will not face this threat alone. Diplomacy and deterrence have failed; Finland will now uphold its commitments by force."
+    ],
+    "ideological": [
+      "An international order built on coercion cannot keep our nations secure. Finland will defend the right to choose our own future.",
+      "Cooperation requires sovereign nations and commitments that mean something. Your attempt to impose obedience leaves us prepared to fight."
+    ],
+    "ambition": [
+      "Finland must be able to guarantee its own security. We undertake this operation with limited aims and a responsibility to secure the peace.",
+      "Our purpose is a settlement our people and partners can depend on. With peaceful arrangements exhausted, we will commit the force needed to achieve it."
+    ]
+  },
   leader_justin_trudeau: {
     "conquest": [
       "Canada will secure the ground needed to protect our people and partners. Our objective must remain a lasting peace.",

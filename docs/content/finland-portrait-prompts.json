@@ -1,0 +1,13 @@
+{
+  "tool": "built-in imagegen",
+  "assets": [
+    {
+      "path": "/assets/sprites/leaders/alexander-stubb.png",
+      "prompt": "Create a single square painted leader portrait for Epoch strategy game. Subject: Alexander Stubb of Finland, recognizable long narrow face, short neatly styled salt-and-pepper hair, rectangular dark-rim glasses, clean shaven, navy suit, white shirt and blue tie. Head and shoulders centered, realistic traditional oil painting with fine visible brushwork, muted warm brown textured background, soft directional light, confident approachable composed expression. Modern clothing rendered in historical painted leader presentation. No text, no border, no watermark. Output image asset."
+    },
+    {
+      "path": "/assets/sprites/leaders/alexander-stubb-room.webp",
+      "prompt": "Create one wide landscape diplomatic audience scene for Epoch strategy game, aspect ratio 2048:872. Alexander Stubb of Finland, recognizable long narrow face, short neat salt-and-pepper hair, rectangular dark-rim glasses, clean shaven, navy suit, white shirt and blue tie, seated at right third, full figure visible in an elegant Finnish presidential office with white Finnish flag bearing a blue Nordic cross. Warm traditional oil painting, realistic recognizable likeness, restrained formal atmosphere, wood furniture, soft Nordic window light. Left half is dim uncluttered interior space for game dialogue overlay. Modern clothing and room with historical painted strategy-game presentation. No text, no watermark, no border."
+    }
+  ]
+}

@@ -27,6 +27,7 @@
     { id: "nation_germany", name: "Germany", color: "#2b2b2b", secondaryColor: "#d4af37", currencyName: "Mark", currencySymbol: "\u2133" },
     { id: "nation_italy", name: "Italy", color: "#0b6b3a", secondaryColor: "#ce2b37", currencyName: "Lira", currencySymbol: "\u20A4" },
     { id: "nation_poland", name: "Poland", color: "#d4213d", secondaryColor: "#f5f5f5", currencyName: "Polish Z\u0142oty", currencySymbol: "z\u0142" },
+    { "id": "nation_finland", "name": "Finland", "color": "#003580", "secondaryColor": "#ffffff", "currencyName": "Euro", "currencySymbol": "\u20AC" },
     { "id": "nation_canada", "name": "Canada", "color": "#d52b1e", "secondaryColor": "#ffffff", "currencyName": "Canadian Dollar", "currencySymbol": "$" },
     { "id": "nation_mexico", "name": "Mexico", "color": "#006847", "secondaryColor": "#ce1126", "currencyName": "Mexican Peso", "currencySymbol": "$" },
     { "id": "nation_argentina", "name": "Argentina", "color": "#74acdf", "secondaryColor": "#ffffff", "currencyName": "Argentine Peso", "currencySymbol": "$" },
@@ -287,7 +288,7 @@
     node({ id: COLONIALISM_CULTURE_NODE_ID, name: "Colonialism", era: "industrial", cost: 600, description: "Overseas ambition becomes administration, extraction, and settlement. Distant holdings reshape diplomacy and the home economy.", prerequisites: ["mercantilism"], unlocks: [{ type: "diplomacy", value: "colonial_charters" }] }),
     node({ id: "civil_engineering", name: "Civil Engineering", era: "industrial", cost: 525, description: "Public works become symbols of modern administration. Bridges, districts, and services let cities grow with intent.", prerequisites: ["enlightenment"], unlocks: [{ type: "building", value: "public_works" }] }),
     node({ id: "urbanization", name: "Urbanization", era: "modern", cost: 600, description: "City life becomes the dominant rhythm of society. Planning, housing, and services define the politics of modern growth.", prerequisites: ["civil_engineering"], unlocks: [{ type: "building", value: "neighborhood" }] }),
-    node({ id: TOURISM_CULTURE_NODE_ID, name: "Tourism", era: "modern", cost: 720, description: "Railways, steamships, and growing prosperity turn travel into an industry. Hotels, resorts, and famous landmarks attract visitors from across the world.", prerequisites: ["urbanization"], unlocks: [{ type: "building", value: "hotel", requiredWithTechnology: true }] }),
+    node({ id: TOURISM_CULTURE_NODE_ID, name: "Tourism", era: "modern", cost: 720, description: "Railways, steamships, and growing prosperity turn travel into an industry. Hotels, resorts, and famous landmarks attract visitors from across the world.", prerequisites: ["urbanization"], unlocks: [{ type: "building", value: "hotel" }] }),
     node({ id: "ideology", name: "Ideology", era: "modern", cost: 650, description: "Politics hardens into competing visions for society. Parties, states, and citizens organize around total answers to modern life.", prerequisites: ["urbanization", "nationalism"], unlocks: [{ type: "government", value: "ideological_state" }] }),
     node({ id: "democracy", name: "Democracy", era: "modern", cost: 700, description: "Representative institutions turn public consent into durable government. Elections, legislatures, and civic participation make authority answerable to citizens.", prerequisites: ["ideology"], unlocks: [] }),
     node({ id: LIBERALISM_CULTURE_NODE_ID, name: "Liberalism", era: "modern", cost: 750, description: "Individual liberty and equal rights become foundations of public life. Constitutional limits protect conscience, expression, and association from arbitrary power. Makes the United Nations transition available.", prerequisites: ["democracy"], unlocks: [{ type: "diplomacy", value: "united_nations" }] }),
@@ -2083,6 +2084,49 @@
       }
     },
     {
+      "id": "leader_alexander_stubb",
+      "name": "Alexander Stubb",
+      "nationId": "nation_finland",
+      "title": "President",
+      "image": "/assets/sprites/leaders/alexander-stubb.png",
+      "description": "A diplomatic hawk who builds dependable alliances and shared prosperity, backed by a modern professional military and firm resistance to coercion.",
+      "ideologyId": "globalism",
+      "aiNationalAgendaId": "homeland_defense",
+      "aiMilitaryDoctrineId": "disciplinedInfantry",
+      "covertPersonalityId": "pragmatist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "state_workforce",
+        "military_tradition",
+        "defensive_tactics",
+        "civil_service_civics",
+        "diplomatic_service"
+      ],
+      "aiPersonality": {
+        "aggressionBias": -8,
+        "expansionBias": -10,
+        "economyBias": 16,
+        "cultureBias": 8,
+        "diplomacyBias": 28,
+        "warTolerance": 72,
+        "peacePreference": 68,
+        "minimumUnitsLostBeforePeace": 5,
+        "casualtyToleranceRatio": 0.5,
+        "resourceExploitationInterest": 1
+      },
+      "diplomacyFlavor": {
+        "greeting": "Finland believes security and cooperation reinforce one another. Let us see where our interests meet.",
+        "friendly": "Reliable partners make both our nations stronger. Finland values your commitments and stands ready to uphold its own.",
+        "neutral": "We can make progress through practical agreements on trade and security. Let us be clear about what each of us can deliver.",
+        "hostile": "We prefer dialogue, but Finland will not negotiate its security under pressure. Do not mistake our openness for a lack of resolve.",
+        "warDeclaration": "We sought cooperation. You chose coercion. Finland is prepared to defend its sovereignty and stand by its partners.",
+        "victory": "Our resolve has secured the chance for peace. Let us build arrangements that protect our people and make renewed aggression harder.",
+        "defeat": "We must protect our people and rebuild our defenses. This defeat does not erase Finland\u2019s sovereignty or our commitments to our partners."
+      }
+    },
+    {
       "id": "leader_justin_trudeau",
       "name": "Justin Trudeau",
       "nationId": "nation_canada",
@@ -2253,6 +2297,7 @@
     }
   ];
   var GAMES_PREFERENCES_BY_LEADER = {
+    leader_alexander_stubb: { traditionalFavourite: "javelin", additionalFavourite: "pole_vault" },
     leader_justin_trudeau: { "traditionalFavourite": "swimming", "additionalFavourite": "hundred_metres" },
     leader_claudia_sheinbaum_pardo: { "traditionalFavourite": "marathon", "additionalFavourite": "boxing" },
     leader_javier_milei: { "traditionalFavourite": "wrestling", "additionalFavourite": "horse_racing" },
@@ -3520,6 +3565,7 @@
   var LEADER_ERA_STRATEGY_PROFILES = [
     // Prepared defense carries forward to every starting era. Other new leaders
     // retain neutral era weights so their economic/growth agendas set priorities.
+    { leaderId: "leader_alexander_stubb", strategiesByEra: { ancient: "defensiveBuilder" } },
     { leaderId: "leader_volodymyr_zelenskyy", strategiesByEra: { ancient: "defensiveBuilder" } },
     // Modern alternatives reuse canonical postures across all starting eras.
     { leaderId: "leader_donald_tusk", strategiesByEra: { ancient: "defensiveBuilder" } },
@@ -3627,6 +3673,28 @@
 
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
+    leader_alexander_stubb: {
+      "conquest": [
+        "Finland will secure the positions needed for a defensible settlement. Our objective is lasting security, and our advance must serve it.",
+        "Negotiations have failed to secure this frontier. We are committing forces to a limited objective and remain ready for a durable settlement."
+      ],
+      "hostility": [
+        "You have repeatedly used pressure where we offered cooperation. Finland will now meet your coercion with force and sustained resolve.",
+        "You treated our willingness to talk as permission to threaten us. That calculation has failed. Finland and its partners will resist."
+      ],
+      "threat": [
+        "Your military pressure has become a direct danger to our security. Finland is prepared, our commitments stand, and we will act.",
+        "Our partners will not face this threat alone. Diplomacy and deterrence have failed; Finland will now uphold its commitments by force."
+      ],
+      "ideological": [
+        "An international order built on coercion cannot keep our nations secure. Finland will defend the right to choose our own future.",
+        "Cooperation requires sovereign nations and commitments that mean something. Your attempt to impose obedience leaves us prepared to fight."
+      ],
+      "ambition": [
+        "Finland must be able to guarantee its own security. We undertake this operation with limited aims and a responsibility to secure the peace.",
+        "Our purpose is a settlement our people and partners can depend on. With peaceful arrangements exhausted, we will commit the force needed to achieve it."
+      ]
+    },
     leader_justin_trudeau: {
       "conquest": [
         "Canada will secure the ground needed to protect our people and partners. Our objective must remain a lasting peace.",

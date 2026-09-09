@@ -162,6 +162,27 @@
       ]
     },
     {
+      "nationId": "nation_finland",
+      "nationName": "Finland",
+      "color": "#003580",
+      "secondaryColor": "#ffffff",
+      "currencyName": "Euro",
+      "currencySymbol": "€",
+      "leaderId": "leader_alexander_stubb",
+      "leaderName": "Alexander Stubb",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/alexander-stubb.png",
+      "leaders": [
+        {
+          "leaderId": "leader_alexander_stubb",
+          "leaderName": "Alexander Stubb",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/alexander-stubb.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_france",
       "nationName": "France",
       "color": "#1e0af1",
