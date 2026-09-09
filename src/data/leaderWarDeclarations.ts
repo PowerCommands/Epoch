@@ -7,6 +7,75 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  * leader checks in diplomacy code.
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
+
+  "leader_anutin_charnvirakul": {
+    "conquest": [
+      "Thailand will take the positions that have become essential to our strategy.",
+      "Our forces will advance and secure the ground at issue."
+    ],
+    "hostility": [
+      "We have exhausted the negotiations. Thailand will now defend its interests by force.",
+      "Your repeated hostile actions have ended the possibility of agreement."
+    ],
+    "threat": [
+      "Thailand will act against the danger your forces present.",
+      "We will not wait for your preparations to become an attack."
+    ],
+    "ideological": [
+      "Your attempts to impose your political order threaten our independence.",
+      "We will resist the order you seek to force upon our people."
+    ],
+    "ambition": [
+      "This opportunity will determine our future security. Thailand will act.",
+      "We have chosen to change the balance of power by force."
+    ]
+  },
+  "leader_lee_jae_myung": {
+    "conquest": [
+      "South Korea will take the positions that have become essential to our strategy.",
+      "Our forces will advance and secure the ground at issue."
+    ],
+    "hostility": [
+      "Our security can no longer be protected through negotiation alone. We must act.",
+      "Your repeated hostile actions have ended the possibility of agreement."
+    ],
+    "threat": [
+      "South Korea will act against the danger your forces present.",
+      "We will not wait for your preparations to become an attack."
+    ],
+    "ideological": [
+      "Your attempts to impose your political order threaten our independence.",
+      "We will resist the order you seek to force upon our people."
+    ],
+    "ambition": [
+      "This opportunity will determine our future security. South Korea will act.",
+      "We have chosen to change the balance of power by force."
+    ]
+  },
+  "leader_kim_jong_un": {
+    "conquest": [
+      "North Korea will take the positions that have become essential to our strategy.",
+      "Our forces will advance and secure the ground at issue."
+    ],
+    "hostility": [
+      "Your actions have brought us to war. Our forces will answer them.",
+      "Your repeated hostile actions have ended the possibility of agreement."
+    ],
+    "threat": [
+      "North Korea will act against the danger your forces present.",
+      "We will not wait for your preparations to become an attack."
+    ],
+    "ideological": [
+      "Your attempts to impose your political order threaten our independence.",
+      "We will resist the order you seek to force upon our people."
+    ],
+    "ambition": [
+      "This opportunity will determine our future security. North Korea will act.",
+      "We have chosen to change the balance of power by force."
+    ]
+  }
+,
+
   leader_ruhollah_khomeini: {
     "conquest": [
         "Iran will secure the ground from which our independence has been challenged.",

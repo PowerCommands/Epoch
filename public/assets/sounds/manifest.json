@@ -147,6 +147,18 @@
     "nation_saudi_arabia": [
       "/assets/sounds/nations_middle_east/nations_middle_east_theme-01.mp3",
       "/assets/sounds/nations_middle_east/nations_middle_east_theme-02.mp3"
+    ],
+    "nation_thailand": [
+      "/assets/sounds/nation_japan/nation_japan-theme-01.mp3",
+      "/assets/sounds/nation_japan/nation_japan-theme-02.mp3"
+    ],
+    "nation_south_korea": [
+      "/assets/sounds/nation_japan/nation_japan-theme-01.mp3",
+      "/assets/sounds/nation_japan/nation_japan-theme-02.mp3"
+    ],
+    "nation_north_korea": [
+      "/assets/sounds/nation_japan/nation_japan-theme-01.mp3",
+      "/assets/sounds/nation_japan/nation_japan-theme-02.mp3"
     ]
   }
 }

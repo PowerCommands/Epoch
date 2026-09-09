@@ -37,7 +37,10 @@
     { "id": "nation_egypt", "name": "Egypt", "color": "#c19a45", "secondaryColor": "#982e35", "currencyName": "Egyptian Pound", "currencySymbol": "E\xA3", "audioPlaylistId": "nations_middle_east" },
     { "id": "nation_israel", "name": "Israel", "color": "#478fce", "secondaryColor": "#f7f4e9", "currencyName": "Israeli New Shekel", "currencySymbol": "\u20AA", "audioPlaylistId": "nations_middle_east" },
     { "id": "nation_turkey", "name": "Turkey", "color": "#b93648", "secondaryColor": "#ffffff", "currencyName": "Turkish Lira", "currencySymbol": "\u20BA", "audioPlaylistId": "nations_middle_east" },
-    { "id": "nation_saudi_arabia", "name": "Saudi Arabia", "color": "#14613f", "secondaryColor": "#e3d8ac", "currencyName": "Saudi Riyal", "currencySymbol": "\u0631.\u0633", "audioPlaylistId": "nations_middle_east" }
+    { "id": "nation_saudi_arabia", "name": "Saudi Arabia", "color": "#14613f", "secondaryColor": "#e3d8ac", "currencyName": "Saudi Riyal", "currencySymbol": "\u0631.\u0633", "audioPlaylistId": "nations_middle_east" },
+    { "id": "nation_thailand", "name": "Thailand", "color": "#a51931", "secondaryColor": "#2d2a4a", "currencyName": "Baht", "currencySymbol": "\u0E3F", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/thailand.png" },
+    { "id": "nation_south_korea", "name": "South Korea", "color": "#0047a0", "secondaryColor": "#ffffff", "currencyName": "South Korean Won", "currencySymbol": "\u20A9", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/south-korea.png" },
+    { "id": "nation_north_korea", "name": "North Korea", "color": "#ed1c27", "secondaryColor": "#024fa2", "currencyName": "North Korean Won", "currencySymbol": "\u20A9", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/north-korea.png" }
   ];
 
   // src/types/aiLeaderPersonality.ts
@@ -332,6 +335,145 @@
     }
     return { id: "balancedGrowth", from: void 0, source: "Default \xB7 Balanced Growth" };
   }
+
+  // src/data/asianLeaders.ts
+  var ASIAN_LEADERS = [
+    {
+      "id": "leader_anutin_charnvirakul",
+      "isDefault": true,
+      "name": "Anutin Charnvirakul",
+      "nationId": "nation_thailand",
+      "title": "Prime Minister",
+      "image": "/assets/sprites/leaders/anutin-charnvirakul.png",
+      "description": "Thai prime minister and Bhumjaithai Party leader, Anutin Charnvirakul previously served as interior minister and public health minister.",
+      "ideologyId": "conservatism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "balanced",
+      "covertPersonalityId": "merchant",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "foreign_trade",
+        "civil_engineering",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "swimming",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -8,
+        "expansionBias": 0,
+        "economyBias": 24,
+        "cultureBias": 8,
+        "diplomacyBias": 20,
+        "warTolerance": 42,
+        "peacePreference": 75,
+        "minimumUnitsLostBeforePeace": 3,
+        "casualtyToleranceRatio": 0.3,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Thailand welcomes practical partners. Let us find opportunities that benefit both our peoples.",
+        "friendly": "Our cooperation is delivering results. Let us keep trade and conversation moving.",
+        "neutral": "Show me how your proposal supports stability and prosperity.",
+        "hostile": "Pressure damages the confidence on which our cooperation depends.",
+        "warDeclaration": "We have exhausted the negotiations. Thailand will now defend its interests by force.",
+        "victory": "The fighting has secured our position. A workable settlement must follow.",
+        "defeat": "We must stop these losses and negotiate terms that allow our people to rebuild."
+      }
+    },
+    {
+      "id": "leader_lee_jae_myung",
+      "isDefault": true,
+      "name": "Lee Jae Myung",
+      "nationId": "nation_south_korea",
+      "title": "President",
+      "image": "/assets/sprites/leaders/lee-jae-myung.png",
+      "description": "President of the Republic of Korea since 2025, Lee Jae Myung previously served as governor of Gyeonggi Province and mayor of Seongnam.",
+      "ideologyId": "progressivism",
+      "aiNationalAgendaId": "growth",
+      "aiMilitaryDoctrineId": "eliteArmy",
+      "covertPersonalityId": "pragmatist",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "civil_engineering",
+        "foreign_trade",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "javelin",
+        "additionalFavourite": "fencing"
+      },
+      "aiPersonality": {
+        "aggressionBias": -15,
+        "expansionBias": -4,
+        "economyBias": 24,
+        "cultureBias": 18,
+        "diplomacyBias": 22,
+        "warTolerance": 58,
+        "peacePreference": 80,
+        "minimumUnitsLostBeforePeace": 4,
+        "casualtyToleranceRatio": 0.4,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Welcome. South Korea seeks security, shared prosperity and dependable cooperation.",
+        "friendly": "Our partnership gives both our peoples more opportunities. We should build on it.",
+        "neutral": "We will assess your proposal by its practical effects on our citizens.",
+        "hostile": "Your actions undermine the trust needed for peaceful cooperation.",
+        "warDeclaration": "Our security can no longer be protected through negotiation alone. We must act.",
+        "victory": "Our forces have achieved their objectives. We now seek a durable peace.",
+        "defeat": "The cost of continuing is too great. We must protect our people through a settlement."
+      }
+    },
+    {
+      "id": "leader_kim_jong_un",
+      "isDefault": true,
+      "name": "Kim Jong Un",
+      "nationId": "nation_north_korea",
+      "title": "General Secretary",
+      "image": "/assets/sprites/leaders/kim-jong-un.png",
+      "description": "Leader of North Korea since 2011, Kim Jong Un heads the Workers\u2019 Party of Korea and the State Affairs Commission.",
+      "ideologyId": "militarism",
+      "aiNationalAgendaId": "isolationist",
+      "aiMilitaryDoctrineId": "militaryMobilization",
+      "covertPersonalityId": "paranoid",
+      "opportunism": false,
+      "impulsiveBully": false,
+      "culturePriorities": [
+        "state_workforce",
+        "nationalism",
+        "mobilization"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "wrestling",
+        "additionalFavourite": "boxing"
+      },
+      "aiPersonality": {
+        "aggressionBias": 14,
+        "expansionBias": -6,
+        "economyBias": 4,
+        "cultureBias": -4,
+        "diplomacyBias": -24,
+        "warTolerance": 85,
+        "peacePreference": 30,
+        "minimumUnitsLostBeforePeace": 7,
+        "casualtyToleranceRatio": 0.65,
+        "resourceExploitationInterest": 2
+      },
+      "diplomacyFlavor": {
+        "greeting": "North Korea expects its sovereignty to be respected. State your purpose.",
+        "friendly": "You have honored our agreements. Cooperation may continue on that basis.",
+        "neutral": "We will judge these terms by what they mean for our independence and security.",
+        "hostile": "Threats and pressure will not secure our obedience.",
+        "warDeclaration": "Your actions have brought us to war. Our forces will answer them.",
+        "victory": "Our position is secure. The settlement must prevent renewed threats.",
+        "defeat": "We will consider terms that preserve our sovereignty and end the fighting."
+      }
+    }
+  ];
 
   // src/data/middleEasternLeaders.ts
   var MIDDLE_EASTERN_LEADERS = [
@@ -2754,6 +2896,7 @@
   var ALL_LEADERS = [
     ...DEFAULT_LEADERS,
     ...MIDDLE_EASTERN_LEADERS,
+    ...ASIAN_LEADERS,
     WINSTON_CHURCHILL,
     CHARLES_DE_GAULLE,
     ADOLF_HITLER,
@@ -3891,6 +4034,9 @@
     SEA_WOLF_STRATEGY
   ];
   var LEADER_ERA_STRATEGY_PROFILES = [
+    { leaderId: "leader_anutin_charnvirakul", strategiesByEra: { ancient: "balancedGrowth" } },
+    { leaderId: "leader_lee_jae_myung", strategiesByEra: { ancient: "coastalTechEconomy" } },
+    { leaderId: "leader_kim_jong_un", strategiesByEra: { ancient: "defensiveBuilder" } },
     { leaderId: "leader_ruhollah_khomeini", strategiesByEra: { ancient: "defensiveBuilder" } },
     { leaderId: "leader_saddam_hussein", strategiesByEra: { ancient: "militaryPreparation" } },
     { leaderId: "leader_cleopatra_vii", strategiesByEra: { ancient: "culturalDominance" } },
@@ -4008,6 +4154,72 @@
 
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
+    "leader_anutin_charnvirakul": {
+      "conquest": [
+        "Thailand will take the positions that have become essential to our strategy.",
+        "Our forces will advance and secure the ground at issue."
+      ],
+      "hostility": [
+        "We have exhausted the negotiations. Thailand will now defend its interests by force.",
+        "Your repeated hostile actions have ended the possibility of agreement."
+      ],
+      "threat": [
+        "Thailand will act against the danger your forces present.",
+        "We will not wait for your preparations to become an attack."
+      ],
+      "ideological": [
+        "Your attempts to impose your political order threaten our independence.",
+        "We will resist the order you seek to force upon our people."
+      ],
+      "ambition": [
+        "This opportunity will determine our future security. Thailand will act.",
+        "We have chosen to change the balance of power by force."
+      ]
+    },
+    "leader_lee_jae_myung": {
+      "conquest": [
+        "South Korea will take the positions that have become essential to our strategy.",
+        "Our forces will advance and secure the ground at issue."
+      ],
+      "hostility": [
+        "Our security can no longer be protected through negotiation alone. We must act.",
+        "Your repeated hostile actions have ended the possibility of agreement."
+      ],
+      "threat": [
+        "South Korea will act against the danger your forces present.",
+        "We will not wait for your preparations to become an attack."
+      ],
+      "ideological": [
+        "Your attempts to impose your political order threaten our independence.",
+        "We will resist the order you seek to force upon our people."
+      ],
+      "ambition": [
+        "This opportunity will determine our future security. South Korea will act.",
+        "We have chosen to change the balance of power by force."
+      ]
+    },
+    "leader_kim_jong_un": {
+      "conquest": [
+        "North Korea will take the positions that have become essential to our strategy.",
+        "Our forces will advance and secure the ground at issue."
+      ],
+      "hostility": [
+        "Your actions have brought us to war. Our forces will answer them.",
+        "Your repeated hostile actions have ended the possibility of agreement."
+      ],
+      "threat": [
+        "North Korea will act against the danger your forces present.",
+        "We will not wait for your preparations to become an attack."
+      ],
+      "ideological": [
+        "Your attempts to impose your political order threaten our independence.",
+        "We will resist the order you seek to force upon our people."
+      ],
+      "ambition": [
+        "This opportunity will determine our future security. North Korea will act.",
+        "We have chosen to change the balance of power by force."
+      ]
+    },
     leader_ruhollah_khomeini: {
       "conquest": [
         "Iran will secure the ground from which our independence has been challenged.",

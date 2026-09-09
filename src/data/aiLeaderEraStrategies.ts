@@ -770,6 +770,9 @@ const STRATEGY_BY_ID: Record<AILeaderEraStrategyId, AILeaderEraStrategy> = {
 };
 
 export const LEADER_ERA_STRATEGY_PROFILES: readonly LeaderEraStrategyProfile[] = [
+  { leaderId: 'leader_anutin_charnvirakul', strategiesByEra: { ancient: 'balancedGrowth' } },
+  { leaderId: 'leader_lee_jae_myung', strategiesByEra: { ancient: 'coastalTechEconomy' } },
+  { leaderId: 'leader_kim_jong_un', strategiesByEra: { ancient: 'defensiveBuilder' } },
   { leaderId: 'leader_ruhollah_khomeini', strategiesByEra: { ancient: 'defensiveBuilder' } },
   { leaderId: 'leader_saddam_hussein', strategiesByEra: { ancient: 'militaryPreparation' } },
   { leaderId: 'leader_cleopatra_vii', strategiesByEra: { ancient: 'culturalDominance' } },

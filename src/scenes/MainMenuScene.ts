@@ -773,6 +773,14 @@ export class MainMenuScene extends Phaser.Scene {
 
       const name = document.createElement('strong');
       name.textContent = displayNation.name;
+      const flagImage = getNationDefinitionById(displayNation.id)?.flagImage;
+      if (flagImage) {
+        const flag = document.createElement('img');
+        flag.src = flagImage;
+        flag.alt = `${displayNation.name} flag`;
+        flag.className = 'mm-nation-flag';
+        name.prepend(flag);
+      }
 
       const leaderName = document.createElement('span');
       leaderName.className = 'mm-card-leader';
@@ -1978,6 +1986,7 @@ export class MainMenuScene extends Phaser.Scene {
         font-size: 13px;
       }
 
+      .mm-nation-flag { width: 30px; height: 20px; object-fit: contain; margin-right: 8px; vertical-align: middle; }
       .mm-card-leader {
         white-space: nowrap;
         overflow: hidden;

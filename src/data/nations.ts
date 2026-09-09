@@ -3,6 +3,8 @@ export interface NationDefinition {
   name: string;
   color: string;
   secondaryColor: string;
+  /** Optional national flag shown alongside the existing nation colors. */
+  flagImage?: string;
   currencyName: string;
   currencySymbol: string;
   /** Optional data-driven reuse of another nation's audio/music playlist assets. */
@@ -47,6 +49,9 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   {"id": "nation_israel", "name": "Israel", "color": "#478fce", "secondaryColor": "#f7f4e9", "currencyName": "Israeli New Shekel", "currencySymbol": "₪", "audioPlaylistId": "nations_middle_east"},
   {"id": "nation_turkey", "name": "Turkey", "color": "#b93648", "secondaryColor": "#ffffff", "currencyName": "Turkish Lira", "currencySymbol": "₺", "audioPlaylistId": "nations_middle_east"},
   {"id": "nation_saudi_arabia", "name": "Saudi Arabia", "color": "#14613f", "secondaryColor": "#e3d8ac", "currencyName": "Saudi Riyal", "currencySymbol": "ر.س", "audioPlaylistId": "nations_middle_east"},
+  {"id": "nation_thailand", "name": "Thailand", "color": "#a51931", "secondaryColor": "#2d2a4a", "currencyName": "Baht", "currencySymbol": "฿", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/thailand.png"},
+  {"id": "nation_south_korea", "name": "South Korea", "color": "#0047a0", "secondaryColor": "#ffffff", "currencyName": "South Korean Won", "currencySymbol": "₩", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/south-korea.png"},
+  {"id": "nation_north_korea", "name": "North Korea", "color": "#ed1c27", "secondaryColor": "#024fa2", "currencyName": "North Korean Won", "currencySymbol": "₩", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/north-korea.png"},
 ];
 
 export function getNationDefinitionById(nationId: string): NationDefinition | undefined {

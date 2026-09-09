@@ -17,6 +17,7 @@ interface NationManifestEntry {
   nationName: string;
   color: string;
   secondaryColor: string;
+  flagImage?: string;
   currencyName: string;
   currencySymbol: string;
   leaderId: string;
@@ -45,6 +46,7 @@ const manifest: NationManifest = {
         nationName: nation.name,
         color: nation.color,
         secondaryColor: nation.secondaryColor,
+        ...(nation.flagImage ? { flagImage: nation.flagImage } : {}),
         currencyName: nation.currencyName,
         currencySymbol: nation.currencySymbol,
         leaderId: leader?.id ?? '',

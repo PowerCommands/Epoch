@@ -547,6 +547,28 @@
       ]
     },
     {
+      "nationId": "nation_north_korea",
+      "nationName": "North Korea",
+      "color": "#ed1c27",
+      "secondaryColor": "#024fa2",
+      "flagImage": "/assets/sprites/flags/north-korea.png",
+      "currencyName": "North Korean Won",
+      "currencySymbol": "₩",
+      "leaderId": "leader_kim_jong_un",
+      "leaderName": "Kim Jong Un",
+      "leaderTitle": "General Secretary",
+      "leaderImage": "/assets/sprites/leaders/kim-jong-un.png",
+      "leaders": [
+        {
+          "leaderId": "leader_kim_jong_un",
+          "leaderName": "Kim Jong Un",
+          "leaderTitle": "General Secretary",
+          "leaderImage": "/assets/sprites/leaders/kim-jong-un.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_novgorod",
       "nationName": "Novgorod",
       "color": "#16a085",
@@ -687,6 +709,28 @@
       ]
     },
     {
+      "nationId": "nation_south_korea",
+      "nationName": "South Korea",
+      "color": "#0047a0",
+      "secondaryColor": "#ffffff",
+      "flagImage": "/assets/sprites/flags/south-korea.png",
+      "currencyName": "South Korean Won",
+      "currencySymbol": "₩",
+      "leaderId": "leader_lee_jae_myung",
+      "leaderName": "Lee Jae Myung",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/lee-jae-myung.png",
+      "leaders": [
+        {
+          "leaderId": "leader_lee_jae_myung",
+          "leaderName": "Lee Jae Myung",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/lee-jae-myung.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
       "nationId": "nation_soviet_union",
       "nationName": "Soviet Union",
       "color": "#8b1a1a",
@@ -780,6 +824,28 @@
           "leaderName": "Koxinga",
           "leaderTitle": "Zheng Chenggong",
           "leaderImage": "/assets/sprites/leaders/koxinga.png",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "nationId": "nation_thailand",
+      "nationName": "Thailand",
+      "color": "#a51931",
+      "secondaryColor": "#2d2a4a",
+      "flagImage": "/assets/sprites/flags/thailand.png",
+      "currencyName": "Baht",
+      "currencySymbol": "฿",
+      "leaderId": "leader_anutin_charnvirakul",
+      "leaderName": "Anutin Charnvirakul",
+      "leaderTitle": "Prime Minister",
+      "leaderImage": "/assets/sprites/leaders/anutin-charnvirakul.png",
+      "leaders": [
+        {
+          "leaderId": "leader_anutin_charnvirakul",
+          "leaderName": "Anutin Charnvirakul",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/anutin-charnvirakul.png",
           "isDefault": true
         }
       ]

@@ -1785,7 +1785,7 @@ function buildCreateNationList() {
     row.className = 'landing-nation-row';
     row.innerHTML = `<input type="checkbox" value="${nation.nationId}">
       <img src="${nation.leaderImage}" alt="">
-      <span>${nation.nationName}</span>`;
+      <span>${nation.flagImage ? `<img src="${nation.flagImage}" alt="${nation.nationName} flag" style="width:24px;height:16px;object-fit:contain;vertical-align:middle">` : ''} ${nation.nationName}</span>`;
     container.appendChild(row);
   }
 }
@@ -2848,7 +2848,7 @@ function buildNationList() {
     row.className = 'entity-row nation-row' + (nation.id === selectedNationId ? ' selected' : '');
     row.innerHTML = `${registryLeader ? `<img class="nation-portrait" src="${registryLeader.leaderImage}" alt="">` : `<span class="entity-dot" style="background:${getNationSwatchStyle(nation.color || '#888', nation.secondaryColor || nation.color || '#888')}"></span>`}
       <span class="nation-row-copy">
-        <strong>${getNationDisplayName(nation)}${capital ? ` (${capital.q},${capital.r})` : ''}</strong>
+        <strong>${registryNation?.flagImage ? `<img src="${registryNation.flagImage}" alt="${registryNation.nationName} flag" style="width:24px;height:16px;object-fit:contain;vertical-align:middle;margin-right:5px">` : ''}${getNationDisplayName(nation)}${capital ? ` (${capital.q},${capital.r})` : ''}</strong>
         <span>${registryLeader ? registryLeader.leaderName : `Unknown nation: ${nation.id}`}</span>
       </span>`;
     row.addEventListener('click', () => selectNation(nation.id));

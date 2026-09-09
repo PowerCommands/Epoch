@@ -859,6 +859,30 @@
       ]
     },
     {
+      "path": "flags",
+      "label": "Flags",
+      "assets": [
+        {
+          "name": "north-korea.png",
+          "path": "/assets/sprites/flags/north-korea.png",
+          "type": "PNG",
+          "size": 3176
+        },
+        {
+          "name": "south-korea.png",
+          "path": "/assets/sprites/flags/south-korea.png",
+          "type": "PNG",
+          "size": 8316
+        },
+        {
+          "name": "thailand.png",
+          "path": "/assets/sprites/flags/thailand.png",
+          "type": "PNG",
+          "size": 499
+        }
+      ]
+    },
+    {
       "path": "improvements",
       "label": "Improvements",
       "assets": [
@@ -939,6 +963,18 @@
           "path": "/assets/sprites/leaders/angela-merkel.png",
           "type": "PNG",
           "size": 350613
+        },
+        {
+          "name": "anutin-charnvirakul-room.webp",
+          "path": "/assets/sprites/leaders/anutin-charnvirakul-room.webp",
+          "type": "WEBP",
+          "size": 269444
+        },
+        {
+          "name": "anutin-charnvirakul.png",
+          "path": "/assets/sprites/leaders/anutin-charnvirakul.png",
+          "type": "PNG",
+          "size": 266966
         },
         {
           "name": "benito-mussolini-room.webp",
@@ -1229,6 +1265,18 @@
           "size": 263141
         },
         {
+          "name": "kim-jong-un-room.webp",
+          "path": "/assets/sprites/leaders/kim-jong-un-room.webp",
+          "type": "WEBP",
+          "size": 233678
+        },
+        {
+          "name": "kim-jong-un.png",
+          "path": "/assets/sprites/leaders/kim-jong-un.png",
+          "type": "PNG",
+          "size": 250490
+        },
+        {
           "name": "koxinga-room.webp",
           "path": "/assets/sprites/leaders/koxinga-room.webp",
           "type": "WEBP",
@@ -1239,6 +1287,18 @@
           "path": "/assets/sprites/leaders/koxinga.png",
           "type": "PNG",
           "size": 178207
+        },
+        {
+          "name": "lee-jae-myung-room.webp",
+          "path": "/assets/sprites/leaders/lee-jae-myung-room.webp",
+          "type": "WEBP",
+          "size": 271866
+        },
+        {
+          "name": "lee-jae-myung.png",
+          "path": "/assets/sprites/leaders/lee-jae-myung.png",
+          "type": "PNG",
+          "size": 256585
         },
         {
           "name": "mahatma-gandhi-room.webp",
