@@ -57,7 +57,8 @@ interface HudLayerConfig {
   onSelectResearch: (technologyId: string) => boolean;
   onSelectCultureNode: (nodeId: string) => boolean;
   onPoliciesChanged: (nationId: string) => void;
-  onAcceptProposal: (proposalId: string) => void;
+  onAcceptProposal: (proposalId: string) => void | boolean;
+  onCompromiseProposal?: (proposalId: string) => boolean;
   onRejectProposal: (proposalId: string) => void;
   onDiscoveryClosed: () => void;
   getGamesOfNationsModel: () => GamesOfNationsUiModel;
@@ -232,14 +233,25 @@ export class HudLayer {
       this.config.proposalContext,
     );
     this.proposalDialog.setOnAccept((proposalId) => {
-      this.config.onAcceptProposal(proposalId);
-      this.proposalDialog.hide();
-      this.showNextQueuedModal();
+      if (this.config.onAcceptProposal(proposalId) === false) { this.proposalDialog.showInsufficientFunds(); return; }
+      if (this.proposalDialog.getCurrentProposalId() === proposalId) {
+        this.proposalDialog.hide();
+        this.showNextQueuedModal();
+      }
+    });
+    this.proposalDialog.setOnCompromise((proposalId) => {
+      if (this.config.onCompromiseProposal?.(proposalId) === false) { this.proposalDialog.showInsufficientFunds(); return; }
+      if (this.proposalDialog.getCurrentProposalId() === proposalId) {
+        this.proposalDialog.hide();
+        this.showNextQueuedModal();
+      }
     });
     this.proposalDialog.setOnReject((proposalId) => {
       this.config.onRejectProposal(proposalId);
-      this.proposalDialog.hide();
-      this.showNextQueuedModal();
+      if (this.proposalDialog.getCurrentProposalId() === proposalId) {
+        this.proposalDialog.hide();
+        this.showNextQueuedModal();
+      }
     });
 
     this.mapLensToggle = new MapLensToggleHud(

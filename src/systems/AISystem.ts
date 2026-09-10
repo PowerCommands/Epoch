@@ -2335,6 +2335,8 @@ export class AISystem {
       ));
 
     for (const { candidate, score } of candidates) {
+      // A promise is temporary; retain the scout memory for when it expires.
+      if (!this.foundCitySystem.isDiplomaticFoundingAllowed(nationId, candidate.x, candidate.y)) continue;
       if (claimedTargets.has(tileKey(candidate.x, candidate.y))) continue;
       if (!this.isFoundingTargetValid(candidate.x, candidate.y, strategy, eraStrategy)) {
         this.settlementMemorySystem.removeCandidate(nationId, candidate.x, candidate.y);
@@ -2358,6 +2360,7 @@ export class AISystem {
     candidate: SettlementCandidate,
     eraStrategy: AILeaderEraStrategy,
   ): number {
+    if (!this.foundCitySystem.isDiplomaticFoundingAllowed(settler.ownerId, candidate.x, candidate.y)) return -Infinity;
     const preferences = eraStrategy.foundingPreferences;
     let multiplier = 1;
     if (candidate.hasStrategicResource) multiplier += preferences?.strategicResource ?? 0;
@@ -2413,6 +2416,7 @@ export class AISystem {
         if (this.cityManager.getCityAt(x, y) !== undefined) continue;
         if (this.unitManager.getUnitAt(x, y) !== null) continue;
         if (claimedTargets.has(tileKey(x, y))) continue;
+        if (!this.foundCitySystem.isDiplomaticFoundingAllowed(nationId, x, y)) continue;
 
         const cityDist = this.minDistanceToCities(x, y, allCities);
         if (cityDist < minCityDistance) continue;
@@ -2455,6 +2459,7 @@ export class AISystem {
     strategy: AIStrategy,
     eraStrategy: AILeaderEraStrategy,
   ): boolean {
+    if (!this.foundCitySystem.isDiplomaticFoundingAllowed(this.turnManager.getCurrentNation().id, x, y)) return false;
     const tile = this.mapData.tiles[y]?.[x];
     if (!tile) return false;
     if (tile.type === TileType.Ocean || tile.type === TileType.Coast || tile.type === TileType.Ice) return false;

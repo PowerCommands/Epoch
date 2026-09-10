@@ -1,4 +1,5 @@
 export type DiplomaticProposalKind =
+  | 'diplomatic_affair'
   | 'open_borders'
   | 'embassy'
   | 'trade_relations'
@@ -85,6 +86,7 @@ export interface DiplomaticExploitationRightsPayload {
 }
 
 export type DiplomaticProposalPayload =
+  | { readonly kind: 'diplomatic_affair'; readonly body: string; readonly acceptLabel: string; readonly compromiseLabel?: string }
   | DiplomaticOpenBordersPayload
   | DiplomaticEmbassyPayload
   | DiplomaticTradeRelationsPayload

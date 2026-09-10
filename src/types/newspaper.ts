@@ -1,6 +1,7 @@
 import type { HistoricalEvent, HistoricalEventType } from './historicalTimeline';
 
 export type NewspaperEventType = Exclude<HistoricalEventType,
+  | 'diplomaticAffair'
   | 'leaderInsult'
   | 'reconciliation'
   | 'luckyLoser'

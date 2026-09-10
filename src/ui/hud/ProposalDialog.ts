@@ -47,6 +47,8 @@ export class ProposalDialog {
   private readonly bodyText: Phaser.GameObjects.Text;
   private readonly acceptButton: DialogButton;
   private readonly rejectButton: DialogButton;
+  private readonly compromiseButton: DialogButton;
+  private compromiseListener: ProposalDialogDecisionListener | null = null;
   private current: DiplomaticProposal | null = null;
   private acceptListener: ProposalDialogDecisionListener | null = null;
   private rejectListener: ProposalDialogDecisionListener | null = null;
@@ -99,6 +101,9 @@ export class ProposalDialog {
       this.acceptListener?.(proposal.id);
     });
 
+    this.compromiseButton = this.createButton(addOwned, 'Settle', 0x76603a, 0x967e50, 0x564321, () => {
+      if (this.current) this.compromiseListener?.(this.current.id);
+    });
     this.rejectButton = this.createButton(addOwned, 'Reject', 0x7a3030, 0x9c4242, 0x5e2424, () => {
       const proposal = this.current;
       if (!proposal) return;
@@ -108,6 +113,13 @@ export class ProposalDialog {
 
   setOnAccept(listener: ProposalDialogDecisionListener): void {
     this.acceptListener = listener;
+  }
+
+  setOnCompromise(listener: ProposalDialogDecisionListener): void { this.compromiseListener = listener; }
+
+  showInsufficientFunds(): void {
+    if (this.current) this.bodyText.setText(this.formatBody(this.current, this.context.getNationName(this.current.fromNationId)) + '\n\nYou no longer have enough gold. Choose another response.');
+    this.layout();
   }
 
   setOnReject(listener: ProposalDialogDecisionListener): void {
@@ -135,6 +147,9 @@ export class ProposalDialog {
     this.panel.setVisible(true);
     this.titleText.setVisible(true);
     this.bodyText.setVisible(true);
+    this.acceptButton.text.setText(proposal.payload.kind === 'diplomatic_affair' ? proposal.payload.acceptLabel : 'Accept');
+    this.compromiseButton.text.setText(proposal.payload.kind === 'diplomatic_affair' ? proposal.payload.compromiseLabel ?? '' : '');
+    this.setButtonVisible(this.compromiseButton, proposal.payload.kind === 'diplomatic_affair' && !!proposal.payload.compromiseLabel);
     this.setButtonVisible(this.acceptButton, true);
     this.setButtonVisible(this.rejectButton, true);
     this.layout();
@@ -152,6 +167,7 @@ export class ProposalDialog {
     this.bodyText.setVisible(false);
     this.setButtonVisible(this.acceptButton, false);
     this.setButtonVisible(this.rejectButton, false);
+    this.setButtonVisible(this.compromiseButton, false);
   }
 
   layout(): void {
@@ -161,7 +177,9 @@ export class ProposalDialog {
 
     const titleHeight = Math.ceil(this.titleText.height);
     const bodyHeight = Math.ceil(this.bodyText.height);
-    const panelHeight =
+    const hasCompromise = this.current.payload.kind === 'diplomatic_affair' && !!this.current.payload.compromiseLabel;
+    const extraHeight = hasCompromise ? BUTTON_HEIGHT + BUTTON_GAP : 0;
+    const panelHeight = extraHeight +
       PANEL_PADDING_Y
       + titleHeight
       + TITLE_GAP
@@ -173,12 +191,12 @@ export class ProposalDialog {
     const panelX = Math.round((width - PANEL_WIDTH) / 2);
     const panelY = Math.round((height - panelHeight) / 2);
 
-    this.panel.setPosition(panelX, panelY).setDisplaySize(PANEL_WIDTH, panelHeight);
+    this.panel.setPosition(panelX, panelY).setSize(PANEL_WIDTH, panelHeight);
 
     this.titleText.setPosition(panelX + PANEL_PADDING_X, panelY + PANEL_PADDING_Y);
     this.bodyText.setPosition(panelX + PANEL_PADDING_X, panelY + PANEL_PADDING_Y + titleHeight + TITLE_GAP);
 
-    const buttonY = panelY + panelHeight - PANEL_PADDING_Y - BUTTON_HEIGHT;
+    const buttonY = panelY + panelHeight - PANEL_PADDING_Y - BUTTON_HEIGHT - extraHeight;
     const usableWidth = PANEL_WIDTH - PANEL_PADDING_X * 2;
     const buttonWidth = Math.floor((usableWidth - BUTTON_GAP) / 2);
     const acceptX = panelX + PANEL_PADDING_X;
@@ -186,6 +204,7 @@ export class ProposalDialog {
 
     this.placeButton(this.acceptButton, acceptX, buttonY, buttonWidth, BUTTON_HEIGHT);
     this.placeButton(this.rejectButton, rejectX, buttonY, buttonWidth, BUTTON_HEIGHT);
+    if (hasCompromise) this.placeButton(this.compromiseButton, acceptX, buttonY + BUTTON_HEIGHT + BUTTON_GAP, usableWidth, BUTTON_HEIGHT);
   }
 
   destroy(): void {
@@ -195,10 +214,12 @@ export class ProposalDialog {
     this.bodyText.destroy();
     this.destroyButton(this.acceptButton);
     this.destroyButton(this.rejectButton);
+    this.destroyButton(this.compromiseButton);
   }
 
   private formatBody(proposal: DiplomaticProposal, fromName: string): string {
     switch (proposal.payload.kind) {
+      case 'diplomatic_affair': return proposal.payload.body;
       case 'open_borders':
         return `${fromName} proposes Open Borders.`;
       case 'embassy':
@@ -323,7 +344,7 @@ export class ProposalDialog {
   }
 
   private placeButton(button: DialogButton, x: number, y: number, width: number, height: number): void {
-    button.background.setPosition(x, y).setDisplaySize(width, height);
+    button.background.setPosition(x, y).setSize(width, height);
     button.text.setPosition(Math.round(x + width / 2), Math.round(y + height / 2));
     button.hitArea.setPosition(x, y).setSize(width, height);
     if (!button.hitArea.input?.enabled) {

@@ -1,3 +1,4 @@
+import { DiplomaticAffairSystem } from '../systems/diplomacy/DiplomaticAffairSystem';
 import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
 import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
 import { AirBaseRenderer } from '../renderers/AirBaseRenderer';
@@ -3954,6 +3955,48 @@ export class GameScene extends Phaser.Scene {
       refreshCultureOverlay();
     });
 
+    const diplomaticAffairSystem = new DiplomaticAffairSystem({
+      round: () => turnManager.getCurrentRound(),
+      nations: () => nationManager.getAllNations().map(n => n.id),
+      name: id => nationManager.getNation(id)?.name ?? id,
+      isHuman: id => id === humanNationId,
+      interactive: () => !isAutoplayActive(),
+      active: id => aiMilitaryEvaluationSystem.isNationActive(id),
+      haveMet: (a, b) => discoverySystem.hasMet(a, b),
+      atWar: (a, b) => diplomacyManager.getState(a, b) === 'WAR',
+      cities: () => cityManager.getAllCities(),
+      // AI observes its nearby frontier; human complaints require discovered cities.
+      knowsCity: (id, city) => id !== humanNationId || visibilitySystem.isKnownCity(city.id)
+        || visibilitySystem.isTileVisibleToHuman(city.tileX, city.tileY),
+      distance: (a, b) => gridSystem.getDistance(a, b),
+      gold: id => nationManager.getResources(id).gold,
+      addGold: (id, amount) => { resourceSystem.addGold(id, amount); },
+      relation: (a, b) => diplomacyManager.getRelation(a, b),
+      diplomacyBias: id => getLeaderPersonalityByNationId(id).diplomacyBias,
+      changeRelation: (a, b, trust, hostility) => {
+        const r = diplomacyManager.getRelation(a, b);
+        diplomacyManager.setMemoryValues(a, b, { trust: Math.max(0, Math.min(100, r.trust + trust)),
+          hostility: Math.max(0, Math.min(100, r.hostility + hostility)), fear: r.fear, affinity: r.affinity, suspicion: r.suspicion });
+      },
+      record: (a, b, text) => {
+        historicalTimeline.record({ type: 'diplomaticAffair', icon: '💬', text, eventNationIds: [a, b], visibleToNationIds: [a, b] });
+        logManager.info({ nationIds: [a, b], category: 'diplomacy', message: text });
+        hudLayer?.refresh();
+        rightPanel?.requestRefresh();
+      },
+      present: proposal => hudLayer?.enqueueProposal(proposal),
+      dismiss: id => hudLayer?.dismissProposal(id),
+      notify: (speaker, text) => hudLayer?.enqueueDiscovery({
+        title: `Diplomatic follow-up: ${nationManager.getNation(speaker)?.name ?? speaker}`,
+        imageKey: 'diplomatic_affair_notice', imagePath: '/assets/sprites/cultures/diplomatic_service.png',
+        description: text, unlockRows: [], leadsToRows: [], hideProgression: true,
+      }),
+    });
+    foundCitySystem.onCityFounded(city => diplomaticAffairSystem.onCityFounded(city));
+    foundCitySystem.setDiplomaticFoundingAllowed((id, x, y) =>
+      (id === humanNationId && !isAutoplayActive()) || diplomaticAffairSystem.canAISettle(id, x, y));
+    turnManager.on('roundStart', () => diplomaticAffairSystem.update());
+
     // 18. AI-system för icke-mänskliga nationer
     const explorationMemorySystem = new ExplorationMemorySystem(gridSystem, mapData, cityManager);
     const aiOverseasExpansionSystem = new AIOverseasExpansionSystem(
@@ -7542,7 +7585,25 @@ export class GameScene extends Phaser.Scene {
         hasCulture: (nationId: string, cultureId: string): boolean => cultureSystem.isUnlocked(nationId, cultureId),
       };
 
-      if (action === 'declareWar') {
+      if (action === 'complainSettlement' || action === 'requestPocketMoney') {
+        const from = humanNationIdForDiplomacy;
+        const reason = action === 'complainSettlement'
+          ? diplomaticAffairSystem.complaintReason(from, targetNationId)
+          : diplomaticAffairSystem.moneyReason(from, targetNationId);
+        if (reason) { showLeaderResponsePopup(targetNationId, 'Request unavailable', [reason]); return; }
+        const affair = action === 'complainSettlement'
+          ? diplomaticAffairSystem.complain(from, targetNationId)
+          : diplomaticAffairSystem.requestMoney(from, targetNationId);
+        if (affair) {
+          const reply = affair.status === 'promised'
+            ? `We will respect your frontier. No further settlement in the affected area until round ${affair.promiseUntil}.`
+            : affair.status === 'paid'
+              ? `We have sent you ${affair.amount} gold. ${affair.kind === 'money' ? 'Do try to remember where you put it this time. No repayment expected.' : 'That settles this complaint. We have made no promise about future cities.'}`
+              : 'We decline your request.';
+          showLeaderResponsePopup(targetNationId, targetNation.name, [reply]);
+        }
+        hudLayer?.refresh(); rightPanel?.refreshCurrent();
+      } else if (action === 'declareWar') {
         const peaceTreatyReason = getPeaceTreatyBlockReason(targetNationId);
         if (peaceTreatyReason) {
           logBlockedHumanWarDeclaration(targetNationId);
@@ -8220,8 +8281,13 @@ export class GameScene extends Phaser.Scene {
         return cultureSystem.startCultureNode(humanNationId, nodeId);
       },
       onPoliciesChanged: refreshPolicyDerivedState,
-      onAcceptProposal: (proposalId) => diplomaticProposalSystem.acceptProposal(proposalId),
-      onRejectProposal: (proposalId) => diplomaticProposalSystem.rejectProposal(proposalId),
+      onAcceptProposal: (proposalId) => proposalId.startsWith('affair_')
+        ? diplomaticAffairSystem.resolve(proposalId, 'accept') : diplomaticProposalSystem.acceptProposal(proposalId),
+      onCompromiseProposal: proposalId => diplomaticAffairSystem.resolve(proposalId, 'compromise'),
+      onRejectProposal: (proposalId) => {
+        if (proposalId.startsWith('affair_')) diplomaticAffairSystem.resolve(proposalId, 'reject');
+        else diplomaticProposalSystem.rejectProposal(proposalId);
+      },
       onDiscoveryClosed: openPendingHumanSelectionPanels,
       getGamesOfNationsModel: getGamesOfNationsUiModel,
       onGamesParticipationDecision: (participating) => {
@@ -8465,6 +8531,7 @@ export class GameScene extends Phaser.Scene {
     rightPanel.setCurrentTurnGetter(() => turnManager.getCurrentRound());
     rightPanel.setDiplomaticEvaluationSystem(diplomaticEvaluationSystem);
     rightPanel.setBorderPressureSystem(borderPressureSystem);
+    rightPanel.setDiplomaticAffairSystem(diplomaticAffairSystem);
     rightPanel.setMilitaryEvaluationSystem(aiMilitaryEvaluationSystem);
     rightPanel.setThreatEvaluationSystem(aiMilitaryThreatEvaluationSystem);
     rightPanel.setResearchSystem(researchSystem);
@@ -10683,6 +10750,7 @@ export class GameScene extends Phaser.Scene {
           opportunismSystem,
           impulsiveBullySystem,
           leaderStatementSystem,
+          diplomaticAffairSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -11003,8 +11071,18 @@ export class GameScene extends Phaser.Scene {
       refreshOpenCityView();
     });
 
+    // Keep banner fading in sync even when the same focused unit moves.
+    unitManager.onUnitChanged((event) => {
+      const selected = selectionManager.getSelected();
+      if (selected?.kind !== 'unit' || selected.unit.id !== event.unit.id) return;
+      cityBannerRenderer.setFocusedUnitTile(event.reason === 'removed'
+        ? null : { x: event.unit.tileX, y: event.unit.tileY });
+    });
+
     // Map selection → right panel (clears nation highlight)
     selectionManager.onSelectionChanged((selection) => {
+      cityBannerRenderer.setFocusedUnitTile(selection?.kind === 'unit'
+        ? { x: selection.unit.tileX, y: selection.unit.tileY } : null);
       leaderStrip?.setSelectedNation(null);
       // The Details control inspects the current selection, so it is only
       // enabled while a tile/city/unit is selected.
@@ -11400,6 +11478,7 @@ export class GameScene extends Phaser.Scene {
         opportunismSystem,
         impulsiveBullySystem,
         leaderStatementSystem,
+        diplomaticAffairSystem,
         turnManager,
         gridSystem,
         wonderSystem,
@@ -11521,6 +11600,7 @@ export class GameScene extends Phaser.Scene {
           opportunismSystem,
           impulsiveBullySystem,
           leaderStatementSystem,
+          diplomaticAffairSystem,
           turnManager,
           gridSystem,
           wonderSystem,
@@ -11599,6 +11679,7 @@ export class GameScene extends Phaser.Scene {
         opportunismSystem,
         impulsiveBullySystem,
         leaderStatementSystem,
+        diplomaticAffairSystem,
         turnManager,
         gridSystem,
         wonderSystem,
@@ -12469,8 +12550,9 @@ function exploitationGrantNewsImportance(context: ExploitationGrantContext | und
   }
 }
 
-function formatProposalKind(kind: 'open_borders' | 'embassy' | 'trade_relations' | 'resource_trade' | 'gold_trade' | 'exploitation_rights' | 'peace'): string {
+function formatProposalKind(kind: 'open_borders' | 'embassy' | 'trade_relations' | 'resource_trade' | 'gold_trade' | 'exploitation_rights' | 'peace' | 'diplomatic_affair'): string {
   switch (kind) {
+    case 'diplomatic_affair': return 'diplomatic request';
     case 'open_borders': return 'Open Borders proposal';
     case 'embassy': return 'Embassy proposal';
     case 'trade_relations': return 'Trade Relations proposal';

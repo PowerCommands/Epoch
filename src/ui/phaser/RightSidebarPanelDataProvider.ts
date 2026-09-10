@@ -336,6 +336,9 @@ export class RightSidebarPanelDataProvider {
     this.diplomaticEvaluationSystem = system;
   }
 
+  private diplomaticAffairSystem?: import('../../systems/diplomacy/DiplomaticAffairSystem').DiplomaticAffairSystem;
+  setDiplomaticAffairSystem(system: import('../../systems/diplomacy/DiplomaticAffairSystem').DiplomaticAffairSystem): void { this.diplomaticAffairSystem = system; }
+
   setBorderPressureSystem(system: BorderPressureSystem): void {
     this.borderPressureSystem = system;
   }
@@ -2278,6 +2281,19 @@ export class RightSidebarPanelDataProvider {
       ));
       rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
       rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
+      if (this.diplomaticAffairSystem) {
+        const affairs = this.diplomaticAffairSystem;
+        rows.push(textRow('Requests & promises', true));
+        for (const [label, action, reason] of [
+          ['Complain about nearby settlement', 'complainSettlement', affairs.complaintReason(humanId, nationId)],
+          [`Could you lend us ${affairs.moneyAmount(humanId)} gold?`, 'requestPocketMoney', affairs.moneyReason(humanId, nationId)],
+        ]) rows.push(disabledReasonButtonRow(label!, reason, () => {
+          document.dispatchEvent(new CustomEvent('diplomacyAction', { detail: { action, targetNationId: nationId } }));
+        }, nation?.color));
+        rows.push(textRow('Money received is permanent; no repayment is expected.', true));
+        for (const line of affairs.summary(humanId, nationId)) rows.push(textRow(line, true));
+      }
+
     }
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);

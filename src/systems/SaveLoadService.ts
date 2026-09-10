@@ -105,6 +105,7 @@ export interface SaveLoadContext {
   gossipFlavorEventSystem?: GossipFlavorEventSystem;
   opportunismSystem?: import('./ai/OpportunismSystem').OpportunismSystem;
   impulsiveBullySystem?: import('./ai/ImpulsiveBullySystem').ImpulsiveBullySystem;
+  diplomaticAffairSystem?: import('./diplomacy/DiplomaticAffairSystem').DiplomaticAffairSystem;
   leaderStatementSystem?: import('./LeaderStatementSystem').LeaderStatementSystem;
   turnManager: TurnManager;
   gridSystem: IGridSystem;
@@ -401,6 +402,7 @@ export class SaveLoadService {
       opportunism: context.opportunismSystem?.serialize(),
       impulsiveBully: context.impulsiveBullySystem?.serialize(),
       leaderStatements: context.leaderStatementSystem?.serialize(),
+      diplomaticAffairs: context.diplomaticAffairSystem?.serialize(),
       wonders,
       worldCouncil: context.worldCouncilSystem?.getState() ?? undefined,
       capitulation: context.capitulationSystem?.serialize(),
@@ -658,6 +660,7 @@ export class SaveLoadService {
       state.turn.currentRound,
       state.turn.currentTurnIndex,
     );
+    context.diplomaticAffairSystem?.restore(state.diplomaticAffairs);
     // Re-emit only after the restored round is authoritative. Existing listeners
     // then resume a Human offer UI or synchronously resolve an AI recipient.
     context.diplomacyManager.restorePendingPeaceProposals(state.pendingPeaceProposals);

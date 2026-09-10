@@ -13,7 +13,7 @@ import type { WonderSystem } from './WonderSystem';
 
 const CITY_BANNER_DEPTH = 17;
 const CITY_BANNER_OFFSET_Y = -42;
-const CITY_BANNER_ALPHA = 0.5;
+const CITY_BANNER_ALPHA = 0.08;
 const PANEL_HEIGHT = 32;
 const PANEL_RADIUS = 16;
 const PANEL_BORDER_COLOR = 0xd9c58b;
@@ -73,6 +73,7 @@ export class CityBannerRenderer {
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
   private populationCapacityProvider: ((cityId: string) => number) | null = null;
   private dimmed = false;
+  private focusedUnitTile: { x: number; y: number } | null = null;
 
   setVisibilityPredicate(predicate: (tileX: number, tileY: number) => boolean): void {
     this.visibilityPredicate = predicate;
@@ -87,8 +88,16 @@ export class CityBannerRenderer {
   /** Dims visible banner children while preserving the production geometry mask. */
   setDimmed(dimmed: boolean): void {
     this.dimmed = dimmed;
-    for (const view of this.banners.values()) {
-      this.applyBannerAlpha(view);
+    for (const [cityId, view] of this.banners) {
+      this.applyBannerAlpha(view, cityId);
+    }
+  }
+
+  /** Fade only cities whose tiles contain the focused unit. */
+  setFocusedUnitTile(tile: { x: number; y: number } | null): void {
+    this.focusedUnitTile = tile;
+    for (const [cityId, view] of this.banners) {
+      this.applyBannerAlpha(view, cityId);
     }
   }
 
@@ -127,6 +136,7 @@ export class CityBannerRenderer {
     }
 
     const view = this.banners.get(city.id) ?? this.createBanner(city.id);
+    this.applyBannerAlpha(view, city.id);
     const world = this.tileMap.tileToWorld(city.tileX, city.tileY);
     const production = this.getVisibleProduction(city.id);
     const name = city.name.toUpperCase();
@@ -346,7 +356,7 @@ export class CityBannerRenderer {
       productionZone,
     };
     this.banners.set(cityId, view);
-    this.applyBannerAlpha(view);
+    this.applyBannerAlpha(view, cityId);
     return view;
   }
 
@@ -377,8 +387,14 @@ export class CityBannerRenderer {
     drawProgressRing(view.productionRing, fraction);
   }
 
-  private applyBannerAlpha(view: CityBannerView): void {
-    const alpha = this.dimmed ? CITY_BANNER_ALPHA : 1;
+  private applyBannerAlpha(view: CityBannerView, cityId: string): void {
+    const tile = this.focusedUnitTile;
+    const city = tile ? this.cityManager.getCity(cityId) : undefined;
+    const unitInsideCity = tile !== null && city !== undefined && (
+      (city.tileX === tile.x && city.tileY === tile.y)
+      || city.ownedTileCoords.some(coord => coord.x === tile.x && coord.y === tile.y)
+    );
+    const alpha = this.dimmed || unitInsideCity ? CITY_BANNER_ALPHA : 1;
 
     // Set alpha on each visible child, NOT on the container: container-level
     // alpha forces a render-target flush that conflicts with the production

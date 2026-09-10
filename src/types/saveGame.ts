@@ -395,6 +395,7 @@ export interface SavedGameState {
   gossipFlavor?: SavedGossipFlavorState;
   opportunism?: import('../systems/ai/OpportunismSystem').SavedOpportunismState;
   impulsiveBully?: import('../systems/ai/ImpulsiveBullySystem').SavedImpulsiveBullyState;
+  diplomaticAffairs?: import('../systems/diplomacy/DiplomaticAffairSystem').SavedDiplomaticAffairs;
   leaderStatements?: import('./leaderStatement').SavedLeaderStatements;
   wonders: SavedWonder[];
   /** Global World Council institution. Optional so older saves load with none. */

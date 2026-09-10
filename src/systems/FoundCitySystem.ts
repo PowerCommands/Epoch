@@ -91,7 +91,12 @@ export class FoundCitySystem {
     this.mapData = mapData;
   }
 
+  private diplomaticFoundingAllowed: (nation: string, x: number, y: number) => boolean = () => true;
+  setDiplomaticFoundingAllowed(predicate: (nation: string, x: number, y: number) => boolean): void { this.diplomaticFoundingAllowed = predicate; }
+  isDiplomaticFoundingAllowed(nation: string, x: number, y: number): boolean { return this.diplomaticFoundingAllowed(nation, x, y); }
+
   canFound(unit: Unit): boolean {
+    if (!this.diplomaticFoundingAllowed(unit.ownerId, unit.tileX, unit.tileY)) return false;
     if (!unit.unitType.canFound) return false;
     if (unit.ownerId !== this.turnManager.getCurrentNation().id) return false;
 
