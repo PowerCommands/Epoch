@@ -1,3 +1,4 @@
+import { getExplorationVisionRadius } from './VisibilitySystem';
 import type { CityManager } from './CityManager';
 import type { NationManager } from './NationManager';
 import type { UnitManager } from './UnitManager';
@@ -36,7 +37,7 @@ export class DiscoverySystem {
   private unmetPairCount: number;
 
   constructor(
-    nationManager: NationManager,
+    private readonly nationManager: NationManager,
     private readonly cityManager: CityManager,
     private readonly unitManager: UnitManager,
     private readonly gridSystem: IGridSystem,
@@ -114,7 +115,11 @@ export class DiscoverySystem {
           { x: a.tileX, y: a.tileY },
           { x: b.tileX, y: b.tileY },
         );
-        if (dist <= UNIT_ENCOUNTER_RADIUS) {
+        const encounterRadius = Math.max(UNIT_ENCOUNTER_RADIUS, ...[a, b].map((unit) =>
+          getExplorationVisionRadius(unit.unitType.id,
+            this.nationManager.getNation(unit.ownerId)?.unlockedCultureNodeIds.includes('exploration') ?? false),
+        ));
+        if (dist <= encounterRadius) {
           this.recordMet(a.ownerId, b.ownerId);
         }
       }

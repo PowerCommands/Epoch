@@ -161,6 +161,9 @@ export interface SavedCity {
   lastTilePurchaseTurn?: number;
   recentlyConqueredTurnsRemaining?: number;
   integrationStartedRound?: number;
+  /** Extra integration progress earned while an acceleration policy was active. */
+  integrationBonusTurns?: number;
+  integrationLastProcessedRound?: number;
   /** Age of the city's canonical power plant. Optional for pre-system saves. */
   powerPlantAge?: number;
   // Backward-compatible: old saves store plain building ids; newer saves may
@@ -178,6 +181,8 @@ export interface SavedUnit {
   tileY: number;
   health: number;
   movementPoints: number;
+  /** Movement allowance assigned this turn, preserved across policy changes and reloads. */
+  maxMovementPoints?: number;
   createdRound?: number;
   expiresAtRound?: number;
   queuedDestination?: { x: number; y: number };

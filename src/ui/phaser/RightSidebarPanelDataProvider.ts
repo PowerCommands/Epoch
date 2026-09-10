@@ -1128,7 +1128,7 @@ export class RightSidebarPanelDataProvider {
           textRow(`Owner: ${nation?.name ?? 'Unknown'}`),
           textRow(`Status: ${integrationLabel}`),
           ...(integration.state !== 'integrated'
-            ? [textRow(`Integration: ${integration.turnsInState} / ${integration.phaseTurns} turns`)]
+            ? [textRow(`Integration: ${Math.floor(100 * integration.turnsInState / integration.phaseTurns)}% of current phase`)]
             : []),
           ...(integration.state === 'occupied'
             ? [textRow(`Occupation cost: ${CITY_OCCUPATION_GOLD_COST_PER_TURN} gold/turn`, true)]

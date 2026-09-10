@@ -42,7 +42,7 @@ export function getCityIntegrationProgress(city: City, currentRound: number): Ci
     };
   }
 
-  const elapsed = Math.max(0, Math.floor(currentRound) - city.integrationStartedRound);
+  const elapsed = Math.max(0, Math.floor(currentRound) - city.integrationStartedRound) + (city.integrationBonusTurns ?? 0);
   if (elapsed < CITY_OCCUPIED_TURNS) {
     return {
       state: 'occupied',
@@ -110,11 +110,14 @@ export class CityIntegrationSystem {
     private readonly turnManager: TurnManager,
     private readonly log?: CityIntegrationLogger,
     private readonly onChanged?: CityIntegrationChanged,
+    private readonly getIntegrationSpeedPercent: (nationId: string) => number = () => 0,
   ) {
     turnManager.on('roundStart', ({ round }) => this.handleRoundStart(round));
   }
 
   handleConquest(city: City, previousOwnerId: string, newOwnerId: string): CityIntegrationState {
+    city.integrationBonusTurns = undefined;
+    city.integrationLastProcessedRound = undefined;
     if (newOwnerId === city.originNationId) {
       city.integrationStartedRound = undefined;
       this.log?.(
@@ -126,6 +129,7 @@ export class CityIntegrationSystem {
     }
 
     city.integrationStartedRound = this.turnManager.getCurrentRound();
+    city.integrationLastProcessedRound = city.integrationStartedRound;
     const reset = previousOwnerId !== city.originNationId;
     this.log?.(
       newOwnerId,
@@ -138,19 +142,22 @@ export class CityIntegrationSystem {
   handleRoundStart(round: number): void {
     for (const city of this.cityManager.getAllCities()) {
       if (city.integrationStartedRound === undefined) continue;
-      const elapsed = Math.max(0, round - city.integrationStartedRound);
-      if (elapsed === CITY_OCCUPIED_TURNS) {
-        this.log?.(
-          city.ownerId,
-          `[CityOccupation] ${city.name} entered Recovering after ${CITY_OCCUPIED_TURNS} turns under ${city.ownerId}; outputMultiplier=${CITY_RECOVERING_OUTPUT_MULTIPLIER * 100}%.`,
-        );
-        this.onChanged?.(city);
-      } else if (elapsed >= CITY_OCCUPIED_TURNS + CITY_RECOVERING_TURNS) {
+      const previousRound = city.integrationLastProcessedRound ?? city.integrationStartedRound;
+      if (round <= previousRound) continue;
+      const previousState = getCityIntegrationProgress(city, previousRound).state;
+      city.integrationBonusTurns = (city.integrationBonusTurns ?? 0)
+        + (round - previousRound) * Math.max(0, this.getIntegrationSpeedPercent(city.ownerId)) / 100;
+      city.integrationLastProcessedRound = round;
+      const progress = getCityIntegrationProgress(city, round);
+      const elapsed = round - city.integrationStartedRound;
+      if (progress.state === 'integrated') {
         city.integrationStartedRound = undefined;
-        this.log?.(
-          city.ownerId,
-          `[CityOccupation] ${city.name} integrated into ${city.ownerId} after ${CITY_OCCUPIED_TURNS + CITY_RECOVERING_TURNS} turns.`,
-        );
+        city.integrationBonusTurns = undefined;
+        city.integrationLastProcessedRound = undefined;
+        this.log?.(city.ownerId, `[CityOccupation] ${city.name} integrated into ${city.ownerId} after ${elapsed} turns.`);
+        this.onChanged?.(city);
+      } else if (progress.state !== previousState) {
+        this.log?.(city.ownerId, `[CityOccupation] ${city.name} entered Recovering after ${elapsed} turns under ${city.ownerId}; outputMultiplier=${CITY_RECOVERING_OUTPUT_MULTIPLIER * 100}%.`);
         this.onChanged?.(city);
       }
     }

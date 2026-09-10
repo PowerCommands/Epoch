@@ -289,6 +289,8 @@ export class SaveLoadService {
           ? city.recentlyConqueredTurnsRemaining
           : undefined,
         integrationStartedRound: city.integrationStartedRound,
+        integrationBonusTurns: city.integrationBonusTurns,
+        integrationLastProcessedRound: city.integrationLastProcessedRound,
         powerPlantAge: context.powerPlantSystem?.getPowerPlantAge(city.id),
         buildings,
         productionQueue,
@@ -304,6 +306,7 @@ export class SaveLoadService {
       tileY: unit.tileY,
       health: unit.health,
       movementPoints: unit.movementPoints,
+      maxMovementPoints: unit.maxMovementPoints,
       createdRound: unit.createdRound,
       expiresAtRound: unit.expiresAtRound,
       queuedDestination: unit.queuedDestination ? { ...unit.queuedDestination } : undefined,
@@ -917,6 +920,8 @@ export class SaveLoadService {
         lastTurnAttacked: saved.lastTurnAttacked,
         lastTilePurchaseTurn: saved.lastTilePurchaseTurn,
         integrationStartedRound: saved.integrationStartedRound,
+        integrationBonusTurns: saved.integrationBonusTurns,
+        integrationLastProcessedRound: saved.integrationLastProcessedRound,
       });
       city.recentlyConqueredTurnsRemaining = saved.recentlyConqueredTurnsRemaining ?? 0;
 
@@ -1032,6 +1037,7 @@ export class SaveLoadService {
         unitType: type,
         health: saved.health,
         movementPoints: saved.movementPoints,
+        maxMovementPoints: saved.maxMovementPoints,
         createdRound: saved.createdRound,
         expiresAtRound: saved.expiresAtRound,
         queuedDestination: saved.queuedDestination,

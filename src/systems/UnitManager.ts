@@ -55,6 +55,11 @@ export class UnitManager {
   private cityLocator: CityLocator | null = null;
   private currentRoundProvider: () => number = () => 1;
   private nextProducedUnitId = 1;
+  private movementBonusProvider: (ownerId: string) => number = () => 0;
+
+  setMovementBonusProvider(provider: (ownerId: string) => number): void {
+    this.movementBonusProvider = provider;
+  }
 
   constructor(
     private readonly mapWidth: number,
@@ -102,7 +107,7 @@ export class UnitManager {
       tileX: config.tileX,
       tileY: config.tileY,
       unitType: config.type,
-      maxMovementPoints: this.getEffectiveMovementPoints(config.type),
+      maxMovementPoints: this.getEffectiveMovementPoints(config.type, config.ownerId),
       airBase: config.airBase,
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
@@ -291,10 +296,11 @@ export class UnitManager {
   resetMovementForOwner(ownerId: string): void {
     for (const unit of this.units.values()) {
       if (unit.ownerId !== ownerId) continue;
+      unit.maxMovementPoints = this.getEffectiveMovementPoints(unit.unitType, ownerId);
       // Launchable cargo needs its own action refreshed; normal transported units
       // still receive movement through the existing disembark rules.
       if (unit.carriedByUnitId !== undefined && !unit.unitType.aircraftRole && !STRATEGIC_WEAPONS[unit.unitType.id]) continue;
-      unit.movementPoints = this.getEffectiveMovementPoints(unit.unitType);
+      unit.movementPoints = unit.maxMovementPoints;
       this.notify({ unit, reason: 'movementReset' });
     }
   }
@@ -307,7 +313,7 @@ export class UnitManager {
     const unit = this.units.get(unitId);
     if (unit === undefined) return false;
     this.clearFromGrid(unit);
-    unit.changeUnitType(targetType, this.getEffectiveMovementPoints(targetType));
+    unit.changeUnitType(targetType, this.getEffectiveMovementPoints(targetType, unit.ownerId));
     this.placeOnGrid(unit);
     this.notify({ unit, reason: 'upgraded' });
     return true;
@@ -370,7 +376,7 @@ export class UnitManager {
           tileX: position.x,
           tileY: position.y,
           unitType: WARRIOR,
-          maxMovementPoints: manager.getEffectiveMovementPoints(WARRIOR),
+          maxMovementPoints: manager.getEffectiveMovementPoints(WARRIOR, nation.id),
         }),
       );
     }
@@ -415,7 +421,7 @@ export class UnitManager {
           tileX: cfg.q,
           tileY: cfg.r,
           unitType,
-          maxMovementPoints: manager.getEffectiveMovementPoints(unitType),
+          maxMovementPoints: manager.getEffectiveMovementPoints(unitType, cfg.nationId),
         }),
       );
     }
@@ -449,6 +455,7 @@ export class UnitManager {
     unitType: UnitType;
     health: number;
     movementPoints: number;
+    maxMovementPoints?: number;
     improvementCharges?: number;
     airBase?: import('../entities/Unit').AircraftBase;
     carriedByUnitId?: string;
@@ -469,7 +476,7 @@ export class UnitManager {
       tileX: config.tileX,
       tileY: config.tileY,
       unitType: config.unitType,
-      maxMovementPoints: this.getEffectiveMovementPoints(config.unitType),
+      maxMovementPoints: config.maxMovementPoints ?? this.getEffectiveMovementPoints(config.unitType, config.ownerId),
       movementPoints: config.movementPoints,
       improvementCharges: config.improvementCharges,
       airBase: config.airBase,
@@ -576,8 +583,8 @@ export class UnitManager {
     return id;
   }
 
-  private getEffectiveMovementPoints(unitType: UnitType): number {
-    return unitType.movementPoints + this.gameSpeed.movementBonus;
+  private getEffectiveMovementPoints(unitType: UnitType, ownerId: string): number {
+    return unitType.movementPoints + this.gameSpeed.movementBonus + this.movementBonusProvider(ownerId);
   }
 
   private applyLifetimeDefaults(unit: Unit): void {

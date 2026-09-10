@@ -7,6 +7,61 @@ function policy(input: PolicyDefinition): PolicyDefinition {
 
 export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
+    id: 'mercenary_contracts',
+    name: 'Mercenary Contracts',
+    category: 'military',
+    requiredCultureNodeId: 'mercenaries',
+    description: 'Negotiated contracts keep soldiers supplied at a fair price. Unit upkeep is reduced by 10%. Stacks with War Economy.',
+    modifiers: [{ type: 'unitUpkeepPercent', value: -10 }],
+    humanOnly: true,
+  }),
+  policy({
+    id: 'archives',
+    name: 'Archives',
+    category: 'culture',
+    requiredCultureNodeId: 'recorded_history',
+    description: 'Public archives preserve knowledge for the next generation. Each city gains +1 Culture and +1 Science per turn.',
+    modifiers: [{ type: 'cultureFlatPerCity', value: 1 }, { type: 'scienceFlatPerCity', value: 1 }],
+    humanOnly: true,
+  }),
+  policy({
+    id: 'civil_administration',
+    name: 'Civil Administration',
+    category: 'diplomatic',
+    requiredCultureNodeId: 'civil_service_civics',
+    description: 'Local officials restore trust and public services. Conquered cities integrate twice as fast while active, halving the full integration time from 50 to 25 turns.',
+    modifiers: [{ type: 'cityIntegrationSpeedPercent', value: 100 }],
+    humanOnly: true,
+  }),
+  policy({
+    id: 'phantom_of_the_opera',
+    name: 'Phantom of the Opera',
+    category: 'culture',
+    requiredCultureNodeId: 'opera_ballet',
+    description: 'Great performances bring cultural institutions to life. Each functioning culture-producing building provides +1 Culture per turn.',
+    modifiers: [{ type: 'culturePerCultureBuilding', value: 1 }],
+    humanOnly: true,
+  }),
+  policy({
+    id: 'national_infrastructure',
+    name: 'National Infrastructure',
+    category: 'economic',
+    requiredCultureNodeId: 'civil_engineering',
+    description: 'Roads and bridges connect the nation. All units gain +3 movement points when their movement refreshes, and newly created units receive the same bonus.',
+    modifiers: [{ type: 'unitMovementFlat', value: 3 }],
+    humanOnly: true,
+  }),
+  policy({
+    id: 'free_society',
+    name: 'Free Society',
+    category: 'diplomatic',
+    requiredCultureNodeId: 'liberalism',
+    description: 'Free expression and open debate strengthen cultural exchange. Gain +2 Influence per turn and +10% Culture.',
+    modifiers: [{ type: 'influenceFlat', value: 2 }, { type: 'culturePercent', value: 10 }],
+    humanOnly: true,
+  }),
+
+  policy({
     id: 'republic',
     name: 'Republic',
     category: 'economic',
@@ -92,8 +147,8 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
     name: 'War Economy',
     category: 'military',
     requiredCultureNodeId: 'mobilization',
-    description: 'Unit upkeep is reduced by 20%.',
-    modifiers: [{ type: 'unitUpkeepPercent', value: -20 }],
+    description: 'Coordinated wartime supply reduces unit upkeep by a further 10%. Stacks with Mercenary Contracts for a total 20% reduction.',
+    modifiers: [{ type: 'unitUpkeepPercent', value: -10 }],
   }),
 
   policy({

@@ -63,13 +63,13 @@ export class FogOfWarRenderer {
    */
   refresh(
     cities: ReadonlyArray<{ tileX: number; tileY: number }>,
-    units:  ReadonlyArray<{ tileX: number; tileY: number }>,
+    units:  ReadonlyArray<{ tileX: number; tileY: number; visibilityRadius?: number }>,
   ): void {
     this.gfx.clear();
 
     const sources: VisionSource[] = [
       ...cities.map((c) => ({ tileX: c.tileX, tileY: c.tileY, radius: CITY_VISION_RADIUS })),
-      ...units.map((u)  => ({ tileX: u.tileX, tileY: u.tileY, radius: UNIT_VISION_RADIUS })),
+      ...units.map((u)  => ({ tileX: u.tileX, tileY: u.tileY, radius: u.visibilityRadius ?? UNIT_VISION_RADIUS })),
     ];
 
     // Group tiles by their quantized alpha level so each level can be

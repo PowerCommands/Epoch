@@ -24,7 +24,7 @@ test('archaeological resources carry data-driven excavation metadata', () => {
     assert.ok(resource, id);
     assert.equal(resource.archaeological, true);
     assert.equal(resource.archaeologicalCultureValue, cultureValue);
-    assert.equal(resource.revealCultureNodeId, HUMANISM_CULTURE_NODE_ID);
+    assert.equal(resource.revealCultureNodeId, id === 'shipwreck' ? 'natural_history' : HUMANISM_CULTURE_NODE_ID);
     assert.equal(resource.weight, weight);
     assert.equal(
       resource.improvementId,

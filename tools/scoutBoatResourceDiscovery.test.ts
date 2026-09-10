@@ -55,7 +55,7 @@ function makeSystem(mapData: MapData, canSee: (nationId: string, resourceId: str
     (_nationId: string, message: string) => message,
     canSee,
   );
-  return { system, units };
+  return { system, units, nations };
 }
 
 test('10. Scout Boat discovers a strategic resource on a legitimately visible coastal land tile', () => {
@@ -102,4 +102,17 @@ test('Own-territory resource counts as a known source even if never scouted', ()
   assert.equal(system.hasKnownResourceSource(NATION, 'iron'), true);
   const iron = system.getKnownResourceOpportunities(NATION).find((o) => o.resourceId === 'iron');
   assert.equal(iron?.ownedBySelf, true);
+});
+
+
+test('Exploration extends AI Scout Boat resource knowledge without bypassing reveal requirements', () => {
+  const map = buildMap();
+  map.tiles[0][5] = { x: 5, y: 0, type: TileType.Plains, resourceId: 'coal' };
+  const { system, units, nations } = makeSystem(map);
+  units.addUnit(new Unit({ id: 'explorer', name: 'Scout Boat', ownerId: NATION, unitType: SCOUT_BOAT, tileX: 5, tileY: 5, movementPoints: 0 }));
+  system.runTurn(NATION);
+  assert.equal(system.hasKnownResourceSource(NATION, 'coal'), false);
+  nations.getNation(NATION)!.unlockedCultureNodeIds.push('exploration');
+  system.runTurn(NATION);
+  assert.equal(system.hasKnownResourceSource(NATION, 'coal'), true);
 });

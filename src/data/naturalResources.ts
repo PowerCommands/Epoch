@@ -1,6 +1,6 @@
 import { TileType } from '../types/map';
 import type { NaturalResourceDefinition, NaturalResourceYield } from '../types/naturalResources';
-import { HUMANISM_CULTURE_NODE_ID } from './cultureTree';
+import { HUMANISM_CULTURE_NODE_ID, NATURAL_HISTORY_CULTURE_NODE_ID } from './cultureTree';
 
 const ZERO_RESOURCE_YIELD: NaturalResourceYield = {
   food: 0,
@@ -95,7 +95,7 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     weight: 0.05,
     archaeological: true,
     archaeologicalCultureValue: 25,
-    revealCultureNodeId: HUMANISM_CULTURE_NODE_ID,
+    revealCultureNodeId: NATURAL_HISTORY_CULTURE_NODE_ID,
     improvementId: 'underwater_archaeological_site',
   },
   {

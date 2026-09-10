@@ -10,6 +10,10 @@ export enum VisibilityState {
 export const CITY_VISION_RADIUS = 4;
 export const UNIT_VISION_RADIUS = 3;
 
+export function getExplorationVisionRadius(unitTypeId: string, hasExploration: boolean): number {
+  return UNIT_VISION_RADIUS + (hasExploration && ['scout', 'scout_boat'].includes(unitTypeId) ? 5 : 0);
+}
+
 /**
  * Radius around a discovered city that becomes permanent explored terrain.
  * Discovering a city reveals its surroundings as lasting intelligence.
@@ -110,7 +114,7 @@ export class VisibilitySystem {
    */
   update(
     cities: VisibilitySource[],
-    units: VisibilitySource[],
+    units: (VisibilitySource & { visibilityRadius?: number })[],
     rangedSources: readonly RangedVisibilitySource[] = [],
   ): void {
     for (let y = 0; y < this.height; y++) {
@@ -126,7 +130,7 @@ export class VisibilitySystem {
       this.markVisible({ x: city.tileX, y: city.tileY }, CITY_VISION_RADIUS);
     }
     for (const unit of units) {
-      this.markVisible({ x: unit.tileX, y: unit.tileY }, UNIT_VISION_RADIUS);
+      this.markVisible({ x: unit.tileX, y: unit.tileY }, unit.visibilityRadius ?? UNIT_VISION_RADIUS);
     }
     for (const source of rangedSources) {
       this.markVisible({ x: source.tileX, y: source.tileY }, source.visibilityRadius);

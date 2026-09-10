@@ -140,6 +140,8 @@ export class CityManager {
     // Peaceful transfers start Integrated. Military conquest immediately calls
     // CityIntegrationSystem.handleConquest after this canonical transfer.
     city.integrationStartedRound = undefined;
+    city.integrationBonusTurns = undefined;
+    city.integrationLastProcessedRound = undefined;
 
     if (productionSystem) {
       productionSystem.clearProduction(cityId);
@@ -199,6 +201,9 @@ export class CityManager {
     lastTurnAttacked: number | null;
     lastTilePurchaseTurn?: number;
     integrationStartedRound?: number;
+    /** Extra integration progress earned while an acceleration policy was active. */
+    integrationBonusTurns?: number;
+    integrationLastProcessedRound?: number;
   }): City {
     const city = new City({
       id: config.id,
@@ -223,6 +228,8 @@ export class CityManager {
     city.lastTurnAttacked = config.lastTurnAttacked;
     city.lastTilePurchaseTurn = config.lastTilePurchaseTurn;
     city.integrationStartedRound = config.integrationStartedRound;
+    city.integrationBonusTurns = config.integrationBonusTurns;
+    city.integrationLastProcessedRound = config.integrationLastProcessedRound;
 
     this.cities.set(city.id, city);
     this.resources.set(city.id, new CityResources(city.id));

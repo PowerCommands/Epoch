@@ -440,7 +440,7 @@ export class ResourceSystem {
           city,
           this.applyCityIntegrationMultiplier(
             city,
-            this.applyPolicyEconomyModifiers(city.ownerId, economy),
+            this.applyPolicyEconomyModifiers(city, economy),
           ),
         ),
         productionBonus,
@@ -509,7 +509,7 @@ export class ResourceSystem {
                 this.applyCityIntegrationMultiplier(
                   city,
                   this.applyPolicyEconomyModifiers(
-                    city.ownerId,
+                    city,
                     this.applyMaritimeFood(
                       calculateCityEconomy(city, this.mapData, ctx.buildings, this.gridSystem, nationModifiers),
                       ctx.maritimeBonus,
@@ -683,8 +683,9 @@ export class ResourceSystem {
         this.applyCityIntegrationMultiplier(
           city,
           this.applyPolicyEconomyModifiers(
-            city.ownerId,
+            city,
             this.applyMaritimeFood(this.calculateEconomyForCity(city, nationModifiers, buildings), maritimeFoodBonus),
+            buildings,
           ),
         ),
       ),
@@ -792,9 +793,15 @@ export class ResourceSystem {
   }
 
   private applyPolicyEconomyModifiers(
-    nationId: string,
+    city: City,
     economy: CityEconomySummary,
+    buildings: CityBuildings = this.cityManager.getBuildings(city.id),
   ): CityEconomySummary {
+    const nationId = city.ownerId;
+    const cultureBuildingBonus = buildings.getAll().filter((id) => {
+      const modifiers = getBuildingById(id)?.modifiers;
+      return (modifiers?.culturePerTurn ?? 0) > 0 || (modifiers?.culturePercent ?? 0) > 0;
+    }).length * this.getPolicyFlat(nationId, 'culturePerCultureBuilding');
     return {
       ...economy,
       production: applyPercent(
@@ -802,7 +809,7 @@ export class ResourceSystem {
         this.getPolicyPercent(nationId, 'productionPercent'),
       ),
       culture: applyPercent(
-        economy.culture + this.getPolicyFlat(nationId, 'cultureFlatPerCity'),
+        economy.culture + this.getPolicyFlat(nationId, 'cultureFlatPerCity') + cultureBuildingBonus,
         this.getPolicyPercent(nationId, 'culturePercent'),
       ),
       gold: applyPercent(

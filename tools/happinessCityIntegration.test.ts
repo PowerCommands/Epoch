@@ -17,13 +17,13 @@ import { Nation } from '../src/entities/Nation';
 import { CityManager } from '../src/systems/CityManager';
 import { NationManager } from '../src/systems/NationManager';
 import { HappinessSystem } from '../src/systems/HappinessSystem';
-import { TEMPLE } from '../src/data/buildings';
+import { LIBRARY } from '../src/data/buildings';
 import {
   CITY_OCCUPIED_TURNS,
   CITY_RECOVERING_TURNS,
 } from '../src/systems/CityIntegrationSystem';
 
-const TEMPLE_HAPPINESS = TEMPLE.modifiers.happinessPerTurn ?? 0;
+const LIBRARY_HAPPINESS = LIBRARY.modifiers.happinessPerTurn ?? 0;
 
 interface Harness {
   happiness: HappinessSystem;
@@ -41,7 +41,7 @@ function buildHarness(): Harness {
   const cities = new CityManager();
   const city = new City({ id: 'stockholm', name: 'Stockholm', ownerId: 'mongolia', tileX: 0, tileY: 0 });
   cities.addCity(city);
-  cities.getBuildings(city.id).add(TEMPLE);
+  cities.getBuildings(city.id).add(LIBRARY);
 
   let currentRound = 0;
   let conqueredPenalty = 0;
@@ -74,8 +74,8 @@ function buildHarness(): Harness {
   };
 }
 
-test('TEMPLE actually provides a positive Happiness baseline to test against', () => {
-  assert.ok(TEMPLE_HAPPINESS > 0, 'TEMPLE must have happinessPerTurn > 0 for this test to be meaningful');
+test('LIBRARY actually provides a positive Happiness baseline to test against', () => {
+  assert.ok(LIBRARY_HAPPINESS > 0, 'LIBRARY must have happinessPerTurn > 0 for this test to be meaningful');
 });
 
 test('A: an integrated city contributes 100% of its building Happiness', () => {
@@ -83,7 +83,7 @@ test('A: an integrated city contributes 100% of its building Happiness', () => {
   // A freshly founded city has no integrationStartedRound => integrated.
   assert.equal(h.city.integrationStartedRound, undefined);
   h.recalc();
-  assert.equal(h.buildingHappiness(), TEMPLE_HAPPINESS);
+  assert.equal(h.buildingHappiness(), LIBRARY_HAPPINESS);
 });
 
 test('B: while Occupied, the same building contributes 0 Happiness', () => {
@@ -99,7 +99,7 @@ test('C: while Recovering, it contributes 50%', () => {
   h.city.integrationStartedRound = 100;
   h.setRound(100 + CITY_OCCUPIED_TURNS); // elapsed == occupied window -> recovering
   h.recalc();
-  assert.equal(h.buildingHappiness(), Math.round(TEMPLE_HAPPINESS * 0.5));
+  assert.equal(h.buildingHappiness(), Math.round(LIBRARY_HAPPINESS * 0.5));
 });
 
 test('D: once Integrated again, it contributes 100%', () => {
@@ -107,7 +107,7 @@ test('D: once Integrated again, it contributes 100%', () => {
   h.city.integrationStartedRound = 100;
   h.setRound(100 + CITY_OCCUPIED_TURNS + CITY_RECOVERING_TURNS); // fully integrated
   h.recalc();
-  assert.equal(h.buildingHappiness(), TEMPLE_HAPPINESS);
+  assert.equal(h.buildingHappiness(), LIBRARY_HAPPINESS);
 });
 
 test('E: the recently-conquered unhappiness penalty is independent and unchanged', () => {
@@ -125,7 +125,7 @@ test('E: the recently-conquered unhappiness penalty is independent and unchanged
   // same value once the city has fully integrated.
   h.setRound(100 + CITY_OCCUPIED_TURNS + CITY_RECOVERING_TURNS);
   h.recalc();
-  assert.equal(h.buildingHappiness(), TEMPLE_HAPPINESS);
+  assert.equal(h.buildingHappiness(), LIBRARY_HAPPINESS);
   assert.equal(h.conqueredUnhappiness(), 7);
 });
 

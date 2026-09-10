@@ -1,3 +1,4 @@
+import { getExplorationVisionRadius } from '../VisibilitySystem';
 import { getNaturalResourceById } from '../../data/naturalResources';
 import { SCOUT, SCOUT_BOAT, WORK_BOAT } from '../../data/units';
 import type { Unit } from '../../entities/Unit';
@@ -91,7 +92,6 @@ const CARDINAL_DIRECTIONS: ReadonlyArray<Readonly<{ x: number; y: number }>> = [
   { x: -1, y: 0 },
 ];
 
-const SCOUT_VISION_RADIUS = 3;
 const MILITARY_OBSERVATION_RADIUS = 2;
 const MAX_TARGET_RADIUS = 12;
 const RECENT_HISTORY_LIMIT = 10;
@@ -385,7 +385,7 @@ export class AIExplorationSystem {
   private discoverNearbyWorldMarkers(unit: Unit): void {
     if (!this.worldMarkerSystem) return;
 
-    const markers = this.worldMarkerSystem.getMarkersNear(unit.tileX, unit.tileY, SCOUT_VISION_RADIUS)
+    const markers = this.worldMarkerSystem.getMarkersNear(unit.tileX, unit.tileY, this.getVisionRadius(unit))
       .filter((marker) => marker.type === 'islandDiscovery')
       .sort((a, b) => {
         const priorityDelta = getMarkerPriority(b) - getMarkerPriority(a);
@@ -454,6 +454,11 @@ export class AIExplorationSystem {
     );
   }
 
+  private getVisionRadius(unit: Unit): number {
+    return getExplorationVisionRadius(unit.unitType.id,
+      this.nationManager.getNation(unit.ownerId)?.unlockedCultureNodeIds.includes('exploration') ?? false);
+  }
+
   private updateNationKnowledge(nationId: string): void {
     const knowledge = this.getKnowledge(nationId);
     knowledge.visibleTiles.clear();
@@ -463,7 +468,7 @@ export class AIExplorationSystem {
       .filter((unit) => this.isExplorationUnit(unit));
 
     for (const scout of scouts) {
-      for (const tile of this.getTilesInRadius(scout.tileX, scout.tileY, SCOUT_VISION_RADIUS)) {
+      for (const tile of this.getTilesInRadius(scout.tileX, scout.tileY, this.getVisionRadius(scout))) {
         const tileIndex = this.getTileIndex(tile.x, tile.y);
         if (this.isNavalReconUnit(scout) && !this.isWaterTile(tile)) {
           // A Scout Boat still discovers a strategic/natural resource on a

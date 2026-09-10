@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { WARRIOR } from '../src/data/units';
 import { Nation } from '../src/entities/Nation.ts';
 import { DiscoverySystem } from '../src/systems/DiscoverySystem.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
@@ -18,9 +19,9 @@ test('discovery detects unmet pairs, then skips all unit work once every pair ha
     getAllUnits: () => {
       unitReads++;
       return [
-        { ownerId: 'a', tileX: 0, tileY: 0 },
-        { ownerId: 'b', tileX: 1, tileY: 0 },
-        { ownerId: 'c', tileX: 30, tileY: 30 },
+        { unitType: WARRIOR, ownerId: 'a', tileX: 0, tileY: 0 },
+        { unitType: WARRIOR, ownerId: 'b', tileX: 1, tileY: 0 },
+        { unitType: WARRIOR, ownerId: 'c', tileX: 30, tileY: 30 },
       ];
     },
   } as unknown as UnitManager;

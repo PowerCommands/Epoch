@@ -102,6 +102,9 @@ function scoreModifier(modifier: PolicyModifier, isUnhappy: boolean): number {
       return Math.max(0, -modifier.value) * 10;
     case 'improvementBuildSpeedPercent':
       return modifier.value * 15;
+    case 'cityIntegrationSpeedPercent':
+    case 'culturePerCultureBuilding':
+    case 'unitMovementFlat':
     case 'unitProductionCostPercent':
     case 'gossipManipulationInfluenceCostPercent':
     case 'foreignExploitationYieldPercent':

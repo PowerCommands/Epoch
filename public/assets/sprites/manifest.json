@@ -2375,6 +2375,12 @@
           "size": 137465
         },
         {
+          "name": "archives.png",
+          "path": "/assets/sprites/policies/archives.png",
+          "type": "PNG",
+          "size": 141328
+        },
+        {
           "name": "backroom_diplomacy.png",
           "path": "/assets/sprites/policies/backroom_diplomacy.png",
           "type": "PNG",
@@ -2403,6 +2409,12 @@
           "path": "/assets/sprites/policies/civic_order.png",
           "type": "PNG",
           "size": 196021
+        },
+        {
+          "name": "civil_administration.png",
+          "path": "/assets/sprites/policies/civil_administration.png",
+          "type": "PNG",
+          "size": 135972
         },
         {
           "name": "diplomatic_corps.png",
@@ -2453,6 +2465,12 @@
           "size": 126675
         },
         {
+          "name": "free_society.png",
+          "path": "/assets/sprites/policies/free_society.png",
+          "type": "PNG",
+          "size": 150175
+        },
+        {
           "name": "garrison_rule.png",
           "path": "/assets/sprites/policies/garrison_rule.png",
           "type": "PNG",
@@ -2501,6 +2519,12 @@
           "size": 187989
         },
         {
+          "name": "mercenary_contracts.png",
+          "path": "/assets/sprites/policies/mercenary_contracts.png",
+          "type": "PNG",
+          "size": 136521
+        },
+        {
           "name": "michael_pelps.png",
           "path": "/assets/sprites/policies/michael_pelps.png",
           "type": "PNG",
@@ -2531,6 +2555,12 @@
           "size": 198397
         },
         {
+          "name": "national_infrastructure.png",
+          "path": "/assets/sprites/policies/national_infrastructure.png",
+          "type": "PNG",
+          "size": 148325
+        },
+        {
           "name": "open_channels.png",
           "path": "/assets/sprites/policies/open_channels.png",
           "type": "PNG",
@@ -2541,6 +2571,12 @@
           "path": "/assets/sprites/policies/oral_tradition.png",
           "type": "PNG",
           "size": 194288
+        },
+        {
+          "name": "phantom_of_the_opera.png",
+          "path": "/assets/sprites/policies/phantom_of_the_opera.png",
+          "type": "PNG",
+          "size": 127769
         },
         {
           "name": "proxy_warfare.png",

@@ -1,3 +1,4 @@
+import { getExplorationVisionRadius } from '../systems/VisibilitySystem';
 import { DiplomaticAffairSystem } from '../systems/diplomacy/DiplomaticAffairSystem';
 import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
 import { AirMissionRenderer } from '../renderers/AirMissionRenderer';
@@ -732,7 +733,11 @@ export class GameScene extends Phaser.Scene {
       if (!humanNationId) return;
       fogOfWarRenderer.setVisible(visibilitySystem.isEnabled());
       const humanCities = cityManager.getCitiesByOwner(humanNationId);
-      const humanUnits = unitManager.getUnitsByOwner(humanNationId);
+      const humanUnits = unitManager.getUnitsByOwner(humanNationId).map((unit) => ({
+        ...unit,
+        visibilityRadius: getExplorationVisionRadius(unit.unitType.id,
+          nationManager.getNation(unit.ownerId)?.unlockedCultureNodeIds.includes('exploration') ?? false),
+      }));
       structureObservationSources = collectStructureObservationSources();
       visibilitySystem.update(humanCities, humanUnits, structureObservationSources);
       // Any city now in vision becomes permanently known (city + surroundings).
@@ -840,6 +845,7 @@ export class GameScene extends Phaser.Scene {
     // 11c. Event log — strategic history filtered by discovery
     const eventLog = new EventLogSystem(discoverySystem, data.humanNationId);
     const policySystem = new PolicySystem(nationManager);
+    unitManager.setMovementBonusProvider((nationId) => policySystem.getFlatModifierTotal(nationId, 'unitMovementFlat'));
     const wonderSystem = new WonderSystem();
     const structureObservationSystem = new StructureObservationSystem(mapData, cityManager, wonderSystem);
     collectStructureObservationSources = () => humanNationId
@@ -1171,6 +1177,7 @@ export class GameScene extends Phaser.Scene {
       turnManager,
       (nationId, message) => logManager.info({ nationId, category: 'city', message }),
       (city) => resourceSystem.recalculateForNation(city.ownerId),
+      (nationId) => policySystem.getPercentModifierTotal(nationId, 'cityIntegrationSpeedPercent'),
     );
     // Forward-declared so the upkeep system can notify it of forced dismissals
     // before it is constructed (it needs the upkeep system for net income).
@@ -10546,7 +10553,7 @@ export class GameScene extends Phaser.Scene {
       cultureEffectSystem.handleCultureNodeCompleted(event.nationId, event.cultureNode);
       if (
         event.nationId === humanNationId
-        && isNaturalResourceRevealCultureNode(event.cultureNode.id)
+        && (isNaturalResourceRevealCultureNode(event.cultureNode.id) || event.cultureNode.id === 'exploration')
       ) {
         updateFog();
       }

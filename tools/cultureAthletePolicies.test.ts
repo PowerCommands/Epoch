@@ -28,7 +28,7 @@ const ATHLETES = [
   ['simone_flies', 'opera_ballet', 'gymnastics'],
 ] as const;
 
-test('Culture athlete policies are the unique culture policy on their node with data-driven +100 modifiers', () => {
+test('Culture athlete policies have unique sport bonuses on their node alongside other culture policies', () => {
   for (const [policyId, cultureNodeId, sportId] of ATHLETES) {
     const policy = getPolicyById(policyId)!;
     assert.ok(policy);
@@ -37,13 +37,9 @@ test('Culture athlete policies are the unique culture policy on their node with 
     assert.equal(policy.humanOnly, true);
     assert.deepEqual(policy.modifiers, [{ type: 'gamesOfNationsSportScoreBonus', sportId, value: 100 }]);
     assert.ok(CULTURE_TREE.some((node) => node.id === cultureNodeId));
-    // Each athlete must be the only CULTURE policy on its node so culture-slot
-    // selection stays unambiguous. A node may still carry a policy of another
-    // category (e.g. Foreign Trade also grants the Trade Agreements diplomatic
-    // policy), which fills a different slot and never collides.
     assert.deepEqual(
       ALL_POLICIES
-        .filter((entry) => entry.requiredCultureNodeId === cultureNodeId && entry.category === 'culture')
+        .filter((entry) => entry.requiredCultureNodeId === cultureNodeId && entry.modifiers.some((modifier) => modifier.type === 'gamesOfNationsSportScoreBonus'))
         .map((entry) => entry.id),
       [policyId],
     );

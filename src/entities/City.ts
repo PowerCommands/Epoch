@@ -58,6 +58,9 @@ export class City {
   recentlyConqueredTurnsRemaining = 0;
   /** Round of the latest foreign military conquest; absent means Integrated. */
   integrationStartedRound?: number;
+  /** Extra integration progress earned while an acceleration policy was active. */
+  integrationBonusTurns?: number;
+  integrationLastProcessedRound?: number;
   focus?: CityFocusType;
   productionRhythm: CityProductionRhythm;
 
