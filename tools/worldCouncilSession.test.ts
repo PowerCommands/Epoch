@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sanitizeInfluence, sessionOutcomeLabel } from '../src/ui/hud/WorldCouncilSessionDialog';
 import { parseGoldDonation } from '../src/ui/hud/DefenseSupportDonationDialog';
-import { WorldCouncilSystem } from '../src/systems/WorldCouncilSystem';
+import { WorldCouncilSystem, worldCouncilProposalCandidateKey } from '../src/systems/WorldCouncilSystem';
 import { WorldCouncilResolutionSystem } from '../src/systems/WorldCouncilResolutionSystem';
+import type { WorldCouncilMember, WorldCouncilState } from '../src/types/worldCouncil';
 
 // --- pure presentation helpers -----------------------------------------
 
@@ -90,11 +91,28 @@ function makeCouncil(options: { humanVoting: boolean }): {
   return { system, humanVote, setHumanVote: (vote) => { humanVote = vote; } };
 }
 
-test('interactive human meeting defers resolution until votes are submitted', () => {
+test('a human host first chooses proposals, then the meeting defers for votes', () => {
   const { system } = makeCouncil({ humanVoting: true });
+  // The rotating host is human, so the meeting first waits for the human to pick
+  // its agenda rather than jumping straight to voting.
+  const proposalPending = system.getPendingHumanProposalMeeting();
+  assert.ok(proposalPending, 'the human host must choose the agenda first');
+  assert.equal(proposalPending!.proposals, undefined, 'no proposals exist until the host commits them');
+  assert.equal(system.getPendingHumanVoteMeeting(), null, 'no vote is pending before proposals are chosen');
+
+  const options = system.getRegularProposalOptionsForHost();
+  assert.ok(options.length > 0, 'the host has proposals to choose from');
+  const chosenKeys = options.slice(0, 2).map(worldCouncilProposalCandidateKey);
+  system.submitHumanRegularProposals(chosenKeys);
+
+  assert.equal(system.getPendingHumanProposalMeeting(), null, 'proposal selection is complete');
   const pending = system.getPendingHumanVoteMeeting();
-  assert.ok(pending, 'a meeting should be waiting for human votes');
-  assert.ok((pending!.proposals?.length ?? 0) > 0, 'the pending meeting has agenda items');
+  assert.ok(pending, 'a meeting should now be waiting for human votes');
+  assert.ok((pending!.proposals?.length ?? 0) > 0, 'the pending meeting has the chosen agenda items');
+  assert.ok(
+    pending!.proposals!.every((proposal) => proposal.proposerNationId === 'you'),
+    'both proposals are attributed to the human host',
+  );
   assert.ok(
     pending!.proposals!.every((proposal) => proposal.resolved !== true),
     'proposals stay unresolved until the human votes',
@@ -227,10 +245,15 @@ test('interactive Defense Support defers, then replays the human donation into c
   assert.equal(humanDonationRequests, 2, 'the unchanged resolution path still evaluates the human nation once');
 });
 
-test('restoring a save with an unresolved meeting re-opens the human session', () => {
+test('restoring a save mid proposal-selection re-opens the human host choice', () => {
   const { system } = makeCouncil({ humanVoting: true });
   const saved = system.getState();
   assert.ok(saved, 'state exists to save');
+  assert.equal(
+    saved!.pendingHumanProposalMeetingId !== undefined,
+    true,
+    'the pending proposal selection is persisted in canonical state',
+  );
 
   // A fresh system restores the saved (unresolved) meeting and reconstructs the
   // pending human session from canonical state.
@@ -248,7 +271,12 @@ test('restoring a save with an unresolved meeting re-opens the human session', (
   );
   restored.setHumanVotingDeferralEnabled(() => true);
   restored.restore(saved!);
-  assert.ok(restored.getPendingHumanVoteMeeting(), 'the pending vote session is reconstructed on load');
+  assert.ok(restored.getPendingHumanProposalMeeting(), 'the pending proposal selection is reconstructed on load');
+
+  // The host can still complete the choice after loading, reaching the vote step.
+  const options = restored.getRegularProposalOptionsForHost();
+  restored.submitHumanRegularProposals(options.slice(0, 2).map(worldCouncilProposalCandidateKey));
+  assert.ok(restored.getPendingHumanVoteMeeting(), 'committing the loaded agenda opens the vote session');
 });
 
 // --- lazily-resolved target preview for the voting UI --------------------
@@ -304,4 +332,57 @@ test('previewProposalTargets returns no target when no members are at war', () =
   );
   assert.equal(targets.targetNationId, undefined, 'no ceasefire target without an active war');
   assert.equal(targets.secondaryTargetNationId, undefined, 'no secondary target without an active war');
+});
+
+// --- round-robin host rotation -----------------------------------------
+
+const rotationMember = (nationId: string): WorldCouncilMember => ({
+  nationId, goldContributed: 0, scienceContributionPercent: 0, cultureContributionPercent: 0,
+  diplomacyScore: 0, diplomacyScoreSinceLastRegularMeeting: 0, diplomacyScoreFromProposals: 0,
+  diplomacyScoreFromSupport: 0, diplomacyScoreFromGold: 0, diplomacyScoreFromScience: 0,
+  diplomacyScoreFromCulture: 0, diplomacyScoreFromOther: 0,
+});
+
+test('regular-meeting presidency rotates round-robin through the members', () => {
+  const ids = ['alpha', 'beta', 'gamma'];
+  const nations = new Map(ids.map((id) => [id, { id, isHuman: false, name: id, color: 1 }]));
+  const nationManager = {
+    getNation: (id: string) => nations.get(id),
+    getAllNations: () => [...nations.values()],
+    getResources: () => ({ gold: 1000, goldPerTurn: 10, influence: 100 }),
+  };
+  const resolutionSystem = new WorldCouncilResolutionSystem();
+  resolutionSystem.setRuntime({
+    isNationActive: () => true,
+    getNationName: (id: string) => id,
+    getAvailableInfluence: () => 100,
+    spendInfluence: (_id: string, amount: number) => amount,
+    isHumanNation: () => false,
+    getRelationMemory: () => ({ trust: 0, hostility: 0 }),
+    getAllNationIds: () => ids,
+    getDiplomacyState: () => 'PEACE' as const,
+  } as never);
+  const system = new WorldCouncilSystem(
+    nationManager as never,
+    { getCity: (id: string) => ({ id, name: 'Geneva', ownerId: 'alpha' }) } as never,
+    { addGold: () => {} } as never,
+    resolutionSystem,
+  );
+  const baseState: WorldCouncilState = {
+    organizationKind: 'worldCouncil', foundingCityId: 'geneva', foundingNationId: 'alpha', foundingTurn: 1,
+    constructionStartedTurn: 1, constructionTurnsRemaining: 0, status: 'active', memberNationIds: [...ids],
+    members: ids.map(rotationMember), lastRegularMeetingTurn: 0, nextRegularMeetingTurn: 50,
+    meetings: [], nextMeetingId: 1, enactedResolutions: [],
+  };
+  system.restore(baseState);
+
+  // Deferral stays off (AI-only), so each meeting is created and resolved inline.
+  for (let round = 2; round <= 200; round += 1) {
+    system.handleTurnStart({ round, nation: { id: 'alpha' } } as never);
+  }
+
+  const hosts = (system.getState()?.meetings ?? [])
+    .filter((meeting) => meeting.kind === 'regular')
+    .map((meeting) => meeting.hostNationId);
+  assert.deepEqual(hosts, ['alpha', 'beta', 'gamma', 'alpha'], 'the host advances one member each regular meeting and wraps around');
 });

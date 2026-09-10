@@ -19,9 +19,9 @@ test('Gossip is documented inside the existing Diplomacy Tutorial chapter', () =
   assert.equal(TUTORIAL_SECTIONS.filter((section) => section.id === 'diplomacy').length, 1);
   const text = diplomacyText();
   assert.match(text, /Leader Details/);
-  assert.match(text, /Dialog section/);
-  assert.match(text, /Arrange an audience with \{leader\}/);
-  assert.match(text, /Gossip with \{leader\}/);
+  assert.match(text, /Conversations section/);
+  assert.match(text, /Diplomacy — discuss borders/);
+  assert.match(text, /Gossip — ask questions/);
   assert.match(text, /Audience is for formal diplomacy/);
   assert.match(text, /Gossip is for informal conversation/);
 });

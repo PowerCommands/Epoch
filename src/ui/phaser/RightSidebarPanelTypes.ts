@@ -171,6 +171,8 @@ export type RightSidebarRow =
   | RightSidebarGridRow;
 
 export interface RightSidebarSection {
+  spritePath?: string;
+  collapsible?: boolean;
   title: string;
   titleRight?: string;
   rows: RightSidebarRow[];

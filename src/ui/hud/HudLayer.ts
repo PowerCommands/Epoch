@@ -84,6 +84,7 @@ interface HudLayerConfig {
   getWorldCouncilContributionState?: () => WorldCouncilContributionDialogState | null;
   getWorldCouncilSessionState?: () => WorldCouncilSessionState | null;
   onSubmitWorldCouncilVotes?: (votes: WorldCouncilSessionVote[]) => WorldCouncilSessionResult;
+  onSubmitWorldCouncilProposals?: (selectedKeys: string[]) => WorldCouncilSessionState | null;
   onWorldCouncilSessionClosed?: () => void;
   getDefenseSupportDonationState?: () => DefenseSupportDonationDialogState | null;
   onResolveDefenseSupportDonation?: (gold: number) => boolean;
@@ -316,6 +317,7 @@ export class HudLayer {
     this.worldCouncilSessionDialog = new WorldCouncilSessionDialog({
       getState: () => this.config.getWorldCouncilSessionState?.() ?? null,
       onSubmitVotes: (votes) => this.config.onSubmitWorldCouncilVotes?.(votes) ?? { proposals: [] },
+      onSubmitProposals: (selectedKeys) => this.config.onSubmitWorldCouncilProposals?.(selectedKeys) ?? null,
       onClose: () => {
         this.worldCouncilSessionDialog.hide();
         this.config.onWorldCouncilSessionClosed?.();

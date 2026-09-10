@@ -81,7 +81,8 @@ export class BuildingPlacementSystem {
     return city.ownedTileCoords
       .map((coord) => mapData.tiles[coord.y]?.[coord.x])
       .filter((tile): tile is Tile => tile !== undefined)
-      .filter((tile) => !def.requiresEmptyTile || (tile.ownerId === city.ownerId && (tile.x !== city.tileX || tile.y !== city.tileY)))
+      .filter((tile) => tile.x !== city.tileX || tile.y !== city.tileY)
+      .filter((tile) => !def.requiresEmptyTile || tile.ownerId === city.ownerId)
       .filter((tile) => this.isTileValidForPlacement(tile, def))
       .map((tile) => ({ x: tile.x, y: tile.y }))
       .sort((a, b) => {
@@ -98,6 +99,7 @@ export class BuildingPlacementSystem {
   ): Tile | null {
     if (building.placement === 'city' || !building.upgradesFrom) return null;
     for (const coord of city.ownedTileCoords) {
+      if (coord.x === city.tileX && coord.y === city.tileY) continue;
       const tile = mapData.tiles[coord.y]?.[coord.x];
       if (tile?.buildingId === building.upgradesFrom) return tile;
     }
@@ -116,6 +118,8 @@ export class BuildingPlacementSystem {
   ): Tile | null {
     if (building.placement === 'city') return null;
     if (!this.isAutomaticUpgrade(city, building, mapData)) {
+      const reservedTile = this.findReservedTile(city.id, building.id, mapData);
+      if (reservedTile?.x === city.tileX && reservedTile.y === city.tileY) return null;
       if (building.requiresEmptyTile) {
         const tile = this.findReservedTile(city.id, building.id, mapData);
         if (!tile || tile.ownerId !== city.ownerId
@@ -146,6 +150,7 @@ export class BuildingPlacementSystem {
     mapData: MapData,
   ): BuildingPlacementSelectionResult {
     if (!this.state || this.state.cityId !== city.id || !coord) return { status: 'inactive' };
+    if (coord.x === city.tileX && coord.y === city.tileY) return { status: 'invalid' };
 
     const key = this.getCoordKey(coord.x, coord.y);
     const validSet = new Set(this.state.validCoords.map((entry) => this.getCoordKey(entry.x, entry.y)));

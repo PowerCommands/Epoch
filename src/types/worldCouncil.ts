@@ -225,4 +225,17 @@ export interface WorldCouncilState {
   readonly nextMeetingId: number;
   readonly enactedResolutions: WorldCouncilEnactedResolution[];
   readonly pendingContributionNegotiation?: WorldCouncilPendingContributionNegotiation;
+  /**
+   * Round-robin bookkeeping: the nation that presided over (hosted) the most
+   * recent regular meeting. The next regular meeting's host is the next living
+   * member after this one in membership order. Absent on pre-round-robin saves.
+   */
+  readonly lastRegularMeetingHostNationId?: string;
+  /**
+   * A freshly created regular meeting whose human host must still choose its two
+   * proposals through the Council UI. While set, the meeting has no proposals and
+   * resolution is held; cleared once {@link WorldCouncilMeeting.proposals} are
+   * committed. Persisted so a mid-selection save reopens the choice on load.
+   */
+  readonly pendingHumanProposalMeetingId?: number;
 }

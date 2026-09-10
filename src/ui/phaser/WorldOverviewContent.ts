@@ -1,3 +1,4 @@
+import { getWonderSpritePath, getCorporationSpritePath } from '../../utils/assetPaths';
 import type { WorldCouncilResolutionId } from '../../types/worldCouncil';
 import { getWonderById } from '../../data/wonders';
 import { CORPORATIONS } from '../../data/corporations';
@@ -53,6 +54,7 @@ export function buildWorldOverviewContent(category: WorldOverviewCategory, sourc
       const known = city && source.knowsCity(city.id);
       const visible = city && source.seesTile(wonder.tileX ?? city.tileX, wonder.tileY ?? city.tileY);
       return {
+        spritePath: getWonderSpritePath(wonder.wonderId),
         title: getWonderById(wonder.wonderId)?.name ?? wonder.wonderId,
         rows: [
           text(`Owner: ${known ? nation(wonder.ownerId) : 'Unknown nation'}`),
@@ -70,6 +72,7 @@ export function buildWorldOverviewContent(category: WorldOverviewCategory, sourc
         const good = definition ? getManufacturedResourceById(definition.manufacturedResourceId) : undefined;
         const city = corporation.cityId ? source.city(corporation.cityId) : undefined;
         return {
+          spritePath: getCorporationSpritePath(corporation.corporationId),
           title: definition?.name ?? corporation.corporationId,
           rows: [
             text(`Founded by ${nation(corporation.founderNationId)}`),

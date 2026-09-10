@@ -42,7 +42,7 @@
       const manifest = await response.json();
       if (!manifest || !Array.isArray(manifest.categories)) throw new Error('Invalid manifest format');
       state.manifest = manifest;
-      const preferred = manifest.categories.find(category => category.path.toLowerCase() === 'corporations');
+      const preferred = manifest.categories.find(category => category.path === '.');
       state.selectedPath = (preferred || manifest.categories[0])?.path || null;
       render();
     } catch (error) {

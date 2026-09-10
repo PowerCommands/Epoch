@@ -67,8 +67,8 @@ interface ContentInput {
 const DEPTH = 1200;
 const EDGE_MARGIN = 16;
 const PANEL_WIDTH = 778;
-const LEADERBOARD_PANEL_WIDTH = 1110;
-/** Trading spreads its Buy/Sell/nation content wide — up to half the viewport. */
+const LEADERBOARD_PANEL_WIDTH = 920;
+/** Trading can use half the viewport, with a width cap for readable text. */
 const TRADING_PANEL_WIDTH_FRACTION = 0.5;
 const PANEL_TOP = 124;
 const PANEL_BOTTOM_MARGIN = 22;
@@ -81,7 +81,7 @@ const DIALOG_VERTICAL_MARGIN = 64;
 /** Square close (✕) affordance shown at the dialog's top-right corner. */
 const CLOSE_BUTTON_SIZE = 34;
 const PANEL_PADDING = 24;
-const CONTENT_TOP = 74;
+const CONTENT_TOP = 64;
 const CONTENT_BOTTOM_GAP = 16;
 const CONTENT_WIDTH = PANEL_WIDTH - PANEL_PADDING * 2;
 const BUTTON_DIAMETER = 64;
@@ -92,17 +92,17 @@ const BUTTON_ROW_TOP = 32;
 const BUTTON_LABEL_OFFSET = 48;
 const COLLAPSE_WIDTH = 180;
 const COLLAPSE_HEIGHT = 42;
-const SECTION_GAP = 18;
-const ROW_GAP = 8;
+const SECTION_GAP = 12;
+const ROW_GAP = 6;
 const SCROLL_STEP = 52;
-const SCROLLBAR_WIDTH = 12;
+const SCROLLBAR_WIDTH = 6;
 const SCROLLBAR_MARGIN = 8;
 const SCROLLBAR_MIN_THUMB_HEIGHT = 28;
 const WHEEL_BLOCKER_ID = 'right-sidebar-panel';
 const LEADERBOARD_TAB_GAP = 8;
 const LEADERBOARD_TAB_HEIGHT = 34;
-/** Trading tabs are taller so their labels have vertical breathing room. */
-const TRADING_TAB_HEIGHT = 44;
+/** Shared compact tab height keeps the overview visible above the fold. */
+const TRADING_TAB_HEIGHT = 34;
 /** Horizontal padding on each side of a trading tab's label (tab hugs its text). */
 const TRADING_TAB_PAD_X = 18;
 const CITY_TAB_GAP = 8;
@@ -177,7 +177,7 @@ export class RightSidebarPanel {
   private readonly container: Phaser.GameObjects.Container;
   private readonly buttonContainer: Phaser.GameObjects.Container;
   private readonly panelContainer: Phaser.GameObjects.Container;
-  private readonly panelBackground: Phaser.GameObjects.Rectangle;
+  private readonly panelBackground: Phaser.GameObjects.Graphics;
   private readonly panelHitArea: Phaser.GameObjects.Zone;
   private readonly titleText: Phaser.GameObjects.Text;
   private readonly logCopyButtonBackground: Phaser.GameObjects.Rectangle;
@@ -236,6 +236,7 @@ export class RightSidebarPanel {
   private maxScroll = 0;
   private contentHeight = 0;
   private scrollableContentTop = CONTENT_TOP;
+  private readonly expandedHelpSections = new Set<string>();
   private worldOverviewCategory: WorldOverviewCategory = 'wonders';
   private leaderboardCategory: RightSidebarLeaderboardCategory = 'domination';
   private tradingTabId = 'overview';
@@ -260,15 +261,12 @@ export class RightSidebarPanel {
     this.buttonContainer = this.addOwned(scene.add.container(0, 0).setDepth(DEPTH + 10).setScrollFactor(0));
     this.panelContainer = this.addOwned(scene.add.container(0, 0).setDepth(DEPTH).setScrollFactor(0));
 
-    this.panelBackground = this.addOwned(scene.add.rectangle(0, 0, PANEL_WIDTH, 100, 0x071017, 0.88))
-      .setOrigin(0, 0)
-      .setStrokeStyle(1, 0x7fb4d5, 0.45)
-      .setScrollFactor(0);
+    this.panelBackground = this.addOwned(scene.add.graphics().setScrollFactor(0));
     this.panelHitArea = this.addOwned(scene.add.zone(0, 0, PANEL_WIDTH, 100))
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setInteractive();
-    this.titleText = this.addText('Details', 26, '#f4f8ff', 'bold', CONTENT_WIDTH);
+    this.titleText = this.addText('Details', 25, '#e8c789', 'bold', CONTENT_WIDTH).setFontFamily('Georgia, serif');
     this.logCopyButtonBackground = this.addOwned(scene.add.rectangle(0, 0, LOG_COPY_BUTTON_WIDTH, LOG_COPY_BUTTON_HEIGHT, 0x1d6d90, 0.98))
       .setOrigin(0, 0)
       .setStrokeStyle(1, 0x6ec6ff, 0.7)
@@ -288,14 +286,14 @@ export class RightSidebarPanel {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setInteractive({ cursor: 'pointer' });
-    this.scrollbarThumb = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB_HEIGHT, 0x9fc5dd, 0.86))
+    this.scrollbarThumb = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, SCROLLBAR_MIN_THUMB_HEIGHT, 0xb88a43, 0.86))
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setInteractive({ cursor: 'pointer' });
 
     this.collapseBackground = this.addOwned(scene.add.rectangle(0, 0, COLLAPSE_WIDTH, COLLAPSE_HEIGHT, 0x101b27, 0.96))
       .setOrigin(0.5)
-      .setStrokeStyle(1, 0x92a8c0, 0.5)
+      .setStrokeStyle(1, 0xb88a43, 0.6)
       .setScrollFactor(0);
     this.collapseIcon = this.addOwned(scene.add.graphics().setScrollFactor(0));
     this.collapseLabel = this.addText('Collapse', 15, '#e6edf7', 'bold');
@@ -306,7 +304,7 @@ export class RightSidebarPanel {
 
     this.closeButtonBackground = this.addOwned(scene.add.rectangle(0, 0, CLOSE_BUTTON_SIZE, CLOSE_BUTTON_SIZE, 0x101b27, 0.96))
       .setOrigin(0, 0)
-      .setStrokeStyle(1, 0x92a8c0, 0.5)
+      .setStrokeStyle(1, 0xb88a43, 0.6)
       .setScrollFactor(0)
       .setVisible(false);
     this.closeButtonLabel = this.addText('✕', 20, '#e6edf7', 'bold')
@@ -375,10 +373,7 @@ export class RightSidebarPanel {
       if (this.collapsed || !this.isPointerOverPanel(pointer)) return;
       consumePointerEvent(pointer);
       event.preventDefault?.();
-      // In Trading the vertical scroll is intentionally driven only by the
-      // scrollbar on the right, so the wheel is consumed but does not scroll.
-      // Other modes keep normal wheel scrolling.
-      if (this.activeMode === 'trading' || this.maxScroll <= 0) return;
+      if (this.maxScroll <= 0) return;
       this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
     };
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
@@ -826,6 +821,9 @@ export class RightSidebarPanel {
     if (this.activeMode === 'trading') {
       y = this.addTradingTabs(y);
     }
+    if (this.activeMode === 'world-overview') {
+      return this.addOverviewCards(content.sections, y) - scrollContentStartY;
+    }
     const sections = content.sections;
     let i = 0;
     while (i < sections.length) {
@@ -843,10 +841,72 @@ export class RightSidebarPanel {
     return Math.max(0, y - scrollContentStartY);
   }
 
+  /** Compact world entries retain their discovery-aware text and city actions. */
+  private addOverviewCards(sections: readonly RightSidebarSection[], y: number): number {
+    const gap = 12;
+    const columns = this.getContentWidth() >= 660 ? 2 : 1;
+    const width = (this.getContentWidth() - gap * (columns - 1)) / columns;
+    for (let i = 0; i < sections.length; i += columns) {
+      let bottom = y;
+      const cards: Phaser.GameObjects.Rectangle[] = [];
+      for (let column = 0; column < columns && i + column < sections.length; column++) {
+        const section = sections[i + column];
+        const x = PANEL_PADDING + column * (width + gap);
+        const card = this.addSectionSurface(x, y, width);
+        cards.push(card);
+        let cursor = y + 12;
+        const artworkSize = section.spritePath ? 70 : 0;
+        if (section.spritePath) {
+          const icon = this.addContentIcon(section.spritePath, x + 12, cursor);
+          if (icon) {
+            const scale = artworkSize / Math.max(icon.width, icon.height);
+            icon.setScale(scale).setPosition(x + 12 + artworkSize / 2, cursor + artworkSize / 2);
+            icon.setData('baseY', cursor + artworkSize / 2);
+            this.panelContainer.add(icon);
+            this.contentObjects.push(icon);
+            icon.setMask(this.contentMask);
+          }
+        }
+        const headingX = x + 12 + (artworkSize ? artworkSize + 12 : 0);
+        const heading = this.addContentText(section.title, 17, '#e8c789', 'bold', width - (headingX - x) - 12);
+        heading.setPosition(headingX, cursor).setData('baseY', cursor);
+        cursor += heading.height + 8;
+        for (const row of section.rows) cursor = this.addCellRow(row, cursor, headingX, width - (headingX - x) - 12);
+        bottom = Math.max(bottom, cursor + 6, y + artworkSize + 24);
+      }
+      for (const card of cards) card.setSize(width, bottom - y);
+      y = bottom + gap;
+    }
+    return y;
+  }
+
+  private addSectionSurface(x: number, y: number, width: number): Phaser.GameObjects.Rectangle {
+    const card = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y, width, 1, 0x071421, 0.8))
+      .setOrigin(0, 0).setStrokeStyle(1, 0xb88a43, 0.3).setScrollFactor(0);
+    card.setData('baseY', y);
+    this.panelContainer.add(card);
+    this.contentObjects.push(card);
+    card.setMask(this.contentMask);
+    return card;
+  }
+
   /** Render one section spanning the whole content width (the default layout). */
   private addFullWidthSection(section: RightSidebarSection, y: number): number {
     const width = this.getContentWidth();
-    y = this.addSectionHeading(section, PANEL_PADDING, y, width, true);
+    if (section.collapsible) {
+      const key = `${this.activeMode}:${section.title}`;
+      const expanded = this.expandedHelpSections.has(key);
+      y = this.addContentButton({ kind: 'button', text: `${expanded ? '▾' : '▸'} ${section.title}`, selected: expanded,
+        onClick: () => {
+          if (expanded) this.expandedHelpSections.delete(key);
+          else this.expandedHelpSections.add(key);
+          this.renderActiveContent();
+        },
+      }, y);
+      if (!expanded) return y + SECTION_GAP;
+    } else {
+      y = this.addSectionHeading(section, PANEL_PADDING, y, width, true);
+    }
     for (const row of section.rows) y = this.addContentRow(row, y);
     return y + SECTION_GAP;
   }
@@ -857,7 +917,11 @@ export class RightSidebarPanel {
    * taller of the two stacks. Columned sections only carry text rows.
    */
   private addTwoColumnBand(run: readonly RightSidebarSection[], y: number): number {
-    const COLUMN_GAP = 16;
+    if (this.getContentWidth() < 560) {
+      for (const section of run) y = this.addFullWidthSection(section, y);
+      return y;
+    }
+    const COLUMN_GAP = 24;
     const colWidth = Math.floor((this.getContentWidth() - COLUMN_GAP) / 2);
     const leftX = PANEL_PADDING;
     const rightX = PANEL_PADDING + colWidth + COLUMN_GAP;
@@ -872,20 +936,36 @@ export class RightSidebarPanel {
 
   /** Render one section (heading + rows) confined to the box [x, x + width]. */
   private addColumnSection(section: RightSidebarSection, x: number, y: number, width: number): number {
-    y = this.addSectionHeading(section, x, y, width, false);
-    for (const row of section.rows) {
-      y = row.kind === 'text'
-        ? this.addTextRow(row, y, x, width)
-        // Columned sections are text-only by construction; anything else falls
-        // back to a full-width row so nothing is silently dropped.
-        : this.addContentRow(row, y);
+    const top = y;
+    const card = this.addSectionSurface(x, y, width);
+    x += 12;
+    width -= 24;
+    y = this.addSectionHeading(section, x, y + 12, width, false);
+    const portraitTop = y;
+    const portraitSize = section.spritePath ? 82 : 0;
+    if (section.spritePath) {
+      const icon = this.addContentIcon(section.spritePath, x, y);
+      if (icon) {
+        icon.setScale(portraitSize / Math.max(icon.width, icon.height));
+        icon.setPosition(x + portraitSize / 2, y + portraitSize / 2).setData('baseY', y + portraitSize / 2);
+        this.panelContainer.add(icon);
+        this.contentObjects.push(icon);
+        icon.setMask(this.contentMask);
+      }
     }
+    section.rows.forEach((row, index) => {
+      if (portraitSize && index === 3) y = Math.max(y, portraitTop + portraitSize + 10);
+      const inset = portraitSize && index < 3 ? portraitSize + 12 : 0;
+      y = this.addCellRow(row, y, x + inset, width - inset);
+    });
+    y = Math.max(y, portraitTop + portraitSize) + 8;
+    card.setSize(width + 24, y - top);
     return y + SECTION_GAP;
   }
 
   /** Shared section-title rendering; `withTitleRight` enables the optional right label. */
   private addSectionHeading(section: RightSidebarSection, x: number, y: number, width: number, withTitleRight: boolean): number {
-    const heading = this.addContentText(section.title, 17, '#91a9c4', 'bold', width);
+    const heading = this.addContentText(section.title, 15, '#e8c789', 'bold', width);
     heading.setPosition(x, y);
     heading.setData('baseY', y);
     let headingHeight = heading.height;
@@ -914,14 +994,14 @@ export class RightSidebarPanel {
       { type: 'ally', label: 'Ally', color: 0xb060ff },
       { type: 'war', label: 'War', color: 0xcc3344 },
     ];
-    const filterBtnWidth = (CONTENT_WIDTH - FILTER_GAP * (FILTER_DEFS.length - 1)) / FILTER_DEFS.length;
+    const filterBtnWidth = (this.getContentWidth() - FILTER_GAP * (FILTER_DEFS.length - 1)) / FILTER_DEFS.length;
 
     let filterX = PANEL_PADDING;
     for (const fd of FILTER_DEFS) {
       const active = this.diplomacyGraphFilters.has(fd.type);
       const bg = this.addOwned(new Phaser.GameObjects.Rectangle(
         this.scene, filterX, CONTENT_TOP, filterBtnWidth, FILTER_H,
-        active ? 0x1f4b62 : 0x143044, active ? 1 : 0.88,
+        active ? 0x25445d : 0x142b40, active ? 1 : 0.88,
       ))
         .setOrigin(0, 0)
         .setStrokeStyle(active ? 2 : 1, fd.color, active ? 0.95 : 0.4)
@@ -971,7 +1051,7 @@ export class RightSidebarPanel {
       const focusLabel = focusedNode ? focusedNode.name : 'nation';
       const showAllH = 26;
       const showAllBg = this.addOwned(new Phaser.GameObjects.Rectangle(
-        this.scene, PANEL_PADDING, currentY, CONTENT_WIDTH, showAllH,
+        this.scene, PANEL_PADDING, currentY, this.getContentWidth(), showAllH,
         0x2a3a4a, 0.9,
       ))
         .setOrigin(0, 0)
@@ -983,7 +1063,7 @@ export class RightSidebarPanel {
       showAllLbl.setPosition(PANEL_PADDING + 10, currentY + showAllH / 2);
       showAllLbl.setData('baseY', currentY + showAllH / 2);
       const showAllHit = this.addOwned(new Phaser.GameObjects.Zone(
-        this.scene, PANEL_PADDING, currentY, CONTENT_WIDTH, showAllH,
+        this.scene, PANEL_PADDING, currentY, this.getContentWidth(), showAllH,
       ))
         .setOrigin(0, 0)
         .setScrollFactor(0)
@@ -1010,16 +1090,19 @@ export class RightSidebarPanel {
       currentY += showAllH + 6;
     }
 
+    const hint = this.addContentText('Filter relationships above. Select a nation to focus its connections.', 13, '#a9bccb');
+    hint.setPosition(PANEL_PADDING, currentY).setData('baseY', currentY);
+    currentY += hint.height + 12;
     const graphTop = currentY;
     const visibleHeight = this.getVisibleContentHeight();
-    const graphAreaHeight = Math.max(80, visibleHeight - (graphTop - CONTENT_TOP) - 8);
-    const graphCenterX = PANEL_PADDING + CONTENT_WIDTH / 2;
+    const graphAreaHeight = Math.max(80, Math.min(480, visibleHeight - (graphTop - CONTENT_TOP) - 8));
+    const graphCenterX = PANEL_PADDING + this.getContentWidth() / 2;
     const graphCenterY = graphTop + graphAreaHeight / 2;
     const nodeRadius = 10;
     const labelOffset = nodeRadius + 3;
     const layoutRadius = Math.max(30, Math.min(
-      CONTENT_WIDTH / 2 - nodeRadius - 40,
-      graphAreaHeight / 2 - nodeRadius - 18,
+      this.getContentWidth() / 2 - nodeRadius - 60,
+      graphAreaHeight / 2 - nodeRadius - 36,
     ));
 
     const { nodes } = graph;
@@ -1148,14 +1231,16 @@ export class RightSidebarPanel {
       if (!pos) continue;
       const isFocused = node.nationId === focusId;
       const isConnectedOrAll = focusId === null || connectedNodeIds.has(node.nationId);
-      const shortName = node.name.length > 10 ? `${node.name.substring(0, 10)}…` : node.name;
+      const shortName = node.name;
       const labelColor = isConnectedOrAll ? (isFocused ? '#ffffff' : '#c8dff0') : '#3a4d5e';
 
       const label = this.addOwned(new Phaser.GameObjects.Text(this.scene,
         panelX + pos.x, panelY + pos.y + labelOffset, shortName,
         {
           fontFamily: 'Arial, sans-serif',
-          fontSize: '9px',
+          fontSize: '12px',
+          align: 'center',
+          wordWrap: { width: 100, useAdvancedWrap: true },
           color: labelColor,
           fontStyle: isFocused ? 'bold' : 'normal',
         },
@@ -1227,11 +1312,11 @@ export class RightSidebarPanel {
         y,
         tabWidth,
         LEADERBOARD_TAB_HEIGHT,
-        selected ? 0x1f4b62 : 0x143044,
+        selected ? 0x304353 : 0x142b40,
         selected ? 1 : 0.92,
       ))
         .setOrigin(0, 0)
-        .setStrokeStyle(selected ? 2 : 1, category.accentColor, selected ? 0.95 : 0.5)
+        .setStrokeStyle(1, selected ? 0xe8c789 : 0xb88a43, selected ? 0.95 : 0.45)
         .setScrollFactor(0);
       background.setData('baseY', y);
 
@@ -1298,11 +1383,11 @@ export class RightSidebarPanel {
         cursorY,
         tabWidth,
         TRADING_TAB_HEIGHT,
-        selected ? 0x1f4b62 : 0x143044,
+        selected ? 0x304353 : 0x142b40,
         selected ? 1 : 0.92,
       ))
         .setOrigin(0, 0)
-        .setStrokeStyle(selected ? 2 : 1, tab.accentColor, selected ? 0.95 : 0.5)
+        .setStrokeStyle(1, selected ? 0xe8c789 : 0xb88a43, selected ? 0.95 : 0.45)
         .setScrollFactor(0);
       background.setData('baseY', cursorY);
       this.panelContainer.add(background);
@@ -1349,7 +1434,7 @@ export class RightSidebarPanel {
   }
 
   private addCityDetailsTabs(y: number): number {
-    const tabWidth = (CONTENT_WIDTH - CITY_TAB_GAP * (CITY_DETAIL_TABS.length - 1)) / CITY_DETAIL_TABS.length;
+    const tabWidth = (this.getContentWidth() - CITY_TAB_GAP * (CITY_DETAIL_TABS.length - 1)) / CITY_DETAIL_TABS.length;
     let x = PANEL_PADDING;
     for (const tab of CITY_DETAIL_TABS) {
       const selected = tab.id === this.cityDetailsTab;
@@ -1359,11 +1444,11 @@ export class RightSidebarPanel {
         y,
         tabWidth,
         CITY_TAB_HEIGHT,
-        selected ? 0x1f4b62 : 0x143044,
+        selected ? 0x304353 : 0x142b40,
         selected ? 1 : 0.92,
       ))
         .setOrigin(0, 0)
-        .setStrokeStyle(selected ? 2 : 1, tab.accentColor, selected ? 0.95 : 0.5)
+        .setStrokeStyle(1, selected ? 0xe8c789 : 0xb88a43, selected ? 0.95 : 0.45)
         .setScrollFactor(0);
       background.setData('baseY', y);
 
@@ -1404,7 +1489,7 @@ export class RightSidebarPanel {
   }
 
   private addLeaderDetailsTabs(y: number): number {
-    const tabWidth = (CONTENT_WIDTH - LEADER_TAB_GAP * (LEADER_DETAIL_TABS.length - 1)) / LEADER_DETAIL_TABS.length;
+    const tabWidth = (this.getContentWidth() - LEADER_TAB_GAP * (LEADER_DETAIL_TABS.length - 1)) / LEADER_DETAIL_TABS.length;
     let x = PANEL_PADDING;
     for (const tab of LEADER_DETAIL_TABS) {
       const selected = tab.id === this.leaderDetailsTab;
@@ -1414,11 +1499,11 @@ export class RightSidebarPanel {
         y,
         tabWidth,
         LEADER_TAB_HEIGHT,
-        selected ? 0x1f4b62 : 0x143044,
+        selected ? 0x304353 : 0x142b40,
         selected ? 1 : 0.92,
       ))
         .setOrigin(0, 0)
-        .setStrokeStyle(selected ? 2 : 1, tab.accentColor, selected ? 0.95 : 0.5)
+        .setStrokeStyle(1, selected ? 0xe8c789 : 0xb88a43, selected ? 0.95 : 0.45)
         .setScrollFactor(0);
       background.setData('baseY', y);
       background.setData('fixedY', true);
@@ -1504,7 +1589,7 @@ export class RightSidebarPanel {
    */
   private addGridRow(row: RightSidebarGridRow, y: number): number {
     const GAP = 12;
-    const cols = Math.max(1, row.columns);
+    const cols = Math.max(1, Math.min(row.columns, Math.floor(this.getContentWidth() / 230)));
     const colWidth = Math.floor((this.getContentWidth() - GAP * (cols - 1)) / cols);
     let rowTopY = y;
     let maxRowBottom = y;
@@ -1573,7 +1658,7 @@ export class RightSidebarPanel {
       this.contentObjects.push(icon);
       icon.setMask(this.contentMask);
     }
-    const text = this.addContentText(row.text, row.large ? 21 : 16, color, row.large ? 'bold' : 'normal');
+    const text = this.addContentText(row.text, row.large ? 17 : 14, color, row.large ? 'bold' : 'normal');
     text.setWordWrapWidth(wrapWidth, true);
     text.setPosition(textX, y);
     text.setData('baseY', y);
@@ -1592,10 +1677,10 @@ export class RightSidebarPanel {
 
   private addPieChartRow(row: RightSidebarPieChartRow, y: number): number {
     const width = this.getContentWidth();
-    const diameter = Math.round(width * 0.5);
+    const diameter = Math.min(260, Math.round(width * 0.42));
     const radius = diameter / 2;
-    const topPadding = 28;
-    const bottomPadding = 28;
+    const topPadding = 14;
+    const bottomPadding = 14;
     const centerX = PANEL_PADDING + radius;
     const centerY = topPadding + radius;
     const total = row.slices.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
@@ -1621,6 +1706,10 @@ export class RightSidebarPanel {
       }
       startAngle = endAngle;
     }
+    graphics.fillStyle(0x0b1c2c, 1);
+    graphics.fillCircle(centerX, centerY, radius * 0.58);
+    graphics.lineStyle(1, 0xb88a43, 0.55);
+    graphics.strokeCircle(centerX, centerY, radius + 2);
     this.panelContainer.add(graphics);
     this.contentObjects.push(graphics);
     graphics.setMask(this.contentMask);
@@ -1815,7 +1904,7 @@ export class RightSidebarPanel {
     // Right edges of numeric columns, ordered Trust, Affinity, Fear, Hostility.
     const numericRightEdges: number[] = [];
     for (let i = 0; i < numericCols; i++) {
-      numericRightEdges.push(PANEL_PADDING + CONTENT_WIDTH - (numericCols - 1 - i) * numericColWidth);
+      numericRightEdges.push(PANEL_PADDING + this.getContentWidth() - (numericCols - 1 - i) * numericColWidth);
     }
     const leaderColWidth = numericRightEdges[0] - numericColWidth - leaderX;
 
@@ -1847,7 +1936,7 @@ export class RightSidebarPanel {
       this.scene,
       leaderX,
       underlineY,
-      CONTENT_WIDTH,
+      this.getContentWidth(),
       1,
       0x7f8b99,
       0.32,
@@ -1877,17 +1966,19 @@ export class RightSidebarPanel {
 
   private addContentButton(row: RightSidebarButtonRow, y: number, x = PANEL_PADDING, width = this.getContentWidth()): number {
     const hasIcon = Boolean(row.spritePath && this.canUseContentIcon(row.spritePath));
-    const height = hasIcon ? 40 : 34;
-    const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y, width, height, 0x0f2635, row.disabled ? 0.72 : 0.98))
+    let height = hasIcon ? 40 : 34;
+    const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, x, y, width, height, 0x142b40, row.disabled ? 0.72 : 0.98))
       .setOrigin(0, 0)
-      .setStrokeStyle(1, row.accentColor ?? 0x6fb2d4, row.disabled ? 0.42 : 0.68)
+      .setStrokeStyle(1, row.accentColor ?? 0xb88a43, row.disabled ? 0.42 : 0.68)
       .setScrollFactor(0);
     background.setData('baseY', y);
     const trailingWidth = row.trailingIcon ? 40 : 0;
     const icon = hasIcon && row.spritePath ? this.addContentIcon(row.spritePath, x + 9, y + 4) : null;
     const iconWidth = icon ? CONTENT_ICON_SIZE + CONTENT_ICON_GAP : 0;
-    const label = this.addText(row.text, 15, row.disabled ? '#dbe6f5' : '#ffffff', 'bold', width - 22 - trailingWidth - iconWidth)
+    const label = this.addText(row.text, 13, row.disabled ? '#dbe6f5' : '#ffffff', 'bold', width - 22 - trailingWidth - iconWidth)
       .setAlpha(row.disabled ? 0.96 : 1);
+    height = Math.max(height, label.height + 18);
+    background.setSize(width, height);
     label.setPosition(x + 11 + iconWidth, y + (height - label.height) / 2);
     label.setData('baseY', y + (height - label.height) / 2);
     const trailingLabel = row.trailingIcon
@@ -1924,6 +2015,7 @@ export class RightSidebarPanel {
     if (buttons.length === 0) return y;
     const GAP = 8;
     const colWidth = Math.floor((this.getContentWidth() - GAP * (buttons.length - 1)) / buttons.length);
+    const firstButton = this.contentButtons.length;
     let maxNextY = y;
     let x = PANEL_PADDING;
     for (const btn of buttons) {
@@ -1935,6 +2027,13 @@ export class RightSidebarPanel {
       );
       maxNextY = Math.max(maxNextY, nextY);
       x += colWidth + GAP;
+    }
+    const height = maxNextY - y - ROW_GAP;
+    for (const button of this.contentButtons.slice(firstButton)) {
+      button.background.setSize(button.background.width, height);
+      button.hitArea.setSize(button.hitArea.width, height);
+      const labelY = y + (height - button.label.height) / 2;
+      button.label.setY(labelY).setData('baseY', labelY);
     }
     return maxNextY;
   }
@@ -2045,23 +2144,24 @@ export class RightSidebarPanel {
       const shouldClick = button.pressed;
       button.pressed = false;
       this.worldInputGate.releasePointer(pointer.id);
-      if (shouldClick) button.row.onClick();
+      // The action can rebuild the panel and destroy this button.
       this.refreshContentButtonVisual(button);
+      if (shouldClick) button.row.onClick();
     });
   }
 
   private refreshContentButtonVisual(button: ContentButton): void {
     const fillColor = button.pressed
-      ? 0x2f6688
+      ? 0x34536b
       : button.hovered
-        ? 0x1e4c66
+        ? 0x25445d
         : button.row.selected
-          ? 0x225872
-          : 0x0f2635;
+          ? 0x304353
+          : 0x142b40;
     button.background.setFillStyle(fillColor, button.row.disabled ? 0.72 : 0.98);
     button.background.setStrokeStyle(
       button.row.selected ? 2 : 1,
-      button.row.accentColor ?? 0x6fb2d4,
+      button.row.accentColor ?? 0xb88a43,
       button.hovered || button.row.selected ? 0.95 : button.row.disabled ? 0.42 : 0.68,
     );
     button.label
@@ -2112,7 +2212,13 @@ export class RightSidebarPanel {
     this.container.setPosition(0, 0);
     this.buttonContainer.setPosition(0, 0);
     this.panelContainer.setPosition(panelX, panelY);
-    this.panelBackground.setSize(panelWidth, this.panelHeight).setPosition(0, 0);
+    this.panelBackground.clear();
+    this.panelBackground.fillStyle(0x0b1c2c, 1);
+    this.panelBackground.fillRoundedRect(0, 0, panelWidth, this.panelHeight, 14);
+    this.panelBackground.lineStyle(1, 0xb88a43, 0.9);
+    this.panelBackground.strokeRoundedRect(0, 0, panelWidth, this.panelHeight, 14);
+    this.panelBackground.lineStyle(1, 0xb88a43, 0.28);
+    this.panelBackground.lineBetween(PANEL_PADDING, CONTENT_TOP - 10, panelWidth - PANEL_PADDING, CONTENT_TOP - 10);
     this.panelHitArea.setSize(panelWidth, this.panelHeight).setPosition(0, 0);
     this.titleText.setPosition(PANEL_PADDING, PANEL_PADDING);
     const copyX = panelWidth - PANEL_PADDING - LOG_COPY_BUTTON_WIDTH;
@@ -2323,7 +2429,7 @@ export class RightSidebarPanel {
 
   private refreshLogCopyButtonVisual(): void {
     const fillColor = this.logCopyButtonPressed
-      ? 0x2f6688
+      ? 0x34536b
       : this.logCopyButtonHovered
         ? 0x1e789e
         : 0x1d6d90;
@@ -2371,7 +2477,7 @@ export class RightSidebarPanel {
   private refreshCollapseVisual(): void {
     const fillColor = this.collapsePressed ? 0x22344a : this.collapseHovered ? 0x172638 : 0x101b27;
     this.collapseBackground.setFillStyle(fillColor, 0.96);
-    this.collapseBackground.setStrokeStyle(this.collapseHovered ? 2 : 1, 0x92a8c0, this.collapseHovered ? 0.75 : 0.5);
+    this.collapseBackground.setStrokeStyle(this.collapseHovered ? 2 : 1, 0xb88a43, this.collapseHovered ? 0.75 : 0.5);
     this.collapseLabel.setColor(this.collapseHovered ? '#ffffff' : '#e6edf7');
   }
 
@@ -2392,12 +2498,12 @@ export class RightSidebarPanel {
   }
 
   private getPanelWidth(): number {
-    if (this.activeMode === 'leaderboard' || this.activeMode === 'world-overview') return LEADERBOARD_PANEL_WIDTH;
-    if (this.activeMode === 'trading') {
-      // Up to half the viewport, but never narrower than the standard panel.
-      return Math.max(PANEL_WIDTH, Math.round(this.scene.scale.width * TRADING_PANEL_WIDTH_FRACTION));
-    }
-    return PANEL_WIDTH;
+    const desired = this.activeMode === 'leaderboard' || this.activeMode === 'world-overview'
+      ? LEADERBOARD_PANEL_WIDTH
+      : this.activeMode === 'trading'
+        ? Math.min(960, Math.max(PANEL_WIDTH, Math.round(this.scene.scale.width * TRADING_PANEL_WIDTH_FRACTION)))
+        : PANEL_WIDTH;
+    return Math.min(desired, Math.max(280, this.scene.scale.width - EDGE_MARGIN * 2));
   }
 
   private getContentWidth(): number {
@@ -2459,11 +2565,11 @@ export class RightSidebarPanel {
   private installCloseButtonInput(): void {
     this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_OVER, (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
-      this.closeButtonBackground.setFillStyle(0x172638, 0.96).setStrokeStyle(2, 0x92a8c0, 0.75);
+      this.closeButtonBackground.setFillStyle(0x172638, 0.96).setStrokeStyle(2, 0xb88a43, 0.75);
     });
     this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_OUT, (_pointer: Phaser.Input.Pointer, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
-      this.closeButtonBackground.setFillStyle(0x101b27, 0.96).setStrokeStyle(1, 0x92a8c0, 0.5);
+      this.closeButtonBackground.setFillStyle(0x101b27, 0.96).setStrokeStyle(1, 0xb88a43, 0.6);
     });
     this.closeButtonHitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();

@@ -770,7 +770,7 @@
           "name": "walls.png",
           "path": "/assets/sprites/buildings/walls.png",
           "type": "PNG",
-          "size": 29528
+          "size": 74022
         },
         {
           "name": "water_mill-broken.png",
@@ -3908,13 +3908,13 @@
           "name": "great_wall-broken.png",
           "path": "/assets/sprites/wonders/great_wall-broken.png",
           "type": "PNG",
-          "size": 56577
+          "size": 80129
         },
         {
           "name": "great_wall.png",
           "path": "/assets/sprites/wonders/great_wall.png",
           "type": "PNG",
-          "size": 29528
+          "size": 76618
         },
         {
           "name": "hagia-sophia-broken.png",

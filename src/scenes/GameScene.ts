@@ -279,7 +279,7 @@ import { StructureObservationSystem, type StructureObservationSource } from '../
 import { collectResourceLensRevealTiles, resourceLensCoordKey } from '../systems/ResourceMapLens';
 import { DEFAULT_MAP_LENS, type MapLensMode } from '../types/mapLens';
 import { WonderSystem } from '../systems/WonderSystem';
-import { WorldCouncilSystem } from '../systems/WorldCouncilSystem';
+import { WorldCouncilSystem, worldCouncilProposalCandidateKey } from '../systems/WorldCouncilSystem';
 import { WorldCouncilResolutionSystem } from '../systems/WorldCouncilResolutionSystem';
 import { getWorldCouncilCultureProgressionCandidate } from '../systems/WorldCouncilCultureProgression';
 import { CorporationSystem } from '../systems/CorporationSystem';
@@ -333,7 +333,6 @@ import {
 } from '../systems/diplomacy/HumanEconomicPressureService';
 import { EconomicPressureNegotiationService } from '../systems/diplomacy/EconomicPressureNegotiationService';
 import { ECONOMIC_PRESSURE_DURATION_TURNS, ECONOMIC_PRESSURE_LABEL } from '../data/economicPressure';
-import { LeaderGossipDialog } from '../ui/dialogs/LeaderGossipDialog';
 import { filterGossipTargets } from '../ui/dialogs/GossipDialogModel';
 import { SaveLoadService } from '../systems/SaveLoadService';
 import { getBuildingTerrainRequirement } from '../utils/buildingRequirements';
@@ -531,7 +530,6 @@ export class GameScene extends Phaser.Scene {
   private tutorialWizard: TutorialWizard | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
   private leaderAudienceDialog: LeaderAudienceDialog | null = null;
-  private leaderGossipDialog: LeaderGossipDialog | null = null;
   private isAutoplayActiveForVisuals: () => boolean = () => false;
 
   constructor() {
@@ -542,7 +540,6 @@ export class GameScene extends Phaser.Scene {
     this.minimapHud = null;
     this.rightSidebarPanel = null;
     this.leaderAudienceDialog = null;
-    this.leaderGossipDialog = null;
     this.tutorialWizard = null;
     this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
@@ -4672,6 +4669,44 @@ export class GameScene extends Phaser.Scene {
     };
     const getWorldCouncilSessionStateForHuman = (): WorldCouncilSessionState | null => {
       if (!humanNationId || isAutoplayActive()) return null;
+      const proposalMeeting = worldCouncilSystem.getPendingHumanProposalMeeting();
+      if (proposalMeeting) {
+        const councilState = worldCouncilSystem.getState();
+        if (!councilState) return null;
+        const options = worldCouncilSystem.getRegularProposalOptionsForHost();
+        const city = cityManager.getCity(proposalMeeting.cityId);
+        const hostNationName = proposalMeeting.hostNationId
+          ? nationManager.getNation(proposalMeeting.hostNationId)?.name ?? proposalMeeting.hostNationId
+          : undefined;
+        const backgroundNationId = proposalMeeting.hostNationId ?? councilState.foundingNationId;
+        const backgroundLeaderImage = getLeaderByNationId(backgroundNationId)?.image;
+        return {
+          organizationName: getOrganizationDisplayName(councilState.organizationKind ?? 'worldCouncil'),
+          meetingKindLabel: 'Regular Session',
+          cityName: city?.name ?? 'Unknown City',
+          cityNationName: city ? nationManager.getNation(city.ownerId)?.name : undefined,
+          hostNationName,
+          round: proposalMeeting.turn,
+          availableInfluence: Math.max(0, Math.floor(nationManager.getResources(humanNationId).influence)),
+          backgroundImageUrl: backgroundLeaderImage ? getLeaderRoomImagePath(backgroundLeaderImage) : undefined,
+          proposals: [],
+          proposalSelection: {
+            pickCount: Math.min(2, options.length),
+            candidates: options.map((proposal) => {
+              const definition = worldCouncilResolutionSystem.getDefinition(proposal.resolutionId);
+              const isRepeal = proposal.repealTargetEnactedResolutionId !== undefined;
+              return {
+                key: worldCouncilProposalCandidateKey(proposal),
+                icon: isRepeal ? '↩' : definition?.icon ?? '📜',
+                title: worldCouncilProposalTitle(proposal),
+                description: isRepeal
+                  ? `If passed, removes the active effect of ${definition?.title ?? proposal.resolutionId}.`
+                  : definition?.description ?? '',
+              };
+            }),
+          },
+        };
+      }
       const meeting = worldCouncilSystem.getPendingHumanVoteMeeting();
       const state = worldCouncilSystem.getState();
       if (!meeting || !state) return null;
@@ -4763,6 +4798,11 @@ export class GameScene extends Phaser.Scene {
           };
         }),
       };
+    };
+    const submitWorldCouncilProposals = (selectedKeys: string[]): WorldCouncilSessionState | null => {
+      worldCouncilSystem.submitHumanRegularProposals(selectedKeys);
+      // The committed agenda now needs the human's vote: hand back the voting state.
+      return getWorldCouncilSessionStateForHuman();
     };
     const getWorldCouncilContributionStateForHuman = () => {
       if (!humanNationId || !worldCouncilSystem.hasPendingHumanContribution(humanNationId)) return null;
@@ -5007,7 +5047,7 @@ export class GameScene extends Phaser.Scene {
 
     const processAudienceQueue = (): void => {
       const dialog = this.leaderAudienceDialog;
-      if (!dialog || dialog.isOpen() || this.leaderGossipDialog?.isOpen()) return;
+      if (!dialog || dialog.isOpen()) return;
       const capitulation = pendingCapitulations.shift();
       if (capitulation) {
         dialog.openCapitulation(capitulation.leaderId, capitulation.message);
@@ -5030,6 +5070,7 @@ export class GameScene extends Phaser.Scene {
       processAudienceQueue();
     };
     const onAudienceOpened = (nationId: string): void => {
+      timelinePanel.setHidden(true);
       if (musicKeyBeforeAudience === null) musicKeyBeforeAudience = audienceMusic.getCurrentPlaylistKey();
       audienceMusic.playPlaylist(nationId);
     };
@@ -5052,6 +5093,7 @@ export class GameScene extends Phaser.Scene {
       // Also close the Leader Details sidebar so the player returns straight to
       // the game instead of being left on the leader's panel.
       this.rightSidebarPanel?.collapse();
+      timelinePanel.setHidden(false);
     };
 
     // Log discovery events, and refresh UI when a new nation becomes visible.
@@ -8404,6 +8446,7 @@ export class GameScene extends Phaser.Scene {
       getWorldCouncilButtonModel: getWorldCouncilButtonModelForHuman,
       getWorldCouncilSessionState: getWorldCouncilSessionStateForHuman,
       onSubmitWorldCouncilVotes: submitWorldCouncilVotes,
+      onSubmitWorldCouncilProposals: submitWorldCouncilProposals,
       onWorldCouncilSessionClosed: () => hudLayer?.refresh(),
       getDefenseSupportDonationState: getDefenseSupportDonationStateForHuman,
       onResolveDefenseSupportDonation: resolveDefenseSupportDonation,
@@ -8536,7 +8579,7 @@ export class GameScene extends Phaser.Scene {
     hudLayer?.setOnMapDetails(() => this.rightSidebarPanel?.openDetailsDialog());
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.
-    this.rightSidebarPanel.setOnExpandedChanged((expanded) => timelinePanel.setHidden(expanded));
+    this.rightSidebarPanel.setOnExpandedChanged((expanded) => timelinePanel.setHidden(expanded || Boolean(this.leaderAudienceDialog?.isOpen())));
     this.diagnosticSystem.subscribeVisibility((open) => {
       this.rightSidebarPanel?.setDiagnosticsEnabled(open);
       rightPanel?.requestRefresh();
@@ -10054,7 +10097,7 @@ export class GameScene extends Phaser.Scene {
         );
       },
       getStatusRows: (nationId) => rightPanel?.getAudienceStatusRows(nationId) ?? [],
-      getDiplomacyActionRows: (nationId) => rightPanel?.getAudienceDiplomacyActionRows(nationId) ?? [],
+      getDiplomacyActionRows: (nationId, category) => rightPanel?.getAudienceDiplomacyActionRows(nationId, category) ?? [],
       getWarDiagnosticRows: (nationId) => rightPanel?.getAudienceWarDiagnosticRows(
         nationId,
         this.diagnosticSystem.isOpen(),
@@ -10064,10 +10107,7 @@ export class GameScene extends Phaser.Scene {
       onOpened: (nationId) => onAudienceOpened(nationId),
       onClosed: () => onAudienceClosed(),
     });
-    this.leaderGossipDialog = new LeaderGossipDialog(this, worldInputGate, {
-      getNationName: (nationId) => nationManager.getNation(nationId)?.name ?? nationId,
-      getNationColor: (nationId) => nationManager.getNation(nationId)?.color ?? 0xf4f1e7,
-      getNationSecondaryColor: (nationId) => nationManager.getNation(nationId)?.secondaryColor ?? 0x9a7b3a,
+    this.leaderAudienceDialog.configureGossip(data.humanNationId, {
       getAvailableItems: () => GOSSIP_DEFINITIONS,
       getValidTargets: (sourceNationId, recipientNationId) => filterGossipTargets(
         nationManager.getAllNations().flatMap((nation) => {
@@ -10117,9 +10157,6 @@ export class GameScene extends Phaser.Scene {
         rightPanel?.requestRefresh();
         return result;
       },
-    }, data.humanNationId, {
-      onOpened: (nationId) => onAudienceOpened(nationId),
-      onClosed: () => onAudienceClosed(),
     });
     aiDiplomacySystem.onDecision((decision) => {
       if (isAutoplayActive()) return;
@@ -10139,13 +10176,11 @@ export class GameScene extends Phaser.Scene {
       pendingCapitulations.push(request);
       processAudienceQueue();
     });
-    rightPanel.setArrangeAudienceHandler((leaderId) => {
-      if (this.leaderGossipDialog?.isOpen()) this.leaderGossipDialog.close();
-      this.leaderAudienceDialog?.open(leaderId);
+    rightPanel.setArrangeAudienceHandler((leaderId, category) => {
+      this.leaderAudienceDialog?.open(leaderId, category);
     });
     rightPanel.setArrangeGossipHandler((leaderId) => {
-      if (this.leaderAudienceDialog?.isOpen()) return;
-      this.leaderGossipDialog?.open(leaderId);
+      this.leaderAudienceDialog?.open(leaderId, 'gossip');
     });
     const computeRangedTargets = (unit: Unit): Set<string> => {
       if (unit.unitType.aircraftRole) return new Set(gridSystem.getTilesInRange({ x: unit.tileX, y: unit.tileY },unit.unitType.range ?? 0,mapData).map(tile => `${tile.x},${tile.y}`));
@@ -11372,9 +11407,7 @@ export class GameScene extends Phaser.Scene {
       this.rightSidebarPanel = null;
       this.leaderAudienceDialog?.destroy();
       this.leaderAudienceDialog = null;
-      this.leaderGossipDialog?.destroy();
-      this.leaderGossipDialog = null;
-      leaderStrip?.shutdown();
+        leaderStrip?.shutdown();
       relationsCheatDialog.shutdown();
       scenarioCheatDialog.shutdown();
       cheatConsole.shutdown();

@@ -298,3 +298,16 @@ test('a human in a decisively lost war can choose capitulation instead of being 
   const rows = h.provider.getAudienceDiplomacyActionRows(OTHER) as Array<{ kind: string; text?: string }>;
   assert.ok(buttonTexts(rows).includes('Capitulate'));
 });
+
+test('audience categories keep economic and military actions out of diplomacy', () => {
+  const { provider } = buildProvider();
+  const diplomacy = buttonTexts(provider.getAudienceDiplomacyActionRows(OTHER, 'diplomacy'));
+  assert.ok(diplomacy.includes('Open Borders'));
+  assert.ok(diplomacy.includes('Give Gift'));
+  assert.ok(!diplomacy.includes('Declare War'));
+  assert.ok(!diplomacy.includes('Establish Trade Relations'));
+  const economy = buttonTexts(provider.getAudienceDiplomacyActionRows(OTHER, 'economy'));
+  assert.ok(economy.includes('Establish Trade Relations'));
+  assert.ok(economy.includes('Grant Resource Exploitation Rights'));
+  assert.deepEqual(buttonTexts(provider.getAudienceDiplomacyActionRows(OTHER, 'war')), ['Declare War']);
+});

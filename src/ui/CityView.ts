@@ -1,7 +1,20 @@
+import { ALL_UNIT_TYPES, getUnitTypeById } from '../data/units';
 import type { City } from '../entities/City';
 import { getFoodToGrow } from '../systems/CityEconomy';
 import type { CityViewTileBreakdown } from '../systems/CityViewData';
 import { getBuildingSpritePath, getCorporationSpritePath, getProjectSpritePath, getUnitSpritePath, getWonderSpritePath } from '../utils/assetPaths';
+
+const UNIT_FILTER_KEY = 'epoch.cityView.unitCategory';
+const UNIT_FILTERS = ['all', ...new Set(ALL_UNIT_TYPES.map(unit => unit.category))];
+
+function readUnitFilter(): string {
+  try {
+    const saved = localStorage.getItem(UNIT_FILTER_KEY);
+    return saved && UNIT_FILTERS.includes(saved) ? saved : 'all';
+  } catch {
+    return 'all';
+  }
+}
 
 type CloseCallback = () => void;
 type PlacementRequestCallback = (buildingId: string) => void;
@@ -140,6 +153,7 @@ export class CityView {
   private readonly queueBuyRequestCallbacks: QueueBuyRequestCallback[] = [];
   private currentCityId: string | null = null;
   private mode: CityViewMode = 'production';
+  private unitCategoryFilter = readUnitFilter();
   private readonly accordionExpanded: Record<ProductionAccordionId, boolean> = {
     units: true,
     buildings: false,
@@ -283,10 +297,11 @@ export class CityView {
 
     this.modeContentEl = document.createElement('div');
     this.modeContentEl.className = 'city-view-mode-content';
+    this.modeContentEl.addEventListener('scroll', () => this.hideTooltip());
 
     const hint = document.createElement('div');
     hint.className = 'city-view-hint';
-    hint.textContent = 'Drag the planned expansion tile to retarget culture growth, or choose a building below to place it on a cyan tile.';
+    hint.textContent = 'Hover or focus an item for a larger preview and details. Select a unit to queue it, or a building to choose its tile.';
 
     panel.append(this.headerEl, this.statsEl, this.nextTileEl, this.placementStatusEl, this.modeButtonsEl, this.modeContentEl, hint);
     this.root.append(panel);
@@ -304,24 +319,8 @@ export class CityView {
 
     this.tooltipEl = document.createElement('div');
     this.tooltipEl.className = 'city-view-tooltip';
-    this.tooltipEl.style.cssText = `
-      position: fixed;
-      z-index: 1300;
-      display: none;
-      min-width: 220px;
-      max-width: 300px;
-      padding: 10px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 8px;
-      background: rgba(10, 12, 16, 0.96);
-      color: #eef3fb;
-      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
-      font-family: monospace;
-      font-size: 12px;
-      line-height: 1.45;
-      pointer-events: none;
-      white-space: normal;
-    `;
+    this.tooltipEl.id = 'city-production-preview';
+    this.tooltipEl.setAttribute('role', 'tooltip');
     document.body.append(this.tooltipEl);
 
     this.headerEl.addEventListener('mousedown', this.handleHeaderMouseDown);
@@ -591,6 +590,7 @@ export class CityView {
     projectOptions: CityViewProjectOption[],
     queueItems: CityViewQueueItem[],
   ): void {
+    this.hideTooltip();
     this.lastRenderState = {
       city,
       unitOptions,
@@ -657,57 +657,63 @@ export class CityView {
     const units = this.renderProductionAccordion('units', 'Units', unitOptions, (grid, option) => {
       const button = this.createProductionButton(
         getUnitSpritePath(option.id),
-        option.reason
-          ? `${option.name} (${option.cost}) - ${option.reason}`
-          : `${option.name} (${option.cost})`,
+        option.name, `${option.cost} production`, option.reason,
       );
-      button.disabled = option.disabled ?? false;
-      if (option.reason) button.title = option.reason;
+      const disabled = option.disabled ?? false;
+      button.classList.toggle('city-view-placement-button-disabled', disabled);
+      button.setAttribute('aria-disabled', String(disabled));
+      const unit = getUnitTypeById(option.id);
+      this.attachProductionTooltip(button, [
+        option.name, unit?.description, `${option.cost} production`,
+        unit ? `Strength: ${unit.baseStrength} • Movement: ${unit.movementPoints}` : undefined,
+        unit?.rangedStrength ? `Ranged strength: ${unit.rangedStrength} • Range: ${unit.range ?? 0}` : undefined,
+        unit ? `Upkeep: ${unit.upkeepGold ?? 0} Gold / turn` : undefined,
+        option.reason ? `Requirements: ${option.reason}` : undefined,
+      ]);
       button.addEventListener('click', () => {
-        if (button.disabled) return;
+        if (disabled) return;
         for (const callback of this.unitRequestCallbacks) callback(option.id);
       });
       grid.append(button);
-    }, 'No units available.');
+    }, 'No units available.', option => getUnitTypeById(option.id)?.category);
 
     const buildings = this.renderProductionAccordion('buildings', 'Buildings', buildingOptions, (grid, option) => {
       const button = this.createProductionButton(
         getBuildingSpritePath(option.id),
-        option.reason
-          ? `${option.name} (${option.cost}) - ${option.reason}`
-          : `${option.name} (${option.cost}) - ${option.placement}${option.terrainRequirement ? ` - ${option.terrainRequirement}` : ''}`,
+        option.name, `${option.cost} production`, option.reason,
       );
       if (placementState.active && placementState.buildingId === option.id) {
         button.classList.add('city-view-placement-button-active');
       }
-      button.disabled = option.disabled ?? false;
+      const disabled = option.disabled ?? false;
+      button.classList.toggle('city-view-placement-button-disabled', disabled);
+      button.setAttribute('aria-disabled', String(disabled));
       this.attachProductionTooltip(button, [
         option.name,
         option.description,
         `Cost: ${option.cost}`,
+        `Placement: ${option.placement}`,
         option.terrainRequirement,
         option.reason ? `Requirements: ${option.reason}` : undefined,
       ]);
       button.addEventListener('click', () => {
-        if (button.disabled) return;
+        if (disabled) return;
         for (const callback of this.placementRequestCallbacks) callback(option.id);
       });
       grid.append(button);
     }, 'No building placements available for this city.');
 
     const wonders = this.renderProductionAccordion('wonders', 'Wonders', wonderOptions, (grid, option) => {
-      const suffix = option.reason ? ` — ${option.reason}` : '';
       const button = this.createProductionButton(
         getWonderSpritePath(option.id),
-        `${option.name} (${option.cost})${suffix}`,
+        option.name, `${option.cost} production`, option.reason,
       );
-      button.disabled = option.disabled ?? false;
-      // When the wonder can't be built the reason is the more useful tooltip;
-      // otherwise fall back to the flavour description. `reason` is set exactly
-      // when the wonder is unbuildable (queued / blocked / no placement tile).
-      button.title = option.reason ?? option.description;
+      const disabled = option.disabled ?? false;
+      button.classList.toggle('city-view-placement-button-disabled', disabled);
+      button.setAttribute('aria-disabled', String(disabled));
+      this.attachProductionTooltip(button, [option.name, option.description, `${option.cost} production`, option.outputSummary, option.reason]);
       button.addEventListener('click', () => {
-        if (button.disabled) return;
+        if (disabled) return;
         for (const callback of this.wonderRequestCallbacks) callback(option.id);
       });
       grid.append(button);
@@ -717,7 +723,7 @@ export class CityView {
       const estimate = option.turnsRemaining ?? option.cost;
       const button = this.createProductionButton(
         getCorporationSpritePath(option.spriteId ?? option.id),
-        `${option.name} (${estimate})`,
+        option.name, option.turnsRemaining !== undefined ? `${estimate} turns` : `${option.cost} production`, option.reason,
       );
       const disabled = option.disabled ?? false;
       if (disabled) {
@@ -727,7 +733,7 @@ export class CityView {
       this.attachProductionTooltip(button, [
         option.name,
         option.description,
-        `Turns: ${estimate}`,
+        option.turnsRemaining !== undefined ? `Turns: ${estimate}` : `Cost: ${option.cost} production`,
         disabled ? 'State: Unavailable' : 'State: Available',
         option.reason ? `Requirements: ${option.reason}` : undefined,
         option.outputSummary,
@@ -742,7 +748,7 @@ export class CityView {
     const projects = this.renderProductionAccordion('projects', 'Projects', projectOptions, (grid, option) => {
       const button = this.createProductionButton(
         getProjectSpritePath(option.id),
-        `${option.name} — +${option.goldPerTurn} Gold / turn`,
+        option.name, `+${option.goldPerTurn} Gold / turn`,
       );
       if (option.active) button.classList.add('city-view-placement-button-active');
       this.attachProductionTooltip(button, [
@@ -873,6 +879,7 @@ export class CityView {
     options: T[],
     renderOption: (grid: HTMLDivElement, option: T) => void,
     emptyText: string,
+    categoryForOption?: (option: T) => string | undefined,
   ): HTMLDivElement {
     const section = document.createElement('div');
     section.className = 'city-view-placement city-view-accordion';
@@ -886,14 +893,54 @@ export class CityView {
 
     const grid = document.createElement('div');
     grid.className = 'city-view-placement-buttons city-view-production-grid';
-    if (options.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'city-view-placement-empty';
-      empty.textContent = emptyText;
-      grid.append(empty);
-    } else {
-      for (const option of options) renderOption(grid, option);
+    const renderGrid = (): void => {
+      grid.replaceChildren();
+      const visible = categoryForOption && this.unitCategoryFilter !== 'all'
+        ? options.filter(option => categoryForOption(option) === this.unitCategoryFilter)
+        : options;
+      if (visible.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'city-view-placement-empty';
+        empty.setAttribute('role', 'status');
+        empty.textContent = categoryForOption && this.unitCategoryFilter !== 'all'
+          ? `No #${this.unitCategoryFilter} units available in this city. Choose #all to see every unit.`
+          : emptyText;
+        grid.append(empty);
+      } else {
+        for (const option of visible) renderOption(grid, option);
+      }
+    };
+    if (categoryForOption) {
+      const heading = document.createElement('div');
+      heading.className = 'city-view-unit-heading';
+      const filters = document.createElement('div');
+      filters.className = 'city-view-unit-filters';
+      filters.setAttribute('role', 'group');
+      filters.setAttribute('aria-label', 'Filter units by category');
+      for (const category of UNIT_FILTERS) {
+        const tag = document.createElement('button');
+        tag.type = 'button';
+        tag.className = 'city-view-unit-filter';
+        tag.textContent = `#${category}`;
+        tag.setAttribute('aria-pressed', String(this.unitCategoryFilter === category));
+        tag.addEventListener('click', () => {
+          this.unitCategoryFilter = category;
+          try { localStorage.setItem(UNIT_FILTER_KEY, category); } catch { /* Keep the session choice if storage is unavailable. */ }
+          this.hideTooltip();
+          this.accordionExpanded[id] = true;
+          this.lastExpandedAccordion = id;
+          syncExpanded();
+          for (const sibling of filters.children) {
+            sibling.setAttribute('aria-pressed', String(sibling === tag));
+          }
+          renderGrid();
+        });
+        filters.append(tag);
+      }
+      heading.append(header, filters);
+      section.append(heading);
     }
+    renderGrid();
     section.append(grid);
 
     const syncExpanded = (): void => {
@@ -991,7 +1038,16 @@ export class CityView {
     });
     actions.append(removeButton);
 
-    row.append(icon, body, actions);
+    row.classList.toggle('city-view-queue-item-active', item.active);
+    const preview = document.createElement('button');
+    preview.type = 'button';
+    preview.className = 'city-view-queue-preview';
+    preview.setAttribute('aria-label', `Preview ${item.name}`);
+    preview.append(icon);
+    this.attachProductionTooltip(preview, [item.name,
+      item.isProject ? `+${item.projectGoldPerTurn ?? 0} Gold / turn` : `${item.progress}/${item.cost} production • ${item.turnsRemaining} turns`,
+      item.blockedReason]);
+    row.append(preview, body, actions);
     return row;
   }
 
@@ -1035,7 +1091,7 @@ export class CityView {
     );
   }
 
-  private createProductionButton(spritePath: string | undefined, labelText: string): HTMLButtonElement {
+  private createProductionButton(spritePath: string | undefined, labelText: string, detailText: string, reason?: string): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'city-view-placement-button city-view-production-button';
@@ -1055,7 +1111,18 @@ export class CityView {
 
     const label = document.createElement('span');
     label.className = 'city-view-production-label';
-    label.textContent = labelText;
+    const name = document.createElement('strong');
+    name.textContent = labelText;
+    const detail = document.createElement('span');
+    detail.className = 'city-view-production-cost';
+    detail.textContent = detailText;
+    label.append(name, detail);
+    if (reason) {
+      const state = document.createElement('span');
+      state.className = 'city-view-production-requirement';
+      state.textContent = reason;
+      label.append(state);
+    }
 
     button.append(icon, label);
     return button;
@@ -1063,15 +1130,34 @@ export class CityView {
 
   private attachProductionTooltip(button: HTMLElement, lines: Array<string | undefined>): void {
     const tooltipLines = lines.filter((line): line is string => Boolean(line));
-    button.addEventListener('mouseenter', (event) => {
-      this.showTextTooltip(tooltipLines, event.clientX, event.clientY);
+    const show = (x: number, y: number): void => {
+      this.showTextTooltip(tooltipLines, x, y);
+      const source = button.querySelector<HTMLImageElement>('img');
+      if (source?.getAttribute('src')) {
+        const preview = document.createElement('img');
+        preview.src = source.src;
+        preview.alt = '';
+        preview.className = 'city-view-preview-image';
+        preview.addEventListener('error', () => { preview.remove(); });
+        this.tooltipEl.prepend(preview);
+      }
+      button.setAttribute('aria-describedby', this.tooltipEl.id);
+      this.positionTooltip(x, y);
+    };
+    button.addEventListener('mouseenter', (event) => show(event.clientX, event.clientY));
+    button.addEventListener('mousemove', (event) => this.positionTooltip(event.clientX, event.clientY));
+    button.addEventListener('focus', () => {
+      const rect = button.getBoundingClientRect();
+      show(rect.right, rect.top);
     });
-    button.addEventListener('mousemove', (event) => {
-      this.positionTooltip(event.clientX, event.clientY);
-    });
-    button.addEventListener('mouseleave', () => {
+    const hide = (): void => {
+      button.removeAttribute('aria-describedby');
       this.hideTooltip();
-    });
+    };
+    button.addEventListener('mouseleave', hide);
+    button.addEventListener('blur', hide);
+    button.addEventListener('keydown', (event) => { if (event.key === 'Escape') hide(); });
+    button.addEventListener('click', hide);
   }
 
   private showTextTooltip(lines: readonly string[], screenX: number, screenY: number): void {

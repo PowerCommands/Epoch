@@ -84,19 +84,19 @@ function makeContext(options: {
   return { context, calls };
 }
 
-test('Leader Details uses a Dialog section with Audience and Gossip actions for known foreign leaders', () => {
+test('Leader Details routes five horizontal conversation categories to the selected leader', () => {
   const opened: string[] = [];
   const section = buildLeaderDialogSection(leader, false, true, {
-    arrangeAudience: (id) => opened.push(`audience:${id}`),
+    arrangeAudience: (id, category) => opened.push(`${category}:${id}`),
     arrangeGossip: (id) => opened.push(`gossip:${id}`),
   });
-  assert.equal(section?.title, 'Dialog');
-  assert.deepEqual(section?.rows.map((row) => row.kind === 'button' ? row.text : ''), [
-    'Arrange an audience with Henry V',
-    'Gossip with Henry V',
-  ]);
-  for (const row of section?.rows ?? []) if (row.kind === 'button') row.onClick();
-  assert.deepEqual(opened, ['audience:leader_henry_v', 'gossip:leader_henry_v']);
+  assert.equal(section?.title, 'Conversations');
+  const row = section?.rows[0];
+  assert.equal(row?.kind, 'buttonGroup');
+  if (row?.kind !== 'buttonGroup') return;
+  assert.deepEqual(row.buttons.map(button => button.text), ['Diplomacy', 'Economy', 'War & peace', 'Requests & promises', 'Gossip']);
+  row.buttons.forEach(button => button.onClick());
+  assert.deepEqual(opened, ['diplomacy', 'economy', 'war', 'requests', 'gossip'].map(category => `${category}:leader_henry_v`));
 });
 
 test('human and unknown leader details expose neither dialog action', () => {

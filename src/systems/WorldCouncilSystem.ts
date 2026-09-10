@@ -774,8 +774,13 @@ export class WorldCouncilSystem {
 
     const meeting = this.maybeCreateRegularMeeting(round);
     if (meeting) {
-      // A deferred meeting notifies only once it resolves after human voting.
-      if (!this.isMeetingPendingHumanVote(meeting.id)) this.notifyMeeting(meeting);
+      // A deferred meeting notifies only once it resolves after human input:
+      // neither while it awaits the human host's proposal choice nor while it
+      // awaits human votes.
+      if (this.state?.pendingHumanProposalMeetingId !== meeting.id
+        && !this.isMeetingPendingHumanVote(meeting.id)) {
+        this.notifyMeeting(meeting);
+      }
       return true;
     }
     return false;
@@ -803,6 +808,7 @@ export class WorldCouncilSystem {
       memberNationIds: members.map((member) => member.nationId),
       lastRegularMeetingTurn: turn,
       nextRegularMeetingTurn: turn + WORLD_COUNCIL_REGULAR_MEETING_INTERVAL_TURNS,
+      lastRegularMeetingHostNationId: hostNationId ?? this.state.lastRegularMeetingHostNationId,
       pendingContributionNegotiation: humanMember
         ? {
             meetingId: meeting.id,
@@ -817,13 +823,19 @@ export class WorldCouncilSystem {
     return meeting;
   }
 
+  /**
+   * Round-robin presidency: the next living member after whoever hosted the last
+   * regular meeting, in stable membership order. Everyone takes an equal turn to
+   * set the agenda, so proposal-based Diplomatic Score is no longer monopolised by
+   * whoever is already ahead. Falls back to the first member when the previous
+   * host has left the Council or none is recorded yet.
+   */
   private getRegularMeetingHostNationId(): string | undefined {
     if (!this.state || this.state.members.length === 0) return undefined;
-    return [...this.state.members].sort((a, b) =>
-      b.diplomacyScoreSinceLastRegularMeeting - a.diplomacyScoreSinceLastRegularMeeting
-      || b.diplomacyScore - a.diplomacyScore
-      || a.nationId.localeCompare(b.nationId),
-    )[0]?.nationId;
+    const order = this.state.members.map((member) => member.nationId);
+    const lastHost = this.state.lastRegularMeetingHostNationId;
+    const lastIndex = lastHost ? order.indexOf(lastHost) : -1;
+    return order[(lastIndex + 1) % order.length];
   }
 
   private createMeeting(options: {
@@ -833,11 +845,21 @@ export class WorldCouncilSystem {
     emergencyTrigger?: WorldCouncilEmergencyTrigger;
   }): WorldCouncilMeeting {
     if (!this.state) throw new Error('Cannot create World Council meeting before the Council exists.');
-    const proposals = this.resolutionSystem
-      ? options.kind === 'regular'
+    // A human host of a regular meeting picks its two proposals interactively:
+    // hold the meeting proposal-less until the Council UI submits the choice
+    // through submitHumanRegularProposals. Autorun / AI-only games (deferral
+    // disabled) always fall through to synchronous AI proposal selection.
+    const humanHostAwaitingProposals = options.kind === 'regular'
+      && this.resolutionSystem !== undefined
+      && this.humanVotingDeferralEnabled?.() === true
+      && options.hostNationId !== undefined
+      && this.nationManager.getNation(options.hostNationId)?.isHuman === true
+      && this.getRegularProposalCandidates(options.hostNationId).length > 0;
+    const proposals = !this.resolutionSystem || humanHostAwaitingProposals
+      ? undefined
+      : options.kind === 'regular'
         ? this.createRegularMeetingProposals(options.turn, options.hostNationId)
-        : this.createEmergencyMeetingProposals(options.emergencyTrigger)
-      : undefined;
+        : this.createEmergencyMeetingProposals(options.emergencyTrigger);
     const meeting: WorldCouncilMeeting = {
       id: this.state.nextMeetingId,
       kind: options.kind,
@@ -847,7 +869,28 @@ export class WorldCouncilSystem {
       emergencyTrigger: options.emergencyTrigger ? { ...options.emergencyTrigger } : undefined,
       proposals,
     };
-    for (const proposal of proposals ?? []) {
+    this.state = {
+      ...this.state,
+      meetings: [...this.state.meetings, meeting],
+      nextMeetingId: this.state.nextMeetingId + 1,
+      pendingHumanProposalMeetingId: humanHostAwaitingProposals
+        ? meeting.id
+        : this.state.pendingHumanProposalMeetingId,
+    };
+    if (humanHostAwaitingProposals) return meeting;
+    return this.finalizeCreatedMeetingProposals(meeting.id);
+  }
+
+  /**
+   * Log any Games-of-Nations proposals, then either hold the meeting for
+   * interactive human input (voting / Defense Support donation) or resolve it
+   * synchronously. Shared by AI-authored meetings and human host proposals
+   * committed through {@link submitHumanRegularProposals}.
+   */
+  private finalizeCreatedMeetingProposals(meetingId: number): WorldCouncilMeeting {
+    const meeting = this.state?.meetings.find((item) => item.id === meetingId);
+    if (!this.state || !meeting) throw new Error('Cannot finalize proposals for a missing World Council meeting.');
+    for (const proposal of meeting.proposals ?? []) {
       if (!proposal.proposerNationId || !proposal.targetNationId) continue;
       const proposerName = this.nationManager.getNation(proposal.proposerNationId)?.name ?? proposal.proposerNationId;
       const targetName = this.nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId;
@@ -859,11 +902,6 @@ export class WorldCouncilSystem {
           `${proposerName} proposed Games of Nations Participation Resolution targeting ${targetName}.`);
       }
     }
-    this.state = {
-      ...this.state,
-      meetings: [...this.state.meetings, meeting],
-      nextMeetingId: this.state.nextMeetingId + 1,
-    };
     if (meeting.proposals && this.resolutionSystem) {
       const humanMemberId = this.state.members.find((member) =>
         this.nationManager.getNation(member.nationId)?.isHuman === true)?.nationId;
@@ -969,31 +1007,31 @@ export class WorldCouncilSystem {
   private createRegularMeetingProposals(turn: number, hostNationId: string | undefined): WorldCouncilResolutionProposal[] | undefined {
     if (!this.resolutionSystem || !this.state) return undefined;
     const seed = stableMeetingSeed(turn, this.state.nextMeetingId, hostNationId);
+    // The rotating host sets the whole agenda and is credited for whatever passes,
+    // so both proposals are proposed by the host (kept in distinct slots so their
+    // vote keys and enacted-resolution ids stay unique).
     const hostProposal = this.chooseRegularProposal('host', seed, hostNationId);
-    const randomProposal = this.chooseRegularProposal('random', seed + 1, undefined, hostProposal.resolutionId);
-    return [hostProposal, randomProposal];
+    const secondProposal = this.chooseRegularProposal('random', seed + 1, hostNationId, hostProposal.resolutionId);
+    return [hostProposal, secondProposal];
   }
 
-  private chooseRegularProposal(
+  /**
+   * All eligible proposals a member could raise for a regular meeting, before AI
+   * scoring. Both the AI proposal scorer and the human host's proposal-selection
+   * UI draw from this same list so the two paths stay consistent.
+   */
+  private buildRegularProposalCandidates(
     slot: 'host' | 'random',
-    seed: number,
-    proposerNationId?: string,
+    proposerNationId: string | undefined,
     excludedResolutionId?: WorldCouncilResolutionId,
-  ): WorldCouncilResolutionProposal {
-    if (!this.resolutionSystem || !this.state) {
-      return {
-        slot,
-        proposerNationId,
-        resolutionId: 'shared_cartography',
-      };
-    }
-
+  ): WorldCouncilResolutionProposal[] {
+    if (!this.resolutionSystem || !this.state) return [];
     const repealTargets = this.getRepealableResolutions();
     const normalProposals = this.resolutionSystem.getEligibleDefinitions(this.getOrganizationKind(), proposerNationId)
       .filter((definition) => definition.id !== 'collective_nuclear_response')
       .filter((definition) => definition.votingType !== 'special')
       .filter((definition) => definition.id !== excludedResolutionId)
-      .filter((definition) => slot === 'host' || definition.id !== 'un_peacekeeping_mission')
+      .filter((definition) => definition.id !== 'un_peacekeeping_mission' || proposerNationId !== undefined)
       .map((definition) => ({
         slot,
         proposerNationId,
@@ -1017,6 +1055,96 @@ export class WorldCouncilSystem {
         secondaryTargetNationId: target.secondaryTargetNationId,
       });
     }
+    return candidates;
+  }
+
+  /**
+   * The proposals a human host may choose from for the pending regular meeting.
+   * Raw candidates (not target-baked): the target of a Games / Condemn proposal
+   * is resolved when the choice is committed in {@link submitHumanRegularProposals}.
+   */
+  private getRegularProposalCandidates(hostNationId: string | undefined): WorldCouncilResolutionProposal[] {
+    return this.buildRegularProposalCandidates('host', hostNationId, undefined);
+  }
+
+  getPendingHumanProposalMeeting(): WorldCouncilMeeting | null {
+    const meetingId = this.state?.pendingHumanProposalMeetingId;
+    if (meetingId === undefined) return null;
+    return this.getState()?.meetings.find((meeting) => meeting.id === meetingId) ?? null;
+  }
+
+  /** Options for the human host's proposal-selection UI, keyed for submit matching. */
+  getRegularProposalOptionsForHost(): WorldCouncilResolutionProposal[] {
+    const meeting = this.state?.meetings.find((item) => item.id === this.state?.pendingHumanProposalMeetingId);
+    if (!meeting) return [];
+    return this.getRegularProposalCandidates(meeting.hostNationId);
+  }
+
+  /**
+   * Commit the two proposals a human host selected (by candidate key) for the
+   * pending regular meeting, then resume the normal deferral / resolution flow so
+   * the human votes on the full agenda. Falls back to AI selection if nothing
+   * usable was chosen. Returns the (now populated) meeting, or null when no
+   * proposal selection is pending.
+   */
+  submitHumanRegularProposals(selectedKeys: readonly string[]): WorldCouncilMeeting | null {
+    const meetingId = this.state?.pendingHumanProposalMeetingId;
+    if (meetingId === undefined || !this.state || !this.resolutionSystem) return null;
+    const meeting = this.state.meetings.find((item) => item.id === meetingId);
+    if (!meeting) return null;
+    const hostNationId = meeting.hostNationId;
+    const seed = stableMeetingSeed(meeting.turn, meeting.id, hostNationId);
+    const candidatesByKey = new Map(
+      this.getRegularProposalCandidates(hostNationId).map((candidate) => [worldCouncilProposalCandidateKey(candidate), candidate]),
+    );
+    const chosen: WorldCouncilResolutionProposal[] = [];
+    for (const key of selectedKeys) {
+      const candidate = candidatesByKey.get(key);
+      if (!candidate || chosen.some((entry) => worldCouncilProposalCandidateKey(entry) === key)) continue;
+      chosen.push(candidate);
+      if (chosen.length >= 2) break;
+    }
+    // Nothing usable chosen (e.g. dialog dismissed): fall back to AI selection so
+    // the meeting still has an agenda rather than silently vanishing.
+    const fallback = chosen.length === 0
+      ? this.createRegularMeetingProposals(meeting.turn, hostNationId) ?? []
+      : [];
+    const proposals = (chosen.length > 0 ? chosen : fallback)
+      .slice(0, 2)
+      .map((candidate, index) => ({
+        ...this.resolutionSystem!.prepareProposal({ ...candidate, proposerNationId: hostNationId }, seed),
+        slot: (index === 0 ? 'host' : 'random') as 'host' | 'random',
+        proposerNationId: hostNationId,
+      }));
+    this.state = {
+      ...this.state,
+      meetings: this.state.meetings.map((item) =>
+        item.id === meetingId ? { ...item, proposals } : item),
+      pendingHumanProposalMeetingId: undefined,
+    };
+    const finalized = this.finalizeCreatedMeetingProposals(meetingId);
+    // An AI-only-affecting meeting (no human vote deferral) resolves immediately;
+    // notify listeners exactly as the synchronous creation path does.
+    if (!this.isMeetingPendingHumanVote(finalized.id)) this.notifyMeeting(finalized);
+    this.notifyChanged();
+    return this.getState()?.meetings.find((item) => item.id === meetingId) ?? finalized;
+  }
+
+  private chooseRegularProposal(
+    slot: 'host' | 'random',
+    seed: number,
+    proposerNationId?: string,
+    excludedResolutionId?: WorldCouncilResolutionId,
+  ): WorldCouncilResolutionProposal {
+    if (!this.resolutionSystem || !this.state) {
+      return {
+        slot,
+        proposerNationId,
+        resolutionId: 'shared_cartography',
+      };
+    }
+
+    const candidates = this.buildRegularProposalCandidates(slot, proposerNationId, excludedResolutionId);
     if (candidates.length === 0) {
       const fallback = slot === 'host'
         ? this.resolutionSystem.chooseHostProposal(proposerNationId, this.getOrganizationKind())
@@ -1799,6 +1927,19 @@ function normalizeState(state: WorldCouncilState): WorldCouncilState {
     nextMeetingId: 1,
     enactedResolutions: [],
   };
+}
+
+/**
+ * Stable identity for a regular-meeting proposal candidate, used to match the
+ * human host's UI selection back to a candidate when committing proposals. A
+ * resolution appears as either a normal or a repeal candidate (never both), and
+ * distinct repeal targets carry distinct enacted-resolution ids, so the pair is
+ * unique within one meeting's candidate list.
+ */
+export function worldCouncilProposalCandidateKey(
+  proposal: Pick<WorldCouncilResolutionProposal, 'resolutionId' | 'repealTargetEnactedResolutionId'>,
+): string {
+  return `${proposal.resolutionId}:${proposal.repealTargetEnactedResolutionId ?? ''}`;
 }
 
 function stableMeetingSeed(turn: number, meetingId: number, hostNationId: string | undefined): number {

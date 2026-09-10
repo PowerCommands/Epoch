@@ -1,3 +1,4 @@
+import { AUDIENCE_CATEGORIES, type AudienceCategory } from '../dialogs/AudienceCategories';
 import { getCityRenewableCapacity } from '../../systems/RenewableBuildingEffects';
 import type { UnitType } from '../../entities/UnitType';
 import { interceptionProfile } from '../../data/airOperations';
@@ -175,27 +176,24 @@ export function buildLeaderDialogSection(
   isHumanLeader: boolean,
   isKnownToHuman: boolean,
   handlers: {
-    arrangeAudience?: (leaderId: string) => void;
+    arrangeAudience?: (leaderId: string, category?: AudienceCategory) => void;
     arrangeGossip?: (leaderId: string) => void;
   },
 ): RightSidebarSection | undefined {
   if (isHumanLeader || !isKnownToHuman) return undefined;
   return {
-    title: 'Dialog',
-    rows: [
-      {
-        kind: 'button',
-        text: `Arrange an audience with ${leader.name}`,
-        accentColor: 0xf4d06f,
-        onClick: () => handlers.arrangeAudience?.(leader.id),
-      },
-      {
-        kind: 'button',
-        text: `Gossip with ${leader.name}`,
-        accentColor: 0xd9a441,
-        onClick: () => handlers.arrangeGossip?.(leader.id),
-      },
-    ],
+    title: 'Conversations',
+    rows: [{
+      kind: 'buttonGroup',
+      buttons: [
+        ...AUDIENCE_CATEGORIES.map(category => ({
+          text: category.label,
+          accentColor: 0xc5a56a,
+          onClick: () => handlers.arrangeAudience?.(leader.id, category.id),
+        })),
+        { text: 'Gossip', accentColor: 0xc5a56a, onClick: () => handlers.arrangeGossip?.(leader.id) },
+      ],
+    }],
   };
 }
 
@@ -279,7 +277,7 @@ export class RightSidebarPanelDataProvider {
   private wonderPlacementAvailabilityProvider: WonderPlacementAvailabilityProvider | null = null;
   private buyProductionRequestHandler: BuyProductionRequestHandler | null = null;
   private productionPurchaseQuoteProvider: ((cityId: string, index: number) => ProductionPurchaseQuote) | null = null;
-  private arrangeAudienceHandler: ((leaderId: string) => void) | null = null;
+  private arrangeAudienceHandler: ((leaderId: string, category?: AudienceCategory) => void) | null = null;
   private arrangeGossipHandler: ((leaderId: string) => void) | null = null;
   private current: RightSidebarDetailsState = {
     view: null,
@@ -495,7 +493,7 @@ export class RightSidebarPanelDataProvider {
     this.foundCity = foundCity;
   }
 
-  setArrangeAudienceHandler(handler: (leaderId: string) => void): void {
+  setArrangeAudienceHandler(handler: (leaderId: string, category?: AudienceCategory) => void): void {
     this.arrangeAudienceHandler = handler;
   }
 
@@ -735,7 +733,7 @@ export class RightSidebarPanelDataProvider {
         rows: [textRow('No Trade Relations established.', true), textRow('Establish Trade Relations through Diplomacy to begin international trade.', true)],
       });
     }
-    sections.push({ title: 'Why trade?', rows: this.buildTradingHelpRows() });
+    sections.push({ title: 'Why trade?', collapsible: true, rows: this.buildTradingHelpRows() });
     sections.push({ title: 'Current trade activity', rows: this.buildTradingActivityRows() });
     return { title: 'Trading', sections };
   }
@@ -1391,7 +1389,7 @@ export class RightSidebarPanelDataProvider {
       leader.nationId === this.humanNationId,
       this.isNationKnown(leader.nationId),
       {
-        arrangeAudience: (leaderId) => this.arrangeAudienceHandler?.(leaderId),
+        arrangeAudience: (leaderId, category) => this.arrangeAudienceHandler?.(leaderId, category),
         arrangeGossip: (leaderId) => this.arrangeGossipHandler?.(leaderId),
       },
     );
@@ -1399,6 +1397,8 @@ export class RightSidebarPanelDataProvider {
     sections.push(
       {
         title: 'Leader',
+        spritePath: leader.image,
+        column: 'left',
         rows: [
           textRow(leader.name, false, true, nation?.color),
           textRow(nation?.name ?? 'Unknown nation', false, false, nation?.color),
@@ -1408,8 +1408,8 @@ export class RightSidebarPanelDataProvider {
           ...ideologyRows,
         ],
       },
-      this.getLeaderNationSection(leader.nationId),
-      this.getLeaderTerritorySection(leader.nationId),
+      { ...this.getLeaderNationSection(leader.nationId), column: 'right' },
+      { ...this.getLeaderTerritorySection(leader.nationId), column: 'right' },
     );
     return {
       title: 'Leader Details',
@@ -2155,7 +2155,7 @@ export class RightSidebarPanelDataProvider {
    * are reused unchanged (the buttons dispatch the same `diplomacyAction`
    * events GameScene already listens for).
    */
-  getAudienceDiplomacyActionRows(nationId: string): RightSidebarRow[] {
+  getAudienceDiplomacyActionRows(nationId: string, category?: AudienceCategory): RightSidebarRow[] {
     if (!this.diplomacyManager || !this.humanNationId) return [textRow('Diplomacy unavailable.', true)];
     if (nationId === this.humanNationId) return [textRow('This is your own nation.', true)];
     if (!this.isNationKnown(nationId)) return [textRow('You have not met this nation.', true)];
@@ -2179,7 +2179,11 @@ export class RightSidebarPanelDataProvider {
     const embassyValidation = dm.canEstablishEmbassy(humanId, nationId, validationContext);
     const tradeValidation = dm.canEstablishTradeRelations(humanId, nationId, validationContext);
     const isAtWar = relation.state === 'WAR';
-    const rows: RightSidebarRow[] = [];
+    if (category === 'war' && !isAtWar && this.jointWarProposal?.receiverNationId === nationId) {
+      return this.buildJointWarActionRows(nationId, nation?.color);
+    }
+    const groups: Record<AudienceCategory, RightSidebarRow[]> = { diplomacy: [], economy: [], war: [], requests: [] };
+    let rows = groups.diplomacy;
 
     // While at war, peacetime diplomacy actions are filtered out entirely (item 5):
     // no disabled buttons and no "Unavailable during war." text. Only actions that
@@ -2206,6 +2210,7 @@ export class RightSidebarPanelDataProvider {
         nation?.color,
       ));
       if (!hasHumanEmbassy && embassyValidation.reason) rows.push(textRow(embassyValidation.reason, true));
+      rows = groups.economy;
       if (!hasTradeRelations) {
         rows.push(disabledReasonButtonRow(
           'Establish Trade Relations',
@@ -2250,6 +2255,7 @@ export class RightSidebarPanelDataProvider {
       // Exchange Maps: one-time intelligence sharing. Tied directly to Writing —
       // it only requires that the human knows Writing and the two nations have met.
       // AI acceptance (handled elsewhere) still depends on attitude.
+      rows = groups.diplomacy;
       const exchangeMapsReason = !validationContext.haveMet(humanId, nationId)
         ? 'You have not met this nation.'
         : !validationContext.hasTechnology(humanId, 'writing')
@@ -2266,9 +2272,11 @@ export class RightSidebarPanelDataProvider {
         nation?.color,
       ));
       if (exchangeMapsReason) rows.push(textRow(exchangeMapsReason, true));
+      rows = groups.economy;
       rows.push(...this.buildExploitationRightsTradeRows(nationId, nation?.color));
     }
     if (!isAtWar) {
+      rows = groups.diplomacy;
       rows.push(disabledReasonButtonRow(
         'Give Gift',
         undefined,
@@ -2280,7 +2288,9 @@ export class RightSidebarPanelDataProvider {
         nation?.color,
       ));
       rows.push(...this.buildAllianceActionRows(nationId, nation?.color));
+      rows = groups.war;
       rows.push(...this.buildJointWarActionRows(nationId, nation?.color));
+      rows = groups.requests;
       if (this.diplomaticAffairSystem) {
         const affairs = this.diplomaticAffairSystem;
         rows.push(textRow('Requests & promises', true));
@@ -2295,6 +2305,7 @@ export class RightSidebarPanelDataProvider {
       }
 
     }
+    rows = groups.war;
     const currentTurn = this.getCurrentTurn?.() ?? 0;
     const peaceTreatyRemaining = dm.getPeaceTreatyRemainingTurns(humanId, nationId, currentTurn);
     const peaceTreatyReason = peaceTreatyRemaining > 0
@@ -2388,7 +2399,11 @@ export class RightSidebarPanelDataProvider {
         0x9c3b3b,
       ));
     }
-    return rows;
+    if (!category) return Object.values(groups).flat();
+    // Disabled controls already explain their requirements; avoid repeating them below.
+    const reasons = new Set(groups[category].flatMap(row => row.kind === 'button' && row.disabledReason ? [row.disabledReason] : []));
+    const result = groups[category].filter(row => row.kind !== 'text' || (!reasons.has(row.text) && row.text !== 'Requests & promises'));
+    return result.length ? result : [textRow(isAtWar ? 'These conversations are available when your nations are at peace.' : 'No requests are available at present.', true)];
   }
 
   /**
@@ -2530,12 +2545,19 @@ export class RightSidebarPanelDataProvider {
 
     const proposal = this.jointWarProposal!;
     const kind = proposal.kind;
+    const targetIds = this.jointWarSystem.getValidJointWarTargets(humanId, receiverNationId, kind);
+    if (proposal.targetNationId && !targetIds.includes(proposal.targetNationId)) proposal.targetNationId = null;
     const rows: RightSidebarRow[] = [
       textRow(kind === 'request' ? 'Request Joint War' : 'Ask to Join War', false, true),
-      textRow('Select a target nation:'),
+      textRow(proposal.targetNationId ? '2. Review your proposal and confirm.' : '1. Select a target nation:'),
     ];
-    const targetIds = this.jointWarSystem.getValidJointWarTargets(humanId, receiverNationId, kind);
-    if (targetIds.length === 0) {
+    if (proposal.targetNationId) {
+      rows.push(textRow(`Target: ${this.nationManager.getNation(proposal.targetNationId)?.name ?? proposal.targetNationId}`, false, true));
+      rows.push({ kind: 'button', text: 'Change target nation', onClick: () => {
+        if (this.jointWarProposal) this.jointWarProposal.targetNationId = null;
+        this.requestRefresh();
+      } });
+    } else if (targetIds.length === 0) {
       rows.push(textRow('No valid target nations.', true));
     } else {
       for (const targetId of targetIds) {

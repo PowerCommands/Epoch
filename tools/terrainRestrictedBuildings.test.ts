@@ -56,7 +56,7 @@ test('unrestricted land buildings preserve existing placement behavior', () => {
   assert.equal(GRANARY.allowedTerrains, undefined);
   assert.deepEqual(
     coordsFor(GRANARY, [TileType.Plains, TileType.Beach, TileType.Forest, TileType.Mountain, TileType.Coast, TileType.Ocean]),
-    [0, 1, 2],
+    [1, 2],
   );
 });
 
@@ -110,7 +110,7 @@ test('Hotel has its finalized recurring Gold effect and no Tourism placeholder m
 });
 
 test('Hotel completion adds exactly one current population without increasing capacity', () => {
-  const h = makeHarness([TileType.Beach]);
+  const h = makeHarness([TileType.Plains, TileType.Beach]);
   const power = new PowerPlantSystem(
     h.cityManager,
     { hasResource: () => false } as ResourceAccessSystem,
@@ -119,7 +119,7 @@ test('Hotel completion adds exactly one current population without increasing ca
   const capacityBefore = power.getCityPopulationCapacity(h.city.id);
   h.city.population = capacityBefore;
   const reserved = h.placement.reserveFirstValidPlacement(h.city, HOTEL, h.mapData);
-  assert.deepEqual(reserved, { tileX: 0, tileY: 0 });
+  assert.deepEqual(reserved, { tileX: 1, tileY: 0 });
   h.production.enqueue(h.city.id, { kind: 'building', buildingType: HOTEL }, { placement: reserved });
   assert.equal(h.production.completeCurrentProduction(h.city.id).kind, 'completed');
   assert.equal(h.city.population, capacityBefore + 1);

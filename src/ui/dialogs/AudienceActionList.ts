@@ -24,7 +24,7 @@ interface ListButton {
 
 const LEFT_PAD = 4;
 const ROW_GAP = 8;
-const BUTTON_HEIGHT = 34;
+const BUTTON_HEIGHT = 42;
 const DISABLED_BUTTON_HEIGHT = 50;
 const SEPARATOR_HEIGHT = 16;
 const PROGRESS_HEIGHT = 22;
@@ -77,6 +77,10 @@ export class AudienceActionList {
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
   }
 
+  getScrollOffset(): number { return this.scrollOffset; }
+
+  setScrollOffset(offset: number): void { this.scrollOffset = Math.max(0, offset); }
+
   setRows(rows: RightSidebarRow[], preserveScroll = false): void {
     this.rows = rows;
     if (!preserveScroll) this.scrollOffset = 0;
@@ -125,7 +129,7 @@ export class AudienceActionList {
     let y = regionTop - this.scrollOffset;
     const startY = y;
     for (const row of this.rows) {
-      y = this.renderRow(row, x, y, width);
+      y = this.renderRow(row, x, y, width - 10);
     }
     this.contentHeight = y - startY;
 
@@ -134,6 +138,12 @@ export class AudienceActionList {
       this.scrollOffset = max;
       this.rebuild(true);
       return;
+    }
+    if (max > 0 && this.region.height > 0) {
+      const thumbHeight = Math.min(this.region.height, Math.max(24, this.region.height * this.region.height / this.contentHeight));
+      const thumbY = regionTop + (this.region.height - thumbHeight) * this.scrollOffset / max;
+      this.track(new Phaser.GameObjects.Rectangle(this.scene, x + width - 4, regionTop, 3, this.region.height, 0xc5a56a, 0.18).setOrigin(0, 0));
+      this.track(new Phaser.GameObjects.Rectangle(this.scene, x + width - 4, thumbY, 3, thumbHeight, 0xc5a56a, 0.85).setOrigin(0, 0));
     }
     for (const button of this.buttons) this.applyButtonInteractive(button);
   }
@@ -183,16 +193,19 @@ export class AudienceActionList {
    * columns while reusing all the hover/disabled/selected behaviour.
    */
   private renderButtonAt(row: RightSidebarButtonRow, bgX: number, y: number, w: number): number {
-    const height = row.disabled && row.disabledReason ? DISABLED_BUTTON_HEIGHT : BUTTON_HEIGHT;
+    let height = row.disabled && row.disabledReason ? DISABLED_BUTTON_HEIGHT : BUTTON_HEIGHT;
     const background = this.track(new Phaser.GameObjects.Rectangle(this.scene, bgX, y, w, height, 0x0f2635, 0.98).setOrigin(0, 0));
     const label = this.track(this.makeText(row.text, 15, '#ffffff', 'bold'));
     label.setWordWrapWidth(w - 20, true);
-    label.setPosition(bgX + 11, y + (row.disabled && row.disabledReason ? 7 : (height - label.height) / 2));
+
     const reasonLabel = row.disabled && row.disabledReason
       ? this.track(this.makeText(row.disabledReason, 12, '#b8c0ca', 'normal'))
       : undefined;
     reasonLabel?.setWordWrapWidth(w - 20, true);
-    reasonLabel?.setPosition(bgX + 11, y + 27);
+    height = Math.max(height, label.height + (reasonLabel ? reasonLabel.height + 6 : 0) + 18);
+    background.setSize(w, height);
+    label.setPosition(bgX + 11, y + (reasonLabel ? 9 : (height - label.height) / 2));
+    reasonLabel?.setPosition(bgX + 11, y + 9 + label.height + 6);
     const hitArea = this.track(new Phaser.GameObjects.Zone(this.scene, bgX, y, w, height).setOrigin(0, 0).setScrollFactor(0));
 
     const button: ListButton = { row, background, label, reasonLabel, hitArea, height, hovered: false, pressed: false };
@@ -315,7 +328,7 @@ export class AudienceActionList {
     });
     hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation();
-      if (pointer.button !== 0) return;
+      if (pointer.button !== 0 || !this.containsPoint(pointer.x, pointer.y)) return;
       this.worldInputGate.claimPointer(pointer.id);
       button.pressed = true;
       consumePointerEvent(pointer);
@@ -325,7 +338,7 @@ export class AudienceActionList {
       event.stopPropagation();
       if (pointer.button !== 0) return;
       consumePointerEvent(pointer);
-      const shouldClick = button.pressed && !button.row.disabled;
+      const shouldClick = button.pressed && !button.row.disabled && this.containsPoint(pointer.x, pointer.y);
       button.pressed = false;
       this.worldInputGate.releasePointer(pointer.id);
       this.refreshButtonVisual(button);

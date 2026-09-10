@@ -88,6 +88,7 @@ export class WonderPlacementSystem {
     mapData: MapData,
   ): WonderPlacementSelectionResult {
     if (!this.state || this.state.cityId !== city.id || !coord) return { status: 'inactive' };
+    if (coord.x === city.tileX && coord.y === city.tileY) return { status: 'invalid' };
 
     const key = this.getCoordKey(coord.x, coord.y);
     const validSet = new Set(this.state.validCoords.map((entry) => this.getCoordKey(entry.x, entry.y)));
@@ -170,6 +171,7 @@ export class WonderPlacementSystem {
     wonder: WonderType,
     mapData: MapData,
   ): boolean {
+    if (tile.x === city.tileX && tile.y === city.tileY) return false;
     if (tile.ownerId !== city.ownerId) return false;
     if (!ownedSet.has(this.getCoordKey(tile.x, tile.y))) return false;
     if (tile.buildingId !== undefined || tile.buildingConstruction !== undefined) return false;

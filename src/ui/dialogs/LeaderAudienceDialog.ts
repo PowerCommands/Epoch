@@ -1,3 +1,6 @@
+import { GossipConversation } from './GossipConversation';
+import type { GossipDialogContext } from './GossipDialogModel';
+import { CONVERSATION_CATEGORIES, type AudienceCategory, type ConversationCategory } from './AudienceCategories';
 import Phaser from 'phaser';
 import { getLeaderById } from '../../data/leaders';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
@@ -22,7 +25,7 @@ export interface LeaderAudienceContext {
   /** Compact active-agreement lines for the leader information panel. */
   getStatusRows(nationId: string): RightSidebarRow[];
   /** Interactive diplomacy controls (Embassy, Open Borders, War/Peace, …). */
-  getDiplomacyActionRows(nationId: string): RightSidebarRow[];
+  getDiplomacyActionRows(nationId: string, category: AudienceCategory): RightSidebarRow[];
   /** Diagnostic-only bilateral war-pressure rows, empty when hidden/inapplicable. */
   getWarDiagnosticRows(nationId: string): RightSidebarRow[];
   /** Subscribe to data changes so the open chamber can refresh in place. */
@@ -56,7 +59,6 @@ const DIALOG_WIDTH_RATIO = 0.9;
 const DIALOG_HEIGHT_RATIO = 0.9;
 const READABILITY_ALPHA = 0.28;
 const PANEL_PADDING = 48;
-const LEFT_PANEL_WIDTH_RATIO = 0.4;
 const CLOSE_BUTTON_WIDTH = 132;
 const CLOSE_BUTTON_HEIGHT = 44;
 const LIST_DEPTH = DEPTH + 6;
@@ -105,6 +107,11 @@ export class LeaderAudienceDialog {
   private readonly actionList: AudienceActionList;
   private readonly closeButton: DialogButton;
 
+  private category: ConversationCategory = 'diplomacy';
+  private gossip: GossipConversation | null = null;
+  private readonly categoryScroll = new Map<ConversationCategory, number>();
+  private readonly categoryButtons: DialogButton[];
+  private readonly categoryDescription: Phaser.GameObjects.Text;
   private currentLeaderId: string | null = null;
   private declarationMessage: string | null = null;
   private roomVisible = false;
@@ -136,7 +143,7 @@ export class LeaderAudienceDialog {
     this.readabilityOverlay = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x000000, READABILITY_ALPHA))
       .setOrigin(0, 0).setDepth(DEPTH + 3).setScrollFactor(0);
 
-    this.leftPanelBackground = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x0a1018, 0.55))
+    this.leftPanelBackground = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 10, 10, 0x101a21, 0.94))
       .setOrigin(0, 0).setDepth(DEPTH + 5).setScrollFactor(0)
       .setStrokeStyle(1, 0x9a7b3a, 0.35);
 
@@ -155,6 +162,10 @@ export class LeaderAudienceDialog {
       LIST_DEPTH,
     );
 
+    this.categoryDescription = this.addText('', 15, '#cbbd9f', 'normal');
+    this.categoryButtons = CONVERSATION_CATEGORIES.map(category => this.createButton(
+      category.label, 0x18242b, 0x38434a, 0x655337, () => this.selectCategory(category.id),
+    ));
     this.closeButton = this.createButton('Close', 0x7a3030, 0x9c4242, 0x5e2424, () => this.close());
 
     this.installBackdropInput();
@@ -188,6 +199,22 @@ export class LeaderAudienceDialog {
     this.setVisible(false);
   }
 
+  configureGossip(sourceNationId: string, context: GossipDialogContext): void {
+    this.gossip = new GossipConversation(sourceNationId, context, (preserveScroll) => {
+      if (this.category === 'gossip') this.refresh(preserveScroll);
+    });
+  }
+
+  private selectCategory(category: ConversationCategory): void {
+    if (!this.currentLeaderId || this.category === category) return;
+    this.categoryScroll.set(this.category, this.actionList.getScrollOffset());
+    this.category = category;
+    if (category === 'gossip') this.gossip?.open(this.currentLeaderId);
+    this.actionList.setRows(this.buildRows(getLeaderById(this.currentLeaderId)!.nationId));
+    this.actionList.setScrollOffset(this.categoryScroll.get(category) ?? 0);
+    this.layout();
+  }
+
   isOpen(): boolean {
     return this.currentLeaderId !== null;
   }
@@ -197,31 +224,36 @@ export class LeaderAudienceDialog {
   }
 
   /** Open the audience chamber for the given leader. */
-  open(leaderId: string): void {
+  open(leaderId: string, category: ConversationCategory = 'diplomacy'): void {
     const leader = getLeaderById(leaderId);
     if (!leader) return;
 
+    if (this.currentLeaderId === leaderId && this.declarationMessage === null) {
+      this.selectCategory(category);
+      return;
+    }
+    this.gossip?.close();
+    this.categoryScroll.clear();
     this.currentLeaderId = leaderId;
+    this.category = category;
+    if (category === 'gossip') this.gossip?.open(leaderId);
+    this.worldInputGate.blockWorld('leader-audience-dialog');
     this.declarationMessage = null;
     this.relationLabelText.setText('RELATIONSHIP').setColor('#8aa0b8');
     this.closeButton.text.setText('Close');
     this.setVisible(true);
 
     const nationName = this.context.getNationName(leader.nationId);
-    const nationColor = this.context.getNationColor(leader.nationId);
-    const secondaryColor = this.context.getNationSecondaryColor(leader.nationId);
-    const colorHex = toColorString(nationColor);
 
-    this.leaderNameText.setText(leader.name).setColor(colorHex);
-    this.nationNameText.setText(nationName).setColor(colorHex);
+    this.leaderNameText.setText(leader.name).setColor('#fff3d9');
+    this.nationNameText.setText(nationName).setColor('#d4b779');
     this.leaderTitleText.setText(leader.title ?? '');
     this.leaderTitleText.setVisible(Boolean(leader.title));
     this.relationValueText.setText(this.context.getRelationshipSummary(leader.nationId));
 
-    // Tint the chamber framing with the leader's heraldic colours: the outer
-    // frame uses the primary colour, the information panel the secondary.
-    this.dialogBackground.setStrokeStyle(3, nationColor, 0.9);
-    this.leftPanelBackground.setStrokeStyle(2, secondaryColor, 0.55);
+    // Use a consistent brass frame and readable text across all nation palettes.
+    this.dialogBackground.setStrokeStyle(2, 0xb99a61, 0.9);
+    this.leftPanelBackground.setStrokeStyle(1, 0xb99a61, 0.65);
 
     const roomKey = getLeaderRoomKey(leaderId);
     this.roomVisible = this.scene.textures.exists(roomKey);
@@ -287,6 +319,8 @@ export class LeaderAudienceDialog {
   close(): void {
     const closingLeaderId = this.currentLeaderId;
     this.currentLeaderId = null;
+    this.gossip?.close();
+    this.worldInputGate.unblockWorld('leader-audience-dialog');
     this.declarationMessage = null;
     this.closeButton.text.setText('Close');
     this.setVisible(false);
@@ -298,6 +332,8 @@ export class LeaderAudienceDialog {
 
   destroy(): void {
     this.destroyed = true;
+    this.gossip?.close();
+    this.worldInputGate.unblockWorld('leader-audience-dialog');
     this.scene.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.onAddedToScene);
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
     this.actionList.destroy();
@@ -306,41 +342,29 @@ export class LeaderAudienceDialog {
     this.scene.cameras.remove(this.uiCamera);
   }
 
-  /**
-   * Combine the three context row groups into one scrollable list, with section
-   * headers. Section 1 (leader name/nation/relationship) is rendered as fixed
-   * header text above the list; the status agreements lead the list.
-   */
+  /** Keep the selected conversation first and supporting agreements below it. */
   private buildRows(nationId: string): RightSidebarRow[] {
-    const rows: RightSidebarRow[] = [];
+    if (this.category === 'gossip') return this.gossip?.buildRows() ?? [];
+    const rows = this.context.getDiplomacyActionRows(nationId, this.category);
+    // Actions come first; agreement details never push the current conversation down.
     const status = this.context.getStatusRows(nationId);
-    if (status.length > 0) {
-      rows.push({ kind: 'text', text: 'Status', large: true });
-      rows.push(...status);
-      rows.push({ kind: 'separator' });
-    }
-    rows.push({ kind: 'text', text: 'Diplomatic Actions', large: true });
-    rows.push(...this.context.getDiplomacyActionRows(nationId));
-    const diagnostics = this.context.getWarDiagnosticRows(nationId);
-    if (diagnostics.length > 0) {
-      rows.push({ kind: 'separator' });
-      rows.push(...diagnostics);
-    }
+    if (status.length) rows.push({ kind: 'separator' }, { kind: 'text', text: 'Current agreements', large: true }, ...status);
+    if (this.category === 'war') rows.push(...this.context.getWarDiagnosticRows(nationId));
     return rows;
   }
 
-  private refresh(): void {
+  private refresh(preserveScroll = true): void {
     if (this.destroyed || this.currentLeaderId === null) return;
     const leader = getLeaderById(this.currentLeaderId);
     if (!leader) return;
     this.relationValueText.setText(this.context.getRelationshipSummary(leader.nationId));
-    if (this.declarationMessage === null) this.actionList.setRows(this.buildRows(leader.nationId));
+    if (this.declarationMessage === null) this.actionList.setRows(this.buildRows(leader.nationId), preserveScroll);
     this.layout();
   }
 
   private layout(): void {
     const { width, height } = this.scene.scale;
-    this.backdrop.setPosition(0, 0).setDisplaySize(width, height);
+    this.backdrop.setPosition(0, 0).setSize(width, height);
     this.backdropHitArea.setPosition(0, 0).setSize(width, height);
 
     const dialogW = Math.round(width * DIALOG_WIDTH_RATIO);
@@ -348,8 +372,8 @@ export class LeaderAudienceDialog {
     const dialogX = Math.round((width - dialogW) / 2);
     const dialogY = Math.round((height - dialogH) / 2);
 
-    this.dialogBackground.setPosition(dialogX, dialogY).setDisplaySize(dialogW, dialogH);
-    this.readabilityOverlay.setPosition(dialogX, dialogY).setDisplaySize(dialogW, dialogH);
+    this.dialogBackground.setPosition(dialogX, dialogY).setSize(dialogW, dialogH);
+    this.readabilityOverlay.setPosition(dialogX, dialogY).setSize(dialogW, dialogH);
 
     this.layoutRoomImage(dialogX, dialogY, dialogW, dialogH);
     this.layoutLeaderPortrait(dialogX, dialogY, dialogW, dialogH);
@@ -376,16 +400,32 @@ export class LeaderAudienceDialog {
   }
 
   private layoutLeftPanel(dialogX: number, dialogY: number, dialogW: number, dialogH: number): void {
-    const panelX = dialogX + PANEL_PADDING;
-    const panelW = Math.round(dialogW * LEFT_PANEL_WIDTH_RATIO);
-    const panelTop = dialogY + PANEL_PADDING;
-    const panelBottom = dialogY + dialogH - PANEL_PADDING;
+    const padding = Math.min(PANEL_PADDING, dialogW * 0.035);
+    const navX = dialogX + padding;
+    const panelX = navX + 20;
+    const panelW = Math.min(700, Math.round(dialogW * 0.55)) - 20;
+    const panelTop = dialogY + 100;
+    const panelBottom = dialogY + dialogH - 24;
 
     this.leftPanelBackground
       .setPosition(panelX - 20, panelTop - 20)
-      .setDisplaySize(panelW + 40, panelBottom - panelTop + 40);
+      .setSize(panelW + 40, panelBottom - panelTop + 40);
 
+    const navWidth = dialogW - padding * 2 - CLOSE_BUTTON_WIDTH - 20;
+    this.categoryButtons.forEach((button, index) => {
+      const selected = CONVERSATION_CATEGORIES[index]?.id === this.category;
+      button.baseColor = selected ? 0x655337 : 0x18242b;
+      button.text.setFontSize(dialogW < 1200 ? 13 : 16).setWordWrapWidth(navWidth / 5 - 18);
+      this.placeButton(button, navX + index * navWidth / 5, dialogY + 22, navWidth / 5 - 6, 52);
+      button.background.setStrokeStyle(selected ? 2 : 1, 0xc5a56a, selected ? 1 : 0.45);
+      this.setButtonVisible(button, this.declarationMessage === null);
+    });
+    this.categoryDescription.setVisible(this.declarationMessage === null);
     const wrapWidth = panelW;
+    this.leaderNameText.setFontSize(dialogH < 750 ? 28 : 36);
+    this.nationNameText.setFontSize(18);
+    this.leaderTitleText.setFontSize(15);
+    this.relationValueText.setFontSize(20).setWordWrapWidth(wrapWidth);
     this.leaderNameText.setWordWrapWidth(wrapWidth);
     this.nationNameText.setWordWrapWidth(wrapWidth);
     this.leaderTitleText.setWordWrapWidth(wrapWidth);
@@ -400,11 +440,11 @@ export class LeaderAudienceDialog {
       y += this.leaderTitleText.height + 4;
     }
 
-    y += 22;
+    y += 12;
     this.relationLabelText.setPosition(panelX, y);
     y += this.relationLabelText.height + 4;
     this.relationValueText.setPosition(panelX, y);
-    y += this.relationValueText.height + 22;
+    y += this.relationValueText.height + 16;
 
     if (this.declarationMessage !== null) {
       this.declarationText
@@ -419,14 +459,17 @@ export class LeaderAudienceDialog {
       return;
     }
 
+    this.categoryDescription.setText(CONVERSATION_CATEGORIES.find(category => category.id === this.category)!.description)
+      .setWordWrapWidth(panelW).setPosition(panelX, y);
+    y += this.categoryDescription.height + 16;
     // Remaining vertical space hosts the scrollable diplomacy/trade controls.
     const listHeight = Math.max(0, panelBottom - y);
     this.actionList.layout(panelX, y, panelW, listHeight);
   }
 
   private layoutCloseButton(dialogX: number, dialogY: number, dialogW: number): void {
-    const x = dialogX + dialogW - PANEL_PADDING - CLOSE_BUTTON_WIDTH - 50;
-    const y = dialogY + PANEL_PADDING - 8;
+    const x = dialogX + dialogW - Math.min(PANEL_PADDING, dialogW * 0.035) - CLOSE_BUTTON_WIDTH;
+    const y = dialogY + 22;
     this.placeButton(this.closeButton, x, y, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT);
   }
 
@@ -442,6 +485,7 @@ export class LeaderAudienceDialog {
     }
     this.setZoneInteractive(this.backdropHitArea, visible);
     this.setButtonVisible(this.closeButton, visible);
+    for (const button of this.categoryButtons) this.setButtonVisible(button, visible && this.declarationMessage === null);
     this.actionList.setVisible(visible);
     this.declarationText.setVisible(visible && this.declarationMessage !== null);
   }
@@ -528,7 +572,7 @@ export class LeaderAudienceDialog {
   }
 
   private placeButton(button: DialogButton, x: number, y: number, width: number, height: number): void {
-    button.background.setPosition(x, y).setDisplaySize(width, height);
+    button.background.setPosition(x, y).setSize(width, height);
     button.text.setPosition(Math.round(x + width / 2), Math.round(y + height / 2));
     button.hitArea.setPosition(x, y).setSize(width, height);
     if (!button.hitArea.input?.enabled) button.hitArea.setInteractive({ useHandCursor: true });
@@ -584,10 +628,6 @@ function containScale(image: Phaser.GameObjects.Image, maxWidth: number, maxHeig
   const ih = source.height;
   if (iw <= 0 || ih <= 0) return 1;
   return Math.min(maxWidth / iw, maxHeight / ih);
-}
-
-function toColorString(color: number): string {
-  return `#${(color & 0xffffff).toString(16).padStart(6, '0')}`;
 }
 
 function getHudTextResolution(): number {

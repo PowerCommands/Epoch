@@ -16,6 +16,24 @@ export interface WorldCouncilSessionProposal {
   readonly suggestedInfluence: number;
 }
 
+/** One resolution the human host may choose to place on the meeting agenda. */
+export interface WorldCouncilProposalOption {
+  /** Stable candidate key handed back on submit (resolutionId:repealTarget). */
+  readonly key: string;
+  readonly icon: string;
+  readonly title: string;
+  readonly description: string;
+  /** Optional line naming who the resolution concerns, when known up front. */
+  readonly targetHint?: string;
+}
+
+/** Present when the human is this meeting's host and must choose its proposals. */
+export interface WorldCouncilProposalSelection {
+  /** Exactly how many proposals the host must select (normally 2). */
+  readonly pickCount: number;
+  readonly candidates: readonly WorldCouncilProposalOption[];
+}
+
 export interface WorldCouncilSessionState {
   readonly organizationName: string;
   readonly meetingKindLabel: string;
@@ -26,6 +44,12 @@ export interface WorldCouncilSessionState {
   readonly availableInfluence: number;
   readonly backgroundImageUrl?: string;
   readonly proposals: WorldCouncilSessionProposal[];
+  /**
+   * When set, the human is the meeting host and picks the agenda first; the
+   * dialog opens on the proposal-selection step, then transitions to voting on
+   * the committed agenda via {@link WorldCouncilSessionCallbacks.onSubmitProposals}.
+   */
+  readonly proposalSelection?: WorldCouncilProposalSelection;
 }
 
 export type WorldCouncilSessionOutcome = 'passed' | 'rejected' | 'no_target' | 'unresolved';
@@ -53,6 +77,12 @@ export interface WorldCouncilSessionCallbacks {
   getState: () => WorldCouncilSessionState | null;
   /** Hand the collected votes to gameplay logic; returns the canonical resolved result. */
   onSubmitVotes: (votes: WorldCouncilSessionVote[]) => WorldCouncilSessionResult;
+  /**
+   * Commit the human host's chosen proposals (by candidate key) and return the
+   * resulting voting state to continue the session, or null if nothing remains
+   * for the human to vote on. Only invoked from the proposal-selection step.
+   */
+  onSubmitProposals?: (selectedKeys: string[]) => WorldCouncilSessionState | null;
   /** Return to the world map once the session summary is dismissed. */
   onClose: () => void;
 }
@@ -92,9 +122,10 @@ export class WorldCouncilSessionDialog {
   private contentRoot: HTMLElement | null = null;
   private state: WorldCouncilSessionState | null = null;
   private result: WorldCouncilSessionResult | null = null;
-  private phase: 'voting' | 'summary' = 'voting';
+  private phase: 'proposing' | 'voting' | 'summary' = 'voting';
   private proposalIndex = 0;
   private readonly drafts = new Map<string, VoteDraft>();
+  private readonly selectedProposalKeys = new Set<string>();
 
   constructor(private readonly callbacks: WorldCouncilSessionCallbacks) {}
 
@@ -106,8 +137,25 @@ export class WorldCouncilSessionDialog {
   show(): void {
     const state = this.callbacks.getState();
     if (!state) return;
-    this.state = state;
     this.result = null;
+    if (state.proposalSelection) {
+      this.state = state;
+      this.phase = 'proposing';
+      this.proposalIndex = 0;
+      this.drafts.clear();
+      this.selectedProposalKeys.clear();
+      if (!this.overlay) this.mount();
+      this.render();
+      return;
+    }
+    this.enterVotingPhase(state);
+    if (!this.overlay) this.mount();
+    this.render();
+  }
+
+  /** Initialise voting drafts and switch to the voting step for the given agenda. */
+  private enterVotingPhase(state: WorldCouncilSessionState): void {
+    this.state = state;
     this.phase = 'voting';
     this.proposalIndex = 0;
     this.drafts.clear();
@@ -119,14 +167,13 @@ export class WorldCouncilSessionDialog {
         });
       }
     }
-    if (!this.overlay) this.mount();
-    this.render();
   }
 
   hide(): void {
     this.state = null;
     this.result = null;
     this.drafts.clear();
+    this.selectedProposalKeys.clear();
     if (this.overlay) {
       document.removeEventListener('keydown', this.handleKeyDown, true);
       this.overlay.remove();
@@ -190,7 +237,9 @@ export class WorldCouncilSessionDialog {
 
     const inner = element('div', 'wcs-inner');
     inner.appendChild(this.buildHeader(state));
-    if (this.phase === 'voting') {
+    if (this.phase === 'proposing' && state.proposalSelection) {
+      inner.appendChild(this.buildProposingBody(state, state.proposalSelection));
+    } else if (this.phase === 'voting') {
       inner.appendChild(this.buildVotingBody(state));
     } else {
       inner.appendChild(this.buildSummaryBody());
@@ -213,6 +262,89 @@ export class WorldCouncilSessionDialog {
     if (state.hostNationName) contextParts.push(`Presiding Nation: ${state.hostNationName}`);
     if (contextParts.length > 0) header.appendChild(text(contextParts.join('  ·  '), 'wcs-context'));
     return header;
+  }
+
+  private buildProposingBody(
+    state: WorldCouncilSessionState,
+    selection: WorldCouncilProposalSelection,
+  ): HTMLElement {
+    const body = element('div', 'wcs-body');
+    const pickCount = Math.min(selection.pickCount, selection.candidates.length);
+    const hostName = state.hostNationName ?? 'Your nation';
+    body.appendChild(text(
+      `${hostName} presides over this session. Choose ${pickCount === 1 ? 'a proposal' : `${pickCount} proposals`} to put before the Council.`,
+      'wcs-progress',
+    ));
+
+    const list = element('div', 'wcs-proposal-options');
+    if (selection.candidates.length === 0) {
+      list.appendChild(text('No eligible resolutions are available to propose.', 'wcs-muted'));
+    }
+    for (const candidate of selection.candidates) {
+      const selected = this.selectedProposalKeys.has(candidate.key);
+      const atLimit = this.selectedProposalKeys.size >= pickCount;
+      const option = button(
+        '',
+        `wcs-option${selected ? ' wcs-option-selected' : ''}${!selected && atLimit ? ' wcs-option-disabled' : ''}`,
+        () => {
+          if (this.selectedProposalKeys.has(candidate.key)) {
+            this.selectedProposalKeys.delete(candidate.key);
+          } else if (this.selectedProposalKeys.size < pickCount) {
+            this.selectedProposalKeys.add(candidate.key);
+          }
+          this.render();
+        },
+      );
+      option.replaceChildren();
+      option.append(
+        text(candidate.icon, 'wcs-option-icon'),
+        (() => {
+          const info = element('div', 'wcs-option-info');
+          info.appendChild(text(candidate.title, 'wcs-option-title'));
+          if (candidate.description) {
+            const desc = element('div', 'wcs-option-desc');
+            desc.textContent = candidate.description;
+            info.appendChild(desc);
+          }
+          if (candidate.targetHint) info.appendChild(text(candidate.targetHint, 'wcs-target'));
+          return info;
+        })(),
+        text(selected ? '✓' : '', 'wcs-option-check'),
+      );
+      list.appendChild(option);
+    }
+    body.appendChild(list);
+
+    body.appendChild(text(
+      `${this.selectedProposalKeys.size} of ${pickCount} selected`,
+      'wcs-available',
+    ));
+
+    const ready = this.selectedProposalKeys.size === pickCount && pickCount > 0;
+    const continueButton = button(
+      'Propose & Continue to Vote',
+      `wcs-primary${ready ? '' : ' wcs-option-disabled'}`,
+      () => {
+        if (!ready) return;
+        this.submitProposals();
+      },
+    );
+    body.appendChild(this.buildActionRow([continueButton]));
+    return body;
+  }
+
+  private submitProposals(): void {
+    const nextState = this.callbacks.onSubmitProposals?.([...this.selectedProposalKeys]) ?? null;
+    this.selectedProposalKeys.clear();
+    if (nextState && nextState.proposals.length > 0) {
+      this.enterVotingPhase(nextState);
+      this.render();
+      return;
+    }
+    // Nothing left to vote on (resolved synchronously): show an empty summary.
+    this.result = { proposals: [] };
+    this.phase = 'summary';
+    this.render();
   }
 
   private buildVotingBody(state: WorldCouncilSessionState): HTMLElement {
@@ -483,6 +615,16 @@ function appendStyles(overlay: HTMLElement): void {
     .wcs-available{color:#cdeed8;font-size:14px;font-weight:700}
     .wcs-muted{color:#9dccb1;font-size:14px}
     .wcs-empty{color:#8fc6a5;font-style:italic}
+    .wcs-proposal-options{width:100%;max-width:560px;display:grid;gap:10px}
+    .wcs-card button.wcs-option{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border:1px solid #1f6e40;border-radius:10px;background:rgba(3,20,11,.6);font-weight:600;cursor:pointer}
+    .wcs-card button.wcs-option:hover{background:#123f24}
+    .wcs-card button.wcs-option-selected{background:#134e2b;border-color:#4ade80;box-shadow:0 0 0 2px rgba(74,222,128,.4)}
+    .wcs-card button.wcs-option-disabled{opacity:.5;cursor:not-allowed}
+    .wcs-option-icon{font-size:26px;line-height:1;flex:0 0 auto}
+    .wcs-option-info{flex:1;display:grid;gap:3px;min-width:0}
+    .wcs-option-title{font-weight:800;color:#eafff1;letter-spacing:.02em}
+    .wcs-option-desc{color:#cdeed8;font-size:13px;line-height:1.4;font-weight:500}
+    .wcs-option-check{flex:0 0 auto;color:#4ade80;font-weight:800;font-size:18px;width:18px;text-align:center}
     .wcs-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px}
     .wcs-card button.wcs-primary{background:#16a34a;border-color:#4ade80;color:#f2fff6;padding:12px 26px}
     .wcs-card button.wcs-primary:hover{background:#1c9d4c}

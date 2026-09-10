@@ -300,12 +300,15 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
     blocks: [
       { kind: 'paragraph', text: 'Diplomacy governs your relationships with other civilizations. The major systems are:' },
       { kind: 'heading', text: 'Audience and Gossip' },
-      { kind: 'paragraph', text: 'Open a foreign leader in Leader Details and use the Dialog section to speak with them directly. Audience is for formal diplomacy; Gossip is for informal conversation, political information and provocation.' },
+      { kind: 'paragraph', text: 'Open a foreign leader in Leader Details and use the Conversations section to speak with them directly. Audience is for formal diplomacy; Gossip is for informal conversation, political information and provocation.' },
       {
         kind: 'list',
         items: [
-          'Arrange an audience with {leader} — negotiate formal diplomatic and trade matters',
-          'Gossip with {leader} — ask questions, spread rumors, insult or threaten the leader',
+          'Diplomacy — discuss borders, embassies, maps, gifts and alliances',
+          'Economy — negotiate trade relations, sanctions and resource exploitation rights',
+          'War & peace — coordinate wars, propose peace and discuss sovereignty',
+          'Requests & promises — ask for money or complain about nearby settlements',
+          'Gossip — ask questions, spread rumors, insult or threaten the leader',
         ],
       },
       { kind: 'heading', text: 'Gossip: Information' },

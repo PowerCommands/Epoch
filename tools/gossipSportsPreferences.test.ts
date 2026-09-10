@@ -175,7 +175,7 @@ test('dialog lists the question only while discoverable and retains known names 
     traditionalSport: 'Marathon', additionalSport: 'Horse Racing',
   });
 
-  const ui = readFileSync(new URL('../src/ui/dialogs/LeaderGossipDialog.ts', import.meta.url), 'utf8');
+  const ui = readFileSync(new URL('../src/ui/dialogs/GossipConversation.ts', import.meta.url), 'utf8');
   assert.match(ui, /Known Information/);
   assert.match(ui, /Sports Preferences/);
   assert.doesNotMatch(ui, /allocation weight|auction bid multiplier/i);
