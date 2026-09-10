@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ARCHER, CHARIOT_ARCHER, HORSEMAN } from '../src/data/units.ts';
+import { TileType, type MapData } from '../src/types/map.ts';
 import { Nation } from '../src/entities/Nation.ts';
 import { Unit } from '../src/entities/Unit.ts';
 import { NationManager } from '../src/systems/NationManager.ts';
@@ -38,7 +39,8 @@ function harness() {
   );
 
   // researchSystem omitted → targets count as unlocked, isolating the resource check.
-  const upgrades = new UnitUpgradeSystem(nations, units, undefined, {}, capacity);
+  const map: MapData = { width: 20, height: 20, tileSize: 1, tiles: Array.from({ length: 20 }, (_, y) => Array.from({ length: 20 }, (_, x) => ({ x, y, type: TileType.Plains, ownerId: NATION }))) };
+  const upgrades = new UnitUpgradeSystem(nations, units, map, undefined, {}, capacity);
 
   let nextTile = 0;
   const addUnit = (id: string, unitType: typeof CHARIOT_ARCHER): Unit => {

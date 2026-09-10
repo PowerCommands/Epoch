@@ -98,6 +98,8 @@ function scoreModifier(modifier: PolicyModifier, isUnhappy: boolean): number {
       return modifier.value * 15;
     case 'ownedTerritoryCombatFlat':
       return modifier.value * 15;
+    case 'unitUpgradeAnywhere':
+      return modifier.value * 60;
     case 'unitUpkeepPercent':
       return Math.max(0, -modifier.value) * 10;
     case 'improvementBuildSpeedPercent':

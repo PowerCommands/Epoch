@@ -1149,7 +1149,7 @@ export class AISystem {
 
   /** True if the ship can already reach a threatening unit with its ranged attack. */
   private isShipInThreatFiringRange(unit: Unit, threat: EmergencyCityThreat): boolean {
-    const range = unit.unitType.range ?? 1;
+    const range = this.combatSystem.getEffectiveAttackRange(unit);
     const unitPos = { x: unit.tileX, y: unit.tileY };
     return threat.hostileUnits.some(
       (hostile) => this.gridSystem.getDistance(unitPos, { x: hostile.tileX, y: hostile.tileY }) <= range,
@@ -2705,7 +2705,7 @@ export class AISystem {
   // Strategy-based scoring allows AI to prioritize targets differently
   // without changing core combat rules.
   private tryAttackBestTarget(unit: Unit, nationId: string, strategy: AIStrategy): boolean {
-    const range = unit.unitType.range ?? 1;
+    const range = this.combatSystem.getEffectiveAttackRange(unit);
     const tiles = this.gridSystem.getTilesInRange(
       { x: unit.tileX, y: unit.tileY },
       range,
@@ -2828,7 +2828,7 @@ export class AISystem {
     nationId: string,
     assignment: NavalExpeditionAssignment,
   ): { x: number; y: number; score: number; logMessage: string } | null {
-    const range = unit.unitType.range ?? 1;
+    const range = this.combatSystem.getEffectiveAttackRange(unit);
     const unitPos = { x: unit.tileX, y: unit.tileY };
     const candidates: { x: number; y: number; score: number; logMessage: string }[] = [];
 

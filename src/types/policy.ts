@@ -17,6 +17,7 @@ export type GamesOfNationsPolicySportId =
   | 'gymnastics';
 
 export type PolicyModifier =
+  | { readonly type: 'unitUpgradeAnywhere'; readonly value: number }
   | { readonly type: 'cityIntegrationSpeedPercent'; readonly value: number }
   | { readonly type: 'culturePerCultureBuilding'; readonly value: number }
   | { readonly type: 'unitMovementFlat'; readonly value: number }

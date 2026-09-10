@@ -1,3 +1,5 @@
+import type { MapData } from '../types/map';
+import type { PolicySystem } from './PolicySystem';
 import type { Unit } from '../entities/Unit';
 import type { UnitCategory, UnitType } from '../entities/UnitType';
 import type { Era } from '../data/technologies';
@@ -58,9 +60,11 @@ export class UnitUpgradeSystem {
   constructor(
     private readonly nationManager: NationManager,
     private readonly unitManager: UnitManager,
+    private readonly mapData: MapData,
     private readonly researchSystem?: ResearchSystem,
     private readonly logContext: UnitUpgradeLogContext = {},
     private readonly strategicResourceCapacitySystem?: StrategicResourceCapacitySystem,
+    private readonly policySystem?: PolicySystem,
   ) {}
 
   static getEraMultiplier(era: Era): number {
@@ -101,6 +105,11 @@ export class UnitUpgradeSystem {
     if (this.hasUpgradeCycle(unit.unitType)) return { canUpgrade: false, target, reason: 'Upgrade path contains a cycle.' };
     if (!this.isTargetUnlocked(nationId, target.id)) {
       return { canUpgrade: false, target, reason: `${target.name} has not been unlocked.` };
+    }
+
+    if (this.mapData.tiles[unit.tileY]?.[unit.tileX]?.ownerId !== nationId
+      && (this.policySystem?.getFlatModifierTotal(nationId, 'unitUpgradeAnywhere') ?? 0) <= 0) {
+      return { canUpgrade: false, target, reason: 'Unit must be on a tile owned by your nation to upgrade. Activate Campaign Logistics to upgrade on any tile.' };
     }
 
     // Enforce the target unit's strategic-resource requirement using the same

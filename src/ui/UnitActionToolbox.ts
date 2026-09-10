@@ -159,6 +159,7 @@ export class UnitActionToolbox {
   private root: HTMLElement | null = null;
   private buildAvailabilityProvider: BuildAvailabilityProvider | null = null;
   private dismissAvailabilityProvider: DismissAvailabilityProvider | null = null;
+  private rangedAttackBlockProvider: ((unit: Unit) => boolean) | null = null;
   private upgradeAvailabilityProvider: UpgradeAvailabilityProvider | null = null;
   private sabotageAvailabilityProvider: SabotageAvailabilityProvider | null = null;
   private repairAvailabilityProvider: RepairAvailabilityProvider | null = null;
@@ -176,6 +177,11 @@ export class UnitActionToolbox {
 
   setDismissAvailabilityProvider(provider: DismissAvailabilityProvider): void {
     this.dismissAvailabilityProvider = provider;
+    this.refresh();
+  }
+
+  setRangedAttackBlockProvider(provider: (unit: Unit) => boolean): void {
+    this.rangedAttackBlockProvider = provider;
     this.refresh();
   }
 
@@ -406,6 +412,7 @@ export class UnitActionToolbox {
     if (action.mode === 'dismiss' && this.dismissAvailabilityProvider?.getCargoForTransport(unit) !== undefined) {
       return false;
     }
+    if (action.mode === 'ranged' && this.rangedAttackBlockProvider?.(unit)) return false;
     if (action.mode === 'upgrade') return upgradePreview?.canUpgrade === true;
     // Builders demolish own targets; military units target foreign infrastructure.
     if (action.mode === 'destroyImprovement') {
@@ -477,6 +484,7 @@ export class UnitActionToolbox {
       && (action.mode === 'destroyBuilding' || action.mode === 'destroyImprovement')) {
       return 'Permanently remove your own structure on this tile. Free: no Gold, movement or build charges used. You can build here afterward. Wonders cannot be demolished.';
     }
+    if (action.mode === 'ranged' && this.selectedUnit && this.rangedAttackBlockProvider?.(this.selectedUnit)) return 'An adjacent enemy unit blocks ranged attacks. Only melee attacks are available.';
     if (this.selectedUnit?.unitType.aircraftRole && (action.mode === 'ranged' || action.mode === 'rebase')) {
       return action.mode === 'rebase' ? 'Fly to a friendly base with a free slot within aircraft range. Uses this turn’s action.' : 'Fly from base to an enemy target within range and return. Successful interception aborts the attack.';
     }

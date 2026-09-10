@@ -7,6 +7,14 @@ function policy(input: PolicyDefinition): PolicyDefinition {
 
 export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
+    id: 'campaign_logistics',
+    name: 'Campaign Logistics',
+    category: 'military',
+    requiredCultureNodeId: 'mercenaries',
+    description: 'Mobile supply trains and field armourers bring new equipment to armies on campaign. Units may upgrade on any tile while this policy is active. Normal gold, technology, and resource requirements still apply.',
+    modifiers: [{ type: 'unitUpgradeAnywhere', value: 1 }],
+  }),
+  policy({
     id: 'mercenary_contracts',
     name: 'Mercenary Contracts',
     category: 'military',

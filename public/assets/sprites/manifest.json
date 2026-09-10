@@ -2393,6 +2393,12 @@
           "size": 186766
         },
         {
+          "name": "campaign_logistics.png",
+          "path": "/assets/sprites/policies/campaign_logistics.png",
+          "type": "PNG",
+          "size": 2962312
+        },
+        {
           "name": "carl_leaps.png",
           "path": "/assets/sprites/policies/carl_leaps.png",
           "type": "PNG",

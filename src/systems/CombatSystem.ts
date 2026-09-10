@@ -62,6 +62,7 @@ import type { CityIntegrationSystem } from './CityIntegrationSystem';
 export interface CombatEvent {
   attacker: Unit;
   defender: Unit;
+  isRanged?: boolean;
   result: CombatResult;
 }
 
@@ -279,6 +280,24 @@ export class CombatSystem {
   private missionAttackPermission: (unit: Unit, x: number, y: number) => boolean = () => true;
   setMissionAttackPermission(provider: typeof this.missionAttackPermission): void { this.missionAttackPermission = provider; }
 
+  /** Close enemy units force surface units to fight in melee. */
+  isRangedAttackBlocked(unit: Unit): boolean {
+    if (unit.unitType.category === 'air' || unit.unitType.aircraftRole || STRATEGIC_WEAPONS[unit.unitType.id]) return false;
+    return this.gridSystem.getNeighbors({ x: unit.tileX, y: unit.tileY }, this.mapData).some((tile) => {
+      const enemy = this.unitManager.getUnitAt(tile.x, tile.y);
+      if (!enemy || !enemy.isAlive() || enemy.ownerId === unit.ownerId) return false;
+      return getAllegianceType(enemy.unitType) === 'hiddenNation'
+        || getAllegianceType(unit.unitType) === 'hiddenNation'
+        || !this.diplomacyManager
+        || this.diplomacyManager.canAttack(unit.ownerId, enemy.ownerId)
+        || this.canResolvePeacekeepingCombat(unit, enemy, tile.ownerId);
+    });
+  }
+
+  getEffectiveAttackRange(unit: Unit): number {
+    return this.isRangedAttackBlocked(unit) ? 1 : unit.unitType.range ?? 1;
+  }
+
   tryAttack(
     attacker: Unit,
     tileX: number,
@@ -302,7 +321,7 @@ export class CombatSystem {
     }
 
     // 3. Must have combat strength for the chosen path
-    const range = attacker.unitType.range ?? 1;
+    const range = this.getEffectiveAttackRange(attacker);
     const isRanged = range >= 2;
     const meleeStrength = attacker.unitType.baseStrength;
     const rangedStrength = attacker.unitType.rangedStrength ?? 0;
@@ -421,7 +440,7 @@ export class CombatSystem {
 
     this.reportCovertUnitCombat(attacker, target, result);
 
-    for (const cb of this.listeners) cb({ attacker, defender: target, result });
+    for (const cb of this.listeners) cb({ attacker, defender: target, result, isRanged });
 
     return true;
   }

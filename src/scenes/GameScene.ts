@@ -3188,11 +3188,13 @@ export class GameScene extends Phaser.Scene {
     const unitUpgradeSystem = new UnitUpgradeSystem(
       nationManager,
       unitManager,
+      mapData,
       researchSystem,
       {
         logEvent: (nationId, message) => logManager.info({ nationId, category: 'unit', message }),
       },
       strategicResourceCapacitySystem,
+      policySystem,
     );
     // Unit action toolbox modes run before movement and culture claim.
     const builderSystem = new BuilderSystem(
@@ -3211,6 +3213,7 @@ export class GameScene extends Phaser.Scene {
     unitActionToolbox.setBuildAvailabilityProvider(builderSystem);
     unitActionToolbox.setDismissAvailabilityProvider(unitManager);
     unitActionToolbox.setUpgradeAvailabilityProvider(unitUpgradeSystem);
+    unitActionToolbox.setRangedAttackBlockProvider(unit => combatSystem.isRangedAttackBlocked(unit));
     const infrastructureSabotageSystem = new InfrastructureSabotageSystem(
       mapData,
       cityManager,
@@ -3342,7 +3345,7 @@ export class GameScene extends Phaser.Scene {
 
       if (unit.movementPoints <= 0) return false;
 
-      const range = unit.unitType.range ?? 1;
+      const range = combatSystem.getEffectiveAttackRange(unit);
       const targetPositions = range <= 1
         ? gridSystem.getAdjacentCoords(targetTile)
         : gridSystem.getTilesInRange(targetTile, range, mapData, { includeCenter: false });
@@ -3533,7 +3536,7 @@ export class GameScene extends Phaser.Scene {
         if (mode === 'ranged') {
           if (unit.unitType.aircraftRole) { tryActionAttack(unit,tile); return true; }
           if (STRATEGIC_WEAPONS[unit.unitType.id]) { tryActionAttack(unit, tile); return true; }
-          const range = unit.unitType.range ?? 1;
+          const range = combatSystem.getEffectiveAttackRange(unit);
           if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return true;
           const key = `${tile.x},${tile.y}`;
           if (!rangedTargets.has(key)) return true;
@@ -5377,7 +5380,7 @@ export class GameScene extends Phaser.Scene {
     // ─── Combat events ──────────────────────────────────────────────────────
 
     combatSystem.on(async (e) => {
-      const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
+      const isRanged = e.isRanged ?? (e.attacker.unitType.range ?? 1) >= 2;
       const animationOptions = {
         defenderUnitId: e.defender.id,
         shakeOnImpact: isHumanInvolvedInCombat(humanNationId, e.attacker.ownerId, e.defender.ownerId),
@@ -10151,7 +10154,7 @@ export class GameScene extends Phaser.Scene {
         const range = unit.unitType.id === 'atomic_bomb' ? carrier?.unitType.range ?? 0 : unit.unitType.range ?? 0;
         return new Set(gridSystem.getTilesInRange({ x: unit.tileX, y: unit.tileY }, range, mapData).map(tile => `${tile.x},${tile.y}`));
       }
-      const range = unit.unitType.range ?? 1;
+      const range = combatSystem.getEffectiveAttackRange(unit);
       if (range < 2 || (unit.unitType.rangedStrength ?? 0) <= 0) return new Set();
       const tiles = gridSystem.getTilesInRange(
         { x: unit.tileX, y: unit.tileY }, range, mapData, { includeCenter: false },
