@@ -203,6 +203,8 @@ export class LeaderAudienceDialog {
 
     this.currentLeaderId = leaderId;
     this.declarationMessage = null;
+    this.relationLabelText.setText('RELATIONSHIP').setColor('#8aa0b8');
+    this.closeButton.text.setText('Close');
     this.setVisible(true);
 
     const nationName = this.context.getNationName(leader.nationId);
@@ -248,6 +250,15 @@ export class LeaderAudienceDialog {
     this.actionList.setRows([]);
     this.actionList.setVisible(false);
     this.closeButton.text.setText('Understood');
+    this.layout();
+  }
+
+  /** Celebrate a completed military victory with the defeated leader. */
+  openCapitulation(leaderId: string, message: string): void {
+    this.openWarDeclaration(leaderId, message);
+    this.relationLabelText.setText('DECISIVE VICTORY').setColor('#f4d06f');
+    this.closeButton.text.setText('Glory to us');
+    this.dialogBackground.setStrokeStyle(3, 0xd9b65c, 1);
     this.layout();
   }
 
@@ -397,8 +408,14 @@ export class LeaderAudienceDialog {
 
     if (this.declarationMessage !== null) {
       this.declarationText
+        .setFontSize(23)
         .setWordWrapWidth(wrapWidth)
         .setPosition(panelX, y);
+      // Keep acknowledgements readable and inside the panel on smaller screens.
+      const availableHeight = Math.max(40, panelBottom - y);
+      while (this.declarationText.height > availableHeight && parseInt(String(this.declarationText.style.fontSize)) > 12) {
+        this.declarationText.setFontSize(parseInt(String(this.declarationText.style.fontSize)) - 1);
+      }
       return;
     }
 

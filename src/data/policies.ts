@@ -62,11 +62,10 @@ export const ALL_POLICIES: readonly PolicyDefinition[] = [
   policy({
     id: 'free_society',
     name: 'Free Society',
-    category: 'diplomatic',
+    category: 'ideology',
     requiredCultureNodeId: 'liberalism',
     description: 'Free expression and open debate strengthen cultural exchange. Gain +2 Influence per turn and +10% Culture.',
     modifiers: [{ type: 'influenceFlat', value: 2 }, { type: 'culturePercent', value: 10 }],
-    humanOnly: true,
   }),
 
   policy({

@@ -8944,6 +8944,16 @@ export class AISystem {
 
   private canCityBuildBuilding(city: City, nationId: string, building: BuildingType): boolean {
     if (!this.canBuildBuilding(nationId, building.id)) return false;
+    // Capacity planning also uses this gate. Ordinary buildings only contribute
+    // once, including when a broken copy still exists and needs repair.
+    // Power plants must remain replaceable when they age or lose their fuel.
+    if (!building.repeatable && !this.powerPlantSystem?.isPowerPlant(building.id)) {
+      if (this.cityManager.getBuildings(city.id).has(building.id)
+        || this.hasPlacedOrReservedBuilding(city, building.id)
+        || this.productionSystem.getQueue(city.id).some((entry) => (
+          entry.item.kind === 'building' && entry.item.buildingType.id === building.id
+        ))) return false;
+    }
     if (building.repeatable) {
       const resources = this.nationManager.getResources(nationId);
       if (resources.gold < building.maintenance * 10 || resources.goldPerTurn < building.maintenance + 1) return false;

@@ -27,7 +27,7 @@ const PROGRESSION: Record<PolicySlotCategory, readonly string[]> = {
   culture: ['games_recreation', 'humanism', 'professional_sports'],
   diplomatic: ['foreign_trade', 'diplomatic_service', 'cold_war'],
   wildcard: ['mysticism', 'political_philosophy', 'near_future_governance'],
-  ideology: [],
+  ideology: ['political_philosophy', 'nationalism', 'ideology'],
 };
 
 test('each culture node grants the expected slot for its category, cumulatively to 3', () => {
@@ -69,7 +69,7 @@ test('unlocking every culture node grants exactly 3 slots per category and never
   assert.equal(counts.culture, 3);
   assert.equal(counts.diplomatic, 3);
   assert.equal(counts.wildcard, 3);
-  assert.equal(counts.ideology, 0);
+  assert.equal(counts.ideology, 3);
 
   for (const value of Object.values(counts)) {
     assert.ok(value <= 3, `no category may exceed 3 slots, saw ${value}`);

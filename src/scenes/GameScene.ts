@@ -1,3 +1,4 @@
+import { createCapitulationDialogue } from '../systems/diplomacy/CapitulationDialogue';
 import { getExplorationVisionRadius } from '../systems/VisibilitySystem';
 import { DiplomaticAffairSystem } from '../systems/diplomacy/DiplomaticAffairSystem';
 import { nuclearPlantAtRisk, NUCLEAR_PLANT_MELTDOWN_CHANCE, NUCLEAR_PLANT_RISK_FRACTION } from '../data/nuclearPlants';
@@ -5002,10 +5003,16 @@ export class GameScene extends Phaser.Scene {
     let musicKeyBeforeAudience: string | null = null;
     const pendingAudienceLeaderIds: string[] = [];
     const pendingWarDeclarations: AIWarDeclarationDialogueRequest[] = [];
+    const pendingCapitulations: Array<{ leaderId: string; message: string }> = [];
 
     const processAudienceQueue = (): void => {
       const dialog = this.leaderAudienceDialog;
       if (!dialog || dialog.isOpen() || this.leaderGossipDialog?.isOpen()) return;
+      const capitulation = pendingCapitulations.shift();
+      if (capitulation) {
+        dialog.openCapitulation(capitulation.leaderId, capitulation.message);
+        return;
+      }
       const declaration = pendingWarDeclarations.shift();
       if (declaration) {
         dialog.openWarDeclaration(declaration.leaderId, declaration.phrase);
@@ -5029,7 +5036,7 @@ export class GameScene extends Phaser.Scene {
     const onAudienceClosed = (): void => {
       // Chain straight into the next queued audience (which switches the music
       // to that nation); only restore the prior playlist once none remain.
-      if (pendingWarDeclarations.length > 0 || pendingAudienceLeaderIds.length > 0) {
+      if (pendingCapitulations.length > 0 || pendingWarDeclarations.length > 0 || pendingAudienceLeaderIds.length > 0) {
         processAudienceQueue();
         return;
       }
@@ -7533,8 +7540,6 @@ export class GameScene extends Phaser.Scene {
       demandExploitationRights: boolean,
     ): void => {
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
-      const demandingName = nationManager.getNation(humanNationIdForDiplomacy)?.name
-        ?? humanNationIdForDiplomacy;
       const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
       const evaluation = capitulationSystem.evaluateCapitulationDemand(humanNationIdForDiplomacy, targetNationId);
       console.log(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
@@ -7569,24 +7574,12 @@ export class GameScene extends Phaser.Scene {
       console.log(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
         + `pressure=${evaluation.pressure.toFixed(4)} threshold=${capitulationSystem.getAcceptanceThreshold().toFixed(4)} `
         + 'evaluated=ACCEPT apply=ACCEPT');
-      const lines = [
-        `${aiLeaderName} accepts unconditional surrender.`,
-        `${targetName} is now a vassal state of ${demandingName}.`,
-        `Military disbanded. ${result.reparationsPaid} gold paid in reparations.`,
-        `${result.restoredCityIds.length} cit${result.restoredCityIds.length === 1 ? 'y' : 'ies'} restored; ${result.formerEnemyIds.length} war(s) ended.`,
-      ];
-      if (result.exploitationRightsGranted) {
-        const humanName = nationManager.getNation(humanNationIdForDiplomacy)?.name ?? 'your nation';
-        lines.push(`${humanName} may now exploit natural resources in ${targetName}'s territory.`);
-      }
       // Liberation cleanup: the defeated exploiter's holdings in the victor's land
       // are dismantled automatically (no demand required).
       if (result.exploitationHoldingsRemoved > 0) {
-        lines.push(`All ${result.exploitationHoldingsRemoved} ${targetName} exploitation holding`
-          + `${result.exploitationHoldingsRemoved === 1 ? '' : 's'} in your territory were dismantled.`);
         recordHoldingsRemovalHistory(humanNationIdForDiplomacy, targetNationId, result.exploitationHoldingsRemoved, 'capitulation');
       }
-      showLeaderResponsePopup(targetNationId, `${aiLeaderName} capitulates`, lines);
+      // The shared vassalization event presents the victory audience for every path.
       rightPanel?.refreshCurrent();
     };
 
@@ -10137,6 +10130,13 @@ export class GameScene extends Phaser.Scene {
       );
       if (!request) return;
       pendingWarDeclarations.push(request);
+      processAudienceQueue();
+    });
+    militaryVassalizationSystem.onCompleted((event) => {
+      if (isAutoplayActive()) return;
+      const request = createCapitulationDialogue(event, humanNationIdForDiplomacy, timelineNationName);
+      if (!request) return;
+      pendingCapitulations.push(request);
       processAudienceQueue();
     });
     rightPanel.setArrangeAudienceHandler((leaderId) => {

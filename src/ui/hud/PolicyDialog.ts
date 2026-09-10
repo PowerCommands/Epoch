@@ -27,18 +27,18 @@ const PANEL_HEIGHT_RATIO = 0.95;
 const HEADER_HEIGHT = 48;
 const PANEL_PADDING = 14;
 const SECTION_GAP = 14;
-const SLOT_AREA_WIDTH_RATIO = 0.68;
+const SLOT_AREA_WIDTH_RATIO = 0.5;
 
-const CARD_WIDTH = 168;
-const CARD_HEIGHT = 232;
+const CARD_WIDTH = 140;
+const CARD_HEIGHT = 170;
 const CARD_GAP_X = 16;
 const CARD_GAP_Y = 18;
 const CARD_HEADER_HEIGHT = 30;
-const CARD_IMAGE_SIZE = 96;
+const CARD_IMAGE_SIZE = 67;
 const CARD_DESCRIPTION_LINES = 2;
 
-const SLOT_CARD_WIDTH = 140;
-const SLOT_CARD_HEIGHT = 170;
+const SLOT_CARD_WIDTH = CARD_WIDTH;
+const SLOT_CARD_HEIGHT = CARD_HEIGHT;
 const SLOT_GAP = 12;
 const SLOT_GROUP_GAP = 12;
 
@@ -47,12 +47,13 @@ const SCROLLBAR_WIDTH = 10;
 const SCROLLBAR_GAP = 10;
 
 const TOOLTIP_DELAY_MS = 220;
-const TOOLTIP_PADDING_X = 10;
-const TOOLTIP_PADDING_Y = 8;
+const TOOLTIP_PADDING_X = 20;
+const TOOLTIP_PADDING_Y = 18;
 
 interface CardVisual {
   policyId: string;
   category: PolicyCategory;
+  finish: Phaser.GameObjects.Graphics;
   background: Phaser.GameObjects.Rectangle;
   headerBackground: Phaser.GameObjects.Rectangle;
   headerText: Phaser.GameObjects.Text;
@@ -116,6 +117,13 @@ export class PolicyDialog {
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly tooltipBackground: Phaser.GameObjects.Rectangle;
+  private readonly previewTitle: Phaser.GameObjects.Text;
+  private readonly previewImage: Phaser.GameObjects.Image;
+  private readonly previewFinish: Phaser.GameObjects.Graphics;
+  private readonly dropFeedback: Phaser.GameObjects.Graphics;
+  private readonly dropLabel: Phaser.GameObjects.Text;
+  private readonly rightScrollTrack: Phaser.GameObjects.Rectangle;
+  private readonly rightScrollThumb: Phaser.GameObjects.Rectangle;
   private readonly tooltipText: Phaser.GameObjects.Text;
   private readonly slotCategoryHeadings = new Map<PolicySlotCategory, Phaser.GameObjects.Text>();
 
@@ -129,7 +137,7 @@ export class PolicyDialog {
     deltaX: number,
     deltaY: number,
     deltaZ: number,
-    event: WheelEvent,
+    event?: WheelEvent,
   ) => void;
   private readonly handlePointerMove: (pointer: Phaser.Input.Pointer) => void;
   private readonly handlePointerUp: (pointer: Phaser.Input.Pointer) => void;
@@ -138,6 +146,8 @@ export class PolicyDialog {
   private isOpen = false;
   private scrollOffset = 0;
   private maxScroll = 0;
+  private rightScrollOffset = 0;
+  private rightMaxScroll = 0;
   private leftAreaBounds = new Phaser.Geom.Rectangle();
   private rightAreaBounds = new Phaser.Geom.Rectangle();
   private panelBounds = new Phaser.Geom.Rectangle();
@@ -297,8 +307,9 @@ export class PolicyDialog {
       .setVisible(false);
     this.tooltipText = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
       fontFamily: 'sans-serif',
-      fontSize: '13px',
+      fontSize: '17px',
       color: '#edf5ff',
+      lineSpacing: 5,
       wordWrap: { width: 280, useAdvancedWrap: true },
     }))
       .setOrigin(0, 0)
@@ -306,6 +317,26 @@ export class PolicyDialog {
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
+
+    this.previewTitle = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
+      fontFamily: 'sans-serif', fontSize: '23px', fontStyle: 'bold', color: '#ffffff',
+      wordWrap: { width: 300, useAdvancedWrap: true },
+    })).setDepth(TOOLTIP_DEPTH + 2).setScrollFactor(0).setResolution(HUD_TEXT_RESOLUTION).setVisible(false);
+    this.previewImage = this.addOwned(new Phaser.GameObjects.Image(scene, 0, 0, '__MISSING__'))
+      .setDepth(TOOLTIP_DEPTH + 2).setScrollFactor(0).setVisible(false);
+    this.previewFinish = this.addOwned(new Phaser.GameObjects.Graphics(scene))
+      .setDepth(TOOLTIP_DEPTH + 1).setScrollFactor(0).setVisible(false);
+    this.dropFeedback = this.addOwned(new Phaser.GameObjects.Graphics(scene))
+      .setDepth(DRAG_GHOST_DEPTH + 10).setScrollFactor(0).setVisible(false);
+    this.dropLabel = this.addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
+      fontFamily: 'sans-serif', fontSize: '13px', fontStyle: 'bold', color: '#ffffff',
+      backgroundColor: '#123c45', padding: { x: 10, y: 6 },
+    })).setOrigin(0.5, 1).setDepth(DRAG_GHOST_DEPTH + 11).setScrollFactor(0)
+      .setResolution(HUD_TEXT_RESOLUTION).setVisible(false);
+    this.rightScrollTrack = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 10, 0x203347))
+      .setOrigin(0).setDepth(CONTENT_DEPTH).setScrollFactor(0).setVisible(false);
+    this.rightScrollThumb = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 10, 0x7bbbd2))
+      .setOrigin(0).setDepth(CONTENT_DEPTH + 1).setScrollFactor(0).setVisible(false);
 
     this.overlay.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
@@ -386,10 +417,16 @@ export class PolicyDialog {
 
     this.handleWheel = (pointer, _gameObjects, _deltaX, deltaY, _deltaZ, event) => {
       if (!this.isOpen) return;
-      if (!this.leftAreaBounds.contains(pointer.x, pointer.y)) return;
+      const onRight = this.rightAreaBounds.contains(pointer.x, pointer.y);
+      if (!onRight && !this.leftAreaBounds.contains(pointer.x, pointer.y)) return;
       consumePointerEvent(pointer);
-      event.preventDefault?.();
-      this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
+      event?.preventDefault?.();
+      this.hideTooltip();
+      if (onRight) {
+        this.rightScrollOffset = Phaser.Math.Clamp(this.rightScrollOffset + Math.sign(deltaY) * SCROLL_STEP, 0, this.rightMaxScroll);
+        this.layout();
+      } else this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
+      if (this.dragState) this.updateDragHover(pointer.x, pointer.y);
     };
     this.handlePointerMove = (pointer) => this.onPointerMove(pointer);
     this.handlePointerUp = (pointer) => this.onPointerUp(pointer);
@@ -425,6 +462,7 @@ export class PolicyDialog {
     const cameraIndex = cameras.indexOf(this.modalCamera);
     if (cameraIndex >= 0) cameras.push(...cameras.splice(cameraIndex, 1));
     this.scrollOffset = 0;
+    this.rightScrollOffset = 0;
     this.refresh();
     this.overlay.setVisible(true);
     this.panelBackground.setVisible(true);
@@ -454,6 +492,8 @@ export class PolicyDialog {
     this.rightHeading.setVisible(false);
     this.scrollbarTrack.setVisible(false);
     this.scrollbarThumb.setVisible(false);
+    this.rightScrollTrack.setVisible(false);
+    this.rightScrollThumb.setVisible(false);
     for (const heading of this.slotCategoryHeadings.values()) heading.setVisible(false);
     this.destroyCards();
     this.destroySlots();
@@ -504,6 +544,13 @@ export class PolicyDialog {
     this.scrollbarThumb.destroy();
     this.tooltipBackground.destroy();
     this.tooltipText.destroy();
+    this.previewTitle.destroy();
+    this.previewImage.destroy();
+    this.previewFinish.destroy();
+    this.dropFeedback.destroy();
+    this.dropLabel.destroy();
+    this.rightScrollTrack.destroy();
+    this.rightScrollThumb.destroy();
     for (const heading of this.slotCategoryHeadings.values()) heading.destroy();
     this.owned.clear();
     this.scene.cameras.remove(this.modalCamera);
@@ -574,9 +621,9 @@ export class PolicyDialog {
       .setOrigin(0, 0)
       .setDepth(CONTENT_DEPTH + 1)
       .setScrollFactor(0);
-    const headerText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateText(policy.name, isSlot ? 14 : 18), {
+    const headerText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateText(policy.name, 16), {
       fontFamily: 'sans-serif',
-      fontSize: isSlot ? '13px' : '14px',
+      fontSize: '12px',
       color: '#f4f1e7',
       fontStyle: 'bold',
     }))
@@ -584,7 +631,7 @@ export class PolicyDialog {
       .setDepth(CONTENT_DEPTH + 2)
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION);
-    const imageSize = isSlot ? Math.round(CARD_IMAGE_SIZE * 0.7) : CARD_IMAGE_SIZE;
+    const imageSize = CARD_IMAGE_SIZE;
     const imageFrame = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, imageSize, imageSize, 0x0a141c, 0.9))
       .setOrigin(0.5, 0.5)
       .setDepth(CONTENT_DEPTH + 1)
@@ -603,7 +650,7 @@ export class PolicyDialog {
     }
     const fallbackInitials = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(policy.name), {
       fontFamily: 'sans-serif',
-      fontSize: isSlot ? '20px' : '26px',
+      fontSize: '20px',
       color: '#f4f1e7',
       fontStyle: 'bold',
     }))
@@ -614,10 +661,10 @@ export class PolicyDialog {
       .setVisible(!hasImage);
 
     const descriptionWidth = baseWidth - 14;
-    const descriptionLines = isSlot ? CARD_DESCRIPTION_LINES : CARD_DESCRIPTION_LINES + 1;
-    const description = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateForCard(policy.description, descriptionLines, isSlot ? 22 : 28), {
+    const descriptionLines = CARD_DESCRIPTION_LINES;
+    const description = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateForCard(policy.description, descriptionLines, 26), {
       fontFamily: 'sans-serif',
-      fontSize: isSlot ? '11px' : '12px',
+      fontSize: '11px',
       color: '#dde7df',
       wordWrap: { width: descriptionWidth, useAdvancedWrap: true },
     }))
@@ -631,7 +678,10 @@ export class PolicyDialog {
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
 
+    const finish = this.addOwned(new Phaser.GameObjects.Graphics(this.scene))
+      .setDepth(CONTENT_DEPTH + 1).setScrollFactor(0);
     const card: CardVisual = {
+      finish,
       policyId: policy.id,
       category: policy.category,
       background,
@@ -655,6 +705,7 @@ export class PolicyDialog {
     }
 
     hitArea.on(Phaser.Input.Events.POINTER_OVER, (pointer: Phaser.Input.Pointer) => {
+      if (this.dragState) return;
       card.hovered = true;
       this.refreshCardVisual(card);
       this.scheduleTooltip(card, pointer);
@@ -687,6 +738,7 @@ export class PolicyDialog {
   }
 
   private applyMaskToCard(card: CardVisual, mask: Phaser.Display.Masks.GeometryMask): void {
+    card.finish.setMask(mask);
     card.background.setMask(mask);
     card.headerBackground.setMask(mask);
     card.headerText.setMask(mask);
@@ -697,6 +749,7 @@ export class PolicyDialog {
   }
 
   private clearCardMask(card: CardVisual): void {
+    card.finish.clearMask();
     card.background.clearMask();
     card.headerBackground.clearMask();
     card.headerText.clearMask();
@@ -747,6 +800,7 @@ export class PolicyDialog {
 
   private destroyCards(): void {
     for (const card of this.cards) {
+      this.destroyOwned(card.finish);
       this.destroyOwned(card.background);
       this.destroyOwned(card.headerBackground);
       this.destroyOwned(card.headerText);
@@ -792,10 +846,8 @@ export class PolicyDialog {
     const contentY = panelY + HEADER_HEIGHT + PANEL_PADDING;
     const contentBottom = panelY + panelH - PANEL_PADDING;
     const contentHeight = contentBottom - contentY;
-    const rightWidth = Math.min(
-      panelW - PANEL_PADDING * 2 - SECTION_GAP - 220,
-      Math.max(480, Math.round(panelW * SLOT_AREA_WIDTH_RATIO)),
-    );
+    this.hideTooltip();
+    const rightWidth = Math.floor((panelW - PANEL_PADDING * 2 - SECTION_GAP) * SLOT_AREA_WIDTH_RATIO);
     const rightX = panelX + panelW - PANEL_PADDING - rightWidth;
     const leftX = panelX + PANEL_PADDING;
     const leftWidth = rightX - SECTION_GAP - leftX;
@@ -812,14 +864,24 @@ export class PolicyDialog {
     const rightContentTop = contentY + headingHeight;
     const rightContentHeight = contentBottom - rightContentTop;
 
-    this.updateMasks(leftX, leftScrollTop, leftWidth - SCROLLBAR_WIDTH - SCROLLBAR_GAP, leftScrollHeight, rightX, rightContentTop, rightWidth, rightContentHeight);
+    this.updateMasks(leftX, leftScrollTop, leftWidth - SCROLLBAR_WIDTH - SCROLLBAR_GAP, leftScrollHeight, rightX, rightContentTop, rightWidth - SCROLLBAR_WIDTH - SCROLLBAR_GAP, rightContentHeight);
 
     const layoutResult = this.layoutLeftCards(leftX, leftScrollTop, leftWidth - SCROLLBAR_WIDTH - SCROLLBAR_GAP);
     this.updateScrollState(layoutResult.totalHeight, leftScrollHeight);
     this.repositionLeftCards(leftX, leftScrollTop, leftWidth - SCROLLBAR_WIDTH - SCROLLBAR_GAP);
     this.updateScrollbar(leftX + leftWidth - SCROLLBAR_WIDTH, leftScrollTop, leftScrollHeight);
 
-    this.layoutRightSlots(rightX, rightContentTop, rightWidth);
+    const slotWidth = rightWidth - SCROLLBAR_WIDTH - SCROLLBAR_GAP;
+    const totalSlotHeight = this.layoutRightSlots(rightX, rightContentTop, slotWidth);
+    this.rightMaxScroll = Math.max(0, totalSlotHeight - rightContentHeight);
+    this.rightScrollOffset = Phaser.Math.Clamp(this.rightScrollOffset, 0, this.rightMaxScroll);
+    this.layoutRightSlots(rightX, rightContentTop - this.rightScrollOffset, slotWidth);
+    const thumbH = Math.max(28, rightContentHeight * rightContentHeight / (rightContentHeight + this.rightMaxScroll));
+    this.rightScrollTrack.setPosition(rightX + rightWidth - SCROLLBAR_WIDTH, rightContentTop)
+      .setDisplaySize(SCROLLBAR_WIDTH, rightContentHeight).setVisible(this.rightMaxScroll > 0);
+    this.rightScrollThumb.setPosition(rightX + rightWidth - SCROLLBAR_WIDTH,
+      rightContentTop + (rightContentHeight - thumbH) * this.rightScrollOffset / (this.rightMaxScroll || 1))
+      .setDisplaySize(SCROLLBAR_WIDTH, thumbH).setVisible(this.rightMaxScroll > 0);
 
     if (this.cards.filter((c) => c.origin === 'pool').length === 0) {
       this.leftEmptyText
@@ -864,13 +926,20 @@ export class PolicyDialog {
     }
   }
 
-  private layoutRightSlots(rightX: number, rightY: number, rightWidth: number): void {
+  private layoutRightSlots(rightX: number, rightY: number, rightWidth: number): number {
     for (const heading of this.slotCategoryHeadings.values()) heading.setVisible(false);
 
     const columnGap = SLOT_GROUP_GAP;
     const halfWidth = Math.floor((rightWidth - columnGap) / 2);
     let cursor = rightY;
     const placePairRow = (left: PolicySlotCategory, right: PolicySlotCategory): void => {
+      if (halfWidth < SLOT_CARD_WIDTH) {
+        for (const category of [left, right]) {
+          const height = this.layoutSlotCategory(category, rightX, cursor, rightWidth);
+          if (height > 0) cursor += height + SLOT_GROUP_GAP;
+        }
+        return;
+      }
       const leftHeight = this.layoutSlotCategory(left, rightX, cursor, halfWidth);
       const rightHeight = this.layoutSlotCategory(right, rightX + halfWidth + columnGap, cursor, halfWidth);
       const rowHeight = Math.max(leftHeight, rightHeight);
@@ -884,7 +953,7 @@ export class PolicyDialog {
     if (this.slotCounts.ideology > 0) {
       placePairRow('ideology', 'wildcard');
     } else {
-      this.layoutSlotCategory('wildcard', rightX, cursor, rightWidth);
+      cursor += this.layoutSlotCategory('wildcard', rightX, cursor, rightWidth);
     }
 
     for (const slotKey of this.slotKeysInOrder) {
@@ -895,6 +964,7 @@ export class PolicyDialog {
       if (!card) continue;
       this.placeCard(card, slot.background.x, slot.background.y, SLOT_CARD_WIDTH, SLOT_CARD_HEIGHT);
     }
+    return cursor - rightY;
   }
 
   private layoutSlotCategory(
@@ -910,7 +980,7 @@ export class PolicyDialog {
     heading
       .setText(`${formatCategory(category)} (${this.countOccupiedSlots(category)} / ${total})`)
       .setPosition(x, y)
-      .setVisible(true);
+      .setVisible(true).setMask(this.rightMask);
     const slotsY = y + 18;
     const cols = Math.max(1, Math.floor((width + SLOT_GAP) / (SLOT_CARD_WIDTH + SLOT_GAP)));
     let i = 0;
@@ -948,7 +1018,18 @@ export class PolicyDialog {
       fallbackInitials: card.fallbackInitials,
       description: card.description,
     });
+    card.finish.clear().setPosition(x, y);
+    card.finish.fillGradientStyle(0xffffff, 0xffffff, 0x000000, 0x000000, 0.13, 0.03, 0.05, 0.36);
+    card.finish.fillRect(0, 0, w, h);
+    card.finish.lineStyle(1, getCategoryStrokeColor(card.category), 0.55).strokeRect(3, 3, w - 6, h - 6);
+    card.finish.fillStyle(getCategoryStrokeColor(card.category), 0.95).fillRect(5, h - 4, w - 10, 2);
     card.hitArea.setPosition(x, y).setSize(w, h);
+    const bounds = card.origin === 'pool' ? this.leftAreaBounds : this.rightAreaBounds;
+    const visibleTop = Math.max(y, bounds.y + 24);
+    const visibleBottom = Math.min(y + h, bounds.bottom);
+    // Masks clip rendering, but Phaser hit areas need explicit clipping too.
+    card.hitArea.setPosition(x, visibleTop).setSize(w, Math.max(0, visibleBottom - visibleTop));
+    if (card.hitArea.input) card.hitArea.input.enabled = visibleBottom > visibleTop;
   }
 
   private placeSlot(slot: SlotVisual, x: number, y: number): void {
@@ -962,7 +1043,7 @@ export class PolicyDialog {
 
   private updateSlotScreenRect(slot: SlotVisual, x: number, y: number): void {
     const left = Math.max(x, this.rightAreaBounds.x);
-    const top = Math.max(y, this.rightAreaBounds.y);
+    const top = Math.max(y, this.rightAreaBounds.y + 24);
     const right = Math.min(x + SLOT_CARD_WIDTH, this.rightAreaBounds.right);
     const bottom = Math.min(y + SLOT_CARD_HEIGHT, this.rightAreaBounds.bottom);
     slot.screenRect.setTo(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
@@ -1034,9 +1115,9 @@ export class PolicyDialog {
       .setOrigin(0, 0)
       .setDepth(DRAG_GHOST_DEPTH + 1)
       .setScrollFactor(0);
-    const ghostHeaderText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateText(policy.name, 18), {
+    const ghostHeaderText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateText(policy.name, 16), {
       fontFamily: 'sans-serif',
-      fontSize: '14px',
+      fontSize: '12px',
       color: '#f4f1e7',
       fontStyle: 'bold',
     }))
@@ -1069,7 +1150,7 @@ export class PolicyDialog {
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(ghostImage === null);
-    const ghostDescription = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateForCard(policy.description, CARD_DESCRIPTION_LINES + 1, 28), {
+    const ghostDescription = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, truncateForCard(policy.description, CARD_DESCRIPTION_LINES, 26), {
       fontFamily: 'sans-serif',
       fontSize: '12px',
       color: '#dde7df',
@@ -1120,9 +1201,6 @@ export class PolicyDialog {
       this.updateDragHover(pointer.x, pointer.y);
       return;
     }
-    if (this.tooltipPointer && this.tooltipPointer.id === pointer.id && this.tooltipBackground.visible) {
-      this.positionTooltip(pointer);
-    }
   }
 
   private updateDragHover(x: number, y: number): void {
@@ -1136,12 +1214,22 @@ export class PolicyDialog {
         this.refreshSlotVisual(prev);
       }
     }
+    this.scene.tweens.killTweensOf(this.dropFeedback);
+    this.dropFeedback.clear().setVisible(false).setAlpha(1);
+    this.dropLabel.setVisible(false);
     this.dragState.hoveredSlotKey = nextKey;
     if (nextKey) {
       const next = this.slotsByKey.get(nextKey);
       if (next) {
         next.highlighted = true;
         this.refreshSlotVisual(next);
+        const r = next.screenRect;
+        const color = getCategoryStrokeColor(next.category);
+        this.dropFeedback.lineStyle(10, color, 0.18).strokeRoundedRect(r.x, r.y, r.width, r.height, 6);
+        this.dropFeedback.lineStyle(3, 0xe0fff5, 1).strokeRoundedRect(r.x, r.y, r.width, r.height, 6).setVisible(true);
+        this.dropLabel.setText(next.occupiedBy ? 'Release to replace' : 'Release to place')
+          .setPosition(r.centerX, r.bottom - 8).setVisible(true);
+        this.scene.tweens.add({ targets: this.dropFeedback, alpha: 0.45, duration: 450, yoyo: true, repeat: -1 });
       }
     }
   }
@@ -1187,6 +1275,13 @@ export class PolicyDialog {
       if (!slot) continue;
       if (!slot.screenRect.contains(x, y)) continue;
       if (!isPolicySlotCompatible(policy.category, slot.category)) continue;
+      if (slot.occupiedBy === policy.id) continue;
+      const source = this.dragState?.card;
+      if (source?.origin === 'slot' && source.slotKey && slot.occupiedBy) {
+        const sourceSlot = this.slotsByKey.get(source.slotKey);
+        const occupied = this.unlockedPolicies.find((entry) => entry.id === slot.occupiedBy);
+        if (!sourceSlot || !occupied || !isPolicySlotCompatible(occupied.category, sourceSlot.category)) continue;
+      }
       return slot.key;
     }
     return null;
@@ -1244,6 +1339,9 @@ export class PolicyDialog {
 
   private cancelDrag(): void {
     if (!this.dragState) return;
+    this.scene.tweens.killTweensOf(this.dropFeedback);
+    this.dropFeedback.setVisible(false);
+    this.dropLabel.setVisible(false);
     if (this.dragState.hoveredSlotKey) {
       const slot = this.slotsByKey.get(this.dragState.hoveredSlotKey);
       if (slot) {
@@ -1264,6 +1362,8 @@ export class PolicyDialog {
   }
 
   private scheduleTooltip(card: CardVisual, pointer: Phaser.Input.Pointer): void {
+    if (this.dragState) return;
+    this.hideTooltip();
     this.hoveredCard = card;
     this.tooltipPointer = pointer;
     if (this.tooltipTimer) {
@@ -1279,25 +1379,40 @@ export class PolicyDialog {
   private showTooltip(card: CardVisual, pointer: Phaser.Input.Pointer): void {
     const policy = this.unlockedPolicies.find((p) => p.id === card.policyId);
     if (!policy) return;
-    this.tooltipText.setText(`${policy.name}\n${policy.description}`);
-    const w = this.tooltipText.width + TOOLTIP_PADDING_X * 2;
-    const h = this.tooltipText.height + TOOLTIP_PADDING_Y * 2;
-    this.tooltipBackground
-      .setDisplaySize(w, h)
-      .setVisible(true);
-    this.tooltipText.setVisible(true);
+    if (this.dragState || !this.isOpen) return;
+    const w = Math.min(360, this.scene.scale.width - 24);
+    this.previewTitle.setScale(1).setText(policy.name).setWordWrapWidth(w - 40).setVisible(true);
+    this.tooltipText.setScale(1).setText(policy.description).setWordWrapWidth(w - 40).setVisible(true);
+    const imageKey = getPolicySpriteKey(policy.id);
+    const hasImage = this.scene.textures.exists(imageKey);
+    this.previewImage.setVisible(hasImage);
+    if (hasImage) this.previewImage.setTexture(imageKey).setDisplaySize(180, 180);
+    const h = TOOLTIP_PADDING_Y * 2 + this.previewTitle.height + 16
+      + (hasImage ? 196 : 0) + this.tooltipText.height;
+    this.tooltipBackground.setFillStyle(getCategoryFillColor(policy.category), 1)
+      .setStrokeStyle(2, getCategoryStrokeColor(policy.category), 1).setScale(1).setSize(w, h).setVisible(true);
+    this.previewFinish.setVisible(true);
     this.positionTooltip(pointer);
   }
 
-  private positionTooltip(pointer: Phaser.Input.Pointer): void {
+  private positionTooltip(_pointer: Phaser.Input.Pointer): void {
+    const card = this.hoveredCard;
+    if (!card) return;
     const w = this.tooltipBackground.displayWidth;
     const h = this.tooltipBackground.displayHeight;
-    const maxX = this.scene.scale.width - w - 8;
-    const maxY = this.scene.scale.height - h - 8;
-    const x = Math.max(8, Math.min(maxX, pointer.x + 14));
-    const y = Math.max(8, Math.min(maxY, pointer.y + 16));
-    this.tooltipBackground.setPosition(x, y);
-    this.tooltipText.setPosition(x + TOOLTIP_PADDING_X, y + TOOLTIP_PADDING_Y);
+    const scale = Math.min(1, (this.scene.scale.height - 24) / h);
+    const x = Phaser.Math.Clamp(card.background.x + CARD_WIDTH / 2 - w * scale / 2, 12, Math.max(12, this.scene.scale.width - w * scale - 12));
+    const y = Phaser.Math.Clamp(card.background.y + CARD_HEIGHT / 2 - h * scale / 2, 12, Math.max(12, this.scene.scale.height - h * scale - 12));
+    this.tooltipBackground.setPosition(x, y).setSize(w * scale, h * scale);
+    this.previewTitle.setScale(scale).setPosition(x + 20 * scale, y + TOOLTIP_PADDING_Y * scale);
+    const imageTop = TOOLTIP_PADDING_Y + this.previewTitle.height + 16;
+    this.previewImage.setDisplaySize(180 * scale, 180 * scale).setPosition(x + w * scale / 2, y + (imageTop + 90) * scale);
+    this.tooltipText.setScale(scale).setPosition(x + TOOLTIP_PADDING_X * scale,
+      y + (imageTop + (this.previewImage.visible ? 196 : 0)) * scale);
+    this.previewFinish.clear().setPosition(x, y).setScale(scale);
+    this.previewFinish.fillGradientStyle(0xffffff, 0xffffff, 0x000000, 0x000000, 0.16, 0.04, 0.1, 0.4).fillRect(0, 0, w, h);
+    this.previewFinish.lineStyle(1, getCategoryStrokeColor(card.category), 0.6).strokeRect(5, 5, w - 10, h - 10);
+    if (this.previewImage.visible) this.previewFinish.lineStyle(2, getCategoryStrokeColor(card.category), 1).strokeRect(w / 2 - 93, imageTop - 3, 186, 186);
   }
 
   private hideTooltip(): void {
@@ -1306,6 +1421,9 @@ export class PolicyDialog {
       this.tooltipTimer = null;
     }
     this.tooltipPointer = null;
+    this.previewTitle.setVisible(false);
+    this.previewImage.setVisible(false);
+    this.previewFinish.setVisible(false);
     this.tooltipBackground.setVisible(false);
     this.tooltipText.setVisible(false);
   }
@@ -1319,15 +1437,15 @@ export class PolicyDialog {
 function getCategoryFillColor(category: PolicySlotCategory): number {
   switch (category) {
     case 'military':
-      return 0x274b78;
+      return 0x204d86;
     case 'economic':
-      return 0x2c5e3a;
+      return 0x19634c;
     case 'diplomatic':
-      return 0x24646b;
+      return 0x146375;
     case 'culture':
-      return 0x56386f;
+      return 0x623487;
     case 'ideology':
-      return 0x7a3f24;
+      return 0x892b46;
     case 'wildcard':
       return 0x3b3b3b;
   }
@@ -1336,15 +1454,15 @@ function getCategoryFillColor(category: PolicySlotCategory): number {
 function getCategoryHeaderColor(category: PolicySlotCategory): number {
   switch (category) {
     case 'military':
-      return 0x1d3b62;
+      return 0x163259;
     case 'economic':
-      return 0x214e2c;
+      return 0x123e32;
     case 'diplomatic':
-      return 0x194f55;
+      return 0x103d4a;
     case 'culture':
-      return 0x432856;
+      return 0x3c205b;
     case 'ideology':
-      return 0x613119;
+      return 0x561a30;
     case 'wildcard':
       return 0x202020;
   }
@@ -1361,7 +1479,7 @@ function getCategoryStrokeColor(category: PolicySlotCategory): number {
     case 'culture':
       return 0xc49bd8;
     case 'ideology':
-      return 0xe3a172;
+      return 0xff839d;
     case 'wildcard':
       return 0xaaaaaa;
   }
@@ -1378,7 +1496,7 @@ function getCategoryHexColor(category: PolicySlotCategory): string {
     case 'culture':
       return '#c49bd8';
     case 'ideology':
-      return '#e3a172';
+      return '#ff839d';
     case 'wildcard':
       return '#cccccc';
   }
