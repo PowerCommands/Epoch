@@ -240,7 +240,7 @@ import { NationCollapseSystem } from '../systems/NationCollapseSystem';
 import { ExileProtectionSystem } from '../systems/ExileProtectionSystem';
 import { CityDefenseSystem } from '../systems/CityDefenseSystem';
 import { BuilderSystem } from '../systems/BuilderSystem';
-import { InfrastructureSabotageSystem, IMPROVEMENT_DESTRUCTION_LOOT_GOLD } from '../systems/InfrastructureSabotageSystem';
+import { InfrastructureSabotageSystem } from '../systems/InfrastructureSabotageSystem';
 import { InfrastructureRepairSystem } from '../systems/InfrastructureRepairSystem';
 import { InsurgentBehaviorSystem } from '../systems/InsurgentBehaviorSystem';
 import { BarbarianSystem } from '../systems/BarbarianSystem';
@@ -10246,6 +10246,9 @@ export class GameScene extends Phaser.Scene {
           const buildingLoot = mode === 'destroyBuilding'
             ? infrastructureSabotageSystem.getDestroyBuildingLootGold(unit)
             : 0;
+          const improvementLoot = mode === 'destroyImprovement'
+            ? infrastructureSabotageSystem.getDestroyImprovementLootGold(unit)
+            : 0;
           const razed = mode === 'destroyImprovement'
             ? infrastructureSabotageSystem.destroyImprovement(unit)
             : infrastructureSabotageSystem.destroyBuilding(unit);
@@ -10266,8 +10269,8 @@ export class GameScene extends Phaser.Scene {
             // count-up feedback is human-manual-play only: never for AI and never
             // during autoplay/autorun/diagnostic autoplay.
             if (!isAutoplayActive()) {
-              if (mode === 'destroyImprovement') {
-                hudLayer?.playGoldReward(IMPROVEMENT_DESTRUCTION_LOOT_GOLD);
+              if (improvementLoot > 0) {
+                hudLayer?.playGoldReward(improvementLoot);
               } else if (buildingLoot > 0) {
                 hudLayer?.playGoldReward(buildingLoot);
               }

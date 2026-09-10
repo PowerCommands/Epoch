@@ -1,6 +1,6 @@
 import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
-import type { MapData, Tile } from '../types/map';
+import { TileType, type MapData, type Tile } from '../types/map';
 import type { CityManager } from './CityManager';
 import type { WonderSystem } from './WonderSystem';
 import type { NationManager } from './NationManager';
@@ -31,8 +31,8 @@ interface BreakableTarget {
 }
 
 /**
- * InfrastructureSabotageSystem — lets capable military units sabotage enemy
- * infrastructure on the tile they stand on.
+ * InfrastructureSabotageSystem — military sabotage and free builder demolition
+ * of infrastructure on the unit's current tile.
  *
  * Single responsibility: validate and apply infrastructure sabotage. It does not
  * change combat, diplomacy, or unit category meanings. Capability is read from
@@ -40,6 +40,9 @@ interface BreakableTarget {
  * gating lives here.
  *
  * Behavior:
+ * - Workers / Work Boats remove their own buildings and improvements entirely,
+ *   without loot, cost, movement or charge consumption. Wonders are protected.
+ * The following rules apply to military/covert sabotage:
  * - Destroy Improvement removes the tile improvement entirely (rebuilt normally).
  * - Destroy Building does NOT remove the building/wonder — it marks it `broken`
  *   so it stays visible but provides no effects until a Worker/Work Boat repairs
@@ -87,8 +90,13 @@ export class InfrastructureSabotageSystem {
     });
   }
 
-  /** True when `unit` may raze an enemy improvement on its current tile. */
+  /** Builders clear own improvements; military/covert units raze foreign ones. */
   canDestroyImprovement(unit: Unit): boolean {
+    if (unit.unitType.canBuildImprovements === true) {
+      const tile = this.getBuilderDemolitionTile(unit);
+      return tile !== undefined && tile.improvementId !== undefined
+        && getImprovementOwnerId(tile) === unit.ownerId;
+    }
     // Razing capability comes from a military demolisher (canDestroyImprovement)
     // OR a covert saboteur (canSabotageImprovements, e.g. Spy/Agent).
     if (unit.unitType.canDestroyImprovement !== true && unit.unitType.canSabotageImprovements !== true) return false;
@@ -98,10 +106,17 @@ export class InfrastructureSabotageSystem {
   }
 
   /**
-   * True when `unit` may damage an enemy building or world wonder on its current
-   * tile (one that exists, is enemy-owned, and is not already broken).
+   * Builders remove own ordinary buildings, including ruins. Other capable
+   * units may damage an unbroken foreign building or world wonder.
    */
   canDestroyBuilding(unit: Unit): boolean {
+    if (unit.unitType.canBuildImprovements === true) {
+      const tile = this.getBuilderDemolitionTile(unit);
+      return tile !== undefined && tile.buildingId !== undefined
+        && tile.ownerId === unit.ownerId
+        && this.findCityOwningTile(tile)?.ownerId === unit.ownerId
+        && !isBarbarianCamp(tile.buildingId);
+    }
     // Military demolisher (canDestroyBuilding) OR covert saboteur (canSabotageBuildings, e.g. Agent).
     if (unit.unitType.canDestroyBuilding !== true && unit.unitType.canSabotageBuildings !== true) return false;
     const tile = this.getUnitTile(unit);
@@ -122,6 +137,8 @@ export class InfrastructureSabotageSystem {
    * caller (GameScene) so this system keeps no diplomacy state.
    */
   getActOfWarTarget(unit: Unit, kind: DestroyActionKind): string | undefined {
+    // Builders can only dismantle their own infrastructure.
+    if (unit.unitType.canBuildImprovements === true) return undefined;
     // hiddenNation units act deniably — destroying infrastructure never triggers war.
     if (getAllegianceType(unit.unitType) === 'hiddenNation') return undefined;
     const tile = this.getUnitTile(unit);
@@ -140,7 +157,7 @@ export class InfrastructureSabotageSystem {
   }
 
   /**
-   * Remove the improvement from the unit's current tile and consume its turn.
+   * Remove the improvement; only military/covert sabotage consumes the turn.
    * Returns true on success.
    */
   destroyImprovement(unit: Unit): boolean {
@@ -153,6 +170,10 @@ export class InfrastructureSabotageSystem {
     tile.improvementOwnerId = undefined;
     // Legacy sea claims are tied to their improvement and must not survive it.
     tile.resourceOwnerNationId = undefined;
+    if (unit.unitType.canBuildImprovements === true) {
+      this.logBuilderDemolition(unit, tile, improvementId);
+      return true;
+    }
     this.consumeUnitTurn(unit);
 
     // Loot: the destroying nation gains gold, created from nothing (the previous
@@ -179,6 +200,18 @@ export class InfrastructureSabotageSystem {
   destroyBuilding(unit: Unit): boolean {
     if (!this.canDestroyBuilding(unit)) return false;
     const tile = this.getUnitTile(unit)!;
+    if (unit.unitType.canBuildImprovements === true) {
+      const buildingId = tile.buildingId!;
+      const city = this.findCityOwningTile(tile)!;
+      // Repeatable structures live on individual tiles, not in CityBuildings.
+      if (!getBuildingById(buildingId)?.repeatable) {
+        this.cityManager.getBuildings(city.id).remove(buildingId);
+      }
+      tile.buildingId = undefined;
+      tile.buildingBroken = undefined;
+      this.logBuilderDemolition(unit, tile, getBuildingById(buildingId)?.name ?? buildingId);
+      return true;
+    }
     const target = this.getBreakableTarget(tile)!;
     const owningCity = this.findCityOwningTile(tile);
     const location = owningCity ? ` in ${owningCity.name}` : '';
@@ -230,11 +263,40 @@ export class InfrastructureSabotageSystem {
    * animation for human players without duplicating target detection.
    */
   getDestroyBuildingLootGold(unit: Unit): number {
+    if (unit.unitType.canBuildImprovements === true) return 0;
     if (!this.canDestroyBuilding(unit)) return 0;
     const tile = this.getUnitTile(unit);
     if (!tile) return 0;
     const target = this.getBreakableTarget(tile);
     return target?.kind === 'camp' ? BARBARIAN_CAMP_DESTRUCTION_LOOT_GOLD : 0;
+  }
+
+  getDestroyImprovementLootGold(unit: Unit): number {
+    return unit.unitType.canBuildImprovements !== true && this.canDestroyImprovement(unit)
+      ? IMPROVEMENT_DESTRUCTION_LOOT_GOLD : 0;
+  }
+
+  /** Free domestic demolition, restricted to the builder's land/water domain. */
+  private getBuilderDemolitionTile(unit: Unit): Tile | undefined {
+    if (!unit.isAlive() || unit.carriedByUnitId || unit.isBuildingImprovement()) return undefined;
+    const tile = this.getUnitTile(unit);
+    if (!tile || tile.wonderId !== undefined || tile.wonderConstruction !== undefined
+      || tile.buildingConstruction !== undefined || tile.improvementConstruction !== undefined
+      || this.cityManager.getCityAt(tile.x, tile.y)) return undefined;
+    const water = tile.type === TileType.Coast || tile.type === TileType.Ocean;
+    if (water !== (unit.unitType.isNaval === true)) return undefined;
+    return tile;
+  }
+
+  private logBuilderDemolition(unit: Unit, tile: Tile, name: string): void {
+    // No movement, Gold, charges or unit lifetime are consumed. The cleared
+    // tile can immediately be used by the normal construction workflow.
+    unit.queuedDestination = undefined;
+    this.log({
+      nationId: unit.ownerId,
+      message: `${unit.unitType.name} demolished ${name} at (${tile.x}, ${tile.y}). No Gold, movement or build charges used.`,
+    });
+    this.onInfrastructureChanged([unit.ownerId]);
   }
 
   /**

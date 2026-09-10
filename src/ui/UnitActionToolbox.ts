@@ -100,15 +100,15 @@ export const ACTIONS: readonly UnitActionDefinition[] = [
   {
     mode: 'destroyImprovement',
     label: 'Raze Improvement',
-    // Capability gate only; the actual "is there an enemy improvement here"
+    // Capability gate only; the actual "is there a valid improvement here"
     // check is applied via the sabotage availability provider, so the button is
     // hidden unless the unit is standing on a valid target.
-    isAvailable: (unit) => unit.unitType.canDestroyImprovement === true,
+    isAvailable: (unit) => unit.unitType.canDestroyImprovement === true || unit.unitType.canBuildImprovements === true,
   },
   {
     mode: 'destroyBuilding',
     label: 'Raze Building',
-    isAvailable: (unit) => unit.unitType.canDestroyBuilding === true,
+    isAvailable: (unit) => unit.unitType.canDestroyBuilding === true || unit.unitType.canBuildImprovements === true,
   },
   {
     mode: 'sleep',
@@ -407,7 +407,7 @@ export class UnitActionToolbox {
       return false;
     }
     if (action.mode === 'upgrade') return upgradePreview?.canUpgrade === true;
-    // Destroy actions stay hidden unless the unit stands on a valid enemy target.
+    // Builders demolish own targets; military units target foreign infrastructure.
     if (action.mode === 'destroyImprovement') {
       return this.sabotageAvailabilityProvider?.canDestroyImprovement(unit) === true;
     }
@@ -448,6 +448,10 @@ export class UnitActionToolbox {
     action: UnitActionDefinition,
     upgradePreview: UnitUpgradePreview | undefined,
   ): string {
+    if (this.selectedUnit?.unitType.canBuildImprovements === true) {
+      if (action.mode === 'destroyBuilding') return 'Demolish Building';
+      if (action.mode === 'destroyImprovement') return 'Demolish Improvement';
+    }
     if (action.mode === 'build' && this.selectedUnit && this.getBuildPreview(this.selectedUnit).improvementId === 'maintain_nuclear_plant') return 'Maintain Nuclear Power Plant';
     if (action.mode === 'ranged' && this.selectedUnit?.unitType.aircraftRole) return 'Air Mission';
     if (action.mode === 'build' && this.selectedUnit && this.getBuildPreview(this.selectedUnit).improvementId === 'clean_nuclear_waste') return '🖌 Clean Nuclear Waste';
@@ -469,6 +473,10 @@ export class UnitActionToolbox {
     upgradePreview: UnitUpgradePreview | undefined,
     debarkPreview: DebarkPreview | undefined,
   ): string | undefined {
+    if (this.selectedUnit?.unitType.canBuildImprovements === true
+      && (action.mode === 'destroyBuilding' || action.mode === 'destroyImprovement')) {
+      return 'Permanently remove your own structure on this tile. Free: no Gold, movement or build charges used. You can build here afterward. Wonders cannot be demolished.';
+    }
     if (this.selectedUnit?.unitType.aircraftRole && (action.mode === 'ranged' || action.mode === 'rebase')) {
       return action.mode === 'rebase' ? 'Fly to a friendly base with a free slot within aircraft range. Uses this turn’s action.' : 'Fly from base to an enemy target within range and return. Successful interception aborts the attack.';
     }
