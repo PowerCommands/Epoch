@@ -112,7 +112,7 @@ test('Competition resolves exactly one sport per turn in fixed order', () => {
   assert.equal(game.completedEvents.length, 1);
 });
 
-test('only participating, living, positive-GP nations enter unresolved sport lotteries', () => {
+test('every participating, living nation enters the lottery with at least a floor weight, so a full field always awards all three medals', () => {
   const game = harness({ participants: [
     participant('a', points(100)),
     participant('b', points(50)),
@@ -121,16 +121,26 @@ test('only participating, living, positive-GP nations enter unresolved sport lot
   ] });
   game.advance(105);
   const wrestling = game.system.getSummary().sportResults[0]!;
-  assert.deepEqual(wrestling.weights, { a: 100, b: 50 });
+  // c invested nothing but still competes; it keeps a minimum weight of 1 so the
+  // field stays at three and Bronze is always awarded. d is not participating.
+  assert.deepEqual(wrestling.weights, { a: 100, b: 50, c: 1 });
   assert.ok(wrestling.goldNationId);
   assert.ok(wrestling.silverNationId);
-  assert.equal(wrestling.bronzeNationId, undefined);
+  assert.ok(wrestling.bronzeNationId);
+  assert.equal(new Set([
+    wrestling.goldNationId,
+    wrestling.silverNationId,
+    wrestling.bronzeNationId,
+  ]).size, 3);
   game.setLiving(['a', 'c', 'd']);
   game.advance(106);
   const marathon = game.system.getSummary().sportResults[1]!;
-  assert.deepEqual(marathon.weights, { a: 100 });
-  assert.equal(marathon.goldNationId, 'a');
-  assert.equal(marathon.silverNationId, undefined);
+  // Only a and c are both living and participating, so a two-nation field awards
+  // Gold and Silver but genuinely cannot award Bronze.
+  assert.deepEqual(marathon.weights, { a: 100, c: 1 });
+  assert.ok(marathon.goldNationId);
+  assert.ok(marathon.silverNationId);
+  assert.equal(marathon.bronzeNationId, undefined);
 });
 
 test('weighted medal draws are deterministic, without replacement, and handle 0–3 entrants', () => {
@@ -192,7 +202,7 @@ test('medal table ranks Gold, then Silver, then Bronze, then stable order withou
   assert.deepEqual(tied.map((entry) => entry.nationId), ['b', 'a']);
 });
 
-test('Long Jump finalizes standings, while a no-GP Games has no overall winner', () => {
+test('Long Jump finalizes standings, and a no-GP Games still awards medals by lottery', () => {
   const normal = harness();
   for (let turn = 105; turn <= 109; turn += 1) normal.advance(turn);
   assert.equal(normal.system.getSummary().competitionComplete, true);
@@ -206,11 +216,18 @@ test('Long Jump finalizes standings, while a no-GP Games has no overall winner',
   assert.deepEqual(cooldownLoaded.system.getSummary().medalTable, normal.system.getSummary().medalTable);
   assert.equal(cooldownLoaded.system.getSummary().overallWinnerNationId, normal.system.getSummary().overallWinnerNationId);
 
-  const empty = harness({ participants: IDS.map((id) => participant(id, points(0))) });
-  for (let turn = 105; turn <= 109; turn += 1) empty.advance(turn);
-  assert.equal(empty.system.getSummary().overallWinnerNationId, null);
-  assert.equal(empty.completedEvents[0]?.overallWinnerNationId, undefined);
-  assert.equal(empty.goldEvents.length, 0);
+  // Even when nobody invested, a full field of participants still competes: every
+  // nation carries the floor weight, so each sport awards all three medals by lottery.
+  const noInvestment = harness({ participants: IDS.map((id) => participant(id, points(0))) });
+  for (let turn = 105; turn <= 109; turn += 1) noInvestment.advance(turn);
+  assert.ok(noInvestment.system.getSummary().overallWinnerNationId);
+  assert.ok(noInvestment.completedEvents[0]?.overallWinnerNationId);
+  assert.equal(noInvestment.goldEvents.length, 5);
+  for (const result of noInvestment.system.getSummary().sportResults) {
+    assert.ok(result.goldNationId);
+    assert.ok(result.silverNationId);
+    assert.ok(result.bronzeNationId);
+  }
 });
 
 test('one complete Games emits at most five Gold callbacks plus one final summary', () => {

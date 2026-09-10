@@ -22,6 +22,12 @@ import {
 import { getManufacturedResourceById } from '../data/manufacturedResources';
 import { ALL_TECHNOLOGIES, type TechnologyDefinition } from '../data/technologies';
 import { ALL_UNIT_TYPES } from '../data/units';
+import {
+  clampMilitaryQualityLevel,
+  getMilitaryQualityName,
+  MILITARY_QUALITY_TIERS,
+} from '../data/unitQuality';
+import { isMilitaryUnitType } from '../utils/unitRoleUtils';
 import { NATURAL_RESOURCES, getNaturalResourceById } from '../data/naturalResources';
 import type { NaturalResourceDefinition } from '../types/naturalResources';
 import type { UnitType } from '../entities/UnitType';
@@ -336,6 +342,42 @@ export class CheatSystem {
       complete: (args, context) => {
         if (args.length === 1) return completeUnit(args[0]);
         if (args.length === 2) return completeNation(args[1], context);
+        return [];
+      },
+    });
+
+    this.register({
+      name: 'level',
+      description: 'Set the military quality level (1–5) of the selected/focused unit. Usage: "level <1-5>". Only affects military units; does nothing without a selected unit.',
+      execute: (args, context) => {
+        if (args.length !== 1) return 'Usage: level <1-5>';
+
+        const requested = Number(args[0]);
+        if (!Number.isInteger(requested) || requested < 1 || requested > MILITARY_QUALITY_TIERS.length) {
+          return `Usage: level <1-${MILITARY_QUALITY_TIERS.length}>`;
+        }
+
+        const selection = context.selectionManager.getSelected();
+        if (!selection || selection.kind !== 'unit') return 'No unit selected';
+
+        const { unit } = selection;
+        if (!isMilitaryUnitType(unit.unitType)) return `${unit.name} is not a military unit`;
+
+        const level = clampMilitaryQualityLevel(requested);
+        unit.qualityLevel = level;
+        context.unitManager.notifyActionChanged(unit.id);
+        return `Set ${unit.name} to Level ${level} – ${getMilitaryQualityName(level)}`;
+      },
+      complete: (args) => {
+        if (args.length === 1) {
+          return matchLiteralSuggestions(
+            args[0],
+            MILITARY_QUALITY_TIERS.map((tier) => ({
+              value: String(tier.level),
+              description: `Level ${tier.level} – ${tier.name}`,
+            })),
+          );
+        }
         return [];
       },
     });

@@ -594,13 +594,16 @@ export class ProductionSystem {
       return false;
     }
 
+    // Retry with a fresh reason: completion listeners can supply a specific
+    // blocker, and a previous attempt's reason must not survive a new attempt.
+    entry.blockedReason = undefined;
     let didBlock = false;
     for (const cb of this.completedListeners) {
       if (cb(cityId, entry.item, entry) === false) didBlock = true;
     }
 
     if (didBlock) {
-      entry.blockedReason = this.getBlockedReason(entry);
+      entry.blockedReason ??= this.getBlockedReason(entry);
     } else {
       entry.blockedReason = undefined;
     }

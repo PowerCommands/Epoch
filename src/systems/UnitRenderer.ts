@@ -27,6 +27,12 @@ const FALLBACK_TEXTURE_KEY = 'unit_warrior';
 const CARGO_BADGE_X = 13;
 const CARGO_BADGE_Y = -13;
 
+// Military quality level shown as a row of yellow stars centered at the unit's
+// bottom edge. Only levels >= 2 are drawn (level 1 is the baseline: no stars).
+const LEVEL_STAR = '★';
+const MIN_STAR_LEVEL = 2;
+const LEVEL_STARS_Y = 15;
+
 interface UnitVisual {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
@@ -34,6 +40,7 @@ interface UnitVisual {
   nationRing: Phaser.GameObjects.Graphics;
   progressText?: Phaser.GameObjects.Text;
   cargoIndicator?: Phaser.GameObjects.Text;
+  levelStars?: Phaser.GameObjects.Text;
 }
 
 /**
@@ -189,6 +196,7 @@ export class UnitRenderer {
     this.applyDerivedVisualState(unit, visual);
 
     this.refreshCargoIndicator(unit, visual);
+    this.refreshLevelStars(unit, visual);
 
     if (unit.isBuildingImprovement() && unit.buildAction !== undefined) {
       const percent = clampPercent(unit.buildAction.progress, unit.buildAction.requiredProgress);
@@ -333,9 +341,43 @@ export class UnitRenderer {
     }
   }
 
+  /**
+   * Draw the unit's military quality level as a row of yellow stars centered at
+   * its bottom edge. Level 1 (baseline) shows nothing; each level above adds a
+   * star (2 → ★★, 3 → ★★★, …). Non-military units stay at level 1, so they are
+   * naturally excluded.
+   */
+  private refreshLevelStars(unit: Unit, visual: UnitVisual): void {
+    const level = unit.qualityLevel;
+    if (level < MIN_STAR_LEVEL) {
+      if (visual.levelStars) {
+        visual.levelStars.destroy();
+        visual.levelStars = undefined;
+      }
+      return;
+    }
+
+    const label = LEVEL_STAR.repeat(level);
+    if (!visual.levelStars) {
+      const stars = this.scene.add.text(0, LEVEL_STARS_Y, label, {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: '#ffd21a',
+        stroke: '#1a1200',
+        strokeThickness: 3,
+      }).setOrigin(0.5, 0.5).setDepth(UNIT_DEPTH + 1);
+      visual.container.add(stars);
+      visual.levelStars = stars;
+    } else {
+      visual.levelStars.setText(label);
+    }
+  }
+
   private destroyVisual(visual: UnitVisual): void {
     visual.sprite.clearMask(false);
     visual.cargoIndicator?.destroy();
+    visual.levelStars?.destroy();
     visual.container.destroy();
     visual.maskGraphics.destroy();
   }

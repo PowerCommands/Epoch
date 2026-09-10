@@ -148,6 +148,9 @@ export class CityView {
     projects: false,
   };
   private lastExpandedAccordion: ProductionAccordionId = 'units';
+  // The tile inspector overlay (per-tile debug/yield breakdown) is off by
+  // default; the 🔍 toggle next to "Buy Tile" turns it on for the session.
+  private tileInspectorEnabled = false;
   private open = false;
   private dragging = false;
   private dragOffsetX = 0;
@@ -260,8 +263,8 @@ export class CityView {
     this.modeButtonsEl = document.createElement('div');
     this.modeButtonsEl.className = 'city-view-mode-buttons';
 
-    this.productionModeButton = this.createModeButton('production', 'Production');
-    this.queueModeButton = this.createModeButton('queue', 'Queue');
+    this.productionModeButton = this.createModeButton('production', '⚙️ Production');
+    this.queueModeButton = this.createModeButton('queue', '📋 Queue');
 
     // "Auto Close" sits to the right of the Queue button (pushed right via
     // margin-left:auto). When checked (default), choosing an item that gets
@@ -288,6 +291,16 @@ export class CityView {
     panel.append(this.headerEl, this.statsEl, this.nextTileEl, this.placementStatusEl, this.modeButtonsEl, this.modeContentEl, hint);
     this.root.append(panel);
     mount.append(this.root);
+
+    // Stop pointer events handled by the panel from bubbling up to `window`,
+    // where Phaser's InputManager would otherwise hit-test the screen-space UI
+    // sitting behind the overlay (e.g. leader portraits) and fire a parallel
+    // POINTER_UP — so clicking Close no longer also opens whatever is behind
+    // the city view. Only pointer events are consumed (Phaser uses those); the
+    // header drag relies on document-level mouse events, so they are left
+    // alone, and we never preventDefault so child button clicks still fire.
+    panel.addEventListener('pointerdown', this.stopPointerPropagation);
+    panel.addEventListener('pointerup', this.stopPointerPropagation);
 
     this.tooltipEl = document.createElement('div');
     this.tooltipEl.className = 'city-view-tooltip';
@@ -459,6 +472,8 @@ export class CityView {
     screenX: number,
     screenY: number,
   ): void {
+    // Hidden unless the player has explicitly enabled the tile inspector.
+    if (!this.tileInspectorEnabled) return;
     const rows = [
       `<div><strong>Tile</strong> (${breakdown.coord.x}, ${breakdown.coord.y})</div>`,
       `<div><strong>Terrain</strong> ${breakdown.terrainType}</div>`,
@@ -487,6 +502,10 @@ export class CityView {
   hideTooltip(): void {
     this.tooltipEl.style.display = 'none';
   }
+
+  private readonly stopPointerPropagation = (event: Event): void => {
+    event.stopPropagation();
+  };
 
   private readonly handleHeaderMouseDown = (event: MouseEvent): void => {
     if (event.button !== 0) return;
@@ -749,15 +768,22 @@ export class CityView {
     const row = document.createElement('div');
     row.className = 'city-view-placement-status-row';
 
+    // Keep the Buy Tile button and the tile-inspector toggle grouped together
+    // on the left; the status-row's space-between only pushes the group.
+    const group = document.createElement('div');
+    group.style.cssText = 'display:flex; align-items:center; gap:10px;';
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'city-view-placement-button';
-    button.textContent = tilePurchaseState.buttonLabel;
+    button.textContent = `💰 ${tilePurchaseState.buttonLabel}`;
     button.disabled = !tilePurchaseState.enabled;
     button.addEventListener('click', () => {
       for (const callback of this.buyTileRequestCallbacks) callback();
     });
-    row.append(button);
+    group.append(button, this.createTileInspectorToggle());
+
+    row.append(group);
 
     this.nextTileEl.append(row);
 
@@ -768,6 +794,24 @@ export class CityView {
       detail.style.marginTop = '10px';
       this.nextTileEl.append(detail);
     }
+  }
+
+  private createTileInspectorToggle(): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'city-view-placement-button';
+    button.textContent = '🔍';
+    button.title = 'Toggle tile inspector';
+    button.setAttribute('aria-label', 'Toggle tile inspector');
+    button.setAttribute('aria-pressed', String(this.tileInspectorEnabled));
+    button.classList.toggle('city-view-placement-button-active', this.tileInspectorEnabled);
+    button.addEventListener('click', () => {
+      this.tileInspectorEnabled = !this.tileInspectorEnabled;
+      button.setAttribute('aria-pressed', String(this.tileInspectorEnabled));
+      button.classList.toggle('city-view-placement-button-active', this.tileInspectorEnabled);
+      if (!this.tileInspectorEnabled) this.hideTooltip();
+    });
+    return button;
   }
 
   private renderPlacementStatus(placementState: CityViewPlacementPanelState): void {

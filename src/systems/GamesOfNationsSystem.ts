@@ -35,6 +35,13 @@ export const GAMES_OF_NATIONS_COMPETITION_TURNS = 5;
 export const GAMES_OF_NATIONS_COOLDOWN_TURNS = 10;
 export const GAMES_POINTS_PER_RESOURCE = 10;
 export const HOST_GAMES_BONUS_RATE = 0.10;
+/**
+ * Weight floor for a nation that is competing in a sport but invested nothing in it.
+ * Keeps every genuine participant in the medal draw so the field never shrinks below
+ * three purely due to zero-investment nations — Gold, Silver and Bronze are always
+ * awarded whenever at least three nations take part.
+ */
+export const GAMES_MINIMUM_PARTICIPATION_WEIGHT = 1;
 /** Legacy/initial program. Runtime gameplay uses the frozen active-sport collection. */
 export const GAMES_OF_NATIONS_SPORTS: readonly GamesOfNationsSport[] = TRADITIONAL_GAMES_SPORT_IDS
   .map((id) => getGamesSportById(id).name);
@@ -1415,13 +1422,17 @@ export class GamesOfNationsSystem {
         && !this.isExcludedFromGames(participant.nationId, this.state.competitionNumber))
       .map((participant) => ({
         nationId: participant.nationId,
-        weight: this.getEffectiveGamesPoints(participant.nationId, sport)
-          + whole(this.dependencies.getSportScoreBonus?.(
-            participant.nationId,
-            getGamesSportByName(sport).id,
-          ) ?? 0),
-      }))
-      .filter((entry) => entry.weight > 0);
+        // Every genuine participant keeps at least a minimum weight so the field never
+        // drops below three medals when some nations invested nothing in this sport.
+        weight: Math.max(
+          GAMES_MINIMUM_PARTICIPATION_WEIGHT,
+          this.getEffectiveGamesPoints(participant.nationId, sport)
+            + whole(this.dependencies.getSportScoreBonus?.(
+              participant.nationId,
+              getGamesSportByName(sport).id,
+            ) ?? 0),
+        ),
+      }));
     const medals = drawSportMedals(
       weighted,
       `${this.dependencies.seed ?? 'games'}|${this.state.competitionNumber}|${sport}|medals`,
