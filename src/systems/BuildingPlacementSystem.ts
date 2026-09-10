@@ -182,7 +182,9 @@ export class BuildingPlacementSystem {
     if (!tile) return null;
 
     const def = getBuildingById(buildingId);
-    if (def?.requiresEmptyTile && (!this.isTerrainCompatible(tile, def) || tile.resourceId || tile.improvementId || tile.improvementConstruction || tile.buildingId)) return null;
+    // No building may complete onto a tile that now carries an improvement.
+    if (tile.improvementId || tile.improvementConstruction) return null;
+    if (def?.requiresEmptyTile && (!this.isTerrainCompatible(tile, def) || tile.resourceId || tile.buildingId)) return null;
     tile.buildingConstruction = undefined;
     tile.buildingId = buildingId;
     tile.buildingBroken = undefined;
@@ -230,7 +232,9 @@ export class BuildingPlacementSystem {
 
   private isTileValidForPlacement(tile: Tile, building: BuildingType): boolean {
     if (building.placement === 'city') return false;
-    if (building.requiresEmptyTile && (tile.resourceId || tile.improvementId || tile.improvementConstruction)) return false;
+    // No building may be placed where an improvement is finished or under construction.
+    if (tile.improvementId || tile.improvementConstruction) return false;
+    if (building.requiresEmptyTile && tile.resourceId) return false;
     const replacingPowerPlant = tile.buildingId !== undefined
       && isPowerPlantBuilding(building.id)
       && isPowerPlantBuilding(tile.buildingId);

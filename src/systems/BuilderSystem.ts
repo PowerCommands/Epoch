@@ -4,7 +4,7 @@ import type { Unit } from '../entities/Unit';
 import type { City } from '../entities/City';
 import { getImprovementById, type TileImprovementDefinition } from '../data/improvements';
 import { getImprovementForTile } from './ImprovementResolution';
-import { isBarbarianCamp, getBuildingById } from '../data/buildings';
+import { isBarbarianCamp } from '../data/buildings';
 import { TileType, type MapData, type Tile } from '../types/map';
 import { canUnitEnterTile } from './UnitMovementRules';
 import type { CityManager } from './CityManager';
@@ -88,8 +88,11 @@ export class BuilderSystem {
    */
   canNationImproveLandTile(nationId: string, tile: Tile): boolean {
     if (this.isSeaTile(tile)) return false;
-    if (tile.buildingId && getBuildingById(tile.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return false;
-    if (tile.buildingConstruction && getBuildingById(tile.buildingConstruction.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return false;
+    // A building or wonder (finished or under construction) blocks any improvement on the tile.
+    // NuclearWaste is exempt: it is handled below and may carry a broken/ruined building.
+    if (tile.type !== TileType.NuclearWaste
+      && (tile.buildingId !== undefined || tile.buildingConstruction !== undefined
+        || tile.wonderId !== undefined || tile.wonderConstruction !== undefined)) return false;
     if (tile.improvementId !== undefined || tile.improvementConstruction !== undefined) return false;
     if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return false; // active camp locks its tile
     if (tile.type === TileType.NuclearWaste) return tile.ownerId === nationId && tile.originalTerrain !== undefined;
@@ -227,8 +230,12 @@ export class BuilderSystem {
       if ((options.requireMovement ?? true) && movementUnit.movementPoints <= 0) return { canBuild: false, reason: 'Unit has no movement points' };
       return this.buildablePreview(getImprovementById(MAINTAIN_NUCLEAR_PLANT)!, builderUnit);
     }
-    if (tile.buildingId && getBuildingById(tile.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return { canBuild: false, reason: 'Building occupies this tile' };
-    if (tile.buildingConstruction && getBuildingById(tile.buildingConstruction.buildingId)?.requiresEmptyTile && tile.type !== TileType.NuclearWaste) return { canBuild: false, reason: 'Building occupies this tile' };
+    // A building or wonder (finished or under construction) blocks any improvement on the tile.
+    // NuclearWaste (handled below) and reactor maintenance (handled above) are the only exceptions.
+    if (tile.type !== TileType.NuclearWaste
+      && (tile.buildingId !== undefined || tile.buildingConstruction !== undefined)) return { canBuild: false, reason: 'Building occupies this tile' };
+    if (tile.type !== TileType.NuclearWaste
+      && (tile.wonderId !== undefined || tile.wonderConstruction !== undefined)) return { canBuild: false, reason: 'Wonder occupies this tile' };
     if (tile.improvementId !== undefined) return { canBuild: false, reason: 'Tile already improved' };
     if (tile.improvementConstruction !== undefined) return { canBuild: false, reason: 'Improvement already under construction' };
     if (isBarbarianCamp(tile.buildingId) && !(tile.type === TileType.NuclearWaste && tile.buildingBroken)) return { canBuild: false, reason: 'Barbarian Camp blocks this tile' };

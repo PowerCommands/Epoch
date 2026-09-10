@@ -21,7 +21,7 @@ const PANEL_INNER_PADDING = 20;
 const PANEL_MASK_PADDING = 10;
 const PANEL_MIN_HEIGHT = 180;
 const PANEL_BOTTOM_PADDING = 20;
-const PANEL_SCROLLBAR_WIDTH = 10;
+const PANEL_SCROLLBAR_WIDTH = 24;
 const PANEL_SCROLLBAR_GAP = 12;
 const PANEL_CONTENT_WIDTH = PANEL_WIDTH - (PANEL_INNER_PADDING * 2) - PANEL_SCROLLBAR_WIDTH - PANEL_SCROLLBAR_GAP;
 const LINE_HEIGHT = 29;
@@ -73,7 +73,7 @@ export class ResearchHudPanel {
     deltaX: number,
     deltaY: number,
     deltaZ: number,
-    event: WheelEvent,
+    event?: WheelEvent,
   ) => void;
 
   private readonly techButtons: TechButtonView[] = [];
@@ -251,31 +251,28 @@ export class ResearchHudPanel {
       if (this.collapsed || this.maxScroll <= 0) return;
       if (!this.panelBounds.contains(pointer.x, pointer.y)) return;
       consumePointerEvent(pointer);
-      event.preventDefault?.();
-      this.applyScroll(Math.sign(deltaY) * SCROLL_STEP);
+      event?.preventDefault();
+      this.applyScroll(Phaser.Math.Clamp(deltaY, -SCROLL_STEP * 3, SCROLL_STEP * 3));
     };
     scene.input.on(Phaser.Input.Events.POINTER_WHEEL, this.handleWheel);
 
     this.scrollbarTrack.on(Phaser.Input.Events.POINTER_DOWN, (
       pointer: Phaser.Input.Pointer,
       _localX: number,
-      localY: number,
+      _localY: number,
       event: Phaser.Types.Input.EventData,
     ) => {
       event.stopPropagation();
       if (pointer.button !== 0 || this.collapsed || this.maxScroll <= 0) return;
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
-      const trackHeight = this.scrollbarTrack.displayHeight;
-      const thumbHeight = this.scrollbarThumb.displayHeight;
-      const thumbTop = this.scrollbarThumb.y - this.scrollbarTrack.y;
-      const targetThumbTop = Phaser.Math.Clamp(localY - (thumbHeight / 2), 0, Math.max(0, trackHeight - thumbHeight));
-      if (targetThumbTop < thumbTop) {
-        this.applyScroll(-Math.max(SCROLL_STEP, this.getVisibleContentHeight() * 0.8));
-      } else if (targetThumbTop > thumbTop) {
-        this.applyScroll(Math.max(SCROLL_STEP, this.getVisibleContentHeight() * 0.8));
-      }
-      this.worldInputGate.releasePointer(pointer.id);
+      const travel = this.scrollbarTrack.displayHeight - this.scrollbarThumb.displayHeight;
+      const thumbTop = Phaser.Math.Clamp(pointer.y - this.scrollbarTrack.y - this.scrollbarThumb.displayHeight / 2, 0, travel);
+      this.applyScroll(travel > 0 ? thumbTop / travel * this.maxScroll - this.scrollOffset : 0);
+      this.draggingScrollbar = true;
+      this.dragPointerId = pointer.id;
+      this.dragStartPointerY = pointer.y;
+      this.dragStartScrollOffset = this.scrollOffset;
     });
 
     this.scrollbarThumb.on(Phaser.Input.Events.POINTER_DOWN, (
@@ -294,6 +291,10 @@ export class ResearchHudPanel {
       consumePointerEvent(pointer);
     });
 
+    this.scrollbarThumb.on(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
+    this.scrollbarTrack.on(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
+    // Object handlers can stop the scene-level release event.
+    this.blocker.on(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
     scene.input.on(Phaser.Input.Events.POINTER_MOVE, this.handlePointerMove);
     scene.input.on(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
     scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
@@ -328,6 +329,14 @@ export class ResearchHudPanel {
   setCollapsed(collapsed: boolean): void {
     if (this.collapsed === collapsed) return;
     this.collapsed = collapsed;
+    if (collapsed) {
+      if (this.dragPointerId !== null) this.worldInputGate.releasePointer(this.dragPointerId);
+      this.draggingScrollbar = false;
+      this.dragPointerId = null;
+      this.worldInputGate.unblockWorld(this.wheelBlockerId);
+    } else {
+      this.worldInputGate.blockWorld(this.wheelBlockerId);
+    }
     this.layout(this.scene.scale.width, this.scene.scale.height);
     this.refreshToggleState();
   }
@@ -446,6 +455,7 @@ export class ResearchHudPanel {
     this.scene.input.off(Phaser.Input.Events.POINTER_UP, this.handlePointerUp);
     this.scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp);
     this.worldInputGate.unregisterWheelBlocker(this.wheelBlockerId);
+    this.worldInputGate.unblockWorld(this.wheelBlockerId);
     this.blocker.destroy();
     this.toggleButton.destroy();
     this.panelBackground.destroy();
@@ -665,6 +675,7 @@ export class ResearchHudPanel {
 
   private readonly handlePointerMove = (pointer: Phaser.Input.Pointer): void => {
     if (!this.draggingScrollbar || this.dragPointerId !== pointer.id || this.maxScroll <= 0) return;
+    if (!pointer.isDown) { this.handlePointerUp(pointer); return; }
     const trackTravel = this.scrollbarTrack.displayHeight - this.scrollbarThumb.displayHeight;
     if (trackTravel <= 0) return;
     const deltaY = pointer.y - this.dragStartPointerY;
@@ -681,10 +692,6 @@ export class ResearchHudPanel {
     this.dragPointerId = null;
     this.worldInputGate.releasePointer(pointer.id);
   };
-
-  private getVisibleContentHeight(): number {
-    return Math.max(1, this.panelBounds.height - (PANEL_MASK_PADDING * 2));
-  }
 
   private updateMask(panelX: number, panelY: number, panelHeight: number): void {
     this.contentMaskGraphics.clear();
@@ -714,7 +721,7 @@ export class ResearchHudPanel {
     const trackHeight = panelHeight - (PANEL_MASK_PADDING * 2);
     const visibleContentHeight = panelHeight - (PANEL_MASK_PADDING * 2);
     const fullContentHeight = visibleContentHeight + this.maxScroll;
-    const thumbHeight = Math.max(32, Math.round(trackHeight * (visibleContentHeight / fullContentHeight)));
+    const thumbHeight = Math.min(trackHeight, Math.max(48, Math.round(trackHeight * (visibleContentHeight / fullContentHeight))));
     const thumbTravel = trackHeight - thumbHeight;
     const thumbY = trackY + (this.maxScroll > 0 ? (this.scrollOffset / this.maxScroll) * thumbTravel : 0);
 

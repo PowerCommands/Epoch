@@ -216,9 +216,9 @@ test('nation content moves an export from Pending to Exports when its route acti
     .map((row) => row.kind === 'text' ? row.text : '').join('\n');
   let routeText = content.sections.find((section) => section.title === 'Trade Routes')!.rows
     .map((row) => row.kind === 'text' ? row.text : '').join('\n');
-  assert.match(pendingText, /Fish ×1 → Shanghai[\s\S]*5 turns remaining · deal not active/);
+  assert.match(pendingText, /Fish ×1 → Shanghai[\s\S]*5 turns remaining\. Deal not active/);
   assert.match(pendingText, /resource is not reserved while pending/);
-  assert.match(routeText, /London ↔ Shanghai[\s\S]*Establishing — 5 turns remaining/);
+  assert.match(routeText, /London ↔ Shanghai[\s\S]*Establishing trade route in London — 5 turns remaining/);
 
   h.connections.activateTradeConnection(h.connections.getAllConnections()[0]!.id);
   content = h.provider.getTradingNationContent(CHINA);
@@ -240,7 +240,7 @@ test('Overview starts a 25-turn pending export to the selected Nation — City',
   assert.ok(destination && destination.kind === 'select');
   assert.deepEqual(destination.options.map((option) => option.label), ['China — Shanghai']);
   assert.deepEqual(
-    before.filter((row) => row.kind === 'select' && row.label === 'Duration')[0]?.options.map((option) => option.label),
+    before.filter((row) => row.kind === 'select' && row.label === 'Active duration')[0]?.options.map((option) => option.label),
     ['25 turns', '50 turns'],
   );
 
@@ -252,7 +252,7 @@ test('Overview starts a 25-turn pending export to the selected Nation — City',
   assert.equal(h.queues.get('london')?.[0]?.turnsRemaining, 5);
   const statusText = overviewText(h.provider);
   assert.match(statusText, /Fish → China — Shanghai/);
-  assert.match(statusText, /Establishing trade route — 5 turns remaining/);
+  assert.match(statusText, /Establishing trade route in London — 5 turns remaining/);
 });
 
 test('Overview reuses an existing route and starts the export immediately', () => {
@@ -288,7 +288,7 @@ test('route completion replaces pending status with the full active duration', (
   assert.equal(h.workflow.getPendingDeals().length, 0);
   assert.equal(h.deals.getAllDeals()[0]?.remainingTurns, 25);
   const statusText = overviewText(h.provider);
-  assert.doesNotMatch(statusText, /Establishing trade route — 5 turns remaining/);
+  assert.doesNotMatch(statusText, /Establishing trade route in London — 5 turns remaining/);
   assert.match(statusText, /Active — 25 turns remaining/);
 });
 
@@ -320,8 +320,8 @@ test('restored pending and active deals are represented by the same Overview sta
   pendingAfter.workflow.restorePendingDeals(pendingJson);
   assert.deepEqual(pendingAfter.provider.getTradingNationTabs().map((tab) => tab.label), ['China']);
   let statusText = overviewText(pendingAfter.provider);
-  assert.match(statusText, /Establishing trade route — 5 turns remaining/);
-  assert.match(contentText(pendingAfter.provider.getTradingNationContent(CHINA)), /Establishing trade route · 5 turns remaining/);
+  assert.match(statusText, /Establishing trade route in London — 5 turns remaining/);
+  assert.match(contentText(pendingAfter.provider.getTradingNationContent(CHINA)), /Establishing trade route in London — 5 turns remaining/);
 
   pendingAfter.connections.activateTradeConnection(routeJson[0].id);
   const activeJson = JSON.parse(JSON.stringify(pendingAfter.deals.getAllDeals()));
@@ -349,7 +349,7 @@ test('Overview buy uses the existing import path and the selected 50-turn durati
   const route = h.connections.createTradeConnectionDraft('london', 'shanghai', 1);
   h.connections.activateTradeConnection(route.id);
   const rows = buyRows(h.provider);
-  const durationSelects = rows.filter((row) => row.kind === 'select' && row.label === 'Duration');
+  const durationSelects = rows.filter((row) => row.kind === 'select' && row.label === 'Active duration');
   const importDuration = durationSelects[0];
   assert.ok(importDuration && importDuration.kind === 'select');
   importDuration.onChange('50');
@@ -358,4 +358,17 @@ test('Overview buy uses the existing import path and the selected 50-turn durati
   const deal = h.deals.getAllDeals().find((candidate) => candidate.buyerNationId === HUMAN);
   assert.equal(deal?.remainingTurns, 50);
   assert.equal(deal?.sellerNationId, CHINA);
+});
+
+
+test('Sell explains the scenario delay and keeps pending income visible behind earlier production', () => {
+  const h = createOverviewHarness(10);
+  h.queues.set('london', [{ item: { kind: 'project', projectType: 'wealth' }, turnsRemaining: 0 }]);
+  button(sellRows(h.provider), 'Sell').onClick();
+  const text = sellRows(h.provider).map((row) => row.kind === 'text' ? row.text : '').join('\n');
+  assert.match(text, /New routes need 10 turns/);
+  assert.match(text, /Queued in London — 10 preparation turns after earlier production/);
+  assert.match(text, /On activation: \+4 gold\/turn for 25 turns/);
+  assert.equal(h.deals.getAllDeals().length, 0);
+  assert.equal(h.workflow.getPendingDeals()[0]?.turns, 25);
 });

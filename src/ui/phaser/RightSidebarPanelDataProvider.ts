@@ -732,6 +732,7 @@ export class RightSidebarPanelDataProvider {
         rows: [textRow('No Trade Relations established.', true), textRow('Establish Trade Relations through Diplomacy to begin international trade.', true)],
       });
     }
+    sections.push({ title: 'Why trade?', rows: this.buildTradingHelpRows() });
     sections.push({ title: 'Current trade activity', rows: this.buildTradingActivityRows() });
     return { title: 'Trading', sections };
   }
@@ -745,7 +746,19 @@ export class RightSidebarPanelDataProvider {
     const rows: RightSidebarRow[] = cells.length > 0
       ? [{ kind: 'grid', columns: TRADING_GOODS_COLUMNS, cells }]
       : [textRow('No foreign goods currently available to buy.', true)];
-    return { title: 'Trading', sections: [{ title: 'Goods available to buy', rows }] };
+    return {
+      title: 'Trading',
+      sections: [
+        {
+          title: 'Buying resources',
+          rows: [
+            textRow('Pay Gold per turn for resource access and its benefits. Luxuries can support Happiness; manufactured goods can add Gold, Food, Production or Happiness. An active route with free import capacity is required.', true),
+            ...(this.tradingFeedback ? [textRow(this.tradingFeedback, false, true)] : []),
+          ],
+        },
+        { title: 'Goods available to buy', rows },
+      ],
+    };
   }
 
   /** Sell tab — only the goods that can actually be sold, in a 3-up grid. */
@@ -757,7 +770,14 @@ export class RightSidebarPanelDataProvider {
     const rows: RightSidebarRow[] = cells.length > 0
       ? [{ kind: 'grid', columns: TRADING_GOODS_COLUMNS, cells }]
       : [textRow('No goods can be sold right now.', true)];
-    return { title: 'Trading', sections: [{ title: 'Goods available to sell', rows }] };
+    return {
+      title: 'Trading',
+      sections: [
+        { title: 'Selling surplus', rows: this.buildTradingHelpRows() },
+        { title: 'Current trade activity', rows: this.buildTradingActivityRows() },
+        { title: 'Goods available to sell', rows },
+      ],
+    };
   }
 
   getTradingNationTabs(): TradingNationTab[] {
@@ -2757,6 +2777,7 @@ export class RightSidebarPanelDataProvider {
             this.requestRefresh();
           },
         },
+        textRow(`Buyer benefit: ${this.getTradingResourceBenefit(resourceId)}`, true),
         this.buildTradingDurationSelect(this.tradingExportDurations, resourceId, duration),
         {
           kind: 'button',
@@ -2794,6 +2815,7 @@ export class RightSidebarPanelDataProvider {
         if (available <= 0 || !this.tradeDealSystem.validateDeal(input).ok) continue;
         cells.push([
           textRow(`${this.formatResourceName(resourceId)} — ${seller.name} — ${available} available${this.getResourceTypeSuffix(resourceId)}`, false, true),
+          textRow(`You gain: ${this.getTradingResourceBenefit(resourceId)}`, true),
           this.buildTradingDurationSelect(this.tradingImportDurations, key, duration),
           {
             kind: 'button',
@@ -2807,6 +2829,28 @@ export class RightSidebarPanelDataProvider {
     return cells;
   }
 
+  private getTradingResourceBenefit(resourceId: string): string {
+    const effect = getManufacturedResourceEffectSummary(resourceId);
+    if (effect) return effect;
+    const resource = getNaturalResourceById(resourceId);
+    if (resource?.category === 'luxury') return 'Luxury resource access to support Happiness.';
+    if (resource?.category === 'strategic') return 'Strategic resource access for units and other requirements.';
+    return 'Resource access for the economy and resource requirements.';
+  }
+
+  private buildTradingHelpRows(): RightSidebarRow[] {
+    const turns = this.tradeConnectionSystem?.getEstablishmentTurns();
+    const preparation = turns === 0
+      ? 'New routes activate immediately in this scenario.'
+      : `Sell queues a new route when existing capacity is full. ${turns === undefined ? 'The scenario sets its preparation time.' : `New routes need ${turns} turns of preparation in this scenario.`} Earlier production must finish first; a continuous project can hold up the route.`;
+    return [
+      textRow('Sell surplus for Gold per turn while keeping your own resource access and bonuses. The buyer pays for resource access and its benefits.', true),
+      textRow('Trade Relations open the market; choose a resource in Sell to earn export income. Working routes and deals build Trust and Affinity. Your partner grows stronger too — trade is foreign policy.', true),
+      textRow(`${preparation} Existing capacity can be reused immediately.`, true),
+      textRow('While establishing: no deal income, payment or import bonus. The full deal duration starts only on activation. Check Pending and Trade Routes in the partner tab.', true),
+    ];
+  }
+
   private buildTradingActivityRows(): RightSidebarRow[] {
     if (!this.humanNationId || !this.tradeDealSystem || !this.humanTradeDealWorkflow) {
       return [textRow('Trade system unavailable.', true)];
@@ -2817,11 +2861,9 @@ export class RightSidebarPanelDataProvider {
       const buyer = this.nationManager.getNation(pending.buyerNationId)?.name ?? pending.buyerNationId;
       const city = this.cityManager.getCity(pending.buyerCityId)?.name ?? pending.buyerCityId;
       const route = this.tradeConnectionSystem?.getConnection(pending.routeId);
-      const remaining = route ? this.getTradeRouteTurnsRemaining(route) : null;
       rows.push(textRow(`${this.formatResourceName(pending.resourceId)} → ${buyer} — ${city}`, false, true));
-      rows.push(textRow(remaining === null
-        ? 'Establishing trade route'
-        : `Establishing trade route — ${remaining} turn${remaining === 1 ? '' : 's'} remaining`, true));
+      rows.push(textRow(route ? this.describeTradeRoutePreparation(route) : 'Establishing trade route', true));
+      rows.push(textRow(`On activation: +${pending.goldPerTurn} gold/turn for ${pending.turns} turns. No deal income yet.`, true));
     }
     for (const deal of this.tradeDealSystem.getDealsForNation(this.humanNationId)) {
       const otherNationId = deal.sellerNationId === this.humanNationId ? deal.buyerNationId : deal.sellerNationId;
@@ -2856,11 +2898,9 @@ export class RightSidebarPanelDataProvider {
     for (const deal of deals) {
       const destination = this.cityManager.getCity(deal.buyerCityId)?.name ?? deal.buyerCityId;
       const route = this.tradeConnectionSystem?.getConnection(deal.routeId);
-      const remaining = route ? this.getTradeRouteTurnsRemaining(route) : null;
       rows.push(textRow(`${this.formatResourceName(deal.resourceId)} ×1 → ${destination}`, false, true));
-      rows.push(textRow(remaining === null
-        ? 'Establishing trade route · deal not active'
-        : `Establishing trade route · ${remaining} turn${remaining === 1 ? '' : 's'} remaining · deal not active`, true));
+      rows.push(textRow(`${route ? this.describeTradeRoutePreparation(route) : 'Establishing trade route.'} Deal not active.`, true));
+      rows.push(textRow(`On activation: ${deal.goldPerTurn} gold/turn paid to the seller for ${deal.turns} turns.`, true));
     }
     rows.push(textRow('Deal duration begins on activation; the resource is not reserved while pending.', true));
     return rows;
@@ -2877,12 +2917,7 @@ export class RightSidebarPanelDataProvider {
           ?? (humanIsA ? route.cityAId : route.cityBId);
         const foreignCity = this.cityManager.getCity(humanIsA ? route.cityBId : route.cityAId)?.name
           ?? (humanIsA ? route.cityBId : route.cityAId);
-        const remaining = route.status === 'building' ? this.getTradeRouteTurnsRemaining(route) : null;
-        const status = route.status === 'active'
-          ? 'Active'
-          : remaining === null
-            ? 'Establishing'
-            : `Establishing — ${remaining} turn${remaining === 1 ? '' : 's'} remaining`;
+        const status = route.status === 'active' ? 'Active' : this.describeTradeRoutePreparation(route);
         return [textRow(`${humanCity} ↔ ${foreignCity}`, false, true), textRow(status, true)];
       });
   }
@@ -2915,7 +2950,7 @@ export class RightSidebarPanelDataProvider {
   ): RightSidebarRow {
     return {
       kind: 'select',
-      label: 'Duration',
+      label: 'Active duration',
       value: String(duration),
       options: [this.humanTradeDealDurations.short, this.humanTradeDealDurations.long]
         .map((turns) => ({ value: String(turns), label: `${turns} turns` })),
@@ -2956,10 +2991,7 @@ export class RightSidebarPanelDataProvider {
     else if (result.status === 'active') this.tradingFeedback = 'Trade deal started — Active.';
     else {
       const route = this.tradeConnectionSystem?.getConnection(result.routeId);
-      const remaining = route ? this.getTradeRouteTurnsRemaining(route) : null;
-      this.tradingFeedback = remaining === null
-        ? 'Establishing trade route.'
-        : `Establishing trade route — ${remaining} turn${remaining === 1 ? '' : 's'} remaining.`;
+      this.tradingFeedback = `${route ? this.describeTradeRoutePreparation(route) : 'Establishing trade route.'} Income and the ${turns}-turn deal begin on activation.`;
     }
     this.requestRefresh();
   }
@@ -2979,20 +3011,15 @@ export class RightSidebarPanelDataProvider {
     this.requestRefresh();
   }
 
-  /**
-   * Read-only overview of the trade routes between the human and `otherNationId`,
-   * covering both routes still under construction ("In progress") and completed
-   * ("Active") ones. Visibility only — no trade-route logic is touched here.
-   */
-  /**
-   * Turns left to finish a building route, read from the production queue entry
-   * that builds it (lives in the initiating city, `cityAId`). Null if not found.
-   */
-  private getTradeRouteTurnsRemaining(conn: TradeConnection): number | null {
-    const entry = this.productionSystem.getQueue(conn.cityAId).find(
-      (e) => e.item.kind === 'tradeRoute' && e.item.connectionId === conn.id,
-    );
-    return entry ? entry.turnsRemaining : null;
+  private describeTradeRoutePreparation(conn: TradeConnection): string {
+    const queue = this.productionSystem.getQueue(conn.cityAId);
+    const index = queue.findIndex((entry) => entry.item.kind === 'tradeRoute' && entry.item.connectionId === conn.id);
+    const city = this.cityManager.getCity(conn.cityAId)?.name ?? conn.cityAId;
+    if (index < 0) return `Establishing trade route — check ${city}'s production queue.`;
+    const turns = queue[index]!.turnsRemaining;
+    return index > 0
+      ? `Queued in ${city} — ${turns} preparation turns after earlier production. Move the route ahead of any continuous project to begin.`
+      : `Establishing trade route in ${city} — ${turns} turns remaining.`;
   }
 
   private formatResourceName(resourceId: string): string {
