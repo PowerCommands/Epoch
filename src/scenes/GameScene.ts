@@ -5533,7 +5533,7 @@ export class GameScene extends Phaser.Scene {
     combatSystem.onCityCombat(async (e) => {
       aiMilitaryEvaluationSystem.invalidate(e.attacker.ownerId);
       if (e.previousOwnerId) aiMilitaryEvaluationSystem.invalidate(e.previousOwnerId);
-      const isRanged = (e.attacker.unitType.range ?? 1) >= 2;
+      const isRanged = e.isRanged ?? (e.attacker.unitType.range ?? 1) >= 2;
       const defendingNationId = e.previousOwnerId ?? e.city.ownerId;
       const animationOptions = {
         shakeOnImpact: isHumanInvolvedInCombat(humanNationId, e.attacker.ownerId, defendingNationId),

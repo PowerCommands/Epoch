@@ -69,6 +69,8 @@ export interface CityCombatEvent {
   attacker: Unit;
   city: City;
   result: CityCombatResult;
+  /** Actual attack mode: ranged infantry can storm a depleted adjacent city. */
+  isRanged?: boolean;
   captured: boolean;
   previousOwnerId?: string;
   /** Capital capture was converted into vassalization and ownership restoration. */
@@ -366,7 +368,18 @@ export class CombatSystem {
         this.notifyWarRequired(attacker, targetCity.ownerId, tileX, tileY, options.source ?? 'system');
         return false;
       }
-      return this.executeCityCombat(attacker, targetCity, isRanged);
+      // Once bombardment has exhausted the defenses, adjacent ranged infantry
+      // can take the city on a subsequent action. Resolve this as melee so the
+      // attacker must survive retaliation and physically occupy the city.
+      // Garrison combat above still takes priority; ships and siege engines
+      // continue to bombard, even when adjacent.
+      const canStorm = isRanged
+        && targetCity.health <= 1
+        && attacker.unitType.category === 'ranged'
+        && !attacker.unitType.isNaval
+        && meleeStrength > 0
+        && this.gridSystem.isAdjacent(attackerCoord, targetCoord);
+      return this.executeCityCombat(attacker, targetCity, isRanged && !canStorm);
     }
 
     return false;
@@ -569,7 +582,7 @@ export class CombatSystem {
     this.reportCovertCityCombat(attacker, city);
 
     for (const cb of this.cityCombatListeners) {
-      cb({ attacker, city, result, captured, previousOwnerId, capitalVassalizationResolved, pendingHumanCaptureDecision });
+      cb({ attacker, city, result, isRanged, captured, previousOwnerId, capitalVassalizationResolved, pendingHumanCaptureDecision });
     }
 
     return true;
