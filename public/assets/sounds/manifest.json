@@ -159,6 +159,18 @@
     "nation_north_korea": [
       "/assets/sounds/nation_japan/nation_japan-theme-01.mp3",
       "/assets/sounds/nation_japan/nation_japan-theme-02.mp3"
+    ],
+    "nation_belarus": [
+      "/assets/sounds/nation_russia/ivan-iv-theme-01.mp3",
+      "/assets/sounds/nation_russia/ivan-iv-theme-02.mp3"
+    ],
+    "nation_yugoslavia": [
+      "/assets/sounds/nation_poland/nation_poland-theme-01.mp3",
+      "/assets/sounds/nation_poland/nation_poland-theme-02.mp3"
+    ],
+    "nation_czechoslovakia": [
+      "/assets/sounds/nation_poland/nation_poland-theme-01.mp3",
+      "/assets/sounds/nation_poland/nation_poland-theme-02.mp3"
     ]
   }
 }

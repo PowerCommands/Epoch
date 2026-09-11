@@ -1,3 +1,4 @@
+import { ROSTER_ALTERNATIVE_WAR_DECLARATIONS } from './rosterAlternativeWarDeclarations';
 import { getLeaderConfiguration } from './leaderConfiguration';
 import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDeclaration';
 
@@ -7,6 +8,73 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  * leader checks in diplomacy code.
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
+  ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
+  "leader_alexander_lukashenko": {
+    "conquest": [
+      "Belarus will secure the positions needed to protect its borders.",
+      "We will take control of this corridor. Our security cannot depend on your goodwill."
+    ],
+    "hostility": [
+      "Your pressure has closed the path to agreement. Belarus will respond with force.",
+      "We warned that these hostile actions would have consequences. Those consequences begin today."
+    ],
+    "threat": [
+      "We will not wait for your forces to cross our frontier.",
+      "Your preparations threaten Belarus. We will act before the danger grows."
+    ],
+    "ideological": [
+      "You will not dictate the political order of Belarus. We will resist by force.",
+      "Your campaign against our state has made armed resistance necessary."
+    ],
+    "ambition": [
+      "The balance is shifting. Belarus will secure its position now.",
+      "Our government has decided to settle this dispute by force."
+    ]
+  },
+  "leader_josip_broz_tito": {
+    "conquest": [
+      "We will take the strategic ground from which you seek to constrain Yugoslavia.",
+      "Our forces will advance. The terms of this frontier will change."
+    ],
+    "hostility": [
+      "You have answered our independence with hostility. Now you will face our army.",
+      "We offered cooperation between equals. Your repeated attacks have brought war."
+    ],
+    "threat": [
+      "Yugoslavia will not wait quietly while you prepare to invade.",
+      "Our people have resisted occupation before. Your military threat will be met."
+    ],
+    "ideological": [
+      "No foreign capital will prescribe our road to socialism. We will fight for our own course.",
+      "You seek obedience where we offered friendship. Yugoslavia will resist your imposed order."
+    ],
+    "ambition": [
+      "We will act to prevent our region from becoming the possession of greater powers.",
+      "Yugoslavia has chosen to change this balance by force. We accept the responsibility."
+    ]
+  },
+  "leader_antonin_zapotocky": {
+    "conquest": [
+      "Our army will secure the industrial approaches beyond this frontier.",
+      "The republic will take the positions required for a defensible settlement."
+    ],
+    "hostility": [
+      "Your hostile measures have exhausted negotiation. The republic will answer with force.",
+      "You have continued these attacks despite our warnings. Our armed forces will respond."
+    ],
+    "threat": [
+      "Our factories and cities will not be left exposed to your preparations.",
+      "The danger at our borders demands military action before you strike."
+    ],
+    "ideological": [
+      "We will fight your attempt to overturn the institutions of our republic.",
+      "Your campaign against our socialist state has brought an armed response."
+    ],
+    "ambition": [
+      "The government has ordered an advance to secure the republic’s strategic position.",
+      "We will use this moment to establish the security our plans require."
+    ]
+  },
 
   "leader_anutin_charnvirakul": {
     "conquest": [

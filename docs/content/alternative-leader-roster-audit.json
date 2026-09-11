@@ -1,0 +1,484 @@
+[
+  {
+    "nationId": "nation_england",
+    "nationName": "England",
+    "defaultLeaderId": "leader_henry_v",
+    "before": [
+      "leader_henry_v",
+      "leader_winston_churchill",
+      "leader_tony_blair"
+    ],
+    "added": [],
+    "finalCount": 3
+  },
+  {
+    "nationId": "nation_france",
+    "nationName": "France",
+    "defaultLeaderId": "leader_charles_vii",
+    "before": [
+      "leader_charles_vii",
+      "leader_charles_de_gaulle",
+      "leader_emmanuel_macron"
+    ],
+    "added": [],
+    "finalCount": 3
+  },
+  {
+    "nationId": "nation_hre",
+    "nationName": "Holy Roman Empire",
+    "defaultLeaderId": "leader_sigismund",
+    "before": [
+      "leader_sigismund"
+    ],
+    "added": [
+      "leader_frederick_barbarossa"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_sweden",
+    "nationName": "Sweden",
+    "defaultLeaderId": "leader_gustav_vasa",
+    "before": [
+      "leader_gustav_vasa",
+      "leader_olof_palme"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_lithuania",
+    "nationName": "Lithuania",
+    "defaultLeaderId": "leader_vytautas",
+    "before": [
+      "leader_vytautas"
+    ],
+    "added": [
+      "leader_mindaugas"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_novgorod",
+    "nationName": "Novgorod",
+    "defaultLeaderId": "leader_marfa_boretskaya",
+    "before": [
+      "leader_marfa_boretskaya"
+    ],
+    "added": [
+      "leader_alexander_nevsky"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_russia",
+    "nationName": "Russia",
+    "defaultLeaderId": "ivan-iv",
+    "before": [
+      "ivan-iv",
+      "leader_vladimir_putin"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_soviet_union",
+    "nationName": "Soviet Union",
+    "defaultLeaderId": "leader_joseph_stalin",
+    "before": [
+      "leader_joseph_stalin"
+    ],
+    "added": [
+      "leader_mikhail_gorbachev"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_ottoman",
+    "nationName": "Ottoman Empire",
+    "defaultLeaderId": "leader_mehmed_ii",
+    "before": [
+      "leader_mehmed_ii"
+    ],
+    "added": [
+      "leader_suleiman_the_magnificent"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_spain",
+    "nationName": "Spain",
+    "defaultLeaderId": "leader_isabella_i",
+    "before": [
+      "leader_isabella_i",
+      "leader_pedro_sanchez"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_morocco_empire",
+    "nationName": "Morocco",
+    "defaultLeaderId": "leader_abu_said_uthman_ii",
+    "before": [
+      "leader_abu_said_uthman_ii"
+    ],
+    "added": [
+      "leader_mohammed_v"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_usa",
+    "nationName": "United States",
+    "defaultLeaderId": "leader_george-washington",
+    "before": [
+      "leader_george-washington",
+      "leader_franklin_d_roosevelt",
+      "leader_donald_j_trump"
+    ],
+    "added": [],
+    "finalCount": 3
+  },
+  {
+    "nationId": "nation_india",
+    "nationName": "India",
+    "defaultLeaderId": "leader_mahatma-gandhi",
+    "before": [
+      "leader_mahatma-gandhi",
+      "leader_narendra_modi"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_china",
+    "nationName": "China",
+    "defaultLeaderId": "leader_qin-shi-huang",
+    "before": [
+      "leader_qin-shi-huang",
+      "leader_mao_zedong"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_taiwan",
+    "nationName": "Taiwan",
+    "defaultLeaderId": "leader_koxinga",
+    "before": [
+      "leader_koxinga"
+    ],
+    "added": [
+      "leader_tsai_ing_wen"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_brazil",
+    "nationName": "Brazil",
+    "defaultLeaderId": "leader_dom-pedro-ii",
+    "before": [
+      "leader_dom-pedro-ii",
+      "leader_jair_bolsonaro"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_mali_empire",
+    "nationName": "Mali Empire",
+    "defaultLeaderId": "leader_mansa-musa",
+    "before": [
+      "leader_mansa-musa"
+    ],
+    "added": [
+      "leader_sundiata_keita"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_mongolia",
+    "nationName": "Mongolia",
+    "defaultLeaderId": "leader_genghis-khan",
+    "before": [
+      "leader_genghis-khan"
+    ],
+    "added": [
+      "leader_kublai_khan"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_japan",
+    "nationName": "Japan",
+    "defaultLeaderId": "leader_oda-nobunaga",
+    "before": [
+      "leader_oda-nobunaga"
+    ],
+    "added": [
+      "leader_tokugawa_ieyasu"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_denmark",
+    "nationName": "Denmark",
+    "defaultLeaderId": "leader_christian-iv",
+    "before": [
+      "leader_christian-iv",
+      "leader_mette_frederiksen"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_pirate",
+    "nationName": "Pirates",
+    "defaultLeaderId": "leader_mad_jack",
+    "before": [
+      "leader_mad_jack"
+    ],
+    "added": [
+      "leader_anne_bonny"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_germany",
+    "nationName": "Germany",
+    "defaultLeaderId": "hermann-the-cheruscan",
+    "before": [
+      "hermann-the-cheruscan",
+      "leader_adolf_hitler",
+      "leader_angela_merkel"
+    ],
+    "added": [],
+    "finalCount": 3
+  },
+  {
+    "nationId": "nation_italy",
+    "nationName": "Italy",
+    "defaultLeaderId": "leader_benito_mussolini",
+    "before": [
+      "leader_benito_mussolini",
+      "leader_giorgia_meloni"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_poland",
+    "nationName": "Poland",
+    "defaultLeaderId": "leader_wladyslaw_sikorski",
+    "before": [
+      "leader_wladyslaw_sikorski",
+      "leader_donald_tusk"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_finland",
+    "nationName": "Finland",
+    "defaultLeaderId": "leader_alexander_stubb",
+    "before": [
+      "leader_alexander_stubb"
+    ],
+    "added": [
+      "leader_urho_kekkonen"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_canada",
+    "nationName": "Canada",
+    "defaultLeaderId": "leader_justin_trudeau",
+    "before": [
+      "leader_justin_trudeau"
+    ],
+    "added": [
+      "leader_stephen_harper"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_mexico",
+    "nationName": "Mexico",
+    "defaultLeaderId": "leader_claudia_sheinbaum_pardo",
+    "before": [
+      "leader_claudia_sheinbaum_pardo"
+    ],
+    "added": [
+      "leader_vicente_fox"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_argentina",
+    "nationName": "Argentina",
+    "defaultLeaderId": "leader_javier_milei",
+    "before": [
+      "leader_javier_milei"
+    ],
+    "added": [
+      "leader_juan_peron"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_ukraine",
+    "nationName": "Ukraine",
+    "defaultLeaderId": "leader_volodymyr_zelenskyy",
+    "before": [
+      "leader_volodymyr_zelenskyy"
+    ],
+    "added": [
+      "leader_petro_poroshenko"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_iran",
+    "nationName": "Iran",
+    "defaultLeaderId": "leader_ruhollah_khomeini",
+    "before": [
+      "leader_ruhollah_khomeini"
+    ],
+    "added": [
+      "leader_mohammad_reza_pahlavi"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_iraq",
+    "nationName": "Iraq",
+    "defaultLeaderId": "leader_saddam_hussein",
+    "before": [
+      "leader_saddam_hussein"
+    ],
+    "added": [
+      "leader_faisal_i"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_egypt",
+    "nationName": "Egypt",
+    "defaultLeaderId": "leader_cleopatra_vii",
+    "before": [
+      "leader_cleopatra_vii",
+      "leader_abdel_fattah_el_sisi"
+    ],
+    "added": [],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_israel",
+    "nationName": "Israel",
+    "defaultLeaderId": "leader_benjamin_netanyahu",
+    "before": [
+      "leader_benjamin_netanyahu"
+    ],
+    "added": [
+      "leader_yitzhak_rabin"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_turkey",
+    "nationName": "Turkey",
+    "defaultLeaderId": "leader_recep_tayyip_erdogan",
+    "before": [
+      "leader_recep_tayyip_erdogan"
+    ],
+    "added": [
+      "leader_mustafa_kemal_ataturk"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_saudi_arabia",
+    "nationName": "Saudi Arabia",
+    "defaultLeaderId": "leader_mohammed_bin_salman",
+    "before": [
+      "leader_mohammed_bin_salman"
+    ],
+    "added": [
+      "leader_faisal_bin_abdulaziz"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_thailand",
+    "nationName": "Thailand",
+    "defaultLeaderId": "leader_anutin_charnvirakul",
+    "before": [
+      "leader_anutin_charnvirakul"
+    ],
+    "added": [
+      "leader_thaksin_shinawatra"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_south_korea",
+    "nationName": "South Korea",
+    "defaultLeaderId": "leader_lee_jae_myung",
+    "before": [
+      "leader_lee_jae_myung"
+    ],
+    "added": [
+      "leader_park_chung_hee"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_north_korea",
+    "nationName": "North Korea",
+    "defaultLeaderId": "leader_kim_jong_un",
+    "before": [
+      "leader_kim_jong_un"
+    ],
+    "added": [
+      "leader_han_seo_jin"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_belarus",
+    "nationName": "Belarus",
+    "defaultLeaderId": "leader_alexander_lukashenko",
+    "before": [
+      "leader_alexander_lukashenko"
+    ],
+    "added": [
+      "leader_sviatlana_tsikhanouskaya"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_yugoslavia",
+    "nationName": "Yugoslavia",
+    "defaultLeaderId": "leader_josip_broz_tito",
+    "before": [
+      "leader_josip_broz_tito"
+    ],
+    "added": [
+      "leader_peter_ii_of_yugoslavia"
+    ],
+    "finalCount": 2
+  },
+  {
+    "nationId": "nation_czechoslovakia",
+    "nationName": "Czechoslovakia",
+    "defaultLeaderId": "leader_antonin_zapotocky",
+    "before": [
+      "leader_antonin_zapotocky"
+    ],
+    "added": [
+      "leader_vaclav_havel"
+    ],
+    "finalCount": 2
+  }
+]

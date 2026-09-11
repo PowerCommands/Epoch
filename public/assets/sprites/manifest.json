@@ -1439,6 +1439,30 @@
           "size": 240072
         },
         {
+          "name": "alexander-lukashenko-room.webp",
+          "path": "/assets/sprites/leaders/alexander-lukashenko-room.webp",
+          "type": "WEBP",
+          "size": 218594
+        },
+        {
+          "name": "alexander-lukashenko.png",
+          "path": "/assets/sprites/leaders/alexander-lukashenko.png",
+          "type": "PNG",
+          "size": 368450
+        },
+        {
+          "name": "alexander-nevsky-room.webp",
+          "path": "/assets/sprites/leaders/alexander-nevsky-room.webp",
+          "type": "WEBP",
+          "size": 255554
+        },
+        {
+          "name": "alexander-nevsky.png",
+          "path": "/assets/sprites/leaders/alexander-nevsky.png",
+          "type": "PNG",
+          "size": 396907
+        },
+        {
           "name": "alexander-stubb-room.webp",
           "path": "/assets/sprites/leaders/alexander-stubb-room.webp",
           "type": "WEBP",
@@ -1461,6 +1485,30 @@
           "path": "/assets/sprites/leaders/angela-merkel.png",
           "type": "PNG",
           "size": 350613
+        },
+        {
+          "name": "anne-bonny-room.webp",
+          "path": "/assets/sprites/leaders/anne-bonny-room.webp",
+          "type": "WEBP",
+          "size": 206356
+        },
+        {
+          "name": "anne-bonny.png",
+          "path": "/assets/sprites/leaders/anne-bonny.png",
+          "type": "PNG",
+          "size": 374820
+        },
+        {
+          "name": "antonin-zapotocky-room.webp",
+          "path": "/assets/sprites/leaders/antonin-zapotocky-room.webp",
+          "type": "WEBP",
+          "size": 255934
+        },
+        {
+          "name": "antonin-zapotocky.png",
+          "path": "/assets/sprites/leaders/antonin-zapotocky.png",
+          "type": "PNG",
+          "size": 383026
         },
         {
           "name": "anutin-charnvirakul-room.webp",
@@ -1607,6 +1655,30 @@
           "size": 358264
         },
         {
+          "name": "faisal-bin-abdulaziz-room.webp",
+          "path": "/assets/sprites/leaders/faisal-bin-abdulaziz-room.webp",
+          "type": "WEBP",
+          "size": 229788
+        },
+        {
+          "name": "faisal-bin-abdulaziz.png",
+          "path": "/assets/sprites/leaders/faisal-bin-abdulaziz.png",
+          "type": "PNG",
+          "size": 381018
+        },
+        {
+          "name": "faisal-i-room.webp",
+          "path": "/assets/sprites/leaders/faisal-i-room.webp",
+          "type": "WEBP",
+          "size": 217852
+        },
+        {
+          "name": "faisal-i.png",
+          "path": "/assets/sprites/leaders/faisal-i.png",
+          "type": "PNG",
+          "size": 386898
+        },
+        {
           "name": "franklin-d-roosevelt-room.webp",
           "path": "/assets/sprites/leaders/franklin-d-roosevelt-room.webp",
           "type": "WEBP",
@@ -1617,6 +1689,18 @@
           "path": "/assets/sprites/leaders/franklin-d-roosevelt.png",
           "type": "PNG",
           "size": 345863
+        },
+        {
+          "name": "frederick-barbarossa-room.webp",
+          "path": "/assets/sprites/leaders/frederick-barbarossa-room.webp",
+          "type": "WEBP",
+          "size": 225904
+        },
+        {
+          "name": "frederick-barbarossa.png",
+          "path": "/assets/sprites/leaders/frederick-barbarossa.png",
+          "type": "PNG",
+          "size": 389952
         },
         {
           "name": "genghis-khan-room.webp",
@@ -1665,6 +1749,18 @@
           "path": "/assets/sprites/leaders/gustaf-vasa.png",
           "type": "PNG",
           "size": 297838
+        },
+        {
+          "name": "han-seo-jin-room.webp",
+          "path": "/assets/sprites/leaders/han-seo-jin-room.webp",
+          "type": "WEBP",
+          "size": 152290
+        },
+        {
+          "name": "han-seo-jin.png",
+          "path": "/assets/sprites/leaders/han-seo-jin.png",
+          "type": "PNG",
+          "size": 364177
         },
         {
           "name": "henry-v-room.webp",
@@ -1751,6 +1847,30 @@
           "size": 249590
         },
         {
+          "name": "josip-broz-tito-room.webp",
+          "path": "/assets/sprites/leaders/josip-broz-tito-room.webp",
+          "type": "WEBP",
+          "size": 192914
+        },
+        {
+          "name": "josip-broz-tito.png",
+          "path": "/assets/sprites/leaders/josip-broz-tito.png",
+          "type": "PNG",
+          "size": 375520
+        },
+        {
+          "name": "juan-peron-room.webp",
+          "path": "/assets/sprites/leaders/juan-peron-room.webp",
+          "type": "WEBP",
+          "size": 198608
+        },
+        {
+          "name": "juan-peron.png",
+          "path": "/assets/sprites/leaders/juan-peron.png",
+          "type": "PNG",
+          "size": 383663
+        },
+        {
           "name": "justin-trudeau-room.webp",
           "path": "/assets/sprites/leaders/justin-trudeau-room.webp",
           "type": "WEBP",
@@ -1785,6 +1905,18 @@
           "path": "/assets/sprites/leaders/koxinga.png",
           "type": "PNG",
           "size": 178207
+        },
+        {
+          "name": "kublai-khan-room.webp",
+          "path": "/assets/sprites/leaders/kublai-khan-room.webp",
+          "type": "WEBP",
+          "size": 236530
+        },
+        {
+          "name": "kublai-khan.png",
+          "path": "/assets/sprites/leaders/kublai-khan.png",
+          "type": "PNG",
+          "size": 401060
         },
         {
           "name": "lee-jae-myung-room.webp",
@@ -1871,6 +2003,42 @@
           "size": 347473
         },
         {
+          "name": "mikhail-gorbachev-room.webp",
+          "path": "/assets/sprites/leaders/mikhail-gorbachev-room.webp",
+          "type": "WEBP",
+          "size": 126484
+        },
+        {
+          "name": "mikhail-gorbachev.png",
+          "path": "/assets/sprites/leaders/mikhail-gorbachev.png",
+          "type": "PNG",
+          "size": 372355
+        },
+        {
+          "name": "mindaugas-room.webp",
+          "path": "/assets/sprites/leaders/mindaugas-room.webp",
+          "type": "WEBP",
+          "size": 229318
+        },
+        {
+          "name": "mindaugas.png",
+          "path": "/assets/sprites/leaders/mindaugas.png",
+          "type": "PNG",
+          "size": 402334
+        },
+        {
+          "name": "mohammad-reza-pahlavi-room.webp",
+          "path": "/assets/sprites/leaders/mohammad-reza-pahlavi-room.webp",
+          "type": "WEBP",
+          "size": 217000
+        },
+        {
+          "name": "mohammad-reza-pahlavi.png",
+          "path": "/assets/sprites/leaders/mohammad-reza-pahlavi.png",
+          "type": "PNG",
+          "size": 374002
+        },
+        {
           "name": "mohammed-bin-salman-room.webp",
           "path": "/assets/sprites/leaders/mohammed-bin-salman-room.webp",
           "type": "WEBP",
@@ -1881,6 +2049,30 @@
           "path": "/assets/sprites/leaders/mohammed-bin-salman.png",
           "type": "PNG",
           "size": 387498
+        },
+        {
+          "name": "mohammed-v-room.webp",
+          "path": "/assets/sprites/leaders/mohammed-v-room.webp",
+          "type": "WEBP",
+          "size": 246516
+        },
+        {
+          "name": "mohammed-v.png",
+          "path": "/assets/sprites/leaders/mohammed-v.png",
+          "type": "PNG",
+          "size": 392819
+        },
+        {
+          "name": "mustafa-kemal-ataturk-room.webp",
+          "path": "/assets/sprites/leaders/mustafa-kemal-ataturk-room.webp",
+          "type": "WEBP",
+          "size": 189616
+        },
+        {
+          "name": "mustafa-kemal-ataturk.png",
+          "path": "/assets/sprites/leaders/mustafa-kemal-ataturk.png",
+          "type": "PNG",
+          "size": 370041
         },
         {
           "name": "narendra-modi-room.webp",
@@ -1919,6 +2111,18 @@
           "size": 351826
         },
         {
+          "name": "park-chung-hee-room.webp",
+          "path": "/assets/sprites/leaders/park-chung-hee-room.webp",
+          "type": "WEBP",
+          "size": 165174
+        },
+        {
+          "name": "park-chung-hee.png",
+          "path": "/assets/sprites/leaders/park-chung-hee.png",
+          "type": "PNG",
+          "size": 380933
+        },
+        {
           "name": "pedro-sanchez-room.webp",
           "path": "/assets/sprites/leaders/pedro-sanchez-room.webp",
           "type": "WEBP",
@@ -1929,6 +2133,30 @@
           "path": "/assets/sprites/leaders/pedro-sanchez.png",
           "type": "PNG",
           "size": 352410
+        },
+        {
+          "name": "peter-ii-of-yugoslavia-room.webp",
+          "path": "/assets/sprites/leaders/peter-ii-of-yugoslavia-room.webp",
+          "type": "WEBP",
+          "size": 200662
+        },
+        {
+          "name": "peter-ii-of-yugoslavia.png",
+          "path": "/assets/sprites/leaders/peter-ii-of-yugoslavia.png",
+          "type": "PNG",
+          "size": 377061
+        },
+        {
+          "name": "petro-poroshenko-room.webp",
+          "path": "/assets/sprites/leaders/petro-poroshenko-room.webp",
+          "type": "WEBP",
+          "size": 162788
+        },
+        {
+          "name": "petro-poroshenko.png",
+          "path": "/assets/sprites/leaders/petro-poroshenko.png",
+          "type": "PNG",
+          "size": 381284
         },
         {
           "name": "pirate-room.webp",
@@ -2003,6 +2231,78 @@
           "size": 264960
         },
         {
+          "name": "stephen-harper-room.webp",
+          "path": "/assets/sprites/leaders/stephen-harper-room.webp",
+          "type": "WEBP",
+          "size": 175688
+        },
+        {
+          "name": "stephen-harper.png",
+          "path": "/assets/sprites/leaders/stephen-harper.png",
+          "type": "PNG",
+          "size": 380674
+        },
+        {
+          "name": "suleiman-the-magnificent-room.webp",
+          "path": "/assets/sprites/leaders/suleiman-the-magnificent-room.webp",
+          "type": "WEBP",
+          "size": 260538
+        },
+        {
+          "name": "suleiman-the-magnificent.png",
+          "path": "/assets/sprites/leaders/suleiman-the-magnificent.png",
+          "type": "PNG",
+          "size": 385472
+        },
+        {
+          "name": "sundiata-keita-room.webp",
+          "path": "/assets/sprites/leaders/sundiata-keita-room.webp",
+          "type": "WEBP",
+          "size": 304286
+        },
+        {
+          "name": "sundiata-keita.png",
+          "path": "/assets/sprites/leaders/sundiata-keita.png",
+          "type": "PNG",
+          "size": 423955
+        },
+        {
+          "name": "sviatlana-tsikhanouskaya-room.webp",
+          "path": "/assets/sprites/leaders/sviatlana-tsikhanouskaya-room.webp",
+          "type": "WEBP",
+          "size": 156498
+        },
+        {
+          "name": "sviatlana-tsikhanouskaya.png",
+          "path": "/assets/sprites/leaders/sviatlana-tsikhanouskaya.png",
+          "type": "PNG",
+          "size": 370611
+        },
+        {
+          "name": "thaksin-shinawatra-room.webp",
+          "path": "/assets/sprites/leaders/thaksin-shinawatra-room.webp",
+          "type": "WEBP",
+          "size": 191340
+        },
+        {
+          "name": "thaksin-shinawatra.png",
+          "path": "/assets/sprites/leaders/thaksin-shinawatra.png",
+          "type": "PNG",
+          "size": 372344
+        },
+        {
+          "name": "tokugawa-ieyasu-room.webp",
+          "path": "/assets/sprites/leaders/tokugawa-ieyasu-room.webp",
+          "type": "WEBP",
+          "size": 229346
+        },
+        {
+          "name": "tokugawa-ieyasu.png",
+          "path": "/assets/sprites/leaders/tokugawa-ieyasu.png",
+          "type": "PNG",
+          "size": 387046
+        },
+        {
           "name": "tony-blair-room.webp",
           "path": "/assets/sprites/leaders/tony-blair-room.webp",
           "type": "WEBP",
@@ -2013,6 +2313,54 @@
           "path": "/assets/sprites/leaders/tony-blair.png",
           "type": "PNG",
           "size": 352882
+        },
+        {
+          "name": "tsai-ing-wen-room.webp",
+          "path": "/assets/sprites/leaders/tsai-ing-wen-room.webp",
+          "type": "WEBP",
+          "size": 153352
+        },
+        {
+          "name": "tsai-ing-wen.png",
+          "path": "/assets/sprites/leaders/tsai-ing-wen.png",
+          "type": "PNG",
+          "size": 370135
+        },
+        {
+          "name": "urho-kekkonen-room.webp",
+          "path": "/assets/sprites/leaders/urho-kekkonen-room.webp",
+          "type": "WEBP",
+          "size": 155254
+        },
+        {
+          "name": "urho-kekkonen.png",
+          "path": "/assets/sprites/leaders/urho-kekkonen.png",
+          "type": "PNG",
+          "size": 371351
+        },
+        {
+          "name": "vaclav-havel-room.webp",
+          "path": "/assets/sprites/leaders/vaclav-havel-room.webp",
+          "type": "WEBP",
+          "size": 164228
+        },
+        {
+          "name": "vaclav-havel.png",
+          "path": "/assets/sprites/leaders/vaclav-havel.png",
+          "type": "PNG",
+          "size": 370981
+        },
+        {
+          "name": "vicente-fox-room.webp",
+          "path": "/assets/sprites/leaders/vicente-fox-room.webp",
+          "type": "WEBP",
+          "size": 167818
+        },
+        {
+          "name": "vicente-fox.png",
+          "path": "/assets/sprites/leaders/vicente-fox.png",
+          "type": "PNG",
+          "size": 375922
         },
         {
           "name": "vladimir-putin-room.webp",
@@ -2073,6 +2421,18 @@
           "path": "/assets/sprites/leaders/wladyslaw-sikorski.png",
           "type": "PNG",
           "size": 274562
+        },
+        {
+          "name": "yitzhak-rabin-room.webp",
+          "path": "/assets/sprites/leaders/yitzhak-rabin-room.webp",
+          "type": "WEBP",
+          "size": 171718
+        },
+        {
+          "name": "yitzhak-rabin.png",
+          "path": "/assets/sprites/leaders/yitzhak-rabin.png",
+          "type": "PNG",
+          "size": 378641
         }
       ]
     },

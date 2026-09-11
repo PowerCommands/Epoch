@@ -1,0 +1,47 @@
+{
+  "tool": "Built-in image_gen",
+  "assets": [
+    {
+      "slug": "alexander-lukashenko",
+      "kind": "",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-2e6e60eb-3586-4d17-b94b-e67ee1f5acce.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square 1024x1024 oil-painted bust portrait of Alexander Lukashenko, older Belarusian president, receding gray hair, distinctive gray mustache, dark formal suit and burgundy tie. Historically recognizable likeness, dignified neutral expression, three-quarter shoulders facing viewer, head and upper torso fill frame. Realistic painterly anatomy, visible fine brush strokes, warm muted ochre brown painted background, soft directional lighting. Opaque background, no transparency, no border, no text, no watermark. Match traditional museum oil portrait game art.",
+      "destination": "public/assets/sprites/leaders/alexander-lukashenko.png"
+    },
+    {
+      "slug": "alexander-lukashenko",
+      "kind": "Room",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-20065d37-fcac-4d52-b787-323d88451c23.png",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room background, very wide 2048x872 composition. Realistic oil painting with fine visible brushwork, warm muted colors, natural window light. Alexander Lukashenko, older Belarusian president, receding gray hair, distinctive gray mustache, dark formal suit and burgundy tie, seated full body in an official government office on the RIGHT third of image. Left half is dark quiet paneled office, maps and books, uncluttered space for dialogue UI. Modern Minsk presidential office, Belarus current red and green flag with white and red ornamental hoist. No other people, no text, no watermark.",
+      "destination": "public/assets/sprites/leaders/alexander-lukashenko-room.webp"
+    },
+    {
+      "slug": "josip-broz-tito",
+      "kind": "",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-dd99f90e-1e4a-45de-9463-bee79b58a5c1.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square 1024x1024 oil-painted bust portrait of Josip Broz Tito in his 1950s, swept back gray hair, clean shaven, broad face, Yugoslav marshal's olive uniform with restrained gold insignia. Historically recognizable likeness, dignified neutral expression, three-quarter shoulders facing viewer, head and upper torso fill frame. Realistic painterly anatomy, visible fine brush strokes, warm muted ochre brown painted background, soft directional lighting. Opaque background, no transparency, no border, no text, no watermark. Match traditional museum oil portrait game art.",
+      "destination": "public/assets/sprites/leaders/josip-broz-tito.png"
+    },
+    {
+      "slug": "josip-broz-tito",
+      "kind": "Room",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-969fcdbb-5754-4580-8e17-a0f0fbf29895.png",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room background, very wide 2048x872 composition. Realistic oil painting with fine visible brushwork, warm muted colors, natural window light. Josip Broz Tito in his 1950s, swept back gray hair, clean shaven, broad face, Yugoslav marshal's olive uniform with restrained gold insignia, seated full body in an official government office on the RIGHT third of image. Left half is dark quiet paneled office, maps and books, uncluttered space for dialogue UI. 1950s Belgrade office, blue white red horizontal Yugoslav flag with central gold edged red star. No other people, no text, no watermark.",
+      "destination": "public/assets/sprites/leaders/josip-broz-tito-room.webp"
+    },
+    {
+      "slug": "antonin-zapotocky",
+      "kind": "",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-3c3e9cd7-a54e-4b76-9ee1-46745b8fce7b.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square 1024x1024 oil-painted bust portrait of Antonín Zápotocký circa 1953, elderly Czechoslovak president, round broad face, receding short gray hair, small gray mustache, dark 1950s suit and sober tie. Historically recognizable likeness, dignified neutral expression, three-quarter shoulders facing viewer, head and upper torso fill frame. Realistic painterly anatomy, visible fine brush strokes, warm muted ochre brown painted background, soft directional lighting. Opaque background, no transparency, no border, no text, no watermark. Match traditional museum oil portrait game art.",
+      "destination": "public/assets/sprites/leaders/antonin-zapotocky.png"
+    },
+    {
+      "slug": "antonin-zapotocky",
+      "kind": "Room",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-7368f2ca-9422-4275-bab8-2933c8f8c998.png",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room background, very wide 2048x872 composition. Realistic oil painting with fine visible brushwork, warm muted colors, natural window light. Antonín Zápotocký circa 1953, elderly Czechoslovak president, round broad face, receding short gray hair, small gray mustache, dark 1950s suit and sober tie, seated full body in an official government office on the RIGHT third of image. Left half is dark quiet paneled office, maps and books, uncluttered space for dialogue UI. 1953 Prague Castle presidential office, period furniture, Czechoslovak white over red flag with blue hoist triangle, no modern technology. No other people, no text, no watermark.",
+      "destination": "public/assets/sprites/leaders/antonin-zapotocky-room.webp"
+    }
+  ]
+}

@@ -52,6 +52,9 @@ export const NATION_DEFINITIONS: readonly NationDefinition[] = [
   {"id": "nation_thailand", "name": "Thailand", "color": "#a51931", "secondaryColor": "#2d2a4a", "currencyName": "Baht", "currencySymbol": "฿", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/thailand.png"},
   {"id": "nation_south_korea", "name": "South Korea", "color": "#0047a0", "secondaryColor": "#ffffff", "currencyName": "South Korean Won", "currencySymbol": "₩", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/south-korea.png"},
   {"id": "nation_north_korea", "name": "North Korea", "color": "#ed1c27", "secondaryColor": "#024fa2", "currencyName": "North Korean Won", "currencySymbol": "₩", "audioPlaylistNationId": "nation_japan", "flagImage": "/assets/sprites/flags/north-korea.png"},
+  {"id": "nation_belarus", "name": "Belarus", "color": "#71933c", "secondaryColor": "#c83142", "currencyName": "Belarusian Ruble", "currencySymbol": "Br", "audioPlaylistNationId": "nation_russia"},
+  {"id": "nation_yugoslavia", "name": "Yugoslavia", "color": "#6866a8", "secondaryColor": "#d33b40", "currencyName": "Yugoslav Dinar", "currencySymbol": "din", "audioPlaylistNationId": "nation_poland"},
+  {"id": "nation_czechoslovakia", "name": "Czechoslovakia", "color": "#7097ae", "secondaryColor": "#c52c39", "currencyName": "Czechoslovak Koruna", "currencySymbol": "Kčs", "audioPlaylistNationId": "nation_poland"},
 ];
 
 export function getNationDefinitionById(nationId: string): NationDefinition | undefined {

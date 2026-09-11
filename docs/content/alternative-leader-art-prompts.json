@@ -1,0 +1,383 @@
+{
+  "tool": "Built-in image_gen",
+  "assets": [
+    {
+      "id": "frederick_barbarossa",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/frederick-barbarossa.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Frederick Barbarossa, mature medieval emperor, red beard, wavy red-brown hair, understated imperial crown and red cloak over mail. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-4cc20bc0-1f29-4ac3-920a-3466fd8ff644.png"
+    },
+    {
+      "id": "frederick_barbarossa",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/frederick-barbarossa-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Frederick Barbarossa, mature medieval emperor, red beard, wavy red-brown hair, understated imperial crown and red cloak over mail, seated on RIGHT third, in 12th-century imperial stone hall with Romanesque arches, imperial eagle tapestry. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-17283405-53bd-4ab3-b6d1-d90d03eb6f3e.png"
+    },
+    {
+      "id": "mindaugas",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/mindaugas.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Mindaugas, mature medieval Lithuanian king, brown beard, simple gold crown, fur-trimmed burgundy cloak. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-d2637659-35e3-4d63-a0ca-4854e0c3809b.png"
+    },
+    {
+      "id": "mindaugas",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/mindaugas-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Mindaugas, mature medieval Lithuanian king, brown beard, simple gold crown, fur-trimmed burgundy cloak, seated on RIGHT third, in 13th-century Lithuanian timber and stone royal hall, Baltic woven textiles. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-4af0bc1e-c5b1-497e-adf3-ce3fe7398b24.png"
+    },
+    {
+      "id": "alexander_nevsky",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/alexander-nevsky.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Alexander Nevsky, medieval Rus prince, brown beard, conical steel helmet, mail and deep blue cloak. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-c6d340c3-d40b-48e6-b2c4-d5d623094a1e.png"
+    },
+    {
+      "id": "alexander_nevsky",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/alexander-nevsky-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Alexander Nevsky, medieval Rus prince, brown beard, conical steel helmet, mail and deep blue cloak, seated on RIGHT third, in 13th-century Novgorod timber princely hall, Orthodox icon and river visible through window. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-76e32b90-7d92-482e-9ead-af90e62582ca.png"
+    },
+    {
+      "id": "mikhail_gorbachev",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/mikhail-gorbachev.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Mikhail Gorbachev circa 1988, balding head with distinctive red birthmark on forehead, clean shaven, dark gray suit, burgundy tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-bae1a01b-94e3-4cd2-af7d-94330facb71a.png"
+    },
+    {
+      "id": "mikhail_gorbachev",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/mikhail-gorbachev-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Mikhail Gorbachev circa 1988, balding head with distinctive red birthmark on forehead, clean shaven, dark gray suit, burgundy tie, seated on RIGHT third, in late-1980s Soviet Kremlin government office, red Soviet flag, books and maps. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-c648e532-54c1-407f-b3de-18607307fcee.png"
+    },
+    {
+      "id": "suleiman_the_magnificent",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/suleiman-the-magnificent.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Suleiman the Magnificent in middle age, long narrow face, arched nose, neatly trimmed dark beard, large white Ottoman turban, luxurious restrained kaftan. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-01885794-a446-4777-beea-fea7c1f91ed0.png"
+    },
+    {
+      "id": "suleiman_the_magnificent",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/suleiman-the-magnificent-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Suleiman the Magnificent in middle age, long narrow face, arched nose, neatly trimmed dark beard, large white Ottoman turban, luxurious restrained kaftan, seated on RIGHT third, in 16th-century Ottoman palace study, Iznik tilework, calligraphic art without legible lettering. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-eaa971a3-c90a-41c7-8e7e-eac0f46e1d19.png"
+    },
+    {
+      "id": "mohammed_v",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/mohammed-v.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Mohammed V of Morocco, mature Moroccan monarch, fine mustache, red fez and white traditional djellaba. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-0a6084be-4ac3-45e3-9378-e84e8ae37482.png"
+    },
+    {
+      "id": "mohammed_v",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/mohammed-v-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Mohammed V of Morocco, mature Moroccan monarch, fine mustache, red fez and white traditional djellaba, seated on RIGHT third, in 1950s Moroccan royal office, carved cedar and zellij tiles, red flag with green five-pointed star. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-e66f48c8-23c3-42dd-bbff-56ca1299e7c2.png"
+    },
+    {
+      "id": "tsai_ing_wen",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/tsai-ing-wen.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Tsai Ing-wen, Taiwanese woman in her sixties, recognizable short straight black bob, rectangular eyeglasses, navy blazer over white blouse. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-d2a0fb6c-202f-497f-9299-0ec122ca8cc6.png"
+    },
+    {
+      "id": "tsai_ing_wen",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/tsai-ing-wen-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Tsai Ing-wen, Taiwanese woman in her sixties, recognizable short straight black bob, rectangular eyeglasses, navy blazer over white blouse, seated on RIGHT third, in modern Taipei presidential office, Taiwan national flag and books, technology industry skyline. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-67faafa5-7f15-4058-97d0-dc9d0c0d981a.png"
+    },
+    {
+      "id": "sundiata_keita",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/sundiata-keita.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Sundiata Keita, original historically inspired thirteenth-century Mandinka ruler, dark skin, strong mature face, short beard, woven regal robes and leather military fittings, no claim of exact likeness. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-6287daa8-e58c-4ce7-9d92-97f1048ed6c8.png"
+    },
+    {
+      "id": "sundiata_keita",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/sundiata-keita-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Sundiata Keita, original historically inspired thirteenth-century Mandinka ruler, dark skin, strong mature face, short beard, woven regal robes and leather military fittings, no claim of exact likeness, seated on RIGHT third, in medieval Mali royal audience hall, earthen architecture and carved timber, woven textiles. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-5338b1f3-c47f-4f63-8bb9-9aa6ac3e7299.png"
+    },
+    {
+      "id": "kublai_khan",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/kublai-khan.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Kublai Khan, mature Mongol emperor, broad face, sparse mustache and beard, traditional white fur-trimmed Yuan imperial hat and robe. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-d15e4bf1-41a8-4cda-b7b1-d66fb570c766.png"
+    },
+    {
+      "id": "kublai_khan",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/kublai-khan-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Kublai Khan, mature Mongol emperor, broad face, sparse mustache and beard, traditional white fur-trimmed Yuan imperial hat and robe, seated on RIGHT third, in 13th-century Yuan palace study, red timber columns and carved screens, scrolls. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-521c4cb2-9d62-4977-9676-9cd75debf350.png"
+    },
+    {
+      "id": "tokugawa_ieyasu",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/tokugawa-ieyasu.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Tokugawa Ieyasu, older Japanese shogun, broad face, thin mustache, black eboshi and formal dark silk robes. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-d99bf31a-14d5-4224-b4f5-159e53a5c49e.png"
+    },
+    {
+      "id": "tokugawa_ieyasu",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/tokugawa-ieyasu-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Tokugawa Ieyasu, older Japanese shogun, broad face, thin mustache, black eboshi and formal dark silk robes, seated on RIGHT third, in early seventeenth-century Japanese castle chamber, tatami, golden folding screen and Tokugawa triple hollyhock crest. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-45355636-faa2-403c-878f-63e3b418b124.png"
+    },
+    {
+      "id": "anne_bonny",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/anne-bonny.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Anne Bonny, historically inspired adult Irish woman pirate in her thirties, auburn hair, determined expression, weathered navy coat over linen shirt, practical early-eighteenth-century seafaring clothes, no fantasy or sexualized costume. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-7a945a5c-2008-4282-9858-a5f314751ad0.png"
+    },
+    {
+      "id": "anne_bonny",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/anne-bonny-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Anne Bonny, historically inspired adult Irish woman pirate in her thirties, auburn hair, determined expression, weathered navy coat over linen shirt, practical early-eighteenth-century seafaring clothes, no fantasy or sexualized costume, seated on RIGHT third, in early-eighteenth-century pirate captain's cabin, charts, sea visible through stern windows. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-8f05d14b-8885-4d2d-af92-1cc2fccfda7b.png"
+    },
+    {
+      "id": "urho_kekkonen",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/urho-kekkonen.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Urho Kekkonen, older Finnish president, bald head, large round eyeglasses, clean shaven, dark suit and restrained tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-fc79b6cf-6800-4f03-9fcb-d8542525361c.png"
+    },
+    {
+      "id": "urho_kekkonen",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/urho-kekkonen-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Urho Kekkonen, older Finnish president, bald head, large round eyeglasses, clean shaven, dark suit and restrained tie, seated on RIGHT third, in 1960s Finnish presidential office, Nordic wood furnishings and white flag with blue cross. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-69c5b71d-34a0-4a31-887e-ae7ea8375f4e.png"
+    },
+    {
+      "id": "stephen_harper",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/stephen-harper.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Stephen Harper, Canadian prime minister in his fifties, recognizable neat gray hair, clean shaven, navy suit and blue tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-1a57064d-9e1b-478f-bf0c-9c65d9ed9aa4.png"
+    },
+    {
+      "id": "stephen_harper",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/stephen-harper-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Stephen Harper, Canadian prime minister in his fifties, recognizable neat gray hair, clean shaven, navy suit and blue tie, seated on RIGHT third, in 2010s Canadian prime minister's office, red-white maple leaf flag, Ottawa view. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-1078e14e-610c-479c-9100-3f8bb75db81e.png"
+    },
+    {
+      "id": "vicente_fox",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/vicente-fox.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Vicente Fox, Mexican president in his sixties, tall lean face, dark graying hair, thick mustache, dark suit and sober tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-cc064a8f-fcf2-479b-8c1e-6bb295a61c33.png"
+    },
+    {
+      "id": "vicente_fox",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/vicente-fox-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Vicente Fox, Mexican president in his sixties, tall lean face, dark graying hair, thick mustache, dark suit and sober tie, seated on RIGHT third, in 2000s Mexican presidential office, Mexican green white red flag with central national emblem. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-232cb834-8bec-41a2-a271-32a461c86eaf.png"
+    },
+    {
+      "id": "juan_peron",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/juan-peron.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Juan Perón circa 1950, Argentine president, broad face, slicked-back dark hair, clean shaven, dark suit with light blue and white presidential sash. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-7ca49e1b-4e6a-4210-915a-361c16bfe4f8.png"
+    },
+    {
+      "id": "juan_peron",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/juan-peron-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Juan Perón circa 1950, Argentine president, broad face, slicked-back dark hair, clean shaven, dark suit with light blue and white presidential sash, seated on RIGHT third, in 1950s Argentine presidential office, light blue-white-light blue national flag with sun. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-8e83321e-30a3-4d04-a5f2-934dc756d257.png"
+    },
+    {
+      "id": "petro_poroshenko",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/petro-poroshenko.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Petro Poroshenko, Ukrainian president in his fifties, short gray hair, broad face, clean shaven, navy suit and burgundy tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-45d67228-898d-4404-960f-d958e4249f44.png"
+    },
+    {
+      "id": "petro_poroshenko",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/petro-poroshenko-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Petro Poroshenko, Ukrainian president in his fifties, short gray hair, broad face, clean shaven, navy suit and burgundy tie, seated on RIGHT third, in 2010s Kyiv presidential office, blue-yellow flag and trident emblem. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-138f6755-df12-4d95-870c-83b320e81413.png"
+    },
+    {
+      "id": "mohammad_reza_pahlavi",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/mohammad-reza-pahlavi.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Mohammad Reza Pahlavi in middle age, swept-back dark graying hair, clean shaven, dark formal suit and tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-53242c97-1df0-4ce4-a944-f28748878ff7.png"
+    },
+    {
+      "id": "mohammad_reza_pahlavi",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/mohammad-reza-pahlavi-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Mohammad Reza Pahlavi in middle age, swept-back dark graying hair, clean shaven, dark formal suit and tie, seated on RIGHT third, in 1960s Iranian royal office, restrained Persian furnishings, green white red Lion and Sun flag. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-592b71cd-44f4-453e-989e-0eb396e671dc.png"
+    },
+    {
+      "id": "faisal_i",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/faisal-i.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Faisal I of Iraq, lean middle-aged Arab monarch, thin mustache and short pointed beard, white keffiyeh with black agal and dark bisht. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-26837d08-f8f3-40a9-b4b3-11a0c90ef3e9.png"
+    },
+    {
+      "id": "faisal_i",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/faisal-i-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Faisal I of Iraq, lean middle-aged Arab monarch, thin mustache and short pointed beard, white keffiyeh with black agal and dark bisht, seated on RIGHT third, in 1920s Iraqi royal office, carved wooden desk, period Hashemite Iraqi flag. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-f9e035b0-8a28-4ac1-9692-a7d4235e2f30.png"
+    },
+    {
+      "id": "yitzhak_rabin",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/yitzhak-rabin.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Yitzhak Rabin circa 1994, elderly Israeli prime minister, short silver hair, deeply lined face, clean shaven, dark suit and blue tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-b4f0bf1c-a757-4894-bcb1-e5e5d027b5bf.png"
+    },
+    {
+      "id": "yitzhak_rabin",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/yitzhak-rabin-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Yitzhak Rabin circa 1994, elderly Israeli prime minister, short silver hair, deeply lined face, clean shaven, dark suit and blue tie, seated on RIGHT third, in 1990s Israeli prime minister's office, white blue Star of David flag. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-3aa8d8b6-a9d8-4a1e-a4e2-e99fe12c7c12.png"
+    },
+    {
+      "id": "mustafa_kemal_ataturk",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/mustafa-kemal-ataturk.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Mustafa Kemal Atatürk in his forties, sharp cheekbones, light eyes, neatly combed light brown hair, clean shaven, 1930s dark three-piece suit. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-543ce913-a539-4907-b151-82f5ce811c46.png"
+    },
+    {
+      "id": "mustafa_kemal_ataturk",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/mustafa-kemal-ataturk-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Mustafa Kemal Atatürk in his forties, sharp cheekbones, light eyes, neatly combed light brown hair, clean shaven, 1930s dark three-piece suit, seated on RIGHT third, in 1930s Ankara presidential office, red flag with white crescent and star, maps and books. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-62f25b04-e91e-46fa-b1e7-70ff2f433455.png"
+    },
+    {
+      "id": "faisal_bin_abdulaziz",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/faisal-bin-abdulaziz.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of King Faisal bin Abdulaziz Al Saud, older Saudi monarch, long angular face, mustache and trimmed gray beard, white ghutra with black agal and gold-edged dark bisht. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-87396a31-967b-453c-b833-5874ab317dbc.png"
+    },
+    {
+      "id": "faisal_bin_abdulaziz",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/faisal-bin-abdulaziz-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. King Faisal bin Abdulaziz Al Saud, older Saudi monarch, long angular face, mustache and trimmed gray beard, white ghutra with black agal and gold-edged dark bisht, seated on RIGHT third, in 1960s Saudi royal office, traditional textiles, carved furniture and muted green drapery. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-a7dcfa02-5ce0-4a96-9fc5-ba0479585eb9.png"
+    },
+    {
+      "id": "thaksin_shinawatra",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/thaksin-shinawatra.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Thaksin Shinawatra, Thai prime minister in his fifties, neatly combed dark hair, clean shaven, navy suit and red tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-632b284d-0a24-4df7-bde1-8ede5a8bdc79.png"
+    },
+    {
+      "id": "thaksin_shinawatra",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/thaksin-shinawatra-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Thaksin Shinawatra, Thai prime minister in his fifties, neatly combed dark hair, clean shaven, navy suit and red tie, seated on RIGHT third, in 2000s Thai government office, Thai red white blue white red flag. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-79e83a3c-ae7c-4170-92e5-4e02aaa1eee1.png"
+    },
+    {
+      "id": "park_chung_hee",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/park-chung-hee.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Park Chung Hee, South Korean president in his fifties, lean angular face, short combed black hair, clean shaven, sober dark suit. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-02513c3c-25f4-43c5-80c8-c847bf1087a0.png"
+    },
+    {
+      "id": "park_chung_hee",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/park-chung-hee-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Park Chung Hee, South Korean president in his fifties, lean angular face, short combed black hair, clean shaven, sober dark suit, seated on RIGHT third, in 1970s South Korean presidential office, South Korean flag, industrial development charts without legible text. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-e4524110-fe68-4ce5-a316-9299f55c3793.png"
+    },
+    {
+      "id": "han_seo_jin",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/han-seo-jin.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Han Seo-jin, entirely fictional North Korean woman reform leader created for Epoch, Korean woman around forty-five, original facial features not based on any real person, shoulder-length dark hair tucked behind ears, calm focused expression, simple charcoal blazer and muted blue blouse. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-6bc4e412-a3ea-4cef-b15a-e3c64ddf1acc.png"
+    },
+    {
+      "id": "han_seo_jin",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/han-seo-jin-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Han Seo-jin, entirely fictional North Korean woman reform leader created for Epoch, Korean woman around forty-five, original facial features not based on any real person, shoulder-length dark hair tucked behind ears, calm focused expression, simple charcoal blazer and muted blue blouse, seated on RIGHT third, in fictional contemporary North Korean civilian reconstruction office, modest desk, open books, Pyongyang skyline, no portraits of real leaders, no party emblems. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-100b71bd-3bdb-43d3-9aeb-b1dfc58eb16e.png"
+    },
+    {
+      "id": "sviatlana_tsikhanouskaya",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/sviatlana-tsikhanouskaya.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Sviatlana Tsikhanouskaya, Belarusian opposition political figure in her forties, recognizable light brown shoulder-length hair, composed expression, dark blazer and white blouse. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-23cd06d4-b81b-47e9-9ec7-9629a3301759.png"
+    },
+    {
+      "id": "sviatlana_tsikhanouskaya",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/sviatlana-tsikhanouskaya-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Sviatlana Tsikhanouskaya, Belarusian opposition political figure in her forties, recognizable light brown shoulder-length hair, composed expression, dark blazer and white blouse, seated on RIGHT third, in contemporary Belarusian civilian government office, white-red-white historical Belarusian flag and books. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-71d1e472-3887-4c85-8de3-c38bb509f631.png"
+    },
+    {
+      "id": "peter_ii_of_yugoslavia",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/peter-ii-of-yugoslavia.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Peter II of Yugoslavia circa 1944, young adult monarch, dark neatly side-parted hair, clean shaven, Yugoslav royal military uniform. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-5ee9860c-2c42-4463-bced-cf48e71fb76e.png"
+    },
+    {
+      "id": "peter_ii_of_yugoslavia",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/peter-ii-of-yugoslavia-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Peter II of Yugoslavia circa 1944, young adult monarch, dark neatly side-parted hair, clean shaven, Yugoslav royal military uniform, seated on RIGHT third, in 1940s Yugoslav royal government office, blue white red tricolor and royal crown emblem. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-a835d78b-bab8-460a-9618-13c0284c6046.png"
+    },
+    {
+      "id": "vaclav_havel",
+      "kind": "portrait",
+      "destination": "public/assets/sprites/leaders/vaclav-havel.png",
+      "prompt": "Use case: stylized-concept. Epoch strategy game leader portrait. Square oil-painted bust portrait of Václav Havel circa 1990, Czech playwright and Czechoslovak president, light brown graying hair, distinctive small mustache, dark suit and simple tie. Historically recognizable game-appropriate likeness unless explicitly fictional. Head and upper shoulders fill the square, three-quarter pose facing viewer. Realistic anatomy, traditional museum portrait with visible fine brushstrokes, warm muted ochre-brown painted backdrop, soft directional light, dignified neutral expression. Fully opaque background matching existing Epoch portraits, no border, no text, no watermark. Final use 416x416.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-1bbae80c-a491-424b-83fa-331f4204e4bc.png"
+    },
+    {
+      "id": "vaclav_havel",
+      "kind": "room",
+      "destination": "public/assets/sprites/leaders/vaclav-havel-room.webp",
+      "prompt": "Use case: historical-scene. Epoch strategy game diplomacy room, very wide 2048x872 composition. Realistic oil painting with fine brushwork and warm muted lighting. Václav Havel circa 1990, Czech playwright and Czechoslovak president, light brown graying hair, distinctive small mustache, dark suit and simple tie, seated on RIGHT third, in 1990 Prague Castle presidential study, Czechoslovak white-red flag with blue triangle, books and theater manuscript pages without readable text. Left half dark, quiet, uncluttered space for dialogue overlay. Historically appropriate decor, subject clearly recognizable unless fictional. No other people, no labels, no watermark. Full room scene, no closeup.",
+      "source": "/home/harri/.codex/generated_images/01a08f04-7697-7882-a4e2-db78c7a89ca8/exec-b05dc551-df77-49ed-b6cb-3e7689dd096c.png"
+    }
+  ]
+}

@@ -39,9 +39,10 @@
     "generate-natural-resource-manifest": "tsx scripts/generateNaturalResourceManifest.ts",
     "preview": "vite preview",
     "test:opportunism": "node --import tsx --test tools/opportunism.test.ts tools/aiWarDeclarationDialogue.test.ts tools/gossipFlavorEvents.test.ts tools/gossipInsultExpansion.test.ts tools/leaderConfiguration.test.ts",
-    "test:leader-editor": "node --import tsx --test tools/leaderConfiguration.test.ts tools/multipleLeaders.test.ts tools/charlesDeGaulleLeader.test.ts tools/adolfHitlerLeader.test.ts tools/modernAlternativeLeaders.test.ts tools/fourNewNations.test.ts tools/middleEasternNations.test.ts",
+    "test:leader-editor": "node --import tsx --test tools/leaderConfiguration.test.ts tools/multipleLeaders.test.ts tools/charlesDeGaulleLeader.test.ts tools/adolfHitlerLeader.test.ts tools/modernAlternativeLeaders.test.ts tools/fourNewNations.test.ts tools/middleEasternNations.test.ts tools/centralEasternEuropeanNations.test.ts tools/rosterAlternativeLeaders.test.ts",
     "test:impulsive-bully": "node --import tsx --test tools/impulsiveBully.test.ts tools/opportunism.test.ts tools/economicPressure.test.ts tools/economicPressureAI.test.ts tools/leaderConfiguration.test.ts tools/multipleLeaders.test.ts tools/gossipFlavorEvents.test.ts tools/newspaperSystem.test.ts",
-    "test:new-nations": "node --import tsx --test tools/fourNewNations.test.ts tools/middleEasternNations.test.ts",
+    "test:new-nations": "node --import tsx --test tools/fourNewNations.test.ts tools/middleEasternNations.test.ts tools/centralEasternEuropeanNations.test.ts tools/rosterAlternativeLeaders.test.ts",
+    "test:roster-alternatives": "node --import tsx tools/rosterAlternativeLeaders.test.ts",
     "test:air": "node --import tsx tools/airOperations.test.ts",
     "test:renewables": "node --import tsx tools/renewableEnvironment.test.ts"
   },

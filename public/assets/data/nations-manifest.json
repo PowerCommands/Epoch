@@ -18,6 +18,41 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/javier-milei.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_juan_peron",
+          "leaderName": "Juan Perón",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/juan-peron.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_belarus",
+      "nationName": "Belarus",
+      "color": "#71933c",
+      "secondaryColor": "#c83142",
+      "currencyName": "Belarusian Ruble",
+      "currencySymbol": "Br",
+      "leaderId": "leader_alexander_lukashenko",
+      "leaderName": "Alexander Lukashenko",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/alexander-lukashenko.png",
+      "leaders": [
+        {
+          "leaderId": "leader_alexander_lukashenko",
+          "leaderName": "Alexander Lukashenko",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/alexander-lukashenko.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_sviatlana_tsikhanouskaya",
+          "leaderName": "Sviatlana Tsikhanouskaya",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/sviatlana-tsikhanouskaya.png",
+          "isDefault": false
         }
       ]
     },
@@ -67,6 +102,13 @@
           "leaderTitle": "Prime Minister",
           "leaderImage": "/assets/sprites/leaders/justin-trudeau.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_stephen_harper",
+          "leaderName": "Stephen Harper",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/stephen-harper.png",
+          "isDefault": false
         }
       ]
     },
@@ -94,6 +136,34 @@
           "leaderName": "Mao Zedong",
           "leaderTitle": "Chairman",
           "leaderImage": "/assets/sprites/leaders/mao-zedong.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_czechoslovakia",
+      "nationName": "Czechoslovakia",
+      "color": "#7097ae",
+      "secondaryColor": "#c52c39",
+      "currencyName": "Czechoslovak Koruna",
+      "currencySymbol": "Kčs",
+      "leaderId": "leader_antonin_zapotocky",
+      "leaderName": "Antonín Zápotocký",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/antonin-zapotocky.png",
+      "leaders": [
+        {
+          "leaderId": "leader_antonin_zapotocky",
+          "leaderName": "Antonín Zápotocký",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/antonin-zapotocky.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_vaclav_havel",
+          "leaderName": "Václav Havel",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/vaclav-havel.png",
           "isDefault": false
         }
       ]
@@ -207,6 +277,13 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/alexander-stubb.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_urho_kekkonen",
+          "leaderName": "Urho Kekkonen",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/urho-kekkonen.png",
+          "isDefault": false
         }
       ]
     },
@@ -298,6 +375,13 @@
           "leaderTitle": "Holy Roman Emperor",
           "leaderImage": "/assets/sprites/leaders/sigismund.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_frederick_barbarossa",
+          "leaderName": "Frederick Barbarossa",
+          "leaderTitle": "Holy Roman Emperor",
+          "leaderImage": "/assets/sprites/leaders/frederick-barbarossa.png",
+          "isDefault": false
         }
       ]
     },
@@ -347,6 +431,13 @@
           "leaderTitle": "Supreme Leader",
           "leaderImage": "/assets/sprites/leaders/ruhollah-khomeini.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mohammad_reza_pahlavi",
+          "leaderName": "Mohammad Reza Pahlavi",
+          "leaderTitle": "Shah",
+          "leaderImage": "/assets/sprites/leaders/mohammad-reza-pahlavi.png",
+          "isDefault": false
         }
       ]
     },
@@ -368,6 +459,13 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/saddam-hussein.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_faisal_i",
+          "leaderName": "Faisal I",
+          "leaderTitle": "King",
+          "leaderImage": "/assets/sprites/leaders/faisal-i.png",
+          "isDefault": false
         }
       ]
     },
@@ -389,6 +487,13 @@
           "leaderTitle": "Prime Minister",
           "leaderImage": "/assets/sprites/leaders/benjamin-netanyahu.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_yitzhak_rabin",
+          "leaderName": "Yitzhak Rabin",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/yitzhak-rabin.png",
+          "isDefault": false
         }
       ]
     },
@@ -438,6 +543,13 @@
           "leaderTitle": "Daimyo of Owari",
           "leaderImage": "/assets/sprites/leaders/oda-nobunaga.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_tokugawa_ieyasu",
+          "leaderName": "Tokugawa Ieyasu",
+          "leaderTitle": "Shogun",
+          "leaderImage": "/assets/sprites/leaders/tokugawa-ieyasu.png",
+          "isDefault": false
         }
       ]
     },
@@ -459,6 +571,13 @@
           "leaderTitle": "Grand Duke of Lithuania",
           "leaderImage": "/assets/sprites/leaders/vytautas-the-great.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mindaugas",
+          "leaderName": "Mindaugas",
+          "leaderTitle": "King",
+          "leaderImage": "/assets/sprites/leaders/mindaugas.png",
+          "isDefault": false
         }
       ]
     },
@@ -480,6 +599,13 @@
           "leaderTitle": "Emperor Mansa Musa",
           "leaderImage": "/assets/sprites/leaders/mansa-musa.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_sundiata_keita",
+          "leaderName": "Sundiata Keita",
+          "leaderTitle": "Mansa",
+          "leaderImage": "/assets/sprites/leaders/sundiata-keita.png",
+          "isDefault": false
         }
       ]
     },
@@ -501,6 +627,13 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/claudia-sheinbaum-pardo.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_vicente_fox",
+          "leaderName": "Vicente Fox",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/vicente-fox.png",
+          "isDefault": false
         }
       ]
     },
@@ -522,6 +655,13 @@
           "leaderTitle": "Great Khan of the Mongols",
           "leaderImage": "/assets/sprites/leaders/genghis-khan.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_kublai_khan",
+          "leaderName": "Kublai Khan",
+          "leaderTitle": "Great Khan",
+          "leaderImage": "/assets/sprites/leaders/kublai-khan.png",
+          "isDefault": false
         }
       ]
     },
@@ -543,6 +683,13 @@
           "leaderTitle": "Sultan of Morocco",
           "leaderImage": "/assets/sprites/leaders/abu-al-hasan.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mohammed_v",
+          "leaderName": "Mohammed V",
+          "leaderTitle": "King",
+          "leaderImage": "/assets/sprites/leaders/mohammed-v.png",
+          "isDefault": false
         }
       ]
     },
@@ -565,6 +712,13 @@
           "leaderTitle": "General Secretary",
           "leaderImage": "/assets/sprites/leaders/kim-jong-un.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_han_seo_jin",
+          "leaderName": "Han Seo-jin",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/han-seo-jin.png",
+          "isDefault": false
         }
       ]
     },
@@ -586,6 +740,13 @@
           "leaderTitle": "Posadnitsa of Novgorod",
           "leaderImage": "/assets/sprites/leaders/marfa-boretskaya.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_alexander_nevsky",
+          "leaderName": "Alexander Nevsky",
+          "leaderTitle": "Prince",
+          "leaderImage": "/assets/sprites/leaders/alexander-nevsky.png",
+          "isDefault": false
         }
       ]
     },
@@ -607,6 +768,13 @@
           "leaderTitle": "Sultan of the Ottoman Empire",
           "leaderImage": "/assets/sprites/leaders/mehmed-i.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_suleiman_the_magnificent",
+          "leaderName": "Suleiman the Magnificent",
+          "leaderTitle": "Sultan",
+          "leaderImage": "/assets/sprites/leaders/suleiman-the-magnificent.png",
+          "isDefault": false
         }
       ]
     },
@@ -628,6 +796,13 @@
           "leaderTitle": "Pirate Lord of the Free Seas",
           "leaderImage": "/assets/sprites/leaders/pirate.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_anne_bonny",
+          "leaderName": "Anne Bonny",
+          "leaderTitle": "Captain",
+          "leaderImage": "/assets/sprites/leaders/anne-bonny.png",
+          "isDefault": false
         }
       ]
     },
@@ -705,6 +880,13 @@
           "leaderTitle": "Crown Prince",
           "leaderImage": "/assets/sprites/leaders/mohammed-bin-salman.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_faisal_bin_abdulaziz",
+          "leaderName": "Faisal bin Abdulaziz Al Saud",
+          "leaderTitle": "King",
+          "leaderImage": "/assets/sprites/leaders/faisal-bin-abdulaziz.png",
+          "isDefault": false
         }
       ]
     },
@@ -727,6 +909,13 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/lee-jae-myung.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_park_chung_hee",
+          "leaderName": "Park Chung Hee",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/park-chung-hee.png",
+          "isDefault": false
         }
       ]
     },
@@ -748,6 +937,13 @@
           "leaderTitle": "General Secretary",
           "leaderImage": "/assets/sprites/leaders/joseph-stalin.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mikhail_gorbachev",
+          "leaderName": "Mikhail Gorbachev",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/mikhail-gorbachev.png",
+          "isDefault": false
         }
       ]
     },
@@ -825,6 +1021,13 @@
           "leaderTitle": "Zheng Chenggong",
           "leaderImage": "/assets/sprites/leaders/koxinga.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_tsai_ing_wen",
+          "leaderName": "Tsai Ing-wen",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/tsai-ing-wen.png",
+          "isDefault": false
         }
       ]
     },
@@ -847,6 +1050,13 @@
           "leaderTitle": "Prime Minister",
           "leaderImage": "/assets/sprites/leaders/anutin-charnvirakul.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_thaksin_shinawatra",
+          "leaderName": "Thaksin Shinawatra",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/thaksin-shinawatra.png",
+          "isDefault": false
         }
       ]
     },
@@ -868,6 +1078,13 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/recep-tayyip-erdogan.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_mustafa_kemal_ataturk",
+          "leaderName": "Mustafa Kemal Atatürk",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/mustafa-kemal-ataturk.png",
+          "isDefault": false
         }
       ]
     },
@@ -889,6 +1106,13 @@
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/volodymyr-zelenskyy.png",
           "isDefault": true
+        },
+        {
+          "leaderId": "leader_petro_poroshenko",
+          "leaderName": "Petro Poroshenko",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/petro-poroshenko.png",
+          "isDefault": false
         }
       ]
     },
@@ -923,6 +1147,34 @@
           "leaderName": "Donald J. Trump",
           "leaderTitle": "President",
           "leaderImage": "/assets/sprites/leaders/donald-j-trump.png",
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "nationId": "nation_yugoslavia",
+      "nationName": "Yugoslavia",
+      "color": "#6866a8",
+      "secondaryColor": "#d33b40",
+      "currencyName": "Yugoslav Dinar",
+      "currencySymbol": "din",
+      "leaderId": "leader_josip_broz_tito",
+      "leaderName": "Josip Broz Tito",
+      "leaderTitle": "President",
+      "leaderImage": "/assets/sprites/leaders/josip-broz-tito.png",
+      "leaders": [
+        {
+          "leaderId": "leader_josip_broz_tito",
+          "leaderName": "Josip Broz Tito",
+          "leaderTitle": "President",
+          "leaderImage": "/assets/sprites/leaders/josip-broz-tito.png",
+          "isDefault": true
+        },
+        {
+          "leaderId": "leader_peter_ii_of_yugoslavia",
+          "leaderName": "Peter II of Yugoslavia",
+          "leaderTitle": "King",
+          "leaderImage": "/assets/sprites/leaders/peter-ii-of-yugoslavia.png",
           "isDefault": false
         }
       ]
