@@ -2716,6 +2716,7 @@ export class GameScene extends Phaser.Scene {
     };
     const revealMapTemporarily = (): void => {
       isMapRevealActive = true;
+      worldAmbientRenderer.refreshVisibility();
       naturalResourceRenderer.rebuildAll();
       unitRenderer.refreshAllVisibility();
       selectionManager.refreshVisibility();
@@ -2723,6 +2724,7 @@ export class GameScene extends Phaser.Scene {
     const clearTemporaryMapReveal = (): void => {
       if (!isMapRevealActive) return;
       isMapRevealActive = false;
+      worldAmbientRenderer.refreshVisibility();
       naturalResourceRenderer.rebuildAll();
       unitRenderer.refreshAllVisibility();
       selectionManager.refreshVisibility();
@@ -2826,11 +2828,12 @@ export class GameScene extends Phaser.Scene {
       canShowUnit,
     );
 
-    new WorldAmbientRenderer(this, tileMap, mapData, cityManager,
+    const worldAmbientRenderer = new WorldAmbientRenderer(this, tileMap, mapData, cityManager,
       (x, y) => isMapRevealActive || !humanNationId || visibilitySystem.isVisible(x, y));
 
     // Re-cull all fog-dependent renderers after a visibility recompute.
     applyFogToRenderers = (): void => {
+      worldAmbientRenderer.refreshVisibility();
       cityRenderer.refreshAllVisibility();
       cityBannerRenderer.refreshAllVisibility();
       unitRenderer.refreshAllVisibility();

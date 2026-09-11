@@ -36,6 +36,7 @@ export class TileMap {
   rebuildTerrain(): void {
     this.shutdown();
     this.render();
+    this.scene.events.emit('terrain-rebuilt');
   }
 
   /** Kartans totala pixelstorlek i världskoordinater. */

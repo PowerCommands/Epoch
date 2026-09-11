@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { TileType, type MapData, type Tile } from '../types/map';
 import type { TileMap } from './TileMap';
 import type { CityManager } from './CityManager';
+import { WaterSurface } from './rendering/WaterSurface';
 
 const BUCKET_SIZE = 256;
 const EDGE_NEIGHBORS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]] as const;
@@ -14,11 +15,13 @@ const seedAt = (x: number, y: number): number => {
   return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
 };
 
-/** Two shared drawing surfaces, no particles, tweens or simulation-state writes.
+/** GPU water on WebGL; original shared Graphics water on Canvas.
+ * Habitation retains its existing shared drawing surface and timing.
  * Spatial buckets contain tile coordinates, so terrain edits remain authoritative.
  * Detail fades away at overview scale; only currently visible tiles have activity.
  */
 export class WorldAmbientRenderer {
+  private readonly waterSurface?: WaterSurface;
   private readonly water: Phaser.GameObjects.Graphics;
   private readonly habitation: Phaser.GameObjects.Graphics;
   private readonly buckets = new Map<string, Tile[]>();
@@ -32,9 +35,12 @@ export class WorldAmbientRenderer {
     private readonly cities: CityManager,
     private readonly canSee: (x: number, y: number) => boolean,
   ) {
+    if (scene.renderer.type === Phaser.WEBGL) {
+      this.waterSurface = new WaterSurface(scene, tileMap, mapData, canSee);
+    }
     this.water = scene.add.graphics().setDepth(1).setName('ambient-water');
     this.habitation = scene.add.graphics().setDepth(16).setName('ambient-habitation');
-    for (const row of mapData.tiles) for (const tile of row) {
+    if (!this.waterSurface) for (const row of mapData.tiles) for (const tile of row) {
       const p = tileMap.tileToWorld(tile.x, tile.y);
       const key = `${Math.floor(p.x / BUCKET_SIZE)},${Math.floor(p.y / BUCKET_SIZE)}`;
       let bucket = this.buckets.get(key);
@@ -60,7 +66,7 @@ export class WorldAmbientRenderer {
     const onScreen = (x: number, y: number): boolean => x >= view.left - margin && x <= view.right + margin
       && y >= view.top - margin && y <= view.bottom + margin;
     const t = this.elapsed / 1000;
-    for (let by = Math.floor((view.top - margin) / BUCKET_SIZE); by <= Math.floor((view.bottom + margin) / BUCKET_SIZE); by++) {
+    if (!this.waterSurface) for (let by = Math.floor((view.top - margin) / BUCKET_SIZE); by <= Math.floor((view.bottom + margin) / BUCKET_SIZE); by++) {
       for (let bx = Math.floor((view.left - margin) / BUCKET_SIZE); bx <= Math.floor((view.right + margin) / BUCKET_SIZE); bx++) {
         for (const coord of this.buckets.get(`${bx},${by}`) ?? []) {
           const tile = this.tileMap.getTileAt(coord.x, coord.y);
@@ -120,9 +126,14 @@ export class WorldAmbientRenderer {
     }
   }
 
+  refreshVisibility(): void {
+    this.waterSurface?.refresh();
+  }
+
   shutdown(): void {
     this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.update, this);
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    this.waterSurface?.destroy();
     this.water.destroy();
     this.habitation.destroy();
     this.buckets.clear();
