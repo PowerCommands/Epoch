@@ -773,8 +773,27 @@
 
       .city-view-placement-button:disabled,
       .city-view-placement-button-disabled {
-        opacity: 0.75;
         cursor: not-allowed;
+        background: rgba(150, 158, 164, 0.16);
+        border-color: rgba(150, 158, 164, 0.38);
+        color: #9aa4a8;
+      }
+
+      .city-view-placement-button:disabled .city-view-production-icon,
+      .city-view-placement-button-disabled .city-view-production-icon {
+        filter: grayscale(0.85);
+        opacity: 0.65;
+      }
+
+      .city-view-placement-button:disabled .city-view-production-cost,
+      .city-view-placement-button-disabled .city-view-production-cost {
+        color: #b6a58a;
+      }
+
+      .city-view-placement-button:disabled .city-view-production-requirement,
+      .city-view-placement-button-disabled .city-view-production-requirement {
+        color: #ef7b63;
+        font-weight: 700;
       }
 
       .city-view-production-button {

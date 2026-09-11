@@ -593,7 +593,9 @@ export class DiplomacyManager {
   releaseVassal(hostNationId: string, vassalNationId: string): VassalReleaseResult | null {
     if (this.vassalHosts.get(vassalNationId) !== hostNationId) return null;
     this.vassalHosts.delete(vassalNationId);
-    const reset = this.applyAmicableRelationshipReset(hostNationId, vassalNationId);
+    const reset = this.applyAmicableRelationshipReset(hostNationId, vassalNationId, {
+      stampPeaceTreaty: true,
+    });
     const result = {
       hostNationId,
       vassalNationId,
@@ -616,8 +618,24 @@ export class DiplomacyManager {
     this.vassalReleasedListeners.push(listener);
   }
 
-  /** Shared Reconciliation reset used by turning points and peaceful release. */
-  applyAmicableRelationshipReset(a: string, b: string): AmicableRelationshipResetResult {
+  /**
+   * Shared Reconciliation reset used by turning points and peaceful release.
+   *
+   * When `options.stampPeaceTreaty` is set the reset also stamps a bilateral
+   * Peace Treaty cooldown (and `lastPeaceProposalTurn`), mirroring the guarantee
+   * a negotiated war-ending peace carries. Zeroing hostility alone does not stop
+   * a dominant former host from re-declaring war on the turn after a vassal buys
+   * its independence: opportunism/bully/reclaim pressure against a weak neighbour
+   * can push the AI war score over the line regardless of affinity, and only an
+   * active peace treaty short-circuits that evaluation. Callers that establish a
+   * fresh peaceful relationship (independence, peaceful release) pass it; callers
+   * that merely soften diplomatic memory between already-peaceful nations do not.
+   */
+  applyAmicableRelationshipReset(
+    a: string,
+    b: string,
+    options: { stampPeaceTreaty?: boolean } = {},
+  ): AmicableRelationshipResetResult {
     const relation = this.getRelation(a, b);
     const affinity = Math.max(relation.affinity, 50);
     this.setMemoryValues(a, b, {
@@ -627,6 +645,17 @@ export class DiplomacyManager {
       hostility: 0,
       affinity,
     });
+    if (options.stampPeaceTreaty) {
+      const currentTurn = this.turnManager?.getCurrentRound()
+        ?? relation.lastPeaceProposalTurn ?? 0;
+      const key = this.pairKey(a, b);
+      const current = this.relations.get(key) ?? createDefaultRelation();
+      this.relations.set(key, {
+        ...current,
+        lastPeaceProposalTurn: currentTurn,
+        peaceTreatyUntilTurn: currentTurn + this.peaceTreatyCooldownTurns,
+      });
+    }
     this.notifyChanged(a, b);
     return {
       previousAffinity: relation.affinity,

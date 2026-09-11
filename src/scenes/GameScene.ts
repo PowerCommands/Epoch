@@ -1567,7 +1567,8 @@ export class GameScene extends Phaser.Scene {
         nationIds: [event.vassalNationId, event.hostNationId],
         category: 'diplomacy',
         message: `${vassalName} purchased independence from ${hostName} for `
-          + `${event.goldTransferred.toLocaleString('en-US')} Gold. Diplomatic relationship values were preserved.`,
+          + `${event.goldTransferred.toLocaleString('en-US')} Gold. Relations were reconciled `
+          + `(hostility cleared, affinity restored).`,
       });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -7920,7 +7921,8 @@ export class GameScene extends Phaser.Scene {
         showDiplomacyModal({
           title: 'Buy Independence',
           message: `Pay ${VASSAL_INDEPENDENCE_COST.toLocaleString('en-US')} Gold to ${targetNation.name} `
-            + 'and become fully independent? Existing diplomatic relationship values will remain unchanged.',
+            + 'and become fully independent? Relations will be reconciled: hostility, fear, suspicion and '
+            + 'distrust are cleared and affinity is restored.',
           accentColor: color,
           confirmLabel: 'Buy Independence',
           cancelLabel: 'Cancel',
@@ -7928,6 +7930,7 @@ export class GameScene extends Phaser.Scene {
             if (!vassalIndependenceSystem.buyIndependence(humanNationIdForDiplomacy)) return;
             showLeaderResponsePopup(targetNationId, 'Independence Purchased', [
               `You are no longer a vassal of ${targetNation.name}.`,
+              'Relations have been reconciled.',
             ]);
             rightPanel?.refreshCurrent();
           },

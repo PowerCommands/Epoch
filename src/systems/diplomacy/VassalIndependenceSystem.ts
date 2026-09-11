@@ -12,6 +12,10 @@ export interface IndependencePurchasedEvent {
   readonly vassalNationId: string;
   readonly hostNationId: string;
   readonly goldTransferred: number;
+  /** Affinity before the amicable reset applied on independence. */
+  readonly previousAffinity: number;
+  /** Affinity after the amicable reset (hostility and other negatives zeroed). */
+  readonly affinity: number;
 }
 
 export interface VassalIndependenceEconomy {
@@ -52,7 +56,26 @@ export class VassalIndependenceSystem {
       this.economy.transferGold(hostNationId, vassalNationId, VASSAL_INDEPENDENCE_COST);
       return null;
     }
-    const event = { vassalNationId, hostNationId, goldTransferred: VASSAL_INDEPENDENCE_COST };
+    // Buying independence reconciles the former host, mirroring a peaceful
+    // release: negative memory (trust/fear/suspicion/hostility) is zeroed,
+    // affinity is lifted, and a bilateral Peace Treaty cooldown is stamped.
+    // Zeroing hostility alone was not enough — a dominant former host could still
+    // re-declare war the very next turn via opportunism/bully/reclaim pressure
+    // against the weak freshly-independent nation and reconquer it, so it appeared
+    // to be a vassal again almost immediately. The peace treaty short-circuits the
+    // AI war evaluation for the cooldown window.
+    const reset = this.diplomacyManager.applyAmicableRelationshipReset(
+      hostNationId,
+      vassalNationId,
+      { stampPeaceTreaty: true },
+    );
+    const event = {
+      vassalNationId,
+      hostNationId,
+      goldTransferred: VASSAL_INDEPENDENCE_COST,
+      previousAffinity: reset.previousAffinity,
+      affinity: reset.affinity,
+    };
     for (const listener of this.purchasedListeners) listener(event);
     return event;
   }

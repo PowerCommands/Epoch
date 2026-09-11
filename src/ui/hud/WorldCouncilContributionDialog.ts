@@ -16,30 +16,79 @@ export interface WorldCouncilContributionDialogState {
 }
 
 const DEPTH = 212;
-const PANEL_WIDTH = 430;
-const PADDING_X = 24;
-const PADDING_Y = 20;
-const BUTTON_HEIGHT = 32;
+const PANEL_WIDTH = 448;
+const PADDING_X = 26;
+const PADDING_Y = 24;
+const BUTTON_HEIGHT = 40;
 const ROW_GAP = 10;
+const BUTTON_GAP = 12;
+const PANEL_RADIUS = 14;
+const BUTTON_RADIUS = 8;
+const CARD_RADIUS = 10;
+const CARD_PADDING = 14;
+const MIN_PERCENT = 1;
+const MAX_PERCENT = 100;
+const GOLD_STEP = 100;
+const GOLD_BIG_STEP = 1000;
+const PERCENT_STEP = 5;
 const HUD_TEXT_RESOLUTION = getHudTextResolution();
 
+// Palette borrowed from the city view / start screen so every dialog reads the same.
+const COLOR_PANEL_TOP = 0x10283e;
+const COLOR_PANEL_BOTTOM = 0x050d16;
+const COLOR_BORDER_GOLD = 0xb88a43;
+const COLOR_CARD_FILL = 0x030c16;
+
+type ButtonVariant = 'adjust' | 'muted' | 'gold' | 'confirm';
+
+interface ButtonStyle {
+  readonly fill: number;
+  readonly fillAlpha: number;
+  readonly hoverFill: number;
+  readonly border: number;
+  readonly borderAlpha: number;
+  readonly textColor: string;
+}
+
+const BUTTON_STYLES: Record<ButtonVariant, ButtonStyle> = {
+  adjust: { fill: 0x183148, fillAlpha: 0.85, hoverFill: 0x28465f, border: COLOR_BORDER_GOLD, borderAlpha: 0.5, textColor: '#eef5f2' },
+  muted: { fill: 0x111f2f, fillAlpha: 0.85, hoverFill: 0x1b3047, border: 0x6f7f8c, borderAlpha: 0.5, textColor: '#cfdae4' },
+  gold: { fill: 0x3a2f18, fillAlpha: 0.9, hoverFill: 0x4a3c1f, border: 0xe8c789, borderAlpha: 0.9, textColor: '#ffe08f' },
+  confirm: { fill: 0x21432c, fillAlpha: 0.92, hoverFill: 0x2c5738, border: 0x7bbf6a, borderAlpha: 0.9, textColor: '#eafce6' },
+};
+
+interface ButtonSpec {
+  readonly label: string;
+  readonly variant: ButtonVariant;
+  readonly fullWidth?: boolean;
+  readonly onClick: () => void;
+}
+
 interface DialogButton {
-  background: Phaser.GameObjects.Rectangle;
-  text: Phaser.GameObjects.Text;
-  hitArea: Phaser.GameObjects.Zone;
+  readonly background: Phaser.GameObjects.Graphics;
+  readonly text: Phaser.GameObjects.Text;
+  readonly hitArea: Phaser.GameObjects.Zone;
+  readonly style: ButtonStyle;
+  x: number;
+  y: number;
+  width: number;
+  hovered: boolean;
 }
 
 export class WorldCouncilContributionDialog {
   private readonly overlay: Phaser.GameObjects.Rectangle;
-  private readonly panel: Phaser.GameObjects.Rectangle;
+  private readonly panel: Phaser.GameObjects.Graphics;
+  private readonly valueCard: Phaser.GameObjects.Graphics;
   private readonly titleText: Phaser.GameObjects.Text;
   private readonly bodyText: Phaser.GameObjects.Text;
   private readonly valueText: Phaser.GameObjects.Text;
   private readonly buttons: DialogButton[] = [];
+  // Buttons laid out top-to-bottom; each entry lists the buttons that share a row.
+  private readonly rows: DialogButton[][] = [];
   private current: WorldCouncilContributionDialogState | null = null;
   private gold = 0;
-  private sciencePercent = 0;
-  private culturePercent = 0;
+  private sciencePercent = MIN_PERCENT;
+  private culturePercent = MIN_PERCENT;
   private effectiveMaxGold = 0;
   private confirmListener: ((offer: WorldCouncilFoundationOffer) => void) | null = null;
 
@@ -53,15 +102,18 @@ export class WorldCouncilContributionDialog {
       .setDepth(DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
-    this.panel = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, PANEL_WIDTH, 10, 0x101923, 0.98))
-      .setOrigin(0, 0)
+    this.panel = addOwned(new Phaser.GameObjects.Graphics(scene))
+      .setDepth(DEPTH + 1)
+      .setScrollFactor(0)
+      .setVisible(false);
+    this.valueCard = addOwned(new Phaser.GameObjects.Graphics(scene))
       .setDepth(DEPTH + 1)
       .setScrollFactor(0)
       .setVisible(false);
     this.titleText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, 'World Council Contributions', {
-      fontFamily: 'sans-serif',
-      fontSize: '15px',
-      color: '#d8bd72',
+      fontFamily: 'Georgia, "Times New Roman", serif',
+      fontSize: '24px',
+      color: '#e8c789',
       fontStyle: 'bold',
     }))
       .setOrigin(0, 0)
@@ -70,9 +122,10 @@ export class WorldCouncilContributionDialog {
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
     this.bodyText = addOwned(new Phaser.GameObjects.Text(scene, 0, 0, '', {
-      fontFamily: 'sans-serif',
+      fontFamily: '"Segoe UI", Arial, sans-serif',
       fontSize: '15px',
-      color: '#f4f1e7',
+      color: '#e6edf3',
+      lineSpacing: 3,
       wordWrap: { width: PANEL_WIDTH - PADDING_X * 2, useAdvancedWrap: true },
     }))
       .setOrigin(0, 0)
@@ -84,6 +137,7 @@ export class WorldCouncilContributionDialog {
       fontFamily: 'monospace',
       fontSize: '15px',
       color: '#f4f1e7',
+      lineSpacing: 4,
     }))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
@@ -91,17 +145,35 @@ export class WorldCouncilContributionDialog {
       .setResolution(HUD_TEXT_RESOLUTION)
       .setVisible(false);
 
-    for (const [label, onClick] of [
-      ['Gold -25', () => this.adjustGold(-25)],
-      ['Gold +25', () => this.adjustGold(25)],
-      ['Science -5%', () => this.adjustScience(-5)],
-      ['Science +5%', () => this.adjustScience(5)],
-      ['Culture -5%', () => this.adjustCulture(-5)],
-      ['Culture +5%', () => this.adjustCulture(5)],
-      ['Confirm', () => this.confirm()],
-      ['Minimum', () => this.minimumContribution()],
-    ] as const) {
-      this.buttons.push(this.createButton(addOwned, label, label === 'Minimum' ? 0x46613d : 0x355f76, onClick));
+    const specs: readonly ButtonSpec[][] = [
+      [
+        { label: 'Gold -1000', variant: 'adjust', onClick: () => this.adjustGold(-GOLD_BIG_STEP) },
+        { label: 'Gold +1000', variant: 'adjust', onClick: () => this.adjustGold(GOLD_BIG_STEP) },
+      ],
+      [
+        { label: 'Gold -100', variant: 'adjust', onClick: () => this.adjustGold(-GOLD_STEP) },
+        { label: 'Gold +100', variant: 'adjust', onClick: () => this.adjustGold(GOLD_STEP) },
+      ],
+      [
+        { label: 'Science -5%', variant: 'adjust', onClick: () => this.adjustScience(-PERCENT_STEP) },
+        { label: 'Science +5%', variant: 'adjust', onClick: () => this.adjustScience(PERCENT_STEP) },
+      ],
+      [
+        { label: 'Culture -5%', variant: 'adjust', onClick: () => this.adjustCulture(-PERCENT_STEP) },
+        { label: 'Culture +5%', variant: 'adjust', onClick: () => this.adjustCulture(PERCENT_STEP) },
+      ],
+      [
+        { label: 'Minimum', variant: 'muted', onClick: () => this.minimumContribution() },
+        { label: 'Maximum', variant: 'gold', onClick: () => this.maximumContribution() },
+      ],
+      [
+        { label: 'Confirm', variant: 'confirm', fullWidth: true, onClick: () => this.confirm() },
+      ],
+    ];
+    for (const rowSpecs of specs) {
+      const row = rowSpecs.map((spec) => this.createButton(addOwned, spec));
+      this.rows.push(row);
+      this.buttons.push(...row);
     }
   }
 
@@ -111,12 +183,12 @@ export class WorldCouncilContributionDialog {
 
   show(state: WorldCouncilContributionDialogState): void {
     this.current = state;
-    this.sciencePercent = clamp(state.currentSciencePercent, 0, 100);
-    this.culturePercent = clamp(state.currentCulturePercent, 0, 100);
+    this.sciencePercent = clamp(state.currentSciencePercent, MIN_PERCENT, MAX_PERCENT);
+    this.culturePercent = clamp(state.currentCulturePercent, MIN_PERCENT, MAX_PERCENT);
     this.effectiveMaxGold = this.getEffectiveMaxGold();
     this.gold = clamp(state.currentGold, 0, this.effectiveMaxGold);
     this.titleText.setText(`${state.organizationName} Contributions`);
-    this.bodyText.setText(`${state.nationName}, choose new ${state.organizationName} contributions. Minimum keeps a symbolic commitment.`);
+    this.bodyText.setText(`${state.nationName}, choose new ${state.organizationName} contributions. Minimum keeps a symbolic commitment; Maximum commits everything allowed.`);
     this.refreshValues();
     this.setVisible(true);
     this.layout();
@@ -135,19 +207,38 @@ export class WorldCouncilContributionDialog {
     const width = this.scene.scale.width;
     const height = this.scene.scale.height;
     this.overlay.setPosition(0, 0).setDisplaySize(width, height);
-    const panelHeight = 332;
+
+    const cardHeight = this.valueText.height + CARD_PADDING * 2;
+    const buttonsHeight = this.rows.length * BUTTON_HEIGHT + (this.rows.length - 1) * ROW_GAP;
+    const panelHeight = PADDING_Y
+      + this.titleText.height + 14
+      + this.bodyText.height + 16
+      + cardHeight + 20
+      + buttonsHeight
+      + PADDING_Y;
+
     const left = Math.round((width - PANEL_WIDTH) / 2);
     const top = Math.round((height - panelHeight) / 2);
-    this.panel.setPosition(left, top).setDisplaySize(PANEL_WIDTH, panelHeight);
-    this.titleText.setPosition(left + PADDING_X, top + PADDING_Y);
-    this.bodyText.setPosition(left + PADDING_X, this.titleText.y + this.titleText.height + 12);
-    this.valueText.setPosition(left + PADDING_X, this.bodyText.y + this.bodyText.height + 16);
 
-    const buttonWidth = Math.floor((PANEL_WIDTH - PADDING_X * 2 - 12) / 2);
-    let y = this.valueText.y + this.valueText.height + 18;
-    for (let i = 0; i < this.buttons.length; i += 2) {
-      this.layoutButton(this.buttons[i], left + PADDING_X, y, buttonWidth);
-      this.layoutButton(this.buttons[i + 1], left + PADDING_X + buttonWidth + 12, y, buttonWidth);
+    this.drawPanel(left, top, panelHeight);
+    this.titleText.setPosition(left + PADDING_X, top + PADDING_Y);
+    this.bodyText.setPosition(left + PADDING_X, this.titleText.y + this.titleText.height + 14);
+
+    const cardTop = this.bodyText.y + this.bodyText.height + 16;
+    const cardWidth = PANEL_WIDTH - PADDING_X * 2;
+    this.drawValueCard(left + PADDING_X, cardTop, cardWidth, cardHeight);
+    this.valueText.setPosition(left + PADDING_X + CARD_PADDING, cardTop + CARD_PADDING);
+
+    const fullWidth = PANEL_WIDTH - PADDING_X * 2;
+    const halfWidth = Math.floor((fullWidth - BUTTON_GAP) / 2);
+    let y = cardTop + cardHeight + 20;
+    for (const row of this.rows) {
+      if (row.length === 1) {
+        this.layoutButton(row[0], left + PADDING_X, y, fullWidth);
+      } else {
+        this.layoutButton(row[0], left + PADDING_X, y, halfWidth);
+        this.layoutButton(row[1], left + PADDING_X + halfWidth + BUTTON_GAP, y, halfWidth);
+      }
       y += BUTTON_HEIGHT + ROW_GAP;
     }
   }
@@ -155,6 +246,7 @@ export class WorldCouncilContributionDialog {
   destroy(): void {
     this.overlay.destroy();
     this.panel.destroy();
+    this.valueCard.destroy();
     this.titleText.destroy();
     this.bodyText.destroy();
     this.valueText.destroy();
@@ -173,14 +265,14 @@ export class WorldCouncilContributionDialog {
   }
 
   private adjustScience(delta: number): void {
-    this.sciencePercent = clamp(this.sciencePercent + delta, 0, 100);
+    this.sciencePercent = clamp(this.sciencePercent + delta, MIN_PERCENT, MAX_PERCENT);
     this.effectiveMaxGold = this.getEffectiveMaxGold();
     this.gold = clamp(this.gold, 0, this.effectiveMaxGold);
     this.refreshValues();
   }
 
   private adjustCulture(delta: number): void {
-    this.culturePercent = clamp(this.culturePercent + delta, 0, 100);
+    this.culturePercent = clamp(this.culturePercent + delta, MIN_PERCENT, MAX_PERCENT);
     this.effectiveMaxGold = this.getEffectiveMaxGold();
     this.gold = clamp(this.gold, 0, this.effectiveMaxGold);
     this.refreshValues();
@@ -195,7 +287,19 @@ export class WorldCouncilContributionDialog {
   }
 
   private minimumContribution(): void {
-    this.confirmListener?.({ gold: 0, sciencePercent: 1, culturePercent: 1 });
+    this.confirmListener?.({ gold: 0, sciencePercent: MIN_PERCENT, culturePercent: MIN_PERCENT });
+  }
+
+  private maximumContribution(): void {
+    if (!this.current) return;
+    const sciencePercent = MAX_PERCENT;
+    const culturePercent = MAX_PERCENT;
+    const maxGold = this.current.getMaxGold?.(sciencePercent, culturePercent) ?? this.current.maxGold;
+    this.confirmListener?.({
+      gold: clamp(maxGold, 0, this.current.maxGold),
+      sciencePercent,
+      culturePercent,
+    });
   }
 
   private refreshValues(): void {
@@ -217,6 +321,7 @@ export class WorldCouncilContributionDialog {
   private setVisible(visible: boolean): void {
     this.overlay.setVisible(visible);
     this.panel.setVisible(visible);
+    this.valueCard.setVisible(visible);
     this.titleText.setVisible(visible);
     this.bodyText.setVisible(visible);
     this.valueText.setVisible(visible);
@@ -224,21 +329,39 @@ export class WorldCouncilContributionDialog {
       button.background.setVisible(visible);
       button.text.setVisible(visible);
       button.hitArea.setVisible(visible);
+      button.hovered = false;
+      this.drawButton(button);
       if (visible) button.hitArea.setInteractive({ cursor: 'pointer' });
       else button.hitArea.disableInteractive();
     }
   }
 
-  private createButton(addOwned: AddOwned, label: string, color: number, onClick: () => void): DialogButton {
-    const background = addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, 10, BUTTON_HEIGHT, color, 0.95))
-      .setOrigin(0, 0)
+  private drawPanel(left: number, top: number, panelHeight: number): void {
+    this.panel.clear();
+    this.panel.fillGradientStyle(COLOR_PANEL_TOP, COLOR_PANEL_TOP, COLOR_PANEL_BOTTOM, COLOR_PANEL_BOTTOM, 0.98);
+    this.panel.fillRoundedRect(left, top, PANEL_WIDTH, panelHeight, PANEL_RADIUS);
+    this.panel.lineStyle(1.5, COLOR_BORDER_GOLD, 1);
+    this.panel.strokeRoundedRect(left + 0.75, top + 0.75, PANEL_WIDTH - 1.5, panelHeight - 1.5, PANEL_RADIUS);
+  }
+
+  private drawValueCard(x: number, y: number, width: number, cardHeight: number): void {
+    this.valueCard.clear();
+    this.valueCard.fillStyle(COLOR_CARD_FILL, 0.55);
+    this.valueCard.fillRoundedRect(x, y, width, cardHeight, CARD_RADIUS);
+    this.valueCard.lineStyle(1, COLOR_BORDER_GOLD, 0.22);
+    this.valueCard.strokeRoundedRect(x + 0.5, y + 0.5, width - 1, cardHeight - 1, CARD_RADIUS);
+  }
+
+  private createButton(addOwned: AddOwned, spec: ButtonSpec): DialogButton {
+    const style = BUTTON_STYLES[spec.variant];
+    const background = addOwned(new Phaser.GameObjects.Graphics(this.scene))
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
       .setVisible(false);
-    const text = addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, label, {
-      fontFamily: 'sans-serif',
-      fontSize: '13px',
-      color: '#f4f1e7',
+    const text = addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, spec.label, {
+      fontFamily: '"Segoe UI", Arial, sans-serif',
+      fontSize: '14px',
+      color: style.textColor,
       fontStyle: 'bold',
     }))
       .setOrigin(0.5, 0.5)
@@ -251,6 +374,15 @@ export class WorldCouncilContributionDialog {
       .setDepth(DEPTH + 4)
       .setScrollFactor(0)
       .setVisible(false);
+    const button: DialogButton = { background, text, hitArea, style, x: 0, y: 0, width: 10, hovered: false };
+    hitArea.on(Phaser.Input.Events.POINTER_OVER, () => {
+      button.hovered = true;
+      this.drawButton(button);
+    });
+    hitArea.on(Phaser.Input.Events.POINTER_OUT, () => {
+      button.hovered = false;
+      this.drawButton(button);
+    });
     hitArea.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
@@ -258,15 +390,27 @@ export class WorldCouncilContributionDialog {
     hitArea.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer) => {
       this.worldInputGate.claimPointer(pointer.id);
       consumePointerEvent(pointer);
-      onClick();
+      spec.onClick();
     });
-    return { background, text, hitArea };
+    return button;
   }
 
   private layoutButton(button: DialogButton, x: number, y: number, width: number): void {
-    button.background.setPosition(x, y).setDisplaySize(width, BUTTON_HEIGHT);
+    button.x = x;
+    button.y = y;
+    button.width = width;
+    this.drawButton(button);
     button.text.setPosition(x + width / 2, y + BUTTON_HEIGHT / 2);
     button.hitArea.setPosition(x, y).setSize(width, BUTTON_HEIGHT);
+  }
+
+  private drawButton(button: DialogButton): void {
+    const { background, style, x, y, width, hovered } = button;
+    background.clear();
+    background.fillStyle(hovered ? style.hoverFill : style.fill, style.fillAlpha);
+    background.fillRoundedRect(x, y, width, BUTTON_HEIGHT, BUTTON_RADIUS);
+    background.lineStyle(1, style.border, style.borderAlpha);
+    background.strokeRoundedRect(x + 0.5, y + 0.5, width - 1, BUTTON_HEIGHT - 1, BUTTON_RADIUS);
   }
 }
 

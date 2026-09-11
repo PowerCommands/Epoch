@@ -124,6 +124,20 @@ export class CheatSystem {
 
         return `Gold set for ${target.label}: ${total}`;
       },
+      complete: (args, context) => {
+        if (args.length === 1) {
+          return matchLiteralSuggestions(args[0], [
+            { value: 'add', description: 'Add gold instead of setting the total.' },
+          ]);
+        }
+        // The integer amount has no completion; only the trailing nation does.
+        if (args[0] === 'add') {
+          if (args.length === 3) return completeNation(args[2], context);
+          return [];
+        }
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
+      },
     });
 
     this.register({
