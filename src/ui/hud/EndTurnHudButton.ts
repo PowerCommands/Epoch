@@ -1,3 +1,4 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
@@ -48,7 +49,7 @@ export class EndTurnHudButton {
       .setDepth(DEPTH + 2)
       .setScrollFactor(0);
     this.spriteMask = new Phaser.GameObjects.Graphics(scene);
-    this.sprite.setMask(this.spriteMask.createGeometryMask());
+    setGeometryClip(this.sprite, new GeometryClip(this.spriteMask));
 
     // A partial ring just outside the rim, rotated by an infinite tween to show
     // the AI is taking its turn. Hidden while it is the player's turn.
@@ -204,7 +205,7 @@ export class EndTurnHudButton {
     this.spinner.destroy();
     this.background.destroy();
     this.rim.destroy();
-    this.sprite.clearMask(true);
+    clearGeometryClip(this.sprite, true);
     this.sprite.destroy();
     this.spriteMask.destroy();
     this.hitArea.destroy();

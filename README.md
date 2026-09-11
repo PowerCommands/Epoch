@@ -1,6 +1,6 @@
 # Epoch
 
-Webbläsarbaserat turordningsbaserat strategispel byggt med Phaser 3 + TypeScript + Vite.
+Webbläsarbaserat turordningsbaserat strategispel byggt med Phaser 4 + TypeScript + Vite.
 
 ## Kom igång
 
@@ -31,9 +31,11 @@ docker run --rm -p 8080:80 epoch:local
 
 ## Teknikstack
 
-- **Phaser 3** — spelmotor
+- **Phaser 4.2.1** — spelmotor
 - **TypeScript** (strict mode) — typsäker JavaScript
 - **Vite** — build-verktyg och dev-server
+
+Phaser 4-migreringens renderingsval och verifiering: [docs/phaser4-migration.md](docs/phaser4-migration.md).
 
 ## Projektstruktur
 

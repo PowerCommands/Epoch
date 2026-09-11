@@ -1,3 +1,4 @@
+import { GeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
@@ -81,7 +82,7 @@ export class DiscoveryPopup {
   private readonly leadsToEmptyText: Phaser.GameObjects.Text;
   private readonly closeButton: PopupButton;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
-  private readonly contentMask: Phaser.Display.Masks.GeometryMask;
+  private readonly contentMask: GeometryClip;
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly unlockRows: PopupRowView[] = [];
   private readonly leadsToRows: PopupRowView[] = [];
@@ -120,7 +121,7 @@ export class DiscoveryPopup {
       .setVisible(false);
 
     this.contentMaskGraphics = new Phaser.GameObjects.Graphics(scene);
-    this.contentMask = this.contentMaskGraphics.createGeometryMask();
+    this.contentMask = new GeometryClip(this.contentMaskGraphics);
 
     this.titleText = this.createContentText('', 30, '#f2f7fb', 'normal', PANEL_WIDTH - PANEL_PADDING * 2)
       .setAlign('center');
@@ -313,11 +314,9 @@ export class DiscoveryPopup {
     _deltaX: number,
     deltaY: number,
     _deltaZ: number,
-    event: WheelEvent,
   ): void => {
     if (!this.current || this.maxScroll <= 0) return;
     consumePointerEvent(pointer);
-    event.preventDefault?.();
     this.scrollOffset = Phaser.Math.Clamp(this.scrollOffset + Math.sign(deltaY) * 52, 0, this.maxScroll);
     this.layout();
   };
@@ -344,8 +343,8 @@ export class DiscoveryPopup {
 
   private addContentObject<T extends Phaser.GameObjects.GameObject>(object: T): T {
     const owned = this.addOwned(object);
-    const maskable = owned as T & Phaser.GameObjects.Components.Mask & Phaser.GameObjects.Components.Visible;
-    maskable.setMask(this.contentMask);
+    const maskable = owned as T & Phaser.GameObjects.Components.Visible;
+    setGeometryClip(maskable, this.contentMask);
     maskable.setVisible(false);
     this.contentObjects.push(owned);
     return owned;

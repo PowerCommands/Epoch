@@ -1,3 +1,4 @@
+import { GeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import { WORLD_OVERVIEW_CATEGORIES, type WorldOverviewCategory } from './WorldOverviewContent';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
@@ -184,7 +185,7 @@ export class RightSidebarPanel {
   private readonly logCopyButtonLabel: Phaser.GameObjects.Text;
   private readonly logCopyButtonHitArea: Phaser.GameObjects.Zone;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
-  private readonly contentMask: Phaser.Display.Masks.GeometryMask;
+  private readonly contentMask: GeometryClip;
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly collapseBackground: Phaser.GameObjects.Rectangle;
@@ -282,7 +283,7 @@ export class RightSidebarPanel {
       .setInteractive({ cursor: 'pointer' })
       .setVisible(false);
     this.contentMaskGraphics = this.addOwned(new Phaser.GameObjects.Graphics(scene).setScrollFactor(0));
-    this.contentMask = this.contentMaskGraphics.createGeometryMask();
+    this.contentMask = new GeometryClip(this.contentMaskGraphics);
     this.scrollbarTrack = this.addOwned(scene.add.rectangle(0, 0, SCROLLBAR_WIDTH, 100, 0x1d3142, 0.56))
       .setOrigin(0, 0)
       .setScrollFactor(0)
@@ -871,7 +872,7 @@ export class RightSidebarPanel {
             icon.setData('baseY', cursor + artworkSize / 2);
             this.panelContainer.add(icon);
             this.contentObjects.push(icon);
-            icon.setMask(this.contentMask);
+            setGeometryClip(icon, this.contentMask);
           }
         }
         const headingX = x + 12 + (artworkSize ? artworkSize + 12 : 0);
@@ -893,7 +894,7 @@ export class RightSidebarPanel {
     card.setData('baseY', y);
     this.panelContainer.add(card);
     this.contentObjects.push(card);
-    card.setMask(this.contentMask);
+    setGeometryClip(card, this.contentMask);
     return card;
   }
 
@@ -957,7 +958,7 @@ export class RightSidebarPanel {
         icon.setPosition(x + portraitSize / 2, y + portraitSize / 2).setData('baseY', y + portraitSize / 2);
         this.panelContainer.add(icon);
         this.contentObjects.push(icon);
-        icon.setMask(this.contentMask);
+        setGeometryClip(icon, this.contentMask);
       }
     }
     section.rows.forEach((row, index) => {
@@ -1046,8 +1047,8 @@ export class RightSidebarPanel {
       });
       this.panelContainer.add([bg, lbl, hit]);
       this.contentObjects.push(bg, lbl, hit);
-      bg.setMask(this.contentMask);
-      lbl.setMask(this.contentMask);
+      setGeometryClip(bg, this.contentMask);
+      setGeometryClip(lbl, this.contentMask);
       filterX += filterBtnWidth + FILTER_GAP;
     }
 
@@ -1092,8 +1093,8 @@ export class RightSidebarPanel {
       });
       this.panelContainer.add([showAllBg, showAllLbl, showAllHit]);
       this.contentObjects.push(showAllBg, showAllLbl, showAllHit);
-      showAllBg.setMask(this.contentMask);
-      showAllLbl.setMask(this.contentMask);
+      setGeometryClip(showAllBg, this.contentMask);
+      setGeometryClip(showAllLbl, this.contentMask);
       currentY += showAllH + 6;
     }
 
@@ -1151,7 +1152,7 @@ export class RightSidebarPanel {
       .setScrollFactor(0)
       .setDepth(DEPTH + 1));
     this.scene.add.existing(edgeGfx);
-    edgeGfx.setMask(this.contentMask);
+    setGeometryClip(edgeGfx, this.contentMask);
 
     // Relationships are not mutually exclusive: a pair of nations can have several
     // visible edges at once. Render them as parallel lines offset perpendicular to
@@ -1216,7 +1217,7 @@ export class RightSidebarPanel {
       .setScrollFactor(0)
       .setDepth(DEPTH + 2));
     this.scene.add.existing(nodeGfx);
-    nodeGfx.setMask(this.contentMask);
+    setGeometryClip(nodeGfx, this.contentMask);
 
     for (const node of nodes) {
       const pos = nodePositions.get(node.nationId);
@@ -1257,7 +1258,7 @@ export class RightSidebarPanel {
         .setDepth(DEPTH + 3)
         .setResolution(getHudTextResolution());
       this.scene.add.existing(label);
-      label.setMask(this.contentMask);
+      setGeometryClip(label, this.contentMask);
       this.contentObjects.push(label);
 
       const hitSize = (nodeRadius + 5) * 2;
@@ -1352,7 +1353,7 @@ export class RightSidebarPanel {
 
       this.panelContainer.add(background);
       this.contentObjects.push(background);
-      background.setMask(this.contentMask);
+      setGeometryClip(background, this.contentMask);
       const label = this.addContentText(category.label, 13, selected ? '#ffffff' : '#d7e2ee', 'bold', tabWidth - 12);
       label.setPosition(x + 6, y + 9);
       label.setData('baseY', y + 9);
@@ -1399,7 +1400,7 @@ export class RightSidebarPanel {
       background.setData('baseY', cursorY);
       this.panelContainer.add(background);
       this.contentObjects.push(background);
-      background.setMask(this.contentMask);
+      setGeometryClip(background, this.contentMask);
 
       // Label centered both horizontally and vertically inside the tab.
       const labelX = x + tabWidth / 2;
@@ -1408,7 +1409,7 @@ export class RightSidebarPanel {
       label.setData('baseY', labelY);
       this.panelContainer.add(label);
       this.contentObjects.push(label);
-      label.setMask(this.contentMask);
+      setGeometryClip(label, this.contentMask);
 
       const hitArea = this.addOwned(new Phaser.GameObjects.Zone(this.scene, x, cursorY, tabWidth, TRADING_TAB_HEIGHT))
         .setOrigin(0, 0)
@@ -1484,7 +1485,7 @@ export class RightSidebarPanel {
 
       this.panelContainer.add(background);
       this.contentObjects.push(background);
-      background.setMask(this.contentMask);
+      setGeometryClip(background, this.contentMask);
       const label = this.addContentText(tab.label, 13, selected ? '#ffffff' : '#d7e2ee', 'bold', tabWidth - 12);
       label.setPosition(x + 6, y + 9);
       label.setData('baseY', y + 9);
@@ -1571,7 +1572,7 @@ export class RightSidebarPanel {
         line.setData('baseY', y + 6);
         this.panelContainer.add(line);
         this.contentObjects.push(line);
-        line.setMask(this.contentMask);
+        setGeometryClip(line, this.contentMask);
         return y + 16;
       }
       case 'searchInput':
@@ -1630,7 +1631,7 @@ export class RightSidebarPanel {
         line.setData('baseY', y + 6);
         this.panelContainer.add(line);
         this.contentObjects.push(line);
-        line.setMask(this.contentMask);
+        setGeometryClip(line, this.contentMask);
         return y + 16;
       }
       // Other row kinds are not used inside grid cells; fall back to full width.
@@ -1658,12 +1659,12 @@ export class RightSidebarPanel {
       marker.setData('baseY', y + 5);
       this.panelContainer.add(marker);
       this.contentObjects.push(marker);
-      marker.setMask(this.contentMask);
+      setGeometryClip(marker, this.contentMask);
     }
     if (icon) {
       this.panelContainer.add(icon);
       this.contentObjects.push(icon);
-      icon.setMask(this.contentMask);
+      setGeometryClip(icon, this.contentMask);
     }
     const text = this.addContentText(row.text, row.large ? 17 : 14, color, row.large ? 'bold' : 'normal');
     text.setWordWrapWidth(wrapWidth, true);
@@ -1677,7 +1678,7 @@ export class RightSidebarPanel {
       strike.setData('baseY', strikeY);
       this.panelContainer.add(strike);
       this.contentObjects.push(strike);
-      strike.setMask(this.contentMask);
+      setGeometryClip(strike, this.contentMask);
     }
     return y + Math.max(text.height, icon ? CONTENT_ICON_SIZE : 0) + ROW_GAP;
   }
@@ -1719,7 +1720,7 @@ export class RightSidebarPanel {
     graphics.strokeCircle(centerX, centerY, radius + 2);
     this.panelContainer.add(graphics);
     this.contentObjects.push(graphics);
-    graphics.setMask(this.contentMask);
+    setGeometryClip(graphics, this.contentMask);
 
     const legendGap = 12;
     const markerSize = 14;
@@ -1785,7 +1786,7 @@ export class RightSidebarPanel {
     header.setData('baseY', y);
     this.panelContainer.add(header);
     this.contentObjects.push(header);
-    header.setMask(this.contentMask);
+    setGeometryClip(header, this.contentMask);
     row.columns.forEach((column, index) => addCell(column.label, index, y, '#c8d7e6', 'bold'));
 
     let cursorY = y + headerHeight;
@@ -1797,7 +1798,7 @@ export class RightSidebarPanel {
         stripe.setData('baseY', cursorY);
         this.panelContainer.add(stripe);
         this.contentObjects.push(stripe);
-        stripe.setMask(this.contentMask);
+        setGeometryClip(stripe, this.contentMask);
       }
       row.columns.forEach((_column, index) => addCell(cells[index] ?? '', index, cursorY, '#edf4ff', 'normal'));
       cursorY += bodyHeight;
@@ -1951,7 +1952,7 @@ export class RightSidebarPanel {
     underline.setData('baseY', underlineY);
     this.panelContainer.add(underline);
     this.contentObjects.push(underline);
-    underline.setMask(this.contentMask);
+    setGeometryClip(underline, this.contentMask);
 
     let cursorY = underlineY + 6;
     const rowVerticalPadding = 5;
@@ -2008,10 +2009,10 @@ export class RightSidebarPanel {
     const objects = [background, ...(icon ? [icon] : []), label, ...(trailingLabel ? [trailingLabel] : []), hitArea];
     this.panelContainer.add(objects);
     this.contentObjects.push(...objects);
-    background.setMask(this.contentMask);
-    icon?.setMask(this.contentMask);
-    label.setMask(this.contentMask);
-    trailingLabel?.setMask(this.contentMask);
+    setGeometryClip(background, this.contentMask);
+    icon && setGeometryClip(icon, this.contentMask);
+    setGeometryClip(label, this.contentMask);
+    trailingLabel && setGeometryClip(trailingLabel, this.contentMask);
     this.contentButtons.push(button);
     this.refreshContentButtonVisual(button);
     return y + height + ROW_GAP;
@@ -2103,9 +2104,9 @@ export class RightSidebarPanel {
     fill.setData('baseY', y + 25);
     this.panelContainer.add([text, track, fill]);
     this.contentObjects.push(text, track, fill);
-    text.setMask(this.contentMask);
-    track.setMask(this.contentMask);
-    fill.setMask(this.contentMask);
+    setGeometryClip(text, this.contentMask);
+    setGeometryClip(track, this.contentMask);
+    setGeometryClip(fill, this.contentMask);
     return y + 39;
   }
 
@@ -2119,7 +2120,7 @@ export class RightSidebarPanel {
     const object = this.addText(text, fontSize, color, fontStyle, wordWrapWidth);
     this.panelContainer.add(object);
     this.contentObjects.push(object);
-    object.setMask(this.contentMask);
+    setGeometryClip(object, this.contentMask);
     return object;
   }
 

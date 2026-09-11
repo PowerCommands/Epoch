@@ -1,3 +1,4 @@
+import { GeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
@@ -45,7 +46,7 @@ export class AudienceActionList {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private buttons: ListButton[] = [];
   private readonly maskGraphics: Phaser.GameObjects.Graphics;
-  private readonly mask: Phaser.Display.Masks.GeometryMask;
+  private readonly mask: GeometryClip;
   private region = { x: 0, y: 0, width: 0, height: 0 };
   private scrollOffset = 0;
   private contentHeight = 0;
@@ -65,7 +66,7 @@ export class AudienceActionList {
     private readonly depth: number,
   ) {
     this.maskGraphics = this.addOwned(new Phaser.GameObjects.Graphics(scene)).setScrollFactor(0);
-    this.mask = this.maskGraphics.createGeometryMask();
+    this.mask = new GeometryClip(this.maskGraphics);
 
     this.handleWheel = (pointer, _objects, _deltaX, deltaY) => {
       if (!this.visible) return;
@@ -402,11 +403,9 @@ export class AudienceActionList {
     this.addOwned(object);
     (object as unknown as Phaser.GameObjects.Components.Depth).setDepth(this.depth);
     if (!(object instanceof Phaser.GameObjects.Zone)) {
-      const masked = object as unknown as Phaser.GameObjects.Components.Visible & {
-        setMask(mask: Phaser.Display.Masks.GeometryMask): unknown;
-      };
+      const masked = object as T & Phaser.GameObjects.Components.Visible;
       masked.setVisible(this.visible);
-      masked.setMask(this.mask);
+      setGeometryClip(masked, this.mask);
     }
     this.objects.push(object);
     return object;

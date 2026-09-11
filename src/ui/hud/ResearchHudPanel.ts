@@ -1,3 +1,4 @@
+import { GeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { getTechnologySpriteKey } from '../../utils/assetPaths';
@@ -56,7 +57,7 @@ export class ResearchHudPanel {
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
-  private readonly contentMask: Phaser.Display.Masks.GeometryMask;
+  private readonly contentMask: GeometryClip;
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly titleText: Phaser.GameObjects.Text;
   private readonly treeButtonBackground: Phaser.GameObjects.Rectangle;
@@ -148,7 +149,7 @@ export class ResearchHudPanel {
       .setInteractive({ useHandCursor: true });
 
     this.contentMaskGraphics = new Phaser.GameObjects.Graphics(scene);
-    this.contentMask = this.contentMaskGraphics.createGeometryMask();
+    this.contentMask = new GeometryClip(this.contentMaskGraphics);
 
     this.titleText = this.createMaskedText('Research', 24, '#f2f7fb', 'bold');
     this.treeButtonBackground = addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, 34, 32, 0x182434, 1))
@@ -492,7 +493,7 @@ export class ResearchHudPanel {
       .setDepth(DEPTH + 1)
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION);
-    object.setMask(this.contentMask);
+    setGeometryClip(object, this.contentMask);
     this.contentObjects.push(object);
     return object;
   }
@@ -500,27 +501,24 @@ export class ResearchHudPanel {
   private rebuildTechButtons(): void {
     this.destroyTechButtons();
     for (const tech of this.state.available) {
-      const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, MIN_BUTTON_HEIGHT, 0x153343, 0.96))
+      const background = setGeometryClip(this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, MIN_BUTTON_HEIGHT, 0x153343, 0.96))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 1)
         .setScrollFactor(0)
         .setStrokeStyle(1, 0x6fb2d4, 0.5)
-        .setInteractive({ useHandCursor: true })
-        .setMask(this.contentMask);
+        .setInteractive({ useHandCursor: true }), this.contentMask);
 
-      const iconFrame = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, TECH_ICON_SIZE, TECH_ICON_SIZE, 0x0b1821, 0.95))
+      const iconFrame = setGeometryClip(this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, TECH_ICON_SIZE, TECH_ICON_SIZE, 0x0b1821, 0.95))
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
         .setScrollFactor(0)
-        .setStrokeStyle(1, 0x86c9e8, 0.34)
-        .setMask(this.contentMask);
-      const iconImage = this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, getTechnologySpriteKey(tech.id)))
+        .setStrokeStyle(1, 0x86c9e8, 0.34), this.contentMask);
+      const iconImage = setGeometryClip(this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, getTechnologySpriteKey(tech.id)))
         .setOrigin(0.5, 0.5)
         .setDepth(DEPTH + 3)
         .setScrollFactor(0)
-        .setDisplaySize(TECH_ICON_SIZE - 10, TECH_ICON_SIZE - 10)
-        .setMask(this.contentMask);
-      const fallbackIcon = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(tech.name), {
+        .setDisplaySize(TECH_ICON_SIZE - 10, TECH_ICON_SIZE - 10), this.contentMask);
+      const fallbackIcon = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(tech.name), {
         fontFamily: 'sans-serif',
         fontSize: '18px',
         color: '#bfe9ff',
@@ -529,9 +527,8 @@ export class ResearchHudPanel {
         .setOrigin(0.5, 0.5)
         .setDepth(DEPTH + 3)
         .setScrollFactor(0)
-        .setResolution(HUD_TEXT_RESOLUTION)
-        .setMask(this.contentMask);
-      const nameText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, tech.name, {
+        .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+      const nameText = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, tech.name, {
         fontFamily: 'sans-serif',
         fontSize: '18px',
         color: '#ddf2ff',
@@ -544,9 +541,8 @@ export class ResearchHudPanel {
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
         .setScrollFactor(0)
-        .setResolution(HUD_TEXT_RESOLUTION)
-        .setMask(this.contentMask);
-      const metaText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${formatEraName(tech.era)} - ${tech.cost} science`, {
+        .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+      const metaText = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${formatEraName(tech.era)} - ${tech.cost} science`, {
         fontFamily: 'sans-serif',
         fontSize: '14px',
         color: '#8fd0ff',
@@ -558,9 +554,8 @@ export class ResearchHudPanel {
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
         .setScrollFactor(0)
-        .setResolution(HUD_TEXT_RESOLUTION)
-        .setMask(this.contentMask);
-      const descriptionText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, tech.description, {
+        .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+      const descriptionText = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, tech.description, {
         fontFamily: 'sans-serif',
         fontSize: '14px',
         color: '#c8d7e2',
@@ -572,8 +567,7 @@ export class ResearchHudPanel {
         .setOrigin(0, 0)
         .setDepth(DEPTH + 2)
         .setScrollFactor(0)
-        .setResolution(HUD_TEXT_RESOLUTION)
-        .setMask(this.contentMask);
+        .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
 
       this.contentObjects.push(background, iconFrame, iconImage, fallbackIcon, nameText, metaText, descriptionText);
       const button: TechButtonView = {

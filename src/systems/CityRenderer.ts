@@ -159,7 +159,7 @@ export class CityRenderer {
 
     const glow = this.scene.add.graphics();
     const outline = this.tileMap.getTileOutlinePoints(city.tileX, city.tileY)
-      .map((point) => ({ x: point.x - worldX, y: point.y - worldY }));
+      .map((point) => new Phaser.Math.Vector2(point.x - worldX, point.y - worldY));
     glow.fillStyle(0xff3028, 0.22);
     glow.fillPoints(outline, true);
     // Layer translucent strokes to form a soft halo around the city's hex.

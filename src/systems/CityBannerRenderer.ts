@@ -1,3 +1,4 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from './rendering/GeometryClip';
 import Phaser from 'phaser';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import type { City } from '../entities/City';
@@ -218,7 +219,7 @@ export class CityBannerRenderer {
   removeBanner(cityId: string): void {
     const view = this.banners.get(cityId);
     if (!view) return;
-    view.productionImage.clearMask(false);
+    clearGeometryClip(view.productionImage, false);
     view.container.destroy(true);
     view.productionMask.destroy();
     this.banners.delete(cityId);
@@ -226,7 +227,7 @@ export class CityBannerRenderer {
 
   shutdown(): void {
     for (const view of this.banners.values()) {
-      view.productionImage.clearMask(false);
+      clearGeometryClip(view.productionImage, false);
       view.container.destroy(true);
       view.productionMask.destroy();
     }
@@ -263,7 +264,7 @@ export class CityBannerRenderer {
       .setVisible(false);
     const productionMask = this.scene.add.graphics();
     productionMask.setVisible(false);
-    productionImage.setMask(productionMask.createGeometryMask());
+    setGeometryClip(productionImage, new GeometryClip(productionMask));
 
     const productionFallbackText = this.scene.add.text(0, 0, '-', {
       fontFamily: 'Arial, sans-serif',

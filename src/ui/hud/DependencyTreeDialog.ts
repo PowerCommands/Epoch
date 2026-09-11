@@ -1,3 +1,4 @@
+import { GeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
@@ -63,7 +64,7 @@ export class DependencyTreeDialog {
   private readonly closeText: Phaser.GameObjects.Text;
   private readonly lineGraphics: Phaser.GameObjects.Graphics;
   private readonly maskGraphics: Phaser.GameObjects.Graphics;
-  private readonly contentMask: Phaser.Display.Masks.GeometryMask;
+  private readonly contentMask: GeometryClip;
   private readonly hTrack: Phaser.GameObjects.Rectangle;
   private readonly hThumb: Phaser.GameObjects.Rectangle;
   private readonly vTrack: Phaser.GameObjects.Rectangle;
@@ -76,7 +77,6 @@ export class DependencyTreeDialog {
     deltaX: number,
     deltaY: number,
     deltaZ: number,
-    event: WheelEvent,
   ) => void;
   private readonly handlePointerMove: (pointer: Phaser.Input.Pointer) => void;
   private readonly handlePointerUp: (pointer: Phaser.Input.Pointer) => void;
@@ -155,12 +155,12 @@ export class DependencyTreeDialog {
       .setVisible(false);
 
     this.maskGraphics = new Phaser.GameObjects.Graphics(scene);
-    this.contentMask = this.maskGraphics.createGeometryMask();
+    this.contentMask = new GeometryClip(this.maskGraphics);
     this.lineGraphics = addOwned(new Phaser.GameObjects.Graphics(scene))
       .setDepth(CONTENT_DEPTH)
       .setScrollFactor(0)
       .setVisible(false);
-    this.lineGraphics.setMask(this.contentMask);
+    setGeometryClip(this.lineGraphics, this.contentMask);
 
     this.hTrack = this.createScrollbarPart();
     this.hThumb = this.createScrollbarPart(true);
@@ -211,10 +211,9 @@ export class DependencyTreeDialog {
       event: Phaser.Types.Input.EventData,
     ) => this.startScrollbarDrag(pointer, event, 'y'));
 
-    this.handleWheel = (pointer, _gameObjects, deltaX, deltaY, _deltaZ, event) => {
+    this.handleWheel = (pointer, _gameObjects, deltaX, deltaY) => {
       if (!this.isOpen || !this.panelBounds.contains(pointer.x, pointer.y)) return;
       consumePointerEvent(pointer);
-      event.preventDefault?.();
       const horizontalIntent = Math.abs(deltaX) > Math.abs(deltaY);
       this.setScroll(
         this.scrollX + (horizontalIntent ? deltaX : 0),
@@ -297,25 +296,22 @@ export class DependencyTreeDialog {
 
   private createCard(node: HudDependencyTreeNode): TreeCardView {
     const colors = getStatusColors(node.status, this.state.accentColor);
-    const background = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, CARD_WIDTH, CARD_HEIGHT, colors.fill, colors.alpha))
+    const background = setGeometryClip(this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, CARD_WIDTH, CARD_HEIGHT, colors.fill, colors.alpha))
       .setOrigin(0, 0)
       .setDepth(CARD_DEPTH)
       .setScrollFactor(0)
-      .setStrokeStyle(2, colors.stroke, colors.strokeAlpha)
-      .setMask(this.contentMask);
-    const imageFrame = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, ICON_SIZE, ICON_SIZE, 0x071017, 0.95))
+      .setStrokeStyle(2, colors.stroke, colors.strokeAlpha), this.contentMask);
+    const imageFrame = setGeometryClip(this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, ICON_SIZE, ICON_SIZE, 0x071017, 0.95))
       .setOrigin(0, 0)
       .setDepth(CARD_DEPTH + 1)
       .setScrollFactor(0)
-      .setStrokeStyle(1, colors.stroke, 0.36)
-      .setMask(this.contentMask);
-    const image = this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, node.imageKey))
+      .setStrokeStyle(1, colors.stroke, 0.36), this.contentMask);
+    const image = setGeometryClip(this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, node.imageKey))
       .setOrigin(0.5, 0.5)
       .setDepth(CARD_DEPTH + 2)
       .setScrollFactor(0)
-      .setDisplaySize(ICON_SIZE - 8, ICON_SIZE - 8)
-      .setMask(this.contentMask);
-    const fallback = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(node.name), {
+      .setDisplaySize(ICON_SIZE - 8, ICON_SIZE - 8), this.contentMask);
+    const fallback = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(node.name), {
       fontFamily: 'sans-serif',
       fontSize: '17px',
       color: colors.text,
@@ -324,9 +320,8 @@ export class DependencyTreeDialog {
       .setOrigin(0.5, 0.5)
       .setDepth(CARD_DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const title = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, node.name, {
+      .setResolution(TEXT_RESOLUTION), this.contentMask);
+    const title = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, node.name, {
       fontFamily: 'sans-serif',
       fontSize: '16px',
       color: colors.text,
@@ -336,9 +331,8 @@ export class DependencyTreeDialog {
       .setOrigin(0, 0)
       .setDepth(CARD_DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const description = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, node.description, {
+      .setResolution(TEXT_RESOLUTION), this.contentMask);
+    const description = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, node.description, {
       fontFamily: 'sans-serif',
       fontSize: '12px',
       color: colors.detail,
@@ -348,9 +342,8 @@ export class DependencyTreeDialog {
       .setOrigin(0, 0)
       .setDepth(CARD_DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const policyUnlocks = this.addOwned(new Phaser.GameObjects.Text(
+      .setResolution(TEXT_RESOLUTION), this.contentMask);
+    const policyUnlocks = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(
       this.scene,
       0,
       0,
@@ -367,9 +360,8 @@ export class DependencyTreeDialog {
       .setOrigin(0, 0)
       .setDepth(CARD_DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const status = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, formatStatus(node.status), {
+      .setResolution(TEXT_RESOLUTION), this.contentMask);
+    const status = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, formatStatus(node.status), {
       fontFamily: 'sans-serif',
       fontSize: '12px',
       color: colors.status,
@@ -378,8 +370,7 @@ export class DependencyTreeDialog {
       .setOrigin(0, 0)
       .setDepth(CARD_DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(TEXT_RESOLUTION)
-      .setMask(this.contentMask);
+      .setResolution(TEXT_RESOLUTION), this.contentMask);
     return { id: node.id, background, imageFrame, image, fallback, title, description, policyUnlocks, status };
   }
 

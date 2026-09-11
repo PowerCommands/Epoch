@@ -7,7 +7,7 @@ try {
  const page = await browser.newPage({viewport:{width:1440,height:1000}});
  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/src/main.ts*', async route=> { const response=await route.fetch(); await route.fulfill({response,body:(await response.text())+'\nwindow.audienceTestGame = game;'}); });
- await page.goto('http://127.0.0.1:5187/?epochDiagnostics=1');
+ await page.goto(`${process.env.EPOCH_URL ?? 'http://127.0.0.1:5174'}/?epochDiagnostics=1`);
  await page.waitForFunction(()=>window.__epochDiagnostics?.startSavedGame,undefined,{timeout:90000});
  assert.equal((await page.evaluate(s=>window.__epochDiagnostics.startSavedGame(s),save)).ok,true);
  await page.waitForFunction(()=>window.audienceTestGame.scene.getScene('GameScene')?.leaderAudienceDialog,undefined,{timeout:90000});

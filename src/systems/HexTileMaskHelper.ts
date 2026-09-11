@@ -1,11 +1,12 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from './rendering/GeometryClip';
 import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 
-type MaskableGameObject = Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Mask;
+type MaskableGameObject = Phaser.GameObjects.GameObject;
 
 interface TileMaskEntry {
   graphics: Phaser.GameObjects.Graphics;
-  mask: Phaser.Display.Masks.GeometryMask;
+  mask: GeometryClip;
   refCount: number;
 }
 
@@ -38,7 +39,7 @@ export class HexTileMaskHelper {
     }
 
     const entry = this.acquireTileMask(tileX, tileY);
-    sprite.setMask(entry.mask);
+    setGeometryClip(sprite, entry.mask);
 
     const onDestroy = (): void => {
       const currentBinding = this.spriteBindings.get(sprite);
@@ -53,7 +54,7 @@ export class HexTileMaskHelper {
   clearMask(sprite: MaskableGameObject): void {
     const binding = this.spriteBindings.get(sprite);
     if (!binding) {
-      sprite.clearMask();
+      clearGeometryClip(sprite);
       return;
     }
 
@@ -90,7 +91,7 @@ export class HexTileMaskHelper {
 
     const entry: TileMaskEntry = {
       graphics,
-      mask: graphics.createGeometryMask(),
+      mask: new GeometryClip(graphics),
       refCount: 1,
     };
     this.tileMasks.set(key, entry);
@@ -99,7 +100,7 @@ export class HexTileMaskHelper {
 
   private releaseSprite(sprite: MaskableGameObject, binding: SpriteMaskBinding): void {
     sprite.off(Phaser.GameObjects.Events.DESTROY, binding.onDestroy);
-    sprite.clearMask();
+    clearGeometryClip(sprite);
     this.spriteBindings.delete(sprite);
     this.releaseTileMask(binding.key);
   }

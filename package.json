@@ -1,7 +1,7 @@
 {
   "name": "epoch",
   "version": "0.1.0",
-  "description": "Webbl\u00e4sarbaserat turordningsbaserat strategispel byggt med Phaser 3 + TypeScript + Vite.",
+  "description": "Webbläsarbaserat turordningsbaserat strategispel byggt med Phaser 4 + TypeScript + Vite.",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,8 @@
     "predev": "npm run generate-manifests",
     "test:mutual-foe": "node --import tsx --test tools/mutualFoeAgreement.test.ts",
     "typecheck": "tsc --noEmit",
+    "test:phaser-migration": "node tools/phaser4Migration.browser.mjs",
+    "test:phaser-migration:game": "node tools/phaser4Game.browser.mjs",
     "test:nuclear-plants": "node --import tsx --test tools/nuclearPlantMaintenance.test.ts tools/powerPlantSystem.test.ts tools/cityEnergyEffects.test.ts tools/strategicWeapons.test.ts",
     "test:strategic": "node --import tsx --test tools/strategicWeapons.test.ts tools/nuclearDiplomacy.test.ts",
     "test:gossip": "tsx --test tools/gossipSystem.test.ts tools/gossipGuiCoordination.test.ts tools/gossipInformationExpansion.test.ts tools/gossipSportsPreferences.test.ts tools/gossipManipulationExpansion.test.ts tools/gossipInsultExpansion.test.ts tools/gossipFlavorEvents.test.ts",
@@ -51,7 +53,7 @@
   },
   "dependencies": {
     "canvas": "^3.2.3",
-    "phaser": "^3.88.2"
+    "phaser": "4.2.1"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

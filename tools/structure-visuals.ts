@@ -121,7 +121,9 @@ class Gallery extends Phaser.Scene {
     const nations = { getNation: () => ({ id: 'owner' }) } as unknown as NationManager;
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nations, () => era);
     const cityEffects = (cityRenderer as any).damageEffects;
-    const cityTexture = () => (cityRenderer.getCityContainer('city')!.list[0] as Phaser.GameObjects.Image).texture.key;
+    const cityTexture = () => (cityRenderer.getCityContainer('city')!.list.find(
+      object => object instanceof Phaser.GameObjects.Image,
+    ) as Phaser.GameObjects.Image).texture.key;
     const city = cities[0];
     for (const hp of [101, 100, 99, 100, 101]) {
       city.health = hp; cityRenderer.refreshCity(city);

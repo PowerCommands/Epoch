@@ -2655,6 +2655,12 @@
           "path": "/assets/sprites/news/world-council-founded.png",
           "type": "PNG",
           "size": 136402
+        },
+        {
+          "name": "world-eras.png",
+          "path": "/assets/sprites/news/world-eras.png",
+          "type": "PNG",
+          "size": 3386969
         }
       ]
     },

@@ -1,3 +1,4 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { ScreenRect } from '../../types/screenRect';
 import type { UnitActionMode, UnitActionToolbox, UnitActionViewState } from '../UnitActionToolbox';
@@ -83,7 +84,7 @@ export class UnitActionHudToolbox {
         .setDisplaySize(ACTION_SIZE, ACTION_SIZE)
         .setVisible(false);
       const iconMask = new Phaser.GameObjects.Graphics(scene);
-      icon.setMask(iconMask.createGeometryMask());
+      setGeometryClip(icon, new GeometryClip(iconMask));
 
       const hitArea = addOwned(new Phaser.GameObjects.Zone(scene, 0, 0, ACTION_HIT_SIZE, ACTION_HIT_SIZE))
         .setOrigin(0.5)
@@ -239,7 +240,7 @@ export class UnitActionHudToolbox {
     for (const button of this.buttons) {
       button.background.destroy();
       button.ring.destroy();
-      button.icon.clearMask(true);
+      clearGeometryClip(button.icon, true);
       button.icon.destroy();
       button.iconMask.destroy();
       button.hitArea.destroy();

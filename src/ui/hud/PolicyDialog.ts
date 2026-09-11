@@ -1,3 +1,4 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import { isPolicySlotCompatible, type PolicySystem } from '../../systems/PolicySystem';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
@@ -111,9 +112,9 @@ export class PolicyDialog {
   private readonly leftEmptyText: Phaser.GameObjects.Text;
   private readonly rightHeading: Phaser.GameObjects.Text;
   private readonly leftMaskGraphics: Phaser.GameObjects.Graphics;
-  private readonly leftMask: Phaser.Display.Masks.GeometryMask;
+  private readonly leftMask: GeometryClip;
   private readonly rightMaskGraphics: Phaser.GameObjects.Graphics;
-  private readonly rightMask: Phaser.Display.Masks.GeometryMask;
+  private readonly rightMask: GeometryClip;
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly tooltipBackground: Phaser.GameObjects.Rectangle;
@@ -284,9 +285,9 @@ export class PolicyDialog {
     }
 
     this.leftMaskGraphics = new Phaser.GameObjects.Graphics(scene);
-    this.leftMask = this.leftMaskGraphics.createGeometryMask();
+    this.leftMask = new GeometryClip(this.leftMaskGraphics);
     this.rightMaskGraphics = new Phaser.GameObjects.Graphics(scene);
-    this.rightMask = this.rightMaskGraphics.createGeometryMask();
+    this.rightMask = new GeometryClip(this.rightMaskGraphics);
 
     this.scrollbarTrack = this.addOwned(new Phaser.GameObjects.Rectangle(scene, 0, 0, SCROLLBAR_WIDTH, 10, 0x16251b, 0.9))
       .setOrigin(0, 0)
@@ -737,26 +738,26 @@ export class PolicyDialog {
     return card;
   }
 
-  private applyMaskToCard(card: CardVisual, mask: Phaser.Display.Masks.GeometryMask): void {
-    card.finish.setMask(mask);
-    card.background.setMask(mask);
-    card.headerBackground.setMask(mask);
-    card.headerText.setMask(mask);
-    card.imageFrame.setMask(mask);
-    card.image.setMask(mask);
-    card.fallbackInitials.setMask(mask);
-    card.description.setMask(mask);
+  private applyMaskToCard(card: CardVisual, mask: GeometryClip): void {
+    setGeometryClip(card.finish, mask);
+    setGeometryClip(card.background, mask);
+    setGeometryClip(card.headerBackground, mask);
+    setGeometryClip(card.headerText, mask);
+    setGeometryClip(card.imageFrame, mask);
+    setGeometryClip(card.image, mask);
+    setGeometryClip(card.fallbackInitials, mask);
+    setGeometryClip(card.description, mask);
   }
 
   private clearCardMask(card: CardVisual): void {
-    card.finish.clearMask();
-    card.background.clearMask();
-    card.headerBackground.clearMask();
-    card.headerText.clearMask();
-    card.imageFrame.clearMask();
-    card.image.clearMask();
-    card.fallbackInitials.clearMask();
-    card.description.clearMask();
+    clearGeometryClip(card.finish);
+    clearGeometryClip(card.background);
+    clearGeometryClip(card.headerBackground);
+    clearGeometryClip(card.headerText);
+    clearGeometryClip(card.imageFrame);
+    clearGeometryClip(card.image);
+    clearGeometryClip(card.fallbackInitials);
+    clearGeometryClip(card.description);
   }
 
   private createSlot(category: PolicySlotCategory, index: number): SlotVisual {
@@ -781,8 +782,8 @@ export class PolicyDialog {
       .setOrigin(0, 0)
       .setDepth(CONTENT_DEPTH + 4)
       .setScrollFactor(0);
-    background.setMask(this.rightMask);
-    label.setMask(this.rightMask);
+    setGeometryClip(background, this.rightMask);
+    setGeometryClip(label, this.rightMask);
 
     const slot: SlotVisual = {
       key: `${category}-${index}`,
@@ -977,10 +978,10 @@ export class PolicyDialog {
     const heading = this.slotCategoryHeadings.get(category);
     if (!heading || total === 0) return 0;
 
-    heading
+    setGeometryClip(heading
       .setText(`${formatCategory(category)} (${this.countOccupiedSlots(category)} / ${total})`)
       .setPosition(x, y)
-      .setVisible(true).setMask(this.rightMask);
+      .setVisible(true), this.rightMask);
     const slotsY = y + 18;
     const cols = Math.max(1, Math.floor((width + SLOT_GAP) / (SLOT_CARD_WIDTH + SLOT_GAP)));
     let i = 0;

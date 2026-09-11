@@ -1,3 +1,4 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from './rendering/GeometryClip';
 import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import { UnitManager } from './UnitManager';
@@ -253,7 +254,7 @@ export class UnitRenderer {
 
     const sprite = this.scene.add.image(0, 0, textureKey);
     const maskGraphics = this.scene.add.graphics();
-    sprite.setMask(maskGraphics.createGeometryMask());
+    setGeometryClip(sprite, new GeometryClip(maskGraphics));
     this.applyUnitTileSize(unit, sprite, maskGraphics);
 
     const container = this.scene.add.container(0, 0, [nationRing, sprite]);
@@ -375,7 +376,7 @@ export class UnitRenderer {
   }
 
   private destroyVisual(visual: UnitVisual): void {
-    visual.sprite.clearMask(false);
+    clearGeometryClip(visual.sprite, false);
     visual.cargoIndicator?.destroy();
     visual.levelStars?.destroy();
     visual.container.destroy();

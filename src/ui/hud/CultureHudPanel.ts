@@ -1,3 +1,4 @@
+import { GeometryClip, setGeometryClip } from '../../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import type { WorldInputGate } from '../../systems/input/WorldInputGate';
 import { consumePointerEvent } from '../../utils/phaserScreenSpaceUi';
@@ -60,7 +61,7 @@ export class CultureHudPanel {
   private readonly scrollbarTrack: Phaser.GameObjects.Rectangle;
   private readonly scrollbarThumb: Phaser.GameObjects.Rectangle;
   private readonly contentMaskGraphics: Phaser.GameObjects.Graphics;
-  private readonly contentMask: Phaser.Display.Masks.GeometryMask;
+  private readonly contentMask: GeometryClip;
   private readonly contentObjects: Phaser.GameObjects.GameObject[] = [];
   private readonly titleText: Phaser.GameObjects.Text;
   private readonly treeButtonBackground: Phaser.GameObjects.Rectangle;
@@ -156,7 +157,7 @@ export class CultureHudPanel {
       .setInteractive({ useHandCursor: true });
 
     this.contentMaskGraphics = new Phaser.GameObjects.Graphics(scene);
-    this.contentMask = this.contentMaskGraphics.createGeometryMask();
+    this.contentMask = new GeometryClip(this.contentMaskGraphics);
 
     this.titleText = this.createMaskedText('Civics', 24, '#f2f7fb', 'bold');
     this.currentText = this.createMaskedText('', 18, '#f2f7fb', 'normal', PANEL_CONTENT_WIDTH);
@@ -616,7 +617,7 @@ export class CultureHudPanel {
       .setDepth(DEPTH + 1)
       .setScrollFactor(0)
       .setResolution(HUD_TEXT_RESOLUTION);
-    object.setMask(this.contentMask);
+    setGeometryClip(object, this.contentMask);
     this.contentObjects.push(object);
     return object;
   }
@@ -642,28 +643,25 @@ export class CultureHudPanel {
 
   private createCultureButton(entry: HudCultureEntry): CultureButtonView {
     const style = getCultureNodeVisualState(entry);
-    const background = this.addOwned(
+    const background = setGeometryClip(this.addOwned(
       new Phaser.GameObjects.Rectangle(this.scene, 0, 0, PANEL_CONTENT_WIDTH, MIN_BUTTON_HEIGHT, style.fillColor, style.fillAlpha),
     )
       .setOrigin(0, 0)
       .setDepth(DEPTH + 1)
       .setScrollFactor(0)
       .setStrokeStyle(1, style.strokeColor, 0.58)
-      .setInteractive({ useHandCursor: style.isSelectable })
-      .setMask(this.contentMask);
-    const iconFrame = this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, CULTURE_ICON_SIZE, CULTURE_ICON_SIZE, 0x0b1821, 0.95))
+      .setInteractive({ useHandCursor: style.isSelectable }), this.contentMask);
+    const iconFrame = setGeometryClip(this.addOwned(new Phaser.GameObjects.Rectangle(this.scene, 0, 0, CULTURE_ICON_SIZE, CULTURE_ICON_SIZE, 0x0b1821, 0.95))
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
-      .setStrokeStyle(1, 0xd7c7ff, 0.34)
-      .setMask(this.contentMask);
-    const iconImage = this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, entry.imageKey))
+      .setStrokeStyle(1, 0xd7c7ff, 0.34), this.contentMask);
+    const iconImage = setGeometryClip(this.addOwned(new Phaser.GameObjects.Image(this.scene, 0, 0, entry.imageKey))
       .setOrigin(0.5, 0.5)
       .setDepth(DEPTH + 3)
       .setScrollFactor(0)
-      .setDisplaySize(CULTURE_ICON_SIZE - 10, CULTURE_ICON_SIZE - 10)
-      .setMask(this.contentMask);
-    const fallbackIcon = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(entry.name), {
+      .setDisplaySize(CULTURE_ICON_SIZE - 10, CULTURE_ICON_SIZE - 10), this.contentMask);
+    const fallbackIcon = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getInitials(entry.name), {
       fontFamily: 'sans-serif',
       fontSize: '18px',
       color: '#eadfff',
@@ -672,9 +670,8 @@ export class CultureHudPanel {
       .setOrigin(0.5, 0.5)
       .setDepth(DEPTH + 3)
       .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const nameText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, entry.name, {
+      .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+    const nameText = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, entry.name, {
       fontFamily: 'sans-serif',
       fontSize: '18px',
       color: style.labelColor,
@@ -684,9 +681,8 @@ export class CultureHudPanel {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const metaText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${formatEraName(entry.era)} - ${entry.effectiveCost} culture - ${getStatusText(entry)}`, {
+      .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+    const metaText = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, `${formatEraName(entry.era)} - ${entry.effectiveCost} culture - ${getStatusText(entry)}`, {
       fontFamily: 'sans-serif',
       fontSize: '14px',
       color: style.detailColor,
@@ -695,9 +691,8 @@ export class CultureHudPanel {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const descriptionText = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, entry.description, {
+      .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+    const descriptionText = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, entry.description, {
       fontFamily: 'sans-serif',
       fontSize: '14px',
       color: style.detailColor,
@@ -706,9 +701,8 @@ export class CultureHudPanel {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setMask(this.contentMask);
-    const prerequisite = this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getPrerequisiteText(entry), {
+      .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
+    const prerequisite = setGeometryClip(this.addOwned(new Phaser.GameObjects.Text(this.scene, 0, 0, getPrerequisiteText(entry), {
       fontFamily: 'sans-serif',
       fontSize: '13px',
       color: style.prerequisiteColor,
@@ -717,8 +711,7 @@ export class CultureHudPanel {
       .setOrigin(0, 0)
       .setDepth(DEPTH + 2)
       .setScrollFactor(0)
-      .setResolution(HUD_TEXT_RESOLUTION)
-      .setMask(this.contentMask);
+      .setResolution(HUD_TEXT_RESOLUTION), this.contentMask);
 
     this.contentObjects.push(background, iconFrame, iconImage, fallbackIcon, nameText, metaText, descriptionText, prerequisite);
     const button: CultureButtonView = {

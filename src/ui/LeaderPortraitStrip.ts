@@ -1,3 +1,4 @@
+import { GeometryClip, clearGeometryClip, setGeometryClip } from '../systems/rendering/GeometryClip';
 import Phaser from 'phaser';
 import { getLeaderByNationId } from '../data/leaders';
 import type { Nation } from '../entities/Nation';
@@ -173,7 +174,7 @@ export class LeaderPortraitStrip {
       entry.border.destroy();
       entry.warMarker.destroy();
       if (entry.image) {
-        entry.image.clearMask(true);
+        clearGeometryClip(entry.image, true);
         entry.image.destroy();
       }
       if (entry.mask) entry.mask.destroy();
@@ -241,7 +242,7 @@ export class LeaderPortraitStrip {
       mask.setScrollFactor(0);
       mask.fillStyle(0xffffff, 1);
       mask.fillEllipse(0, 0, w, h);
-      image.setMask(mask.createGeometryMask());
+      setGeometryClip(image, new GeometryClip(mask));
     }
 
     // Nation-colored stroked oval sitting on top of the image.
