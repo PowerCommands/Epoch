@@ -437,6 +437,8 @@ export interface SavedGameState {
   foreignTroopViolationWarnings?: SavedForeignTroopViolationWarning[];
   fogOfWar?: SavedFogOfWar;
   historicalTimeline?: HistoricalEvent[];
+  historicalMap?: import('../systems/HistoricalMapRecorder').SavedHistoricalMap;
+  worldHistoryMilestones?: string[];
   /** Authored Historical Event lifecycle and runtime calendar anchors. */
   scenarioHistoricalEvents?: SavedScenarioHistoricalEventsState;
   /** One-shot Diplomatic Turning Point cursor. Optional for older saves. */

@@ -124,6 +124,8 @@ export interface SaveLoadContext {
   worldMarkerSystem?: WorldMarkerSystem;
   foreignTroopViolationSystem?: ForeignTroopViolationSystem;
   historicalTimeline?: HistoricalTimelineService;
+  historicalMap?: import('./HistoricalMapRecorder').HistoricalMapRecorder;
+  worldHistoryMilestones?: import('./WorldHistoryMilestones').WorldHistoryMilestones;
   scenarioHistoricalEventSystem?: ScenarioHistoricalEventSystem;
   reconciliationTurningPointSystem?: ReconciliationTurningPointSystem;
   luckyLoserTurningPointSystem?: LuckyLoserTurningPointSystem;
@@ -437,6 +439,8 @@ export class SaveLoadService {
       worldMarkerClaims: worldMarkerSystem?.getClaimEntries(),
       foreignTroopViolationWarnings,
       historicalTimeline: historicalTimeline?.serialize(),
+      historicalMap: context.historicalMap?.getCurrentHistory(),
+      worldHistoryMilestones: context.worldHistoryMilestones?.getState(),
       scenarioHistoricalEvents: scenarioHistoricalEventSystem?.serialize(),
       reconciliationTurningPoint: reconciliationTurningPointSystem?.serialize(),
       luckyLoserTurningPoint: luckyLoserTurningPointSystem?.serialize(),

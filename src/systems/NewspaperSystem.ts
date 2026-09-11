@@ -264,6 +264,19 @@ export class NewspaperSystem {
     return b.round - a.round || b.id - a.id;
   }
 
+  /** Reuse archived copy when available; otherwise format the existing chronicle fact. */
+  articleForHistory(event: HistoricalEvent): NewspaperArticle {
+    for (const issue of this.issues) {
+      const article = [issue.mainArticle, ...issue.secondaryArticles].find(a => a.historicalEventId === event.id);
+      if (article) return { ...cloneArticle(article), imagePath: article.imagePath ?? (isSupportedNormalEvent(event)
+        ? resolveArticleImagePath(event, getDefinition(event).imagePath, this.dependencies.getWorldEra()) : undefined) };
+    }
+    if (isUsableInsult(event)) return this.buildInsultArticle(event);
+    if (isSupportedNormalEvent(event)) return this.buildNormalArticle(event, event.round, 'history', true);
+    return { headline: event.text, body: event.text, comment: '', involvedNationIds: [...event.eventNationIds],
+      involvedNationNames: event.metadata?.nationNames ?? [], involvedLeaderNames: event.metadata?.leaderNames ?? [] };
+  }
+
   private buildNormalArticle(
     event: HistoricalEvent,
     issueRound: number,
@@ -356,8 +369,9 @@ function getDefinition(event: HistoricalEvent): NewspaperEventDefinitionValue {
 type NewspaperEventDefinitionValue = (typeof NEWSPAPER_EVENT_DEFINITIONS)[NewspaperEventType];
 
 function resolveArticleImagePath(event: HistoricalEvent, fallbackPath: string, worldEra: Era): string {
+  if (event.metadata?.historyImage) return event.metadata.historyImage;
   if (event.type === 'nuclearAttack' || event.type === 'warDeclared' || event.type === 'joinedWar' || event.type === 'worldWarStarted') {
-    return WAR_START_IMAGE_PATHS_BY_ERA[worldEra];
+    return WAR_START_IMAGE_PATHS_BY_ERA[event.metadata?.worldEra ?? worldEra] ?? fallbackPath;
   }
   if (event.type !== 'wonderBuilt') return fallbackPath;
 

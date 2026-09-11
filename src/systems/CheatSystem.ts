@@ -63,6 +63,7 @@ export interface GameContext {
   openRelationsDialog: () => void;
   /** Open the developer dialog for current-game scenario settings. */
   openScenarioDialog: () => void;
+  openHistory?: () => void;
   /**
    * Force an alliance between the human player and `targetNationId`, running the
    * same alliance-formation code path (manager, relation updates, event log, UI
@@ -96,6 +97,11 @@ export class CheatSystem {
   private readonly commands: CheatCommand[] = [];
 
   constructor(private readonly context: GameContext) {
+    this.register({ name: 'history', description: 'Open the historical map and newspaper timelapse.',
+      execute: (_args, context) => {
+        if (!context.openHistory) return 'History is unavailable outside a running game.';
+        context.openHistory(); return 'Historical Timeline opened.';
+      } });
     this.register({
       name: 'gold',
       description: 'Set nation gold with "gold <integer> [nation]" or add gold with "gold add <integer> [nation]".',

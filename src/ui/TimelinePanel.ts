@@ -20,6 +20,7 @@ export class TimelinePanel {
   private readonly listEl: HTMLDivElement;
   private readonly toggleEl: HTMLButtonElement;
   private collapsed = false;
+  private onReplay?: () => void;
   private shortcutHidden = false;
   private contextHidden = false;
   private renderQueued = false;
@@ -60,7 +61,11 @@ export class TimelinePanel {
       width: 22px; height: 22px; line-height: 1; cursor: pointer; font-size: 13px;
       border: 1px solid #3a597d; border-radius: 5px; background: transparent; color: #cdd8e3;
     `;
-    header.append(title, this.toggleEl);
+    const replay = document.createElement('button');
+    replay.textContent = '▶'; replay.title = 'Open History / Timelapse'; replay.setAttribute('aria-label', 'Open History / Timelapse');
+    replay.style.cssText = this.toggleEl.style.cssText;
+    replay.onclick = event => { event.stopPropagation(); this.onReplay?.(); };
+    header.append(title, replay, this.toggleEl);
     header.addEventListener('click', () => this.setCollapsed(!this.collapsed));
 
     this.listEl = document.createElement('div');
@@ -78,6 +83,8 @@ export class TimelinePanel {
     this.applyVisibility();
     this.render();
   }
+
+  setOnReplay(callback: () => void): void { this.onReplay = callback; }
 
   /** Hide the whole panel (e.g. while a sidebar mode overlays the same area). */
   setHidden(hidden: boolean): void {

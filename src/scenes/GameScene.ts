@@ -1,3 +1,6 @@
+import { HistoricalMapRecorder } from '../systems/HistoricalMapRecorder';
+import { WorldHistoryMilestones } from '../systems/WorldHistoryMilestones';
+import { HistoryTimelineViewer } from '../ui/HistoryTimelineViewer';
 import { MutualFoeAgreementSystem } from '../systems/MutualFoeAgreementSystem';
 import { createCapitulationDialogue } from '../systems/diplomacy/CapitulationDialogue';
 import { getExplorationVisionRadius } from '../systems/VisibilitySystem';
@@ -836,10 +839,23 @@ export class GameScene extends Phaser.Scene {
       () => turnManager.getGameDateLabel(),
       (nationId) => nationManager.getNation(nationId)?.name,
       (nationId) => getLeaderByNationId(nationId)?.name,
+      () => getHighestEra(nationManager.getAllNations().map(nation => eraSystem.getNationEra(nation.id))),
     );
     const timelineNationName = (nationId: string): string =>
       nationManager.getNation(nationId)?.name ?? nationId;
     // Permanent right-side History panel (always present, collapsible).
+    const historicalMap = new HistoricalMapRecorder(mapData, () => nationManager.getAllNations(), () => ({
+      round: turnManager.getCurrentRound(), year: turnManager.getGlobalYear(), dateLabel: turnManager.getGameDateLabel(),
+      eventId: historicalTimeline.getEvents()[historicalTimeline.getEvents().length - 1]?.id ?? 0,
+    }));
+    const worldHistoryMilestones = new WorldHistoryMilestones(historicalTimeline);
+    historicalTimeline.onRecorded(event => {
+      historicalMap.observe(event);
+      if (event.type === 'eraReached' && event.metadata?.eraName) {
+        worldHistoryMilestones.reachedEra(event.eventNationIds[0], event.metadata.eraName as import('../data/technologies').Era);
+      }
+    });
+    turnManager.on('roundEnd', ({ round }) => historicalMap.interval(round));
     const timelinePanel = new TimelinePanel(historicalTimeline);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => timelinePanel.shutdown());
 
@@ -4303,6 +4319,24 @@ export class GameScene extends Phaser.Scene {
       getWorldEra: () => getHighestEra(nationManager.getAllNations().map((nation) => eraSystem.getNationEra(nation.id))),
       seed: `${data.mapKey}|${data.humanNationId}|${[...data.activeNationIds].sort().join(',')}|newspaper-v1`,
     }, data.savedState?.newspaper, data.savedState?.turn.currentRound ?? 1);
+    productionSystem.onCompletedSuccessfully((cityId, item) => {
+      const city = cityManager.getCity(cityId);
+      if (city) worldHistoryMilestones.completed(city.ownerId, city.name, item);
+    });
+    const historyViewer = new HistoryTimelineViewer();
+    const openHistory = () => {
+      if (historyViewer.isOpen()) return;
+      const resumeAutoplay = autoplaySystem.isRunning();
+      if (resumeAutoplay) autoplaySystem.pause();
+      const wasPaused = this.scene.isPaused();
+      this.scene.pause();
+      historyViewer.show(mapData, historicalMap.getCurrentHistory(), historicalTimeline.getEvents(), newspaperSystem, () => {
+        if (!wasPaused) this.scene.resume();
+        if (resumeAutoplay) autoplaySystem.resume();
+      });
+    };
+    timelinePanel.setOnReplay(openHistory);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => historyViewer.close());
     const newspaperDialog = new NewspaperDialog();
     const worldWarAnnouncementDialog = new WorldWarAnnouncementDialog();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => newspaperDialog.shutdown());
@@ -8398,7 +8432,7 @@ export class GameScene extends Phaser.Scene {
       return Boolean(active.closest('input, textarea, select, [contenteditable="true"]'));
     };
     const isVisibleModalOverlayActive = (): boolean => {
-      const modalIds = ['diplomacy-modal', 'building-placement-modal', 'escape-menu', 'city-capture-decision-dialog'];
+      const modalIds = ['epoch-history-viewer', 'diplomacy-modal', 'building-placement-modal', 'escape-menu', 'city-capture-decision-dialog'];
       return modalIds.some((id) => {
         const element = document.getElementById(id);
         if (!(element instanceof HTMLElement)) return false;
@@ -11267,6 +11301,8 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          historicalMap,
+          worldHistoryMilestones,
           scenarioHistoricalEventSystem,
           reconciliationTurningPointSystem,
           luckyLoserTurningPointSystem,
@@ -11503,6 +11539,7 @@ export class GameScene extends Phaser.Scene {
         cheatConsole.close();
         relationsCheatDialog.show();
       },
+      openHistory,
       openScenarioDialog: (): void => {
         cheatConsole.close();
         scenarioCheatDialog.show();
@@ -11859,6 +11896,7 @@ export class GameScene extends Phaser.Scene {
 
     // Victory overlay
     victorySystem.onVictory((nationId, type) => {
+      historicalMap.record();
       const wasAutoplayActive = autoplaySystem.isActive();
       const finalIssue = newspaperSystem.consumeVictoryIssue({
         round: turnManager.getCurrentRound(),
@@ -11926,6 +11964,13 @@ export class GameScene extends Phaser.Scene {
         newspaperDialog.showArchive(newspaperSystem.getIssues());
       });
 
+      // DOM keeps this action independent of the gameplay camera's zoom and scroll.
+      const historyButton = document.createElement('button');
+      historyButton.textContent = 'History / Timelapse';
+      historyButton.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:10010;padding:12px 22px;font:17px Georgia,serif;color:#f0dfb5;background:#332b20;border:1px solid #b79c68;border-radius:4px;cursor:pointer';
+      historyButton.onclick = event => { event.stopPropagation(); openHistory(); };
+      document.body.append(historyButton);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => historyButton.remove());
       // Block further input on the overlay
       overlay.setInteractive();
 
@@ -11995,6 +12040,8 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        historicalMap,
+        worldHistoryMilestones,
         scenarioHistoricalEventSystem,
         reconciliationTurningPointSystem,
         luckyLoserTurningPointSystem,
@@ -12121,6 +12168,8 @@ export class GameScene extends Phaser.Scene {
           worldMarkerSystem,
           foreignTroopViolationSystem,
           historicalTimeline,
+          historicalMap,
+          worldHistoryMilestones,
           scenarioHistoricalEventSystem,
           reconciliationTurningPointSystem,
           luckyLoserTurningPointSystem,
@@ -12201,6 +12250,8 @@ export class GameScene extends Phaser.Scene {
         worldMarkerSystem,
         foreignTroopViolationSystem,
         historicalTimeline,
+        historicalMap,
+        worldHistoryMilestones,
         scenarioHistoricalEventSystem,
         reconciliationTurningPointSystem,
         luckyLoserTurningPointSystem,
@@ -12402,6 +12453,13 @@ export class GameScene extends Phaser.Scene {
 
     // Starta turordningen — sist, efter att alla lyssnare kopplats
     combatSystem.airOperations.reconcile();
+    historicalMap.initialize(data.savedState?.historicalMap);
+    worldHistoryMilestones.initialize(data.savedState?.worldHistoryMilestones, [
+      ...unitManager.getAllUnits().map(unit => ({ kind: 'unit' as const, unitType: unit.unitType })),
+      ...cityManager.getAllCities().flatMap(city => cityManager.getBuildings(city.id).getAllEntries().map(entry => entry.buildingId)
+        .map(id => getBuildingById(id)).filter((b): b is NonNullable<typeof b> => !!b)
+        .map(buildingType => ({ kind: 'building' as const, buildingType }))),
+    ], getHighestEra(nationManager.getAllNations().map(n => eraSystem.getNationEra(n.id))));
     turnManager.start();
 
     function refreshMovePreview(): void {

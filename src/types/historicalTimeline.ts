@@ -1,5 +1,7 @@
 /** The kinds of world events recorded in the historical timeline. */
 export type HistoricalEventType =
+  | 'worldFirst'
+  | 'worldEra'
   | 'mutualFoeActivated'
   | 'diplomaticAffair'
   | 'cityFounded'
@@ -54,6 +56,11 @@ export type HistoricalEventType =
 
 /** Optional structured newspaper/replay facts; old saves may omit all fields. */
 export interface HistoricalEventMetadata {
+  worldHistoryKey?: string;
+  worldEra?: import('../data/technologies').Era;
+  historyHeadline?: string;
+  historyBody?: string;
+  historyImage?: string;
   worldEventPhase?: 'started' | 'ended' | 'aid';
   /** Frozen display names aligned with eventNationIds for removed-nation safety. */
   nationNames?: string[];
@@ -144,6 +151,8 @@ export interface HistoricalEventMetadata {
 export interface HistoricalEvent {
   /** Monotonic id, also defines chronological order. */
   id: number;
+  /** Stable gameplay seed sequence; world-history presentation events do not consume it. */
+  simulationEventId?: number;
   type: HistoricalEventType;
   /** Game round the event occurred on. */
   round: number;

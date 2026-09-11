@@ -35,6 +35,7 @@ export class HistoricalTimelineService {
   private readonly events: HistoricalEvent[] = [];
   private readonly listeners: ChangedListener[] = [];
   private nextId = 1;
+  private nextSimulationId = 1;
   private readonly recordedListeners: Array<(event: HistoricalEvent) => void> = [];
   onRecorded(listener: (event: HistoricalEvent) => void): void { this.recordedListeners.push(listener); }
 
@@ -43,6 +44,7 @@ export class HistoricalTimelineService {
     private readonly getDateLabel: () => string,
     private readonly getNationName?: (nationId: string) => string | undefined,
     private readonly getLeaderName?: (nationId: string) => string | undefined,
+    private readonly getWorldEra?: () => import('../data/technologies').Era,
   ) {}
 
   /** Append a new chronicle entry, stamped with the current round and date. */
@@ -50,6 +52,7 @@ export class HistoricalTimelineService {
     const round = this.getRound();
     this.events.push({
       id: this.nextId++,
+      simulationEventId: input.type === 'worldFirst' || input.type === 'worldEra' ? undefined : this.nextSimulationId++,
       type: input.type,
       round,
       dateLabel: this.getDateLabel(),
@@ -60,6 +63,7 @@ export class HistoricalTimelineService {
       discoveredTurn: round,
       newsImportance: input.newsImportance,
       metadata: {
+        worldEra: ['warDeclared', 'joinedWar', 'worldWarStarted', 'nuclearAttack'].includes(input.type) ? this.getWorldEra?.() : undefined,
         nationNames: input.eventNationIds.map((id) => this.getNationName?.(id) ?? id),
         leaderNames: input.eventNationIds.map((id) => this.getLeaderName?.(id) ?? this.getNationName?.(id) ?? id),
         ...input.metadata,
@@ -103,6 +107,8 @@ export class HistoricalTimelineService {
       }
     }
     this.nextId = this.events.reduce((max, event) => Math.max(max, event.id), 0) + 1;
+    this.nextSimulationId = this.events.reduce((max, event) => event.type === 'worldFirst' || event.type === 'worldEra'
+      ? max : Math.max(max, event.simulationEventId ?? event.id), 0) + 1;
     this.notifyChanged();
   }
 

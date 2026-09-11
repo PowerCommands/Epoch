@@ -60,7 +60,7 @@ export class LeaderStatementSystem {
     }
     for (const [id, context] of candidates) {
       if (!this.context.isShowman?.(id) || !this.available(id)) continue;
-      if (this.roll(`showman-event|${event.id}|${id}`) < 0.35)
+      if (this.roll(`showman-event|${event.simulationEventId ?? event.id}|${id}`) < 0.35)
         this.issue(id, line => line.requiredTrait === 'showman' && line.context === context);
     }
   }

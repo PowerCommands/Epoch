@@ -22,37 +22,43 @@
       "key": "map_scandinavia",
       "label": "Scandinavia",
       "file": "assets/maps/scandinavia.json",
-      "order": 4
+      "order": 5
     },
     {
       "key": "map_world",
       "label": "Word",
       "file": "assets/maps/world.json",
-      "order": 5
+      "order": 6
     },
     {
       "key": "map_asia",
       "label": "Asia",
       "file": "assets/maps/asia.json",
-      "order": 6
+      "order": 7
     },
     {
       "key": "map_world_war_ii_europe",
       "label": "World War II - Europe",
       "file": "assets/maps/world-war-ii-europe.json",
-      "order": 7
+      "order": 8
     },
     {
       "key": "map_caribian",
       "label": "Caribian",
       "file": "assets/maps/caribian.json",
-      "order": 8
+      "order": 9
     },
     {
       "key": "map_maritime_expansion",
       "label": "Maritime Expansion",
       "file": "assets/maps/maritimeExpansion.json",
-      "order": 9
+      "order": 10
+    },
+    {
+      "key": "map_eastern_europe",
+      "label": "Eastern Europe",
+      "file": "assets/maps/eastern-europe.json",
+      "order": 4
     }
   ]
 }
