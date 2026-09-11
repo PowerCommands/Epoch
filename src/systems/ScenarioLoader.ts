@@ -1,3 +1,5 @@
+import { validateMutualFoeAgreements } from './MutualFoeAgreementValidation';
+import type { MutualFoeAgreement } from '../types/mutualFoe';
 import { normalizeRivers, riverMask } from './geography/Rivers';
 import { MapData, Tile, TileType } from '../types/map';
 import type {
@@ -24,6 +26,7 @@ const TYPE_MAP: Record<string, TileType> = {
 };
 
 export interface ParsedScenario {
+  mutualFoeAgreements: MutualFoeAgreement[];
   mapData: MapData;
   nations: ScenarioNation[];
   cities: ScenarioCity[];
@@ -84,7 +87,10 @@ export class ScenarioLoader {
       };
     });
 
+    const mutualFoe = validateMutualFoeAgreements(json.mutualFoeAgreements, nations);
+    for (const error of mutualFoe.errors) console.warn(`[MutualFoe] ${error}`);
     return {
+      mutualFoeAgreements: mutualFoe.agreements,
       mapData: { width, height, tileSize, tiles },
       nations,
       cities: json.cities,

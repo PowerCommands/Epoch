@@ -19,6 +19,8 @@ export interface LeaderDefinition {
   opportunism?: boolean;
   /** Volatile public rhetoric and short-lived personal grievances. Independent of covert personality. */
   impulsiveBully?: boolean;
+  /** Theatrical public presence; independent of strategy and other traits. Absent means false. */
+  showman?: boolean;
   aiNationalAgendaId?: AINationalAgendaId;
   aiMilitaryDoctrineId?: string;
   /** How this leader pursues goals via covert warfare. Absent → derived default. */

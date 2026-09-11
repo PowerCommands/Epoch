@@ -336,7 +336,19 @@ export interface SavedGuideProgress {
   completedHumanTurns: number;
 }
 
+/**
+ * Context-aware tutorial state: the ids of contextual tips already shown this
+ * game. Only the shown set is persisted; the transient presentation queue is
+ * rebuilt from live gameplay events. Optional so pre-feature saves load with an
+ * empty set.
+ */
+export interface SavedContextualTips {
+  shown: string[];
+}
+
 export interface SavedGameState {
+  mutualFoeAgreements?: import('./mutualFoe').MutualFoeAgreement[];
+  mutualFoeCrises?: import('./mutualFoe').MutualFoeCrisis[];
   leaderConfiguration?: import('../data/leaderConfiguration').LeaderConfiguration;
   version: typeof SAVED_GAME_VERSION;
   savedAt: string;
@@ -374,6 +386,8 @@ export interface SavedGameState {
   };
   /** Optional so saves created before the progressive guide remain loadable. */
   guideProgress?: SavedGuideProgress;
+  /** Shown context-aware tips. Optional so pre-feature saves remain loadable. */
+  contextualTips?: SavedContextualTips;
   /** Consumed issue cursor. Optional so pre-newspaper saves remain loadable. */
   newspaper?: SavedNewspaperState;
   /** Global sporting lifecycle. Optional so pre-feature saves remain loadable. */

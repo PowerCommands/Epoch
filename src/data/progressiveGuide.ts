@@ -110,6 +110,17 @@ export function buildProgressiveGuideTips(options: ProgressiveGuideContentOption
   return tips;
 }
 
+/**
+ * The same guide content keyed by id. Shared by the context-aware tip system
+ * (which looks up a tip's text by id) so explanatory copy has a single source of
+ * truth and never diverges between the manual guide and contextual delivery.
+ */
+export function buildGuideTipMap(options: ProgressiveGuideContentOptions): Map<string, GuideTip> {
+  const map = new Map<string, GuideTip>();
+  for (const guideTip of buildProgressiveGuideTips(options)) map.set(guideTip.id, guideTip);
+  return map;
+}
+
 function tip(id: string, title: string, body: string): GuideTip {
   return { id, title, pages: [{ body }] };
 }

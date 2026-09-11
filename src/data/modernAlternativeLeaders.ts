@@ -552,5 +552,52 @@ export const MODERN_ALTERNATIVE_LEADERS: LeaderDefinition[] = [
     "diplomacyFlavor": {
       "greeting": "Peace requires more than silence. Sweden will speak openly and work with those who seek justice and understanding."
     }
-  }
+  },
+  {
+    "id": "leader_boris_johnson",
+    "isDefault": false,
+    "name": "Boris Johnson",
+    "nationId": "nation_england",
+    "title": "Prime Minister",
+    "image": "/assets/sprites/leaders/boris-johnson.png",
+    "description": "A charismatic political opportunist who pursues national advantage through trade, active diplomacy and an exuberant public presence.",
+    "ideologyId": "nationalism",
+    "aiNationalAgendaId": "economic",
+    "aiMilitaryDoctrineId": "prestigeProjection",
+    "covertPersonalityId": "opportunist",
+    "opportunism": true,
+    "impulsiveBully": false,
+    "showman": true,
+    "culturePriorities": [
+      "foreign_trade",
+      "political_philosophy",
+      "nationalism",
+      "diplomatic_service"
+    ],
+    "gamesOfNationsPreferences": {
+      "traditionalFavourite": "javelin",
+      "additionalFavourite": "fencing"
+    },
+    "aiPersonality": {
+      "aggressionBias": 5,
+      "expansionBias": -5,
+      "economyBias": 16,
+      "cultureBias": 10,
+      "diplomacyBias": 12,
+      "warTolerance": 58,
+      "peacePreference": 55,
+      "minimumUnitsLostBeforePeace": 4,
+      "casualtyToleranceRatio": 0.4,
+      "resourceExploitationInterest": 3
+    },
+    "diplomacyFlavor": {
+      "greeting": "Splendid, you have arrived! Let us see whether we can turn a respectable meeting into a rather remarkable opportunity.",
+      "friendly": "There is real momentum here. Bring your best proposals; I shall bring the enthusiasm and, with luck, a pen that works.",
+      "neutral": "Our interests need not coincide in every detail for us to do excellent business. Let us begin with the useful bits.",
+      "hostile": "I would much prefer a productive relationship, but you are making cooperation an obstacle course. Our national interests are not negotiable decorations.",
+      "warDeclaration": "The diplomatic road has narrowed to a dead end. We now commit our forces to securing our interests, with clear objectives and the resolve to achieve them.",
+      "victory": "A formidable effort, and a result of which our people can be proud. Now comes the less photogenic but essential business of making the settlement last.",
+      "defeat": "This is a serious reverse, and our people deserve candour about it. We shall secure the best peace available, repair the damage and return with renewed purpose."
+    }
+  },
 ];

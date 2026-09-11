@@ -29,6 +29,13 @@ export interface LandControlStats {
  * server-sida utan ändringar.
  */
 export class NationManager {
+  private readonly removedListeners = new Set<() => void>();
+
+  onNationRemoved(listener: () => void): () => void {
+    this.removedListeners.add(listener);
+    return () => { this.removedListeners.delete(listener); };
+  }
+
   private readonly nations = new Map<string, Nation>();
   private readonly resources = new Map<string, NationResources>();
 
@@ -78,6 +85,7 @@ export class NationManager {
   removeNation(nationId: string): void {
     this.nations.delete(nationId);
     this.resources.delete(nationId);
+    for (const listener of this.removedListeners) listener();
   }
 
   getResources(nationId: string): NationResources {

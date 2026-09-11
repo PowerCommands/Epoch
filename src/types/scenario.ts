@@ -280,6 +280,7 @@ export type ScenarioHistoricalEvent =
   | ScenarioTurningPointHistoricalEvent;
 
 export interface ScenarioData {
+  mutualFoeAgreements?: import('./mutualFoe').MutualFoeAgreement[];
   leaderConfiguration?: import('../data/leaderConfiguration').LeaderConfiguration;
   meta: ScenarioMeta;
   map: ScenarioMap;

@@ -1036,6 +1036,16 @@ export const ALL_LEADERS: LeaderDefinition[] = [
  */
 const scenarioLeaderOverrides = new Map<string, { name?: string; description?: string; replacementNationId?: string }>();
 const activeLeaderIdsByNation = new Map<string, string>();
+const activeLeaderChangedListeners = new Set<() => void>();
+
+/** Every canonical leadership change, independent of the mechanic that caused it. */
+export function onActiveLeadersChanged(listener: () => void): () => void {
+  activeLeaderChangedListeners.add(listener);
+  return () => { activeLeaderChangedListeners.delete(listener); };
+}
+function notifyActiveLeadersChanged(): void {
+  for (const listener of activeLeaderChangedListeners) listener();
+}
 
 /** Minimal shape needed from a scenario nation to derive a leader override. */
 interface ScenarioLeaderSource {
@@ -1064,6 +1074,7 @@ export function setScenarioLeaderOverrides(nations: readonly ScenarioLeaderSourc
       ...(replacementNationId ? { replacementNationId } : {}),
     });
   }
+  notifyActiveLeadersChanged();
 }
 
 /**
@@ -1095,6 +1106,7 @@ export function setActiveLeaderSelections(selections: Readonly<Record<string, st
   for (const [nationId, leaderId] of Object.entries(selections ?? {})) {
     if (ALL_LEADERS.some((leader) => leader.id === leaderId)) activeLeaderIdsByNation.set(nationId, leaderId);
   }
+  notifyActiveLeadersChanged();
 }
 
 /** Explicit selections only, suitable for game configuration and save data. */
@@ -1115,6 +1127,7 @@ export function setActiveLeaderForNation(nationId: string, leaderId: string): bo
   const leader = ALL_LEADERS.find((candidate) => candidate.id === leaderId);
   if (!leader || leader.nationId !== identityNationId) return false;
   activeLeaderIdsByNation.set(nationId, leaderId);
+  notifyActiveLeadersChanged();
   return true;
 }
 

@@ -9,6 +9,28 @@ import type { WarDeclarationPhrases, WarDeclarationReason } from '../types/warDe
  */
 export const LEADER_WAR_DECLARATIONS: Readonly<Record<string, WarDeclarationPhrases>> = {
   ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
+  leader_boris_johnson: {
+  "conquest": [
+    "This strategic position offers an advantage we cannot leave to chance. Our forces will take it; our purpose is security, not an endless collection of flags.",
+    "Control of this corridor would transform our position. We have chosen to seize that opportunity by force."
+  ],
+  "hostility": [
+    "Your repeated hostile acts have exhausted the negotiations. We are entering this war to put an end to them.",
+    "We offered a working relationship; you answered with sustained confrontation. Our forces will now answer that challenge."
+  ],
+  "threat": [
+    "Your military preparations threaten our security. We will act now, before the danger becomes a catastrophe.",
+    "We cannot build prosperity beneath the shadow of your advancing forces. We are going to remove that threat."
+  ],
+  "ideological": [
+    "Your campaign against our national independence has crossed the line. We will fight to preserve our right to govern ourselves.",
+    "We will not have our political future dictated from abroad. This war is our answer to that attempt."
+  ],
+  "ambition": [
+    "The balance has shifted in our favour, and this government intends to secure the advantage. We are committing our forces to that purpose.",
+    "An unusual opportunity to strengthen our national position now lies before us. We have decided the strategic gain warrants military action."
+  ]
+},
   "leader_alexander_lukashenko": {
     "conquest": [
       "Belarus will secure the positions needed to protect its borders.",

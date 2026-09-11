@@ -224,6 +224,7 @@ export class RightSidebarPanel {
    */
   private dialogReturnState: { mode: RightSidebarPanelMode | null; collapsed: boolean; scrollOffset: number } | null = null;
   private onExpandedChanged: ((expanded: boolean) => void) | null = null;
+  private onModeShown: ((mode: RightSidebarPanelMode) => void) | null = null;
   private collapsed = true;
   private collapseHovered = false;
   private collapsePressed = false;
@@ -427,6 +428,7 @@ export class RightSidebarPanel {
     this.refreshVisibility();
     this.refreshButtonVisuals();
     this.onExpandedChanged?.(true);
+    this.onModeShown?.(mode);
   }
 
   /**
@@ -475,6 +477,11 @@ export class RightSidebarPanel {
   /** Notified when the panel expands (true) or collapses (false). */
   setOnExpandedChanged(callback: (expanded: boolean) => void): void {
     this.onExpandedChanged = callback;
+  }
+
+  /** Notified each time a panel mode is shown (nav, restore, or programmatic). */
+  setOnModeShown(callback: (mode: RightSidebarPanelMode) => void): void {
+    this.onModeShown = callback;
   }
 
   /** Returns the screen-space X of the leftmost action button's left edge. */

@@ -625,17 +625,22 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
         Type
         <select id="marker-type-select">
           <option value="islandDiscovery">islandDiscovery</option>
+          <option value="geographic">geographic</option>
         </select>
       </label>
       <label class="field">
         Name
         <input id="marker-name-input" type="text" placeholder="Iceland">
       </label>
-      <label class="field">
+      <label class="field" id="marker-category-field" style="display:none">
+        Category
+        <select id="marker-category-select"></select>
+      </label>
+      <label class="field" id="marker-radius-field">
         Radius
         <input id="marker-radius-input" type="number" min="0" step="1" value="6">
       </label>
-      <label class="field">
+      <label class="field" id="marker-metadata-field">
         Metadata JSON
         <textarea id="marker-metadata-input" spellcheck="false">{ "priority": 80, "settlementTargets": [] }</textarea>
       </label>
@@ -665,6 +670,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
     </div>
 
     <div class="toolbar-actions">
+      <button id="mutual-foe-btn" type="button">Mutual Foe Agreements</button>
       <button id="leaders-btn" type="button">Leaders &amp; AI</button>
       <button id="magic-wand-btn" type="button" title="Auto-paint terrain from the background image">&#10024; Magic Wand (Auto Paint)</button>
       <button id="save-btn">Download scenario JSON</button>
@@ -1031,6 +1037,7 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 <!-- Shared natural-resource generator, bundled from src/editor for reuse in the editor. -->
 <script src="./editor/epoch-editor-resources.js"></script>
 <script src="./editor/epoch-leader-editor.js"></script>
+<script src="./editor/epoch-mutual-foe-editor.js"></script>
 <script src="./editor/asset-viewer.js"></script>
 <script>
 const TILE_TYPES = ['ocean','coast','plains','forest','mountain','ice','jungle','desert','beach','meadow'];
@@ -2647,6 +2654,55 @@ function buildEntityLists() {
 
 // ─── World markers ─────────────────────────────────────────────────────────
 
+// Geographic (cartographic label) categories. Presentation only — no gameplay.
+// Ids mirror src/types/geographicMarker.ts; preview styling mirrors
+// src/data/geographicMarkers.ts closely enough for the editor canvas.
+const GEOGRAPHIC_MARKER_CATEGORIES = [
+  { id: 'ocean', label: 'Ocean' },
+  { id: 'sea', label: 'Sea' },
+  { id: 'region', label: 'Region' },
+  { id: 'desert', label: 'Desert' },
+  { id: 'mountain_range', label: 'Mountain Range' },
+  { id: 'other', label: 'Other' },
+];
+
+const GEOGRAPHIC_LABEL_PREVIEW = {
+  ocean: { fontScale: 1.7, min: 16, max: 64, color: '#cfe8f5', alpha: 0.55, upper: true, spacing: 6, style: 'italic' },
+  sea: { fontScale: 1.1, min: 12, max: 40, color: '#d4ecf7', alpha: 0.65, upper: true, spacing: 3, style: 'italic' },
+  region: { fontScale: 1.15, min: 12, max: 40, color: '#f3ead3', alpha: 0.82, upper: false, spacing: 2, style: 'bold' },
+  desert: { fontScale: 1.05, min: 12, max: 36, color: '#e9d3a0', alpha: 0.68, upper: false, spacing: 2, style: 'italic' },
+  mountain_range: { fontScale: 0.9, min: 11, max: 30, color: '#e6e1da', alpha: 0.78, upper: false, spacing: 1, style: 'bold italic' },
+  other: { fontScale: 1.0, min: 12, max: 36, color: '#ece7de', alpha: 0.75, upper: false, spacing: 1, style: 'normal' },
+};
+
+function normalizeGeographicCategory(value) {
+  return GEOGRAPHIC_MARKER_CATEGORIES.some(c => c.id === value) ? value : 'other';
+}
+
+function getGeographicLabelPreview(category) {
+  return GEOGRAPHIC_LABEL_PREVIEW[category] || GEOGRAPHIC_LABEL_PREVIEW.other;
+}
+
+(function populateGeographicCategorySelect() {
+  const select = document.getElementById('marker-category-select');
+  if (!select) return;
+  select.innerHTML = '';
+  for (const category of GEOGRAPHIC_MARKER_CATEGORIES) {
+    const option = document.createElement('option');
+    option.value = category.id;
+    option.textContent = category.label;
+    select.appendChild(option);
+  }
+})();
+
+function updateMarkerFieldVisibility() {
+  const type = document.getElementById('marker-type-select').value;
+  const isGeographic = type === 'geographic';
+  document.getElementById('marker-category-field').style.display = isGeographic ? '' : 'none';
+  document.getElementById('marker-radius-field').style.display = isGeographic ? 'none' : '';
+  document.getElementById('marker-metadata-field').style.display = isGeographic ? 'none' : '';
+}
+
 function buildMarkerList() {
   const markerList = document.getElementById('marker-list');
   markerList.innerHTML = '';
@@ -2654,8 +2710,11 @@ function buildMarkerList() {
   scenario.worldMarkers.forEach((marker, i) => {
     const row = document.createElement('div');
     row.className = 'entity-row' + (selectedMarkerIndex === i ? ' selected' : '');
-    row.innerHTML = `<span class="entity-dot" style="background:#38d5ff"></span>
-      <span>${marker.name || marker.id} (${marker.x},${marker.y})</span>`;
+    const isGeographic = marker.type === 'geographic';
+    const dotColor = isGeographic ? '#e9d3a0' : '#38d5ff';
+    const suffix = isGeographic ? ` [${normalizeGeographicCategory(marker.category)}]` : '';
+    row.innerHTML = `<span class="entity-dot" style="background:${dotColor}"></span>
+      <span>${marker.name || marker.id} (${marker.x},${marker.y})${suffix}</span>`;
     row.addEventListener('click', () => selectMarker(i));
     markerList.appendChild(row);
   });
@@ -2676,8 +2735,10 @@ function updateMarkerForm() {
   if (!marker) return;
   document.getElementById('marker-type-select').value = marker.type;
   document.getElementById('marker-name-input').value = marker.name || '';
+  document.getElementById('marker-category-select').value = normalizeGeographicCategory(marker.category);
   document.getElementById('marker-radius-input').value = String(marker.radius ?? 0);
   document.getElementById('marker-metadata-input').value = JSON.stringify(marker.metadata || {}, null, 2);
+  updateMarkerFieldVisibility();
 }
 
 function getDefaultMarkerMetadata(type) {
@@ -2687,6 +2748,7 @@ function getDefaultMarkerMetadata(type) {
 
 function makeDefaultMarkerName(type) {
   if (type === 'islandDiscovery') return 'Island Discovery';
+  if (type === 'geographic') return 'Atlantic Ocean';
   return 'World Marker';
 }
 
@@ -2694,16 +2756,20 @@ function addMarkerAt(q, r) {
   const type = document.getElementById('marker-type-select').value || 'islandDiscovery';
   const formName = document.getElementById('marker-name-input').value.trim();
   const name = formName || makeDefaultMarkerName(type);
-  const radius = Math.max(0, parseInt(document.getElementById('marker-radius-input').value, 10) || 0);
   const marker = {
     id: makeUniqueId('marker', name, new Set(scenario.worldMarkers.map(marker => marker.id))),
     type,
     x: q,
     y: r,
-    radius,
     name,
-    metadata: getDefaultMarkerMetadata(type),
   };
+  if (type === 'geographic') {
+    // Geographic markers are cartographic labels: category only, no radius/metadata.
+    marker.category = normalizeGeographicCategory(document.getElementById('marker-category-select').value);
+  } else {
+    marker.radius = Math.max(0, parseInt(document.getElementById('marker-radius-input').value, 10) || 0);
+    marker.metadata = getDefaultMarkerMetadata(type);
+  }
   scenario.worldMarkers.push(marker);
   selectMarker(scenario.worldMarkers.length - 1);
   setStatusInfo(`Added ${type} marker at (${q},${r})`);
@@ -2724,6 +2790,21 @@ function updateSelectedMarkerFromForm() {
   const marker = scenario.worldMarkers[selectedMarkerIndex];
   if (!marker) return;
 
+  const type = document.getElementById('marker-type-select').value || marker.type;
+  updateMarkerFieldVisibility();
+
+  if (type === 'geographic') {
+    // Geographic markers carry only text + category; drop marker-specific fields.
+    marker.type = type;
+    marker.name = document.getElementById('marker-name-input').value.trim() || undefined;
+    marker.category = normalizeGeographicCategory(document.getElementById('marker-category-select').value);
+    delete marker.radius;
+    delete marker.metadata;
+    buildMarkerList();
+    render();
+    return;
+  }
+
   const metadataInput = document.getElementById('marker-metadata-input');
   let metadata;
   try {
@@ -2738,10 +2819,11 @@ function updateSelectedMarkerFromForm() {
     return;
   }
 
-  marker.type = document.getElementById('marker-type-select').value || marker.type;
+  marker.type = type;
   marker.name = document.getElementById('marker-name-input').value.trim() || undefined;
   marker.radius = Math.max(0, parseInt(document.getElementById('marker-radius-input').value, 10) || 0);
   marker.metadata = metadata;
+  delete marker.category;
   buildMarkerList();
   render();
 }
@@ -3731,10 +3813,15 @@ function updateToolPanels() {
   updateInteractionModeUI();
 }
 
-document.getElementById('marker-type-select').addEventListener('change', updateSelectedMarkerFromForm);
+document.getElementById('marker-type-select').addEventListener('change', () => {
+  updateMarkerFieldVisibility();
+  updateSelectedMarkerFromForm();
+});
 document.getElementById('marker-name-input').addEventListener('input', updateSelectedMarkerFromForm);
+document.getElementById('marker-category-select').addEventListener('change', updateSelectedMarkerFromForm);
 document.getElementById('marker-radius-input').addEventListener('input', updateSelectedMarkerFromForm);
 document.getElementById('marker-metadata-input').addEventListener('input', updateSelectedMarkerFromForm);
+updateMarkerFieldVisibility();
 document.getElementById('remove-marker-btn').addEventListener('click', removeSelectedMarker);
 document.getElementById('add-marker-btn').addEventListener('click', () => {
   const centerWorldX = camX + viewport.clientWidth / (2 * zoom);
@@ -5514,9 +5601,15 @@ function drawWorldMarkers() {
     const world = tileToWorld(marker.x, marker.y);
     const sx = (world.x - camX) * zoom;
     const sy = (world.y - camY) * zoom;
+    const isSelected = selectedMarkerIndex === i;
+
+    if (marker.type === 'geographic') {
+      drawGeographicLabel(marker, sx, sy, isSelected);
+      continue;
+    }
+
     const radius = Math.max(4, tileSize * zoom * 0.16);
     const markerRadius = Math.max(0, marker.radius || 0) * tileSize * zoom * 0.75;
-    const isSelected = selectedMarkerIndex === i;
 
     if (markerRadius > 0) {
       ctx.beginPath();
@@ -5544,6 +5637,46 @@ function drawWorldMarkers() {
       ctx.strokeText(marker.name, sx, sy - radius - 3);
       ctx.fillText(marker.name, sx, sy - radius - 3);
     }
+  }
+}
+
+// Preview geographic labels roughly as they render in-game: world-anchored
+// cartographic text, styled per category, no pin. Mirrors GeographicLabelRenderer.
+function drawGeographicLabel(marker, sx, sy, isSelected) {
+  const category = normalizeGeographicCategory(marker.category);
+  const preview = getGeographicLabelPreview(category);
+  const baseFont = Math.min(preview.max, Math.max(preview.min, tileSize * preview.fontScale));
+  const fontSize = Math.max(8, Math.round(baseFont * zoom));
+  const text = (marker.name || '').trim();
+  const display = preview.upper ? text.toUpperCase() : text;
+
+  if (display) {
+    ctx.save();
+    ctx.globalAlpha = preview.alpha;
+    ctx.font = `${preview.style} ${fontSize}px Georgia, "Times New Roman", serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.letterSpacing = `${preview.spacing}px`;
+    ctx.strokeStyle = '#12212b';
+    ctx.lineWidth = 3;
+    ctx.strokeText(display, sx, sy);
+    ctx.fillStyle = preview.color;
+    ctx.fillText(display, sx, sy);
+    ctx.letterSpacing = '0px';
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // Small selection anchor so authors can see/pick the exact tile position.
+  const anchor = Math.max(3, tileSize * zoom * 0.1);
+  ctx.beginPath();
+  ctx.arc(sx, sy, anchor, 0, Math.PI * 2);
+  ctx.fillStyle = isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(233,211,160,0.5)';
+  ctx.fill();
+  if (isSelected) {
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 }
 
@@ -5764,7 +5897,7 @@ function validateScenarioHistoricalEvents(activeIds) {
 }
 
 function validateScenario() {
-  const warnings = [...window.EpochLeaderEditor.validate(scenario)];
+  const warnings = [...window.EpochLeaderEditor.validate(scenario), ...window.EpochMutualFoeEditor.validate(scenario)];
   const registryIds = new Set(nationRegistry.nations.map(nation => nation.nationId));
   const activeIds = new Set(scenario.nations.map(nation => nation.id));
   const knownTechnologyIds = technologyManifest.technologies.length > 0
@@ -5849,6 +5982,14 @@ function showValidationWarnings(warnings) {
   box.style.display = '';
   box.textContent = `Soft validation warnings:\n- ${warnings.join('\n- ')}\n\nExport is still allowed.`;
 }
+
+document.getElementById('mutual-foe-btn').addEventListener('click', () => {
+  if (!scenario) return;
+  window.EpochMutualFoeEditor.open(scenario, () => {
+    writeEditorAutosave();
+    showValidationWarnings(validateScenario());
+  });
+});
 
 document.getElementById('leaders-btn').addEventListener('click', () => {
   if (!scenario) return;
@@ -6467,6 +6608,7 @@ function isTypingTarget(target) {
 }
 
 window.addEventListener('keydown', (e) => {
+  if (document.querySelector('.mf-dialog[open]')) return;
   if (window.EpochAssetViewer.isOpen()) {
     if (e.key === 'Escape') {
       window.EpochAssetViewer.close();

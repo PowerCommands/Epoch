@@ -35,3 +35,10 @@ await build({
   bundle: true, format: 'iife', platform: 'browser', target: 'es2020', legalComments: 'none',
   banner: { js: '/* Generated from src/editor/leaderEditorBundle.ts — do not edit. */' },
 });
+
+await build({
+  entryPoints: [path.join(projectRoot, 'src/editor/mutualFoeEditorBundle.ts')],
+  outfile: path.join(projectRoot, 'public/editor/epoch-mutual-foe-editor.js'),
+  bundle: true, format: 'iife', platform: 'browser', target: 'es2020', legalComments: 'none',
+  banner: { js: '/* Generated from src/editor/mutualFoeEditorBundle.ts — do not edit. */' },
+});

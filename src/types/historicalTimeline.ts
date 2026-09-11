@@ -1,5 +1,6 @@
 /** The kinds of world events recorded in the historical timeline. */
 export type HistoricalEventType =
+  | 'mutualFoeActivated'
   | 'diplomaticAffair'
   | 'cityFounded'
   | 'firstContact'

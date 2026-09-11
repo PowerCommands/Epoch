@@ -1,3 +1,5 @@
+import type { HistoricalEvent } from '../types/historicalTimeline';
+import type { StatementContext } from '../types/leaderStatement';
 import { LEADER_STATEMENTS } from '../data/leaderStatements';
 import type { LeaderStatement, LeaderStatementDefinition, SavedLeaderStatements } from '../types/leaderStatement';
 import type { DiplomacyManager, DiplomaticMemoryValues } from './DiplomacyManager';
@@ -16,6 +18,7 @@ export interface LeaderStatementContext {
   leaderName: (id: string) => string;
   militaryPower: (id: string) => number;
   isBully: (id: string) => boolean;
+  isShowman?: (id: string) => boolean;
   seed: string;
   log: (ids: string[], message: string) => void;
   roll?: (key: string) => number;
@@ -26,7 +29,41 @@ export class LeaderStatementSystem {
   private speakers = new Map<string, { nextRound: number; recent: string[] }>();
   private listeners: Array<(statement: LeaderStatement) => void> = [];
   private publishing = false;
-  constructor(readonly context: LeaderStatementContext) {}
+  constructor(readonly context: LeaderStatementContext) {
+    context.history.onRecorded(event => this.handleHistory(event));
+  }
+  /** Extra public visibility only; ordinary leaders retain their existing behavior.
+   * One deterministic attempt every four rounds, with the shared eight-round cooldown.
+   */
+  runTurn(id: string): void {
+    if (this.context.round() % 4 !== 0 || !this.context.isShowman?.(id) || !this.available(id)) return;
+    if (this.roll(`showman-speech|${id}|${this.context.round()}`) < 0.3)
+      this.issue(id, line => line.requiredTrait === 'showman' && line.context === 'general');
+  }
+  private handleHistory(event: HistoricalEvent): void {
+    const contexts: Partial<Record<HistoricalEvent['type'], StatementContext>> = {
+      tradeRouteCompleted: 'economic_success', corporationFounded: 'economic_success',
+      embassyEstablished: 'diplomatic_success', allianceFormed: 'alliance', peace: 'peace_agreement',
+      cityFounded: 'construction', wonderBuilt: 'wonder', gamesGold: 'games_success',
+    };
+    const candidates: Array<[string, StatementContext]> = [];
+    const meta = event.metadata;
+    if (event.type === 'cityCaptured' || event.type === 'capitalCaptured') {
+      if (meta?.aggressorNationId) candidates.push([meta.aggressorNationId, 'city_victory']);
+      if (meta?.targetNationId) candidates.push([meta.targetNationId, 'city_loss']);
+    } else if (['stockMarketCrash', 'famine', 'pandemic', 'energyCrisis'].includes(event.type)) {
+      if (meta?.worldEventPhase === 'started' || meta?.worldEventPhase === 'ended')
+        for (const id of event.eventNationIds) candidates.push([id, meta.worldEventPhase === 'ended' ? 'recovery' : 'economic_difficulty']);
+    } else if (contexts[event.type]) {
+      const ids = event.type === 'gamesGold' && meta?.gamesWinnerNationId ? [meta.gamesWinnerNationId] : event.eventNationIds;
+      for (const id of ids) candidates.push([id, contexts[event.type]!]);
+    }
+    for (const [id, context] of candidates) {
+      if (!this.context.isShowman?.(id) || !this.available(id)) continue;
+      if (this.roll(`showman-event|${event.id}|${id}`) < 0.35)
+        this.issue(id, line => line.requiredTrait === 'showman' && line.context === context);
+    }
+  }
   onStatement(listener: (statement: LeaderStatement) => void): void { this.listeners.push(listener); }
   roll(key: string): number {
     return Math.max(0, Math.min(0.999999999, this.context.roll?.(key) ?? deterministicFlavorRoll(`${this.context.seed}|${key}`)));
@@ -42,7 +79,7 @@ export class LeaderStatementSystem {
     if (responseTo && (responseTo.speakerId === speakerId || !responseTo.observerIds.includes(speakerId)
       || !this.context.active(responseTo.speakerId) || !this.context.haveMet(speakerId, responseTo.speakerId))) return undefined;
     const recent = this.speakers.get(speakerId)?.recent ?? [];
-    const eligible = LEADER_STATEMENTS.filter(predicate);
+    const eligible = LEADER_STATEMENTS.filter(line => (!line.requiredTrait || this.context.isShowman?.(speakerId) === true) && predicate(line));
     if (!eligible.length) return undefined;
     const fresh = eligible.filter(line => !recent.includes(line.id));
     // Small future content pools must not permanently silence a speaker.

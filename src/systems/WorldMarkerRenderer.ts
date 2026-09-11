@@ -3,6 +3,7 @@ import type { TileMap } from './TileMap';
 import type { DiagnosticSystem } from './DiagnosticSystem';
 import type { WorldMarkerSystem } from './WorldMarkerSystem';
 import type { WorldMarker } from '../types/WorldMarker';
+import { isGeographicMarker } from '../types/geographicMarker';
 
 const MARKER_COLORS: Record<string, number> = {
   islandDiscovery: 0x38d5ff,
@@ -35,6 +36,9 @@ export class WorldMarkerRenderer {
     this.labels.length = 0;
 
     for (const marker of this.worldMarkerSystem.getAllMarkers()) {
+      // Geographic markers are cartographic labels rendered by
+      // GeographicLabelRenderer — never as ordinary marker pins.
+      if (isGeographicMarker(marker)) continue;
       this.drawMarker(marker);
     }
     this.setVisible(this.visible);

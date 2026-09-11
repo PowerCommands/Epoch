@@ -58,6 +58,20 @@ export class PolicySystem {
     return this.getNationPolicies(nationId).activePolicies.map((assignment) => ({ ...assignment }));
   }
 
+  /**
+   * True when the nation has at least one unlocked, not-yet-equipped policy that
+   * would fit a currently free compatible slot (its own category or a wildcard).
+   * Canonical read used by the contextual guide to detect the first genuine
+   * opportunity to equip a policy; it reuses the same slot-resolution logic as
+   * {@link activatePolicy} so it never diverges from what the player can do.
+   */
+  hasEquippablePolicyOpportunity(nationId: string): boolean {
+    for (const policy of this.getUnlockedPolicies(nationId)) {
+      if (this.resolveActivationSlot(nationId, policy.id) !== null) return true;
+    }
+    return false;
+  }
+
   getActivePolicies(nationId: string): PolicyDefinition[] {
     return this.getNationPolicies(nationId).activePolicies
       .map((assignment) => getPolicyById(assignment.policyId))

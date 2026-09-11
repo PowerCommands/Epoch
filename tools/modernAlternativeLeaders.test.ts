@@ -21,12 +21,12 @@ const expected: Record<string, string> = {
   emmanuel_macron: 'france', angela_merkel: 'germany', narendra_modi: 'india',
   vladimir_putin: 'russia', tony_blair: 'england', giorgia_meloni: 'italy',
   jair_bolsonaro: 'brazil', pedro_sanchez: 'spain', donald_tusk: 'poland',
-  mette_frederiksen: 'denmark', olof_palme: 'sweden',
+  mette_frederiksen: 'denmark', olof_palme: 'sweden', boris_johnson: 'england',
 };
 const leader = (id: string) => MODERN_ALTERNATIVE_LEADERS.find(l => l.id === `leader_${id}`)!;
 
-test('all fourteen authentic alternatives have unique IDs, complete valid definitions and unchanged defaults', () => {
-  assert.equal(MODERN_ALTERNATIVE_LEADERS.length, 14);
+test('all modern alternatives have unique IDs, complete valid definitions and unchanged defaults', () => {
+  assert.equal(MODERN_ALTERNATIVE_LEADERS.length, 15);
   assert.equal(new Set(ALL_LEADERS.map(l => l.id)).size, ALL_LEADERS.length);
   for (const [id, nation] of Object.entries(expected)) {
     const l = leader(id);
@@ -45,9 +45,9 @@ test('all fourteen authentic alternatives have unique IDs, complete valid defini
 
 test('explicit traits are independent and European alternatives are strategically distinct', () => {
   assert.deepEqual(MODERN_ALTERNATIVE_LEADERS.filter(l => l.impulsiveBully).map(l => l.id), ['leader_donald_j_trump', 'leader_jair_bolsonaro']);
-  assert.deepEqual(MODERN_ALTERNATIVE_LEADERS.filter(l => l.opportunism).map(l => l.id), ['leader_donald_j_trump', 'leader_vladimir_putin']);
+  assert.deepEqual(MODERN_ALTERNATIVE_LEADERS.filter(l => l.opportunism).map(l => l.id), ['leader_donald_j_trump', 'leader_vladimir_putin', 'leader_boris_johnson']);
   const profiles = MODERN_ALTERNATIVE_LEADERS.map(l => JSON.stringify(l.aiPersonality));
-  assert.equal(new Set(profiles).size, 14);
+  assert.equal(new Set(profiles).size, 15);
   const fdr = leader('franklin_d_roosevelt').aiPersonality!;
   assert.ok(fdr.aggressionBias < 0 && fdr.warTolerance > 70 && fdr.casualtyToleranceRatio > .5);
   const blair = leader('tony_blair').aiPersonality!;
@@ -91,7 +91,7 @@ for (const l of MODERN_ALTERNATIVE_LEADERS) {
       assert.equal(effectiveLeader({ version: 1 }, l.id).name, l.name);
       const config: LeaderConfiguration = { version: 1, leaders: { [l.id]: {
         aiPersonality: { economyBias: l.aiPersonality!.economyBias + 1 },
-        impulsiveBully: l.impulsiveBully, opportunism: l.opportunism,
+        impulsiveBully: l.impulsiveBully, opportunism: l.opportunism, showman: l.showman,
         diplomacyFlavor: { friendly: 'Our agreement stands.' },
       } } };
       const restoredConfig = deserializeConfiguration(serializeConfiguration(config));
@@ -137,6 +137,7 @@ for (const l of MODERN_ALTERNATIVE_LEADERS) {
       assert.equal(loaded.aiPersonality?.economyBias, edited.aiPersonality.economyBias);
       assert.equal(loaded.impulsiveBully, l.impulsiveBully);
       assert.equal(loaded.opportunism, l.opportunism);
+      assert.equal(loaded.showman, l.showman);
     } finally {
       setActiveLeaderSelections(undefined); setScenarioLeaderOverrides([]); setLeaderConfiguration(undefined);
     }

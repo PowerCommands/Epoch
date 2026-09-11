@@ -16,7 +16,7 @@ export interface StartupGuideStep {
   onEnter?: () => void;
 }
 
-export type TutorialWizardMode = 'startup' | 'progressive';
+export type TutorialWizardMode = 'startup' | 'progressive' | 'contextual';
 
 export interface TutorialWizardCallbacks {
   /** Fired after the guide has hidden itself. */
@@ -70,6 +70,8 @@ export class TutorialWizard {
 
   private viewedTipIndex = 0;
   private viewedPageIndex = 0;
+  /** Single tip shown by context-aware delivery (independent of the manual set). */
+  private contextualTip: GuideTip | null = null;
   private startupSteps: readonly StartupGuideStep[] = [];
   private startupStepIndex = 0;
   private mode: TutorialWizardMode = 'progressive';
@@ -124,6 +126,20 @@ export class TutorialWizard {
     if (this.tips.length === 0) return;
     this.mode = 'progressive';
     this.viewedTipIndex = clampWhole(tipIndex, 0, this.tips.length - 1);
+    this.viewedPageIndex = 0;
+    this.active = true;
+    this.showCurrentPage();
+  }
+
+  /**
+   * Present a single context-aware tip. Navigation is limited to that tip's own
+   * pages; there is no cross-tip browsing, so a contextual explanation never
+   * pulls the player into the full manual guide.
+   */
+  openContextualTip(tip: GuideTip): void {
+    if (tip.pages.length === 0) return;
+    this.mode = 'contextual';
+    this.contextualTip = tip;
     this.viewedPageIndex = 0;
     this.active = true;
     this.showCurrentPage();
@@ -206,6 +222,12 @@ export class TutorialWizard {
       this.showCurrentPage();
       return;
     }
+    if (this.mode === 'contextual') {
+      if (this.viewedPageIndex <= 0) return;
+      this.viewedPageIndex -= 1;
+      this.showCurrentPage();
+      return;
+    }
     if (this.viewedPageIndex > 0) {
       this.viewedPageIndex -= 1;
     } else if (this.viewedTipIndex > 0) {
@@ -221,6 +243,13 @@ export class TutorialWizard {
     if (this.mode === 'startup') {
       if (this.startupStepIndex >= this.startupSteps.length - 1) return;
       this.startupStepIndex += 1;
+      this.showCurrentPage();
+      return;
+    }
+    if (this.mode === 'contextual') {
+      const pages = this.contextualTip?.pages.length ?? 0;
+      if (this.viewedPageIndex >= pages - 1) return;
+      this.viewedPageIndex += 1;
       this.showCurrentPage();
       return;
     }
@@ -248,6 +277,26 @@ export class TutorialWizard {
       this.setButtonLabel(this.nextButton, 'Next Step');
       this.setButtonVisible(this.previousButton, this.startupStepIndex > 0);
       this.setButtonVisible(this.nextButton, this.startupStepIndex < this.startupSteps.length - 1);
+      this.setButtonVisible(this.closeButton, true);
+      this.showPanel();
+      return;
+    }
+
+    if (this.mode === 'contextual') {
+      const tip = this.contextualTip;
+      if (!tip) return;
+      const page = tip.pages[this.viewedPageIndex] ?? tip.pages[0];
+      if (!page) return;
+      this.titleText.setText(page.title ? `${tip.title} — ${page.title}` : tip.title);
+      const multiPage = tip.pages.length > 1;
+      this.metaText.setText(multiPage
+        ? `Guide  •  Page ${this.viewedPageIndex + 1} of ${tip.pages.length}`
+        : 'Guide');
+      this.bodyText.setText(page.body);
+      this.setButtonLabel(this.previousButton, 'Previous Page');
+      this.setButtonLabel(this.nextButton, 'Next Page');
+      this.setButtonVisible(this.previousButton, this.viewedPageIndex > 0);
+      this.setButtonVisible(this.nextButton, this.viewedPageIndex < tip.pages.length - 1);
       this.setButtonVisible(this.closeButton, true);
       this.showPanel();
       return;

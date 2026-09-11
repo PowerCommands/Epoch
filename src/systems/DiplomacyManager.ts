@@ -518,8 +518,12 @@ export class DiplomacyManager {
    * Subscribe to war→peace transitions (ordinary peace, ceasefire, capitulation).
    * Fired after the relation has been committed to PEACE.
    */
-  onWarEnded(listener: WarEndedListener): void {
+  onWarEnded(listener: WarEndedListener): () => void {
     this.warEndedListeners.push(listener);
+    return () => {
+      const index = this.warEndedListeners.indexOf(listener);
+      if (index >= 0) this.warEndedListeners.splice(index, 1);
+    };
   }
 
   private notifyWarEnded(a: string, b: string): void {
@@ -1479,6 +1483,24 @@ export class DiplomacyManager {
     return true;
   }
 
+  /** Scenario security reconciliation: no settlement, offer, or diplomatic-memory reset. */
+  reconcileWar(a: string, b: string): boolean {
+    if (a === b || this.getState(a, b) !== 'WAR') return false;
+    const key = this.pairKey(a, b);
+    this.relations.set(key, normalizeRelation({
+      ...this.relations.get(key),
+      state: 'PEACE',
+      lastPeaceProposalTurn: this.turnManager?.getCurrentRound() ?? 0,
+    }));
+    // Clear only offers for this pair; unrelated negotiations remain intact.
+    for (const [recipient, proposal] of this.pendingProposals) {
+      if (this.pairKey(proposal.fromNationId, proposal.toNationId) === key) this.pendingProposals.delete(recipient);
+    }
+    this.notifyChanged(a, b);
+    this.notifyWarEnded(a, b);
+    return true;
+  }
+
   getAggressorNationId(a: string, b: string): string | undefined {
     return this.relations.get(this.pairKey(a, b))?.aggressorNationId;
   }
@@ -1684,8 +1706,12 @@ export class DiplomacyManager {
     this.declinedListeners.push(callback);
   }
 
-  onWarDeclared(callback: WarDeclaredListener): void {
+  onWarDeclared(callback: WarDeclaredListener): () => void {
     this.warDeclaredListeners.push(callback);
+    return () => {
+      const index = this.warDeclaredListeners.indexOf(callback);
+      if (index >= 0) this.warDeclaredListeners.splice(index, 1);
+    };
   }
 
   /** Fired for explicit directional sanction changes (not passive save restore). */
@@ -1733,8 +1759,12 @@ export class DiplomacyManager {
     this.jointWarAgreementListeners.push(callback);
   }
 
-  onDiplomacyChanged(callback: DiplomacyChangedListener): void {
+  onDiplomacyChanged(callback: DiplomacyChangedListener): () => void {
     this.changedListeners.push(callback);
+    return () => {
+      const index = this.changedListeners.indexOf(callback);
+      if (index >= 0) this.changedListeners.splice(index, 1);
+    };
   }
 
   private clonePeaceProposal(proposal: PeaceProposal): PeaceProposal {

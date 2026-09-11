@@ -1547,6 +1547,18 @@
           "size": 357058
         },
         {
+          "name": "boris-johnson-room.webp",
+          "path": "/assets/sprites/leaders/boris-johnson-room.webp",
+          "type": "WEBP",
+          "size": 215150
+        },
+        {
+          "name": "boris-johnson.png",
+          "path": "/assets/sprites/leaders/boris-johnson.png",
+          "type": "PNG",
+          "size": 263399
+        },
+        {
           "name": "charles-de-gaulle-room.webp",
           "path": "/assets/sprites/leaders/charles-de-gaulle-room.webp",
           "type": "WEBP",

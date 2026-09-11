@@ -256,6 +256,13 @@
           "leaderTitle": "Prime Minister",
           "leaderImage": "/assets/sprites/leaders/tony-blair.png",
           "isDefault": false
+        },
+        {
+          "leaderId": "leader_boris_johnson",
+          "leaderName": "Boris Johnson",
+          "leaderTitle": "Prime Minister",
+          "leaderImage": "/assets/sprites/leaders/boris-johnson.png",
+          "isDefault": false
         }
       ]
     },

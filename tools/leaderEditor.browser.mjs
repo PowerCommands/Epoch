@@ -20,6 +20,8 @@ try {
   await dialog.getByLabel('Opportunism', { exact: true }).check();
   assert.equal(await dialog.getByLabel('Impulsive Bully', { exact: true }).isChecked(), false);
   await dialog.getByLabel('Impulsive Bully', { exact: true }).check();
+  assert.equal(await dialog.getByLabel('Showman', { exact: true }).isChecked(), false);
+  await dialog.getByLabel('Showman', { exact: true }).check();
   await dialog.getByLabel('Aggression', { exact: true }).fill('20');
   await dialog.getByLabel('Aggression', { exact: true }).press('Tab');
   assert.match(await dialog.locator('.le-summary').first().innerText(), /Aggressive/);
@@ -46,6 +48,7 @@ try {
   assert.equal(saved.config.leaders['leader_mahatma-gandhi'].aiPersonality.aggressionBias, 20);
   assert.equal(saved.config.leaders['leader_mahatma-gandhi'].opportunism, true);
   assert.equal(saved.config.leaders['leader_mahatma-gandhi'].impulsiveBully, true);
+  assert.equal(saved.config.leaders['leader_mahatma-gandhi'].showman, true);
   assert.equal(saved.config.profiles.doctrines[0].navalExpeditions, true);
   assert.deepEqual(Object.keys(saved.config.eraAssignments['leader_mahatma-gandhi']), ['ancient', 'modern']);
   await page.evaluate(() => window.EpochLeaderEditor.open(window.editorTestScenario, () => {}));

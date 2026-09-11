@@ -1,3 +1,4 @@
+import { SHOWMAN_STATEMENTS } from './showmanStatements';
 import type { LeaderStatementDefinition, StatementContext, StatementTone } from '../types/leaderStatement';
 
 const pools: readonly [StatementContext, StatementTone, readonly string[]][] = [
@@ -98,5 +99,5 @@ const pools: readonly [StatementContext, StatementTone, readonly string[]][] = [
     'Our support is total, absolute and without limits. Details will be considered separately.',
   ]],
 ];
-export const LEADER_STATEMENTS: readonly LeaderStatementDefinition[] = pools.flatMap(([context, tone, lines]) =>
-  lines.map((text, index) => ({ id: `${context}_${tone}_${index}`, context, tone, text })));
+export const LEADER_STATEMENTS: readonly LeaderStatementDefinition[] = [...pools.flatMap(([context, tone, lines]) =>
+  lines.map((text, index) => ({ id: `${context}_${tone}_${index}`, context, tone, text }))), ...SHOWMAN_STATEMENTS];

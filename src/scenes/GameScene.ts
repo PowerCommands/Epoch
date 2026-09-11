@@ -1,3 +1,4 @@
+import { MutualFoeAgreementSystem } from '../systems/MutualFoeAgreementSystem';
 import { createCapitulationDialogue } from '../systems/diplomacy/CapitulationDialogue';
 import { getExplorationVisionRadius } from '../systems/VisibilitySystem';
 import { DiplomaticAffairSystem } from '../systems/diplomacy/DiplomaticAffairSystem';
@@ -45,6 +46,7 @@ import { UnitUpgradeSystem } from '../systems/UnitUpgradeSystem';
 import { UnitLifetimeSystem } from '../systems/UnitLifetimeSystem';
 import { WorldMarkerSystem } from '../systems/WorldMarkerSystem';
 import { WorldMarkerRenderer } from '../systems/WorldMarkerRenderer';
+import { GeographicLabelRenderer } from '../systems/GeographicLabelRenderer';
 import { ImprovementConstructionSystem } from '../systems/ImprovementConstructionSystem';
 import { TradeDealSystem } from '../systems/TradeDealSystem';
 import { TradeConnectionSystem } from '../systems/TradeConnectionSystem';
@@ -322,7 +324,8 @@ import { HudLayer } from '../ui/hud/HudLayer';
 import { TutorialWizard, type StartupGuideStep } from '../ui/hud/TutorialWizard';
 import { isTutorialDontShowAgain } from '../systems/TutorialSettings';
 import { GuideProgression } from '../systems/GuideProgression';
-import { buildProgressiveGuideTips } from '../data/progressiveGuide';
+import { buildProgressiveGuideTips, buildGuideTipMap } from '../data/progressiveGuide';
+import { ContextualTipSystem } from '../systems/ContextualTipSystem';
 import type { ScreenRect } from '../types/screenRect';
 import { Tooltip } from '../ui/hud/Tooltip';
 import type { DiscoveryPopupData, DiscoveryPopupRow } from '../ui/hud/DiscoveryPopup';
@@ -533,6 +536,7 @@ export class GameScene extends Phaser.Scene {
   private diagnosticSystem!: DiagnosticSystem;
   private minimapHud: MinimapHud | null = null;
   private tutorialWizard: TutorialWizard | null = null;
+  private contextualTipSystem: ContextualTipSystem | null = null;
   private rightSidebarPanel: RightSidebarPanel | null = null;
   private leaderAudienceDialog: LeaderAudienceDialog | null = null;
   private isAutoplayActiveForVisuals: () => boolean = () => false;
@@ -546,6 +550,7 @@ export class GameScene extends Phaser.Scene {
     this.rightSidebarPanel = null;
     this.leaderAudienceDialog = null;
     this.tutorialWizard = null;
+    this.contextualTipSystem = null;
     this.isAutoplayActiveForVisuals = () => false;
     // ─── Data & system ───────────────────────────────────────────────────────
 
@@ -1321,6 +1326,19 @@ export class GameScene extends Phaser.Scene {
         data.savedState?.minPeaceNegotiationTurns ?? scenarioJson.meta?.minPeaceNegotiationTurns,
       ),
     );
+    const mutualFoeAgreementSystem = new MutualFoeAgreementSystem(
+      data.savedState?.mutualFoeAgreements ?? scenario.mutualFoeAgreements,
+      [...runtimeScenarioJson.nations, ...(data.savedState?.nations ?? [])],
+      nationManager, diplomacyManager, {
+        normalGoldPerTurn: id => resourceSystem.getNormalGoldIncome(id) - unitUpkeepSystem.calculateUpkeep(id),
+        transferGold: (from, to, amount) => resourceSystem.transferGold(from, to, amount),
+      },
+    );
+    resourceSystem.setMutualFoeSupport(mutualFoeAgreementSystem);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      resourceSystem.setMutualFoeSupport(undefined);
+      mutualFoeAgreementSystem.shutdown();
+    });
     // Resolve nation ids to display names for `[DIPLOMACY]` economic-pressure logs.
     diplomacyManager.setNationNameResolver((id) => nationManager.getNation(id)?.name ?? id);
     diplomacyManager.onVassalReleased((released) => {
@@ -2154,6 +2172,12 @@ export class GameScene extends Phaser.Scene {
         aggressorNationId: aggressorId,
         victimNationId: targetId,
       });
+      // Choosing war is the moment to think about objectives. The peace tip is
+      // deliberately NOT fired here — it belongs to the moment peace negotiation
+      // first becomes available (see showProposePeaceDialog).
+      if (aggressorId === humanNationId) {
+        this.contextualTipSystem?.fire('human-war-as-aggressor');
+      }
       tradeDealSystem.cancelDealsBetween(aggressorId, targetId, 'war');
       const cancelledConns = tradeConnectionSystem.cancelConnectionsBetweenNations(aggressorId, targetId);
       if (cancelledConns.length > 0) {
@@ -4180,6 +4204,7 @@ export class GameScene extends Phaser.Scene {
       leaderName: id => getLeaderByNationId(id)?.name ?? timelineNationName(id),
       militaryPower: id => aiMilitaryEvaluationSystem.getMilitaryStrength(id).totalStrength,
       isBully: id => getLeaderByNationId(id)?.impulsiveBully === true,
+      isShowman: id => getLeaderByNationId(id)?.showman === true,
       seed: `${data.mapKey}|${[...data.activeNationIds].sort().join(',')}|leader-statements-v1`,
       log: (nationIds, message) => {
         console.log(formatLog(nationIds[0]!, `${message} nations=${nationIds.join(',')}`));
@@ -4234,6 +4259,7 @@ export class GameScene extends Phaser.Scene {
       discoverySystem.scan();
 
       aiDiplomacySystem.runTurn(nation.id);
+      leaderStatementSystem.runTurn(nation.id);
       maybeProposeAIJointWar(nation.id);
       // Clear nearby Barbarian Camps before the main AI pass spends movement.
       barbarianSystem.runAICampClearingForNation(nation.id, infrastructureSabotageSystem);
@@ -4421,6 +4447,7 @@ export class GameScene extends Phaser.Scene {
         // AI turn (settlers, combat, movement, production) reads the freshly
         // adjusted state.
         aiDiplomacySystem.runTurn(e.nation.id);
+        leaderStatementSystem.runTurn(e.nation.id);
         maybeProposeAIJointWar(e.nation.id);
         // Clear nearby Barbarian Camps before the main AI pass spends movement.
         barbarianSystem.runAICampClearingForNation(e.nation.id, infrastructureSabotageSystem);
@@ -5161,6 +5188,9 @@ export class GameScene extends Phaser.Scene {
       // Automatically grant the player an audience with a newly met AI leader.
       if (humanNationId && (a === humanNationId || b === humanNationId)) {
         enqueueAudienceForNation(a === humanNationId ? b : a);
+        // Explain diplomacy the first time the human meets anyone. The tip waits
+        // behind the leader audience (presenter-busy) and appears once it closes.
+        this.contextualTipSystem?.fire('first-contact');
       }
     });
 
@@ -5738,6 +5768,17 @@ export class GameScene extends Phaser.Scene {
         // A conquered city may introduce new encounters
         discoverySystem.scan();
         if (e.attacker.ownerId === humanNationId) updateFog();
+        // First foreign city the human occupies: explain the Occupied →
+        // Recovering → Integrated lifecycle and its Gold cost. Capital captures
+        // that convert straight to vassalization return the city (no occupation)
+        // and are excluded. The tip waits behind the Keep/Liberate/Raze modal.
+        if (
+          e.attacker.ownerId === humanNationId
+          && e.previousOwnerId
+          && !e.capitalVassalizationResolved
+        ) {
+          this.contextualTipSystem?.fire('city-captured');
+        }
       }
 
       rightPanel?.requestRefresh();
@@ -6666,6 +6707,21 @@ export class GameScene extends Phaser.Scene {
         log: (message) => console.log(`[HistoricalEvents] ${message}`),
       },
     );
+    mutualFoeAgreementSystem.onAnnouncement(event => {
+      if (event.kind === 'activated') historicalTimeline.record({
+        type: 'mutualFoeActivated', icon: '🛡', text: event.message,
+        eventNationIds: event.nationIds, newsImportance: 0,
+      });
+      logManager.info({ category: 'diplomacy', nationIds: event.nationIds, message: event.message });
+      if (!isAutoplayActive() && event.nationIds.includes(data.humanNationId)) {
+        hudLayer?.enqueueDiscovery({
+          title: event.kind === 'activated' ? 'Mutual Foe Agreement Activated' : event.agreementName,
+          imageKey: 'mutual_foe_agreement_notice', imagePath: '/assets/sprites/news/war-declared.png',
+          description: event.message, unlockRows: [], leadsToRows: [], hideProgression: true,
+        });
+      }
+      hudLayer?.refresh(); rightPanel?.requestRefresh();
+    });
     const worldEvents = scenarioHistoricalEventSystem.worldEvents!;
     resourceSystem.setHistoricalProviders((id, value) => worldEvents.gold(id, value), (id, economies, round, commit) => worldEvents.processFood(id, economies, round, commit));
     happinessSystem.setHistoricalHappinessProvider(id => worldEvents.happiness(id));
@@ -7404,6 +7460,12 @@ export class GameScene extends Phaser.Scene {
 
       document.body.appendChild(overlay);
       goldInput.focus();
+
+      // Peace negotiation is genuinely available and the human has just opened
+      // it: explain the strategic value of ending a war. Fired after the modal
+      // is in the DOM so the contextual busy predicate defers the tip behind it;
+      // it appears once the player closes the negotiation dialog.
+      this.contextualTipSystem?.fire('peace-negotiation-opened');
     };
 
     // Builds, evaluates and (if accepted) atomically settles a human → AI peace offer.
@@ -8292,6 +8354,8 @@ export class GameScene extends Phaser.Scene {
       ],
     );
     const worldMarkerRenderer = new WorldMarkerRenderer(this, tileMap, worldMarkerSystem, this.diagnosticSystem);
+    // Cartographic geographic labels: presentation-only, always visible, no gameplay effect.
+    const geographicLabelRenderer = new GeographicLabelRenderer(this, tileMap, worldMarkerSystem);
     const endHumanTurn = () => {
       if (!turnManager.getCurrentNation().isHuman) return;
       if (hudLayer?.hasBlockingModal()) return;
@@ -8482,7 +8546,7 @@ export class GameScene extends Phaser.Scene {
           if (bonus !== 0) policySportBonuses[sport] = bonus;
         }
       }
-      return buildGamesOfNationsUiModel({
+      const model = buildGamesOfNationsUiModel({
         summary,
         humanNationId: humanNationId ?? '',
         hostNationName,
@@ -8508,6 +8572,11 @@ export class GameScene extends Phaser.Scene {
         humanTreasury: humanNationId ? nationManager.getResources(humanNationId).gold : 0,
         policySportBonuses,
       });
+      // A live participation invitation (the Games button prompts the human to
+      // decide) is the moment to explain how to weigh a Games commitment. The
+      // one-time gate + deferral keep it from overlapping the Games dialog.
+      if (model.promptPending) this.contextualTipSystem?.fire('games-invitation');
+      return model;
     };
     hudLayer = new HudLayer(this, {
       humanNationId,
@@ -8541,6 +8610,9 @@ export class GameScene extends Phaser.Scene {
       },
       onSelectResearch: (technologyId) => {
         if (!humanNationId) return false;
+        // Clicking a node is the "inspect" interaction: a node that introduces a
+        // non-obvious mechanic may explain it the first time it is opened.
+        this.contextualTipSystem?.fire('tech-inspected', { nodeId: technologyId });
         const started = researchSystem.startResearch(humanNationId, technologyId);
         if (!started) return false;
         if (humanNeedsCultureSelection()) {
@@ -8550,6 +8622,7 @@ export class GameScene extends Phaser.Scene {
       },
       onSelectCultureNode: (nodeId) => {
         if (!humanNationId) return false;
+        this.contextualTipSystem?.fire('culture-inspected', { nodeId });
         return cultureSystem.startCultureNode(humanNationId, nodeId);
       },
       onPoliciesChanged: refreshPolicyDerivedState,
@@ -8714,6 +8787,14 @@ export class GameScene extends Phaser.Scene {
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
     });
+    // Explain the Policies workflow the first time Culture progression actually
+    // gives the human a policy they can equip into a free compatible slot — not
+    // merely because a Culture node completed.
+    cultureSystem.onCompleted((event) => {
+      if (event.nationId !== humanNationId) return;
+      if (!policySystem.hasEquippablePolicyOpportunity(humanNationId)) return;
+      this.contextualTipSystem?.fire('policy-opportunity');
+    });
     worldCouncilSystem.onChanged(() => {
       productionSystem.cancelProhibitedProduction();
       happinessSystem.recalculateAll();
@@ -8793,6 +8874,11 @@ export class GameScene extends Phaser.Scene {
     // The sidebar (Details/Leaderboard/Diplomacy) expands over the same right
     // area as the permanent History panel, so hide History while it is open.
     this.rightSidebarPanel.setOnExpandedChanged((expanded) => timelinePanel.setHidden(expanded || Boolean(this.leaderAudienceDialog?.isOpen())));
+    // Opening the Leaderboard (victory-progress) view is the moment to explain
+    // the scenario's victory conditions.
+    this.rightSidebarPanel.setOnModeShown((mode) => {
+      if (mode === 'leaderboard') this.contextualTipSystem?.fire('victory-progress-opened');
+    });
     this.diagnosticSystem.subscribeVisibility((open) => {
       this.rightSidebarPanel?.setDiagnosticsEnabled(open);
       rightPanel?.requestRefresh();
@@ -8852,6 +8938,11 @@ export class GameScene extends Phaser.Scene {
         eventNationIds: [city.ownerId],
         metadata: { cityId: city.id, cityName: city.name },
       });
+      // Founding a city (beyond the pre-placed capital) is the moment to explain
+      // that cities — not units — are the seat of national power.
+      if (city.ownerId === humanNationId) {
+        this.contextualTipSystem?.fire('city-founded');
+      }
     });
     discoverySystem.onNationsMet((a, b) => {
       historicalTimeline.record({
@@ -9109,6 +9200,11 @@ export class GameScene extends Phaser.Scene {
         eventNationIds: [a, b],
         metadata: { aggressorNationId: a, targetNationId: b },
       });
+      // The market is open: explain how trade connections turn surplus into
+      // income and diplomatic goodwill.
+      if (a === humanNationId || b === humanNationId) {
+        this.contextualTipSystem?.fire('trade-relations-established');
+      }
     });
     diplomacyManager.onAllianceFormed((a, b) => {
       historicalTimeline.record({
@@ -11176,6 +11272,7 @@ export class GameScene extends Phaser.Scene {
           luckyLoserTurningPointSystem,
           culturalJealousySystem,
           unluckyWinnerTurningPointSystem,
+          mutualFoeAgreementSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -11186,6 +11283,7 @@ export class GameScene extends Phaser.Scene {
           consolidationSystem,
           peaceSummitSystem,
           guideProgress: guideProgression.getState(),
+          contextualTips: this.contextualTipSystem?.getState(),
         }),
         prepareAircraftProduction: (cityId, unitTypeId, x, y) => {
           const city = cityManager.getCity(cityId);
@@ -11738,6 +11836,7 @@ export class GameScene extends Phaser.Scene {
       rightPanel?.shutdown();
       diagnosticDialog.shutdown();
       worldMarkerRenderer.shutdown();
+      geographicLabelRenderer.shutdown();
       this.diagnosticSystem.shutdown();
       cityView.shutdown();
       cityBannerRenderer.shutdown();
@@ -11901,6 +12000,7 @@ export class GameScene extends Phaser.Scene {
         luckyLoserTurningPointSystem,
         culturalJealousySystem,
         unluckyWinnerTurningPointSystem,
+        mutualFoeAgreementSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,
@@ -11956,6 +12056,7 @@ export class GameScene extends Phaser.Scene {
       territoryRenderer.invalidate();
       refreshCultureOverlay();
       worldMarkerRenderer.refresh();
+      geographicLabelRenderer.refresh();
       leaderStrip?.rebuild();
       for (const nation of nationManager.getAllNations()) {
         resourceSystem.recalculateForNation(nation.id);
@@ -12025,6 +12126,7 @@ export class GameScene extends Phaser.Scene {
           luckyLoserTurningPointSystem,
           culturalJealousySystem,
           unluckyWinnerTurningPointSystem,
+          mutualFoeAgreementSystem,
           newspaperSystem,
           gamesOfNationsSystem,
           covertSuspicionSystem,
@@ -12104,6 +12206,7 @@ export class GameScene extends Phaser.Scene {
         luckyLoserTurningPointSystem,
         culturalJealousySystem,
         unluckyWinnerTurningPointSystem,
+        mutualFoeAgreementSystem,
         newspaperSystem,
         gamesOfNationsSystem,
         covertSuspicionSystem,
@@ -12114,6 +12217,7 @@ export class GameScene extends Phaser.Scene {
         consolidationSystem,
         peaceSummitSystem,
         guideProgress: guideProgression.getState(),
+        contextualTips: this.contextualTipSystem?.getState(),
       });
     const saveGameDialog = new SaveGameDialog({
       onConfirm: (filename) => {
@@ -12179,6 +12283,61 @@ export class GameScene extends Phaser.Scene {
         },
       },
     );
+
+    // ─── Context-aware tips ────────────────────────────────────────────────────
+    // Contextual tips are surfaced by gameplay events (first contact, inspecting
+    // a Technology/Culture node, capturing a city, …) rather than on a timer. The
+    // system only presents when it is safe to interrupt the human: never during
+    // autoplay, never over another modal/guide, and only while automatic guide
+    // popups are enabled in Settings. Triggers are wired throughout create() via
+    // `this.contextualTipSystem?.fire(...)`.
+    const isContextualPresenterBusy = (): boolean => {
+      if (this.tutorialWizard?.isActive()) return true;
+      if (this.leaderAudienceDialog?.isOpen()) return true;
+      if (escapeMenu.isOpen()) return true;
+      if (isCityCaptureDecisionPending()) return true;
+      // Defer behind any open Phaser HUD modal (e.g. the Games participation
+      // dialog) or HTML overlay (diplomacy / propose-peace), so a contextual tip
+      // never renders on top of a decision the player is making.
+      if (hudLayer?.hasBlockingModal()) return true;
+      if (isVisibleModalOverlayActive()) return true;
+      if (document.getElementById('propose-peace-modal')) return true;
+      const selected = selectionManager.getSelected();
+      if (selected?.kind === 'city' && cityView.isOpenForCity(selected.city.id)) return true;
+      return false;
+    };
+    this.contextualTipSystem = new ContextualTipSystem(
+      buildGuideTipMap({
+        enabledVictories: victorySystem.getEnabledConditions(),
+        requiredAerospaceParts: victorySystem.getScienceVictorySettings().requiredAerospaceParts,
+      }),
+      () => !isTutorialDontShowAgain(),
+      () => isAutoplayActive(),
+      isContextualPresenterBusy,
+      data.savedState?.contextualTips,
+    );
+    this.contextualTipSystem.setPresenter((tip) => {
+      this.tutorialWizard?.openContextualTip(tip);
+    });
+    // First selection of a Worker/Work Boat or a covert operative explains that
+    // role once. Human units only; AI/autoplay selections never reach here.
+    selectionManager.onSelectionChanged((selection) => {
+      if (selection?.kind !== 'unit') return;
+      if (humanNationId === undefined || selection.unit.ownerId !== humanNationId) return;
+      const type = selection.unit.unitType;
+      if (type.canBuildImprovements) {
+        this.contextualTipSystem?.fire('unit-selected', { unitKind: 'builder' });
+      } else if (isCovertOperative(type)) {
+        this.contextualTipSystem?.fire('unit-selected', { unitKind: 'covert' });
+      }
+    });
+    // First time a human city is ready to grow but hits its population ceiling:
+    // explain that capacity (not Food) is the limiter. Fired from the canonical
+    // growth step; the one-time gate teaches this nationally, not per city.
+    resourceSystem.setOnCityGrowthCappedByPopulation((city) => {
+      if (city.ownerId !== humanNationId) return;
+      this.contextualTipSystem?.fire('city-population-capacity');
+    });
 
     const onKeyEscape = () => {
       if (aircraftProductionSelection) { cancelAircraftProductionSelection(); return; }
@@ -12402,6 +12561,10 @@ export class GameScene extends Phaser.Scene {
     }
     // Keep the guide panel responsive and anchored to startup-guide targets.
     this.tutorialWizard?.update();
+    // Present any queued contextual tip that was deferred while a modal was open
+    // (e.g. a first-contact tip waiting behind the leader audience). No-op when
+    // the queue is empty.
+    this.contextualTipSystem?.flush();
     this.diagnosticSystem.update();
   }
 
@@ -12524,6 +12687,9 @@ export class GameScene extends Phaser.Scene {
       {
         onClose: (mode) => {
           if (mode === 'startup') selectUnitById(startingSettlerId);
+          // Whatever closed (startup / manual / a contextual tip) may have freed
+          // the screen for a queued contextual tip; try to present the next one.
+          this.contextualTipSystem?.onPresentationClosed();
         },
       },
     );
@@ -12537,16 +12703,10 @@ export class GameScene extends Phaser.Scene {
       this.tutorialWizard.openStartup(startupSteps);
     }
 
-    if (deps.humanNationId !== undefined) {
-      deps.turnManager.on('turnEnd', (event) => {
-        if (event.nation.id !== deps.humanNationId) return;
-        const dueTipIndex = progression.completeHumanTurn();
-        if (dueTipIndex === null) return;
-        if (deps.isAutoplayActive() || isTutorialDontShowAgain()) return;
-        this.tutorialWizard?.openAutomaticTip(dueTipIndex);
-      });
-    }
-
+    // Automatic tip delivery is no longer turn-paced: contextual tips are
+    // surfaced by gameplay events through {@link ContextualTipSystem}. The
+    // GuideProgression cursor is still returned so save round-trips remain
+    // backward compatible, but it no longer drives popups.
     return progression;
   }
 

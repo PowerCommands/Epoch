@@ -133,6 +133,12 @@ export class ResourceSystem {
   private readonly foodGrowthBreakdown = new Map<string, NationFoodGrowthBreakdown>();
   /** Uses the World Council's existing scheduled/current meeting state; no separate timer is kept here. */
   private isWorldCouncilVoteActive: () => boolean = () => false;
+  /**
+   * Notified when a city has accumulated enough Food to grow but is held at its
+   * population capacity, so growth is blocked. Presentation-only consumers (the
+   * contextual guide) subscribe; the growth rule itself is unchanged.
+   */
+  private onCityGrowthCappedByPopulation: (city: City) => void = () => {};
 
   constructor(
     nationManager: NationManager,
@@ -172,6 +178,14 @@ export class ResourceSystem {
 
   on(callback: ResourceListener): void {
     this.listeners.push(callback);
+  }
+
+  /**
+   * Subscribe to "a city was ready to grow but is at its population capacity".
+   * Read-only notification; does not affect the growth rule.
+   */
+  setOnCityGrowthCappedByPopulation(callback: (city: City) => void): void {
+    this.onCityGrowthCappedByPopulation = callback;
   }
 
   setCityEnergyProvider(
@@ -241,6 +255,43 @@ export class ResourceSystem {
       ...summary,
       culturePerTurn: this.applyArchaeologicalCultureModifiers(nationId, summary.baseCulturePerTurn),
     };
+  }
+
+  private mutualFoeSupport?: {
+    refresh(): void;
+    settleIncome(nationId: string, round: number): void;
+  };
+
+  setMutualFoeSupport(system: typeof this.mutualFoeSupport): void {
+    this.mutualFoeSupport = system;
+    system?.refresh();
+  }
+
+  /** Actual ordinary national income, before Mutual Foe transfers and separately charged unit upkeep. */
+  getNormalGoldIncome(nationId: string): number {
+    const nation = this.nationManager.getNation(nationId);
+    if (!nation) return 0;
+    const base = this.calculateNationGoldPerTurn(nation, this.cityManager.getCitiesByOwner(nationId),
+      id => this.cityManager.getBuildings(id), this.getNationModifiers(nationId));
+    return Math.floor(base * this.happinessSystem.getGoldModifier(nationId))
+      - getNationOccupationGoldCost(nationId, this.cityManager, this.turnManager.getCurrentRound())
+      - getNationRenewableMaintenance(this.mapData, nationId);
+  }
+
+  /** Commit both sides before notifying observers. Never overdraw, round up, or create Gold. */
+  transferGold(fromNationId: string, toNationId: string, amount: number): number {
+    if (fromNationId === toNationId || !Number.isFinite(amount)
+      || !this.nationManager.getNation(fromNationId) || !this.nationManager.getNation(toNationId)) return 0;
+    const from = this.nationManager.getResources(fromNationId);
+    const to = this.nationManager.getResources(toNationId);
+    if (!Number.isFinite(from.gold) || !Number.isFinite(to.gold)) return 0;
+    const transferred = Math.max(0, Math.min(Math.floor(from.gold), Math.floor(amount)));
+    if (transferred === 0) return 0;
+    from.gold -= transferred;
+    to.gold += transferred;
+    this.notify({ nationId: fromNationId });
+    this.notify({ nationId: toNationId });
+    return transferred;
   }
 
   addGold(nationId: string, amount: number): number | null {
@@ -412,6 +463,7 @@ export class ResourceSystem {
     );
     nationRes.goldPerTurn = baseGoldPerTurn - occupationGoldCost - getNationRenewableMaintenance(this.mapData, nation.id);
     nationRes.gold += Math.floor(baseGoldPerTurn * goldModifier) - occupationGoldCost - getNationRenewableMaintenance(this.mapData, nation.id);
+    this.mutualFoeSupport?.settleIncome(nation.id, e.round);
     nationRes.influencePerTurn = this.calculateNationInfluencePerTurn(nation.id, cities);
     nationRes.influence += nationRes.influencePerTurn;
     nationRes.culturePerTurn = 0;
@@ -519,6 +571,10 @@ export class ResourceSystem {
               ),
               ctx.productionBonus,
             );
+          } else {
+            // Enough Food to grow, but the population ceiling blocks it. Notify
+            // presentation-only consumers; the growth rule is unchanged.
+            this.onCityGrowthCappedByPopulation(city);
           }
         }
       }
@@ -600,6 +656,7 @@ export class ResourceSystem {
   }
 
   private notify(e: ResourceChangedEvent): void {
+    this.mutualFoeSupport?.refresh();
     for (const cb of this.listeners) cb(e);
   }
 

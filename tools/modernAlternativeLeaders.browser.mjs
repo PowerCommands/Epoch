@@ -21,6 +21,7 @@ try {
     await dialog.getByRole('button', { name: leader.name, exact: true }).click();
     assert.equal(await dialog.getByLabel('Impulsive Bully', { exact: true }).isChecked(), leader.impulsiveBully);
     assert.equal(await dialog.getByLabel('Opportunism', { exact: true }).isChecked(), leader.opportunism);
+    assert.equal(await dialog.getByLabel('Showman', { exact: true }).isChecked(), leader.showman ?? false);
     await dialog.getByLabel('Economy', { exact: true }).fill(String(leader.aiPersonality.economyBias + 1));
     await dialog.getByLabel('Economy', { exact: true }).press('Tab');
     const national = dialog.locator('details[data-section="Scenario Nation & Inherited Rules"]');
@@ -46,6 +47,7 @@ try {
     assert.equal(await dialog.getByLabel('Economy', { exact: true }).inputValue(), String(leader.aiPersonality.economyBias + 1));
     assert.equal(await dialog.getByLabel('Impulsive Bully', { exact: true }).isChecked(), leader.impulsiveBully);
     assert.equal(await dialog.getByLabel('Opportunism', { exact: true }).isChecked(), leader.opportunism);
+    assert.equal(await dialog.getByLabel('Showman', { exact: true }).isChecked(), leader.showman ?? false);
   }
   await dialog.getByRole('button', { name: 'Discard / Close', exact: true }).click();
   // Exercise the actual Game Setup nation-details component with expanded lists.
@@ -71,7 +73,7 @@ try {
     await setup.getByRole('button', { name: 'Done', exact: true }).click();
     assert.equal(await page.evaluate(() => window.selectedSetupLeader), leader.id);
   }
-  console.log('All 14 leaders passed editor roundtrips, scenario assignment, and Game Setup selection.');
+  console.log(`All ${MODERN_ALTERNATIVE_LEADERS.length} leaders passed editor roundtrips, scenario assignment, and Game Setup selection.`);
   for (const leader of MODERN_ALTERNATIVE_LEADERS) {
     for (const [path, width, height] of [
       [leader.image, 416, 416], [leader.image.replace('.png', '-room.webp'), 2048, 872],
@@ -84,5 +86,5 @@ try {
     }
   }
   assert.deepEqual(errors, []);
-  console.log('All 28 portrait and room assets decoded at the expected dimensions; no browser errors.');
+  console.log(`All ${MODERN_ALTERNATIVE_LEADERS.length * 2} portrait and room assets decoded at the expected dimensions; no browser errors.`);
 } finally { await browser.close(); }

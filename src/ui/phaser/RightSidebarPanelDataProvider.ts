@@ -1274,7 +1274,7 @@ export class RightSidebarPanelDataProvider {
       {
         title: 'Economy',
         rows: [
-          textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
+          textRow(`Gold: ${resources.gold} (${formatSigned(resources.effectiveGoldPerTurn)}/turn)`),
           textRow(`Culture: ${resources.culture} (+${resources.culturePerTurn}/turn)`),
           ...(archaeologicalCulture
             ? [textRow(archaeologicalCulture.exploitedSiteCount > 0 && !archaeologicalCulture.hasFunctioningMuseum
@@ -1585,9 +1585,11 @@ export class RightSidebarPanelDataProvider {
           title: 'Treasury',
           rows: [
             textRow(`Gold: ${resources.gold.toLocaleString()}`, false, true),
-            textRow(`Gold per turn: ${formatSigned(resources.goldPerTurn)}`),
+            textRow(`Gold per turn: ${formatSigned(resources.effectiveGoldPerTurn)}`),
+            ...(resources.mutualFoeGoldOutgoingPerTurn > 0 ? [textRow(`Mutual Foe Agreement: -${resources.mutualFoeGoldOutgoingPerTurn}`)] : []),
+            ...(resources.mutualFoeGoldIncomingPerTurn > 0 ? [textRow(`Mutual Foe Agreement Support: +${resources.mutualFoeGoldIncomingPerTurn}`)] : []),
             textRow(`Unit upkeep per turn: ${formatSigned(-unitUpkeep)}`),
-            textRow(`Net gold per turn: ${formatSigned(resources.goldPerTurn - unitUpkeep)}`),
+            textRow(`Net gold per turn: ${formatSigned(resources.effectiveGoldPerTurn - unitUpkeep)}`),
           ],
         },
         {
@@ -1952,7 +1954,7 @@ export class RightSidebarPanelDataProvider {
         textRow(currency
           ? `Currency: ${currency.currencyName} (${currency.currencySymbol}) — ${currency.strength}`
           : 'Currency: Not established'),
-        textRow(`Gold: ${resources.gold} (+${resources.goldPerTurn}/turn)`),
+        textRow(`Gold: ${resources.gold} (${formatSigned(resources.effectiveGoldPerTurn)}/turn)`),
         textRow(`Cities: ${cities.length}`),
       ],
     };

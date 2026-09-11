@@ -1,3 +1,5 @@
+import type { GeographicMarkerCategory } from './geographicMarker';
+
 export interface WorldMarker {
   id: string;
   type: string;
@@ -8,6 +10,9 @@ export interface WorldMarker {
   description?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  // Presentation category for `geographic` markers only. Optional so older
+  // scenarios and non-geographic markers remain valid without this field.
+  category?: GeographicMarkerCategory;
 }
 
 export interface WorldMarkerDiscoveryEntry {

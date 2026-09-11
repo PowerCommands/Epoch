@@ -9,6 +9,7 @@ import type {
   SavedDiscoveryEntry,
   SavedForeignTroopViolationWarning,
   SavedGuideProgress,
+  SavedContextualTips,
   SavedGameState,
   SavedNation,
   SavedProducible,
@@ -70,7 +71,7 @@ import { CulturalSphereSystem } from './CulturalSphereSystem';
 import { getGameSpeedById, type GameSpeedId } from '../data/gameSpeeds';
 import { BASELINE_AI_STRATEGY_ID } from '../data/aiStrategies';
 import { BALANCED_AGENDA_ID } from '../data/aiNationalAgendas';
-import { getActiveLeaderSelections, getLeaderCovertPersonalityByNationId } from '../data/leaders';
+import { getActiveLeaderSelections, getLeaderCovertPersonalityByNationId, setActiveLeaderSelections } from '../data/leaders';
 import type { GeneratedScenarioSnapshot } from './procedural/RandomScenarioTypes';
 import type { PowerPlantSystem } from './PowerPlantSystem';
 import type { JointWarSystem } from './diplomacy/JointWarSystem';
@@ -84,6 +85,7 @@ import type { CombatSystem } from './CombatSystem';
 import type { PeaceSummitSystem } from './diplomacy/PeaceSummitSystem';
 
 export interface SaveLoadContext {
+  mutualFoeAgreementSystem?: import('./MutualFoeAgreementSystem').MutualFoeAgreementSystem;
   mapKey: string;
   generatedScenario?: GeneratedScenarioSnapshot;
   humanNationId: string;
@@ -138,6 +140,8 @@ export interface SaveLoadContext {
   peaceSummitSystem?: PeaceSummitSystem;
   /** Snapshot supplied by the progressive guide; presentation state is excluded. */
   guideProgress?: SavedGuideProgress;
+  /** Shown context-aware tips supplied by the contextual tip system. */
+  contextualTips?: SavedContextualTips;
 }
 
 /**
@@ -387,6 +391,7 @@ export class SaveLoadService {
         currentTurnIndex: turnManager.getCurrentTurnIndex(),
       },
       guideProgress: context.guideProgress ? { ...context.guideProgress } : undefined,
+      contextualTips: context.contextualTips ? { shown: [...context.contextualTips.shown] } : undefined,
       newspaper: newspaperSystem?.getState(),
       gamesOfNations: gamesOfNationsSystem?.getState(),
       tiles,
@@ -409,6 +414,8 @@ export class SaveLoadService {
       wonders,
       worldCouncil: context.worldCouncilSystem?.getState() ?? undefined,
       capitulation: context.capitulationSystem?.serialize(),
+      mutualFoeAgreements: context.mutualFoeAgreementSystem?.getDefinitions(),
+      mutualFoeCrises: context.mutualFoeAgreementSystem?.serialize(),
       alliances: allianceManager?.getAllAlliances().map((alliance) => ({
         ...alliance,
         memberNationIds: [...alliance.memberNationIds],
@@ -594,6 +601,9 @@ export class SaveLoadService {
    */
   static apply(state: SavedGameState, context: SaveLoadContext): void {
     state = migrateRenewableBuildings(state);
+    // Clear any old crisis before canonical accounts/relations are replaced.
+    context.mutualFoeAgreementSystem?.restore(undefined);
+    if (state.leaderSelections) setActiveLeaderSelections(state.leaderSelections);
     SaveLoadService.restoreTiles(state.tiles, context.mapData);
     SaveLoadService.applyNations(state.nations, context.nationManager);
     context.consolidationSystem?.restore(state.nations);
@@ -663,6 +673,7 @@ export class SaveLoadService {
       state.turn.currentRound,
       state.turn.currentTurnIndex,
     );
+    context.mutualFoeAgreementSystem?.restore(state.mutualFoeCrises);
     context.diplomaticAffairSystem?.restore(state.diplomaticAffairs);
     // Re-emit only after the restored round is authoritative. Existing listeners
     // then resume a Human offer UI or synchronously resolve an AI recipient.

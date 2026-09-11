@@ -2721,6 +2721,53 @@
       "diplomacyFlavor": {
         "greeting": "Peace requires more than silence. Sweden will speak openly and work with those who seek justice and understanding."
       }
+    },
+    {
+      "id": "leader_boris_johnson",
+      "isDefault": false,
+      "name": "Boris Johnson",
+      "nationId": "nation_england",
+      "title": "Prime Minister",
+      "image": "/assets/sprites/leaders/boris-johnson.png",
+      "description": "A charismatic political opportunist who pursues national advantage through trade, active diplomacy and an exuberant public presence.",
+      "ideologyId": "nationalism",
+      "aiNationalAgendaId": "economic",
+      "aiMilitaryDoctrineId": "prestigeProjection",
+      "covertPersonalityId": "opportunist",
+      "opportunism": true,
+      "impulsiveBully": false,
+      "showman": true,
+      "culturePriorities": [
+        "foreign_trade",
+        "political_philosophy",
+        "nationalism",
+        "diplomatic_service"
+      ],
+      "gamesOfNationsPreferences": {
+        "traditionalFavourite": "javelin",
+        "additionalFavourite": "fencing"
+      },
+      "aiPersonality": {
+        "aggressionBias": 5,
+        "expansionBias": -5,
+        "economyBias": 16,
+        "cultureBias": 10,
+        "diplomacyBias": 12,
+        "warTolerance": 58,
+        "peacePreference": 55,
+        "minimumUnitsLostBeforePeace": 4,
+        "casualtyToleranceRatio": 0.4,
+        "resourceExploitationInterest": 3
+      },
+      "diplomacyFlavor": {
+        "greeting": "Splendid, you have arrived! Let us see whether we can turn a respectable meeting into a rather remarkable opportunity.",
+        "friendly": "There is real momentum here. Bring your best proposals; I shall bring the enthusiasm and, with luck, a pen that works.",
+        "neutral": "Our interests need not coincide in every detail for us to do excellent business. Let us begin with the useful bits.",
+        "hostile": "I would much prefer a productive relationship, but you are making cooperation an obstacle course. Our national interests are not negotiable decorations.",
+        "warDeclaration": "The diplomatic road has narrowed to a dead end. We now commit our forces to securing our interests, with clear objectives and the resolve to achieve them.",
+        "victory": "A formidable effort, and a result of which our people can be proud. Now comes the less photogenic but essential business of making the settlement last.",
+        "defeat": "This is a serious reverse, and our people deserve candour about it. We shall secure the best peace available, repair the damage and return with renewed purpose."
+      }
     }
   ];
 
@@ -6158,6 +6205,28 @@
   // src/data/leaderWarDeclarations.ts
   var LEADER_WAR_DECLARATIONS = {
     ...ROSTER_ALTERNATIVE_WAR_DECLARATIONS,
+    leader_boris_johnson: {
+      "conquest": [
+        "This strategic position offers an advantage we cannot leave to chance. Our forces will take it; our purpose is security, not an endless collection of flags.",
+        "Control of this corridor would transform our position. We have chosen to seize that opportunity by force."
+      ],
+      "hostility": [
+        "Your repeated hostile acts have exhausted the negotiations. We are entering this war to put an end to them.",
+        "We offered a working relationship; you answered with sustained confrontation. Our forces will now answer that challenge."
+      ],
+      "threat": [
+        "Your military preparations threaten our security. We will act now, before the danger becomes a catastrophe.",
+        "We cannot build prosperity beneath the shadow of your advancing forces. We are going to remove that threat."
+      ],
+      "ideological": [
+        "Your campaign against our national independence has crossed the line. We will fight to preserve our right to govern ourselves.",
+        "We will not have our political future dictated from abroad. This war is our answer to that attempt."
+      ],
+      "ambition": [
+        "The balance has shifted in our favour, and this government intends to secure the advantage. We are committing our forces to that purpose.",
+        "An unusual opportunity to strengthen our national position now lies before us. We have decided the strategic gain warrants military action."
+      ]
+    },
     "leader_alexander_lukashenko": {
       "conquest": [
         "Belarus will secure the positions needed to protect its borders.",
@@ -6829,6 +6898,7 @@
       ...leader,
       opportunism: leader.opportunism ?? false,
       impulsiveBully: leader.impulsiveBully ?? false,
+      showman: leader.showman ?? false,
       maxPreferredCities: leader.maxPreferredCities ?? void 0,
       diplomacyFlavor: patch?.diplomacyFlavor ? { ...base.diplomacyFlavor, ...patch.diplomacyFlavor } : base.diplomacyFlavor,
       aiPersonality: { ...DEFAULT_AI_LEADER_PERSONALITY, ...base.aiPersonality, ...patch?.aiPersonality },
@@ -6951,6 +7021,7 @@
     }
     for (const [id, patch] of Object.entries(config.leaders ?? {})) {
       knownLeader(id);
+      if (patch.showman !== void 0 && typeof patch.showman !== "boolean") errors.push(`${id}: showman must be true or false`);
       if (patch.impulsiveBully !== void 0 && typeof patch.impulsiveBully !== "boolean") errors.push(`${id}: impulsiveBully must be true or false`);
       if (patch.opportunism !== void 0 && typeof patch.opportunism !== "boolean") errors.push(`${id}: opportunism must be true or false`);
       if (patch.name !== void 0 && !patch.name.trim()) errors.push(`${id}: leader name is required`);
@@ -7274,7 +7345,7 @@
       }));
       const source = (key) => patch?.[key] !== void 0 ? "Scenario Override" : base[key] !== void 0 ? "Explicit \xB7 Built-in Default" : "Inherited \xB7 Runtime Default";
       const p = leader.aiPersonality;
-      const traits = [leader.impulsiveBully ? "Impulsive Bully" : "", leader.opportunism ? "Opportunistic" : "", p.aggressionBias > 0 ? "Aggressive" : p.aggressionBias < 0 ? "Defensive" : "Neutral aggression", p.expansionBias > 0 ? "Expansionist" : "", p.cultureBias > 0 ? "Culture-minded" : "", p.economyBias > 0 ? "Economy-minded" : ""].filter(Boolean);
+      const traits = [leader.showman ? "Showman" : "", leader.impulsiveBully ? "Impulsive Bully" : "", leader.opportunism ? "Opportunistic" : "", p.aggressionBias > 0 ? "Aggressive" : p.aggressionBias < 0 ? "Defensive" : "Neutral aggression", p.expansionBias > 0 ? "Expansionist" : "", p.cultureBias > 0 ? "Culture-minded" : "", p.economyBias > 0 ? "Economy-minded" : ""].filter(Boolean);
       const eraInfo = effectiveEra(config, selected, era);
       const profileName = (k, id) => profiles(config, k).find((p2) => p2.id === id)?.name ?? `Unknown: ${id}`;
       const activeNation = nations.find((n) => n.id === leader.nationId && (n.leaderId ?? catalog.leaders.find((l) => l.nationId === n.id && l.isDefault)?.id) === selected);
@@ -7292,6 +7363,11 @@
       const identity = section("Identity", "Names and descriptions in the older Nation Details panel take precedence for the selected scenario nation. Nation membership and built-in default status remain canonical.");
       for (const key of ["name", "title", "description", "image"]) field(identity, key === "image" ? "Portrait URL" : label(key), textInput(leader[key] ?? "", (v) => patchLeader([key], v), key === "description"), "", source(key), () => patchLeader([key], void 0, true));
       const personality = section("Personality", "Biases are additive scores, not percentages. Neutral bias is 0. Editor bias bounds are \u2212100 to 100; gameplay previously imposed no bounds on these scores.");
+      const showman = node2("input");
+      showman.type = "checkbox";
+      showman.checked = leader.showman;
+      showman.onchange = () => patchLeader(["showman"], showman.checked);
+      field(personality, "Showman", showman, "Theatrical public statements with a moderate increase in visibility. Does not change strategy or diplomatic evaluation.", source("showman"), () => patchLeader(["showman"], void 0, true));
       const bully = node2("input");
       bully.type = "checkbox";
       bully.checked = leader.impulsiveBully;
