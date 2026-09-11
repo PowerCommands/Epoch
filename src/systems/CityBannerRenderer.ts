@@ -11,7 +11,7 @@ import type { ProductionSystem } from './ProductionSystem';
 import { TileMap } from './TileMap';
 import type { WonderSystem } from './WonderSystem';
 
-const CITY_BANNER_DEPTH = 17;
+const CITY_BANNER_DEPTH = 19.8;
 const CITY_BANNER_OFFSET_Y = -42;
 const CITY_BANNER_ALPHA = 0.08;
 const PANEL_HEIGHT = 32;

@@ -12,7 +12,14 @@ import {
   commitExploitationRightsConcession,
   createExploitationRightsConcession,
 } from './diplomacy/ExploitationRightsConcession';
-import { getLeaderExploitationInterestByNationId } from '../data/leaders';
+import {
+  getAlternativeLeadersByNationId,
+  getLeaderById,
+  getLeaderByNationId,
+  getLeaderExploitationInterestByNationId,
+  setActiveLeaderForNation,
+} from '../data/leaders';
+import type { LeaderDefinition } from '../types/leader';
 import type { MilitaryVassalizationSystem } from './diplomacy/MilitaryVassalizationSystem';
 
 /** War pressure at/above which demanding capitulation is at least plausible (button shows). */
@@ -42,10 +49,30 @@ export interface CapitulationEvaluation {
   summary: string;
 }
 
+/** Facts about a completed "Overthrow Leadership" capitulation outcome. */
+export interface LeadershipOverthrowResult {
+  nationId: string;
+  previousLeaderId: string;
+  previousLeaderName: string;
+  newLeaderId: string;
+  newLeaderName: string;
+}
+
+/**
+ * Optional non-default settlement terms a capitulation may impose. When
+ * `overthrowLeaderId` is present the defeated nation keeps its independence but
+ * has its active leader replaced (regime change) instead of being vassalized.
+ */
+export interface CapitulationOutcomeOptions {
+  overthrowLeaderId?: string;
+}
+
 export interface CapitulationResult {
   accepted: boolean;
   /** Diagnostic reason when application rejects before making changes. */
   failureReason?: string;
+  /** Present only when the imposed outcome was a leadership overthrow (no vassalage). */
+  leadershipOverthrow?: LeadershipOverthrowResult;
   reparationsPaid: number;
   reparationShares: Array<{ nationId: string; amount: number }>;
   formerEnemyIds: string[];
@@ -93,6 +120,8 @@ export interface CapitulationAppliedEvent {
   demilitarizedUntilTurn: number;
   exploitationRightsGranted: boolean;
   exploitationHoldingsRemoved: number;
+  /** Present only when the imposed outcome was a leadership overthrow (no vassalage). */
+  leadershipOverthrow?: LeadershipOverthrowResult;
 }
 
 function clamp01(value: number): number {
@@ -244,6 +273,7 @@ export class CapitulationSystem {
     requestedReparations: number,
     demandExploitationRights = false,
     force = false,
+    outcome: CapitulationOutcomeOptions = {},
   ): CapitulationResult {
     const rejected = (failureReason: string): CapitulationResult => ({
       accepted: false, failureReason, reparationsPaid: 0, reparationShares: [], formerEnemyIds: [],
@@ -260,6 +290,13 @@ export class CapitulationSystem {
     }
     if (!force && !this.evaluateCapitulationDemand(demandingNationId, targetNationId).accepted) {
       return rejected(`Pressure is below the current acceptance threshold (${this.getAcceptanceThreshold().toFixed(2)}).`);
+    }
+    // Validate a requested regime change before any side effects run, so an
+    // invalid leader choice never leaves a half-applied surrender.
+    const overthrowLeaderId = outcome.overthrowLeaderId;
+    if (overthrowLeaderId !== undefined
+      && !this.getOverthrowCandidates(targetNationId).some((leader) => leader.id === overthrowLeaderId)) {
+      return rejected('The chosen replacement leader is not valid for this nation.');
     }
 
     // 2. Capture the complete enemy list before any war ends (needed for reparations + treaties).
@@ -305,7 +342,21 @@ export class CapitulationSystem {
 
     // Capitulation's lasting geopolitical result. This changes only foreign
     // policy state; the nation and all of its normal gameplay systems remain live.
-    if (this.deps.militaryVassalizationSystem) {
+    //
+    // Two mutually exclusive outcomes: the victor either subordinates the nation
+    // (vassalage, the default) or imposes regime change (Overthrow Leadership).
+    // Every other consequence above (disarmament, reparations, restored cities,
+    // ended wars, demilitarization) is applied identically in both cases; only
+    // this final step differs. All wars have already ended in step 9/10, so the
+    // overthrow path needs no separate peace handling.
+    let leadershipOverthrow: LeadershipOverthrowResult | undefined;
+    if (overthrowLeaderId !== undefined) {
+      leadershipOverthrow = this.performLeadershipOverthrow(
+        demandingNationId,
+        targetNationId,
+        overthrowLeaderId,
+      );
+    } else if (this.deps.militaryVassalizationSystem) {
       this.deps.militaryVassalizationSystem.vassalize({
         victorNationId: demandingNationId,
         defeatedNationId: targetNationId,
@@ -340,19 +391,22 @@ export class CapitulationSystem {
     const result: CapitulationResult = {
       accepted: true, reparationsPaid: reparations, reparationShares, formerEnemyIds,
       removedUnitCount, restoredCityIds, demilitarizedUntilTurn, exploitationRightsGranted,
-      exploitationHoldingsRemoved,
+      exploitationHoldingsRemoved, leadershipOverthrow,
     };
     // 12. Record history/diplomatic events.
     const targetName = this.deps.diplomacyManager.getNationDisplayName(targetNationId);
     const demandingName = this.deps.diplomacyManager.getNationDisplayName(demandingNationId);
-    this.deps.log?.(`[Capitulation] ${targetName} capitulated to ${demandingName} and became a vassal state. `
+    const outcomeSummary = leadershipOverthrow
+      ? `regime change (${leadershipOverthrow.previousLeaderName} -> ${leadershipOverthrow.newLeaderName})`
+      : 'became a vassal state';
+    this.deps.log?.(`[Capitulation] ${targetName} capitulated to ${demandingName} and ${outcomeSummary}. `
       + `reparations=${reparations} units=-${removedUnitCount} cities=${restoredCityIds.length} `
       + `wars=${formerEnemyIds.length} demilUntil=${demilitarizedUntilTurn} exploitation=${exploitationRightsGranted} `
       + `holdingsRemoved=${exploitationHoldingsRemoved}`);
     this.deps.onCapitulation?.({
       demandingNationId, capitulatingNationId: targetNationId, reparationsPaid: reparations,
       reparationShares, formerEnemyIds, removedUnitCount, restoredCityIds, demilitarizedUntilTurn,
-      exploitationRightsGranted, exploitationHoldingsRemoved,
+      exploitationRightsGranted, exploitationHoldingsRemoved, leadershipOverthrow,
     });
     return result;
   }
@@ -394,6 +448,118 @@ export class CapitulationSystem {
     return this.deps.militaryVassalizationSystem
       ? this.deps.militaryVassalizationSystem.canVassalize(victorNationId, defeatedNationId)
       : this.deps.diplomacyManager.canEstablishVassal(defeatedNationId, victorNationId);
+  }
+
+  // --- Overthrow Leadership outcome -----------------------------------------
+
+  /**
+   * The valid replacement leaders for a defeated nation (all leaders of its
+   * effective identity except the one currently in power). Thin, testable wrapper
+   * over the canonical leader roster so the UI and AI use one source of truth.
+   */
+  getOverthrowCandidates(defeatedNationId: string): LeaderDefinition[] {
+    return getAlternativeLeadersByNationId(defeatedNationId);
+  }
+
+  /** Whether Overthrow Leadership can be offered: at least one alternative leader exists. */
+  canOverthrowLeadership(defeatedNationId: string): boolean {
+    return this.getOverthrowCandidates(defeatedNationId).length > 0;
+  }
+
+  /**
+   * Conservative AI victor rule: choose a replacement leader only when one is
+   * strictly more compatible with the victor than the incumbent, otherwise return
+   * undefined so the existing vassal outcome is used. Compatibility is a simple,
+   * deterministic score — shared ideology plus closeness of aggression bias — so
+   * the AI never installs a leader more hostile to itself than the current one.
+   */
+  chooseOverthrowLeaderForVictor(demandingNationId: string, defeatedNationId: string): string | undefined {
+    const candidates = this.getOverthrowCandidates(defeatedNationId);
+    if (candidates.length === 0) return undefined;
+    const incumbent = getLeaderByNationId(defeatedNationId);
+    if (!incumbent) return undefined;
+    const victor = getLeaderByNationId(demandingNationId);
+    if (!victor) return undefined;
+
+    const compatibility = (leader: LeaderDefinition): number => {
+      const sharedIdeology = leader.ideologyId && leader.ideologyId === victor.ideologyId ? 40 : 0;
+      const victorAggression = victor.aiPersonality?.aggressionBias ?? 0;
+      const leaderAggression = leader.aiPersonality?.aggressionBias ?? 0;
+      // Closer aggression posture reads as a friendlier, more predictable regime.
+      const aggressionCloseness = 40 - Math.min(40, Math.abs(victorAggression - leaderAggression));
+      return sharedIdeology + aggressionCloseness;
+    };
+
+    const incumbentScore = compatibility(incumbent);
+    let best: { id: string; score: number } | undefined;
+    for (const candidate of candidates) {
+      const score = compatibility(candidate);
+      if (!best || score > best.score) best = { id: candidate.id, score };
+    }
+    return best && best.score > incumbentScore ? best.id : undefined;
+  }
+
+  /**
+   * Convert an already-applied conquest vassalage into a regime change. The
+   * combat-driven capitulation path (capital capture, last-city subjugation,
+   * original-capital collapse) vassalizes the defeated nation up front through
+   * MilitaryVassalizationSystem; when the victor instead chooses Overthrow
+   * Leadership from the post-conquest settlement dialog, this dissolves the
+   * vassal contract just formed with the victor and installs the chosen leader,
+   * leaving the nation independent. Returns the overthrow facts, or undefined if
+   * the replacement leader is invalid or the leader change could not be applied
+   * (in which case no diplomatic state is touched).
+   */
+  convertVassalageToOverthrow(
+    victorNationId: string,
+    defeatedNationId: string,
+    newLeaderId: string,
+  ): LeadershipOverthrowResult | undefined {
+    if (!this.getOverthrowCandidates(defeatedNationId).some((leader) => leader.id === newLeaderId)) {
+      return undefined;
+    }
+    const overthrow = this.performLeadershipOverthrow(victorNationId, defeatedNationId, newLeaderId);
+    if (!overthrow) return undefined;
+    // Only dissolve the vassal contract once the leader change has succeeded, so a
+    // failed swap can never leave the nation independent by accident.
+    this.deps.diplomacyManager.terminateVassalage(victorNationId, defeatedNationId);
+    return overthrow;
+  }
+
+  /**
+   * Replace the defeated nation's active leader through the canonical single
+   * source of truth. Returns the before/after facts, or undefined if the change
+   * could not be applied (validated earlier, so this is defensive).
+   */
+  private performLeadershipOverthrow(
+    demandingNationId: string,
+    defeatedNationId: string,
+    newLeaderId: string,
+  ): LeadershipOverthrowResult | undefined {
+    const previous = getLeaderByNationId(defeatedNationId);
+    if (!previous || previous.id === newLeaderId) return undefined;
+    if (!setActiveLeaderForNation(defeatedNationId, newLeaderId)) return undefined;
+    // Resolve the installed leader (with any scenario name override) after the change.
+    const installed = getLeaderByNationId(defeatedNationId) ?? getLeaderById(newLeaderId);
+    const result: LeadershipOverthrowResult = {
+      nationId: defeatedNationId,
+      previousLeaderId: previous.id,
+      previousLeaderName: previous.name,
+      newLeaderId,
+      newLeaderName: installed?.name ?? newLeaderId,
+    };
+    // A new regime starts with a clean slate toward the victor that installed
+    // it: negative memory (fear/hostility/suspicion) is cleared and affinity is
+    // floored to 50, using the shared amicable reset (same relationship reset as
+    // a peaceful vassal release/liberation). Only the victor↔defeated pair is
+    // touched; the nation's relations with everyone else are left untouched.
+    const reset = this.deps.diplomacyManager.applyAmicableRelationshipReset(demandingNationId, defeatedNationId);
+    const defeatedName = this.deps.diplomacyManager.getNationDisplayName(defeatedNationId);
+    const demandingName = this.deps.diplomacyManager.getNationDisplayName(demandingNationId);
+    this.deps.log?.(`[Capitulation] ${defeatedName} leadership overthrown by ${demandingName}: `
+      + `${result.previousLeaderName} -> ${result.newLeaderName}; relations reset `
+      + `(affinity ${reset.previousAffinity} -> ${reset.affinity}, negatives cleared).`);
+    return result;
   }
 
   /** Never creates or destroys money: the shares always sum exactly to `amount`. */

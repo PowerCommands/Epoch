@@ -144,6 +144,14 @@ export const NEWSPAPER_EVENT_DEFINITIONS: Readonly<Record<NewspaperEventType, Ne
   capitulation: definition(96, NEWSPAPER_IMAGE_PATHS.capitulation, 'the unconditional surrender', (c) => {
     const [surrendered, victor] = names(c); return `${upper(surrendered)} CAPITULATES TO ${upper(victor)}`;
   }, (c) => { const [surrendered, victor] = names(c); return `${surrendered} has capitulated to ${victor}, disbanding its armies and submitting to imposed terms.`; }),
+  leadershipOverthrown: definition(94, NEWSPAPER_IMAGE_PATHS.governmentChanged, 'the regime change', (c) => {
+    const [nation] = names(c); return `REGIME CHANGE IN ${upper(nation)}`;
+  }, (c) => {
+    const [nation] = names(c);
+    const previous = c.event.metadata?.overthrownPreviousLeaderName ?? 'the former leader';
+    const replacement = c.event.metadata?.overthrownNewLeaderName ?? 'a new leader';
+    return `Following ${nation}'s capitulation, ${previous} has been removed from power. ${replacement} now leads ${nation}.`;
+  }),
   warDeclared: definition(90, NEWSPAPER_IMAGE_PATHS.warDeclared, 'the outbreak of war', (c) => {
     const [a, b] = names(c); return `WAR ERUPTS BETWEEN ${upper(a)} AND ${upper(b)}`;
   }, (c) => { const [a, b] = names(c); return `${a} has declared war on ${b}, ending the peace between them.`; }),

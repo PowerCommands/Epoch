@@ -10,7 +10,8 @@ import type { Era } from '../data/technologies';
 import { getCitySpriteKey } from '../utils/assetPaths';
 import { getCityFortificationLevel } from './CityDefenseSystem';
 
-const CITY_DEPTH = 15;
+// Above units and their badges (18–19.5), below selection overlays (20–21).
+const CITY_DEPTH = 19.6;
 const CITY_TILE_FILL_SCALE = 0.9;
 const CAPITAL_SCALE_MULTIPLIER = 1.2;
 const FORTIFICATION_RING_COLOR = 0x454b52;
@@ -35,6 +36,8 @@ export class CityRenderer {
   private readonly damageEffects: StructureDamageEffects;
   private readonly containers = new Map<string, Phaser.GameObjects.Container>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
+  private readonly threatGlows = new Map<string, Phaser.GameObjects.Graphics>();
+  private threatPredicate: (city: City) => boolean = () => false;
   private visibilityPredicate: (tileX: number, tileY: number) => boolean = () => true;
 
   constructor(
@@ -66,8 +69,20 @@ export class CityRenderer {
     this.refreshAllVisibility();
   }
 
+  setThreatPredicate(predicate: (city: City) => boolean): void {
+    this.threatPredicate = predicate;
+    this.refreshThreats();
+  }
+
+  refreshThreats(): void {
+    for (const city of this.cityManager.getAllCities()) {
+      this.threatGlows.get(city.id)?.setVisible(this.threatPredicate(city));
+    }
+  }
+
   /** Update visibility of all city containers without rebuilding them. */
   refreshAllVisibility(): void {
+    this.refreshThreats();
     for (const city of this.cityManager.getAllCities()) {
       this.containers.get(city.id)?.setVisible(this.visibilityPredicate(city.tileX, city.tileY));
       this.damageEffects.set(city.id, city.tileX, city.tileY, city.health <= CITY_BASE_HEALTH / 2);
@@ -83,6 +98,7 @@ export class CityRenderer {
     this.damageEffects.clear();
     for (const container of this.containers.values()) container.destroy();
     this.containers.clear();
+    this.threatGlows.clear();
 
     for (const city of this.cityManager.getAllCities()) {
       this.renderCity(city);
@@ -95,6 +111,7 @@ export class CityRenderer {
       container.destroy();
     }
     this.containers.clear();
+    this.threatGlows.clear();
     this.hexTileMaskHelper.destroy();
   }
 
@@ -103,6 +120,7 @@ export class CityRenderer {
    */
   removeCity(cityId: string): void {
     this.damageEffects.remove(cityId);
+    this.threatGlows.delete(cityId);
     const container = this.containers.get(cityId);
     if (!container) return;
     container.destroy();
@@ -114,6 +132,7 @@ export class CityRenderer {
    */
   refreshCity(city: City): void {
     this.damageEffects.remove(city.id);
+    this.threatGlows.delete(city.id);
     const oldContainer = this.containers.get(city.id);
     if (oldContainer) {
       oldContainer.destroy();
@@ -138,7 +157,19 @@ export class CityRenderer {
     );
     this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
 
-    const children: Phaser.GameObjects.GameObject[] = [sprite];
+    const glow = this.scene.add.graphics();
+    const outline = this.tileMap.getTileOutlinePoints(city.tileX, city.tileY)
+      .map((point) => ({ x: point.x - worldX, y: point.y - worldY }));
+    glow.fillStyle(0xff3028, 0.22);
+    glow.fillPoints(outline, true);
+    // Layer translucent strokes to form a soft halo around the city's hex.
+    for (const [width, alpha] of [[18, 0.06], [12, 0.1], [7, 0.22], [3, 0.9]]) {
+      glow.lineStyle(width, 0xff3028, alpha);
+      glow.strokePoints(outline, true);
+    }
+    glow.setVisible(this.threatPredicate(city));
+    this.threatGlows.set(city.id, glow);
+    const children: Phaser.GameObjects.GameObject[] = [glow, sprite];
     const fortificationLevel = getCityFortificationLevel(this.cityManager.getBuildings(city.id));
     if (fortificationLevel !== 0) {
       children.push(this.createFortificationRing(rect.width, rect.height, fortificationLevel));

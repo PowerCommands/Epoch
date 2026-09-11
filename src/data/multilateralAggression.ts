@@ -33,6 +33,7 @@ export type AggressionEventType =
   | 'war_declaration'
   | 'city_capture'
   | 'capital_capture'
+  | 'city_raze'
   | 'nation_elimination';
 
 /**
@@ -50,9 +51,17 @@ export interface ObserverAggressionDelta {
  * Per-event observer reactions.
  *
  * `capital_capture` is a *complete replacement* for `city_capture`, not an
- * addition to it: the capture pipeline emits exactly one event per captured
- * city, choosing the capital variant when `city.isCapital` is set. This is how
- * double-counting is avoided while still clearly distinguishing the two.
+ * addition to it: the capture pipeline emits exactly one capture event per
+ * captured city, choosing the capital variant when `city.isCapital` is set.
+ * This is how double-counting is avoided while still clearly distinguishing the
+ * two.
+ *
+ * `city_raze` is the one exception to the one-event rule: it is *layered on top
+ * of* the capture event, not a replacement. Razing is a deliberate act taken
+ * after a city has already been captured, so the world reacts both to the
+ * conquest (city_capture / capital_capture) and, additionally, to the
+ * destruction. Its weight matches `capital_capture` — razing any city reads to
+ * observers as gravely as dismantling a capital.
  */
 export const OBSERVER_AGGRESSION_DELTAS: Readonly<Record<AggressionEventType, ObserverAggressionDelta>> = {
   // "This nation is willing to use military force." Deliberately small — one
@@ -64,7 +73,13 @@ export const OBSERVER_AGGRESSION_DELTAS: Readonly<Record<AggressionEventType, Ob
 
   // "This nation is dismantling another major power." Replaces city_capture
   // for the same event; roughly 2.5x its weight.
-  capital_capture: { trust: -8, fear: 7, hostility: 10 },
+  capital_capture: { trust: -10, fear: 10, hostility: 10 },
+
+  // "This nation razes cities to the ground." Applied *in addition to* the
+  // capture event that preceded it, so razing lands as the capture reaction
+  // plus this. Same magnitude as capital_capture: destruction is treated as
+  // gravely as decapitating a major power, regardless of the razed city's rank.
+  city_raze: { trust: -10, fear: 10, hostility: 10 },
 
   // "This nation has destroyed an entire civilization." The largest single
   // reaction, and on its own enough to push a previously warm relation out of

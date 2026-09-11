@@ -140,7 +140,11 @@ import { GossipSystem } from '../systems/GossipSystem';
 import { GossipFlavorEventSystem } from '../systems/GossipFlavorEventSystem';
 import { recordGossipInsultInHistory } from '../systems/GossipHistoryRecorder';
 import { PeaceTreatySystem } from '../systems/PeaceTreatySystem';
-import { CapitulationSystem, type CapitulationAppliedEvent } from '../systems/CapitulationSystem';
+import {
+  CapitulationSystem,
+  type CapitulationAppliedEvent,
+  type LeadershipOverthrowResult,
+} from '../systems/CapitulationSystem';
 import { buildCapitulationNotification } from '../systems/CapitulationNotification';
 import { PeaceTreatyUnitRelocationSystem } from '../systems/PeaceTreatyUnitRelocationSystem';
 import { DiplomaticMemorySystem } from '../systems/diplomacy/DiplomaticMemorySystem';
@@ -154,6 +158,7 @@ import { UnluckyWinnerTurningPointSystem } from '../systems/diplomacy/UnluckyWin
 import {
   MilitaryVassalizationSystem,
   STRONG_ANTAGONIST_HOSTILITY_THRESHOLD,
+  type MilitaryVassalizationEvent,
 } from '../systems/diplomacy/MilitaryVassalizationSystem';
 import { SymbolicGiftRegistry } from '../systems/diplomacy/SymbolicGiftRegistry';
 import { AllianceManager } from '../systems/diplomacy/AllianceManager';
@@ -234,7 +239,7 @@ import { WorldWarAnnouncementDialog } from '../ui/WorldWarAnnouncementDialog';
 import { EraSystem, getEraRank, getHighestEra } from '../systems/EraSystem';
 import type { Era } from '../data/technologies';
 import { AISystem } from '../systems/AISystem';
-import { getLeaderByNationId, getLeaderExploitationInterestByNationId, getLeaderPersonalityByNationId, setActiveLeaderSelections, setScenarioLeaderOverrides } from '../data/leaders';
+import { getLeaderById, getLeaderByNationId, getLeaderExploitationInterestByNationId, getLeaderPersonalityByNationId, setActiveLeaderSelections, setScenarioLeaderOverrides } from '../data/leaders';
 import { formatAudienceRelationshipSummary } from '../ui/dialogs/AudienceRelationshipSummary';
 import { GOSSIP_DEFINITIONS } from '../data/gossip';
 import { resolveLeaderEraStrategy } from '../data/aiLeaderEraStrategies';
@@ -761,7 +766,7 @@ export class GameScene extends Phaser.Scene {
     const overviewZoom = this.getMapCoverZoom(worldWidth, worldHeight);
     const worldInputGate = new WorldInputGate();
     this.cameraController = new CameraController(this, worldWidth, worldHeight, worldInputGate, overviewZoom);
-    // 8. Rendera städer (depth 15)
+    // 8. Rendera städer ovanför enheter (depth 19.6)
     const cityRenderer = new CityRenderer(this, tileMap, cityManager, nationManager, (nationId) => eraSystem.getNationEra(nationId));
 
     // 9. Rendera enheter (depth 18)
@@ -1718,22 +1723,44 @@ export class GameScene extends Phaser.Scene {
         const notice = buildCapitulationNotification(event, humanNationId, timelineNationName);
         if (notice) hudLayer?.enqueueDiscovery(notice);
       }
-      historicalTimeline.record({
-        type: 'capitulation',
-        icon: '🏳️',
-        text: `${surrenderName} capitulates to ${victorName}, becoming a vassal state under imposed terms.`,
-        eventNationIds: [event.capitulatingNationId, event.demandingNationId],
-        newsImportance: 6,
-        metadata: {
-          aggressorNationId: event.demandingNationId,
-          targetNationId: event.capitulatingNationId,
-        },
-      });
+      const overthrow = event.leadershipOverthrow;
+      if (overthrow) {
+        historicalTimeline.record({
+          type: 'leadershipOverthrown',
+          icon: '🏛️',
+          text: `Following ${surrenderName}'s capitulation, ${overthrow.previousLeaderName} is removed from power; `
+            + `${overthrow.newLeaderName} now leads ${surrenderName}.`,
+          eventNationIds: [event.capitulatingNationId, event.demandingNationId],
+          newsImportance: 6,
+          metadata: {
+            aggressorNationId: event.demandingNationId,
+            targetNationId: event.capitulatingNationId,
+            overthrownPreviousLeaderName: overthrow.previousLeaderName,
+            overthrownNewLeaderName: overthrow.newLeaderName,
+          },
+        });
+      } else {
+        historicalTimeline.record({
+          type: 'capitulation',
+          icon: '🏳️',
+          text: `${surrenderName} capitulates to ${victorName}, becoming a vassal state under imposed terms.`,
+          eventNationIds: [event.capitulatingNationId, event.demandingNationId],
+          newsImportance: 6,
+          metadata: {
+            aggressorNationId: event.demandingNationId,
+            targetNationId: event.capitulatingNationId,
+          },
+        });
+      }
       logManager.info({
         nationIds: [event.capitulatingNationId, event.demandingNationId],
         category: 'diplomacy',
-        message: `${surrenderName} capitulated to ${victorName} and became a vassal state: military disbanded, ${event.reparationsPaid} gold in reparations, `
-          + `${event.restoredCityIds.length} cit${event.restoredCityIds.length === 1 ? 'y' : 'ies'} restored, ${event.formerEnemyIds.length} war(s) ended.`,
+        message: overthrow
+          ? `${surrenderName} capitulated to ${victorName}; ${overthrow.previousLeaderName} was overthrown and ${overthrow.newLeaderName} installed as leader: `
+            + `military disbanded, ${event.reparationsPaid} gold in reparations, `
+            + `${event.restoredCityIds.length} cit${event.restoredCityIds.length === 1 ? 'y' : 'ies'} restored, ${event.formerEnemyIds.length} war(s) ended.`
+          : `${surrenderName} capitulated to ${victorName} and became a vassal state: military disbanded, ${event.reparationsPaid} gold in reparations, `
+            + `${event.restoredCityIds.length} cit${event.restoredCityIds.length === 1 ? 'y' : 'ies'} restored, ${event.formerEnemyIds.length} war(s) ended.`,
       });
       hudLayer?.refresh();
       rightPanel?.requestRefresh();
@@ -1805,6 +1832,10 @@ export class GameScene extends Phaser.Scene {
         targetNationId,
         peaceTreatySystem.calculateReparations(targetNationId),
         capitulationSystem.shouldDemandExploitationRights(demandingNationId, targetNationId),
+        false,
+        // Conservative AI regime-change: only when a strictly more compatible
+        // replacement leader exists; otherwise the default vassal outcome applies.
+        { overthrowLeaderId: capitulationSystem.chooseOverthrowLeaderForVictor(demandingNationId, targetNationId) },
       ),
     });
     aiDiplomacySystem.setIndependenceController({
@@ -2703,6 +2734,26 @@ export class GameScene extends Phaser.Scene {
       const city = cityManager.getCityAt(tileX, tileY);
       return city !== undefined && visibilitySystem.isKnownCity(city.id);
     };
+    cityRenderer.setThreatPredicate((city) => {
+      if (!canSeeTile(city.tileX, city.tileY)) return false;
+      const nearbyTiles = [
+        { x: city.tileX, y: city.tileY },
+        ...gridSystem.getNeighbors({ x: city.tileX, y: city.tileY }, mapData),
+      ];
+      return nearbyTiles.some((tile) => unitManager.getUnitsAt(tile.x, tile.y).some((unit) =>
+        unit.ownerId !== city.ownerId
+        && unit.health > 0
+        && unit.unitType.baseStrength > 0
+        && unit.unitType.category !== 'civilian'
+        && unit.unitType.category !== 'covert'
+        && unit.unitType.category !== 'air'
+        && unit.carriedByUnitId === undefined
+        && diplomacyManager.getState(city.ownerId, unit.ownerId) === 'WAR'
+        && canShowUnit(unit),
+      ));
+    });
+    diplomacyManager.onDiplomacyChanged(() => cityRenderer.refreshThreats());
+    unitManager.onUnitChanged(() => cityRenderer.refreshThreats());
     cityRenderer.setVisibilityPredicate(canShowCity);
     cityBannerRenderer.setVisibilityPredicate(canShowCity);
     unitRenderer.setVisibilityPredicate(canShowUnit);
@@ -5552,6 +5603,18 @@ export class GameScene extends Phaser.Scene {
         razeCapturedCity(e.city, { cityManager, productionSystem, wonderSystem, mapData });
         cityRenderer.removeCity(e.city.id);
         cityBannerRenderer.removeBanner(e.city.id);
+        // Razing is an act taken after the capture, so the world reacts to it on
+        // top of the capture event already emitted at capture time. This does not
+        // touch capitulation/collapse — it only scars relations with observers.
+        if (previousOwnerId) {
+          diplomaticMemorySystem.recordAggressionForObservers({
+            type: 'city_raze',
+            aggressorNationId: captorNationId,
+            victimNationId: previousOwnerId,
+            round: turnManager.getCurrentRound(),
+            cityName: e.city.name,
+          });
+        }
         historicalTimeline.record({
           type: 'cityRazed',
           icon: '🔥',
@@ -7444,6 +7507,124 @@ export class GameScene extends Phaser.Scene {
       });
     };
 
+    // Shared "Settlement outcome" chooser for post-war capitulation dialogs: a
+    // Vassalize / Overthrow Leadership radio pair plus a replacement-leader picker
+    // (only offered when the nation has at least one alternative leader for its
+    // effective identity). Both the human demand dialog and the automatic
+    // post-conquest choice reuse it so the two flows can never drift apart.
+    const createSettlementOutcomeChooser = (
+      targetNation: Nation,
+      accent: string,
+    ): { element: HTMLElement; readOutcome: () => { overthrowLeaderId?: string } } => {
+      const overthrowCandidates = capitulationSystem.getOverthrowCandidates(targetNation.id);
+      const canOverthrow = overthrowCandidates.length > 0;
+      let selectedOutcome: 'vassalize' | 'overthrow' = 'vassalize';
+      let selectedLeaderId: string | undefined = overthrowCandidates[0]?.id;
+
+      const outcomeSection = document.createElement('div');
+      outcomeSection.style.cssText = 'margin:12px 0;padding-top:12px;border-top:1px solid rgba(190,143,143,0.25);';
+      const outcomeHeading = document.createElement('div');
+      outcomeHeading.textContent = 'Settlement outcome';
+      outcomeHeading.style.cssText = 'font-weight:700;margin-bottom:8px;';
+      outcomeSection.appendChild(outcomeHeading);
+
+      const leaderPicker = document.createElement('div');
+      leaderPicker.style.cssText = 'margin:10px 0 2px 26px;';
+
+      const renderLeaderPicker = (): void => {
+        leaderPicker.innerHTML = '';
+        leaderPicker.hidden = !(selectedOutcome === 'overthrow' && canOverthrow);
+        if (leaderPicker.hidden) return;
+        if (overthrowCandidates.length === 1) {
+          const only = overthrowCandidates[0];
+          const line = document.createElement('div');
+          line.style.cssText = 'font-size:13px;color:#e8cdcd;';
+          line.textContent = `New leader: ${only.name}${only.title ? ` — ${only.title}` : ''}.`;
+          leaderPicker.appendChild(line);
+          return;
+        }
+        const chooseHeading = document.createElement('div');
+        chooseHeading.textContent = 'Choose New Leader';
+        chooseHeading.style.cssText = 'font-weight:700;font-size:13px;margin-bottom:8px;';
+        leaderPicker.appendChild(chooseHeading);
+        const grid = document.createElement('div');
+        grid.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;';
+        for (const candidate of overthrowCandidates) {
+          const card = document.createElement('button');
+          card.type = 'button';
+          const selected = candidate.id === selectedLeaderId;
+          card.style.cssText = 'display:flex;flex-direction:column;align-items:center;width:110px;padding:8px;cursor:pointer;'
+            + `border:2px solid ${selected ? accent : 'rgba(190,143,143,0.35)'};border-radius:6px;`
+            + `background:${selected ? 'rgba(255,255,255,0.06)' : 'transparent'};color:#edf4ff;text-align:center;`;
+          const portrait = document.createElement('img');
+          portrait.src = candidate.image;
+          portrait.alt = candidate.name;
+          portrait.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:4px;margin-bottom:6px;background:#0b0710;';
+          portrait.onerror = (): void => { portrait.style.visibility = 'hidden'; };
+          const cardName = document.createElement('div');
+          cardName.textContent = candidate.name;
+          cardName.style.cssText = 'font-size:12px;font-weight:700;line-height:1.2;';
+          const cardTitle = document.createElement('div');
+          cardTitle.textContent = candidate.title ?? '';
+          cardTitle.style.cssText = 'font-size:11px;color:#cbb6b6;line-height:1.2;margin-top:2px;';
+          card.append(portrait, cardName, cardTitle);
+          card.addEventListener('click', () => { selectedLeaderId = candidate.id; renderLeaderPicker(); });
+          grid.appendChild(card);
+        }
+        leaderPicker.appendChild(grid);
+      };
+
+      const makeOutcomeRadio = (
+        value: 'vassalize' | 'overthrow',
+        label: string,
+        help: string,
+        disabled: boolean,
+      ): HTMLLabelElement => {
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:5px 0;'
+          + (disabled ? 'opacity:0.5;cursor:not-allowed;' : 'cursor:pointer;');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'capitulation-outcome';
+        radio.value = value;
+        radio.checked = value === selectedOutcome;
+        radio.disabled = disabled;
+        radio.addEventListener('change', () => {
+          if (radio.checked) { selectedOutcome = value; renderLeaderPicker(); }
+        });
+        const text = document.createElement('span');
+        text.style.cssText = 'font-size:13px;color:#e8cdcd;';
+        text.innerHTML = `<strong>${label}</strong><br><span style="color:#cbb6b6;">${help}</span>`;
+        row.append(radio, text);
+        return row;
+      };
+
+      outcomeSection.appendChild(makeOutcomeRadio(
+        'vassalize',
+        'Vassalize',
+        `${targetNation.name} becomes your vassal state; you direct its war policy.`,
+        false,
+      ));
+      outcomeSection.appendChild(makeOutcomeRadio(
+        'overthrow',
+        'Overthrow Leadership',
+        canOverthrow
+          ? 'Remove the current leader and install another available leader for this nation. It stays independent.'
+          : `Remove the current leader and install another available leader. ${targetNation.name} has no alternative leader available.`,
+        !canOverthrow,
+      ));
+      outcomeSection.appendChild(leaderPicker);
+      renderLeaderPicker();
+
+      return {
+        element: outcomeSection,
+        readOutcome: () =>
+          selectedOutcome === 'overthrow' && canOverthrow && selectedLeaderId
+            ? { overthrowLeaderId: selectedLeaderId }
+            : {},
+      };
+    };
+
     const showDemandCapitulationDialog = (targetNationId: string): void => {
       const targetNation = nationManager.getNation(targetNationId);
       if (!targetNation) {
@@ -7553,6 +7734,10 @@ export class GameScene extends Phaser.Scene {
       }
       const readExploit = (): boolean => exploitCheck?.checked === true;
 
+      // Settlement outcome: vassalize (default) or impose regime change.
+      const { element: outcomeSection, readOutcome } = createSettlementOutcomeChooser(targetNation, accent);
+      panel.appendChild(outcomeSection);
+
       const buttons = document.createElement('div');
       buttons.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;margin-top:8px;';
       const makeButton = (label: string, primary: boolean, handler: () => void): HTMLButtonElement => {
@@ -7567,7 +7752,7 @@ export class GameScene extends Phaser.Scene {
       buttons.appendChild(makeButton('Cancel', false, () => overlay.remove()));
       buttons.appendChild(makeButton('Demand Surrender', true, () => {
         overlay.remove();
-        resolveCapitulationDemand(targetNationId, readReparations(), readExploit());
+        resolveCapitulationDemand(targetNationId, readReparations(), readExploit(), readOutcome());
       }));
       panel.appendChild(buttons);
 
@@ -7580,6 +7765,7 @@ export class GameScene extends Phaser.Scene {
       targetNationId: string,
       reparations: number,
       demandExploitationRights: boolean,
+      outcome: { overthrowLeaderId?: string } = {},
     ): void => {
       const targetName = nationManager.getNation(targetNationId)?.name ?? targetNationId;
       const aiLeaderName = getLeaderByNationId(targetNationId)?.name ?? targetName;
@@ -7603,6 +7789,8 @@ export class GameScene extends Phaser.Scene {
         targetNationId,
         reparations,
         demandExploitationRights,
+        false,
+        outcome,
       );
       if (!result.accepted) {
         console.warn(`[HumanCapitulationDemand] demander=${humanNationIdForDiplomacy} target=${targetNationId} `
@@ -7621,7 +7809,21 @@ export class GameScene extends Phaser.Scene {
       if (result.exploitationHoldingsRemoved > 0) {
         recordHoldingsRemovalHistory(humanNationIdForDiplomacy, targetNationId, result.exploitationHoldingsRemoved, 'capitulation');
       }
-      // The shared vassalization event presents the victory audience for every path.
+      // The vassal path presents its victory audience via the shared
+      // vassalization event. The overthrow path has no such event, so present the
+      // ousted leader's farewell (their portrait, since the nation now has a new
+      // one) directly to the human victor.
+      const overthrow = result.leadershipOverthrow;
+      if (overthrow && !isAutoplayActive()) {
+        pendingCapitulations.push({
+          leaderId: overthrow.previousLeaderId,
+          message: `“${getLeaderById(overthrow.previousLeaderId)?.diplomacyFlavor?.defeat
+            ?? 'You have won. My people will remember this.'}”\n\n`
+            + `${targetName} has capitulated. ${overthrow.previousLeaderName} is removed from power; `
+            + `${overthrow.newLeaderName} now leads ${targetName}.`,
+        });
+        processAudienceQueue();
+      }
       rightPanel?.refreshCurrent();
     };
 
@@ -7758,10 +7960,18 @@ export class GameScene extends Phaser.Scene {
               humanNationIdForDiplomacy,
               peaceTreatySystem.calculateReparations(humanNationIdForDiplomacy),
               capitulationSystem.shouldDemandExploitationRights(targetNationId, humanNationIdForDiplomacy),
+              false,
+              // The AI victor may impose regime change on the human's nation
+              // instead of vassalage. Control of the nation does not change.
+              { overthrowLeaderId: capitulationSystem.chooseOverthrowLeaderForVictor(targetNationId, humanNationIdForDiplomacy) },
             );
             if (!result.accepted) return;
+            const overthrow = result.leadershipOverthrow;
             showLeaderResponsePopup(targetNationId, 'Your Nation Capitulated', [
-              `You are now a vassal state of ${targetNation.name}. Your civilization continues under host-controlled war policy.`,
+              overthrow
+                ? `${targetNation.name} has imposed regime change: ${overthrow.previousLeaderName} is removed and `
+                  + `${overthrow.newLeaderName} now leads your nation. You continue playing the same nation under its new leader.`
+                : `You are now a vassal state of ${targetNation.name}. Your civilization continues under host-controlled war policy.`,
             ]);
             rightPanel?.refreshCurrent();
           },
@@ -10169,12 +10379,144 @@ export class GameScene extends Phaser.Scene {
       pendingWarDeclarations.push(request);
       processAudienceQueue();
     });
-    militaryVassalizationSystem.onCompleted((event) => {
-      if (isAutoplayActive()) return;
+    // Celebratory vassal audience with the defeated leader, used whenever the
+    // human keeps the conquest's default vassal outcome.
+    const enqueueVassalCapitulationDialogue = (event: MilitaryVassalizationEvent): void => {
       const request = createCapitulationDialogue(event, humanNationIdForDiplomacy, timelineNationName);
       if (!request) return;
       pendingCapitulations.push(request);
       processAudienceQueue();
+    };
+
+    // Record + surface a conquest-driven regime change (Overthrow Leadership
+    // chosen instead of vassalage). Mirrors the demand-capitulation overthrow
+    // history so timeline, newspaper and log stay consistent across both paths.
+    const recordConquestLeadershipOverthrow = (
+      event: MilitaryVassalizationEvent,
+      overthrow: LeadershipOverthrowResult,
+    ): void => {
+      const defeatedName = timelineNationName(event.defeatedNationId);
+      const victorName = timelineNationName(event.victorNationId);
+      historicalTimeline.record({
+        type: 'leadershipOverthrown',
+        icon: '🏛️',
+        text: `Following ${defeatedName}'s defeat, ${overthrow.previousLeaderName} is removed from power; `
+          + `${overthrow.newLeaderName} now leads ${defeatedName}.`,
+        eventNationIds: [event.defeatedNationId, event.victorNationId],
+        newsImportance: 6,
+        metadata: {
+          aggressorNationId: event.victorNationId,
+          targetNationId: event.defeatedNationId,
+          overthrownPreviousLeaderName: overthrow.previousLeaderName,
+          overthrownNewLeaderName: overthrow.newLeaderName,
+        },
+      });
+      logManager.info({
+        nationIds: [event.defeatedNationId, event.victorNationId],
+        category: 'diplomacy',
+        message: `${victorName} overthrew the leadership of ${defeatedName}: ${overthrow.previousLeaderName} removed, `
+          + `${overthrow.newLeaderName} installed. ${defeatedName} remains independent rather than a vassal.`,
+      });
+      leaderStrip?.rebuild();
+      hudLayer?.refresh();
+      rightPanel?.requestRefresh();
+    };
+
+    // Apply the human victor's post-conquest settlement choice. The conquest has
+    // already vassalized the defeated nation; keeping that is the default, while
+    // Overthrow Leadership dissolves the fresh vassal contract and installs the
+    // chosen leader (nation stays independent).
+    const applyVictorSettlementChoice = (
+      event: MilitaryVassalizationEvent,
+      outcome: { overthrowLeaderId?: string },
+    ): void => {
+      const overthrowLeaderId = outcome.overthrowLeaderId;
+      const overthrow = overthrowLeaderId !== undefined
+        ? capitulationSystem.convertVassalageToOverthrow(event.victorNationId, event.defeatedNationId, overthrowLeaderId)
+        : undefined;
+      if (!overthrow) {
+        // Vassalize chosen, or a defensive fallback if the swap was rejected.
+        enqueueVassalCapitulationDialogue(event);
+        return;
+      }
+      recordConquestLeadershipOverthrow(event, overthrow);
+      // Celebrate with the deposed leader, mirroring the demand-overthrow flow.
+      const defeatedName = timelineNationName(event.defeatedNationId);
+      pendingCapitulations.push({
+        leaderId: overthrow.previousLeaderId,
+        message: `“${getLeaderById(overthrow.previousLeaderId)?.diplomacyFlavor?.defeat
+          ?? 'You have broken us. I yield my seat.'}”\n\n`
+          + `${defeatedName} has capitulated. ${overthrow.previousLeaderName} is removed from power; `
+          + `${overthrow.newLeaderName} now leads ${defeatedName}.`,
+      });
+      processAudienceQueue();
+    };
+
+    // Post-conquest settlement modal: lets the human victor keep the defeated
+    // nation as a vassal (default) or overthrow its leadership. Only shown when
+    // an alternative leader exists and the conquest did not just clinch a
+    // domination victory (in which case the win stands and no choice is offered).
+    const presentVictorSettlementChoice = (event: MilitaryVassalizationEvent): void => {
+      const defeatedNation = nationManager.getNation(event.defeatedNationId);
+      if (!defeatedNation
+        || victorySystem.getVictoryState() !== null
+        || !capitulationSystem.canOverthrowLeadership(event.defeatedNationId)) {
+        enqueueVassalCapitulationDialogue(event);
+        return;
+      }
+
+      document.getElementById('victor-settlement-modal')?.remove();
+      const accent = `#${defeatedNation.color.toString(16).padStart(6, '0')}`;
+      const overlay = document.createElement('div');
+      overlay.id = 'victor-settlement-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.62);'
+        + 'display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#edf4ff;';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'width:min(560px,calc(100vw - 32px));max-height:min(760px,calc(100vh - 32px));'
+        + `overflow:auto;background:#141019;border:2px solid ${accent};border-radius:6px;`
+        + 'box-shadow:0 24px 80px rgba(0,0,0,0.55);padding:20px;';
+      overlay.appendChild(panel);
+
+      const title = document.createElement('h2');
+      title.textContent = `Victory over ${defeatedNation.name}`;
+      title.style.cssText = 'margin:0 0 8px;font-size:22px;color:#f4d3d3;';
+      panel.appendChild(title);
+
+      const intro = document.createElement('div');
+      intro.style.cssText = 'color:#cbb6b6;font-size:13px;margin-bottom:4px;line-height:1.5;';
+      intro.textContent = `${defeatedNation.name} has capitulated. Decide how to settle the war: keep it as your `
+        + 'vassal state, or overthrow its leadership and install a leader of your choosing while it stays independent.';
+      panel.appendChild(intro);
+
+      const { element: outcomeSection, readOutcome } = createSettlementOutcomeChooser(defeatedNation, accent);
+      panel.appendChild(outcomeSection);
+
+      const buttons = document.createElement('div');
+      buttons.style.cssText = 'display:flex;gap:12px;justify-content:flex-end;margin-top:8px;';
+      const confirm = document.createElement('button');
+      confirm.textContent = 'Confirm';
+      confirm.style.cssText = 'padding:8px 20px;font-size:15px;cursor:pointer;border-radius:4px;'
+        + `border:1px solid ${accent};background:${accent};color:#000;`;
+      confirm.addEventListener('click', () => {
+        overlay.remove();
+        applyVictorSettlementChoice(event, readOutcome());
+      });
+      buttons.appendChild(confirm);
+      panel.appendChild(buttons);
+
+      document.body.appendChild(overlay);
+    };
+
+    militaryVassalizationSystem.onCompleted((event) => {
+      if (isAutoplayActive()) return;
+      // Only the human victor is offered the settlement choice; every other
+      // observer/participant is handled by createCapitulationDialogue returning
+      // undefined for them, so the vassal path is a safe fallback.
+      if (event.victorNationId === humanNationIdForDiplomacy) {
+        presentVictorSettlementChoice(event);
+        return;
+      }
+      enqueueVassalCapitulationDialogue(event);
     });
     rightPanel.setArrangeAudienceHandler((leaderId, category) => {
       this.leaderAudienceDialog?.open(leaderId, category);

@@ -1066,6 +1066,16 @@ export function setScenarioLeaderOverrides(nations: readonly ScenarioLeaderSourc
   }
 }
 
+/**
+ * The nation identity whose leader roster applies to a runtime nation. Scenario
+ * nations may borrow another nation's identity via `replacementNationId`; every
+ * leader lookup and mutation must resolve through this so eligibility never uses
+ * the raw runtime id when a replacement identity is installed.
+ */
+function getEffectiveIdentityNationId(nationId: string): string {
+  return scenarioLeaderOverrides.get(nationId)?.replacementNationId ?? nationId;
+}
+
 /** Apply any installed override to a leader, returning an overridden copy. */
 function applyLeaderOverride(leader: LeaderDefinition | undefined, overrideNationId = leader?.nationId): LeaderDefinition | undefined {
   if (!leader) return leader;
@@ -1092,6 +1102,37 @@ export function getActiveLeaderSelections(): Record<string, string> {
   return Object.fromEntries(activeLeaderIdsByNation);
 }
 
+/**
+ * Canonical single-nation active-leader mutation used during an ongoing game
+ * (e.g. a capitulation "Overthrow Leadership" outcome). Validates that the
+ * leader actually belongs to the nation's effective identity, so a leader can
+ * never be installed for a nation it does not lead. Returns false (no change) on
+ * an invalid or unknown leader. The change flows through {@link getActiveLeaderSelections}
+ * and is therefore included in save state automatically.
+ */
+export function setActiveLeaderForNation(nationId: string, leaderId: string): boolean {
+  const identityNationId = getEffectiveIdentityNationId(nationId);
+  const leader = ALL_LEADERS.find((candidate) => candidate.id === leaderId);
+  if (!leader || leader.nationId !== identityNationId) return false;
+  activeLeaderIdsByNation.set(nationId, leaderId);
+  return true;
+}
+
+/**
+ * All leaders that could replace the nation's current active leader: every
+ * leader of the nation's effective identity except the one currently in power.
+ * Supports any roster size (zero, one, or many alternatives) and respects
+ * scenario replacement identities. Behavior overrides are applied so callers see
+ * the same configured leader they would from {@link getLeaderById}.
+ */
+export function getAlternativeLeadersByNationId(nationId: string): LeaderDefinition[] {
+  const identityNationId = getEffectiveIdentityNationId(nationId);
+  const activeLeaderId = getLeaderByNationId(nationId)?.id;
+  return ALL_LEADERS
+    .filter((leader) => leader.nationId === identityNationId && leader.id !== activeLeaderId)
+    .map((leader) => applyBehaviorOverride(leader));
+}
+
 export function getLeadersByNationId(nationId: string): LeaderDefinition[] {
   return ALL_LEADERS.filter((leader) => leader.nationId === nationId);
 }
@@ -1102,7 +1143,7 @@ export function getDefaultLeaderByNationId(nationId: string): LeaderDefinition |
 
 export function getLeaderByNationId(nationId: string): LeaderDefinition | undefined {
   const replacementNationId = scenarioLeaderOverrides.get(nationId)?.replacementNationId;
-  const identityNationId = replacementNationId ?? nationId;
+  const identityNationId = getEffectiveIdentityNationId(nationId);
   const selectedLeaderId = activeLeaderIdsByNation.get(nationId);
   const selectedLeader = selectedLeaderId ? ALL_LEADERS.find((leader) => leader.id === selectedLeaderId) : undefined;
   const leader = selectedLeader?.nationId === identityNationId

@@ -12,11 +12,14 @@ export function buildCapitulationNotification(
     || !event.formerEnemyIds.includes(humanNationId)) return undefined;
   const defeated = nationName(event.capitulatingNationId);
   const victor = nationName(event.demandingNationId);
+  const outcome = event.leadershipOverthrow
+    ? `capitulated to ${victor}, which installed ${event.leadershipOverthrow.newLeaderName} as its new leader`
+    : `capitulated to ${victor} and become its vassal`;
   return {
     title: `War with ${defeated} has ended`,
     imageKey: 'capitulation_peace_notice',
     imagePath: '/assets/sprites/news/peace-signed.png',
-    description: `${defeated} has capitulated to ${victor} and become its vassal. `
+    description: `${defeated} has ${outcome}. `
       + `All its wars have ended, including its war with ${nationName(humanNationId)}.`,
     unlockRows: [],
     leadsToRows: [],
