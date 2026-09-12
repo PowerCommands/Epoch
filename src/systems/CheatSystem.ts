@@ -13,6 +13,8 @@ import type { SelectionManager } from './SelectionManager';
 import type { UnitManager } from './UnitManager';
 import type { WonderSystem } from './WonderSystem';
 import { ALL_LEADERS } from '../data/leaders';
+import { ALL_BUILDINGS } from '../data/buildings';
+import type { BuildingType } from '../entities/Building';
 import { CITY_BASE_HEALTH } from '../data/cities';
 import {
   CORPORATIONS,
@@ -78,6 +80,15 @@ export interface GameContext {
    * a short status message for the cheat console.
    */
   switchHumanPlayer: (targetNationId: string) => string;
+  /**
+   * Developer hook for the `building` cheat: instantly build `buildingId` on the
+   * tile at (`tileX`, `tileY`), attributed to `nationId`, reusing the normal
+   * building-completion path (upgrade bookkeeping, effects, renderers, cultural
+   * burst). City-wide buildings require the tile to be a city of `nationId`;
+   * other buildings require the tile to be claimed by `nationId`. Returns a
+   * short status message for the cheat console.
+   */
+  buildBuilding: (buildingId: string, nationId: string, tileX: number, tileY: number) => string;
 }
 
 export interface CheatCommand {
@@ -361,6 +372,32 @@ export class CheatSystem {
       },
       complete: (args, context) => {
         if (args.length === 1) return completeUnit(args[0]);
+        if (args.length === 2) return completeNation(args[1], context);
+        return [];
+      },
+    });
+
+    this.register({
+      name: 'building',
+      description: 'Build a building on the selected tile for a nation (defaults to the player). City-wide buildings (Walls, Castle, ...) need a selected city tile; others need a tile claimed by that nation. Upgrade/downgrade and terrain correctness are up to you. Usage: "building <buildingId> [nation]". Cannot build World Wonders or on unclaimed tiles.',
+      execute: (args, context) => {
+        const buildingArg = args[0];
+        if (buildingArg === undefined || args.length > 2) return 'Usage: building <buildingId> [nation]';
+
+        const building = resolveBuildingType(buildingArg);
+        if (!building.ok) return building.message;
+
+        const target = resolveNationId(args[1], context);
+        if (!target.ok) return target.message;
+
+        const selection = context.selectionManager.getSelected();
+        const position = selection ? selectionTilePosition(selection) : null;
+        if (!position) return 'No tile selected';
+
+        return context.buildBuilding(building.type.id, target.nationId, position.x, position.y);
+      },
+      complete: (args, context) => {
+        if (args.length === 1) return completeBuilding(args[0]);
         if (args.length === 2) return completeNation(args[1], context);
         return [];
       },
@@ -1106,6 +1143,15 @@ function completeUnit(input: string): CheatCompletionSuggestion[] {
   })));
 }
 
+function completeBuilding(input: string): CheatCompletionSuggestion[] {
+  return matchSuggestions(input, ALL_BUILDINGS.map((building) => ({
+    value: building.id,
+    label: building.name,
+    description: building.era,
+    matchText: [building.id, building.name],
+  })));
+}
+
 function completeResource(input: string): CheatCompletionSuggestion[] {
   return matchSuggestions(input, NATURAL_RESOURCES.map((resource) => ({
     value: resource.id,
@@ -1318,6 +1364,31 @@ function resolveUnitType(
   if (partialMatches.length > 1) return { ok: false, message: `Ambiguous unit: ${input}` };
 
   return { ok: false, message: `Unknown unit: ${input}` };
+}
+
+function resolveBuildingType(
+  input: string,
+): { ok: true; type: BuildingType } | { ok: false; message: string } {
+  const normalizedInput = normalizeCompletionMatchText(input);
+  if (normalizedInput.length === 0) return { ok: false, message: `Unknown building: ${input}` };
+
+  // ALL_BUILDINGS intentionally excludes World Wonders and special structures
+  // (Barbarian Camp, Grand Stadium), so neither can be built via this cheat.
+  const exactMatches = ALL_BUILDINGS.filter((building) =>
+    normalizeCompletionMatchText(building.id) === normalizedInput ||
+    normalizeCompletionMatchText(building.name) === normalizedInput
+  );
+  if (exactMatches.length === 1) return { ok: true, type: exactMatches[0] };
+  if (exactMatches.length > 1) return { ok: false, message: `Ambiguous building: ${input}` };
+
+  const partialMatches = ALL_BUILDINGS.filter((building) =>
+    normalizeCompletionMatchText(building.id).includes(normalizedInput) ||
+    normalizeCompletionMatchText(building.name).includes(normalizedInput)
+  );
+  if (partialMatches.length === 1) return { ok: true, type: partialMatches[0] };
+  if (partialMatches.length > 1) return { ok: false, message: `Ambiguous building: ${input}` };
+
+  return { ok: false, message: `Unknown building: ${input}` };
 }
 
 function resolveNaturalResource(

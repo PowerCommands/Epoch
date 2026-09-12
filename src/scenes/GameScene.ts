@@ -351,6 +351,7 @@ import { getBuildingTerrainRequirement } from '../utils/buildingRequirements';
 import { LATEST_AUTOSAVE_KEY } from '../systems/AutosaveService';
 import type { SavedGameState, SavedGuideProgress } from '../types/saveGame';
 import { ALL_BUILDINGS, GRAND_STADIUM, GRAND_STADIUM_BUILDING_ID, getBuildingById, isBarbarianCamp, HARBOR, SEAPORT, BARRACKS, ARMORY, MILITARY_ACADEMY, MILITARY_BASE } from '../data/buildings';
+import type { BuildingType } from '../entities/Building';
 import { completeBuildingUpgrade, getBuildingUpgradeBlockReason, isBuildingObsoleteInCity } from '../systems/buildingUpgrades';
 import { CULTURE_TREE } from '../data/cultureTree';
 import { getPoliciesByRequiredCultureNodeId } from '../data/policies';
@@ -5248,6 +5249,69 @@ export class GameScene extends Phaser.Scene {
       city.productionRhythm.completedInfrastructureSinceUnit += 1;
     };
 
+    // Shared post-placement finalization for a completed building, reused by the
+    // production-completion handler and the `building` developer cheat. It owns
+    // the power-plant / upgrade bookkeeping, the completion log, resource
+    // recalculation, renderer/fog refresh and the cultural burst. The physical
+    // tile destination (null for city-wide buildings) is resolved by the caller.
+    const applyCompletedBuilding = (city: City, building: BuildingType, completedTile: Tile | null): boolean => {
+      if (powerPlantSystem.isPowerPlant(building.id)) {
+        const result = powerPlantSystem.completeConstruction(
+          city.id,
+          building.id,
+          completedTile ? { x: completedTile.x, y: completedTile.y } : undefined,
+        );
+        if (!result.ok) {
+          console.warn(`[PowerPlant] Could not complete ${building.id} in ${city.name}: ${result.reason}`);
+          return false;
+        }
+      } else {
+        completeBuildingUpgrade(cityManager.getBuildings(city.id), building);
+      }
+      applyBuildingCompletionEffects(city, building);
+      const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
+      logManager.info({
+        nationIds: [city.ownerId],
+        category: 'production',
+        message: formatBuildingCompletionMessage(nationName, building.name, city.name),
+      });
+      if ((building.modifiers.cityDefensePercent ?? 0) > 0) {
+        cityRenderer.refreshCity(city);
+      }
+      if (building.id === GRAND_STADIUM_BUILDING_ID) {
+        logManager.info({
+          nationId: city.ownerId,
+          category: 'games-of-nations',
+          message: `[GamesOfNations] Grand Stadium completed in ${city.name}`,
+        });
+      }
+      resourceSystem.recalculateForNation(city.ownerId);
+      if (completedTile) tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
+      if (city.ownerId === humanNationId) updateFog();
+
+      const hasFlatCulture = (building.modifiers.culturePerTurn ?? 0) > 0;
+      const hasPercentCulture = (building.modifiers.culturePercent ?? 0) > 0;
+      if (hasPercentCulture || hasFlatCulture) {
+        const burst = culturalSphereSystem.triggerCulturalBurst(city, mapData, gridSystem, {
+          radius: hasPercentCulture
+            ? CULTURAL_PERCENT_BUILDING_BURST_RADIUS
+            : CULTURAL_BUILDING_BURST_RADIUS,
+          maxTiles: hasPercentCulture
+            ? CULTURAL_PERCENT_BUILDING_BURST_MAX_TILES
+            : CULTURAL_BUILDING_BURST_MAX_TILES,
+          allowOverwrite: true,
+        });
+        refreshCultureOverlay();
+        if (burst.claimedTiles + burst.convertedTiles > 0) {
+          const burstText = `${city.name} cultural burst from ${building.name}: ${burst.claimedTiles} claimed, ${burst.convertedTiles} converted.`;
+          logManager.info({ nationId: city.ownerId, category: 'culture', message: burstText });
+        }
+      }
+
+      refreshOpenCityView();
+      return true;
+    };
+
     // Listen to activation itself so 0-turn and queued routes share all
     // downstream diplomacy consequences.
     tradeConnectionSystem.onConnectionActivated((activated) => {
@@ -5283,60 +5347,8 @@ export class GameScene extends Phaser.Scene {
           return false;
         }
 
-        if (powerPlantSystem.isPowerPlant(item.buildingType.id)) {
-          const result = powerPlantSystem.completeConstruction(
-            cityId,
-            item.buildingType.id,
-            completedTile ? { x: completedTile.x, y: completedTile.y } : undefined,
-          );
-          if (!result.ok) {
-            console.warn(`[PowerPlant] Could not complete ${item.buildingType.id} in ${city.name}: ${result.reason}`);
-            return false;
-          }
-        } else {
-          completeBuildingUpgrade(cityManager.getBuildings(cityId), item.buildingType);
-        }
-        applyBuildingCompletionEffects(city, item.buildingType);
-        const nationName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
-        logManager.info({
-          nationIds: [city.ownerId],
-          category: 'production',
-          message: formatBuildingCompletionMessage(nationName, item.buildingType.name, city.name),
-        });
-        if ((item.buildingType.modifiers.cityDefensePercent ?? 0) > 0) {
-          cityRenderer.refreshCity(city);
-        }
-        if (item.buildingType.id === GRAND_STADIUM_BUILDING_ID) {
-          logManager.info({
-            nationId: city.ownerId,
-            category: 'games-of-nations',
-            message: `[GamesOfNations] Grand Stadium completed in ${city.name}`,
-          });
-        }
-        resourceSystem.recalculateForNation(city.ownerId);
-        if (completedTile) tileBuildingRenderer.refreshTile(completedTile.x, completedTile.y);
-        if (city.ownerId === humanNationId) updateFog();
+        if (!applyCompletedBuilding(city, item.buildingType, completedTile)) return false;
 
-        const hasFlatCulture = (item.buildingType.modifiers.culturePerTurn ?? 0) > 0;
-        const hasPercentCulture = (item.buildingType.modifiers.culturePercent ?? 0) > 0;
-        if (hasPercentCulture || hasFlatCulture) {
-          const burst = culturalSphereSystem.triggerCulturalBurst(city, mapData, gridSystem, {
-            radius: hasPercentCulture
-              ? CULTURAL_PERCENT_BUILDING_BURST_RADIUS
-              : CULTURAL_BUILDING_BURST_RADIUS,
-            maxTiles: hasPercentCulture
-              ? CULTURAL_PERCENT_BUILDING_BURST_MAX_TILES
-              : CULTURAL_BUILDING_BURST_MAX_TILES,
-            allowOverwrite: true,
-          });
-          refreshCultureOverlay();
-          if (burst.claimedTiles + burst.convertedTiles > 0) {
-            const burstText = `${city.name} cultural burst from ${item.buildingType.name}: ${burst.claimedTiles} claimed, ${burst.convertedTiles} converted.`;
-            logManager.info({ nationId: city.ownerId, category: 'culture', message: burstText });
-          }
-        }
-
-        refreshOpenCityView();
         updateCityProductionRhythm(city, item);
         return true;
       }
@@ -11467,6 +11479,70 @@ export class GameScene extends Phaser.Scene {
       return `Confirm to switch human player to ${targetName}.`;
     };
 
+    // Developer cheat: instantly build a building on the given tile, attributed
+    // to `nationId`, reusing the shared completion path. City-wide buildings
+    // (placement 'city') go into the city at the tile; everything else is a
+    // physical tile building placed directly on the selected tile. Terrain and
+    // upgrade/downgrade correctness are deliberately left to the user.
+    const buildBuildingForCheat = (
+      buildingId: string,
+      nationId: string,
+      tileX: number,
+      tileY: number,
+    ): string => {
+      const building = getBuildingById(buildingId);
+      if (!building) return `Unknown building: ${buildingId}`;
+      const nationName = nationManager.getNation(nationId)?.name ?? nationId;
+
+      const tile = mapData.tiles[tileY]?.[tileX];
+      if (!tile) return 'No tile selected';
+
+      if (building.placement === 'city') {
+        const city = cityManager.getCityAt(tileX, tileY);
+        if (!city) return `${building.name} is a city building — select a city tile.`;
+        if (city.ownerId !== nationId) {
+          const ownerName = nationManager.getNation(city.ownerId)?.name ?? city.ownerId;
+          return `${city.name} belongs to ${ownerName}, not ${nationName}. Select a ${nationName} city or omit the nation.`;
+        }
+        if (cityManager.getBuildings(city.id).has(building.id)) {
+          return `${city.name} already has ${building.name}.`;
+        }
+        applyCompletedBuilding(city, building, null);
+        return `Built ${building.name} in ${city.name} for ${nationName}.`;
+      }
+
+      // Physical tile building: the selected tile must be claimed by the target
+      // nation (i.e. owned by one of its cities).
+      const city = cityManager.getCitiesByOwner(nationId).find((candidate) =>
+        candidate.ownedTileCoords.some((coord) => coord.x === tileX && coord.y === tileY),
+      );
+      if (!city) {
+        return tile.ownerId
+          ? `That tile is not claimed by ${nationName}.`
+          : 'Cannot build on an unclaimed tile.';
+      }
+      if (tileX === city.tileX && tileY === city.tileY) {
+        return `Cannot place ${building.name} on the city center tile; select another tile owned by ${city.name}.`;
+      }
+
+      // Replace whatever building already stands here (an upgrade or downgrade is
+      // the user's responsibility). Drop the superseded building from the city's
+      // active set so a downgrade does not leave the higher level counted. Power
+      // plants manage their own set entry and tile cleanup in completeConstruction.
+      const previousBuildingId = tile.buildingId;
+      if (previousBuildingId && previousBuildingId !== building.id && !powerPlantSystem.isPowerPlant(building.id)) {
+        cityManager.getBuildings(city.id).remove(previousBuildingId);
+      }
+      tile.buildingId = building.id;
+      tile.buildingBroken = undefined;
+      tile.buildingConstruction = undefined;
+
+      if (!applyCompletedBuilding(city, building, tile)) {
+        return `Could not build ${building.name} on (${tileX}, ${tileY}).`;
+      }
+      return `Built ${building.name} on (${tileX}, ${tileY}) for ${nationName} (${city.name}).`;
+    };
+
     const relationsCheatDialog = new RelationsCheatDialog({
       nationManager,
       diplomacyManager,
@@ -11555,6 +11631,7 @@ export class GameScene extends Phaser.Scene {
       },
       formHumanAlliance: formHumanAllianceForCheat,
       switchHumanPlayer: switchHumanPlayerForCheat,
+      buildBuilding: buildBuildingForCheat,
     }));
 
     turnManager.on('turnStart', () => {

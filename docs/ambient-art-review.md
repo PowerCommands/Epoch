@@ -63,14 +63,14 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | spearman | Pronounced spear/polearm strike; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | pikeman | Pronounced spear/polearm strike; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | swordsman | Brightened original artwork; sword and weapon arm swing at the shoulder while head, torso, waist and feet remain stationary. |
-| longswordsman | Brightened original artwork; sword and weapon arm swing at the shoulder while head, torso, waist and feet remain stationary. |
+| longswordsman | Classic painted steel, chainmail and brown leather matching Cavalry; no brightness or shadow-lift filter. Sword cutout follows the new painted arm. |
 | archer | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | composite_bowman | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | crossbowman | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | scout | Enlarged brass compass with an ivory face and contrasting red/blue needle rotating a full circle every 2.4 seconds; fixed hands and dial. |
 | settler | Hand at belt, fixed pack and legs. |
 | archaeologist | Gloved hand, fixed hat and grounded boots. |
-| horseman | Original mounted artwork lit 3.2× with preserved alpha; continuous 1.25-second riding cycle with opposing front/rear strides, hoof lift, body bounce and rider following the saddle. |
+| horseman | Classic painted chestnut horse, steel armor and brown tack matching Cavalry; natural shadows without the old brightness filter. Existing riding gait preserved. |
 | knight | Original mounted artwork lit 3.2× with preserved alpha; continuous 1.25-second riding cycle with opposing front/rear strides, hoof lift, body bounce and rider following the saddle. |
 | cavalry | Right-facing horse head; reins and rider remain coherent. |
 | caravan | Left ox muzzle; wagon, wheels and cargo stay rigid. |
@@ -81,9 +81,9 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | infantry | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | partisans | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | rebels | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
-| tank | Small exhaust at rear engine area; turret, tracks and hull remain rigid. |
-| modern_armor | Rear engine exhaust only; no radial turret warp. |
-| landship | Small rear exhaust on the armored vehicle; fixed chassis. |
+| tank | Tread links circulate around both visible belts; main gun fires traveling shells with muzzle flame and recoil. |
+| modern_armor | Moving tread links circulate around both visible belts; gun fires shells with muzzle flame and backward recoil. |
+| landship | Original wheel faces spin continuously; roof cannon fires shells with muzzle blast and recoil. |
 | mobile_sam | Small chassis signal; missiles and launcher fixed. |
 | giant_death_robot | Small face/sensor light on the fixed robot. |
 | fighter | Propeller disc at the single painted nose hub. |
@@ -98,13 +98,13 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | great_war_infantry | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | mechanized_infantry | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | xcom_squad | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
-| cannon | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
-| catapult | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
+| cannon | Barrel recoils backward and returns; muzzle flame, smoke and a traveling shell accompany each shot. |
+| catapult | Exposed throwing arm swings from the frame bearing and launches a stone along a ballistic arc; chassis and wheels stay fixed. |
 | trebuchet | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
 | artillery | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
-| anti_aircraft_gun | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
-| gatling_gun | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
-| machine_gun | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
+| anti_aircraft_gun | Elevated gun fires shells with muzzle flame and backward barrel recoil over a fixed carriage. |
+| gatling_gun | Repeated salvos with muzzle flames, tracers and backward barrel recoil; wheels stay grounded. |
+| machine_gun | Four-round bursts with barrel/receiver recoil, bright muzzle flames, smoke and tracers; tripod stays grounded. |
 | rocket_artillery | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
 | trireme | Exposed oars pivot together at the gunwale in a continuous rowing cycle; rigid hull heaves gently. |
 | archer_galley | Exposed oars row in unison; deck archers draw their bows and release staggered visible arrows. |

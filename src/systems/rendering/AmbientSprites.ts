@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { renderCanvasWithGeometryClip } from './GeometryClip';
 import { AMBIENT_PROFILES, ambientMotion, ambientSeed, type AmbientKind, type AmbientProfile, type Emitter } from './AmbientProfiles';
-import { weaponPhase, WEAPON_PERIOD, WEAPON_RELEASE } from './FootSoldierProfiles';
+import { burstAge, weaponPhase, WEAPON_PERIOD, WEAPON_RELEASE } from './FootSoldierProfiles';
 import { mountedOffset } from './MountedGait';
 
 type CanvasDraw = (
@@ -240,6 +240,7 @@ export class AmbientSprites {
       }
       if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t,detail);
       if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);
+      if(profile.tracks?.length && b.drawing && !s.isTinted) this.drawTracks(g,b,t,detail);
     }
   }
   private drawWeaponShots(g: Phaser.GameObjects.Graphics,b: Binding,t: number,detail: number): void {
@@ -247,20 +248,38 @@ export class AmbientSprites {
     const matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
     for(const shot of b.profile!.shots!) {
       const seed=(b.seed+(parts[shot.part].phase??shot.part*.173))%1;
-      const elapsed=(weaponPhase(t,seed)-WEAPON_RELEASE)*WEAPON_PERIOD;
+      const phase=weaponPhase(t,seed);
+      const elapsed=shot.kind==='burst'?(burstAge(t,seed)??-1):(phase-WEAPON_RELEASE)*WEAPON_PERIOD;
       const age=Math.max(0,elapsed);
-      const duration=shot.kind==='arrow'?.48:.36;
-      if(elapsed < -1e-9 || age>duration) continue;
-      const part=parts[shot.part],motion=ambientMotion(t,seed,part.rhythm),angle=part.angle*motion+(part.angleOffset??0);
-      const cos=Math.cos(angle),sin=Math.sin(angle);
-      const local=(x:number,y:number) => matrix.transformPoint(
-        (part.pivot[0]+(x-part.pivot[0])*cos-(y-part.pivot[1])*sin+(part.dx??0)*motion-s.originX)*s.width,
-        (part.pivot[1]+(x-part.pivot[0])*sin+(y-part.pivot[1])*cos+(part.dy??0)*motion+(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail-s.originY)*s.height);
+      const duration=shot.kind==='stone'?1.05:shot.kind==='shell'?.65:shot.kind==='burst'?.14:shot.kind==='arrow'?.48:.36;
+      const loaded=shot.kind==='stone' && phase<WEAPON_RELEASE;
+      if((elapsed < -1e-9 && !loaded) || age>duration) continue;
+      // The stone leaves the cup at release and no longer follows its recovery.
+      const poseTime=shot.kind==='stone' && !loaded?t-age:t;
+      const part=parts[shot.part],motion=ambientMotion(poseTime,seed,part.rhythm);
+      const local=(x:number,y:number,pose=motion) => {
+        const angle=part.angle*pose+(part.angleOffset??0),cos=Math.cos(angle),sin=Math.sin(angle);
+        return matrix.transformPoint(
+          (part.pivot[0]+(x-part.pivot[0])*cos-(y-part.pivot[1])*sin+(part.dx??0)*pose-s.originX)*s.width,
+          (part.pivot[1]+(x-part.pivot[0])*sin+(y-part.pivot[1])*cos+(part.dy??0)*pose+(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail-s.originY)*s.height);
+      };
       const muzzle=local(...shot.muzzle),tip=local(shot.muzzle[0]+shot.direction[0],shot.muzzle[1]+shot.direction[1]);
       const scale=Math.hypot(tip.x-muzzle.x,tip.y-muzzle.y);
       const dx=(tip.x-muzzle.x)/scale,dy=(tip.y-muzzle.y)/scale,nx=-dy,ny=dx;
       const alpha=s.alpha*Math.max(.7,detail);
-      if(shot.kind==='arrow') {
+      if(shot.kind==='stone') {
+        // Velocity and gravity are in sprite space, preserving container scale
+        // and rotation without coupling projectile travel to the arm angle.
+        const distance=loaded?0:age;
+        const offset=matrix.transformPoint(
+          shot.direction[0]*distance*s.width,
+          (shot.direction[1]*distance+.43*distance*distance)*s.height);
+        const x=muzzle.x+offset.x-matrix.tx,y=muzzle.y+offset.y-matrix.ty;
+        const radius=Math.max(2.2,scale*.032),fade=loaded?1:Math.min(1,(duration-age)/.18);
+        g.fillStyle(0x38332a,alpha*fade).fillCircle(x,y,radius);
+        g.fillStyle(0xa4977d,alpha*fade).fillCircle(x-radius*.12,y-radius*.15,radius*.78);
+        g.fillStyle(0xd3c8ad,alpha*fade).fillCircle(x-radius*.32,y-radius*.34,radius*.26);
+      } else if(shot.kind==='arrow') {
         const travel=age/duration*.32*scale,x=muzzle.x+dx*travel,y=muzzle.y+dy*travel;
         const length=scale*.105;
         g.lineStyle(Math.max(1.2,scale*.007),0xf5dfac,alpha*(1-age/duration*.6));
@@ -268,8 +287,8 @@ export class AmbientSprites {
         g.lineBetween(x,y,x-dx*scale*.022+nx*scale*.014,y-dy*scale*.022+ny*scale*.014);
         g.lineBetween(x,y,x-dx*scale*.022-nx*scale*.014,y-dy*scale*.022-ny*scale*.014);
       } else {
-        if(age<.15) {
-          const length=scale*(shot.kind==='rocket'?.14:.10)*(1-age*.9),width=scale*.025;
+        if(age<(shot.kind==='burst'?.085:.15)) {
+          const length=scale*(shot.kind==='shell'?.22:shot.kind==='burst'?.18:shot.kind==='rocket'?.14:.10)*(1-age*.9),width=scale*(shot.kind==='shell'?.055:shot.kind==='burst'?.04:.025);
           g.fillStyle(0xffad35,alpha*.9);
           g.fillTriangle(muzzle.x+nx*width,muzzle.y+ny*width,muzzle.x+dx*length,muzzle.y+dy*length,muzzle.x-nx*width,muzzle.y-ny*width);
           g.fillStyle(0xfff3c2,alpha).fillCircle(muzzle.x+dx*scale*.025,muzzle.y+dy*scale*.025,scale*.016);
@@ -277,11 +296,40 @@ export class AmbientSprites {
         const q=age/duration;
         g.fillStyle(0xd8d0b9,(1-q)*alpha*.48);
         g.fillCircle(muzzle.x+dx*q*scale*.12,muzzle.y+dy*q*scale*.12-q*scale*.025,scale*(.013+q*.028));
+        if(shot.kind==='shell') {
+          const origin=local(shot.muzzle[0],shot.muzzle[1],ambientMotion(t-age,seed,part.rhythm));
+          const travel=q*scale*.95;
+          g.lineStyle(Math.max(2,scale*.018),0xffd78a,alpha*(1-q));
+          g.lineBetween(origin.x+dx*travel,origin.y+dy*travel,origin.x+dx*(travel+scale*.045),origin.y+dy*(travel+scale*.045));
+        }
+        if(shot.kind==='burst') {
+          const travel=q*scale*.30;
+          g.lineStyle(Math.max(1.2,scale*.008),0xffdf87,(1-q)*alpha);
+          g.lineBetween(muzzle.x+dx*travel,muzzle.y+dy*travel,muzzle.x+dx*(travel+scale*.08),muzzle.y+dy*(travel+scale*.08));
+        }
         if(shot.kind==='rocket') {
           const travel=q*scale*.30;
           g.lineStyle(Math.max(1.5,scale*.014),0xe9d6ac,(1-q)*alpha);
           g.lineBetween(muzzle.x+dx*travel,muzzle.y+dy*travel,muzzle.x+dx*(travel+scale*.055),muzzle.y+dy*(travel+scale*.055));
         }
+      }
+    }
+  }
+  private drawTracks(g: Phaser.GameObjects.Graphics,b: Binding,t: number,detail: number): void {
+    const s=b.sprite,matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
+    const local=(x:number,y:number)=>matrix.transformPoint((x-s.originX)*s.width,(y-s.originY)*s.height);
+    for(const belt of b.profile!.tracks!) {
+      const lengths=belt.path.map(([x,y],i)=>{const next=belt.path[(i+1)%belt.path.length];return Math.hypot(next[0]-x,next[1]-y);});
+      const total=lengths.reduce((sum,len)=>sum+len,0);
+      for(let n=0;n<belt.links;n++) {
+        let distance=((n/belt.links+t/belt.period+b.seed)%1)*total,segment=0;
+        while(segment<lengths.length-1 && distance>lengths[segment]) distance-=lengths[segment++];
+        const [x,y]=belt.path[segment],[tx,ty]=belt.path[(segment+1)%belt.path.length];
+        const len=lengths[segment],q=distance/len,nx=-(ty-y)/len*belt.width/2,ny=(tx-x)/len*belt.width/2;
+        const px=x+(tx-x)*q,py=y+(ty-y)*q;
+        const a=local(px-nx,py-ny),c=local(px+nx,py+ny);
+        g.lineStyle(Math.max(.8,Math.abs(s.displayWidth)*.005),n%3===0?0xb0a18a:0x655e50,s.alpha*Math.max(.7,detail));
+        g.lineBetween(a.x,a.y,c.x,c.y);
       }
     }
   }
@@ -308,6 +356,7 @@ export class AmbientSprites {
       let motion=part?ambientMotion(t,(b.seed+(part.phase??n*.173))%1,part.rhythm):0;
       if(part?.positive) motion=Math.abs(motion);
       let angle=part?part.angle*motion+(part.angleOffset??0):t*Math.PI*2/r.period+b.seed*31+n*1.7;
+      if(part?.spin) angle=t*Math.PI*2/part.spin.period+b.seed*Math.PI*2;
       const heave=(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail;
       let moveX=(part?.dx??0)*motion,moveY=(part?.dy??0)*motion+heave;
       if(part?.link && parts) {
@@ -333,8 +382,9 @@ export class AmbientSprites {
       for(let k=0;k<4;k++) {
         const u=k%2,v=Math.floor(k/2),dx=(u-r.x)*s.width,dy=(v-r.y)*s.height;
         const i=((b.grid+1)**2+n*4+k)*4;
-        m.vertices[i]=(r.x-s.originX)*s.width+dx*Math.cos(angle)-dy*Math.sin(angle)+moveX*s.width;
-        m.vertices[i+1]=(r.y-s.originY)*s.height+dx*Math.sin(angle)+dy*Math.cos(angle)+moveY*s.height;
+        const aspect=part?.spin?.aspect??1;
+        m.vertices[i]=(r.x-s.originX)*s.width+dx*Math.cos(angle)-dy*Math.sin(angle)*aspect+moveX*s.width;
+        m.vertices[i+1]=(r.y-s.originY)*s.height+dx*Math.sin(angle)/aspect+dy*Math.cos(angle)+moveY*s.height;
       }
     }
     b.drawing=true;

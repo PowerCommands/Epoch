@@ -1,6 +1,7 @@
 import { FOOT_SOLDIER_PROFILES, weaponMotion, type WeaponRhythm, type WeaponShot } from './FootSoldierProfiles';
 import { RIDING_GAIT, type MountedGait } from './MountedGait';
 import { NAVAL_PROFILES } from './NavalProfiles';
+import { WEAPON_EQUIPMENT_PROFILES } from './WeaponEquipmentProfiles';
 
 /** Artwork coordinates are normalized, with (0,0) at the top-left of the PNG.
  * Deliberately explicit: stored goods and stone do not inherit a living idle.
@@ -18,10 +19,12 @@ export interface ArtPart {
   rhythm: Joint['rhythm']; dx?: number; dy?: number;
   positive?: boolean;
   phase?: number; // Shared phase keeps a bank of oars in time.
+  spin?: { period: number; aspect: number }; // Rotate within a perspective wheel face.
   link?: { part: number; hand: Point; root: Point; elbow: Point; bone: 0 | 1 }; // Two fixed-length arm bones follow the tool grip.
   repairs?: { polygon: Point[]; offset: Point }[];
 }
-export interface AmbientProfile { effects: Emitter[]; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
+export interface TrackBelt { path: Point[]; width: number; links: number; period: number; }
+export interface AmbientProfile { effects: Emitter[]; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
 const e = (kind: Activity, x: number, y: number, size = 1, color?: number, period?: number): Emitter => ({kind,x,y,size,color,period});
 const j = (x: number, y: number, radius: number, dx: number, dy: number, rhythm: Joint['rhythm'] = 'idle'): Joint => ({x,y,radius,dx,dy,rhythm});
 const p = (...effects: Emitter[]): AmbientProfile => ({effects});
@@ -164,7 +167,7 @@ export const UNIT_AMBIENT: Record<string, AmbientProfile> = {
   scout:{effects:[e('compass',.413,.397,1,undefined,2.4)],note:'Enlarged brass compass held in the hands, with a high-contrast red/blue needle completing a full turn every 2.4 seconds.'},
   settler:{effects:[],joints:[j(.61,.45,.07,.005,.003)],note:'Hand at belt, fixed pack and legs.'},
   archaeologist:{effects:[],joints:[j(.71,.6,.065,.006,.002)],note:'Gloved hand, fixed hat and grounded boots.'},
-  horseman:{effects:[],gait:RIDING_GAIT,brightness:3.2,note:'Bright armor and chestnut horse; continuous visible trot with alternating legs, hoof lift, body bounce and rider following the saddle.'},
+  horseman:{effects:[],gait:RIDING_GAIT,note:'Classic painted chestnut horse, steel armor and brown tack in natural light; continuous trot with no brightness filter.'},
   knight:{effects:[],gait:RIDING_GAIT,brightness:3.2,note:'Same bright mounted artwork and coordinated trot as horseman.'},
   cavalry:{effects:[],joints:[j(.71,.46,.10,.009,.013)],note:'Right-facing horse head; reins and rider remain coherent.'},
   caravan:{effects:[],joints:[j(.20,.58,.09,.009,.01)],note:'Left ox muzzle; wagon, wheels and cargo stay rigid.'},
@@ -204,6 +207,7 @@ units('agent spy stealth_bomber atomic_bomb guided_missile nuclear_missile leade
 
 Object.assign(UNIT_AMBIENT, FOOT_SOLDIER_PROFILES);
 Object.assign(UNIT_AMBIENT, NAVAL_PROFILES);
+Object.assign(UNIT_AMBIENT, WEAPON_EQUIPMENT_PROFILES);
 
 export const AMBIENT_PROFILES: Record<AmbientKind, Record<string, AmbientProfile>> = {
   resource: RESOURCE_AMBIENT, improvement: IMPROVEMENT_AMBIENT, unit: UNIT_AMBIENT,
@@ -219,7 +223,7 @@ export function ambientSeed(key: string): number {
  * the interval and the gesture, without touching the simulation RNG. */
 export function ambientMotion(t: number, seed: number, rhythm: Joint['rhythm']): number {
   if (rhythm === 'row') return Math.sin(t*Math.PI*2/1.8+seed*Math.PI*2);
-  if (rhythm === 'thrust' || rhythm === 'slash' || rhythm === 'draw' || rhythm === 'recoil' || rhythm === 'aim') return weaponMotion(t,seed,rhythm);
+  if (rhythm === 'thrust' || rhythm === 'slash' || rhythm === 'draw' || rhythm === 'recoil' || rhythm === 'aim' || rhythm === 'throw' || rhythm === 'burst') return weaponMotion(t,seed,rhythm);
   if (rhythm === 'scan') return Math.sin(t*Math.PI*2/3+seed*Math.PI*2);
   if (rhythm === 'machine') return Math.sin(t*1.15+seed*23);
   if (rhythm === 'sea') return Math.sin(t*.91+seed*23)*.65 + Math.sin(t*.57+seed*11)*.35;

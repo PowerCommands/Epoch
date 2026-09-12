@@ -1,18 +1,36 @@
 import type { AmbientProfile, ArtPart, Point } from './AmbientProfiles';
 
-export type WeaponRhythm = 'thrust' | 'slash' | 'draw' | 'recoil' | 'aim';
-export interface WeaponShot { kind: 'arrow' | 'rifle' | 'rocket'; part: number; muzzle: Point; direction: Point; }
+export type WeaponRhythm = 'thrust' | 'slash' | 'draw' | 'recoil' | 'aim' | 'throw' | 'burst';
+export interface WeaponShot { kind: 'arrow' | 'rifle' | 'rocket' | 'stone' | 'burst' | 'shell'; part: number; muzzle: Point; direction: Point; }
 export const WEAPON_PERIOD = 2.6;
 export const WEAPON_RELEASE = .45;
+export const BURST_INTERVAL = .16;
+export const BURST_COUNT = 4;
 export function weaponPhase(t: number, seed: number): number {
   const phase=(t / WEAPON_PERIOD + seed) % 1;
   return phase<0?phase+1:phase;
 }
 const ease = (v: number) => { const x = Math.max(0, Math.min(1, v)); return x*x*(3-2*x); };
+/** Seconds since the latest round; the same clock drives recoil and flame. */
+export function burstAge(t: number, seed: number): number | undefined {
+  const elapsed=(weaponPhase(t,seed)-WEAPON_RELEASE)*WEAPON_PERIOD;
+  const round=Math.floor((elapsed+1e-9)/BURST_INTERVAL);
+  if(elapsed < -1e-9 || round>=BURST_COUNT) return undefined;
+  return Math.max(0,elapsed-round*BURST_INTERVAL);
+}
 export function weaponMotion(t: number, seed: number, rhythm: WeaponRhythm): number {
   const phase = weaponPhase(t, seed);
   const q = Math.abs(phase-WEAPON_RELEASE)<1e-10?WEAPON_RELEASE:phase;
   const kick = q < WEAPON_RELEASE ? 0 : (1-ease((q-WEAPON_RELEASE)/.19));
+  if (rhythm === 'burst') {
+    const age=burstAge(t,seed);
+    return age===undefined?0:1-ease(age/.13);
+  }
+  if (rhythm === 'throw') {
+    if(q<.28) return -.12*ease(q/.28);
+    if(q<WEAPON_RELEASE) return -.12+1.12*ease((q-.28)/(WEAPON_RELEASE-.28));
+    return 1-ease((q-.57)/.40);
+  }
   if (rhythm === 'recoil') return q < WEAPON_RELEASE ? -.18*ease(q/.35) : kick;
   if (rhythm === 'aim') return ease(q/.32)*(1-ease((q-.66)/.30)) - kick*.07;
   // A readable preparation, fast strike/release and deliberate recovery.
@@ -52,6 +70,13 @@ sword.brightness=2;
 sword.shadowLift=32;
 sword.parts![0].repairs=[{polygon:[[.418,.316],[.452,.316],[.452,.407],[.418,.407]],offset:[-.035,0]}];
 sword.note='Sword and weapon arm cut from the original art swing from the shoulder; head, chest, waist and feet stay still. Original lighting lifted for readable clothing and equipment.';
+const longsword = profile([part('steel longsword and gripping arm swinging from the shoulder of the painted knight',
+  [[.435,.265],[.473,.30],[.464,.39],[.44,.456],[.44,.525],
+    [.418,.534],[.413,.56],[.39,.57],[.39,.74],[.12,.78],
+    [.12,.53],[.365,.45],[.39,.35],[.41,.29]],
+  [.444,.30],.65,'slash')]);
+longsword.parts![0].repairs=[{polygon:[[.403,.32],[.452,.32],[.435,.47],[.395,.49]],offset:[-.028,0]}];
+longsword.note='Classic painted steel, chainmail and brown leather with natural shadows; sword arm swings without brightness or shadow-lift filters.';
 const lancer = profile([part('horizontal polearm and both gripping hands thrusting to the left',
   [[.111,.448],[.151,.441],[.232,.461],[.393,.461],[.441,.446],[.479,.467],[.504,.452],[.54,.466],[.551,.494],[.529,.522],[.477,.516],[.435,.499],[.156,.486],[.112,.474]],
   [.456,.48],.12,'thrust',-.10,-.012)]);
@@ -148,7 +173,7 @@ for(const p of [archer,composite]) {
 spearman.parts![0].polygon=[[.215,0],[.27,0],[.304,.21],[.323,.44],[.365,.45],[.365,.545],[.337,.56],[.377,.85],[.32,.85],[.283,.56],[.264,.52],[.267,.46],[.243,.23]];
 
 export const FOOT_SOLDIER_PROFILES: Record<string, AmbientProfile> = {
-  warrior,spearman,pikeman,swordsman:sword,longswordsman:sword,lancer,
+  warrior,spearman,pikeman,swordsman:sword,longswordsman:longsword,lancer,
   archer,composite_bowman:composite,crossbowman:composite,chariot_archer:chariot,
   rifleman,paratrooper,infantry,partisans:foregroundRifle(false),rebels:foregroundRifle(true),
   musketman:muskets,great_war_infantry:muskets,mechanized_infantry:mechanized,xcom_squad:xcom,
