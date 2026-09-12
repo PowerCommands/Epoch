@@ -1,11 +1,13 @@
 import type Phaser from 'phaser';
-export type BuildingActivity='library'|'circus'|'courthouse'|'colosseum'|'stable'|'stone_works';
+import { drawSewerFlow } from './SewerFlow';
+export type BuildingActivity='library'|'circus'|'courthouse'|'colosseum'|'stable'|'stone_works'|'sewers';
 const ease=(q:number)=>{const v=Math.max(0,Math.min(1,q));return v*v*(3-2*v);};
 export function stoneCranePose(t:number,seed:number) {
   const cycle=(t+seed*12)%12,half=cycle>=6?1:0,phase=cycle%6;
   return {angle:(half+ease((phase-2)/2))*Math.PI,lift:phase<2?ease(phase/2):phase<4?1:1-ease((phase-4)/2)};
 }
 export function drawBuildingActivity(g:Phaser.GameObjects.Graphics,s:Phaser.GameObjects.Image,kind:BuildingActivity,t:number,seed:number,detail:number):void {
+  if(kind==='sewers') {drawSewerFlow(g,s,t,seed,detail);return;}
   const m=s.getWorldTransformMatrix(),size=Math.min(Math.abs(s.width*m.scaleX),Math.abs(s.height*m.scaleY));
   const at=(x:number,y:number)=>m.transformPoint((x-s.originX)*s.width,(y-s.originY)*s.height);
   const alpha=s.alpha*Math.max(.7,detail);

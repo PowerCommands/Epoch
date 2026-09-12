@@ -1,4 +1,4 @@
-export type ResourceAnimal = 'cattle' | 'deer' | 'crabs' | 'sheep';
+export type ResourceAnimal = 'cattle' | 'deer' | 'crabs' | 'sheep' | 'horses';
 const TAU=Math.PI*2;
 const COW_LEGS=[[.43,.61,.82,0],[.50,.62,.91,Math.PI],[.70,.43,.61,Math.PI],[.78,.45,.66,0]];
 const SHEEP_CENTERS=[[.28,.20],[.73,.20],[.28,.52],[.73,.52],[.50,.82]];
@@ -11,7 +11,29 @@ function leg(u:number,v:number,x:number,rootY:number,pawY:number,width:number,ph
 export function resourceAnimalOffset(kind:ResourceAnimal,u:number,v:number,t:number,seed:number):[number,number] {
   const phase=t*TAU/1.6+seed*TAU;
   let dx=0,dy=0;
-  if(kind==='cattle') {
+  if(kind==='horses') {
+    const p=t*TAU/.8+seed*TAU;
+    // The four painted legs have different roots and hoof positions. Follow
+    // each leg's slanted centerline so its motion does not pull the belly.
+    dy=-.022*(1+Math.sin(p));
+    const pitch=.025*Math.cos(p);
+    dx=-(v-.48)*pitch;dy+=(u-.48)*pitch;
+    for(const [rootX,rootY,hoofX,hoofY,shift] of [
+      [.31,.48,.24,.77,0],[.40,.51,.40,.76,.8],
+      [.59,.57,.56,.94,2.5],[.66,.56,.66,.83,3.3],
+    ]) {
+      const q=Math.max(0,Math.min(1,(v-rootY)/(hoofY-rootY)));
+      const center=rootX+(hoofX-rootX)*q;
+      const d=Math.abs(u-center)/.065;
+      const w=d<1?(1-d*d)**2*q:0;
+      dx+=.075*Math.sin(p+shift)*w;
+      dy-=.065*Math.max(0,Math.cos(p+shift))*w;
+    }
+    const head=Math.max(0,1-Math.hypot((u-.73)/.18,(v-.32)/.23));
+    dx+=.012*Math.cos(p)*head;dy+=.018*Math.sin(p)*head;
+    const tail=Math.max(0,1-Math.hypot((u-.20)/.13,(v-.44)/.23));
+    dx-=.025*Math.sin(p)*tail;dy+=.022*Math.cos(p)*tail;
+  } else if(kind==='cattle') {
     dx=.012*Math.sin(phase);dy=.006*Math.cos(phase*2);
     for(const [x,root,paw,shift] of COW_LEGS) {
       const d=leg(u,v,x,root,paw,.075,phase+shift);dx+=d[0];dy+=d[1];

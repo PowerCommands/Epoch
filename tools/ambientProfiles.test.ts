@@ -94,7 +94,7 @@ test('fire and stillness decisions follow visible artwork', () => {
 });
 
 test('resource animals move continuously and return without drifting', () => {
-  for(const [kind,period] of [['cattle',1.6],['deer',3.2],['crabs',3.2],['sheep',9.6]] as const) {
+  for(const [kind,period] of [['horses',.8],['cattle',1.6],['deer',3.2],['crabs',3.2],['sheep',9.6]] as const) {
     const start=resourceAnimalOffset(kind,.43,.70,.17,.3);
     const end=resourceAnimalOffset(kind,.43,.70,.17+period,.3);
     assert.ok(Math.abs(start[0]-end[0])<1e-8&&Math.abs(start[1]-end[1])<1e-8,kind);

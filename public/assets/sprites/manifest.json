@@ -3932,7 +3932,7 @@
           "name": "horseman.png",
           "path": "/assets/sprites/units/horseman.png",
           "type": "PNG",
-          "size": 30437
+          "size": 47803
         },
         {
           "name": "infantry.png",
@@ -3980,7 +3980,7 @@
           "name": "longswordsman.png",
           "path": "/assets/sprites/units/longswordsman.png",
           "type": "PNG",
-          "size": 23573
+          "size": 30036
         },
         {
           "name": "machine_gun.png",

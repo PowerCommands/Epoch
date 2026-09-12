@@ -131,7 +131,7 @@ export class AmbientSprites {
     if (this.meshCount>=MAX_MESHES) return;
     b.grid=this.scene.renderer.type===Phaser.WEBGL?GRID:4;
     if(b.profile?.gait || b.profile?.polarBearWalk) b.grid=32;
-    if(b.profile?.animal) b.grid=b.profile.animal==='sheep'?24:16;
+    if(b.profile?.animal) b.grid=b.profile.animal==='horses'?32:b.profile.animal==='sheep'?24:16;
     if(b.profile?.cropWind) b.grid=16;
     // Rigid artwork needs only one base quad. Subdividing it wastes vertices
     // when many independently armed soldiers share the screen.

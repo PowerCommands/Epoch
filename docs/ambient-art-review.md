@@ -8,7 +8,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | --- | --- |
 | cattle | Continuous alternating hoof steps and a brass bell swinging from a leather strap at the neck. |
 | deer | Endless bounding loop with vertical hops and leg tuck; no net travel. |
-| horses | Muzzle and tail-tip movement in the right-facing horse, fixed legs. |
+| horses | Continuous 0.8-second gallop in place: four phased legs gather and extend, body lifts, head nods and tail streams. |
 | ivory | Elephant trunk tip and ear movement, no deformation of feet or body. |
 | sheep | Exactly five separate sheep walk back and forth in bounded patches, with alternating steps. |
 | crabs | Endless sideways scuttle with cycling leg and claw motion. |
@@ -186,7 +186,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | recycling_center | Small rooftop exhaust and entrance activity; solar panels rigid. |
 | research_lab | Tiny antenna warning light, fixed roof mast. |
 | seaport | Basin ripples, quay activity and small pier light; cranes/buildings fixed. |
-| sewers | Water below the painted outlet, no motion of masonry. |
+| sewers | Continuous flowing highlights in the upper gutter, main arch channel and front channels; streams and splash rings at all three small outlets, with fixed masonry. |
 | shrine | Warm doorway light; no exposed flame on the roof. |
 | solar_panels | Restrained inverter indicator; panel surfaces do not pulse or deform. |
 | solar_plant | Small equipment indicator, fixed solar roof array. |
