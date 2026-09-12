@@ -74,11 +74,12 @@ export class AmbientSprites {
           m.setPosition(sprite.x,sprite.y).setScale(sprite.scaleX,sprite.scaleY).setRotation(sprite.rotation);
           m.setAlpha(sprite.alpha).setScrollFactor(sprite.scrollFactorX,sprite.scrollFactorY);
           m.setBlendMode(sprite.blendMode);
-          // Keep the per-unit art atlas in its own batch. Mixing these atlases
-          // with adjacent images can drop cutout triangles at texture switches.
-          if(b.profile?.shots) renderer.renderNodes.finishBatch();
+          // Meshes can cross the batch's texture limit midway through their
+          // triangles. Isolate each replacement, including cloth deformation,
+          // so texture switches cannot leave holes in the artwork.
+          renderer.renderNodes.finishBatch();
           m.renderWebGLStep(renderer,m,context,parent);
-          if(b.profile?.shots) renderer.renderNodes.finishBatch();
+          renderer.renderNodes.finishBatch();
         } else sprite.renderWebGLStep(renderer,target,context,parent,step+1,list,index);
       }, clipped ? 1 : 0);
     } else {
@@ -127,7 +128,7 @@ export class AmbientSprites {
     if(b.profile?.gait) b.grid=32;
     // Rigid artwork needs only one base quad. Subdividing it wastes vertices
     // when many independently armed soldiers share the screen.
-    if(b.profile?.parts?.length && !b.profile.joints?.length && !b.profile.float) b.grid=1;
+    if(b.profile?.parts?.length && !b.profile.joints?.length && !b.profile.gait) b.grid=1;
     // Small hand/head/crop regions need a vertex inside the feature on Canvas
     // too. Rigid cutouts still use the coarse grid and only a few moving quads.
     if(this.scene.renderer.type!==Phaser.WEBGL && b.profile?.joints?.some(j=>j.radius<.15)) b.grid=8;
@@ -237,7 +238,7 @@ export class AmbientSprites {
         // at medium zoom; otherwise the old needle shows through the dial.
         this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,(b.seed+i*.271)%1,(effect.kind==='compass'?1:detail)*s.alpha);
       }
-      if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t);
+      if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t,detail);
       if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);
     }
   }
@@ -245,7 +246,7 @@ export class AmbientSprites {
     const s=b.sprite,parts=b.profile!.parts!;
     const matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
     for(const shot of b.profile!.shots!) {
-      const seed=(b.seed+shot.part*.173)%1;
+      const seed=(b.seed+(parts[shot.part].phase??shot.part*.173))%1;
       const elapsed=(weaponPhase(t,seed)-WEAPON_RELEASE)*WEAPON_PERIOD;
       const age=Math.max(0,elapsed);
       const duration=shot.kind==='arrow'?.48:.36;
@@ -254,7 +255,7 @@ export class AmbientSprites {
       const cos=Math.cos(angle),sin=Math.sin(angle);
       const local=(x:number,y:number) => matrix.transformPoint(
         (part.pivot[0]+(x-part.pivot[0])*cos-(y-part.pivot[1])*sin+(part.dx??0)*motion-s.originX)*s.width,
-        (part.pivot[1]+(x-part.pivot[0])*sin+(y-part.pivot[1])*cos+(part.dy??0)*motion-s.originY)*s.height);
+        (part.pivot[1]+(x-part.pivot[0])*sin+(y-part.pivot[1])*cos+(part.dy??0)*motion+(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail-s.originY)*s.height);
       const muzzle=local(...shot.muzzle),tip=local(shot.muzzle[0]+shot.direction[0],shot.muzzle[1]+shot.direction[1]);
       const scale=Math.hypot(tip.x-muzzle.x,tip.y-muzzle.y);
       const dx=(tip.x-muzzle.x)/scale,dy=(tip.y-muzzle.y)/scale,nx=-dy,ny=dx;
@@ -284,7 +285,7 @@ export class AmbientSprites {
       }
     }
   }
-  private drawRotors(b:Binding,t:number): void {
+  private drawRotors(b:Binding,t:number,detail:number): void {
     if(!b.mesh) this.makeMesh(b);
     if(!b.mesh) return;
     const parts=b.profile!.parts;
@@ -304,13 +305,14 @@ export class AmbientSprites {
     }
     for(let n=0;n<count;n++) {
       const part=parts?.[n], r=part?{x:part.pivot[0],y:part.pivot[1],period:1}:rotors[n];
-      let motion=part?ambientMotion(t,(b.seed+n*.173)%1,part.rhythm):0;
+      let motion=part?ambientMotion(t,(b.seed+(part.phase??n*.173))%1,part.rhythm):0;
       if(part?.positive) motion=Math.abs(motion);
       let angle=part?part.angle*motion+(part.angleOffset??0):t*Math.PI*2/r.period+b.seed*31+n*1.7;
-      let moveX=(part?.dx??0)*motion,moveY=(part?.dy??0)*motion;
+      const heave=(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail;
+      let moveX=(part?.dx??0)*motion,moveY=(part?.dy??0)*motion+heave;
       if(part?.link && parts) {
         const {hand,root,elbow,bone}=part.link,parent=parts[part.link.part];
-        let pm=ambientMotion(t,(b.seed+part.link.part*.173)%1,parent.rhythm);
+        let pm=ambientMotion(t,(b.seed+(parent.phase??part.link.part*.173))%1,parent.rhythm);
         if(parent.positive) pm=Math.abs(pm);
         const pa=parent.angle*pm+(parent.angleOffset??0),hx=hand[0]-parent.pivot[0],hy=hand[1]-parent.pivot[1];
         const tx=parent.pivot[0]+hx*Math.cos(pa)-hy*Math.sin(pa)+(parent.dx??0)*pm;
@@ -325,7 +327,7 @@ export class AmbientSprites {
         if(bone===0) angle=Math.atan2(ey-root[1],ex-root[0])-Math.atan2(elbow[1]-root[1],elbow[0]-root[0]);
         else {
           angle=Math.atan2(ty-ey,tx-ex)-Math.atan2(hand[1]-elbow[1],hand[0]-elbow[0]);
-          moveX=ex-elbow[0];moveY=ey-elbow[1];
+          moveX=ex-elbow[0];moveY=ey-elbow[1]+heave;
         }
       }
       for(let k=0;k<4;k++) {
@@ -352,7 +354,7 @@ export class AmbientSprites {
         const count = b.profile.parts?.length ?? b.profile.rotors!.length;
         const cells = count + 1, cell = source.width / cells;
         ctx.drawImage(source, 0, 0, cell, source.height,
-          -sprite.originX * sprite.width, -sprite.originY * sprite.height, sprite.width, sprite.height);
+          -sprite.originX * sprite.width, vertices[1], sprite.width, sprite.height);
         for (let n = 0; n < count; n++) {
           const i = ((b.grid + 1) ** 2 + n * 4) * 4;
           ctx.save();

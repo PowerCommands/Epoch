@@ -106,12 +106,12 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | gatling_gun | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
 | machine_gun | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
 | rocket_artillery | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
-| trireme | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
-| archer_galley | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
-| galleass | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
-| caravel | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
-| frigate | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
-| privateer | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
+| trireme | Exposed oars pivot together at the gunwale in a continuous rowing cycle; rigid hull heaves gently. |
+| archer_galley | Exposed oars row in unison; deck archers draw their bows and release staggered visible arrows. |
+| galleass | Wind billows the sail panels locally; hull and mast anchors remain rigid during vessel heave. |
+| caravel | Wind billows the sail panels locally; hull and mast anchors remain rigid during vessel heave. |
+| frigate | Wind billows the sail panels locally; hull and mast anchors remain rigid during vessel heave. |
+| privateer | Wind billows the sail panels locally; hull and mast anchors remain rigid during vessel heave. |
 | ironclad | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | battleship | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | destroyer | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |

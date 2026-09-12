@@ -363,7 +363,14 @@ html, body { width: 100%; height: 100%; background: #111; color: #ddd; font-fami
 .nd-prog-count { margin-left: auto; align-self: center; font-size: 11px; color: #888; }
 .nd-era-group { border-top: 1px solid #262626; padding: 4px 0; }
 .nd-era-group:first-child { border-top: 0; }
-.nd-era-header { cursor: pointer; color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0; }
+.nd-era-header { cursor: pointer; color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0; display: flex; align-items: center; gap: 8px; }
+.nd-era-header .nd-era-name { flex: 1; }
+.nd-era-actions { display: flex; gap: 4px; }
+.nd-era-actions button {
+  border: 1px solid #555; border-radius: 3px; padding: 2px 7px;
+  background: #2a2a2a; color: #ddd; font: inherit; font-size: 10px; text-transform: none; letter-spacing: 0; cursor: pointer;
+}
+.nd-era-actions button:hover { border-color: #888; background: #333; }
 .nd-prog-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; padding: 2px 0 6px; }
 .nd-prog-row { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.3; color: #ddd; }
 .nd-diplo-layout { display: grid; grid-template-columns: 180px 1fr; gap: 12px; }
@@ -3438,7 +3445,30 @@ function buildProgressionSection(kind) {
   for (const group of getGroupedManifestEntries(config.entries)) {
     const groupEl = ndEl('details', 'nd-era-group');
     groupEl.open = true;
-    const summary = ndEl('summary', 'nd-era-header', formatEraName(group.era));
+    const summary = ndEl('summary', 'nd-era-header');
+    summary.appendChild(ndEl('span', 'nd-era-name', formatEraName(group.era)));
+    const eraActions = ndEl('div', 'nd-era-actions');
+    const groupIds = group.entries.map(e => e.id);
+    const allBtn = ndEl('button', undefined, 'All');
+    allBtn.type = 'button';
+    allBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = getNationDetails(nationDetailsSelectedId)[config.field];
+      for (const id of groupIds) if (!ids.includes(id)) ids.push(id);
+      renderNationDetail();
+    });
+    const removeBtn = ndEl('button', undefined, 'Remove');
+    removeBtn.type = 'button';
+    removeBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const target = getNationDetails(nationDetailsSelectedId);
+      target[config.field] = target[config.field].filter(id => !groupIds.includes(id));
+      renderNationDetail();
+    });
+    eraActions.append(allBtn, removeBtn);
+    summary.appendChild(eraActions);
     groupEl.appendChild(summary);
     const grid = ndEl('div', 'nd-prog-grid');
     for (const entry of group.entries) {

@@ -1,5 +1,6 @@
 import { FOOT_SOLDIER_PROFILES, weaponMotion, type WeaponRhythm, type WeaponShot } from './FootSoldierProfiles';
 import { RIDING_GAIT, type MountedGait } from './MountedGait';
+import { NAVAL_PROFILES } from './NavalProfiles';
 
 /** Artwork coordinates are normalized, with (0,0) at the top-left of the PNG.
  * Deliberately explicit: stored goods and stone do not inherit a living idle.
@@ -7,7 +8,7 @@ import { RIDING_GAIT, type MountedGait } from './MountedGait';
 export type AmbientKind = 'resource' | 'improvement' | 'unit' | 'building' | 'wonder' | 'city';
 export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'light' | 'beacon' | 'water' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller' | 'compass';
 export interface Emitter { kind: Activity; x: number; y: number; size?: number; color?: number; period?: number; flicker?: number; }
-export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'idle' | 'machine' | 'scan' | WeaponRhythm; }
+export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'row' | 'idle' | 'machine' | 'scan' | WeaponRhythm; }
 export interface Rotor { x: number; y: number; radius: number; blades: number; period: number; color: number; tips: [number, number][]; }
 export type Point = [number, number];
 /** Original-art cutout. Every pixel in a part receives the same rigid transform.
@@ -16,6 +17,7 @@ export interface ArtPart {
   feature: string; polygon: Point[]; pivot: Point; angle: number; angleOffset?: number;
   rhythm: Joint['rhythm']; dx?: number; dy?: number;
   positive?: boolean;
+  phase?: number; // Shared phase keeps a bank of oars in time.
   link?: { part: number; hand: Point; root: Point; elbow: Point; bone: 0 | 1 }; // Two fixed-length arm bones follow the tool grip.
   repairs?: { polygon: Point[]; offset: Point }[];
 }
@@ -201,6 +203,7 @@ units('worker_action worker_action_improvement workboat_action work_boat_action_
 units('agent spy stealth_bomber atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still.'});
 
 Object.assign(UNIT_AMBIENT, FOOT_SOLDIER_PROFILES);
+Object.assign(UNIT_AMBIENT, NAVAL_PROFILES);
 
 export const AMBIENT_PROFILES: Record<AmbientKind, Record<string, AmbientProfile>> = {
   resource: RESOURCE_AMBIENT, improvement: IMPROVEMENT_AMBIENT, unit: UNIT_AMBIENT,
@@ -215,6 +218,7 @@ export function ambientSeed(key: string): number {
 /** Rest occupies most of an organic cycle. Independent cycle hashes vary both
  * the interval and the gesture, without touching the simulation RNG. */
 export function ambientMotion(t: number, seed: number, rhythm: Joint['rhythm']): number {
+  if (rhythm === 'row') return Math.sin(t*Math.PI*2/1.8+seed*Math.PI*2);
   if (rhythm === 'thrust' || rhythm === 'slash' || rhythm === 'draw' || rhythm === 'recoil' || rhythm === 'aim') return weaponMotion(t,seed,rhythm);
   if (rhythm === 'scan') return Math.sin(t*Math.PI*2/3+seed*Math.PI*2);
   if (rhythm === 'machine') return Math.sin(t*1.15+seed*23);
