@@ -14,7 +14,8 @@ try {
   await page.evaluate(async () => {
     const { default: Phaser } = await import('/node_modules/.vite/deps/phaser.js');
     const { AirBaseRenderer } = await import('/src/renderers/AirBaseRenderer.ts');
-    const { GREAT_WAR_BOMBER, TRIPLANE } = await import('/src/data/units.ts');
+    const { GREAT_WAR_BOMBER, TRIPLANE, JET_FIGHTER, STEALTH_BOMBER } = await import('/src/data/units.ts');
+    const { AmbientSprites } = await import('/src/systems/rendering/AmbientSprites.ts');
 
     // Authoritative air state stub: one land base ('airfield') with capacity 2,
     // plus a fog-hidden base the renderer must skip.
@@ -36,10 +37,13 @@ try {
       g.destroy(true);
     }
 
-    window.airBaseTest = { Phaser, aircraft, air, selection, AIRFIELD_SITE, GREAT_WAR_BOMBER, TRIPLANE,
+    window.airBaseTest = { Phaser, aircraft, air, selection, AIRFIELD_SITE, GREAT_WAR_BOMBER, TRIPLANE, JET_FIGHTER, STEALTH_BOMBER, AmbientSprites,
       setSelected: (u) => { selected = u; } };
 
     new Phaser.Game({ type: Phaser.CANVAS, width: 400, height: 400, audio: { noAudio: true }, scene: {
+      preload() {
+        for (const id of ['jet_fighter', 'stealth_bomber']) this.load.image(`unit_${id}`, `/assets/sprites/units/${id}.png`);
+      },
       create() {
         for (const type of [GREAT_WAR_BOMBER, TRIPLANE]) {
           const gg = this.make.graphics({ x: 0, y: 0 });
@@ -109,6 +113,32 @@ try {
   state = await readState();
   assert.equal(state[0].badge, '✈ 0 / 2');
   assert.equal(state[0].spriteVisible, false);
+
+  // The actual airbase representative must be attached, animate after texture
+  // changes, respect fog and release its binding when the base disappears.
+  const animation = await page.evaluate(() => {
+    const t = window.airBaseTest;
+    t.aircraft.push({ id: 'jet', unitType: t.JET_FIGHTER, airBase: { kind: 'city', id: 'london' } });
+    t.renderer.refreshAll();
+    const ambient = t.AmbientSprites.forScene(t.scene);
+    const binding = [...ambient.bindings][0];
+    const sample = (time) => { ambient.elapsed = time * 1000; ambient.lastDraw = -Infinity; ambient.update(0, 0); };
+    sample(1.45 - binding.seed * 5 + 5);
+    const jet = binding.profile.effects.some(e => e.kind === 'afterburner') && binding.drawing && !!binding.mesh;
+    const vertices = [...binding.mesh.vertices];
+    sample(1.7 - binding.seed * 5 + 5);
+    const missilesMove = vertices.some((v, i) => v !== binding.mesh.vertices[i]);
+    t.aircraft[0].unitType = t.STEALTH_BOMBER;
+    t.renderer.refreshAll();
+    sample(1.5 - binding.seed * 5 + 5);
+    const bomber = binding.profile.bombs && !binding.mesh;
+    const effects = [...ambient.layers.values()].some(g => g.commandBuffer.length > 1);
+    ambient.canSee = () => false; sample(7);
+    const hidden = [...ambient.layers.values()].every(g => g.commandBuffer.length <= 1);
+    t.renderer.shutdown();
+    return { jet, missilesMove, bomber, effects, hidden, released: ambient.bindings.size === 0 };
+  });
+  for (const [key, value] of Object.entries(animation)) assert.ok(value, key);
 
   assert.deepEqual(errors, [], 'no page errors');
   console.log('airBaseRenderer.browser: PASS');

@@ -6,6 +6,7 @@ import type { CityManager } from '../systems/CityManager';
 import type { SelectionManager } from '../systems/SelectionManager';
 import type { Unit } from '../entities/Unit';
 import { getUnitSpriteKey } from '../utils/assetPaths';
+import { AmbientSprites } from '../systems/rendering/AmbientSprites';
 
 // The representative aircraft sits above the building sprite (depth 14) but
 // below real ground units (depth 18), so a unit standing on the tile still
@@ -96,7 +97,7 @@ export class AirBaseRenderer {
 
     let visual = this.visuals.get(key);
     if (!visual) {
-      visual = this.createVisual();
+      visual = this.createVisual(key, site);
       this.visuals.set(key, visual);
     }
     visual.container.setPosition(x, y);
@@ -144,8 +145,10 @@ export class AirBaseRenderer {
     visual.badgeBg.strokeRoundedRect(-width / 2, BADGE_OFFSET_Y - height / 2, width, height, 4);
   }
 
-  private createVisual(): AirBaseVisual {
+  private createVisual(key: string, site: AirBaseSite): AirBaseVisual {
     const sprite = this.scene.add.image(0, 0, '__DEFAULT').setVisible(false);
+    AmbientSprites.forScene(this.scene).attach(sprite, 'unit', `airbase:${key}`,
+      () => [site.x, site.y], () => this.visible(site.x, site.y), false);
     const badgeBg = this.scene.add.graphics();
     const badge = this.scene.add
       .text(0, BADGE_OFFSET_Y, '', {

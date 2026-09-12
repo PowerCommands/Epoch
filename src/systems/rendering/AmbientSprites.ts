@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { renderCanvasWithGeometryClip } from './GeometryClip';
-import { AMBIENT_PROFILES, ambientMotion, ambientSeed, type AmbientKind, type AmbientProfile, type Emitter } from './AmbientProfiles';
+import { AMBIENT_PROFILES, aircraftLaunchAge, ambientMotion, ambientSeed, type AmbientKind, type AmbientProfile, type Emitter } from './AmbientProfiles';
 import { burstAge, weaponPhase, WEAPON_PERIOD, WEAPON_RELEASE } from './FootSoldierProfiles';
 import { mountedOffset } from './MountedGait';
 
@@ -239,6 +239,7 @@ export class AmbientSprites {
         this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,(b.seed+i*.271)%1,(effect.kind==='compass'?1:detail)*s.alpha);
       }
       if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t,detail);
+      if(profile.bombs || profile.parts?.some(part=>part.launch)) this.drawAircraftWeapons(g,b,t,detail);
       if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);
       if(profile.tracks?.length && b.drawing && !s.isTinted) this.drawTracks(g,b,t,detail);
     }
@@ -315,6 +316,39 @@ export class AmbientSprites {
       }
     }
   }
+  private drawAircraftWeapons(g: Phaser.GameObjects.Graphics,b: Binding,t: number,detail: number): void {
+    const s=b.sprite,matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
+    const local=(x:number,y:number)=>matrix.transformPoint((x-s.originX)*s.width,(y-s.originY)*s.height);
+    const size=Math.min(Math.abs(s.width*matrix.scaleX),Math.abs(s.height*matrix.scaleY));
+    const alpha=s.alpha*Math.max(.7,detail);
+    for(const part of b.profile!.parts??[]) {
+      if(!part.launch || !b.drawing) continue;
+      const age=aircraftLaunchAge(t,b.seed,part.launch.delay);
+      if(age<0 || age>.9) continue;
+      const q=age/.9,travel=q*q;
+      const x=part.pivot[0]+part.launch.travel[0]*travel,y=part.pivot[1]+part.launch.travel[1]*travel-.045;
+      const nozzle=local(x,y),tip=local(x,y-.10-.08*q);
+      g.lineStyle(Math.max(1,size*.013),0xffab4f,alpha);
+      g.lineBetween(nozzle.x,nozzle.y,tip.x,tip.y);
+      g.lineStyle(Math.max(.6,size*.006),0xf4faff,alpha);
+      g.lineBetween(nozzle.x,nozzle.y,tip.x,tip.y);
+      for(let n=1;n<=4;n++) {
+        const smoke=local(x,y-.05-n*.035);
+        g.fillStyle(0xd9e0e5,alpha*(1-n/5)*.35).fillCircle(smoke.x,smoke.y,size*(.008+n*.004));
+      }
+    }
+    if(b.profile!.bombs) for(let n=0;n<3;n++) {
+      const age=aircraftLaunchAge(t,b.seed,n*.3);
+      if(age<0 || age>1.4) continue;
+      const q=age/1.4,point=local(.50+(n%2===0?-.035:.035),.59+q*q*.62);
+      const scale=size*(1-q*.45),fade=alpha*Math.min(1,(1-q)*5);
+      g.fillStyle(0x070d16,.28*fade).fillEllipse(point.x+scale*.02,point.y+scale*.025,scale*.065,scale*.10);
+      g.fillStyle(0x202c3c,fade).fillTriangle(point.x-scale*.026,point.y-scale*.043,point.x+scale*.026,point.y-scale*.043,point.x,point.y);
+      g.fillStyle(0x85929d,fade).fillEllipse(point.x,point.y,scale*.035,scale*.075);
+      g.fillStyle(0xe6bd62,fade).fillRect(point.x-scale*.014,point.y+scale*.012,scale*.028,scale*.009);
+      g.fillStyle(0xe4eaf0,.65*fade).fillEllipse(point.x-scale*.006,point.y-scale*.005,scale*.008,scale*.045);
+    }
+  }
   private drawTracks(g: Phaser.GameObjects.Graphics,b: Binding,t: number,detail: number): void {
     const s=b.sprite,matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
     const local=(x:number,y:number)=>matrix.transformPoint((x-s.originX)*s.width,(y-s.originY)*s.height);
@@ -359,6 +393,11 @@ export class AmbientSprites {
       if(part?.spin) angle=t*Math.PI*2/part.spin.period+b.seed*Math.PI*2;
       const heave=(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail;
       let moveX=(part?.dx??0)*motion,moveY=(part?.dy??0)*motion+heave;
+      const launchAge=part?.launch?aircraftLaunchAge(t,b.seed,part.launch.delay):-1;
+      if(part?.launch) {
+        const travel=(Math.max(0,Math.min(.9,launchAge))/.9)**2;
+        moveX=part.launch.travel[0]*travel;moveY=part.launch.travel[1]*travel;
+      }
       if(part?.link && parts) {
         const {hand,root,elbow,bone}=part.link,parent=parts[part.link.part];
         let pm=ambientMotion(t,(b.seed+(parent.phase??part.link.part*.173))%1,parent.rhythm);
@@ -380,7 +419,8 @@ export class AmbientSprites {
         }
       }
       for(let k=0;k<4;k++) {
-        const u=k%2,v=Math.floor(k/2),dx=(u-r.x)*s.width,dy=(v-r.y)*s.height;
+        const hidden=!!part?.launch && launchAge>.9;
+        const u=hidden?r.x:k%2,v=hidden?r.y:Math.floor(k/2),dx=(u-r.x)*s.width,dy=(v-r.y)*s.height;
         const i=((b.grid+1)**2+n*4+k)*4;
         const aspect=part?.spin?.aspect??1;
         m.vertices[i]=(r.x-s.originX)*s.width+dx*Math.cos(angle)-dy*Math.sin(angle)*aspect+moveX*s.width;
@@ -571,6 +611,22 @@ export class AmbientSprites {
         g.fillTriangle(x-size*.019,y,x-lean+size*.013,y-size*.077*(1.15-flicker*.3),x+size*.025,y);
         g.fillStyle(0xffedac,.85*detail);
         g.fillTriangle(x-size*.012,y,x+lean*.4,y-size*.042*flicker,x+size*.012,y);break;
+      }
+      case 'afterburner': {
+        // Both aircraft point down in their artwork: thrust extends up from
+        // each nozzle. Keep the flame lit while varying its length and core.
+        const pulse=1+.12*Math.sin(t*19+seed*37)+.07*Math.sin(t*31+seed*53);
+        const length=size*.17*pulse, width=size*.023;
+        const lean=size*.004*Math.sin(t*23+seed*41);
+        g.fillStyle(0xffa052,.22*detail).fillEllipse(x,y-length*.18,width*3,length*.65);
+        g.fillStyle(0xffa65a,.65*detail);
+        g.fillTriangle(x-width,y,x+width,y,x+lean,y-length);
+        g.fillStyle(0x599eff,.85*detail);
+        g.fillTriangle(x-width*.8,y,x+width*.8,y,x+lean*.6,y-length*.83);
+        g.fillStyle(0xe0f6ff,.95*detail);
+        g.fillTriangle(x-width*.42,y,x+width*.42,y,x,y-length*.52);
+        g.fillStyle(0xf3fbff,.9*detail).fillEllipse(x,y,width, width*.55);
+        break;
       }
       case 'light': {
         // Slow occupancy changes, no strobing. Signals remain small and dim.

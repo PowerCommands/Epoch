@@ -90,7 +90,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | great_war_bomber | Propeller activity at the visible engine hubs. |
 | triplane | Propeller at frontal nose hub; all wings and struts fixed. |
 | bomber | Two visible near-side engine propellers; four-engine wing/body artwork fixed. |
-| jet_fighter | Restrained navigation light at wing; no propeller effect. |
+| jet_fighter | Twin blue-white afterburners with orange glow. Original wingtip missile cutouts launch in sequence with exhaust trails, leave empty rails, then visually rearm. Also animated on the airbase representative. |
 | helicopter_gunship | Rotor-hub streak above the cabin; tail boom, wheels and cabin fixed. |
 | anti_tank_gun | Launcher recoil, exhaust and rocket; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | bazooka | Launcher recoil, exhaust and rocket; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
@@ -130,7 +130,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | work_boat_action_improvement | These files depict construction signs, not workers/boats. Keep the sign stationary. |
 | agent | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 | spy | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
-| stealth_bomber | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
+| stealth_bomber | Twin blue-white afterburners and recurring three-bomb drops that accelerate, shrink and fade below the rigid airframe. Also animated on the airbase representative. |
 | atomic_bomb | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 | guided_missile | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |
 | nuclear_missile | Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still. |

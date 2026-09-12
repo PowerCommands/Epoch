@@ -7,7 +7,7 @@ import { WEAPON_EQUIPMENT_PROFILES } from './WeaponEquipmentProfiles';
  * Deliberately explicit: stored goods and stone do not inherit a living idle.
  */
 export type AmbientKind = 'resource' | 'improvement' | 'unit' | 'building' | 'wonder' | 'city';
-export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'light' | 'beacon' | 'water' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller' | 'compass';
+export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'afterburner' | 'light' | 'beacon' | 'water' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller' | 'compass';
 export interface Emitter { kind: Activity; x: number; y: number; size?: number; color?: number; period?: number; flicker?: number; }
 export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'row' | 'idle' | 'machine' | 'scan' | WeaponRhythm; }
 export interface Rotor { x: number; y: number; radius: number; blades: number; period: number; color: number; tips: [number, number][]; }
@@ -15,6 +15,7 @@ export type Point = [number, number];
 /** Original-art cutout. Every pixel in a part receives the same rigid transform.
  * Repairs are restricted to explicitly painted surfaces behind the moving part. */
 export interface ArtPart {
+  launch?: { delay: number; travel: Point };
   feature: string; polygon: Point[]; pivot: Point; angle: number; angleOffset?: number;
   rhythm: Joint['rhythm']; dx?: number; dy?: number;
   positive?: boolean;
@@ -24,7 +25,7 @@ export interface ArtPart {
   repairs?: { polygon: Point[]; offset: Point }[];
 }
 export interface TrackBelt { path: Point[]; width: number; links: number; period: number; }
-export interface AmbientProfile { effects: Emitter[]; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
+export interface AmbientProfile { effects: Emitter[]; bombs?: boolean; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
 const e = (kind: Activity, x: number, y: number, size = 1, color?: number, period?: number): Emitter => ({kind,x,y,size,color,period});
 const j = (x: number, y: number, radius: number, dx: number, dy: number, rhythm: Joint['rhythm'] = 'idle'): Joint => ({x,y,radius,dx,dy,rhythm});
 const p = (...effects: Emitter[]): AmbientProfile => ({effects});
@@ -180,7 +181,14 @@ export const UNIT_AMBIENT: Record<string, AmbientProfile> = {
   great_war_bomber:p(e('propeller',.32,.65,.55),e('propeller',.43,.49,.4)),
   triplane:p(e('propeller',.49,.72,.65)),
   bomber:p(e('propeller',.32,.68,.45),e('propeller',.54,.50,.45)),
-  jet_fighter:p(e('light',.77,.50,.25,0xe4907c,11)),
+  jet_fighter:{effects:[e('afterburner',.475,.29,1.2),e('afterburner',.535,.29,1.2)],
+    parts:[
+      {feature:'left wingtip missile launches forward from its rail',polygon:[[.17,.337],[.192,.348],[.158,.445],[.136,.438]],pivot:[.163,.4],angle:0,rhythm:'machine',launch:{delay:0,travel:[-.12,.65]}},
+      {feature:'right wingtip missile launches forward from its rail',polygon:[[.807,.337],[.831,.332],[.874,.438],[.850,.447]],pivot:[.841,.4],angle:0,rhythm:'machine',launch:{delay:.65,travel:[.12,.65]}},
+    ],
+    note:'Twin afterburners flicker aft; original wingtip missiles launch in sequence with exhaust trails and visually rearm after a pause.'},
+  stealth_bomber:{effects:[e('afterburner',.437,.193,1),e('afterburner',.577,.193,1)],bombs:true,
+    note:'Twin afterburners flicker aft while three bombs drop in sequence, accelerating and shrinking below the rigid airframe.'},
   helicopter_gunship:p(e('propeller',.49,.32,1.3)),
 };
 function units(ids: string, profile: AmbientProfile): void { for (const id of ids.split(' ')) UNIT_AMBIENT[id] = profile; }
@@ -203,7 +211,7 @@ UNIT_AMBIENT.scout_boat = {
 };
 units('worker_action worker_action_improvement workboat_action work_boat_action_improvement',{
   effects:[],note:'These files depict construction signs, not workers/boats. Keep the sign stationary.'});
-units('agent spy stealth_bomber atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still.'});
+units('agent spy atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, stored ordnance and UI symbol remain still.'});
 
 Object.assign(UNIT_AMBIENT, FOOT_SOLDIER_PROFILES);
 Object.assign(UNIT_AMBIENT, NAVAL_PROFILES);
@@ -218,6 +226,10 @@ export function ambientSeed(key: string): number {
   for (let i=0;i<key.length;i++) h = Math.imul(h ^ key.charCodeAt(i),16777619);
   h = Math.imul(h ^ h >>> 16, 0x45d9f3b);
   return ((h ^ h >>> 16) >>> 0) / 4294967296;
+}
+/** A short launch, an empty-rail pause, then visual rearming. */
+export function aircraftLaunchAge(t: number, seed: number, delay = 0): number {
+  return ((t + seed * 5 - delay) % 5 + 5) % 5 - 1;
 }
 /** Rest occupies most of an organic cycle. Independent cycle hashes vary both
  * the interval and the gesture, without touching the simulation RNG. */
