@@ -1,3 +1,4 @@
+import { AmbientSprites } from './rendering/AmbientSprites';
 import { GeometryClip, clearGeometryClip, setGeometryClip } from './rendering/GeometryClip';
 import Phaser from 'phaser';
 import { TileMap } from './TileMap';
@@ -255,6 +256,8 @@ export class UnitRenderer {
     const sprite = this.scene.add.image(0, 0, textureKey);
     const maskGraphics = this.scene.add.graphics();
     setGeometryClip(sprite, new GeometryClip(maskGraphics));
+    AmbientSprites.forScene(this.scene).attach(sprite, 'unit', unit.id, () => [unit.tileX, unit.tileY],
+      () => this.visibilityPredicate(unit) && !this.isCargo(unit));
     this.applyUnitTileSize(unit, sprite, maskGraphics);
 
     const container = this.scene.add.container(0, 0, [nationRing, sprite]);

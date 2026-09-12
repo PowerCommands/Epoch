@@ -1,3 +1,4 @@
+import { AmbientSprites } from '../systems/rendering/AmbientSprites';
 import { HistoricalMapRecorder } from '../systems/HistoricalMapRecorder';
 import { WorldHistoryMilestones } from '../systems/WorldHistoryMilestones';
 import { HistoryTimelineViewer } from '../ui/HistoryTimelineViewer';
@@ -2717,6 +2718,7 @@ export class GameScene extends Phaser.Scene {
     const revealMapTemporarily = (): void => {
       isMapRevealActive = true;
       worldAmbientRenderer.refreshVisibility();
+      AmbientSprites.forScene(this).refreshVisibility();
       naturalResourceRenderer.rebuildAll();
       unitRenderer.refreshAllVisibility();
       selectionManager.refreshVisibility();
@@ -2725,6 +2727,7 @@ export class GameScene extends Phaser.Scene {
       if (!isMapRevealActive) return;
       isMapRevealActive = false;
       worldAmbientRenderer.refreshVisibility();
+      AmbientSprites.forScene(this).refreshVisibility();
       naturalResourceRenderer.rebuildAll();
       unitRenderer.refreshAllVisibility();
       selectionManager.refreshVisibility();
@@ -2828,12 +2831,15 @@ export class GameScene extends Phaser.Scene {
       canShowUnit,
     );
 
-    const worldAmbientRenderer = new WorldAmbientRenderer(this, tileMap, mapData, cityManager,
+    AmbientSprites.forScene(this).isEnabled = () => !isAutoplayActive();
+    AmbientSprites.forScene(this).canSee = (x, y) => isMapRevealActive || !humanNationId || visibilitySystem.isVisible(x, y);
+    const worldAmbientRenderer = new WorldAmbientRenderer(this, tileMap, mapData,
       (x, y) => isMapRevealActive || !humanNationId || visibilitySystem.isVisible(x, y));
 
     // Re-cull all fog-dependent renderers after a visibility recompute.
     applyFogToRenderers = (): void => {
       worldAmbientRenderer.refreshVisibility();
+      AmbientSprites.forScene(this).refreshVisibility();
       cityRenderer.refreshAllVisibility();
       cityBannerRenderer.refreshAllVisibility();
       unitRenderer.refreshAllVisibility();

@@ -8,6 +8,8 @@
     "dev": "vite",
     "predev": "npm run generate-manifests",
     "test:mutual-foe": "node --import tsx --test tools/mutualFoeAgreement.test.ts",
+    "test:ambient": "node --import tsx --test tools/ambientProfiles.test.ts",
+    "test:ambient:browser": "node scripts/visualAmbientSprites.mjs",
     "typecheck": "tsc --noEmit",
     "test:phaser-migration": "node tools/phaser4Migration.browser.mjs",
     "test:phaser-migration:game": "node tools/phaser4Game.browser.mjs",

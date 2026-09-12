@@ -82,7 +82,7 @@ export class GeometryClip {
     bindings.delete(target);
   }
 
-  private renderCanvas(
+  renderCanvas(
     renderer: Phaser.Renderer.Canvas.CanvasRenderer,
     target: Phaser.GameObjects.GameObject,
     camera: Phaser.Cameras.Scene2D.Camera,
@@ -147,4 +147,16 @@ export function clearGeometryClip<T extends Phaser.GameObjects.GameObject>(targe
   clip?.detach(target);
   if (destroyClip) clip?.destroy();
   return target;
+}
+
+/** Apply the registered clip to a custom Canvas replacement draw. */
+export function renderCanvasWithGeometryClip(
+  target: Phaser.GameObjects.GameObject,
+  renderer: Phaser.Renderer.Canvas.CanvasRenderer,
+  camera: Phaser.Cameras.Scene2D.Camera,
+  draw: () => void,
+): void {
+  const clip = bindings.get(target);
+  if (clip) clip.renderCanvas(renderer, target, camera, draw);
+  else draw();
 }

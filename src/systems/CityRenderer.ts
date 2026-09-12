@@ -1,3 +1,4 @@
+import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
 import { StructureDamageEffects } from '../renderers/StructureDamageEffects';
 import { CITY_BASE_HEALTH } from '../data/cities';
@@ -152,6 +153,8 @@ export class CityRenderer {
       rect.height * CITY_TILE_FILL_SCALE * scaleMultiplier,
     );
     this.hexTileMaskHelper.applyHexMask(sprite, city.tileX, city.tileY);
+    AmbientSprites.forScene(this.scene).attach(sprite, 'city', city.id, () => [city.tileX, city.tileY],
+      () => city.health > CITY_BASE_HEALTH / 2 && this.visibilityPredicate(city.tileX, city.tileY));
 
     const glow = this.scene.add.graphics();
     const outline = this.tileMap.getTileOutlinePoints(city.tileX, city.tileY)

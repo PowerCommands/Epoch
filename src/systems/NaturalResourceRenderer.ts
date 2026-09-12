@@ -1,3 +1,4 @@
+import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
 import { getNaturalResourceById } from '../data/naturalResources';
 import type { MapData, Tile } from '../types/map';
@@ -115,6 +116,10 @@ export class NaturalResourceRenderer {
       sprite.setDisplaySize(rect.width * scale, rect.height * scale);
       sprite.setAlpha(0.95);
       this.hexTileMaskHelper.applyHexMask(sprite, tile.x, tile.y);
+      if (!sprite.getData('ambientAttached')) {
+        sprite.setData('ambientAttached', true);
+        AmbientSprites.forScene(this.scene).attach(sprite, 'resource', key, () => [tile.x, tile.y]);
+      }
       return;
     }
 

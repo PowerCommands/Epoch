@@ -7,7 +7,7 @@ import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 const PAN_SPEED = 400;  // pixlar/sekund vid zoom 1.0
 const ZOOM_STEP = 0.1;
 const DEFAULT_ZOOM_MIN = 0.15;
-const ZOOM_MAX = 4.0;
+const ZOOM_MAX = 10.0;
 
 /**
  * CameraController hanterar all kamerainput: panorering med mus och

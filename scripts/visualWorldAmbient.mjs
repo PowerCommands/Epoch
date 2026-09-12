@@ -48,6 +48,12 @@ try {
     if (await decline.isVisible()) await decline.click();
     await page.waitForTimeout(300);
   }
+  // Close newspaper / victory / guide dialogs in this disposable test session.
+  for(let i=0;i<5;i++) {
+    const button=page.getByRole('button',{name:/^(Continue|Close|Got it)$/}).last();
+    if(await button.isVisible()) await button.click({force:true});
+    await page.waitForTimeout(150);
+  }
   for (const zoom of [0.8, 1.4, 2.2]) {
     await page.evaluate((value) => window.__epochDiagnostics.focusFirstCity(value), zoom);
     await page.waitForTimeout(1200);
@@ -78,12 +84,16 @@ try {
       times.sort((a, b) => a - b);
       return { medianMs: times[12], p95Ms: times[22] };
     };
+    const spriteListener=(Array.isArray(events)?events:[events]).find(event=>event.context.constructor.name==='AmbientSprites');
     const enabled = await sample();
+    scene.events.off('update',spriteListener.fn,spriteListener.context);
+    for(const b of spriteListener.context.bindings)b.drawing=false;
     scene.events.off('update', listener.fn, listener.context);
     layers.forEach((layer) => layer.setVisible(false));
     const disabled = await sample();
     layers.forEach((layer) => layer.setVisible(true));
     scene.events.on('update', listener.fn, listener.context);
+    scene.events.on('update',spriteListener.fn,spriteListener.context);
     return { enabled, disabled };
   });
   console.log('Browser frame timing (environment dependent):', frameTiming);
@@ -95,6 +105,7 @@ try {
     const listener = asList(scene.events._events.update)
       .find((event) => event.context.constructor.name === 'WorldAmbientRenderer');
     const ambient = listener.context;
+    const spriteAmbient = asList(scene.events._events.update).find(event => event.context.constructor.name === 'AmbientSprites').context;
     const snapshot = () => {
       const state = window.__epochDiagnostics.getSaveState();
       return JSON.stringify([state.tiles, state.cities, state.units, state.nations]);
@@ -104,6 +115,7 @@ try {
     for (let i = 0; i < 120; i++) {
       const start = performance.now();
       ambient.update(0, 41);
+      spriteAmbient.update(0,41);
       times.push(performance.now() - start);
     }
     times.sort((a, b) => a - b);
@@ -111,28 +123,36 @@ try {
     const countObjects = () => scene.children.list.filter((object) => object.name?.startsWith('ambient-')).length;
     const objects = countObjects();
     const water = scene.children.getByName('ambient-water');
-    const habitation = scene.children.getByName('ambient-habitation');
-    const commandCount = () => water.commandBuffer.length + habitation.commandBuffer.length;
+    const vegetation = scene.children.getByName('ambient-vegetation');
+
+    const commandCount = () => water.commandBuffer.length + vegetation.commandBuffer.length + [...spriteAmbient.layers.values()].reduce((sum,g)=>sum+g.commandBuffer.length,0);
     const activeCommands = commandCount();
     // Current visibility must suppress activity, including remembered cities.
     ambient.canSee = () => false;
+    spriteAmbient.canSee = () => false;
+    spriteAmbient.update(0,41);
     ambient.update(0, 41);
     const hiddenCommands = commandCount();
     ambient.canSee = () => true;
+    spriteAmbient.canSee = () => true;
     scene.cameras.main.setZoom(0.4);
     ambient.update(0, 41);
+    spriteAmbient.update(0,41);
     const overviewCommands = commandCount();
+    const bindings = spriteAmbient.bindings.size;
+    spriteAmbient.shutdown();
     ambient.shutdown();
     const remaining = countObjects();
     const detached = !asList(scene.events._events.update).some((event) => event?.context === ambient);
     return {
-      medianMs: times[60], p95Ms: times[114], unchanged, objects,
+      bindings, medianMs: times[60], p95Ms: times[114], unchanged, objects,
       activeCommands, hiddenCommands, overviewCommands, remaining, detached,
     };
   });
   console.log('Ambient checks:', checks);
   assert.equal(checks.unchanged, true, 'Ambient drawing must not mutate gameplay state');
-  assert.equal(checks.objects, 2);
+  assert.ok(checks.objects >= 2);
+  assert.ok(checks.bindings > 0);
   assert.ok(checks.activeCommands > checks.hiddenCommands, 'Visible world should have ambient drawing');
   assert.equal(checks.overviewCommands, checks.hiddenCommands, 'Overview should have no animated detail');
   assert.equal(checks.remaining, 0);

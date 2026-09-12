@@ -1,3 +1,4 @@
+import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
 import { TileMap } from './TileMap';
 import type { ProductionSystem } from './ProductionSystem';
@@ -111,6 +112,14 @@ export class TileBuildingRenderer {
     sprite.setTexture(texture).setPosition(x, y);
     sprite.setDisplaySize(rect.width * TILE_BUILDING_SCALE, rect.height * TILE_BUILDING_SCALE);
     this.hexTileMaskHelper.applyHexMask(sprite, tile.x, tile.y);
+    if (!sprite.getData('ambientAttached')) {
+      sprite.setData('ambientAttached', true);
+      AmbientSprites.forScene(this.scene).attach(sprite, visual.kind, key, () => [tile.x, tile.y],
+        () => {
+          const current = this.mapData.tiles[tile.y]?.[tile.x];
+          return !!current && this.getTileVisual(current)?.state === 'normal' && this.visibilityPredicate(tile.x, tile.y);
+        });
+    }
     this.damageEffects.set(key, tile.x, tile.y, broken,
       tile.type !== TileType.Ocean && tile.type !== TileType.Coast);
     if (visual.state === 'building' && this.ensureTexture(CONSTRUCTION_TEXTURE, 'assets/sprites/overlays/under-construction.png')) {

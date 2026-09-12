@@ -1,3 +1,4 @@
+import { AmbientSprites } from '../systems/rendering/AmbientSprites';
 import Phaser from 'phaser';
 import { drawDamageFeedback } from './StructureDamageEffects';
 import type { TileMap } from '../systems/TileMap';
@@ -94,6 +95,11 @@ export class TileImprovementOverlayRenderer {
       sprite.setScale(Math.min(rect.width * 0.82 / sprite.width, rect.height * 0.82 / sprite.height));
       sprite.setAlpha(constructing ? 0.5 : 1);
       overlay.sprite = sprite;
+      AmbientSprites.forScene(this.scene).attach(sprite, 'improvement', key, () => [x, y],
+        () => {
+          const current = this.mapData.tiles[y]?.[x];
+          return !!current?.improvementId && !current.improvementConstruction && !this.effects.has(key);
+        }, false);
     }
     // Construction is a progress indicator, foreign ownership a small pennant.
     // Completed improvements have no placeholder perimeter underneath their art.
