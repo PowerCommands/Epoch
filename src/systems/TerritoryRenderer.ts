@@ -5,9 +5,7 @@ import { MapData } from '../types/map';
 import type { IGridSystem } from './grid/IGridSystem';
 
 const BORDER_DEPTH = 6;
-const NORMAL_BORDER_ALPHA = 0.84;
 const NORMAL_BORDER_WIDTH = 5;
-const CITY_VIEW_BORDER_ALPHA = 0.96;
 const CITY_VIEW_BORDER_WIDTH = 6;
 
 interface Point {
@@ -223,11 +221,16 @@ export class TerritoryRenderer {
 
   private repaintFromActiveSegments(): void {
     this.borderGfx.clear();
+    // Opaque round caps seal the joins without darker overlap patches.
+    const radius = this.getBorderWidth() / 2;
     for (const segment of this.activeSegments.values()) {
       if (this.visibilityPredicate && !this.visibilityPredicate(segment.tileX, segment.tileY)) continue;
       const nationColor = this.nationManager.getNation(segment.ownerId)?.color ?? 0x111111;
-      this.borderGfx.lineStyle(this.getBorderWidth(), nationColor, this.getBorderAlpha());
+      this.borderGfx.lineStyle(this.getBorderWidth(), nationColor, 1);
       this.borderGfx.lineBetween(segment.ax, segment.ay, segment.bx, segment.by);
+      this.borderGfx.fillStyle(nationColor, 1);
+      this.borderGfx.fillCircle(segment.ax, segment.ay, radius);
+      this.borderGfx.fillCircle(segment.bx, segment.by, radius);
     }
   }
 
@@ -306,10 +309,6 @@ export class TerritoryRenderer {
   }
 
   // ─── Styling ──────────────────────────────────────────────────────────────
-
-  private getBorderAlpha(): number {
-    return this.mode === 'cityView' ? CITY_VIEW_BORDER_ALPHA : NORMAL_BORDER_ALPHA;
-  }
 
   private getBorderWidth(): number {
     return this.mode === 'cityView' ? CITY_VIEW_BORDER_WIDTH : NORMAL_BORDER_WIDTH;

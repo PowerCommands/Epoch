@@ -108,7 +108,10 @@ export class GeometryClip {
       (target as Renderable).renderWebGLStep(renderer, target, context, parentMatrix, step + 1, list, index);
     } finally {
       this.restore!.renderWebGLStep(renderer, this.restore!, context);
-      context.use();
+      // Flush the stencil restore without re-entering the camera context.
+      // Pooled camera framebuffers auto-clear on use(); doing that here would
+      // erase every previously drawn world layer whenever a sprite is clipped.
+      renderer.renderNodes.finishBatch();
       graphics.setVisible(visible);
       graphics.cameraFilter = cameraFilter;
     }

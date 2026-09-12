@@ -272,9 +272,14 @@ export class MinimapHud {
     this._lastViewW = viewW;
     this._lastViewH = viewH;
 
-    const width = viewW / zoom;
-    const height = viewH / zoom;
-    const topLeft = this.worldToMini(scrollX, scrollY);
+    const footprint = this.cameraController.getViewportWorldBounds();
+    const left = Math.max(0, footprint.x);
+    const top = Math.max(0, footprint.y);
+    const right = Math.min(this.worldBounds.width, footprint.x + footprint.width);
+    const bottom = Math.min(this.worldBounds.height, footprint.y + footprint.height);
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
+    const topLeft = this.worldToMini(left, top);
 
     this.viewportGfx.clear();
     this.viewportGfx.lineStyle(2, 0xfff5b8, 0.96);

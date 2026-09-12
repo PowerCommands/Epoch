@@ -86,12 +86,12 @@ test('the fortification multiplier strengthens retaliation and protects against 
   assert.equal(ranged.cityDamageTaken, 11);
 });
 
-test('the Cities tutorial documents defense mechanics and the visual fortification ring', () => {
+test('the Cities tutorial documents defense mechanics and the visual fortification walls', () => {
   const cities = TUTORIAL_SECTIONS.find((section) => section.id === 'cities');
   const text = JSON.stringify(cities?.blocks ?? []);
   assert.match(text, /City Defense/);
   assert.match(text, /Walls, Castle and Arsenal/);
   assert.match(text, /31, 37 and 43/);
-  assert.match(text, /dark-gray ring/);
+  assert.match(text, /Stone walls follow the city tile edges/);
   assert.match(text, /Broken fortifications/);
 });

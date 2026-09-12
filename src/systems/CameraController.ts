@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { PlanetaryRenderer } from './rendering/PlanetaryRenderer';
+import { planetaryHalfExtents, unprojectPlanetary } from './rendering/PlanetaryProjection';
 import type { WorldInputGate } from './input/WorldInputGate';
 import { isPointerEventConsumed } from '../utils/phaserScreenSpaceUi';
 
@@ -16,7 +18,11 @@ const ZOOM_MAX = 4.0;
  */
 export class CameraController {
   private readonly cam: Phaser.Cameras.Scene2D.Camera;
-  private readonly minZoom: number;
+  private readonly fallbackMinZoom: number;
+  private readonly planetary?: PlanetaryRenderer;
+  private targetZoom: number | null = null;
+  private zoomAnchor = { x: 0, y: 0 };
+  private get minZoom(): number { return this.planetary?.range.min ?? this.fallbackMinZoom; }
   private readonly keys: {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
@@ -49,7 +55,11 @@ export class CameraController {
     minZoom = DEFAULT_ZOOM_MIN,
   ) {
     this.cam = scene.cameras.main;
-    this.minZoom = minZoom;
+    this.fallbackMinZoom = minZoom;
+    if (scene.game.renderer.type === Phaser.WEBGL) {
+      this.planetary = new PlanetaryRenderer(this.cam, scene.game.renderer as Phaser.Renderer.WebGL.WebGLRenderer, worldWidth, worldHeight);
+      scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.planetary?.destroy());
+    }
     this.cam.setBounds(0, 0, worldWidth, worldHeight);
 
     // Registrera tangenter
@@ -71,7 +81,15 @@ export class CameraController {
 
   /** Anropas varje frame från GameScene.update(). */
   update(delta: number): void {
+    if (this.cam.zoom < this.minZoom) this.setZoom(this.minZoom);
+    if (this.targetZoom !== null) {
+      const target = Phaser.Math.Clamp(this.targetZoom, this.minZoom, ZOOM_MAX);
+      const next = Phaser.Math.Linear(this.cam.zoom, target, 1 - Math.exp(-delta / 90));
+      this.zoomAround(Math.abs(next - target) < 0.0001 ? target : next, this.zoomAnchor.x, this.zoomAnchor.y);
+      if (this.cam.zoom === target) this.targetZoom = null;
+    }
     this.handleKeyboardPan(delta);
+    this.planetary?.update();
   }
 
   /** Centrera kameran på en världsposition och sätt ett specifikt zoom-värde. */
@@ -82,10 +100,12 @@ export class CameraController {
 
   /** Change zoom while preserving the current camera centre. */
   setZoom(zoom: number): void {
+    this.targetZoom = null;
     const centerX = this.cam.midPoint.x;
     const centerY = this.cam.midPoint.y;
     this.cam.zoom = Phaser.Math.Clamp(zoom, this.minZoom, ZOOM_MAX);
     this.cam.centerOn(centerX, centerY);
+    this.planetary?.update();
   }
 
   get zoom(): number {
@@ -98,6 +118,14 @@ export class CameraController {
 
   get scrollY(): number {
     return this.cam.scrollY;
+  }
+
+  /** Flat-world footprint of the visible surface, also used by the minimap. */
+  getViewportWorldBounds(): { x: number; y: number; width: number; height: number } {
+    const half = this.planetary ? planetaryHalfExtents(this.planetary.view)
+      : { x: this.cam.width / (2 * this.cam.zoom), y: this.cam.height / (2 * this.cam.zoom) };
+    return { x: this.cam.scrollX + this.cam.width / 2 - half.x,
+      y: this.cam.scrollY + this.cam.height / 2 - half.y, width: half.x * 2, height: half.y * 2 };
   }
 
   setPointerPanEnabled(enabled: boolean): void {
@@ -143,6 +171,7 @@ export class CameraController {
       // prevents world systems from processing pointer sequences claimed by HUD controls.
       if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
       if (isPointerEventConsumed(pointer)) return;
+      this.targetZoom = null;
       this.pointerIsDown = true;
       this.didDrag = false;
       this.dragStartX = pointer.x;
@@ -156,9 +185,12 @@ export class CameraController {
       if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
       if (!this.pointerIsDown) return;
 
-      const dx = pointer.x - this.dragStartX;
-      const dy = pointer.y - this.dragStartY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const start = this.sourcePoint(this.dragStartX, this.dragStartY);
+      const current = this.sourcePoint(pointer.x, pointer.y);
+      if (!start || !current) return;
+      const dx = current.x - start.x;
+      const dy = current.y - start.y;
+      const dist = Math.hypot(pointer.x - this.dragStartX, pointer.y - this.dragStartY);
 
       // Räkna som drag först efter att pekaren rört sig förbi tröskeln
       if (dist >= CameraController.DRAG_THRESHOLD) {
@@ -182,6 +214,22 @@ export class CameraController {
     scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, stopDrag);
   }
 
+  private sourcePoint(x: number, y: number): { x: number; y: number } | null {
+    return this.planetary ? unprojectPlanetary(x - this.cam.x, y - this.cam.y, this.planetary.view) : { x: x - this.cam.x, y: y - this.cam.y };
+  }
+
+  private zoomAround(zoom: number, x: number, y: number): void {
+    const before = this.sourcePoint(x, y);
+    const oldZoom = this.cam.zoom;
+    this.cam.zoom = zoom;
+    const after = this.sourcePoint(x, y);
+    if (before && after) {
+      // Phaser scroll is relative to the camera centre, not its top left.
+      this.cam.scrollX += (before.x - this.cam.width / 2) / oldZoom - (after.x - this.cam.width / 2) / zoom;
+      this.cam.scrollY += (before.y - this.cam.height / 2) / oldZoom - (after.y - this.cam.height / 2) / zoom;
+    }
+  }
+
   private registerWheelEvent(scene: Phaser.Scene): void {
     scene.input.on(
       Phaser.Input.Events.POINTER_WHEEL,
@@ -189,34 +237,13 @@ export class CameraController {
         if (this.worldInputGate.isWheelBlocked(pointer.x, pointer.y)) return;
         if (this.worldInputGate.isPointerClaimed(pointer.id)) return;
         if (isPointerEventConsumed(pointer)) return;
-        const oldZoom = this.cam.zoom;
-        const newZoom = Phaser.Math.Clamp(
-          oldZoom - Math.sign(dy) * ZOOM_STEP,
-          this.minZoom,
-          ZOOM_MAX,
+        const oldZoom = this.targetZoom ?? this.cam.zoom;
+        const farZoom = this.planetary && oldZoom <= this.planetary.range.start + ZOOM_STEP;
+        this.targetZoom = Phaser.Math.Clamp(
+          farZoom ? oldZoom * Math.exp(-Math.sign(dy) * 0.16) : oldZoom - Math.sign(dy) * ZOOM_STEP,
+          this.minZoom, ZOOM_MAX,
         );
-
-        if (newZoom === oldZoom) return;
-
-        /**
-         * Zooma mot muspekarens position.
-         *
-         * Principen: den världspunkt som pekaren pekar på ska vara
-         * samma före och efter zoom. I Phasers scrollX/scrollY-modell
-         * representerar scrollX/scrollY kamerans övre vänstra hörn i
-         * världskoordinater (okorrigerat för zoom). Vi löser ut vad
-         * scrollX/scrollY måste vara efter zoom-ändringen:
-         *
-         *   worldPoint = scrollX + (pointer.x / zoom)
-         *   => newScrollX = worldPoint - (pointer.x / newZoom)
-         *                 = scrollX + pointer.x/oldZoom - pointer.x/newZoom
-         */
-        const wx = this.cam.scrollX + pointer.x / oldZoom;
-        const wy = this.cam.scrollY + pointer.y / oldZoom;
-
-        this.cam.zoom = newZoom;
-        this.cam.scrollX = wx - pointer.x / newZoom;
-        this.cam.scrollY = wy - pointer.y / newZoom;
+        this.zoomAnchor = { x: pointer.x, y: pointer.y };
       },
     );
   }

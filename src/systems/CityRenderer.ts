@@ -14,9 +14,6 @@ import { getCityFortificationLevel } from './CityDefenseSystem';
 const CITY_DEPTH = 19.6;
 const CITY_TILE_FILL_SCALE = 0.9;
 const CAPITAL_SCALE_MULTIPLIER = 1.2;
-const FORTIFICATION_RING_COLOR = 0x454b52;
-const FORTIFICATION_RING_ALPHA = 0.96;
-const FORTIFICATION_RING_WIDTH_BY_LEVEL = [0, 3, 5, 8] as const;
 
 const HIT_RADIUS = 20;
 
@@ -24,8 +21,7 @@ const HIT_RADIUS = 20;
  * CityRenderer draws a sprite for each city on the map.
  *
  * Uses an era-specific city texture based on the owning nation's current era.
- * Original and residence capitals use separate indicators so conquest
- * preserves historical identity without implying political control.
+ * The crown identifies the current residence capital.
  */
 export class CityRenderer {
   private readonly scene: Phaser.Scene;
@@ -172,10 +168,7 @@ export class CityRenderer {
     const children: Phaser.GameObjects.GameObject[] = [glow, sprite];
     const fortificationLevel = getCityFortificationLevel(this.cityManager.getBuildings(city.id));
     if (fortificationLevel !== 0) {
-      children.push(this.createFortificationRing(rect.width, rect.height, fortificationLevel));
-    }
-    if (city.isOriginalCapital) {
-      children.push(this.createOriginalCapitalRing(rect.width, rect.height));
+      children.push(this.createFortificationWall(outline, fortificationLevel));
     }
     if (city.isResidenceCapital) {
       children.push(this.createResidenceCrown(rect.width, rect.height));
@@ -196,24 +189,69 @@ export class CityRenderer {
     this.damageEffects.set(city.id, city.tileX, city.tileY, city.health <= CITY_BASE_HEALTH / 2);
   }
 
-  private createFortificationRing(
-    tileWidth: number,
-    tileHeight: number,
+  private createFortificationWall(
+    outline: Phaser.Math.Vector2[],
     level: 1 | 2 | 3,
   ): Phaser.GameObjects.Graphics {
-    const ring = this.scene.add.graphics();
-    ring.lineStyle(FORTIFICATION_RING_WIDTH_BY_LEVEL[level], FORTIFICATION_RING_COLOR, FORTIFICATION_RING_ALPHA);
-    ring.strokeEllipse(0, 0, tileWidth * 0.98, tileHeight * 0.78);
-    return ring;
-  }
+    const wall = this.scene.add.graphics();
+    // Keep the masonry inside the tile and leave the city centre open.
+    const outer = outline.map(p => ({ x: p.x * 0.91, y: p.y * 0.91 }));
+    const innerScale = [0, 0.84, 0.80, 0.76][level];
+    const inner = outline.map(p => ({ x: p.x * innerScale, y: p.y * innerScale }));
+    const height = [0, 2.5, 4, 5.5][level];
+    const stone = [0, 0xa99d80, 0xb1afa0, 0x9ea9ad][level];
+    const shade = [0, 0x655f4f, 0x656963, 0x505e65][level];
+    const light = [0, 0xd4c6a4, 0xdbd6c3, 0xd3dfe0][level];
+    type Point = { x: number; y: number };
+    const raised = (p: Point): Point => ({ x: p.x, y: p.y - height });
+    const mix = (a: Point, b: Point, t: number): Point => ({
+      x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t,
+    });
+    const face = (points: Point[], color: number): void => {
+      wall.fillStyle(color, 1);
+      wall.fillPoints(points.map(p => new Phaser.Math.Vector2(p.x, p.y)), true);
+    };
 
-  private createOriginalCapitalRing(tileWidth: number, tileHeight: number): Phaser.GameObjects.Graphics {
-    const ring = this.scene.add.graphics();
-    ring.lineStyle(2, 0xf6e58d, 0.92);
-    ring.strokeEllipse(0, 0, tileWidth * 0.82, tileHeight * 0.64);
-    ring.lineStyle(1, 0x332b11, 0.65);
-    ring.strokeEllipse(0, 0, tileWidth * 0.9, tileHeight * 0.7);
-    return ring;
+    // Side faces first, then the continuous parapet top: shared vertices
+    // keep all six corners sealed without thick strokes over the buildings.
+    for (let i = 0; i < outer.length; i++) {
+      const j = (i + 1) % outer.length;
+      face([outer[i], outer[j], raised(outer[j]), raised(outer[i])], shade);
+      face([inner[i], inner[j], raised(inner[j]), raised(inner[i])], shade);
+    }
+    for (let i = 0; i < outer.length; i++) {
+      const j = (i + 1) % outer.length;
+      face([raised(outer[i]), raised(outer[j]), raised(inner[j]), raised(inner[i])], stone);
+      wall.lineStyle(0.6, light, 1);
+      wall.lineBetween(outer[i].x, outer[i].y - height, outer[j].x, outer[j].y - height);
+      const blocks = 5 + level;
+      for (let k = 0; k < blocks; k++) {
+        const start = (k + 0.16) / blocks;
+        const end = (k + 0.65) / blocks;
+        const a = raised(mix(outer[i], outer[j], start));
+        const b = raised(mix(outer[i], outer[j], end));
+        const c = raised(mix(inner[i], inner[j], end));
+        const d = raised(mix(inner[i], inner[j], start));
+        const lift = (p: Point): Point => ({ x: p.x, y: p.y - 1.4 });
+        face([a, b, lift(b), lift(a)], shade);
+        face([lift(a), lift(b), lift(c), lift(d)], light);
+      }
+    }
+    // Upgrades add square stone towers, then broader reinforced bastions.
+    if (level >= 2) {
+      const size = level === 2 ? 3.8 : 5.6;
+      for (let i = 0; i < outer.length; i++) {
+        const p = mix(outer[i], inner[i], 0.5);
+        const y = p.y - height - 2;
+        wall.fillStyle(shade, 1);
+        wall.fillRect(p.x - size / 2, y, size, height + 2);
+        wall.fillStyle(light, 1);
+        wall.fillRect(p.x - size / 2, y - size / 2, size, size / 2 + 1);
+        wall.fillStyle(stone, 1);
+        wall.fillRect(p.x - size / 2 + 0.8, y - size / 2 + 0.7, size - 1.6, size / 2 - 0.5);
+      }
+    }
+    return wall;
   }
 
   private createResidenceCrown(tileWidth: number, tileHeight: number): Phaser.GameObjects.Graphics {

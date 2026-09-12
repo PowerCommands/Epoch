@@ -208,8 +208,8 @@ export const TUTORIAL_SECTIONS: readonly TutorialSection[] = [
         items: [
           'Higher City Defense increases the damage dealt back to melee attackers',
           'Fortifications reduce incoming damage from both melee and ranged attacks',
-          'A dark-gray ring around the city grows thicker at each fortification level',
-          'Broken fortifications provide no Defense bonus and do not count toward the visible ring level',
+          'Stone walls follow the city tile edges, gaining height, thickness and stronger corner towers at each fortification level',
+          'Broken fortifications provide no Defense bonus and do not count toward the visible wall level',
         ],
       },
     ],
