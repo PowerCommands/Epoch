@@ -15,6 +15,8 @@ interface Point {
 
 interface ActiveSegment {
   ownerId: string;
+  shared: boolean;
+  center: Point;
   /** Tile that "owns" this border segment (used for fog-of-war culling). */
   tileX: number;
   tileY: number;
@@ -66,13 +68,8 @@ export class TerritoryRenderer {
 
   // ─── Live drawn state ─────────────────────────────────────────────────────
 
-  // edgeKey → segment currently painted on borderGfx
+  // Directed tile-edge key → segment currently painted on borderGfx
   private readonly activeSegments = new Map<number, ActiveSegment>();
-
-  // ─── Edge key config ──────────────────────────────────────────────────────
-
-  // 0.1 px granularity — sufficient for hex outline coordinates.
-  private static readonly POINT_RES = 10;
 
   constructor(
     scene: Phaser.Scene,
@@ -160,62 +157,54 @@ export class TerritoryRenderer {
   private rebuildDirtyTiles(): void {
     const w = this.mapData.width;
     const h = this.mapData.height;
+    const dirty = new Set<number>();
     for (let y = 0; y < h; y++) {
-      const row = this.mapData.tiles[y];
       for (let x = 0; x < w; x++) {
-        const tile = row[x];
-        const currentOwnerIdx = tile.ownerId === undefined ? -1 : this.getOrAssignNationIndex(tile.ownerId);
-        const tileKey = y * w + x;
-        if (this.ownerSnapshot[tileKey] === currentOwnerIdx) continue;
-        this.ownerSnapshot[tileKey] = currentOwnerIdx;
-        this.recomputeEdgesAround(x, y);
+        const ownerId = this.mapData.tiles[y][x].ownerId;
+        const current = ownerId === undefined ? -1 : this.getOrAssignNationIndex(ownerId);
+        const key = y * w + x;
+        if (this.ownerSnapshot[key] === current) continue;
+        this.ownerSnapshot[key] = current;
+        dirty.add(key);
+        // Both sides can change when a tile is claimed, transferred or released.
+        for (const neighbor of this.gridSystem.getAdjacentCoords({ x, y })) {
+          if (neighbor.x >= 0 && neighbor.y >= 0 && neighbor.x < w && neighbor.y < h) {
+            dirty.add(neighbor.y * w + neighbor.x);
+          }
+        }
       }
     }
+    for (const key of dirty) this.recomputeEdgesAround(key % w, Math.floor(key / w));
   }
 
-  /**
-   * Recomputes the 6 border segments touching tile (x, y) and updates
-   * activeSegments accordingly. Called for every tile during a full rebuild,
-   * and only for changed tiles during incremental updates.
-   */
   private recomputeEdgesAround(x: number, y: number): void {
     const outline = this.tileMap.getTileOutlinePoints(x, y);
     if (outline.length !== 6) return;
-
     const w = this.mapData.width;
     const h = this.mapData.height;
-    const tileOwnerId = this.mapData.tiles[y]?.[x]?.ownerId;
-    const tileKey = y * w + x;
-
-    const adjacent = this.gridSystem.getAdjacentCoords({ x, y });
-    for (const neighbor of adjacent) {
-      const edgePoints = this.getHexEdgePoints(outline, x, y, neighbor);
-      const key = this.edgeKey(edgePoints[0], edgePoints[1]);
-
+    const ownerId = this.mapData.tiles[y][x].ownerId;
+    const center = {
+      x: outline.reduce((sum, point) => sum + point.x, 0) / 6,
+      y: outline.reduce((sum, point) => sum + point.y, 0) / 6,
+    };
+    for (const neighbor of this.gridSystem.getAdjacentCoords({ x, y })) {
+      const delta = `${neighbor.x - x},${neighbor.y - y}`;
+      const edgeIndex = HEX_EDGE_INDEX_BY_DELTA.get(delta);
+      if (edgeIndex === undefined) throw new Error(`TerritoryRenderer received non-hex neighbor delta ${delta}`);
+      // Integer topology keys avoid precision collisions from packed world coordinates.
+      const key = (y * w + x) * 6 + edgeIndex;
       const inBounds = neighbor.x >= 0 && neighbor.y >= 0 && neighbor.x < w && neighbor.y < h;
-      const neighborOwnerId = inBounds ? this.mapData.tiles[neighbor.y][neighbor.x].ownerId : undefined;
-      const neighborKey = neighbor.y * w + neighbor.x;
-
-      const segmentOwnerId = this.resolveEdgeOwner(
-        tileOwnerId, tileKey,
-        neighborOwnerId, neighborKey,
-        !inBounds,
-      );
-
-      if (segmentOwnerId !== undefined) {
-        const ownerIsTile = segmentOwnerId === tileOwnerId;
-        this.activeSegments.set(key, {
-          ownerId: segmentOwnerId,
-          tileX: ownerIsTile ? x : neighbor.x,
-          tileY: ownerIsTile ? y : neighbor.y,
-          ax: edgePoints[0].x,
-          ay: edgePoints[0].y,
-          bx: edgePoints[1].x,
-          by: edgePoints[1].y,
-        });
-      } else {
+      const neighborOwner = inBounds ? this.mapData.tiles[neighbor.y][neighbor.x].ownerId : undefined;
+      if (ownerId === undefined || ownerId === neighborOwner) {
         this.activeSegments.delete(key);
+        continue;
       }
+      const a = outline[edgeIndex];
+      const b = outline[(edgeIndex + 1) % 6];
+      this.activeSegments.set(key, {
+        ownerId, shared: neighborOwner !== undefined, center,
+        tileX: x, tileY: y, ax: a.x, ay: a.y, bx: b.x, by: b.y,
+      });
     }
   }
 
@@ -226,74 +215,36 @@ export class TerritoryRenderer {
     for (const segment of this.activeSegments.values()) {
       if (this.visibilityPredicate && !this.visibilityPredicate(segment.tileX, segment.tileY)) continue;
       const nationColor = this.nationManager.getNation(segment.ownerId)?.color ?? 0x111111;
+      if (segment.shared) {
+        // Each nation fills only its own half of the border. Inset endpoints
+        // toward the hex center to form sealed miter joins without crossing
+        // into the neighboring nation's tile at corners.
+        const midX = (segment.ax + segment.bx) / 2;
+        const midY = (segment.ay + segment.by) / 2;
+        const apothem = Math.hypot(midX - segment.center.x, midY - segment.center.y);
+        const inset = radius / apothem;
+        this.borderGfx.fillStyle(nationColor, 1);
+        this.borderGfx.beginPath();
+        this.borderGfx.moveTo(segment.ax, segment.ay);
+        this.borderGfx.lineTo(segment.bx, segment.by);
+        this.borderGfx.lineTo(
+          segment.bx + (segment.center.x - segment.bx) * inset,
+          segment.by + (segment.center.y - segment.by) * inset,
+        );
+        this.borderGfx.lineTo(
+          segment.ax + (segment.center.x - segment.ax) * inset,
+          segment.ay + (segment.center.y - segment.ay) * inset,
+        );
+        this.borderGfx.closePath();
+        this.borderGfx.fillPath();
+        continue;
+      }
       this.borderGfx.lineStyle(this.getBorderWidth(), nationColor, 1);
       this.borderGfx.lineBetween(segment.ax, segment.ay, segment.bx, segment.by);
       this.borderGfx.fillStyle(nationColor, 1);
       this.borderGfx.fillCircle(segment.ax, segment.ay, radius);
       this.borderGfx.fillCircle(segment.bx, segment.by, radius);
     }
-  }
-
-  // ─── Edge ownership resolution ────────────────────────────────────────────
-
-  /**
-   * Returns the ownerId of the nation whose color this edge should be drawn
-   * in, or undefined if no border should be drawn here.
-   *
-   * Tie-breaking rule: when two adjacent tiles are owned by different nations,
-   * the tile with the lower row-major tileKey (y * width + x) owns the edge.
-   * This matches the first-write-wins outcome of the original row-major
-   * iteration, keeping the color of foreign-vs-foreign borders stable.
-   */
-  private resolveEdgeOwner(
-    aOwner: string | undefined,
-    aKey: number,
-    bOwner: string | undefined,
-    bKey: number,
-    bOutOfBounds: boolean,
-  ): string | undefined {
-    if (bOutOfBounds) return aOwner;           // map boundary: draw with A if owned
-    if (aOwner === undefined && bOwner === undefined) return undefined;
-    if (aOwner === bOwner) return undefined;   // same nation: interior edge, no border
-    if (aOwner === undefined) return bOwner;   // only B owned
-    if (bOwner === undefined) return aOwner;   // only A owned
-    // Both owned by different nations: lower tileKey wins, matching row-major order
-    return aKey < bKey ? aOwner : bOwner;
-  }
-
-  // ─── Geometry ─────────────────────────────────────────────────────────────
-
-  /**
-   * Returns a numeric key uniquely identifying the undirected edge between
-   * points a and b. Normalizes endpoint order so edgeKey(a,b) === edgeKey(b,a).
-   *
-   * Safety bound: stays under Number.MAX_SAFE_INTEGER for outline coordinates
-   * up to ~419 000 pixels per axis with POINT_RES = 10.
-   */
-  private edgeKey(a: Point, b: Point): number {
-    const ax = Math.round(a.x * TerritoryRenderer.POINT_RES) | 0;
-    const ay = Math.round(a.y * TerritoryRenderer.POINT_RES) | 0;
-    const bx = Math.round(b.x * TerritoryRenderer.POINT_RES) | 0;
-    const by = Math.round(b.y * TerritoryRenderer.POINT_RES) | 0;
-    const aId = ax * 0x400000 + ay;
-    const bId = bx * 0x400000 + by;
-    const lo = aId < bId ? aId : bId;
-    const hi = aId < bId ? bId : aId;
-    return lo * 0x100000000 + hi;
-  }
-
-  private getHexEdgePoints(outline: Point[], x: number, y: number, neighbor: Point): [Point, Point] {
-    if (outline.length !== 6) {
-      throw new Error(`TerritoryRenderer expected hex outline with 6 points, got ${outline.length}`);
-    }
-
-    const deltaKey = `${neighbor.x - x},${neighbor.y - y}`;
-    const edgeIndex = HEX_EDGE_INDEX_BY_DELTA.get(deltaKey);
-    if (edgeIndex === undefined) {
-      throw new Error(`TerritoryRenderer received non-hex neighbor delta ${deltaKey}`);
-    }
-
-    return [outline[edgeIndex], outline[(edgeIndex + 1) % outline.length]];
   }
 
   // ─── Nation index intern table ────────────────────────────────────────────

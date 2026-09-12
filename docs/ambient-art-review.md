@@ -59,28 +59,28 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | Sprite | Depicted feature and animation decision |
 | --- | --- |
 | worker | Pickaxe pivots at the right grip; two fixed-length left arm segments follow it. Head, torso, trousers and boots have no deformation. |
-| warrior | Small adjustment of the round shield; spear and feet grounded. |
-| spearman | Shield-side wrist adjustment, outside the legs. |
-| pikeman | Gauntlet on upright pike; no bending the pole. |
-| swordsman | Sword hand adjustment; silhouette grounded. |
-| longswordsman | Sword-side wrist; boots and torso fixed. |
-| archer | Extended bow hand, not head or legs. |
-| composite_bowman | Extended bow grip in the dark archer artwork. |
-| crossbowman | Same shipped bow-archer artwork as composite bowman. |
-| scout | Hands inspecting the painted compass. |
+| warrior | Pronounced spear/polearm strike; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| spearman | Pronounced spear/polearm strike; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| pikeman | Pronounced spear/polearm strike; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| swordsman | Brightened original artwork; sword and weapon arm swing at the shoulder while head, torso, waist and feet remain stationary. |
+| longswordsman | Brightened original artwork; sword and weapon arm swing at the shoulder while head, torso, waist and feet remain stationary. |
+| archer | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| composite_bowman | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| crossbowman | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| scout | Enlarged brass compass with an ivory face and contrasting red/blue needle rotating a full circle every 2.4 seconds; fixed hands and dial. |
 | settler | Hand at belt, fixed pack and legs. |
 | archaeologist | Gloved hand, fixed hat and grounded boots. |
-| horseman | Horse muzzle in left-facing mount; rider unchanged. |
-| knight | Same left-facing mount art; no rider deformation. |
+| horseman | Original mounted artwork lit 3.2× with preserved alpha; continuous 1.25-second riding cycle with opposing front/rear strides, hoof lift, body bounce and rider following the saddle. |
+| knight | Original mounted artwork lit 3.2× with preserved alpha; continuous 1.25-second riding cycle with opposing front/rear strides, hoof lift, body bounce and rider following the saddle. |
 | cavalry | Right-facing horse head; reins and rider remain coherent. |
 | caravan | Left ox muzzle; wagon, wheels and cargo stay rigid. |
-| chariot_archer | No horse is painted: only the archer hand adjusts above the fixed chariot. |
-| lancer | Standing armored soldier, hand on horizontal polearm; no horse. |
-| rifleman | Hand on rifle stock; weapon not bent. |
-| paratrooper | Supporting hand at rifle grip, boots anchored. |
-| infantry | Front soldier glove only; other soldiers remain fixed. |
-| partisans | Central rifle grip; three-person group never warped as one body. |
-| rebels | Central hand on the separate rebel group artwork. |
+| chariot_archer | Bow draw, release and visible arrow; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| lancer | Pronounced spear/polearm strike; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| rifleman | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| paratrooper | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| infantry | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| partisans | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| rebels | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | tank | Small exhaust at rear engine area; turret, tracks and hull remain rigid. |
 | modern_armor | Rear engine exhaust only; no radial turret warp. |
 | landship | Small rear exhaust on the armored vehicle; fixed chassis. |
@@ -92,12 +92,12 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | bomber | Two visible near-side engine propellers; four-engine wing/body artwork fixed. |
 | jet_fighter | Restrained navigation light at wing; no propeller effect. |
 | helicopter_gunship | Rotor-hub streak above the cabin; tail boom, wheels and cabin fixed. |
-| anti_tank_gun | Same soldier holding a shoulder launcher; grip-only adjustment. |
-| bazooka | Same soldier holding a shoulder launcher; grip-only adjustment. |
-| musketman | Shipped formation artwork: two individual weapon hands, fixed legs and formation. |
-| great_war_infantry | Shipped formation artwork: two individual weapon hands, fixed legs and formation. |
-| mechanized_infantry | Shipped formation artwork: two individual weapon hands, fixed legs and formation. |
-| xcom_squad | Shipped formation artwork: two individual weapon hands, fixed legs and formation. |
+| anti_tank_gun | Launcher recoil, exhaust and rocket; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| bazooka | Launcher recoil, exhaust and rocket; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| musketman | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| great_war_infantry | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| mechanized_infantry | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
+| xcom_squad | Rifle recoil/aim, synchronized muzzle flash and smoke; rigid original-art cutouts, continuous 2.6-second cycle regardless of combat or selection. |
 | cannon | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
 | catapult | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
 | trebuchet | Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid. |
@@ -121,7 +121,7 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | nuclear_submarine | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | cargo_ship | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | transport_ship | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
-| scout_boat | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
+| scout_boat | Lookout, hands and telescope sweep together at the waist through ±0.20 radians every three seconds. Legs, hull and mast stay fixed; ripple at the waterline. |
 | work_boat | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | workboat | Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline. |
 | worker_action | These files depict construction signs, not workers/boats. Keep the sign stationary. |
@@ -243,4 +243,3 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | atomic | Steam from the already-painted central stack and warm facade light. |
 | information | Illuminated blue windows and central tower windows, fixed skyline. |
 | future | Cyan light in the painted illuminated tower and windows; no pulsing city silhouette. |
-

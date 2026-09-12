@@ -1,22 +1,25 @@
+import { FOOT_SOLDIER_PROFILES, weaponMotion, type WeaponRhythm, type WeaponShot } from './FootSoldierProfiles';
+import { RIDING_GAIT, type MountedGait } from './MountedGait';
+
 /** Artwork coordinates are normalized, with (0,0) at the top-left of the PNG.
  * Deliberately explicit: stored goods and stone do not inherit a living idle.
  */
 export type AmbientKind = 'resource' | 'improvement' | 'unit' | 'building' | 'wonder' | 'city';
-export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'light' | 'beacon' | 'water' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller';
+export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'light' | 'beacon' | 'water' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller' | 'compass';
 export interface Emitter { kind: Activity; x: number; y: number; size?: number; color?: number; period?: number; flicker?: number; }
-export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'idle' | 'machine'; }
+export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'idle' | 'machine' | 'scan' | WeaponRhythm; }
 export interface Rotor { x: number; y: number; radius: number; blades: number; period: number; color: number; tips: [number, number][]; }
 export type Point = [number, number];
 /** Original-art cutout. Every pixel in a part receives the same rigid transform.
  * Repairs are restricted to explicitly painted surfaces behind the moving part. */
 export interface ArtPart {
-  feature: string; polygon: Point[]; pivot: Point; angle: number;
+  feature: string; polygon: Point[]; pivot: Point; angle: number; angleOffset?: number;
   rhythm: Joint['rhythm']; dx?: number; dy?: number;
   positive?: boolean;
   link?: { part: number; hand: Point; root: Point; elbow: Point; bone: 0 | 1 }; // Two fixed-length arm bones follow the tool grip.
   repairs?: { polygon: Point[]; offset: Point }[];
 }
-export interface AmbientProfile { effects: Emitter[]; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; float?: number; note?: string; }
+export interface AmbientProfile { effects: Emitter[]; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
 const e = (kind: Activity, x: number, y: number, size = 1, color?: number, period?: number): Emitter => ({kind,x,y,size,color,period});
 const j = (x: number, y: number, radius: number, dx: number, dy: number, rhythm: Joint['rhythm'] = 'idle'): Joint => ({x,y,radius,dx,dy,rhythm});
 const p = (...effects: Emitter[]): AmbientProfile => ({effects});
@@ -156,28 +159,13 @@ export const UNIT_AMBIENT: Record<string, AmbientProfile> = {
     {feature:'left forearm, hinged at elbow',polygon:[[.338,.446],[.405,.446],[.418,.554],[.422,.599],[.411,.63],[.38,.64],[.351,.54]],
     pivot:[.37,.455],angle:0,rhythm:'work',link:{part:0,hand:[.392,.623],root:[.376,.326],elbow:[.37,.455],bone:1}}],
     note:'Pickaxe pivots at the right grip; two fixed-length left arm segments follow it. Head, torso, trousers and boots have no deformation.'},
-  warrior:{effects:[],joints:[j(.59,.43,.11,.008,.002)],note:'Small adjustment of the round shield; spear and feet grounded.'},
-  spearman:{effects:[],joints:[j(.63,.38,.10,.006,.002)],note:'Shield-side wrist adjustment, outside the legs.'},
-  pikeman:{effects:[],joints:[j(.46,.43,.07,.005,.002)],note:'Gauntlet on upright pike; no bending the pole.'},
-  swordsman:{effects:[],joints:[j(.41,.42,.08,.006,.003)],note:'Sword hand adjustment; silhouette grounded.'},
-  longswordsman:{effects:[],joints:[j(.40,.42,.08,.006,.003)],note:'Sword-side wrist; boots and torso fixed.'},
-  archer:{effects:[],joints:[j(.67,.43,.085,.011,.006)],note:'Extended bow hand, not head or legs.'},
-  composite_bowman:{effects:[],joints:[j(.75,.48,.085,.009,.004)],note:'Extended bow grip in the dark archer artwork.'},
-  crossbowman:{effects:[],joints:[j(.75,.48,.085,.009,.004)],note:'Same shipped bow-archer artwork as composite bowman.'},
-  scout:{effects:[],joints:[j(.41,.4,.075,.006,.003)],note:'Hands inspecting the painted compass.'},
+  scout:{effects:[e('compass',.413,.397,1,undefined,2.4)],note:'Enlarged brass compass held in the hands, with a high-contrast red/blue needle completing a full turn every 2.4 seconds.'},
   settler:{effects:[],joints:[j(.61,.45,.07,.005,.003)],note:'Hand at belt, fixed pack and legs.'},
   archaeologist:{effects:[],joints:[j(.71,.6,.065,.006,.002)],note:'Gloved hand, fixed hat and grounded boots.'},
-  horseman:{effects:[],joints:[j(.30,.43,.105,.008,.012)],note:'Horse muzzle in left-facing mount; rider unchanged.'},
-  knight:{effects:[],joints:[j(.30,.43,.105,.008,.012)],note:'Same left-facing mount art; no rider deformation.'},
+  horseman:{effects:[],gait:RIDING_GAIT,brightness:3.2,note:'Bright armor and chestnut horse; continuous visible trot with alternating legs, hoof lift, body bounce and rider following the saddle.'},
+  knight:{effects:[],gait:RIDING_GAIT,brightness:3.2,note:'Same bright mounted artwork and coordinated trot as horseman.'},
   cavalry:{effects:[],joints:[j(.71,.46,.10,.009,.013)],note:'Right-facing horse head; reins and rider remain coherent.'},
   caravan:{effects:[],joints:[j(.20,.58,.09,.009,.01)],note:'Left ox muzzle; wagon, wheels and cargo stay rigid.'},
-  chariot_archer:{effects:[],joints:[j(.64,.29,.07,.005,.003)],note:'No horse is painted: only the archer hand adjusts above the fixed chariot.'},
-  lancer:{effects:[],joints:[j(.62,.48,.065,.006,.003)],note:'Standing armored soldier, hand on horizontal polearm; no horse.'},
-  rifleman:{effects:[],joints:[j(.52,.42,.065,.006,.003)],note:'Hand on rifle stock; weapon not bent.'},
-  paratrooper:{effects:[],joints:[j(.58,.42,.065,.005,.003)],note:'Supporting hand at rifle grip, boots anchored.'},
-  infantry:{effects:[],joints:[j(.56,.59,.06,.004,.003)],note:'Front soldier glove only; other soldiers remain fixed.'},
-  partisans:{effects:[],joints:[j(.52,.63,.055,.004,.003)],note:'Central rifle grip; three-person group never warped as one body.'},
-  rebels:{effects:[],joints:[j(.53,.60,.055,.004,.003)],note:'Central hand on the separate rebel group artwork.'},
   tank:p(e('smoke',.71,.62,.25,0xb2ada0,17)),
   modern_armor:p(e('smoke',.76,.44,.25,0xb2ada0,17)),
   landship:p(e('smoke',.30,.38,.25,0xb2ada0,17)),
@@ -191,16 +179,28 @@ export const UNIT_AMBIENT: Record<string, AmbientProfile> = {
   helicopter_gunship:p(e('propeller',.49,.32,1.3)),
 };
 function units(ids: string, profile: AmbientProfile): void { for (const id of ids.split(' ')) UNIT_AMBIENT[id] = profile; }
-units('anti_tank_gun bazooka',{effects:[],joints:[j(.51,.40,.06,.004,.003)],note:'Same soldier holding a shoulder launcher; grip-only adjustment.'});
-units('musketman great_war_infantry mechanized_infantry xcom_squad',{effects:[],joints:[j(.42,.52,.045,.005,.003),j(.63,.54,.045,-.005,.003)],note:'Shipped formation artwork: two individual weapon hands, fixed legs and formation.'});
 units('cannon catapult trebuchet artillery anti_aircraft_gun gatling_gun machine_gun rocket_artillery',{
   effects:[],note:'Uncrewed equipment at rest. No painted crew or running engine; barrels, frames and wheels remain solid.'});
 for(const [id,y] of Object.entries({trireme:.77,archer_galley:.78,galleass:.80,caravel:.82,frigate:.83,privateer:.82,ironclad:.76,battleship:.77,destroyer:.77,carrier:.78,missile_cruiser:.77,submarine:.73,nuclear_submarine:.74,cargo_ship:.8,transport_ship:.8,scout_boat:.76,work_boat:.76,workboat:.76})){
   UNIT_AMBIENT[id]={effects:[e('water',.51,y,.65)],float:.008,note:'Rigid vessel heave: identical translation of every hull/mast pixel; no bending. Ripple at painted waterline.'};
 }
+UNIT_AMBIENT.scout_boat = {
+  effects:[e('water',.51,.76,.65)],
+  parts:[{feature:'lookout upper body, head, both hands and telescope sweeping together at the waist',
+    polygon:[[.449,.241],[.470,.215],[.458,.189],[.468,.169],[.495,.150],[.527,.151],
+      [.539,.173],[.524,.194],[.566,.184],[.592,.198],[.758,.232],[.803,.243],
+      [.832,.275],[.835,.325],[.817,.366],[.779,.379],[.747,.365],[.603,.314],
+      [.585,.294],[.589,.318],[.575,.338],[.552,.327],[.542,.298],[.537,.355],
+      [.548,.395],[.523,.420],[.474,.414],[.458,.383],[.459,.340],[.442,.298]],
+    pivot:[.505,.405],angle:.20,rhythm:'scan',
+    repairs:[{polygon:[[.470,.389],[.540,.389],[.540,.424],[.470,.424]],offset:[0,-.027]}]}],
+  note:'Lookout and telescope sweep visibly from side to side every three seconds, hinged at the waist; legs, hull and mast stay fixed. Waterline ripple.',
+};
 units('worker_action worker_action_improvement workboat_action work_boat_action_improvement',{
   effects:[],note:'These files depict construction signs, not workers/boats. Keep the sign stationary.'});
 units('agent spy stealth_bomber atomic_bomb guided_missile nuclear_missile leaders', {effects: [], note: 'Covert portraits, parked stealth airframe, stored ordnance and UI symbol remain still.'});
+
+Object.assign(UNIT_AMBIENT, FOOT_SOLDIER_PROFILES);
 
 export const AMBIENT_PROFILES: Record<AmbientKind, Record<string, AmbientProfile>> = {
   resource: RESOURCE_AMBIENT, improvement: IMPROVEMENT_AMBIENT, unit: UNIT_AMBIENT,
@@ -215,6 +215,8 @@ export function ambientSeed(key: string): number {
 /** Rest occupies most of an organic cycle. Independent cycle hashes vary both
  * the interval and the gesture, without touching the simulation RNG. */
 export function ambientMotion(t: number, seed: number, rhythm: Joint['rhythm']): number {
+  if (rhythm === 'thrust' || rhythm === 'slash' || rhythm === 'draw' || rhythm === 'recoil' || rhythm === 'aim') return weaponMotion(t,seed,rhythm);
+  if (rhythm === 'scan') return Math.sin(t*Math.PI*2/3+seed*Math.PI*2);
   if (rhythm === 'machine') return Math.sin(t*1.15+seed*23);
   if (rhythm === 'sea') return Math.sin(t*.91+seed*23)*.65 + Math.sin(t*.57+seed*11)*.35;
   if (rhythm === 'wind') return Math.sin(t*1.1+seed*23)*(.55+.25*Math.sin(t*.23+seed*41));

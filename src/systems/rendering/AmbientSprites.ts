@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { renderCanvasWithGeometryClip } from './GeometryClip';
 import { AMBIENT_PROFILES, ambientMotion, ambientSeed, type AmbientKind, type AmbientProfile, type Emitter } from './AmbientProfiles';
+import { weaponPhase, WEAPON_PERIOD, WEAPON_RELEASE } from './FootSoldierProfiles';
+import { mountedOffset } from './MountedGait';
 
 type CanvasDraw = (
   renderer: Phaser.Renderer.Canvas.CanvasRenderer, image: Phaser.GameObjects.GameObject,
@@ -12,6 +14,7 @@ type Binding = {
   tile: () => readonly [number, number]; enabled: () => boolean;
   grid: number; seed: number; motions: number[]; profile?: AmbientProfile; texture?: string;
   mesh?: Phaser.GameObjects.Mesh2D; drawing: boolean; release: () => void;
+  lighting?: Phaser.Filters.ColorMatrix;
 };
 const systems = new WeakMap<Phaser.Scene, AmbientSprites>();
 const DEPTH: Record<AmbientKind, number> = {resource:5.6,improvement:5.8,building:14.1,wonder:14.1,unit:18.01,city:19.7};
@@ -66,10 +69,16 @@ export class AmbientSprites {
         if (!this.disposed && b.drawing && b.mesh && !sprite.isTinted && b.enabled()
           && this.canSee(...b.tile())) {
           const m = b.mesh;
+          // Filter bounds need the same ancestry as the image they replace.
+          m.parentContainer=sprite.parentContainer;
           m.setPosition(sprite.x,sprite.y).setScale(sprite.scaleX,sprite.scaleY).setRotation(sprite.rotation);
           m.setAlpha(sprite.alpha).setScrollFactor(sprite.scrollFactorX,sprite.scrollFactorY);
           m.setBlendMode(sprite.blendMode);
+          // Keep the per-unit art atlas in its own batch. Mixing these atlases
+          // with adjacent images can drop cutout triangles at texture switches.
+          if(b.profile?.shots) renderer.renderNodes.finishBatch();
           m.renderWebGLStep(renderer,m,context,parent);
+          if(b.profile?.shots) renderer.renderNodes.finishBatch();
         } else sprite.renderWebGLStep(renderer,target,context,parent,step+1,list,index);
       }, clipped ? 1 : 0);
     } else {
@@ -80,9 +89,14 @@ export class AmbientSprites {
       target.renderCanvas = (renderer, image, camera, parent) => {
         if (!this.disposed && b.drawing && b.mesh && !sprite.isTinted && b.enabled() && this.canSee(...b.tile())) {
           renderCanvasWithGeometryClip(sprite, renderer, camera, () => this.drawCanvas(b, renderer, camera, parent));
+        } else if(b.profile?.brightness) {
+          const ctx=renderer.currentContext;ctx.save();ctx.filter=`brightness(${b.profile!.brightness})`;
+          try {original.call(target,renderer,image,camera,parent);} finally {ctx.restore();}
         } else original.call(target, renderer, image, camera, parent);
       };
     }
+    // The source filter also lights the still image when motion is disabled.
+    this.resolve(b);
   }
   private dropMesh(b: Binding): void {
     if (b.mesh) { b.mesh.destroy(); b.mesh=undefined; this.meshCount--; }
@@ -96,9 +110,24 @@ export class AmbientSprites {
     const prefix: Record<AmbientKind,string> = {resource:'resource_',improvement:'improvement_',building:'tile_building_',wonder:'tile_wonder_',unit:'unit_',city:'city_'};
     const id=texture.startsWith(prefix[b.kind]) ? texture.slice(prefix[b.kind].length) : '';
     b.profile=AMBIENT_PROFILES[b.kind][id];
+    if(b.lighting) {b.sprite.filters?.internal.remove(b.lighting);b.lighting=undefined;}
+    if(b.profile?.brightness && this.scene.renderer.type===Phaser.WEBGL) {
+      b.sprite.enableFilters();
+      b.lighting=b.sprite.filters!.internal.addColorMatrix();
+      b.lighting.colorMatrix.brightness(b.profile.brightness);
+      if(b.profile.shadowLift) this.liftShadows(b.lighting,b.profile.shadowLift);
+    }
+  }
+  private liftShadows(filter: Phaser.Filters.ColorMatrix, amount: number): void {
+    filter.colorMatrix.multiply([1,0,0,0,amount, 0,1,0,0,amount, 0,0,1,0,amount, 0,0,0,1,0],true);
   }
   private makeMesh(b: Binding): void {
     if (this.meshCount>=MAX_MESHES) return;
+    b.grid=this.scene.renderer.type===Phaser.WEBGL?GRID:4;
+    if(b.profile?.gait) b.grid=32;
+    // Rigid artwork needs only one base quad. Subdividing it wastes vertices
+    // when many independently armed soldiers share the screen.
+    if(b.profile?.parts?.length && !b.profile.joints?.length && !b.profile.float) b.grid=1;
     // Small hand/head/crop regions need a vertex inside the feature on Canvas
     // too. Rigid cutouts still use the coarse grid and only a few moving quads.
     if(this.scene.renderer.type!==Phaser.WEBGL && b.profile?.joints?.some(j=>j.radius<.15)) b.grid=8;
@@ -113,6 +142,12 @@ export class AmbientSprites {
     // Not added to the display list: rendered in place of the Image, never
     // independently. Original image remains the interactive object.
     b.mesh=new Phaser.GameObjects.Mesh2D(this.scene,0,0,sprite.texture,vertices,indices,true);
+    if(b.profile?.brightness && this.scene.renderer.type===Phaser.WEBGL) {
+      b.mesh.enableFilters();
+      const light=b.mesh.filters!.internal.addColorMatrix();
+      light.colorMatrix.brightness(b.profile.brightness);
+      if(b.profile.shadowLift) this.liftShadows(light,b.profile.shadowLift);
+    }
     b.mesh.setSize(sprite.width,sprite.height).setOrigin(sprite.originX,sprite.originY);
     b.mesh.buildOrderedIndices(0); b.mesh.setUseOrderedIndices(true);
     this.meshCount++;
@@ -141,6 +176,7 @@ export class AmbientSprites {
     for(const b of this.bindings) {
       b.drawing=false;
       const s=b.sprite;
+      this.resolve(b);
       if(!detail || !s.visible || !s.active || !s.alpha || !b.enabled() || !this.canSee(...b.tile())) {this.dropMesh(b);continue;}
       let parent=s.parentContainer, visible=true;
       while(parent) {if(!parent.visible || !parent.alpha || !parent.active){visible=false;break;} parent=parent.parentContainer;}
@@ -148,10 +184,9 @@ export class AmbientSprites {
       const matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
       const x=matrix.tx,y=matrix.ty,w=s.width*matrix.scaleX,h=s.height*matrix.scaleY;
       if(x<view.left-w || x>view.right+w || y<view.top-h || y>view.bottom+h) {this.dropMesh(b);continue;}
-      this.resolve(b);
       const profile=b.profile;
       if(!profile) continue;
-      if(profile.joints?.length || profile.float) {
+      if(profile.joints?.length || profile.float || profile.gait) {
         if(!b.mesh) this.makeMesh(b);
         if(b.mesh) {
           const vertices=b.mesh.vertices, grid=b.grid;
@@ -159,9 +194,14 @@ export class AmbientSprites {
           for(let k=0;k<(profile.joints?.length??0);k++) b.motions[k]=ambientMotion(t,(b.seed+k*.173)%1,profile.joints![k].rhythm)*detail;
           // During an organic rest, the original one-quad Image is identical.
           // Retain the mesh for the next gesture without submitting idle geometry.
-          b.drawing=!!profile.float || b.motions.some(value=>Math.abs(value)>1e-6);
+          b.drawing=!!profile.float || !!profile.gait || b.motions.some(value=>Math.abs(value)>1e-6);
           if(b.drawing) for(let row=0;row<=grid;row++) for(let col=0;col<=grid;col++) {
             const u=col/grid,v=row/grid; let dx=0,dy=(profile.float??0)*ambientMotion(t,b.seed,'sea')*detail;
+            if(profile.gait) {
+              const offset=mountedOffset(u,v,t,b.seed,profile.gait);
+              // Keep the gait legible at intermediate zoom, like rigid attacks.
+              dx+=offset[0];dy+=offset[1];
+            }
             for(let k=0;k<(profile.joints?.length??0);k++) {
               const joint=profile.joints![k];
               const distance=Math.hypot(u-joint.x,v-joint.y)/joint.radius;
@@ -193,9 +233,55 @@ export class AmbientSprites {
       for(let i=0;i<profile.effects.length;i++) {
         const effect=profile.effects[i];
         const point=matrix.transformPoint((effect.x-s.originX)*s.width,(effect.y-s.originY)*s.height);
-        this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,(b.seed+i*.271)%1,detail*s.alpha);
+        // The compass face replaces painted artwork, so keep it opaque even
+        // at medium zoom; otherwise the old needle shows through the dial.
+        this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,(b.seed+i*.271)%1,(effect.kind==='compass'?1:detail)*s.alpha);
       }
       if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t);
+      if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);
+    }
+  }
+  private drawWeaponShots(g: Phaser.GameObjects.Graphics,b: Binding,t: number,detail: number): void {
+    const s=b.sprite,parts=b.profile!.parts!;
+    const matrix=s.getWorldTransformMatrix(this.worldMatrix,this.parentMatrix);
+    for(const shot of b.profile!.shots!) {
+      const seed=(b.seed+shot.part*.173)%1;
+      const elapsed=(weaponPhase(t,seed)-WEAPON_RELEASE)*WEAPON_PERIOD;
+      const age=Math.max(0,elapsed);
+      const duration=shot.kind==='arrow'?.48:.36;
+      if(elapsed < -1e-9 || age>duration) continue;
+      const part=parts[shot.part],motion=ambientMotion(t,seed,part.rhythm),angle=part.angle*motion+(part.angleOffset??0);
+      const cos=Math.cos(angle),sin=Math.sin(angle);
+      const local=(x:number,y:number) => matrix.transformPoint(
+        (part.pivot[0]+(x-part.pivot[0])*cos-(y-part.pivot[1])*sin+(part.dx??0)*motion-s.originX)*s.width,
+        (part.pivot[1]+(x-part.pivot[0])*sin+(y-part.pivot[1])*cos+(part.dy??0)*motion-s.originY)*s.height);
+      const muzzle=local(...shot.muzzle),tip=local(shot.muzzle[0]+shot.direction[0],shot.muzzle[1]+shot.direction[1]);
+      const scale=Math.hypot(tip.x-muzzle.x,tip.y-muzzle.y);
+      const dx=(tip.x-muzzle.x)/scale,dy=(tip.y-muzzle.y)/scale,nx=-dy,ny=dx;
+      const alpha=s.alpha*Math.max(.7,detail);
+      if(shot.kind==='arrow') {
+        const travel=age/duration*.32*scale,x=muzzle.x+dx*travel,y=muzzle.y+dy*travel;
+        const length=scale*.105;
+        g.lineStyle(Math.max(1.2,scale*.007),0xf5dfac,alpha*(1-age/duration*.6));
+        g.lineBetween(x-dx*length,y-dy*length,x,y);
+        g.lineBetween(x,y,x-dx*scale*.022+nx*scale*.014,y-dy*scale*.022+ny*scale*.014);
+        g.lineBetween(x,y,x-dx*scale*.022-nx*scale*.014,y-dy*scale*.022-ny*scale*.014);
+      } else {
+        if(age<.15) {
+          const length=scale*(shot.kind==='rocket'?.14:.10)*(1-age*.9),width=scale*.025;
+          g.fillStyle(0xffad35,alpha*.9);
+          g.fillTriangle(muzzle.x+nx*width,muzzle.y+ny*width,muzzle.x+dx*length,muzzle.y+dy*length,muzzle.x-nx*width,muzzle.y-ny*width);
+          g.fillStyle(0xfff3c2,alpha).fillCircle(muzzle.x+dx*scale*.025,muzzle.y+dy*scale*.025,scale*.016);
+        }
+        const q=age/duration;
+        g.fillStyle(0xd8d0b9,(1-q)*alpha*.48);
+        g.fillCircle(muzzle.x+dx*q*scale*.12,muzzle.y+dy*q*scale*.12-q*scale*.025,scale*(.013+q*.028));
+        if(shot.kind==='rocket') {
+          const travel=q*scale*.30;
+          g.lineStyle(Math.max(1.5,scale*.014),0xe9d6ac,(1-q)*alpha);
+          g.lineBetween(muzzle.x+dx*travel,muzzle.y+dy*travel,muzzle.x+dx*(travel+scale*.055),muzzle.y+dy*(travel+scale*.055));
+        }
+      }
     }
   }
   private drawRotors(b:Binding,t:number): void {
@@ -220,13 +306,13 @@ export class AmbientSprites {
       const part=parts?.[n], r=part?{x:part.pivot[0],y:part.pivot[1],period:1}:rotors[n];
       let motion=part?ambientMotion(t,(b.seed+n*.173)%1,part.rhythm):0;
       if(part?.positive) motion=Math.abs(motion);
-      let angle=part?part.angle*motion:t*Math.PI*2/r.period+b.seed*31+n*1.7;
+      let angle=part?part.angle*motion+(part.angleOffset??0):t*Math.PI*2/r.period+b.seed*31+n*1.7;
       let moveX=(part?.dx??0)*motion,moveY=(part?.dy??0)*motion;
       if(part?.link && parts) {
         const {hand,root,elbow,bone}=part.link,parent=parts[part.link.part];
         let pm=ambientMotion(t,(b.seed+part.link.part*.173)%1,parent.rhythm);
         if(parent.positive) pm=Math.abs(pm);
-        const pa=parent.angle*pm,hx=hand[0]-parent.pivot[0],hy=hand[1]-parent.pivot[1];
+        const pa=parent.angle*pm+(parent.angleOffset??0),hx=hand[0]-parent.pivot[0],hy=hand[1]-parent.pivot[1];
         const tx=parent.pivot[0]+hx*Math.cos(pa)-hy*Math.sin(pa)+(parent.dx??0)*pm;
         const ty=parent.pivot[1]+hx*Math.sin(pa)+hy*Math.cos(pa)+(parent.dy??0)*pm;
         const upper=Math.hypot(elbow[0]-root[0],elbow[1]-root[1]);
@@ -257,6 +343,7 @@ export class AmbientSprites {
     camera.addToRenderList(sprite);
     if (!Phaser.Renderer.Canvas.SetTransform(renderer, ctx, sprite, camera, parent)) return;
     try {
+      if(b.profile?.brightness) ctx.filter=`brightness(${b.profile!.brightness})`;
       const source = mesh.texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
       const vertices = mesh.vertices;
       if (b.profile?.rotors?.length || b.profile?.parts?.length) {
@@ -303,7 +390,7 @@ export class AmbientSprites {
     const texture=b.sprite.texture.key, cached=this.rotorTextures.get(texture);
     if(cached) return cached;
     const source=b.sprite.texture.getSourceImage() as HTMLImageElement;
-    const parts=b.profile!.parts!, cell=Math.min(512,Math.max(source.width,source.height));
+    const parts=b.profile!.parts!, cell=Math.min(512,Math.floor(4096/(parts.length+1)),Math.max(source.width,source.height));
     const key=`__ambient_parts_${texture}`, atlas=this.scene.textures.createCanvas(key,cell*(parts.length+1),cell)!;
     const ctx=atlas.context;ctx.drawImage(source,0,0,cell,cell);
     const path=(g:CanvasRenderingContext2D,points:readonly (readonly number[])[])=>{
@@ -388,6 +475,26 @@ export class AmbientSprites {
     const size=(e.size??1)*s, phase=(t/(e.period??(6+seed*5))+seed*17)%1;
     const envelope=Math.sin(phase*Math.PI)**2, color=e.color;
     switch(e.kind) {
+      case 'compass': {
+        const r=size*.073;
+        // Solid brass rim and ivory dial remain fixed in the scout's grip.
+        g.fillStyle(0x49351c,detail).fillCircle(x,y,r);
+        g.fillStyle(0xd6ab4f,detail).fillCircle(x,y,r*.91);
+        g.fillStyle(0xfff0c4,detail).fillCircle(x,y,r*.77);
+        for(let i=0;i<8;i++) {
+          const a=i*Math.PI/4,inner=i%2===0?.51:.61;
+          g.lineStyle(Math.max(.7,r*.075),0x57482d,detail);
+          g.lineBetween(x+Math.sin(a)*r*inner,y-Math.cos(a)*r*inner,x+Math.sin(a)*r*.70,y-Math.cos(a)*r*.70);
+        }
+        const a=t*Math.PI*2/(e.period??2.4)+seed*Math.PI*2;
+        const dx=Math.sin(a),dy=-Math.cos(a),nx=-dy,ny=dx;
+        g.fillStyle(0xb83225,detail);
+        g.fillTriangle(x+dx*r*.68,y+dy*r*.68,x+nx*r*.18,y+ny*r*.18,x-nx*r*.18,y-ny*r*.18);
+        g.fillStyle(0x274c67,detail);
+        g.fillTriangle(x-dx*r*.60,y-dy*r*.60,x+nx*r*.18,y+ny*r*.18,x-nx*r*.18,y-ny*r*.18);
+        g.fillStyle(0xe9c46b,detail).fillCircle(x,y,r*.12);
+        break;
+      }
       case 'smoke': case 'steam': case 'dust': {
         const dust=e.kind==='dust';
         if(dust && phase>.32) return;
@@ -505,7 +612,10 @@ export class AmbientSprites {
     }
     document.removeEventListener('visibilitychange', this.resetClock);
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN,this.shutdown,this);
-    for(const b of this.bindings) {b.sprite.off(Phaser.GameObjects.Events.DESTROY,b.release);this.dropMesh(b);}
+    for(const b of this.bindings) {
+      b.sprite.off(Phaser.GameObjects.Events.DESTROY,b.release);this.dropMesh(b);
+      if(b.lighting)b.sprite.filters?.internal.remove(b.lighting);
+    }
     this.bindings.clear();for(const g of this.layers.values()) g.destroy();this.layers.clear();
     for(const key of this.rotorTextures.values()) this.scene.textures.remove(key);
     this.rotorTextures.clear();systems.delete(this.scene);
