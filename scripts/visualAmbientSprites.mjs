@@ -61,17 +61,25 @@ const checks=await page.evaluate(()=>{
  window.reviewGallery('resource');const s=window.reviewScene,a=window.reviewAmbient;
  a.update(0,80);const before=a.bindings.size;
  const changed=[...a.bindings].filter(b=>b.mesh).length;
+ const school=[...a.bindings].find(b=>b.profile?.school);
+ const schoolBefore=[...school.mesh.vertices];
+ a.update(0,200);
+ const schoolMoves=school.mesh.vertices.some((v,i)=>v!==schoolBefore[i]);
+ a.isEnabled=()=>false;a.update(0,80);
+ const schoolStill=[...school.mesh.vertices];a.update(0,400);
+ const schoolPaused=school.drawing&&school.mesh.vertices.every((v,i)=>v===schoolStill[i]);
+ a.isEnabled=()=>true;
  a.canSee=()=>false;a.update(0,80);
  const hidden=[...a.layers.values()].every(g=>g.commandBuffer.length<=1)&&a.meshCount===0;
  a.canSee=()=>true;s.cameras.main.setZoom(.4);a.update(0,80);
- const overview=a.meshCount===0;
+ const overview=[...a.bindings].every(b=>!b.mesh||b.profile?.school);
  s.cameras.main.setZoom(1);a.update(0,80);
  for(const b of [...a.bindings].slice(0,10))b.sprite.destroy();
  const released=a.bindings.size===before-10;
  a.shutdown();a.shutdown();
- return {changed,hidden,overview,released,meshCount:a.meshCount,bindings:a.bindings.size,layers:a.layers.size};
+ return {changed,schoolMoves,schoolPaused,hidden,overview,released,meshCount:a.meshCount,bindings:a.bindings.size,layers:a.layers.size};
 });
-assert.ok(checks.changed>0);assert.ok(checks.hidden);assert.ok(checks.overview);assert.ok(checks.released);assert.equal(checks.meshCount,0);assert.equal(checks.bindings,0);assert.equal(checks.layers,0);
+assert.ok(checks.changed>0);assert.ok(checks.schoolMoves);assert.ok(checks.schoolPaused);assert.ok(checks.hidden);assert.ok(checks.overview);assert.ok(checks.released);assert.equal(checks.meshCount,0);assert.equal(checks.bindings,0);assert.equal(checks.layers,0);
 const stress=await page.evaluate(()=>{
  const s=window.reviewScene;window.reviewAmbient.shutdown();s.children.removeAll(true);
  const a=window.reviewAmbientClass.forScene(s);

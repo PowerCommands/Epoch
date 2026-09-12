@@ -1,3 +1,5 @@
+import type { BuildingActivity } from './BuildingActivities';
+import type { ResourceAnimal } from './ResourceAnimalMotion';
 import { FOOT_SOLDIER_PROFILES, weaponMotion, type WeaponRhythm, type WeaponShot } from './FootSoldierProfiles';
 import { RIDING_GAIT, type MountedGait } from './MountedGait';
 import { NAVAL_PROFILES } from './NavalProfiles';
@@ -7,15 +9,17 @@ import { WEAPON_EQUIPMENT_PROFILES } from './WeaponEquipmentProfiles';
  * Deliberately explicit: stored goods and stone do not inherit a living idle.
  */
 export type AmbientKind = 'resource' | 'improvement' | 'unit' | 'building' | 'wonder' | 'city';
-export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'afterburner' | 'light' | 'beacon' | 'water' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller' | 'compass';
+export type Activity = 'smoke' | 'steam' | 'dust' | 'fire' | 'afterburner' | 'light' | 'shimmer' | 'magic' | 'glow' | 'beacon' | 'water' | 'water_spout' | 'tail_splash' | 'birds' | 'people' | 'leaves' | 'sparks' | 'flag' | 'bubbles' | 'wheel' | 'clock' | 'propeller' | 'compass' | 'cowbell' | 'oil_jet' | 'aroma' | 'coal_dust' | 'crane' | 'mill_water';
 export interface Emitter { kind: Activity; x: number; y: number; size?: number; color?: number; period?: number; flicker?: number; }
-export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'row' | 'idle' | 'machine' | 'scan' | WeaponRhythm; }
+export interface Joint { x: number; y: number; radius: number; dx: number; dy: number; angle?: number; rhythm?: 'wind' | 'work' | 'sea' | 'whale_tail' | 'row' | 'idle' | 'machine' | 'hammer' | 'scan' | WeaponRhythm; }
 export interface Rotor { x: number; y: number; radius: number; blades: number; period: number; color: number; tips: [number, number][]; }
 export type Point = [number, number];
 /** Original-art cutout. Every pixel in a part receives the same rigid transform.
  * Repairs are restricted to explicitly painted surfaces behind the moving part. */
 export interface ArtPart {
   launch?: { delay: number; travel: Point };
+  fall?: { delay: number; travel: Point };
+  crane?: 'boom' | 'load' | 'rope';
   feature: string; polygon: Point[]; pivot: Point; angle: number; angleOffset?: number;
   rhythm: Joint['rhythm']; dx?: number; dy?: number;
   positive?: boolean;
@@ -25,7 +29,7 @@ export interface ArtPart {
   repairs?: { polygon: Point[]; offset: Point }[];
 }
 export interface TrackBelt { path: Point[]; width: number; links: number; period: number; }
-export interface AmbientProfile { effects: Emitter[]; bombs?: boolean; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
+export interface AmbientProfile { effects: Emitter[]; buildingActivity?: BuildingActivity; cropWind?: { strength: number; root: number }; animal?: ResourceAnimal; polarBearWalk?: boolean; school?: boolean; bombs?: boolean; joints?: Joint[]; rotors?: Rotor[]; parts?: ArtPart[]; shots?: WeaponShot[]; tracks?: TrackBelt[]; gait?: MountedGait; brightness?: number; shadowLift?: number; float?: number; note?: string; }
 const e = (kind: Activity, x: number, y: number, size = 1, color?: number, period?: number): Emitter => ({kind,x,y,size,color,period});
 const j = (x: number, y: number, radius: number, dx: number, dy: number, rhythm: Joint['rhythm'] = 'idle'): Joint => ({x,y,radius,dx,dy,rhythm});
 const p = (...effects: Emitter[]): AmbientProfile => ({effects});
@@ -33,26 +37,46 @@ const still: AmbientProfile = {effects: [], note: 'Inert material / stored goods
 const foliage = (x: number, y: number, radius = .2): Joint => j(x,y,radius,.009,0,'wind');
 
 export const RESOURCE_AMBIENT: Record<string, AmbientProfile> = {
-  cattle: {effects: [], parts: [{feature:'horns, face and muzzle; neck hinge above the fixed forelegs',
-    polygon:[[.145,.28],[.21,.36],[.32,.34],[.42,.35],[.52,.32],[.50,.42],[.43,.46],[.41,.58],[.375,.65],[.31,.65],[.285,.58],[.28,.48],[.22,.46],[.175,.415]],
-    pivot:[.38,.40],angle:-.18,dy:.018,rhythm:'idle',
-    repairs:[{polygon:[[.30,.35],[.50,.35],[.47,.56],[.34,.58]],offset:[-.08,0]}]}],
-    note:'Horned head nods at the neck. Hooves, legs and ribcage are untouched.'},
-  deer: {effects: [], joints: [j(.64,.24,.135,.014,-.009)]},
+  cattle: {effects:[e('cowbell',.46,.56,1)],animal:'cattle',note:'Continuous walk in place with alternating hooves and a swinging brass cowbell.'},
+  deer: {effects:[],animal:'deer',note:'Continuous bounding loop with leg tuck and no net travel.'},
   horses: {effects: [], joints: [j(.73,.31,.12,.009,.012),j(.22,.45,.1,-.016,0)]},
   ivory: {effects: [], joints: [j(.23,.64,.12,.015,.005),j(.39,.38,.11,.008,0)]},
-  sheep: {effects: [], joints: [j(.45,.73,.15,.008,.014),j(.66,.47,.14,-.008,.014),j(.3,.4,.13,.006,.012)]},
-  crabs: {effects: [], joints: [j(.28,.22,.13,-.014,.013),j(.75,.23,.13,.01,-.014)]},
-  fish: {effects: [e('water',.5,.7,.6)], joints: [j(.25,.68,.17,.018,.012,'sea')]},
-  whales: {effects: [e('water',.52,.75,.8)], joints: [j(.23,.25,.15,.009,.018,'sea')]},
-  wheat: {effects: [], joints: [foliage(.3,.35,.3),foliage(.62,.34,.3),foliage(.5,.62,.25)]},
+  polar_bear: {effects:[],polarBearWalk:true,note:'Continuous four-legged walk in place, with alternating paw swings and lifts, subtle shoulder bob and head nod. No net travel.'},
+  sheep: {effects:[],animal:'sheep',note:'Exactly five sheep walking back and forth within separate patches, with alternating steps.'},
+  crabs: {effects:[],animal:'crabs',note:'Continuous sideways scuttle, cycling legs and claws, returning along the same path.'},
+  fish: {effects: [],school:true,note:'Eight small fish circle in elliptical lanes with varied sizes, speeds and swimming sway; each faces its direction of travel.'},
+  whales: {effects: [e('water',.52,.75,.8),e('water_spout',.72,.403,1,0xd8f6ff,6),e('tail_splash',.17,.245,1,0xd8f6ff,6)],
+    joints: [{...j(.19,.20,.28,.012,.028,'whale_tail'),angle:.42}],
+    note:'A blowhole cascade alternates with two tail slaps, synchronized spray and expanding water rings during each six-second breathing cycle.'},
+  wheat: {effects:[],cropWind:{strength:.075,root:.88},note:'Strong rolling wind bends the wheat heads while the rooted base stays fixed.'},
   wine: {effects: [], joints: [foliage(.3,.4,.25),foliage(.6,.5,.3)]},
   natural_gas: p(e('fire',.5,.38,1.5,0x62bfff)),
-  shipwreck: p(e('bubbles',.52,.63,.6)),
-  aluminum: still, ancient_coins: still, ancient_pottery: still, ancient_treasure: still,
-  ancient_weapons: still, bananas: still, coal: still, copper: still, gems: still, iron: still,
-  niter: still, oil: still, pearls: still, rice: still, royal_relics: still, silk: still,
-  silver: still, spices: still, stone: still, uranium: still,
+  shipwreck: {effects:[e('bubbles',.52,.63,.6),e('magic',.5,.65,1.15,0x91ffe0,3.4),
+    e('shimmer',.38,.55,.95,0xffe4a0,2.3),e('shimmer',.64,.40,.85,0xb5fff1,2.7),
+    e('shimmer',.56,.76,.9,0xffe4a0,2.5),e('shimmer',.29,.72,.75,0xb6edff,2.9)],
+    note:'Continuous turquoise magical motes, golden treasure glints and cool underwater shimmer accompany rising bubbles around the wreck.'},
+  aluminum:p(e('shimmer',.43,.30,.8,0xe3f7ff,2.3),e('shimmer',.59,.45,.7,0xe3f7ff,2.7),e('shimmer',.43,.64,.6,0xe3f7ff,2.1)),
+  silver:p(e('shimmer',.36,.19,.85,0xf3f9ff,2.4),e('shimmer',.63,.33,.75,0xf3f9ff,2.1),e('shimmer',.49,.64,.7,0xf3f9ff,2.8)),
+  copper:p(e('shimmer',.39,.28,.8,0xffd6a0,2.2),e('shimmer',.58,.39,.7,0xffd6a0,2.6),e('shimmer',.46,.61,.65,0xffd6a0,2.9)),
+  uranium:p(e('glow',.5,.52,1,0x6cff45,3.2)),
+  niter:p(e('smoke',.46,.34,.9,0xdce2e3,2.8),e('smoke',.56,.36,.7,0xe9eeef,3.3)),
+  ancient_coins:p(e('magic',.5,.59,1,0xffd575,3.4),e('shimmer',.5,.31,.8,0xffe7a3,2.2),e('shimmer',.35,.60,.7,0xf1e5ff,2.8)),
+  ancient_pottery:p(e('magic',.5,.59,.85,0xe7bbff,3.8),e('shimmer',.67,.32,.65,0xffe6ae,2.6),e('shimmer',.35,.62,.6,0xe5c7ff,3.1)),
+  ancient_treasure:p(e('magic',.5,.58,1.15,0xffdb85,3.2),e('shimmer',.53,.37,1,0xfff0b8,2.2),e('shimmer',.66,.51,.85,0xb6ffe2,2.7),e('shimmer',.43,.70,.8,0xffdfff,2.5)),
+  ancient_weapons:p(e('magic',.5,.59,.9,0xb9e7ff,3.6),e('shimmer',.52,.31,.7,0xe2f4ff,2.5),e('shimmer',.57,.58,.7,0xffe3a5,2.9)),
+  royal_relics:p(e('magic',.5,.59,1.1,0xe5bdff,3.5),e('shimmer',.43,.31,.85,0xffe6a1,2.3),e('shimmer',.61,.57,1,0xcde4ff,2.7),e('shimmer',.36,.58,.65,0xffcaed,3)),
+  bananas: {effects:[],joints:[foliage(.3,.23,.22),foliage(.7,.23,.22)],parts:[
+    {feature:'left hanging banana bunch falls from its stalk',polygon:[[.335,.49],[.376,.482],[.415,.505],[.431,.557],[.415,.591],[.435,.628],[.412,.667],[.357,.682],[.299,.674],[.270,.622],[.274,.555],[.292,.518]],pivot:[.353,.50],angle:0,rhythm:'machine',fall:{delay:0,travel:[-.03,.26]}},
+    {feature:'right hanging banana bunch falls from its stalk',polygon:[[.62,.479],[.658,.482],[.689,.503],[.720,.549],[.737,.590],[.717,.657],[.692,.681],[.653,.687],[.604,.655],[.585,.611],[.583,.54]],pivot:[.642,.50],angle:0,rhythm:'machine',fall:{delay:2.5,travel:[.02,.25]}},
+    ],note:'Banana tree with swaying leaves and two original-art bunches falling in alternating endless loops.'},
+  gems:p(e('shimmer',.33,.48,.9,0xb8ffff,2.1),e('shimmer',.60,.37,.9,0xf1c4ff,2.5),e('magic',.5,.62,.8,0xdad5ff,3.4)),
+  pearls:p(e('shimmer',.35,.38,1.35,0xffe8ff,1.8),e('shimmer',.64,.49,1.4,0xcdefff,1.6),e('shimmer',.46,.67,1.2,0xffffff,2.1),e('shimmer',.62,.26,1,0xffffff,1.9),e('shimmer',.27,.58,1.05,0xffe8ff,2.2)),
+  silk:p(e('shimmer',.42,.37,.9,0xfff2db,2.9),e('shimmer',.65,.53,.75,0xe7dcff,2.5),e('shimmer',.40,.65,.7,0xfff2db,3.1)),
+  oil:p(e('oil_jet',.50,.64,1,0x141321,2.6)),
+  coal:p(e('coal_dust',.50,.61,1,0x292622,3.1)),
+  rice:{effects:[],cropWind:{strength:.065,root:.78},note:'Rice paddy with visibly wind-swept stalks; water, earth and roots remain still.'},
+  spices:p(e('aroma',.47,.43,1,0xc57b32,3.2),e('aroma',.32,.53,.8,0x845035,3.7),e('aroma',.58,.60,.85,0xc9572a,3.4)),
+  iron: still, stone: still,
 };
 export const IMPROVEMENT_AMBIENT: Record<string, AmbientProfile> = {
   farm: {effects: [], joints: [j(.28,.62,.13,.022,0,'wind'),j(.48,.74,.13,.022,0,'wind'),j(.61,.62,.11,.018,0,'wind')]},
@@ -78,9 +102,9 @@ export const BUILDING_AMBIENT: Record<string, AmbientProfile> = {
   bank: p(e('people',.59,.76,.5)), 'barbarian-camp': p(e('fire',.62,.74,.65),e('smoke',.22,.23,.6)),
   barracks: p(e('people',.51,.56,.65)), bomb_shelter: p(e('light',.44,.63,.35,0xd8b882,15)),
   broadcast_tower: p(e('light',.51,.2,.4,0xff7359,8)), castle: p(e('birds',.48,.35,.6)),
-  circus: p(e('flag',.49,.15,.65,0xd45338),e('people',.52,.83,.65)),
+  circus: {effects:[e('flag',.49,.15,.65,0xd45338)],buildingActivity:'circus'},
   coal_power_plant: p(e('smoke',.57,.19,1.05,0x706d64),e('smoke',.65,.24,.85,0x80786a)),
-  colosseum: p(e('people',.52,.6,.85)), courthouse: p(e('people',.56,.77,.45)),
+  colosseum: {effects:[],buildingActivity:'colosseum'}, courthouse: {effects:[],buildingActivity:'courthouse'},
   csp: p(e('light',.5,.24,.75,0xffdb8e,11)), factory: p(e('smoke',.57,.137,.8),e('smoke',.645,.195,.65)),
   forge: p(e('fire',.43,.64,.55),e('sparks',.43,.64,.65),e('smoke',.43,.12,.6)),
   garden: p(e('leaves',.32,.49,.5),e('leaves',.65,.48,.45)),
@@ -88,7 +112,12 @@ export const BUILDING_AMBIENT: Record<string, AmbientProfile> = {
   granary: p(e('birds',.5,.48,.5)), grand_stadium: p(e('people',.45,.63,.9),e('flag',.39,.2,.4,0xecc972)),
   harbor: p(e('water',.49,.8,.55),e('water',.72,.65,.45)), hospital: p(e('light',.4,.54,.35,0xffdeb5,17)),
   hotel: p(e('light',.5,.65,.45,0xffda94,19)), hydro_plant: p(e('water',.41,.73,.65),e('steam',.43,.7,.5)),
-  library: p(e('people',.49,.77,.45)), lighthouse: p(e('beacon',.5,.27,.7)), market: p(e('people',.5,.78,.7)),
+  library: {effects:[],buildingActivity:'library'}, lighthouse: p(e('beacon',.5,.27,.7)), market: {effects:[e('people',.5,.78,.7)],parts:[
+    {feature:'striped red-and-white canvas awning fluttering along its upper seam',polygon:[[.225,.407],[.582,.568],[.560,.655],[.519,.646],[.207,.520]],pivot:[.4,.49],angle:.026,dy:.006,rhythm:'wind'},
+    {feature:'left hanging cut of meat swaying from its hook',polygon:[[.617,.59],[.638,.592],[.647,.653],[.628,.692],[.608,.67]],pivot:[.626,.594],angle:.13,rhythm:'wind'},
+    {feature:'middle hanging cut of meat swaying from its hook',polygon:[[.665,.549],[.686,.550],[.700,.612],[.681,.650],[.657,.631]],pivot:[.676,.552],angle:-.12,rhythm:'wind'},
+    {feature:'right hanging cut of meat swaying from its hook',polygon:[[.708,.518],[.727,.516],[.747,.574],[.733,.613],[.708,.599]],pivot:[.718,.522],angle:.14,rhythm:'wind'},
+  ]},
   medical_lab: p(e('light',.45,.56,.4,0xbbdbe2,17)), military_academy: p(e('people',.53,.79,.55)),
   military_base: p(e('light',.5,.39,.4,0xc6d0ac,11),e('people',.46,.64,.45)), mint: p(e('people',.42,.70,.35)),
   monument: p(e('birds',.58,.42,.5)), museum: p(e('people',.53,.7,.55)),
@@ -105,10 +134,15 @@ export const BUILDING_AMBIENT: Record<string, AmbientProfile> = {
   sewers: p(e('water',.43,.66,.6)), shrine: p(e('light',.59,.66,.4,0xffc482,17)),
   solar_panels: p(e('light',.72,.73,.25,0xa0c6b8,19)), solar_plant: p(e('light',.64,.61,.3,0xa0c6b8,19)),
   spaceship_factory: p(e('steam',.55,.47,.55),e('light',.53,.26,.35,0xd1c18b,13)),
-  stable: p(e('people',.44,.7,.45)), stadium: p(e('people',.49,.49,.8),e('people',.57,.54,.6)),
-  stock_exchange: p(e('people',.5,.78,.6)), stone_works: p(e('dust',.53,.65,.6,0xc3b59b,9)),
+  stable: {effects:[],buildingActivity:'stable'}, stadium: p(e('people',.49,.49,.8),e('people',.57,.54,.6)),
+  stock_exchange: p(e('people',.5,.78,.6)), stone_works: {effects:[],buildingActivity:'stone_works',parts:[
+    {feature:'wooden crane boom slews half a turn after hoisting',polygon:[[.548,.104],[.681,.141],[.691,.121],[.726,.126],[.744,.16],[.72,.188],[.681,.177],[.55,.14]],pivot:[.55,.12],angle:0,rhythm:'machine',crane:'boom'},
+    {feature:'old vertical lifting ropes replaced by the moving hoist cable',polygon:[[.705,.181],[.735,.181],[.737,.355],[.699,.355]],pivot:[.72,.19],angle:0,rhythm:'machine',crane:'rope'},
+    {feature:'suspended stone block is hoisted, moved and lowered',polygon:[[.665,.354],[.724,.340],[.776,.361],[.779,.411],[.72,.431],[.665,.404]],pivot:[.72,.385],angle:0,rhythm:'machine',crane:'load',
+      repairs:[{polygon:[[.665,.354],[.724,.340],[.776,.361],[.779,.411],[.72,.431],[.665,.404]],offset:[0,-.075]}]},
+  ]},
   temple: p({...e('fire',.503,.533,1.35),flicker:2.4},e('sparks',.503,.515,.75),e('fire',.258,.675,.38),e('fire',.756,.675,.38)), university: p(e('people',.53,.78,.6)), walls: p(e('birds',.5,.41,.4)),
-  water_mill: p(e('water',.24,.69,.4),e('wheel',.335,.378,1)),
+  water_mill: p(e('mill_water',.24,.58,1),e('wheel',.335,.378,1)),
   wind_turbine: {effects: [], rotors: [{x:.492,y:.41,radius:.38,blades:3,period:7,color:0xd4d9d6,tips:[[.436,.04],[.266,.545],[.77,.61]]}]},
   windmill: {effects: [], rotors: [{x:.5,y:.422,radius:.29,blades:4,period:13,color:0x9e7c3f,tips:[[.354,.203],[.646,.203],[.646,.605],[.354,.605]]}]},
   workshop: p(e('dust',.45,.66,.55,0xc9aa77,7)),
@@ -234,6 +268,16 @@ export function aircraftLaunchAge(t: number, seed: number, delay = 0): number {
 /** Rest occupies most of an organic cycle. Independent cycle hashes vary both
  * the interval and the gesture, without touching the simulation RNG. */
 export function ambientMotion(t: number, seed: number, rhythm: Joint['rhythm']): number {
+  if(rhythm==='hammer') return .5+.5*Math.sin(t*8+seed*Math.PI*2);
+  if (rhythm === 'whale_tail') {
+    const phase=(t/6+seed*17)%1*6;
+    for(const impact of [2.8,4.5]) {
+      const age=phase-impact;
+      if(age>=-.5 && age<0) return -.7*Math.sin((age+.5)/.5*Math.PI);
+      if(age>=0 && age<.4) return Math.sin(age/.4*Math.PI);
+    }
+    return 0;
+  }
   if (rhythm === 'row') return Math.sin(t*Math.PI*2/1.8+seed*Math.PI*2);
   if (rhythm === 'thrust' || rhythm === 'slash' || rhythm === 'draw' || rhythm === 'recoil' || rhythm === 'aim' || rhythm === 'throw' || rhythm === 'burst') return weaponMotion(t,seed,rhythm);
   if (rhythm === 'scan') return Math.sin(t*Math.PI*2/3+seed*Math.PI*2);

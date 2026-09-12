@@ -1,3 +1,4 @@
+import { constructionVisualForTerrain } from './rendering/ConstructionVisual';
 import { AmbientSprites } from './rendering/AmbientSprites';
 import { GeometryClip, clearGeometryClip, setGeometryClip } from './rendering/GeometryClip';
 import Phaser from 'phaser';
@@ -5,7 +6,7 @@ import { TileMap } from './TileMap';
 import { UnitManager } from './UnitManager';
 import { NationManager } from './NationManager';
 import type { Unit } from '../entities/Unit';
-import { getUnitActionSpriteKey, getUnitSpriteKey } from '../utils/assetPaths';
+import { getUnitSpriteKey } from '../utils/assetPaths';
 import { isEmbarked } from './UnitMovementRules';
 import type { MapData } from '../types/map';
 
@@ -48,9 +49,8 @@ interface UnitVisual {
 /**
  * UnitRenderer draws sprites for units on the map.
  *
- * Uses per-unit-type textures. When a unit has an active action with an
- * override sprite (e.g. worker_action_improvement), the override is shown
- * and a build-progress percentage is drawn over it.
+ * Uses per-unit-type textures. Builders show a shared animated land site or
+ * crane barge during construction, with a build-progress percentage.
  */
 export class UnitRenderer {
   private readonly scene: Phaser.Scene;
@@ -190,7 +190,7 @@ export class UnitRenderer {
     const visual = this.visuals.get(unitId);
     if (unit === undefined || visual === undefined) return;
 
-    const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
+    const textureKey = this.resolveTextureKey(unit);
     if (visual.sprite.texture.key !== textureKey) {
       visual.sprite.setTexture(textureKey);
     }
@@ -248,7 +248,7 @@ export class UnitRenderer {
     const nation = this.nationManager.getNation(unit.ownerId);
     if (nation === undefined) return;
 
-    const textureKey = this.resolveTextureKey(unit.unitType.id, unit.actionStatus, unit.buildAction !== undefined);
+    const textureKey = this.resolveTextureKey(unit);
 
     const nationRing = this.scene.add.graphics();
     drawNationRing(nationRing, nation.color, nation.secondaryColor);
@@ -282,7 +282,7 @@ export class UnitRenderer {
   }
 
   private applyDerivedVisualState(unit: Unit, visual: UnitVisual): void {
-    if (isEmbarked(unit, this.mapData)) {
+    if (!visual.sprite.texture.key.startsWith('construction_') && isEmbarked(unit, this.mapData)) {
       visual.sprite.setTint(0x66ccff);
       visual.sprite.setAlpha(0.88);
       return;
@@ -292,11 +292,15 @@ export class UnitRenderer {
     visual.sprite.setAlpha(1);
   }
 
-  private resolveTextureKey(unitTypeId: string, actionStatus: string, hasBuildAction: boolean): string {
-    if (actionStatus === 'building' && hasBuildAction) {
-      const actionKey = getUnitActionSpriteKey(unitTypeId, 'improvement');
-      if (this.scene.textures.exists(actionKey)) return actionKey;
+  private resolveTextureKey(unit: Unit): string {
+    const tile=this.mapData.tiles[unit.tileY]?.[unit.tileX];
+    const build=tile?.improvementConstruction;
+    if ((unit.actionStatus==='building' && unit.buildAction!==undefined)
+      || (build?.transportUnitId===unit.id)) {
+      const construction=constructionVisualForTerrain(tile?.type);
+      if(this.scene.textures.exists(construction.key)) return construction.key;
     }
+    const unitTypeId=unit.unitType.id;
     const baseKey = getUnitSpriteKey(unitTypeId);
     if (this.scene.textures.exists(baseKey)) return baseKey;
     return FALLBACK_TEXTURE_KEY;

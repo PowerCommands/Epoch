@@ -57,7 +57,7 @@ export const PASTURE: TileImprovementDefinition = {
   id: 'pasture',
   spriteKey: 'improvement_pasture',
   name: 'Pasture',
-  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Desert],
+  allowedTileTypes: [TileType.Plains, TileType.Beach, TileType.Meadow, TileType.Forest, TileType.Desert, TileType.Ice],
   yieldBonus: { food: 1, production: 1, gold: 0 },
 };
 

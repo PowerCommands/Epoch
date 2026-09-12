@@ -249,6 +249,15 @@
       "iconPath": "/assets/sprites/resources/silk.png"
     },
     {
+      "id": "polar_bear",
+      "name": "Polar Bear",
+      "category": "luxury",
+      "allowedTileTypes": [
+        "ice"
+      ],
+      "iconPath": "/assets/sprites/resources/polar_bear.png"
+    },
+    {
       "id": "ivory",
       "name": "Ivory",
       "category": "luxury",

@@ -1,8 +1,13 @@
+import { drawBuildingActivity, stoneCranePose } from './BuildingActivities';
+import { resourceAnimalOffset } from './ResourceAnimalMotion';
+import { CONSTRUCTION_AMBIENT } from './ConstructionVisual';
 import Phaser from 'phaser';
 import { renderCanvasWithGeometryClip } from './GeometryClip';
 import { AMBIENT_PROFILES, aircraftLaunchAge, ambientMotion, ambientSeed, type AmbientKind, type AmbientProfile, type Emitter } from './AmbientProfiles';
 import { burstAge, weaponPhase, WEAPON_PERIOD, WEAPON_RELEASE } from './FootSoldierProfiles';
 import { mountedOffset } from './MountedGait';
+import { FISH_SCHOOL_COUNT, fishSchoolPose } from './FishSchool';
+import { polarBearWalkOffset } from './PolarBearWalk';
 
 type CanvasDraw = (
   renderer: Phaser.Renderer.Canvas.CanvasRenderer, image: Phaser.GameObjects.GameObject,
@@ -110,7 +115,7 @@ export class AmbientSprites {
     if(b.kind==='building' || b.kind==='wonder') b.kind=texture.startsWith('tile_wonder_')?'wonder':'building';
     const prefix: Record<AmbientKind,string> = {resource:'resource_',improvement:'improvement_',building:'tile_building_',wonder:'tile_wonder_',unit:'unit_',city:'city_'};
     const id=texture.startsWith(prefix[b.kind]) ? texture.slice(prefix[b.kind].length) : '';
-    b.profile=AMBIENT_PROFILES[b.kind][id];
+    b.profile=CONSTRUCTION_AMBIENT[texture]??AMBIENT_PROFILES[b.kind][id];
     if(b.lighting) {b.sprite.filters?.internal.remove(b.lighting);b.lighting=undefined;}
     if(b.profile?.brightness && this.scene.renderer.type===Phaser.WEBGL) {
       b.sprite.enableFilters();
@@ -125,7 +130,9 @@ export class AmbientSprites {
   private makeMesh(b: Binding): void {
     if (this.meshCount>=MAX_MESHES) return;
     b.grid=this.scene.renderer.type===Phaser.WEBGL?GRID:4;
-    if(b.profile?.gait) b.grid=32;
+    if(b.profile?.gait || b.profile?.polarBearWalk) b.grid=32;
+    if(b.profile?.animal) b.grid=b.profile.animal==='sheep'?24:16;
+    if(b.profile?.cropWind) b.grid=16;
     // Rigid artwork needs only one base quad. Subdividing it wastes vertices
     // when many independently armed soldiers share the screen.
     if(b.profile?.parts?.length && !b.profile.joints?.length && !b.profile.gait) b.grid=1;
@@ -139,6 +146,15 @@ export class AmbientSprites {
     for(let row=0;row<grid;row++) for(let col=0;col<grid;col++) {
       const a=row*(grid+1)+col,c=a+grid+1;
       indices.push(a,a+1,c,0,a+1,c+1,c,0);
+    }
+    if(b.profile?.school) {
+      // Replace the large fish completely with eight independently posed quads.
+      vertices.length=0;indices.length=0;
+      for(let n=0;n<FISH_SCHOOL_COUNT;n++) {
+        const a=n*4;
+        for(const [u,v] of [[0,0],[1,0],[0,1],[1,1]]) vertices.push(0,0,u,v);
+        indices.push(a,a+1,a+2,0,a+1,a+3,a+2,0);
+      }
     }
     // Not added to the display list: rendered in place of the Image, never
     // independently. Original image remains the interactive object.
@@ -178,7 +194,7 @@ export class AmbientSprites {
       b.drawing=false;
       const s=b.sprite;
       this.resolve(b);
-      if(!detail || !s.visible || !s.active || !s.alpha || !b.enabled() || !this.canSee(...b.tile())) {this.dropMesh(b);continue;}
+      if((!detail && !b.profile?.school) || !s.visible || !s.active || !s.alpha || !b.enabled() || !this.canSee(...b.tile())) {this.dropMesh(b);continue;}
       let parent=s.parentContainer, visible=true;
       while(parent) {if(!parent.visible || !parent.alpha || !parent.active){visible=false;break;} parent=parent.parentContainer;}
       if(!visible) {this.dropMesh(b);continue;}
@@ -187,7 +203,24 @@ export class AmbientSprites {
       if(x<view.left-w || x>view.right+w || y<view.top-h || y>view.bottom+h) {this.dropMesh(b);continue;}
       const profile=b.profile;
       if(!profile) continue;
-      if(profile.joints?.length || profile.float || profile.gait) {
+      if(profile.school) {
+        if(!b.mesh) this.makeMesh(b);
+        if(b.mesh) {
+          // Reduced motion / overview keeps a static school, never the old
+          // single large fish. Normal zoom retains full swimming speed.
+          const swimTime=detail?t:0;
+          for(let n=0;n<FISH_SCHOOL_COUNT;n++) {
+            const pose=fishSchoolPose(n,swimTime,b.seed),cos=Math.cos(pose.angle),sin=Math.sin(pose.angle);
+            for(let k=0;k<4;k++) {
+              const dx=(k%2-.5)*pose.scale,dy=(Math.floor(k/2)-.5)*pose.scale,i=(n*4+k)*4;
+              b.mesh.vertices[i]=(pose.x-s.originX+dx*cos-dy*sin)*s.width;
+              b.mesh.vertices[i+1]=(pose.y-s.originY+dx*sin+dy*cos)*s.height;
+            }
+          }
+          b.drawing=true;
+        }
+      }
+      if(profile.joints?.length || profile.float || profile.gait || profile.polarBearWalk || profile.animal || profile.cropWind) {
         if(!b.mesh) this.makeMesh(b);
         if(b.mesh) {
           const vertices=b.mesh.vertices, grid=b.grid;
@@ -195,9 +228,22 @@ export class AmbientSprites {
           for(let k=0;k<(profile.joints?.length??0);k++) b.motions[k]=ambientMotion(t,(b.seed+k*.173)%1,profile.joints![k].rhythm)*detail;
           // During an organic rest, the original one-quad Image is identical.
           // Retain the mesh for the next gesture without submitting idle geometry.
-          b.drawing=!!profile.float || !!profile.gait || b.motions.some(value=>Math.abs(value)>1e-6);
+          b.drawing=!!profile.float || !!profile.gait || !!profile.polarBearWalk || !!profile.animal || !!profile.cropWind || b.motions.some(value=>Math.abs(value)>1e-6);
           if(b.drawing) for(let row=0;row<=grid;row++) for(let col=0;col<=grid;col++) {
             const u=col/grid,v=row/grid; let dx=0,dy=(profile.float??0)*ambientMotion(t,b.seed,'sea')*detail;
+            if(profile.cropWind) {
+              const bend=Math.max(0,1-v/profile.cropWind.root);
+              const gust=.8+.2*Math.sin(t*.6+b.seed*9);
+              dx+=profile.cropWind.strength*bend*bend*Math.sin(t*1.6+u*2.5+b.seed*6)*gust;
+              dy-=Math.abs(dx)*.12;
+            }
+            if(profile.animal) {
+              const offset=resourceAnimalOffset(profile.animal,u,v,t,b.seed);dx+=offset[0];dy+=offset[1];
+            }
+            if(profile.polarBearWalk) {
+              const offset=polarBearWalkOffset(u,v,t,b.seed);
+              dx+=offset[0];dy+=offset[1];
+            }
             if(profile.gait) {
               const offset=mountedOffset(u,v,t,b.seed,profile.gait);
               // Keep the gait legible at intermediate zoom, like rigid attacks.
@@ -224,7 +270,7 @@ export class AmbientSprites {
       let depth=DEPTH[b.kind];
       if(b.kind==='resource') depth=s.depth+.01;
       let g=this.layers.get(depth);
-      if(!g && (profile.effects.length || profile.rotors?.length || profile.parts?.length)) {
+      if(!g && (profile.effects.length || profile.rotors?.length || profile.parts?.length || profile.buildingActivity)) {
         g=this.scene.add.graphics().setDepth(depth).setName(`ambient-objects-${depth}`);
         this.layers.set(depth,g);
       }
@@ -236,9 +282,12 @@ export class AmbientSprites {
         const point=matrix.transformPoint((effect.x-s.originX)*s.width,(effect.y-s.originY)*s.height);
         // The compass face replaces painted artwork, so keep it opaque even
         // at medium zoom; otherwise the old needle shows through the dial.
-        this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,(b.seed+i*.271)%1,(effect.kind==='compass'?1:detail)*s.alpha);
+        // Whale breath, tail motion and impact spray share one six-second clock.
+        const effectSeed=effect.kind==='water_spout'||effect.kind==='tail_splash'||effect.kind==='cowbell'?b.seed:(b.seed+i*.271)%1;
+        this.drawEffect(g,effect,point.x,point.y,Math.min(Math.abs(w),Math.abs(h)),t,effectSeed,(effect.kind==='compass'?1:detail)*s.alpha);
       }
       if(profile.rotors?.length || profile.parts?.length) this.drawRotors(b,t,detail);
+      if(profile.buildingActivity) drawBuildingActivity(g,s,profile.buildingActivity,t,b.seed,detail);
       if(profile.bombs || profile.parts?.some(part=>part.launch)) this.drawAircraftWeapons(g,b,t,detail);
       if(profile.shots?.length && b.drawing && !s.isTinted) this.drawWeaponShots(g,b,t,detail);
       if(profile.tracks?.length && b.drawing && !s.isTinted) this.drawTracks(g,b,t,detail);
@@ -394,9 +443,19 @@ export class AmbientSprites {
       const heave=(b.profile!.float??0)*ambientMotion(t,b.seed,'sea')*detail;
       let moveX=(part?.dx??0)*motion,moveY=(part?.dy??0)*motion+heave;
       const launchAge=part?.launch?aircraftLaunchAge(t,b.seed,part.launch.delay):-1;
+      const fallAge=part?.fall?aircraftLaunchAge(t,b.seed,part.fall.delay):-1;
+      if(part?.fall) {
+        const q=Math.max(0,Math.min(1,fallAge/1.2));
+        moveX=part.fall.travel[0]*q;moveY=part.fall.travel[1]*q*q;angle=q*.35;
+      }
       if(part?.launch) {
         const travel=(Math.max(0,Math.min(.9,launchAge))/.9)**2;
         moveX=part.launch.travel[0]*travel;moveY=part.launch.travel[1]*travel;
+      }
+      if(part?.crane) {
+        const pose=stoneCranePose(t,b.seed);
+        if(part.crane==='boom') angle=pose.angle;
+        if(part.crane==='load') {moveX=.17*(Math.cos(pose.angle)-1);moveY=.04*Math.sin(pose.angle)-pose.lift*.14;}
       }
       if(part?.link && parts) {
         const {hand,root,elbow,bone}=part.link,parent=parts[part.link.part];
@@ -419,10 +478,10 @@ export class AmbientSprites {
         }
       }
       for(let k=0;k<4;k++) {
-        const hidden=!!part?.launch && launchAge>.9;
+        const hidden=part?.crane==='rope'||(!!part?.launch && launchAge>.9)||(!!part?.fall && fallAge>1.2);
         const u=hidden?r.x:k%2,v=hidden?r.y:Math.floor(k/2),dx=(u-r.x)*s.width,dy=(v-r.y)*s.height;
         const i=((b.grid+1)**2+n*4+k)*4;
-        const aspect=part?.spin?.aspect??1;
+        const aspect=part?.crane==='boom'?.4:part?.spin?.aspect??1;
         m.vertices[i]=(r.x-s.originX)*s.width+dx*Math.cos(angle)-dy*Math.sin(angle)*aspect+moveX*s.width;
         m.vertices[i+1]=(r.y-s.originY)*s.height+dx*Math.sin(angle)/aspect+dy*Math.cos(angle)+moveY*s.height;
       }
@@ -587,6 +646,33 @@ export class AmbientSprites {
         g.fillStyle(0xe9c46b,detail).fillCircle(x,y,r*.12);
         break;
       }
+      case 'aroma': {
+        // Overlapping warm-colored curls form a continuous, rising scent trail.
+        for(let n=0;n<12;n++) {
+          const q=(phase+n/12)%1;
+          const px=x+size*Math.sin(q*7+t*.65+seed*13)*(.012+q*.035);
+          const py=y-size*q*.42;
+          const alpha=Math.sin(q*Math.PI)*.48*detail;
+          g.fillStyle(color??0xb87937,alpha);
+          g.fillEllipse(px,py,size*(.018+q*.065),size*(.030+q*.045));
+          g.fillStyle(0xf1c68c,alpha*.35).fillEllipse(px-size*.006,py,size*(.008+q*.025),size*.027);
+        }
+        break;
+      }
+      case 'coal_dust': {
+        g.fillStyle(0x171513,.13*detail).fillEllipse(x,y+size*.13,size*.65,size*.19);
+        for(let n=0;n<10;n++) {
+          const q=(phase+n/10)%1;
+          const direction=n%2?1:-1;
+          const px=x+size*(direction*(.04+q*.22)+Math.sin(t+q*5+n)*.015);
+          const py=y+size*(.10-q*.29);
+          const alpha=Math.sin(q*Math.PI)*.47*detail;
+          g.fillStyle(color??0x292622,alpha);
+          g.fillEllipse(px,py,size*(.04+q*.105),size*(.027+q*.072));
+          g.fillStyle(0x110f0d,alpha*.8).fillCircle(px+size*.018,py+size*.033,size*.006);
+        }
+        break;
+      }
       case 'smoke': case 'steam': case 'dust': {
         const dust=e.kind==='dust';
         if(dust && phase>.32) return;
@@ -628,6 +714,117 @@ export class AmbientSprites {
         g.fillStyle(0xf3fbff,.9*detail).fillEllipse(x,y,width, width*.55);
         break;
       }
+      case 'shimmer': {
+        // Never fully extinguish: staggered highlights keep the metal shining
+        // while their bright peaks pass smoothly around the stack.
+        const shine=.2+.8*envelope,reach=size*(.025+.035*shine);
+        const cx=x+Math.sin(phase*Math.PI*2)*size*.012;
+        g.fillStyle(color??0xe7f5ff,.12*shine*detail).fillCircle(cx,y,reach*.8);
+        g.fillStyle(color??0xe7f5ff,.85*shine*detail);
+        g.fillTriangle(cx-reach,y,cx,y-size*.006,cx+reach,y);
+        g.fillTriangle(cx-reach,y,cx,y+size*.006,cx+reach,y);
+        g.fillTriangle(cx,y-reach*.8,cx-size*.006,y,cx,y+reach*.8);
+        g.fillTriangle(cx,y-reach*.8,cx+size*.006,y,cx,y+reach*.8);
+        g.fillStyle(0xffffff,.9*shine*detail).fillCircle(cx,y,size*.008);
+        break;
+      }
+      case 'crane': {
+        const angle=t*Math.PI*2/8+seed*Math.PI*2;
+        const tx=x+Math.cos(angle)*size*.29,ty=y-size*.24+Math.sin(angle)*size*.09;
+        const width=size*.025;
+        // Steel lattice boom turns through a full circle in deck perspective.
+        g.lineStyle(Math.max(2,size*.017),0x594329,detail);g.lineBetween(x,y,tx,ty);
+        g.lineStyle(Math.max(1.2,size*.010),0xe7ad39,detail);
+        g.lineBetween(x-width,y,tx-width*.35,ty);
+        g.lineBetween(x+width,y,tx+width*.35,ty);
+        for(let n=0;n<6;n++) {
+          const q=n/6,r=(n+1)/6;
+          const w=width*(1-q*.65),nw=width*(1-r*.65);
+          g.lineBetween(x+(tx-x)*q-w,y+(ty-y)*q,x+(tx-x)*r+nw,y+(ty-y)*r);
+        }
+        const lift=size*(.075+.12*(.5+.5*Math.sin(t*Math.PI*2/3.2+seed*5)));
+        const cargoY=ty+lift;
+        g.lineStyle(Math.max(.7,size*.004),0x31363b,detail);g.lineBetween(tx,ty,tx,cargoY);
+        g.fillStyle(0x41484d,detail).fillCircle(tx,ty,size*.013);
+        g.lineBetween(tx,cargoY,tx-size*.025,cargoY+size*.023);
+        g.lineBetween(tx,cargoY,tx+size*.025,cargoY+size*.023);
+        g.fillStyle(0x9d6e38,detail).fillRect(tx-size*.035,cargoY+size*.02,size*.07,size*.048);
+        g.fillStyle(0xdbb479,detail).fillRect(tx-size*.035,cargoY+size*.02,size*.07,size*.012);
+        g.lineStyle(Math.max(.7,size*.004),0x57412b,detail);
+        g.lineBetween(tx-size*.02,cargoY+size*.021,tx-size*.02,cargoY+size*.068);
+        g.lineBetween(tx+size*.02,cargoY+size*.021,tx+size*.02,cargoY+size*.068);
+        break;
+      }
+      case 'cowbell': {
+        const phase=t*Math.PI*2/1.6+seed*Math.PI*2,angle=Math.sin(phase)*.48;
+        const ax=x+size*.012*Math.sin(phase),ay=y+size*.006*Math.cos(phase*2);
+        const bx=ax+Math.sin(angle)*size*.08,by=ay+Math.cos(angle)*size*.08;
+        g.lineStyle(Math.max(1,size*.009),0x634020,detail);
+        g.lineBetween(ax-size*.023,ay-size*.035,ax,ay);
+        g.lineBetween(ax,ay,bx,by);
+        const point=(dx:number,dy:number)=>[bx+size*(dx*Math.cos(angle)-dy*Math.sin(angle)),by+size*(dx*Math.sin(angle)+dy*Math.cos(angle))];
+        const a=point(-.017,0),b=point(.017,0),c=point(.029,.040),d=point(-.029,.040);
+        g.fillStyle(0xe9b949,detail);
+        g.fillTriangle(a[0],a[1],b[0],b[1],c[0],c[1]);g.fillTriangle(a[0],a[1],c[0],c[1],d[0],d[1]);
+        g.lineStyle(Math.max(.7,size*.006),0x755025,detail);g.lineBetween(d[0],d[1],c[0],c[1]);
+        const shine=point(-.007,.018);g.fillStyle(0xffed9b,.85*detail).fillEllipse(shine[0],shine[1],size*.008,size*.020);
+        const clapper=point(Math.sin(phase+.6)*.009,.047);g.fillStyle(0x80551e,detail).fillCircle(clapper[0],clapper[1],size*.009);
+        break;
+      }
+      case 'oil_jet': {
+        const pulse=.85+.15*Math.sin(t*5+seed*13);
+        const top=y-size*.29*pulse;
+        g.fillStyle(0x14121b,.95*detail);g.fillTriangle(x-size*.027,y,x+size*.007,top,x+size*.033,y);
+        g.lineStyle(Math.max(1,size*.009),0x62617b,.8*detail);g.lineBetween(x+size*.009,y-size*.03,x+size*.007,top+size*.025);
+        for(let n=0;n<12;n++) {
+          const q=(phase+n/12)%1;
+          const px=x+size*(n%2?1:-1)*(.07+n*.007)*q;
+          const py=y+size*(-.48*q+.52*q*q);
+          const alpha=Math.sin(q*Math.PI)**.5*detail;
+          g.fillStyle(0x15121b,alpha).fillEllipse(px,py,size*.018,size*.030);
+          g.fillStyle(0x79758e,alpha*.65).fillCircle(px-size*.003,py-size*.006,size*.004);
+        }
+        for(let n=0;n<6;n++) {
+          const q=(phase+n/6)%1,cx=x+size*((n%3)-1)*.19,cy=y+size*(.055+Math.floor(n/3)*.06);
+          const r=size*(.012+.026*q),alpha=Math.sin(q*Math.PI)*detail;
+          g.fillStyle(0x171321,alpha).fillEllipse(cx,cy,r*2,r*1.35);
+          g.lineStyle(Math.max(.5,size*.003),0x8e87b5,.6*alpha);g.strokeEllipse(cx,cy,r*2,r*1.35);
+          g.fillStyle(0xb0a6c9,.7*alpha).fillEllipse(cx-r*.35,cy-r*.25,r*.5,r*.22);
+        }
+        break;
+      }
+      case 'magic': {
+        const tint=color??0xffdb85;
+        g.fillStyle(tint,(.035+.02*envelope)*detail).fillEllipse(x,y,size*.55,size*.28);
+        // Staggered motes rise and curl above the treasure continuously;
+        // each fades at both ends so the loop has no visible reset.
+        for(let n=0;n<9;n++) {
+          const q=(phase+n/9)%1;
+          const alpha=Math.sin(q*Math.PI)**2*detail;
+          const px=x+size*((n%3-1)*.17+Math.sin(q*5+n*2.4)*.035);
+          const py=y+size*(.14-q*.48);
+          const r=size*(.006+.007*Math.sin(q*Math.PI)**2);
+          g.fillStyle(tint,.13*alpha).fillCircle(px,py,r*2.6);
+          g.fillStyle(n%3===0?0xfff8db:tint,.9*alpha);
+          g.fillTriangle(px-r,py,px,py-r*.3,px+r,py);
+          g.fillTriangle(px-r,py,px,py+r*.3,px+r,py);
+          g.fillTriangle(px,py-r*1.5,px-r*.3,py,px,py+r*1.5);
+          g.fillTriangle(px,py-r*1.5,px+r*.3,py,px,py+r*1.5);
+          g.fillStyle(0xffffff,.8*alpha).fillCircle(px,py,r*.25);
+        }
+        break;
+      }
+      case 'glow': {
+        const pulse=.75+.25*Math.sin(phase*Math.PI*2);
+        // Layer translucent ellipses into a soft halo around the canister.
+        // The base brightness stays positive throughout the breathing loop.
+        for(let n=5;n>=0;n--) {
+          g.fillStyle(color??0x6cff45,(.025+(5-n)*.008)*pulse*detail);
+          g.fillEllipse(x,y,size*(.27+n*.039),size*(.53+n*.026));
+        }
+        g.fillStyle(0xb7ff89,.22*pulse*detail).fillEllipse(x,y-size*.25,size*.21,size*.065);
+        break;
+      }
       case 'light': {
         // Slow occupancy changes, no strobing. Signals remain small and dim.
         g.fillStyle(color??0xffd7a0,(.12+envelope*.35)*detail).fillCircle(x,y,size*.028);
@@ -638,6 +835,69 @@ export class AmbientSprites {
         g.fillStyle(0xffe6aa,.2*detail);
         g.fillTriangle(x,y,x+Math.cos(a-spread)*reach,y+Math.sin(a-spread)*reach*.45,x+Math.cos(a+spread)*reach,y+Math.sin(a+spread)*reach*.45);
         g.fillStyle(0xffe9b5,(.35+.25*Math.cos(a)**8)*detail).fillCircle(x,y,size*.018);break;
+      }
+      case 'tail_splash': {
+        const cycle=phase*(e.period??6);
+        for(const impact of [2.8,4.5]) {
+          const age=cycle-impact;
+          if(age<0 || age>1.35) continue;
+          const q=age/1.35;
+          // Foam marks the slap; widening rings persist as the spray falls.
+          g.fillStyle(0xf0fcff,.45*detail*Math.max(0,1-age/.4));
+          g.fillEllipse(x,y,size*(.06+age*.20),size*.025);
+          for(let n=0;n<2;n++) {
+            const ring=q-n*.12;
+            if(ring<0) continue;
+            g.lineStyle(Math.max(.6,size*.005),color??0xd8f6ff,(1-q)*.65*detail);
+            g.strokeEllipse(x,y+size*.012*ring,size*(.07+ring*.34),size*(.025+ring*.11));
+          }
+          for(let n=0;n<18;n++) {
+            const flight=age-(n%3)*.025;
+            if(flight<0) continue;
+            const spread=(n/17-.5)*.55;
+            const lift=.20+(n%5)*.036;
+            const dy=-lift*flight+.48*flight*flight;
+            if(dy>0) continue;
+            const alpha=detail*.9*Math.min(1,-dy/.015);
+            g.fillStyle(color??0xd8f6ff,alpha);
+            g.fillEllipse(x+size*spread*flight,y+size*dy,size*.009,size*.015);
+          }
+        }
+        break;
+      }
+      case 'water_spout': {
+        const age=phase*(e.period??6);
+        if(age>2.1) break;
+        // A narrow jet grows directly out of the painted blowhole, then
+        // separates into a fan of ballistic droplets before the next breath.
+        const pressure=Math.min(1,age/.22)*Math.max(0,Math.min(1,(1.2-age)/.4));
+        const height=size*.32*pressure;
+        if(pressure>0) {
+          const spread=size*.047*pressure;
+          g.fillStyle(0x75c7ed,.25*detail*pressure);
+          g.fillTriangle(x-size*.014,y,x-spread,y-height,x+spread,y-height);
+          g.fillStyle(color??0xd8f6ff,.8*detail*pressure);
+          g.fillTriangle(x-size*.009,y,x-size*.019,y-height*.88,x+size*.01,y);
+          g.lineStyle(Math.max(.7,size*.007),0xf1fcff,.9*detail*pressure);
+          g.lineBetween(x,y,x+size*.005,y-height*.82);
+          for(let i=0;i<5;i++) {
+            g.fillStyle(color??0xd8f6ff,.18*detail*pressure);
+            g.fillEllipse(x+(i-2)*spread*.48,y-height+Math.abs(i-2)*size*.01,spread*.85,size*.036);
+          }
+        }
+        for(let i=0;i<24;i++) {
+          const flight=age-i*.033;
+          if(flight<0) continue;
+          const variation=ambientSeed(`whale-droplet:${i}`);
+          const dx=((i%2?1:-1)*(.035+variation*.15))*flight;
+          const dy=-(.43+variation*.19)*flight+.46*flight*flight;
+          if(dy>0) continue;
+          const fade=Math.min(1,flight/.08)*Math.min(1,-dy/.055);
+          const radius=size*(.0035+variation*.003);
+          g.fillStyle(color??0xd8f6ff,.85*detail*fade);
+          g.fillEllipse(x+dx*size,y+dy*size,radius*1.5,radius*(flight>.6?2.8:1.8));
+        }
+        break;
       }
       case 'water': {
         for(let i=0;i<2;i++) {
@@ -675,15 +935,29 @@ export class AmbientSprites {
         g.fillStyle(0xe8b76c,(1-q)*.5*detail);
         for(let i=0;i<3;i++) g.fillCircle(x+(i-1)*q*size*.05,y-Math.sin(q*Math.PI)*size*.06,size*.006);break;
       }
+      case 'mill_water': {
+        for(let n=0;n<5;n++) {
+          const dx=(n-2)*size*.011,flow=(t*1.7+n*.2+seed)%1;
+          g.lineStyle(Math.max(.7,size*.008),n%2?0xe1f9ff:0x7dcde8,.68*detail);
+          g.lineBetween(x+dx,y,x+dx+size*.006*Math.sin(t*5+n),y+size*.095);
+          g.fillStyle(0xe2faff,.8*detail).fillEllipse(x+dx,y+flow*size*.11,size*.009,size*.020);
+        }
+        for(let n=0;n<3;n++) {
+          const q=(t*.9+n/3+seed)%1;
+          g.lineStyle(Math.max(.5,size*.004),0xc9f3ff,(1-q)*.7*detail);
+          g.strokeEllipse(x,y+size*.11,size*(.04+q*.12),size*(.012+q*.025));
+        }
+        break;
+      }
       case 'wheel': {
         // Only the exposed left rim is visible in the isometric watermill art.
         // Paddles pass behind the mill roof; neither roof nor axle deforms.
         for(let i=0;i<12;i++) {
-          const a=t*.35+seed*31+i*Math.PI/6;
+          const a=t*1.7+seed*31+i*Math.PI/6;
           const dx=Math.cos(a)*s*.11,dy=Math.sin(a)*s*.28;
           if(Math.cos(a)>-.25) continue;
           const px=x+dx*.94-dy*.34,py=y+dx*.34+dy*.94;
-          g.lineStyle(s*.014,0xc9ac77,.35*detail);
+          g.lineStyle(s*.025,i%2?0xdec18b:0xb8955d,.95*detail);
           g.lineBetween(px,py,px+s*.035,py-s*.024);
         }break;
       }

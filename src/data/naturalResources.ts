@@ -269,6 +269,17 @@ export const NATURAL_RESOURCES: NaturalResourceDefinition[] = [
     improvementId: 'plantation',
   },
   {
+    id: 'polar_bear',
+    name: 'Polar Bear',
+    category: 'luxury',
+    allowedTileTypes: [TileType.Ice],
+    yieldBonus: yieldBonus({ gold: 2, culture: 1 }),
+    iconKey: iconKey('polar_bear'),
+    weight: 2,
+    improvementId: 'pasture',
+    notes: 'An Arctic luxury resource found exclusively on ice.',
+  },
+  {
     id: 'ivory',
     name: 'Ivory',
     category: 'luxury',

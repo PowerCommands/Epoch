@@ -6,38 +6,39 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 
 | Sprite | Depicted feature and animation decision |
 | --- | --- |
-| cattle | Separate horned head rotates at neck; no leg, hoof or ribcage stretch. |
-| deer | Small face/antler-region glance; legs and rump fixed. |
+| cattle | Continuous alternating hoof steps and a brass bell swinging from a leather strap at the neck. |
+| deer | Endless bounding loop with vertical hops and leg tuck; no net travel. |
 | horses | Muzzle and tail-tip movement in the right-facing horse, fixed legs. |
 | ivory | Elephant trunk tip and ear movement, no deformation of feet or body. |
-| sheep | Three small head regions in the flock move independently, fixed bodies. |
-| crabs | Two claw-tip movements, stable shell and walking legs; no invented water below the isolated icon. |
-| fish | Tail-fin motion with nearby water rings, fixed fish torso. |
-| whales | Tail-fluke motion and water rings, stable body. |
-| wheat | Wind through three ear clusters; no whole patch displacement. |
+| sheep | Exactly five separate sheep walk back and forth in bounded patches, with alternating steps. |
+| crabs | Endless sideways scuttle with cycling leg and claw motion. |
+| fish | Eight small fish replace the single large fish, circling in elliptical lanes with varied size, speed and gentle swimming sway. Each faces its travel direction; overview and reduced motion show a static school. |
+| polar_bear | Four-legged walk in place on ice: alternating paw swings and lifts, subtle body bob and head nod. White-fur artwork on transparent background; no net movement and no door. |
+| whales | Blowhole cascade every six seconds. During the breathing pause, the tail lifts and slaps twice (2.8s and 4.5s), throwing bright droplets and expanding foam rings. All three effects share the tail animation clock; the head stays fixed. |
+| wheat | Stronger rolling gusts visibly bend the wheat heads back and forth in a perpetual wind loop. |
 | wine | Vine foliage movement across planted rows. |
 | natural_gas | Blue flame over the pictured burner; metal fitting stays fixed. |
-| shipwreck | Bubbles rising from the submerged wreck, fixed timber and seabed. |
-| aluminum | Inert material / stored goods: no self-propelled activity. |
-| ancient_coins | Inert material / stored goods: no self-propelled activity. |
-| ancient_pottery | Inert material / stored goods: no self-propelled activity. |
-| ancient_treasure | Inert material / stored goods: no self-propelled activity. |
-| ancient_weapons | Inert material / stored goods: no self-propelled activity. |
-| bananas | Inert material / stored goods: no self-propelled activity. |
-| coal | Inert material / stored goods: no self-propelled activity. |
-| copper | Inert material / stored goods: no self-propelled activity. |
-| gems | Inert material / stored goods: no self-propelled activity. |
+| shipwreck | Continuous turquoise magical motes, golden treasure glints and cool underwater shimmer around the wreck, with rising bubbles. |
+| aluminum | Three cool-white glints continuously brighten and soften across the metal faces; ingots remain rigid. |
+| ancient_coins | Golden shimmer on the coins with continuously rising magical motes. |
+| ancient_pottery | Soft lavender magical motes and warm glints on the ancient pottery. |
+| ancient_treasure | Golden magical motes rise from the chest; gold and colored gem glints loop continuously. |
+| ancient_weapons | Cool blue magical motes and warm/cool glints on the ancient metalwork. |
+| bananas | Banana tree with swaying leaves; the two painted bunches detach and fall alternately, then regrow in a perpetual loop. |
+| coal | Continuous charcoal dust clouds, dark settling grit and a low soot haze make the heap look dirty. |
+| copper | Three warm highlights continuously shimmer across the copper ingots, with no inactive interval. |
+| gems | Colored gemstone glints and soft magical sparkle loop continuously. |
 | iron | Inert material / stored goods: no self-propelled activity. |
-| niter | Inert material / stored goods: no self-propelled activity. |
-| oil | Inert material / stored goods: no self-propelled activity. |
-| pearls | Inert material / stored goods: no self-propelled activity. |
-| rice | Inert material / stored goods: no self-propelled activity. |
-| royal_relics | Inert material / stored goods: no self-propelled activity. |
-| silk | Inert material / stored goods: no self-propelled activity. |
-| silver | Inert material / stored goods: no self-propelled activity. |
-| spices | Inert material / stored goods: no self-propelled activity. |
+| niter | Two overlapping streams of pale smoke continuously rise from the saltpeter in the open barrel. |
+| oil | Glossy oil puddle with a continuous dark geyser, falling oil droplets and expanding iridescent bubbles. |
+| pearls | Five larger, faster pearlescent glints in white, pink and cool blue continuously sparkle across the pile. |
+| rice | Flooded rice paddy replaces the bowl; visible rolling wind bends the rice heads above the rooted base. |
+| royal_relics | Lavender magical motes, golden crown glints and colored jewel sparkle in a continuous loop. |
+| silk | Warm ivory and lavender highlights shimmer continuously across the silk folds. |
+| silver | Three silver-white glints cycle smoothly across the metal stack, with a persistent baseline shine. |
+| spices | Three clear, continuously rising aromatic plumes in cinnamon brown, turmeric gold and paprika orange. |
 | stone | Inert material / stored goods: no self-propelled activity. |
-| uranium | Inert material / stored goods: no self-propelled activity. |
+| uranium | A soft green halo surrounds the canister, pulsing smoothly without ever switching off. |
 
 ## improvement
 
@@ -151,10 +152,10 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | bomb_shelter | Small warm entrance light in the recessed concrete doorway. |
 | broadcast_tower | Small antenna signal light, fixed stepped tower. |
 | castle | Occasional bird above the battlements, rigid keep. |
-| circus | Painted red pennant at tent apex and entrance activity; tent shape fixed. |
+| circus | Six colorful visitors queue and walk into the tent continuously; pennant flutters above. |
 | coal_power_plant | Dark emissions from the two painted tall stacks; factory masonry fixed. |
-| colosseum | Tiny spectator activity in the arena; all tiers rigid. |
-| courthouse | Front stair activity, fixed columns and roof. |
+| colosseum | Packed rear seating tiers with 76 spectators and animated waving flags; arena floor and facade remain clear. |
+| courthouse | Black-robed judges with white collars and books walk up the front steps and disappear into the doorway. |
 | csp | Warm receiver illumination; the receiver is not a flame and mirrors stay fixed. |
 | factory | Smoke from the two chimney mouths at (0.57,0.137) and (0.645,0.195). |
 | forge | Furnace opening, sparks and masonry chimney; building does not flex. |
@@ -166,9 +167,9 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | hospital | Small window illumination; clinical building silhouette fixed. |
 | hotel | Warm occupied window in the high-rise facade. |
 | hydro_plant | Water and spray below the visible spillway. |
-| library | Doorway visitor activity, fixed roof and walls. |
+| library | Enlarged world sprite (1.45 tile scale) with a continuous stream of visitors walking up to the doorway. |
 | lighthouse | Sweep from the painted lantern, completely fixed tower. |
-| market | Trade activity along the striped awnings; structure fixed. |
+| market | Red-and-white awning flutters; three hanging meat cuts swing from their hooks while trade activity continues. |
 | medical_lab | Small facade illumination, no glow on the roof or medical cross. |
 | military_academy | Restrained entrance activity; domed academy fixed. |
 | military_base | Small operational signal and courtyard activity in the fortified compound. |
@@ -190,14 +191,14 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | solar_panels | Restrained inverter indicator; panel surfaces do not pulse or deform. |
 | solar_plant | Small equipment indicator, fixed solar roof array. |
 | spaceship_factory | Workshop steam and signal, parked shuttle and factory fixed. |
-| stable | Entrance activity beside the stalls, fixed timber roof. |
+| stable | Three brown and tan horses peek and bob their heads from the visible stalls. |
 | stadium | People on the pitch/stands; no invented floodlight tower. |
 | stock_exchange | Front-step activity, fixed columned facade. |
-| stone_works | Dust by the worked stone and lifting equipment, fixed masonry. |
+| stone_works | Painted crane and stone cutouts: raise stone, slew half a turn, lower, then repeat back to the first station. Cable follows the load. |
 | temple | Three painted braziers: large central flame at (0.503,0.533), two small stair braziers. No structural deformation. |
 | university | Front entrance activity, fixed domed roof. |
 | walls | Occasional birds near the parapet; every block fixed. |
-| water_mill | Paddles along the exposed oblique wheel rim and water below it; roof stays in front. |
+| water_mill | Clearly rotating paddles on the exposed wheel rim, continuous falling water and spreading ripples below it. |
 | wind_turbine | Original three painted blades rotate around the hub; fixed mast and foundation. |
 | windmill | Original four lattice sails rotate; reconstructed roof support remains stationary. |
 | workshop | Work dust in the open work bay; no invented chimney or fire. |
@@ -243,3 +244,12 @@ Reviewed every shipped sprite against its current profile, including the nuclear
 | atomic | Steam from the already-painted central stack and warm facade light. |
 | information | Illuminated blue windows and central tower windows, fixed skyline. |
 | future | Cyan light in the painted illuminated tower and windows; no pulsing city silhouette. |
+
+## Shared construction views
+
+Building and wonder reservations replace the finished artwork with these shared views. Workers and construction transports use the same textures during improvement work. Completion, cancellation, upgrades, fog and destruction continue to use the existing renderer lifecycle.
+
+| View | Animation |
+| --- | --- |
+| construction_land | Generic scaffold and unfinished shell; carpenter forearm and hammer strike the workbench continuously. |
+| construction_water | Construction barge; lattice crane boom slews through 360 degrees while a suspended crate is raised and lowered. Coast and Ocean use this view; other terrain uses land. |

@@ -1,3 +1,4 @@
+import { constructionVisualForTerrain } from './rendering/ConstructionVisual';
 import { AmbientSprites } from './rendering/AmbientSprites';
 import Phaser from 'phaser';
 import { TileMap } from './TileMap';
@@ -9,7 +10,6 @@ import { StructureDamageEffects } from '../renderers/StructureDamageEffects';
 
 const TILE_BUILDING_DEPTH = 14;
 const TILE_BUILDING_SCALE = 0.9;
-const CONSTRUCTION_TEXTURE = 'under_construction';
 type VisualState = 'building' | 'normal' | 'broken';
 type TileConstructionVisual = { kind: 'building' | 'wonder'; id: string; state: VisualState };
 
@@ -17,7 +17,6 @@ type TileConstructionVisual = { kind: 'building' | 'wonder'; id: string; state: 
  * Texture-load callbacks always re-resolve current state (including fog). */
 export class TileBuildingRenderer {
   private readonly sprites = new Map<string, Phaser.GameObjects.Image>();
-  private readonly signs = new Map<string, Phaser.GameObjects.Image>();
   private readonly loadingTextures = new Map<string, () => void>();
   private readonly missingTextures = new Set<string>();
   private readonly hexTileMaskHelper: HexTileMaskHelper;
@@ -58,7 +57,6 @@ export class TileBuildingRenderer {
       this.renderTile(tile);
     }
     for (const key of this.sprites.keys()) if (!seen.has(key)) this.clearTile(key);
-    for (const key of this.signs.keys()) if (!seen.has(key)) this.clearTile(key);
   }
 
   refreshTile(x: number, y: number): void {
@@ -78,7 +76,6 @@ export class TileBuildingRenderer {
     for (const cleanup of this.loadingTextures.values()) cleanup();
     this.loadingTextures.clear();
     for (const key of this.sprites.keys()) this.clearTile(key);
-    for (const key of this.signs.keys()) this.clearTile(key);
     this.damageEffects.shutdown();
     this.hexTileMaskHelper.destroy();
   }
@@ -88,11 +85,11 @@ export class TileBuildingRenderer {
     if (!visual) return;
     const key = this.key(tile.x, tile.y);
     const broken = visual.state === 'broken';
-    const texture = `tile_${visual.kind}_${visual.id}${broken ? '-broken' : ''}`;
-    const path = visual.kind === 'building'
-      ? getBuildingSpritePath(visual.id, broken) : getWonderSpritePath(visual.id, broken);
+    const construction=visual.state==='building'?constructionVisualForTerrain(tile.type):undefined;
+    const texture = construction?.key??`tile_${visual.kind}_${visual.id}${broken ? '-broken' : ''}`;
+    const path = construction?.path??(visual.kind === 'building'
+      ? getBuildingSpritePath(visual.id, broken) : getWonderSpritePath(visual.id, broken));
     // Remove previous-state overlays immediately, even while a new image loads.
-    if (visual.state !== 'building') this.removeSign(key);
     if (!broken) this.damageEffects.remove(key);
     if (!this.ensureTexture(texture, path)) {
       this.clearTile(key);
@@ -100,7 +97,7 @@ export class TileBuildingRenderer {
     }
     // Warm the counterpart once a structure is represented on the map, so
     // subsequent sabotage/repair normally swaps textures without a network wait.
-    this.ensureTexture(`tile_${visual.kind}_${visual.id}${broken ? '' : '-broken'}`,
+    if(!construction) this.ensureTexture(`tile_${visual.kind}_${visual.id}${broken ? '' : '-broken'}`,
       visual.kind === 'building' ? getBuildingSpritePath(visual.id, !broken) : getWonderSpritePath(visual.id, !broken));
     const { x, y } = this.tileMap.tileToWorld(tile.x, tile.y);
     const rect = this.tileMap.getTileRect(tile.x, tile.y);
@@ -110,27 +107,19 @@ export class TileBuildingRenderer {
       this.sprites.set(key, sprite);
     }
     sprite.setTexture(texture).setPosition(x, y);
-    sprite.setDisplaySize(rect.width * TILE_BUILDING_SCALE, rect.height * TILE_BUILDING_SCALE);
+    const scale=!construction && visual.kind==='building' && visual.id==='library'?1.45:TILE_BUILDING_SCALE;
+    sprite.setDisplaySize(rect.width * scale, rect.height * scale);
     this.hexTileMaskHelper.applyHexMask(sprite, tile.x, tile.y);
     if (!sprite.getData('ambientAttached')) {
       sprite.setData('ambientAttached', true);
       AmbientSprites.forScene(this.scene).attach(sprite, visual.kind, key, () => [tile.x, tile.y],
         () => {
           const current = this.mapData.tiles[tile.y]?.[tile.x];
-          return !!current && this.getTileVisual(current)?.state === 'normal' && this.visibilityPredicate(tile.x, tile.y);
+          return !!current && !!this.getTileVisual(current) && this.getTileVisual(current)?.state !== 'broken' && this.visibilityPredicate(tile.x, tile.y);
         });
     }
     this.damageEffects.set(key, tile.x, tile.y, broken,
       tile.type !== TileType.Ocean && tile.type !== TileType.Coast);
-    if (visual.state === 'building' && this.ensureTexture(CONSTRUCTION_TEXTURE, 'assets/sprites/overlays/under-construction.png')) {
-      let sign = this.signs.get(key);
-      if (!sign) {
-        sign = this.scene.add.image(x, y, CONSTRUCTION_TEXTURE).setDepth(TILE_BUILDING_DEPTH + 0.5).setAlpha(0.78);
-        this.signs.set(key, sign);
-      }
-      sign.setPosition(x, y - rect.height * 0.48);
-      sign.setDisplaySize(rect.width * 0.82, rect.height * 0.3);
-    }
   }
 
   private ensureTexture(key: string, path: string): boolean {
@@ -161,16 +150,11 @@ export class TileBuildingRenderer {
 
   private getTileVisual(tile: Tile): TileConstructionVisual | null {
     const completedState = (): VisualState => this.brokenPredicate(tile.x, tile.y) ? 'broken' : 'normal';
-    if (tile.buildingId) return { kind: 'building', id: tile.buildingId, state: completedState() };
     if (tile.buildingConstruction) return { kind: 'building', id: tile.buildingConstruction.buildingId, state: 'building' };
-    if (tile.wonderId) return { kind: 'wonder', id: tile.wonderId, state: completedState() };
     if (tile.wonderConstruction) return { kind: 'wonder', id: tile.wonderConstruction.wonderId, state: 'building' };
+    if (tile.buildingId) return { kind: 'building', id: tile.buildingId, state: completedState() };
+    if (tile.wonderId) return { kind: 'wonder', id: tile.wonderId, state: completedState() };
     return null;
-  }
-
-  private removeSign(key: string): void {
-    this.signs.get(key)?.destroy();
-    this.signs.delete(key);
   }
 
   private clearTile(key: string): void {
@@ -180,7 +164,6 @@ export class TileBuildingRenderer {
       sprite.destroy();
       this.sprites.delete(key);
     }
-    this.removeSign(key);
     this.damageEffects.remove(key);
   }
 

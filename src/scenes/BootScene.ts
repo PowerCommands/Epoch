@@ -70,7 +70,8 @@ export class BootScene extends Phaser.Scene {
       this.load.image(getCitySpriteKey(era), getCitySpritePath(era));
       this.load.image(getCitySpriteKey(era, true), getCitySpritePath(era, true));
     }
-    this.load.image('under_construction', 'assets/sprites/overlays/under-construction.png');
+    this.load.image('construction_land', 'assets/sprites/construction/land.png');
+    this.load.image('construction_water', 'assets/sprites/construction/water.png');
     this.load.image('end_turn', 'assets/sprites/end_turn.png');
     this.load.image('action_move', 'assets/sprites/actions/move.png');
     this.load.image('action_attack', 'assets/sprites/actions/attack.png');

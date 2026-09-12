@@ -58,7 +58,7 @@
     id: "pasture",
     spriteKey: "improvement_pasture",
     name: "Pasture",
-    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "forest" /* Forest */, "desert" /* Desert */],
+    allowedTileTypes: ["plains" /* Plains */, "beach" /* Beach */, "meadow" /* Meadow */, "forest" /* Forest */, "desert" /* Desert */, "ice" /* Ice */],
     yieldBonus: { food: 1, production: 1, gold: 0 }
   };
   var OIL_WELL = {
@@ -552,6 +552,17 @@
       iconKey: iconKey("silk"),
       weight: 4,
       improvementId: "plantation"
+    },
+    {
+      id: "polar_bear",
+      name: "Polar Bear",
+      category: "luxury",
+      allowedTileTypes: ["ice" /* Ice */],
+      yieldBonus: yieldBonus({ gold: 2, culture: 1 }),
+      iconKey: iconKey("polar_bear"),
+      weight: 2,
+      improvementId: "pasture",
+      notes: "An Arctic luxury resource found exclusively on ice."
     },
     {
       id: "ivory",

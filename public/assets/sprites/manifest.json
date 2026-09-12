@@ -961,6 +961,24 @@
       ]
     },
     {
+      "path": "construction",
+      "label": "Construction",
+      "assets": [
+        {
+          "name": "land.png",
+          "path": "/assets/sprites/construction/land.png",
+          "type": "PNG",
+          "size": 1776926
+        },
+        {
+          "name": "water.png",
+          "path": "/assets/sprites/construction/water.png",
+          "type": "PNG",
+          "size": 1109873
+        }
+      ]
+    },
+    {
       "path": "corporations",
       "label": "Corporations",
       "assets": [
@@ -3056,7 +3074,7 @@
           "name": "bananas.png",
           "path": "/assets/sprites/resources/bananas.png",
           "type": "PNG",
-          "size": 48423
+          "size": 1393342
         },
         {
           "name": "cattle.png",
@@ -3134,7 +3152,7 @@
           "name": "oil.png",
           "path": "/assets/sprites/resources/oil.png",
           "type": "PNG",
-          "size": 51511
+          "size": 709139
         },
         {
           "name": "pearls.png",
@@ -3143,10 +3161,16 @@
           "size": 71177
         },
         {
+          "name": "polar_bear.png",
+          "path": "/assets/sprites/resources/polar_bear.png",
+          "type": "PNG",
+          "size": 841237
+        },
+        {
           "name": "rice.png",
           "path": "/assets/sprites/resources/rice.png",
           "type": "PNG",
-          "size": 96366
+          "size": 1671097
         },
         {
           "name": "royal_relics.png",
@@ -3158,7 +3182,7 @@
           "name": "sheep.png",
           "path": "/assets/sprites/resources/sheep.png",
           "type": "PNG",
-          "size": 84126
+          "size": 989331
         },
         {
           "name": "shipwreck.png",
